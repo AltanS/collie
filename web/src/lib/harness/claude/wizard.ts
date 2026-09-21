@@ -158,7 +158,7 @@ function detectQuestionPhase(
   texts: string[],
   fi: number,
 ): WizardRegion | null {
-  if (classifyFooter(texts[fi]!) !== "select") return null;
+  if (classifyFooter(texts[fi]!, texts) !== "select") return null;
 
   // Numbered rows near the footer (same shape as the single-question menu). The menu is the trailing
   // 1,2,…,m run of them (see trailingMenuRows) — a numbered body above the current question's options

@@ -248,6 +248,7 @@ is why a composer send used to be typed straight into it. Claimed by the last-re
 | `claude--menu-model-picker.txt` | Picker open, `❯` on row 1: title `Select model`, five numbered rows with description columns, an `◐ Medium effort ←/→ to adjust` row, and the key-hint footer `Enter to set as default · s to use this session only · Esc to cancel`. Lifts a `menu` block with three actions + Up/Down + Left/Right |
 | `claude--menu-model-picker-moved.txt` | The same picker after `2×Down` (`❯` on row 3) — same title and actions, **different signature**. The race-guard fixture: a committing key must refuse a tap on the earlier render, an arrow must not |
 | `claude--menu-model-picker-dismissed.txt` | After `Esc`: the ordinary input box + statusline are back. The **negative control** — its statusline is `·`-separated like a key-hint footer, so only the input-box gate keeps it raw |
+| `claude--menu-effort-slider.txt` | The `/effort` slider (82 × 49, promoted from `claude-lab--menu-effort-slider--w82.txt`): a full-width rule, the title `Effort`, a `───` scale with a `▲` marker and a row of labels, **no numbered options**, and the key-hint footer `←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel`. Its footer phrase used to file it as the folder-trust prompt and silence the generic menu ([`.adr/0053`](../../../../.adr/0053-an-unread-dialog-still-has-a-way-out.md)); it now lifts a `menu` block titled `Effort` with Enter (Confirm) and Escape (Cancel) |
 
 ## Slash-autocomplete corpus (captured 2026-09-01, Claude Code v2.1.257, live pane)
 

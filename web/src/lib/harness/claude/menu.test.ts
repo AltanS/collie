@@ -109,3 +109,25 @@ describe("detectMenuRegion — what it must decline", () => {
     expect(detectMenu(scrolled)).toBeNull();
   });
 });
+
+// The screen that proved bail 2 was reading a phrase instead of a dialog: `/effort` prints
+// "Enter to confirm", which used to file it as the folder-trust prompt and stand the generic menu
+// down, leaving the operator a modal with no buttons at all (ADR 0053). Nothing here is
+// Effort-specific: once the bail stops firing, the generic grammar claims the screen on the keys the
+// screen itself printed. The `s` key and the arrows are a separate piece of work.
+describe("detectMenuRegion — the /effort slider", () => {
+  it("lifts the effort slider as a menu with the buttons its own footer names", () => {
+    const blocks = claudeBuildBlocks(load("claude--menu-effort-slider.txt"));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
+
+    const model = detectMenu(load("claude--menu-effort-slider.txt"))!;
+    expect(model.title).toBe("Effort");
+    expect(model.actions).toEqual([
+      { label: "Confirm", keys: ["Enter"] },
+      { label: "Cancel", keys: ["Escape"], cancel: true },
+    ]);
+    for (const key of model.actions.flatMap((a) => a.keys)) {
+      expect(/^\d+$/.test(key), key).toBe(false);
+    }
+  });
+});

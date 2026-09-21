@@ -44,6 +44,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A Codex pane no longer leaves a dark strip above the status bar.** Codex paints a blank background row above its native `›` composer. The mirror removed the prompt but kept that padding, so the fill stayed on screen as a band. The composer band now takes the adjacent blank rows that carry the prompt's own background with it, and the gap between the transcript and the status bar matches Claude Code's. Prompt detection and draft binding are unchanged, and interior paragraph spacing is kept. Thanks @Femoon (#250, fixes #249).
 - **`collie crew add` no longer leaves a member that runs two multiplexers unable to restart.** Leg 3 asks which one Collie should drive there, or takes `--mux <name>`, and writes `COLLIE_MUX` beside the bind; a member that runs exactly one is left to pick it itself as before.
 - **A harness chip no longer shrinks to a lone ✓ after it fires.** The check takes the icon's place and the word stays, so the other chips on the belt no longer slide left for 700ms and back.
+- **The `/effort` slider shows its Confirm and Cancel buttons again.** Claude Code's `/effort` picker prints "Enter to confirm" in its footer, and Collie read that one phrase as the folder-trust prompt, so the generic menu stood down and the screen arrived with no buttons at all. The trust prompt is now recognised by its own words, and every other screen that prints the phrase keeps the keys its footer names.
 
 
 ## [1.11.1] - 2026-09-20

@@ -827,6 +827,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "menu-model-picker", statusRows: 0, draft: null, stripped: 1 },
     { fixture: "menu-model-picker-dismissed", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "menu-model-picker-moved", statusRows: 0, draft: null, stripped: 1 },
+    // The /effort slider: a modal with no input box and no statusline under it, so the walk finds
+    // nothing to re-surface and nothing to peel.
+    { fixture: "menu-effort-slider", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--numbered-body", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--feedback-focused", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--feedback-typed", statusRows: 0, draft: null, stripped: 0 },

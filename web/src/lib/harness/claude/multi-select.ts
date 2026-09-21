@@ -190,7 +190,7 @@ function detectCheckboxPhase(
   texts: string[],
   fi: number,
 ): MultiSelectRegion | null {
-  if (classifyFooter(texts[fi]!) !== "select") return null;
+  if (classifyFooter(texts[fi]!, texts) !== "select") return null;
 
   // Numbered rows near the footer — the trailing 1,2,…,m run (the checkbox options + the numbered
   // "Chat about this" escape); a numbered body above it drops out (same hazard as prompt-select).

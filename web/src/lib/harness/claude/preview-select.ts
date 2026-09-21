@@ -85,7 +85,7 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   while (fi >= 0 && isBlank(texts[fi]!)) fi--;
   if (fi < 0) return null;
   const footer = texts[fi]!;
-  if (classifyFooter(footer) !== "select" || !NOTES_FOOTER.test(footer)) return null;
+  if (classifyFooter(footer, texts) !== "select" || !NOTES_FOOTER.test(footer)) return null;
   const editing = NOTE_EDITING_FOOTER.test(footer);
 
   // 2. The `Notes:` line, a few lines above the footer. Between them only the escape row, the

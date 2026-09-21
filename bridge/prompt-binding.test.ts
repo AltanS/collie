@@ -196,15 +196,37 @@ describe("client/bridge binding contract", () => {
   }
 
   test("a region from a different dialog is never accepted", () => {
+    const rawCache = new Map<string, string>();
+    const rawOf = (fixture: string): string => {
+      const hit = rawCache.get(fixture);
+      if (hit !== undefined) return hit;
+      const text = readFileSync(join(FIXTURE_DIR, fixture), "utf8");
+      rawCache.set(fixture, text);
+      return text;
+    };
+
     let compared = 0;
+    let identicalPairs = 0;
     for (const a of REGIONS) {
-      const raw = readFileSync(join(FIXTURE_DIR, a.fixture), "utf8");
+      const raw = rawOf(a.fixture);
       for (const b of REGIONS) {
         if (a.fixture === b.fixture) continue;
+        // Two fixtures can be the same screen, byte for byte: the /effort slider sits in the corpus
+        // twice, once as `claude--menu-effort-slider.txt` and once as the capture-lab original it
+        // was copied from. A match between those two is the contract working, not a collision. The
+        // exemption is keyed on the RAW FILE BYTES, never on the region text — two different dialogs
+        // that declared the same region would be exactly the collision this test exists to catch.
+        if (raw === rawOf(b.fixture)) {
+          identicalPairs++;
+          continue;
+        }
         compared++;
         expect(verifyExpectedPrompt(raw, b.region).ok).toBe(false);
       }
     }
     expect(compared).toBeGreaterThan(0);
+    // The exemption must not go vacuous: if the duplicate capture ever leaves the corpus, the skip
+    // above is dead code and this line says so.
+    expect(identicalPairs).toBeGreaterThan(0);
   });
 });

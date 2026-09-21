@@ -43,6 +43,24 @@ describe("agyAdapter unit & footer safety", () => {
     expect(antigravityAdapter.agent).toBe("antigravity");
   });
 
+  // The folder-trust capture, pinned block-for-block. Claude's `classifyFooter` was narrowed so a
+  // footer phrase alone can no longer claim the trust family (ADR 0053); agy's was deliberately left
+  // alone, so this fixture must keep lifting exactly what it lifted before that decision.
+  it("lifts agy--trust-prompt.txt as the trust family with digit-alone keys", () => {
+    const lines = splitLines(
+      parseAnsi(readFileSync(join(PANES_DIR, "agy--trust-prompt.txt"), "utf8")),
+    );
+    const model = detectPromptSelect(lines);
+    expect(model).not.toBeNull();
+    expect(model!.family).toBe("trust");
+    expect(model!.question).toBe("Do you trust the contents of this project?");
+    expect(model!.options.map((o) => o.label)).toEqual(["Yes, I trust this folder", "No, exit"]);
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+
+    const kinds = agyAdapter.buildBlocks(lines).map((b) => b.kind);
+    expect(kinds).toEqual(["raw", "prompt-select"]);
+  });
+
   it("detects an AskUserQuestion prompt with a footer and lifts it into interactive prompt-select options", () => {
     const raw = [
       "Which action would you like to take?",

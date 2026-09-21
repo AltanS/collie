@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
@@ -10,6 +12,7 @@ import {
   isInputBoxTopBorder,
   isMultiStepHeader,
   lineText,
+  namesTrustDialog,
 } from "./markers";
 
 // The shared lexing primitives every Claude-Code grammar leans on (chrome, prompt-select, and — in
@@ -221,19 +224,50 @@ describe("labelled borders below the shared total-width floor", () => {
   });
 });
 
+const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
+function fixtureTexts(name: string): string[] {
+  return splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8"))).map(lineText);
+}
+
+describe("namesTrustDialog", () => {
+  it("finds the folder-trust dialog's own words on the real capture", () => {
+    expect(namesTrustDialog(fixtureTexts("claude--trust-prompt.txt"))).toBe(true);
+  });
+
+  it("does not find them on a screen that merely prints 'Enter to confirm'", () => {
+    expect(namesTrustDialog(fixtureTexts("claude--menu-effort-slider.txt"))).toBe(false);
+  });
+});
+
 describe("classifyFooter", () => {
   it("maps each dialog family off its footer hint bar", () => {
-    expect(classifyFooter("Enter to select · ↑/↓ to navigate · Esc to cancel")).toBe("select");
-    expect(classifyFooter("Enter to confirm · Esc to cancel")).toBe("trust");
-    expect(classifyFooter("Esc to cancel · Tab to amend")).toBe("permission");
-    expect(classifyFooter("Esc to cancel · Tab to amend · ctrl+e to explain")).toBe("permission");
-    expect(classifyFooter("ctrl+g to edit in  nano  · ~/.claude/plans/velvet-toasting-turtle.md")).toBe("plan");
+    expect(classifyFooter("Enter to select · ↑/↓ to navigate · Esc to cancel", [])).toBe("select");
+    expect(classifyFooter("Esc to cancel · Tab to amend", [])).toBe("permission");
+    expect(classifyFooter("Esc to cancel · Tab to amend · ctrl+e to explain", [])).toBe("permission");
+    expect(classifyFooter("ctrl+g to edit in  nano  · ~/.claude/plans/velvet-toasting-turtle.md", [])).toBe("plan");
+  });
+
+  // The trust arm is the one family a footer line cannot settle on its own: "Enter to confirm" is
+  // ordinary Claude wording, and `menu.ts` reads a family claim as "a specific grammar owns this
+  // screen" (ADR 0053). So the claim needs the dialog, not the phrase.
+  it("claims trust when the trust dialog's own words are on screen", () => {
+    const texts = fixtureTexts("claude--trust-prompt.txt");
+    expect(classifyFooter("Enter to confirm · Esc to cancel", texts)).toBe("trust");
+  });
+
+  it("refuses trust for the same footer with no trust dialog around it", () => {
+    expect(classifyFooter("Enter to confirm · Esc to cancel", [])).not.toBe("trust");
+    const slider = fixtureTexts("claude--menu-effort-slider.txt");
+    expect(classifyFooter(slider.at(-1)!, slider)).not.toBe("trust");
+    expect(classifyFooter("Enter to confirm · Esc to cancel", ["some prose", "❯ 1. Yes", "  2. No"])).not.toBe(
+      "trust",
+    );
   });
 
   it("returns null for a non-footer line (statusline / hint / prose)", () => {
-    expect(classifyFooter("⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents")).toBeNull();
-    expect(classifyFooter("← for agents")).toBeNull();
-    expect(classifyFooter("Do you want to proceed?")).toBeNull();
+    expect(classifyFooter("⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents", [])).toBeNull();
+    expect(classifyFooter("← for agents", [])).toBeNull();
+    expect(classifyFooter("Do you want to proceed?", [])).toBeNull();
   });
 });
 

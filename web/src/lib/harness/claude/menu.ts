@@ -55,7 +55,9 @@ const REGION_SCAN_WINDOW = 30;
  * Ordered bails, cheapest and most decisive first:
  *   1. the last non-blank line must parse as a key-hint footer;
  *   2. `classifyFooter` must NOT claim it — the known dialog families keep their own grammars, which
- *      encode verified keystroke recipes this one cannot reproduce;
+ *      encode verified keystroke recipes this one cannot reproduce. The whole screen goes to that
+ *      call, not the footer alone: a claim here means "somebody else owns this", so it has to be
+ *      answerable from the dialog, never from one phrase any screen may print (ADR 0053);
  *   3. there must be NO input box at the tail — a normal prompt screen whose statusline happens to
  *      read like hints is not a modal, and claiming it would put fake buttons under a live composer;
  *   4. a full-width rule / box border must sit within REGION_SCAN_WINDOW above the footer, and carry
@@ -71,7 +73,7 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
   if (fi < 0) return null;
 
   const footer = texts[fi]!;
-  if (classifyFooter(footer) !== null) return null;
+  if (classifyFooter(footer, texts) !== null) return null;
   const actions = parseKeyHintFooter(footer);
   if (actions.length === 0) return null;
   if (hasInputBox(lines)) return null;

@@ -130,6 +130,12 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    `revision` is a stub, so it is the entire race guard (the generic one — see the next section).
 4. Menu detection runs **last**, after every specific grammar you have, and must decline a screen with
    a live input box; your `composerReady` must answer `false` while the modal is up.
+5. **A footer phrase may never be the whole reason a grammar declines.** Menu detection stands down
+   when a family classifier says another grammar owns the screen, so that classifier must be
+   answerable from the dialog it names, its title or its body, not from one line any screen may
+   print. Claude's `/effort` slider prints "Enter to confirm", was filed as the folder-trust prompt
+   on that phrase alone, and lost every button it had
+   ([ADR 0053](./.adr/0053-an-unread-dialog-still-has-a-way-out.md)).
 
 ## Every dialog model is a contract, and the race guard is generic
 

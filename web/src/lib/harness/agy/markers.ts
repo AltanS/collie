@@ -35,6 +35,17 @@ export function isMultiStepHeader(text: string): boolean {
 
 export type { PromptFamily };
 
+// VERDICT 2026-09-21 (ADR 0053): agy is **not affected** by the bug that narrowed Claude's trust
+// arm, so this classifier is left as it is. The Claude fault was that `claude/menu.ts` reads any
+// family claim as "a specific grammar owns this screen" and stands the generic menu down. agy has no
+// generic menu grammar to silence: this directory holds chrome, index, markers and prompt-select
+// only, and neither adapter wires a menu arm. Its single consumer, `agy/prompt-select.ts`, bails
+// unless the family is non-null AND at least two numbered option rows sit within MAX_FOOTER_GAP of
+// the footer, so a slider-shaped screen lifts nothing here whatever the family says, and a misfiled
+// `trust` can never take the buttons off a screen. What it does change is narrower: on a screen that
+// IS numbered, `parseOptionRow(text, family === "trust")` parses option rows differently. That is a
+// recipe question on a dialog agy already claimed, not a silenced grammar. Revisit if agy ever grows
+// a generic menu.
 export function classifyFooter(text: string): PromptFamily | null {
   const t = text.toLowerCase();
   if (/\b(?:enter\s+confirm|enter\s+to\s+confirm)\b/.test(t)) return "trust";

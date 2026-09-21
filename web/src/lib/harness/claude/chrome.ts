@@ -409,7 +409,7 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
 
   // 4. No modal on screen.
   for (let j = b + 1; j < end; j++) {
-    if (classifyFooter(texts[j]!) !== null) return null;
+    if (classifyFooter(texts[j]!, texts) !== null) return null;
     if (tail !== "autocomplete" && tailNamesAMenu(texts[j]!)) return null;
     if (tail === "unknown" && tailLooksModal(texts[j]!)) return null;
   }
