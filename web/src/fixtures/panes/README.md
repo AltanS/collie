@@ -309,6 +309,12 @@ file name (`--w<cols>`, plus `--h<rows>` where the pane was short), and it is in
 The renderer was the classic TUI, the config directory was isolated, and no user plugins, hooks or
 skills were loaded.
 
+Kept fresh by a standing tracker ritual, owned and scheduled:
+`tracker ritual run claude-capture-lab`. The ritual's trigger is a Claude Code
+version change, not the calendar; its first step compares the machine's
+`claude --version` against `claudeCodeVersion` in `claude-lab-corpus.json`
+below.
+
 `claude-lab-corpus.json` beside
 [`harness/claude/claude-lab-corpus.test.ts`](../../lib/harness/claude/claude-lab-corpus.test.ts)
 carries the reading a CORRECT locator would produce for every file here, written from the screen

@@ -320,6 +320,26 @@ describe("an unread dialog is never silently raw", () => {
   });
 });
 
+describe("the recorded version has a consumer", () => {
+  // `claudeCodeVersion` had no consumer before this: a stale corpus was visible only to a ritual
+  // nobody ran (tracker M34 spec 05). This does NOT compare against the machine's own Claude Code
+  // version — CI has no Claude Code installed. That comparison is the ritual's first step
+  // (`.tracker/rituals/claude-capture-lab/ritual.md`); this test only makes sure the corpus's
+  // version stamp is present, well-formed, and matches the copy the README states for a human.
+  it("claudeCodeVersion is a version string that matches the fixtures README's capture-lab heading", () => {
+    const version = table.claudeCodeVersion;
+    expect(version).toBeDefined();
+    expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+
+    const readme = readFileSync(join(PANES_DIR, "README.md"), "utf8");
+    const heading = readme
+      .split("\n")
+      .find((line) => line.startsWith("## Capture lab corpus"));
+    expect(heading, "the fixtures README must carry a 'Capture lab corpus' heading").toBeDefined();
+    expect(heading).toContain(version);
+  });
+});
+
 describe("every promoted fixture parses through the public surface", () => {
   it.each(LAB_FIXTURES)("%s", (name) => {
     const lines = load(name);
