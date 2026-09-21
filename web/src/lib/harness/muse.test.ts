@@ -88,6 +88,11 @@ const NOT_READY = [
 const ownFixtures = LIFTED;
 const neutralFixtures = allMuseFixtures.filter((f) => !LIFTED.includes(f));
 
+// Every opencode capture must stay raw under the muse adapter too — the cross-adapter leg.
+const allOpencodeFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("oc--") && f.endsWith(".txt"))
+  .toSorted();
+
 describeAdapterConformance(museAdapter, {
   ownFixtures,
   foreignFixtures: [
@@ -96,6 +101,7 @@ describeAdapterConformance(museAdapter, {
     ...allCodexFixtures,
     ...allGrokFixtures,
     ...allAgyFixtures,
+    ...allOpencodeFixtures,
   ],
   neutralFixtures,
 });
