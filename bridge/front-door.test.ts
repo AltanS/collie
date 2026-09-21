@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import {
   formatRecord,
+  parseRecord,
   herdrActionCommand,
   instanceSuffixOf,
   managedHandlerPath,
@@ -28,6 +29,7 @@ const RECORD = formatRecord({
   port: 8788,
   hostPort: "box.tail.ts.net:8788",
   proxy: "http://127.0.0.1:8788",
+  path: "/",
 });
 
 /** The status JSON tailscaled prints for a root mount Collie itself published. */
@@ -198,5 +200,43 @@ describe("releaseManagedFrontDoor — only the recorded mapping", () => {
     expect(releaseManagedFrontDoor(h.deps)).toBe(false);
     expect(h.record()).toBe(RECORD);
     expect(h.err.join("\n")).toContain("tailscale not found");
+  });
+});
+
+// ADR 0052: a record may name a mount; the bridge's own teardown then scopes to that mount.
+describe("releaseManagedFrontDoor — a mounted door", () => {
+  const MOUNTED_RECORD = formatRecord({
+    mode: "http",
+    port: 8788,
+    hostPort: "box.tail.ts.net:8788",
+    proxy: "http://127.0.0.1:8788",
+    path: "/collie/",
+  });
+  const MOUNTED_OURS = JSON.stringify({
+    TCP: { "8788": { HTTP: true } },
+    Web: { "box.tail.ts.net:8788": { Handlers: { "/collie/": { Proxy: "http://127.0.0.1:8788" } } } },
+  });
+
+  test("a root record is the three-field line it always was; a mount adds one field", () => {
+    expect(RECORD).toBe("http:8788|box.tail.ts.net:8788|http://127.0.0.1:8788\n");
+    expect(MOUNTED_RECORD).toBe("http:8788|box.tail.ts.net:8788|http://127.0.0.1:8788|/collie/\n");
+    expect(parseRecord(RECORD).path).toBe("/");
+  });
+
+  test("removes the handler at the recorded mount, and leaves a root somebody else owns alone", () => {
+    const h = harness({ record: MOUNTED_RECORD, status: MOUNTED_OURS });
+    expect(releaseManagedFrontDoor(h.deps)).toBe(true);
+    expect(h.calls).toEqual(["tailscale serve status --json", "tailscale serve --http=8788 --set-path=/collie/ off"]);
+    expect(h.record()).toBeNull();
+  });
+
+  test("a mount replaced out from under us is refused like a root", () => {
+    const theirs = JSON.stringify({
+      TCP: { "8788": { HTTP: true } },
+      Web: { "box.tail.ts.net:8788": { Handlers: { "/collie/": { Proxy: "http://127.0.0.1:9999" } } } },
+    });
+    const h = harness({ record: MOUNTED_RECORD, status: theirs });
+    expect(releaseManagedFrontDoor(h.deps)).toBe(false);
+    expect(h.record()).toBe(MOUNTED_RECORD);
   });
 });

@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **Collie can be served under a path, from the release build, with one setting.** A proxy that gives Collie a path, such as `https://host/collie/`, used to lose it at the first asset and the first `/api/*` call. Set `COLLIE_BASE_PATH` (or `[serve] base_path`) and restart: the bridge serves the app, its assets, the manifest, the service worker and the API under that path, `collie serve` publishes the `tailscale serve` mount there instead of at the root, and `collie doctor` names the mount and warns when the door and the app disagree. The web bundle is built base-relative and the bridge resolves it to the mount when it serves `index.html`, so a binary install needs no rebuild and a checkout keeps the setting across `collie update`. A mount change is a new app on the phone: remove and re-add the home-screen icon (ADR 0052). Thanks @edwinhu for PR #253, which mapped every place the mount matters.
+
 ### Fixed
 
 - **A crew member that is asleep no longer stops this machine updating.** `collie doctor` reports the crew's health as well as this machine's, and the update preflight treated every one of its errors alike, so a laptop that had gone to sleep turned the update button off on a healthy desktop that had the disk, the bun and a clean tree. The preflight asks whether THIS machine can take a new version, so only a fault on this machine makes it red now, and a crew fault is amber and names the check that raised it. A member levels itself to its lead's release when it comes back, which is what this was blocking. The same rule now covers the tap as well as the button: a member the lead knows it cannot reach no longer refuses the lead's own update, which matters because the lead banks what it knows in memory and its own update restarts it. A crew-only run, where the members are the whole request, still refuses. A member that the update would strand rather than merely outrun still blocks the confirm in the terminal.

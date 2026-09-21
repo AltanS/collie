@@ -34,15 +34,10 @@ describe("push notification assets", () => {
     expect([width, height]).toEqual([192, 192]);
   });
 
-  // Upstream writes these two constants as root-absolute string literals and asserts that text.
-  // This fork mounts the app under COLLIE_BASE_PATH, so sw.ts resolves both against the service
-  // worker's own scope instead — at the default base the resolved pathname is byte-for-byte the
-  // upstream one. The contract under test is unchanged: these two files, not the maskable tile,
-  // and the badge still reaching `badge:`. Only the spelling the assertion matches has moved.
   it("points sw.ts at those two files and not at the maskable tile", () => {
     const sw = readFileSync(resolve(import.meta.dirname, "../sw.ts"), "utf8");
-    expect(sw).toContain('const ICON = new URL("./notification-icon-192x192.png", self.location.href).pathname');
-    expect(sw).toContain('const BADGE = new URL("./badge-96x96.png", self.location.href).pathname');
+    expect(sw).toContain('const ICON = under("/notification-icon-192x192.png")');
+    expect(sw).toContain('const BADGE = under("/badge-96x96.png")');
     expect(sw).toContain("badge: BADGE");
   });
 });

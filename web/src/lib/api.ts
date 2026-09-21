@@ -9,6 +9,7 @@ import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
+import { mounted } from "./base-path";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -228,14 +229,9 @@ function normaliseProxyRedirect(res: Response): Response {
   });
 }
 
-// Every caller hands this an origin-relative `/api/...` path it built itself, so the parameter is
-// a string and not `RequestInfo | URL`: the app is mounted at `import.meta.env.BASE_URL`, and a
-// root-absolute path would leave that mount and hit the origin instead. At the default base of
-// "/" the prefix is empty and the request is byte-for-byte the one upstream sends.
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const base = import.meta.env.BASE_URL.replace(/\/+$/, "");
-  const url = path.startsWith("/") ? `${base}${path}` : path;
-  return normaliseProxyRedirect(await fetch(url, { ...init, redirect: "manual" }));
+  // Every caller spells a root-absolute `/api/…`; the mount is applied here, once (ADR 0052).
+  return normaliseProxyRedirect(await fetch(mounted(path), { ...init, redirect: "manual" }));
 }
 
 /**

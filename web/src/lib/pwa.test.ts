@@ -49,6 +49,7 @@ async function load(
       addEventListener: (type: string, fn: () => void) => {
         swEvents[type] = fn;
       },
+      register: async () => registration,
       getRegistrations: async () => [registration],
     },
   });
@@ -56,11 +57,10 @@ async function load(
   vi.stubGlobal("location", { reload });
   vi.stubGlobal("window", globalThis.window ?? {});
   Object.defineProperty(globalThis.window, "location", { value: { reload }, configurable: true });
-  vi.doMock("virtual:pwa-register", () => ({
-    registerSW: (o: { onRegisteredSW: (url: string, r: typeof registration) => void }) =>
-      o.onRegisteredSW("/sw.js", registration),
-  }));
   const mod = await import("./pwa");
+  // The module registers the worker on import and wires itself in the promise's `then`; let
+  // those microtasks run before a test looks.
+  for (let i = 0; i < 4; i += 1) await Promise.resolve();
   return { mod, reload, registration, regEvents, swEvents };
 }
 
@@ -70,7 +70,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  vi.doUnmock("virtual:pwa-register");
   // The stuck guard's note lives here (`GUARD_RELOAD_KEY`), and it is meant to survive a reload —
   // so it also survives a test unless a test clears it.
   sessionStorage.clear();

@@ -2,7 +2,7 @@ import { chmodSync, existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_PORT, defaultSocketPath, resolveStateDir } from "../bridge/config.ts";
+import { DEFAULT_PORT, defaultSocketPath, normaliseBasePath, resolveStateDir } from "../bridge/config.ts";
 import {
   configFilePaths,
   overlayConfig,
@@ -65,6 +65,12 @@ export interface CliContext {
    * value it cannot trust. One parser, two policies — see {@link parseServePort}.
    */
   servePort: number;
+  /**
+   * The path this collie is mounted under (`COLLIE_BASE_PATH`, ADR 0052): `/` for the root,
+   * `/collie/` behind a proxy that gives it a path. Read by the same function the bridge reads it
+   * with, so the door `collie serve` publishes and the document the bridge serves name one mount.
+   */
+  basePath: string;
   socket: string;
   /** The single managed `tailscale serve` mapping's ownership record. */
   handlerFile: string;
@@ -352,7 +358,7 @@ const diskConfigReader: ConfigFileReader = {
 export function deriveSettings(
   env: Environment,
   home: string,
-): Pick<CliContext, "port" | "serveMode" | "servePort" | "socket"> {
+): Pick<CliContext, "port" | "serveMode" | "servePort" | "basePath" | "socket"> {
   const rawPort = env.COLLIE_PORT?.trim();
   const port = rawPort && /^\d+$/.test(rawPort) ? Number(rawPort) : DEFAULT_PORT;
   const mode = env.COLLIE_SERVE_MODE?.trim();
@@ -360,6 +366,7 @@ export function deriveSettings(
     port,
     serveMode: mode === "http" ? "http" : "https",
     servePort: effectiveServePort(env),
+    basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
     socket: env.HERDR_SOCKET_PATH?.trim() || defaultSocketPath(process.platform, env, home),
   };
 }

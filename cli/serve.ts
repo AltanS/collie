@@ -4,7 +4,8 @@ import {
   fingerprintRoot,
   formatRecord,
   handlerName,
-  hasRootMount,
+  hasMount,
+  mountName,
   parseRecord,
   parseServeStatus,
   releaseManagedFrontDoor,
@@ -42,6 +43,7 @@ export {
   fingerprintRoot,
   formatRecord,
   handlerName,
+  mountName,
   parseRecord,
   parseServeStatus,
   type OwnershipRecord,
@@ -77,16 +79,19 @@ export function rootAvailability(
   port: number,
   protocol: ServeMode,
   expectedProxy: string,
+  path = "/",
 ): Availability {
   const key = String(port);
 
-  // Proxy targets of every root handler bound to our port, in ONE serve config level.
+  // Proxy targets of every handler at OUR mount bound to our port, in ONE serve config level. The
+  // mount is the root unless the bridge is given a path (ADR 0052); a handler at another path on
+  // the same listener is somebody else's app and no concern of this gate.
   const rootTargets = (config: ServeStatus): (string | undefined)[] =>
     Object.entries(config.Web ?? {})
       .filter(([hostPort]) => /:(\d+)$/.exec(hostPort)?.[1] === key)
       .map(([, server]) => server?.Handlers ?? {})
-      .filter((handlers) => hasRootMount(handlers))
-      .map((handlers) => handlers["/"]?.Proxy);
+      .filter((handlers) => hasMount(handlers, path))
+      .map((handlers) => handlers[path]?.Proxy);
 
   const foregroundTargets = (config: ServeStatus): (string | undefined)[] =>
     Object.values(config.Foreground ?? {}).flatMap((fg) =>
@@ -234,7 +239,10 @@ export function cmdServe(deps: ServeDeps): number {
 
   const proxy = `http://127.0.0.1:${deps.ctx.port}`;
   const listenerPort = deps.ctx.serveMode === "http" ? deps.ctx.port : httpsPort;
-  if (!ensureRootAvailable(deps, listenerPort, deps.ctx.serveMode, proxy)) return EXIT.FAIL;
+  // The mount the bridge is given (`COLLIE_BASE_PATH`, ADR 0052): the door is published where the
+  // app expects to be found, and the teardown record carries the same path.
+  const path = deps.ctx.basePath;
+  if (!ensureRootAvailable(deps, listenerPort, deps.ctx.serveMode, proxy, path)) return EXIT.FAIL;
 
   // Write-ahead ownership: the record goes down BEFORE the serve call, so a serve that half-lands
   // still leaves something teardown can act on. It is removed again only if that call fails.
@@ -243,10 +251,11 @@ export function cmdServe(deps: ServeDeps): number {
     port: listenerPort,
     hostPort: `${host}:${listenerPort}`,
     proxy,
+    path,
   };
   deps.files.write(deps.ctx.handlerFile, formatRecord(record));
 
-  const args = publishArgs(deps.ctx.serveMode, deps.ctx.port, httpsPort);
+  const args = publishArgs(deps.ctx.serveMode, deps.ctx.port, httpsPort, path);
   // OUR stdio, not a capture (#172). The shell captured this into `${CONFIG_DIR}/serve.out` and
   // `cat`-ed it on failure, which reads back everything `tailscale serve` said — but only once it
   // has returned. Anything it prints WHILE it waits then reaches nobody, and the operator watches a
@@ -254,10 +263,11 @@ export function cmdServe(deps: ServeDeps): number {
   // buys back every question tailscale decides to ask.
   const r = deps.exec.inherit("tailscale", args);
   if (r.found && r.code === 0) {
+    const at = path === "/" ? "" : ` ${path}`;
     deps.io.out(
       deps.ctx.serveMode === "http"
-        ? `tailscale serve (http) → tailnet :${deps.ctx.port} -> 127.0.0.1:${deps.ctx.port}`
-        : `tailscale serve (https) → tailnet :${httpsPort} -> 127.0.0.1:${deps.ctx.port}`,
+        ? `tailscale serve (http) → tailnet :${deps.ctx.port}${at} -> 127.0.0.1:${deps.ctx.port}`
+        : `tailscale serve (https) → tailnet :${httpsPort}${at} -> 127.0.0.1:${deps.ctx.port}`,
     );
     return EXIT.OK;
   }
@@ -313,11 +323,12 @@ export function crewModeOnDisk(deps: ServeDeps): CrewMode {
  * bare `tailscale serve` already means :443, so a host that never set `COLLIE_SERVE_PORT` publishes
  * exactly what it published before, down to the argv. Only a chosen port adds `--https=<port>`.
  */
-function publishArgs(mode: ServeMode, bridgePort: number, httpsPort: number): string[] {
+function publishArgs(mode: ServeMode, bridgePort: number, httpsPort: number, path: string): string[] {
   const target = String(bridgePort);
-  if (mode === "http") return ["serve", "--bg", `--http=${bridgePort}`, "--set-path=/", target];
-  if (httpsPort === DEFAULT_SERVE_PORT) return ["serve", "--bg", "--set-path=/", target];
-  return ["serve", "--bg", `--https=${httpsPort}`, "--set-path=/", target];
+  const mount = `--set-path=${path}`;
+  if (mode === "http") return ["serve", "--bg", `--http=${bridgePort}`, mount, target];
+  if (httpsPort === DEFAULT_SERVE_PORT) return ["serve", "--bg", mount, target];
+  return ["serve", "--bg", `--https=${httpsPort}`, mount, target];
 }
 
 /** The publish-side gate. True means "go ahead"; it prints its own refusal otherwise. */
@@ -326,20 +337,22 @@ function ensureRootAvailable(
   port: number,
   protocol: ServeMode,
   expectedProxy: string,
+  path: string,
 ): boolean {
+  const name = mountName(path);
   const r = deps.exec.capture("tailscale", ["serve", "status", "--json"]);
   if (!r.found || r.code !== 0) {
     deps.io.err(
-      `error: cannot inspect Tailscale serve status; refusing to overwrite the root mount on :${port}`,
+      `error: cannot inspect Tailscale serve status; refusing to overwrite the ${name} on :${port}`,
     );
     return false;
   }
   let verdict: Availability;
   try {
-    verdict = rootAvailability(parseServeStatus(r.stdout), port, protocol, expectedProxy);
+    verdict = rootAvailability(parseServeStatus(r.stdout), port, protocol, expectedProxy, path);
   } catch {
     deps.io.err(
-      `error: invalid Tailscale serve status; refusing to overwrite the root mount on :${port}`,
+      `error: invalid Tailscale serve status; refusing to overwrite the ${name} on :${port}`,
     );
     return false;
   }
@@ -349,12 +362,12 @@ function ensureRootAvailable(
   }
   if (verdict === "occupied") {
     deps.io.err(
-      `error: Tailscale serve already has an unowned root mount on :${port}; refusing to overwrite it`,
+      `error: Tailscale serve already has an unowned ${name} on :${port}; refusing to overwrite it`,
     );
     return false;
   }
   if (verdict === "adoptable") {
-    deps.io.out(`tailscale serve: adopting the existing Collie root mount on :${port}`);
+    deps.io.out(`tailscale serve: adopting the existing Collie ${name} on :${port}`);
   }
   return true;
 }

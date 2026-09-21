@@ -1,5 +1,7 @@
 import { createBrowserRouter, replace } from "react-router";
 
+import { basePath } from "@/lib/base-path";
+
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
 import { SpaceRoute } from "@/routes/space";
@@ -82,4 +84,9 @@ export const router = createBrowserRouter([
       },
     ],
   },
-], { basename: import.meta.env.BASE_URL });
+], {
+  // The mount the bridge served this document under (ADR 0052): `/` at the root, `/collie/` behind
+  // a proxy that gives Collie a path. Every route path above stays root-relative; the router puts
+  // the mount in front of them and takes it off what it reads from the address bar.
+  basename: basePath(),
+});

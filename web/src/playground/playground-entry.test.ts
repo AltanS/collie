@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import viteConfig from "../../vite.config";
+import viteConfigExport from "../../vite.config";
+
+// The config is a function of the command since ADR 0052 (the build's base is relative, the dev
+// server's is not); the build's answer is the one this file asks about.
+const viteConfig = await viteConfigExport({ command: "build", mode: "production" });
 
 // The playground is a second HTML page in the Vite ROOT, and it stays out of the shipped app by the
 // one mechanism that needs no maintenance: Vite's default `build.rollupOptions.input` is the root

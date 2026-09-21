@@ -5,7 +5,14 @@ import { clientsClaim } from "workbox-core";
 
 import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
 import { openNotificationTarget, type OpenOutcome } from "./lib/notification-open";
-import { FONT_URLS, NAVIGATION_NETWORK_ONLY } from "./lib/sw-routes";
+import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
+
+// Where this worker is mounted (ADR 0052): the directory it was fetched from, which is the mount
+// the app registered it under (lib/pwa.ts) — `/` at the origin root, `/collie/` behind a proxy that
+// gives Collie a path. One build serves any mount, so nothing here is a build-time constant: every
+// root-absolute path this file names is put under the mount with `under()`.
+const MOUNT = new URL("./", self.location.href).pathname;
+const under = (path: string): string => (MOUNT === "/" ? path : `${MOUNT.slice(0, -1)}${path}`);
 
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
 // Workbox SW did — precache the app shell + SPA-fallback navigations — PLUS the two handlers a
@@ -67,8 +74,8 @@ precacheAndRoute(PRECACHE_MANIFEST);
 // bar, has no reachable path to the proxy at all: every navigation, including a reload, is answered
 // by the cached app shell. See lib/sw-routes for the contract.
 registerRoute(
-  new NavigationRoute(createHandlerBoundToURL(new URL("./index.html", self.location.href).pathname), {
-    denylist: [...NAVIGATION_NETWORK_ONLY],
+  new NavigationRoute(createHandlerBoundToURL(under("/index.html")), {
+    denylist: navigationNetworkOnlyUnder(MOUNT),
   }),
 );
 
@@ -81,7 +88,9 @@ registerRoute(
 // The cost, stated plainly: a device that installs the PWA and goes offline without ever painting a
 // Nerd Font glyph shows tofu until it is online once. Precaching would fix that by charging EVERY
 // install ~1.1 MB, including the installs that never need a glyph — the wrong way round.
-const FONT_CACHE = "collie-fonts";
+// Named per mount: two collies mounted at two paths on one origin share one Cache Storage, and
+// each one's sweep below would otherwise empty the other's fonts.
+const FONT_CACHE = MOUNT === "/" ? "collie-fonts" : `collie-fonts:${MOUNT}`;
 
 // WHAT MAY BE STORED. This cache is permanent, so a wrong entry is permanent too — the same shape as
 // the 401ing proxy that once froze an installed SW, one layer down. A fronting proxy with an expired
@@ -93,7 +102,7 @@ const storable = (r: Response) =>
   r.status === 200 && !r.redirected && (r.headers.get("content-type") ?? "").includes("font");
 
 registerRoute(
-  ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/fonts/"),
+  ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(under("/fonts/")),
   async ({ request }) => {
     const cache = await caches.open(FONT_CACHE);
     const hit = await cache.match(request);
@@ -113,7 +122,7 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(FONT_CACHE);
-      const live = new Set<string>(FONT_URLS);
+      const live = new Set<string>(FONT_URLS.map(under));
       for (const req of await cache.keys()) {
         if (!live.has(new URL(req.url).pathname)) await cache.delete(req);
       }
@@ -142,8 +151,8 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
 // the result, so it must be a monochrome silhouette on transparency. The maskable home-screen tile
 // (`/web-app-manifest-192x192.png`) must never be used for either — it is opaque with no alpha, so
 // Android stamps it on the icon's corner as a solid grey block.
-const ICON = new URL("./notification-icon-192x192.png", self.location.href).pathname;
-const BADGE = new URL("./badge-96x96.png", self.location.href).pathname;
+const ICON = under("/notification-icon-192x192.png");
+const BADGE = under("/badge-96x96.png");
 
 self.addEventListener("push", (event: PushEvent) => {
   event.waitUntil(handlePush(event));
@@ -225,10 +234,9 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
 // opened before any discarded client is navigated (#147, and the Android regression that fix grew).
 // The `matchAll` below is deliberately the ONLY awaited call between the tap and `openWindow`.
 async function openPath(path: string): Promise<OpenOutcome> {
-  // Resolve against the SW's own scope, not the origin. Under COLLIE_BASE_PATH the app lives at
-  // /collie/, and an origin-relative target lands outside the manifest scope: Chrome then matches
-  // no installed client and opens a browser tab at the root. Unset, self.location.href is /sw.js,
-  // so this resolves identically to the origin.
+  // Resolved against the mount, not the origin: under `/collie/` an origin-relative target lands
+  // outside the manifest scope, Chrome matches no installed client and opens a browser tab at the
+  // root. At the root the two are the same address.
   const url = new URL(path.replace(/^\/+/, ""), new URL("./", self.location.href)).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   return openNotificationTarget({

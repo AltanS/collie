@@ -410,6 +410,7 @@ describe("derived settings", () => {
       port: 8787,
       serveMode: "https",
       servePort: 443,
+      basePath: "/",
       socket: join(HOME, ".config", "herdr", "herdr.sock"),
     });
   });
@@ -425,7 +426,7 @@ describe("derived settings", () => {
         },
         HOME,
       ),
-    ).toEqual({ port: 9000, serveMode: "http", servePort: 8443, socket: "/run/h.sock" });
+    ).toEqual({ port: 9000, serveMode: "http", servePort: 8443, basePath: "/", socket: "/run/h.sock" });
   });
 
   test("a non-numeric port falls back rather than becoming NaN", () => {
@@ -524,5 +525,14 @@ describe("instanceSuffix", () => {
   test("the solo instance contributes NOTHING to a name", () => {
     expect(instanceSuffix(null)).toBe("");
     expect(instanceSuffix("v1")).toBe("-v1");
+  });
+});
+
+// ADR 0052: the CLI reads the mount with the bridge's own normaliser, so the two cannot disagree.
+describe("deriveSettings — COLLIE_BASE_PATH", () => {
+  test("the root when unset, the slash-wrapped path when set", () => {
+    expect(deriveSettings({}, HOME).basePath).toBe("/");
+    expect(deriveSettings({ COLLIE_BASE_PATH: "collie" }, HOME).basePath).toBe("/collie/");
+    expect(deriveSettings({ COLLIE_BASE_PATH: "/apps/collie/" }, HOME).basePath).toBe("/apps/collie/");
   });
 });

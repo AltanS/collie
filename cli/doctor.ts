@@ -64,7 +64,7 @@ import { collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parseCrewArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./crew.ts";
-import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
+import { fingerprintRoot, mountName, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
 import {
@@ -893,7 +893,7 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     const listener = deps.ctx.serveMode === "http" ? deps.ctx.port : deps.ctx.servePort;
     let availability;
     try {
-      availability = rootAvailability(status, listener, deps.ctx.serveMode, proxy);
+      availability = rootAvailability(status, listener, deps.ctx.serveMode, proxy, deps.ctx.basePath);
     } catch {
       return skipped("front-door", "the serve status was not readable", "run `tailscale serve status --json` by hand");
     }
@@ -938,9 +938,21 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
       `fix or remove ${deps.ctx.handlerFile}, then \`collie serve\``,
     );
   }
-  const fingerprint = fingerprintRoot(status, record.hostPort, record.port);
+  // The record names the mount the door was published at; the bridge serves the one in its
+  // environment. When the two differ the phone opens one path and the app lives at another, and
+  // nothing else reports it (ADR 0052).
+  if (record.path !== deps.ctx.basePath) {
+    return warn(
+      "front-door",
+      `the published door is the ${mountName(record.path)} on ${record.hostPort}, but COLLIE_BASE_PATH` +
+        ` mounts this collie at ${deps.ctx.basePath} — the phone and the app name different paths`,
+      "`collie serve` here to move the door to the configured mount",
+    );
+  }
+  const fingerprint = fingerprintRoot(status, record.hostPort, record.port, record.path);
   if (fingerprint === `${record.mode}|proxy:${record.proxy}`) {
-    return ok("front-door", `${record.hostPort} → ${record.proxy} (recorded and live)`);
+    const at = record.path === "/" ? "" : ` at ${record.path}`;
+    return ok("front-door", `${record.hostPort}${at} → ${record.proxy} (recorded and live)`);
   }
   if (fingerprint === "absent") {
     return warn(

@@ -1,3 +1,4 @@
+import { normaliseBasePath } from "../bridge/config.ts";
 import { type OpsRecord, CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { emptyConfigLayer } from "../bridge/config-source.ts";
 import type { CliContext, Environment } from "./context.ts";
@@ -364,6 +365,7 @@ export function context(
     // Derived from the fixture env rather than pinned, exactly as `loadContext` derives it: a test
     // that sets COLLIE_SERVE_PORT would otherwise get a context disagreeing with its own env.
     servePort: effectiveServePort(env),
+    basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
     socket: "/home/pat/.config/herdr/herdr.sock",
     handlerFile: `${CONFIG}/tailscale-managed-handler${instanceSuffix(instance)}`,
     stateDir: STATE,

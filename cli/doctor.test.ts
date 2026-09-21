@@ -666,6 +666,42 @@ describe("collie doctor — the local checks", () => {
     expect(stolen.byCheck.get("front-door")?.status).toBe("warn");
   });
 
+  // ADR 0052: the door and the app must name one mount.
+  test("front-door: a door at the root while COLLIE_BASE_PATH mounts the app elsewhere warns", async () => {
+    const { byCheck } = await findings(harness(null, [], { env: { COLLIE_BASE_PATH: "/collie" } }));
+    expect(byCheck.get("front-door")?.status).toBe("warn");
+    expect(byCheck.get("front-door")?.detail).toContain("COLLIE_BASE_PATH");
+    expect(byCheck.get("front-door")?.remedy).toContain("collie serve");
+  });
+
+  test("front-door: a door published at the mount the app is served under passes, and names it", async () => {
+    const files = healthyFiles();
+    const handler = Object.keys(files).find((p) => p.endsWith("tailscale-managed-handler"));
+    expect(handler).toBeDefined();
+    const mountedFiles = { ...files, [handler ?? ""]: `https:443|${HOSTPORT}|http://127.0.0.1:8787|/collie/\n` };
+    const { byCheck } = await findings(
+      harness(null, [], {
+        env: { COLLIE_BASE_PATH: "/collie" },
+        files: mountedFiles,
+        answers: [
+          ["tailscale status --json", { stdout: CERTS_ONLY }],
+          [
+            "tailscale serve status --json",
+            {
+              stdout: JSON.stringify({
+                TCP: { "443": { HTTPS: true } },
+                Web: { [HOSTPORT]: { Handlers: { "/collie/": { Proxy: "http://127.0.0.1:8787" } } } },
+              }),
+            },
+          ],
+          ...netmapAnswers(NETMAP_OPEN),
+        ],
+      }),
+    );
+    expect(byCheck.get("front-door")?.status).toBe("ok");
+    expect(byCheck.get("front-door")?.detail).toContain("at /collie/");
+  });
+
   test("front-door: a tailnet with no HTTPS certificates warns with the console pointer (#172)", async () => {
     const { byCheck } = await findings(
       harness(null, [], {

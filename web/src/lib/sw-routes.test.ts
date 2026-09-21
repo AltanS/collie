@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   NAVIGATION_NETWORK_ONLY,
   PROXY_AUTH_PATH,
+  navigationNetworkOnlyUnder,
   isNetworkOnlyNavigation,
 } from "./sw-routes";
 
@@ -133,5 +134,29 @@ describe("service-worker navigation passthrough", () => {
     }
     // A route that merely shares the prefix is Collie's, exactly as `/authors` is.
     expect(isNetworkOnlyNavigation("/standbyish")).toBe(false);
+  });
+});
+
+// ADR 0052: under a mount the worker sees `/collie/api/…`, so every anchor moves with it.
+describe("navigationNetworkOnlyUnder — the same denylist under a mount", () => {
+  const matches = (rules: RegExp[], path: string) => rules.some((re) => re.test(path));
+
+  it("is the list itself at the root", () => {
+    expect(navigationNetworkOnlyUnder("/").map(String)).toEqual(NAVIGATION_NETWORK_ONLY.map(String));
+  });
+
+  it("moves each anchor to the mount and keeps each rule's shape", () => {
+    const under = navigationNetworkOnlyUnder("/collie/");
+    for (const path of ["/collie/api/snapshot", "/collie/auth", "/collie/auth?rd=%2F", "/collie/crew/v1/hello", "/collie/standby/health"]) {
+      expect(matches(under, path)).toBe(true);
+    }
+    for (const path of ["/collie/", "/collie/settings", "/collie/pane/w1:p1", "/collie/authors", "/api/snapshot", "/auth"]) {
+      expect(matches(under, path)).toBe(false);
+    }
+  });
+
+  it("escapes a mount that carries a regex character", () => {
+    expect(matches(navigationNetworkOnlyUnder("/a.b/"), "/a.b/api/x")).toBe(true);
+    expect(matches(navigationNetworkOnlyUnder("/a.b/"), "/aXb/api/x")).toBe(false);
   });
 });

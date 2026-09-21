@@ -1,4 +1,5 @@
 import { fetchConfig, registerPushSubscription } from "@/lib/api";
+import { basePath, mounted } from "@/lib/base-path";
 import { t } from "@/lib/i18n";
 import type { BridgeConfig } from "@/lib/types";
 
@@ -154,10 +155,10 @@ export async function enablePush(): Promise<EnableResult> {
   if (!pushSupported()) return { ok: false, reason: "unsupported" };
   if (!window.isSecureContext) return { ok: false, reason: "insecure" };
 
-  // The worker must register under the app's base, not the origin: its registration scope is
-  // what the manifest scope and every notification target are resolved against.
-  const swBase = (import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "");
-  await pushOperation(navigator.serviceWorker.register(`${swBase}/sw.js`));
+  // Under the mount, with the mount as scope (ADR 0052): the registration scope is what the manifest
+  // scope and every notification target are resolved against, so a worker registered at the origin
+  // root would own nothing the mounted app opens.
+  await pushOperation(navigator.serviceWorker.register(mounted("/sw.js"), { scope: basePath() }));
   const reg = await pushOperation(navigator.serviceWorker.ready);
   const cfg = await fetchConfig();
   if (!cfg.push || !cfg.vapidPublicKey) return { ok: false, reason: "server-off" };

@@ -360,6 +360,19 @@ export interface Config {
    * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (docs/deployment.md → Variant C).
    */
   skipServe: boolean;
+  /**
+   * The path this collie is mounted under when a proxy gives it one (`COLLIE_BASE_PATH`), always
+   * with a leading and a trailing slash: `/` for the root, `/collie/` for `https://host/collie/`.
+   *
+   * ONE BUILD SERVES ANY MOUNT (ADR 0052). `web/dist` is built base-relative, and the mount is
+   * applied at serve time: `index.html` goes out with its `./` references rewritten to this path and
+   * with the path in `<meta name="collie-base">`, which is where the app reads it. Nothing else on
+   * disk changes, so the release payload's prebuilt bundle mounts anywhere. A proxy normally strips
+   * the mount before it forwards (`tailscale serve` does); one that does not is tolerated, because
+   * the request handler reads an inbound path that still carries the mount as if it had been
+   * stripped. `collie serve` publishes at this path instead of the root when it is set.
+   */
+  basePath: string;
 }
 
 /**
@@ -635,7 +648,27 @@ export function loadConfig(env: Environment = process.env): Config {
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
+    basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
   };
+}
+
+/**
+ * `COLLIE_BASE_PATH` as the bridge uses it: `/` for unset, empty or `/`; otherwise one leading and
+ * one trailing slash around the given segments (`collie`, `/collie`, `collie/`, `//collie//` all
+ * read as `/collie/`). A value a URL path cannot carry — a `.`/`..` segment, whitespace, `?` or `#` —
+ * is refused with one warning and the root is used, because a mount that is half a path would
+ * quietly move every asset somewhere the app cannot follow.
+ */
+export function normaliseBasePath(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "" || trimmed === "/") return "/";
+  const segments = trimmed.split("/").filter((s) => s !== "");
+  const bad = segments.some((s) => s === "." || s === ".." || /[\s?#\\]/.test(s));
+  if (segments.length === 0 || bad) {
+    console.warn(`[config] COLLIE_BASE_PATH="${raw ?? ""}" is not a path Collie can be mounted at — using /`);
+    return "/";
+  }
+  return `/${segments.join("/")}/`;
 }
 
 /**

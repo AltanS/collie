@@ -4,6 +4,7 @@ import { server } from "@/test/setup";
 import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
 import { __resetConnectionHealth, isLostLatched, lastHealthyAt } from "./connection-health";
 import { isConnecting } from "./connection";
+import { resetBasePathForTests } from "./base-path";
 import {
   checkForUpdates,
   createTab,
@@ -561,5 +562,31 @@ describe("refreshNow", () => {
   it("swallows a refusal: the revalidation that follows is the one that reports", async () => {
     server.use(http.post("/api/refresh", () => new HttpResponse("nope", { status: 503 })));
     await expect(refreshNow()).resolves.toBeUndefined();
+  });
+});
+
+// ADR 0052: every caller spells `/api/…`; the mount the bridge served the document under is put in
+// front of it in one place, `apiFetch`.
+describe("api client under a mount", () => {
+  afterEach(() => {
+    document.querySelector('meta[name="collie-base"]')?.remove();
+    resetBasePathForTests();
+  });
+
+  it("asks for /collie/api/… when the document says it is mounted at /collie/", async () => {
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "collie-base");
+    meta.setAttribute("content", "/collie/");
+    document.head.appendChild(meta);
+    resetBasePathForTests();
+    const asked: string[] = [];
+    server.use(
+      http.get("/collie/api/snapshot", ({ request }) => {
+        asked.push(new URL(request.url).pathname);
+        return HttpResponse.json(fixtureSnapshot);
+      }),
+    );
+    await fetchSnapshot();
+    expect(asked).toEqual(["/collie/api/snapshot"]);
   });
 });

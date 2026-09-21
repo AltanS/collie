@@ -45,6 +45,8 @@ import {
   healthBody,
   withBuildHeader,
   type ReplySender,
+  stripMount,
+  mountIndexHtml,
 } from "./server.ts";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
@@ -168,6 +170,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     stateDir: "/tmp/state",
     multiSession: true,
     skipServe: false,
+    basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     uploadExtraTypes: [],
     ...overrides,
@@ -1473,6 +1476,95 @@ describe("serveStatic — a text file ships gzipped", () => {
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
 
     await rm(dir, { recursive: true, force: true });
+  });
+
+  // ADR 0052: one build serves any mount. The shell on disk is base-relative; what goes out is
+  // resolved to the mount the bridge was started with, raw and gzipped alike, and two mounts served
+  // from one tree in one process never read each other's body out of the gzip cache.
+  const SHELL =
+    '<!doctype html><html><head><meta name="collie-base" content="/" />' +
+    '<script src="./theme-init.js"></script><style>@font-face{src:url("./fonts/a.woff2")}' +
+    ".dog{background:url(./dog-gallop.png)}</style>" +
+    '<script type="module" src="./assets/app.js"></script></head><body></body></html>';
+
+  test("index.html goes out resolved to the mount, and the SPA fallback carries the same mount", async () => {
+    resetStaticGzipCache();
+    const { dir } = await distTree();
+    await writeFile(join(dir, "index.html"), SHELL);
+
+    const root = await (await serveStatic("/", null, dir)).text();
+    expect(root).toContain('<meta name="collie-base" content="/" />');
+    expect(root).toContain('src="/theme-init.js"');
+    expect(root).toContain('url("/fonts/a.woff2")');
+    expect(root).toContain("url(/dog-gallop.png)");
+    expect(root).not.toContain("./");
+
+    const mounted = await (await serveStatic("/space/w1", null, dir, "/collie/")).text();
+    expect(mounted).toContain('<meta name="collie-base" content="/collie/" />');
+    expect(mounted).toContain('src="/collie/theme-init.js"');
+    expect(mounted).toContain('src="/collie/assets/app.js"');
+    expect(mounted).toContain('url("/collie/fonts/a.woff2")');
+    expect(mounted).toContain("url(/collie/dog-gallop.png)");
+    expect(mounted).not.toContain("./");
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("a gzipped shell is the mounted one, and the cache keeps the two mounts apart", async () => {
+    resetStaticGzipCache();
+    const { dir } = await distTree();
+    // Past the gzip floor, so the compressed path is the one taken.
+    await writeFile(join(dir, "index.html"), SHELL + "<!-- " + "pad ".repeat(400) + " -->");
+
+    const read = async (base: string) => {
+      const res = await serveStatic("/", "gzip", dir, base);
+      expect(res.headers.get("content-encoding")).toBe("gzip");
+      return new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(await res.arrayBuffer())));
+    };
+    expect(await read("/collie/")).toContain('content="/collie/"');
+    expect(await read("/")).toContain('content="/" ');
+    expect(await read("/collie/")).toContain('src="/collie/assets/app.js"');
+    expect(staticGzipStats().entries).toBe(2);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+});
+
+describe("stripMount — a proxy that forwards the mount instead of stripping it", () => {
+  test("takes the mount off a path that carries it, and only then", () => {
+    expect(stripMount("/collie/api/health", "/collie/")).toBe("/api/health");
+    expect(stripMount("/collie/", "/collie/")).toBe("/");
+    expect(stripMount("/collie", "/collie/")).toBe("/");
+    expect(stripMount("/collie/space/w1", "/collie/")).toBe("/space/w1");
+  });
+
+  test("leaves a path outside the mount alone, including a mere prefix match", () => {
+    expect(stripMount("/api/health", "/collie/")).toBe("/api/health");
+    expect(stripMount("/collieX/api", "/collie/")).toBe("/collieX/api");
+    expect(stripMount("/collie/api", "/")).toBe("/collie/api");
+  });
+});
+
+describe("mountIndexHtml — the app shell resolved to its mount", () => {
+  const shell =
+    '<meta name="collie-base" content="/" /><script src="./t.js"></script>' +
+    '<link href="./f.woff2" /><style>url("./a.png") url(\'./b.png\') url(./c.png)</style>' +
+    '<a href="https://example.com/x">out</a>';
+
+  test("rewrites the attribute and url() spellings and the meta tag, nothing else", () => {
+    const out = mountIndexHtml(shell, "/collie/");
+    expect(out).toBe(
+      '<meta name="collie-base" content="/collie/" /><script src="/collie/t.js"></script>' +
+        '<link href="/collie/f.woff2" /><style>url("/collie/a.png") url(\'/collie/b.png\') url(/collie/c.png)</style>' +
+        '<a href="https://example.com/x">out</a>',
+    );
+  });
+
+  test("at the root mount the result is the document a root deployment always served", () => {
+    const out = mountIndexHtml(shell, "/");
+    expect(out).toContain('content="/"');
+    expect(out).toContain('src="/t.js"');
+    expect(out).not.toContain("./");
   });
 });
 

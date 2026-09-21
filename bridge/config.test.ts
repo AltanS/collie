@@ -10,6 +10,7 @@ import {
   nonLoopbackBindRefusal,
   resolveBridgeHost,
   resolveStateDir,
+  normaliseBasePath,
 } from "./config.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./uploads.ts";
 
@@ -493,5 +494,32 @@ describe("envBool", () => {
   test("defaults to process.env when no source is given", () => {
     process.env.COLLIE_MULTI_SESSION = "off";
     expect(envBool("COLLIE_MULTI_SESSION", true)).toBe(false);
+  });
+});
+
+// ADR 0052: the mount is a runtime setting, and this is its one reader.
+describe("normaliseBasePath — COLLIE_BASE_PATH as the bridge mounts it", () => {
+  test("the root for unset, empty and a bare slash", () => {
+    for (const v of [undefined, "", "  ", "/", "//"]) expect(normaliseBasePath(v)).toBe("/");
+  });
+
+  test("one leading and one trailing slash around the given segments", () => {
+    for (const v of ["collie", "/collie", "collie/", "/collie/", "//collie//", " /collie "]) {
+      expect(normaliseBasePath(v)).toBe("/collie/");
+    }
+    expect(normaliseBasePath("apps/collie")).toBe("/apps/collie/");
+  });
+
+  test("refuses what a URL path cannot carry, and answers the root", () => {
+    for (const v of ["..", "/a/../b", "./collie", "a b", "a?b", "a#b", "a\\b"]) {
+      expect(normaliseBasePath(v)).toBe("/");
+    }
+  });
+
+  test("loadConfig carries it", () => {
+    process.env.COLLIE_BASE_PATH = "collie";
+    expect(loadConfig().basePath).toBe("/collie/");
+    delete process.env.COLLIE_BASE_PATH;
+    expect(loadConfig().basePath).toBe("/");
   });
 });

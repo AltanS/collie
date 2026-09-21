@@ -52,11 +52,21 @@ export interface OwnershipRecord {
   hostPort: string;
   /** Always `http://127.0.0.1:<bridge port>`. */
   proxy: string;
+  /**
+   * The mount path the handler was published at: `/` for the root, `/collie/` when the bridge is
+   * mounted under a path (`COLLIE_BASE_PATH`, ADR 0052). With its trailing slash, because that is
+   * what makes a `tailscale serve` mount a subtree rather than one exact page.
+   */
+  path: string;
 }
 
-/** The single line as it is written to disk (with its trailing newline). */
+/**
+ * The single line as it is written to disk (with its trailing newline). A root record is the
+ * three-field line it has always been, byte for byte; only a mount adds a fourth field.
+ */
 export function formatRecord(record: OwnershipRecord): string {
-  return `${record.mode}:${record.port}|${record.hostPort}|${record.proxy}\n`;
+  const mount = record.path === "/" ? "" : `|${record.path}`;
+  return `${record.mode}:${record.port}|${record.hostPort}|${record.proxy}${mount}\n`;
 }
 
 /**
@@ -66,13 +76,18 @@ export function formatRecord(record: OwnershipRecord): string {
  */
 export function parseRecord(raw: string): OwnershipRecord {
   const state = raw.replace(/\n+$/, "");
-  // `IFS='|' read -r handler hostPort proxy extra` — a FOURTH field is an error, and everything
-  // past it lands in `extra` too, so any over-long record is refused rather than truncated.
-  const [handler = "", hostPort = "", proxy = "", ...rest] = state.split("|");
+  // `IFS='|' read -r handler hostPort proxy path extra` — the fourth field is the mount path and
+  // is absent on a root record; a FIFTH field is an error, and everything past it lands in `extra`
+  // too, so any over-long record is refused rather than truncated.
+  const [handler = "", hostPort = "", proxy = "", path = "/", ...rest] = state.split("|");
   const extra = rest.join("|");
   const mode = readMode(handler);
   if (mode === null || hostPort === "" || proxy === "" || extra !== "") {
     throw new Error(`invalid managed Tailscale handler state: ${state}`);
+  }
+  // A mount is `/` or `/one/two/`: slash-wrapped segments with nothing a path cannot carry.
+  if (!/^\/(?:[^/\s?#|]+\/)*$/.test(path)) {
+    throw new Error(`invalid managed Tailscale mount path: ${state}`);
   }
   if (!hostPort.endsWith(`:${mode.port}`)) {
     throw new Error(`managed Tailscale HostPort does not match its listener: ${state}`);
@@ -82,7 +97,7 @@ export function parseRecord(raw: string): OwnershipRecord {
   if (!/^http:\/\/127\.0\.0\.1:[0-9]/.test(proxy)) {
     throw new Error(`invalid managed Tailscale proxy target: ${state}`);
   }
-  return { mode: mode.mode, port: mode.port, hostPort, proxy };
+  return { mode: mode.mode, port: mode.port, hostPort, proxy, path };
 }
 
 /**
@@ -167,21 +182,31 @@ export function parseServeStatus(text: string): ServeStatus {
   return JSON.parse(text.trim() === "" ? "{}" : text) as ServeStatus;
 }
 
-/** Does this serve config carry a root mount at all? Shared with `cli/serve.ts`'s publish gate. */
-export const hasRootMount = (handlers: ServeHandlers): boolean =>
-  Object.prototype.hasOwnProperty.call(handlers, "/");
+/**
+ * Does this serve config carry a handler at `path` — the root, or the mount Collie was given
+ * (ADR 0052)? Shared with `cli/serve.ts`'s publish gate.
+ */
+export const hasMount = (handlers: ServeHandlers, path: string): boolean =>
+  Object.prototype.hasOwnProperty.call(handlers, path);
+
+/** {@link hasMount} at the root, the question every pre-mount caller asked. */
+export const hasRootMount = (handlers: ServeHandlers): boolean => hasMount(handlers, "/");
+
+/** `root mount` or `mount at /collie/`, for every sentence that names the handler. */
+export const mountName = (path: string): string => (path === "/" ? "root mount" : `mount at ${path}`);
 
 /**
- * What currently owns the root mount we recorded: `absent`, or `<protocol>|proxy:<target>`. This is
- * the evidence teardown checks before removing anything (the pre-shim `collie-ctl.sh`).
+ * What currently owns the mount we recorded: `absent`, or `<protocol>|proxy:<target>`. This is the
+ * evidence teardown checks before removing anything (the pre-shim `collie-ctl.sh`). `path` is the
+ * record's mount; the root when the record predates mounts.
  */
-export function fingerprintRoot(status: ServeStatus, hostPort: string, port: number): string {
+export function fingerprintRoot(status: ServeStatus, hostPort: string, port: number, path = "/"): string {
   const handlers = status.Web?.[hostPort]?.Handlers ?? {};
-  if (!hasRootMount(handlers)) return "absent";
+  if (!hasMount(handlers, path)) return "absent";
   const listener = status.TCP?.[String(port)];
   const protocol =
     listener?.HTTP === true ? "http" : listener?.HTTPS === true ? "https" : "other";
-  const proxy = handlers["/"]?.Proxy;
+  const proxy = handlers[path]?.Proxy;
   return proxy !== undefined && proxy.length > 0
     ? `${protocol}|proxy:${proxy}`
     : `${protocol}|other`;
@@ -234,7 +259,7 @@ function removeHandler(deps: FrontDoorDeps, record: OwnershipRecord): boolean {
   const r = deps.exec.capture("tailscale", [
     "serve",
     `${flag}=${record.port}`,
-    "--set-path=/",
+    `--set-path=${record.path}`,
     "off",
   ]);
   if (r.found && r.code === 0) return true;
@@ -242,7 +267,7 @@ function removeHandler(deps: FrontDoorDeps, record: OwnershipRecord): boolean {
   if (output.includes("handler does not exist")) return true;
   if (output.trim() !== "") deps.io.err(output.trimEnd());
   const protocol = record.mode === "http" ? "HTTP" : "HTTPS";
-  const description = `${protocol} :${record.port} root mount`;
+  const description = `${protocol} :${record.port} ${mountName(record.path)}`;
   deps.io.err(`error: failed to remove Collie's ${description} mapping`);
   return false;
 }
@@ -338,7 +363,7 @@ function readFingerprint(deps: FrontDoorDeps, record: OwnershipRecord): string |
   const r = deps.exec.capture("tailscale", ["serve", "status", "--json"]);
   if (!r.found || r.code !== 0) return null;
   try {
-    return fingerprintRoot(parseServeStatus(r.stdout), record.hostPort, record.port);
+    return fingerprintRoot(parseServeStatus(r.stdout), record.hostPort, record.port, record.path);
   } catch {
     return null;
   }

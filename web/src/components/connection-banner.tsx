@@ -24,6 +24,7 @@ import { isConnecting } from "@/lib/connection";
 import { clockTime } from "@/lib/format";
 import * as api from "@/lib/api";
 import type { BridgeStatus } from "@/lib/types";
+import { mounted } from "@/lib/base-path";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -109,7 +110,7 @@ function AuthErrorBanner() {
             {/* An <a>, not a button, so it is an ordinary navigation the service worker sees as
                 such — see this component's header for why a reload alone cannot reach the proxy. */}
             <a
-              href={PROXY_AUTH_PATH}
+              href={mounted(PROXY_AUTH_PATH)}
               className={cn(
                 buttonVariants({ size: "sm" }),
                 "h-6 gap-1 px-2 text-xs no-underline",

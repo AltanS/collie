@@ -155,10 +155,13 @@ export function tailnetName(exec: Exec): string | null {
  * Collie something Collie cannot observe; only without one is the tailnet name inferred.
  */
 export function bridgeUrl(exec: Exec, ctx: CliContext): string {
-  return (
-    configuredPublicUrl(ctx.env) ??
-    bridgeUrlFrom(tailnetName(exec), ctx.serveMode, ctx.port, ctx.servePort)
-  );
+  const configured = configuredPublicUrl(ctx.env);
+  if (configured !== null) return configured;
+  const name = tailnetName(exec);
+  const url = bridgeUrlFrom(name, ctx.serveMode, ctx.port, ctx.servePort);
+  // The mount rides the URL the operator is told to open (ADR 0052); a bridge with no tailnet name
+  // gets its explanatory sentence, which is not an address to append to.
+  return name === null || ctx.basePath === "/" ? url : `${url}${ctx.basePath}`;
 }
 
 // ── Is anyone allowed in? ────────────────────────────────────────────────────

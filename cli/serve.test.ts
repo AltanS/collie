@@ -61,6 +61,7 @@ describe("the ownership record", () => {
       port: 443,
       hostPort: "host.ts.net:443",
       proxy: OURS,
+      path: "/",
     });
     expect(formatRecord(record)).toBe(`${line}\n`);
     // The http shape, whose listener is the bridge port rather than 443.
@@ -69,6 +70,7 @@ describe("the ownership record", () => {
       port: 8787,
       hostPort: "host.ts.net:8787",
       proxy: OURS,
+      path: "/",
     });
   });
 
@@ -82,6 +84,7 @@ describe("the ownership record", () => {
       port: 8443,
       hostPort: "host.ts.net:8443",
       proxy: OURS,
+      path: "/",
     });
     expect(formatRecord(record)).toBe(`${line}\n`);
   });
@@ -648,5 +651,64 @@ describe("unserve — teardown", () => {
     expect(absent.io.stderr.join("\n")).toContain(
       "root is absent but ownership state could not be removed",
     );
+  });
+});
+
+// ADR 0052: the bridge can be mounted under a path, and the door is published where the app is.
+describe("serve — under a mount (COLLIE_BASE_PATH)", () => {
+  const MOUNTED = { COLLIE_BASE_PATH: "/collie" };
+
+  test("publishes at the mount, and the record carries the path as a fourth field", () => {
+    const h = harness({ serveMode: "http", env: MOUNTED });
+    expect(cmdServe(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("tailscale serve --bg --http=8787 --set-path=/collie/ 8787");
+    expect(h.files.read(HANDLER_FILE)).toBe("http:8787|host.example:8787|http://127.0.0.1:8787|/collie/\n");
+    expect(h.io.stdout.join("\n")).toContain("tailnet :8787 /collie/ ->");
+  });
+
+  test("a foreign root is no concern of a mount: the other app keeps `/`, Collie takes its path", () => {
+    const h = harness({
+      serveMode: "http",
+      env: MOUNTED,
+      serveStatus: `{${tcp(8787, "HTTP")},${web("host:8787", "/", "http://127.0.0.1:7000")}}`,
+    });
+    expect(cmdServe(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("tailscale serve --bg --http=8787 --set-path=/collie/ 8787");
+  });
+
+  test("a foreign handler AT the mount refuses, exactly as a foreign root does", () => {
+    const h = harness({
+      serveMode: "http",
+      env: MOUNTED,
+      serveStatus: `{${tcp(8787, "HTTP")},${web("host:8787", "/collie/", "http://127.0.0.1:7000")}}`,
+    });
+    expect(cmdServe(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("unowned mount at /collie/");
+    expect(h.exec.calls.some((c) => c.includes("--bg"))).toBe(false);
+  });
+
+  test("the record round-trips with its path, and refuses a path a mount cannot be", () => {
+    const line = "https:443|host.ts.net:443|http://127.0.0.1:8787|/collie/";
+    const record = parseRecord(`${line}\n`);
+    expect(record.path).toBe("/collie/");
+    expect(formatRecord(record)).toBe(`${line}\n`);
+    expect(() => parseRecord("https:443|host.ts.net:443|http://127.0.0.1:8787|collie")).toThrow(/mount path/);
+    expect(() => parseRecord("https:443|host.ts.net:443|http://127.0.0.1:8787|/collie/|x")).toThrow(/handler state/);
+  });
+
+  test("teardown removes the handler at the recorded mount and nothing else", () => {
+    const record = "http:8787|host.example:8787|http://127.0.0.1:8787|/collie/\n";
+    const owned = `{${tcp(8787, "HTTP")},${web("host.example:8787", "/collie/", OURS)}}`;
+    const h = harness({ serveMode: "http", env: MOUNTED, serveStatus: owned, files: { [HANDLER_FILE]: record } });
+    expect(cmdUnserve(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("tailscale serve --http=8787 --set-path=/collie/ off");
+    expect(h.files.exists(HANDLER_FILE)).toBe(false);
+  });
+
+  test("rootAvailability judges the mount it is asked about", () => {
+    const both = status(`{${tcp(8787, "HTTP")},"Web":{"host:8787":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:7000"},"/collie/":{"Proxy":"${OURS}"}}}}}`);
+    expect(rootAvailability(both, 8787, "http", OURS)).toBe("occupied");
+    expect(rootAvailability(both, 8787, "http", OURS, "/collie/")).toBe("adoptable");
+    expect(rootAvailability(both, 8787, "http", OURS, "/other/")).toBe("free");
   });
 });

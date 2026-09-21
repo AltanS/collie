@@ -33,6 +33,10 @@
       content="default"
     />
     <meta name="apple-mobile-web-app-title" content="Collie" />
+    <!-- Where this document is mounted (ADR 0052). `/` as built; the bridge rewrites it, and every
+         dot-slash reference in this file, to the path a proxy gave Collie when it serves the file. One
+         build serves any mount, so the value is not known here. lib/base-path.ts is the reader. -->
+    <meta name="collie-base" content="/" />
     <title>Collie</title>
     <!-- The UI typeface, fetched in parallel with the CSS that asks for it rather than after it.
          index.css already guarantees no layout shift with a metric-matched fallback, so this is not

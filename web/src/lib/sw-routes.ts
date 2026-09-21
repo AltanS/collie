@@ -120,6 +120,20 @@ export const FONT_URLS = [
 ] as const;
 
 /**
+ * The same denylist under a mount (ADR 0052). Every rule above is anchored at the origin root
+ * because that is where a root deployment's `/api/`, `/auth`, `/crew/v1` and `/standby` are; a
+ * worker registered under `/collie/` sees them as `/collie/api/` and so on, so each anchor moves to
+ * the mount. The two proxy namespaces move with them: under a mount they are outside the worker's
+ * scope anyway, so a moved rule matches nothing rather than something wrong. At the root this is
+ * the list itself.
+ */
+export function navigationNetworkOnlyUnder(mount: string): RegExp[] {
+  if (mount === "/") return [...NAVIGATION_NETWORK_ONLY];
+  const prefix = mount.slice(0, -1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return NAVIGATION_NETWORK_ONLY.map((re) => new RegExp(`^${prefix}${re.source.slice(1)}`, re.flags));
+}
+
+/**
  * True when the SW must not answer this navigation from the precache. Takes `pathname + search`,
  * matching what workbox feeds the denylist — pass the query string if there is one.
  */

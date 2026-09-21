@@ -321,6 +321,7 @@ function depsFor(instance: Instance, captured: Captured): CrewDeps {
     port: instance.port,
     serveMode: "http",
     servePort: DEFAULT_SERVE_PORT,
+    basePath: "/",
     socket: instance.socketPath,
     handlerFile: join(instance.home, "config", "tailscale-managed-handler"),
     stateDir: instance.stateDir,

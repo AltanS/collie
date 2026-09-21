@@ -620,6 +620,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "skipServe",
   },
   {
+    key: "base_path",
+    env: "COLLIE_BASE_PATH",
+    section: "serve",
+    kind: "string",
+    default: "",
+    doc: "The path Collie is mounted under when a proxy gives it one, such as /collie. Empty means the root.",
+    configField: "basePath",
+  },
+  {
     key: "serve_mode",
     env: "COLLIE_SERVE_MODE",
     section: "serve",

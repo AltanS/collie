@@ -19,8 +19,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src"),
-      // No VitePWA plugin under Vitest, so the virtual register module is stubbed (see the stub).
-      "virtual:pwa-register": resolve(import.meta.dirname, "src/test/pwa-register-stub.ts"),
     },
   },
   test: {

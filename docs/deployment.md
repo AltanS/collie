@@ -8,6 +8,7 @@ lives in the README. Security requirements in [docs/security.md](security.md) ap
 - [Variant C — reverse proxy as the only front door (no Tailscale)](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
 - [Variant D — off-host identity proxy over the tailnet](#variant-d--off-host-identity-proxy-over-the-tailnet)
 - [Variant E — any other mesh or tunnel (NetBird, ZeroTier, Cloudflare Tunnel)](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
+- [Serving Collie under a path](#serving-collie-under-a-path)
 - [Several Collies on one host](#several-collies-on-one-host)
 - [Multiple Collie instances on one host](#multiple-collie-instances-on-one-host)
 - [The standby door — a crew's failover path](#the-standby-door--a-crews-failover-path)
@@ -252,6 +253,42 @@ Rules:
 1. Apply [Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) proxy rules.
 2. `COLLIE_TRUSTED_USER` is inactive without Tailscale. Use `COLLIE_DEVICE_HEADER` or the tunnel's auth.
 3. Use a static hostname so PWA caching and `COLLIE_PUBLIC_HOSTS` remain valid.
+
+---
+
+## Serving Collie under a path
+
+One release build serves any mount. Set the path in the instance `.env` (or `[serve] base_path` in
+`config.toml`), restart, and the bridge serves the app, its assets and `/api/*` under that path:
+
+```bash
+# https://<your-node>/collie/ — leading and trailing slash both optional; the bridge adds them
+COLLIE_BASE_PATH=/collie
+```
+
+Accepted: `/collie`, `collie/`, `/apps/collie/`. Refused, with one line in the log and the root
+used instead: a `.` or `..` segment, whitespace, `?`, `#`. `collie doctor` prints the mount on
+its `front-door` line.
+
+With the default front door, `collie serve` (and every `collie start`) publishes
+`tailscale serve --set-path=/collie/` instead of the root, so another app can keep `/` on the same
+node. Tailscale strips the mount before it proxies, and the bridge also accepts a request that still
+carries it, so a reverse proxy works either way. To check yours:
+
+```bash
+curl -s https://<your-node>/collie/api/health   # JSON, not HTML, means the mount is right
+```
+
+Behind your own proxy ([Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)),
+mount the bridge at the same path. Caddy: `handle_path /collie/* { reverse_proxy 127.0.0.1:8787 }`.
+Nginx: `location /collie/ { proxy_pass http://127.0.0.1:8787/; }`. If you set `COLLIE_PUBLIC_URL`,
+include the path: `https://collie.example.com/collie/`.
+
+**A mount change is a new app on the phone.** The installed PWA's scope and identity are the path it
+was installed from. After changing `COLLIE_BASE_PATH`, or moving back to the root, remove the
+home-screen icon and add it again from the new address; the old one keeps pointing at a path the
+bridge no longer serves. The bridge itself needs only a restart, and `collie serve` moves the door
+on its own: it tears down the mapping its record names before it publishes the new one.
 
 ---
 
