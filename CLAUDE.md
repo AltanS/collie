@@ -667,7 +667,9 @@ the pre-commit hook; a pure refactor takes the `SKIP_CREW_WIRE_CHECK=1` hatch
 ([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md)).
 
 **Code reaches a peer over the operator's own SSH, never over the crew link** — `crew add` installs
-it and `crew update` levels it, both pushing the lead's own commit as a `git bundle`; the link
+it and `crew update` levels it, both pushing the lead's own commit as a `git bundle` from a checkout
+lead, while a lead with no commit sends Collie's own installer over the same ssh and the member
+installs the lead's release tag; the link
 carries runtime data and never becomes a distribution channel
 ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04: a peer may also
 level ITSELF to the release its lead is running, fetching that public tag from GitHub over anonymous

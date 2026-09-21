@@ -59,6 +59,10 @@ const PROBE_DEFAULTS = {
   envhost: "",
   envport: "",
   checkout: CHECKOUT,
+  // A git checkout by default, which is what every member in this suite was before #248: the
+  // release route's members set `checkoutgit`/`installroot` themselves.
+  checkoutgit: "yes",
+  installroot: "",
   commit: OLD_COMMIT,
   branch: "",
   dirty: "no",
@@ -66,6 +70,9 @@ const PROBE_DEFAULTS = {
   version: OLD_VERSION,
   address: "100.64.0.9",
   port: "busy",
+  curl: "/usr/bin/curl",
+  tar: "/usr/bin/tar",
+  sha256: "/usr/bin/sha256sum",
 } satisfies Record<string, string>;
 
 function probeOut(over: Record<string, string> = {}): string {
@@ -77,6 +84,8 @@ interface Recorded {
   host: string;
   leg: Leg;
   script: string;
+  /** What rode the leg's stdin — the bundle, or Collie's own installer on the release route. */
+  stdin: string | null;
 }
 
 interface HarnessOptions {
@@ -130,6 +139,8 @@ function harness(opts: HarnessOptions = {}) {
   // What the preflight seam was ASKED, in order — the route overrides a run hands the member walk.
   const preflights: PreflightOptions[] = [];
   let reads = 0;
+  /** How many times the lead was asked for a `git bundle` — zero on the release route. */
+  let bundles = 0;
 
   // The build stamp is what `collieVersionBare` answers with, so it is what decides whether this
   // lead is behind the commit it is about to hand out.
@@ -200,9 +211,9 @@ function harness(opts: HarnessOptions = {}) {
     // Every wait in this verb is a poll interval, and no test may spend one.
     sleep: () => Promise.resolve(),
     remote: (host) => ({
-      run: async (script) => {
+      run: async (script, stdin) => {
         const leg = legOf(script);
-        calls.push({ host, leg, script });
+        calls.push({ host, leg, script, stdin: stdin ?? null });
         events.push(`${host}:${leg}`);
         const stdout =
           leg === "probe"
@@ -219,12 +230,26 @@ function harness(opts: HarnessOptions = {}) {
       return opts.confirm === undefined ? true : opts.confirm;
     },
     prompt: () => null,
-    gitBundle: () => Promise.resolve(opts.bundle === undefined ? "QkFTRTY0LWJ1bmRsZQ==" : opts.bundle),
+    gitBundle: () => {
+      bundles += 1;
+      return Promise.resolve(opts.bundle === undefined ? "QkFTRTY0LWJ1bmRsZQ==" : opts.bundle);
+    },
     reload: () => Promise.resolve(initial),
     installKind: () => opts.installKind ?? { kind: "linked-clone", alsoLayout: false },
   };
 
-  return { deps, io: out, calls, confirms, ops, events, preflights };
+  return {
+    deps,
+    io: out,
+    calls,
+    confirms,
+    ops,
+    events,
+    preflights,
+    get bundles() {
+      return bundles;
+    },
+  };
 }
 
 /** One update record, as the lead's runner would have written it. */
@@ -287,6 +312,30 @@ function addressOf(data: TrustStoreData | null, memberId: string): string {
 const text = (io: ReturnType<typeof capture>): string => [...io.stdout, ...io.stderr].join("\n");
 const legs = (h: ReturnType<typeof harness>): string[] => h.calls.map((c) => `${c.host}:${c.leg}`);
 
+// ── The release route's fixtures (#248) ──────────────────────────────────────
+// An install.sh member keeps its Collie behind `<root>/current`, beside a `<root>/versions`. That
+// is the shape the probe reports and the only one a lead with no commit can advance.
+const MEMBER_INSTALL_ROOT = "/home/pat/.local/share/collie";
+const MEMBER_CURRENT = `${MEMBER_INSTALL_ROOT}/current`;
+
+/** Probe overrides for a member that carries an install.sh layout, running `version`. */
+const binaryMember = (version: string) => ({
+  checkout: MEMBER_CURRENT,
+  checkoutgit: "no",
+  installroot: MEMBER_INSTALL_ROOT,
+  commit: "",
+  dirty: "",
+  version,
+});
+
+/**
+ * A lead with no commit: install.sh's layout, running {@link VERSION} with a build stamp.
+ *
+ * The stamp is here to prove it is NOT used: the verify leg on this route compares the release and
+ * nothing else, so this lead levels a member whose stamp is some other builder's.
+ */
+const RELEASE_LEAD: HarnessOptions = { installKind: { kind: "binary" }, leadVersion: `${VERSION}+${SHORT}` };
+
 const twoPeers = () =>
   leadStore({
     peers: [
@@ -343,32 +392,22 @@ describe("crew update is a lead's verb, over named members", () => {
     expect(h.calls).toEqual([]);
   });
 
-  // The lead is packaged: pacman owns /opt/collie, `rev-parse HEAD` there fails, and the old message
-  // said "is not a git checkout" about a perfectly healthy install. The boundary is named instead,
-  // above the git read, so nothing about the run is attempted.
-  test("a packaged lead is told the boundary, not that its root is not a git checkout", async () => {
-    const h = harness({ installKind: { kind: "packaged" } });
-    expect(await cmdCrewUpdate(h.deps, ["--all"])).toBe(EXIT.FAIL);
+  // #248: a packaged or a binary lead has no commit, and it used to stop here with the raw git
+  // error "is not a git checkout" about a perfectly healthy install. It now levels its members the
+  // way `crew add` installs them — to the release this lead runs itself.
+  test("a packaged lead takes the release route rather than being refused", async () => {
+    const h = harness({ installKind: { kind: "packaged" }, probes: { "nas.example": binaryMember("1.0.0") } });
+    expect(await cmdCrewUpdate(h.deps, ["--all"])).toBe(EXIT.OK);
     const rendered = text(h.io);
-    expect(rendered).toContain("is a packaged install");
-    expect(rendered).toContain("updates come from your package manager");
-    expect(rendered).toContain("packaged install has none");
-    expect(rendered).toContain("phone's Updates page");
     expect(rendered).not.toContain("is not a git checkout");
-    expect(h.calls).toEqual([]);
+    expect(rendered).not.toContain("phone's Updates page");
+    expect(legs(h)).toEqual(["nas.example:probe", "nas.example:install", "nas.example:restart"]);
   });
 
-  // #248: install.sh's layout has no commit either, and got the raw git error the packaged lead
-  // got before 187a0dd. The phone levels its members with no commit at all, so it is named first.
-  test("a binary lead is told the phone and the pinned self-update, not a git error", async () => {
-    const h = harness({ installKind: { kind: "binary" } });
-    expect(await cmdCrewUpdate(h.deps, ["--all"])).toBe(EXIT.FAIL);
-    const rendered = text(h.io);
-    expect(rendered).toContain("is a binary install, so it has no commit to push.");
-    expect(rendered).toContain("phone's Updates page");
-    expect(rendered).toContain(`\`collie update --to-tag v${VERSION}\` on each member`);
-    expect(rendered).not.toContain("is not a git checkout");
-    expect(h.calls).toEqual([]);
+  test("a binary lead takes the same route", async () => {
+    const h = harness({ installKind: { kind: "binary" }, probes: { "nas.example": binaryMember("1.0.0") } });
+    expect(await cmdCrewUpdate(h.deps, ["--all"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain(`installing v${VERSION} from AltanS/collie`);
   });
 
   test("a route override describes one machine, so it refuses a multi-member run", async () => {
@@ -946,7 +985,9 @@ describe("a --path with a tilde is expanded on the far side, never here", () => 
     const h = harness({ ops: { nas: opsRecord("old.example") } });
     expect(await cmdCrewUpdate(h.deps, ["nas", "--host", "nas.new", "--path", "~"])).toBe(EXIT.OK);
     const probed = h.calls.find((c) => c.leg === "probe");
-    expect(probed?.script).toContain(`for _d in "$HOME"; do`);
+    // Two entries since #248: the probe looks behind `<path>/current` too, because that is where an
+    // install.sh member keeps its Collie.
+    expect(probed?.script).toContain(`for _d in "$HOME" "$HOME"/'current'; do`);
     expect(probed?.script).not.toContain("~");
   });
 
@@ -956,7 +997,7 @@ describe("a --path with a tilde is expanded on the far side, never here", () => 
       await cmdCrewUpdate(h.deps, ["nas", "--host", "nas.new", "--path", "/opt/collie"]),
     ).toBe(EXIT.OK);
     const probed = h.calls.find((c) => c.leg === "probe");
-    expect(probed?.script).toContain(`for _d in '/opt/collie'; do`);
+    expect(probed?.script).toContain(`for _d in '/opt/collie' '/opt/collie/current'; do`);
   });
 });
 
@@ -987,5 +1028,149 @@ describe("the plain transcript", () => {
       "  pi          skipped  no ssh record",
       "✓ 1 updated, 0 already current, 1 skipped, 0 failed — 1 still behind this lead's 1.2.3",
     ]);
+  });
+});
+
+// ── The release route (#248) ─────────────────────────────────────────────────
+// A lead with no commit levels its members to the release it runs itself. Everything below is
+// decided from ONE fact about the lead (its install kind) and ONE about each member (what Collie is
+// already there) — and the member's fact comes from leg 1, never from an assumption.
+
+describe("the release route", () => {
+  test("a member behind the lead's release is installed from it, and nothing is bundled", async () => {
+    const h = harness({ ...RELEASE_LEAD, probes: { "nas.example": binaryMember("1.0.0") } });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.bundles).toBe(0);
+    expect(legs(h)).toEqual(["nas.example:probe", "nas.example:install", "nas.example:restart"]);
+    const install = h.calls.find((c) => c.leg === "install")!;
+    expect(install.script).toContain(`COLLIE_TAG='v${VERSION}'`);
+    expect(install.script).toContain(`DIR='${MEMBER_INSTALL_ROOT}'`);
+    // The payload IS Collie's own installer, out of this binary — never fetched on the far machine.
+    expect(install.stdin?.startsWith("#!/bin/sh\n")).toBe(true);
+    // The restart addresses the binary behind `current`, which is the one that will be running.
+    expect(h.calls.find((c) => c.leg === "restart")!.script).toContain(MEMBER_CURRENT);
+    expect(text(h.io)).toContain(`installing v${VERSION} from AltanS/collie at ${MEMBER_INSTALL_ROOT} on nas.example…`);
+    expect(text(h.io)).toContain(`nas         updated  1.0.0 → ${VERSION}`);
+  });
+
+  test("a member already at this release is current — the build stamp is not a difference", async () => {
+    const h = harness({ ...RELEASE_LEAD, probes: { "nas.example": binaryMember(`${VERSION}+ab12cd3`) } });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(legs(h)).toEqual(["nas.example:probe"]);
+    expect(text(h.io)).toContain(`already at ${VERSION}+ab12cd3 — this lead's own release`);
+    expect(text(h.io)).toContain(`nas         current  ${VERSION}+ab12cd3`);
+  });
+
+  // A checkout is somebody's working tree. Converting it from here would move it, and the remedy is
+  // one command typed there — so it is skipped, never failed, and the run carries on.
+  test("a member running from git is skipped by name, and the other members still run", async () => {
+    const h = harness({
+      ...RELEASE_LEAD,
+      store: twoPeers(),
+      ops: { nas: opsRecord("nas.example"), pi: opsRecord("pi.example") },
+      probes: { "nas.example": binaryMember("1.0.0") },
+      hello: { nas: `${VERSION}+${SHORT}`, pi: VERSION },
+    });
+    expect(await cmdCrewUpdate(h.deps, ["--all"])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`· pi          a git checkout at ${CHECKOUT}, and this lead has no commit to push`);
+    expect(rendered).toContain(`run \`collie update --to-tag v${VERSION}\` there`);
+    expect(rendered).toContain("pi          skipped  source checkout");
+    expect(legs(h)).toEqual(["nas.example:probe", "pi.example:probe", "nas.example:install", "nas.example:restart"]);
+    // Counted apart in the one question, the way a packaged peer and a routeless one already are.
+    expect(h.confirms[0]).toContain("1 on a source checkout");
+  });
+
+  // The case the stamp comparison broke: a nix or brew lead has no build stamp at all, and the
+  // member it installs from the release tarball always has one.
+  test("a lead with no build stamp levels a member that comes back with one", async () => {
+    const h = harness({
+      installKind: { kind: "packaged" },
+      probes: { "nas.example": binaryMember("1.0.0") },
+      hello: { nas: `${VERSION}+704b674` },
+    });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain(`nas         updated  1.0.0 → ${VERSION}`);
+  });
+
+  test("a Collie that is neither shape is blocked, and named", async () => {
+    const h = harness({
+      ...RELEASE_LEAD,
+      probes: { "nas.example": { checkout: "/opt/collie", checkoutgit: "no", installroot: "", commit: "", dirty: "" } },
+    });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("the Collie at /opt/collie on nas.example is neither a git checkout nor an");
+    expect(text(h.io)).toContain("nas         FAILED   neither a checkout nor an install.sh layout");
+    expect(legs(h)).toEqual(["nas.example:probe"]);
+  });
+
+  test("a member with no Collie at all is blocked — `crew add` installs the first one", async () => {
+    const h = harness({ ...RELEASE_LEAD, probes: { "nas.example": { checkout: "", checkoutgit: "", commit: "" } } });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("error: no Collie at nas.example (/home/pat/.collie).");
+    expect(text(h.io)).toContain("nas         FAILED   no Collie there");
+  });
+
+  // Refused before the first ssh byte rather than discovered after N probes, the rule every cheap
+  // refusal in this verb follows.
+  test("a lead whose own version cannot be read refuses before anything is dialled", async () => {
+    const h = harness({ installKind: { kind: "binary" }, leadVersion: "not-a-version" });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("cannot read this lead's version, so there is no release to level the members to.");
+    expect(text(h.io)).toContain("is a binary install");
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("the one question names the tag, and never a commit that does not exist", async () => {
+    const h = harness({ ...RELEASE_LEAD, probes: { "nas.example": binaryMember("1.0.0") } });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.confirms[0]).toBe(`update 1 member to v${VERSION} over ssh: nas (1.0.0)?`);
+    expect(h.io.stdout[0]).toBe(`crew update — ${VERSION}`);
+  });
+
+  // THE TAG IS THE CONTRACT, AND THE STAMP IS NOT. The member installs the release tarball, whose
+  // stamp is the release commit; this lead's own stamp is whoever built THIS copy, and a packaged
+  // lead carries a different one or none. Comparing the two failed a member running exactly the
+  // release it was told to run — found in the VM rehearsal of #248.
+  test("the verify leg takes any stamp under the right release, and refuses another release", async () => {
+    for (const reported of [`${VERSION}+704b674`, `${VERSION}+${SHORT}`, VERSION]) {
+      const ok = harness({
+        ...RELEASE_LEAD,
+        probes: { "nas.example": binaryMember("1.0.0") },
+        hello: { nas: reported },
+      });
+      expect(await cmdCrewUpdate(ok.deps, ["nas"])).toBe(EXIT.OK);
+      expect(text(ok.io)).toContain(`✓ verify      answers at 100.64.0.9:8787 · ${reported}`);
+    }
+
+    const bad = harness({
+      ...RELEASE_LEAD,
+      probes: { "nas.example": binaryMember("1.0.0") },
+      hello: { nas: `1.2.4+${SHORT}` },
+    });
+    expect(await cmdCrewUpdate(bad.deps, ["nas"])).toBe(EXIT.FAIL);
+    // The failure names the TAG, which is the thing the member was told to install.
+    expect(text(bad.io)).toContain(`nas did not come back running v${VERSION}`);
+    expect(text(bad.io)).toContain(`it answers as 1.2.4+${SHORT}, not v${VERSION}`);
+    expect(text(bad.io)).not.toContain(`running ${VERSION}+`);
+  });
+});
+
+// ── The bundle route's mirror image (#248) ───────────────────────────────────
+
+describe("a member that takes releases, on a lead that pushes a commit", () => {
+  // Before #248 the probe could not see such a member at all, so this run said "no Collie checkout
+  // there" about a machine that has one. It is named rather than written over: a `git bundle` into
+  // an install.sh layout would clone a second Collie beside the one that is running.
+  test("is skipped by name, and the phone is named as what levels it", async () => {
+    const h = harness({ probes: { "nas.example": binaryMember("1.0.0") } });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`· nas         binary install at ${MEMBER_INSTALL_ROOT}, which takes releases`);
+    expect(rendered).toContain("the phone's Updates page levels it");
+    expect(rendered).toContain("nas         skipped  binary install");
+    expect(rendered).not.toContain("no Collie");
+    expect(legs(h)).toEqual(["nas.example:probe"]);
+    expect(h.bundles).toBe(0);
   });
 });

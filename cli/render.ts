@@ -366,8 +366,14 @@ export interface UpdateRow {
 
 /** Everything `crew update` says, as structure rather than text. */
 export type UpdateEvent =
-  /** The build every target is being levelled to, once, up front. */
-  | { readonly kind: "title"; readonly version: string; readonly commit: string }
+  /**
+   * The build every target is being levelled to, once, up front.
+   *
+   * `commit` is `null` on the release route, where there is none: a lead with no git checkout hands
+   * out the release it runs, and twelve characters of a build stamp would name a thing the operator
+   * cannot look up (#248).
+   */
+  | { readonly kind: "title"; readonly version: string; readonly commit: string | null }
   /** A free line, stream pinned — same shape and same reason as {@link AddEvent}'s. */
   | { readonly kind: "line"; readonly text: string; readonly tone: AddTone; readonly stream: "out" | "err" }
   /** The probe's verdict for one member. Emitted for every target, before the one confirmation. */
@@ -425,7 +431,7 @@ const UPDATE_OUTCOME_WORD = {
 export function plainUpdate(io: Io, event: UpdateEvent): void {
   switch (event.kind) {
     case "title":
-      io.out(`crew update — ${event.version} (${event.commit.slice(0, 12)})`);
+      io.out(`crew update — ${event.version}${event.commit === null ? "" : ` (${event.commit.slice(0, 12)})`}`);
       return;
     case "line":
       if (event.stream === "err") io.err(event.text);

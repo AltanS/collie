@@ -18,10 +18,16 @@ GIT=$(collie_tool git) || GIT=""
 BUN=$(collie_tool bun) || BUN=""
 HERDR=$(collie_tool herdr) || HERDR=""
 TS=$(collie_tool tailscale) || TS=""
+CURL=$(collie_tool curl) || CURL=""
+TAR=$(collie_tool tar) || TAR=""
+SHA=$(collie_tool sha256sum) || SHA=$(collie_tool shasum) || SHA=""
 say home "$HOME"
 say git "$GIT"
 say bun "$BUN"
 say herdr "$HERDR"
+say curl "$CURL"
+say tar "$TAR"
+say sha256 "$SHA"
 CFG=""
 if [ -n "$HERDR" ]; then CFG=$("$HERDR" plugin config-dir 'herdr.collie' 2>/dev/null | head -n 1 | tr -d '\r') || CFG=""; fi
 say configdir "$CFG"
@@ -33,7 +39,7 @@ fi
 say envhost "$ENVHOST"
 say envport "$ENVPORT"
 CHECKOUT=""
-for _d in '/srv/collie'; do
+for _d in '/srv/collie' '/srv/collie/current'; do
   _d=${_d%/}
   [ -f "$_d/herdr-plugin.toml" ] || continue
   grep -q "herdr\.collie" "$_d/herdr-plugin.toml" 2>/dev/null || continue
@@ -41,6 +47,18 @@ for _d in '/srv/collie'; do
   break
 done
 say checkout "$CHECKOUT"
+CHECKOUTGIT=""; INSTALLROOT=""
+if [ -n "$CHECKOUT" ]; then
+  if [ -e "$CHECKOUT/.git" ]; then CHECKOUTGIT=yes; else CHECKOUTGIT=no; fi
+  case "$CHECKOUT" in
+    */current)
+      _r=${CHECKOUT%/current}
+      if [ -d "$_r/versions" ]; then INSTALLROOT="$_r"; fi
+      ;;
+  esac
+fi
+say checkoutgit "$CHECKOUTGIT"
+say installroot "$INSTALLROOT"
 COMMIT=""; DIRTY=""; DIRTYFILES=""; BRANCH=""; VERSION=""
 if [ -n "$CHECKOUT" ] && [ -n "$GIT" ]; then
   COMMIT=$("$GIT" -C "$CHECKOUT" rev-parse HEAD 2>/dev/null) || COMMIT=""

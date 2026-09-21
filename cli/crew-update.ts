@@ -5,27 +5,36 @@ import { parseCrewRows, type CrewUpdateRow } from "../bridge/update-action.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import type { TrustedMember, TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
+import { parsePrereleaseTag } from "../bridge/update.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
 import { updateDeps } from "./deps.ts";
+import { INSTALLER_SH } from "./installer-embed.ts";
 import { detectInstall, PACKAGED_SENTENCE, updateRepoOf, type InstallKind } from "./install-kind.ts";
 import { realLinkFs } from "./link.ts";
 import { EXIT, type Io } from "./io.ts";
 import { parseCrewArgs, probeMembers } from "./crew.ts";
 import {
-  commitlessLeadLines,
   errorLine,
   firstLine,
   gitOut,
+  installerErrorLine,
   manifestVersionAt,
+  memberInstallKind,
+  releaseOf,
   restartScript,
+  routeOf,
   runInstall,
+  runInstallRelease,
   runProbe,
   runUpdateStatus,
   transportFailure,
   type CrewAddDeps,
+  type MemberKind,
   type Probe,
+  type RemoteResult,
   type RemoteRunner,
+  type Route,
 } from "./remote.ts";
 import { plainUpdate, type UpdateEvent, type UpdateOutcome, type UpdateRow } from "./render.ts";
 import { cmdUpdate } from "./update.ts";
@@ -49,7 +58,10 @@ export { answersThisBuild };
 // `collie crew update [<member>…] [--all]` — level peers to the lead's current build (M7/02).
 //
 // ── IT RIDES THE OPERATOR'S SSH, NEVER THE CREW WIRE (ADR 0016) ──────────────
-// The code goes the same way `crew add` sent it: this lead's own commit, as a `git bundle`, over an
+// The code goes the same way `crew add` sent it, and by the same two routes (`routeOf`, #248): a
+// lead that runs from a git checkout sends its own commit as a `git bundle`, and a lead installed by
+// install.sh or by a package has no commit, so it sends Collie's own installer and the member
+// downloads the release the lead runs. Both ride an
 // ssh connection the operator authenticates. Nothing about an update crosses `/crew/v1/*` — the crew
 // link carries runtime data and admits nobody, and a lead that could push code down it would be a
 // code-execution credential on every peer it leads. That is the whole of the reasoning, and it lives
@@ -123,8 +135,9 @@ export interface CrewUpdateDeps extends CrewAddDeps {
    * read, behind a seam so no test probes a real filesystem.
    *
    * A seam and not a second probe: one detection, one answer (`cli/install-kind.ts`). It is read
-   * for one question only — may this checkout's commit be pushed to the members — and a packaged
-   * root and a binary (install.sh) root have no commit to push.
+   * for one question only — which ROUTE this lead levels its members by (`routeOf`) — because a
+   * packaged root and a binary (install.sh) root have no commit to push, and hand out the release
+   * they run instead (#248).
    */
   installKind?(): InstallKind;
 }
@@ -160,8 +173,47 @@ interface Planned {
   readonly target: Target;
   readonly probe: Probe;
   readonly runner: RemoteRunner;
-  /** The checkout the push lands in — what the probe FOUND, never a path this side invented. */
+  /**
+   * The Collie the restart and the verify address — what the probe FOUND, never a path this side
+   * invented. On the release route that is the member's `<install root>/current`, which is the
+   * binary that will be running once the installer has swapped the symlink.
+   */
   readonly root: string;
+  /**
+   * The `<dir>` of the member's `<dir>/current` + `<dir>/versions` layout — where the installer
+   * lays the next release down. `""` on the bundle route, which has no such layout to write to.
+   */
+  readonly installRoot: string;
+}
+
+/**
+ * What every member is being levelled TO, and the way it gets there. Decided once, read by every
+ * step below, so no two steps can disagree about which route this run is on.
+ */
+interface Build {
+  readonly route: Route;
+  /**
+   * bundle: the version the pushed commit carries, read out of that commit.
+   * release: the release this lead runs, bare (`1.11.1`) — `v`-prefixed it is {@link tag}.
+   */
+  readonly version: string;
+  /**
+   * bundle: the commit being pushed, in full.
+   * release: always `""`. There is no commit on that route, and this lead's own build stamp is not
+   * one — see {@link answersThisRun} for why the stamp may not stand in for it.
+   */
+  readonly commit: string;
+  /**
+   * What a levelled member is expected to come back as, in the operator's words.
+   *
+   * bundle: the full string this lead itself answers with, `<version>+<sha>`, because the member
+   * builds the very commit that was pushed. release: the TAG, `v<version>`, because that is the
+   * whole of the contract on that route — the stamp under it belongs to whoever built the release.
+   */
+  readonly expected: string;
+  /** release only: the tag every member installs, and the `owner/repo` it takes that tag from. */
+  readonly tag: string;
+  readonly repo: string;
 }
 
 /**
@@ -258,45 +310,23 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
   const targets = await resolveTargets(deps, data, roster, { positional, flags, bare, port });
   if (!Array.isArray(targets)) return targets;
 
-  // A PACKAGED OR BINARY LEAD HAS NO COMMIT TO PUSH, and it is told that rather than shown a git
-  // error (#248). Above the git read on purpose: `rev-parse HEAD` there fails, and "is not a git
-  // checkout" reads as a broken install when nothing is broken. It refuses only the TERMINAL route:
-  // the phone still levels the members to the version this lead is running, which is why the lines
-  // name the Updates page. `crew add` asks the same question through the same function.
-  const commitless = commitlessLeadLines(
-    deps.installKind(),
-    {
-      root: deps.ctx.root,
-      version: collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)),
-      repo: updateRepoOf(deps.ctx.env),
-    },
-    { verb: "update" },
-  );
-  if (commitless !== null) {
-    for (const l of commitless) deps.io.err(l);
-    return EXIT.FAIL;
-  }
-
-  // The build every target is being levelled to: this checkout's commit, and the version that commit
-  // carries — read out of the commit rather than the working tree, exactly as `crew add` reads it,
-  // because the bundle ships the commit.
-  const commit = gitOut(deps, ["rev-parse", "HEAD"]);
-  if (commit === null) {
-    deps.io.err(`error: cannot read this checkout's commit — ${deps.ctx.root} is not a git checkout.`);
-    return EXIT.FAIL;
-  }
-  const version = manifestVersionAt(deps, commit);
-  if (version === null) {
-    deps.io.err(`error: cannot read herdr-plugin.toml at ${commit.slice(0, 12)} — nothing to pin the push to.`);
-    return EXIT.FAIL;
-  }
-  // What a levelled member should answer `hello` with — the version the commit carries PLUS that
-  // commit's build metadata, which is what this lead itself runs after building the same commit.
-  const expected = expectedAnswer(deps, version, commit);
-  deps.emitUpdate({ kind: "title", version, commit });
-  if (gitOut(deps, ["status", "--porcelain"]) !== "") {
+  // ── WHICH ROUTE THIS LEAD LEVELS ITS MEMBERS BY ────────────────────────────
+  // Read from this lead's own install kind through the ONE function `crew add` reads it through
+  // (#248). A packaged or binary lead used to be refused here and sent to the phone's Updates page;
+  // it now levels its members from the terminal too, by handing each the release it runs itself.
+  // The two verbs must never disagree about the route: a member added by release and then levelled
+  // by bundle would take a commit into a layout that has no git checkout to receive it.
+  const kind = deps.installKind();
+  const decided = routeOf(kind) === "release" ? releaseBuild(deps, kind) : bundleBuild(deps);
+  if ("code" in decided) return decided.code;
+  const { build } = decided;
+  const { version } = build;
+  // No commit is printed on the release route, because there is none — a title that showed twelve
+  // characters of a build stamp would name a thing the operator cannot look up.
+  deps.emitUpdate({ kind: "title", version, commit: build.route === "bundle" ? build.commit : null });
+  if (build.route === "bundle" && gitOut(deps, ["status", "--porcelain"]) !== "") {
     line(deps, "warn: this checkout has uncommitted changes — the bundle carries the COMMIT, so they are", "warn", "err");
-    line(deps, `      not shipped. Every member below gets ${version} at ${commit.slice(0, 12)}.`, "warn", "err");
+    line(deps, `      not shipped. Every member below gets ${version} at ${build.commit.slice(0, 12)}.`, "warn", "err");
   }
 
   const outcomes = new Map<string, UpdateRow>();
@@ -307,7 +337,7 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     const gate = await preflightGate(deps, targets);
     if (gate.exit !== null) return gate.exit;
 
-    const ready = await planAll(deps, targets, commit, outcomes, runners, gate.packaged);
+    const ready = await planAll(deps, targets, build, outcomes, runners, gate.packaged);
     // 2. A member the probe refused has already failed, and the probe touched nothing at all — so
     //    the abort rule applies here too, one step earlier and for free.
     const refused = [...outcomes.values()].find((row) => row.outcome === "failed");
@@ -320,8 +350,10 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     if (ready.length === 0) return report(deps, targets, outcomes, version);
 
     // 3. THE ONE CONSENT, and it names the lead when the lead is part of what is being consented to.
-    const behind = leadIsBehind(deps, version, commit);
-    const consent = await confirmBatch(deps, ready, outcomes, version, commit, behind);
+    //    A binary or packaged lead is never behind what it is handing out: the release it hands out
+    //    IS the one it is running, so there is nothing for its own updater to do first.
+    const behind = build.route === "bundle" && leadIsBehind(deps, version, build.commit);
+    const consent = await confirmBatch(deps, ready, outcomes, build, behind);
     if (consent !== EXIT.OK) return consent;
 
     // 4. THE LEAD FIRST. A lead that is not running the build it is handing out gets it first, and a
@@ -332,13 +364,74 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     }
 
     // 5. THE PEERS, one at a time, stopping at the first failure.
-    const stopped = await workAll(deps, data, ready, { commit, version, expected, outcomes });
+    const stopped = await workAll(deps, data, ready, { build, outcomes });
     if (stopped !== null) return stop(deps, targets, outcomes, version, stopped);
     return report(deps, targets, outcomes, version);
   } finally {
     // Every exit path, including a throw: each of these is a live authenticated channel.
     for (const runner of runners) runner.close();
   }
+}
+
+// ── What is being handed out, per route ──────────────────────────────────────
+
+/**
+ * What the route decision produced: the build to hand out, or the code the run ends with.
+ *
+ * Told apart by a FIELD rather than by what a value looks like — the same shape `crew add`'s leg 2
+ * uses, and for the same reason: two outcomes that are not each other's failure.
+ */
+type Decided = { readonly code: number } | { readonly build: Build };
+
+/**
+ * The BUNDLE route's build: this checkout's commit, and the version that commit carries.
+ *
+ * The version is read out of the COMMIT rather than the working tree, exactly as `crew add` reads
+ * it, because the bundle ships the commit. A `code` instead of a build means the run stops there.
+ */
+function bundleBuild(deps: Wired): Decided {
+  const commit = gitOut(deps, ["rev-parse", "HEAD"]);
+  if (commit === null) {
+    deps.io.err(`error: cannot read this checkout's commit — ${deps.ctx.root} is not a git checkout.`);
+    return { code: EXIT.FAIL };
+  }
+  const version = manifestVersionAt(deps, commit);
+  if (version === null) {
+    deps.io.err(`error: cannot read herdr-plugin.toml at ${commit.slice(0, 12)} — nothing to pin the push to.`);
+    return { code: EXIT.FAIL };
+  }
+  // What a levelled member should answer `hello` with — the version the commit carries PLUS that
+  // commit's build metadata, which is what this lead itself runs after building the same commit.
+  const expected = expectedAnswer(deps, version, commit);
+  return { build: { route: "bundle", version, commit, expected, tag: "", repo: "" } };
+}
+
+/**
+ * The RELEASE route's build: the release this lead is itself running (#248).
+ *
+ * A version this build cannot read leaves no tag to level anybody to, and that is refused before the
+ * first ssh byte rather than discovered after N probes — the same rule `crew add` follows.
+ *
+ * **THE TAG IS THE WHOLE CONTRACT HERE, and this lead's own build stamp is no part of it.** The
+ * member installs the GitHub release tarball, whose stamp is the release commit; a packaged lead
+ * (nix, AUR, brew) or any lead built from that same tag elsewhere carries a different stamp, or
+ * none. So `expected` is the tag, {@link Build.commit} stays empty, and nothing on this route ever
+ * compares a stamp against a stamp.
+ */
+function releaseBuild(deps: Wired, kind: InstallKind): Decided {
+  // Cut back to the release it names: this lead may answer `1.11.1+ab12cd3`, and the tag is neither
+  // half of that string on its own.
+  const version = releaseOf(collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)));
+  if (parsePrereleaseTag(`v${version}`) === null) {
+    deps.io.err("error: cannot read this lead's version, so there is no release to level the members to.");
+    deps.io.err(`       ${deps.ctx.root} is a ${kind.kind} install, so \`crew update\` levels each member to`);
+    deps.io.err("       the release this lead runs. `collie version` here is the value it needs.");
+    return { code: EXIT.FAIL };
+  }
+  const tag = `v${version}`;
+  return {
+    build: { route: "release", version, commit: "", expected: tag, tag, repo: updateRepoOf(deps.ctx.env) },
+  };
 }
 
 // ── Targets ──────────────────────────────────────────────────────────────────
@@ -436,7 +529,7 @@ async function rosterLines(
 async function planAll(
   deps: Wired,
   targets: readonly Target[],
-  commit: string,
+  build: Build,
   outcomes: Map<string, UpdateRow>,
   runners: RemoteRunner[],
   packaged: ReadonlySet<string>,
@@ -474,9 +567,9 @@ async function planAll(
       continue;
     }
     if (probe.checkout === "") {
-      deps.io.err(`error: no Collie checkout at ${target.sshHost}${target.path === null ? "" : ` (${target.path})`}.`);
+      deps.io.err(`error: no Collie at ${target.sshHost}${target.path === null ? "" : ` (${target.path})`}.`);
       deps.io.err("       `collie crew update` levels an existing one; `collie crew add` installs the first.");
-      blocked(deps, id, outcomes, "no Collie checkout there");
+      blocked(deps, id, outcomes, "no Collie there");
       continue;
     }
     // The route is proven the moment the probe answers with a checkout: the host was reachable and
@@ -484,10 +577,33 @@ async function planAll(
     // that can fail, is what closes the bug a `--host` run used to have — a build or restart failure
     // downstream must not cost the operator the route they just typed correctly.
     await remember(deps, target, probe);
-    if (probe.dirty === "yes") {
+    // WHAT KIND OF COLLIE IS THERE, from the two shapes leg 1 reports and from nothing else. It
+    // decides one thing on each route: which members this run can advance, and what the rest are
+    // told instead of being written over (#248).
+    const memberKind = memberInstallKind(probe);
+    if (build.route === "release") {
+      planRelease(deps, { target, probe, runner, memberKind }, build, outcomes, ready);
+      continue;
+    }
+    if (memberKind === "binary") {
+      // Seen for the first time since #248 taught the probe to look behind `<dir>/current`. Before
+      // that this member answered "no Collie there" and the operator was told a falsehood about a
+      // machine that has one. It is named rather than pushed to: a `git bundle` into an install.sh
+      // layout would clone a second Collie beside the one that is running.
+      plan(
+        deps,
+        id,
+        "skipped",
+        `${BINARY_MEMBER_DETAIL} at ${probe.installroot}, which takes releases — the phone's Updates page levels it`,
+      );
+      outcomes.set(id, { memberId: id, outcome: "skipped", detail: BINARY_MEMBER_DETAIL });
+      continue;
+    }
+    if (memberKind === "git" && probe.dirty === "yes") {
       // Refused, never prompted — the same rule `crew add` applies, for the same reason: a y/N in
       // front of a `git checkout` that discards someone's work is consent theatre, and the remedy is
-      // one command on that machine.
+      // one command on that machine. Asked of a git member alone: a binary member has no working
+      // tree, so its `dirty` answer is empty and means nothing.
       deps.io.err(`error: the Collie checkout at ${probe.checkout} has uncommitted changes:`);
       deps.io.err(`       ${probe.dirtyfiles}`);
       deps.io.err(`       \`git stash\` or commit them on ${target.sshHost}, then re-run. Collie will not`);
@@ -495,9 +611,9 @@ async function planAll(
       blocked(deps, id, outcomes, "uncommitted changes there");
       continue;
     }
-    if (probe.commit === commit) {
-      plan(deps, id, "current", `already at ${probe.version || "this commit"} (${commit.slice(0, 12)})`);
-      outcomes.set(id, { memberId: id, outcome: "current", detail: probe.version || commit.slice(0, 12) });
+    if (probe.commit === build.commit) {
+      plan(deps, id, "current", `already at ${probe.version || "this commit"} (${build.commit.slice(0, 12)})`);
+      outcomes.set(id, { memberId: id, outcome: "current", detail: probe.version || build.commit.slice(0, 12) });
       continue;
     }
     plan(
@@ -506,9 +622,57 @@ async function planAll(
       "ready",
       `${probe.version || "(unbuilt)"} at ${probe.commit.slice(0, 12) || "?"} · ${target.sshHost}:${probe.checkout}`,
     );
-    ready.push({ target, probe, runner, root: probe.checkout });
+    ready.push({ target, probe, runner, root: probe.checkout, installRoot: "" });
   }
   return ready;
+}
+
+/**
+ * One member's verdict on the RELEASE route — the lead has no commit, so only a member that takes
+ * releases can be advanced from here (#248).
+ *
+ * A git checkout is SKIPPED rather than failed: it is somebody's working tree, converting it from
+ * here would move it, and the remedy is one command typed on that machine. Skipped and not fatal for
+ * the reason a packaged peer is — a machine this run cannot level is no reason to leave the machines
+ * it can level un-levelled. A Collie that is neither shape is blocked, because there is nothing this
+ * run could safely do to it and nothing to name as the fix.
+ *
+ * `probe.dirty` is never read here: a binary member has no working tree to be dirty.
+ */
+function planRelease(
+  deps: Wired,
+  o: { target: Target; probe: Probe; runner: RemoteRunner; memberKind: MemberKind },
+  build: Build,
+  outcomes: Map<string, UpdateRow>,
+  ready: Planned[],
+): void {
+  const { target, probe, runner } = o;
+  const id = target.member.memberId;
+  if (o.memberKind === "git") {
+    plan(
+      deps,
+      id,
+      "skipped",
+      `a git checkout at ${probe.checkout}, and this lead has no commit to push — run \`collie update --to-tag ${build.tag}\` there`,
+    );
+    outcomes.set(id, { memberId: id, outcome: "skipped", detail: SOURCE_CHECKOUT_DETAIL });
+    return;
+  }
+  if (o.memberKind === "other") {
+    deps.io.err(`error: the Collie at ${probe.checkout} on ${target.sshHost} is neither a git checkout nor an`);
+    deps.io.err(`       install.sh layout, so this lead has no safe way to level it — run \`collie update\` there.`);
+    blocked(deps, id, outcomes, "neither a checkout nor an install.sh layout");
+    return;
+  }
+  // The build stamp is not a version difference: a built Collie answers `1.11.1+ab12cd3` and the tag
+  // is `v1.11.1`, so both sides are cut back to the release they name.
+  if (releaseOf(probe.version) === build.version) {
+    plan(deps, id, "current", `already at ${probe.version} — this lead's own release`);
+    outcomes.set(id, { memberId: id, outcome: "current", detail: probe.version });
+    return;
+  }
+  plan(deps, id, "ready", `${probe.version || "(unreadable)"} · ${target.sshHost}:${probe.installroot}`);
+  ready.push({ target, probe, runner, root: probe.checkout, installRoot: probe.installroot });
 }
 
 // ── The preflight gate ───────────────────────────────────────────────────────
@@ -605,6 +769,12 @@ const NO_ROUTE_DETAIL = "no ssh record";
 
 /** The same, for a member this run may not write to at all. Short: it is a table column. */
 const PACKAGED_DETAIL = "packaged";
+
+/** A member running from git that a lead with no commit cannot advance (#248). Its own column word. */
+const SOURCE_CHECKOUT_DETAIL = "source checkout";
+
+/** A member that takes releases, on a lead that hands out a commit. The mirror of the row above. */
+const BINARY_MEMBER_DETAIL = "binary install";
 
 /** How long this verb waits on its own bridge for a fact it can also do without. */
 const BANKED_BUDGET_MS = 2000;
@@ -755,8 +925,7 @@ async function confirmBatch(
   deps: Wired,
   ready: readonly Planned[],
   outcomes: ReadonlyMap<string, UpdateRow>,
-  version: string,
-  commit: string,
+  build: Build,
   leadFirst: boolean,
 ): Promise<number> {
   const named = ready
@@ -771,15 +940,22 @@ async function confirmBatch(
     banked.filter((r) => r.outcome === "skipped" && r.detail === detail).length;
   const unrouted = skipped(NO_ROUTE_DETAIL);
   const owned = skipped(PACKAGED_DETAIL);
+  const source = skipped(SOURCE_CHECKOUT_DETAIL);
+  const binary = skipped(BINARY_MEMBER_DETAIL);
   const refused = banked.filter((r) => r.outcome === "failed").length;
   const aside = [
     current === 0 ? "" : `${current} already current`,
     unrouted === 0 ? "" : `${unrouted} without an ssh record`,
     owned === 0 ? "" : `${owned} packaged`,
+    source === 0 ? "" : `${source} on a source checkout`,
+    binary === 0 ? "" : `${binary} on a binary install`,
     refused === 0 ? "" : `${refused} the probe refused`,
   ].filter((s) => s !== "");
+  // The release route names the TAG and no commit, because there is no commit — a question that
+  // printed twelve characters of a build stamp would name a thing nobody can look up.
+  const to = build.route === "release" ? build.tag : `${build.version} (${build.commit.slice(0, 12)})`;
   const question =
-    `update ${nMembers(ready.length)} to ${version} (${commit.slice(0, 12)})` +
+    `update ${nMembers(ready.length)} to ${to}` +
     ` over ssh: ${named}${aside.length === 0 ? "" : ` — ${aside.join(", ")}`}` +
     // Said in the SAME question, never as a second one: the lead is part of the operation being
     // consented to, not an operation of its own.
@@ -816,18 +992,20 @@ async function workAll(
   deps: Wired,
   data: TrustStoreData,
   ready: readonly Planned[],
-  o: { commit: string; version: string; expected: string; outcomes: Map<string, UpdateRow> },
+  o: { build: Build; outcomes: Map<string, UpdateRow> },
 ): Promise<Stopped | null> {
   // Bundled ONCE for the whole run: the commit is one artifact, and re-running `git bundle` per
   // member would be N copies of the same bytes with N chances for HEAD to have moved underneath.
+  // Never bundled at all on the release route: there is no commit to bundle, and what travels
+  // instead is Collie's own installer, which is a constant in this binary (#248).
   let bundle: string | null = null;
   for (const [index, planned] of ready.entries()) {
     const id = planned.target.member.memberId;
     deps.emitUpdate({ kind: "member-start", memberId: id });
-    if (bundle === null) {
-      bundle = await deps.gitBundle(o.commit, deps.io);
+    if (o.build.route === "bundle" && bundle === null) {
+      bundle = await deps.gitBundle(o.build.commit, deps.io);
       if (bundle === null) {
-        deps.io.err(`error: could not bundle ${o.commit.slice(0, 12)} from ${deps.ctx.root}.`);
+        deps.io.err(`error: could not bundle ${o.build.commit.slice(0, 12)} from ${deps.ctx.root}.`);
         fail(deps, id, o.outcomes, "nothing to push — the bundle failed here");
         // Nothing can be sent to anyone: the rest are untouched for a reason of their own.
         untouched(deps, ready.slice(index + 1), o.outcomes, "not attempted — the bundle failed here");
@@ -840,7 +1018,7 @@ async function workAll(
       untouched(deps, ready.slice(index + 1), o.outcomes, `not attempted — the run stopped at ${id}`);
       return failure;
     }
-    o.outcomes.set(id, { memberId: id, outcome: "updated", detail: `${from} → ${o.version}` });
+    o.outcomes.set(id, { memberId: id, outcome: "updated", detail: `${from} → ${o.build.version}` });
     deps.emitUpdate({ kind: "member-done", memberId: id, outcome: "updated" });
   }
   return null;
@@ -866,25 +1044,33 @@ async function workOne(
   data: TrustStoreData,
   planned: Planned,
   o: {
-    commit: string;
-    version: string;
-    expected: string;
-    bundle: string;
+    build: Build;
+    /** The bundle every member on the bundle route takes. `null` on the release route. */
+    bundle: string | null;
     outcomes: Map<string, UpdateRow>;
   },
 ): Promise<Stopped | null> {
   const { target, runner, root } = planned;
   const id = target.member.memberId;
   const host = target.sshHost;
+  const release = o.build.route === "release";
 
   // ── push ───────────────────────────────────────────────────────────────────
+  // ONE LEG, TWO ROUTES, and the leg keeps its id in both so no transcript reader needs a new word
+  // for it. What changes is the line under it: the bundle route says "pushing <commit>" and the
+  // release route says "installing <tag>" (#248).
   deps.emitUpdate({ kind: "leg-start", memberId: id, leg: "push" });
-  line(deps, `  pushing ${o.commit.slice(0, 12)} (${Math.round(o.bundle.length / 1024)} KiB base64) to ${root}…`);
-  const { result, version: built } = await runInstall(runner, { root, commit: o.commit, version: o.version }, o.bundle);
+  const { result, version: built } = await pushLeg(deps, planned, o);
   if (transportFailure(deps.io, host, result) !== null) {
-    return legFailed(deps, id, "push", o.outcomes, `ssh dropped during the push to ${host}`);
+    const what = release ? `the install on ${host}` : `the push to ${host}`;
+    return legFailed(deps, id, "push", o.outcomes, `ssh dropped during ${what}`);
   }
   if (result.code !== 0) {
+    if (release) {
+      deps.io.err(`error: the install failed on ${host} — ${installerErrorLine(result.stderr)}`);
+      deps.io.err(`       ${root} still runs what it ran before; nothing was restarted.`);
+      return legFailed(deps, id, "push", o.outcomes, "the install failed there");
+    }
     deps.io.err(`error: the build failed on ${host} — ${errorLine(result.stderr)}`);
     deps.io.err(`       The checkout at ${root} was left as the install found it; nothing was restarted.`);
     return legFailed(deps, id, "push", o.outcomes, "the build failed there");
@@ -926,7 +1112,7 @@ async function workOne(
     // that knows whether it rolled back, and `curl` is not assumed to exist on anybody's machine.
     const record = await peerRun(planned);
     const detail = record === null ? health.reason : `${health.reason}; its own updater reports ${record.state}`;
-    deps.io.err(`error: ${id} did not come back running ${o.expected} — ${detail}.`);
+    deps.io.err(`error: ${id} did not come back running ${o.build.expected} — ${detail}.`);
     if (record?.reason !== undefined) deps.io.err(`       ${id} says: ${record.reason}`);
     deps.io.err(`       Run \`collie doctor\` on ${host}: it names the bind, the ACL and the clock.`);
     const recovery =
@@ -944,6 +1130,60 @@ async function workOne(
   // The route was already remembered once the probe proved it, in `planAll` — well before this leg
   // runs, and well before the one consent. Nothing left to do here.
   return null;
+}
+
+/**
+ * The push leg's ONE remote call, whichever route this run is on. The same `{ result, version }`
+ * shape comes back from both, so the caller's success and failure handling is one piece of code.
+ *
+ * The bundle route sends this lead's commit and the member builds it. The release route sends
+ * Collie's own installer, out of this binary, and the member downloads the release the lead runs
+ * and verifies its sha256 against the release manifest (#248). Neither leg pipes anything into a
+ * shell, and neither fetches a script.
+ */
+function pushLeg(
+  deps: Wired,
+  planned: Planned,
+  o: { build: Build; bundle: string | null },
+): Promise<{ readonly result: RemoteResult; readonly version: string | null }> {
+  const { runner, root, installRoot, target } = planned;
+  const { build } = o;
+  if (build.route === "release") {
+    line(deps, `  installing ${build.tag} from ${build.repo} at ${installRoot} on ${target.sshHost}…`);
+    return runInstallRelease(
+      runner,
+      { installRoot, tag: build.tag, repo: build.repo, version: build.version },
+      INSTALLER_SH,
+    );
+  }
+  // `??` rather than an assertion: `workAll` makes the bundle before the first member on this route,
+  // and a run that could not make one never reaches here.
+  const bundle = o.bundle ?? "";
+  line(deps, `  pushing ${build.commit.slice(0, 12)} (${Math.round(bundle.length / 1024)} KiB base64) to ${root}…`);
+  return runInstall(runner, { root, commit: build.commit, version: build.version }, bundle);
+}
+
+/**
+ * Does a levelled member's answer name what this run handed out?
+ *
+ * ONE QUESTION, TWO CONTRACTS. On the BUNDLE route this lead pushed a real commit and the member
+ * built that commit, so `answersThisBuild` compares the member's `+<sha>` against it as an
+ * abbreviation (`bridge/version.ts`): the commit is the thing that was handed out, and the stamp
+ * names it.
+ *
+ * **On the RELEASE route the RELEASE alone decides, and the stamp is never compared.** What was
+ * handed out is a tag. The member installs that tag's GitHub tarball, whose stamp is the release
+ * commit — while this lead's own stamp is whoever built THIS copy: a packaged lead (nix, AUR, brew)
+ * or any lead built from the same tag elsewhere carries a different one, or none at all. Comparing
+ * the two would fail a member that is running exactly the release it was told to run. Found in the
+ * VM rehearsal of #248.
+ *
+ * A member that reports no version at all passes on both routes, upstream of here: an unstamped
+ * Collie can only name its manifest, and that is not evidence against what it took.
+ */
+function answersThisRun(reported: string, build: Build): boolean {
+  if (build.route === "release") return releaseOf(reported) === build.version;
+  return answersThisBuild(reported, build.version, build.commit);
 }
 
 /** What the health gate saw: the version the member answers with, or why it never answered it. */
@@ -966,7 +1206,7 @@ async function awaitPeerBuild(
   deps: Wired,
   data: TrustStoreData,
   planned: Planned,
-  o: { commit: string; version: string; expected: string },
+  o: { build: Build },
 ): Promise<PeerHealth> {
   const id = planned.target.member.memberId;
   const budget = healthTimeoutMs(deps.ctx.env);
@@ -979,8 +1219,8 @@ async function awaitPeerBuild(
       reason = `this lead cannot reach it at ${planned.target.member.address}`;
     } else {
       const reported = outcome.value.version;
-      if (reported === null || answersThisBuild(reported, o.version, o.commit)) return { ok: true, reported };
-      reason = `it answers as ${reported}, not ${o.expected}`;
+      if (reported === null || answersThisRun(reported, o.build)) return { ok: true, reported };
+      reason = `it answers as ${reported}, not ${o.build.expected}`;
     }
     if (i + 1 >= tries || deps.now() >= deadline) break;
     await deps.sleep(HEALTH_POLL_MS);

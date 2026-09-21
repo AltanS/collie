@@ -23,10 +23,10 @@ import {
   type SourcedCandidates,
 } from "./candidates.ts";
 import { collieVersion, collieVersionBare, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
-import { DEFAULT_UPDATE_REPO, detectInstall, updateRepoOf, type InstallKind } from "./install-kind.ts";
+import { detectInstall, updateRepoOf, type InstallKind } from "./install-kind.ts";
+import { INSTALLER_SH } from "./installer-embed.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realLinkFs } from "./link.ts";
-import { packagedReason } from "./package-command.ts";
 import { ensureStore, parseCrewArgs, probeMembers, resolveSelfAddress, type CrewDeps } from "./crew.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
 import { sshConfigCandidates } from "./ssh-config.ts";
@@ -131,7 +131,9 @@ export function composeStdin(script: string, stdin: string | undefined): string 
   if (stdin.split("\n").some((l) => l.trim() === PAYLOAD_EOF)) {
     throw new Error("the payload contains the heredoc delimiter");
   }
-  return script.replace(STDIN_MARKER, stdin);
+  // A string replacement reads `$'` in the payload as "the text after the match", and the
+  // installer's own regex ends in `$'`; a function replacement inserts the payload byte for byte.
+  return script.replace(STDIN_MARKER, () => stdin);
 }
 
 /** The real transport: one `ssh` per leg, all sharing one control socket under a 0700 directory. */
@@ -249,6 +251,17 @@ export interface Probe {
   readonly envhost: string;
   readonly envport: string;
   readonly checkout: string;
+  /**
+   * `yes` when the checkout carries a `.git`, `no` when it does not, `""` when there is no checkout.
+   *
+   * WHAT THE MEMBER TAKES, asked of the member. A `crew add` from a checkout lead pushes a commit and
+   * a `crew add` from a binary lead pushes a release tag, and only one of those two lands on a given
+   * member (#248). Before this the probe could not tell the two apart, so a bundle push against an
+   * install.sh member cloned a SECOND Collie into `~/.collie` and left the first one running.
+   */
+  readonly checkoutgit: string;
+  /** The `<dir>` of a `<dir>/current` + `<dir>/versions` install.sh layout. `""` when it is not one. */
+  readonly installroot: string;
   readonly commit: string;
   readonly branch: string;
   readonly dirty: string;
@@ -257,6 +270,11 @@ export interface Probe {
   readonly address: string;
   /** `free` · `busy` · `unknown` (no `ss`/`netstat` there). */
   readonly port: string;
+  /** The three tools `scripts/install.sh` needs. `""` for one the member does not have. */
+  readonly curl: string;
+  readonly tar: string;
+  /** `sha256sum`, else `shasum`, else `""` — the installer takes either. */
+  readonly sha256: string;
 }
 
 const PROBE_PREFIX = "collie-probe:";
@@ -289,6 +307,8 @@ export function parseProbe(stdout: string): Probe | null {
     envhost: said("envhost"),
     envport: said("envport"),
     checkout: said("checkout"),
+    checkoutgit: said("checkoutgit"),
+    installroot: said("installroot"),
     commit: said("commit"),
     branch: said("branch"),
     dirty: said("dirty"),
@@ -296,6 +316,9 @@ export function parseProbe(stdout: string): Probe | null {
     version: said("version"),
     address: said("address"),
     port: said("port"),
+    curl: said("curl"),
+    tar: said("tar"),
+    sha256: said("sha256"),
   };
 }
 
@@ -324,10 +347,14 @@ export async function runProbe(
  * assume a path it did not observe.
  */
 export function probeScript(opts: { readonly path: string | null; readonly port: number }): string {
+  // `<dir>/current` is in BOTH lists because an install.sh member keeps its Collie behind that
+  // symlink, never at the directory the operator names — so a probe that looked only at `<path>`
+  // reported "no Collie here" about a machine that has one (#248).
+  const named = opts.path === null ? null : opts.path.replace(/\/+$/, "");
   const candidates =
-    opts.path === null
-      ? `"$HOME/.collie" "$HOME/collie" "$HOME"/.config/herdr/plugins/github/*/ "$HOME"/.config/herdr/plugins/local/*/`
-      : shqPath(opts.path);
+    named === null
+      ? `"$HOME/.collie" "$HOME/collie" "$HOME/.local/share/collie/current" "$HOME"/.config/herdr/plugins/github/*/ "$HOME"/.config/herdr/plugins/local/*/`
+      : `${shqPath(named)} ${shqPath(`${named}/current`)}`;
   return [
     "set -u",
     "umask 077",
@@ -337,10 +364,19 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     'BUN=$(collie_tool bun) || BUN=""',
     'HERDR=$(collie_tool herdr) || HERDR=""',
     'TS=$(collie_tool tailscale) || TS=""',
+    // The release route's three tools, resolved the same way. A member installed from a release
+    // needs `curl`, `tar` and a sha256 tool and needs neither `git` nor `bun` — so both sets are
+    // read here and the route decides which of them is a prerequisite (#248).
+    'CURL=$(collie_tool curl) || CURL=""',
+    'TAR=$(collie_tool tar) || TAR=""',
+    'SHA=$(collie_tool sha256sum) || SHA=$(collie_tool shasum) || SHA=""',
     'say home "$HOME"',
     'say git "$GIT"',
     'say bun "$BUN"',
     'say herdr "$HERDR"',
+    'say curl "$CURL"',
+    'say tar "$TAR"',
+    'say sha256 "$SHA"',
     // The config root, asked for rather than assumed. An empty answer is reported as empty and the
     // verb stops legibly — it never falls back to a conventional path this side made up.
     'CFG=""',
@@ -363,6 +399,22 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     "  break",
     "done",
     'say checkout "$CHECKOUT"',
+    // WHICH KIND of Collie that is, as two shapes on disk rather than one opinion: a `.git` beside
+    // it, and the `<dir>/current` + `<dir>/versions` layout `scripts/install.sh` lays down. The two
+    // take different code — a commit and a release tag — and a member that takes neither is told so
+    // rather than written over.
+    'CHECKOUTGIT=""; INSTALLROOT=""',
+    'if [ -n "$CHECKOUT" ]; then',
+    '  if [ -e "$CHECKOUT/.git" ]; then CHECKOUTGIT=yes; else CHECKOUTGIT=no; fi',
+    '  case "$CHECKOUT" in',
+    '    */current)',
+    '      _r=${CHECKOUT%/current}',
+    '      if [ -d "$_r/versions" ]; then INSTALLROOT="$_r"; fi',
+    "      ;;",
+    "  esac",
+    "fi",
+    'say checkoutgit "$CHECKOUTGIT"',
+    'say installroot "$INSTALLROOT"',
     'COMMIT=""; DIRTY=""; DIRTYFILES=""; BRANCH=""; VERSION=""',
     'if [ -n "$CHECKOUT" ] && [ -n "$GIT" ]; then',
     '  COMMIT=$("$GIT" -C "$CHECKOUT" rev-parse HEAD 2>/dev/null) || COMMIT=""',
@@ -504,6 +556,87 @@ export async function runInstall(
   bundle: string,
 ): Promise<{ readonly result: RemoteResult; readonly version: string | null }> {
   const result = await runner.run(installScript(opts), bundle);
+  const built = /^collie-install:version=(.+)$/m.exec(result.stdout);
+  return { result, version: built === null ? null : built[1]!.trim() };
+}
+
+/**
+ * Lay the release the LEAD runs down on the member, with Collie's own installer.
+ *
+ * THE SECOND ROUTE INTO A MEMBER, and the one a lead with no commit takes (#248). ADR 0015 (b)
+ * refused a release fetch for the bundle route on two counts, and both are answered here rather than
+ * argued away: a binary lead's members already fetch GitHub to level themselves (ADR 0016 addendum),
+ * and a release TAG pins exactly — the installer verifies the payload's sha256 against the release's
+ * own manifest, and this leg re-reads `collie version` afterwards and requires it to match.
+ *
+ * **The installer is a payload, not a fetch.** It rides the same quoted heredoc the bundle and the
+ * enrollment token ride, out of the lead's own binary (`cli/installer-embed.ts`), so the far machine
+ * runs the script this build shipped and never `curl … | sh`. `COLLIE_TAG` is set, which is the one
+ * way past the installer's api.github.com call — so no GitHub token matters here, and no tag is
+ * resolved on the far side.
+ *
+ * Its own output goes to stderr: this leg's stdout carries the two marker lines and nothing else,
+ * and the installer's `die` text lands where the caller quotes from.
+ */
+export function installReleaseScript(opts: {
+  readonly installRoot: string;
+  readonly tag: string;
+  readonly repo: string;
+  readonly version: string;
+}): string {
+  return [
+    "set -eu",
+    "umask 077",
+    TOOL_LOOKUP,
+    // The installer looks its three tools up on `PATH`, and `ssh host /bin/sh -s` has the bare
+    // system one — which is the environment `collie_tool` exists for. Resolve them here, where a
+    // missing one is a legible exit code, and put their directories in front of PATH for the child.
+    'CURL=$(collie_tool curl) || { echo "error: no curl on this machine" >&2; exit 20; }',
+    'TAR=$(collie_tool tar) || { echo "error: no tar on this machine" >&2; exit 21; }',
+    'SHA=$(collie_tool sha256sum) || SHA=$(collie_tool shasum) || { echo "error: no sha256 tool on this machine" >&2; exit 22; }',
+    'PATH="$(dirname "$CURL"):$(dirname "$TAR"):$(dirname "$SHA"):$PATH"',
+    "export PATH",
+    `DIR=${shqPath(opts.installRoot)}`,
+    `EXPECT=${shq(opts.version)}`,
+    'WORK=$(mktemp -d "${TMPDIR:-/tmp}/collie-add.XXXXXX")',
+    `trap 'rm -rf "$WORK"' EXIT INT TERM`,
+    // Raw text, not base64: `composeStdin` refuses a payload that could close this heredoc, so the
+    // bytes below are the script this build embeds and nothing else.
+    `cat > "$WORK/install.sh" <<'${PAYLOAD_EOF}'`,
+    STDIN_MARKER,
+    PAYLOAD_EOF,
+    // `/bin/sh` absolute, which is the very shell this leg is already running under.
+    `COLLIE_DIR="$DIR" COLLIE_UPDATE_REPO=${shq(opts.repo)} COLLIE_TAG=${shq(opts.tag)} /bin/sh "$WORK/install.sh" 1>&2`,
+    'ROOT="$DIR/current"',
+    '[ -x "$ROOT/bin/collie" ] || { echo "error: the install left no binary at $ROOT/bin/collie" >&2; exit 25; }',
+    'VERSION=$("$ROOT/bin/collie" version | head -n 1)',
+    // Prefix rather than equality, for the same reason the bundle leg uses one: `collie version`
+    // appends the build stamp's sha.
+    'case "$VERSION" in',
+    '  "$EXPECT"*) ;;',
+    '  *) echo "error: installed $VERSION, expected $EXPECT" >&2; exit 26 ;;',
+    "esac",
+    `printf '${INSTALL_PREFIX}root=%s\\n${INSTALL_PREFIX}version=%s\\n' "$ROOT" "$VERSION"`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * Leg 2 on the release route as a **step**: send the installer, run it pinned to the tag, wording
+ * nothing. The same `{ result, version }` shape {@link runInstall} returns, so the caller's success
+ * and failure handling is one piece of code for both routes.
+ */
+export async function runInstallRelease(
+  runner: RemoteRunner,
+  opts: {
+    readonly installRoot: string;
+    readonly tag: string;
+    readonly repo: string;
+    readonly version: string;
+  },
+  installer: string,
+): Promise<{ readonly result: RemoteResult; readonly version: string | null }> {
+  const result = await runner.run(installReleaseScript(opts), installer);
   const built = /^collie-install:version=(.+)$/m.exec(result.stdout);
   return { result, version: built === null ? null : built[1]!.trim() };
 }
@@ -734,7 +867,7 @@ export interface CrewAddDeps extends CrewDeps {
 type Wired = CrewAddDeps & { emit(event: AddEvent): void };
 
 const USAGE = [
-  "usage: collie crew add <ssh-host> [--path <remote-checkout>] [--port <n>]",
+  "usage: collie crew add <ssh-host> [--path <remote-checkout-or-install-root>] [--port <n>]",
   // `<bare-host>`, not `<addr>`: the value becomes the member's COLLIE_HOST, and the usage line was
   // the first of the five places that said "address" while meaning "host" (F8).
   "                      [--peer-address <bare-host>] [--address <lead-address>]",
@@ -933,20 +1066,21 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     return EXIT.STATE;
   }
 
-  // A LEAD WITH NO COMMIT IS TOLD THE MANUAL PATH before the first ssh byte (#248). Leg 2 would
-  // otherwise probe the far machine in full and then fail on this machine's own `rev-parse HEAD`.
+  // ── WHICH ROUTE THIS LEAD INSTALLS A MEMBER BY ─────────────────────────────
+  // Decided ONCE, here, from this lead's own install kind, and carried down: a checkout lead pushes
+  // its commit as a `git bundle` (ADR 0015), and a lead with no commit — install.sh or a package —
+  // installs the member from the release it runs itself (#248). Every later difference between the
+  // two, the prerequisites and the refusals included, reads this one value.
   const kind = deps.installKind?.() ?? detectInstall({ ...deps, link: realLinkFs });
-  const commitless = commitlessLeadLines(
-    kind,
-    {
-      root: deps.ctx.root,
-      version: collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)),
-      repo: updateRepoOf(deps.ctx.env),
-    },
-    { verb: "add", host },
-  );
-  if (commitless !== null) {
-    for (const line of commitless) deps.io.err(line);
+  const route = routeOf(kind);
+  const leadVersion = releaseOf(collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)));
+  // A version this build cannot read leaves no tag to pin the member to, and that is refused before
+  // the first ssh byte rather than discovered after the probe — the same rule every cheap refusal
+  // above follows.
+  if (route === "release" && parsePrereleaseTag(`v${leadVersion}`) === null) {
+    deps.io.err(`error: cannot read this lead's version, so there is no release to pin ${host} to.`);
+    deps.io.err(`       ${deps.ctx.root} is a ${kind.kind} install, so \`crew add\` installs the member from`);
+    deps.io.err("       the release this lead runs. `collie version` here is the value it needs.");
     return EXIT.FAIL;
   }
 
@@ -955,11 +1089,35 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
   // four-leg SSH pipeline and asks two questions on stdin in the middle of it, which is the shape
   // ink cannot share a terminal with (`cli/render.ts`).
   try {
-    return await addOverSsh(deps, runner, { host, port, instance, flags });
+    return await addOverSsh(deps, runner, {
+      host,
+      port,
+      instance,
+      flags,
+      route,
+      leadVersion,
+      repo: updateRepoOf(deps.ctx.env),
+    });
   } finally {
     // Every exit path, including a throw: the control socket is a live authenticated channel.
     runner.close();
   }
+}
+
+/** Which of the two ways a member gets its code — the lead's own install kind decides it. */
+export type Route = "bundle" | "release";
+
+/**
+ * The route a lead of this kind installs and levels a member by.
+ *
+ * ONE FUNCTION FOR TWO VERBS. `crew add` and the terminal `crew update` put code on a member the
+ * same way, so they must never disagree about which way that is: a lead that added a member by
+ * release and then tried to level it by bundle would push a commit into a layout that has no git
+ * checkout at all. A `binary` install (install.sh) and a `packaged` one (ADR 0035) have no commit,
+ * and every other kind — both checkout shapes and `unknown` — has or should have one (#248).
+ */
+export function routeOf(kind: InstallKind): Route {
+  return kind.kind === "binary" || kind.kind === "packaged" ? "release" : "bundle";
 }
 
 interface AddOptions {
@@ -967,6 +1125,38 @@ interface AddOptions {
   readonly port: number;
   readonly instance: string | null;
   readonly flags: Readonly<Record<string, string>>;
+  readonly route: Route;
+  /** The release this lead runs, bare (`1.11.1`). Read by the release route; `v`-prefixed it is the tag. */
+  readonly leadVersion: string;
+  /** The `owner/repo` the member is told to install from — this lead's own (`updateRepoOf`). */
+  readonly repo: string;
+}
+
+/**
+ * What Collie the MEMBER already has, from the two shapes leg 1 reports.
+ *
+ * `other` is a real answer and not a fallback: a directory that carries Collie's Herdr manifest but
+ * is neither a git checkout nor an install.sh layout is one this verb has no safe way to advance,
+ * and it is told so rather than written over.
+ */
+export type MemberKind = "none" | "git" | "binary" | "other";
+
+export function memberInstallKind(probe: Probe): MemberKind {
+  if (probe.checkout === "") return "none";
+  if (probe.checkoutgit === "yes") return "git";
+  if (probe.installroot !== "") return "binary";
+  return "other";
+}
+
+/**
+ * A version string reduced to the RELEASE it names — no `+build` metadata, no parenthetical.
+ *
+ * Both sides need it and they are spelled differently: this lead reads `collieVersionBare`, which
+ * carries `+<sha>` on a built tree, and a member answers `collie version`, which may add
+ * "(manifest; web not built)". The tag is neither of those, so both are cut back to it.
+ */
+export function releaseOf(version: string): string {
+  return version.trim().split(/\s+/)[0]?.split("+")[0] ?? "";
 }
 
 async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): Promise<number> {
@@ -988,10 +1178,21 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     return EXIT.FAIL;
   }
 
-  for (const [tool, path, hint] of [
-    ["git", probe.git, "install git there (the lead pushes its own commit as a `git bundle`)"],
-    ["bun", probe.bun, "install Bun there: https://bun.sh (Collie is source-distributed and builds natively)"],
-  ] as const) {
+  // WHAT THE MEMBER NEEDS DEPENDS ON THE ROUTE, and on nothing else. A bundle member builds from
+  // source, so it needs git and Bun; a release member downloads a payload and verifies it, so it
+  // needs curl, tar and a sha256 tool and needs neither of the other two. Herdr is required on both.
+  const required =
+    opts.route === "bundle"
+      ? ([
+          ["git", probe.git, "install git there (the lead pushes its own commit as a `git bundle`)"],
+          ["bun", probe.bun, "install Bun there: https://bun.sh (Collie is source-distributed and builds natively)"],
+        ] as const)
+      : ([
+          ["curl", probe.curl, "install curl there (the member downloads the release itself)"],
+          ["tar", probe.tar, "install tar there (the release ships as a tarball)"],
+          ["sha256", probe.sha256, "install sha256sum or shasum there (the download is verified before it is unpacked)"],
+        ] as const);
+  for (const [tool, path, hint] of required) {
     if (path === "") {
       deps.io.err(`error: no \`${tool}\` on ${host} — ${hint}`);
       return EXIT.FAIL;
@@ -1024,9 +1225,14 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   const peerAddress = `${peerHost}:${port}`;
   deps.emit({ kind: "fact", name: "address", value: `${peerAddress} (what this lead will dial)` });
 
-  // The install target: the checkout leg 1 FOUND, else `.collie` under the `$HOME` it reported. Even
-  // the green-field path is anchored to an observed value rather than a guessed one.
-  const root = probe.checkout === "" ? `${probe.home}/.collie` : probe.checkout;
+  // The install target: the Collie leg 1 FOUND, else the path this route would create one at — the
+  // bundle route clones into `.collie`, and the release route lets install.sh use its own default.
+  // Even the green-field path is anchored to the `$HOME` the remote reported rather than a guess.
+  const memberKind = memberInstallKind(probe);
+  const collieDir =
+    probe.installroot !== "" ? probe.installroot : (flags.path ?? `${probe.home}/.local/share/collie`);
+  const fresh = opts.route === "release" ? `${collieDir}/current` : `${probe.home}/.collie`;
+  const root = probe.checkout === "" ? fresh : probe.checkout;
   // A busy port is a collision ONLY when it is not this collie's own listener. Re-running `crew add`
   // against a host it already installed must find that port taken and say so as a `✓`.
   const alreadyOnPort = probe.checkout !== "" && configuredPort(probe) === port;
@@ -1055,37 +1261,22 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   deps.emit({ kind: "leg-done", leg: "probe", ok: true, detail: `${host} is ready` });
 
   // ── Leg 2 — install ────────────────────────────────────────────────────────
-  const commit = gitOut(deps, ["rev-parse", "HEAD"]);
-  if (commit === null) {
-    deps.io.err(`error: cannot read this checkout's commit — ${deps.ctx.root} is not a git checkout.`);
-    return EXIT.FAIL;
-  }
-  const version = manifestVersionAt(deps, commit);
-  if (version === null) {
-    deps.io.err(`error: cannot read herdr-plugin.toml at ${commit.slice(0, 12)} — nothing to pin the install to.`);
-    return EXIT.FAIL;
-  }
-  if (gitOut(deps, ["status", "--porcelain"]) !== "") {
-    deps.io.err("warn: this checkout has uncommitted changes — the bundle carries the COMMIT, so they are");
-    deps.io.err(`      not shipped. ${host} will run ${version} at ${commit.slice(0, 12)}.`);
-  }
-
-  deps.emit({ kind: "leg-start", leg: "install", text: "" });
-  // Whether this run REPLACED what the far machine runs. It decides one thing, in leg 4: an already
-  // enrolled peer is restarted only when there is something new for it to run.
-  const replaced = probe.commit !== commit;
+  // `replaced` is what leg 4 reads: an already-enrolled peer is restarted only when there is
+  // something new for it to run. Both routes answer it, in their own terms.
   const rebound = !bindIsCurrent(probe, peerHost, port);
-  if (probe.commit === commit) {
-    deps.emit({
-      kind: "leg-done",
-      leg: "install",
-      ok: true,
-      detail: `already at ${probe.version || version} (${commit.slice(0, 12)}) — nothing sent`,
-    });
-  } else {
-    const blocked = await installLeg(deps, runner, { host, root, commit, version, probe });
-    if (blocked !== null) return blocked;
-  }
+  const installed =
+    opts.route === "release"
+      ? await releaseLeg(deps, runner, {
+          host,
+          collieDir,
+          version: opts.leadVersion,
+          repo: opts.repo,
+          probe,
+          memberKind,
+        })
+      : await bundleLeg(deps, runner, { host, root, probe, memberKind });
+  if ("code" in installed) return installed.code;
+  const replaced = installed.replaced;
 
   // ── Leg 3 — configure ──────────────────────────────────────────────────────
   deps.emit({ kind: "leg-start", leg: "configure", text: "" });
@@ -1103,6 +1294,182 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   deps.emit({ kind: "leg-start", leg: "enroll", text: "" });
   return await enrollLeg(deps, runner, { host, root, port, peerAddress, flags, changed: replaced || rebound });
 }
+
+/**
+ * What leg 2 tells the rest of the run, whichever route it took: the code this run ends with, or
+ * whether it put new code on the far machine (leg 4 restarts an enrolled peer on that).
+ *
+ * The same shape {@link Chosen} uses, and for the same reason: two outcomes that are not each
+ * other's failure, told apart by a field rather than by what a number looks like.
+ */
+type Installed = { readonly code: number } | { readonly replaced: boolean };
+
+/**
+ * Leg 2 on the BUNDLE route — this lead's own commit, pushed as a `git bundle` (ADR 0015).
+ *
+ * Unchanged in every byte an operator reads, with one refusal added: a member that takes RELEASES
+ * is no longer written over. Before this, the probe could not see such a member at all, so a bundle
+ * push cloned a second Collie into `~/.collie` and left the install.sh one running beside it.
+ */
+async function bundleLeg(
+  deps: Wired,
+  runner: RemoteRunner,
+  o: { host: string; root: string; probe: Probe; memberKind: MemberKind },
+): Promise<Installed> {
+  const { probe } = o;
+  if (o.memberKind === "binary") {
+    deps.io.err(`error: ${o.host} has a binary install at ${probe.installroot}, which takes releases, and this`);
+    deps.io.err("       lead pushes its own git commit. Move that install aside there, or add");
+    deps.io.err(`       ${o.host} from a lead that runs a release.`);
+    return { code: EXIT.STATE };
+  }
+  const commit = gitOut(deps, ["rev-parse", "HEAD"]);
+  if (commit === null) {
+    deps.io.err(`error: cannot read this checkout's commit — ${deps.ctx.root} is not a git checkout.`);
+    return { code: EXIT.FAIL };
+  }
+  const version = manifestVersionAt(deps, commit);
+  if (version === null) {
+    deps.io.err(`error: cannot read herdr-plugin.toml at ${commit.slice(0, 12)} — nothing to pin the install to.`);
+    return { code: EXIT.FAIL };
+  }
+  if (gitOut(deps, ["status", "--porcelain"]) !== "") {
+    deps.io.err("warn: this checkout has uncommitted changes — the bundle carries the COMMIT, so they are");
+    deps.io.err(`      not shipped. ${o.host} will run ${version} at ${commit.slice(0, 12)}.`);
+  }
+
+  deps.emit({ kind: "leg-start", leg: "install", text: "" });
+  if (probe.commit === commit) {
+    deps.emit({
+      kind: "leg-done",
+      leg: "install",
+      ok: true,
+      detail: `already at ${probe.version || version} (${commit.slice(0, 12)}) — nothing sent`,
+    });
+    return { replaced: false };
+  }
+  const blocked = await installLeg(deps, runner, { host: o.host, root: o.root, commit, version, probe });
+  if (blocked !== null) return { code: blocked };
+  return { replaced: true };
+}
+
+/**
+ * Leg 2 on the RELEASE route — the release THIS LEAD RUNS, laid down by Collie's own installer (#248).
+ *
+ * The member decides what happens, from what leg 1 saw there. A machine with no Collie gets one; a
+ * machine with an install.sh layout is asked before it is moved; a machine running a git checkout is
+ * REFUSED rather than converted, because a checkout is somebody's working tree and the remedy for it
+ * is one command typed there; a Collie that is neither is left alone and added by hand.
+ *
+ * The version the member reports is cut back to its release before it is compared ({@link releaseOf}):
+ * a built Collie answers `1.11.1+ab12cd3`, and the tag is `v1.11.1`.
+ */
+async function releaseLeg(
+  deps: Wired,
+  runner: RemoteRunner,
+  o: {
+    host: string;
+    collieDir: string;
+    version: string;
+    repo: string;
+    probe: Probe;
+    memberKind: MemberKind;
+  },
+): Promise<Installed> {
+  const { probe } = o;
+  const tag = `v${o.version}`;
+  const sameRelease = probe.version !== "" && releaseOf(probe.version) === o.version;
+  const nothingSent = (): Installed => {
+    deps.emit({ kind: "leg-start", leg: "install", text: "" });
+    deps.emit({
+      kind: "leg-done",
+      leg: "install",
+      ok: true,
+      detail: `already at ${probe.version} — nothing sent`,
+    });
+    return { replaced: false };
+  };
+  if (o.memberKind === "git") {
+    // Not a refusal about this lead: the member's own `update` takes a tag, and running it there is
+    // one command. Converting a checkout into a release layout from here would move a working tree.
+    if (sameRelease) return nothingSent();
+    deps.io.err(`error: ${o.host} runs Collie from a git checkout at ${probe.checkout}, and this lead has no`);
+    deps.io.err(`       commit to push. On ${o.host}, run \`collie update --to-tag ${tag}\` (or check that tag`);
+    deps.io.err("       out), then re-run. Nothing was installed, configured or enrolled.");
+    return { code: EXIT.STATE };
+  }
+  if (o.memberKind === "other") {
+    deps.io.err(`error: the Collie at ${probe.checkout} on ${o.host} is neither a git checkout nor an`);
+    deps.io.err("       install.sh layout, so this lead has no safe way to advance it. Add it by hand:");
+    deps.io.err(`       run \`collie crew invite\` here, and the \`collie join\` line it prints on ${o.host}.`);
+    return { code: EXIT.STATE };
+  }
+  if (o.memberKind === "binary") {
+    if (sameRelease) return nothingSent();
+    const answer = await ask(
+      deps,
+      `${o.host} has Collie ${probe.version || "(unreadable)"} at ${probe.installroot}; replace it with ${o.version}?`,
+    );
+    if (answer === "aborted") return { code: EXIT.FAIL };
+    if (!answer) {
+      deps.io.err("error: left alone — nothing was installed, configured or enrolled.");
+      return { code: EXIT.STATE };
+    }
+  }
+
+  deps.emit({ kind: "leg-start", leg: "install", text: "" });
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: "info",
+    text: `  installing ${tag} from ${o.repo} at ${o.collieDir} on ${o.host}…`,
+  });
+  const { result: laid, version: built } = await runInstallRelease(
+    runner,
+    { installRoot: o.collieDir, tag, repo: o.repo, version: o.version },
+    INSTALLER_SH,
+  );
+  const transport = transportFailure(deps.io, o.host, laid);
+  if (transport !== null) return { code: transport };
+  if (laid.code !== 0) {
+    deps.io.err(`error: the install failed on ${o.host} — ${installerErrorLine(laid.stderr)}`);
+    deps.io.err(`       Nothing was configured or enrolled. ${o.host} runs what it ran before.`);
+    return { code: EXIT.FAIL };
+  }
+  if (built === null) {
+    deps.io.err(`error: the install on ${o.host} reported nothing this build can read.`);
+    return { code: EXIT.FAIL };
+  }
+  deps.emit({ kind: "leg-done", leg: "install", ok: true, detail: `${built} at ${o.collieDir}/current` });
+  if (probe.checkout === "") {
+    for (const text of [
+      `  This checkout is not registered with Herdr there. To get its plugin actions:`,
+      `    herdr plugin link "${o.collieDir}/current"   # on ${o.host}`,
+    ]) {
+      deps.emit({ kind: "line", stream: "out", tone: "info", text });
+    }
+  }
+  return { replaced: true };
+}
+
+/**
+ * The line to quote from the release leg's stderr.
+ *
+ * {@link errorLine} reads the `error:` verdict every leg script writes, and this leg has a second
+ * voice on that stream: `scripts/install.sh` says `collie install: …` and its ordinary progress
+ * lines are there too (leg stdout carries the markers alone). The installer's own diagnosis is the
+ * last of the two prefixes, so it is the one the operator is shown.
+ *
+ * Exported because `crew update` runs the same leg (#248), and two verbs quoting different lines out
+ * of one failure is two bug reports about one bug.
+ */
+export const installerErrorLine = (text: string): string => {
+  const own = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("error:") || l.startsWith("collie install:"));
+  return own.length === 0 ? errorLine(text) : own[own.length - 1]!;
+};
 
 /** Leg 2, as its own step: the prompts, the bundle push and the post-install version check. */
 async function installLeg(
@@ -1747,78 +2114,6 @@ export function manifestVersionAt(deps: Pick<CrewDeps, "ctx" | "exec">, commit: 
   const manifest = gitOut(deps, ["show", `${commit}:herdr-plugin.toml`]);
   if (manifest === null) return null;
   return /^version[ \t]*=[ \t]*"([^"]*)"/m.exec(manifest)?.[1] ?? null;
-}
-
-/** Which verb is asking {@link commitlessLeadLines}, and for `crew add`, which host it names. */
-export type CommitlessVerb = { readonly verb: "add"; readonly host: string } | { readonly verb: "update" };
-
-/** What {@link commitlessLeadLines} needs to know about this lead. */
-export interface CommitlessLead {
-  readonly root: string;
-  /** The bare version this lead runs (`collieVersionBare`), `unknown` when it could not be read. */
-  readonly version: string;
-  /** The `owner/repo` this lead takes its releases from (`updateRepoOf`). */
-  readonly repo: string;
-}
-
-/**
- * What a lead with no commit to push is told, or null when it has one (#248).
- *
- * `crew add` and the terminal `crew update` both push THIS checkout's commit as a `git bundle`
- * (ADR 0015), so both need a git checkout here. A `binary` install (install.sh) and a `packaged`
- * one (ADR 0035) have none, and "is not a git checkout" reads as a broken install when nothing is
- * broken. So each is told the route that works for it: the manual path for `crew add`, the phone's
- * Updates page for `crew update`, which levels members with no commit at all (ADR 0016 addendum).
- *
- * The phone and `--to-tag` both take strict releases only, so a lead on a prerelease, or one whose
- * version cannot be read, is sent to install.sh instead, which takes any tag. The install line
- * carries the lead's `COLLIE_UPDATE_REPO` when it follows a fork, or the member would get upstream.
- *
- * The two checkout kinds pass. So does `unknown`: its git error is the right one for a broken or
- * missing checkout.
- */
-export function commitlessLeadLines(kind: InstallKind, lead: CommitlessLead, asking: CommitlessVerb): string[] | null {
-  if (kind.kind !== "binary" && kind.kind !== "packaged") return null;
-  const parsed = parsePrereleaseTag(`v${lead.version}`);
-  const strict = parsed !== null && parsed.prerelease === null;
-  const fork = lead.repo === DEFAULT_UPDATE_REPO ? "" : `COLLIE_UPDATE_REPO=${lead.repo} `;
-  const tag = parsed === null ? "v<version>" : `v${lead.version}`;
-  const install = `         curl -fsSL https://colliepwa.dev/install.sh | ${fork}COLLIE_TAG=${tag} sh`;
-  const itsRelease = parsed === null ? "the release this lead runs (`collie version` names it)" : "the release this lead runs";
-  if (asking.verb === "update") {
-    if (kind.kind === "packaged") {
-      return [
-        `error: ${lead.root} is a packaged install — ${packagedReason(lead.root)}.`,
-        "       The terminal crew update pushes THIS checkout's commit to the members, and a",
-        "       packaged install has none. Level the crew from the phone's Updates page instead.",
-      ];
-    }
-    const head = [
-      `error: ${lead.root} is a binary install, so it has no commit to push.`,
-      "       The terminal crew update pushes THIS checkout's commit to the members.",
-    ];
-    if (strict) {
-      return [
-        ...head,
-        "       Level the crew from the phone's Updates page instead, or run",
-        `       \`collie update --to-tag v${lead.version}\` on each member.`,
-      ];
-    }
-    return [
-      ...head,
-      "       The phone levels members to a strict release only, and so does `collie update --to-tag`.",
-      `       On each member, install ${itsRelease} by hand:`,
-      install,
-    ];
-  }
-  const { host } = asking;
-  return [
-    `error: ${lead.root} is a ${kind.kind} install, so it has no commit to push.`,
-    `       \`crew add\` installs a member by pushing THIS checkout's commit. Add ${host} by hand instead.`,
-    `       On ${host}, install ${itsRelease}:`,
-    install,
-    `       Then run \`collie crew invite\` here, and the \`collie crew join\` line it prints on ${host}.`,
-  ];
 }
 
 // ── Production wiring ────────────────────────────────────────────────────────

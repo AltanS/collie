@@ -28,10 +28,12 @@ import { cmdCrew, type CrewDeps } from "./crew.ts";
 import {
   bindOverwriteConfirmation,
   cmdCrewAdd,
-  commitlessLeadLines,
   composeStdin,
   configureScript,
   enrollScript,
+  installReleaseScript,
+  memberInstallKind,
+  routeOf,
   installScript,
   membershipScript,
   crewAddDeps,
@@ -46,6 +48,7 @@ import {
   type CrewAddDeps,
   type RemoteResult,
 } from "./remote.ts";
+import { INSTALLER_SH } from "./installer-embed.ts";
 import { realExec } from "./sys.ts";
 
 // `collie crew add` against fakes for every seam. **NOTHING here spawns `ssh` or reaches a network**:
@@ -91,6 +94,8 @@ const PROBE_DEFAULTS = {
   envhost: "",
   envport: "",
   checkout: "",
+  checkoutgit: "",
+  installroot: "",
   commit: "",
   branch: "",
   dirty: "",
@@ -98,6 +103,9 @@ const PROBE_DEFAULTS = {
   version: "",
   address: "100.64.0.9",
   port: "free",
+  curl: "/usr/bin/curl",
+  tar: "/usr/bin/tar",
+  sha256: "/usr/bin/sha256sum",
 } satisfies Record<string, string>;
 
 /** Leg 1's stdout, as the remote would print it. */
@@ -121,6 +129,8 @@ interface Harness {
   closed: number;
   data(): TrustStoreData | null;
   restarts: number;
+  /** How many times the lead was asked for a `git bundle` — zero on the release route. */
+  bundles: number;
   /** Every LOCAL spawn, in order — what the candidate picker asked this machine. */
   exec: { calls: string[] };
 }
@@ -168,6 +178,7 @@ function harness(opts: HarnessOptions = {}): Harness {
   const audit: AuditEntry[] = [];
   let restarts = 0;
   let closed = 0;
+  let bundles = 0;
 
   // The candidate picker's two sources, and the resolver. All three are ABSENT by default, so every
   // test written before the picker existed sees the machine it always saw: no ssh config, no `herdr`
@@ -248,7 +259,10 @@ function harness(opts: HarnessOptions = {}): Harness {
     }),
     confirm: () => (opts.confirm === undefined ? true : opts.confirm),
     prompt: () => opts.prompt ?? null,
-    gitBundle: () => Promise.resolve("QkFTRTY0LWJ1bmRsZQ=="),
+    gitBundle: () => {
+      bundles += 1;
+      return Promise.resolve("QkFTRTY0LWJ1bmRsZQ==");
+    },
     installKind: () => opts.installKind ?? { kind: "linked-clone", alsoLayout: false },
     reload: () =>
       Promise.resolve(
@@ -269,12 +283,36 @@ function harness(opts: HarnessOptions = {}): Harness {
     get restarts() {
       return restarts;
     },
+    get bundles() {
+      return bundles;
+    },
     exec,
   };
 }
 
 const text = (io: ReturnType<typeof capture>): string => [...io.stdout, ...io.stderr].join("\n");
 const run = (h: Harness, args: string[] = ["nas.example"]): Promise<number> => cmdCrewAdd(h.deps, args);
+
+/** The install.sh layout a release member carries: `<root>/versions/<x.y.z>` behind `<root>/current`. */
+const MEMBER_INSTALL_ROOT = `${REMOTE_HOME}/.local/share/collie`;
+const MEMBER_CURRENT = `${MEMBER_INSTALL_ROOT}/current`;
+
+/**
+ * A lead with NO COMMIT — the shape #248 is about.
+ *
+ * Its manifest is seeded because the release route pins the member to the version this lead reports
+ * (`collieVersionBare`), and that is read through `deps.files` exactly as the verb reads it.
+ */
+function releaseHarness(opts: HarnessOptions = {}): Harness {
+  return harness({
+    installKind: { kind: "binary" },
+    ...opts,
+    extraFiles: {
+      [`${ROOT}/herdr-plugin.toml`]: `id = "herdr.collie"\nversion = "${VERSION}"\n`,
+      ...opts.extraFiles,
+    },
+  });
+}
 
 // ── The generated scripts, pinned ────────────────────────────────────────────
 // A leg script is a program that runs on someone ELSE's machine. Pinning the text is what stops a
@@ -285,6 +323,15 @@ const GOLDEN: [file: string, script: string][] = [
   ["leg1-probe.sh", probeScript({ path: null, port: 8787 })],
   ["leg1-probe-path.sh", probeScript({ path: "/srv/collie", port: 9000 })],
   ["leg2-install.sh", installScript({ root: "/home/pat/.collie", commit: "abc123", version: "1.2.3" })],
+  [
+    "leg2-install-release.sh",
+    installReleaseScript({
+      installRoot: "/home/pat/.local/share/collie",
+      tag: "v1.2.3",
+      repo: "AltanS/collie",
+      version: "1.2.3",
+    }),
+  ],
   ["leg3-configure.sh", configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 8787, instance: null })],
   [
     "leg3-configure-instance.sh",
@@ -312,11 +359,19 @@ describe("the leg scripts", () => {
     });
   }
 
-  test("nothing is piped into a shell, and nothing is fetched", () => {
+  test("nothing is piped into a shell, and no leg dials a URL of its own", () => {
     for (const [file, script] of GOLDEN) {
-      expect(`${file}: ${script}`).not.toContain("curl");
       expect(`${file}: ${script}`).not.toContain("wget");
+      expect(`${file}: ${script}`).not.toMatch(/https?:\/\//);
       expect(script).not.toMatch(/\|\s*(ba)?sh\b/);
+      // Two legs NAME `curl`, and both only resolve it: the probe reports where it is, and the
+      // release leg puts that directory on PATH for the installer it hands to `/bin/sh`. The fetch
+      // is the installer's own, pinned to a tag and verified against the release's manifest — and
+      // it is still not `curl … | sh`, which is the line this test is really drawing.
+      for (const line of script.split("\n")) {
+        if (!line.includes("curl")) continue;
+        expect(`${file}: ${line}`).toMatch(/collie_tool curl|^\S+: say curl /);
+      }
     }
   });
 
@@ -357,6 +412,32 @@ describe("the leg scripts", () => {
     expect(configure).toContain('mv "$TMP" "$ENVFILE"');
   });
 
+  // The release leg's contract, in one place: the three variables that steer install.sh, the tag it
+  // is pinned to, the version it must come back with, and the markers the caller reads.
+  test("the release leg pins the tag, names the repo, and re-reads the version it laid down", () => {
+    const script = installReleaseScript({
+      installRoot: "/srv/collie",
+      tag: "v1.2.3",
+      repo: "me/collie",
+      version: "1.2.3",
+    });
+    expect(script).toContain('DIR=\'/srv/collie\'');
+    expect(script).toContain(
+      'COLLIE_DIR="$DIR" COLLIE_UPDATE_REPO=\'me/collie\' COLLIE_TAG=\'v1.2.3\' /bin/sh "$WORK/install.sh" 1>&2',
+    );
+    // A pinned tag is the one path through install.sh that asks api.github.com nothing, so no
+    // GitHub token matters on the far machine.
+    expect(script).not.toContain("api.github.com");
+    expect(script).toContain('VERSION=$("$ROOT/bin/collie" version | head -n 1)');
+    expect(script).toContain('  "$EXPECT"*) ;;');
+    expect(script).toContain("exit 26");
+    expect(script).toContain("collie-install:root=%s");
+    expect(script).toContain('"$ROOT" "$VERSION"');
+    expect(script).toContain('ROOT="$DIR/current"');
+    // The installer's own output goes to stderr, so this leg's stdout carries the markers alone.
+    expect(script).toContain("1>&2");
+  });
+
   test("the build is the shim's own bootstrap, not a second build path", () => {
     expect(installScript({ root: "/r", commit: "c", version: "v" })).toContain(
       '"$BUN" run cli/main.ts build',
@@ -391,7 +472,7 @@ describe("the leg scripts", () => {
 
   test("the probe script never carries a literal tilde for a `~`-rooted --path", () => {
     const script = probeScript({ path: "~/apps/collie-stable", port: 8787 });
-    expect(script).toContain(`for _d in "$HOME"/'apps/collie-stable'; do`);
+    expect(script).toContain(`for _d in "$HOME"/'apps/collie-stable' "$HOME"/'apps/collie-stable/current'; do`);
     expect(script).not.toContain("~");
   });
 });
@@ -430,6 +511,17 @@ describe("composeStdin", () => {
   test("a payload that could close the heredoc early is refused, not trusted", () => {
     expect(() => composeStdin(`${STDIN_MARKER}\n`, "x\n__COLLIE_PAYLOAD__\nrm -rf /")).toThrow();
   });
+
+  test("a payload holding every JS string-replacement pattern composes byte for byte", () => {
+    const before = "a\n";
+    const after = "\nb\n";
+    const payload = "x$' y$` z$& w$$ v$1 u$<name>\nmore text";
+    expect(composeStdin(`${before}${STDIN_MARKER}${after}`, payload)).toBe(`${before}${payload}${after}`);
+  });
+
+  test("the installer's own regex ends in $', which a string replacement would misread", () => {
+    expect(composeStdin(`a\n${STDIN_MARKER}\nb\n`, INSTALLER_SH)).toBe(`a\n${INSTALLER_SH}\nb\n`);
+  });
 });
 
 // ── Parsers ──────────────────────────────────────────────────────────────────
@@ -449,6 +541,28 @@ describe("parseProbe", () => {
 
   test("an absent field reads as empty, never as undefined", () => {
     expect(parseProbe("collie-probe:probe=ok")?.address).toBe("");
+  });
+
+  // The fields the release route decides from. A probe and its parser ship together, so an older
+  // probe never reaches this code — but an absent key still reads as empty, like every other one.
+  test("reads what kind of install the member carries, and the installer's three tools", () => {
+    const probe = parseProbe(
+      probeOut({
+        checkout: MEMBER_CURRENT,
+        checkoutgit: "no",
+        installroot: MEMBER_INSTALL_ROOT,
+        curl: "/usr/bin/curl",
+        tar: "/bin/tar",
+        sha256: "/usr/bin/shasum",
+      }),
+    );
+    expect(probe?.checkoutgit).toBe("no");
+    expect(probe?.installroot).toBe(MEMBER_INSTALL_ROOT);
+    expect(probe?.curl).toBe("/usr/bin/curl");
+    expect(probe?.tar).toBe("/bin/tar");
+    expect(probe?.sha256).toBe("/usr/bin/shasum");
+    const bare = parseProbe("collie-probe:probe=ok")!;
+    expect([bare.checkoutgit, bare.installroot, bare.curl, bare.tar, bare.sha256]).toEqual(["", "", "", "", ""]);
   });
 });
 
@@ -474,12 +588,14 @@ describe("parseMembership", () => {
 
 // ── The verb ─────────────────────────────────────────────────────────────────
 
-describe("commitlessLeadLines (#248)", () => {
-  const LEAD = { root: "/root", version: "1.2.3", repo: "AltanS/collie" };
-  const at = (kind: InstallKind, asking: Parameters<typeof commitlessLeadLines>[2], over: Partial<typeof LEAD> = {}) =>
-    commitlessLeadLines(kind, { ...LEAD, ...over }, asking);
-
-  test("a checkout has a commit, and so does every unknown root: its git error is the right one", () => {
+describe("routeOf (#248)", () => {
+  // The one decision both verbs read. `crew add` and `crew update` must never disagree about it: a
+  // member added by release and then levelled by bundle would take a commit into a layout with no
+  // git checkout to receive it.
+  test("a lead with no commit hands out a release; every other kind pushes its commit", () => {
+    for (const kind of [{ kind: "binary" }, { kind: "packaged" }] as const) {
+      expect(routeOf(kind)).toBe("release");
+    }
     for (const kind of [
       { kind: "linked-clone", alsoLayout: false },
       { kind: "detached-checkout", alsoLayout: true },
@@ -488,42 +604,21 @@ describe("commitlessLeadLines (#248)", () => {
       { kind: "unknown", why: "no-marker" },
       { kind: "unknown", why: "loose-binary" },
     ] as const) {
-      expect(at(kind, { verb: "add", host: "nas" })).toBeNull();
-      expect(at(kind, { verb: "update" })).toBeNull();
+      // `unknown` too: its own git error is the right one for a broken or missing checkout.
+      expect(routeOf(kind)).toBe("bundle");
     }
   });
+});
 
-  test("a binary lead on a release: crew update names the phone and the pinned self-update", () => {
-    const lines = at({ kind: "binary" }, { verb: "update" })!.join("\n");
-    expect(lines).toContain("/root is a binary install, so it has no commit to push.");
-    expect(lines).toContain("phone's Updates page");
-    expect(lines).toContain("`collie update --to-tag v1.2.3` on each member");
-    expect(lines).not.toContain("install.sh");
-  });
+describe("memberInstallKind (#248)", () => {
+  const at = (over: Record<string, string>) => memberInstallKind(parseProbe(probeOut(over))!);
 
-  // The phone's lead states nothing on a prerelease, and `--to-tag` refuses one, so neither may be
-  // offered. install.sh takes any tag.
-  test("a binary lead on a prerelease: crew update names install.sh, never the phone or --to-tag", () => {
-    const lines = at({ kind: "binary" }, { verb: "update" }, { version: "1.3.0-beta.2" })!.join("\n");
-    expect(lines).toContain("COLLIE_TAG=v1.3.0-beta.2 sh");
-    expect(lines).not.toContain("Updates page instead");
-    expect(lines).not.toContain("`collie update --to-tag v");
-  });
-
-  test("a lead whose version cannot be read names the command that says it, not a tag of `vunknown`", () => {
-    for (const asking of [{ verb: "update" }, { verb: "add", host: "nas" }] as const) {
-      const lines = at({ kind: "binary" }, asking, { version: "unknown" })!.join("\n");
-      expect(lines).toContain("COLLIE_TAG=v<version> sh");
-      expect(lines).toContain("`collie version` names it");
-      expect(lines).not.toContain("vunknown");
-    }
-  });
-
-  test("a lead on a fork passes its repo on, or the member would install upstream", () => {
-    const lines = at({ kind: "binary" }, { verb: "add", host: "nas" }, { repo: "me/collie" })!.join("\n");
-    expect(lines).toContain("| COLLIE_UPDATE_REPO=me/collie COLLIE_TAG=v1.2.3 sh");
-    const upstream = at({ kind: "binary" }, { verb: "add", host: "nas" })!.join("\n");
-    expect(upstream).not.toContain("COLLIE_UPDATE_REPO");
+  test("the member's kind is read off the two shapes leg 1 reports, never guessed", () => {
+    expect(at({ checkout: "", checkoutgit: "", installroot: "" })).toBe("none");
+    expect(at({ checkout: REMOTE_CHECKOUT, checkoutgit: "yes" })).toBe("git");
+    expect(at({ checkout: MEMBER_CURRENT, checkoutgit: "no", installroot: MEMBER_INSTALL_ROOT })).toBe("binary");
+    // A Collie that is neither: `other` is a real answer, not a fallback.
+    expect(at({ checkout: "/opt/collie", checkoutgit: "no", installroot: "" })).toBe("other");
   });
 });
 
@@ -676,31 +771,30 @@ describe("collie crew add", () => {
     expect(text(h.io)).toContain("peers are added from the lead");
   });
 
-  // #248: a lead installed by install.sh has no commit to push. It used to probe the far machine in
-  // full and then fail on its own `rev-parse HEAD` with "is not a git checkout". It is now told the
-  // manual path, pinned to the release it runs, before a single ssh byte.
-  test("a binary lead is told the manual path at its own release, and nothing is sent", async () => {
-    const h = harness({
-      installKind: { kind: "binary" },
-      extraFiles: { [`${ROOT}/herdr-plugin.toml`]: `id = "herdr.collie"\nversion = "${VERSION}"\n` },
-    });
-    expect(await run(h)).toBe(EXIT.FAIL);
-    const rendered = text(h.io);
-    expect(rendered).toContain(`${ROOT} is a binary install, so it has no commit to push.`);
-    expect(rendered).toContain(`COLLIE_TAG=v${VERSION} sh`);
-    expect(rendered).toContain("`collie crew invite` here, and the `collie crew join` line it prints on nas.example");
-    expect(rendered).not.toContain("is not a git checkout");
-    expect(h.calls).toEqual([]);
-    expect(h.closed).toBe(0);
+  // #248, second half: a lead installed by install.sh has no commit to push, and it no longer stops
+  // there. It installs the member from the release it runs itself, over the same ssh.
+  test("a binary lead installs the member from its own release, and bundles nothing", async () => {
+    const h = releaseHarness();
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "configure", "membership", "enroll"]);
+    expect(h.bundles).toBe(0);
+    const install = h.calls.find((c) => c.leg === "install")!;
+    // The payload IS Collie's own installer, out of this binary — never fetched on the far machine.
+    expect(install.stdin!.startsWith("#!/bin/sh\n")).toBe(true);
+    expect(install.stdin).toContain("Collie's installer");
+    expect(install.stdin).toBe(INSTALLER_SH);
+    expect(install.script).toContain(`COLLIE_TAG='v${VERSION}'`);
+    expect(install.script).toContain("COLLIE_DIR=\"$DIR\"");
+    expect(install.script).toContain(`DIR='${REMOTE_HOME}/.local/share/collie'`);
+    expect(text(h.io)).toContain(`installing v${VERSION} from AltanS/collie`);
+    expect(text(h.io)).toContain('✓ "nas" is a member of "the herd"');
   });
 
-  test("a packaged lead is told the same manual path, not a git error", async () => {
-    const h = harness({ installKind: { kind: "packaged" } });
-    expect(await run(h)).toBe(EXIT.FAIL);
-    const rendered = text(h.io);
-    expect(rendered).toContain(`${ROOT} is a packaged install, so it has no commit to push.`);
-    expect(rendered).not.toContain("is not a git checkout");
-    expect(h.calls).toEqual([]);
+  test("a packaged lead takes the same route — its members take releases too", async () => {
+    const h = releaseHarness({ installKind: { kind: "packaged" } });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toContain("install");
+    expect(h.bundles).toBe(0);
   });
 
   test("a peer is told it is a peer before it is told what kind of install it is", async () => {
@@ -1175,6 +1269,190 @@ describe("re-running against the same host", () => {
     expect(await run(h)).toBe(EXIT.STATE);
     expect(text(h.io)).toContain("`collie leave` THERE first");
     expect(h.calls.map((c) => c.leg)).not.toContain("enroll");
+  });
+});
+
+// ── The release route (#248) ─────────────────────────────────────────────────
+// A lead with no commit installs a member from the release it runs itself. Everything below is
+// decided from ONE fact about the lead (its install kind) and ONE about the member (what Collie, if
+// any, is already there) — and the member's fact comes from leg 1, never from an assumption.
+
+describe("the release route", () => {
+  /** A member that already carries an install.sh layout, at `version`. */
+  const installedAt = (version: string): string =>
+    probeOut({
+      checkout: MEMBER_CURRENT,
+      checkoutgit: "no",
+      installroot: MEMBER_INSTALL_ROOT,
+      version,
+    });
+
+  test("a fresh member is installed at install.sh's own default, and told how to link it", async () => {
+    const h = releaseHarness();
+    expect(await run(h)).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`herdr plugin link "${MEMBER_CURRENT}"`);
+    // Legs 3 and 4 address the binary behind `current`, which is the one that will be running.
+    expect(h.calls.find((c) => c.leg === "membership")!.script).toContain(MEMBER_CURRENT);
+    expect(h.calls.find((c) => c.leg === "enroll")!.script).toContain(MEMBER_CURRENT);
+  });
+
+  test("--path names the install root, and the probe looks behind its `current` too", async () => {
+    const h = releaseHarness({ answers: { probe: { stdout: probeOut() } } });
+    expect(await run(h, ["nas.example", "--path", "/srv/collie"])).toBe(EXIT.OK);
+    expect(h.calls[0]!.script).toContain("for _d in '/srv/collie' '/srv/collie/current'; do");
+    expect(h.calls.find((c) => c.leg === "install")!.script).toContain("DIR='/srv/collie'");
+  });
+
+  test("a member already at this release is left alone — nothing sent", async () => {
+    const h = releaseHarness({ answers: { probe: { stdout: installedAt(VERSION) } } });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).not.toContain("install");
+    expect(text(h.io)).toContain(`already at ${VERSION} — nothing sent`);
+  });
+
+  // A built Collie answers `<version>+<sha>`, and the tag is the version alone.
+  test("the build stamp is not a version difference", async () => {
+    const h = releaseHarness({ answers: { probe: { stdout: installedAt(`${VERSION}+ab12cd3`) } } });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).not.toContain("install");
+  });
+
+  test("a member at another release is asked first, then laid down beside what is there", async () => {
+    const h = releaseHarness({ confirm: true, answers: { probe: { stdout: installedAt("1.0.0") } } });
+    expect(await run(h)).toBe(EXIT.OK);
+    const install = h.calls.find((c) => c.leg === "install")!;
+    expect(install.script).toContain(`DIR='${MEMBER_INSTALL_ROOT}'`);
+    expect(install.script).toContain(`COLLIE_TAG='v${VERSION}'`);
+  });
+
+  test("N at that question changes nothing", async () => {
+    const h = releaseHarness({ confirm: false, answers: { probe: { stdout: installedAt("1.0.0") } } });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+    expect(text(h.io)).toContain("left alone — nothing was installed, configured or enrolled.");
+  });
+
+  test("a run with nowhere to ask aborts, naming the question in full", async () => {
+    const h = releaseHarness({ confirm: null, answers: { probe: { stdout: installedAt("1.0.0") } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain(
+      `nas.example has Collie 1.0.0 at ${MEMBER_INSTALL_ROOT}; replace it with ${VERSION}?`,
+    );
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
+  // A checkout is somebody's working tree, and the remedy is one command typed there.
+  test("a member running a git checkout is refused, and told the command that moves it", async () => {
+    const h = releaseHarness({
+      answers: { probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, checkoutgit: "yes", version: "1.0.0" }) } },
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain(`collie update --to-tag v${VERSION}`);
+    expect(text(h.io)).toContain("Nothing was installed, configured or enrolled.");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
+  test("a member running a git checkout at this very release is enrolled, not refused", async () => {
+    const h = releaseHarness({
+      answers: { probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, checkoutgit: "yes", version: VERSION }) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "configure", "membership", "enroll"]);
+  });
+
+  test("a Collie that is neither shape is left alone and added by hand", async () => {
+    const h = releaseHarness({
+      answers: { probe: { stdout: probeOut({ checkout: "/opt/collie", checkoutgit: "no", version: "1.0.0" }) } },
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("neither a git checkout nor an");
+    expect(text(h.io)).toContain("`collie crew invite` here");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
+  test("a lead that follows a fork sends its own repo, or the member would install upstream", async () => {
+    const h = releaseHarness({ env: { COLLIE_UPDATE_REPO: "me/collie" } });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.find((c) => c.leg === "install")!.script).toContain("COLLIE_UPDATE_REPO='me/collie'");
+  });
+
+  test("the prerequisites are the installer's three, and git and Bun are not among them", async () => {
+    for (const [tool, needle] of [
+      ["curl", "no `curl` on nas.example — install curl there"],
+      ["tar", "no `tar` on nas.example"],
+      ["sha256", "install sha256sum or shasum there"],
+    ] as const) {
+      const h = releaseHarness({ answers: { probe: { stdout: probeOut({ [tool]: "" }) } } });
+      expect(await run(h)).toBe(EXIT.FAIL);
+      expect(text(h.io)).toContain(needle);
+      expect(h.calls).toHaveLength(1);
+    }
+    const noToolchain = releaseHarness({ answers: { probe: { stdout: probeOut({ git: "", bun: "" }) } } });
+    expect(await run(noToolchain)).toBe(EXIT.OK);
+  });
+
+  test("a lead whose own version cannot be read refuses before the first ssh byte", async () => {
+    // No manifest seeded: `collieVersionBare` answers `unknown`, which is no release to pin to.
+    const h = harness({ installKind: { kind: "binary" } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("there is no release to pin nas.example to");
+    expect(h.calls).toHaveLength(0);
+    expect(h.closed).toBe(0);
+  });
+
+  test("the installer's own diagnosis is what the operator is shown", async () => {
+    const h = releaseHarness({
+      answers: {
+        install: {
+          code: 1,
+          stderr: [
+            "Downloading Collie v1.2.3 for linux-x64…",
+            "collie install: release v1.2.3 has no linux-x64 artifact",
+          ].join("\n"),
+        },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("collie install: release v1.2.3 has no linux-x64 artifact");
+    expect(text(h.io)).toContain("runs what it ran before");
+  });
+
+  // `crew-ops.json` is how a later `crew update --path` and the probe's candidate list find this
+  // machine again, so what is banked is the path the binary really lives behind.
+  test("how the member was reached is banked at the path that finds it again", async () => {
+    const h = releaseHarness();
+    expect(await run(h)).toBe(EXIT.OK);
+    // SAFETY: `harness` builds `deps.ops` with `fakeOps` and nothing else ever assigns it, so the
+    // `contents()` that fake adds is present on this value.
+    const ops = h.deps.ops as ReturnType<typeof fakeOps>;
+    expect(ops.contents()).toContain(MEMBER_CURRENT);
+  });
+});
+
+describe("the bundle route meets a release member", () => {
+  // Before the probe could see an install.sh layout, this push cloned a SECOND Collie into
+  // `~/.collie` and left the first one running. It is now a refusal, on either side of the version.
+  test("a checkout lead refuses a member that takes releases", async () => {
+    const h = harness({
+      answers: {
+        probe: {
+          stdout: probeOut({
+            checkout: MEMBER_CURRENT,
+            checkoutgit: "no",
+            installroot: MEMBER_INSTALL_ROOT,
+            version: VERSION,
+          }),
+        },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`nas.example has a binary install at ${MEMBER_INSTALL_ROOT}`);
+    expect(rendered).toContain("add");
+    expect(rendered).toContain("from a lead that runs a release");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+    expect(h.bundles).toBe(0);
   });
 });
 

@@ -466,7 +466,10 @@ prints each peer's own report beside the answer it gets over SSH, so a disagreem
 rather than averaged. It asks for one consent. It then updates the lead itself, if the lead is not
 yet running the build it is handing out. Next it takes each peer in turn: the peer is pushed the
 lead's commit as a git bundle, rebuilt, restarted, and polled until it answers the new build within
-the same 30 second budget.
+the same 30 second budget. A lead with no git checkout, from the standalone install or from a
+package, has no commit to push, so it installs the release it runs itself on each peer instead, over
+the same ssh and pinned to that tag; a peer running from a git checkout is then skipped, with
+`collie update --to-tag v<version>` named on its row.
 
 The first failure stops the run. Every member after it is left untouched and reported as
 "not attempted", and the summary names the one command that clears the failure. A lead that cannot

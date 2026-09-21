@@ -36,8 +36,8 @@ instructions, see
 
 ## Two machines, one crew
 
-Two commands add a machine, one for Herdr and one for Collie, and a manual path is there for the
-hosts they do not fit.
+Two commands add a machine, one for Herdr and one for Collie, and a manual path is there for a host
+`crew add` cannot ssh into and for a lead that serves plain HTTP.
 
 ```bash
 herdr machine add --label <name> <ssh-target>   # prepare the remote host
@@ -59,17 +59,29 @@ target lists the hosts your ssh config and Herdr already know, merged on the hos
 to, so pick from that list rather than typing the host a second way
 ([below](#herdr-machines-and-the-crew)).
 
-`crew add` and the terminal `collie crew update` push the lead's own git commit, so both need a lead
-that runs from a git checkout, as the Herdr plugin install does. A lead from the
-[standalone install](install.md#standalone) or from a package has no commit to push. It adds a member
-by the manual path below: first install the lead's release on that machine with install.sh and
-`COLLIE_TAG=v<version>`, then invite and join. It levels its members from the phone's Updates page.
-The phone levels to strict releases only, so a lead on a prerelease levels its members by hand. Both
-commands print the exact lines on such a lead, with `COLLIE_UPDATE_REPO` for a lead that follows a
-fork.
+`crew add` takes the route its own install kind names. A lead that runs from a git checkout, as the
+Herdr plugin install does, pushes its own commit to the member and builds it there, so that member
+needs `git` and Bun. A lead from the [standalone install](install.md#standalone) or from a package
+has no commit, so it installs the member from the release it runs itself, with Collie's own
+installer sent over the same ssh, and that member needs `curl`, `tar` and `sha256sum` or `shasum`
+instead. `--path` names the remote checkout on the first route and the install root on the second.
+A member that already runs the other kind of install is refused rather than written over, and the
+refusal names the one command that resolves it. On that second route the member downloads the
+release from github.com itself, so a member with no route to github.com needs a lead that runs from
+a checkout.
 
-The manual path is four commands. The lead is the instance your phone already reaches, and the
-joining machine must have Collie installed and running.
+The terminal `collie crew update` takes the same two routes, and reads the same fact to pick one: a
+checkout lead pushes its own commit to each member, and a lead from the standalone install or from a
+package levels each member to the release it runs itself. On a release lead, a member running from a
+git checkout is skipped with the one command that moves it named on its row, `collie update --to-tag
+v<version>` on that machine. On a checkout lead, a member installed by install.sh is skipped the
+other way round: it takes releases, so the phone's Updates page levels it. A skipped member never
+stops the run, and the confirm counts it apart.
+
+The manual path is four commands. Use it for a host your ssh cannot reach, or for a lead that
+serves plain HTTP, and not because of the lead's install kind: every kind of lead adds a member with
+`crew add`. The lead is the instance your phone already reaches, and the joining machine must have
+Collie installed and running.
 
 1. On the lead, mint the token.
 
@@ -214,14 +226,15 @@ counts the run as complete without it. It levels when you run that command on th
 line clears on the next check.
 
 **A packaged LEAD still levels its members.** The lead declines its own move for the same reason,
-and that is the whole of the refusal: the phone still levels every member to the version the lead is
-running now, and the confirm covers them. After the package manager has moved the lead and you have
+and that is the whole of the refusal: the phone and `collie crew update` both level every member to
+the version the lead is running now, and one confirm covers them. After the package manager has moved the lead and you have
 run `collie restart` on it, nothing levels by itself; one more confirm on the phone's Updates page
 brings the members up to the lead's new version.
 
-**A source checkout is a full member.** A member you cloned and built yourself updates through git
-like any other checkout, takes the crew update, and needs nothing said about it here. The lead pulls
-the tag, rebuilds and restarts it exactly as it does its own.
+**A source checkout is a full member, under a lead that has one too.** A member you cloned and built
+yourself takes the crew update from a checkout lead: that lead pushes its commit, rebuilds and
+restarts it exactly as it does its own. Under a lead with no commit, `collie crew update` skips it
+and names `collie update --to-tag v<version>` to run on that machine.
 
 So a mixed crew is a normal crew. One tap levels every member the lead can update, names the ones it
 cannot, and the crew is level again once you have run their package managers.
