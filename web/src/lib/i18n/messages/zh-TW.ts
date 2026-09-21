@@ -226,6 +226,8 @@ export const zhTW: Dictionary = {
   "composer.send.sendAria": "傳送",
   "composer.draft.tooLong": "內容過長，無法持久儲存為草稿。切換窗格時會保留，但離開應用程式後將遺失。",
   "composer.status.dialogWaiting": "有等待回應的對話框，請先處理後再傳送。",
+  "composer.status.unreadDialog":
+    "Collie 無法讀取此對話框。卡片上是 {key}。要繼續輸入，請再次點擊「傳送」。", // wordsmith
   "composer.status.paneNotWritable": "窗格已不可寫入，未傳送任何內容",
   "composer.status.inputChanged": "清空輸入框時內容發生變動，未寫入任何內容。請檢查窗格狀態。",
   "composer.status.clearFailed": "無法清空終端機目前輸入",
@@ -661,6 +663,7 @@ export const zhTW: Dictionary = {
   "dialog.menu.moveDown": "下移",
   "dialog.menu.leftAria": "向左：{verb}（{label}）",
   "dialog.menu.rightAria": "向右：{verb}（{label}）",
+  "unreadDialog.caption": "Collie 無法讀取此對話框", // wordsmith
   "dialog.preview.currentAnswerAria": "目前回答",
   "dialog.preview.previewedBelowAria": "下方顯示預覽",
   "dialog.preview.previewLabel": "預覽 · {label}",

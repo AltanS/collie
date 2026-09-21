@@ -47,6 +47,26 @@ export interface HarnessAdapter {
    */
   composerReady?(lines: StyledLine[]): boolean;
   /**
+   * The key THIS harness's own modals print as the way OUT of them — a Herdr key token ("Escape",
+   * "ctrl+c"), declared here and read from nowhere else.
+   *
+   * It is the one control the unread-dialog card offers (harness/index.ts `withUnreadDialog`,
+   * .adr/0053): when every grammar declined, `composerReady` answered a definite `false` and the
+   * screen is not blank, the operator gets this key over the raw mirror instead of a locked composer
+   * and no buttons at all. Declare it from the harness's OWN captures or notes, and say in a comment
+   * which file it was read from — a declaration is reviewed once, a footer parse is fooled by a
+   * phrase.
+   *
+   * OPTIONAL, and its absence means "this adapter declares no way out": the pass emits no card for
+   * that agent, per adapter, by construction. That is a supported answer with a visible cost, and it
+   * is the right one while an adapter's `composerReady` has a total false-negative mode (omp).
+   *
+   * Not every harness spells it the same way: grok's footers give Escape to the scrollback view and
+   * name `Ctrl+c:cancel` instead. That single divergence is why the key is declared rather than
+   * assumed.
+   */
+  cancelKey?: string;
+  /**
    * Literal on-screen text from the composer's prompt/draft tail — the region a DESTRUCTIVE write
    * aimed at that composer may be bound to. Null = no composer at the tail (the same screens
    * `composerReady` answers false about).

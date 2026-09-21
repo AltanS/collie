@@ -39,7 +39,7 @@ import { AgentsFooter } from "@/components/agents-footer";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
-import { adapterFor, rendersNativeMirror } from "@/lib/harness";
+import { adapterFor, rendersNativeMirror, withUnreadDialog } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
@@ -66,6 +66,7 @@ import { submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { submitMenuKeys } from "@/lib/menu-action";
+import { sendGuardedKeys } from "@/lib/dialog-guard";
 import type { PromptBlockAction } from "@/components/prompt-select-block";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
@@ -84,6 +85,7 @@ import type {
   MultiSelectModel,
   PreviewSelectModel,
   PromptModel,
+  UnreadDialogModel,
   WizardModel,
 } from "@/lib/blocks";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
@@ -665,14 +667,23 @@ export function AgentChat({
   // `kind !== "raw"`. The two were the same set until a PRESENTATIONAL non-raw kind shipped: the
   // slash-command `autocomplete` popup is painted while the agent's input box is live under it, so
   // treating it as a dialog would lock the composer out of a pane that is demonstrably typeable.
-  const dialogPresent = useMemo(
-    () =>
-      grammarsOn
-        ? (adapterFor(agent?.agent)?.buildBlocks(splitLines(parseAnsi(display))) ?? []).some(
-            blockOwnsKeyboard,
-          )
-        : false,
-    [display, agent?.agent, grammarsOn],
+  //
+  // Through the unread-dialog post-pass too (.adr/0053): the adapter is called DIRECTLY here, not
+  // through `buildBlocks`, so without the pass the screen no grammar read would leave the composer
+  // open onto the modal — which is the failure the card was written for.
+  const dialogBlocks = useMemo(() => {
+    if (!grammarsOn) return [];
+    const adapter = adapterFor(agent?.agent);
+    if (!adapter) return [];
+    const lines = splitLines(parseAnsi(display));
+    return withUnreadDialog(adapter, lines, adapter.buildBlocks(lines));
+  }, [display, agent?.agent, grammarsOn]);
+  const dialogPresent = useMemo(() => dialogBlocks.some(blockOwnsKeyboard), [dialogBlocks]);
+  // Which KIND owns it, narrowed to the one the composer treats differently: the card is a guess
+  // about an unknown screen, so its refusal arms the type-anyway override instead of standing flat.
+  const dialogUnread = useMemo(
+    () => dialogBlocks.some((b) => b.kind === "unread-dialog"),
+    [dialogBlocks],
   );
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
@@ -1049,6 +1060,44 @@ export function AgentChat({
         keys: action.keys,
         nav: action.nav,
       });
+      if (result.status === "sent") {
+        setStatus(t("chat.status.sent"), "success");
+        setFollowing(true);
+        revalidator.revalidate();
+        listRef.current?.scrollToBottom();
+      } else if (result.status === "changed") {
+        setStatus(t("chat.status.screenChanged"), "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
+      }
+    },
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+  );
+
+  // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the
+  // card has a row in the dialog contract, so `sendGuardedKeys` re-reads the pane and refuses if the
+  // screen moved. No wrapper in lib/ because there is no judgement call to make: one key, it commits,
+  // and the default `commits` comparison is the right one.
+  const handleUnreadDialogAction = useCallback(
+    async (key: string, cancel: UnreadDialogModel) => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return;
+      }
+      const result = await sendGuardedKeys(
+        {
+          paneId,
+          scope,
+          requestedLines,
+          detectedRevision: shown.revision,
+          agent: agent?.agent,
+          kind: "unread-dialog",
+          model: cancel,
+        },
+        [key],
+      );
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
         setFollowing(true);
@@ -1902,6 +1951,7 @@ export function AgentChat({
                     onPreviewAction={handlePreviewAction}
                     onMultiSelectAction={handleMultiSelectAction}
                     onMenuAction={handleMenuAction}
+                    onUnreadDialogAction={handleUnreadDialogAction}
                     promptDisabled={readOnly || gone}
                     hideLeadingLines={hiddenMirrorLines}
                     images={mirrorImages}
@@ -2090,6 +2140,7 @@ export function AgentChat({
                   // machine am I typing into" has to be answerable without tapping Send to find out.
                   hostBlock={hostBlock}
                   dialogPresent={dialogPresent}
+                  dialogUnread={dialogUnread}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}

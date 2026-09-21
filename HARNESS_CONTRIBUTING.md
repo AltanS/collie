@@ -92,6 +92,30 @@ An adapter earns capability incrementally. Ship a lower tier first; each is inde
   - a green **`describeAdapterConformance`** run (the CI gate, below), and
   - **maintainer live-verification against a real pane** before the send path is enabled.
 
+### `cancelKey` — the way out of a modal you never taught Collie to read
+
+**Declare the key your harness's own modals print as the way OUT of them**, as
+`cancelKey` on your adapter, beside `composerReady`. It is a Herdr key token (`"Escape"`,
+`"ctrl+c"`), and a comment at the line must cite the capture or notes file you read it from.
+
+It buys one thing: when every grammar you wrote declines a screen, your `composerReady` still
+answers a definite `false`, and the pane is not blank, Collie draws the **unread-dialog card** over
+the raw mirror — one button, that key, under "Collie cannot read this dialog"
+([ADR 0053](./.adr/0053-an-unread-dialog-still-has-a-way-out.md)). The card is built by a post-pass
+OUTSIDE every adapter, so nothing about your fail-closed contract is loosened to make one, and it
+reads nothing off the screen: a declaration cannot be fooled by a phrase, which is the failure the
+card exists for.
+
+**Do not assume Escape.** On grok, Escape opens the scrollback view and `Ctrl+c` is the cancel. On
+Muse, Escape steps back rather than dismisses — still the right key, and the reason the card names
+the key and never a verb.
+
+**Declaring nothing is a supported answer, and it has a visible cost:** no card for that agent, ever,
+so an unread modal leaves the operator with the raw mirror and the Keys pad. Take it when your
+`composerReady` has a false-negative mode you do not trust. `omp` does: one ZWJ emoji in a statusline
+template makes its composer scanner return null on every frame, so `composerReady` would be false
+forever on a healthy pane and the card would paint itself permanently over a live composer.
+
 ### The fail-closed contract (non-negotiable)
 
 **A detector MUST return `null` on anything it does not confidently recognise.** A partial lift is a

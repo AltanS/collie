@@ -74,6 +74,10 @@ export const codexAdapter: HarnessAdapter = {
   extractStatusLines,
   extractInputDraft,
   composerReady,
+  // The way OUT of a Codex modal, for the unread-dialog card (.adr/0053). Read from
+  // `codex/APPROVAL_NOTES.md`: `3. No, and tell Codex what to do differently (esc)` and
+  // `Press enter to confirm or esc to cancel`.
+  cancelKey: "Escape",
   composerPrompt,
   draftCarriesSend: codexDraftCarriesSend,
 };

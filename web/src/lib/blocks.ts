@@ -28,6 +28,7 @@ import type { PreviewSelectModel } from "./harness/preview-model";
 import type { MultiSelectModel } from "./harness/multi-select-model";
 import type { MenuModel } from "./harness/menu-model";
 import type { AutocompleteModel } from "./harness/autocomplete-model";
+import type { UnreadDialogModel } from "./harness/unread-dialog-model";
 
 // Re-export every dialog model so consumers (the block components, the race guards) have one import
 // site for the AST's typed payloads. All five are harness-NEUTRAL contracts (harness/*-model.ts):
@@ -51,6 +52,7 @@ export type {
 } from "./harness/multi-select-model";
 export type { MenuModel, MenuAction, MenuNav, MenuLeftRight } from "./harness/menu-model";
 export type { AutocompleteModel, AutocompleteEntry } from "./harness/autocomplete-model";
+export type { UnreadDialogModel } from "./harness/unread-dialog-model";
 
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
 export interface StyledLine {
@@ -138,6 +140,21 @@ export interface AutocompleteBlock {
 }
 
 /**
+ * A screen NO grammar read, carrying the ONE key its harness declared as the way out of a modal
+ * (.adr/0053). Produced by a post-pass outside every adapter (harness/index.ts `withUnreadDialog`),
+ * never by an adapter's own `buildBlocks` — so no fail-closed contract is loosened to make one.
+ *
+ * Like `menu`, its region text IS rendered, and more so: the card understands NOTHING about the
+ * screen, so the screen is the only thing the operator has to read. `lines` is therefore the WHOLE
+ * pane, not a lifted sub-region. Still not part of the find haystack (find runs over raw blocks only).
+ */
+export interface UnreadDialogBlock {
+  kind: "unread-dialog";
+  cancel: UnreadDialogModel;
+  lines: StyledLine[];
+}
+
+/**
  * A semantic block. A discriminated union on `kind`; new members are added purely additively, so a
  * `switch (block.kind)` in the renderer stays exhaustive.
  */
@@ -148,7 +165,8 @@ export type Block =
   | PreviewSelectBlock
   | MultiSelectBlock
   | MenuBlock
-  | AutocompleteBlock;
+  | AutocompleteBlock
+  | UnreadDialogBlock;
 
 /**
  * Split parsed segments into visual lines at "\n" boundaries. The newline characters become the

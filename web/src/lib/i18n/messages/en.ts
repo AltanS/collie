@@ -256,6 +256,8 @@ export const en = {
   "composer.draft.tooLong":
     "Too long to keep as a saved draft — it survives switching panes, but not closing the app.",
   "composer.status.dialogWaiting": "A dialog is waiting — answer it first, then send.",
+  "composer.status.unreadDialog":
+    "Collie cannot read this dialog. {key} is on the card. Tap Send again to type anyway.",
   "composer.status.paneNotWritable": "Pane is no longer writable — nothing was sent",
   "composer.status.inputChanged":
     "The input box changed while clearing it — nothing was typed. Check the pane.",
@@ -712,6 +714,7 @@ export const en = {
   "dialog.menu.moveDown": "Move down",
   "dialog.menu.leftAria": "Left — {verb} ({label})",
   "dialog.menu.rightAria": "Right — {verb} ({label})",
+  "unreadDialog.caption": "Collie cannot read this dialog",
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",
   "dialog.preview.previewLabel": "Preview · {label}",

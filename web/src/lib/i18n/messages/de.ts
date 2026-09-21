@@ -242,6 +242,8 @@ export const de: Dictionary = {
   "composer.draft.tooLong":
     "Zu lang für einen dauerhaften Entwurf. Bleibt beim Pane-Wechsel erhalten, geht aber beim Beenden der App verloren.",
   "composer.status.dialogWaiting": "Ein Dialog ist geöffnet. Erst antworten, dann senden.",
+  "composer.status.unreadDialog":
+    "Collie kann diesen Dialog nicht lesen. {key} steht auf der Karte. Zum Tippen erneut auf Senden tippen.", // wordsmith
   "composer.status.paneNotWritable": "Pane ist nicht mehr beschreibbar. Nichts gesendet.",
   "composer.status.inputChanged":
     "Eingabefeld hat sich beim Leeren geändert. Es wurde nichts getippt. Pane prüfen.",
@@ -686,6 +688,7 @@ export const de: Dictionary = {
   "dialog.menu.moveDown": "Nach unten",
   "dialog.menu.leftAria": "Links: {verb} ({label})",
   "dialog.menu.rightAria": "Rechts: {verb} ({label})",
+  "unreadDialog.caption": "Collie kann diesen Dialog nicht lesen", // wordsmith
   "dialog.preview.currentAnswerAria": "Aktuelle Antwort",
   "dialog.preview.previewedBelowAria": "Vorschau unten",
   "dialog.preview.previewLabel": "Vorschau: {label}",

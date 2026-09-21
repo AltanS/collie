@@ -236,6 +236,8 @@ export const ko: Dictionary = {
   "composer.send.sendAria": "전송",
   "composer.draft.tooLong": "임시 저장 용량을 초과했습니다. 창 전환 시에는 유지되지만 앱 종료 시 삭제됩니다.",
   "composer.status.dialogWaiting": "대기 중인 대화상자가 있습니다. 먼저 응답해야 전송할 수 있습니다.",
+  "composer.status.unreadDialog":
+    "Collie가 이 대화상자를 읽을 수 없습니다. 카드에 {key}이(가) 있습니다. 그래도 입력하려면 전송을 다시 누르세요.", // wordsmith
   "composer.status.paneNotWritable": "창에 쓸 수 없는 상태입니다. 아무것도 전송되지 않았습니다.",
   "composer.status.inputChanged":
     "입력 초기화 중 내용이 변경되어 전송이 취소되었습니다. 창을 확인하십시오.",
@@ -676,6 +678,7 @@ export const ko: Dictionary = {
   "dialog.menu.moveDown": "아래로 이동",
   "dialog.menu.leftAria": "왼쪽: {verb} ({label})",
   "dialog.menu.rightAria": "오른쪽: {verb} ({label})",
+  "unreadDialog.caption": "Collie가 이 대화상자를 읽을 수 없습니다", // wordsmith
   "dialog.preview.currentAnswerAria": "현재 답변",
   "dialog.preview.previewedBelowAria": "하단 미리보기",
   "dialog.preview.previewLabel": "미리보기 · {label}",

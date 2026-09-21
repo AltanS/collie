@@ -14,6 +14,7 @@ import {
   type PreviewSelectModel,
   type PromptModel,
   type StyledLine,
+  type UnreadDialogModel,
   type WizardModel,
 } from "@/lib/blocks";
 import { tableRuns, type TableRun } from "@/lib/table-run";
@@ -41,6 +42,7 @@ import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/previe
 import { MultiSelectBlock } from "@/components/multi-select-block";
 import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
 import { AutocompleteBlock } from "@/components/autocomplete-block";
+import { UnreadDialogBlock } from "@/components/unread-dialog-block";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
 
 /** A raw block, narrowed off the Block union (the highlight/offset paths only touch these). */
@@ -58,6 +60,9 @@ type GenericMenuBlock = Extract<Block, { kind: "menu" }>;
 /** The (at most one) completion-popup block — tail, and the only non-raw kind that is NOT a modal:
  *  the agent's input box is live under it, so it renders with no controls and locks nothing. */
 type AutoBlock = Extract<Block, { kind: "autocomplete" }>;
+/** The (at most one) unread-dialog card — the post-pass emits it only when NOTHING else lifted, so
+ *  it is mutually exclusive with every kind above by construction (harness/index.ts). */
+type UnreadBlock = Extract<Block, { kind: "unread-dialog" }>;
 
 export interface AnsiOutputProps {
   text: string;
@@ -120,6 +125,9 @@ export interface AnsiOutputProps {
   /** Injected handler for a generic-menu tap (a footer-named key, or an arrow — the race-guarded
    *  send lives in lib/menu-action.ts). Same presentational contract as onPromptAction. */
   onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
+  /** Injected handler for the unread-dialog card's one declared key (.adr/0053 — the race-guarded
+   *  send lives in agent-chat). Same presentational contract as onPromptAction. */
+  onUnreadDialogAction?: (key: string, cancel: UnreadDialogModel) => void | Promise<void>;
   /** Disable the prompt-select/wizard/preview/multi-select/menu buttons (read-only / gone pane). */
   promptDisabled?: boolean;
   /**
@@ -327,6 +335,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   onPreviewAction,
   onMultiSelectAction,
   onMenuAction,
+  onUnreadDialogAction,
   promptDisabled,
   hideLeadingLines = 0,
   images,
@@ -371,6 +380,10 @@ export const AnsiOutput = memo(function AnsiOutput({
   );
   const autoBlock = useMemo(
     () => blocks.find((b): b is AutoBlock => b.kind === "autocomplete") ?? null,
+    [blocks],
+  );
+  const unreadBlock = useMemo(
+    () => blocks.find((b): b is UnreadBlock => b.kind === "unread-dialog") ?? null,
     [blocks],
   );
 
@@ -474,6 +487,16 @@ export const AnsiOutput = memo(function AnsiOutput({
       lines={menuBlock.lines}
       disabled={promptDisabled || !onMenuAction}
       onAction={(action) => onMenuAction?.(action, menuBlock.menu)}
+    />
+  ) : unreadBlock ? (
+    // The least confident arm, and last of the controls for that reason: it is reached only when no
+    // grammar claimed the screen at all (.adr/0053). It renders the WHOLE pane itself, which is why
+    // the raw blocks below are empty whenever it is showing.
+    <UnreadDialogBlock
+      cancel={unreadBlock.cancel}
+      lines={unreadBlock.lines}
+      disabled={promptDisabled || !onUnreadDialogAction}
+      onAction={(key) => onUnreadDialogAction?.(key, unreadBlock.cancel)}
     />
   ) : autoBlock ? (
     // No handler and no `disabled`: the completion popup emits no keystroke, so there is nothing for

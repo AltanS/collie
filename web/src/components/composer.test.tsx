@@ -175,6 +175,72 @@ describe("Composer — send", () => {
     expect(props.onSent).not.toHaveBeenCalled();
   });
 
+  // .adr/0053: the unread-dialog card. The screen is a dialog nobody could READ, so the refusal is a
+  // guess — it still refuses, but it arms the deliberate second tap and names the key on the card.
+  it("refuses an unread dialog, names its key, and arms the type-anyway override", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+        calls.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      replyHandler(() => calls.push("reply")),
+    );
+    const props = renderComposerWithStatus({ dialogPresent: true, dialogUnread: true });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    // The status names the key the way the Keys keypad names it, and the card is where it is.
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/Collie cannot read this dialog/i),
+    );
+    expect(screen.getByTestId("status")).toHaveTextContent(/Esc is on the card/);
+    expect(calls).toEqual([]);
+    expect(box).toHaveValue("carry on");
+    // Armed: the Send button now asks for the deliberate second tap.
+    expect(screen.getByRole("button", { name: /type anyway/i })).toBeInTheDocument();
+    expect(props.onSent).not.toHaveBeenCalled();
+  });
+
+  it("lets the second Send through on an unread dialog", async () => {
+    const user = userEvent.setup();
+    let submitted = false;
+    server.use(replyHandler(() => {}, () => (submitted = true)));
+    renderComposerWithStatus({ dialogPresent: true, dialogUnread: true });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent(/Collie cannot read this dialog/i),
+    );
+
+    await user.click(screen.getByRole("button", { name: /type anyway/i }));
+    await waitFor(() => expect(submitted).toBe(true), { timeout: 5000 });
+    await waitFor(() => expect(box).toHaveValue(""));
+  });
+
+  it("keeps the flat refusal for a dialog a grammar READ: no unread override", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(replyHandler(() => calls.push("reply")));
+    renderComposerWithStatus({ dialogPresent: true, dialogUnread: false });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "please do not approve anything");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/dialog is waiting/i));
+    // Flat: no override is armed, so a second tap refuses exactly the same way.
+    expect(screen.queryByRole("button", { name: /type anyway/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(calls).toEqual([]);
+    expect(box).toHaveValue("please do not approve anything");
+  });
+
   // The same #34 failure one step upstream. `dialogPresent` and the stranded draft are both derived
   // from the mirror's snapshot, which lags the live pane by a poll while following and is FROZEN
   // while the user has scrolled back or opened find — so both can say "composer, with a draft on the

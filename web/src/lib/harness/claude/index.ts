@@ -150,6 +150,11 @@ export const claudeAdapter: HarnessAdapter = {
   // The reply path's pre-flight: Claude's input box is exactly what `hasInputBox` finds, and its
   // absence is exactly the condition under which typing lands in a modal instead (#34's shape).
   composerReady: hasInputBox,
+  // The way OUT of a Claude modal, for the unread-dialog card (.adr/0053). Every Claude footer that
+  // names one names `Esc to cancel` — the `/model` picker, the rewind screen, the config screens and
+  // the `/effort` slider all print it, and `claude/markers.ts` treats the phrase as background chrome
+  // precisely because it is on so many of them.
+  cancelKey: "Escape",
   // Long sends never appear in the box as themselves — Claude collapses them into `[Pasted text #N
   // +M lines]` — so the reply guard's literal match can't verify them and the send stalls. These two
   // read that token: as send evidence when it's consistent with what we typed (.adr/0010), and as

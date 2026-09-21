@@ -240,6 +240,8 @@ export const es: Dictionary = {
   "composer.draft.tooLong":
     "Texto demasiado largo para persistir como borrador. Se conserva al cambiar de panel, pero no al cerrar la app.",
   "composer.status.dialogWaiting": "Hay un diálogo pendiente. Respóndelo antes de enviar.",
+  "composer.status.unreadDialog":
+    "Collie no puede leer este diálogo. {key} está en la tarjeta. Pulsa Enviar de nuevo para escribir igualmente.", // wordsmith
   "composer.status.paneNotWritable": "El panel ya no admite escritura. No se envió nada.",
   "composer.status.inputChanged":
     "La entrada cambió durante la limpieza y no se escribió nada. Revisa el panel.",
@@ -685,6 +687,7 @@ export const es: Dictionary = {
   "dialog.menu.moveDown": "Bajar",
   "dialog.menu.leftAria": "Izquierda: {verb} ({label})",
   "dialog.menu.rightAria": "Derecha: {verb} ({label})",
+  "unreadDialog.caption": "Collie no puede leer este diálogo", // wordsmith
   "dialog.preview.currentAnswerAria": "Respuesta actual",
   "dialog.preview.previewedBelowAria": "Vista previa a continuación",
   "dialog.preview.previewLabel": "Vista previa · {label}",

@@ -39,6 +39,7 @@ import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
+import { keyLabel } from "@/lib/key-queue";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -94,6 +95,12 @@ interface ComposerProps {
   /** A dialog (prompt/wizard/preview/multi-select) is on screen, so the TUI's keyboard belongs to it.
    * Free-text sending is refused while true — see send(). Answer it with its own buttons instead. */
   dialogPresent: boolean;
+  /** …and that dialog is the UNREAD-DIALOG CARD (.adr/0053): no grammar read the screen, so the
+   * refusal below is a GUESS about an unknown screen rather than a parsed fact. It still refuses —
+   * that is the point — but it arms the two-tap override and names the card's key, so a splash
+   * screen or an alt-screen tool that trips the card's four conditions costs one extra tap instead
+   * of a locked composer. False while any READ dialog is up, where the refusal stands flat. */
+  dialogUnread?: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -212,7 +219,7 @@ function ComposerDock({
 const ATTACH_PRESS_MS = 220;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -722,8 +729,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // queue-and-auto-send, because the text may be a reaction to state the dialog just changed —
     // sending is consent, and the conditions moved.
     if (dialogPresent) {
-      setStatus(translate("composer.status.dialogWaiting"), "error");
-      return false;
+      // A READ dialog is a parsed fact: the refusal stands flat, and the way through it is its own
+      // buttons.
+      if (!dialogUnread) {
+        setStatus(translate("composer.status.dialogWaiting"), "error");
+        return false;
+      }
+      // The unread card is the one dialog whose refusal is not the end of the conversation. Its four
+      // conditions are heuristics about a screen NOTHING could read (.adr/0053), and a splash or an
+      // alt-screen tool can trip all four — so the first Send arms the SAME deliberate second-tap
+      // override a `blocked` pre-flight arms below (.adr/0009's "A second Send overrides it
+      // deliberately") and names the key the card is offering. The second tap arrives here with
+      // `force` already set by onSendClick and falls through to type.
+      if (!force) {
+        forceConfirm.confirm("force");
+        setStatus(
+          translate("composer.status.unreadDialog", { key: keyLabel(adapter?.cancelKey ?? "") }),
+          "error",
+        );
+        return false;
+      }
     }
     setSending(true);
     // The operator has just acted on this pane, so the poller should watch it land. Stamped HERE —

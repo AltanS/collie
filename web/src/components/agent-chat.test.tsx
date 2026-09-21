@@ -26,7 +26,7 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs, paneTextWithDraft } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -63,7 +63,11 @@ function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
     agents: fixtureAgents,
     shellPanes: [],
     tabs: [],
-    text: "recent pane output",
+    // A REAL claude pane: the transcript row plus the input box under it. Since M34 a pane with no
+    // composer on screen is the unread-dialog card's territory (.adr/0053) — the card owns the
+    // keyboard, so the composer would refuse every send in this file. Cases that want the card build
+    // their own text.
+    text: paneTextWithDraft("recent pane output"),
     onBack: vi.fn(),
     onSelect: vi.fn(),
     ...overrides,
@@ -1183,7 +1187,7 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
   // when the `query` prop was dropped from the mirror: the bar counted matches it never marked.
   it("passes the find query down to the mirror, so a hit is highlighted", async () => {
     const user = userEvent.setup();
-    const { container } = renderChat({ text: "alpha needle omega" });
+    const { container } = renderChat({ text: paneTextWithDraft("alpha needle omega") });
     expect(container.querySelector("[data-find-match]")).toBeNull();
     await openFind(user);
     await user.type(screen.getByRole("textbox", { name: /find in output/i }), "needle");
@@ -2568,7 +2572,9 @@ describe("AgentChat — full latest reply", () => {
 
   // A screen holding the END of the reply, then what the agent did next.
   const AFTER = "abc1234 fix";
-  const SCREEN = `${REPLY.slice(120)}\n\nBash(git log --oneline)\n  ${AFTER}`;
+  // The input box rides along: a claude pane without one is the unread-dialog card's screen
+  // since M34 (.adr/0053), and the card renders the whole pane itself.
+  const SCREEN = paneTextWithDraft(`${REPLY.slice(120)}\n\nBash(git log --oneline)\n  ${AFTER}`);
 
   it("shows the whole message, and takes the rows it covers out of the mirror", async () => {
     withJournalReply(REPLY);

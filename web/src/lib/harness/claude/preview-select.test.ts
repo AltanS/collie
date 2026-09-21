@@ -193,11 +193,19 @@ describe("detectPreviewSelectRegion + buildBlocks — render boundary and gating
     expect(blocks.map((b) => b.kind)).toEqual(["raw", "preview-select"]);
   });
 
-  it("buildBlocks keeps the pure raw mirror for every other agent", () => {
-    for (const agent of ["codex", "opencode", "pi", undefined]) {
+  it("buildBlocks lifts NOTHING from a Claude dialog for every other agent", () => {
+    // The fail-closed claim is that no foreign adapter READS this screen. `opencode` and `pi` have
+    // no adapter at all and `undefined` has none either, so all three keep the pure raw mirror.
+    for (const agent of ["opencode", "pi", undefined]) {
       const blocks = buildBlocks(fixtureLines("claude--select-preview.txt"), { agent });
       expect(blocks.map((b) => b.kind)).toEqual(["raw"]);
     }
+    // codex HAS an adapter, and since M34 an adapter that declines a screen its `composerReady` says
+    // it cannot type into gets the unread-dialog card over it (.adr/0053). That is not a lift: the
+    // card reads nothing off the screen and offers codex's own declared key. What matters here is
+    // that codex still lifted no DIALOG.
+    const codex = buildBlocks(fixtureLines("claude--select-preview.txt"), { agent: "codex" });
+    expect(codex.map((b) => b.kind)).toEqual(["unread-dialog"]);
   });
 });
 

@@ -336,6 +336,12 @@ export function emittableKeys(block: Block): string[] | null {
         ...(block.menu.nav.upDown ? [...MENU_UP_KEYS, ...MENU_DOWN_KEYS] : []),
         ...(block.menu.nav.leftRight !== undefined ? [...MENU_LEFT_KEYS, ...MENU_RIGHT_KEYS] : []),
       ];
+    case "unread-dialog":
+      // The card's ONE control, and it is a DECLARATION (HarnessAdapter.cancelKey), not something
+      // read off the screen. No conformance fixture will ever produce one — the pass that emits this
+      // kind runs OUTSIDE the adapter and this suite calls `adapter.buildBlocks` directly — so the
+      // arm exists to keep the walk non-vacuous if that ever changes.
+      return [block.cancel.key];
     default: {
       // SAFETY: `block` is `never` here today — every kind is cased above — so widening it back to
       // `Block` cannot be wrong for any value that exists. The assertion is what names the offending

@@ -88,5 +88,11 @@ export const grokAdapter: HarnessAdapter = {
   extractStatusLines,
   extractInputDraft,
   composerReady,
+  // The way OUT of a grok modal, for the unread-dialog card (.adr/0053) — and the reason the key is
+  // DECLARED per adapter rather than assumed to be Escape. Read from `grok/PERMISSION_NOTES.md`
+  // (`… Ctrl+o:always-approve │ Ctrl+c:cancel │ Esc:scrollback`) and `grok/ASK_NOTES.md`
+  // (`Tab:next answer │ Esc:scrollback │ Shift+x:dismiss`): on grok, Escape opens the scrollback
+  // view. Ctrl+C is the cancel.
+  cancelKey: "ctrl+c",
   composerPrompt,
 };

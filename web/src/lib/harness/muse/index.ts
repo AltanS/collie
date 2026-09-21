@@ -144,6 +144,12 @@ export const museAdapter: HarnessAdapter = {
   agent: "muse",
   buildBlocks: museBuildBlocks,
   composerReady,
+  // The way OUT of a Muse modal, for the unread-dialog card (.adr/0053). Read from
+  // `muse/DIALOG_NOTES.md`: the ask footers print `Esc to interrupt` (:84, :132) and the REVIEW
+  // phase prints `Esc to go back` (:159). NOTE the caveat: on Muse this key STEPS OUT of the screen,
+  // it does not always dismiss the request — which is why the card's caption names the key and never
+  // promises "cancel".
+  cancelKey: "Escape",
   extractInputDraft,
   extractStatusLines,
   composerPrompt,

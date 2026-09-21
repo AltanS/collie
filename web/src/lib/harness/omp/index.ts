@@ -152,6 +152,13 @@ export const ompAdapter: HarnessAdapter = {
   // The reply path's pre-flight. omp's composer is exactly what `hasComposer` finds, and its absence
   // is exactly the condition under which typing would land in a modal instead.
   composerReady: hasComposer,
+  // NO `cancelKey`, deliberately — omp gets no unread-dialog card in this milestone (.adr/0053).
+  // The key is not the problem: omp's modals do print their way out (`omp--menu-model.txt` ends
+  // `… · Esc close`, `omp--select-menu.txt` `… · Esc cancel`). The FLOOR is. `omp/chrome.ts:95-99`
+  // records the scanner's failure mode: one ZWJ emoji in a user's statusline template and
+  // `locateComposer` returns null on EVERY frame, so `composerReady` is false forever on a pane with
+  // no dialog on it. A card gated on `composerReady === false` would paint itself permanently over a
+  // live composer in exactly that state. Declare nothing until that floor is trustworthy.
   // …and the exact on-screen draft region the destructive pre-clear is bound to on the wire: the
   // box's bottom prompt row or all of the rule composer's prompt rows. The box scanner declines when
   // a long palette pushes that row out of range; the rule region ends one status row from the tail.

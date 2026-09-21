@@ -3,6 +3,7 @@ import { fireEvent, render } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
 import { AnsiOutput } from "./ansi-output";
+import { codexPaddingScreen } from "@/test/codex-padding";
 
 const ESC = "\x1b";
 const MUTED_RULE_COLOUR = "var(--terminal-muted-fg, #a1a1a1)"; // dark half as the fallback
@@ -74,8 +75,14 @@ describe("terminal mirror colour space", () => {
 // reference ground in light and dark-space halves under `dark:`, and only bright foregrounds —
 // unreadable on white — resolve dark through a light-gated custom property.
 describe("native mirror (muse)", () => {
+  // `grammars={false}` throughout this block, and it is the point rather than a workaround: the
+  // native display pass is PRESENTATION, not a grammar, so it is gated on the native-mirror
+  // predicate and runs with the adapter switched off (.adr/0047, harness/index.ts). Leaving grammars
+  // on would also hand these one-line fragments to the M34 post-pass — a pane with no composer on it
+  // is the unread-dialog card's screen (.adr/0053) — and the `<pre>` found below would be the card's
+  // own mirror rather than the block renderer's.
   function nativePre(text: string, agent?: string) {
-    const { container } = render(<AnsiOutput text={text} agent={agent} />);
+    const { container } = render(<AnsiOutput text={text} agent={agent} grammars={false} />);
     return container.querySelector("pre")!;
   }
 
@@ -93,7 +100,9 @@ describe("native mirror (muse)", () => {
   // actually serves a light-themed opencode or codex pane. It wins in BOTH directions.
   it("renders natively when the pane opts in, against the agent bit", () => {
     for (const agent of ["opencode", "codex", undefined]) {
-      const { container } = render(<AnsiOutput text="hello" agent={agent} nativeMirror />);
+      const { container } = render(
+        <AnsiOutput text="hello" agent={agent} nativeMirror grammars={false} />,
+      );
       const pre = container.querySelector("pre")!;
       expect(pre.className).toContain("bg-[#fffbf8]");
       expect(pre.className).not.toContain("invert(1)");
@@ -101,7 +110,9 @@ describe("native mirror (muse)", () => {
   });
 
   it("inverts when the pane opts out, even for a native agent", () => {
-    const { container } = render(<AnsiOutput text="hello" agent="muse" nativeMirror={false} />);
+    const { container } = render(
+      <AnsiOutput text="hello" agent="muse" nativeMirror={false} grammars={false} />,
+    );
     const pre = container.querySelector("pre")!;
     expect(pre.className).toContain("[filter:invert(1)_hue-rotate(180deg)]");
     expect(pre.className).not.toContain("bg-[#fffbf8]");
@@ -142,7 +153,7 @@ describe("native mirror (muse)", () => {
   it.each([["muse"]])("paints the current find match for %s without the cancelling filter", (agent) => {
     const text = `${ESC}[38;2;111;114;122mfind the needle${ESC}[0m`;
     const { container } = render(
-      <AnsiOutput text={text} query="needle" currentMatch={0} agent={agent} />,
+      <AnsiOutput text={text} query="needle" currentMatch={0} agent={agent} grammars={false} />,
     );
     const match = container.querySelector('[data-find-match="current"]')!;
     expect(match.className).toContain("bg-yellow-400");
@@ -286,7 +297,12 @@ describe("mirror line wrapping", () => {
   it("tags only Codex's terminal-wide user fill for mobile transparency", () => {
     const user = `${ESC}[48;2;240;240;240m› submitted message${" ".repeat(32)}${ESC}[0m`;
     const diff = `${ESC}[48;2;33;58;43m+ semantic diff${ESC}[0m`;
-    const { container } = render(<AnsiOutput text={`${user}\n${diff}\n`} agent="codex" />);
+    // The mark is gated on the codex adapter, so grammars stay ON — which means the fragment has to
+    // be a plausible codex pane. Without a composer on screen the M34 post-pass answers with the
+    // unread-dialog card instead of the mirror (.adr/0053), and the marked span would never render.
+    const { container } = render(
+      <AnsiOutput text={`${user}\n${diff}\n${codexPaddingScreen}`} agent="codex" />,
+    );
     // SAFETY: the marked segment is a <span> the renderer just produced, so querySelector on the
     // class it only ever sets on a span returns an HTMLElement or null; the assertions below
     // dereference it and would fail loudly on null.

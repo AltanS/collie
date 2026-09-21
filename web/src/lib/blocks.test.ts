@@ -427,12 +427,16 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(wizard.wizard.phase).toBe("review");
   });
 
-  it("keeps a wizard buffer as pure raw for a non-Claude agent", () => {
+  it("lifts no wizard from a Claude buffer for a non-Claude agent", () => {
     const lines = fixtureLines("claude--wizard-q1.txt");
     const blocks = buildBlocks(lines, { agent: "codex" });
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]!.kind).toBe("raw");
-    expect(blocks[0]!.lines).toBe(lines);
+    // Not `raw`: since M34 an adapter that reads nothing on a screen its own `composerReady` says it
+    // cannot type into gets the unread-dialog card over it (.adr/0053). That is not a lift — the
+    // card parses nothing and carries the region through by reference — and the fail-closed claim
+    // here is that codex's grammars still found no dialog.
+    expect(blocks[0]!.kind).toBe("unread-dialog");
+    expect(blocks[0]!.lines).toEqual(lines);
   });
 });
 

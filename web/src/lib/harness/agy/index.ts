@@ -24,6 +24,10 @@ export const agyAdapter: HarnessAdapter = {
   extractStatusLines,
   extractInputDraft,
   composerReady: hasInputBox,
+  // The way OUT of an AGY modal, for the unread-dialog card (.adr/0053). Its captures print the
+  // Claude-style footer: `fixtures/panes/agy--permission-bash.txt`, `agy--permission-edit.txt`,
+  // `agy--plan-approval.txt` and `agy--select-menu.txt` all print `esc to cancel`.
+  cancelKey: "Escape",
 };
 
 export const antigravityAdapter: HarnessAdapter = {
@@ -32,4 +36,6 @@ export const antigravityAdapter: HarnessAdapter = {
   extractStatusLines,
   extractInputDraft,
   composerReady: hasInputBox,
+  // Same harness, same registration, same declaration — see `agyAdapter` above.
+  cancelKey: "Escape",
 };
