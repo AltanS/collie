@@ -14,6 +14,7 @@ import { detectPreviewSelectRegion } from "./preview-select";
 import { detectWizardRegion } from "./wizard";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
+import { detectEffortRegion } from "./effort";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
 import {
@@ -82,8 +83,21 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
     return blocks;
   }
 
+  // The `/effort` slider (effort.ts) — a specific grammar for a screen the generic one below CAN
+  // claim but cannot read: the value lives in the `▲`'s column, and the arrows are advertised by the
+  // footer itself, which the generic detector never scans (and must not, since MENU_ARROW_ROW
+  // matches that line with an empty value and the rest of the footer as its verb).
+  const effortRegion = detectEffortRegion(lines);
+  if (effortRegion) {
+    const before = trimTrailingBlank(lines.slice(0, effortRegion.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "menu", menu: effortRegion.model, lines: lines.slice(effortRegion.startLine) });
+    return blocks;
+  }
+
   // LAST RESORT: a modal screen none of the specific grammars claimed, driven by the keys its own
-  // footer names (menu.ts). It runs after all four deliberately — every grammar above encodes a
+  // footer names (menu.ts). It runs after all five deliberately — every grammar above encodes a
   // VERIFIED keystroke recipe for a dialog it recognises, and this one only knows what the screen
   // printed. It must never pre-empt them; it exists to catch what they decline (the `/model` picker),
   // where the alternative is no buttons at all and a composer send typed into the picker.

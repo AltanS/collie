@@ -114,19 +114,27 @@ describe("detectMenuRegion — what it must decline", () => {
 // "Enter to confirm", which used to file it as the folder-trust prompt and stand the generic menu
 // down, leaving the operator a modal with no buttons at all (ADR 0053). Nothing here is
 // Effort-specific: once the bail stops firing, the generic grammar claims the screen on the keys the
-// screen itself printed. The `s` key and the arrows are a separate piece of work.
+// screen itself printed.
+//
+// What SHIPS for this screen is not this model. A Claude-specific grammar (./effort.ts) runs ahead
+// of the generic arm and reads two things the generic one cannot: the current value, from the `▲`'s
+// column, and the `s` key, whose footer segment says "for" where this parser demands "to". That
+// model, and the block `claudeBuildBlocks` really emits, are asserted in effort.test.ts. The case
+// below is about the generic detector alone.
 describe("detectMenuRegion — the /effort slider", () => {
-  it("lifts the effort slider as a menu with the buttons its own footer names", () => {
-    const blocks = claudeBuildBlocks(load("claude--menu-effort-slider.txt"));
-    expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
-
-    const model = detectMenu(load("claude--menu-effort-slider.txt"))!;
-    expect(model.title).toBe("Effort");
-    expect(model.actions).toEqual([
+  it("no longer stands down on the slider's footer phrase", () => {
+    const model = detectMenu(load("claude--menu-effort-slider.txt"));
+    expect(model).not.toBeNull();
+    expect(model!.title).toBe("Effort");
+    // Two actions, not three: the generic parser drops "s for this session only". The Effort grammar
+    // is what puts that key back.
+    expect(model!.actions).toEqual([
       { label: "Confirm", keys: ["Enter"] },
       { label: "Cancel", keys: ["Escape"], cancel: true },
     ]);
-    for (const key of model.actions.flatMap((a) => a.keys)) {
+    // And no arrows: the `←/→` phrase is this screen's FOOTER, which the region scan never reaches.
+    expect(model!.nav).toEqual({ upDown: false });
+    for (const key of model!.actions.flatMap((a) => a.keys)) {
       expect(/^\d+$/.test(key), key).toBe(false);
     }
   });
