@@ -145,6 +145,60 @@ appearing and disappearing at the top of the viewport is the same fault, one ord
 magnitude larger. §11 states the one exception the app allows, and names the single component
 that is allowed to be it.
 
+### Every layout shift is a defect until this file says otherwise
+
+§2 above states the rule per element: a state repaints, it never re-lays-out. This is the
+route-wide form of the same rule, stated once for the whole app: **content the operator is
+reading or aiming at does not move unless the operator moved it.** A box that grows, a sibling
+that slides, a row that appears, a scroller whose contents jump, a control that changes width
+for a moment. All of it is the same fault, whether the trigger is a state, a timer, a poll, a
+navigation or a network reply.
+
+This rule governs the chrome the app draws around the terminal: the header, the strips, the
+belt, the composer, the sheets. It does not govern the mirrored terminal stream itself, which
+moves because the agent wrote a line, and the mirror's own contract is that it follows the tail.
+Two more things are not this fault, and neither is precedent for it: the OS resizing the
+viewport when the keyboard opens, because the operator opened it and the app moved nothing; and
+a toast, which is an Event in §11's table and floats in the overlay layer, so it holds no space
+and can never push a sibling.
+
+Why it is graded this harshly: on a phone the thumb is already moving when the layout changes.
+A 51px slide under a moving thumb is a wrong tap, and a wrong tap on this belt sends a command
+to an agent. Reading breaks the same way, the eye loses its line. So the cost is never "looks a
+bit off". It is a mis-sent keystroke or a lost place.
+
+**What is allowed is a closed list.** (a) A shift the operator caused directly and is watching:
+opening a dock, scrolling, typing lines into the composer, opening a sheet. (b) A fact that
+outlives the next interaction, arriving through `Collapse` (§11, hard rule 1), because the
+change is then continuous and eased and the neighbours animate rather than teleport. (c) A
+shift written down here, with its trigger, its pixels, and why reserving the space was worse.
+A shift is ADR-grade, not a paragraph, when a tap already in flight could land on different
+content after it: a control that appears or leaves, a row that changes height while its
+neighbours are tappable, a chip that changes width. The finger is down before the eye has caught
+up, so there is no judgment call to make. "It is only 700ms" is not a reason: duration makes a shift harder to
+aim around, not easier.
+
+The shapes this repo has already paid for, so nobody pays twice. The harness chip that dropped
+its word for a ✓ (`harness-bar.tsx`, fixed 2026-09-21: on a Claude pane "Compact" went from
+95px to the 44px `min-w-11` floor for 700ms, and every chip after it slid 51px left and back;
+the ✓ now takes the icon's cell and the word stays). The in-flow "Sent" row that moved the
+mirror 30px twice to say one word (§11). The header that jumped 4px between dashboard and pane
+because its height was its children's (§6). The status word that moved a host name 33px
+sideways (§2, the slot). The border gained in a state (§2, the technique). And a pill withdrawn
+instead of greyed, which moves every pill after it.
+
+How to catch one before it ships. In a unit test: render the two states and compare
+`textContent` and the child count of the box, the way `harness-bar.test.tsx` "keeps the word
+under the ✓ so the belt does not move" does. A state that changes either has changed the box. In
+a browser: a `requestAnimationFrame` sampler that records the neighbour's
+`getBoundingClientRect()` per frame. A glide is a run of eased values over ~240ms; a jump is two
+values one frame apart. Ask it of every diff that touches a state: which box changed size or
+position, and who caused it. If the answer is "the app did", it needs a reason from the list
+above or it does not land.
+
+§6 grants one exception, the status band's fixed height, and §11 grants the other, `Collapse`.
+Add a third only by adding it to this list.
+
 ---
 
 ## 3. Shape

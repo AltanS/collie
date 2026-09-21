@@ -184,7 +184,7 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
           <Button
             key={item.id}
             type="button"
-            variant={phase === "idle" && !armed ? "ghost" : "default"}
+            variant="ghost"
             size="sm"
             disabled={disabled}
             onClick={() => fire(item)}
@@ -195,22 +195,34 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
             }
             className={cn(
               `${STRIP_ROW_PILL} gap-1.5 text-xs`,
-              armed
-                ? "border border-destructive/40 bg-destructive/10 text-destructive"
-                : "text-foreground",
+              armed && "border border-destructive/40 bg-destructive/10 text-destructive",
+              !armed &&
+                phase !== "idle" &&
+                (accent === undefined
+                  ? "bg-background border-foreground text-foreground"
+                  : "bg-white"),
+              !armed && phase === "idle" && "text-foreground",
             )}
+            style={
+              !armed && phase !== "idle" && accent !== undefined
+                ? { borderColor: accent, color: accent }
+                : undefined
+            }
           >
+            {/* "Done" is the white chip with the harness colour on its border and its word, and a
+                check where its mark was. The resting chip is a ghost in the app's own text colour
+                and the armed one is red, so neither shows that pairing. The accent word on white
+                is a 700ms echo, not a resting label — that is why the icon's 3:1/4.5:1 contrast
+                note below does not gate it (the operator chose this on 2026-09-21). */}
             {phase === "done" ? (
-              <Check className="size-4" />
+              <Check className="size-4 shrink-0" />
             ) : (
-              <>
-                {/* The icon takes the brand colour and the word does not. An icon is held to 3:1
-                    (non-text contrast) and clears it on both themes; a 12px word in #D97757 would
-                    not, so the label keeps the app's own text colour and stays readable. */}
-                <Icon className="size-4 shrink-0" style={accent ? { color: accent } : undefined} />
-                {labelText(item.label)}
-              </>
+              /* The icon takes the brand colour and the word does not. An icon is held to 3:1
+                 (non-text contrast) and clears it on both themes; a 12px word in #D97757 would
+                 not, so the label keeps the app's own text colour and stays readable. */
+              <Icon className="size-4 shrink-0" style={accent ? { color: accent } : undefined} />
             )}
+            {labelText(item.label)}
           </Button>
         );
       })}
@@ -219,7 +231,7 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
 }
 
 /** The pane's brand accent, through the catalog's own agent ladder so `claude-code` finds Claude. */
-function accentFor(agent: string | undefined | null): string | undefined {
+export function accentFor(agent: string | undefined | null): string | undefined {
   if (!agent) return undefined;
   return AGENT_BRANDS.get(canonicalAgent(agent.toLowerCase().trim()))?.accent;
 }

@@ -4,7 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import type { OperatorCommand } from "@/lib/types";
-import { HarnessBar } from "./harness-bar";
+import { accentFor, HarnessBar } from "./harness-bar";
+
+/** jsdom normalises a hex colour to `rgb(...)`; compare through the same normaliser on both sides. */
+function normalizedColor(value: string): string {
+  const probe = document.createElement("div");
+  probe.style.color = value;
+  return probe.style.color;
+}
 
 afterEach(() => __resetHarnessBar());
 
@@ -52,8 +59,40 @@ describe("HarnessBar", () => {
     render(<HarnessBar agent="claude" onRun={onRun} />);
     await userEvent.click(screen.getByRole("button", { name: "Compact" }));
     expect(onRun).toHaveBeenCalledWith("/compact");
-    // The ✓ replaces the label for ECHO_DONE_MS, so the button's text is gone while it shows.
-    await waitFor(() => expect(screen.queryByText("Compact")).not.toBeInTheDocument());
+    // The ✓ replaces only the icon for ECHO_DONE_MS; the word "Compact" stays put.
+    const button = screen.getByRole("button", { name: "Compact" });
+    await waitFor(() => expect(button.querySelector("svg.lucide-check")).toBeInTheDocument());
+    expect(button).toHaveTextContent("Compact");
+  });
+
+  it("keeps the word under the ✓ so the belt does not move", async () => {
+    const onRun = took();
+    render(<HarnessBar agent="claude" onRun={onRun} />);
+    const button = screen.getByRole("button", { name: "Compact" });
+    const before = button.textContent;
+    await userEvent.click(button);
+    expect(onRun).toHaveBeenCalledWith("/compact");
+    await waitFor(() => expect(button.querySelector("svg.lucide-check")).toBeInTheDocument());
+    // Same box, same word: only the icon swapped for the check.
+    expect(button.textContent).toBe(before);
+    expect(button).toHaveTextContent("Compact");
+  });
+
+  it("draws the done chip white with the harness accent on its border and word", async () => {
+    const onRun = took();
+    render(<HarnessBar agent="claude" onRun={onRun} />);
+    const button = screen.getByRole("button", { name: "Compact" });
+    await userEvent.click(button);
+    await waitFor(() => expect(button.querySelector("svg.lucide-check")).toBeInTheDocument());
+    expect(button).toHaveClass("bg-white");
+    expect(button).not.toHaveClass("bg-primary");
+    const accent = accentFor("claude");
+    expect(accent).toBeDefined();
+    expect(normalizedColor(button.style.color)).toBe(normalizedColor(accent!));
+    expect(normalizedColor(button.style.borderColor)).toBe(normalizedColor(accent!));
+    // An idle sibling stays a plain ghost chip, never the white "done" ground.
+    const idleSibling = screen.getByRole("button", { name: "Model" });
+    expect(idleSibling).not.toHaveClass("bg-white");
   });
 
   it("sends Model bare and opens no sheet — the pane's own picker takes over", async () => {
