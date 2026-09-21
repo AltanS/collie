@@ -146,6 +146,55 @@ describe("the box is the lowest frame on screen, and its tail holds no frame mar
   });
 });
 
+describe("shell mode paints the prompt row with a bang", () => {
+  // Claude's shell (`!`) mode puts `!` where `❯` normally stands. Only step 2 of ADR 0048 learned
+  // it, so the frame closes on that row and the composer is live again (M34 spec 06).
+  it.each(["claude-lab--mode-bash--w40.txt", "claude-lab--mode-bash--w82.txt"])(
+    "%s: shell mode reports a live box, the command as the draft and a statusline tail",
+    (name) => {
+      const lines = load(name);
+      expect(hasInputBox(lines)).toBe(true);
+      expect(extractInputDraft(lines)).toBe("ls -1 src | head -3");
+      expect(inputBoxTail(lines)).toBe("statusline");
+      // The mode stays visible: a reply here runs as a shell command, and the screen's own hint row
+      // is what says so.
+      expect(extractStatusLines(lines).map((r) => lineText(r).trim())).toContain("! for shell mode");
+    },
+  );
+
+  it("shell mode's bang is chrome, so it never reaches the draft", () => {
+    expect(extractInputDraft(fromTexts([RULE, "! ls -1 src", RULE]))).toBe("ls -1 src");
+  });
+
+  it("memory mode is untouched: its marker is still the chevron and the hash is typed content", () => {
+    const lines = load("claude-lab--mode-memory--w82.txt");
+    expect(hasInputBox(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toBe("# remember the lab uses fake commands");
+  });
+
+  it("a bang-led transcript row below the box is not a frame mark", () => {
+    // Step 1 stayed chevron-only on purpose: shell mode's bang only ever appears INSIDE the frame.
+    const lines = fromTexts(["● earlier turn", ...box("draft"), "! this is ordinary prose"]);
+    expect(hasInputBox(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toBe("draft");
+  });
+});
+
+describe("a bang is a prompt row only with a separator", () => {
+  it.each([
+    ["a bang glued to a word", "!important"],
+    ["a bang glued to an operator", "!= null"],
+    ["a doubled bang", "!! rerun"],
+  ])("%s inside a frame is not a prompt row", (_label, row) => {
+    expect(hasInputBox(fromTexts([RULE, row, RULE]))).toBe(false);
+    expect(extractInputDraft(fromTexts([RULE, row, RULE]))).toBeNull();
+  });
+
+  it("a bang alone on the row is a prompt row: shell mode with nothing typed yet", () => {
+    expect(hasInputBox(fromTexts([RULE, "!", RULE]))).toBe(true);
+  });
+});
+
 describe("a statusline row shaped like a frame mark", () => {
   // A statusline is a user command's output. A starship-style prompt opens with "❯", and a separator
   // can look like a labelled rule. Inside a bounded statusline run under a bare border, neither is a

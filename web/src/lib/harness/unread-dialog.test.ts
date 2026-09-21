@@ -196,15 +196,13 @@ const CARD_FIXTURES = {
       "claude-lab--tasks-panel--w40.txt",
     ],
     notModals: [
-      // corpus knownStall: a wrapped draft whose continuation row starts with `❯`, so walkFrame
-      // never closes the frame on the real prompt row. The box is LIVE and holds the operator's own
-      // multi-line draft.
+      // corpus knownStall: a wrapped draft holding an interior rule, which stops walkFrame's up-scan
+      // before the real prompt row. Declined in M34 spec 06: the only discriminator is the two
+      // borders' widths, and that is false on three real labelled-border captures. The box is LIVE
+      // and holds the operator's own multi-line draft.
       "claude-lab--draft-adversarial--w120.txt",
       "claude-lab--draft-adversarial--w40.txt",
       "claude-lab--draft-adversarial--w82.txt",
-      // corpus knownStall: shell (`!`) mode paints `!` on the prompt row instead of `❯`. Box live.
-      "claude-lab--mode-bash--w40.txt",
-      "claude-lab--mode-bash--w82.txt",
       // corpus, DELIBERATE: a statusline printing numbered rows is refused by ADR 0048 step 4
       // because it cannot be told from a live menu. Box live.
       "claude-lab--statusline-numbered-rows--w82.txt",

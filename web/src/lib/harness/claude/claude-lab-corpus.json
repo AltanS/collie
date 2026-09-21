@@ -79,7 +79,7 @@
         "dialogLive": false,
         "blockKind": "raw"
       },
-      "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
+      "knownStall": "A wrapped draft whose continuation rows hold an interior rule. Step 1 breaks on the bottom border, then the up-scan stops at that rule because isBoxBorder is true there, and a rule is not a prompt row, so walkFrame returns null. The interior rule aborts the walk, not the prompt-glyph row above it. Widening only the rule does not help: the walk would then anchor on the '❯'-led continuation row and the top-border test would look at the real prompt row and refuse. Closing it needs the two borders' widths compared, which is false on three real labelled-border captures. DECLINED in M34 spec 06.",
       "actualToday": {
         "hasInputBox": false,
         "draft": null,
@@ -99,7 +99,7 @@
         "dialogLive": false,
         "blockKind": "raw"
       },
-      "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
+      "knownStall": "A wrapped draft whose continuation rows hold an interior rule. Step 1 breaks on the bottom border, then the up-scan stops at that rule because isBoxBorder is true there, and a rule is not a prompt row, so walkFrame returns null. The interior rule aborts the walk, not the prompt-glyph row above it. Widening only the rule does not help: the walk would then anchor on the '❯'-led continuation row and the top-border test would look at the real prompt row and refuse. Closing it needs the two borders' widths compared, which is false on three real labelled-border captures. DECLINED in M34 spec 06.",
       "actualToday": {
         "hasInputBox": false,
         "draft": null,
@@ -119,7 +119,7 @@
         "dialogLive": false,
         "blockKind": "raw"
       },
-      "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
+      "knownStall": "A wrapped draft whose continuation rows hold an interior rule. Step 1 breaks on the bottom border, then the up-scan stops at that rule because isBoxBorder is true there, and a rule is not a prompt row, so walkFrame returns null. The interior rule aborts the walk, not the prompt-glyph row above it. Widening only the rule does not help: the walk would then anchor on the '❯'-led continuation row and the top-border test would look at the real prompt row and refuse. Closing it needs the two borders' widths compared, which is false on three real labelled-border captures. DECLINED in M34 spec 06.",
       "actualToday": {
         "hasInputBox": false,
         "draft": null,
@@ -517,12 +517,6 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "Shell mode (!) paints '!' on the prompt row instead of the prompt glyph, so walkFrame finds no prompt line. Pre-existing, outside M31's scope.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -537,12 +531,6 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "Shell mode (!) paints '!' on the prompt row instead of the prompt glyph, so walkFrame finds no prompt line. Pre-existing, outside M31's scope.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {

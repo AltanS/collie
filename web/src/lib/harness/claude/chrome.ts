@@ -1,6 +1,7 @@
 // Chrome stripping — trims the agent's own TUI chrome off the TAIL of a parsed buffer so the app's
 // composer/statusline supersedes it instead of duplicating it. Today that's the Claude Code input
-// box (the "❯ …" prompt line sandwiched between two rules) plus the statusline / hint lines below it
+// box (the "❯ …" prompt line, or "! …" in shell mode, sandwiched between two rules) plus the
+// statusline / hint lines below it
 // and any trailing blank runs.
 //
 // Deliberately CONSERVATIVE: it strips only when the WHOLE input-box frame matches confidently at
@@ -110,13 +111,15 @@ function inputBoxHoldsGhostText(lines: StyledLine[], box: InputBox): boolean {
   for (let j = box.prompt; j < box.bottomBorder; j++) {
     // The "❯" marker is unstyled and may share a segment with the text that follows it (a real draft
     // arrives as one segment, "❯ hello"), so it is stripped from the text rather than skipped as a
-    // segment — otherwise the marker's own non-faint run would answer "not a ghost" every time.
+    // segment — otherwise the marker's own non-faint run would answer "not a ghost" every time. Shell
+    // mode's "!" is stripped the same way; there the marker is its own PAINTED segment, so it would
+    // answer "not a ghost" for a reason this code did not state.
     let beforeMarker = j === box.prompt;
     for (const seg of lines[j]!.segments) {
       let text = seg.text;
       if (beforeMarker) {
         const head = text.trimStart();
-        if (!head.startsWith("❯")) {
+        if (!isPromptRow(head)) {
           if (head.length === 0) continue; // indent ahead of the marker
         } else {
           text = head.slice(1);
@@ -259,7 +262,9 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   if (inputBoxHoldsGhostText(lines, box)) return null;
 
   let head = texts[box.prompt]!.trimStart();
-  if (head.startsWith("❯")) head = head.slice(1);
+  // The marker is chrome and never reaches the draft, so shell mode's draft is the command alone.
+  // Memory mode keeps its "#": there the marker is still "❯" and the "#" is typed content.
+  if (isPromptRow(head)) head = head.slice(1);
   const parts = [head.trim()];
   // Continuation lines of a wrapped draft: everything between the prompt and the bottom border,
   // de-indented. Blank lines are dropped (interior/trailing padding), so they never inject a space.
@@ -344,7 +349,7 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  * of this holds, checked in order:
  *
  *     <top border>         (isInputBoxTopBorder: bare, or carrying a session label)
- *     ❯ <draft>            (the prompt line)
+ *     ❯ <draft>            (the prompt line; "!" in shell mode)
  *     <continuation…>      (0..MAX_DRAFT_LINES wrapped-draft lines, no leading "❯")
  *     <bottom border>      (bare U+2500 rule)
  *     <tail…>              (0..MAX_TAIL_LINES rows, classified by classifyTail)
@@ -359,8 +364,9 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  *     (isStatuslineFrameMark), but the box is then kept only when every such row sits inside a
  *     `statusline` tail's run, at most MAX_STATUS_LINES rows under the border, and no labelled rule
  *     sits directly on a "❯" row (a second box's top border and prompt).
- *  2. THE FRAME CLOSES: a "❯" line above the bottom border and a top border above that, inside the
- *     shared MAX_DRAFT_LINES budget.
+ *  2. THE FRAME CLOSES: a prompt line above the bottom border and a top border above that, inside
+ *     the shared MAX_DRAFT_LINES budget. The prompt line carries "❯", or "!" in shell mode
+ *     (isPromptRow). Only this step learned the bang; step 1's marks stay chevron-only.
  *  3. THE TAIL IS ACCOUNTED FOR (classifyTail): a statusline run, a completion popup, or `unknown`.
  *  4. NO MODAL IS ON SCREEN: every specific dialog grammar runs over the WHOLE screen, and none may
  *     claim it; no tail row may carry a dialog footer; no `statusline` or `unknown` tail row may carry
@@ -416,6 +422,19 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
   if (dialogOnScreen(lines)) return null;
 
   return { top: frame.top, prompt: frame.prompt, bottomBorder: b, tail, statusEnd, agentsStart };
+}
+
+/** A row carrying the input box's prompt marker: "❯", or "!" in shell mode, where Claude paints
+ *  the bang in place of the chevron. The bang must be followed by whitespace or end the row, so an
+ *  ordinary "!important" line inside the frame is not a prompt. Step 1's frame marks (isFrameMark)
+ *  deliberately do NOT learn it: shell mode's bang only ever appears INSIDE the frame, and a
+ *  "!"-led transcript row below the box must stay ordinary text. ADR 0048 step 2. */
+function isPromptRow(text: string): boolean {
+  const head = text.trimStart();
+  if (head.startsWith("❯")) return true;
+  if (!head.startsWith("!")) return false;
+  const next = head[1];
+  return next === undefined || /\s/.test(next);
 }
 
 /** A row that belongs to a box or a dialog's frame, unless a statusline drew it (isStatuslineFrameMark):
@@ -599,13 +618,13 @@ function walkFrame(texts: string[], bottomBorder: number): { top: number; prompt
   while (
     i >= 0 &&
     !isBoxBorder(texts[i]!) &&
-    !texts[i]!.trimStart().startsWith("❯") &&
+    !isPromptRow(texts[i]!) &&
     wrapped < MAX_DRAFT_LINES
   ) {
     wrapped++;
     i--;
   }
-  if (i < 0 || !texts[i]!.trimStart().startsWith("❯")) return null;
+  if (i < 0 || !isPromptRow(texts[i]!)) return null;
   const prompt = i;
   i--;
   // Blank padding between the prompt and the top border (e.g. a blank first line inside a freshly
