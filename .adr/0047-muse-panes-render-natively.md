@@ -156,3 +156,12 @@ decision here reaches every surface that carries Muse's own colours. The raw-ter
 adapter off (`buildBlocks` takes `grammars: false`) and keeps this display pass, since native
 rendering is display faithfulness, not a grammar. The adapter's own decisions live beside its code,
 in `web/src/lib/harness/muse/DIALOG_NOTES.md`.
+
+## Addendum — 2026-09-21: the bit's own limit
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. The agent-wide bit this
+ADR grants is right only when every background answer of the agent reads raw, as every one of
+Muse's does. An agent whose answer changes with the terminal's reported background, such as
+opencode, measured for PR #241, cannot take this bit: it reads raw on one background and inverts
+unreadable on the other. The seam for such an agent is the per-pane override in
+[ADR 0002](0002-invert-the-light-terminal-mirror.md)'s addendum of the same date.

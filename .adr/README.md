@@ -121,7 +121,7 @@ the pointer, it was a supersede.
 | [0044](./0044-the-update-screen-is-one-reducer-and-one-shared-poll.md) | The update screen is one reducer and one shared poll | Accepted |
 | [0045](./0045-a-build-below-the-protocol-floor-is-a-red-preflight.md) | A build below the protocol floor is a red preflight, never a silent link | Accepted |
 | [0046](./0046-an-urgent-patch-keeps-the-daily-cadence.md) | An urgent patch keeps the daily cadence | Accepted |
-| [0047](./0047-muse-panes-render-natively.md) | Muse panes render natively: no light-theme inversion | Accepted |
+| [0047](./0047-muse-panes-render-natively.md) | Muse panes render natively: no light-theme inversion (addendum 2026-09-21: the bit's own limit) | Accepted |
 | [0048](./0048-the-input-box-is-found-by-its-own-frame.md) | The input box is found by its own frame; the statusline bound only bounds what is stripped (amends 0004) | Accepted |
 | [0049](./0049-no-child-inherits-a-relocated-repository.md) | No child of Collie inherits a variable that relocates a git repository | Accepted |
 | [0050](./0050-a-crew-fault-blocks-an-update-only-when-the-update-makes-it-worse.md) | A crew fault blocks an update only when the update would make it worse (distinguishes 0045) | Accepted |

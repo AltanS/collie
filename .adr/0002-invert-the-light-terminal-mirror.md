@@ -165,9 +165,11 @@ fix this ADR reserved: a per-pane "don't invert this one" override, built by @wa
 
 The override lives in `web/src/lib/mirror-invert.ts`. It stores one localStorage entry per pane,
 keyed by scope and pane id, the same shape drafts use. The value is tri-state: an absent entry
-means no opinion, and the agent bit from ADR 0047 decides. Storage is bounded to 32 decisions, and
-past that bound the oldest entry is evicted. A corrupt entry is dropped rather than kept, so a pane
-simply falls back to the agent bit on the next read.
+means no opinion, and the agent bit from ADR 0047 decides. Storage is bounded to 32 decisions
+across the whole client, every host and pane together, not per host or per pane; past that bound
+the oldest entry is evicted, and an entry exists only for a pane the operator actually decided
+about, never for one that merely had the sheet open. A corrupt entry is dropped rather than kept,
+so a pane simply falls back to the agent bit on the next read.
 
 `rendersNativeMirror(agent, paneOverride)` reads this override, and it wins in both directions: it
 can force the inverting mirror back on for a native agent, or force it off for one that is not.
