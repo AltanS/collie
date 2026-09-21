@@ -199,7 +199,27 @@ const channelIconsPlugin: Plugin = {
 
 const channelManifest = manifestFor(channel);
 
+// Where the app is mounted. Upstream serves Collie at the origin root; a deployment behind a proxy
+// that gives it a path (`https://host/collie/`) sets COLLIE_BASE_PATH, which the CLI passes through
+// from the plugin's `.env`. Normalised to a leading and trailing slash because that is the shape
+// vite's `base`, the manifest and `import.meta.env.BASE_URL` all expect.
+const BASE_PATH = ((raw?: string) => {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "" || trimmed === "/") return "/";
+  return `/${trimmed.replace(/^\/+/, "").replace(/\/+$/, "")}/`;
+})(process.env.COLLIE_BASE_PATH);
+
+// vite-icons.ts writes the tile srcs root-absolute. Under COLLIE_BASE_PATH they have to be
+// re-rooted on the mount point, or an installer fetches the tiles from the origin root.
+const manifestIcons = channelManifest.icons.map((icon) => ({
+  src: `${BASE_PATH}${icon.src.replace(/^\//, "")}`,
+  sizes: icon.sizes,
+  type: icon.type,
+  purpose: icon.purpose,
+}));
+
 export default defineConfig({
+  base: BASE_PATH,
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
     react(),
@@ -224,9 +244,9 @@ export default defineConfig({
         name: channelManifest.name,
         short_name: channelManifest.short_name,
         description: "Monitor and reply to your terminal AI agents from your phone",
-        id: "/",
-        start_url: "/",
-        scope: "/",
+        id: BASE_PATH,
+        start_url: BASE_PATH,
+        scope: BASE_PATH,
         display: "standalone",
         // Not locked to portrait: the manifest was the only thing stopping an installed Collie from
         // rotating on a tablet. Every route lays out as a centred column rather than a fluid sheet —
@@ -262,7 +282,10 @@ export default defineConfig({
           // (vite-icons.ts's manifestFor) — same dark polarity, same safe-zone padding, orange
           // paint, so a dev install is unmistakable next to a release install on the same home
           // screen without breaking either fact above.
-          ...channelManifest.icons,
+          //
+          // vite-icons.ts writes those srcs root-absolute. Under COLLIE_BASE_PATH they have to be
+          // re-rooted on the mount point, or an installer fetches the tiles from the origin root.
+          ...manifestIcons,
         ],
       },
       injectManifest: {
