@@ -318,6 +318,15 @@ its reason in the table entry — the background-agents screen, a wrapped draft 
 opens with `❯`, shell (`!`) mode, and a statusline printing numbered rows. Deleting a gap's fields
 when a fix lands is how the table signals the fix.
 
+Since tracker M34 every entry also declares `expected.blockKind`, the block kind a correct pipeline
+would lift from that screen, and `expected.keys` where that kind is interactive, the keystrokes the
+screen itself offers, spelled the way Collie sends them. The test asserts both against the pipeline,
+so a Claude release that changes a dialog's layout turns into a red line instead of a silent raw
+mirror. An entry whose screen shows a dialog the pipeline still returns raw carries `knownRaw` with a
+reason that names the grammar which would claim it, and one whose kind is right but whose key set is
+short carries `knownKeyGap` with the set it emits today. Both follow the same ritual as the other
+gaps: when the grammar lands, delete the field, do not edit the expectation.
+
 **Two captures the lab recommended are deliberately NOT here:** its 82-column Edit-permission
 screens, at 49 and at 30 rows. Every other Claude capture in this directory names Claude somewhere
 on screen — usually in the welcome banner, sometimes in a `No, and tell Claude what to do

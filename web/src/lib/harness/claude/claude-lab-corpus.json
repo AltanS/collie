@@ -13,9 +13,14 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "unknown",
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter"
+        ]
       },
       "knownStall": "The background-agents screen is a modal that carries its OWN typeable box, so the truth table calls the box real. The locator refuses it, and that refusal is the safe read: a live dialog owns the keyboard. Pinned here so the critical rule (no box while a dialog is live) keeps covering this screen.",
+      "knownRaw": "The background-agents screen is a modal that carries its OWN typeable box, so the locator refuses the box and the generic menu declines any screen with one; the footer's own hints never become buttons. Candidate grammar: a modal-with-a-composer kind that owns the keyboard AND exposes the inner box. The hardest of the register and worth a design pass of its own.",
       "actualToday": {
         "hasInputBox": false,
         "draft": null,
@@ -32,9 +37,15 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "unknown",
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter",
+          "ctrl+x"
+        ]
       },
       "knownStall": "The background-agents screen is a modal that carries its OWN typeable box, so the truth table calls the box real. The locator refuses it, and that refusal is the safe read: a live dialog owns the keyboard. Pinned here so the critical rule (no box while a dialog is live) keeps covering this screen.",
+      "knownRaw": "The background-agents screen is a modal that carries its OWN typeable box, so the locator refuses the box and the generic menu declines any screen with one; the footer's own hints never become buttons. Candidate grammar: a modal-with-a-composer kind that owns the keyboard AND exposes the inner box. The hardest of the register and worth a design pass of its own.",
       "actualToday": {
         "hasInputBox": false,
         "draft": null,
@@ -51,7 +62,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -64,7 +76,8 @@
         "hasInputBox": true,
         "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       },
       "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
       "actualToday": {
@@ -83,7 +96,8 @@
         "hasInputBox": true,
         "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       },
       "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
       "actualToday": {
@@ -102,7 +116,8 @@
         "hasInputBox": true,
         "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       },
       "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
       "actualToday": {
@@ -121,7 +136,8 @@
         "hasInputBox": true,
         "draft": "please read the README file and the notes under docs, then tell me in three short bullet points what this lab project contains, without changing any file at all",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -134,7 +150,8 @@
         "hasInputBox": true,
         "draft": "please read the README file and the notes under docs, then tell me in three short bullet points what this lab project contains, without changing any file at all",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -147,7 +164,8 @@
         "hasInputBox": true,
         "draft": "[Pasted text #1 +29 lines]",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -160,7 +178,8 @@
         "hasInputBox": true,
         "draft": "[Pasted text #1 +29 lines] summarise this",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -173,7 +192,8 @@
         "hasInputBox": true,
         "draft": "list the files in src",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -186,7 +206,8 @@
         "hasInputBox": true,
         "draft": "list the files in src",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -199,7 +220,8 @@
         "hasInputBox": true,
         "draft": "read README.md and reply with one short sentence",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -212,7 +234,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -225,7 +248,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -238,7 +262,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -251,7 +276,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -264,7 +290,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -277,7 +304,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -290,7 +318,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -303,7 +332,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -316,7 +346,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -329,7 +360,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -342,8 +374,20 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
-      }
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Up"
+        ]
+      },
+      "knownKeyGap": "The footer names 'Enter/↓ to select' as ONE compound token, and menuKeyFor takes a single key token, so Enter and Down are dropped and the menu offers Up and Escape alone. Candidate grammar: a compound-token reader for key-hint footers, which the '↑/↓' form of the same hint needs too.",
+      "actualKeys": [
+        "Escape",
+        "Up"
+      ]
     },
     {
       "fixture": "claude-lab--menu-effort-slider--w82.txt",
@@ -355,7 +399,15 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "s"
+        ]
       }
     },
     {
@@ -368,7 +420,17 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "Up",
+          "s"
+        ]
       }
     },
     {
@@ -381,8 +443,24 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
-      }
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Escape",
+          "Up",
+          "ctrl+a",
+          "ctrl+b",
+          "ctrl+r"
+        ]
+      },
+      "knownKeyGap": "The footer wraps onto two rows at 83 columns and only the last row is read, so 'Ctrl+A to show all projects' and 'Ctrl+B to only show current branch' never reach the model. Candidate grammar: the multi-row footer reader the register already asks for on the narrow Effort slider.",
+      "actualKeys": [
+        "Down",
+        "Escape",
+        "Up",
+        "ctrl+r"
+      ]
     },
     {
       "fixture": "claude-lab--menu-rewind--w82.txt",
@@ -394,7 +472,14 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Up"
+        ]
       }
     },
     {
@@ -407,7 +492,17 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Escape"
+        ]
+      },
+      "knownRaw": "The last non-blank line is 'Esc to cancel', ONE segment, and parseKeyHintFooter needs at least two, so the generic menu never sees a footer to claim. Candidate grammar: a single-hint footer variant of the generic menu. Widening the two-segment floor is not free: that floor is what keeps an ordinary statusline from reading as a modal.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -420,7 +515,8 @@
         "hasInputBox": true,
         "draft": "ls -1 src | head -3",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       },
       "knownStall": "Shell mode (!) paints '!' on the prompt row instead of the prompt glyph, so walkFrame finds no prompt line. Pre-existing, outside M31's scope.",
       "actualToday": {
@@ -439,7 +535,8 @@
         "hasInputBox": true,
         "draft": "ls -1 src | head -3",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       },
       "knownStall": "Shell mode (!) paints '!' on the prompt row instead of the prompt glyph, so walkFrame finds no prompt line. Pre-existing, outside M31's scope.",
       "actualToday": {
@@ -458,7 +555,8 @@
         "hasInputBox": true,
         "draft": "# remember the lab uses fake commands",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -471,7 +569,14 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
       }
     },
     {
@@ -484,7 +589,14 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
       }
     },
     {
@@ -497,7 +609,19 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownRaw": "This permission layout has no separate footer row at all; its last option ends '(esc)'. classifyFooter finds nothing and prompt-select's footer anchor misses, so the three options stay raw. Candidate grammar: a permission-dialog variant that anchors on the parenthesised shortcut instead of a footer row. The three sibling permission captures DO lift, so this is one layout away from covered.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -510,7 +634,13 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
       }
     },
     {
@@ -523,7 +653,19 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownRaw": "The dialog ends on a ~/.claude/plans/... path line. classifyFooter calls that line a plan footer, but prompt-select's other structural gates do not clear on this capture, so the three numbered options stay on the raw mirror. Candidate grammar: widen the existing plan arm to this 2.1.274 layout; the older claude--plan-approval fixtures still lift, so this is a layout change, not a missing idea. Same screen on a 30-row pane.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -536,7 +678,19 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownRaw": "The dialog ends on a ~/.claude/plans/... path line. classifyFooter calls that line a plan footer, but prompt-select's other structural gates do not clear on this capture, so the three numbered options stay on the raw mirror. Candidate grammar: widen the existing plan arm to this 2.1.274 layout; the older claude--plan-approval fixtures still lift, so this is a layout change, not a missing idea.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -549,7 +703,19 @@
         "hasInputBox": false,
         "draft": null,
         "tail": null,
-        "dialogLive": true
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownRaw": "The dialog ends on a ~/.claude/plans/... path line. classifyFooter calls that line a plan footer, but prompt-select's other structural gates do not clear on this capture, so the three numbered options stay on the raw mirror. Candidate grammar: widen the existing plan arm to this 2.1.274 layout; the older claude--plan-approval fixtures still lift, so this is a layout change, not a missing idea. Same screen with feedback typed into option 3.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -562,7 +728,8 @@
         "hasInputBox": true,
         "draft": "@doc",
         "tail": "unknown",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -575,7 +742,8 @@
         "hasInputBox": true,
         "draft": "@doc",
         "tail": "unknown",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -588,7 +756,8 @@
         "hasInputBox": true,
         "draft": "/",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -601,7 +770,8 @@
         "hasInputBox": true,
         "draft": "/",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -614,7 +784,8 @@
         "hasInputBox": true,
         "draft": "/",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -627,7 +798,8 @@
         "hasInputBox": true,
         "draft": "/packages",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -640,7 +812,8 @@
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -653,7 +826,8 @@
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -666,7 +840,8 @@
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -679,7 +854,8 @@
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -692,7 +868,8 @@
         "hasInputBox": true,
         "draft": "/mo",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -705,7 +882,8 @@
         "hasInputBox": true,
         "draft": "/model",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "autocomplete"
       }
     },
     {
@@ -718,7 +896,8 @@
         "hasInputBox": true,
         "draft": "/zzzznomatch",
         "tail": "autocomplete",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       },
       "knownTailGap": "The empty popup paints one message row ('No commands match …'), not entry rows, so the popup grammar has nothing to read and the row falls to the bounded statusline run. The box and the draft are read correctly; only the tail label differs.",
       "actualToday": {
@@ -737,7 +916,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -750,7 +930,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "unknown",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -763,7 +944,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -776,7 +958,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -789,7 +972,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       },
       "knownStall": "A statusline that prints numbered rows ('1. build ok  2. tests ok') under an 'Esc to interrupt' row. Step 4 of ADR 0048 refuses a numbered row in a statusline-shaped tail because it cannot be told from a live menu. DELIBERATE: keep the refusal, this entry is the record of the tradeoff.",
       "actualToday": {
@@ -808,7 +992,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -821,7 +1006,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -834,7 +1020,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -847,7 +1034,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -860,7 +1048,8 @@
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -873,7 +1062,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     },
     {
@@ -886,7 +1076,8 @@
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
-        "dialogLive": false
+        "dialogLive": false,
+        "blockKind": "raw"
       }
     }
   ]

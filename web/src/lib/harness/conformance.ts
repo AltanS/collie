@@ -277,7 +277,7 @@ const KEYLESS_FUTURE_KINDS = new Set<string>(["autocomplete"]);
  * needn't be validated. An interactive kind with no case here THROWS rather than returning null, so
  * the key-grammar invariant can never go silently vacuous when a new dialog kind ships.
  */
-function emittableKeys(block: Block): string[] | null {
+export function emittableKeys(block: Block): string[] | null {
   switch (block.kind) {
     case "raw":
       return null;
