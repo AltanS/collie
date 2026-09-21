@@ -147,7 +147,7 @@ describe("the table and the fixture directory stay in lockstep", () => {
   });
 
   it("the corpus is not vacuous", () => {
-    expect(ENTRIES.length).toBe(64);
+    expect(ENTRIES.length).toBe(66);
     expect(new Set(ENTRIES.map((e) => e.cols))).toEqual(new Set([40, 41, 60, 82, 83, 120, 200]));
     expect(new Set(ENTRIES.map((e) => e.state)).size).toBeGreaterThan(25);
   });
@@ -260,9 +260,10 @@ describe("the pipeline lifts the kind the screen shows", () => {
   });
 
   it("every knownRaw carries a reason naming a candidate grammar, and pins its reading", () => {
-    // Seven, and the register in M34 spec 03 is where each one is argued. When a grammar lands, the
-    // repair is to delete that entry's `knownRaw` and its `actualToday`, and to lower this number.
-    expect(RAW_GAPS.length).toBe(7);
+    // Eight: the seven the register in M34 spec 03 argues, plus the 40-column /tasks panel the
+    // 2026-09-22 capture-lab run added. When a grammar lands, the repair is to delete that entry's
+    // `knownRaw` and its `actualToday`, and to lower this number.
+    expect(RAW_GAPS.length).toBe(8);
     for (const entry of RAW_GAPS) {
       expect(entry.knownRaw!.length, entry.fixture).toBeGreaterThan(40);
       expect(entry.expected.blockKind, entry.fixture).not.toBe("raw");

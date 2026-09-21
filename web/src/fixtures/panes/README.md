@@ -298,9 +298,9 @@ hostname, home path, email, session id or credential-shaped string appears in th
 `model` key in `~/.claude/settings.json` really moved. Put it back by hand after capturing, or capture
 with an isolated `CLAUDE_CONFIG_DIR`.
 
-## Capture lab corpus (captured 2026-09-17, Claude Code 2.1.274, throwaway Herdr session)
+## Capture lab corpus (captured 2026-09-17, re-verified 2026-09-22 against Claude Code 2.1.278, throwaway Herdr session)
 
-64 byte-faithful `pane.read format:ansi` captures from ONE real Claude Code session, driven through
+66 byte-faithful `pane.read format:ansi` captures from ONE real Claude Code session, driven through
 a throwaway Herdr session (`--session claude-lab`) in a `/tmp` git project seeded with fake
 commands and skills, at seven pane widths from 40 to 200 columns. Taken for tracker M31 to prove the
 box-anchored locator ([ADR 0048](../../../../.adr/0048-the-input-box-is-found-by-its-own-frame.md))
@@ -308,6 +308,18 @@ against real screens instead of hand-built ones. **Width is a recorded fact here
 file name (`--w<cols>`, plus `--h<rows>` where the pane was short), and it is in the table below.
 The renderer was the classic TUI, the config directory was isolated, and no user plugins, hooks or
 skills were loaded.
+
+**The 2026-09-22 ritual run.** The lab was stood up again against Claude Code 2.1.278 and every
+state in the table below was re-captured at its recorded widths. Sixty-three states came back with
+the SAME reading the corpus already records, so nothing regressed. Fifty of those files carry the
+2026-09-22 bytes; thirteen keep their 2026-09-17 bytes on purpose, because swapping them would break
+a curated per-fixture table in another suite: the five `menu-*` and four `permission-*`/three
+`plan-approval*` captures are pinned byte-exactly in `harness/prompt-binding-contract.test.ts`, and
+on the new permission and plan screens the welcome banner has scrolled away so the word "Claude"
+never appears — the `isAlienBuffer` promotion trap described further down. `statusline-numbered-rows`
+is held for the same reason. One state, `survey-rating-above-box`, could not be reproduced: the
+session-quality survey is time- and sample-gated, and it did not fire during the run. Its string is
+still in the 2.1.278 binary, so the screen still exists; the fixture is left alone.
 
 Kept fresh by a standing tracker ritual, owned and scheduled:
 `tracker ritual run claude-capture-lab`. The ritual's trigger is a Claude Code
@@ -357,8 +369,8 @@ username, hostname, home path or real project path appears in any file: the sess
 
 | Fixture | Cols × rows | State / what's in it |
 |---|---|---|
-| `claude-lab--agents-screen--w40.txt` | 40 × 49 | background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box |
-| `claude-lab--agents-screen--w82.txt` | 82 × 49 | background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box |
+| `claude-lab--agents-screen--w40.txt` | 40 × 49 | background agents screen (← from the composer): a typeable box whose Enter returns to the conversation, one-row key-hint footer under the box |
+| `claude-lab--agents-screen--w82.txt` | 82 × 49 | background agents screen (← from the composer): a typeable box whose Enter returns to the conversation, key-hint footer under the box (enter · space · ctrl+x · ?) |
 | `claude-lab--compacting--w82.txt` | 82 × 49 | /compact running: progress bar row above a live empty box |
 | `claude-lab--draft-adversarial--w120.txt` | 120 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
 | `claude-lab--draft-adversarial--w40.txt` | 40 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
@@ -417,9 +429,11 @@ username, hostname, home path or real project path appears in any file: the sess
 | `claude-lab--statusline-prompt-row--w82.txt` | 82 × 49 | statusline whose first row starts with '❯ ' — a frame mark below the box |
 | `claude-lab--statusline-rule-row--w82.txt` | 82 × 49 | statusline whose first row is '─ main ─────' — a rule below the box |
 | `claude-lab--survey-rating-above-box--w82.txt` | 82 × 49 | session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey |
+| `claude-lab--tasks-panel--w40.txt` | 40 × 49 | /tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, 'Background' title, empty-state row, key-hint footer wrapped onto two rows |
+| `claude-lab--tasks-panel--w82.txt` | 82 × 49 | /tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, 'Background' title, empty-state row, one-line key-hint footer |
 | `claude-lab--transcript-dialog-lookalike--w82.txt` | 82 × 49 | the transcript above the box holds '1. Yes / 2. No / Enter to select' rows: a dialog lookalike that must not refuse the live box |
 | `claude-lab--working-popup-open--w82.txt` | 82 × 49 | slash popup with clipped names painted ABOVE the box while a tool runs; the tail under the box is the statusline |
-| `claude-lab--working-queued-message--w82.txt` | 82 × 49 | queued '❯ …' row above the box while working; box holds the 'Press up to edit queued messages' placeholder (draft must read null) |
+| `claude-lab--working-queued-message--w82.txt` | 82 × 49 | queued '❯ …' row above the box while working; the box is empty under it (draft must read null) |
 | `claude-lab--working-spinner--w82.txt` | 82 × 49 | tool running, spinner line above a live empty box |
 
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)

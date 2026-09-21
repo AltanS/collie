@@ -233,5 +233,10 @@
     "fixture": "claude-lab--permission-write--w82.txt",
     "detector": "prompt-select",
     "region": "● README.md has 3 lines.\n\n✻ Cooked for 2s · done 12:24 PM\n\n❯ use the Bash tool to run: date +%s                                              \n\n● Bash(date +%s)\n  ⎿  1789640690\n\n● The current Unix timestamp is 1789640690.\n\n✻ Churned for 3s · done 12:24 PM\n\n❯ use the Bash tool to run exactly: touch /tmp/claude-lab/project/scratch-one.txt \n\n● Bash(touch /tmp/claude-lab/project/scratch-one.txt)\n  ⎿  Done\n\n● Done — created /tmp/claude-lab/project/scratch-one.txt.\n\n✻ Worked for 2s · done 12:26 PM\n\n❯ create a new file docs/lab-notes.md with three short lines about this lab       \n  project                                                                         \n\n  Listed 1 directory (ctrl+o to expand)\n\n● Write(docs/lab-notes.md)\n\n──────────────────────────────────────────────────────────────────────────────────\n Create file\n docs/lab-notes.md\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  1 # Lab Notes\n  2\n  3 This is a throwaway project used for screen captures.\n  4 It has no real application code, only sample files.\n  5 Changes here are safe to discard at any time.\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to create lab-notes.md?\n ❯ 1. Yes\n   2. Yes, and switch to accept edits (auto-approve file edits and common file\n      commands) for this session (shift+tab)\n   3. No\n\n Esc to cancel · Tab to amend"
+  },
+  {
+    "fixture": "claude-lab--tasks-panel--w82.txt",
+    "detector": "menu",
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Background\n\n   No tasks currently running\n\n   ↑/↓ to select · Enter to view · Esc to close"
   }
 ]

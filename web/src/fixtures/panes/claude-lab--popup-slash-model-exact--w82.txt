@@ -1,112 +1,45 @@
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-
-  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
-with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                [0m
-[0m[48;5;237m                                                                                  [0m
-[0m[48;5;237m                                    [0m
-
-                                                                          [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m f[0m
-[0m[38;5;246mile (ctrl+o to expand)[0m
-
-
-                                    [0m[38;5;231m● [0mThis is a throwaway lab project used for scr
-een captures.
-
-
-
-                          [0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
-
-
-                                    [0m[38;5;244m──────────────────────────────────────────────[0m
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────────────────────────────────────[0m
-❯ /
-
-                                    [0m[38;5;244m──────────────────────────────────────────────[0m
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;153m/add-dir                                                    Add a new working di[0m
-[0m[38;5;153mrectory[0m
-                                      [0m[38;5;246m/advisor[0m
-                [0m[38;5;246mLet Claude consult a stronger model at key moments[0m
-  [0m[38;5;246m/agents                                                     (removed) Ask Claude[0m
- [0m[38;5;246mto create/manage subagents, or edit .claude/agents/[0m
-                                      [0m[38;5;246m/artifacts                            [0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███[0m
-[0m[38;5;174m[48;5;16m▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-                                      [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-                                                                              Fabl
-e 5.1 writes better code and reports progress on long tasks. Switch anytime with [0m[38;5;153m/[0m
-[0m[38;5;153mmodel[0m.                            [0m[38;5;246m+1 more · /status[0m
-                                                                      [0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread READM[0m
-[0m[38;5;231m[48;5;237mE.md and reply with one short sentence[0m[48;5;237m                                            [0m
-[0m[48;5;237m                          [0m
-                                                                  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctr[0m
-[0m[38;5;246ml+o to expand)[0m
-
-                                      [0m[38;5;231m● [0mThis is a throwaway lab project used for s
-creen captures.
-
-                                [0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
-
-
-                          [0m[38;5;244m────────────────────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────────────────────────────[0m❯ /mo
-
-                    [0m[38;5;244m──────────────────────────────────────────────────────────────[0m
-[0m[38;5;244m──────────────────────────────────────────────────────────  [0m[38;5;153m/[0m[1m[38;5;153mmo[0m[38;5;153mdel[0m
-                          [0m[38;5;153mSet the AI [0m[1m[38;5;153mmo[0m[38;5;153mdel for Claude Code (currently Sonnet 5)[0m
-                [0m[38;5;246m/[0m[1mmo[0m[38;5;246mbile                                         Show QR code to do[0m
-[0m[38;5;246mwnload the Claude [0m[1mmo[0m[38;5;246mbile app                          /[0m[1mmo[0m[38;5;246mdelcheck[0m
-                    [0m[38;5;246mPrint a note about [0m[1mmo[0m[38;5;246mdel configuration for this lab (project)[0m
-          [0m[38;5;246m/anthropic-skills:[0m[1mmo[0m[38;5;246mrning (morning)             Render the user's [0m[1mmo[0m[38;5;246mrnin[0m
-[0m[38;5;246mg brief as a styled HTML artifact, or set it[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
 
   Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
   with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                [0m
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                               [0m
 
   [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
 
 [0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
 
-[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
 
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
 ❯ [0m[38;5;153m/model[0m
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;153m/[0m[1m[38;5;153mmodel[0m[38;5;153m                          Set the AI [0m[1m[38;5;153mmodel[0m[38;5;153m for Claude Code (currently[0m
                                   [0m[38;5;153mSonnet 5)[0m
   [0m[38;5;246m/[0m[1mmodel[0m[38;5;246mcheck                     Print a note about [0m[1mmodel[0m[38;5;246m configuration for[0m
                                   [0m[38;5;246mthis lab (project)[0m
-  [0m[38;5;246m/claude-api                     Reference for the Claude API / Anthropic SDK —[0m
-                                  [0m[1mmodel[0m[38;5;246m ids, pricing, params, streaming, tool u…[0m
+  [0m[38;5;246m/claude-api                     Reference for the Claude API / Anthropic SDK[0m
+                                  [0m[38;5;246m— [0m[1mmodel[0m[38;5;246m ids, pricing, params, streaming, too…[0m
   [0m[38;5;246m/loop                           Run a prompt or slash command on a recurring[0m
-                                  [0m[38;5;246minterval (e.g. /loop 5m /foo). Omit the inter…[0m
+                                  [0m[38;5;246minterval (e.g. /loop 5m /foo). Omit the inte…[0m
   [0m[38;5;246m/advisor                        Let Claude consult a stronger [0m[1mmodel[0m[38;5;246m at key[0m
                                   [0m[38;5;246mmoments[0m
   [0m[38;5;246m/effort                         Set effort level for [0m[1mmodel[0m[38;5;246m usage[0m
   [0m[38;5;246m/status                         Show Claude Code status including version,[0m
-                                  [0m[1mmodel[0m[38;5;246m, account, API connectivity, and tool st…[0m
+                                  [0m[1mmodel[0m[38;5;246m, account, API connectivity, and tool s…[0m
   [0m[38;5;246m/refactor-module-boundaries     Move code between modules so each module owns[0m
                                   [0m[38;5;246mone concern (project)[0m
   [0m[38;5;246m/auto-mode-setup                Teach auto mode about your environment, plus[0m
                                   [0m[38;5;246moptional rule tweaks[0m
-  [0m[38;5;246m/code-review                    3 free /ultrareview · Review the current diff,[0m
-                                  [0m[38;5;246mor a PR number/branch/path target, for correc…[0m
+  [0m[38;5;246m/code-review                    3 free /ultrareview · Review the current[0m
+                                  [0m[38;5;246mdiff, or a PR number/branch/path target, for…[0m
   [0m[38;5;246m/doctor                         Health-check the user's Claude Code setup and[0m
-                                  [0m[38;5;246mfix issues: diagnose installation health — wh…[0m
+                                  [0m[38;5;246mfix issues: diagnose installation health — w…[0m
   [0m[38;5;246m/update-config                  Use this skill to configure the Claude Code[0m
-                                  [0m[38;5;246mharness via settings.json. Automated behavior…[0m
+                                  [0m[38;5;246mharness via settings.json. Automated behavio…[0m
   [0m[38;5;246m/fast                           Toggle fast mode (Opus 5)[0m

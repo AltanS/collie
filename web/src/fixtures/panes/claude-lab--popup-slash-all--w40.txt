@@ -1,78 +1,52 @@
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort ·[0m
-[0m[38;5;246mClaude Max[0m
+ [0m[38;5;246mClaude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-
-  Fable 5.1 writes better code and repor
-ts progress on long tasks. Switch anytim
-e   with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one shor[0m
-[0m[38;5;231m[48;5;237mt sentence[0m[48;5;237m                              [0m
-[0m[48;5;237m  [0m
-
-      [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
-
-
-
-        [0m[38;5;231m● [0mThis is a throwaway lab projec
-t used for screen captures.
-
-
-            [0m[38;5;246m✻ Cogitated for 2s · done 12[0m
-[0m[38;5;246m:17 PM[0m
-
-
-                [0m[38;5;244m────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────[0m
-[0m[38;5;244m──────────────────[0m❯ /
-[0m[38;5;244m────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────[0m
-           [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[38;5;246mSonnet 5 with xhigh effo…[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
+[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort ·[0m
+           [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[38;5;246mSonnet 5 with xhigh eff…[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mClaude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
 
   Fable 5.1 writes better code and
-  reports progress on long tasks. Switch
-  anytime with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
+  reports progress on long tasks.
+  Switch anytime with [0m[38;5;153m/model[0m.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one [0m[48;5;237m    [0m
-[0m[48;5;237m  [0m[38;5;231m[48;5;237mshort sentence[0m[48;5;237m                        [0m
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one [0m[48;5;237m   [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237mshort sentence[0m[48;5;237m                       [0m
 
   [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
 
 [0m[38;5;231m● [0mThis is a throwaway lab project used
   for screen captures.
 
-[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
 
-[0m[38;5;244m────────────────────────────────────────[0m
+[0m[38;5;244m───────────────────────────────────────[0m
 ❯ /
-[0m[38;5;244m────────────────────────────────────────[0m
-  [0m[38;5;153m/add-dir        Add a new working[0m
-                  [0m[38;5;153mdirectory[0m
-  [0m[38;5;246m/advisor        Let Claude consult a[0m
-                  [0m[38;5;246mstronger model at k…[0m
-  [0m[38;5;246m/agents         (removed) Ask Claude[0m
-                  [0m[38;5;246mto create/manage su…[0m
-  [0m[38;5;246m/artifacts      Browse your[0m
-                  [0m[38;5;246mpublished and share…[0m
-  [0m[38;5;246m…to-mode-setup  Teach auto mode[0m
-                  [0m[38;5;246mabout your environm…[0m
-  [0m[38;5;246m/autocompact    Set how full the[0m
-                  [0m[38;5;246mcontext gets before…[0m
-  [0m[38;5;246m/autofix-pr     Monitor and autofix[0m
-                  [0m[38;5;246many issues with the…[0m
-  [0m[38;5;246m/background     Send this session to[0m
-                  [0m[38;5;246mthe background and …[0m
-  [0m[38;5;246m/branch         Create a branch of[0m
-                  [0m[38;5;246mthe current convers…[0m
-  [0m[38;5;246m/btw            Ask a quick side[0m
-                  [0m[38;5;246mquestion without in…[0m
-  [0m[38;5;246m/bug            Report a bug or[0m
-                  [0m[38;5;246mshare your conversa…[0m
-  [0m[38;5;246m/cd             Move this session to[0m
-                  [0m[38;5;246ma new working direc…[0m
+[0m[38;5;244m───────────────────────────────────────[0m
+  [0m[38;5;153m/add-dir       Add a new working[0m
+                 [0m[38;5;153mdirectory[0m
+  [0m[38;5;246m/advisor       Let Claude consult a[0m
+                 [0m[38;5;246mstronger model at k…[0m
+  [0m[38;5;246m/agents        (removed) Ask Claude[0m
+                 [0m[38;5;246mto create/manage su…[0m
+  [0m[38;5;246m…o-mode-setup  Teach auto mode[0m
+                 [0m[38;5;246mabout your environm…[0m
+  [0m[38;5;246m/autocompact   Set how full the[0m
+                 [0m[38;5;246mcontext gets before…[0m
+  [0m[38;5;246m/autofix-pr    Monitor and autofix[0m
+                 [0m[38;5;246many issues with the…[0m
+  [0m[38;5;246m/background    Send this session to[0m
+                 [0m[38;5;246mthe background and …[0m
+  [0m[38;5;246m/branch        Create a branch of[0m
+                 [0m[38;5;246mthe current convers…[0m
+  [0m[38;5;246m/btw           Ask a quick side[0m
+                 [0m[38;5;246mquestion without in…[0m
+  [0m[38;5;246m/bug           Report a bug or[0m
+                 [0m[38;5;246mshare your conversa…[0m
+  [0m[38;5;246m/cd            Move this session to[0m
+                 [0m[38;5;246ma new working direc…[0m
+  [0m[38;5;246m/chrome        Open Claude in[0m
+                 [0m[38;5;246mChrome settings[0m

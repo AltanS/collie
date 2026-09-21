@@ -1,87 +1,43 @@
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort ·[0m
-[0m[38;5;246mClaude Max[0m
+ [0m[38;5;246mClaude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-
-  Fable 5.1 writes better code and repor
-ts progress on long tasks. Switch anytim
-e with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one shor[0m
-[0m[38;5;231m[48;5;237mt sentence[0m[48;5;237m                              [0m
-[0m[48;5;237m                                        [0m
-[0m[48;5;237m                                        [0m
-[0m[48;5;237m                                        [0m
-
-
-
-
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort ·[0m
-[0m[38;5;246mClaude Max[0m
-  [0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-
-    [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effor[0m
-[0m[38;5;246mt · Claude Max[0m
-      [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-
-
-
-            Fable 5.1 writes better code
- and reports progress on long tasks. Swi
-tch anytime   with [0m[38;5;153m/model[0m.
-
-                [0m[38;5;246m+1 more · /status[0m
-
-
-
-                  [0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and r[0m
-[0m[38;5;231m[48;5;237meply with one short sentence[0m[48;5;237m            [0m
-[0m[48;5;237m                    [0m
-
-                        [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctr[0m
-[0m[38;5;246ml+o to expand)[0m
-
-
-                          [0m[38;5;231m● [0mThis is a th
-rowaway lab project used for screen capt
-ures.
-           [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[38;5;246mSonnet 5 with xhigh effo…[0m
+           [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[38;5;246mSonnet 5 with xhigh eff…[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mClaude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
 
   Fable 5.1 writes better code and
-  reports progress on long tasks. Switch
-  anytime with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
+  reports progress on long tasks.
+  Switch anytime with [0m[38;5;153m/model[0m.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one [0m[48;5;237m    [0m
-[0m[48;5;237m  [0m[38;5;231m[48;5;237mshort sentence[0m[48;5;237m                        [0m
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one [0m[48;5;237m   [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237mshort sentence[0m[48;5;237m                       [0m
 
   [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
 
 [0m[38;5;231m● [0mThis is a throwaway lab project used
   for screen captures.
 
-[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
 
-[0m[38;5;244m────────────────────────────────────────[0m
+[0m[38;5;244m───────────────────────────────────────[0m
 ❯ @doc
-[0m[38;5;244m────────────────────────────────────────[0m
+[0m[38;5;244m───────────────────────────────────────[0m
   [0m[38;5;246m+ docs/[0m
   [0m[38;5;246m+ docs/notes.txt[0m
   [0m[38;5;246m+ /tmp/claude-lab/project/[0m
   [0m[38;5;246m+ .claude/commands/docs/[0m
   [0m[38;5;246m+ .claude/commands/packages/[0m
   [0m[38;5;246m+ /tmp/claude-lab/project/.claude/[0m
-  [0m[38;5;246m+ /tmp/claude-lab/project/.claude/…/[0m
+  [0m[38;5;246m+ /tmp/claude-lab/project/.claude…/[0m
   [0m[38;5;246m+ .claude/commands/packages/deps/[0m
-  [0m[38;5;246m+ /tmp/claude-lab/project/.claude/…/[0m
-  [0m[38;5;246m+ /tmp/claude-lab/project/.claude/…/[0m
+  [0m[38;5;246m+ /tmp/claude-lab/project/.claude…/[0m
+  [0m[38;5;246m+ /tmp/claude-lab/project/.claude…/[0m
   [0m[38;5;246m+ .claude/commands/modelcheck.md[0m
-  [0m[38;5;246m+ /tmp/claude-lab/project/.claude/…/[0m
-  [0m[38;5;246m+ /tmp/claude-lab/project/.claude/…/[0m
-  [0m[38;5;246m+ .claude/commands/workspace/[0m
-  [0m[38;5;246m+ /tmp/claude-lab/project/.claude/…/[0m
+  [0m[38;5;246m+ /tmp/claude-lab/project/.claude…/[0m
+  [0m[38;5;246m+ /tmp/claude-lab/project/.claude…/[0m
+  [0m[38;5;246m+ /tmp/claude-lab/project/.claude…/[0m
+  [0m[38;5;246m+ /tmp/claude-lab/project/.claude…/[0m

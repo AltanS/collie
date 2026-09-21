@@ -1,14 +1,14 @@
 {
   "$comment": "Generated from the capture lab's manifest (spec 04) for the 66 promoted captures, then checked against the locator. Edit by hand when behaviour changes on purpose; see claude-lab-corpus.test.ts for what each field means.",
-  "claudeCodeVersion": "2.1.274",
-  "captured": "2026-09-17",
+  "claudeCodeVersion": "2.1.278",
+  "captured": "2026-09-22",
   "entries": [
     {
       "fixture": "claude-lab--agents-screen--w40.txt",
       "cols": 40,
       "rows": 49,
       "state": "agents-screen",
-      "notes": "background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box",
+      "notes": "background agents screen (← from the composer): a typeable box whose Enter returns to the conversation, one-row key-hint footer under the box",
       "expected": {
         "hasInputBox": true,
         "draft": null,
@@ -32,7 +32,7 @@
       "cols": 82,
       "rows": 49,
       "state": "agents-screen",
-      "notes": "background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box",
+      "notes": "background agents screen (← from the composer): a typeable box whose Enter returns to the conversation, key-hint footer under the box (enter · space · ctrl+x · ?)",
       "expected": {
         "hasInputBox": true,
         "draft": null,
@@ -162,7 +162,7 @@
       "notes": "pasted block collapsed to a placeholder token in the box; hint row reads 'paste again to expand'",
       "expected": {
         "hasInputBox": true,
-        "draft": "[Pasted text #1 +29 lines]",
+        "draft": "[Pasted text #3 +28 lines]",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
@@ -176,7 +176,7 @@
       "notes": "paste placeholder followed by typed text",
       "expected": {
         "hasInputBox": true,
-        "draft": "[Pasted text #1 +29 lines] summarise this",
+        "draft": "[Pasted text #3 +28 lines] summarise this",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
@@ -894,7 +894,7 @@
       "notes": "popup with a single 'No commands match' row and no statusline; truth is a popup, a statusline reading is tolerable",
       "expected": {
         "hasInputBox": true,
-        "draft": "/zzzznomatch",
+        "draft": "/zzqqxx",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "raw"
@@ -902,7 +902,7 @@
       "knownTailGap": "The empty popup paints one message row ('No commands match …'), not entry rows, so the popup grammar has nothing to read and the row falls to the bounded statusline run. The box and the draft are read correctly; only the tail label differs.",
       "actualToday": {
         "hasInputBox": true,
-        "draft": "/zzzznomatch",
+        "draft": "/zzqqxx",
         "tail": "statusline"
       }
     },
@@ -1025,6 +1025,48 @@
       }
     },
     {
+      "fixture": "claude-lab--tasks-panel--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "tasks-panel",
+      "notes": "/tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, a 'Background' title, an empty-state row, and a one-line key-hint footer; no input box",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter",
+          "Escape"
+        ]
+      },
+      "knownRaw": "At 40 columns the panel's key-hint footer wraps onto two rows, so the last non-blank line is the bare 'Esc to close' and parseKeyHintFooter sees one segment where it needs two; the generic menu therefore declines a screen it claims at 82 columns. Candidate grammar: a key-hint footer reader that rejoins a footer's wrapped continuation rows before parsing them, so a narrow pane reads the same keys as a wide one.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--tasks-panel--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "tasks-panel",
+      "notes": "/tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, a 'Background' title, an empty-state row, and a one-line key-hint footer; no input box",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter",
+          "Escape"
+        ]
+      }
+    },
+    {
       "fixture": "claude-lab--transcript-dialog-lookalike--w82.txt",
       "cols": 82,
       "rows": 49,
@@ -1046,7 +1088,7 @@
       "notes": "slash popup with clipped names painted ABOVE the box while a tool runs; the tail under the box is the statusline",
       "expected": {
         "hasInputBox": true,
-        "draft": "/refactor",
+        "draft": "/ref",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
@@ -1057,7 +1099,7 @@
       "cols": 82,
       "rows": 49,
       "state": "working-queued-message",
-      "notes": "queued '❯ …' row above the box while working; box holds the 'Press up to edit queued messages' placeholder (draft must read null)",
+      "notes": "queued '❯ …' row above the box while working; the box is empty under it (draft must read null)",
       "expected": {
         "hasInputBox": true,
         "draft": null,

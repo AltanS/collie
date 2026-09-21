@@ -1,57 +1,27 @@
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-
-  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
-with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                [0m
-[0m[48;5;237m                                                                                  [0m
-[0m[48;5;237m                                    [0m
-
-                                                                          [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m f[0m
-[0m[38;5;246mile (ctrl+o to expand)[0m
-
-
-                                    [0m[38;5;231m● [0mThis is a throwaway lab project used for scr
-een captures.
-
-
-
-                          [0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
-
-
-                                    [0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-
-                                    [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-
-
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
 
   Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
   with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                [0m
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                               [0m
 
   [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
 
 [0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
 
-[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
 
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
 ❯ /packages
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
   [0m[38;5;153m…es:deps:refactor-dependencies  Refactor the dependency graph of one package[0m
                                   [0m[38;5;153m(project)[0m
-  [0m[38;5;246m…-outdated-dependencies-safely  Upgrade outdated dependencies one at a time[0m
-                                  [0m[38;5;246mand run tests after each (project)[0m
   [0m[38;5;246m…-dependencies-across-[0m[1mpackages[0m[38;5;246m  Refactor shared dependencies across every[0m
-                                  [0m[38;5;246mpackage in the monorepo and update lockfiles …[0m
+                                  [0m[38;5;246mpackage in the monorepo and update lockfiles…[0m
   [0m[38;5;246m/design-sync                    Push a React design system to[0m
-                                  [0m[38;5;246mclaude.ai/design. This runs a converter that …[0m
+                                  [0m[38;5;246mclaude.ai/design. This runs a converter that…[0m

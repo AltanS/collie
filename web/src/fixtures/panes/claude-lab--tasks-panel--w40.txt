@@ -1,0 +1,49 @@
+[0m[38;5;231m● [0mHi — I'm here. Let me know what you'd
+  like to work on.
+
+[0m[38;5;246m✻ Cogitated for 1s · done 12:47 AM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                    [0m
+
+[0m[38;5;231m● [0mHi! Just say the word whenever you're
+  ready to dive into something.
+
+[0m[38;5;246m✻ Churned for 2s · done 12:47 AM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                    [0m
+
+[0m[38;5;231m● [0mHi 👋 — what can I help with?
+
+[0m[38;5;246m✻ Cooked for 1s · done 12:48 AM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                    [0m
+
+[0m[38;5;231m● [0mHi — I'm ready whenever you have a
+  task or question.
+
+[0m[38;5;246m✻ Sautéed for 2s · done 12:48 AM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                    [0m
+
+[0m[38;5;231m● [0mHi there.
+
+[0m[38;5;246m✻ Cooked for 2s · done 12:50 AM[0m
+
+[0m[38;5;239m[48;5;237m❯[0m[48;5;237m [0m[38;5;231m[48;5;237m/compact[0m[48;5;237m                              [0m
+[0m[38;5;246m  ⎿  [0m[2mCompacted (ctrl+o to see full [0m
+     [0m[2msummary)[0m
+[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246mdocs/lab-notes.md[0m[38;5;246m (6 lines)[0m
+[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-12.ts[0m[38;5;246m (2 lines)[0m
+[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-10.ts[0m[38;5;246m (2 lines)[0m
+[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-8.ts[0m[38;5;246m (2 lines)[0m
+[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-6.ts[0m[38;5;246m (2 lines)[0m
+[0m[38;5;246m  ⎿  Plan file referenced (/tmp/claude-l[0m
+     [0m[38;5;246mab-run/config/plans/plan-how-to-app[0m
+     [0m[38;5;246mend-reactive-forest.md)[0m
+[0m[38;5;153m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[0m
+   [0m[1m[38;5;44mBackground[0m
+
+   [0m[38;5;246mNo tasks currently running[0m
+
+   [0m[3m[38;5;246m↑/↓ to select · Enter to view · [0m
+   [0m[3m[38;5;246mEsc to close[0m

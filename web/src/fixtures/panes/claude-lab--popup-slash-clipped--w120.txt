@@ -1,70 +1,27 @@
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
 
   Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                                                      [0m
-[0m[48;5;237m                                                                                [0m
-
-                                          [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
-
-                                                                                [0m[38;5;231m● [0mThis is a throwaway lab project used f
-or screen captures.
-
-
-[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
-
-                                                                                [0m[38;5;244m────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────[0m
-❯ /
-                                                                                [0m[38;5;244m────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-[0m[38;5;244m────────────────────────────────────────[0m
-  [0m[38;5;153m/add-dir                                                    Add a new working directory[0m
-                                                                                  [0m[38;5;246m/advisor[0m
-                      [0m[38;5;246mLet Claude consult a stronger model at key moments[0m
-  [0m[38;5;246m/agents                                                     (removed) Ask Claude to create/manage subagents, or edit .[0m
-[0m[38;5;246mclaude/agents/                                                                    /artifacts[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                                                      [0m
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                                                     [0m
 
   [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
 
 [0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
 
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
+[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
 
-  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                                                      [0m
-
-  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
-
-[0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
-
-[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
-
-[0m[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;244m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
 ❯ /refactor
-[0m[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;153m/[0m[1m[38;5;153mrefactor[0m[38;5;153m-module-boundaries                     Move code between modules so each module owns one concern (project)[0m
-  [0m[38;5;246m/[0m[1mrefactor[0m[38;5;246m-dependencies-across-packages          [0m[1mRefactor[0m[38;5;246m shared dependencies across every package in the monorepo[0m
-                                                  [0m[38;5;246mand update lockfiles (project)[0m
-  [0m[38;5;246m/packages:deps:[0m[1mrefactor[0m[38;5;246m-dependencies            [0m[1mRefactor[0m[38;5;246m the dependency graph of one package (project)[0m
-  [0m[38;5;246m/anthropic-skills:skill-creator                 Create new skills, modify and improve existing skills, and measure[0m
-                                                  [0m[38;5;246mskill performance. Use when users want to create a skill from scrat…[0m
-  [0m[38;5;246m/doctor                                         Health-check the user's Claude Code setup and fix issues: diagnose[0m
-                                                  [0m[38;5;246minstallation health — what the `claude doctor` terminal diagnostics…[0m
-  [0m[38;5;246m/add-dir                                        Add a new working directory[0m
-  [0m[38;5;246m/cd                                             Move this session to a new working directory[0m
+[0m[38;5;244m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;153m/[0m[1m[38;5;153mrefactor[0m[38;5;153m-module-boundaries                Move code between modules so each module owns one concern (project)[0m
+  [0m[38;5;246m/[0m[1mrefactor[0m[38;5;246m-dependencies-across-packages     [0m[1mRefactor[0m[38;5;246m shared dependencies across every package in the monorepo and[0m
+                                             [0m[38;5;246mupdate lockfiles (project)[0m
+  [0m[38;5;246m/packages:deps:[0m[1mrefactor[0m[38;5;246m-dependencies       [0m[1mRefactor[0m[38;5;246m the dependency graph of one package (project)[0m
+  [0m[38;5;246m/anthropic-skills:skill-creator            Create new skills, modify and improve existing skills, and measure skill[0m
+                                             [0m[38;5;246mperformance. Use when users want to create a skill from scratch, edit, …[0m
+  [0m[38;5;246m/doctor                                    Health-check the user's Claude Code setup and fix issues: diagnose[0m
+                                             [0m[38;5;246minstallation health — what the `claude doctor` terminal diagnostics cov…[0m
+  [0m[38;5;246m/add-dir                                   Add a new working directory[0m
+  [0m[38;5;246m/cd                                        Move this session to a new working directory[0m

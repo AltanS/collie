@@ -1,29 +1,28 @@
-           [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[38;5;246mSonnet 5 with xhigh effo…[0m
+           [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[38;5;246mSonnet 5 with xhigh eff…[0m
 [0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mClaude Max[0m
 [0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
 
   Fable 5.1 writes better code and
-  reports progress on long tasks. Switch
-  anytime with [0m[38;5;153m/model[0m.
-  [0m[38;5;246m+1 more · /status[0m
+  reports progress on long tasks.
+  Switch anytime with [0m[38;5;153m/model[0m.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one [0m[48;5;237m    [0m
-[0m[48;5;237m  [0m[38;5;231m[48;5;237mshort sentence[0m[48;5;237m                        [0m
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one [0m[48;5;237m   [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237mshort sentence[0m[48;5;237m                       [0m
 
   [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
 
 [0m[38;5;231m● [0mThis is a throwaway lab project used
   for screen captures.
 
-[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
 
-[0m[38;5;244m────────────────────────────────────────[0m
+[0m[38;5;244m───────────────────────────────────────[0m
 ❯ please read the README file and the
   notes under docs, then tell me in
   three short bullet points what this
   lab project contains, without
   changing any file at all
-[0m[38;5;244m────────────────────────────────────────[0m
-  [0m[38;5;246msonnet · lab-project · main · ctx 1…[0m
+[0m[38;5;244m───────────────────────────────────────[0m
+  [0m[38;5;246msonnet · lab-project · main · ctx …[0m
   [0m[38;5;246m⏸ manual mode on[0m

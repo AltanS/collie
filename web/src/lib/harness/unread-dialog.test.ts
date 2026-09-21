@@ -191,6 +191,9 @@ const CARD_FIXTURES = {
       "claude-lab--plan-approval--w82--h30.txt",
       "claude-lab--plan-approval--w82.txt",
       "claude-lab--plan-approval-feedback-typed--w82.txt",
+      // corpus: `/tasks` panel, `Esc to close` footer; raw only at 40 columns, where its
+      // footer wraps and the menu grammar declines. The w82 capture lifts `menu`, so no card.
+      "claude-lab--tasks-panel--w40.txt",
     ],
     notModals: [
       // corpus knownStall: a wrapped draft whose continuation row starts with `❯`, so walkFrame
