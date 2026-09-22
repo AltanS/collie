@@ -217,8 +217,14 @@ Probed recipe — digit alone (family `trust`): `1` submitted immediately
 - **A lift needs a live dialog (added at merge, 2026-09-19).** A dialog quoted in the transcript
   can match a detector. So a question, checkbox or review lift also needs the box under it empty,
   and the review screen needs the live `Request user input … — running` header directly above it.
-  A screen that fails stays raw. The detectors themselves stay broad, because `composerReady`
-  refuses a send through them: a quote above a draft stalls a reply, it never types into a dialog.
+  A screen that fails stays raw. The detectors themselves stay broad.
+- **Quoted shapes stay sendable (added 2026-09-22, #260).** Refusing sends on the broad match
+  stalled every send once a reply quoted dialog rows, until the transcript moved. A live dialog
+  owns the keyboard, so its `❯` is strictly bare (probed: no placeholder while a dialog is up);
+  the same shapes above a placeholder or draft box are transcript. `composerReady` and the draft
+  reader now refuse a question/checkbox/note match only above a bare box, and a review match only
+  with its live header above. Approval and trust need no such check: a match structurally implies
+  no live box beside it.
 - **Every lift keeps the rows above it (added at merge).** The prompt panel shows neither the
   approval's command nor the trust prompt's folder, so those rows stay on screen as raw text.
 - **The review cancel button says `Interrupt turn` (added at merge).** That row ends the whole

@@ -7,6 +7,7 @@ import { lineText, splitLines, type Block, type StyledLine } from "../blocks";
 import { buildBlocks } from "./index";
 import { museAdapter } from "./muse";
 import { describeAdapterConformance } from "./conformance";
+import { detectCheckboxRegion } from "./muse/checkbox";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
@@ -46,6 +47,7 @@ const PINNED = [
   "muse--draft-single.txt",
   "muse--draft-wrapped.txt",
   "muse--fresh-idle.txt",
+  "muse--quoted-dialogs-bare.txt",
   "muse--trust-prompt.txt",
   "muse--working.txt",
 ];
@@ -287,18 +289,40 @@ describe("muse: a lift shows its subject and needs a live dialog", () => {
   });
 
   // A draft in the box means the dialog above it is not the one with the keyboard: a quote, or a
-  // screen this adapter cannot vouch for. Enter would submit the draft, so nothing is lifted, and
-  // the detectors still refuse a send there (a stall, never a keystroke into a dialog).
+  // screen this adapter cannot vouch for. Enter would submit the draft, so nothing is lifted — but
+  // the box below a quote is still live, so a reply is allowed there. Refusing on the broad match
+  // stalled every send until the transcript moved (#260); a live dialog always holds a bare box.
   it.each(["muse--ask-color.txt", "muse--ask-toppings.txt", "muse--ask-toppings-review.txt"])(
-    "%s with a draft in the box stays raw, and a reply is still refused",
+    "%s with a draft in the box stays raw, and a reply is still allowed",
     (name) => {
       const live = load(name);
       expect(museAdapter.buildBlocks(live).some((b) => b.kind !== "raw")).toBe(true);
       const drafted = replaceLast(live, DRAFT, "❯ ship it");
       expect(museAdapter.buildBlocks(drafted).every((b) => b.kind === "raw")).toBe(true);
-      expect(museAdapter.composerReady!(drafted)).toBe(false);
+      expect(museAdapter.composerReady!(drafted)).toBe(true);
     },
   );
+
+  // Quoted facsimiles (#260): the model paraphrased the review pointer (`│`), so this capture
+  // matches no detector — and stays raw and sendable. The exact facsimile (one glyph restored)
+  // DOES match the broad detector, and must still stay raw and sendable without a live header.
+  it("quoted facsimiles above a bare box stay raw, and a reply is allowed", () => {
+    const quoted = load("muse--quoted-dialogs-bare.txt");
+    expect(museAdapter.buildBlocks(quoted).every((b) => b.kind === "raw")).toBe(true);
+    expect(museAdapter.composerReady!(quoted)).toBe(true);
+  });
+
+  it("an exact quoted review (no live header) stays raw, and a reply is allowed", () => {
+    const exact = replaceLast(
+      load("muse--quoted-dialogs-bare.txt"),
+      /│ Submit answers/,
+      "  > Submit answers",
+    );
+    const checkbox = detectCheckboxRegion(exact);
+    expect(checkbox?.model.phase).toBe("review"); // non-vacuous: the shape really matches
+    expect(museAdapter.buildBlocks(exact).every((b) => b.kind === "raw")).toBe(true);
+    expect(museAdapter.composerReady!(exact)).toBe(true);
+  });
 
   // The review rows are short and fixed, so a transcript can quote them word for word. Only a live
   // dialog shows the `— running` header right above them.
