@@ -93,6 +93,14 @@ const FN_KEYS = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F
 /** The one panel the chip row can have open at a time — tapping the open chip closes it (accordion). */
 type OpenPanel = "123" | "presets" | "fkeys" | null;
 
+// Every plain-text key label (Esc, the quick ^C, a digit, an F key) goes through this rather than a
+// bare string, so a long label or a narrow column ellipsizes instead of spilling into a neighbour —
+// the fault "Ctrl C" shipped with on a 390px phone. `min-w-0` on the button (`navBtn`'s className) is
+// what lets the button itself shrink small enough for this to ever engage.
+function textLabel(s: string) {
+  return <span className="truncate">{s}</span>;
+}
+
 export function NavTray({
   onSend,
   presets = CONTROL_PRESETS,
@@ -203,8 +211,12 @@ export function NavTray({
         title={aria}
         // touch-action/select-none: without them a held button on iOS starts a text selection and
         // Android may treat the hold as a scroll gesture, both of which cancel the pointer stream.
+        // min-w-0/overflow-hidden: a grid item's default min-width is `auto` (its content's own
+        // width), which can push a key wider than its column instead of letting it shrink — this is
+        // what let "Ctrl C" spill past a 1/7 column on a 390px phone. `overflow-hidden` is the floor
+        // under `truncate` on the label itself.
         className={cn(
-          "h-9 touch-manipulation select-none px-0 text-sm font-medium",
+          "h-9 min-w-0 overflow-hidden touch-manipulation select-none px-0 text-sm font-medium",
           extraClassName,
           resting && restingClassName,
         )}
@@ -296,8 +308,8 @@ export function NavTray({
           around columns 5–7, and an arrow that lands wrong is reversible where an Enter that lands
           wrong confirms a prompt. Set apart and tinted (`bg-primary/15` at rest — see `navBtn`'s
           `restingClassName`), it reads as the commit key on sight, not just by position. */}
-      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_12px_1.5fr] gap-1">
-        {navBtn("Esc", ["Escape"], undefined, false, gridPos("col-start-1 row-start-1"))}
+      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_12px_1.5fr] grid-rows-[36px_36px] gap-1">
+        {navBtn(textLabel("Esc"), ["Escape"], undefined, false, gridPos("col-start-1 row-start-1"))}
         {navBtn(
           <ArrowRightToLine className="size-4" aria-hidden="true" />,
           ["Tab"],
@@ -320,7 +332,10 @@ export function NavTray({
           true,
           gridPos("col-start-6 row-start-1"),
         )}
-        {navBtn("Ctrl C", ["ctrl+c"], "Ctrl+C", false, gridPos("col-start-7 row-start-1"))}
+        {/* Visible label is "^C", not "Ctrl C" — "Ctrl C" is wider than a 1/7 column on a 390px
+            phone and used to spill past its key. The chord it sends and its aria-label are
+            unchanged: screen readers still hear "Ctrl+C". */}
+        {navBtn(textLabel("^C"), ["ctrl+c"], "Ctrl+C", false, gridPos("col-start-7 row-start-1"))}
 
         {navBtn(
           <Space className="size-4" aria-hidden="true" />,
@@ -361,7 +376,11 @@ export function NavTray({
           ["Enter"],
           "Enter",
           false,
-          "col-start-9 row-start-1 row-span-2 flex-col gap-0.5",
+          // h-auto + self-stretch OVERRIDE the shared `h-9` every other key gets (twMerge drops
+          // `h-9` because these are listed after it) — without this, `h-9` capped Enter to a single
+          // 36px row despite `row-span-2`, and the grid's own explicit `grid-rows-[36px_36px]`
+          // (above) is what gives that stretch a real 76px (36+4+36) to fill.
+          "col-start-9 row-start-1 row-span-2 h-auto self-stretch flex-col gap-0.5",
           "bg-primary/15 border-primary/40",
         )}
       </div>
@@ -376,7 +395,7 @@ export function NavTray({
       </div>
 
       {open === "123" && (
-        <div className="grid grid-cols-5 gap-1">{DIGITS.map((d) => navBtn(d, [d]))}</div>
+        <div className="grid grid-cols-5 gap-1">{DIGITS.map((d) => navBtn(textLabel(d), [d]))}</div>
       )}
 
       {open === "presets" && (
@@ -407,7 +426,7 @@ export function NavTray({
       )}
 
       {open === "fkeys" && (
-        <div className="grid grid-cols-6 gap-1">{FN_KEYS.map((k) => navBtn(k, [k]))}</div>
+        <div className="grid grid-cols-6 gap-1">{FN_KEYS.map((k) => navBtn(textLabel(k), [k]))}</div>
       )}
     </div>
   );

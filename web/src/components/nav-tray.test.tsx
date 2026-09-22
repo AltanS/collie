@@ -93,6 +93,49 @@ describe("NavTray", () => {
     expect(enter).toHaveClass("border-primary/40");
   });
 
+  // jsdom lays out nothing, so what a real phone showed (Enter one row high, not two) can only be
+  // pinned by the CLASSES that produce it. A shared fixed-height class (`h-9`, the size every other
+  // key gets) wins over `row-span-2` via tailwind-merge unless Enter itself carries a stretch class
+  // listed after it — this test is what stops that regressing silently.
+  it("Enter has no fixed-height class and stretches to fill its two-row span; the grid pins explicit row heights", () => {
+    render(<NavTray onSend={vi.fn()} />);
+
+    const enter = screen.getByRole("button", { name: "Enter" });
+    for (const fixedHeight of ["h-9", "h-8", "h-10"]) {
+      expect(enter).not.toHaveClass(fixedHeight);
+    }
+    expect(enter).toHaveClass("h-auto");
+    expect(enter).toHaveClass("self-stretch");
+    expect(enter).toHaveClass("row-span-2");
+
+    // The grid itself: explicit 36px rows are what gives Enter's stretch a real 76px (36+4+36) to
+    // fill, rather than leaving both rows to size from their own single-row content.
+    const grid = screen.getByRole("button", { name: "Esc" }).parentElement;
+    expect(grid).toHaveClass("grid-rows-[36px_36px]");
+  });
+
+  it("the quick Ctrl+C key shows ^C (fits its 1/7 column) but keeps its chord and accessible name", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<NavTray onSend={onSend} />);
+
+    const ctrlC = screen.getByRole("button", { name: "Ctrl+C" }); // aria-label unchanged
+    expect(ctrlC).toHaveTextContent("^C");
+    expect(ctrlC).toHaveAttribute("aria-label", "Ctrl+C");
+
+    await user.click(ctrlC);
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
+  });
+
+  it("no pad key can overflow its column — every key gets min-w-0 and overflow-hidden", () => {
+    render(<NavTray onSend={vi.fn()} />);
+    for (const name of ["Esc", "Tab", "Up", "Ctrl+C", "Space", "Left", "Down", "Right", "Enter"]) {
+      const btn = screen.getByRole("button", { name });
+      expect(btn).toHaveClass("min-w-0");
+      expect(btn).toHaveClass("overflow-hidden");
+    }
+  });
+
   it("every icon key (Space, Shift, Tab, Enter, and the arrows) keeps its aria-label", () => {
     render(<NavTray onSend={vi.fn()} />);
 
@@ -107,8 +150,10 @@ describe("NavTray", () => {
     render(<NavTray onSend={onSend} />);
 
     const ctrlC = screen.getByRole("button", { name: "Ctrl+C" });
-    // Reads the same as the Ctrl C preset it duplicates — one chord, one spelling, and not tmux's.
-    expect(ctrlC).toHaveTextContent("Ctrl C");
+    // The visible label is "^C" — "Ctrl C" is wider than a 1/7 column on a 390px phone — but the
+    // chord it sends and its accessible name ("Ctrl+C", asserted via `getByRole` above) don't move.
+    expect(ctrlC).toHaveTextContent("^C");
+    expect(ctrlC).not.toHaveTextContent("Ctrl C");
 
     await user.click(ctrlC);
     expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
