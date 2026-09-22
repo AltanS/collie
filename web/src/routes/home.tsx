@@ -16,9 +16,11 @@ import { CrewFooterLink } from "@/components/crew-footer-link";
 import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { ambientHost, ambientPanes, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
+import { scopeKey } from "@/lib/scope";
 import type { AgentView } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 
@@ -82,6 +84,12 @@ export function HomeRoute() {
     [data.agents, data.shellPanes, data.scope, data.servers, data.sessions],
   );
 
+  // ScreenTransition remounts this whole route on every dashboard<->pane move (both directions), so
+  // the scroller below is a fresh DOM node with scrollTop 0 each time — the document itself never
+  // scrolls, so nothing else restores this. Keyed on the scope (host + session), so two herdr
+  // sessions — or two crew members — keep independent positions. See lib/scroll-memory.ts.
+  const scrollRef = useScrollMemory<HTMLDivElement>(`home:${scopeKey(data.scope)}`);
+
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
@@ -105,7 +113,7 @@ export function HomeRoute() {
           load-bearing: it makes this scroller the containing block for its absolutely-positioned
           descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
           list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}

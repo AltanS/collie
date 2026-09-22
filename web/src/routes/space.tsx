@@ -12,8 +12,10 @@ import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { homePath, panePath, spacePath } from "@/lib/nav";
 import { ambientHost, paneScope } from "@/lib/hosts";
+import { scopeKey } from "@/lib/scope";
 import type { AgentView } from "@/lib/types";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
@@ -60,6 +62,12 @@ export function SpaceRoute() {
   const open = (pane: AgentView) =>
     navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
 
+  // Same fix as home.tsx's dashboard scroller, same cause: ScreenTransition remounts this route on
+  // every space<->pane move, so the scroller below is a fresh DOM node each time. Keyed on scope +
+  // spaceId — a workspace id is host-scoped, so two crew members (or two herdr sessions) can each
+  // have their own "space a" with independent positions. See lib/scroll-memory.ts.
+  const scrollRef = useScrollMemory<HTMLDivElement>(`space:${scopeKey(data.scope)}:${spaceId}`);
+
   // Recover from a deleted space: once a healthy snapshot no longer has it, bounce to the dashboard
   // instead of leaving you on an empty shell. Guarded on a connected, non-stale snapshot so a
   // transient poll failure or a reconnect (or an idle-lock remount where the space died while locked)
@@ -92,7 +100,7 @@ export function SpaceRoute() {
       {/* Content region below the header: the viewport-clipped scroller, the same shell the
           dashboard uses — the two are one list screen at two depths. `relative` for the reason
           home.tsx gives: an `sr-only` descendant must resolve against this scroller. */}
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {/* Below the header, so it is content, not viewport chrome: an inset box on this route's
             gutter, like the dashboard's. See read-only-banner.tsx. */}
         <ReadOnlyBanner device={data.device} />
