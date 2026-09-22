@@ -369,7 +369,7 @@
       "cols": 82,
       "rows": 49,
       "state": "menu-config-panel",
-      "notes": "/config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer",
+      "notes": "/config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer The generic menu grammar finds its region top by walking up from the footer for the nearest rule or box border within REGION_SCAN_WINDOW (30 rows, menu.ts). Here that rule is the search box's ╰─╯ bottom border: 24 rows above the footer at 82 columns, and 32 above it on a 120-column live capture (2026-09-22), whose taller list fits 30 setting rows between the two. Past the window the walk finds nothing, detectMenuRegion returns null, and the screen falls to the unread-dialog card instead. A fix has to stop measuring the region top in a fixed row count — size the window to the pane's own height, or anchor on the panel's tab row rather than the nearest rule — and it must still decline a borderless buffer, which is what the bound is there for.",
       "expected": {
         "hasInputBox": false,
         "draft": null,
