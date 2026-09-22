@@ -50,6 +50,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The terminal draft notice floats.** When you type in the terminal itself, the notice with Take over floats above the belt instead of pushing the page, and an x hides it until that draft is gone (ADR 0061).
 
 ### Fixed
+- **The dashboard's filter strip no longer scrolls sideways and down.** Its chips could be dragged out of sight, and the same overflow was clipping away their tap target. Thanks @bendrucker (#265).
 - **Enter on the Keys tray moved away from the arrows.** Enter now leads the second row, under Esc, and the quick Ctrl+C takes its old corner beside Up. Rapid arrow taps on a phone no longer have a confirm key next to them; a tap that lands wrong there cancels instead. One tap on Enter sends Enter as before. Thanks @lighcen (fixes #263).
 - **A long machine name no longer pushes dashboard cards off a narrow phone.** A crew member whose id comes from a long hostname, such as a Mac's name with its search domain appended, kept its full width at the end of each row, so on a 375px phone every card on that machine grew wider than the screen and the page panned sideways under the top bar. The name now stops at the same width the other address tags keep and ends in an ellipsis, and the dashboard and space lists no longer pan sideways. Thanks @dantebarba (fixes #264).
 
