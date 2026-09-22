@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Lock } from "lucide-react";
+import {
+  ArrowBigUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowRightToLine,
+  ArrowUp,
+  Check,
+  CornerDownLeft,
+  Lock,
+  Space,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,11 +46,16 @@ import { CONTROL_PRESETS, type CtrlDef } from "@/lib/operator-keys";
 // dimming here (unlike the quick replies): this is a keypad you drum on, and dimming eight keys per
 // arrow press would strobe.
 //
-// The pad is ONE fixed 7-column grid, two rows: row 1 is Esc/Tab/the three modifiers/Up/Enter, row 2
-// is the quick Ctrl+C / a 3-wide Space / the inverted-T's Left-Down-Right (Down sits under Up, same
-// column). Everything past that — the phone-dialer digits, the labelled Ctrl presets, F1–F12 — sits
-// behind a row of small chips (123 / Presets / F keys) that opens at most one panel at a time
-// directly under the chip row, so the tray's resting height never carries a drawer it doesn't need.
+// The pad is a fixed 7-column, 2-row grid — row 1 is Esc/Tab/the three modifiers/Up/quick Ctrl+C,
+// row 2 is a 4-wide Space then the inverted-T's Left-Down-Right (Down sits under Up, same column) —
+// plus a 12px gap and a tall Enter set apart on its own column at the right edge, spanning both
+// rows. Enter carries a low-opacity tint of the primary colour at rest, so it reads as the commit
+// key even before it's pressed, and never sits beside the arrows: a miss on Enter confirms a
+// prompt, a miss on an arrow is reversible (issue #263). Space, Shift, Tab, Enter and the arrows
+// show icons; Esc, Ctrl, Alt and the quick Ctrl+C stay short text. Everything past that — the
+// phone-dialer digits, the labelled Ctrl presets, F1–F12 — sits behind a row of small chips
+// (123 / Presets / F keys) that opens at most one panel at a time directly under the chip row, so
+// the tray's resting height never carries a drawer it doesn't need.
 
 interface NavTrayProps {
   /** Resolves true when the bridge accepted the keys — drives the ✓ echo on the pressed button. */
@@ -152,16 +168,22 @@ export function NavTray({
   // `repeatable` opts a button into hold-to-repeat. While held, the button shows a live "×N" count
   // instead of running the per-press echo — echo.run per repeat tick would restart the ✓ timer ~11
   // times a second and strobe, the same reason sibling dimming is banned on this pad.
+  //
+  // `restingClassName` applies only while the button is neither held nor mid-echo (`resting`) — it's
+  // for Enter's low-opacity tint, which must vanish the instant the button's own variant goes solid
+  // (`bg-primary`) for a press or a ✓, never stack on top of it via a class-merge accident.
   const navBtn = (
     content: ReactNode,
     keys: string[],
     aria?: string,
     repeatable = false,
     extraClassName?: string,
+    restingClassName?: string,
   ) => {
     const id = keys.join(" ");
     const phase = echo.phaseOf(id);
     const held = repeatable && repeat.holding === keys[0];
+    const resting = !held && phase === "idle";
     const bind = repeatable ? repeat.bind(keys[0], () => fire(keys, id)) : undefined;
     // Greyed rather than removed: the pad's geometry IS its usability (Esc top-left, arrows as an
     // inverted-T), and pulling a key out of the grid would move every key after it. A dead button in
@@ -176,9 +198,16 @@ export function NavTray({
         disabled={disabled || refused}
         {...(bind ?? { onClick: () => fire(keys, id) })}
         aria-label={aria}
+        // A hover title for the icon keys — an icon-only button gives a desktop pointer nothing to
+        // read until it commits to a tap. Harmless on the text keys that also pass `aria`.
+        title={aria}
         // touch-action/select-none: without them a held button on iOS starts a text selection and
         // Android may treat the hold as a scroll gesture, both of which cancel the pointer stream.
-        className={cn("h-9 touch-manipulation select-none px-0 text-sm font-medium", extraClassName)}
+        className={cn(
+          "h-9 touch-manipulation select-none px-0 text-sm font-medium",
+          extraClassName,
+          resting && restingClassName,
+        )}
       >
         {held ? (
           <span className="mx-auto flex items-center gap-1">
@@ -197,7 +226,7 @@ export function NavTray({
   // A modifier button reads its own three-state mode from `mods`: outline when off, filled (default)
   // when armed — once OR locked — with a small Lock glyph beside the label to distinguish locked from
   // one-shot. Tapping cycles off → once → locked → off.
-  const modBtn = (m: Modifier, label: ReactNode, aria?: string) => {
+  const modBtn = (m: Modifier, label: ReactNode, aria?: string, extraClassName?: string) => {
     const mode = mods[m];
     return (
       <Button
@@ -208,7 +237,8 @@ export function NavTray({
         onClick={() => arm(m)}
         aria-pressed={mode !== "off"}
         aria-label={aria}
-        className="h-9 px-0 text-sm font-medium"
+        title={aria}
+        className={cn("h-9 px-0 text-sm font-medium", extraClassName)}
       >
         {mode === "locked" && <Lock className="size-3" />}
         {label}
@@ -234,6 +264,16 @@ export function NavTray({
     </button>
   );
 
+  // Tap-target idiom (DESIGN.md §6, the same move as `STRIP_TAP_TARGET` in ui/labelled-strip.tsx): a
+  // transparent `::before` extends a button's clickable box without adding drawn height. 2px top +
+  // 2px bottom exactly fills this grid's 4px row gap (`gap-1`), so a normal key's extended hit area
+  // meets its neighbour's at the gap's midpoint and never reaches into a sibling's own drawn box.
+  // 36px drawn (`h-9`) + 2 + 2 = 40px, the tap floor — Enter needs none of this, its own row-span
+  // already clears 40px on its own.
+  const KEY_TAP_TARGET =
+    "relative before:absolute before:inset-x-0 before:-inset-y-[2px] before:content-['']";
+  const gridPos = (position: string) => cn(position, KEY_TAP_TARGET);
+
   return (
     <div className="space-y-0.5 border-t border-rule bg-muted/30 px-2 py-1.5">
       {/* Staging strip — visible only while composing (a modifier armed or keys queued). */}
@@ -247,31 +287,83 @@ export function NavTray({
         disabled={disabled}
       />
 
-      {/* Row 1: Esc, Tab, the three modifiers, Up, a quick Ctrl+C. Row 2: Enter, Space spanning the
-          middle three columns, then Left/Down/Right — Down sits in the same column as Up above it
-          (column 6), so the pad still reads as an inverted-T even though it no longer has a row of
-          its own. Esc leading the pad and the quick Ctrl+C both carry over from the old two-tab
-          pad; the seven-column row shape and the Tab/Space placement are new.
+      {/* Row 1: Esc, Tab, the three modifiers, Up, a quick Ctrl+C. Row 2: a 4-wide Space, then the
+          inverted-T's Left-Down-Right (Down sits under Up, same column 6). A 12px empty column (a
+          spacer, never a button) separates that 7-column block from Enter, which sits apart on its
+          own column at the right edge and spans both rows.
 
-          Enter leads row 2, under Esc, and not beside the arrows (issue #263). Rapid arrow taps
-          build a thumb habit around columns 5 to 7; an arrow that lands wrong is reversible, an
-          Enter that lands wrong confirms a prompt. So the two high-impact keys, Esc and Enter, share
-          the left edge, and the corner beside Up holds Ctrl+C, whose miss cancels rather than
-          confirms. */}
-      <div className="grid grid-cols-7 gap-1">
-        {navBtn("Esc", ["Escape"])}
-        {navBtn("Tab", ["Tab"])}
-        {modBtn("shift", "⇧", "Shift")}
-        {modBtn("ctrl", "Ctrl")}
-        {modBtn("alt", "Alt")}
-        {navBtn(<ArrowUp className="size-4" />, ["Up"], "Up", true)}
-        {navBtn("Ctrl C", ["ctrl+c"], "Ctrl+C")}
+          Enter never sits beside the arrows (issue #263): rapid arrow taps build a thumb habit
+          around columns 5–7, and an arrow that lands wrong is reversible where an Enter that lands
+          wrong confirms a prompt. Set apart and tinted (`bg-primary/15` at rest — see `navBtn`'s
+          `restingClassName`), it reads as the commit key on sight, not just by position. */}
+      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))_12px_1.5fr] gap-1">
+        {navBtn("Esc", ["Escape"], undefined, false, gridPos("col-start-1 row-start-1"))}
+        {navBtn(
+          <ArrowRightToLine className="size-4" aria-hidden="true" />,
+          ["Tab"],
+          "Tab",
+          false,
+          gridPos("col-start-2 row-start-1"),
+        )}
+        {modBtn(
+          "shift",
+          <ArrowBigUp className="size-4" aria-hidden="true" />,
+          "Shift",
+          gridPos("col-start-3 row-start-1"),
+        )}
+        {modBtn("ctrl", "Ctrl", undefined, gridPos("col-start-4 row-start-1"))}
+        {modBtn("alt", "Alt", undefined, gridPos("col-start-5 row-start-1"))}
+        {navBtn(
+          <ArrowUp className="size-4" aria-hidden="true" />,
+          ["Up"],
+          "Up",
+          true,
+          gridPos("col-start-6 row-start-1"),
+        )}
+        {navBtn("Ctrl C", ["ctrl+c"], "Ctrl+C", false, gridPos("col-start-7 row-start-1"))}
 
-        {navBtn("⏎", ["Enter"], "Enter")}
-        {navBtn("Space", ["Space"], undefined, false, "col-span-3")}
-        {navBtn(<ArrowLeft className="size-4" />, ["Left"], "Left", true)}
-        {navBtn(<ArrowDown className="size-4" />, ["Down"], "Down", true)}
-        {navBtn(<ArrowRight className="size-4" />, ["Right"], "Right", true)}
+        {navBtn(
+          <Space className="size-4" aria-hidden="true" />,
+          ["Space"],
+          "Space",
+          false,
+          gridPos("col-start-1 col-span-4 row-start-2"),
+        )}
+        {navBtn(
+          <ArrowLeft className="size-4" aria-hidden="true" />,
+          ["Left"],
+          "Left",
+          true,
+          gridPos("col-start-5 row-start-2"),
+        )}
+        {navBtn(
+          <ArrowDown className="size-4" aria-hidden="true" />,
+          ["Down"],
+          "Down",
+          true,
+          gridPos("col-start-6 row-start-2"),
+        )}
+        {navBtn(
+          <ArrowRight className="size-4" aria-hidden="true" />,
+          ["Right"],
+          "Right",
+          true,
+          gridPos("col-start-7 row-start-2"),
+        )}
+
+        {navBtn(
+          <span className="flex flex-col items-center gap-0.5">
+            <CornerDownLeft className="size-4" aria-hidden="true" />
+            <span className="text-[9px] font-sans font-medium uppercase tracking-wide opacity-75">
+              Enter
+            </span>
+          </span>,
+          ["Enter"],
+          "Enter",
+          false,
+          "col-start-9 row-start-1 row-span-2 flex-col gap-0.5",
+          "bg-primary/15 border-primary/40",
+        )}
       </div>
 
       {/* The accordion row: 123 / Presets / F keys. At most one panel open at a time, rendered

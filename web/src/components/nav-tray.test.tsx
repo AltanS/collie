@@ -42,35 +42,63 @@ describe("NavTray", () => {
     expect(onSend.mock.calls).toEqual([[["1"]], [["5"]], [["9"]]]);
   });
 
-  it("the main pad reads as a single seven-column, two-row grid (physical-keyboard geometry)", () => {
+  it("the main grid is 7 cols + a 12px gap + Enter, 2 rows, Enter set apart and tinted (variant 4)", () => {
     render(<NavTray onSend={vi.fn()} />);
 
     const esc = screen.getByRole("button", { name: "Esc" });
     const tab = screen.getByRole("button", { name: "Tab" });
+    const shift = screen.getByRole("button", { name: "Shift" });
+    const ctrl = screen.getByRole("button", { name: "Ctrl" });
+    const alt = screen.getByRole("button", { name: "Alt" });
     const up = screen.getByRole("button", { name: "Up" });
-    const enter = screen.getByRole("button", { name: "Enter" });
     const ctrlC = screen.getByRole("button", { name: "Ctrl+C" });
     const space = screen.getByRole("button", { name: "Space" });
     const left = screen.getByRole("button", { name: "Left" });
     const down = screen.getByRole("button", { name: "Down" });
     const right = screen.getByRole("button", { name: "Right" });
+    const enter = screen.getByRole("button", { name: "Enter" });
 
     // a.compareDocumentPosition(b) & DOCUMENT_POSITION_FOLLOWING !== 0 means a comes before b.
     const isBefore = (a: HTMLElement, b: HTMLElement) =>
       (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
-    // Row 1: Esc leads, Tab follows, Up and the quick Ctrl+C close it out.
+    // Row 1, in order: Esc, Tab, Shift, Ctrl, Alt, Up, the quick Ctrl+C.
     expect(isBefore(esc, tab)).toBe(true);
-    expect(isBefore(tab, up)).toBe(true);
+    expect(isBefore(tab, shift)).toBe(true);
+    expect(isBefore(shift, ctrl)).toBe(true);
+    expect(isBefore(ctrl, alt)).toBe(true);
+    expect(isBefore(alt, up)).toBe(true);
     expect(isBefore(up, ctrlC)).toBe(true);
 
-    // Row 2 begins only after all of row 1 — Enter leads it, under Esc and away from the arrows
-    // (issue #263); Space/Left/Down/Right follow in order.
-    expect(isBefore(ctrlC, enter)).toBe(true);
-    expect(isBefore(enter, space)).toBe(true);
+    // Row 2 begins only after all of row 1: a 4-wide Space, then the inverted-T's Left, Down, Right.
+    expect(isBefore(ctrlC, space)).toBe(true);
     expect(isBefore(space, left)).toBe(true);
     expect(isBefore(left, down)).toBe(true);
     expect(isBefore(down, right)).toBe(true);
+
+    // Enter sits apart from the arrows, last in the grid (issue #263), and spans both rows.
+    expect(isBefore(right, enter)).toBe(true);
+    expect(enter).toHaveClass("row-span-2");
+
+    // Space spans the first 4 columns; Up and Down share one column (the inverted T's stem), and
+    // that column is neither Left's nor Right's.
+    expect(space).toHaveClass("col-span-4");
+    const colOf = (el: HTMLElement) => [...el.classList].find((c) => c.startsWith("col-start-"));
+    expect(colOf(up)).toBe(colOf(down));
+    expect(colOf(up)).not.toBe(colOf(left));
+    expect(colOf(down)).not.toBe(colOf(right));
+
+    // Enter carries a low-opacity tint of the primary colour at rest — the commit-key read.
+    expect(enter).toHaveClass("bg-primary/15");
+    expect(enter).toHaveClass("border-primary/40");
+  });
+
+  it("every icon key (Space, Shift, Tab, Enter, and the arrows) keeps its aria-label", () => {
+    render(<NavTray onSend={vi.fn()} />);
+
+    for (const name of ["Space", "Shift", "Tab", "Enter", "Up", "Down", "Left", "Right"]) {
+      expect(screen.getByRole("button", { name })).toHaveAttribute("aria-label", name);
+    }
   });
 
   it("a quick Ctrl+C closes row 1 and fires ctrl+c immediately", async () => {
