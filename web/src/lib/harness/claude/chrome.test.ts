@@ -836,6 +836,12 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "menu-effort-slider--w120", statusRows: 0, draft: null, stripped: 0 },
     // The same slider at 132 columns, cropped to the dialog. Same reading again: a modal, no box.
     { fixture: "menu-effort-slider--w132", statusRows: 0, draft: null, stripped: 0 },
+    // The three narrow captures (2026-09-22). At 40 and 60 columns Claude wraps the dialog — the
+    // labels break onto a second row and the footer onto two or three — and the walk still reads a
+    // modal with no box, so nothing here moves with the width.
+    { fixture: "menu-effort-slider--w40", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-effort-slider--w60", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-effort-slider--w80", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--numbered-body", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--feedback-focused", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--feedback-typed", statusRows: 0, draft: null, stripped: 0 },

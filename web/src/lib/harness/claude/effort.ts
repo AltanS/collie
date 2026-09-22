@@ -28,8 +28,17 @@
 //
 // POSITION-INDEPENDENT BY CONSTRUCTION. Nothing below names a column number, a pane width or a label
 // set: the marker row is found by its glyph, the label row by adjacency, and the value by nearest
-// label centre. Two captures of this screen at different widths are in the corpus for exactly that
-// reason.
+// label centre. Six captures of this screen, from 40 to 132 columns, are in the corpus for exactly
+// that reason.
+//
+// AND WIDTH-INDEPENDENT SINCE 2026-09-22. Below about 70 columns Claude Code wraps this dialog three
+// ways at once: each label word breaks onto a second row IN ITS OWN COLUMN, the track splits over two
+// rows with the `▲` on the first, and the footer runs over two or three rows. None of that is a
+// different screen, so none of it is a different grammar: the footer is read as the rows the
+// terminal wrapped it onto (`readKeyHintFooter`, menu-hints.ts, shared), the track's second row is
+// stepped over by its glyphs, and each label is rebuilt from its head and the fragment aligned under
+// it. The alignment is the whole test — a fragment that does not start on a head's own start column
+// refuses the row — and a merge that makes anything but letters and digits declines the screen.
 //
 // NO DIGITS, and nothing the screen did not print (.adr/0009): the emitted keys are `Enter`, `s` and
 // `Escape`, all three named in the footer, plus the `Left`/`Right` the footer advertises with `←/→`.
@@ -45,7 +54,7 @@ import { isBlank, isBoxBorder, isHorizontalRule, lineText } from "./markers";
 import type { MenuRegion } from "./menu";
 import { regionSignature } from "./prompt-select";
 import type { MenuAction, MenuModel } from "../menu-model";
-import { capitaliseMenuLabel, menuKeyFor, parseKeyHintFooter } from "../menu-hints";
+import { capitaliseMenuLabel, menuKeyFor, readKeyHintFooter } from "../menu-hints";
 
 // The slider's marker. Deliberately NOT a member of the rule-glyph family (markers.ts), so the scale
 // row it sits in is not mistaken for the region's opening rule.
@@ -78,20 +87,36 @@ const MIN_VALUE_MARGIN = 1;
 // the same reason: generous enough for a tall modal, bounded so a borderless buffer can't be claimed.
 const REGION_SCAN_WINDOW = 30;
 
-/** One label on the slider's label row: its text and its CENTRE, in display cells. */
+/** One label on the slider's label row: its text, its CENTRE in display cells — what the marker is
+ *  measured against — and its START column, which is what a wrapped fragment on the row below must
+ *  match exactly to belong to it. */
 interface LabelSpan {
   text: string;
   centre: number;
+  start: number;
 }
 
-// A label carries a word. Observed at narrow pane widths (60 and below, 2026-09-21): Claude lays the
-// slider out as a flex row, so under about 86 columns the scale ITSELF wraps and the row directly
-// under the marker is the scale's continuation — more rule glyphs — with the real labels a row
-// further down, themselves broken mid-word. Requiring a letter or a digit in every label is what
-// keeps a continuation row from being read as labels and a rule glyph from being reported as the
-// operator's current effort. A wrapped slider is declined outright; the generic menu still gives it
-// Confirm and Cancel.
+// A label carries a word. Claude lays the slider out as a flex row, so below about 70 columns the
+// scale ITSELF wraps and the row directly under the marker is the scale's continuation — more rule
+// glyphs. Requiring a letter or a digit in every label keeps a rule glyph from ever being reported
+// as the operator's current effort, and it stays the guard of last resort now that the track row is
+// also stepped over by name (TRACK_ONLY below).
 const LABEL_WORD = /[\p{L}\p{N}]/u;
+
+// The slider's TRACK: the glyphs Claude draws the scale's rule with, and nothing else. On a pane too
+// narrow for the whole scale the track wraps, and its second row sits BETWEEN the marker row and the
+// labels. Naming those glyphs does two jobs: the label search steps over that row instead of reading
+// `──┆` as labels, and the upward region scan does not mistake it for the dialog's own opening rule
+// (it is one, lexically — `isHorizontalRule` compacts the interior spaces away).
+const TRACK_ONLY = /^[\u2500\u2506\s]+$/;
+
+// A MERGED label must be LETTERS AND DIGITS, nothing else. Rebuilding a label from its head and the
+// fragment under it is a guess about layout, and this is where the guess is checked. Punctuation is
+// excluded on purpose rather than for tidiness: `+` is exactly what the description row
+// ("xhigh + workflows") would contribute if its columns ever lined up with the heads, and no level
+// Claude prints carries a `+` or a `-`. This is a SHAPE test, not a vocabulary one — the grammar
+// still names no level anywhere.
+const MERGED_LABEL = /^[\p{L}\p{N}]+$/u;
 
 /** The label spans of a row, left to right — every run of non-space, measured in display cells so a
  *  wide glyph counts as the two columns the terminal drew it in. */
@@ -101,7 +126,7 @@ function labelSpans(text: string): LabelSpan[] {
   let m: RegExpExecArray | null;
   while ((m = run.exec(text)) !== null) {
     const start = displayWidth(text.slice(0, m.index));
-    spans.push({ text: m[0], centre: start + displayWidth(m[0]) / 2 });
+    spans.push({ text: m[0], centre: start + displayWidth(m[0]) / 2, start });
   }
   return spans;
 }
@@ -111,16 +136,15 @@ function labelSpans(text: string): LabelSpan[] {
  * opening rule, or null.
  *
  * Ordered bails, cheapest and most decisive first:
- *   1. the last non-blank line parses as a key-hint footer AND advertises `←/→` with a verb — this
- *      is the screen's own claim that the arrows do something, and no other capture in the corpus
- *      makes it from its footer;
+ *   1. the tail's key-hint footer — its last one to three rows, joined (menu-hints.ts) — parses AND
+ *      advertises `←/→` with a verb. This is the screen's own claim that the arrows do something,
+ *      and no other capture in the corpus makes it from its footer;
  *   2. there must be NO input box at the tail, for the reason menu.ts:79 has the same bail: fake
  *      buttons under a live composer are worse than no buttons;
- *   3. exactly one row of the region carries exactly one `▲`, and the FIRST non-blank row beneath it
- *      splits into two or more labels, each carrying a word. First row, not any row: the row under
- *      the labels is a DESCRIPTION line ("xhigh + workflows"), and a detector that took every row
- *      would try to read it as labels too. Each carrying a word, because on a pane too narrow for
- *      the slider the row under the marker is the scale's own wrapped continuation;
+ *   3. exactly one row of the region carries exactly one `▲`, and the first row beneath it that is
+ *      neither blank nor the track's own wrapped continuation splits into two or more labels, each
+ *      carrying a word. First row, not any row: the row under the labels is a DESCRIPTION line
+ *      ("xhigh + workflows"), and a detector that took every row would try to read it as labels too;
  *   4. the region's opening rule / border is found the way menu.ts:84-89 finds it, and the first
  *      non-blank row under it is the title;
  *   5. the marker picks ONE label clearly — the nearest label centre beats the second-nearest by at
@@ -131,29 +155,38 @@ function labelSpans(text: string): LabelSpan[] {
 export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
   const texts = lines.map(lineText);
 
-  let fi = texts.length - 1;
-  while (fi >= 0 && isBlank(texts[fi]!)) fi--;
-  if (fi < 0) return null;
-
-  const footer = texts[fi]!;
+  // The footer, read as the one OR MORE rows the terminal wrapped it onto (menu-hints.ts). Below
+  // about 70 columns this screen's footer runs over two or three rows, and the `←/→` phrase this
+  // grammar is anchored on sits on the first of them.
+  const footerAt = readKeyHintFooter(texts);
+  if (footerAt === null) return null;
+  const footer = footerAt.text;
   const arrows = FOOTER_ARROWS.exec(footer);
   if (arrows === null) return null;
-  const footerActions = parseKeyHintFooter(footer);
-  if (footerActions.length === 0) return null;
+  const footerActions = footerAt.actions;
   if (hasInputBox(lines)) return null;
 
   // One upward pass: the region's top is the nearest rule/border above the footer, and the marker
   // rows are the rows between the two. Collecting both together is what makes "within the region"
   // mean the region and not a window.
+  //
+  // With ONE exception, and it is the wrapped track. The scale's second row is lexically a
+  // horizontal rule, so a scan that stopped at it would call it the region's top and then find no
+  // marker at all. It is stepped over only while the marker is still unseen — above the marker row
+  // the first rule really is the dialog's own opening rule, and that is still where the region ends.
   let top = -1;
   const markerRows: number[] = [];
-  for (let i = fi - 1, seen = 0; i >= 0 && seen < REGION_SCAN_WINDOW; i--, seen++) {
+  for (let i = footerAt.startLine - 1, seen = 0; i >= 0 && seen < REGION_SCAN_WINDOW; i--, seen++) {
     const t = texts[i]!;
+    if (t.includes(MARKER)) {
+      markerRows.push(i);
+      continue;
+    }
+    if (markerRows.length === 0 && isTrackRow(t)) continue;
     if (isBoxBorder(t) || isHorizontalRule(t)) {
       top = i;
       break;
     }
-    if (t.includes(MARKER)) markerRows.push(i);
   }
   if (top < 0) return null;
   if (markerRows.length !== 1) return null;
@@ -163,19 +196,52 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
   if (markerRow.indexOf(MARKER, markerAt + 1) !== -1) return null;
   const markerColumn = displayWidth(markerRow.slice(0, markerAt));
 
-  // The label row: the first non-blank row under the marker, still inside the region.
-  let labels: LabelSpan[] = [];
-  for (let i = markerRows[0]! + 1; i < fi; i++) {
+  // The label row: the first row under the marker that is neither blank nor the track's own wrapped
+  // continuation, still inside the region.
+  let head = -1;
+  let trackWrapped = false;
+  for (let i = markerRows[0]! + 1; i < footerAt.startLine; i++) {
     if (isBlank(texts[i]!)) continue;
-    labels = labelSpans(texts[i]!);
+    if (isTrackRow(texts[i]!)) {
+      trackWrapped = true;
+      continue;
+    }
+    head = i;
     break;
   }
+  if (head < 0) return null;
+  let labels = labelSpans(texts[head]!);
   if (labels.length < 2) return null;
   if (!labels.every((span) => LABEL_WORD.test(span.text))) return null;
 
+  // WRAPPED LABELS. On a narrow pane each level breaks onto a second row, in its own column: `mediu`
+  // over `m`, `lo` over `w`. That row is claimed as a continuation only when EVERY one of its tokens
+  // starts on exactly the column a head token starts on — which the description row `xhigh +
+  // workflows` never does, at any width, because it is centred under the track rather than
+  // left-aligned with a label. The merged text becomes the label; the SPANS stay the head row's,
+  // because that is the row the marker was drawn against.
+  const below =
+    head + 1 < footerAt.startLine && !isBlank(texts[head + 1]!) ? labelSpans(texts[head + 1]!) : [];
+  //
+  // AND A WRAPPED TRACK MEANS WRAPPED LABELS. Claude draws the whole slider as ONE flex row, so the
+  // track and the labels wrap together: the two narrow captures wrap both, the wide ones wrap
+  // neither. So when the track wrapped, a head row we could not complete is not a scale we may show
+  // — the heads there are truncated words (`mediu`, `hig`, `ultracod`), every one of which passes
+  // LABEL_WORD, and falling back to them would put a confident invented scale on the card. Declining
+  // costs the operator nothing they had: the generic menu still gives the screen Confirm and Cancel.
+  // With an UNwrapped track the refused row is the description line and the heads are whole words,
+  // so they stand alone exactly as they always did.
+  const merged = mergeWrappedLabels(labels, below);
+  if (merged === null) {
+    if (trackWrapped) return null;
+  } else {
+    if (!merged.every((span) => MERGED_LABEL.test(span.text))) return null;
+    labels = merged;
+  }
+
   // Title = the first non-blank line under the rule, exactly as the generic grammar names a menu.
   let title = "";
-  for (let i = top + 1; i < fi; i++) {
+  for (let i = top + 1; i < footerAt.startLine; i++) {
     if (!isBlank(texts[i]!)) {
       title = texts[i]!.trim();
       break;
@@ -202,20 +268,61 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
     model: {
       title,
       actions: withSessionAction(footerActions, footer),
-      // THE SCALE, in row order. `labels` is the FIRST non-blank row under the marker and nothing
-      // else: the row beneath it is a DESCRIPTION line ("xhigh + workflows") and stays ignored, so
-      // `values` is exactly the one row the screen printed the scale on. `value.text` is one of
-      // these by construction — it is the span this list was picked from.
+      // THE SCALE, in row order. `labels` is the one label row the screen printed — its head row
+      // alone on a wide pane, its head row plus the fragments aligned under it on a narrow one. The
+      // DESCRIPTION line ("xhigh + workflows") is neither, so it stays out of `values`. `value.text`
+      // is one of these by construction — it is the span this list was picked from.
       nav: {
         upDown: false,
         leftRight: { verb: arrows[1]!, label: value.text, values: labels.map((s) => s.text) },
       },
       // The same helper, the same bounds as menu.ts:116 — so the marker row is inside the signature
       // and an arrow tap changes it, which is what `menusEqual` needs to abort a stale confirm.
-      signature: regionSignature(texts, top, fi),
+      signature: regionSignature(texts, top, footerAt.endLine),
     },
     startLine: top,
   };
+}
+
+/** True when a row is the slider's TRACK and nothing else — rule glyphs, the `\u2506` divider and
+ *  spaces. A blank row is not one: blankness is already handled, and calling it track would let an
+ *  empty region read as a wrapped one. */
+function isTrackRow(text: string): boolean {
+  return text.trim() !== "" && TRACK_ONLY.test(text);
+}
+
+/**
+ * Merge a wrapped label row's fragments onto the head labels above them, or return null when `below`
+ * is not a continuation row at all and the head row stands alone.
+ *
+ * THE TEST IS EXACT START-COLUMN EQUALITY, and that is the whole guard. Claude lays each level out
+ * as its own flex column and wraps the word INSIDE that column, so a continuation is left-aligned
+ * with its head, not merely near it: on the real captures `lo`/`w` both start at column 3,
+ * `medi`/`um` both at 7, `mediu`/`m` both at 10, `hig`/`h` both at 20, `ultracod`/`e` both at 48.
+ * One fragment that starts anywhere else refuses the WHOLE row — a partial merge would invent a
+ * level nobody printed.
+ *
+ * A window ("inside the head's span, or one column past its end") was tried first and is wrong. The
+ * row directly under the labels on a wide pane is the DESCRIPTION line "xhigh + workflows", and a
+ * window only refuses it by luck of where those three words happen to land: at some width nobody
+ * captured, `xhigh` falls inside the `max` span and `+ workflows` inside the `ultracode` one, and
+ * the card then shows `maxxhigh` and `ultracode+workflows` as levels. Exact equality fails closed at
+ * every width instead, because the description line is centred under the track and never
+ * left-aligned with a label.
+ *
+ * With exact equality no two heads can claim one fragment — head starts are distinct by
+ * construction, since each is a run of non-space and they are disjoint — so there is no ambiguity
+ * branch here. A fragment matching nothing is the only refusal.
+ */
+function mergeWrappedLabels(heads: LabelSpan[], below: LabelSpan[]): LabelSpan[] | null {
+  if (below.length === 0) return null;
+  const parts = heads.map(() => "");
+  for (const fragment of below) {
+    const owner = heads.findIndex((head) => head.start === fragment.start);
+    if (owner < 0) return null;
+    parts[owner] += fragment.text;
+  }
+  return heads.map((head, i) => ({ ...head, text: head.text + parts[i]! }));
 }
 
 /** The footer's actions with its "<key> for <verb phrase>" segment folded in, ahead of the cancel

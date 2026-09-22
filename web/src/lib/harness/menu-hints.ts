@@ -116,3 +116,75 @@ export function namesAMenuKey(text: string): boolean {
       return m !== null && menuKeyFor(m[1]!) !== null;
     });
 }
+
+// How many rows a wrapped key-hint footer may span. Three is what a real capture needs: Claude Code
+// 2.1.278 runs the `/effort` footer onto three rows at 40 columns and two at 60. A bound rather than
+// "keep going while it parses", because every extra row is one more chance for a body row to read
+// like a hint.
+const MAX_FOOTER_ROWS = 3;
+
+// The SHAPE of one hint segment, looser than `HINT` above on purpose: it accepts "<key> for
+// <phrase>" as well as "<key> to <verb>", because a screen that writes "s for this session only"
+// still wrote a hint there. This is not used to BUILD an action — `parseKeyHintFooter` does that, and
+// it keeps its narrower grammar — only to answer "is every part of this joined text hint text?",
+// which is how a group of rows proves that all of it is footer and none of it is an option, a label
+// or a rule.
+const HINT_FORM = /^(.+?)\s+(?:to|for)\s+(.+)$/i;
+
+/** A key-hint footer, read as the one or more rows the terminal wrapped it onto. */
+export interface KeyHintFooter {
+  /** The group's rows, trimmed and joined with one space — the text that was parsed. */
+  text: string;
+  /** The group's FIRST row, and its last. Both indices into the `texts` that were read. */
+  startLine: number;
+  endLine: number;
+  /** What `parseKeyHintFooter` made of `text`. Never empty. */
+  actions: MenuAction[];
+}
+
+/**
+ * Read the key-hint footer at the tail of `texts`, joining the rows a narrow pane wrapped it onto.
+ *
+ * The group is the last `k` NON-BLANK rows, contiguous (a blank row ends it), with `k` at most
+ * MAX_FOOTER_ROWS. A `k` is accepted when all three hold:
+ *
+ *   * every row carries the SAME left indent, because a wrapped footer is one block the renderer
+ *     drew at one indent. This is what keeps ordinary agent output that scrolled in below a dialog
+ *     out of the group: it is written at the transcript's indent, not the dialog's;
+ *   * every `·`-separated segment of the joined text is hint text (HINT_FORM), so a group holding an
+ *     option row, a label row or a rule is refused whole rather than parsed in part;
+ *   * `parseKeyHintFooter` gets at least one action out of the joined text.
+ *
+ * The LARGEST accepted `k` wins. Smallest-first would stop too early and read a true footer's tail as
+ * the whole of it: at 40 columns `/effort`'s last two rows are "s for this session only · Esc to
+ * cancel", which parses on its own and silently loses the two hints above it.
+ *
+ * Returns null when no group qualifies — the same answer `parseKeyHintFooter` gives for a line that
+ * is not a footer, so a caller gains the wrapped case and loses no bail.
+ */
+export function readKeyHintFooter(texts: string[], maxRows: number = MAX_FOOTER_ROWS): KeyHintFooter | null {
+  let end = texts.length - 1;
+  while (end >= 0 && texts[end]!.trim() === "") end--;
+  if (end < 0) return null;
+
+  let best: KeyHintFooter | null = null;
+  for (let k = 1; k <= maxRows; k++) {
+    const start = end - k + 1;
+    if (start < 0) break;
+    if (texts[start]!.trim() === "") break; // a blank row ends the group; no larger k is contiguous
+    const rows = texts.slice(start, end + 1);
+    if (rows.some((t) => indentOf(t) !== indentOf(rows[0]!))) continue;
+    const text = rows.map((t) => t.trim()).join(" ");
+    const segments = text.split(SEGMENT_SPLIT);
+    if (!segments.every((segment) => HINT_FORM.test(segment.trim()))) continue;
+    const actions = parseKeyHintFooter(text);
+    if (actions.length === 0) continue;
+    best = { text, startLine: start, endLine: end, actions };
+  }
+  return best;
+}
+
+/** A row's left indent, in characters. Compared only between rows of one candidate footer group. */
+function indentOf(text: string): number {
+  return /^\s*/.exec(text)![0].length;
+}

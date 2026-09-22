@@ -32,6 +32,15 @@ const WIDE_FIXTURE = "claude--menu-effort-slider--w120.txt";
 // opened over was the operator's own work). It is the whole-scale reference: six levels on one label
 // row, a `┆` divider in the track, and a second label row under it that the grammar ignores.
 const SCALE_FIXTURE = "claude--menu-effort-slider--w132.txt";
+// The three NARROW captures, taken live on 2026-09-22 at 40, 60 and 80 columns. 80 renders whole;
+// below about 70 Claude wraps the dialog three ways at once — each label word breaks onto a second
+// row in its own column, the track splits, and the footer runs over two or three rows. All three
+// show the marker over `medium`.
+const WRAPPED_FIXTURES = [
+  "claude--menu-effort-slider--w40.txt",
+  "claude--menu-effort-slider--w60.txt",
+  "claude--menu-effort-slider--w80.txt",
+];
 // The scale that screen printed, left to right.
 const SCALE = ["low", "medium", "high", "xhigh", "max", "ultracode"];
 // Every capture of this screen in the corpus.
@@ -39,6 +48,7 @@ const EFFORT_FIXTURES = [
   FIXTURE,
   WIDE_FIXTURE,
   SCALE_FIXTURE,
+  ...WRAPPED_FIXTURES,
   "claude-lab--menu-effort-slider--w82.txt",
 ];
 
@@ -191,21 +201,172 @@ describe("detectEffort — a second capture width", () => {
   });
 
   it("never reads the scale's own wrapped continuation as the label row", () => {
-    // The hazard between those two widths: a pane wide enough for the footer but too narrow for the
-    // scale. The row under the marker is then more rule glyphs, and a detector that counted them as
-    // labels would report `──┆` as the operator's current effort.
+    // The row under the marker on a narrow pane is more rule glyphs, and a detector that counted
+    // them as labels would report `──┆` as the operator's current effort. The track row is stepped
+    // over by name, so the labels below it are what the grammar reads — and because the track
+    // wrapped, so did they, which is why the row under them completes two of the six.
     const wrappedScale = [
-      "─".repeat(78),
+      "▔".repeat(78),
       "  Effort",
       "",
       "   Faster                       Smarter",
       "   ─────────────▲──────────────────────────",
       "   ───────       ────────┆     ──────",
-      "   low   medium   high   xhigh   max   ultracode",
+      "   low    mediu     high    xhigh    max    ultracod",
+      "          m                                 e",
       "",
       "  ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel",
     ].join("\n");
-    expect(detectEffort(lines(wrappedScale))).toBeNull();
+    const model = detectEffort(lines(wrappedScale));
+    expect(model).not.toBeNull();
+    expect(model!.nav.leftRight!.values).toEqual(SCALE);
+    expect(model!.nav.leftRight!.label).toBe("medium");
+  });
+});
+
+describe("detectEffort — the wrapped dialog", () => {
+  // Claude Code 2.1.278 wraps `/effort` below about 70 columns. Three real captures pin it: the
+  // level is still read, and the levels are rebuilt from their wrapped halves.
+  it.each(WRAPPED_FIXTURES)("reads %s as six whole levels with the marker over medium", (name) => {
+    const model = detectEffort(load(name));
+    expect(model).not.toBeNull();
+    expect(model!.title).toBe("Effort");
+    expect(model!.nav).toEqual({
+      upDown: false,
+      leftRight: { verb: "adjust", label: "medium", values: SCALE },
+    });
+    // The footer wraps onto three rows at 40 and two at 60, so all three keys are read only if the
+    // rows were rejoined first.
+    expect(model!.actions).toEqual(EXPECTED_ACTIONS);
+    expect(model!.signature).not.toBe("");
+  });
+
+  it.each(WRAPPED_FIXTURES)("is the Effort arm that produces %s's block", (name) => {
+    const paneLines = load(name);
+    const blocks = claudeBuildBlocks(paneLines);
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
+    const block = blocks[1]!;
+    if (block.kind !== "menu") throw new Error("expected a menu block");
+    // Deep-equality against the Effort model, not merely `kind === "menu"`: at 60 columns the
+    // GENERIC grammar also claims this screen, with no level and no values, so a kind check alone
+    // would pass on the fallback.
+    expect(block.menu).toEqual(detectEffort(paneLines)!);
+    expect(block.menu.nav.leftRight!.values).toEqual(SCALE);
+    expect(block.menu.nav.leftRight!.label).toBe("medium");
+  });
+
+  it("never lets the description row into the scale", () => {
+    // `xhigh + workflows` sits under the labels on every capture. On the wide ones it is the row
+    // directly beneath them, and it is refused because its tokens do not line up under the heads;
+    // on the narrow ones it is further down still. Either way it is never a level.
+    for (const name of EFFORT_FIXTURES) {
+      const values = detectEffort(load(name))!.nav.leftRight!.values!;
+      expect(values, name).not.toContain("xhigh + workflows");
+      expect(values, name).not.toContain("workflows");
+    }
+  });
+
+  it("does not merge a row whose token starts outside every head span", () => {
+    // The continuation rule is alignment, not adjacency: one fragment starting outside every head
+    // label's column span refuses the whole row, and the head row stands alone. This fragment sits
+    // in the gutter between `low` and `medium`, so nothing merges, and the head row's own words
+    // still read as the scale.
+    const screen = [
+      "▔".repeat(60),
+      "  Effort",
+      "",
+      "   ─────────▲────────────────────────────",
+      "   low    medium    high    xhigh    max",
+      "        x",
+      "",
+      "  ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel",
+    ].join("\n");
+    const model = detectEffort(lines(screen));
+    expect(model).not.toBeNull();
+    expect(model!.nav.leftRight!.values).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("refuses the description row even when its words land inside the head spans", () => {
+    // The hole an "inside the head's span" window left open. On a wide pane the row directly under
+    // the labels is `xhigh + workflows`, and a window refuses it only by luck of where those three
+    // words happen to land. Here they are moved so `xhigh` sits INSIDE the `max` span and
+    // `+ workflows` inside the `ultracode` one, which a window would have merged into the levels
+    // `maxxhigh` and `ultracode+workflows`. Exact start-column equality refuses the row instead, so
+    // the six head words still read as the scale.
+    const paneLines = load("claude--menu-effort-slider--w80.txt");
+    const labelAt = paneLines.findIndex(
+      (l) => /\blow\b/.test(textOf(l)) && /\bultracode\b/.test(textOf(l)),
+    );
+    expect(labelAt).toBeGreaterThan(0);
+    const heads = [...textOf(paneLines[labelAt]!).matchAll(/\S+/g)];
+    const maxAt = heads.find((m) => m[0] === "max")!.index;
+    const ultraAt = heads.find((m) => m[0] === "ultracode")!.index;
+    const shifted =
+      " ".repeat(maxAt + 1) + "xhigh" + " ".repeat(ultraAt + 2 - (maxAt + 6)) + "+ workflows";
+    expect(shifted.indexOf("xhigh")).toBe(maxAt + 1);
+    expect(shifted.indexOf("+")).toBe(ultraAt + 2);
+    const moved = [...paneLines];
+    moved[labelAt + 1] = lines(shifted)[0]!;
+
+    const model = detectEffort(moved);
+    expect(model).not.toBeNull();
+    expect(model!.nav.leftRight!.values).toEqual(SCALE);
+    expect(model!.nav.leftRight!.label).toBe("medium");
+  });
+
+  it("refuses a whole fragment row when one fragment is a column off", () => {
+    // Five fragments land exactly on their heads and the sixth is one column late. A partial merge
+    // would print five rebuilt levels beside one bare head, so the row is refused whole. The track
+    // did not wrap on this capture, so the heads stand alone — and at 80 columns they are already
+    // the six whole words.
+    const paneLines = load("claude--menu-effort-slider--w80.txt");
+    const labelAt = paneLines.findIndex(
+      (l) => /\blow\b/.test(textOf(l)) && /\bultracode\b/.test(textOf(l)),
+    );
+    const starts = [...textOf(paneLines[labelAt]!).matchAll(/\S+/g)].map((m) => m.index);
+    let row = "";
+    for (const [i, start] of starts.entries()) {
+      row = row.padEnd(i === starts.length - 1 ? start + 1 : start, " ") + "x";
+    }
+    const moved = [...paneLines];
+    moved[labelAt + 1] = lines(row)[0]!;
+
+    const model = detectEffort(moved);
+    expect(model).not.toBeNull();
+    expect(model!.nav.leftRight!.values).toEqual(SCALE);
+  });
+
+  it("declines a WRAPPED screen whose fragment row does not line up, rather than showing the heads", () => {
+    // The fail-closed half of the rule. At 60 columns the head row is `low mediu hig xhigh max
+    // ultracod` — truncated words that all pass LABEL_WORD. Shift the fragment row one column and the
+    // merge is refused; falling back to those heads would put an invented scale on the card, so the
+    // screen is declined instead. The wrapped TRACK row is what says the labels must be wrapped too.
+    const paneLines = load("claude--menu-effort-slider--w60.txt");
+    const labelAt = paneLines.findIndex(
+      (l) => /\blow\b/.test(textOf(l)) && /\bxhigh\b/.test(textOf(l)),
+    );
+    expect(labelAt).toBeGreaterThan(0);
+    const fragments = textOf(paneLines[labelAt + 1]!);
+    expect(fragments.trim()).not.toBe("");
+    const moved = [...paneLines];
+    moved[labelAt + 1] = lines(" " + fragments)[0]!;
+    expect(detectEffort(moved)).toBeNull();
+  });
+
+  it("declines when a merge would make a label that is not one word", () => {
+    // The last guard on the rebuild: a fragment row that lines up but carries punctuation would
+    // produce a level nobody printed, so the screen is declined rather than guessed at.
+    const screen = [
+      "▔".repeat(60),
+      "  Effort",
+      "",
+      "   ─────────▲────────────────────────────",
+      "   low    medium    high    xhigh    max",
+      "   a/b    c",
+      "",
+      "  ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel",
+    ].join("\n");
+    expect(detectEffort(lines(screen))).toBeNull();
   });
 });
 

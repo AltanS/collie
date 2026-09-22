@@ -161,7 +161,11 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    in a single tap. Set it only where the screen really printed the scale: a row that shows the
    current value alone (Claude's `/model` picker) leaves it undefined and keeps the plain arrows.
    The scale is part of menu identity, so it must be stable across polls
-   ([ADR 0054](./.adr/0054-a-printed-scale-is-tappable.md)).
+   ([ADR 0054](./.adr/0054-a-printed-scale-is-tappable.md)). **A narrow pane wraps that scale**, so
+   read the footer as the rows the terminal wrapped it onto (`readKeyHintFooter` in
+   `web/src/lib/harness/menu-hints.ts`, which joins them) and rebuild each value from its head and
+   the fragment printed under it, in the same column; merge only when every fragment lines up, and
+   decline the screen when a merge makes anything but one word.
 6. **A footer phrase may never be the whole reason a grammar declines.** Menu detection stands down
    when a family classifier says another grammar owns the screen, so that classifier must be
    answerable from the dialog it names, its title or its body, not from one line any screen may

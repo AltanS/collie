@@ -59,6 +59,7 @@ import {
   MENU_RIGHT_KEYS,
   MENU_UP_KEYS,
   menuKeyFor,
+  readKeyHintFooter,
 } from "./menu-hints";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
@@ -109,6 +110,13 @@ function lastMatchEnd(fresh: string[], expected: string[]): number {
 // dialog's footer no longer the last non-blank line, and every tail-anchored detector bails.
 function trailingOutput(): StyledLine[] {
   return [textLine("● Wrote the file"), textLine("  ⎿  done")];
+}
+
+/** The FIRST row of the tail's key-hint footer, which is the last non-blank row on a wide pane and
+ *  the top of the wrapped group on a narrow one. Falls back to the last non-blank row for a tail
+ *  that is not a key-hint footer at all. */
+function footerTop(lines: StyledLine[]): number {
+  return readKeyHintFooter(lines.map(lineText))?.startLine ?? lastNonBlank(lines);
 }
 
 /** The index of the last non-blank line — where every tail-anchored grammar's footer sits. */
@@ -519,9 +527,12 @@ export function describeAdapterConformance(
             expect(block.menu.title.length, `${name} lifts an untitled menu`).toBeGreaterThan(0);
           }
           // Perturb the region's text (a row inserted just ABOVE the footer, so the footer stays the
-          // last non-blank line and the menu still lifts): the signature must move with it.
+          // last thing on screen and the menu still lifts): the signature must move with it. ABOVE
+          // THE FOOTER GROUP, not above the last row: a narrow pane wraps a footer onto two or three
+          // rows (menu-hints.ts `readKeyHintFooter`), and a row spliced into the middle of one would
+          // be cutting the footer in half rather than adding a row above it.
           const perturbed = [...lines];
-          perturbed.splice(lastNonBlank(lines), 0, textLine("  ○ Something else entirely"));
+          perturbed.splice(footerTop(lines), 0, textLine("  ○ Something else entirely"));
           const after = menuSignatures(adapter.buildBlocks(perturbed));
           expect(after.length, `${name}: the perturbed capture stopped lifting a menu`).toBe(
             menuSignatures(adapter.buildBlocks(lines)).length,
