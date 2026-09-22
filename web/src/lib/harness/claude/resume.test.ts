@@ -29,6 +29,8 @@ describe("the real captures lift as a list of sessions", () => {
     const model = detectResumePicker(load("claude--menu-resume-picker--w120-first.txt"))!;
     expect(model.family).toBe("select");
     expect(model.question).toBe("Resume session");
+    // The card's caption is this dialog's own title, not the generic "select" family caption.
+    expect(model.caption).toBe("Resume session");
     expect(model.options.map((o) => o.label)).toEqual([...LAB_SESSIONS, "Cancel"]);
     expect(model.options[0]!.description).toBe("44 seconds ago · master · 177.4KB");
     expect(model.options.map((o) => o.keys)).toEqual([
@@ -55,7 +57,9 @@ describe("the real captures lift as a list of sessions", () => {
     expect(model.options[1]!.keys).toEqual(["Up", "Enter"]);
     expect(model.options[2]!.keys).toEqual(["Enter"]);
     expect(model.options[3]!.keys).toEqual(["Down", "Enter"]);
-    expect(model.options.map((o) => o.keyLabel)).toEqual([undefined, undefined, "❯", undefined, "Esc"]);
+    // Every non-pointed session row carries the explicit "no badge" marker, never left unset — the
+    // block renders it as an empty, same-width slot rather than falling back to the raw key name.
+    expect(model.options.map((o) => o.keyLabel)).toEqual(["", "", "❯", "", "Esc"]);
   });
 
   it("w80-second: the pointer on the second session", () => {
@@ -90,6 +94,7 @@ describe("the real captures lift as a list of sessions", () => {
   it("w120-all-sanitized: the all-projects title, a `now` age, and the `↓` scroll row as a session", () => {
     const model = detectResumePicker(load("claude--menu-resume-picker--w120-all-sanitized.txt"))!;
     expect(model.question).toBe("Resume session (1 of 50)");
+    expect(model.caption).toBe("Resume session (1 of 50)");
     expect(model.options).toHaveLength(10);
     expect(model.options[0]!.description).toBe(
       "now · main · 1.1MB · /home/user/projects/example-company-platform",
@@ -97,7 +102,7 @@ describe("the real captures lift as a list of sessions", () => {
     expect(model.options[0]!.keyLabel).toBe("❯");
     // The last session carries the `↓` marker in the pointer column: listed, walked to, not pointed.
     expect(model.options[8]!.label).toBe("classifier milestone m09");
-    expect(model.options[8]!.keyLabel).toBeUndefined();
+    expect(model.options[8]!.keyLabel).toBe("");
     expect(model.options[8]!.keys).toEqual([...Array<string>(8).fill("Down"), "Enter"]);
     expect(model.options[9]!.keys).toEqual(["Escape"]);
   });

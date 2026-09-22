@@ -133,17 +133,23 @@ export function detectResumePickerRegion(lines: StyledLine[]): PromptRegion | nu
       description: session.meta,
       keys: pointedAt < 0 ? ["Enter"] : pointerWalk(pointedAt, i),
     };
-    // As ADR 0055's pointed arm: the pointed row's badge is the terminal's own `❯`; every other row
-    // shows the arrow its tap starts with.
-    if (i === pointedAt) option.keyLabel = POINTER;
+    // Unlike ADR 0055's trust prompt, this footer never names the arrows at all — only the pointer
+    // and Esc. So the pointed row's badge is the terminal's own `❯`, and every OTHER session row
+    // carries NO badge: `keyLabel: ""` is the explicit "no badge" signal, which the block renders
+    // as an empty, same-width slot so every title still starts at the same column, pointed or not.
+    if (pointedAt >= 0) option.keyLabel = i === pointedAt ? POINTER : "";
     return option;
   });
   // The footer's own way out, in its own words ("Cancel", or "Clear" while a search is typed).
   // `PromptModel` has no actions field, so it rides as the last row, with the footer's key name.
   options.push({ label: escape.label, keys: escape.keys, keyLabel: "Esc" });
 
+  const title = texts[titleAt]!.trim();
   const model: PromptModel = {
-    question: texts[titleAt]!.trim(),
+    question: title,
+    // The card's caption is this dialog's own title, not the generic "Choose an option" every other
+    // `select` card shows — the reader needs to know they are looking at the resume picker.
+    caption: title,
     options,
     family: "select",
     // Byte-faithful from the title through the footer: it carries the `❯` column verbatim, so a

@@ -219,7 +219,15 @@ export function OptionButton({
 }) {
   return (
     <button type="button" disabled={disabled} onClick={onClick} className={optionSurface(tone)}>
-      {keyLabel != null ? <KeyBadge tone={tone}>{keyLabel}</KeyBadge> : null}
+      {keyLabel === "" ? (
+        // A row with no badge of its own (resume.ts's non-pointed session rows, ADR 0058) still
+        // reserves the badge's own width, empty, so every row's label starts at the same column
+        // whether or not it carries one — an omitted element here would shift the pointed row's
+        // title left of every other one.
+        <span aria-hidden className="mt-px size-5 shrink-0" />
+      ) : keyLabel != null ? (
+        <KeyBadge tone={tone}>{keyLabel}</KeyBadge>
+      ) : null}
       <span className="min-w-0 flex-1">
         <span className="font-content block break-words text-sm font-medium leading-snug text-foreground">
           {label}

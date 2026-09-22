@@ -81,6 +81,13 @@ export interface PromptModel {
   question: string;
   options: PromptOption[];
   family: PromptFamily;
+  /**
+   * The card's own caption, when the dialog names itself with a title the family's generic caption
+   * ("Choose an option", …) would otherwise cover — e.g. `/resume`'s "Resume session" or "Resume
+   * session (1 of 50)" (ADR 0058). Absent means the renderer keeps the family caption every other
+   * `select`/`permission`/`trust`/`plan` card already shows; this never changes their behaviour.
+   */
+  caption?: string;
   /** The dialog's inline free-text input row, when it has one. Absent on dialogs without one. */
   feedback?: PromptFeedback;
   /**

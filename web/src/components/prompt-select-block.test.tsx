@@ -21,7 +21,7 @@ import { buildBlocks } from "@/lib/harness";
 import { detectPromptSelect } from "@/lib/harness/claude/prompt-select";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
-import { PromptSelectBlock, type PromptBlockAction } from "./prompt-select-block";
+import { keyBadgeFallback, PromptSelectBlock, type PromptBlockAction } from "./prompt-select-block";
 
 const mockFetchPane = vi.mocked(fetchPane);
 const mockSendKeys = vi.mocked(sendKeys);
@@ -124,6 +124,54 @@ describe("PromptSelectBlock — the way back to the terminal (ADR 0056)", () => 
       expect(pre.textContent).toContain(text);
     }
     expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
+  });
+});
+
+describe("keyBadgeFallback", () => {
+  it("maps navigation and commit keys to the terminal's own glyphs, and passes a digit through", () => {
+    expect(keyBadgeFallback("Down")).toBe("↓");
+    expect(keyBadgeFallback("Up")).toBe("↑");
+    expect(keyBadgeFallback("Left")).toBe("←");
+    expect(keyBadgeFallback("Right")).toBe("→");
+    expect(keyBadgeFallback("Enter")).toBe("⏎");
+    expect(keyBadgeFallback("Escape")).toBe("Esc");
+    expect(keyBadgeFallback("Tab")).toBe("Tab");
+    expect(keyBadgeFallback("3")).toBe("3");
+  });
+});
+
+// The `/resume` session picker (ADR 0058): the pointed row's badge is the terminal's own `❯`, every
+// other session row carries none, and the card names itself instead of the generic "select" caption.
+describe("PromptSelectBlock — the /resume card names itself, never a raw key name (ADR 0058)", () => {
+  it("badges only the pointed row, reserves the same slot for the rest, and captions with the dialog's own title", () => {
+    const capture = "claude--menu-resume-picker--w120-first.txt";
+    const block = buildBlocks(splitLines(parseAnsi(fixtureText(capture))), { agent: "claude" }).find(
+      (b) => b.kind === "prompt-select",
+    );
+    if (!block || block.kind !== "prompt-select") throw new Error(`fixture ${capture} lifted no card`);
+
+    render(<PromptSelectBlock prompt={block.prompt} onAction={vi.fn()} />);
+
+    expect(screen.getByRole("group", { name: "Resume session" })).toBeInTheDocument();
+    expect(screen.getByText("Resume session")).toBeInTheDocument();
+    expect(screen.queryByText("Choose an option")).toBeNull();
+    expect(screen.getByText("❯")).toBeInTheDocument();
+    expect(screen.getByText("Esc")).toBeInTheDocument();
+    expect(screen.queryByText("Down")).toBeNull();
+    expect(screen.queryByText("Up")).toBeNull();
+  });
+});
+
+// The folder-trust prompt (ADR 0055) has the same unpointed-row shape, but its footer never names
+// Down/Up either — the fallback mapping is what turns its unset `keyLabel` into an arrow.
+describe("PromptSelectBlock — the folder-trust prompt's unpointed row (ADR 0055)", () => {
+  it("badges the non-pointed row with the arrow it walks, never the raw key name", () => {
+    const model = fixtureModel("claude--trust-prompt-unnumbered.txt");
+    render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    expect(
+      within(screen.getByRole("button", { name: /Yes, I trust this folder/ })).getByText("↓"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Down")).toBeNull();
   });
 });
 
