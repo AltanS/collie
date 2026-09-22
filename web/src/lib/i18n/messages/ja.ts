@@ -661,6 +661,12 @@ export const ja: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "送信中",
+  // TODO wordsmith
+  "dialog.terminalControl": "Terminal",
+  // TODO wordsmith
+  "dialog.terminalControlAria": "Show the terminal instead of this card",
+  // TODO wordsmith
+  "dialog.backToCard": "Back to the card",
   "dialog.previousStepAria": "前のステップ",
   "dialog.nextStepAria": "次のステップ",
   "dialog.answeredAria": "回答済み",

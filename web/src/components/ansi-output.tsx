@@ -460,24 +460,28 @@ export const AnsiOutput = memo(function AnsiOutput({
   const prompt = promptBlock ? (
     <PromptSelectBlock
       prompt={promptBlock.prompt}
+      lines={promptBlock.lines}
       disabled={promptDisabled || !onPromptAction}
       onAction={(action) => onPromptAction?.(action, promptBlock.prompt) ?? false}
     />
   ) : wizardBlock ? (
     <WizardBlock
       wizard={wizardBlock.wizard}
+      lines={wizardBlock.lines}
       disabled={promptDisabled || !onWizardAction}
       onAction={(keys) => onWizardAction?.(keys, wizardBlock.wizard)}
     />
   ) : previewBlock ? (
     <PreviewSelectBlock
       preview={previewBlock.preview}
+      lines={previewBlock.lines}
       disabled={promptDisabled || !onPreviewAction}
       onAction={(action) => onPreviewAction?.(action, previewBlock.preview)}
     />
   ) : multiBlock ? (
     <MultiSelectBlock
       multi={multiBlock.multi}
+      lines={multiBlock.lines}
       disabled={promptDisabled || !onMultiSelectAction}
       onAction={(action) => onMultiSelectAction?.(action, multiBlock.multi)}
     />

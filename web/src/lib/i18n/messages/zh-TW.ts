@@ -644,6 +644,12 @@ export const zhTW: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "正在傳送",
+  // TODO wordsmith
+  "dialog.terminalControl": "Terminal",
+  // TODO wordsmith
+  "dialog.terminalControlAria": "Show the terminal instead of this card",
+  // TODO wordsmith
+  "dialog.backToCard": "Back to the card",
   "dialog.previousStepAria": "上一步",
   "dialog.nextStepAria": "下一步",
   "dialog.answeredAria": "已完成",

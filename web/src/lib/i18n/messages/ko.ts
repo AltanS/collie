@@ -659,6 +659,12 @@ export const ko: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "전송 중",
+  // TODO wordsmith
+  "dialog.terminalControl": "Terminal",
+  // TODO wordsmith
+  "dialog.terminalControlAria": "Show the terminal instead of this card",
+  // TODO wordsmith
+  "dialog.backToCard": "Back to the card",
   "dialog.previousStepAria": "이전 단계",
   "dialog.nextStepAria": "다음 단계",
   "dialog.answeredAria": "응답 완료",

@@ -10,7 +10,7 @@ import {
 
 import { WizardStepper } from "@/components/wizard-stepper";
 import { cn } from "@/lib/utils";
-import type { PreviewOption, PreviewSelectModel } from "@/lib/blocks";
+import type { PreviewOption, PreviewSelectModel, StyledLine } from "@/lib/blocks";
 import {
   KeyBadge,
   OptionGroupCaption,
@@ -32,6 +32,8 @@ export type PreviewBlockAction =
 export interface PreviewSelectBlockProps {
   /** The detected preview-variant dialog (single question or one wizard step). */
   preview: PreviewSelectModel;
+  /** The region this block replaced — passed through to PromptPanel as its way back (ADR 0056). */
+  lines?: StyledLine[];
   /**
    * Injected send handler (from AgentChat). Presentational contract: this component NEVER touches
    * the network — it maps taps to intents while the handler runs the race-guarded choreography
@@ -52,7 +54,7 @@ export interface PreviewSelectBlockProps {
 // While the TUI's own note input is focused (note.state === "editing" — someone is typing in the
 // terminal) EVERY control locks: any keystroke we sent would be typed into their note instead of
 // driving the dialog. A banner says so; polling clears it when the input blurs.
-export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelectBlockProps) {
+export function PreviewSelectBlock({ preview, lines, onAction, disabled }: PreviewSelectBlockProps) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -92,7 +94,7 @@ export function PreviewSelectBlock({ preview, onAction, disabled }: PreviewSelec
   );
 
   return (
-    <PromptPanel ariaLabel={preview.question}>
+    <PromptPanel ariaLabel={preview.question} raw={lines}>
       {/* Wizard form only: the stepper chips + Left/Right navigation, exactly as in WizardBlock —
           a preview question is just one step of the same dialog. Single-question dialogs keep
           their question/chip line in the raw mirror above, so neither renders here. */}

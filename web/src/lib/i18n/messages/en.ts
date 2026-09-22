@@ -695,6 +695,10 @@ export const en = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "Sending",
+  // ADR 0056: every lifted card's own way back to the terminal rows it replaced.
+  "dialog.terminalControl": "Terminal",
+  "dialog.terminalControlAria": "Show the terminal instead of this card",
+  "dialog.backToCard": "Back to the card",
   "dialog.previousStepAria": "Previous step",
   "dialog.nextStepAria": "Next step",
   "dialog.answeredAria": "Answered",

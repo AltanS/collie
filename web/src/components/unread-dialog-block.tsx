@@ -3,8 +3,8 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { StyledLine, UnreadDialogModel } from "@/lib/blocks";
 import { keyLabel } from "@/lib/key-queue";
-import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { RawMirror } from "@/components/raw-mirror";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -30,9 +30,12 @@ export interface UnreadDialogBlockProps {
 // Muse that key steps back rather than dismisses, so a label promising "cancel" would be a lie on a
 // real harness.
 //
-// The region is the WHOLE pane, mirrored verbatim, because the screen is the only thing the operator
-// has to read. Same treatment as menu-block.tsx: React text nodes only, and the agent's own terminal
-// colours (MIRROR_SPACE / MIRROR_INVERT, ADR 0002).
+// The region is the WHOLE pane, mirrored verbatim BY DEFAULT — the screen is the only thing the
+// operator has to read when nothing else is understood, so unlike the four cards that fully replace
+// their region this one never hides it. Same treatment as menu-block.tsx: React text nodes only, and
+// the agent's own terminal colours (MIRROR_SPACE / MIRROR_INVERT, ADR 0002), via the shared
+// RawMirror. PromptPanel's own Terminal toggle (ADR 0056) still applies on top, for a decluttered
+// view with the key control put away.
 //
 // DESIGN.md §2: the in-flight state recolours the button and changes NOTHING else — no spinner child
 // appears, no border is added, no padding moves. The border is reserved in the base string and the
@@ -55,7 +58,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
   }
 
   return (
-    <PromptPanel ariaLabel={caption}>
+    <PromptPanel ariaLabel={caption} raw={lines}>
       <OptionGroupCaption>{caption}</OptionGroupCaption>
 
       <button
@@ -71,26 +74,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
         {keyLabel(cancel.key)}
       </button>
 
-      {/* The region, mirrored verbatim. Scrolls horizontally on its own so a wide TUI never makes the
-          page pan. */}
-      <pre
-        className={cn(
-          "m-0 overflow-x-auto rounded-lg px-2 py-1.5 font-mono text-[11px] leading-[1.25] whitespace-pre",
-          MIRROR_SPACE,
-          MIRROR_INVERT,
-        )}
-      >
-        {lines.map((line, li) => (
-          <span key={li}>
-            {li > 0 ? "\n" : null}
-            {line.segments.map((s, si) => (
-              <span key={si} style={styleFor(s)}>
-                {s.text}
-              </span>
-            ))}
-          </span>
-        ))}
-      </pre>
+      <RawMirror lines={lines} />
     </PromptPanel>
   );
 }

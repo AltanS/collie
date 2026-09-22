@@ -669,6 +669,12 @@ export const de: Dictionary = {
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "Wird gesendet",
+  // TODO wordsmith
+  "dialog.terminalControl": "Terminal",
+  // TODO wordsmith
+  "dialog.terminalControlAria": "Show the terminal instead of this card",
+  // TODO wordsmith
+  "dialog.backToCard": "Back to the card",
   "dialog.previousStepAria": "Vorheriger Schritt",
   "dialog.nextStepAria": "Nächster Schritt",
   "dialog.answeredAria": "Beantwortet",

@@ -61,11 +61,23 @@ describe("MenuBlock", () => {
     expect(screen.getAllByText("◐ Medium effort").length).toBeGreaterThan(0);
   });
 
-  // The region stays visible because the grammar parsed the FOOTER, not the body: the options and
-  // their descriptions exist only as terminal text, and the buttons are meaningless without them.
+  // The region stays visible by default because the grammar parsed the FOOTER, not the body: the
+  // options and their descriptions exist only as terminal text, and the buttons are meaningless
+  // without them.
   it("keeps the terminal region readable above the controls", () => {
     renderMenu();
     expect(screen.getByText(/Most capable for your hardest/)).toBeInTheDocument();
+  });
+
+  // ADR 0056: the Terminal control still applies on top of that default — it puts the arrows and
+  // footer buttons away for a decluttered, mirror-only view.
+  it("declutters to the mirror alone when Terminal is tapped", async () => {
+    const user = userEvent.setup();
+    renderMenu();
+    await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
+    expect(screen.getByText(/Most capable for your hardest/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
   });
 
   // .adr/0009 at the UI edge: a digit tap here would confirm AND persist the user's default model.
@@ -162,6 +174,15 @@ describe("MenuBlock — a card that reads the body drops the mirror", () => {
     expect(container.querySelector("pre")).not.toBeInTheDocument();
   });
 
+  // ADR 0056: "drops the mirror" is a CARD-MODE rule only. Terminal mode is the same escape hatch
+  // every other card gets, Effort included — it just has nothing to show beyond `lines` there.
+  it("still shows the raw rows in terminal mode, like any other card", async () => {
+    const user = userEvent.setup();
+    renderMenu(vi.fn(), SLIDER);
+    await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
+    expect(screen.getByText(/Faster/)).toBeInTheDocument();
+  });
+
   it("still renders the title and the chips", () => {
     renderMenu(vi.fn(), SLIDER);
     expect(screen.getByText("Effort")).toBeInTheDocument();
@@ -179,8 +200,8 @@ describe("MenuBlock — a card that reads the body drops the mirror", () => {
     expect(screen.queryByText(/xhigh \+ workflows/)).not.toBeInTheDocument();
   });
 
-  // The generic menu (`/model` and its kin) has no parsed scale, so it takes the other branch: the
-  // mirror is the only way its options and descriptions reach the screen at all.
+  // The generic menu (`/model` and its kin) has no parsed scale, so the mirror is the only way its
+  // options and descriptions reach the screen at all.
   it("still renders the mirror for a menu that reads only the footer", () => {
     const container = renderMenuContainer(PICKER);
     expect(container.querySelector("pre")).toBeInTheDocument();

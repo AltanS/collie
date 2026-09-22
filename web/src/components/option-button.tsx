@@ -1,5 +1,11 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
+import { SquareTerminal } from "lucide-react";
 
+import type { StyledLine } from "@/lib/blocks";
+import { RawMirror } from "@/components/raw-mirror";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
 import { cn } from "@/lib/utils";
 
 // The one shared visual language for an up-levelled dialog option, used by all three block
@@ -53,23 +59,75 @@ export function KeyBadge({ children, tone = "default" }: { children: ReactNode; 
   );
 }
 
+/** Shared classes for the panel's own ghost controls (Terminal / Back to the card) — quiet on
+ *  purpose (DESIGN.md §7 of ADR 0056): no border, muted colour, small text, so neither one competes
+ *  with the card's real actions. */
+const ghostControl =
+  "flex items-center gap-1 self-end rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors active:bg-muted";
+
 /**
  * The enclosing surface for an up-levelled dialog: a bordered, filled panel that lifts the WHOLE
  * prompt off the raw terminal mirror behind it — the primary "these are controls, not output"
- * signal, shared by all three block renderers so the separation can't drift. `bg-card` sits one
+ * signal, shared by all six block renderers so the separation can't drift. `bg-card` sits one
  * layer above the page background in dark (the terminal is on `--background`, the option rows on the
  * lighter `--secondary`, so the panel reads as a distinct middle layer); in light, where card ==
  * background, the border + shadow carry the separation. Owns `role="group"` + its aria label, so a
  * block's outermost element IS this panel.
+ *
+ * ADR 0056: a card that carries `raw` (the block's own `lines` — the region it replaced) also
+ * carries the way back to it. A ghost "Terminal" control swaps the panel's children for a
+ * `RawMirror` of `raw` and a "Back to the card" control; the choice is local `useState`, so it
+ * lasts exactly as long as this component instance — React keeps that instance across polls
+ * because the caller renders each card kind as one conditional element at a fixed position
+ * (ansi-output.tsx), and a fresh dialog is a fresh instance. Never persisted, never a device pref
+ * — that's the always-on `rawTerminal` display setting, which stays exactly as it was. Omitting
+ * `raw` (or leaving it `undefined`) renders no control at all, unchanged from before this ADR.
  */
-export function PromptPanel({ ariaLabel, children }: { ariaLabel: string; children: ReactNode }) {
+export function PromptPanel({
+  ariaLabel,
+  raw,
+  children,
+}: {
+  ariaLabel: string;
+  /** The region this card replaced — every block variant already carries it as `lines`. */
+  raw?: StyledLine[];
+  children: ReactNode;
+}) {
+  useLocale();
+  const [showRaw, setShowRaw] = useState(false);
+
   return (
     <div
       role="group"
       aria-label={ariaLabel}
       className="my-1.5 flex flex-col gap-1.5 rounded-xl border border-border bg-card p-1.5 shadow-sm"
     >
-      {children}
+      {raw !== undefined && !showRaw && (
+        <button
+          type="button"
+          aria-label={t("dialog.terminalControlAria")}
+          onClick={() => setShowRaw(true)}
+          className={ghostControl}
+        >
+          <SquareTerminal className="size-3.5 shrink-0" aria-hidden />
+          {t("dialog.terminalControl")}
+        </button>
+      )}
+      {raw !== undefined && showRaw ? (
+        <>
+          <RawMirror lines={raw} />
+          <button
+            type="button"
+            aria-label={t("dialog.backToCard")}
+            onClick={() => setShowRaw(false)}
+            className={ghostControl}
+          >
+            {t("dialog.backToCard")}
+          </button>
+        </>
+      ) : (
+        children
+      )}
     </div>
   );
 }

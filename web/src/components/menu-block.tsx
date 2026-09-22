@@ -10,8 +10,8 @@ import {
   MENU_RIGHT_KEYS,
   MENU_UP_KEYS,
 } from "@/lib/harness/menu-hints";
-import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { RawMirror } from "@/components/raw-mirror";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -39,14 +39,17 @@ export interface MenuBlockProps {
 
 // Native, tappable rendering of a generic modal menu — the `/model` picker and its kin.
 //
-// TWO CARDS SHARE THIS COMPONENT (ADR 0054, amended 2026-09-22). A card that reads the body
-// replaces it: once the grammar has parsed a full scale (`nav.leftRight` carries a non-empty
+// TWO CARDS SHARE THIS COMPONENT (ADR 0054, amended 2026-09-22; ADR 0056). A card that reads the
+// body replaces it: once the grammar has parsed a full scale (`nav.leftRight` carries a non-empty
 // `values` array and a `label` that is one of them — Claude's `/effort` slider), the mirrored rows
 // are wrapped fragments at 40 and 60 columns, so the card drops the mirror and commits to the title,
-// the chips and the footer buttons instead. A card that reads only the footer shows the body: the
-// generic menu (`/model`, `/tasks`, `/resume`) parses no scale, so its options, their descriptions and
-// the `❯` highlight only exist as terminal text — replacing them with a synthesised list would be
-// inventing structure we did not parse — and the mirror stays, with the buttons below it driving it.
+// the chips and the footer buttons instead — PromptPanel's own Terminal toggle (ADR 0056) is the one
+// way back to it, via the shared RawMirror over `lines`. A card that reads only the footer shows the
+// body BY DEFAULT, unchanged: the generic menu (`/model`, `/tasks`, `/resume`) parses no scale, so
+// its options, their descriptions and the `❯` highlight only exist as terminal text — replacing them
+// with a synthesised list would be inventing structure we did not parse — and the mirror stays, with
+// the buttons below it driving it. The SAME Terminal toggle still applies to that shape too, for a
+// decluttered view with the buttons put away.
 //
 // Text is React text nodes only — colour and weight come from the ANSI parse, never markup. Same XSS
 // boundary as the mirror, and the same dark colour space (MIRROR_SPACE/MIRROR_INVERT, ADR 0002),
@@ -108,34 +111,14 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   );
 
   return (
-    <PromptPanel ariaLabel={menu.title}>
+    <PromptPanel ariaLabel={menu.title} raw={lines}>
       <OptionGroupCaption>{menu.title}</OptionGroupCaption>
 
-      {/* The region, mirrored verbatim — ONLY for a card that reads just the footer. A card that
-          reads the body (readsBody, above) has already parsed everything the mirror could show, so
-          rendering both would repeat the same scale twice, wrapped fragments and all. Scrolls
-          horizontally on its own so a wide picker never makes the page pan (the option/description
-          columns are laid out for a desktop width). */}
-      {!readsBody && (
-        <pre
-          className={cn(
-            "m-0 overflow-x-auto rounded-lg px-2 py-1.5 font-mono text-[11px] leading-[1.25] whitespace-pre",
-            MIRROR_SPACE,
-            MIRROR_INVERT,
-          )}
-        >
-          {lines.map((line, li) => (
-            <span key={li}>
-              {li > 0 ? "\n" : null}
-              {line.segments.map((s, si) => (
-                <span key={si} style={styleFor(s)}>
-                  {s.text}
-                </span>
-              ))}
-            </span>
-          ))}
-        </pre>
-      )}
+      {/* The region, mirrored verbatim by default — ONLY for a card that reads just the footer. A
+          card that reads the body (readsBody, above) has already parsed everything the mirror could
+          show, so rendering both would repeat the same scale twice, wrapped fragments and all; its
+          way back to these rows is the Terminal toggle above instead (ADR 0056). */}
+      {!readsBody && <RawMirror lines={lines} />}
 
       {/* Arrow cluster — only the directions the screen itself advertised (a `❯` row for Up/Down, an
           "←/→ to <verb>" row for Left/Right). Each is one keystroke; they move a highlight and commit

@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MessageSquarePlus } from "lucide-react";
 
-import type { PromptFamily, PromptFeedbackPurpose, PromptModel, PromptOption } from "@/lib/blocks";
+import type {
+  PromptFamily,
+  PromptFeedbackPurpose,
+  PromptModel,
+  PromptOption,
+  StyledLine,
+} from "@/lib/blocks";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { useLocale } from "@/hooks/use-locale";
@@ -15,6 +21,10 @@ export type PromptBlockAction =
 export interface PromptSelectBlockProps {
   /** The detected dialog: question (screen-reader label) + selectable options as buttons. */
   prompt: PromptModel;
+  /** The region this block replaced — passed through to PromptPanel as its way back (ADR 0056).
+   *  Absent in a handful of presentational tests that construct a `PromptModel` by hand; those
+   *  render with no Terminal control, which is the correct behaviour for a missing `raw`. */
+  lines?: StyledLine[];
   /**
    * Injected send handler (from AgentChat). Presentational contract: this component NEVER touches
    * the network — it just reflects the sending state while the handler runs the race guard and
@@ -104,7 +114,7 @@ function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
 //
 // Only the empty, unfocused state offers the composer, whose Send drives digit → focus → type →
 // Enter and lands as DENY-with-feedback (the agent re-plans) — which is what the button says.
-export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBlockProps) {
+export function PromptSelectBlock({ prompt, lines, onAction, disabled }: PromptSelectBlockProps) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -150,7 +160,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
   );
 
   return (
-    <PromptPanel ariaLabel={prompt.question}>
+    <PromptPanel ariaLabel={prompt.question} raw={lines}>
       <OptionGroupCaption>{familyCaption(prompt.family)}</OptionGroupCaption>
       <div className="flex flex-col gap-1">
         {prompt.options.map((option, index) => {

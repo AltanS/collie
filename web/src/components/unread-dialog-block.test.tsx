@@ -38,23 +38,48 @@ function renderCard(onAction = vi.fn(), disabled = false) {
 }
 
 describe("UnreadDialogBlock", () => {
-  it("renders the caption and exactly one control", () => {
+  it("renders the caption and exactly two controls: the declared key and Terminal", () => {
     renderCard();
     expect(screen.getByText("Collie cannot read this dialog")).toBeInTheDocument();
-    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getAllByRole("button")).toHaveLength(2);
     // The key, named the way the Keys keypad names it — and NEVER a verb: on Muse this key steps
     // back rather than dismisses, so a label promising "cancel" would be a lie on a real harness.
     expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cancel/i })).toBeNull();
+    // ADR 0056: the card's own way back to the screen it stands in for.
+    expect(
+      screen.getByRole("button", { name: "Show the terminal instead of this card" }),
+    ).toBeInTheDocument();
   });
 
-  it("mirrors the whole screen under the control, so nothing is hidden", () => {
+  it("mirrors the whole screen under the control by default, so nothing is hidden", () => {
     const { container, block } = renderCard();
     const pre = container.querySelector("pre")!;
     for (const line of block.lines.slice(0, 5)) {
       const text = line.segments.map((s) => s.text).join("").trim();
       if (text !== "") expect(pre.textContent).toContain(text);
     }
+  });
+
+  // ADR 0056: the Terminal control still applies to a card that already shows its mirror — it
+  // puts the key control away for a decluttered, mirror-only view, and "Back to the card" restores
+  // it. The rows themselves stay on screen throughout (same `lines`, same RawMirror).
+  it("declutters to the mirror alone when Terminal is tapped, and restores on Back", async () => {
+    const user = userEvent.setup();
+    const { container, block } = renderCard();
+
+    await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
+
+    expect(screen.queryByRole("button", { name: "Esc" })).toBeNull();
+    const pre = container.querySelector("pre")!;
+    for (const line of block.lines.slice(0, 5)) {
+      const text = line.segments.map((s) => s.text).join("").trim();
+      if (text !== "") expect(pre.textContent).toContain(text);
+    }
+    expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to the card" }));
+    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
   });
 
   it("fires the declared key on a tap", async () => {

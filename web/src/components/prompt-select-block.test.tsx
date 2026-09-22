@@ -17,6 +17,7 @@ vi.mock("@/lib/api", () => ({
 import { fetchPane, sendKeys, sendReply } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type PromptModel } from "@/lib/blocks";
+import { buildBlocks } from "@/lib/harness";
 import { detectPromptSelect } from "@/lib/harness/claude/prompt-select";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
@@ -84,6 +85,45 @@ describe("PromptSelectBlock — presentation", () => {
   it("disables every button when disabled (read-only device / gone pane)", () => {
     render(<PromptSelectBlock prompt={selectModel} onAction={vi.fn()} disabled />);
     for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+  });
+
+  // Without `lines` (a hand-built model, as above) the card carries no way back — the control is
+  // opt-in on the data, not the block kind.
+  it("renders no Terminal control when lines is absent", () => {
+    render(<PromptSelectBlock prompt={selectModel} onAction={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /terminal/i })).toBeNull();
+  });
+});
+
+// ADR 0056, driven off a real capture through the real pipeline: a lifted card carries the way
+// back to the region it replaced.
+describe("PromptSelectBlock — the way back to the terminal (ADR 0056)", () => {
+  it("shows the Terminal control, and puts the card down to the raw rows on a tap", async () => {
+    const user = userEvent.setup();
+    const capture = "claude--select-menu.txt";
+    const block = buildBlocks(splitLines(parseAnsi(fixtureText(capture))), { agent: "claude" }).find(
+      (b) => b.kind === "prompt-select",
+    );
+    if (!block || block.kind !== "prompt-select") throw new Error(`fixture ${capture} lifted no card`);
+
+    const { container } = render(
+      <PromptSelectBlock prompt={block.prompt} lines={block.lines} onAction={vi.fn()} />,
+    );
+
+    const optionButtons = block.prompt.options.map((o) => screen.getByRole("button", { name: new RegExp(o.label) }));
+    expect(optionButtons.length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
+
+    for (const button of optionButtons) expect(button).not.toBeInTheDocument();
+    const pre = container.querySelector("pre")!;
+    expect(pre).toBeInTheDocument();
+    const rawLine = block.lines.find((l) => l.segments.some((s) => s.text.trim() !== ""));
+    if (rawLine) {
+      const text = rawLine.segments.map((s) => s.text).join("").trim();
+      expect(pre.textContent).toContain(text);
+    }
+    expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
   });
 });
 

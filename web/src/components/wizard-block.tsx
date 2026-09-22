@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 
 import { WizardStepper } from "@/components/wizard-stepper";
-import type { WizardModel, WizardOption } from "@/lib/blocks";
+import type { StyledLine, WizardModel, WizardOption } from "@/lib/blocks";
 import { OptionButton, PromptPanel, QuestionHeading } from "@/components/option-button";
 import {
   WIZARD_BACK_KEYS,
@@ -16,6 +16,8 @@ import { useLocale } from "@/hooks/use-locale";
 export interface WizardBlockProps {
   /** The detected wizard step (question or Submit review) with its stepper state. */
   wizard: WizardModel;
+  /** The region this block replaced — passed through to PromptPanel as its way back (ADR 0056). */
+  lines?: StyledLine[];
   /**
    * Injected send handler (from AgentChat). Presentational contract: this component NEVER touches
    * the network — every control resolves to ONE keystroke (`keys`) that the handler race-guards
@@ -32,7 +34,7 @@ export interface WizardBlockProps {
 // the single source of truth for selections; Collie holds no form state of its own. Every visible
 // string (chip labels, question, options, answers) is a React text node — the XSS boundary is
 // unchanged. One control can be in flight at a time (spinner shows, the rest lock).
-export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
+export function WizardBlock({ wizard, lines, onAction, disabled }: WizardBlockProps) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);
   const locked = disabled || sending !== null;
@@ -57,7 +59,7 @@ export function WizardBlock({ wizard, onAction, disabled }: WizardBlockProps) {
   );
 
   return (
-    <PromptPanel ariaLabel={review ? t("dialog.reviewAnswers") : wizard.question}>
+    <PromptPanel ariaLabel={review ? t("dialog.reviewAnswers") : wizard.question} raw={lines}>
       {/* Stepper: one chip per question plus the fixed Submit step, flanked by the same back/next
           navigation the TUI drives with ←/→ (each tap sends exactly that one key). */}
       <WizardStepper
