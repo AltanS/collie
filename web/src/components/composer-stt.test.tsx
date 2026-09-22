@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ComponentProps } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -227,6 +227,26 @@ describe("Composer — the microphone IS the primary button, until you type", ()
 
     await user.clear(box);
     expect(await screen.findByRole("button", { name: /record a voice message/i })).toBeEnabled();
+  });
+
+  // ADR 0060: a chip is something to send, so a box holding only chips shows Send.
+  it("a box holding only chips shows Send, not the microphone", async () => {
+    server.use(
+      configHandler(CONFIG_WITH_STT),
+      http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/a.png" })),
+    );
+    renderComposer();
+    const box = await screen.findByPlaceholderText(/type a reply/i);
+    await screen.findByRole("button", { name: /record a voice message/i });
+
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const photos = screen.getByTestId("attach-photos") as HTMLInputElement;
+    fireEvent.change(photos, { target: { files: [new File(["x"], "a.png", { type: "image/png" })] } });
+    await waitFor(() => expect(box).toHaveValue("[Image #1] "));
+    fireEvent.change(box, { target: { value: "" } });
+
+    expect(screen.queryByRole("button", { name: /record a voice message/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /^send$/i })).toBeEnabled();
   });
 
   it("whitespace alone is not text — a box holding only spaces still offers the microphone", async () => {

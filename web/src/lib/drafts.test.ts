@@ -1,4 +1,4 @@
-import { clearDraft, fitsDraftStore, loadDraft, pruneDrafts, saveDraft, __resetDraftPrune } from "./drafts";
+import { clearDraft, fitsDraftStore, loadDraft, loadDraftEntry, pruneDrafts, saveDraft, __resetDraftPrune } from "./drafts";
 
 // The per-pane composer draft store. It is the only reason a reply survives walking over to another
 // tab mid-composition, so the cases below pin the three things that would silently lose one: the
@@ -154,5 +154,51 @@ describe("drafts", () => {
     });
     expect(loadDraft(undefined, "w1:p1")).toBeNull();
     getItem.mockRestore();
+  });
+
+  // ADR 0060: a draft carries its chips and the next chip number, and the old shape still loads.
+  describe("chips", () => {
+    const chip = { n: 1, path: "/a.png", name: "a.png", kind: "image" as const };
+
+    it("round-trips the chips and the next number through the disk tier", () => {
+      saveDraft(undefined, "w1:p1", "see [Image #1]", [chip], 3);
+      __resetDraftPrune(); // empties the memory tier, so this read is the disk's
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({ text: "see [Image #1]", attachments: [chip], next: 3 });
+    });
+
+    it("stores only the chip fields, never a preview URL or anything else a caller carries", () => {
+      const withPreview = { ...chip, previewUrl: "blob:x" };
+      saveDraft(undefined, "w1:p1", "x", [withPreview], 2);
+      expect(JSON.parse(localStorage.getItem(KEY) ?? "{}").attachments).toEqual([chip]);
+    });
+
+    it("keeps a draft that is only chips", () => {
+      saveDraft(undefined, "w1:p1", "", [chip], 2);
+      expect(loadDraftEntry(undefined, "w1:p1")?.attachments).toEqual([chip]);
+    });
+
+    it("stores a text-only draft exactly as it was stored before chips", () => {
+      saveDraft(undefined, "w1:p1", "plain");
+      expect(Object.keys(JSON.parse(localStorage.getItem(KEY) ?? "{}")).toSorted()).toEqual(["at", "text"]);
+    });
+
+    it("loads an old text-only entry as a draft with no chips", () => {
+      localStorage.setItem(KEY, JSON.stringify({ text: "from before", at: Date.now() }));
+      expect(loadDraft(undefined, "w1:p1")).toBe("from before");
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({ text: "from before", attachments: [], next: 1 });
+    });
+
+    it("drops a malformed chip and keeps the rest of the draft", () => {
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({ text: "t", at: Date.now(), attachments: [chip, { n: 0, path: "/x" }, "junk"], next: 2 }),
+      );
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({ text: "t", attachments: [chip], next: 2 });
+    });
+
+    it("never hands out a number a held chip already has", () => {
+      localStorage.setItem(KEY, JSON.stringify({ text: "t", at: Date.now(), attachments: [{ ...chip, n: 5 }], next: 2 }));
+      expect(loadDraftEntry(undefined, "w1:p1")?.next).toBe(6);
+    });
   });
 });

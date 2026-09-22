@@ -7,7 +7,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
-import { loadDraft } from "@/lib/drafts";
+import { loadDraft, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
@@ -2006,8 +2006,8 @@ describe("Composer — reload-guard hold (no-SW self-update safety gate)", () =>
   });
 
   it("holds while an image upload is in flight, releases once it settles", async () => {
-    // Failing upload keeps the input empty (a successful one appends the returned path, which then
-    // legitimately holds as real unsent text) — so the release is observable in isolation.
+    // Failing upload keeps the draft empty (a successful one adds a chip, which then legitimately
+    // holds as real unsent work) — so the release is observable in isolation.
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     server.use(
@@ -2132,8 +2132,10 @@ describe("Composer — attachment limits published by this bridge", () => {
     const fileInput = screen.getByTestId("attach-files") as HTMLInputElement;
     fireEvent.change(fileInput, { target: { files: [file] } });
 
+    // A chip, not a path (ADR 0060): the field holds the marker, the chip holds the name.
     const box = screen.getByPlaceholderText(/type a reply/i);
-    await waitFor(() => expect(box).toHaveValue("/tmp/notes.md"));
+    await waitFor(() => expect(box).toHaveValue("[File #1] "));
+    expect(screen.getByRole("button", { name: "Remove notes.md" })).toBeInTheDocument();
   });
 
   it("refuses a .rb file the bridge did not publish and never calls the upload API", async () => {
@@ -2159,7 +2161,7 @@ describe("Composer — attachment limits published by this bridge", () => {
 });
 
 describe("Composer — clipboard image paste", () => {
-  it("uploads a pasted image the same way the picker does and appends its path", async () => {
+  it("uploads a pasted image the same way the picker does and adds its chip and marker", async () => {
     server.use(
       http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/tmp/shot.png" })),
     );
@@ -2170,7 +2172,8 @@ describe("Composer — clipboard image paste", () => {
 
     fireEvent.paste(box, { clipboardData: { items: [item] } });
 
-    await waitFor(() => expect(box).toHaveValue("/tmp/shot.png"));
+    await waitFor(() => expect(box).toHaveValue("[Image #1] "));
+    expect(screen.getByRole("button", { name: "Remove shot.png" })).toBeInTheDocument();
   });
 
   it("leaves a plain-text paste alone — no upload, nothing written by the paste handler", () => {
@@ -2683,7 +2686,9 @@ describe("Composer — a long upload path cannot widen the field", () => {
     expect(box.className).toMatch(/placeholder:whitespace-nowrap/);
   });
 
-  it("still takes the appended path verbatim — the fix is layout, not the text", async () => {
+  // The path no longer reaches the field at all (ADR 0060): the chip holds it and the marker
+  // holds its place. The two classes above still matter for a path the operator types or pastes.
+  it("keeps an uploaded path out of the field: the marker stands in for it", async () => {
     const path = "/home/operator/.local/share/collie/uploads/2026-08-31T09-14-22-a1b2c3d4e5f6.png";
     server.use(http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path })));
     renderComposer();
@@ -2694,7 +2699,8 @@ describe("Composer — a long upload path cannot widen the field", () => {
       clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => file }] },
     });
 
-    await waitFor(() => expect(box).toHaveValue(path));
+    await waitFor(() => expect(box).toHaveValue("[Image #1] "));
+    expect(box).not.toHaveValue(expect.stringContaining(path));
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
   });
 });
@@ -2977,5 +2983,339 @@ describe("Composer — the composer is one box", () => {
     expect(box.className).not.toMatch(/(?:^|\s)bg-background(?=\s|$)/);
     expect(attach()).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+});
+
+// ── AN ATTACHMENT IS A CHIP, AND ITS MARKER HOLDS ITS PLACE (ADR 0060) ──────────────────────────
+//
+// An upload used to write the bridge's host path into the draft. Now it adds a chip above the field
+// and a `[Image #N]` / `[File #N]` marker where the caret stood; Send swaps each marker for its
+// path, and a chip whose marker was edited away sends its path in front. Asserted at the network
+// (the guard's typed text), because the line the terminal gets is the whole point.
+describe("Composer — an attachment is a chip (ADR 0060)", () => {
+  /** The upload route, answering each upload with the next path in order (the picker uploads one
+   *  by one, in pick order), then `/tmp/upload-N` once the list runs out. */
+  function uploadAnswers(...paths: string[]) {
+    let calls = 0;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/upload$/, () => {
+        calls += 1;
+        return HttpResponse.json({ ok: true, path: paths[calls - 1] ?? `/tmp/upload-${calls}` });
+      }),
+    );
+  }
+
+  function pick(...files: File[]) {
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const photos = screen.getByTestId("attach-photos") as HTMLInputElement;
+    fireEvent.change(photos, { target: { files } });
+  }
+
+  const png = (name: string) => new File(["x"], name, { type: "image/png" });
+  // SAFETY: the composer's only placeholder-bearing control is its ChatInput, a `<textarea>`, and
+  // `getByPlaceholderText` throws when it is absent.
+  const field = () => screen.getByPlaceholderText(/type a reply/i) as HTMLTextAreaElement;
+
+  it("adds a chip, and puts its marker at the caret without touching the text around it", async () => {
+    uploadAnswers("/a.png");
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "see this" } });
+    act(() => {
+      field().focus();
+      field().setSelectionRange(3, 3);
+    });
+
+    pick(png("a.png"));
+
+    await waitFor(() => expect(field()).toHaveValue("see [Image #1] this"));
+    const list = screen.getByRole("list", { name: "Attachments" });
+    expect(list).toHaveTextContent("#1");
+    expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+  });
+
+  it("puts the marker at the end when the field never had a caret", async () => {
+    uploadAnswers();
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "hello" } });
+    act(() => field().blur());
+    // A change with no caret report of its own: jsdom leaves selectionStart at the end.
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("hello [Image #1] "));
+  });
+
+  it("marks a multi-photo pick in pick order, one chip each (PR #259)", async () => {
+    uploadAnswers();
+    renderComposer();
+
+    pick(png("first.png"), png("second.png"), png("third.png"));
+
+    await waitFor(() => expect(field()).toHaveValue("[Image #1] [Image #2] [Image #3] "));
+    const removes = screen.getAllByRole("button", { name: /^Remove / });
+    expect(removes.map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Remove first.png",
+      "Remove second.png",
+      "Remove third.png",
+    ]);
+  });
+
+  it("the x removes the chip and its marker, with the space beside it", async () => {
+    const user = userEvent.setup();
+    uploadAnswers();
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "see this" } });
+    act(() => {
+      field().focus();
+      field().setSelectionRange(3, 3);
+    });
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("see [Image #1] this"));
+
+    await user.click(screen.getByRole("button", { name: "Remove a.png" }));
+
+    expect(field()).toHaveValue("see this");
+    expect(screen.queryByRole("list", { name: "Attachments" })).toBeNull();
+    expect(loadDraftEntry(undefined, "w1:p1")?.attachments).toEqual([]);
+  });
+
+  it("Send swaps each marker for its path, where it stands", async () => {
+    const user = userEvent.setup();
+    const typed: string[] = [];
+    uploadAnswers("/a.png", "/b.png");
+    server.use(replyHandler((t) => typed.push(t)));
+    const props = renderComposer();
+
+    fireEvent.change(field(), { target: { value: "look at " } });
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("look at [Image #1] "));
+    fireEvent.change(field(), { target: { value: `${field().value}and ` } });
+    act(() => field().setSelectionRange(field().value.length, field().value.length));
+    pick(png("b.png"));
+    await waitFor(() => expect(field()).toHaveValue("look at [Image #1] and [Image #2] "));
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+    expect(typed).toEqual(["look at /a.png and /b.png"]);
+    // Text and chips leave together, and the next draft numbers from #1 again.
+    expect(field()).toHaveValue("");
+    expect(screen.queryByRole("list", { name: "Attachments" })).toBeNull();
+    expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("a chip whose marker was edited away sends its path in front, and is never dropped", async () => {
+    const user = userEvent.setup();
+    const typed: string[] = [];
+    uploadAnswers("/a.png");
+    server.use(replyHandler((t) => typed.push(t)));
+    const props = renderComposer();
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("[Image #1] "));
+
+    // Deleting the marker by hand keeps the chip.
+    fireEvent.change(field(), { target: { value: "hello" } });
+    expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+    expect(typed).toEqual(["/a.png hello"]);
+  });
+
+  it("leaves a marker-looking string with no chip behind it exactly as typed", async () => {
+    const user = userEvent.setup();
+    const typed: string[] = [];
+    server.use(replyHandler((t) => typed.push(t)));
+    const props = renderComposer();
+    fireEvent.change(field(), { target: { value: "[Image #7] is a label" } });
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+    expect(typed).toEqual(["[Image #7] is a label"]);
+  });
+
+  it("chips alone are something to send: Send is enabled and sends the paths", async () => {
+    const user = userEvent.setup();
+    const typed: string[] = [];
+    uploadAnswers("/a.png");
+    server.use(replyHandler((t) => typed.push(t)));
+    const props = renderComposer();
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("[Image #1] "));
+    fireEvent.change(field(), { target: { value: "" } });
+
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeEnabled();
+    await user.click(send);
+    await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+    expect(typed).toEqual(["/a.png"]);
+  });
+
+  it("the destructive confirm reads the composed line, paths included", async () => {
+    const user = userEvent.setup();
+    const typed: string[] = [];
+    uploadAnswers("/a.png");
+    server.use(replyHandler((t) => typed.push(t)));
+    renderComposerWithStatus();
+    fireEvent.change(field(), { target: { value: "rm -rf " } });
+    act(() => field().setSelectionRange(7, 7));
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("rm -rf [Image #1] "));
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByRole("button", { name: /really send/i })).toBeInTheDocument();
+    expect(typed).toEqual([]);
+  });
+
+  it("a failed send keeps the chips and the text", async () => {
+    const user = userEvent.setup();
+    uploadAnswers("/a.png");
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () =>
+        HttpResponse.json({ ok: false, error: "pane unavailable" }, { status: 500 }),
+      ),
+    );
+    const props = renderComposerWithStatus();
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("[Image #1] "));
+    fireEvent.change(field(), { target: { value: "[Image #1] look" } });
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByTestId("status")).not.toHaveTextContent(/^$/));
+
+    expect(props.onSent).not.toHaveBeenCalled();
+    expect(field()).toHaveValue("[Image #1] look");
+    expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+  });
+
+  it("stores the chips with the draft, and a reload keeps the numbering going", async () => {
+    uploadAnswers("/a.png", "/b.png");
+    renderComposer();
+    pick(png("a.png"));
+    await waitFor(() => expect(field()).toHaveValue("[Image #1] "));
+    expect(loadDraftEntry(undefined, "w1:p1")).toEqual({
+      text: "[Image #1] ",
+      attachments: [{ n: 1, path: "/a.png", name: "a.png", kind: "image" }],
+      next: 2,
+    });
+
+    // A fresh mount reads it back: the chip returns as an icon tile (no preview survives a reload).
+    cleanup();
+    renderComposer();
+    expect(field()).toHaveValue("[Image #1] ");
+    expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+    expect(screen.queryByRole("img")).toBeNull();
+
+    act(() => field().setSelectionRange(field().value.length, field().value.length));
+    pick(png("b.png"));
+    await waitFor(() => expect(field()).toHaveValue("[Image #1] [Image #2] "));
+  });
+
+  it("never reuses a removed chip's number within the draft", async () => {
+    const user = userEvent.setup();
+    uploadAnswers();
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "keep " } });
+    pick(png("a.png"), png("b.png"));
+    await waitFor(() => expect(field()).toHaveValue("keep [Image #1] [Image #2] "));
+    await user.click(screen.getByRole("button", { name: "Remove b.png" }));
+    expect(field()).toHaveValue("keep [Image #1] ");
+
+    act(() => field().setSelectionRange(field().value.length, field().value.length));
+    pick(png("c.png"));
+    await waitFor(() => expect(field()).toHaveValue("keep [Image #1] [Image #3] "));
+  });
+
+  it("an old text-only draft still loads, with no chips", () => {
+    localStorage.setItem("collie:draft:default:w1:p1", JSON.stringify({ text: "from before", at: Date.now() }));
+    renderComposer();
+    expect(field()).toHaveValue("from before");
+    expect(screen.queryByRole("list", { name: "Attachments" })).toBeNull();
+  });
+
+  it("a restored draft that is only chips still offers Send", () => {
+    saveDraft(undefined, "w1:p1", "", [{ n: 1, path: "/a.png", name: "a.png", kind: "image" }], 2);
+    renderComposer();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+  });
+
+  describe("with object URLs", () => {
+    const created: string[] = [];
+    const revoked: string[] = [];
+    // jsdom has no object URLs at all, so each case defines the two statics and removes them again.
+    function defineStatic(name: "createObjectURL" | "revokeObjectURL", value: ((file: Blob) => string) | ((url: string) => void)) {
+      Object.defineProperty(URL, name, { value, configurable: true, writable: true });
+    }
+    beforeEach(() => {
+      created.length = 0;
+      revoked.length = 0;
+      defineStatic("createObjectURL", () => {
+        const url = `blob:test/${created.length + 1}`;
+        created.push(url);
+        return url;
+      });
+      defineStatic("revokeObjectURL", (url: string) => {
+        revoked.push(url);
+      });
+    });
+    afterEach(() => {
+      __resetOperatorCommands();
+      Reflect.deleteProperty(URL, "createObjectURL");
+      Reflect.deleteProperty(URL, "revokeObjectURL");
+    });
+
+    it("draws a photo as a thumbnail, and releases it when its chip is removed", async () => {
+      const user = userEvent.setup();
+      uploadAnswers();
+      renderComposer();
+      pick(png("a.png"));
+      const thumb = await screen.findByRole("img", { name: "a.png" });
+      expect(thumb).toHaveAttribute("src", "blob:test/1");
+
+      await user.click(screen.getByRole("button", { name: "Remove a.png" }));
+      expect(revoked).toEqual(["blob:test/1"]);
+    });
+
+    it("releases every thumbnail on send and on unmount", async () => {
+      const user = userEvent.setup();
+      uploadAnswers();
+      server.use(replyHandler(() => {}));
+      const props = renderComposer();
+      pick(png("a.png"));
+      await screen.findByRole("img", { name: "a.png" });
+      await user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+      expect(revoked).toEqual(["blob:test/1"]);
+
+      pick(png("b.png"));
+      await screen.findByRole("img", { name: "b.png" });
+      cleanup();
+      expect(revoked).toEqual(["blob:test/1", "blob:test/2"]);
+    });
+
+    it("draws a non-image file as a named tile, never a thumbnail", async () => {
+      __resetOperatorCommands();
+      server.use(
+        http.get("/api/config", () =>
+          HttpResponse.json({
+            push: false,
+            vapidPublicKey: "",
+            upload: { maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] },
+          }),
+        ),
+      );
+      uploadAnswers();
+      renderComposer();
+      await waitFor(() => expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md"));
+      // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+      const files = screen.getByTestId("attach-files") as HTMLInputElement;
+      fireEvent.change(files, {
+        target: { files: [new File(["# hi"], "a-rather-long-notes-file.md", { type: "text/markdown" })] },
+      });
+      await waitFor(() => expect(field()).toHaveValue("[File #1] "));
+      expect(screen.queryByRole("img")).toBeNull();
+      expect(created).toEqual([]);
+      expect(screen.getByRole("list", { name: "Attachments" })).toHaveTextContent("a-rather-long…");
+    });
+
   });
 });

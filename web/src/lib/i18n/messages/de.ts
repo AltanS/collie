@@ -235,6 +235,8 @@ export const de: Dictionary = {
   "composer.attach.title": "Anhängen",
   "composer.attach.photos": "Fotos",
   "composer.attach.files": "Dateien",
+  "composer.attach.listAria": "Anhänge",
+  "composer.attach.removeAria": "{name} entfernen",
   "composer.send.typeAnyway": "Trotzdem tippen",
   "composer.send.reallySend": "Senden bestätigen",
   "composer.send.stopTypingAria": "Eingabe ins Terminal abbrechen",
@@ -255,7 +257,7 @@ export const de: Dictionary = {
   "composer.destructive.confirm": "Destruktiv: {reason}. Erneut tippen zum Bestätigen.",
   "composer.destructive.confirmOnHost":
     "Destruktiv: {reason} auf {host}. Erneut tippen zum Bestätigen.",
-  "composer.upload.success": "Datei hinzugefügt, Pfad in Nachricht",
+  "composer.upload.success": "Datei angehängt",
   "composer.upload.tooLarge": "Die Datei ist größer als {max} MB, das Limit für diesen Collie.",
   "composer.upload.badType": "Collie kann {name} nicht anhängen.",
   "composer.noEcho.title": "Passwortabfrage ohne Echo",

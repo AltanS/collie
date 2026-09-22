@@ -145,9 +145,11 @@ const CONTENT_TYPES = new Map<string, string>([
 
 // Strict CSP. Scripts are external, hashed bundles (script-src 'self'); pane text is rendered by
 // React as text nodes, never markup, so terminal output can't inject. 'unsafe-inline' is allowed
-// for styles only (the toast library injects a <style> tag) — it can't execute code.
+// for styles only (the toast library injects a <style> tag) — it can't execute code. `blob:` in
+// img-src is the composer's attachment thumbnail (ADR 0060): a blob URL is minted only by this
+// page's own script, from a file the operator picked, so it admits no new origin.
 const CSP =
-  "default-src 'self'; connect-src 'self'; img-src 'self' data:; " +
+  "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; " +
   "style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; " +
   "manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'";
 

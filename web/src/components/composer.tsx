@@ -30,12 +30,25 @@ import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
-import { acceptAttribute, limitMb, offersFiles, PHOTO_ACCEPT, rejectAttachment, uploadLimits } from "@/lib/attachments";
+import {
+  acceptAttribute,
+  attachmentKind,
+  composeLine,
+  insertMarker,
+  limitMb,
+  markerFor,
+  offersFiles,
+  PHOTO_ACCEPT,
+  rejectAttachment,
+  removeMarker,
+  uploadLimits,
+} from "@/lib/attachments";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostLabel } from "@/components/crew-provider";
-import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
+import { clearDraft, fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
+import { AttachmentChip, type ComposerAttachment } from "@/components/attachment-chip";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
@@ -236,6 +249,27 @@ const ATTACH_PRESS_MS = 220;
  */
 const TOOLBAR_TAP_TARGET = "relative before:absolute before:-inset-1 before:content-['']";
 
+/**
+ * A photo chip's thumbnail source: a blob URL for the picked file, valid for this page session only
+ * (ADR 0060). Undefined where the browser has no object URLs (jsdom), which draws the icon tile. The
+ * bridge's CSP admits `blob:` in `img-src` for exactly this; a blob URL is minted by this page's own
+ * script, so it opens no new origin.
+ */
+function makePreview(file: File): string | undefined {
+  if (!("createObjectURL" in URL)) return undefined;
+  try {
+    return URL.createObjectURL(file);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Release a chip's thumbnail. Called when the chip is removed, sent, or its pane is left. */
+function revokePreview(attachment: ComposerAttachment) {
+  if (attachment.previewUrl === undefined || !("revokeObjectURL" in URL)) return;
+  URL.revokeObjectURL(attachment.previewUrl);
+}
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle },
   ref,
@@ -292,7 +326,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
   // pane view is keyed by paneId, so without this, stepping over to another tab mid-reply ate the
   // message. Lazy initialiser so the restore happens on the mount, before first paint.
-  const [input, setInput] = useState(() => loadDraft(scope, paneId) ?? "");
+  const [restoredDraft] = useState(() => loadDraftEntry(scope, paneId));
+  const [input, setInput] = useState(restoredDraft?.text ?? "");
+  // The attachments waiting as chips above the field (ADR 0060), and the number the next one gets.
+  // Each chip's `[Image #N]` / `[File #N]` marker sits in `input` where it was added; Send swaps
+  // the marker for the chip's path (lib/attachments.ts, `composeLine`). Refs beside the state for
+  // the same reason `inputValueRef` exists: the write-through reads them in the tick they change.
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>(restoredDraft?.attachments ?? []);
+  const attachmentsRef = useRef<ComposerAttachment[]>(attachments);
+  const nextAttachmentRef = useRef(restoredDraft?.next ?? 1);
+  // Where the caret last stood in the field, so an upload that lands after the field lost focus (a
+  // native picker took it) still puts its marker where the operator was. Null means "no caret
+  // yet", which puts the marker at the end.
+  const caretRef = useRef<number | null>(null);
   // Mirror of `input` for the write-through path: updateInput needs the previous value to apply a
   // functional update AND to persist the result, without either reading stale state or doing the
   // save inside a (double-invoked) state updater.
@@ -327,8 +373,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function updateInput(value: string) {
     inputValueRef.current = value;
     setInput(value);
+    persistDraft();
+  }
+
+  /** The write-through, text and chips together. The chip writers (addAttachment, removeAttachment,
+   *  clearComposedDraft) set the chip ref first and then write the text through updateInput, so
+   *  one save carries both. An empty draft (no text, no chips) also forgets its chip
+   *  numbering, so the next draft starts at #1 again; lib/drafts.ts forgets it on disk the same way. */
+  function persistDraft() {
+    if (inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0) {
+      nextAttachmentRef.current = 1;
+    }
     if (noEchoRef.current !== null) return;
-    saveDraft(scope, paneId, value);
+    saveDraft(scope, paneId, inputValueRef.current, attachmentsRef.current, nextAttachmentRef.current);
   }
 
   /** {@link updateInput} for the appenders, which need the current value to build the next one.
@@ -341,11 +398,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   useEffect(() => {
     const prev = draftPaneRef.current;
     if (prev.paneId === paneId && prev.scopeId === scopeId) return;
-    if (noEchoRef.current === null) saveDraft(prev.scope, prev.paneId, inputValueRef.current);
+    if (noEchoRef.current === null) {
+      saveDraft(prev.scope, prev.paneId, inputValueRef.current, attachmentsRef.current, nextAttachmentRef.current);
+    }
+    // The outgoing pane's previews die here: its chips come back from the store as icon tiles.
+    for (const attachment of attachmentsRef.current) revokePreview(attachment);
     draftPaneRef.current = { scope, scopeId, paneId };
-    const restored = loadDraft(scope, paneId) ?? "";
-    inputValueRef.current = restored;
-    setInput(restored);
+    const restored = loadDraftEntry(scope, paneId);
+    inputValueRef.current = restored?.text ?? "";
+    setInput(inputValueRef.current);
+    attachmentsRef.current = restored?.attachments ?? [];
+    setAttachments(attachmentsRef.current);
+    nextAttachmentRef.current = restored?.next ?? 1;
+    caretRef.current = null;
     noticeNoEchoRef.current(null); // it described the pane we just left
   }, [scope, scopeId, paneId]);
   const [sending, setSending] = useState(false);
@@ -499,7 +564,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // an EMPTY box, which is the one state where Send can do nothing anyway; the first character typed
   // hands the button straight back. `direct.active` keeps it, because there the same button is the
   // "stop typing into the terminal" control and that must not be displaceable.
-  const micIsPrimary = stt !== null && !direct.active && input.trim() === "";
+  // A chip is something to send (ADR 0060), so a box holding only chips shows Send, not the mic.
+  const hasDraft = input.trim() !== "" || attachments.length > 0;
+  const micIsPrimary = stt !== null && !direct.active && !hasDraft;
 
   /**
    * What happens to a finished transcript.
@@ -520,7 +587,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    *    refuse anyway; inserting keeps the words.
    */
   function acceptTranscript(transcript: string) {
-    const draftEmpty = inputValueRef.current.trim() === "";
+    const draftEmpty = inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0;
     const mayHandsFree =
       handsFree && draftEmpty && noEchoRef.current === null && !locked && !dialogPresent;
     if (mayHandsFree) {
@@ -598,6 +665,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (sentTimer.current) clearTimeout(sentTimer.current);
       if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
       if (keyRevalidateTimer.current) clearTimeout(keyRevalidateTimer.current);
+      for (const attachment of attachmentsRef.current) revokePreview(attachment);
     },
     [],
   );
@@ -619,7 +687,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the hold clears (see lib/self-update.ts). Keyed by pane so panes don't clobber each other's hold.
   useHoldReload(
     `composer:${paneId}`,
-    input.trim() !== "" || direct.active || direct.value !== "" || direct.busy || uploading,
+    hasDraft || direct.active || direct.value !== "" || direct.busy || uploading,
   );
 
   // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
@@ -857,7 +925,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (res.status === "sent") {
         // Phone-owned input — cleared once the reply is on its way. Via updateInput, so the stored
         // draft goes with it (an empty value removes the key).
-        if (isDraft) updateInput("");
+        // The chips go with the text: their paths were in the line that just went out.
+        if (isDraft) clearComposedDraft();
         // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
         // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
         lastSentRef.current = { text: t, at: Date.now() };
@@ -927,12 +996,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function onSendClick() {
     // An armed override takes precedence: this tap IS the deliberate "type anyway", so it skips the
     // destructive re-confirm (already answered on the tap that got blocked) and the pre-flight.
+    // The line the terminal gets: every chip's marker swapped for its path (ADR 0060). Both the
+    // destructive check and the send read THIS, never the draft with its markers in it.
+    const line = composeLine(input, attachments);
     if (forceConfirm.pending === "force") {
       forceConfirm.reset();
-      send(input, true, true);
+      send(line, true, true);
       return;
     }
-    const reason = isDestructiveInput(input);
+    const reason = isDestructiveInput(line);
     if (reason && !sendConfirm.confirm("send")) {
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
       // sentence depending on whose disk it runs on, and this line is the last thing read before the
@@ -946,7 +1018,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return;
     }
     sendConfirm.reset();
-    send(input, true);
+    send(line, true);
   }
   const confirmingSend = sendConfirm.pending === "send";
   const forcingSend = forceConfirm.pending === "force";
@@ -1006,8 +1078,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     focusInputEnd();
   }
 
-  // Upload an attachment; on success append its host path to the composer so the user can add
-  // context. Shared by the file picker and clipboard paste.
+  // Upload an attachment; on success it becomes a chip above the field, and its marker lands in the
+  // draft where the caret stood (ADR 0060). Shared by the file picker and clipboard paste.
   //
   // The two local refusals below are an ECONOMY, never a gate: the bridge asks the same two
   // questions again on arrival, and its answer is the one that counts (it can read the bytes, which
@@ -1028,10 +1100,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       const res = await api.uploadFile(paneId, file, scope);
       if (res.ok) {
-        const path = res.path;
         direct.deactivateSilently();
-        updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()} ${path}` : path));
-        focusInputEnd();
+        addAttachment(file, res.path);
         setStatus(translate("composer.upload.success"), "success");
       } else {
         setStatus(describeApiError(res), "error");
@@ -1041,6 +1111,67 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     } finally {
       setUploading(false);
     }
+  }
+
+  /**
+   * A finished upload joins the draft: a chip with the next number, and its marker at the caret.
+   *
+   * The caret is the field's own while it has focus (the attach button keeps focus on the field by
+   * refusing its own `pointerdown`), else the last one `caretRef` saw, else the end. After the
+   * insert the caret stands past the marker, so a multi-photo pick lays its markers down in pick
+   * order, each after the one before.
+   */
+  function addAttachment(file: File, path: string) {
+    const n = nextAttachmentRef.current;
+    nextAttachmentRef.current = n + 1;
+    const kind = attachmentKind(file, limits);
+    const attachment: ComposerAttachment = { n, path, name: file.name, kind };
+    if (kind === "image") {
+      const previewUrl = makePreview(file);
+      if (previewUrl !== undefined) attachment.previewUrl = previewUrl;
+    }
+    const field = inputRef.current;
+    const caret =
+      field !== null && document.activeElement === field ? field.selectionStart : caretRef.current;
+    const placed = insertMarker(inputValueRef.current, caret, markerFor(attachment));
+    attachmentsRef.current = [...attachmentsRef.current, attachment];
+    setAttachments(attachmentsRef.current);
+    caretRef.current = placed.caret;
+    updateInput(placed.text);
+    focusInputAt(placed.caret);
+  }
+
+  /** The chip's x: the chip goes, and so does its marker (with one space beside it). Deleting the
+   *  marker by hand instead keeps the chip, and Send puts its path in front (`composeLine`). */
+  function removeAttachment(attachment: ComposerAttachment) {
+    revokePreview(attachment);
+    attachmentsRef.current = attachmentsRef.current.filter((a) => a.n !== attachment.n);
+    setAttachments(attachmentsRef.current);
+    caretRef.current = null;
+    updateInput(removeMarker(inputValueRef.current, markerFor(attachment)));
+  }
+
+  /** After a verified send: the text, the chips and their previews all go, and numbering restarts. */
+  function clearComposedDraft() {
+    for (const attachment of attachmentsRef.current) revokePreview(attachment);
+    attachmentsRef.current = [];
+    setAttachments([]);
+    caretRef.current = null;
+    updateInput("");
+  }
+
+  function focusInputAt(caret: number) {
+    setTimeout(() => {
+      const field = inputRef.current;
+      if (!field) return;
+      field.focus();
+      field.setSelectionRange(caret, caret);
+    }, 0);
+  }
+
+  /** Remember the caret whenever the field reports one, so a marker can land there later. */
+  function rememberCaret(e: { currentTarget: HTMLTextAreaElement }) {
+    caretRef.current = e.currentTarget.selectionStart;
   }
 
   async function onPickFile(e: ChangeEvent<HTMLInputElement>) {
@@ -1380,7 +1511,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <RecordingStrip
               elapsed={recorder.elapsedLabel}
               transcribing={recorder.phase === "transcribing"}
-              handsFree={handsFree && input.trim() === "" && noEcho === null}
+              handsFree={handsFree && !hasDraft && noEcho === null}
               onStop={recorder.stopAndSend}
               onDiscard={recorder.discard}
             />
@@ -1445,6 +1576,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <div
           className={cn(
             "relative flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+            // Chips take a line of their own ABOVE the row (ADR 0060). `flex-wrap` plus a
+            // full-basis strip does that without re-parenting the field, so the textarea is never
+            // remounted (and never loses its caret) when the first chip arrives. With no chips the
+            // class is absent and the box is exactly the one row it was.
+            attachments.length > 0 && "flex-wrap",
             // A composer nobody may write to says so as a surface, not just as a placeholder:
             // the fill recedes and both buttons in the box are disabled anyway.
             locked && "bg-muted/40",
@@ -1453,10 +1589,36 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             direct.active && "border-primary focus-within:border-primary focus-within:ring-primary",
           )}
         >
+          {attachments.length > 0 && (
+            // The strip scrolls sideways when the chips outrun the box; `pt-1 px-1` is room for
+            // the corner badge and the x, which stand 4px outside each chip.
+            <ul
+              aria-label={translate("composer.attach.listAria")}
+              className="flex w-full basis-full gap-2 overflow-x-auto px-1 pt-1 pb-0.5"
+            >
+              {attachments.map((attachment) => (
+                <AttachmentChip
+                  key={attachment.n}
+                  attachment={attachment}
+                  onRemove={() => removeAttachment(attachment)}
+                  disabled={sending}
+                />
+              ))}
+            </ul>
+          )}
           <ChatInput
             ref={inputRef}
             value={direct.active ? direct.value : input}
-            onChange={direct.active ? direct.onChange : (e) => updateInput(e.target.value)}
+            onChange={
+              direct.active
+                ? direct.onChange
+                : (e) => {
+                    rememberCaret(e);
+                    updateInput(e.target.value);
+                  }
+            }
+            onSelect={direct.active ? undefined : rememberCaret}
+            onBlur={direct.active ? undefined : rememberCaret}
             onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
             onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
             onKeyDown={
@@ -1495,8 +1657,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // `flex-1 min-w-0`: the field takes whatever width the two buttons beside it leave,
               // and `min-w-0` is what lets it go NARROWER than its content asks. A flex item's
               // automatic minimum width is its min-content width, and `field-sizing-content` turns
-              // that into a laid-out one, so without it an uploaded host path would widen the field
-              // and push the primary action off the right edge (`wrap-anywhere` in chat-input.tsx
+              // that into a laid-out one, so without it a long host path (typed or pasted; an upload
+              // puts only its short marker here since ADR 0060) would widen the field and push the
+              // primary action off the right edge (`wrap-anywhere` in chat-input.tsx
               // stops the same thing at the source; the two are independent and both stay).
               //
               // `py-1.5 min-h-9 pl-2` centre ONE line of the draft against the 36px buttons on the
@@ -1630,7 +1793,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               variant="destructive"
               className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
               onClick={onSendClick}
-              disabled={locked || !input.trim() || sending}
+              disabled={locked || !hasDraft || sending}
               aria-label={translate("composer.send.typeAnyway")}
             >
               {translate("composer.send.typeAnyway")}
@@ -1640,7 +1803,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               variant="destructive"
               className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
               onClick={onSendClick}
-              disabled={locked || !input.trim() || sending}
+              disabled={locked || !hasDraft || sending}
               aria-label={translate("composer.send.reallySend")}
             >
               {translate("composer.send.reallySend")}

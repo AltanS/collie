@@ -134,6 +134,7 @@ the pointer, it was a supersede.
 | [0057](./0057-the-composer-is-one-box.md) | The composer is one box: the field, the attach control and Send share one bordered container with a toolbar row, the prompt-input pattern ported by hand | Accepted |
 | [0058](./0058-the-resume-picker-commits-with-enter.md) | The resume picker commits with Enter: the `/resume` session picker, recognised by its own title, search box and footer, lifts as a pointed list whose tap is the walk plus an unprinted Enter, a narrow exception to 0009 for this one dialog | Accepted |
 | [0059](./0059-a-card-docks-above-the-belt.md) | A card docks above the belt: every lifted card renders in one slot outside the mirror's scroller, directly above the actions belt, capped and scrolled inside (moves where 0056's card renders) | Accepted |
+| [0060](./0060-an-attachment-is-a-chip-not-a-path.md) | An attachment is a chip, not a path: an upload shows as a chip above the field and a `[Image #N]` marker in the draft, and Send swaps in the path where the marker stands | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
