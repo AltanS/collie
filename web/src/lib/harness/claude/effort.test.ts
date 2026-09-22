@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
+import { buildBlocks } from "../index";
 import { menusEqual, menusSameIdentity } from "../menu-model";
 import { detectEffort } from "./effort";
 import { claudeBuildBlocks } from "./index";
@@ -41,6 +42,17 @@ const WRAPPED_FIXTURES = [
   "claude--menu-effort-slider--w60.txt",
   "claude--menu-effort-slider--w80.txt",
 ];
+// Six more real captures, taken live on 2026-09-22 with a NON-default level selected — `low` and
+// `ultracode` — at 40, 60 and 80 columns. Three lift, and lift exactly as the medium-selected
+// fixtures above do at the same width: the level read is a position against the marker, not a
+// vocabulary, so a different selected word is not a different grammar. Three decline, each for its
+// own reason (see the `LOW_ULTRACODE_DECLINES` cases below); those three are deliberately NOT in
+// `EFFORT_FIXTURES`, because `detectEffort` returns null on all of them.
+const LOW_ULTRACODE_LIFTS: Array<{ name: string; label: string }> = [
+  { name: "claude--menu-effort-slider--w60-low.txt", label: "low" },
+  { name: "claude--menu-effort-slider--w80-low.txt", label: "low" },
+  { name: "claude--menu-effort-slider--w80-ultracode.txt", label: "ultracode" },
+];
 // The scale that screen printed, left to right.
 const SCALE = ["low", "medium", "high", "xhigh", "max", "ultracode"];
 // Every capture of this screen in the corpus.
@@ -49,6 +61,7 @@ const EFFORT_FIXTURES = [
   WIDE_FIXTURE,
   SCALE_FIXTURE,
   ...WRAPPED_FIXTURES,
+  ...LOW_ULTRACODE_LIFTS.map((f) => f.name),
   "claude-lab--menu-effort-slider--w82.txt",
 ];
 
@@ -367,6 +380,65 @@ describe("detectEffort — the wrapped dialog", () => {
       "  ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel",
     ].join("\n");
     expect(detectEffort(lines(screen))).toBeNull();
+  });
+});
+
+describe("detectEffort — a level other than medium selected", () => {
+  // Real captures, taken live on 2026-09-22, of `low` and `ultracode` selected at 40, 60 and 80
+  // columns — the same widths WRAPPED_FIXTURES pins for the default `medium`. Three of the six lift;
+  // this block is the three that do, and it is what proves the read is a MARKER POSITION rather than
+  // a word list: `low` lifts wrapped (60) and whole (80), and `ultracode` lifts whole (80), each with
+  // the same six values and the same three actions the medium-selected captures carry.
+  it.each(LOW_ULTRACODE_LIFTS)("reads $name with the marker over $label", ({ name, label }) => {
+    const model = detectEffort(load(name));
+    expect(model).not.toBeNull();
+    expect(model!.title).toBe("Effort");
+    expect(model!.nav).toEqual({
+      upDown: false,
+      leftRight: { verb: "adjust", label, values: SCALE },
+    });
+    expect(model!.actions).toEqual(EXPECTED_ACTIONS);
+    expect(model!.signature).not.toBe("");
+  });
+
+  it.each(LOW_ULTRACODE_LIFTS)("is the Effort arm that produces $name's block", ({ name, label }) => {
+    const paneLines = load(name);
+    const blocks = claudeBuildBlocks(paneLines);
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
+    const block = blocks[1]!;
+    if (block.kind !== "menu") throw new Error("expected a menu block");
+    expect(block.menu).toEqual(detectEffort(paneLines)!);
+    expect(block.menu.nav.leftRight!.values).toEqual(SCALE);
+    expect(block.menu.nav.leftRight!.label).toBe(label);
+  });
+});
+
+describe("detectEffort — a level other than medium selected, and the widths that decline", () => {
+  // The other three captures of the same pair (2026-09-22), each declining for its own reason.
+  it("declines at 60 columns with ultracode selected: the repainted, unwrapped dialog leaves the footer's soft wrap at unequal indents, so readKeyHintFooter's equal-indent rule refuses the group and the ←/→ phrase is lost", () => {
+    const paneLines = load("claude--menu-effort-slider--w60-ultracode.txt");
+    expect(detectEffort(paneLines)).toBeNull();
+
+    // The generic grammar still reads the tail line alone (no wrapped-footer join), so it lifts the
+    // same screen with just the one hint that line carries.
+    const blocks = claudeBuildBlocks(paneLines);
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
+    const block = blocks[1]!;
+    if (block.kind !== "menu") throw new Error("expected a menu block");
+    expect(block.menu.actions).toEqual([{ label: "Cancel", keys: ["Escape"], cancel: true }]);
+  });
+
+  it("declines at 40 columns with low selected: no ▲ is drawn at all when the marker would sit leftmost, Claude marks low by colour only, so the pipeline falls through to the unread-dialog card", () => {
+    const paneLines = load("claude--menu-effort-slider--w40-low.txt");
+    expect(detectEffort(paneLines)).toBeNull();
+
+    const blocks = buildBlocks(paneLines, { agent: "claude" });
+    expect(blocks.map((b) => b.kind)).toEqual(["unread-dialog"]);
+  });
+
+  it("declines at 40 columns with ultracode selected: a genuine Claude Code 2.1.278 render glitch (labels truncated to `xhigh      m`, no marker, no divider) leaves nothing this grammar can read", () => {
+    const paneLines = load("claude--menu-effort-slider--w40-ultracode.txt");
+    expect(detectEffort(paneLines)).toBeNull();
   });
 });
 

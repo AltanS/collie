@@ -842,6 +842,16 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "menu-effort-slider--w40", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "menu-effort-slider--w60", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "menu-effort-slider--w80", statusRows: 0, draft: null, stripped: 0 },
+    // Six more real captures (2026-09-22): `low` and `ultracode` selected at 40, 60 and 80 columns.
+    // Three lift as the Effort grammar and three decline (a soft-wrapped footer at 60/ultracode, no
+    // marker glyph at 40/low, a render glitch at 40/ultracode) — the walk reads the same either way,
+    // a modal with no box and nothing under it.
+    { fixture: "menu-effort-slider--w60-low", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-effort-slider--w80-low", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-effort-slider--w80-ultracode", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-effort-slider--w60-ultracode", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-effort-slider--w40-low", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-effort-slider--w40-ultracode", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--numbered-body", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--feedback-focused", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval--feedback-typed", statusRows: 0, draft: null, stripped: 0 },

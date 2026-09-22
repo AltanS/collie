@@ -57,6 +57,13 @@ const NEUTRAL = new Set([
   // the harness bar's alias options are a real command form, and an ordinary idle screen to this
   // adapter. Nothing on it is a dialog — the alias needs no picker, which is the point of the row.
   "claude--model-alias.txt",
+  // The `/effort` slider at 40 columns with `low` selected: a genuine dialog, but not one this
+  // adapter's own grammars can read — at 40 columns with the marker leftmost Claude draws no `▲` at
+  // all, marking `low` by colour alone, so every specific detector and the generic menu decline it.
+  // `adapter.buildBlocks` is therefore raw-only here exactly as it is on a true no-dialog screen; the
+  // unread-dialog post-pass (outside the adapter, harness/index.ts) is what offers Cancel over it,
+  // and that card is pinned separately in unread-dialog.test.ts, not by this suite.
+  "claude--menu-effort-slider--w40-low.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

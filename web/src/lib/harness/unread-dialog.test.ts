@@ -195,6 +195,10 @@ const CARD_FIXTURES = {
       // corpus: `/tasks` panel, `Esc to close` footer; raw only at 40 columns, where its
       // footer wraps and the menu grammar declines. The w82 capture lifts `menu`, so no card.
       "claude-lab--tasks-panel--w40.txt",
+      // README: the `/effort` slider at 40 columns with `low` selected — no `▲` is drawn at all when
+      // the marker would sit leftmost (Claude marks `low` by colour only), so the Effort grammar and
+      // the generic menu both decline and the card is the honest answer.
+      "claude--menu-effort-slider--w40-low.txt",
     ],
     notModals: [
       // corpus knownStall: a wrapped draft holding an interior rule, which stops walkFrame's up-scan
