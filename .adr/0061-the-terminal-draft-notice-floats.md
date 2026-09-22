@@ -50,3 +50,8 @@ that draft is gone.**
 - **The footer's in-flow strips are now all phone-side conditions** (the sent preview, the password
   notice, the armed modes, the draft-too-long line). A notice about the host's own line is not one
   of them.
+- **The notice's surface moved from `bg-background/85` to `bg-card/95`.** Dark `--background` is
+  byte-identical to the mirror's own fill (`components/mirror-space.ts`), so the original
+  translucent ground read as almost the same black as the terminal text behind it. `--card` is the
+  app's raised-chrome surface, a real step off `--background` in both themes, so the notice uses it
+  to read apart from the terminal.

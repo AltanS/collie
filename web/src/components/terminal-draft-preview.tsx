@@ -40,7 +40,7 @@ export function TerminalDraftPreview({ text, onTakeOver, onDismiss }: TerminalDr
   useLocale();
   return (
     <div
-      className="pointer-events-auto flex items-start gap-1.5 rounded-lg border border-border bg-background/85 py-1.5 pr-1.5 pl-2.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm"
+      className="pointer-events-auto flex items-start gap-1.5 rounded-lg border border-foreground/20 bg-card/95 py-1.5 pr-1.5 pl-2.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm"
     >
       <Terminal className="mt-0.5 size-3 shrink-0" />
       <div className="min-w-0 flex-1">
