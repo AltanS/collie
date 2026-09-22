@@ -48,6 +48,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **Every dialog card sits in the same place.** A lifted card docks directly above the Keys belt instead of following the terminal text, so it starts at the same spot on every screen. A tall card scrolls inside the dock (ADR 0059).
 - **An attachment shows as a chip.** A photo shows as a thumbnail and a file as its name, each with its number and an x, instead of its path in the text. A short marker such as `[Image #1]` holds its place in your words, and Send puts the path there, so the terminal gets the same line as before (ADR 0060).
 - **The terminal draft notice floats.** When you type in the terminal itself, the notice with Take over floats above the belt instead of pushing the page, and an x hides it until that draft is gone (ADR 0061).
+- **The pane screen's tab and pane rows take 22px less height.** The open tab no longer draws an underline; it reads in full ink and a heavier weight, and the other tabs sit in the lighter ink. The tab row is 30px instead of 44, and the pane row is 26px instead of 34.5. A pane pill still answers a 44px touch, up from 35, and a tab answers 44px when no pane row sits under it. Under a pane row, a tab answers its own 30px, because the pane row keeps every pixel of its box. The space screen's tab row takes the same look.
 
 ### Fixed
 - **The dashboard's filter strip no longer scrolls sideways and down.** Its chips could be dragged out of sight, and the same overflow was clipping away their tap target. Thanks @bendrucker (#265).

@@ -42,6 +42,28 @@ export const STRIP_TAP_TARGET =
 export const STRIP_TAP_TARGET_SQUARE = `${STRIP_TAP_TARGET} before:-inset-x-[7px]`;
 
 /**
+ * The tap floor for a 28px square control in the pane screen's 30px tab row: the "+" and the fold
+ * chevron (`tab-strip.tsx`). It is NOT centred on the drawn circle, and that is the point.
+ *
+ * The row cannot reach up (the route's content scroller clips at the header's bottom edge, see the
+ * tab scroller's comment in `tab-strip.tsx`), so the whole floor hangs from the row's TOP edge down
+ * to the same 44px line every tab's reach ends on. The numbers assume a 1px border on the control
+ * (the "+" draws a dashed one, the fold reserves a transparent one), because an absolutely placed
+ * `::before` resolves its insets against the PADDING box, 1px inside the drawn edge:
+ *
+ *  - top `-2px`: the 28px circle is centred in 30, so its border edge is 1px below the row's top
+ *    and its padding edge 2px. The reach starts on the row's top edge, no higher.
+ *  - bottom `-16px`: padding edge at 28, reach to 44.
+ *  - sideways `-9px`: 26 + 18 = 44 across. Safe only because both controls are last in their group
+ *    with 12px of air on the tab side (the scroller's `gap-3`, its `pr-3` and the slot's `pl-1.5`),
+ *    so no two reaches touch.
+ *  - `z-[1]`: the lower 14px lie over the terminal mirror, which is positioned and later in the
+ *    tree, and would otherwise take the tap.
+ */
+export const TAB_ROW_SQUARE_TAP_TARGET =
+  "relative before:absolute before:-top-[2px] before:-bottom-4 before:-inset-x-[9px] before:z-[1] before:content-['']";
+
+/**
  * The sideways scroller the composer's thin rows are built on — the key rail and the actions row.
  *
  * Written down once because the recipe is three decisions that only work together: `py-1.5` is the

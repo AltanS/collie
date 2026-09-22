@@ -116,7 +116,11 @@ describe("SpaceRoute on a crew", () => {
     renderSpace("wA", PEER);
 
     // Twice: the pane's own row, and the belt cell of its one-pane tab, which names the pane too.
-    expect(await screen.findAllByText("peer pane")).toHaveLength(2);
+    // The cell's `aria-hidden` semibold copy (it only reserves the label's width) is not a third.
+    const shown = (await screen.findAllByText("peer pane")).filter(
+      (el) => !el.closest('[aria-hidden="true"]'),
+    );
+    expect(shown).toHaveLength(2);
     expect(screen.queryByText("(empty tab)")).not.toBeInTheDocument();
   });
 

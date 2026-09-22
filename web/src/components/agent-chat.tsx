@@ -54,7 +54,7 @@ import { PaneMeta } from "@/components/pane-meta";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
-import { CompactStripLabels, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
+import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { useHostHealth } from "@/components/crew-provider";
@@ -1728,9 +1728,10 @@ export function AgentChat({
                     // the space has nothing left to land on. Closing any other tab just revalidates so it
                     // drops out of the strip.
                     onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
-                    // The fold's own control, pinned to the row's trailing end where it costs no height
-                    // — the tab row is already 44px, so this centres in pixels the row was spending
-                    // anyway. Same 32px square recipe as the "+" beside it: they are two controls of the
+                    // The fold's own control, pinned to the row's trailing end where it costs no height:
+                    // a 28px circle centred in the 30px tab row, its 44px reach hanging down out of the
+                    // row the way every tab's does. Same square recipe as the "+" beside it, transparent
+                    // border included (the reach's numbers assume one): they are two controls of the
                     // same rank in the same row, and drawing them differently would rank them.
                     trailing={
                       <button
@@ -1739,8 +1740,8 @@ export function AgentChat({
                         aria-expanded={true}
                         aria-label={t(foldLabelKey(stripTabs.length, tabPanes.length))}
                         className={cn(
-                          STRIP_TAP_TARGET_SQUARE,
-                          "flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+                          TAB_ROW_SQUARE_TAP_TARGET,
+                          "flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
                         )}
                       >
                         <ChevronUp className="size-4" />

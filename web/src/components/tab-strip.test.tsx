@@ -6,6 +6,17 @@ import { server } from "@/test/setup";
 import { TabStrip } from "./tab-strip";
 import type { AgentStatus, AgentView, TabView } from "@/lib/types";
 
+// What the eye reads on a cell: its text without the `aria-hidden` semibold copy each label keeps
+// to reserve its width (`StableLabel` in tab-strip.tsx).
+function visibleText(el: Element): string {
+  let text = "";
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement?.closest('[aria-hidden="true"]')) text += node.textContent ?? "";
+  }
+  return text;
+}
+
 const tabs: TabView[] = [
   { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "1", focused: true, paneCount: 2 },
   { tabId: "w1:t2", workspaceId: "w1", number: 2, label: "2", focused: false, paneCount: 1 },
@@ -30,7 +41,7 @@ describe("TabStrip", () => {
 
     const renderedTabs = screen
       .getAllByRole("button")
-      .map((button) => button.textContent)
+      .map((button) => visibleText(button))
       .filter((label) => label === "First" || label === "Second");
     expect(renderedTabs).toEqual(["Second", "First"]);
   });
@@ -53,13 +64,12 @@ describe("TabStrip", () => {
     expect(screen.queryByText("Tabs")).toBeNull();
   });
 
-  // GROUND IS THE ONE MARK: the open tab is an INVERTED pill — `bg-primary` + `text-primary-
-  // foreground` + `rounded-md`, the open pane pill's own paint — while an inactive tab keeps the
-  // SAME border-box (a reserved transparent border, per the C1 recipe) and draws no fill. Every
-  // box-affecting class besides the border's colour and the fill is identical between the two
-  // states, so a selection can never re-flow a label. jsdom has no layout, so this pins the
-  // mechanism (which classes differ) rather than pixels.
-  it("marks the open tab with an underline, with the rest of the box unchanged on selection", () => {
+  // INK AND WEIGHT ARE THE ONLY MARK (option 3 of the 2026-09-23 top-bar deck): the open tab is
+  // `text-foreground font-semibold`, the rest `text-muted-foreground font-medium`, and no cell draws
+  // a border, an underline, a fill or a radius in either state. Every box-affecting class is
+  // identical between the two states, and the weight change is held still by the label's semibold
+  // copy. jsdom has no layout, so this pins the mechanism; `e2e/pane-top-bar.spec.ts` measures it.
+  it("marks the open tab by ink and weight alone, with the box unchanged on selection", () => {
     const { rerender } = render(
       <TabStrip
         workspaceId="w1"
@@ -73,15 +83,15 @@ describe("TabStrip", () => {
     const boxClasses = (el: Element) =>
       el.className
         .split(/\s+/)
-        .filter((c) => /^(h-|min-w-|px-|py-|p-|my-|rounded)/.test(c) || c === "border-b-2")
+        .filter((c) => /^(h-|min-w-|px-|py-|p-|my-|rounded|border)/.test(c))
         .toSorted();
 
     const inactive = screen.getByRole("button", { name: "tab 2" });
-    // Every tab reserves the same border and radius box; an inactive one keeps the border transparent
-    // and draws no fill.
-    expect(inactive.className).toContain("border-transparent");
-    expect(inactive.className).not.toContain("border-foreground");
+    expect(inactive.className).toContain("text-muted-foreground");
+    expect(inactive.className).toContain("font-medium");
     const inactiveBox = boxClasses(inactive);
+    // No border and no radius at all: there is no box to reserve.
+    expect(inactiveBox.filter((c) => /^(rounded|border)/.test(c))).toEqual([]);
 
     rerender(
       <TabStrip
@@ -95,23 +105,20 @@ describe("TabStrip", () => {
     );
     const active = screen.getByRole("button", { name: "tab 2" });
     expect(active).toHaveAttribute("aria-current", "true");
-    // Every box-affecting class is shared — the border's colour and the fill are the only differences.
     expect(boxClasses(active)).toEqual(inactiveBox);
-    expect(active.className).toContain("border-b-2");
-    expect(active.className).toContain("border-foreground");
-    // No dashed desktop-focus ring on any cell any more: the fill is the only "open" mark.
-    expect(active.className).not.toContain("outline-dashed");
-    // Rule E: state may not change font weight, or the whole row re-flows.
-    expect(active.className).toContain("font-medium");
+    expect(active.className).toContain("text-foreground");
+    expect(active.className).toContain("font-semibold");
+    expect(active.className).not.toMatch(/\bbg-primary\b|\bborder-b-2\b|outline-dashed/);
+    // Rule E: the label reserves its semibold width in both states, so the weight change cannot
+    // re-flow the row.
+    expect(active.querySelector('[aria-hidden="true"].font-semibold')?.textContent).toBe("tab 2");
   });
 
   // NO HORIZONTAL RULE, AND NO HAIRLINE BETWEEN TABS EITHER. Altan, from the phone, on the row this
   // replaced: "the top tabs area has a lot of weird lines now. Completely remove horizontal borders
-  // and just have vertical ones for tab items" — and then, once the open tab got its own box, "the
-  // border left is weird, I'd prefer a full border on the item": the `divide-x` seam that used to
-  // sit on one side of whichever tab was next to it is gone too, replaced by a plain gap and the open
-  // tab's own full border.
-  it("draws no horizontal rule of its own, groups the tabs with a gap instead of a divider, and gives only the open tab a border", () => {
+  // and just have vertical ones for tab items" — and then "the border left is weird": the `divide-x`
+  // seam is gone too. The air between tabs is each tab's own padding, so the group has no gap.
+  it("draws no horizontal rule of its own and no divider between tabs", () => {
     const { container } = render(
       <TabStrip
         workspaceId="w1"
@@ -128,9 +135,8 @@ describe("TabStrip", () => {
     const group = nav.querySelector("div > div")!;
     expect(group.className).not.toContain("divide-x");
     expect(group.className).not.toContain("divide-border");
-    expect(group.className).toContain("gap-1");
     const open = screen.getByRole("button", { name: "tab 1" });
-    expect(open.className).toContain("border-foreground");
+    expect(open.className).not.toMatch(/\bborder\b/);
   });
 
   it("shows All plus only this workspace's tabs, and reports selection", async () => {
@@ -192,22 +198,22 @@ describe("TabStrip — a tab with no name of its own", () => {
   it("draws its position, in the lighter ink, as the button's own spoken name", () => {
     strip("1");
     const tab = screen.getByRole("button", { name: "tab 1" });
-    expect(tab.textContent).toBe("tab 1");
-    expect(tab.querySelector(".text-muted-foreground")?.textContent).toBe("tab 1");
+    expect(visibleText(tab)).toBe("tab 1");
+    expect(visibleText(tab.querySelector('[class*="text-muted-foreground"]')!)).toBe("tab 1");
     expect(tab.querySelector(".sr-only")).toBeNull();
   });
 
   it("treats zellij's own default the same way", () => {
     strip("Tab #3");
-    expect(screen.getByRole("button", { name: "tab 3" }).textContent).toBe("tab 3");
+    expect(visibleText(screen.getByRole("button", { name: "tab 3" }))).toBe("tab 3");
   });
 
   it("draws a real name as text, with no dot and no positional ink standing in for it", () => {
     strip("review");
     const tab = screen.getByRole("button", { name: "review" });
-    expect(tab.textContent).toBe("review");
+    expect(visibleText(tab)).toBe("review");
     expect(tab.querySelector(".sr-only")).toBeNull();
-    expect(tab.querySelector(".text-muted-foreground")).toBeNull();
+    expect(tab.querySelector('[class*="text-muted-foreground"]')).toBeNull();
   });
 
   it("keeps the dot only for a tab with no label at all", () => {

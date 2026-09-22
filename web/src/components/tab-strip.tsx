@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Loader2, Plus } from "lucide-react";
 
-import { STRIP_TAP_TARGET, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
+import { STRIP_TAP_TARGET, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
 import { UnseenMark } from "@/components/ui/unseen-mark";
@@ -49,9 +49,9 @@ interface TabStripProps {
    * It is a slot rather than a named prop because this row must not learn what the pane screen is
    * doing with it. Two things follow from "outside the scroller", and both are the point: it does
    * not scroll away with the tabs (a control you can lose by swiping is not an affordance), and it
-   * costs no height at all — the row already spends the padding a 44px tap target needs (see the
-   * `h-8` tab's own comment below for where that padding lives), so the control centres in space
-   * the row was reaching into anyway.
+   * costs no height at all: it is a 28px square centred in the 30px row, and its 44px reach hangs
+   * DOWN out of the row the same way every tab's does (`TAB_ROW_SQUARE_TAP_TARGET`), so the control
+   * adds no pixel the row was not already spending.
    *
    * The cost, stated: with a trailing control the last tab can no longer scroll clean off the screen
    * edge, because the edge now belongs to the control. That is the `-mx-4 px-4` trick below, and it
@@ -84,21 +84,19 @@ interface TabStripProps {
 // of whichever tab happens to be next to it, which reads as a stray border stuck to that tab's edge
 // rather than as a boundary between two. A group with nothing dividing it needs a real gap instead,
 // so adjacent inactive tabs (both plain, both on the row's own ground) stay legible as separate
-// cells — `gap-1`, the row's own external gap, so the group reads as one spacing rule rather than
-// two.
+// cells. The gap is now 12px of visible air between two labels, bought as each tab's own `px-1.5`
+// rather than as a flex `gap`, so the hit boxes of two neighbours touch instead of leaving a 12px
+// dead strip between them.
 //
-// THE OPEN TAB IS AN INVERTED PILL — its own `rounded-md` box, filled `bg-primary` with
-// `text-primary-foreground`, the same paint the open pane pill in the row below has always used.
-// It was an outlined pill (`border-border` on `bg-background`) and on the phone that read too close
-// to its neighbours: Altan, "active tab needs to be clearer, panes are inverted and white". One
-// mark for "open" across both rows now. `my-px`: the box must sit fully INSIDE the row rather
-// than touch its top or bottom edge, so it reads as a pill floating in the 32px row rather than as
-// a box that clips against the row's own bounds — 1px in on both sides is enough for the 1px border
-// to paint whole. An inactive tab stays exactly as before: plain on the row's bare chrome ground, no
-// fill, no border, no radius, so only the open tab ever draws a box at all. There is no folder shape
-// to reserve room for, so nothing here needs the no-shift border-reservation trick the old shape
-// needed. The dashed desktop-focus ring that used to paint on top is gone too (see the cell's own
-// comment on why), so the open tab's border is the only box any cell ever draws.
+// THE OPEN TAB IS MARKED BY INK AND WEIGHT, AND BY NOTHING ELSE (option 3 of the 2026-09-23 top-bar
+// deck). It has been an inverted pill, then a 2px underline in full ink; both cost height, and the
+// underline with its padding made this row 44px of a phone screen for one line of 11px type. Altan
+// picked the variant with no mark at all: the open tab is `text-foreground font-semibold`, every
+// other tab `text-muted-foreground font-medium`, and no cell draws a fill, a border, a bar or a
+// radius. The row is 30px, the tab's own drawn height. The weight change would re-flow the row on a
+// selection (a semibold label is wider), so every label reserves its semibold width with an
+// invisible copy of itself (`StableLabel` below): the row keeps one width per tab in both states.
+// The dashed desktop-focus ring is still gone (see the cell's own comment on why).
 //
 // A CELL NAMES WHAT THE HEADER NAMES (lib/pane-name.ts § tabCellTitle). A one-pane tab reads its
 // pane's name — `plumbing`, the same word the pane header shows — not the tab's own label, so the
@@ -159,38 +157,60 @@ export function TabStrip({
         // bg-chrome: the row's own ground — see the header comment above for why this replaces the
         // baseline rule the folder shape used to draw. No border-t and no border-b: this row draws no
         // horizontal rule of its own, and a header above it keeps whatever rule it already had.
-        // `flex items-stretch` only when something is pinned to the trailing end — otherwise the
-        // <nav> stays the plain block it has always been, so a row with no `trailing` is unchanged.
-        className={cn("shrink-0 bg-chrome px-4", trailing && "flex items-stretch")}
+        // `flex items-stretch` only when something is pinned to the trailing end; otherwise a
+        // `flow-root` block. Either one stops the scroller's `-mb-3.5` from collapsing through the
+        // <nav>'s own bottom edge, which would leave the <nav> (and its chrome ground) 44px tall
+        // while the row below it moved up 14px to overlap.
+        className={cn("shrink-0 bg-chrome px-4", trailing ? "flex items-stretch" : "flow-root")}
       >
         <div
           ref={scrollerRef}
           // -mx-4 px-4: the gutter moves onto the scroller and is cancelled by the negative margin,
           // so the last tab scrolls clean off the screen edge while the first still starts on the
           // route's 16px gutter. The two halves are ONE number and must move together.
-          // pt-1.5 pb-1.5: the room the compact tab's own STRIP_TAP_TARGET reach needs, the same
-          // recipe STRIP_SCROLLER states — a `-inset-y-[7px]` reach off a drawn box gets clipped the
-          // instant the clip box (this scroller's padding box) does not extend into it, so the tap
-          // floor has to be bought with real padding, not just the pseudo-element. items-start keeps
-          // every tab's TOP on the same line, which is what makes the row read as tabs rather than as
-          // boxes of different sizes.
+          //
+          // pb-3.5 -mb-3.5: THE TAP FLOOR HANGS BELOW THE ROW, and this pair is what lets it. The
+          // row draws 30px, and a 44px hit needs 14px more. It cannot go UP: the route's own
+          // content scroller starts at the header's bottom edge and clips anything above it, and
+          // the header is a sticky `z-20` bar with 44px buttons of its own. So the whole 14px goes
+          // down, and a reach off a drawn box is clipped the instant the clip box (this scroller's
+          // padding box, `overflow-x: auto` clips BOTH axes, see STRIP_TAP_TARGET) does not extend
+          // into it. `pb-3.5` extends the clip box 14px; `-mb-3.5` takes the same 14px back out of
+          // the layout, so the <nav> still measures 30px and the scroller's lower 14px lies over
+          // whatever comes next. Only a tab's `::before` answers a tap there, and only because it
+          // carries `before:z-[1]`: the scroller itself is a plain block and loses to what lies
+          // under it, so the blank stretch between and beside the tabs stays the page's. The two
+          // halves are ONE number, like the gutter pair, and the tab's `before:-bottom-3.5` is the
+          // same number a third time.
+          //
+          // What comes next decides what the reach takes. On a one-pane tab it is the 4px page gap
+          // and then the terminal mirror, which is `relative` and later in the tree and would win
+          // a tap without the `z-[1]`. With it the tab measures 44, and the price is stated: under
+          // each tab the mirror's top 10px stop answering a tap, a long-press or the start of a
+          // drag. On the space route the same 14px lie over the top of the space's list.
+          //
+          // Under a pane row the pane row wins instead: it is `relative z-[2]` (`pane-strip.tsx`),
+          // so it owns its whole 26px, gaps included, and the boundary lands on the rows' shared
+          // edge. The tab measures its own 30px there. Two stacked 44px targets need 88px of
+          // pitch and the two rows are 56, so one of them has to give, and it is the tab, whose
+          // row is the taller one.
           className={cn(
-            "flex items-start gap-1 overflow-x-auto pt-1.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "flex items-center gap-3 overflow-x-auto pb-3.5 -mb-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             // With a pinned control the right half of the edge-to-edge trick is spent on it: the
             // scroller becomes the flex row's growing child, keeps the LEFT gutter cancellation so
             // the first tab still starts on the route's 16px, and stops at the control instead of at
             // the screen. `min-w-0` is what lets it actually shrink rather than push the control off.
-            trailing ? "-ml-4 min-w-0 flex-1 pl-4 pr-2" : "-mx-4 px-4",
+            trailing ? "-ml-4 min-w-0 flex-1 pl-4 pr-3" : "-mx-4 px-4",
           )}
         >
-          {/* THE TAB GROUP: every tab cell, separated by a plain GAP rather than a hairline — no
-              `divide-x` any more (the header comment above says why). It is its own flex child of the
-              scroller (not the scroller's own `gap-1`) so the "+" button, a sibling outside this
-              group, keeps its own gap from the group rather than inheriting the tabs' tighter one; the
-              two numbers happen to match today (both `gap-1`) but are two declarations on purpose, so
-              a future change to one never silently moves the other. `items-stretch` so the open tab's
-              border-box runs the tab's full drawn height. */}
-          <div className="flex shrink-0 items-stretch gap-1">
+          {/* THE TAB GROUP: every tab cell, separated by air rather than a hairline, no `divide-x`
+              any more (the header comment above says why). The air is each tab's own `px-1.5`, so
+              the group itself has no gap, and `-mx-1.5` pulls the first LABEL back onto the route's
+              16px gutter that the first tab's padding would otherwise push it off. It is its own flex
+              child of the scroller so the "+" button, a sibling outside this group, keeps the
+              scroller's own `gap-3` from the group: the "+" reaches 8px sideways, and 12px of gap
+              keeps that reach off the last tab. */}
+          <div className="-mx-1.5 flex shrink-0 items-stretch">
             {allowAll && (
               <Tab
                 label={translate("space.tabStrip.all")}
@@ -230,15 +250,14 @@ export function TabStrip({
               disabled={creatingTab}
               aria-label={translate("space.tabStrip.new.aria")}
               aria-busy={creatingTab}
-              // 32px drawn, 44x46 hit — a true square, which is the one shape allowed to keep
-              // `rounded-full`. self-center against the row's items-start: it is a button beside the
-              // tabs, not a tab, so it centres in the row rather than hanging from the top line.
-              // The row is 44px, so the ::before's 7px reach is trimmed to the 6px above a centred
-              // 32px box: 32+6+6 = 44 vertically, 32+7+7 = 46 horizontally, where it is last in the
-              // row and the gap keeps it clear of its neighbour.
+              // 28px drawn, 44x44 hit, a true square, which is the one shape allowed to keep
+              // `rounded-full`. 28 and not the old 32 because the row is 30 now: the circle must sit
+              // inside it. The hit is TAB_ROW_SQUARE_TAP_TARGET's: from the row's top edge down to
+              // the tabs' own 44px line, and 8px out on each side, where it is last in the row and
+              // the scroller's 12px gap keeps it clear of the last tab.
               className={cn(
-                STRIP_TAP_TARGET_SQUARE,
-                "flex size-8 shrink-0 self-center items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
+                TAB_ROW_SQUARE_TAP_TARGET,
+                "flex size-7 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
               )}
             >
               {/* Same box, same icon size, swapped in place — the button never resizes between its
@@ -251,11 +270,12 @@ export function TabStrip({
             </button>
           )}
         </div>
-        {/* The pinned slot. `self-center` for the same reason the "+" takes it: whatever stands here
-            is a control beside the tabs, not a tab, so it centres in the row rather than hanging
-            from the top line. */}
+        {/* The pinned slot. `self-center`: whatever stands here is a control beside the tabs, not a
+            tab, so it centres in the 30px row. It sits outside the scroller, so nothing clips its
+            reach; the caller gives it TAB_ROW_SQUARE_TAP_TARGET so it answers the same 44px the
+            "+" does. */}
         {trailing !== undefined && (
-          <div className="flex shrink-0 self-center pl-1">{trailing}</div>
+          <div className="flex shrink-0 self-center pl-1.5">{trailing}</div>
         )}
       </nav>
 
@@ -340,38 +360,27 @@ function Tab({
         // callout, whose native long-press gesture otherwise fires pointercancel and kills the hold
         // timer.
         //
-        // THE OPEN TAB IS AN OUTLINED PILL; AN INACTIVE ONE IS A PLAIN RECTANGLE. Both carry the
-        // SAME border-box, always — `border` + `rounded-md` + `my-px` are unconditional, and only
-        // the border's COLOUR and the fill flip with `active`. That is the C1 recipe
-        // (`ui/labelled-strip.tsx`'s header): a border reserved as transparent at rest costs the box
-        // nothing, so selecting a tab can never re-flow its neighbours (Rule E) the way a border that
-        // only APPEARS on selection would. `my-px` insets the box 1px off the row's top and bottom —
-        // needed so the open tab's border paints whole rather than clipping against the 32px row's
-        // own edges, and applied to every tab (not only the open one) so the row's height never
-        // shifts by those 2px when a tab is opened or closed. `font-medium` stays unconditional for
-        // the same reason: bolding only the active label would re-flow every tab to its right.
+        // NO BOX AT ALL, IN EITHER STATE. No border, no fill, no radius, no underline: the open tab
+        // differs from the rest only by ink and weight (the header comment above has the history).
+        // So there is no border-box to reserve and no C1 trick to keep; the one thing a selection
+        // could still move is the label's WIDTH, because semibold is wider than medium, and
+        // `StableLabel` below holds that still.
         //
-        // COMPACT: `h-8` draws a 32px tab, `text-[11px]` the size of the header's path line — Altan's
-        // ask, from the phone: this row "feel[s] too tall and the fonts too large". A tab used to BE
-        // a real 44px tap target, drawn at that height; now it draws small and answers 44px the way
-        // every other strip pill does, through `STRIP_TAP_TARGET`'s transparent `::before` — the
-        // reach it needs lives in the scroller's own `pt-1.5 pb-1.5` (see the scroller's comment
-        // above), not in this box, so the drawn tab can shrink without the thumb losing anything.
+        // COMPACT: `h-7.5` draws a 30px tab, the row's whole height, and `text-[11px]` the size of
+        // the header's path line. The tap floor is not in this box. `before:top-0 before:-bottom-3.5`
+        // overrides STRIP_TAP_TARGET's symmetric 7px: the reach cannot go up (the scroller's comment
+        // says why), so it takes the whole 14px downward, 30+14 = 44, into the scroller's own
+        // `pb-3.5` clip room. The tab has no border, so the inset resolves against the drawn edge and
+        // needs no extra pixel the way a bordered pill's does. `before:z-[1]` lets the reach win over
+        // the mirror below (the scroller's comment says what that costs).
         STRIP_TAP_TARGET,
-        "relative flex h-8 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap border-b-2 px-3 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-        // GROUND IS THE ONLY MARK. The open tab is inverted, `bg-primary` under `text-primary-
-        // foreground`, the pane pill's own "open" paint; every other tab sits on the row's bare chrome
-        // ground, draws no fill and keeps its reserved border transparent — a quiet hover wash is the
-        // one concession, so a tap target still answers a finger hovering over it on a device that
-        // has one. The border stays in the box on both (`border-primary` under the fill, so it never
-        // draws a seam of its own) for the no-shift rule.
-        // THE OPEN TAB IS UNDERLINED (2026-09-16). The inverted pill read "too white" on the phone and
-        // left the other tabs hard to spot beside it. Now every tab reads in near-full ink, and the
-        // open one takes a 2px bar under its label in full ink; the bar is reserved transparent on
-        // every tab, so opening one never shifts a neighbour.
+        "relative flex h-7.5 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-1.5 text-[11px] transition-colors before:top-0 before:-bottom-3.5 before:z-[1] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        // INK AND WEIGHT ARE THE ONLY MARK. Full ink and semibold for the open tab; the muted ink
+        // and medium weight for every other, with the full ink as the hover answer on a device that
+        // has one.
         active
-          ? "border-foreground text-foreground"
-          : "border-transparent text-foreground/70 hover:bg-muted/40",
+          ? "font-semibold text-foreground"
+          : "font-medium text-muted-foreground hover:text-foreground",
         // NO DESKTOP-FOCUS RING. `TabView.focused` (the tab the desktop TUI is looking at) used to
         // paint a dashed outline on its cell. On the phone that read as a second selection beside the
         // solid pill, and the phone's reader does not care where the desktop is looking. It is gone;
@@ -381,9 +390,8 @@ function Tab({
       {status === "ready" && <UnseenMark size="sm" />}
       {status && status !== "ready" && (
         <>
-          {/* A hollow resting dot is filled with the surface it sits ON, and the two states of this
-              tab are two different surfaces: the open tab's own bg-primary, or the row's bare chrome
-              ground everywhere else. */}
+          {/* A hollow resting dot is filled with the surface it sits ON, and every tab, open or
+              not, sits on the row's bare chrome ground: no cell draws a fill of its own. */}
           <StatusDot
             status={TRIAGE_STATUS[status]}
             surface="bg-chrome"
@@ -402,14 +410,28 @@ function Tab({
           <span className="sr-only">{label}</span>
         </>
       ) : title.positional ? (
-        // The tab's position, a shade lighter than a name someone chose, so it never reads as one.
-        // On the inverted open tab the lighter shade is of the inverted ink.
-        <span className="text-muted-foreground">
-          {title.text}
-        </span>
+        // The tab's position, a step lighter than a name someone chose so it never reads as one:
+        // an inactive position is a step lighter than an inactive name. The
+        // open one takes the full ink like any open tab, because ink is half of the only mark.
+        <StableLabel className={active ? undefined : "text-muted-foreground/70"}>{title.text}</StableLabel>
       ) : (
-        title.text
+        <StableLabel>{title.text}</StableLabel>
       )}
     </button>
+  );
+}
+
+// A label that is as wide in medium as in semibold, so opening a tab never re-flows the row (Rule
+// E). Two copies share one grid cell: the invisible one is always semibold and sets the cell's
+// width, the visible one takes the tab's own weight and is centred over it. The copy is
+// `aria-hidden`, so the button's accessible name is the label once, not twice.
+function StableLabel({ children, className }: { children: string; className?: string }) {
+  return (
+    <span className={cn("grid justify-items-center", className)}>
+      <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
+        {children}
+      </span>
+      <span className="col-start-1 row-start-1">{children}</span>
+    </span>
   );
 }
