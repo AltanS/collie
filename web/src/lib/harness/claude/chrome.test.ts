@@ -848,6 +848,15 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // a modal with no box and nothing under it.
     { fixture: "menu-effort-slider--w60-low", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "menu-effort-slider--w80-low", statusRows: 0, draft: null, stripped: 0 },
+    // The /resume session picker (2026-09-22, Claude Code 2.1.278) at 60, 80 and 120 columns, a typed
+    // search, and the all-projects view (sanitized). Measured: a modal with no box and nothing under
+    // it, at every width and in every state.
+    { fixture: "menu-resume-picker--w120-first", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-resume-picker--w120-third", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-resume-picker--w120-search", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-resume-picker--w60-first", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-resume-picker--w80-second", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "menu-resume-picker--w120-all-sanitized", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "menu-effort-slider--w80-ultracode", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "menu-effort-slider--w60-ultracode", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "menu-effort-slider--w40-low", statusRows: 0, draft: null, stripped: 0 },

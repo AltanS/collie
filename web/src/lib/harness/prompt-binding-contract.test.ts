@@ -9,6 +9,7 @@ import { detectPreviewSelect } from "./claude/preview-select";
 import { detectPromptSelect } from "./claude/prompt-select";
 import { detectWizard } from "./claude/wizard";
 import { detectMenu } from "./claude/menu";
+import { detectResumePicker } from "./claude/resume";
 
 // The client half of the prompt-binding contract. See the sibling test in
 // bridge/prompt-binding.test.ts for the full reasoning; in short:
@@ -57,7 +58,11 @@ function detectRegion(lines: StyledLine[]): { detector: string; region: string }
   if (preview) return { detector: "preview-select", region: preview.regionSignature };
   const multi = detectMultiSelect(lines);
   if (multi) return { detector: "multi-select", region: multi.regionSignature };
-  // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all four declined.
+  // The /resume picker (.adr/0058) lifts as a prompt-select block, and claudeBuildBlocks tries it just
+  // before the generic menu, which would otherwise claim the same screen.
+  const resume = detectResumePicker(lines);
+  if (resume) return { detector: "prompt-select", region: resume.signature };
+  // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all five declined.
   const menu = detectMenu(lines);
   if (menu) return { detector: "menu", region: menu.signature };
   return null;

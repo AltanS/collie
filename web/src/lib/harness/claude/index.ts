@@ -15,6 +15,7 @@ import { detectWizardRegion } from "./wizard";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectEffortRegion } from "./effort";
+import { detectResumePickerRegion } from "./resume";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
 import {
@@ -96,8 +97,21 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
     return blocks;
   }
 
+  // The `/resume` session picker (resume.ts, .adr/0058) — another screen the generic menu CAN claim
+  // but cannot drive: its footer never names Enter or the arrows, so the generic card could only
+  // cancel. Recognised by its own title, search box and footer, it lifts as a pointed list whose
+  // taps walk the `❯` and send Enter, the one unprinted key ADR 0058 allows on this dialog alone.
+  const resumeRegion = detectResumePickerRegion(lines);
+  if (resumeRegion) {
+    const before = trimTrailingBlank(lines.slice(0, resumeRegion.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "prompt-select", prompt: resumeRegion.model, lines: lines.slice(resumeRegion.startLine) });
+    return blocks;
+  }
+
   // LAST RESORT: a modal screen none of the specific grammars claimed, driven by the keys its own
-  // footer names (menu.ts). It runs after all five deliberately — every grammar above encodes a
+  // footer names (menu.ts). It runs after all six deliberately — every grammar above encodes a
   // VERIFIED keystroke recipe for a dialog it recognises, and this one only knows what the screen
   // printed. It must never pre-empt them; it exists to catch what they decline (the `/model` picker),
   // where the alternative is no buttons at all and a composer send typed into the picker.

@@ -444,9 +444,10 @@
         "draft": null,
         "tail": null,
         "dialogLive": true,
-        "blockKind": "menu",
+        "blockKind": "prompt-select",
         "keys": [
           "Down",
+          "Enter",
           "Escape",
           "Up",
           "ctrl+a",
@@ -454,12 +455,11 @@
           "ctrl+r"
         ]
       },
-      "knownKeyGap": "The footer wraps onto two rows at 83 columns and only the last row is read, so 'Ctrl+A to show all projects' and 'Ctrl+B to only show current branch' never reach the model. Candidate grammar: the multi-row footer reader the register already asks for on the narrow Effort slider.",
+      "knownKeyGap": "The /resume grammar (resume.ts, ADR 0058) lifts each session as a row whose tap walks the pointer and sends Enter, plus the footer's Esc row. PromptModel has no place for footer actions, so Ctrl+A, Ctrl+B and Ctrl+R stay on the Keys drawer, and with the pointer on the top row no tap needs Up.",
       "actualKeys": [
         "Down",
-        "Escape",
-        "Up",
-        "ctrl+r"
+        "Enter",
+        "Escape"
       ]
     },
     {

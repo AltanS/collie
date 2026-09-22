@@ -1,0 +1,40 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.280[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mOpus 5.5 (1M context) · Claude Max[0m
+[0m[38;2;215;119;87m  ▝▝ ▝▝    [0m[38;2;153;153;153m/tmp/resume-lab[0m
+
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ [0m[38;2;255;193;7mYou've used 89% of your weekly limit · resets Sep 26, 12am (Europe/Berlin)[0m[38;2;177;185;249m ▔[0m
+   [0m[1m[38;2;177;185;249mResume session[0m[1m[38;2;153;153;153m (1 of 50)[0m
+   [0m[2m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+   [0m[2m│[0m [0m[38;2;153;153;153m⌕ Search…[0m                                                                                                      [0m[2m│[0m
+   [0m[2m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+   [0m[38;2;177;185;249m❯ Correct the licence field in form[0m
+     [0m[38;2;153;153;153mnow · main · 1.1MB · /home/user/projects/example-company-platform[0m
+
+     tidy the backlog
+     [0m[38;2;153;153;153m2 seconds ago · main · 79.3MB · /home/user/projects/demo-analytics[0m
+
+     emails
+     [0m[38;2;153;153;153m7 seconds ago · main · 10MB · /home/user/projects/example-company-platform[0m
+
+     Product detail page layout overhaul
+     [0m[38;2;153;153;153m19 seconds ago · main · 8.3MB · /home/user/projects/example-company-platform[0m
+
+     Count to three
+     [0m[38;2;153;153;153m1 minute ago · master · 177.4KB · /tmp/resume-lab[0m
+
+     Name a colour
+     [0m[38;2;153;153;153m2 minutes ago · master · 177.5KB · /tmp/resume-lab[0m
+
+     say ok
+     [0m[38;2;153;153;153m2 minutes ago · master · 176.8KB · /tmp/resume-lab[0m
+
+     Say hi in one word
+     [0m[38;2;153;153;153m3 minutes ago · master · 177.5KB · /tmp/resume-lab[0m
+
+   [0m[38;2;153;153;153m↓ [0mclassifier milestone m09
+     [0m[38;2;153;153;153m4 minutes ago · main · 45.8MB · example/demo#1234 · /home/user/projects/notes-and-experiments[0m
+     
+     [0m[38;2;153;153;153mCtrl+A to only show current repo · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · [0m
+     [0m[38;2;153;153;153mType to search · Esc to cancel[0m

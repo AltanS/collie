@@ -70,6 +70,36 @@
     "region": "────────────────────────────────────────\nlow     medium     high     xhigh      m\n                                        \n                                        \n   ←/→ to adjust · Enter to confirm · s \nfor this session only · Esc to cancel"
   },
   {
+    "fixture": "claude--menu-resume-picker--w120-first.txt",
+    "detector": "prompt-select",
+    "region": "   Resume session\n   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n   │ ⌕ Search…                                                                                                      │\n   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n     resume-lab\n\n   ❯ Count to three\n     44 seconds ago · master · 177.4KB\n\n     Name a colour\n     1 minute ago · master · 177.5KB\n\n     say ok\n     1 minute ago · master · 176.8KB\n\n     Say hi in one word\n     2 minutes ago · master · 177.5KB\n     \n     Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · Type to\n     search · Esc to cancel"
+  },
+  {
+    "fixture": "claude--menu-resume-picker--w120-third.txt",
+    "detector": "prompt-select",
+    "region": "   Resume session\n   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n   │ ⌕ Search…                                                                                                      │\n   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n     resume-lab\n\n     Count to three\n     1 minute ago · master · 177.4KB\n\n     Name a colour\n     1 minute ago · master · 177.5KB\n\n   ❯ say ok\n     2 minutes ago · master · 176.8KB\n\n     Say hi in one word\n     2 minutes ago · master · 177.5KB\n     \n     Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · Type to\n     search · Esc to cancel"
+  },
+  {
+    "fixture": "claude--menu-resume-picker--w120-search.txt",
+    "detector": "prompt-select",
+    "region": "   Resume session\n   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n   │ ⌕ hi                                                                                                           │\n   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n     Say hi in one word\n     4 minutes ago · master · 177.5KB\n\n     Type to Search · Enter to select · Esc to clear"
+  },
+  {
+    "fixture": "claude--menu-resume-picker--w60-first.txt",
+    "detector": "prompt-select",
+    "region": "   Resume session\n   ╭────────────────────────────────────────────────────╮\n   │ ⌕ Search…                                          │\n   ╰────────────────────────────────────────────────────╯\n     resume-lab\n\n   ❯ Count to three\n     3 minutes ago · master · 177.4KB\n\n     Name a colour\n     3 minutes ago · master · 177.5KB\n\n     say ok\n     3 minutes ago · master · 176.8KB\n\n     Say hi in one word\n     4 minutes ago · master · 177.5KB\n     \n     Ctrl+A to show all projects · Ctrl+B to only show \n     current branch · Space to preview · Ctrl+R to rename\n     · Type to search · Esc to cancel"
+  },
+  {
+    "fixture": "claude--menu-resume-picker--w80-second.txt",
+    "detector": "prompt-select",
+    "region": "   Resume session\n   ╭────────────────────────────────────────────────────────────────────────╮\n   │ ⌕ Search…                                                              │\n   ╰────────────────────────────────────────────────────────────────────────╯\n     resume-lab\n\n     Count to three\n     3 minutes ago · master · 177.4KB\n\n   ❯ Name a colour\n     3 minutes ago · master · 177.5KB\n\n     say ok\n     4 minutes ago · master · 176.8KB\n\n     Say hi in one word\n     4 minutes ago · master · 177.5KB\n     \n     Ctrl+A to show all projects · Ctrl+B to only show current branch · Space\n     to preview · Ctrl+R to rename · Type to search · Esc to cancel"
+  },
+  {
+    "fixture": "claude--menu-resume-picker--w120-all-sanitized.txt",
+    "detector": "prompt-select",
+    "region": "   Resume session (1 of 50)\n   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n   │ ⌕ Search…                                                                                                      │\n   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n   ❯ Correct the licence field in form\n     now · main · 1.1MB · /home/user/projects/example-company-platform\n\n     tidy the backlog\n     2 seconds ago · main · 79.3MB · /home/user/projects/demo-analytics\n\n     emails\n     7 seconds ago · main · 10MB · /home/user/projects/example-company-platform\n\n     Product detail page layout overhaul\n     19 seconds ago · main · 8.3MB · /home/user/projects/example-company-platform\n\n     Count to three\n     1 minute ago · master · 177.4KB · /tmp/resume-lab\n\n     Name a colour\n     2 minutes ago · master · 177.5KB · /tmp/resume-lab\n\n     say ok\n     2 minutes ago · master · 176.8KB · /tmp/resume-lab\n\n     Say hi in one word\n     3 minutes ago · master · 177.5KB · /tmp/resume-lab\n\n   ↓ classifier milestone m09\n     4 minutes ago · main · 45.8MB · example/demo#1234 · /home/user/projects/notes-and-experiments\n     \n     Ctrl+A to only show current repo · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · \n     Type to search · Esc to cancel"
+  },
+  {
     "fixture": "claude--menu-model-picker-moved.txt",
     "detector": "menu",
     "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Select model\n   Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.\n\n     1. Default (recommended) ✔  Opus 5 with 1M context · Best for everyday, complex tasks\n     2. Opus (1M context)        Opus 5 with 1M context · Best for everyday, complex tasks\n   ❯ 3. Fable                    Fable 5 · Most capable for your hardest and longest-running tasks\n     4. Sonnet                   Sonnet 5 · Efficient for routine tasks\n     5. Haiku                    Haiku 4.5 · Fastest for quick answers\n\n   ◐ Medium effort ←/→ to adjust\n\n   Enter to set as default · s to use this session only · Esc to cancel"
@@ -256,8 +286,8 @@
   },
   {
     "fixture": "claude-lab--menu-resume-picker--w83.txt",
-    "detector": "menu",
-    "region": "   ╰───────────────────────────────────────────────────────────────────────────╯\n     project\n\n   ❯ Read README.md\n     1 minute ago · main · 539.1KB\n\n     README review\n     26 minutes ago · main · 244.4KB\n\n     Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to\n     preview · Ctrl+R to rename · Type to search · Esc to cancel"
+    "detector": "prompt-select",
+    "region": "   Resume session\n   ╭───────────────────────────────────────────────────────────────────────────╮\n   │ ⌕ Search…                                                                 │\n   ╰───────────────────────────────────────────────────────────────────────────╯\n     project\n\n   ❯ Read README.md\n     1 minute ago · main · 539.1KB\n\n     README review\n     26 minutes ago · main · 244.4KB\n\n     Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to\n     preview · Ctrl+R to rename · Type to search · Esc to cancel"
   },
   {
     "fixture": "claude-lab--menu-rewind--w82.txt",
