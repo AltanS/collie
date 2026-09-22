@@ -8,6 +8,8 @@ lives in the README. Security requirements in [docs/security.md](security.md) ap
 - [Variant C — reverse proxy as the only front door (no Tailscale)](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)
 - [Variant D — off-host identity proxy over the tailnet](#variant-d--off-host-identity-proxy-over-the-tailnet)
 - [Variant E — any other mesh or tunnel (NetBird, ZeroTier, Cloudflare Tunnel)](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
+- [Front doors, one product at a time](#front-doors-one-product-at-a-time): Tailscale, Cloudflare Tunnel,
+  Nginx Proxy Manager, NetBird, Caddy
 - [Serving Collie under a path](#serving-collie-under-a-path)
 - [Several Collies on one host](#several-collies-on-one-host)
 - [Multiple Collie instances on one host](#multiple-collie-instances-on-one-host)
@@ -253,6 +255,184 @@ Rules:
 1. Apply [Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) proxy rules.
 2. `COLLIE_TRUSTED_USER` is inactive without Tailscale. Use `COLLIE_DEVICE_HEADER` or the tunnel's auth.
 3. Use a static hostname so PWA caching and `COLLIE_PUBLIC_HOSTS` remain valid.
+
+---
+
+## Front doors, one product at a time
+
+Rough setups for the front doors people ask about. Each one ends at the same place: HTTPS on one
+fixed hostname, forwarded to `127.0.0.1:$COLLIE_PORT` on this host.
+
+> **Note.** Web Push, the microphone and the home screen install need HTTPS with a certificate
+> the phone trusts. Over plain HTTP, Collie still reads and replies in a browser tab, and those
+> three stay off ([Voice input and Web Push](voice-and-push.md)).
+
+Every front door except Tailscale uses the same three lines in Collie's `.env`, then a restart:
+
+```bash
+COLLIE_SKIP_SERVE=1                                 # you own the door, not Collie
+COLLIE_PUBLIC_HOSTS=collie.example.com              # the hostname the phone opens
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # the same, as an origin
+```
+
+Run the proxy or tunnel on the same host as Collie. Collie refuses a connection that does not
+come from loopback, so a proxy on another machine needs
+[Variant D](#variant-d--off-host-identity-proxy-over-the-tailnet) instead.
+
+Then pair the phone with `collie pair`. None of these doors knows which device may type; pairing
+does ([Pair a device](security.md#pair-a-device--the-write-credential)).
+
+| Door | Private by default | HTTPS certificate | Extra step |
+| --- | --- | --- | --- |
+| Tailscale | yes, tailnet only | Tailscale issues it | enable HTTPS certificates once |
+| Cloudflare Tunnel | **no, public** | Cloudflare issues it | Cloudflare Access login in front |
+| Nginx Proxy Manager | depends on the host | Let's Encrypt | host networking for the container |
+| NetBird | yes, mesh only | none of its own | a proxy on the host, DNS challenge |
+| Caddy | depends on the host | Let's Encrypt, automatic | a DNS plugin for a private name |
+
+### Tailscale
+
+The default, and the only door Collie manages itself: `collie start` runs `tailscale serve` on
+your MagicDNS name.
+
+1. In the Tailscale admin console, open **DNS**, turn on MagicDNS, then **Enable HTTPS**.
+2. Start Collie, which publishes itself on the tailnet.
+
+   ```bash
+   collie start
+   ```
+
+3. Set `COLLIE_TRUSTED_USER` to your tailnet login in `.env`, then restart.
+
+   ```bash
+   collie restart
+   ```
+
+[Variant A](../README.md#variant-a--tailscale-serve--person-identity-default) has the rest.
+Do not set `COLLIE_SKIP_SERVE` for this door.
+
+> **Never** use `tailscale funnel`. Funnel puts the port on the public internet.
+
+### Cloudflare Tunnel
+
+`cloudflared` dials out to Cloudflare, so no port opens on your router. The hostname is public,
+so a login has to stand in front of it.
+
+1. Log in, create a tunnel, and point a hostname at it.
+
+   ```bash
+   cloudflared tunnel login
+   cloudflared tunnel create collie
+   cloudflared tunnel route dns collie collie.example.com
+   ```
+
+2. Write `~/.cloudflared/config.yml` with the tunnel id `create` printed.
+
+   ```yaml
+   tunnel: <tunnel-id>
+   credentials-file: /home/you/.cloudflared/<tunnel-id>.json
+   ingress:
+     - hostname: collie.example.com
+       service: http://127.0.0.1:8787
+     - service: http_status:404
+   ```
+
+3. Install it as a service with that config, so it survives a reboot.
+
+   ```bash
+   sudo cloudflared --config ~/.cloudflared/config.yml service install
+   ```
+
+4. In Cloudflare Zero Trust, add a **self-hosted application** for `collie.example.com`, with a
+   policy that lets in your email only.
+
+A tunnel made in the Zero Trust dashboard works too: set its public hostname's service to
+`http://127.0.0.1:8787`. `cloudflared` forwards the public hostname as `Host`, which is what
+`COLLIE_PUBLIC_HOSTS` expects.
+
+> **Warning.** Without step 4, anyone who finds the hostname gets a shell on your machine.
+> Cloudflare Access is the door's lock; pairing then decides which device may type.
+
+Access redirects to `/cdn-cgi/access/` to log in. Keep `sw.js` and `index.html` uncached, as
+[Routing `/auth/` and caching](#routing-auth-and-caching) says.
+
+### Nginx Proxy Manager
+
+A reverse proxy with a web UI and Let's Encrypt built in. It runs in Docker, and inside a
+container `127.0.0.1` is the container, not your host.
+
+1. Give the container the host's network, so it can reach Collie on loopback.
+
+   ```yaml
+   services:
+     npm:
+       image: jc21/nginx-proxy-manager:latest
+       network_mode: host
+       volumes:
+         - ./data:/data
+         - ./letsencrypt:/etc/letsencrypt
+   ```
+
+2. Open the UI on port 81 and add a **Proxy Host**: domain `collie.example.com`, scheme `http`,
+   forward to `127.0.0.1`, port `8787`.
+3. On the **SSL** tab, request a Let's Encrypt certificate and turn on **Force SSL**.
+
+Leave **Cache Assets** off, so the service worker can update. Collie polls over plain HTTP, so the
+**Websockets Support** switch does not matter.
+
+For a name that only resolves inside your network, pick **Use a DNS Challenge** on the SSL tab.
+Let's Encrypt cannot reach a private host over HTTP.
+
+> **Warning.** `host.docker.internal` with `host-gateway` does not work here. It reaches the
+> Docker bridge address, and Collie listens only on `127.0.0.1`.
+
+If the proxy is open to the internet, add an **Access List** to the proxy host, or keep ports
+80 and 443 closed on the router and reach the host over a VPN.
+
+### NetBird
+
+NetBird is a WireGuard mesh, like a tailnet. It carries the traffic, and a reverse proxy on the
+host adds HTTPS.
+
+1. Join the host and the phone to the same NetBird network.
+
+   ```bash
+   netbird up
+   ```
+
+2. Point a DNS record for `collie.example.com` at the host's NetBird address (`100.x.y.z`).
+3. Run Caddy on the host, bound to that address, with a DNS challenge certificate.
+
+   ```caddyfile
+   collie.example.com {
+       bind 100.x.y.z
+       tls {
+           dns cloudflare {env.CF_API_TOKEN}
+       }
+       reverse_proxy 127.0.0.1:8787
+   }
+   ```
+
+The DNS challenge proves you own the domain without Let's Encrypt reaching the host, so the name
+can point at a private address. Caddy needs the DNS plugin for your provider, for example
+`xcaddy build --with github.com/caddy-dns/cloudflare`.
+
+A NetBird peer name such as `host.netbird.cloud` has no publicly trusted certificate, so use a
+domain you own. The same recipe fits ZeroTier or any other mesh.
+
+### Caddy
+
+Caddy gets and renews its own certificate. On a host that is reachable on ports 80 and 443, this
+is the whole config:
+
+```caddyfile
+collie.example.com {
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+For a private name, add the `tls { dns … }` block from [NetBird](#netbird) above. A public host
+also needs a login in front, as in [Variant C](#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
 
 ---
 
