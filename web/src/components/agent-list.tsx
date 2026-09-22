@@ -220,9 +220,14 @@ export function AgentList({
           each lit with the worst status inside. Tap a chip to see that workspace alone, tap it or
           All to see everything again. Long-press a chip to hide the workspace, and again to bring it
           back; a hidden chip stays in the strip, dimmed, with its dot, so hiding never silences a
-          workspace that needs you. One height always, so nothing below moves. */}
+          workspace that needs you. One height always, so nothing below moves.
+          The scroller keeps STRIP_SCROLLER's own `py-1.5` and must: that padding is the room a
+          chip's STRIP_TAP_TARGET `::before` reaches into for the 44px tap floor. Trimmed to `py-0`
+          it cost both halves at once — the reach was clipped away, so the chips answered a 34px
+          touch, and the same overflow became 6px of vertical scroll that dragged their bottom edge
+          out of sight. `actions-row.tsx` hit this before; its note carries the mechanism. */}
       <nav aria-label={t("space.strip.title")} className="-mx-4">
-        <div className={cn(STRIP_SCROLLER, "px-4 py-0")}>
+        <div className={cn(STRIP_SCROLLER, "px-4")}>
           <Chip label={t("space.tabStrip.all")} active={!isolatedGroup} onClick={() => onIsolate?.(null)} />
           {groups.map((g) => (
             <Chip
