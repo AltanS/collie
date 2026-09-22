@@ -83,6 +83,34 @@ unchanged, the send key first among them.**
   host path cannot push it off the right edge even in principle.
 - **No new dependency, and about 114 bytes on the web bundle** (954,998 to 955,112 in
   `dist/assets/index-*.js`).
-- **Revisit** if a second secondary tool earns the toolbar's left side, which is the point at which
+- **Revisit** if a second secondary tool earns the box's left side, which is the point at which
   the row needs a rule about what may live there, or if the 36px faces read as too small in a real
   hand despite the 44px hit area.
+
+## Amended 2026-09-22
+
+The toolbar row cost a second row of height on a phone. An empty composer stood two rows tall,
+the field's line on top and the two 36px buttons under it, and every pixel of that came out of the
+mirror. The focus mark also drew two frames: the border turned ring-coloured, and the offset
+outline drew a second line 2px outside it.
+
+**The box keeps one row, with attach and the primary action inline, and one focus frame.** This
+replaces decisions 1, 3 and 4 above where they differ; the rest stands.
+
+1. **One row.** The box itself is the row, `flex items-end gap-1 p-1`: attach, the field
+   (`flex-1 min-w-0`), the primary action. `items-end` keeps both buttons pinned to the bottom edge
+   while a long draft grows the field up to its `min(10rem,30dvh)` cap. The toolbar row is gone.
+2. **An empty composer is one button row tall.** The buttons stay 36px faces with the 44px hit area
+   of `TOOLBAR_TAP_TARGET`. The box's `p-1` is exactly that 4px reach, so the box is 44px inside its
+   border. The field centres one line against the buttons with `py-1.5` and `min-h-9`, and claims
+   nothing taller.
+3. **One focus frame.** On `focus-within` the border takes the ring colour and `ring-1 ring-ring`
+   thickens it as a box-shadow, which costs no layout. No outline, no offset, no second line. The
+   wrapper's `pt-1`, which only kept the old outline's 4px reach off the belt, is gone with it.
+4. **A long unbroken token is stopped twice again.** Send is beside the field once more, so the
+   field's `min-w-0` is what lets it be narrower than an uploaded host path asks, and
+   `wrap-anywhere` on the value still stops the same thing at the source.
+
+Everything else is unchanged: Ctrl/Cmd+Enter sends and a bare Enter is a newline, the locked look,
+the picker anchored to the box, the mic, Send and confirm swap, the draft preview, IME and
+paste-a-file.

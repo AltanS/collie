@@ -219,21 +219,20 @@ function ComposerDock({
 const ATTACH_PRESS_MS = 220;
 
 /**
- * The 44px tap floor, bought back as HIT AREA by the two buttons on the box's toolbar row.
+ * The 44px tap floor, bought back as HIT AREA by the two buttons inside the composer's box.
  *
  * DESIGN.md §6 states the floor and also states this trade: where drawn height is expensive, a
  * control may measure less and reach out with a transparent `::before`, exactly as
- * `STRIP_TAP_TARGET` does for the strips. It is expensive here. The toolbar row stands INSIDE the
- * composer's box, under the draft, so every pixel it takes is a pixel of mirror the operator stops
- * seeing, and a 44px face plus the row's own inset would make the box taller than the field and
- * the old floating Send put together.
+ * `STRIP_TAP_TARGET` does for the strips. It is expensive here. The two buttons stand INSIDE the
+ * composer's box, on the field's own row, so their face sets the height of an empty composer, and
+ * every pixel of it is a pixel of mirror the operator stops seeing.
  *
  * The arithmetic, and it is the whole reason this is a constant and not a class at two call sites:
  * the face is `size-9`, 36px, and `-inset-1` reaches 4px out on all four sides, so 36 + 8 = 44 in
- * BOTH axes. The reach stays inside the row's own `px-1.5 pb-1.5` (6px), so no hit box crosses the
- * box's border, and the two buttons sit at opposite ends of a `justify-between` row, so they never
- * touch each other. Change the face, the inset or the row's padding and all three facts must be
- * re-checked together.
+ * BOTH axes. The box's own `p-1` is 4px, so the reach stays inside the border and the box's inner
+ * height is exactly that 44px: one row. Beside the field the reach runs into the row's `gap-1`, so
+ * no hit box crosses the textarea's own edge. Change the face, the inset, the box's padding or the
+ * gap and all of these facts must be re-checked together (ADR 0057, amended 2026-09-22).
  */
 const TOOLBAR_TAP_TARGET = "relative before:absolute before:-inset-1 before:content-['']";
 
@@ -1398,312 +1397,293 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {translate("composer.draft.tooLong")}
           </p>
         </Collapse>
-        {/* `pt-1` ONLY, not `py-1`, and it is not a top-alignment nicety: the focus mark on the
-            box below (`outline-2 outline-offset-2`) reaches 4px past its own border on every side,
-            measured. The belt above already carries `mb-1` for its own reason (actions-row.tsx),
-            but that 4px sits OUTSIDE this wrapper and the mark bleeds straight through it. Without
-            this padding its top edge lands exactly on the belt's bottom edge, touching. `pt-1`
-            absorbs the 4px reach INSIDE the wrapper instead, so the belt's existing `mb-1` is what
-            remains as clearance. The bottom needs no match: the chrome container's own `pb-2` /
-            safe-area padding below is already 8px, twice the 4px reach, so the mark already clears
-            the chrome edge by 4px without help. Adding `pb-1` here would only push that to 8px
-            clear, don't; it is not the fix, it is padding a place that was never touching.
+        {/* ── ONE BOX, ONE ROW: ATTACH, THE FIELD, THE PRIMARY ACTION ──────────────────────
+            The field, the attach control and Send used to be three shapes on one line: a
+            bordered field with a button tucked into its bottom-right corner, and a round primary
+            action floating beside it. They are one bordered container now, ported by hand from the
+            prompt-input pattern (ADR 0057). For one round the box also carried a toolbar row under
+            the field; on a phone that was a second row of height on an EMPTY composer, so the two
+            buttons came back inline (ADR 0057, amended 2026-09-22).
 
-            RE-CHECKED after the belt grew from 32px to 40px (its scroller's own `py-1`,
-            actions-row.tsx): that growth is INSIDE the belt's border box, below the belt's own
-            top/bottom rules, and `mb-1` is measured from those rules outward, so it changes
-            nothing here. This wrapper's `pt-1` still supplies exactly 4px of clearance, no more.
+            THE ROW. `flex items-end gap-1 p-1`: attach, the field (`flex-1 min-w-0`), the primary
+            action. `items-end` pins both buttons to the bottom edge while a long draft grows the
+            field upward to its cap, which is where a thumb already is. `p-1` is 4px, exactly the
+            reach of `TOOLBAR_TAP_TARGET`, so an empty box is 36 + 8 = 44px inside its border.
 
-            RE-CHECKED again when the field and Send became one box (ADR 0057). The mark moved from
-            the field to the box and its reach is the same 4px, so every number above stands. What
-            went away is the flex row this used to be: there is one child now, not two. */}
-        <div className="pt-1">
-          {/* ── ONE BOX: THE FIELD ON TOP, A TOOLBAR ROW UNDER IT ─────────────────────────────
-              The field, the attach control and Send used to be three shapes on one line: a
-              bordered field with a button tucked into its bottom-right corner, and a round primary
-              action floating beside it. They are one bordered container now, the prompt-input
-              pattern the shadcn-registry chat kits settled on, ported by hand (ADR 0057).
+            THE FRAME IS HERE AND NOWHERE ELSE, AND THERE IS ONE. The border is unconditional and
+            only its colour moves on focus, so the box never resizes under the caret (DESIGN.md §2),
+            and `focus-within:ring-1` doubles it to a 2px line as a box-shadow, which costs no
+            layout. It WAS an outline two pixels outside the border as well, and a ring-coloured
+            border plus an offset outline drew two frames around one field. Do not bring an
+            `outline-offset-*` back: one frame is the focus mark, and it is still a visible one.
 
-              THE FRAME IS HERE AND NOWHERE ELSE. The border is unconditional and only its colour
-              moves on focus, so the box never resizes under the caret, and `focus-within` is what
-              puts the mark on the whole shape rather than on the textarea inside it. It stays an
-              OUTLINE rather than a ring for the reason chat-input.tsx's own note gives: a ring flush
-              against the border reads as one smear, and an outline costs the layout nothing.
+            No wrapper padding above the box any more. It was `pt-1`, there only to keep the old
+            outline's 4px reach off the belt; the ring reaches 1px, and the belt's own `mb-1`
+            clears that.
 
-              `relative` is the anchor `AnchoredMenu` positions against, so the attach picker opens
-              above the whole box and never over the button that opened it (ui/anchored-menu.tsx
-              carries that measurement). The menu is a child of the box for that reason alone.
+            `relative` is the anchor `AnchoredMenu` positions against, so the attach picker opens
+            above the whole box and never over the button that opened it (ui/anchored-menu.tsx
+            carries that measurement). The menu is a child of the box for that reason alone; it is
+            absolutely positioned, so it takes no place in the row.
 
-              The machine this write lands on is NOT in here, and must not move in. It was, for one
-              round, docked at the field's right edge, and it cost 60px of typing width on a crew,
-              out of the widest part of the composer. It answers the same question from the belt
-              above, which is equally at the write surface and costs the draft nothing. */}
-          <div
-            className={cn(
-              "relative rounded-xl border border-input bg-background focus-within:border-ring focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring",
-              // A composer nobody may write to says so as a surface, not just as a placeholder:
-              // the fill recedes and every control on the toolbar row is disabled anyway.
-              locked && "bg-muted/40",
-              // Armed "Type into terminal". The tint was on the field while the field wore the
-              // frame; it follows the frame.
-              direct.active &&
-                "border-primary focus-within:border-primary focus-within:outline-primary",
-            )}
-          >
-            <ChatInput
-              ref={inputRef}
-              value={direct.active ? direct.value : input}
-              onChange={direct.active ? direct.onChange : (e) => updateInput(e.target.value)}
-              onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
-              onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
-              onKeyDown={
-                direct.active
-                  ? direct.onKeyDown
-                  : (e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        onSendClick();
-                      }
-                    }
-              }
-              onPaste={onPasteFile}
-              placeholder={
-                gone
-                  ? translate("composer.placeholder.gone")
-                  : readOnly
-                    ? translate("composer.placeholder.readOnly")
-                    : // Names the machine, because on a crew "why can't I type?" has two possible
-                      // answers and only one of them is about this device.
-                      hostBlock
-                      ? hostBlock
-                      : // The multiplexer cannot type here at all — its own words where it gave any, so
-                        // the placeholder says what is true of THIS terminal rather than blaming the app.
-                        missingSend !== null
-                        ? missingSend.note || translate("composer.placeholder.noMuxSend")
-                      : direct.active
-                        ? translate("composer.placeholder.direct")
-                        : isShell
-                          ? translate("composer.placeholder.shell")
-                          : translate("composer.placeholder.reply")
-              }
-              autoCorrect={direct.active ? "off" : undefined}
-              spellCheck={direct.active ? false : undefined}
+            THE BELT IS NOT PART OF THIS BOX. Keys / Type / Quick / Agent / Display stay above it
+            (actions-row.tsx). They open docks that fill half the viewport; the box holds the two
+            controls that act on the draft in front of you, and nothing else moves in.
+
+            The machine this write lands on is NOT in here, and must not move in. It was, for one
+            round, docked at the field's right edge, and it cost 60px of typing width on a crew,
+            out of the widest part of the composer. It answers the same question from the belt
+            above, which is equally at the write surface and costs the draft nothing. */}
+        <div
+          className={cn(
+            "relative flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+            // A composer nobody may write to says so as a surface, not just as a placeholder:
+            // the fill recedes and both buttons in the box are disabled anyway.
+            locked && "bg-muted/40",
+            // Armed "Type into terminal". The tint was on the field while the field wore the
+            // frame; it follows the frame.
+            direct.active && "border-primary focus-within:border-primary focus-within:ring-primary",
+          )}
+        >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               className={cn(
-                // `block` matters: a textarea is inline-level by default, so its parent inherits a
-                // few px of baseline gap beneath it, and that gap sat between the field and the
-                // toolbar row as a stripe nothing had asked for.
+                TOOLBAR_TAP_TARGET,
+                "size-9 rounded-full text-muted-foreground",
+                // The press echo, in the tone this app already uses for "your press landed" —
+                // `variant="default"`, which is what a tapped quick reply and a busy dialog option
+                // both flip to. It was `bg-accent` first, and that was a token chosen by name
+                // rather than by looking: in the dark theme `accent` resolves to oklch(0.269),
+                // which is the SAME value as `muted` and sits 0.06 of lightness above the card it
+                // is drawn on. Measured through a real tap, it faded in over 180ms, held for 40,
+                // and faded out — a flash nobody could see on a phone. `primary` is oklch(0.922).
                 //
-                // NO `pr-*` ANY MORE, AND NOTHING MAY ADD ONE. It was `pr-11`, the 44px strip the
-                // attach button needed while it was tucked into the field's bottom-right corner. The
-                // button is on the toolbar row below now, so there is nothing inside the field to
-                // reserve for, and the 44px went back to the typing area: measured in the playground
-                // at a true 390px content width, the field was 310px with 254px of typing area, and
-                // the same field is 298px of typing area now, on a crew and on a solo install alike.
-                // For one round a crew paid 60px of that to a chip docked at the field's right edge;
-                // the host answers the same question from the belt above, and that width came back
-                // too. Anything that wants room beside the draft takes the toolbar row, not a
-                // padding here: a second control inside the field is the shape this box replaced.
-                "block",
-                // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
-                // family the mirror above it renders in, not the app's chrome face. `font-mono` is
-                // the mirror's own default; the style below follows the operator's mirror-family
-                // choice (Settings → Terminal font), exactly as the mirror itself does.
-                //
-                // THE SIZE IS ITS OWN SETTING (Settings → Terminal font → Draft text), and it is not
-                // the mirror's number: the mirror is output you scan, the draft is a sentence you are
-                // writing. It used to be pinned to the primitive's 16px — not as a choice, but because
-                // a sub-16px focused input makes iOS Safari zoom the whole page and never zoom back.
-                // That fact is now handled where it belongs, as a floor inside `applyDraftFontSize`,
-                // so every other browser gets the smaller default the operator asked for.
-                "font-mono",
+                // `duration-0` on the way IN, and the base duration on the way out. A press has to
+                // answer immediately or it is not answering the press; the release is the part that
+                // wants easing. Removing both classes in one commit is what lets the exit animate.
+                // Lit for the press, and then for as long as the menu it opened is standing: the
+                // menu is anchored above rather than over the button precisely so this can be seen,
+                // and a trigger that went dark under its own open menu would waste that.
+                (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
               )}
-              // Built above, where the two halves and their reasons sit together.
-              style={draftStyle}
-              disabled={locked}
-              rows={1}
-            />
-            {/* The picker, anchored to the BOX so it opens above the whole shape rather than over
-                the button that opened it (ui/anchored-menu.tsx carries the measurement, and the
-                box's own `relative` is the anchor). It cannot be anchored to the attach button
-                itself: the panel is `right-0 min-w-44` against its anchor, and the button stands at
-                the LEFT end of the toolbar row, so it would grow off the left edge of the screen.
-                Two rows, no confirm, each one opens a native picker, which is its own decision
-                point. The menu closes BEFORE the click so it is not left standing behind the
-                system UI, and the click still counts as the user gesture the browser requires
-                because both happen in this one handler. */}
-            <AnchoredMenu
-              open={picking}
-              onClose={() => setPicking(false)}
-              label={translate("composer.attach.title")}
+              disabled={uploading || locked || direct.active}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => {
+                echoAttachPress();
+                if (asksWhich) setPicking(true);
+                else photoRef.current?.click();
+              }}
+              aria-label={translate("composer.attach.aria")}
+              aria-haspopup="dialog"
+              aria-expanded={asksWhich ? picking : undefined}
             >
-              <ActionRow
-                icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
-                label={translate("composer.attach.photos")}
-                onClick={() => {
-                  setPicking(false);
-                  photoRef.current?.click();
-                }}
-              />
-              <ActionRow
-                icon={<FileText aria-hidden="true" className="size-4 shrink-0" />}
-                label={translate("composer.attach.files")}
-                onClick={() => {
-                  setPicking(false);
-                  fileRef.current?.click();
-                }}
-              />
-            </AnchoredMenu>
-            {/* ── THE TOOLBAR ROW ───────────────────────────────────────────────────────────
-                Secondary tools on the left, the primary action on the right, one row, inside the
-                box. It is a SEPARATE ROW from the field, and that is load-bearing twice over: the
-                attach button no longer has to be kept clear of the draft by a padding on the
-                textarea, and a long unbroken token in the draft, an uploaded host path, cannot
-                push Send sideways because Send is not beside it any more.
-
-                THE BELT IS NOT THIS TOOLBAR. Keys / Type / Quick / Agent / Display stay above the
-                box (actions-row.tsx). They open docks that fill half the viewport; this row holds
-                the two controls that act on the draft in front of you, and nothing else moves in.
-
-                `px-1.5 pb-1.5` is the box's own inset for this row. The field above supplies its
-                own `px-3 py-2.5`, so the two do not share a padding and neither is the other's. */}
-            <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  TOOLBAR_TAP_TARGET,
-                  "size-9 rounded-full text-muted-foreground",
-                  // The press echo, in the tone this app already uses for "your press landed" —
-                  // `variant="default"`, which is what a tapped quick reply and a busy dialog option
-                  // both flip to. It was `bg-accent` first, and that was a token chosen by name
-                  // rather than by looking: in the dark theme `accent` resolves to oklch(0.269),
-                  // which is the SAME value as `muted` and sits 0.06 of lightness above the card it
-                  // is drawn on. Measured through a real tap, it faded in over 180ms, held for 40,
-                  // and faded out — a flash nobody could see on a phone. `primary` is oklch(0.922).
-                  //
-                  // `duration-0` on the way IN, and the base duration on the way out. A press has to
-                  // answer immediately or it is not answering the press; the release is the part that
-                  // wants easing. Removing both classes in one commit is what lets the exit animate.
-                  // Lit for the press, and then for as long as the menu it opened is standing: the
-                  // menu is anchored above rather than over the button precisely so this can be seen,
-                  // and a trigger that went dark under its own open menu would waste that.
-                  (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
-                )}
-                disabled={uploading || locked || direct.active}
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  echoAttachPress();
-                  if (asksWhich) setPicking(true);
-                  else photoRef.current?.click();
-                }}
-                aria-label={translate("composer.attach.aria")}
-                aria-haspopup="dialog"
-                aria-expanded={asksWhich ? picking : undefined}
-              >
-                {uploading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Paperclip className="size-4" />
-                )}
-              </Button>
-            {!direct.active && forcingSend ? (
-              // The pre-flight refused and the user is being offered the override. Labelled for what it
-              // actually does — TYPE the text into whatever is on screen — not "send", because the
-              // submit key is still conditional on the verify step behind it.
+              {uploading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Paperclip className="size-4" />
+              )}
+            </Button>
+          <ChatInput
+            ref={inputRef}
+            value={direct.active ? direct.value : input}
+            onChange={direct.active ? direct.onChange : (e) => updateInput(e.target.value)}
+            onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
+            onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
+            onKeyDown={
+              direct.active
+                ? direct.onKeyDown
+                : (e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      onSendClick();
+                    }
+                  }
+            }
+            onPaste={onPasteFile}
+            placeholder={
+              gone
+                ? translate("composer.placeholder.gone")
+                : readOnly
+                  ? translate("composer.placeholder.readOnly")
+                  : // Names the machine, because on a crew "why can't I type?" has two possible
+                    // answers and only one of them is about this device.
+                    hostBlock
+                    ? hostBlock
+                    : // The multiplexer cannot type here at all — its own words where it gave any, so
+                      // the placeholder says what is true of THIS terminal rather than blaming the app.
+                      missingSend !== null
+                      ? missingSend.note || translate("composer.placeholder.noMuxSend")
+                    : direct.active
+                      ? translate("composer.placeholder.direct")
+                      : isShell
+                        ? translate("composer.placeholder.shell")
+                        : translate("composer.placeholder.reply")
+            }
+            autoCorrect={direct.active ? "off" : undefined}
+            spellCheck={direct.active ? false : undefined}
+            className={cn(
+              // `flex-1 min-w-0`: the field takes whatever width the two buttons beside it leave,
+              // and `min-w-0` is what lets it go NARROWER than its content asks. A flex item's
+              // automatic minimum width is its min-content width, and `field-sizing-content` turns
+              // that into a laid-out one, so without it an uploaded host path would widen the field
+              // and push the primary action off the right edge (`wrap-anywhere` in chat-input.tsx
+              // stops the same thing at the source; the two are independent and both stay).
               //
-              // NOT a `Collapse`, and that is not an exception to the rule above. The explanation of
-              // WHY the send was refused is already in the top pills — send() publishes it through
-              // `composer.status.tapAgainToType`, carrying the adapter's own reason — so there is no
-              // in-flow strip here to animate. What is left is one control swapped for another in a
-              // slot that already exists, on the horizontal axis; `Collapse` animates a row's HEIGHT,
-              // so wrapping it would animate nothing and add a wrapper between the flex row and its
-              // child. §2 is kept by the button box being the same height in all four branches.
+              // `py-1.5 min-h-9 px-1` centre ONE line of the draft against the 36px buttons on the
+              // same row, and claim no more: an empty composer is one button row tall. `min-h-9` is
+              // that one row, not a second one (the field is `box-border`, so the padding is inside
+              // it), and it keeps a smaller draft size from leaving the text a few pixels low.
               //
-              // The two confirm branches are the only ones that carry a WORD, so they are the only
-              // ones that are not square: `h-9` to match the round faces beside them, and the row's
-              // `justify-between` keeps them pinned right however wide the word gets in a locale.
-              <Button
-                variant="destructive"
-                className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
-                onClick={onSendClick}
-                disabled={locked || !input.trim() || sending}
-                aria-label={translate("composer.send.typeAnyway")}
-              >
-                {translate("composer.send.typeAnyway")}
-              </Button>
-            ) : !direct.active && confirmingSend ? (
-              <Button
-                variant="destructive"
-                className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
-                onClick={onSendClick}
-                disabled={locked || !input.trim() || sending}
-                aria-label={translate("composer.send.reallySend")}
-              >
-                {translate("composer.send.reallySend")}
-              </Button>
-            ) : micIsPrimary ? (
-              // THE MICROPHONE IS THE PRIMARY ACTION WHILE THE BOX IS EMPTY, and becomes Send the
-              // moment there is anything to send. It used to be a second, permanent control tucked
-              // inside the field beside the attach button — deliberately, to avoid a split primary
-              // action. The v1 beta said that reads the workflow wrong: you either dictate a message
-              // or you type one, and nobody dictates into the middle of a draft. So the field paid
-              // 36px of its width, on every render, for a control that is only ever wanted on an empty
-              // box. An empty box has no Send either (`send` refuses a blank value), so this branch
-              // takes over a button that could do nothing anyway — it replaces no capability.
-              <Button
-                size="icon"
-                variant={recorder.busy ? "destructive" : "default"}
-                className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
-                disabled={!stt.available || locked || sending || recorder.phase === "transcribing"}
-                aria-pressed={recorder.busy}
-                // The bridge's own words when it cannot serve — the operator's next move is on the
-                // host, so the button says what is wrong rather than just refusing.
-                aria-label={
-                  !stt.available
-                    ? (stt.reason ?? translate("composer.mic.unavailable"))
-                    : recorder.phase === "recording"
-                      ? translate("composer.mic.stopAria")
-                      : translate("composer.mic.recordAria")
-                }
-                title={stt.available ? undefined : stt.reason}
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => (recorder.phase === "recording" ? recorder.stopAndSend() : recorder.start())}
-              >
-                {recorder.phase === "transcribing" ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : recorder.phase === "recording" ? (
-                  <Square className="size-4 fill-current" />
-                ) : (
-                  <Mic className="size-4" />
-                )}
-              </Button>
-            ) : (
-              <Button
-                size="icon"
-                className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
-                onClick={direct.active ? () => direct.deactivate() : onSendClick}
-                disabled={locked || sending}
-                aria-label={
-                  direct.active
-                    ? translate("composer.send.stopTypingAria")
-                    : translate("composer.send.sendAria")
-                }
-                aria-pressed={direct.active}
-              >
-                {direct.active ? (
-                  <Keyboard className="size-4" />
-                ) : sending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : justSent ? (
-                  <Check className="size-4" />
-                ) : (
-                  <Send className="size-4" />
-                )}
-              </Button>
+              // NO `pr-*`, AND NOTHING MAY ADD ONE. It was `pr-11`, the 44px strip the attach button
+              // needed while it was tucked into the field's corner. The buttons are siblings of the
+              // field now, so nothing inside the field needs a strip kept clear for it.
+              "min-w-0 flex-1 min-h-9 px-1 py-1.5",
+              // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
+              // family the mirror above it renders in, not the app's chrome face. `font-mono` is
+              // the mirror's own default; the style below follows the operator's mirror-family
+              // choice (Settings → Terminal font), exactly as the mirror itself does.
+              //
+              // THE SIZE IS ITS OWN SETTING (Settings → Terminal font → Draft text), and it is not
+              // the mirror's number: the mirror is output you scan, the draft is a sentence you are
+              // writing. It used to be pinned to the primitive's 16px — not as a choice, but because
+              // a sub-16px focused input makes iOS Safari zoom the whole page and never zoom back.
+              // That fact is now handled where it belongs, as a floor inside `applyDraftFontSize`,
+              // so every other browser gets the smaller default the operator asked for.
+              "font-mono",
             )}
-            </div>
-          </div>
+            // Built above, where the two halves and their reasons sit together.
+            style={draftStyle}
+            disabled={locked}
+            rows={1}
+          />
+          {/* The picker, anchored to the BOX so it opens above the whole shape rather than over
+              the button that opened it (ui/anchored-menu.tsx carries the measurement, and the
+              box's own `relative` is the anchor). It cannot be anchored to the attach button
+              itself: the panel is `right-0 min-w-44` against its anchor, and the button stands at
+              the LEFT end of the box's row, so it would grow off the left edge of the screen.
+              Two rows, no confirm, each one opens a native picker, which is its own decision
+              point. The menu closes BEFORE the click so it is not left standing behind the
+              system UI, and the click still counts as the user gesture the browser requires
+              because both happen in this one handler. */}
+          <AnchoredMenu
+            open={picking}
+            onClose={() => setPicking(false)}
+            label={translate("composer.attach.title")}
+          >
+            <ActionRow
+              icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
+              label={translate("composer.attach.photos")}
+              onClick={() => {
+                setPicking(false);
+                photoRef.current?.click();
+              }}
+            />
+            <ActionRow
+              icon={<FileText aria-hidden="true" className="size-4 shrink-0" />}
+              label={translate("composer.attach.files")}
+              onClick={() => {
+                setPicking(false);
+                fileRef.current?.click();
+              }}
+            />
+          </AnchoredMenu>
+          {!direct.active && forcingSend ? (
+            // The pre-flight refused and the user is being offered the override. Labelled for what it
+            // actually does — TYPE the text into whatever is on screen — not "send", because the
+            // submit key is still conditional on the verify step behind it.
+            //
+            // NOT a `Collapse`, and that is not an exception to the rule above. The explanation of
+            // WHY the send was refused is already in the top pills — send() publishes it through
+            // `composer.status.tapAgainToType`, carrying the adapter's own reason — so there is no
+            // in-flow strip here to animate. What is left is one control swapped for another in a
+            // slot that already exists, on the horizontal axis; `Collapse` animates a row's HEIGHT,
+            // so wrapping it would animate nothing and add a wrapper between the flex row and its
+            // child. §2 is kept by the button box being the same height in all four branches.
+            //
+            // The two confirm branches are the only ones that carry a WORD, so they are the only
+            // ones that are not square: `h-9` to match the round faces beside them, and `shrink-0`
+            // keeps the word whole; the field is the one flex item that gives up width for it.
+            <Button
+              variant="destructive"
+              className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
+              onClick={onSendClick}
+              disabled={locked || !input.trim() || sending}
+              aria-label={translate("composer.send.typeAnyway")}
+            >
+              {translate("composer.send.typeAnyway")}
+            </Button>
+          ) : !direct.active && confirmingSend ? (
+            <Button
+              variant="destructive"
+              className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
+              onClick={onSendClick}
+              disabled={locked || !input.trim() || sending}
+              aria-label={translate("composer.send.reallySend")}
+            >
+              {translate("composer.send.reallySend")}
+            </Button>
+          ) : micIsPrimary ? (
+            // THE MICROPHONE IS THE PRIMARY ACTION WHILE THE BOX IS EMPTY, and becomes Send the
+            // moment there is anything to send. It used to be a second, permanent control tucked
+            // inside the field beside the attach button — deliberately, to avoid a split primary
+            // action. The v1 beta said that reads the workflow wrong: you either dictate a message
+            // or you type one, and nobody dictates into the middle of a draft. So the field paid
+            // 36px of its width, on every render, for a control that is only ever wanted on an empty
+            // box. An empty box has no Send either (`send` refuses a blank value), so this branch
+            // takes over a button that could do nothing anyway — it replaces no capability.
+            <Button
+              size="icon"
+              variant={recorder.busy ? "destructive" : "default"}
+              className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
+              disabled={!stt.available || locked || sending || recorder.phase === "transcribing"}
+              aria-pressed={recorder.busy}
+              // The bridge's own words when it cannot serve — the operator's next move is on the
+              // host, so the button says what is wrong rather than just refusing.
+              aria-label={
+                !stt.available
+                  ? (stt.reason ?? translate("composer.mic.unavailable"))
+                  : recorder.phase === "recording"
+                    ? translate("composer.mic.stopAria")
+                    : translate("composer.mic.recordAria")
+              }
+              title={stt.available ? undefined : stt.reason}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => (recorder.phase === "recording" ? recorder.stopAndSend() : recorder.start())}
+            >
+              {recorder.phase === "transcribing" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : recorder.phase === "recording" ? (
+                <Square className="size-4 fill-current" />
+              ) : (
+                <Mic className="size-4" />
+              )}
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
+              onClick={direct.active ? () => direct.deactivate() : onSendClick}
+              disabled={locked || sending}
+              aria-label={
+                direct.active
+                  ? translate("composer.send.stopTypingAria")
+                  : translate("composer.send.sendAria")
+              }
+              aria-pressed={direct.active}
+            >
+              {direct.active ? (
+                <Keyboard className="size-4" />
+              ) : sending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : justSent ? (
+                <Check className="size-4" />
+              ) : (
+                <Send className="size-4" />
+              )}
+            </Button>
+          )}
         </div>
       </div>
 

@@ -1223,7 +1223,7 @@ describe("Composer — the draft field wears its own size", () => {
 
   // What the field's class list promises, unchanged by the size landing on it: no horizontal
   // strip reserved for anything, and the wrap rule. The strip was `pr-11`, for the attach button
-  // in the field's bottom-right corner; the button sits on the box's toolbar row now (ADR 0057),
+  // in the field's bottom-right corner; the button is the field's sibling in the box now (ADR 0057),
   // so the 44px is typing area again and NOTHING may reserve it back by adding a padding here.
   it("reserves no gutter in the field, and keeps the wrap rule where it was", () => {
     renderComposerWithStatus();
@@ -1495,7 +1495,7 @@ describe("Composer — the machine opens the actions belt, and no band stands ab
 
   it("is NOT in the composer field: no chip in the box, and the field reserves no strip at all", async () => {
     // The revision this round is. NO `pr-*`, because there is nothing inside the field to keep a
-    // line clear of any more: the attach button moved down to the box's toolbar row (ADR 0057).
+    // line clear of any more: the attach button is the field's sibling in the box (ADR 0057).
     // It was `pr-11`, measured at 254px of typing width at a true 390px content width and 184px at
     // 320px, on a crew exactly as on a solo install; docked, the crew figures were 194px and 124px.
     // Read off the class, because a conditional `pr-*` would not stack with another (tailwind-merge
@@ -2820,11 +2820,12 @@ describe("Composer — the attach picker offers photos as well as files", () => 
   });
 });
 
-// ── THE COMPOSER IS ONE BOX (.adr/0057) ─────────────────────────────────────────────────────────
+// ── THE COMPOSER IS ONE BOX, ONE ROW (.adr/0057, amended 2026-09-22) ───────────────────────────
 //
 // The field, the attach control and Send used to be three shapes on one line. They are one bordered
-// container now, with the textarea on top and a toolbar row under it, which is the prompt-input
-// pattern the shadcn-registry chat kits settled on, ported by hand.
+// container now, the prompt-input pattern the shadcn-registry chat kits settled on, ported by hand.
+// For one round the box put a toolbar row under the field; on a phone that was a second row of
+// height on an empty composer, so the box is ONE row: attach, the field, the primary action.
 //
 // These are STRUCTURAL and COUPLING assertions, in the house style of the two blocks above: jsdom
 // measures no layout, so what a class carries into this file is a fact about a real browser. What
@@ -2864,54 +2865,75 @@ describe("Composer — the composer is one box", () => {
     expect(props.onSent).toHaveBeenCalled();
   });
 
-  it("holds the field, the attach control and the primary action in ONE container", async () => {
+  it("holds attach, the field and the primary action as siblings on ONE row of the box", async () => {
     renderComposer();
     const box = boxOf(field());
     const send = screen.getByRole("button", { name: "Send" });
 
-    expect(box).toContainElement(attach());
-    expect(box).toContainElement(send);
-    // The two toolbar controls share a row of their OWN, under the field rather than beside it.
-    // That is what lets the field keep the full width and what the next case relies on.
-    expect(attach().parentElement).toBe(send.parentElement);
-    expect(attach().parentElement).not.toBe(box);
-    expect(attach().parentElement!.parentElement).toBe(box);
+    // One row, no toolbar row under the field: the three are direct children of the box, in
+    // reading order attach, field, action.
+    expect(attach().parentElement).toBe(box);
+    expect(send.parentElement).toBe(box);
+    const order = [...box.children].filter((el) => el === attach() || el === field() || el === send);
+    expect(order).toEqual([attach(), field(), send]);
+    // The box IS the flex row, and `items-end` pins both buttons to the bottom edge while a long
+    // draft grows the field upward.
+    expect(box.className).toMatch(/(?:^|\s)flex(?=\s|$)/);
+    expect(box.className).toMatch(/(?:^|\s)items-end(?=\s|$)/);
+    expect(box.className).not.toMatch(/(?:^|\s)flex-col(?=\s|$)/);
+    // The field takes the width the buttons leave, and the buttons never give theirs up.
+    expect(field().className).toMatch(/(?:^|\s)flex-1(?=\s|$)/);
+    expect(attach().className).toMatch(/(?:^|\s)shrink-0(?=\s|$)/);
+    expect(send.className).toMatch(/(?:^|\s)shrink-0(?=\s|$)/);
   });
 
-  it("draws the frame and the focus mark on the box, and none of it on the textarea", () => {
+  // AN EMPTY COMPOSER IS ONE BUTTON ROW TALL. The buttons are 36px; the box's `p-1` is their 4px
+  // hit-area reach, so the inside of the box is 44px. The field claims one line against the 36px
+  // face and no more: `min-h-9` with `py-1.5`, and nothing taller left over from the primitive.
+  it("claims one button row of height for an empty field, and no second row", () => {
+    renderComposer();
+    const box = boxOf(field());
+    expect(box.className).toMatch(/(?:^|\s)p-1(?=\s|$)/);
+    expect(field().className).toMatch(/(?:^|\s)min-h-9(?=\s|$)/);
+    expect(field().className).toMatch(/(?:^|\s)py-1\.5(?=\s|$)/);
+    expect(field().className).not.toMatch(/(?:^|\s)min-h-(?:1[0-9]|[2-9][0-9])(?=\s|$)/);
+    expect(field()).toHaveAttribute("rows", "1");
+  });
+
+  it("draws ONE frame and ONE focus mark on the box, and none of it on the textarea", () => {
     renderComposer();
     const box = boxOf(field());
 
-    // The frame. `focus-within`, so a caret in the textarea marks the whole shape, and an OUTLINE
-    // rather than a ring, so the box cannot change size when it gains focus (DESIGN.md §2).
+    // The frame. `focus-within`, so a caret in the textarea marks the whole shape: the border takes
+    // the ring colour and a 1px ring (a box-shadow) thickens it, which costs no layout (DESIGN.md
+    // §2). That is the visible focus indicator, and it is the only one.
     expect(box.className).toMatch(/(?:^|\s)rounded-xl(?=\s|$)/);
     expect(box.className).toMatch(/(?:^|\s)border-input(?=\s|$)/);
     expect(box.className).toMatch(/(?:^|\s)focus-within:border-ring(?=\s|$)/);
-    expect(box.className).toMatch(/(?:^|\s)focus-within:outline-2(?=\s|$)/);
-    expect(box.className).toMatch(/(?:^|\s)focus-within:outline-offset-2(?=\s|$)/);
-    expect(box.className).toMatch(/(?:^|\s)focus-within:outline-ring(?=\s|$)/);
-    // …and the box must never carry the reset that would resolve its own mark away. In Tailwind v4
-    // `outline-none` sets `--tw-outline-style: none`, which `outline-2` above reads through.
-    expect(box.className).not.toMatch(/outline-none/);
+    expect(box.className).toMatch(/(?:^|\s)focus-within:ring-1(?=\s|$)/);
+    expect(box.className).toMatch(/(?:^|\s)focus-within:ring-ring(?=\s|$)/);
+    // …and NO second frame outside it. An offset outline on top of the ring-coloured border drew
+    // two frames around one field, which is the defect this amendment fixed.
+    expect(box.className).not.toMatch(/outline-offset/);
+    expect(box.className).not.toMatch(/focus-within:outline-(?:1|2|4|8|ring)/);
 
-    // The inner control draws no second frame. Two frames, one inside the other, is the shape this
-    // box replaced, so a border, a radius or a focus outline coming back here is the regression.
+    // The inner control draws no frame of its own either.
     expect(field().className).toMatch(/(?:^|\s)border-0(?=\s|$)/);
     expect(field().className).not.toMatch(/(?:^|\s)rounded-/);
     expect(field().className).not.toMatch(/focus-visible:outline-2/);
     expect(field().className).not.toMatch(/focus-visible:border-ring/);
+    expect(field().className).not.toMatch(/focus-visible:ring/);
   });
 
-  // A 200-CHARACTER UNBROKEN PATH MAY NOT PUSH THE TOOLBAR OFF THE SCREEN.
+  // A 200-CHARACTER UNBROKEN PATH MAY NOT PUSH THE PRIMARY ACTION OFF THE SCREEN.
   //
   // `uploadFile()` appends the bridge's host path for an attached image, one run of `/`-joined
   // characters with no break opportunity. The field is `field-sizing-content`, so under the
-  // textarea's UA `break-word` that token would become the box's laid-out width and anything beside
-  // the field would go off the right edge, which is the "the Send button disappeared after I
-  // uploaded a picture" report. Two independent things stop it now and this pins both: the value
-  // still wraps ANYWHERE, and the toolbar is a row of its own, so it is not beside the field to be
-  // pushed at all.
-  it("keeps the toolbar on its own row under a 200-character unbroken path", async () => {
+  // textarea's UA `break-word` that token would become the field's laid-out width, and Send, beside
+  // it on the same row, would go off the right edge: the "the Send button disappeared after I
+  // uploaded a picture" report. Two independent things stop it and this pins both: the value wraps
+  // ANYWHERE, and the field is `min-w-0`, so as a flex item it may be narrower than its content.
+  it("keeps the primary action in the row under a 200-character unbroken path", async () => {
     const path = `/home/operator/${"a".repeat(181)}.png`;
     expect(path.length).toBeGreaterThanOrEqual(200);
     renderComposer();
@@ -2920,19 +2942,21 @@ describe("Composer — the composer is one box", () => {
     await waitFor(() => expect(field()).toHaveValue(path));
 
     expect(field().className).toMatch(/(?:^|\s)wrap-anywhere(?=\s|$)/);
+    expect(field().className).toMatch(/(?:^|\s)min-w-0(?=\s|$)/);
     const send = screen.getByRole("button", { name: "Send" });
-    expect(send.parentElement).not.toBe(field().parentElement);
-    expect(field().parentElement).toContainElement(send);
-    // Nothing in the box reserves a horizontal strip for a control any more, so the path has the
+    // Still in the box's one row, beside the field, after the field.
+    expect(send.parentElement).toBe(field().parentElement);
+    expect(field().compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Nothing in the field reserves a horizontal strip for a control, so the path has the field's
     // whole width to wrap into.
     expect(field().className).not.toMatch(/(?:^|\s)pr-/);
   });
 
-  // DESIGN.md §6: 44px is the floor for anything tappable, and both toolbar controls are drawn at
+  // DESIGN.md §6: 44px is the floor for anything tappable, and both buttons in the box are drawn at
   // 36px. They buy the floor back as HIT AREA, the trade that section sanctions, and the reach is
   // the arithmetic at `TOOLBAR_TAP_TARGET`: 36 + 4 + 4 = 44 in both axes. Drawn size and hit area
   // are one decision here; a `size-9` that loses the `::before` is a 36px target.
-  it("buys the 44px tap floor back on both toolbar controls", () => {
+  it("buys the 44px tap floor back on both buttons in the box", () => {
     renderComposer();
     for (const button of [attach(), screen.getByRole("button", { name: "Send" })]) {
       expect(button.className).toMatch(/(?:^|\s)size-9(?=\s|$)/);
@@ -2941,7 +2965,7 @@ describe("Composer — the composer is one box", () => {
     }
   });
 
-  it("recedes the whole box when nothing may be written to it, and disables the toolbar", () => {
+  it("recedes the whole box when nothing may be written to it, and disables both buttons", () => {
     renderComposer({ readOnly: true });
     const box = screen.getByPlaceholderText(/read-only/i).parentElement!;
 

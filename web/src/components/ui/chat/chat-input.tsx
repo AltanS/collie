@@ -19,17 +19,15 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
       className={cn(
         // ── THIS CONTROL DRAWS NO FRAME, AND THAT IS THE POINT ──────────────────────────────
         // The border, the radius and the focus mark moved OUT, onto the composer's own box, which
-        // holds this field and a toolbar row as one shape (ADR 0057). The old classes are not
-        // gone, they are one level up: the box keeps the border unconditional and moves only its
-        // colour on focus, so nothing resizes under the caret, and focus adds a second, separate
-        // mark OUTSIDE the box (`outline-2 outline-offset-2`) rather than a ring flush against the
-        // border. Do not give this textarea a border or an outline back: two frames, one inside
-        // the other, is what the box replaced. `focus-visible:outline-none` here is what keeps the
-        // browser's own focus ring off the inner control, and it is safe precisely because the
-        // mark it would defeat is no longer on this element: in Tailwind v4 that class sets
-        // `--tw-outline-style: none`, a custom property that inherits DOWNWARD, so it cannot reach
-        // the box above. Never put it on the box itself, which would resolve its own
-        // `focus-within:outline-2` through it and leave the composer with no focus mark at all.
+        // holds the attach button, this field and the primary action on one row (ADR 0057, amended
+        // 2026-09-22). The box keeps its border unconditional and moves only its colour on focus,
+        // plus a 1px ring as a box-shadow, so nothing resizes under the caret and there is ONE
+        // frame. Do not give this textarea a border or an outline back: two frames, one inside the
+        // other, is what the box replaced. `focus-visible:outline-none` here keeps the browser's
+        // own focus ring off the inner control; the box's ring is what marks focus.
+        //
+        // NO PADDING OR MIN-HEIGHT HERE. The composer sets them (`composer.tsx`, the field's own
+        // className), because they are measured against the buttons that share its row.
         //
         // `placeholder:whitespace-nowrap` — A PLACEHOLDER MAY NOT SET THIS FIELD'S HEIGHT.
         //
@@ -41,10 +39,9 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // than it looks, because the string is per-LOCALE: 9 of the 36 composer placeholders in the
         // six locale files overflow the 252px this field left for them when it was measured
         // (`w-full` minus `px-3`'s 12px and the 44px the attach button reserved with `pr-11`), so
-        // the composer stood at a different height in different languages. The 44px came back when
-        // the attach button moved down to the box's toolbar row (ADR 0057), so the budget is wider
-        // now and fewer strings overrun it, but the contract below is the same one and the reason
-        // for it has not changed. Copy alone cannot close it, because
+        // the composer stood at a different height in different languages. The budget has moved
+        // since (the buttons sit beside the field on the box's one row, ADR 0057), but the contract
+        // below is the same one and the reason for it has not changed. Copy alone cannot close it, because
         // `composer.placeholder.noMuxSend` can also be the multiplexer's OWN note, which is
         // machine-authored and unbounded.
         //
@@ -55,9 +52,8 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // clip happen at the CONTENT box. With `whitespace-nowrap` alone the overrun keeps painting
         // out through the padding and past the field's own edge; measured in German, where the
         // string overruns by 81px, it rendered on top of the attach button the `pr-11` strip
-        // existed to keep clear of it. The button has moved to the toolbar row since, so the
-        // collision is now with the box's own border rather than an icon, and the clip is what
-        // stops it either way. There is no ellipsis to go with it: Chromium renders none on a clipped `::placeholder` in a textarea (`text-overflow`
+        // existed to keep clear of it. The button is a sibling of the field now, so the
+        // overrun would run into it past the field's own edge, and the clip is what stops it. There is no ellipsis to go with it: Chromium renders none on a clipped `::placeholder` in a textarea (`text-overflow`
         // and `-webkit-line-clamp` were both measured here and do nothing), so the budget is real
         // and a string that overruns it is a copy bug to fix in the locale file, not a layout to
         // absorb.
@@ -97,15 +93,14 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // region (the enclosing `Collapse`'s grid item, `ui/collapse.tsx`, which carries `min-w-0`
         // for this reason), the composer is laid out wider than the screen, and Send goes with it,
         // off the right edge. Reported as "the Send button disappeared after I uploaded a picture".
-        // One class on the value fixes it at the source. Send sits on the box's own toolbar row
-        // now rather than beside the field, which is a second, independent reason a long path can
-        // no longer push it out of reach, and not a reason to drop this class: the box itself is
-        // still sized by what this field's content asks for.
+        // One class on the value fixes it at the source. Send sits beside the field again, on the
+        // box's one row, and the field's own `min-w-0` (composer.tsx) is the second, independent
+        // reason a long path cannot push it out of reach; neither replaces the other.
         //
         // It does NOT touch the placeholder: `::placeholder` above still says `whitespace-nowrap`,
         // and `white-space` beats any `overflow-wrap` there is — nothing may wrap what may not have
         // a line break. The one-line, clipped placeholder contract above stands unchanged.
-        "field-sizing-content wrap-anywhere max-h-[min(10rem,30dvh)] min-h-11 w-full resize-none border-0 bg-transparent px-3 py-2.5 text-base transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+        "field-sizing-content wrap-anywhere max-h-[min(10rem,30dvh)] w-full resize-none border-0 bg-transparent text-base transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
