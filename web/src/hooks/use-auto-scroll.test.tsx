@@ -190,6 +190,26 @@ describe("useAutoScroll — resize-induced scroll is not a user scroll (#155)", 
     expect(el.scrollTo).toHaveBeenCalledWith({ top: 500, behavior: "auto" });
   });
 
+  it("keeps following when a docked card leaves and the container grows back (ADR 0059)", () => {
+    // The card dock sits below the scroller, so a card arriving shrinks it and a card leaving grows
+    // it. The growing half: the browser clamps nothing, but the bottom edge still moved.
+    const onAtBottomChange = vi.fn();
+    const { getByTestId } = render(<ReportingHarness onAtBottomChange={onAtBottomChange} />);
+    const el = getByTestId("scroll");
+    el.scrollTo = vi.fn();
+
+    // Pinned at the tail with the card docked: 500 - 400 - 100 = 0px from the bottom.
+    setMetrics(el, { scrollHeight: 500, clientHeight: 100, scrollTop: 400 });
+    fireEvent.scroll(el);
+    onAtBottomChange.mockClear();
+
+    // The card goes: the scroller gains 200px, and the tail is re-pinned rather than read as a scroll.
+    setMetrics(el, { scrollHeight: 500, clientHeight: 300, scrollTop: 200 });
+    fireEvent.scroll(el);
+    expect(onAtBottomChange).not.toHaveBeenCalledWith(false);
+    expect(el.scrollTo).toHaveBeenCalledWith({ top: 500, behavior: "auto" });
+  });
+
   it("still freezes for a genuine user scroll (container height unchanged)", () => {
     const onAtBottomChange = vi.fn();
     const { getByTestId } = render(<ReportingHarness onAtBottomChange={onAtBottomChange} />);

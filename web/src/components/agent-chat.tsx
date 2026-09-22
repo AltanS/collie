@@ -34,12 +34,13 @@ import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AnsiOutput } from "@/components/ansi-output";
+import { CardDock } from "@/components/card-dock";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
-import { adapterFor, rendersNativeMirror, withUnreadDialog } from "@/lib/harness";
+import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
@@ -668,22 +669,34 @@ export function AgentChat({
   // slash-command `autocomplete` popup is painted while the agent's input box is live under it, so
   // treating it as a dialog would lock the composer out of a pane that is demonstrably typeable.
   //
-  // Through the unread-dialog post-pass too (.adr/0053): the adapter is called DIRECTLY here, not
-  // through `buildBlocks`, so without the pass the screen no grammar read would leave the composer
-  // open onto the modal — which is the failure the card was written for.
-  const dialogBlocks = useMemo(() => {
-    if (!grammarsOn) return [];
-    const adapter = adapterFor(agent?.agent);
-    if (!adapter) return [];
-    const lines = splitLines(parseAnsi(display));
-    return withUnreadDialog(adapter, lines, adapter.buildBlocks(lines));
-  }, [display, agent?.agent, grammarsOn]);
-  const dialogPresent = useMemo(() => dialogBlocks.some(blockOwnsKeyboard), [dialogBlocks]);
+  // ONE BUILD, THREE READERS (.adr/0059). These are the blocks the mirror draws (AnsiOutput, raw
+  // blocks only), the blocks the card dock draws (CardDock, the one lifted card) and the blocks this
+  // lock reads, built once per `display`. They used to be two builds: AnsiOutput built its own, and
+  // this lock called the adapter directly. `buildBlocks` runs the unread-dialog post-pass itself
+  // (.adr/0053), and its native-mirror decoration touches raw blocks only, so the kinds this lock
+  // asks about are exactly the ones the separate call produced.
+  //
+  // The AGENT bit only, deliberately, NOT `mirrorOverride`, for the mirror's identity. Native-mirror
+  // agents keep it with raw-terminal on: the pref bypasses block GRAMMARS, and native rendering is
+  // display faithfulness, not a grammar. Dropping the agent here would re-invert a Muse pane
+  // (.adr/0047), so the agent stays and `grammars` is what turns its adapter off. The override
+  // travels as `nativeMirror`, and buildBlocks resolves the pair itself.
+  const mirrorAgent = grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined;
+  const blocks = useMemo(
+    () =>
+      buildBlocks(splitLines(parseAnsi(display)), {
+        agent: mirrorAgent,
+        grammars: grammarsOn,
+        nativeMirror: mirrorOverride,
+      }),
+    [display, mirrorAgent, grammarsOn, mirrorOverride],
+  );
+  const dialogPresent = useMemo(() => blocks.some(blockOwnsKeyboard), [blocks]);
   // Which KIND owns it, narrowed to the one the composer treats differently: the card is a guess
   // about an unknown screen, so its refusal arms the type-anyway override instead of standing flat.
   const dialogUnread = useMemo(
-    () => dialogBlocks.some((b) => b.kind === "unread-dialog"),
-    [dialogBlocks],
+    () => blocks.some((b) => b.kind === "unread-dialog"),
+    [blocks],
   );
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
@@ -1928,31 +1941,13 @@ export function AgentChat({
                     query={findOpen ? findQuery : ""}
                     currentMatch={findOpen ? currentMatch : -1}
                     onMatchCount={findOpen ? handleMatchCount : undefined}
-                    // Native-mirror agents keep their identity with raw-terminal on: the pref
-                    // bypasses block GRAMMARS, and native rendering is display faithfulness, not
-                    // a grammar. Dropping the agent here would re-invert a Muse pane (.adr/0047),
-                    // so the agent stays and `grammars` is what turns its adapter off.
-                    //
-                    // The AGENT bit only, deliberately, NOT `mirrorOverride`. The override does not
-                    // need to travel this way: `nativeMirror` carries it to the mirror directly and
-                    // AnsiOutput resolves the pair itself, so identity here keeps tracking the agent
-                    // rather than an operator's display choice. Before `grammars` existed this gate
-                    // was also the only thing stopping an opted-in codex pane from getting its
-                    // adapter back under raw terminal (chrome stripped, dialogs lifted) as a side
-                    // effect of a display choice. `grammars` holds that line now; this stays
-                    // agent-only because the two axes are still separate.
-                    agent={
-                      grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined
-                    }
+                    // `mirrorAgent`: see where `blocks` is built for why this is the agent bit
+                    // only. The blocks come built; `agent`/`grammars`/`nativeMirror` still travel
+                    // because the <pre>'s colour space and find highlight read them.
+                    agent={mirrorAgent}
                     grammars={grammarsOn}
                     nativeMirror={mirrorOverride}
-                    onPromptAction={handlePromptAction}
-                    onWizardAction={handleWizardAction}
-                    onPreviewAction={handlePreviewAction}
-                    onMultiSelectAction={handleMultiSelectAction}
-                    onMenuAction={handleMenuAction}
-                    onUnreadDialogAction={handleUnreadDialogAction}
-                    promptDisabled={readOnly || gone}
+                    blocks={blocks}
                     hideLeadingLines={hiddenMirrorLines}
                     images={mirrorImages}
                     onImageClusterCount={setImageClusterCount}
@@ -1965,6 +1960,35 @@ export function AgentChat({
               )}
             </ChatMessageList>
           </div>
+
+          {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,
+              after the mirror text, so its bottom edge moved with the text, the trailing rows and
+              the scroll position, and on a short screen it floated mid-page. It docks here instead:
+              out of every scroller, below the mirror, directly above the chrome block, the same
+              bottom edge for every card kind on every harness. Renders nothing without a card.
+
+              OUTSIDE the bottom region's zen `Collapse`, on purpose. The card is the pane's own
+              dialog, not Collie's chrome, and zen hides only chrome; inside that row a dialog would
+              vanish with the belt. Nothing comes between it and the chrome block while it shows:
+              the statusline strip and the agents footer both need a live input box at the tail, and
+              every card means there is none (the completion popup's box has a popup under it, not
+              a statusline run). */}
+          {display && (
+            <CardDock
+              blocks={blocks}
+              onPromptAction={handlePromptAction}
+              onWizardAction={handleWizardAction}
+              onPreviewAction={handlePreviewAction}
+              onMultiSelectAction={handleMultiSelectAction}
+              onMenuAction={handleMenuAction}
+              onUnreadDialogAction={handleUnreadDialogAction}
+              promptDisabled={readOnly || gone}
+              composing={composing}
+              faceClassName={mirrorFace.className}
+              faceStyle={mirrorFace.style}
+              onClick={focusFromMirror}
+            />
+          )}
 
           {/* Bottom region, in the order it paints: the agent's own statusline (the mirror's last row),
               the pane-switch handle, the composer. The connection status line USED to float here as an

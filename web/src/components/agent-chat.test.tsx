@@ -2657,3 +2657,91 @@ describe("AgentChat — full latest reply", () => {
     expect(card()).not.toBeInTheDocument();
   });
 });
+
+// ADR 0059 — a card docks above the belt. The lifted card used to render inside the mirror's
+// scroller, after the terminal text, so its bottom edge moved with the text above it and floated
+// mid-page on a short screen. It now renders in ONE slot: outside the scroller, directly above the
+// chrome block (the actions belt and the input). These pin the slot, the empty case, and the one
+// property the move could have broken, ADR 0056's per-dialog Terminal choice surviving a poll.
+describe("AgentChat — a card docks above the belt (ADR 0059)", () => {
+  function mirrorScroller(container: HTMLElement) {
+    const mirror = [...container.querySelectorAll<HTMLElement>('div[role="presentation"]')].find(
+      (el) => el.querySelector(".overflow-y-auto") && !el.matches('[data-slot="card-dock"]'),
+    )!;
+    return { mirror, scroller: mirror.querySelector<HTMLElement>(".overflow-y-auto")! };
+  }
+
+  it("renders the card outside the mirror's scroller, in the slot directly above the chrome block", async () => {
+    const { container } = renderChat({ text: MENU_TEXT });
+    const yes = await screen.findByRole("button", { name: "Yes" });
+    const dock = yes.closest<HTMLElement>('[data-slot="card-dock"]');
+    expect(dock).not.toBeNull();
+
+    // Not inside the scroller any more: the text above cannot move it.
+    const { mirror, scroller } = mirrorScroller(container);
+    expect(scroller.contains(yes)).toBe(false);
+
+    // Its own row of the pane column, between the mirror and the bottom region that holds the belt.
+    const bottomRow = container
+      .querySelector('[data-slot="chrome-block"]')!
+      .closest('[data-slot="collapse"]')!;
+    expect(dock!.previousElementSibling).toBe(mirror);
+    expect(dock!.nextElementSibling).toBe(bottomRow);
+
+    // A tall card scrolls inside the dock instead of pushing the composer off the screen.
+    expect(dock!.className).toMatch(/(?:^|\s)max-h-\[55dvh\](?=\s|$)/);
+    expect(dock!.className).toMatch(/(?:^|\s)overflow-y-auto(?=\s|$)/);
+    expect(dock!.className).toMatch(/(?:^|\s)border-t border-border(?=\s|$)/);
+  });
+
+  it("renders no dock at all when no card is on screen", () => {
+    const { container } = renderChat({ text: STATUS_TEXT });
+    expect(container.querySelector('[data-slot="card-dock"]')).toBeNull();
+    // …so the mirror is still the row right above the bottom region, as before the dock existed.
+    const bottomRow = container
+      .querySelector('[data-slot="chrome-block"]')!
+      .closest('[data-slot="collapse"]')!;
+    expect(bottomRow.previousElementSibling).toBe(mirrorScroller(container).mirror);
+  });
+
+  it("keeps the Terminal choice across a poll of the same dialog, and drops it when the dialog goes", async () => {
+    const user = userEvent.setup();
+    let setText: (t: string) => void = () => {};
+    function Harness() {
+      const [text, set] = useState(`building...\n${MENU_TEXT}`);
+      setText = set;
+      const agent = fixtureAgents[0]!;
+      return (
+        <AgentChat
+          paneId={agent.paneId}
+          agent={agent}
+          agents={fixtureAgents}
+          shellPanes={[]}
+          tabs={[]}
+          text={text}
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Show the terminal instead of this card" }),
+    );
+    expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
+
+    // A poll lands with new output above the SAME dialog: the card instance is reused, so the
+    // operator's choice holds.
+    act(() => setText(`building...\ndone.\n${MENU_TEXT}`));
+    expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
+
+    // The dialog leaves and a new one arrives: a fresh card, back in card mode.
+    act(() => setText(STATUS_TEXT));
+    expect(screen.queryByRole("button", { name: "Back to the card" })).toBeNull();
+    act(() => setText(MENU_TEXT));
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back to the card" })).toBeNull();
+  });
+});
