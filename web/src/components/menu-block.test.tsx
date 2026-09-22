@@ -11,19 +11,20 @@ import { MenuBlock } from "./menu-block";
 // The generic menu renderer. Driven off the real `/model` capture through the real pipeline, so what
 // it renders is exactly what the adapter lifts.
 
-const PICKER = readFileSync(
-  join(import.meta.dirname, "..", "fixtures", "panes", "claude--menu-model-picker.txt"),
-  "utf8",
-);
+const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+const PICKER = readFileSync(join(PANES, "claude--menu-model-picker.txt"), "utf8");
+// The /effort slider at 132 columns: the one capture that prints its whole scale, so the card shows
+// one chip per level instead of the arrows (.adr/0054).
+const SLIDER = readFileSync(join(PANES, "claude--menu-effort-slider--w132.txt"), "utf8");
 
-function menuBlock() {
-  const block = claudeBuildBlocks(splitLines(parseAnsi(PICKER))).find((b) => b.kind === "menu");
-  if (!block || block.kind !== "menu") throw new Error("the picker fixture lifted no menu block");
+function menuBlock(capture = PICKER) {
+  const block = claudeBuildBlocks(splitLines(parseAnsi(capture))).find((b) => b.kind === "menu");
+  if (!block || block.kind !== "menu") throw new Error("the fixture lifted no menu block");
   return block;
 }
 
-function renderMenu(onAction = vi.fn()) {
-  const block = menuBlock();
+function renderMenu(onAction = vi.fn(), capture = PICKER) {
+  const block = menuBlock(capture);
   render(<MenuBlock menu={block.menu} lines={block.lines} onAction={onAction} />);
   return onAction;
 }
@@ -87,5 +88,58 @@ describe("MenuBlock", () => {
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onAction).not.toHaveBeenCalled();
+  });
+});
+
+// The printed scale (.adr/0054). The /effort slider names every level on one row, so the card drops
+// the two arrows and offers the levels themselves; a tap is the delta in presses of the arrow the
+// footer advertised, never a key the screen did not name.
+describe("MenuBlock — a printed scale", () => {
+  it("renders one chip per level and no arrow row", () => {
+    renderMenu(vi.fn(), SLIDER);
+    for (const level of ["low", "high", "xhigh", "max", "ultracode"]) {
+      expect(screen.getByRole("button", { name: `adjust to ${level}` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "medium, current" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^left — adjust/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^right — adjust/i })).not.toBeInTheDocument();
+  });
+
+  it("marks the current level and refuses a tap on it", () => {
+    renderMenu(vi.fn(), SLIDER);
+    const current = screen.getByRole("button", { name: "medium, current" });
+    expect(current).toHaveAttribute("aria-current", "true");
+    expect(current).toBeDisabled();
+  });
+
+  it("sends the delta as repeated presses of the arrow the footer named", async () => {
+    const user = userEvent.setup();
+    const onAction = renderMenu(vi.fn(), SLIDER);
+
+    // medium (index 1) → xhigh (index 3): two Rights.
+    await user.click(screen.getByRole("button", { name: "adjust to xhigh" }));
+    expect(onAction).toHaveBeenCalledWith({ keys: ["Right", "Right"], nav: true });
+
+    // medium (index 1) → low (index 0): one Left.
+    await user.click(screen.getByRole("button", { name: "adjust to low" }));
+    expect(onAction).toHaveBeenCalledWith({ keys: ["Left"], nav: true });
+  });
+
+  it("emits no key the screen did not name", async () => {
+    const user = userEvent.setup();
+    const onAction = renderMenu(vi.fn(), SLIDER);
+    await user.click(screen.getByRole("button", { name: "adjust to ultracode" }));
+    // SAFETY: `onAction` is the component's own `MenuBlockAction` handler, so the first argument of
+    // the first call is a MenuBlockAction and carries `keys`. The mock is untyped, nothing else.
+    const sent = onAction.mock.calls[0]![0] as { keys: string[] };
+    expect(new Set(sent.keys)).toEqual(new Set(["Right"]));
+  });
+
+  // The `/model` picker prints the current value alone, so nothing changes there.
+  it("keeps the plain arrows when the screen printed no scale", () => {
+    renderMenu();
+    expect(screen.getByRole("button", { name: /^left — adjust/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^right — adjust/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /, current$/ })).not.toBeInTheDocument();
   });
 });

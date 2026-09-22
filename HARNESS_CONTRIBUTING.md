@@ -154,7 +154,15 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    `revision` is a stub, so it is the entire race guard (the generic one — see the next section).
 4. Menu detection runs **last**, after every specific grammar you have, and must decline a screen with
    a live input box; your `composerReady` must answer `false` while the modal is up.
-5. **A footer phrase may never be the whole reason a grammar declines.** Menu detection stands down
+5. **When the screen prints the WHOLE scale the arrows move along, put it in
+   `nav.leftRight.values`** — the values in the order the screen printed them on one row, with
+   `label` one of them. The card then renders one tappable chip per value and sends a tap as the
+   delta in presses of the arrow the footer named, so the operator sees every option and reaches one
+   in a single tap. Set it only where the screen really printed the scale: a row that shows the
+   current value alone (Claude's `/model` picker) leaves it undefined and keeps the plain arrows.
+   The scale is part of menu identity, so it must be stable across polls
+   ([ADR 0054](./.adr/0054-a-printed-scale-is-tappable.md)).
+6. **A footer phrase may never be the whole reason a grammar declines.** Menu detection stands down
    when a family classifier says another grammar owns the screen, so that classifier must be
    answerable from the dialog it names, its title or its body, not from one line any screen may
    print. Claude's `/effort` slider prints "Enter to confirm", was filed as the folder-trust prompt

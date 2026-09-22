@@ -12,6 +12,7 @@ import { fetchPane, sendKeys } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectMenu } from "./harness/claude/menu";
+import type { MenuModel } from "./harness/menu-model";
 import { menusEqual, menusSameIdentity, submitMenuKeys } from "./menu-action";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -42,6 +43,11 @@ function menuAt(at = 1) {
   return detectMenu(splitLines(parseAnsi(pickerBuffer(at))))!;
 }
 
+/** The same menu with a printed scale bolted on — the shape the /effort grammar emits. */
+function withScale(menu: MenuModel, values: string[], label = values[0]!): MenuModel {
+  return { ...menu, nav: { ...menu.nav, leftRight: { verb: "adjust", label, values } } };
+}
+
 const base = { paneId: "w1:p1", requestedLines: 200, detectedRevision: 0, agent: "claude" };
 
 beforeEach(() => {
@@ -59,6 +65,25 @@ describe("menusEqual / menusSameIdentity", () => {
     const b = menuAt(3);
     expect(menusSameIdentity(a, b)).toBe(true);
     expect(menusEqual(a, b)).toBe(false);
+  });
+
+  // The scale is part of identity: an arrow tap moves the marker along it and never rewrites it, so
+  // a different scale is a different screen (.adr/0054).
+  it("a different SCALE is a different screen", () => {
+    const a = withScale(menuAt(1), ["low", "medium", "high"]);
+    const b = withScale(menuAt(1), ["low", "medium", "high", "max"]);
+    expect(menusSameIdentity(a, b)).toBe(false);
+    // A scale on one side and none on the other is a different screen too.
+    expect(menusSameIdentity(a, menuAt(1))).toBe(false);
+  });
+
+  // The label is the live value the arrows change, so it stays out — otherwise the second arrow tap
+  // in a row would always be refused.
+  it("a different LABEL on the same scale is still the same screen", () => {
+    const scale = ["low", "medium", "high"];
+    const a = withScale(menuAt(1), scale, "low");
+    const b = withScale(menuAt(1), scale, "high");
+    expect(menusSameIdentity(a, b)).toBe(true);
   });
 });
 

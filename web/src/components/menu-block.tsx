@@ -69,6 +69,23 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
     <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label={t("dialog.sendingAria")} />
   );
 
+  // THE PRINTED SCALE (.adr/0054). When the screen printed the whole scale the arrows move along,
+  // the card shows every value instead of the current one between two arrows: on a wide pane the
+  // mirror above is cut off on a phone, so the arrows named a level and hid the rest. A tap is the
+  // DELTA in arrow presses — the same Left/Right the footer advertised, repeated — so nothing is
+  // emitted that the screen did not name. An unreadable scale (fewer than two values, or a label
+  // that is not one of them) falls back to the plain arrows rather than guessing a position.
+  const leftRight = menu.nav.leftRight;
+  const scale = leftRight?.values ?? [];
+  const current = leftRight === undefined ? -1 : scale.indexOf(leftRight.label);
+  const showScale = scale.length >= 2 && current >= 0;
+
+  /** The arrow presses that walk the marker from `current` to `target`, in order. */
+  const stepKeys = (target: number): string[] => {
+    const key = target > current ? MENU_RIGHT_KEYS[0]! : MENU_LEFT_KEYS[0]!;
+    return Array.from({ length: Math.abs(target - current) }, () => key);
+  };
+
   const navButton = (id: string, label: string, keys: string[], icon: ReactNode) => (
     <button
       key={id}
@@ -110,7 +127,7 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
       {/* Arrow cluster — only the directions the screen itself advertised (a `❯` row for Up/Down, an
           "←/→ to <verb>" row for Left/Right). Each is one keystroke; they move a highlight and commit
           nothing, so they take the weaker identity guard. */}
-      {(menu.nav.upDown || menu.nav.leftRight !== undefined) && (
+      {(menu.nav.upDown || (leftRight !== undefined && !showScale)) && (
         <div className="flex items-center gap-1.5">
           {menu.nav.upDown &&
             navButton("up", t("dialog.menu.moveUp"), MENU_UP_KEYS, <ArrowUp className="size-4" />)}
@@ -119,25 +136,64 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
           {/* The ←/→ pair sits AROUND the value it adjusts ("←  ◐ Medium effort  →"): the arrows are
               meaningless without it, and the row is re-derived every poll, so the label tracks the
               live value. Rendered in app space, not mirror space — no `dark:` question arises. */}
-          {menu.nav.leftRight !== undefined && (
+          {leftRight !== undefined && !showScale && (
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {navButton(
                 "left",
-                t("dialog.menu.leftAria", { verb: menu.nav.leftRight.verb, label: menu.nav.leftRight.label }),
+                t("dialog.menu.leftAria", { verb: leftRight.verb, label: leftRight.label }),
                 MENU_LEFT_KEYS,
                 <ArrowLeft className="size-4" />,
               )}
               <span className="min-w-0 flex-1 truncate text-center font-mono text-[11px] text-muted-foreground">
-                {menu.nav.leftRight.label}
+                {leftRight.label}
               </span>
               {navButton(
                 "right",
-                t("dialog.menu.rightAria", { verb: menu.nav.leftRight.verb, label: menu.nav.leftRight.label }),
+                t("dialog.menu.rightAria", { verb: leftRight.verb, label: leftRight.label }),
                 MENU_RIGHT_KEYS,
                 <ArrowRight className="size-4" />,
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* The printed scale, one chip per value, in the order the screen printed them. It wraps onto a
+          second line rather than scrolling: six levels at the 44px floor do not fit one phone row,
+          and a row the operator has to scroll hides exactly what this card exists to show.
+
+          The current chip is marked by colour and `aria-current`, and it is disabled, because moving
+          the marker to where it already is sends nothing. Nothing about a chip's box changes with
+          that state — no weight, no padding, no border width, only paint (DESIGN.md §2) — so the
+          marker moving never slides the chip under a thumb already on its way down. */}
+      {showScale && leftRight !== undefined && (
+        <div className="flex flex-wrap gap-1.5">
+          {scale.map((value, i) => {
+            const isCurrent = i === current;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-current={isCurrent ? "true" : undefined}
+                aria-label={
+                  isCurrent
+                    ? t("dialog.menu.levelCurrentAria", { label: value })
+                    : t("dialog.menu.levelAria", { verb: leftRight.verb, label: value })
+                }
+                disabled={locked || isCurrent}
+                onClick={() => press(`level-${i}`, { keys: stepKeys(i), nav: true })}
+                className={cn(
+                  "flex min-h-11 min-w-11 grow items-center justify-center rounded-lg border border-transparent px-3 text-center font-mono text-xs transition-colors",
+                  isCurrent
+                    ? "border-primary/60 bg-primary/15 text-foreground"
+                    : "border-border bg-secondary text-muted-foreground active:bg-primary/5",
+                  locked && "opacity-60",
+                )}
+              >
+                {value}
+              </button>
+            );
+          })}
         </div>
       )}
 

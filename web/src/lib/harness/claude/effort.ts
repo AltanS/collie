@@ -202,7 +202,14 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
     model: {
       title,
       actions: withSessionAction(footerActions, footer),
-      nav: { upDown: false, leftRight: { verb: arrows[1]!, label: value.text } },
+      // THE SCALE, in row order. `labels` is the FIRST non-blank row under the marker and nothing
+      // else: the row beneath it is a DESCRIPTION line ("xhigh + workflows") and stays ignored, so
+      // `values` is exactly the one row the screen printed the scale on. `value.text` is one of
+      // these by construction — it is the span this list was picked from.
+      nav: {
+        upDown: false,
+        leftRight: { verb: arrows[1]!, label: value.text, values: labels.map((s) => s.text) },
+      },
       // The same helper, the same bounds as menu.ts:116 — so the marker row is inside the signature
       // and an arrow tap changes it, which is what `menusEqual` needs to abort a stale confirm.
       signature: regionSignature(texts, top, fi),

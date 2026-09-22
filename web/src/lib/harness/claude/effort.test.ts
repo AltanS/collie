@@ -28,6 +28,19 @@ const FIXTURE = "claude--menu-effort-slider.txt";
 // table, not to the six suites that glob `claude--*` — so the case for it below is hand-built from
 // what the 60-column pane really showed.
 const WIDE_FIXTURE = "claude--menu-effort-slider--w120.txt";
+// The third capture width, taken live on 2026-09-22 and CROPPED to the dialog (the transcript it
+// opened over was the operator's own work). It is the whole-scale reference: six levels on one label
+// row, a `┆` divider in the track, and a second label row under it that the grammar ignores.
+const SCALE_FIXTURE = "claude--menu-effort-slider--w132.txt";
+// The scale that screen printed, left to right.
+const SCALE = ["low", "medium", "high", "xhigh", "max", "ultracode"];
+// Every capture of this screen in the corpus.
+const EFFORT_FIXTURES = [
+  FIXTURE,
+  WIDE_FIXTURE,
+  SCALE_FIXTURE,
+  "claude-lab--menu-effort-slider--w82.txt",
+];
 
 function lines(text: string): StyledLine[] {
   return splitLines(parseAnsi(text));
@@ -57,7 +70,10 @@ describe("detectEffort — the /effort slider", () => {
     // "s for this session only" rather than "s to …".
     expect(model!.actions).toEqual(EXPECTED_ACTIONS);
     // No highlight on this screen, so Up/Down mean nothing; the arrows carry the value.
-    expect(model!.nav).toEqual({ upDown: false, leftRight: { verb: "adjust", label: "xhigh" } });
+    expect(model!.nav).toEqual({
+      upDown: false,
+      leftRight: { verb: "adjust", label: "xhigh", values: SCALE },
+    });
     expect(model!.signature).not.toBe("");
   });
 
@@ -71,11 +87,11 @@ describe("detectEffort — the /effort slider", () => {
     // against the Effort model is what proves which arm ran.
     expect(block.menu).toEqual(detectEffort(paneLines)!);
     expect(block.menu.actions).toEqual(EXPECTED_ACTIONS);
-    expect(block.menu.nav.leftRight).toEqual({ verb: "adjust", label: "xhigh" });
+    expect(block.menu.nav.leftRight).toEqual({ verb: "adjust", label: "xhigh", values: SCALE });
   });
 
   it("emits no digit key", () => {
-    for (const fixture of [FIXTURE, WIDE_FIXTURE]) {
+    for (const fixture of EFFORT_FIXTURES) {
       const model = detectEffort(load(fixture))!;
       expect(model).not.toBeNull();
       for (const key of model.actions.flatMap((a) => a.keys)) {
@@ -127,7 +143,7 @@ describe("detectEffort — a second capture width", () => {
     // What that screen showed: a fresh isolated config, `/effort` opened without touching the
     // arrows, marker over `high`. The 82-column capture reads `xhigh`, so the two files disagree on
     // the value and agree on everything else — which is the point of having both.
-    expect(model!.nav.leftRight).toEqual({ verb: "adjust", label: "high" });
+    expect(model!.nav.leftRight).toEqual({ verb: "adjust", label: "high", values: SCALE });
     expect(model!.actions).toEqual(EXPECTED_ACTIONS);
 
     // Position-independence, stated as a fact about the two files rather than assumed: the labels
@@ -199,9 +215,47 @@ describe("detectEffort — what it declines", () => {
       .filter((n) => n.endsWith(".txt"))
       .filter((n) => detectEffort(load(n)) !== null)
       .toSorted();
-    expect(claimed).toEqual(
-      [FIXTURE, WIDE_FIXTURE, "claude-lab--menu-effort-slider--w82.txt"].toSorted(),
-    );
+    expect(claimed).toEqual(EFFORT_FIXTURES.toSorted());
+  });
+});
+
+describe("detectEffort — the printed scale", () => {
+  // The whole reason `values` exists: the screen printed every level on one row, so the card can
+  // offer them all instead of naming one between two arrows (.adr/0054).
+  it("carries the scale in row order on every capture, with the value one of it", () => {
+    for (const fixture of EFFORT_FIXTURES) {
+      const leftRight = detectEffort(load(fixture))!.nav.leftRight!;
+      expect(leftRight.values, fixture).toEqual(SCALE);
+      expect(leftRight.values, fixture).toContain(leftRight.label);
+    }
+  });
+
+  it("reads the 132-column capture as six levels with the marker over medium", () => {
+    const model = detectEffort(load(SCALE_FIXTURE))!;
+    expect(model.nav.leftRight!.values).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultracode",
+    ]);
+    expect(model.nav.leftRight!.label).toBe("medium");
+    // The second label row ("xhigh + workflows") is NOT part of the scale: only the first non-blank
+    // row under the marker is the label row, and that rule is what keeps the description out.
+    expect(model.nav.leftRight!.values).not.toContain("xhigh + workflows");
+    expect(model.actions).toEqual(EXPECTED_ACTIONS);
+  });
+
+  // A capture whose scale differs is a different screen, not a moved marker — so the scale is part
+  // of menu identity while the label stays out of it.
+  it("puts the scale inside menu identity and keeps the label out", () => {
+    const a = detectEffort(load(SCALE_FIXTURE))!;
+    const widened = {
+      ...a,
+      nav: { ...a.nav, leftRight: { ...a.nav.leftRight!, values: [...SCALE, "ludicrous"] } },
+    };
+    expect(menusSameIdentity(a, widened)).toBe(false);
   });
 });
 
@@ -219,5 +273,8 @@ describe("detectEffort — the nearest lookalike", () => {
     if (block.kind !== "menu") throw new Error("expected a menu block");
     // Byte for byte the model the generic detector produces — the new arm above it stole nothing.
     expect(block.menu).toEqual(detectMenu(paneLines)!);
+    // And the generic grammar prints no scale: that screen shows the current value alone, so the
+    // card keeps the plain arrows.
+    expect(block.menu.nav.leftRight!.values).toBeUndefined();
   });
 });

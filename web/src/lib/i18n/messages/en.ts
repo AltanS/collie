@@ -714,6 +714,10 @@ export const en = {
   "dialog.menu.moveDown": "Move down",
   "dialog.menu.leftAria": "Left — {verb} ({label})",
   "dialog.menu.rightAria": "Right — {verb} ({label})",
+  // The printed scale's chips (.adr/0054): one per value the screen listed. The chip's own text is
+  // the level, so the aria name adds what a tap DOES to it.
+  "dialog.menu.levelAria": "{verb} to {label}",
+  "dialog.menu.levelCurrentAria": "{label}, current",
   "unreadDialog.caption": "Collie cannot read this dialog",
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",

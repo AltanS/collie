@@ -30,6 +30,18 @@ export interface MenuLeftRight {
    * label tracks it. Never compare it for menu identity (lib/menu-action.ts).
    */
   label: string;
+  /**
+   * The ordered scale the arrows move along, left to right, exactly as the screen printed it on one
+   * row. Present ONLY when the screen printed the whole scale (Claude's `/effort` slider prints its
+   * six levels under the marker); absent when the screen printed the current value alone (the
+   * `/model` picker's `◐ Medium effort ←/→ to adjust` row). When it is present, `label` is always one
+   * of `values`.
+   *
+   * What it buys the card: a tap on any value is the DELTA in arrow presses between the current
+   * index and that one, so the operator reaches a level the screen never named a key for without
+   * Collie inventing one (.adr/0054).
+   */
+  values?: string[];
 }
 
 /** The arrow affordances the screen advertises (absent = it showed no sign of them). Never assumed:
@@ -76,6 +88,10 @@ export function menusSameIdentity(a: MenuModel, b: MenuModel): boolean {
     // Only the VERB: `leftRight.label` is the live value the arrows adjust ("◐ Medium effort"), so a
     // Left/Right tap changes it by design — comparing it would make every second arrow tap fail.
     a.nav.leftRight?.verb === b.nav.leftRight?.verb &&
+    // …and the SCALE, when the screen printed one. The scale is the set of values the arrows move
+    // along, which an arrow tap never changes — so comparing it strengthens identity rather than
+    // breaking the second arrow tap the way comparing `label` would.
+    sameScale(a.nav.leftRight?.values, b.nav.leftRight?.values) &&
     a.actions.length === b.actions.length &&
     a.actions.every(
       (x, i) =>
@@ -84,4 +100,11 @@ export function menusSameIdentity(a: MenuModel, b: MenuModel): boolean {
         x.keys.every((k, j) => k === b.actions[i]!.keys[j]),
     )
   );
+}
+
+/** Two scales are the same when both are absent, or both list the same strings in the same order.
+ *  One present and one absent is a different screen, not a moved marker. */
+function sameScale(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }
