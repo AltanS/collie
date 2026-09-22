@@ -65,3 +65,14 @@ tappable chip, and one tap sends the delta as repeated presses of the arrow key 
   value is not made worse. The field is optional on the neutral model, so no adapter is obliged.
 - **Revisit** if a harness prints a scale whose arrows wrap around at the ends, where a delta is no
   longer the shortest path, or if a screen prints a scale it does not let the arrows walk.
+
+> **Amended 2026-09-22:** the mirror above the chips is gone for a card of this shape. At 40 and 60
+> columns Claude wraps the slider three ways at once, and the mirror the sentence above still
+> described had become a horizontally-scrolled run of the wrapped fragments — the same scale the
+> chips already show in full, printed twice, once broken. Altan's rule: if the card is already
+> committing to the chips, it commits all the way. So `MenuBlock` now renders no mirror at all when
+> the model carries a fully parsed scale (`nav.leftRight` with a non-empty `values` array and a
+> `label` that is one of them) — only the title, the chips, and the footer's Confirm / this-session /
+> Cancel buttons. The generic menu (`/model`, `/tasks`, `/resume`) parses no scale, so it is
+> untouched: its body is unread structure the mirror is the only way to show, and it keeps the mirror
+> exactly as this ADR first shipped it.

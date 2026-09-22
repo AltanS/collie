@@ -29,6 +29,13 @@ function renderMenu(onAction = vi.fn(), capture = PICKER) {
   return onAction;
 }
 
+// Same render, but keeping `container` — the mirror `<pre>` has no accessible role, so its presence
+// or absence is checked directly against the DOM rather than through a query that assumes a role.
+function renderMenuContainer(capture = PICKER) {
+  const block = menuBlock(capture);
+  return render(<MenuBlock menu={block.menu} lines={block.lines} onAction={vi.fn()} />).container;
+}
+
 describe("MenuBlock", () => {
   it("renders the footer's actions, the cancel, and the nav the screen advertised", () => {
     renderMenu();
@@ -141,5 +148,41 @@ describe("MenuBlock — a printed scale", () => {
     expect(screen.getByRole("button", { name: /^left — adjust/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^right — adjust/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /, current$/ })).not.toBeInTheDocument();
+  });
+});
+
+// A CARD THAT READS THE BODY REPLACES IT (ADR 0054, amended 2026-09-22). Once the model carries a
+// fully parsed scale, the mirrored terminal rows are redundant with the chips and are dropped
+// entirely — at 40 and 60 columns they are wrapped fragments, not the full picture the chips already
+// give. A card that reads only the footer (the generic menu, tested above and again below) keeps its
+// mirror exactly as before.
+describe("MenuBlock — a card that reads the body drops the mirror", () => {
+  it("renders no mirrored region for the Effort card", () => {
+    const container = renderMenuContainer(SLIDER);
+    expect(container.querySelector("pre")).not.toBeInTheDocument();
+  });
+
+  it("still renders the title and the chips", () => {
+    renderMenu(vi.fn(), SLIDER);
+    expect(screen.getByText("Effort")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "adjust to high" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "medium, current" })).toBeInTheDocument();
+  });
+
+  // "Faster"/"Smarter" and the "xhigh + workflows" description only exist as rows of the mirrored
+  // region (effort.ts does not lift them into the model — .adr/0054 skips what it cannot parse), so
+  // their absence is the sharpest proof the mirror never rendered.
+  it("drops text that only ever existed in the mirrored rows", () => {
+    renderMenu(vi.fn(), SLIDER);
+    expect(screen.queryByText("Faster")).not.toBeInTheDocument();
+    expect(screen.queryByText("Smarter")).not.toBeInTheDocument();
+    expect(screen.queryByText(/xhigh \+ workflows/)).not.toBeInTheDocument();
+  });
+
+  // The generic menu (`/model` and its kin) has no parsed scale, so it takes the other branch: the
+  // mirror is the only way its options and descriptions reach the screen at all.
+  it("still renders the mirror for a menu that reads only the footer", () => {
+    const container = renderMenuContainer(PICKER);
+    expect(container.querySelector("pre")).toBeInTheDocument();
   });
 });
