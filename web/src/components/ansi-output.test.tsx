@@ -690,3 +690,76 @@ describe("terminal mirror image placeholders", () => {
     expect(container.textContent).toContain("[Image]");
   });
 });
+
+// A segment's background paints its content box and a glyph paints its EM BOX, so at the mirror's
+// 1.25 leading every character whose job is to fill its cell is a quarter of a row short and the
+// pill or bar it belongs to steps at the join (lib/cell-glyphs.ts). These guard the three things
+// painting it instead must not cost: the text, the offsets, and the paint's own colour source.
+describe("cell-filling glyphs", () => {
+  const LEFT_CAP = "\ue0b6";
+  const RIGHT_CAP = "\ue0b4";
+  const FULL_BLOCK = "\u2588";
+
+  function mirror(text: string, props?: Partial<ComponentProps<typeof AnsiOutput>>) {
+    const { container } = render(<AnsiOutput text={text} {...props} />);
+    return container;
+  }
+
+  it("paints a Powerline cap as a cell-sized box and leaves the text intact", () => {
+    const container = mirror(`${LEFT_CAP}CX${RIGHT_CAP} 7d`);
+    const caps = container.querySelectorAll(".cell-glyph");
+    expect(caps).toHaveLength(2);
+    expect(caps[0]!.getAttribute("style")).toContain("--cell-radius: 100% 0 0 100% / 50% 0 0 50%");
+    expect(caps[1]!.getAttribute("style")).toContain("--cell-radius: 0 100% 100% 0 / 0 50% 50% 0");
+    // The character is still a text node inside the box. It is invisible because its ink and the
+    // fill behind it are both currentColor — not because it was replaced.
+    expect(caps[0]!.textContent).toBe(LEFT_CAP);
+    expect(container.querySelector("pre")!.textContent).toBe(`${LEFT_CAP}CX${RIGHT_CAP} 7d`);
+  });
+
+  it("adds no element to a line with nothing to paint", () => {
+    expect(mirror("ordinary output").querySelectorAll(".cell-glyph")).toHaveLength(0);
+  });
+
+  // `currentColor` is the whole reason a painted cell needs no colour of its own: it takes the
+  // segment's foreground, and .adr/0002's inversion filter then treats it exactly like text. A
+  // literal colour here would render correctly in dark and wrongly in light.
+  it("takes its colour from the segment rather than naming one", () => {
+    const cap = mirror(`${LEFT_CAP}CX${RIGHT_CAP}`).querySelector(".cell-glyph")!;
+    const style = cap.getAttribute("style")!;
+    expect(style).toContain("currentColor");
+    expect(style).not.toMatch(/#[0-9a-f]{3,8}|rgb\(/i);
+  });
+
+  // Find splits a segment by OFFSET into the visible text. Painting happens inside each piece, so
+  // a match that sits beyond a painted character must still land on the right characters.
+  it("keeps find offsets correct across a painted character", () => {
+    const container = mirror(`${FULL_BLOCK}${FULL_BLOCK} needle`, {
+      query: "needle",
+      currentMatch: 0,
+    });
+    expect(container.querySelector('[data-find-match="current"]')!.textContent).toBe("needle");
+    expect(container.querySelectorAll(".cell-glyph")).toHaveLength(2);
+  });
+
+  // Links split the same coordinate space as find, and an autolink's offsets are taken over the
+  // same visible text. A URL after a painted character must still be anchored over its own
+  // characters, with nothing of the bar inside the anchor.
+  it("keeps link offsets correct across a painted character", () => {
+    const url = "https://herdr.dev/docs";
+    const container = mirror(`${FULL_BLOCK}${FULL_BLOCK} ${url}`);
+    const anchor = container.querySelector("a")!;
+    expect(anchor.textContent).toBe(url);
+    expect(anchor.getAttribute("href")).toBe(url);
+    expect(container.querySelectorAll(".cell-glyph")).toHaveLength(2);
+  });
+
+  // A block character INSIDE the match: the highlight span owns the run, so the painting has to
+  // happen within it or a highlighted bar loses its cells.
+  it("paints inside a find match too", () => {
+    const container = mirror(`bar ${FULL_BLOCK}${FULL_BLOCK}`, { query: `r ${FULL_BLOCK}` });
+    const match = container.querySelector("[data-find-match]")!;
+    expect(match.textContent).toBe(`r ${FULL_BLOCK}`);
+    expect(match.querySelectorAll(".cell-glyph")).toHaveLength(1);
+  });
+});

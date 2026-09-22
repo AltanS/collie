@@ -50,6 +50,29 @@
   }
 }
 
+/* One cell of the mirror, painted rather than typed — lib/cell-glyphs.ts has the whole argument.
+
+   IT SETS NO GEOMETRY, AND THAT IS THE WHOLE TRICK. An inline box's background paints the same
+   content area as the background of the span beside it, so a painted cell and the chip it belongs
+   to start and end on the same two pixels with nothing to keep in step. Sizing a box instead —
+   inline-block, `1ch` wide, a line box tall — measures 0.27px short at each end in WebKit, because
+   `line-height: normal` and the content area disagree there; it was tried and dropped.
+
+   It also means this changes no layout at all: the character keeps its own advance, so a Powerline
+   cap stays exactly as wide as the font makes it, columns move by nothing, and the only difference
+   is that the shape now reaches the top and bottom of its row.
+
+   THE CHARACTER IS STILL IN HERE, as a text node — find offsets, link offsets, selection and copy
+   all read it, and none of them may change. `-webkit-text-fill-color` is what stops it being seen:
+   it empties the INK and leaves `color` alone, so `currentColor` in the paint still resolves to the
+   segment's own foreground, and .adr/0002's inversion filter treats the paint exactly like text.
+   `color: transparent` would take the paint with it. */
+.cell-glyph {
+  background: var(--cell-fill);
+  border-radius: var(--cell-radius, 0);
+  -webkit-text-fill-color: transparent;
+}
+
 /* `dark:` must fire for BOTH an explicitly-pinned dark root and a system-dark root the user hasn't
    pinned to light — otherwise the handful of literal `dark:` utilities silently stop working for
    everyone on System (the default). Token-driven colors don't need this; these are the literals. */
