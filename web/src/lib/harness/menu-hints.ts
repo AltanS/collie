@@ -150,7 +150,18 @@ export interface KeyHintFooter {
  *
  *   * every row carries the SAME left indent, because a wrapped footer is one block the renderer
  *     drew at one indent. This is what keeps ordinary agent output that scrolled in below a dialog
- *     out of the group: it is written at the transcript's indent, not the dialog's;
+ *     out of the group: it is written at the transcript's indent, not the dialog's. ONE exception,
+ *     for the wrap the TERMINAL did rather than the renderer: a row at indent 0 is still part of the
+ *     block when the row above it could not have held that row's first word —
+ *     `prev.trimEnd().length + 1 + firstWord(cont).length > width`, with `width` the longest row on
+ *     the screen (a dialog's own `▔▔▔` and `───` rules run the full width, so that IS the column
+ *     count). Claude's own flex wrap keeps the indent; the terminal's hard break puts the
+ *     continuation at column 0. The evidence is
+ *     `fixtures/panes/claude--menu-effort-slider--w60-ultracode.txt`: the footer's first row ends at
+ *     column 57 of a 60-column pane, the next word is `only`, and it could not fit, so the terminal
+ *     broke the line and the rest of the footer starts at column 0. A row at any OTHER indent than
+ *     the block's, and a row at indent 0 whose predecessor had room for the next word, are still
+ *     refused — the latter is ordinary output that happens to sit flush left;
  *   * every `·`-separated segment of the joined text is hint text (HINT_FORM), so a group holding an
  *     option row, a label row or a rule is refused whole rather than parsed in part;
  *   * `parseKeyHintFooter` gets at least one action out of the joined text.
@@ -167,13 +178,17 @@ export function readKeyHintFooter(texts: string[], maxRows: number = MAX_FOOTER_
   while (end >= 0 && texts[end]!.trim() === "") end--;
   if (end < 0) return null;
 
+  // The pane's column count, read off the screen rather than passed in: a dialog draws its own rules
+  // edge to edge, so the longest row IS the width. Only the soft-wrap exception below uses it.
+  const width = texts.reduce((w, t) => Math.max(w, t.length), 0);
+
   let best: KeyHintFooter | null = null;
   for (let k = 1; k <= maxRows; k++) {
     const start = end - k + 1;
     if (start < 0) break;
     if (texts[start]!.trim() === "") break; // a blank row ends the group; no larger k is contiguous
     const rows = texts.slice(start, end + 1);
-    if (rows.some((t) => indentOf(t) !== indentOf(rows[0]!))) continue;
+    if (!rowsAreOneBlock(rows, width)) continue;
     const text = rows.map((t) => t.trim()).join(" ");
     const segments = text.split(SEGMENT_SPLIT);
     if (!segments.every((segment) => HINT_FORM.test(segment.trim()))) continue;
@@ -182,6 +197,32 @@ export function readKeyHintFooter(texts: string[], maxRows: number = MAX_FOOTER_
     best = { text, startLine: start, endLine: end, actions };
   }
   return best;
+}
+
+/**
+ * Whether `rows` read as ONE block the renderer drew: every row at the first row's indent, save a
+ * row at indent 0 the TERMINAL wrapped there (`softWrappedAt0`). See `readKeyHintFooter`'s comment.
+ */
+function rowsAreOneBlock(rows: string[], width: number): boolean {
+  const indent = indentOf(rows[0]!);
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (indentOf(row) === indent) continue;
+    if (indentOf(row) !== 0) return false;
+    if (!softWrappedAt0(rows[i - 1]!, row, width)) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether `cont` sits at column 0 because `prev` had no room for its first word. Trailing spaces on
+ * `prev` are the grid's padding, not text the cursor passed, so they are trimmed first; the `+ 1` is
+ * the space that would have separated the two words.
+ */
+function softWrappedAt0(prev: string, cont: string, width: number): boolean {
+  const first = /\S+/.exec(cont);
+  if (first === null) return false;
+  return prev.trimEnd().length + 1 + first[0].length > width;
 }
 
 /** A row's left indent, in characters. Compared only between rows of one candidate footer group. */

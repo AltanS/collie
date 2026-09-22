@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { menuKeyFor, parseKeyHintFooter } from "./menu-hints";
+import { menuKeyFor, parseKeyHintFooter, readKeyHintFooter } from "./menu-hints";
 
 // The SHARED menu helpers — the half of the generic modal contract every adapter reuses. Pinned here
 // rather than in a harness's own test file precisely because a second adapter will lean on them.
@@ -57,5 +57,58 @@ describe("parseKeyHintFooter", () => {
     expect(parseKeyHintFooter("Esc to cancel")).toEqual([]);
     expect(parseKeyHintFooter("some ordinary output")).toEqual([]);
     expect(parseKeyHintFooter("model · branch · 42% ctx")).toEqual([]);
+  });
+});
+
+describe("readKeyHintFooter — a footer the TERMINAL broke at column 0", () => {
+  // The screen `claude--menu-effort-slider--w60-ultracode.txt` captured: a 60-column pane whose
+  // dialog rules run edge to edge, a footer drawn at indent 3, and a second row at indent 0 because
+  // the next word did not fit. Claude's own flex wrap keeps the indent; this break is the
+  // terminal's, and the reader has to take it or lose two thirds of the footer.
+  const RULE = "▔".repeat(60);
+  // 57 of 60 columns used, so `only` (4 more, plus a space) could not follow on that row.
+  const FIRST = "   ←/→ to adjust · Enter to confirm · s for this session ";
+  const REST = "only · Esc to cancel";
+
+  it("joins the indent-0 continuation when the row above had no room for its first word", () => {
+    expect(FIRST.length).toBe(57);
+    expect(FIRST.trimEnd().length + 1 + "only".length).toBeGreaterThan(RULE.length);
+
+    const footer = readKeyHintFooter([RULE, "   Effort", "", FIRST, REST]);
+    expect(footer).not.toBeNull();
+    expect(footer!.text).toBe(
+      "←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel",
+    );
+    expect(footer!.startLine).toBe(3);
+    expect(footer!.endLine).toBe(4);
+    expect(footer!.actions).toEqual([
+      { label: "Confirm", keys: ["Enter"] },
+      { label: "Cancel", keys: ["Escape"], cancel: true },
+    ]);
+  });
+
+  it("refuses the same two rows when the first one had room for `only`", () => {
+    // The only edit is the first row's length: 48 of 60 columns, so a terminal wrapping here would
+    // have put `only` on that row. A row at indent 0 under it is therefore somebody else's output,
+    // not this footer's tail, and the group is refused — leaving the indent-0 row alone, which is
+    // not a footer either (`only` is not a hint).
+    const short = "   ←/→ to adjust · Enter to confirm · s for this";
+    expect(short.length).toBe(48);
+    expect(short.length + 1 + "only".length).toBeLessThan(RULE.length);
+    expect(readKeyHintFooter([RULE, "   Effort", "", short, REST])).toBeNull();
+  });
+
+  it("refuses an indent-0 continuation that is prose rather than hint text", () => {
+    // Soft-wrapped by the arithmetic, and still not part of the footer: one of its `·`-separated
+    // segments is not a `<key> to|for <verb>` hint, so the group is refused whole the way every
+    // other non-hint row is. The exception widens WHICH rows may join, never WHAT may join.
+    const prose = "unrelated output · more output";
+    expect(FIRST.trimEnd().length + 1 + "unrelated".length).toBeGreaterThan(RULE.length);
+    expect(readKeyHintFooter([RULE, "   Effort", "", FIRST, prose])).toBeNull();
+  });
+
+  it("still refuses a continuation at some other indent than the block's", () => {
+    // Indent 0 is the terminal's break. Indent 1 is not, however little room the row above had.
+    expect(readKeyHintFooter([RULE, "   Effort", "", FIRST, " " + REST])).toBeNull();
   });
 });

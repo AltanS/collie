@@ -43,15 +43,19 @@ const WRAPPED_FIXTURES = [
   "claude--menu-effort-slider--w80.txt",
 ];
 // Six more real captures, taken live on 2026-09-22 with a NON-default level selected — `low` and
-// `ultracode` — at 40, 60 and 80 columns. Three lift, and lift exactly as the medium-selected
+// `ultracode` — at 40, 60 and 80 columns. Four lift, and lift exactly as the medium-selected
 // fixtures above do at the same width: the level read is a position against the marker, not a
-// vocabulary, so a different selected word is not a different grammar. Three decline, each for its
-// own reason (see the `LOW_ULTRACODE_DECLINES` cases below); those three are deliberately NOT in
-// `EFFORT_FIXTURES`, because `detectEffort` returns null on all of them.
+// vocabulary, so a different selected word is not a different grammar. Two decline, each for its
+// own reason (see the `LOW_ULTRACODE_DECLINES` cases below); those two are deliberately NOT in
+// `EFFORT_FIXTURES`, because `detectEffort` returns null on both of them.
 const LOW_ULTRACODE_LIFTS: Array<{ name: string; label: string }> = [
   { name: "claude--menu-effort-slider--w60-low.txt", label: "low" },
   { name: "claude--menu-effort-slider--w80-low.txt", label: "low" },
   { name: "claude--menu-effort-slider--w80-ultracode.txt", label: "ultracode" },
+  // The 60-column `ultracode` render: the dialog repaints flush-left and unwrapped, and the footer
+  // is broken by the TERMINAL at column 0 rather than by Claude's flex wrap. `readKeyHintFooter`
+  // reads that soft wrap as one block, so all three keys and the `←/→` phrase survive the join.
+  { name: "claude--menu-effort-slider--w60-ultracode.txt", label: "ultracode" },
 ];
 // The scale that screen printed, left to right.
 const SCALE = ["low", "medium", "high", "xhigh", "max", "ultracode"];
@@ -385,10 +389,10 @@ describe("detectEffort — the wrapped dialog", () => {
 
 describe("detectEffort — a level other than medium selected", () => {
   // Real captures, taken live on 2026-09-22, of `low` and `ultracode` selected at 40, 60 and 80
-  // columns — the same widths WRAPPED_FIXTURES pins for the default `medium`. Three of the six lift;
-  // this block is the three that do, and it is what proves the read is a MARKER POSITION rather than
-  // a word list: `low` lifts wrapped (60) and whole (80), and `ultracode` lifts whole (80), each with
-  // the same six values and the same three actions the medium-selected captures carry.
+  // columns — the same widths WRAPPED_FIXTURES pins for the default `medium`. Four of the six lift;
+  // this block is the four that do, and it is what proves the read is a MARKER POSITION rather than
+  // a word list: `low` lifts wrapped (60) and whole (80), and `ultracode` lifts at 60 and 80, each
+  // with the same six values and the same three actions the medium-selected captures carry.
   it.each(LOW_ULTRACODE_LIFTS)("reads $name with the marker over $label", ({ name, label }) => {
     const model = detectEffort(load(name));
     expect(model).not.toBeNull();
@@ -414,20 +418,9 @@ describe("detectEffort — a level other than medium selected", () => {
 });
 
 describe("detectEffort — a level other than medium selected, and the widths that decline", () => {
-  // The other three captures of the same pair (2026-09-22), each declining for its own reason.
-  it("declines at 60 columns with ultracode selected: the repainted, unwrapped dialog leaves the footer's soft wrap at unequal indents, so readKeyHintFooter's equal-indent rule refuses the group and the ←/→ phrase is lost", () => {
-    const paneLines = load("claude--menu-effort-slider--w60-ultracode.txt");
-    expect(detectEffort(paneLines)).toBeNull();
-
-    // The generic grammar still reads the tail line alone (no wrapped-footer join), so it lifts the
-    // same screen with just the one hint that line carries.
-    const blocks = claudeBuildBlocks(paneLines);
-    expect(blocks.map((b) => b.kind)).toEqual(["raw", "menu"]);
-    const block = blocks[1]!;
-    if (block.kind !== "menu") throw new Error("expected a menu block");
-    expect(block.menu.actions).toEqual([{ label: "Cancel", keys: ["Escape"], cancel: true }]);
-  });
-
+  // The other two captures of the same pair (2026-09-22), each declining for its own reason. Both
+  // are 40 columns, and neither reason is the footer: one screen draws no marker and the other is a
+  // render glitch.
   it("declines at 40 columns with low selected: no ▲ is drawn at all when the marker would sit leftmost, Claude marks low by colour only, so the pipeline falls through to the unread-dialog card", () => {
     const paneLines = load("claude--menu-effort-slider--w40-low.txt");
     expect(detectEffort(paneLines)).toBeNull();
