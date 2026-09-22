@@ -253,8 +253,12 @@ describe("tableRuns — the whole pane corpus", () => {
     }
 
     // The one real table in the corpus: the Bluefin motd's `Command │ Description` two-column list,
-    // 200 columns wide, sitting in the scrollback above Claude's trust prompt. Everything else here
-    // is chrome — splashes, pickers, permission dialogs, wizards — and must keep wrapping.
-    expect(claimed).toEqual(["claude--trust-prompt.txt 5..10"]);
+    // sitting in the scrollback above Claude's trust prompt — 200 columns wide in the 2026-07-04
+    // capture, 120 in the 2026-09-22 one. Everything else here is chrome — splashes, pickers,
+    // permission dialogs, wizards — and must keep wrapping.
+    expect(claimed).toEqual([
+      "claude--trust-prompt-unnumbered.txt 5..10",
+      "claude--trust-prompt.txt 5..10",
+    ]);
   });
 });

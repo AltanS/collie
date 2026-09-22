@@ -168,6 +168,18 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    print. Claude's `/effort` slider prints "Enter to confirm", was filed as the folder-trust prompt
    on that phrase alone, and lost every button it had
    ([ADR 0053](./.adr/0053-an-unread-dialog-still-has-a-way-out.md)).
+7. **A POINTED list is walked, not numbered.** The same arithmetic covers a modal that prints a
+   column of unnumbered rows with a `❯` on one of them and a commit key in its footer: a tap is the
+   arrow walk from the pointed row to the target row, then that commit key, sent as one batch.
+   Claude's folder-trust prompt is the reference case since 2.1.278 — it prints no digit, so none may
+   be synthesised, and ADR 0009 holds here exactly as it does above
+   ([ADR 0055](./.adr/0055-a-pointed-list-is-walked-then-confirmed.md)). Two things are load-bearing.
+   The arrow COUNT is a claim about where the pointer was, so the kind's committing comparator must
+   see the pointer row, or a highlight moved by a second device sends the wrong number of arrows.
+   And the row a bare commit key would take is the DEFAULT, which on the trust prompt quits the
+   agent, so the card has to show which row it is. This lift lives in Claude's prompt-select grammar
+   rather than in the generic menu, because a walk is only safe when the dialog is one you have
+   modelled; the menu's own bar (only the keys the footer named) is unchanged.
 
 ## Every dialog model is a contract, and the race guard is generic
 

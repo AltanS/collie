@@ -129,6 +129,7 @@ the pointer, it was a supersede.
 | [0052](./0052-one-build-serves-any-mount.md) | One build serves any mount: `COLLIE_BASE_PATH` is a runtime setting the bridge applies when it serves the shell | Accepted |
 | [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: a footer phrase never silences a grammar, and a raw-only modal gets its adapter's declared cancel key | Accepted |
 | [0054](./0054-a-printed-scale-is-tappable.md) | A printed scale is tappable: when the screen names every value the arrows move along, the card shows them all and a tap sends the delta as repeated arrow presses | Accepted |
+| [0055](./0055-a-pointed-list-is-walked-then-confirmed.md) | A pointed list is walked, then confirmed: an unnumbered list with a `❯` on one row is tapped as the arrow delta plus the commit key the footer named, and never a synthesised digit (applies 0054 to a list) | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
