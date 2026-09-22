@@ -59,20 +59,21 @@ describe("NavTray", () => {
     const isBefore = (a: HTMLElement, b: HTMLElement) =>
       (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
-    // Row 1: Esc leads, Tab follows, Up and Enter close it out.
+    // Row 1: Esc leads, Tab follows, Up and the quick Ctrl+C close it out.
     expect(isBefore(esc, tab)).toBe(true);
     expect(isBefore(tab, up)).toBe(true);
-    expect(isBefore(up, enter)).toBe(true);
+    expect(isBefore(up, ctrlC)).toBe(true);
 
-    // Row 2 begins only after all of row 1 — Ctrl+C leads it, Space/Left/Down/Right follow in order.
-    expect(isBefore(enter, ctrlC)).toBe(true);
-    expect(isBefore(ctrlC, space)).toBe(true);
+    // Row 2 begins only after all of row 1 — Enter leads it, under Esc and away from the arrows
+    // (issue #263); Space/Left/Down/Right follow in order.
+    expect(isBefore(ctrlC, enter)).toBe(true);
+    expect(isBefore(enter, space)).toBe(true);
     expect(isBefore(space, left)).toBe(true);
     expect(isBefore(left, down)).toBe(true);
     expect(isBefore(down, right)).toBe(true);
   });
 
-  it("a quick Ctrl+C leads row 2 and fires ctrl+c immediately", async () => {
+  it("a quick Ctrl+C closes row 1 and fires ctrl+c immediately", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
     render(<NavTray onSend={onSend} />);

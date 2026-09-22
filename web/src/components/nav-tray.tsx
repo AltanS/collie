@@ -247,11 +247,17 @@ export function NavTray({
         disabled={disabled}
       />
 
-      {/* Row 1: Esc, Tab, the three modifiers, Up, Enter. Row 2: a quick Ctrl+C, Space spanning the
+      {/* Row 1: Esc, Tab, the three modifiers, Up, a quick Ctrl+C. Row 2: Enter, Space spanning the
           middle three columns, then Left/Down/Right — Down sits in the same column as Up above it
           (column 6), so the pad still reads as an inverted-T even though it no longer has a row of
           its own. Esc leading the pad and the quick Ctrl+C both carry over from the old two-tab
-          pad; the seven-column row shape and the Tab/Space placement are new. */}
+          pad; the seven-column row shape and the Tab/Space placement are new.
+
+          Enter leads row 2, under Esc, and not beside the arrows (issue #263). Rapid arrow taps
+          build a thumb habit around columns 5 to 7; an arrow that lands wrong is reversible, an
+          Enter that lands wrong confirms a prompt. So the two high-impact keys, Esc and Enter, share
+          the left edge, and the corner beside Up holds Ctrl+C, whose miss cancels rather than
+          confirms. */}
       <div className="grid grid-cols-7 gap-1">
         {navBtn("Esc", ["Escape"])}
         {navBtn("Tab", ["Tab"])}
@@ -259,9 +265,9 @@ export function NavTray({
         {modBtn("ctrl", "Ctrl")}
         {modBtn("alt", "Alt")}
         {navBtn(<ArrowUp className="size-4" />, ["Up"], "Up", true)}
-        {navBtn("⏎", ["Enter"], "Enter")}
-
         {navBtn("Ctrl C", ["ctrl+c"], "Ctrl+C")}
+
+        {navBtn("⏎", ["Enter"], "Enter")}
         {navBtn("Space", ["Space"], undefined, false, "col-span-3")}
         {navBtn(<ArrowLeft className="size-4" />, ["Left"], "Left", true)}
         {navBtn(<ArrowDown className="size-4" />, ["Down"], "Down", true)}
