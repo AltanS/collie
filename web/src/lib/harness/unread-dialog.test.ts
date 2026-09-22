@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { parseAnsi } from "../ansi";
 import { lineText, splitLines, type Block, type StyledLine } from "../blocks";
 import { buildBlocks, withUnreadDialog } from "./index";
+import { museAdapter } from "./muse";
 import { adapterFor } from "./registry";
 import type { HarnessAdapter } from "./types";
 
@@ -326,5 +327,35 @@ describe("the signature", () => {
     // The bridge's expected_prompt must be LITERAL on-screen text.
     const nonBlank = moved.map(lineText).filter((t) => t.trim() !== "");
     expect(nonBlank.at(-1)).toBe(third.cancel.signature.split("\n").at(-1));
+  });
+});
+
+describe("known live-box gaps the card inherits", () => {
+  // This is the #261 stall wearing the card: locateTail walks up from the bottom rule over
+  // continuation rows and stops at the first blank row, so a draft holding a blank row (a
+  // two-paragraph message) yields prompt: null. composerReady is then a definite false, and the
+  // M34 post-pass draws the unread-dialog card over a LIVE box holding the operator's own draft.
+  // When locateTail tolerates a bounded blank run inside the draft, this test must be INVERTED
+  // (card null, composerReady true), not deleted.
+  it("muse: a draft with a blank row inside it still gets the card (#261)", () => {
+    const base = fixtureLines("muse--draft-single.txt");
+    const texts = base.map(lineText);
+    let boxRow = -1;
+    for (let i = texts.length - 1; i >= 0; i--) {
+      if (texts[i]!.trimStart().startsWith("❯")) {
+        boxRow = i;
+        break;
+      }
+    }
+    expect(boxRow).toBeGreaterThanOrEqual(0);
+
+    const lines = [
+      ...base.slice(0, boxRow + 1),
+      ...linesOf("\n  second paragraph"),
+      ...base.slice(boxRow + 1),
+    ];
+
+    expect(museAdapter.composerReady!(lines)).toBe(false);
+    expect(cardOf(pass("muse", lines))).not.toBeNull();
   });
 });
