@@ -665,6 +665,12 @@ export const ko: Dictionary = {
   "dialog.terminalControlAria": "Show the terminal instead of this card",
   // TODO wordsmith
   "dialog.backToCard": "Back to the card",
+  // TODO wordsmith
+  "dialog.putAwayControl": "Put away",
+  // TODO wordsmith
+  "dialog.putAwayControlAria": "Hide this card's buttons, keep the terminal",
+  // TODO wordsmith
+  "dialog.showButtons": "Show the buttons",
   "dialog.previousStepAria": "이전 단계",
   "dialog.nextStepAria": "다음 단계",
   "dialog.answeredAria": "응답 완료",

@@ -82,4 +82,45 @@ describe("PromptPanel", () => {
     await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
     expect(screen.getByRole("group", { name: "Choose a colour" })).toBeInTheDocument();
   });
+
+  // Counsel fix #2 (ADR 0056): the control that was just tapped unmounts, so the swap must not
+  // drop focus onto the page body — it lands on whichever control replaced it.
+  it("moves focus to the Back control after the swap, and back to Terminal after Back", async () => {
+    const user = userEvent.setup();
+    render(
+      <PromptPanel ariaLabel="Choose a colour" raw={RAW_LINES}>
+        <button type="button">Red</button>
+      </PromptPanel>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back to the card" }));
+
+    await user.click(screen.getByRole("button", { name: "Back to the card" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Show the terminal instead of this card" }),
+    );
+  });
+
+  // Counsel fix #1 (ADR 0056): `rawMode="declutter"` is for the two cards whose mirror is already
+  // visible by default — the control only puts their own buttons away, so it must not claim a
+  // swap ("Show the terminal instead of this card") that isn't happening.
+  it("names the control by what it does when rawMode is declutter", async () => {
+    const user = userEvent.setup();
+    render(
+      <PromptPanel ariaLabel="Choose a colour" raw={RAW_LINES} rawMode="declutter">
+        <button type="button">Red</button>
+      </PromptPanel>,
+    );
+
+    const putAway = screen.getByRole("button", {
+      name: "Hide this card's buttons, keep the terminal",
+    });
+    expect(putAway).toHaveTextContent("Put away");
+    expect(screen.queryByRole("button", { name: /show the terminal instead/i })).toBeNull();
+
+    await user.click(putAway);
+    expect(screen.getByRole("button", { name: "Show the buttons" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back to the card" })).toBeNull();
+  });
 });

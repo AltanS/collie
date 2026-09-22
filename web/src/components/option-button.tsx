@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { SquareTerminal } from "lucide-react";
 
@@ -82,19 +82,52 @@ const ghostControl =
  * (ansi-output.tsx), and a fresh dialog is a fresh instance. Never persisted, never a device pref
  * — that's the always-on `rawTerminal` display setting, which stays exactly as it was. Omitting
  * `raw` (or leaving it `undefined`) renders no control at all, unchanged from before this ADR.
+ *
+ * `rawMode` names what the control actually does, because it does two different things depending
+ * on the card. Four cards go from nothing to the region on tap — the default, `"reveal"` — so
+ * "Show the terminal instead of this card" is true there. The generic-menu and unread-dialog
+ * cards already show the mirror by default; their control only hides THEIR OWN buttons, the
+ * mirror stays equivalent either way, so they pass `"declutter"`, which renames both controls to
+ * say that ("Put away" / "Show the buttons") rather than claim a swap that isn't happening.
  */
 export function PromptPanel({
   ariaLabel,
   raw,
+  rawMode = "reveal",
   children,
 }: {
   ariaLabel: string;
   /** The region this card replaced — every block variant already carries it as `lines`. */
   raw?: StyledLine[];
+  /** What the Terminal control actually does on this card — see the ADR 0056 note above. */
+  rawMode?: "reveal" | "declutter";
   children: ReactNode;
 }) {
   useLocale();
   const [showRaw, setShowRaw] = useState(false);
+  const terminalControlRef = useRef<HTMLButtonElement>(null);
+  const backControlRef = useRef<HTMLButtonElement>(null);
+  const isFirstRender = useRef(true);
+
+  // Move focus to whichever control replaces the one just unmounted, so the swap never drops
+  // focus onto the page body. Skipped on mount: the panel must not steal focus from wherever it
+  // already was just because a dialog with a `raw` prop appeared.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (showRaw) {
+      backControlRef.current?.focus({ preventScroll: true });
+    } else {
+      terminalControlRef.current?.focus({ preventScroll: true });
+    }
+  }, [showRaw]);
+
+  const declutter = rawMode === "declutter";
+  const terminalLabel = declutter ? t("dialog.putAwayControl") : t("dialog.terminalControl");
+  const terminalAria = declutter ? t("dialog.putAwayControlAria") : t("dialog.terminalControlAria");
+  const backLabel = declutter ? t("dialog.showButtons") : t("dialog.backToCard");
 
   return (
     <div
@@ -104,25 +137,27 @@ export function PromptPanel({
     >
       {raw !== undefined && !showRaw && (
         <button
+          ref={terminalControlRef}
           type="button"
-          aria-label={t("dialog.terminalControlAria")}
+          aria-label={terminalAria}
           onClick={() => setShowRaw(true)}
           className={ghostControl}
         >
           <SquareTerminal className="size-3.5 shrink-0" aria-hidden />
-          {t("dialog.terminalControl")}
+          {terminalLabel}
         </button>
       )}
       {raw !== undefined && showRaw ? (
         <>
           <RawMirror lines={raw} />
           <button
+            ref={backControlRef}
             type="button"
-            aria-label={t("dialog.backToCard")}
+            aria-label={backLabel}
             onClick={() => setShowRaw(false)}
             className={ghostControl}
           >
-            {t("dialog.backToCard")}
+            {backLabel}
           </button>
         </>
       ) : (

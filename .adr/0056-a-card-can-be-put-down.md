@@ -86,3 +86,9 @@ as it was — the always-on version of the same idea, not superseded by this one
   (a card whose replaced region is meaningfully bigger than `lines`, for instance), or if the
   decluttering behaviour for the unread-dialog and generic-menu cards proves confusing in practice
   (Terminal appearing to do nothing, because the rows were already on screen).
+- **Counsel fix, same day:** the unread-dialog and generic-menu cards' control claimed "Show the
+  terminal instead of this card" while only hiding buttons the mirror already showed, so
+  `PromptPanel` gained `rawMode: "reveal" | "declutter"` (default `"reveal"`) and those two cards
+  pass `"declutter"`, which renames the pair to "Put away" / "Show the buttons".
+- **Counsel fix, same day:** tapping either control unmounted it and dropped focus to the page
+  body, so the swap now moves focus onto whichever control replaces the tapped one.

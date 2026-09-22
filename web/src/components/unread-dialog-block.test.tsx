@@ -38,7 +38,7 @@ function renderCard(onAction = vi.fn(), disabled = false) {
 }
 
 describe("UnreadDialogBlock", () => {
-  it("renders the caption and exactly two controls: the declared key and Terminal", () => {
+  it("renders the caption and exactly two controls: the declared key and Put away", () => {
     renderCard();
     expect(screen.getByText("Collie cannot read this dialog")).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(2);
@@ -46,9 +46,10 @@ describe("UnreadDialogBlock", () => {
     // back rather than dismisses, so a label promising "cancel" would be a lie on a real harness.
     expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cancel/i })).toBeNull();
-    // ADR 0056: the card's own way back to the screen it stands in for.
+    // ADR 0056, counsel fix: this card shows its mirror by default, so the control's job is
+    // putting the key control away, never a claimed swap — "Put away" / its aria-label.
     expect(
-      screen.getByRole("button", { name: "Show the terminal instead of this card" }),
+      screen.getByRole("button", { name: "Hide this card's buttons, keep the terminal" }),
     ).toBeInTheDocument();
   });
 
@@ -61,14 +62,16 @@ describe("UnreadDialogBlock", () => {
     }
   });
 
-  // ADR 0056: the Terminal control still applies to a card that already shows its mirror — it
-  // puts the key control away for a decluttered, mirror-only view, and "Back to the card" restores
-  // it. The rows themselves stay on screen throughout (same `lines`, same RawMirror).
-  it("declutters to the mirror alone when Terminal is tapped, and restores on Back", async () => {
+  // ADR 0056, counsel fix: the control puts the key control away for a decluttered, mirror-only
+  // view, and "Show the buttons" restores it. The rows themselves stay on screen throughout (same
+  // `lines`, same RawMirror) — this card never claims a swap.
+  it("declutters to the mirror alone when Put away is tapped, and restores on Show the buttons", async () => {
     const user = userEvent.setup();
     const { container, block } = renderCard();
 
-    await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
+    await user.click(
+      screen.getByRole("button", { name: "Hide this card's buttons, keep the terminal" }),
+    );
 
     expect(screen.queryByRole("button", { name: "Esc" })).toBeNull();
     const pre = container.querySelector("pre")!;
@@ -76,9 +79,9 @@ describe("UnreadDialogBlock", () => {
       const text = line.segments.map((s) => s.text).join("").trim();
       if (text !== "") expect(pre.textContent).toContain(text);
     }
-    expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show the buttons" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Back to the card" }));
+    await user.click(screen.getByRole("button", { name: "Show the buttons" }));
     expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
   });
 

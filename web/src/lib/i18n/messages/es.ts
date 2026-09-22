@@ -674,6 +674,12 @@ export const es: Dictionary = {
   "dialog.terminalControlAria": "Show the terminal instead of this card",
   // TODO wordsmith
   "dialog.backToCard": "Back to the card",
+  // TODO wordsmith
+  "dialog.putAwayControl": "Put away",
+  // TODO wordsmith
+  "dialog.putAwayControlAria": "Hide this card's buttons, keep the terminal",
+  // TODO wordsmith
+  "dialog.showButtons": "Show the buttons",
   "dialog.previousStepAria": "Paso anterior",
   "dialog.nextStepAria": "Paso siguiente",
   "dialog.answeredAria": "Respondida",

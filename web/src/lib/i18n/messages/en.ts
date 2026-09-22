@@ -699,6 +699,11 @@ export const en = {
   "dialog.terminalControl": "Terminal",
   "dialog.terminalControlAria": "Show the terminal instead of this card",
   "dialog.backToCard": "Back to the card",
+  // ADR 0056 counsel fix: the generic-menu and unread-dialog cards already show the mirror by
+  // default, so their own Terminal control only hides their buttons — it needs its own words.
+  "dialog.putAwayControl": "Put away",
+  "dialog.putAwayControlAria": "Hide this card's buttons, keep the terminal",
+  "dialog.showButtons": "Show the buttons",
   "dialog.previousStepAria": "Previous step",
   "dialog.nextStepAria": "Next step",
   "dialog.answeredAria": "Answered",

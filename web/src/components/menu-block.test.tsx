@@ -69,15 +69,19 @@ describe("MenuBlock", () => {
     expect(screen.getByText(/Most capable for your hardest/)).toBeInTheDocument();
   });
 
-  // ADR 0056: the Terminal control still applies on top of that default — it puts the arrows and
-  // footer buttons away for a decluttered, mirror-only view.
-  it("declutters to the mirror alone when Terminal is tapped", async () => {
+  // ADR 0056, counsel fix: the control puts the arrows and footer buttons away for a decluttered,
+  // mirror-only view — the mirror was already showing, so the control is named "Put away" (visibly)
+  // / "Hide this card's buttons, keep the terminal" (its aria-label), never a claim of a swap that
+  // isn't happening.
+  it("declutters to the mirror alone when Put away is tapped", async () => {
     const user = userEvent.setup();
     renderMenu();
-    await user.click(screen.getByRole("button", { name: "Show the terminal instead of this card" }));
+    await user.click(
+      screen.getByRole("button", { name: "Hide this card's buttons, keep the terminal" }),
+    );
     expect(screen.getByText(/Most capable for your hardest/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Back to the card" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show the buttons" })).toBeInTheDocument();
   });
 
   // .adr/0009 at the UI edge: a digit tap here would confirm AND persist the user's default model.

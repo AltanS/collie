@@ -111,7 +111,9 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   );
 
   return (
-    <PromptPanel ariaLabel={menu.title} raw={lines}>
+    // rawMode (ADR 0056 counsel fix): !readsBody is exactly the branch below that still renders
+    // the RawMirror in children, so the control there only puts the buttons away, never a swap.
+    <PromptPanel ariaLabel={menu.title} raw={lines} rawMode={readsBody ? "reveal" : "declutter"}>
       <OptionGroupCaption>{menu.title}</OptionGroupCaption>
 
       {/* The region, mirrored verbatim by default — ONLY for a card that reads just the footer. A

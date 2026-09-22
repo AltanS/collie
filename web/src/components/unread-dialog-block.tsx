@@ -58,7 +58,9 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
   }
 
   return (
-    <PromptPanel ariaLabel={caption} raw={lines}>
+    // rawMode (ADR 0056 counsel fix): this card always shows the mirror by default (below), so
+    // its control only puts the button away — never a swap from nothing.
+    <PromptPanel ariaLabel={caption} raw={lines} rawMode="declutter">
       <OptionGroupCaption>{caption}</OptionGroupCaption>
 
       <button

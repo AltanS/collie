@@ -13,6 +13,9 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
       data-slot="chat-input"
       autoComplete="off"
       autoCapitalize="none"
+      // Plain Enter inserts a newline here (composer.tsx sends only on Ctrl/Cmd+Enter), so the
+      // on-screen keyboard's return key must read as a plain Enter, never "Send" or "Go".
+      enterKeyHint="enter"
       className={cn(
         // ── THIS CONTROL DRAWS NO FRAME, AND THAT IS THE POINT ──────────────────────────────
         // The border, the radius and the focus mark moved OUT, onto the composer's own box, which
