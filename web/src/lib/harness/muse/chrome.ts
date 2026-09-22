@@ -26,6 +26,8 @@ import { detectCheckboxRegion } from "./checkbox";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
 import {
+  askHeaderDirectlyAbove,
+  boxIsBare,
   INPUT_PLACEHOLDERS,
   isContinuationRow,
   isNoteRow,
@@ -40,8 +42,14 @@ import {
 // so scrollback never holds one.
 const NOTE_SCAN_ROWS = 40;
 
-/** True when a dialog's inline note input is open above the composer (it owns the keyboard). */
+/**
+ * True when a dialog's inline note input is open above the composer (it owns the keyboard).
+ * Bare-box gated: a live note leaves the `❯` bare, while a quoted `Note (optional):` row sits
+ * above a box that is still live (#260) — and answered dialogs replace the whole region, so
+ * scrollback never holds one either way.
+ */
 function hasOpenNote(lines: StyledLine[]): boolean {
+  if (!boxIsBare(lines)) return false;
   const tail = locateTail(lines);
   if (tail === null) return false;
   const top = tail.prompt ?? tail.rule;
@@ -50,6 +58,24 @@ function hasOpenNote(lines: StyledLine[]): boolean {
     if (isNoteRow(texts[i]!)) return true;
   }
   return false;
+}
+
+/**
+ * True when a matched question/checkbox dialog is live — the send gate's share of the lift's
+ * liveness checks. Callers run this only above a strictly bare box (a live dialog owns the
+ * keyboard, so its `❯` never holds a draft or a placeholder tip); the same shapes above a
+ * placeholder or draft box are quoted transcript and stay sendable (#260). Review additionally
+ * needs its live header directly above, exactly as the lift does: its rows are short, fixed and
+ * quotable word for word. (A torn frame that hides a live header allows a send the backstop still
+ * stalls — the typed text never lands in a box the dialog owns, so verify withholds the key.)
+ */
+function liveDialogOwnsKeyboard(lines: StyledLine[]): boolean {
+  if (detectQuestionRegion(lines) !== null) return true;
+  const checkbox = detectCheckboxRegion(lines);
+  if (checkbox === null) return false;
+  if (checkbox.model.phase !== "review") return true;
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  return askHeaderDirectlyAbove(texts, checkbox.startLine);
 }
 
 /**
@@ -100,10 +126,9 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
  */
 export function extractInputDraft(lines: StyledLine[]): string | null {
   if (detectApprovalRegion(lines) !== null) return null;
-  if (detectQuestionRegion(lines) !== null) return null;
-  if (detectCheckboxRegion(lines) !== null) return null;
   if (detectTrustRegion(lines) !== null) return null;
   if (hasOpenNote(lines)) return null;
+  if (boxIsBare(lines) && liveDialogOwnsKeyboard(lines)) return null;
   const tail = locateTail(lines);
   if (tail === null || tail.prompt === null) return null;
   const texts = lines.map((l) => rstrip(lineText(l)));
@@ -134,11 +159,11 @@ export function hasComposer(lines: StyledLine[]): boolean {
  *
  * hasComposer is the weaker claim (the box is at the tail). This is the reply-path pre-flight: a
  * definite `true` authorises the destructive pre-clear sweep, so every screen where the box is
- * visible but does not own the keyboard has to fail closed. Question and review dialogs leave the
- * bare `❯` under them (claimed by their detectors); an open note row owns the keyboard with no lift
- * at all (declined to raw, but never typeable); approval replaces the box and trust is pre-session,
- * so both fail on the geometry alone — and are still consulted, so a future chrome change cannot
- * silently re-open them.
+ * visible but does not own the keyboard has to fail closed. Live question, checkbox and note
+ * dialogs leave the box strictly bare, so a detector match above a bare box refuses; the same
+ * shapes above a placeholder or draft box are quoted transcript and stay sendable (#260).
+ * Approval replaces the box and trust is pre-session, so both fail on the geometry alone — and
+ * are still consulted, so a future chrome change cannot silently re-open them.
  *
  * Known limitation, documented rather than guessed at: the command palette, `/resume` picker,
  * `/tasks` drawer and `/workflows` room are unmeasured (outside DIALOG_NOTES.md's scope). If one of them leaves a live
@@ -148,10 +173,9 @@ export function hasComposer(lines: StyledLine[]): boolean {
  */
 export function composerReady(lines: StyledLine[]): boolean {
   if (detectApprovalRegion(lines) !== null) return false;
-  if (detectQuestionRegion(lines) !== null) return false;
-  if (detectCheckboxRegion(lines) !== null) return false;
   if (detectTrustRegion(lines) !== null) return false;
   if (hasOpenNote(lines)) return false;
+  if (boxIsBare(lines) && liveDialogOwnsKeyboard(lines)) return false;
   return hasComposer(lines);
 }
 

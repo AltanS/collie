@@ -47,6 +47,7 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     expect(extractInputDraft(lines("muse--ask-toppings-review.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--trust-prompt.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-color-notes-typed.txt"))).toBeNull();
+    expect(extractInputDraft(lines("muse--quoted-dialogs-bare.txt"))).toBeNull();
   });
 });
 

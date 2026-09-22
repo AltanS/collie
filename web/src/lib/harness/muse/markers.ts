@@ -337,6 +337,27 @@ export function boxHoldsNoDraft(lines: StyledLine[]): boolean {
 }
 
 /**
+ * True when the box is STRICTLY bare: a `❯` row holding neither draft nor placeholder tip, with
+ * no continuation rows. The send gate's liveness test — stricter than {@link boxHoldsNoDraft} on
+ * purpose. A live dialog owns the keyboard, so its box is always bare (probed on 1.3.0: no
+ * placeholder while a dialog is up); an idle box shows a placeholder tip instead. Dialog shapes
+ * above a placeholder or draft box are quoted transcript, never a live dialog — so on those
+ * screens the send path may type, while a match above a bare box refuses (review additionally
+ * needs its live header directly above, as the lift does) (#260).
+ */
+export function boxIsBare(lines: StyledLine[]): boolean {
+  const tail = locateTail(lines);
+  if (tail === null || tail.prompt === null) return false;
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const prompt = promptRowText(texts[tail.prompt]!)?.trim() ?? "";
+  if (prompt !== "") return false;
+  for (let i = tail.prompt + 1; i < tail.rule; i++) {
+    if (texts[i]!.trim() !== "") return false;
+  }
+  return true;
+}
+
+/**
  * True when the nearest non-blank row above `row` is a live `Request user input … — running`
  * header. The review screen's lift requires it: its own rows (`> Submit answers`, `Interrupt turn`)
  * are short, fixed and easy to quote, and the header's `— running` is what only a live dialog shows.
