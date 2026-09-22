@@ -100,7 +100,7 @@ export function SpaceRoute() {
       {/* Content region below the header: the viewport-clipped scroller, the same shell the
           dashboard uses — the two are one list screen at two depths. `relative` for the reason
           home.tsx gives: an `sr-only` descendant must resolve against this scroller. */}
-      <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {/* Below the header, so it is content, not viewport chrome: an inset box on this route's
             gutter, like the dashboard's. See read-only-banner.tsx. */}
         <ReadOnlyBanner device={data.device} />

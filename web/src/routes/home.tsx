@@ -113,7 +113,7 @@ export function HomeRoute() {
           load-bearing: it makes this scroller the containing block for its absolutely-positioned
           descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
           list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
-      <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}

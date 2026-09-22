@@ -149,6 +149,20 @@ describe("HostChip — Reconnecting says nothing is owed, Attention says somethi
   });
 });
 
+describe("a long member name (issue #264)", () => {
+  it("the bare run caps its width and truncates the name inside it", () => {
+    // A member id derived from a macOS hostname with its search domain appended. Uncapped, it held
+    // its full width on the dashboard row and pushed every card on that machine past a 375px phone.
+    render(<HostChip host="workshop" variant="bare" />, { wrapper: crew });
+    const bare = screen.getByLabelText(/^host: workshop/i);
+    expect(bare.className).toMatch(/(?:^|\s)max-w-\[8rem\](?=\s|$)/);
+    const name = bare.querySelector("span.truncate");
+    expect(name).not.toBeNull();
+    // Without min-w-0 a flex item never shrinks below its content, so truncate would do nothing.
+    expect(name!.className).toMatch(/(?:^|\s)min-w-0(?=\s|$)/);
+  });
+});
+
 describe("the herd list — blocked agents keep their own workspace, wherever the host", () => {
   it("a one-host install renders zero host chrome in any row", () => {
     render(<AgentList agents={fixtureAgents} onOpen={vi.fn()} />, { wrapper: one });

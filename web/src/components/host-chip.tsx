@@ -167,7 +167,12 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
           // there regardless, so it is left as it is.
           caption
             ? "items-center text-[10px]/3 font-medium uppercase tracking-wide"
-            : "shrink-0 items-baseline font-mono text-[11px]/3",
+            : // `max-w-[8rem]` and `shrink-0` are AddressTag's one decision, kept here too (issue
+              // #264): the run never gives up width to its neighbours, and the NAME truncates inside
+              // it instead. Without the cap, a member id derived from a long hostname (26 chars,
+              // search domain appended) held its whole width on the dashboard row, and every card on
+              // that machine grew wider than a 375px phone, so the page panned sideways.
+              "max-w-[8rem] shrink-0 items-baseline font-mono text-[11px]/3",
           // Degraded first, always: the run is two hundred pixels from the box being typed into, and
           // "which machine" must never outrank "that machine is not taking writes". The NAME stays
           // this colour either way — only the glyph below carries the identity tint.
@@ -187,7 +192,9 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
             aria-hidden
           />
         )}
-        <span className="truncate" aria-hidden>
+        {/* `min-w-0`: a flex item will not shrink below its content without it, so `truncate`
+            alone never cut the name short inside the capped run (issue #264). */}
+        <span className="min-w-0 truncate" aria-hidden>
           {name}
         </span>
       </span>
