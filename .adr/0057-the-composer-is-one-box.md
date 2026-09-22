@@ -110,6 +110,8 @@ replaces decisions 1, 3 and 4 above where they differ; the rest stands.
 4. **A long unbroken token is stopped twice again.** Send is beside the field once more, so the
    field's `min-w-0` is what lets it be narrower than an uploaded host path asks, and
    `wrap-anywhere` on the value still stops the same thing at the source.
+5. **Attach sits at the right, next to the primary action, as it did before the one-box change.**
+   Altan preferred it there.
 
 Everything else is unchanged: Ctrl/Cmd+Enter sends and a bare Enter is a newline, the locked look,
 the picker anchored to the box, the mic, Send and confirm swap, the draft preview, IME and

@@ -1397,7 +1397,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {translate("composer.draft.tooLong")}
           </p>
         </Collapse>
-        {/* ── ONE BOX, ONE ROW: ATTACH, THE FIELD, THE PRIMARY ACTION ──────────────────────
+        {/* ── ONE BOX, ONE ROW: THE FIELD, ATTACH, THE PRIMARY ACTION ──────────────────────
             The field, the attach control and Send used to be three shapes on one line: a
             bordered field with a button tucked into its bottom-right corner, and a round primary
             action floating beside it. They are one bordered container now, ported by hand from the
@@ -1405,7 +1405,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             the field; on a phone that was a second row of height on an EMPTY composer, so the two
             buttons came back inline (ADR 0057, amended 2026-09-22).
 
-            THE ROW. `flex items-end gap-1 p-1`: attach, the field (`flex-1 min-w-0`), the primary
+            ATTACH STANDS AT THE RIGHT, NEXT TO THE PRIMARY ACTION, AS IT DID BEFORE THIS FILE
+            MADE IT ONE BOX. It sat at the box's left edge for one round; Altan asked for it back
+            beside Send, so the row reads field, attach, primary action (ADR 0057, amended again
+            2026-09-22).
+
+            THE ROW. `flex items-end gap-1 p-1`: the field (`flex-1 min-w-0`), attach, the primary
             action. `items-end` pins both buttons to the bottom edge while a long draft grows the
             field upward to its cap, which is where a thumb already is. `p-1` is 4px, exactly the
             reach of `TOOLBAR_TAP_TARGET`, so an empty box is 36 + 8 = 44px inside its border.
@@ -1422,9 +1427,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             clears that.
 
             `relative` is the anchor `AnchoredMenu` positions against, so the attach picker opens
-            above the whole box and never over the button that opened it (ui/anchored-menu.tsx
-            carries that measurement). The menu is a child of the box for that reason alone; it is
-            absolutely positioned, so it takes no place in the row.
+            above the whole box, right-aligned against it — which now sits close to the attach
+            button itself, one button-width and a gap in from the box's own right edge
+            (ui/anchored-menu.tsx carries that measurement). The menu is still a child of the box
+            rather than of the button: it is absolutely positioned, so it takes no place in the row,
+            and anchoring it to the box is what keeps it lined up above the box's own right edge
+            regardless of which control stands nearest that edge.
 
             THE BELT IS NOT PART OF THIS BOX. Keys / Type / Quick / Agent / Display stay above it
             (actions-row.tsx). They open docks that fill half the viewport; the box holds the two
@@ -1445,46 +1453,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             direct.active && "border-primary focus-within:border-primary focus-within:ring-primary",
           )}
         >
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                TOOLBAR_TAP_TARGET,
-                "size-9 rounded-full text-muted-foreground",
-                // The press echo, in the tone this app already uses for "your press landed" —
-                // `variant="default"`, which is what a tapped quick reply and a busy dialog option
-                // both flip to. It was `bg-accent` first, and that was a token chosen by name
-                // rather than by looking: in the dark theme `accent` resolves to oklch(0.269),
-                // which is the SAME value as `muted` and sits 0.06 of lightness above the card it
-                // is drawn on. Measured through a real tap, it faded in over 180ms, held for 40,
-                // and faded out — a flash nobody could see on a phone. `primary` is oklch(0.922).
-                //
-                // `duration-0` on the way IN, and the base duration on the way out. A press has to
-                // answer immediately or it is not answering the press; the release is the part that
-                // wants easing. Removing both classes in one commit is what lets the exit animate.
-                // Lit for the press, and then for as long as the menu it opened is standing: the
-                // menu is anchored above rather than over the button precisely so this can be seen,
-                // and a trigger that went dark under its own open menu would waste that.
-                (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
-              )}
-              disabled={uploading || locked || direct.active}
-              onPointerDown={(e) => e.preventDefault()}
-              onClick={() => {
-                echoAttachPress();
-                if (asksWhich) setPicking(true);
-                else photoRef.current?.click();
-              }}
-              aria-label={translate("composer.attach.aria")}
-              aria-haspopup="dialog"
-              aria-expanded={asksWhich ? picking : undefined}
-            >
-              {uploading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Paperclip className="size-4" />
-              )}
-            </Button>
           <ChatInput
             ref={inputRef}
             value={direct.active ? direct.value : input}
@@ -1531,15 +1499,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // and push the primary action off the right edge (`wrap-anywhere` in chat-input.tsx
               // stops the same thing at the source; the two are independent and both stay).
               //
-              // `py-1.5 min-h-9 px-1` centre ONE line of the draft against the 36px buttons on the
+              // `py-1.5 min-h-9 pl-2` centre ONE line of the draft against the 36px buttons on the
               // same row, and claim no more: an empty composer is one button row tall. `min-h-9` is
               // that one row, not a second one (the field is `box-border`, so the padding is inside
               // it), and it keeps a smaller draft size from leaving the text a few pixels low.
               //
+              // `pl-2`, AND ONLY ON THE LEFT. The field is the box's first child now, sitting
+              // directly against the box's own `p-1`, so without an inset of its own the text would
+              // start 4px from the border — the box's padding alone, with nothing of the field's to
+              // add to it. Attach used to stand there and supplied that room as its own width; now
+              // that it has moved beside Send, the field pays for the left margin itself instead.
+              //
               // NO `pr-*`, AND NOTHING MAY ADD ONE. It was `pr-11`, the 44px strip the attach button
               // needed while it was tucked into the field's corner. The buttons are siblings of the
-              // field now, so nothing inside the field needs a strip kept clear for it.
-              "min-w-0 flex-1 min-h-9 px-1 py-1.5",
+              // field now, so nothing inside the field needs a strip kept clear for either of them —
+              // the field's right side takes no padding of its own, and the box's `gap-1` to attach
+              // is what keeps the text off it.
+              "min-w-0 flex-1 min-h-9 pl-2 py-1.5",
               // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
               // family the mirror above it renders in, not the app's chrome face. `font-mono` is
               // the mirror's own default; the style below follows the operator's mirror-family
@@ -1558,11 +1534,56 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={locked}
             rows={1}
           />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              TOOLBAR_TAP_TARGET,
+              "size-9 rounded-full text-muted-foreground",
+              // The press echo, in the tone this app already uses for "your press landed" —
+              // `variant="default"`, which is what a tapped quick reply and a busy dialog option
+              // both flip to. It was `bg-accent` first, and that was a token chosen by name
+              // rather than by looking: in the dark theme `accent` resolves to oklch(0.269),
+              // which is the SAME value as `muted` and sits 0.06 of lightness above the card it
+              // is drawn on. Measured through a real tap, it faded in over 180ms, held for 40,
+              // and faded out — a flash nobody could see on a phone. `primary` is oklch(0.922).
+              //
+              // `duration-0` on the way IN, and the base duration on the way out. A press has to
+              // answer immediately or it is not answering the press; the release is the part that
+              // wants easing. Removing both classes in one commit is what lets the exit animate.
+              // Lit for the press, and then for as long as the menu it opened is standing: the
+              // menu is anchored above rather than over the button precisely so this can be seen,
+              // and a trigger that went dark under its own open menu would waste that.
+              (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
+            )}
+            disabled={uploading || locked || direct.active}
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => {
+              echoAttachPress();
+              if (asksWhich) setPicking(true);
+              else photoRef.current?.click();
+            }}
+            aria-label={translate("composer.attach.aria")}
+            aria-haspopup="dialog"
+            aria-expanded={asksWhich ? picking : undefined}
+          >
+            {uploading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Paperclip className="size-4" />
+            )}
+          </Button>
           {/* The picker, anchored to the BOX so it opens above the whole shape rather than over
               the button that opened it (ui/anchored-menu.tsx carries the measurement, and the
-              box's own `relative` is the anchor). It cannot be anchored to the attach button
-              itself: the panel is `right-0 min-w-44` against its anchor, and the button stands at
-              the LEFT end of the box's row, so it would grow off the left edge of the screen.
+              box's own `relative` is the anchor). It is not anchored to the attach button itself
+              even now that attach stands near the box's own right edge: the panel is `right-0
+              min-w-44` against its anchor, and the gap between attach and that edge is NOT fixed —
+              the primary action beside it is a size-9 icon square most of the time but widens into
+              a text button ("Type anyway?" / "Really send?") the moment a confirm is armed, which
+              would slide the menu sideways if it followed the button instead of the box. Anchoring
+              to the box keeps the picker's own right edge pinned to the box's right edge no matter
+              which shape the primary action is wearing.
               Two rows, no confirm, each one opens a native picker, which is its own decision
               point. The menu closes BEFORE the click so it is not left standing behind the
               system UI, and the click still counts as the user gesture the browser requires

@@ -2820,12 +2820,13 @@ describe("Composer — the attach picker offers photos as well as files", () => 
   });
 });
 
-// ── THE COMPOSER IS ONE BOX, ONE ROW (.adr/0057, amended 2026-09-22) ───────────────────────────
+// ── THE COMPOSER IS ONE BOX, ONE ROW (.adr/0057, amended twice on 2026-09-22) ───────────────────
 //
 // The field, the attach control and Send used to be three shapes on one line. They are one bordered
 // container now, the prompt-input pattern the shadcn-registry chat kits settled on, ported by hand.
 // For one round the box put a toolbar row under the field; on a phone that was a second row of
-// height on an empty composer, so the box is ONE row: attach, the field, the primary action.
+// height on an empty composer, so the box is ONE row: the field, attach, the primary action — attach
+// stood at the left for one round, then moved back beside Send, where it was before this ADR.
 //
 // These are STRUCTURAL and COUPLING assertions, in the house style of the two blocks above: jsdom
 // measures no layout, so what a class carries into this file is a fact about a real browser. What
@@ -2865,17 +2866,18 @@ describe("Composer — the composer is one box", () => {
     expect(props.onSent).toHaveBeenCalled();
   });
 
-  it("holds attach, the field and the primary action as siblings on ONE row of the box", async () => {
+  it("holds the field, attach and the primary action as siblings on ONE row of the box", async () => {
     renderComposer();
     const box = boxOf(field());
     const send = screen.getByRole("button", { name: "Send" });
 
     // One row, no toolbar row under the field: the three are direct children of the box, in
-    // reading order attach, field, action.
+    // reading order field, attach, action — attach next to the primary action, as it stood
+    // before the one-box change.
     expect(attach().parentElement).toBe(box);
     expect(send.parentElement).toBe(box);
     const order = [...box.children].filter((el) => el === attach() || el === field() || el === send);
-    expect(order).toEqual([attach(), field(), send]);
+    expect(order).toEqual([field(), attach(), send]);
     // The box IS the flex row, and `items-end` pins both buttons to the bottom edge while a long
     // draft grows the field upward.
     expect(box.className).toMatch(/(?:^|\s)flex(?=\s|$)/);
