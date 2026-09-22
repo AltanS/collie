@@ -131,6 +131,7 @@ the pointer, it was a supersede.
 | [0054](./0054-a-printed-scale-is-tappable.md) | A printed scale is tappable: when the screen names every value the arrows move along, the card shows them all and a tap sends the delta as repeated arrow presses | Accepted |
 | [0055](./0055-a-pointed-list-is-walked-then-confirmed.md) | A pointed list is walked, then confirmed: an unnumbered list with a `❯` on one row is tapped as the arrow delta plus the commit key the footer named, and never a synthesised digit (applies 0054 to a list) | Accepted |
 | [0056](./0056-a-card-can-be-put-down.md) | A lifted card can be put down: every card carries a Terminal control that shows the rows it replaced, lasting only as long as that dialog | Accepted |
+| [0057](./0057-the-composer-is-one-box.md) | The composer is one box: the field, the attach control and Send share one bordered container with a toolbar row, the prompt-input pattern ported by hand | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on

@@ -43,6 +43,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Changed
 - **The Effort card shows its chips alone; the raw slider rows no longer sit above them.** At 40 and 60 columns those mirrored rows were wrapped fragments, and the chips already carry every level plus the current one, so the card no longer shows both. The generic menu (`/model`, `/tasks`, `/resume`) still mirrors its screen: it parses no scale, so the mirror stays its only way to show its options (ADR 0054).
+- **The composer is one box.** The text field, the attach control and Send sit in one bordered container with a toolbar row along its bottom, the pattern the shadcn-registry prompt kits use, ported by hand with no new dependency. The focus mark moves to the container, so a caret in the field marks the whole shape, and the 44px strip the attach button held inside the field goes back to the typing area. Ctrl+Enter still sends and a bare Enter is still a newline, because the draft goes to a terminal (ADR 0057).
 
 ### Fixed
 
