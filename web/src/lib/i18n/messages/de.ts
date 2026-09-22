@@ -273,6 +273,7 @@ export const de: Dictionary = {
   "composer.noEcho.dismissAria": "Passworthinweis verwerfen",
   "composer.draftPreview.title": "Entwurf im Terminal",
   "composer.draftPreview.takeOver": "Übernehmen",
+  "composer.draftPreview.dismissAria": "Hinweis zum Terminal-Entwurf schließen",
 
   // --- sendMode (the armed "typing straight through" indicator) ---
   "sendMode.armed.title": "Eingabe ins Terminal",

@@ -1741,12 +1741,75 @@ describe("Composer — terminal-draft preview", () => {
     await waitFor(() => expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument());
   });
 
-  it("renders no dismiss button — the preview has no user-facing dismiss", async () => {
+  // ADR 0061: the notice floats, and its x hides it until the draft is gone.
+  it("floats out of the flow: absolutely positioned, never a row of the composer", async () => {
     renderDraftHarness();
-    strandDraft("no dismiss here");
+    strandDraft("floating");
     await screen.findByText(/draft in terminal/i);
 
-    expect(screen.queryByLabelText(/dismiss terminal draft/i)).not.toBeInTheDocument();
+    const wrapper = screen.getByText("floating").closest('[data-slot="terminal-draft-notice"]')!;
+    expect(wrapper.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(wrapper.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    // No Collapse around it: nothing in the composer's flow grows when it arrives.
+    expect(wrapper.closest('[data-slot="collapse"]')).toBeNull();
+    // The notice itself takes touches back from the pass-through wrapper.
+    expect(wrapper.firstElementChild!.className).toMatch(/(?:^|\s)pointer-events-auto(?=\s|$)/);
+  });
+
+  it("portals into the slot it is handed, and nowhere inside the composer", async () => {
+    const slot = document.createElement("div");
+    document.body.append(slot);
+    renderDraftHarness({ draftNoticeSlot: slot });
+    strandDraft("in the slot");
+    await screen.findByText(/draft in terminal/i);
+
+    expect(slot).toHaveTextContent("in the slot");
+    const wrapper = slot.querySelector('[data-slot="terminal-draft-notice"]')!;
+    // In the slot the wrapper is only the pass-through: the slot does the positioning.
+    expect(wrapper.className).not.toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    slot.remove();
+  });
+
+  it("the x hides it, and editing the host draft keeps it hidden", async () => {
+    const user = userEvent.setup();
+    renderDraftHarness();
+    strandDraft("dismiss me");
+    await screen.findByText(/draft in terminal/i);
+
+    await user.click(screen.getByRole("button", { name: "Dismiss the terminal draft notice" }));
+    expect(screen.queryByText(/draft in terminal/i)).toBeNull();
+
+    // The host keeps typing into the same line: still hidden, however it changes.
+    setRawDraft("dismiss me now");
+    strandDraft("something else entirely");
+    expect(screen.queryByText(/draft in terminal/i)).toBeNull();
+  });
+
+  it("comes back for the next draft once the dismissed one is gone", async () => {
+    const user = userEvent.setup();
+    renderDraftHarness();
+    strandDraft("first");
+    await screen.findByText(/draft in terminal/i);
+    await user.click(screen.getByRole("button", { name: "Dismiss the terminal draft notice" }));
+
+    // The host line clears (sent or wiped on the host)…
+    setRawDraft("");
+    setStableDraft("");
+    // …and a later draft shows the notice again.
+    strandDraft("second");
+    expect(await screen.findByText("second")).toBeInTheDocument();
+    expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+  });
+
+  it("Take over still works from the floating notice", async () => {
+    const user = userEvent.setup();
+    renderDraftHarness();
+    strandDraft("carry this");
+    await screen.findByText(/draft in terminal/i);
+
+    await user.click(screen.getByRole("button", { name: /take over/i }));
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("carry this");
+    expect(screen.queryByText(/draft in terminal/i)).toBeNull();
   });
 
   it("persists across subsequent polls of the same text with no user action", async () => {

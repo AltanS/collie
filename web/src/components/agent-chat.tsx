@@ -412,6 +412,9 @@ export function AgentChat({
   }, [landscape, zen, autoZenActive]);
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
+  // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
+  // State rather than a ref: the composer portals into it, so it must re-render once it exists.
+  const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
 
   const gone = !agent;
 
@@ -1836,7 +1839,8 @@ export function AgentChat({
             role="presentation"
             className={cn(
               mirrorGap,
-              "min-h-0 min-w-0 flex-1 border-t border-rule",
+              // `relative` anchors the floating terminal-draft notice's slot, the last child below.
+              "relative min-h-0 min-w-0 flex-1 border-t border-rule",
               mirrorFace.className,
             )}
             style={mirrorFace.style}
@@ -1959,6 +1963,17 @@ export function AgentChat({
                 </div>
               )}
             </ChatMessageList>
+            {/* THE TERMINAL-DRAFT NOTICE FLOATS HERE (ADR 0061). The composer portals the notice
+                into this box, pinned to the mirror's bottom edge: above the card dock when a card
+                is docked, else above the chrome block and its belt. Absolute, so it covers the
+                mirror's last rows and changes the height of nothing: not the scroller, not the dock,
+                not the composer. `pointer-events-none` lets a touch on its empty part reach the
+                mirror; the notice itself takes touches back. */}
+            <div
+              ref={setDraftNoticeSlot}
+              data-slot="draft-notice-slot"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-2"
+            />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,
@@ -2180,6 +2195,7 @@ export function AgentChat({
                   // The switcher mark, for the actions belt's top rule — see the condition at
                   // `pullHandle` above, and actions-row.tsx for what it draws.
                   pullHandle={pullHandle}
+                  draftNoticeSlot={draftNoticeSlot}
                 />
               </div>
             </div>

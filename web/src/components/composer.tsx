@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 import { Check, FileText, Image, Keyboard, Loader2, Mic, Paperclip, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
@@ -154,6 +155,14 @@ interface ComposerProps {
     /** Another pane needs you: the switcher mark wears a red dot. */
     alert?: boolean;
   };
+
+  /**
+   * Where the terminal-draft notice floats (ADR 0061): an absolutely positioned box the pane view
+   * keeps at the bottom edge of the mirror, above the card dock and the belt. The notice is portalled
+   * into it, so it covers terminal text and never takes a row of the composer's own flow. Absent
+   * (a composer mounted alone, as in its tests), the notice floats above the composer itself.
+   */
+  draftNoticeSlot?: HTMLElement | null;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -271,7 +280,7 @@ function revokePreview(attachment: ComposerAttachment) {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle, draftNoticeSlot },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -411,6 +420,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setAttachments(attachmentsRef.current);
     nextAttachmentRef.current = restored?.next ?? 1;
     caretRef.current = null;
+    setPreviewDismissed(false); // it was about the pane we just left
     noticeNoEchoRef.current(null); // it described the pane we just left
   }, [scope, scopeId, paneId]);
   const [sending, setSending] = useState(false);
@@ -421,9 +431,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [justSent, setJustSent] = useState(false); // brief ✓ on the send button after a send
   // Terminal-draft preview bookkeeping. The composer input is EXCLUSIVELY phone-owned — a host draft
   // is never written into it implicitly; it only surfaces in a read-only preview the user can
-  // deliberately Take over. There is no user-facing dismiss — the preview is honest state (a draft
-  // really is stranded on the host's line), so it stays visible until the host line clears, the user
-  // takes it over, or the user sends. `handledKey` is the NORMALISED text the user has handled (took
+  // deliberately Take over. The x (ADR 0061) hides it until the host line clears; otherwise it stays
+  // visible until the host line clears, the user takes it over, or the user sends. `handledKey` is the NORMALISED text the user has handled (took
   // over or sent) — the preview stays hidden while the live draft still normalises to it, so it can't
   // re-latch onto the same text we just copied/sent (the raw line still holds it until the host clears
   // or Enter lands); a genuinely different draft is fair game again. `previewLatched` is the show/hide
@@ -432,6 +441,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // below).
   const [handledKey, setHandledKey] = useState<string | null>(null);
   const [previewLatched, setPreviewLatched] = useState(false);
+  // The notice's x (ADR 0061): hidden until the terminal draft is gone. Not keyed on the text, so a
+  // host that keeps typing into the same line keeps it hidden; the line clearing (below, where the
+  // latch drops) is the only thing that lifts it. In memory and per pane: the pane-change effect
+  // resets it, and nothing stores it.
+  const [previewDismissed, setPreviewDismissed] = useState(false);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent / Display).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
   // Keys staged in the (unmounted-on-close) NavTray, pushed up so leaving the Keys dock can guard a
@@ -712,6 +726,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (effectiveRaw === null) {
       setPreviewLatched(false);
       setHandledKey(null);
+      setPreviewDismissed(false);
     }
   }, [effectiveRaw]);
 
@@ -724,6 +739,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Take over (a local text copy); only the actual Send stays gated.
   const showPreview =
     !gone && previewLatched && effectiveRaw !== null && normalizeDraft(effectiveRaw) !== handledKey;
+
+  // The floating notice (ADR 0061). The wrapper passes touches through (`pointer-events-none`) and
+  // the notice takes them back, so the mirror under the empty part of the slot still scrolls.
+  // Portalled into the pane view's slot when there is one; otherwise it floats above this
+  // composer's own top edge.
+  const draftNotice =
+    showPreview && !previewDismissed && effectiveRaw !== null ? (
+      <div
+        data-slot="terminal-draft-notice"
+        className={cn(
+          "pointer-events-none",
+          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
+        )}
+      >
+        <TerminalDraftPreview
+          text={effectiveRaw}
+          // No Take over when the line is only the harness's own opaque token (Claude's
+          // `[Pasted text #N +M lines]`): pulling that into the composer would send the literal
+          // string. The preview keeps showing it — the screen really does say that.
+          onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
+          onDismiss={() => setPreviewDismissed(true)}
+        />
+      </div>
+    ) : null;
 
   // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
   // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
@@ -1207,7 +1246,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     <>
       <div
         className={cn(
-          "bg-chrome px-3",
+          // `relative` anchors the floating draft notice when no slot was handed in (ADR 0061).
+          "relative bg-chrome px-3",
           // See `composing` on the props above: the inset reserves room for the home indicator, and
           // while the keyboard is up the keyboard is already covering it. Paying it twice costs
           // ~24px on the one screen that has none.
@@ -1443,30 +1483,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             with no controls — belongs in the pills (lib/status, `setStatus`), where it costs the
             layout nothing and dismisses itself. A CONDITION belongs here, at the surface it is about,
             for as long as it is true. Sorted that way, every strip in this footer is a condition and
-            each one carries its own controls: the take-over preview (Take over), the password notice
-            (Use Type / ✕), the two armed-mode strips (Stop / ✕), and the draft-too-long line, which
+            each one carries its own controls: the password notice (Use Type / ✕), the two armed-mode strips (Stop / ✕), and the draft-too-long line, which
             lasts as long as the text does and would re-fire on every keystroke as a pill. The one
             genuine event in this region — "sent" — is ALREADY a pill (`composer.status.sent`); what
             stays here under that name is the verification half, and the strip itself says why. */}
-        {/* Terminal-draft preview: a read-only view of a stranded "❯"-line draft (a message queued
-            then recalled on the HOST, which stripChrome hides from the mirror). It appears only after
-            the draft stabilises (never a blip/self-echo), then its text tracks the live line — host
-            typing streams straight in. It NEVER writes into the phone-owned input; only the explicit
-            Take over copies the text here. No dismiss — it's honest state and persists until the user
-            takes over, sends, or the host line clears. Same zinc/text-xs chrome as the "You sent:"
-            strip above. */}
-        <Collapse open={showPreview && effectiveRaw !== null}>
-          {showPreview && effectiveRaw !== null && (
-            <TerminalDraftPreview
-              text={effectiveRaw}
-              // No Take over when the line is only the harness's own opaque token (Claude's
-              // `[Pasted text #N +M lines]`): pulling that into the composer would send the literal
-              // string. The preview keeps showing it — the screen really does say that.
-              onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
-            />
-          )}
-        </Collapse>
-        {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other two
+        {/* The terminal-draft notice is NOT one of these strips any more (ADR 0061). It floats over
+            the mirror's bottom edge, out of this flow, so a draft stranding or clearing on the host
+            never moves the belt or the field. See `draftNotice` above; it renders here. */}
+        {draftNoticeSlot ? createPortal(draftNotice, draftNoticeSlot) : draftNotice}
+        {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
             strips, because that is where the eye already is when a send is refused — and it is a
             NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}
         <Collapse open={noEcho !== null && !direct.active}>

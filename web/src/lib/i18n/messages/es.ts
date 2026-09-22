@@ -271,6 +271,7 @@ export const es: Dictionary = {
   "composer.noEcho.dismissAria": "Descartar aviso de contraseña",
   "composer.draftPreview.title": "Borrador en la terminal",
   "composer.draftPreview.takeOver": "Retomar",
+  "composer.draftPreview.dismissAria": "Cerrar el aviso del borrador en la terminal",
 
   // --- sendMode (the armed "typing straight through" indicator) ---
   "sendMode.armed.title": "Escribiendo en la terminal",

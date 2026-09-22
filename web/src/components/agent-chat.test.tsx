@@ -2745,3 +2745,42 @@ describe("AgentChat — a card docks above the belt (ADR 0059)", () => {
     expect(screen.queryByRole("button", { name: "Back to the card" })).toBeNull();
   });
 });
+
+// ADR 0061: the terminal-draft notice floats over the mirror's bottom edge. It used to be a strip in
+// the composer's flow, so a draft stranding on the host pushed the belt and the field up and the
+// mirror's scroller down. jsdom measures no heights, so the no-shift claim is asserted as structure:
+// the notice lives in an absolutely positioned slot INSIDE the mirror region, and nowhere in the
+// bottom region, whose rows are the only things that could have grown.
+describe("AgentChat — the terminal draft notice floats (ADR 0061)", () => {
+  const withHostDraft = (draft: string) =>
+    paneTextWithDraft("recent pane output").replace(/^❯ .*$/m, `❯ ${draft}`);
+
+  it("renders in the mirror's own slot, never in the bottom region", async () => {
+    const { container } = renderChat({ text: withHostDraft("typed on the host") });
+    await screen.findByText(/draft in terminal/i, undefined, { timeout: 4000 });
+
+    const slot = container.querySelector('[data-slot="draft-notice-slot"]')!;
+    expect(slot).toHaveTextContent("typed on the host");
+    expect(slot.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(slot.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    // The slot is the last child of the mirror wrapper, beside the scroller, not in it.
+    expect(slot.parentElement!.className).toMatch(/(?:^|\s)relative(?=\s|$)/);
+    expect(slot.parentElement!.className).toMatch(/(?:^|\s)flex-1(?=\s|$)/);
+
+    // The bottom region holds no part of it.
+    const bottom = container.querySelector('[data-slot="chrome-block"]')!.parentElement!;
+    expect(bottom).not.toHaveTextContent(/draft in terminal/i);
+    expect(bottom.querySelector('[data-slot="terminal-draft-notice"]')).toBeNull();
+  });
+
+  it("the x hides it without moving anything into the flow", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ text: withHostDraft("typed on the host") });
+    await screen.findByText(/draft in terminal/i, undefined, { timeout: 4000 });
+
+    await user.click(screen.getByRole("button", { name: "Dismiss the terminal draft notice" }));
+    expect(screen.queryByText(/draft in terminal/i)).toBeNull();
+    // The slot stays, empty, and pass-through.
+    expect(container.querySelector('[data-slot="draft-notice-slot"]')!.childElementCount).toBe(0);
+  });
+});

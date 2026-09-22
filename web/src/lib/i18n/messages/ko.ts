@@ -266,6 +266,7 @@ export const ko: Dictionary = {
   "composer.noEcho.dismissAria": "비밀번호 프롬프트 알림 닫기",
   "composer.draftPreview.title": "터미널 임시 저장본",
   "composer.draftPreview.takeOver": "가져오기",
+  "composer.draftPreview.dismissAria": "터미널 임시 저장본 알림 닫기",
 
   // --- sendMode (the armed "typing straight through" indicator) ---
   "sendMode.armed.title": "터미널 직접 입력 모드",

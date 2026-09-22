@@ -286,6 +286,7 @@ export const en = {
   "composer.noEcho.dismissAria": "Dismiss password-prompt notice",
   "composer.draftPreview.title": "Draft in terminal",
   "composer.draftPreview.takeOver": "Take over",
+  "composer.draftPreview.dismissAria": "Dismiss the terminal draft notice",
 
   // --- sendMode (the armed "typing straight through" indicator) ---
   "sendMode.armed.title": "Typing into terminal",

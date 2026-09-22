@@ -268,6 +268,7 @@ export const ja: Dictionary = {
   "composer.noEcho.dismissAria": "パスワードプロンプト通知を閉じる",
   "composer.draftPreview.title": "ターミナル内の下書き",
   "composer.draftPreview.takeOver": "引き継ぐ",
+  "composer.draftPreview.dismissAria": "ターミナルの下書きの通知を閉じる",
 
   // --- sendMode (the armed "typing straight through" indicator) ---
   "sendMode.armed.title": "ターミナル直接入力中",

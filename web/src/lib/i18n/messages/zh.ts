@@ -255,6 +255,7 @@ export const zh: Dictionary = {
   "composer.noEcho.dismissAria": "关闭密码提示通知",
   "composer.draftPreview.title": "终端中的草稿",
   "composer.draftPreview.takeOver": "接管",
+  "composer.draftPreview.dismissAria": "关闭终端草稿提示",
 
   // --- sendMode (the armed "typing straight through" indicator) ---
   "sendMode.armed.title": "终端直接输入",
