@@ -81,7 +81,7 @@ export const MUX_CAPABILITY_ROUTES = {
   gridScrollback:
     "GET /api/pane/:id?lines=N — a read that reaches behind the viewport, which is what makes the mirror's 'Load older' meaningful (see MuxPane.readableLines).",
   agentDetection:
-    "GET /api/snapshot — the split into `agents` and `shellPanes` and the triage sort (STATUS_RANK) both need the mux to say which agent a pane holds and how it is doing.",
+    "GET /api/snapshot — the split into `agents` and `shellPanes` and every status mark (needs you, working) both need the mux to say which agent a pane holds and how it is doing.",
   agentSessionRef:
     "GET /api/pane/:id/history — the journal keys an on-disk log off the session an agent named. Without this, history is absent, not empty (bridge/journal/registry.ts).",
   typeText: "POST /api/pane/:id/reply — step one, the literal text.",

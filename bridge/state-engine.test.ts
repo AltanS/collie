@@ -393,7 +393,10 @@ describe("StateEngine — snapshot shaping", () => {
     }
   });
 
-  test("sorts agents by urgency (blocked first), then workspace number", async () => {
+  test("sorts agents by workspace number, never by status (ADR 0063)", async () => {
+    // This used to assert urgency first (`w1:p1`, `w2:p2`, `w2:p1`). The blocked pane led only because
+    // it was blocked, so it would have moved the moment it resumed. Within w2 the listing's own order
+    // holds: the idle pane was listed first and stays first, though the working one outranks it.
     const { herdr, engine, poll } = makeEngine();
     herdr.panes = [
       pane("w2:p1", "w2", "idle", "claude"),
@@ -401,7 +404,7 @@ describe("StateEngine — snapshot shaping", () => {
       pane("w2:p2", "w2", "working", "claude"),
     ];
     await poll();
-    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["w1:p1", "w2:p2", "w2:p1"]);
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["w1:p1", "w2:p1", "w2:p2"]);
   });
 
   test("marks the bridge disconnected when a poll throws", async () => {
@@ -478,13 +481,36 @@ describe("StateEngine — the order panes arrive in", () => {
     expect(engine.current().agents.map((a) => a.paneId)).toEqual(["p1", "p2"]);
   });
 
-  test("urgency still comes first — a blocked pane leads, wherever it sits", async () => {
+  test("status never orders — a blocked pane keeps its place (ADR 0063)", async () => {
+    // The opposite of what this test asserted before: a blocked pane used to lead wherever it sat, so
+    // it jumped to the top when it blocked and back when it resumed, on every surface that kept the
+    // bridge's order. Urgency is a mark the phone paints, never a position.
     const engine = engineOf(
       [muxPane({ paneId: "p1" }), muxPane({ paneId: "p2", status: "blocked" })],
       [muxTab("w1:t1")],
     );
     await engine["poll"]();
-    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["p2", "p1"]);
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["p1", "p2"]);
+  });
+
+  test("a status flip between two polls leaves the order exactly as it was", async () => {
+    const panes: MuxPane[] = [
+      muxPane({ paneId: "p1", status: "idle" }),
+      muxPane({ paneId: "p2", tabId: "w1:t2", status: "done" }),
+      muxPane({ paneId: "p3", tabId: "w1:t2", status: "idle" }),
+      muxPane({ paneId: "p4", spaceId: "w2", spaceNumber: 2, tabId: "w2:t1", status: "idle" }),
+    ];
+    const engine = engineOf(panes, [muxTab("w1:t1"), muxTab("w1:t2"), muxTab("w2:t1")]);
+    await engine["poll"]();
+    const before = engine.current().agents.map((a) => [a.paneId, a.tabPosition]);
+    expect(before).toEqual([["p1", 0], ["p2", 0], ["p3", 1], ["p4", 0]]);
+
+    panes[3] = { ...panes[3]!, status: "blocked" };
+    panes[0] = { ...panes[0]!, status: "done" };
+    panes[2] = { ...panes[2]!, status: "blocked" };
+    await engine["poll"]();
+    expect(engine.current().agents.map((a) => [a.paneId, a.tabPosition])).toEqual(before);
+    expect(engine.current().agents.map((a) => a.status)).toEqual(["done", "done", "blocked", "blocked"]);
   });
 
   test("a pane whose tab the listing does not hold sorts LAST, never ahead of a placed one", async () => {

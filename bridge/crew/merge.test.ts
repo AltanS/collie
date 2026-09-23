@@ -303,7 +303,7 @@ describe("mergeSnapshot — the same pane id on two hosts never collapses", () =
   });
 });
 
-// ── Ordering: one triage list across hosts ───────────────────────────────────
+// ── Ordering: one place-ordered list across hosts ────────────────────────────
 
 describe("mergeSnapshot — the space and tab navigators are host-tagged too (F14)", () => {
   // §9.2: "Every session and every pane is host-tagged". Spaces and tabs were not, and Herdr numbers
@@ -424,8 +424,11 @@ describe("mergeSnapshot — the space and tab navigators are host-tagged too (F1
   });
 });
 
-describe("mergeSnapshot — one triage-sorted list across hosts", () => {
-  test("a blocked peer agent outranks an idle local one (no host tab can hide NEEDS YOU)", () => {
+describe("mergeSnapshot — one list across hosts, ordered by place and never by status (ADR 0063)", () => {
+  test("a blocked peer agent stays below an idle lead one — the lead's machine comes first", () => {
+    // This test used to assert the opposite: status led the comparator, so a peer's pane that blocked
+    // jumped above every lead pane and dropped back when it resumed. Urgency is the phone's mark to
+    // paint (the row wash, the "Needs you" line); it never moves a row.
     const merged = mergeSnapshot(localBody({ agents: [pane({ paneId: "w1:p1", status: "idle" })] }), {
       self: SELF,
       peers: [
@@ -437,12 +440,12 @@ describe("mergeSnapshot — one triage-sorted list across hosts", () => {
       now: NOW,
     });
     expect(merged.agents.map((p) => [p.host, p.status])).toEqual([
-      ["laptop", "blocked"],
       ["desk", "idle"],
+      ["laptop", "blocked"],
     ]);
   });
 
-  test("within one status the lead sorts first, then peers by member id — a total order", () => {
+  test("the lead sorts first, then peers by member id — a total order", () => {
     const merged = mergeSnapshot(localBody({ agents: [pane({ paneId: "w1:p1", status: "blocked" })] }), {
       self: SELF,
       peers: [
@@ -463,11 +466,69 @@ describe("mergeSnapshot — one triage-sorted list across hosts", () => {
     expect(merged.servers!.map((s) => s.id)).toEqual(["desk", "alpha", "zeta"]);
   });
 
+  test("inside one machine: space, then the tab's own place in `tabs`, then the pane's place in its tab", () => {
+    // The tab list is the multiplexer's order, so `w1:t9` (listed first) outranks `w1:t1`; the pane
+    // ids are chosen to disagree with the positions, so a comparator that fell back to the id early
+    // would fail here.
+    const merged = mergeSnapshot(
+      localBody({
+        agents: [
+          pane({ paneId: "w2:p1", workspaceId: "w2", workspaceNumber: 2, tabId: "w2:t1", tabPosition: 0 }),
+          pane({ paneId: "w1:p1", tabId: "w1:t1", tabPosition: 1 }),
+          pane({ paneId: "w1:p7", tabId: "w1:t1", tabPosition: 0 }),
+          pane({ paneId: "w1:p3", tabId: "w1:t9", tabPosition: 0 }),
+        ],
+        tabs: [
+          tabOf({ tabId: "w1:t9", workspaceId: "w1" }),
+          tabOf({ tabId: "w1:t1", workspaceId: "w1", number: 2 }),
+          tabOf({ tabId: "w2:t1", workspaceId: "w2" }),
+        ],
+      }),
+      { self: SELF, peers: [contribution({ state: state({ memberId: "laptop" }), body: body() })], now: NOW },
+    );
+    expect(merged.agents.map((p) => p.paneId)).toEqual(["w1:p3", "w1:p7", "w1:p1", "w2:p1"]);
+  });
+
+  test("a status flip on any machine leaves the merged order exactly as it was", () => {
+    const run = (lead: PaneWire["status"], peer: PaneWire["status"]) =>
+      mergeSnapshot(
+        localBody({
+          agents: [
+            pane({ paneId: "w1:p1", tabPosition: 0, status: "idle" }),
+            pane({ paneId: "w1:p2", tabPosition: 1, status: lead }),
+          ],
+          tabs: [tabOf({ tabId: "w1:t1", workspaceId: "w1" })],
+        }),
+        {
+          self: SELF,
+          peers: [
+            contribution({
+              state: state({ memberId: "laptop" }),
+              body: body({
+                agents: [
+                  pane({ paneId: "w1:p1", tabPosition: 0, status: peer }),
+                  pane({ paneId: "w1:p2", tabPosition: 1, status: "working" }),
+                ],
+                tabs: [tabOf({ tabId: "w1:t1", workspaceId: "w1" })],
+              }),
+            }),
+          ],
+          now: NOW,
+        },
+      ).agents.map((p) => `${p.host}/${p.paneId}`);
+    const before = run("working", "done");
+    expect(before).toEqual(["desk/w1:p1", "desk/w1:p2", "laptop/w1:p1", "laptop/w1:p2"]);
+    expect(run("blocked", "blocked")).toEqual(before);
+    expect(run("idle", "unknown")).toEqual(before);
+  });
+
   test("with every peer unreachable and bodyless, the local order is byte-identical to unmerged", () => {
+    // The local body is the one state-engine.ts sends: already in place order, with positions. The
+    // statuses deliberately run against that order, since status must not re-sort anything.
     const local = localBody({
       agents: [
-        pane({ paneId: "w1:p2", status: "blocked" }),
-        pane({ paneId: "w1:p1", status: "done" }),
+        pane({ paneId: "w1:p2", tabPosition: 0, status: "done" }),
+        pane({ paneId: "w1:p1", tabPosition: 1, status: "blocked" }),
       ],
     });
     const merged = mergeSnapshot(local, {

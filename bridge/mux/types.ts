@@ -217,7 +217,7 @@ export interface MuxPane extends MuxIdentity {
    *
    * It is the RAW FACT the adapter already holds, reported as a raw fact. Exactly TWO modules in the
    * tree read it, and both spend it on presentation only — it never reaches {@link agent}, {@link
-   * status}, the session ref or the triage sort:
+   * status}, the session ref or triage:
    *
    *  • `bridge/beacon/hint.ts`, where it may become a sentence for the operator.
    *  • `bridge/state-engine.ts`, where "a shell in the foreground under a non-empty {@link

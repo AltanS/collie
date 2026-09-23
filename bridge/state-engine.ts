@@ -3,7 +3,6 @@ import {
   type AgentStatus,
   type AgentView,
   type BridgeStatus,
-  STATUS_RANK,
   type TabView,
   type WorkspaceView,
 } from "./types.ts";
@@ -373,10 +372,15 @@ export class StateEngine {
         rankOf(tabRank, a.tabId) - rankOf(tabRank, b.tabId) ||
         rankOf(paneRank, a.paneId) - rankOf(paneRank, b.paneId);
 
+      // PLACE ONLY, NEVER STATUS (ADR 0063). This list used to lead with STATUS_RANK, so every
+      // status flip re-sorted it and a pane jumped to the top when it blocked and back when it
+      // resumed. Every client surface kept that order (the pane strip, the space view, the
+      // switcher), so the pane the operator was aiming at moved under the thumb on each poll.
+      // Urgency is a mark the client paints; it is never a position.
       const agents: AgentView[] = panes
         .filter((p) => p.agent !== SHELL)
         .map((p) => toView(p, "agent"))
-        .toSorted((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || byPlace(a, b));
+        .toSorted(byPlace);
 
       // Bare shell panes (no agent), in the same place order so a space's panes read top-down.
       const shellPanes: AgentView[] = panes

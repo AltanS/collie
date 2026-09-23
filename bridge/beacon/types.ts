@@ -140,7 +140,7 @@ export interface BeaconRecord {
  * ABSENT is the third case and it is not in this union on purpose: the reader simply returns nothing
  * for that pane, and the pane reads as a shell with `unknown` status exactly as it does today.
  * "No beacon" and "the agent is resting" look identical from outside and mean opposite things to a
- * triage sort, so absence must never become `idle`.
+ * triage, so absence must never become `idle`.
  */
 export type BeaconReading =
   | {

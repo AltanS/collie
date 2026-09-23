@@ -351,48 +351,46 @@ export function mergeSnapshot(local: SnapshotResponse, ctx: MergeContext): Snaps
     ...local,
     workspaces,
     tabs,
-    agents: triageSorted([
+    agents: placeSorted([
       ...local.agents.map((p) => tag(p, self)),
       ...peers.flatMap((p) => (p.body?.agents ?? []).map((pane) => tag(pane, p.state.memberId))),
-    ], self),
-    shellPanes: spaceSorted([
+    ], tabs, self),
+    shellPanes: placeSorted([
       ...local.shellPanes.map((p) => tag(p, self)),
       ...peers.flatMap((p) => (p.body?.shellPanes ?? []).map((pane) => tag(pane, p.state.memberId))),
-    ], self),
+    ], tabs, self),
     sessions,
     servers,
   };
 }
 
 /**
- * The home list's order, across hosts (§9.2: "the phone's NEEDS YOU list must not hide a blocked
- * agent behind a host tab").
+ * The crew's one pane order, by PLACE and never by status (ADR 0063): machine, then space, then tab,
+ * then the pane's position in its tab. `bridge/state-engine.ts`'s `byPlace` is the same rule on one
+ * machine; this is it across machines, with the host as the outermost key because
+ * `workspaceNumber` is meaningless across hosts (every host has a space 1). The lead sorts first
+ * among hosts, matching `servers`, so a solo-shaped herd reads unchanged.
  *
- * The first three keys are `bridge/state-engine.ts:260-265`'s comparator verbatim, with the host
- * inserted as the tiebreak *between* status and space — status is the only thing that outranks which
- * machine you are looking at, and `workspaceNumber` is meaningless across machines (every host has a
- * space 1). The lead sorts first among hosts so a solo-shaped herd reads unchanged.
+ * Status used to lead this comparator, so a peer's pane that blocked jumped above every lead pane
+ * and dropped back when it resumed. A crew list re-sorts on every sweep, which made that jump a
+ * poll-rate event under the operator's thumb. Urgency is the phone's mark to paint, not an order.
  *
- * TOTALLY ORDERED ON PURPOSE. `(host, paneId)` is unique across the crew, so no two rows can compare
- * equal — the spec's open question about jitter is closed by making a tie impossible rather than by
- * hoping the sort is stable.
+ * The tab key is the tab's index in the merged `tabs` list, which carries each machine's own tab
+ * order (the multiplexer's). A pane from an older peer that sends no `tabPosition` sorts after its
+ * tab's positioned panes.
+ *
+ * TOTALLY ORDERED ON PURPOSE. `(host, paneId)` is unique across the crew and `paneId` is the last
+ * key, so no two rows can compare equal: a tie is impossible rather than hoped away by a stable sort.
  */
-function triageSorted(panes: PaneWire[], self: string): PaneWire[] {
-  return panes.toSorted(
-    (a, b) =>
-      STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
-      hostRank(a, b, self) ||
-      a.workspaceNumber - b.workspaceNumber ||
-      a.paneId.localeCompare(b.paneId),
-  );
-}
-
-/** Shell panes: same rule minus the status key, mirroring `bridge/state-engine.ts:271`. */
-function spaceSorted(panes: PaneWire[], self: string): PaneWire[] {
+function placeSorted(panes: PaneWire[], tabs: readonly TabView[], self: string): PaneWire[] {
+  const tabRank = new Map(tabs.map((t, i) => [`${t.host ?? self}\u0000${t.tabId}`, i]));
+  const rankOfTab = (p: PaneWire) => tabRank.get(`${p.host ?? self}\u0000${p.tabId}`) ?? Number.MAX_SAFE_INTEGER;
   return panes.toSorted(
     (a, b) =>
       hostRank(a, b, self) ||
       a.workspaceNumber - b.workspaceNumber ||
+      rankOfTab(a) - rankOfTab(b) ||
+      (a.tabPosition ?? Number.MAX_SAFE_INTEGER) - (b.tabPosition ?? Number.MAX_SAFE_INTEGER) ||
       a.paneId.localeCompare(b.paneId),
   );
 }
@@ -476,8 +474,9 @@ function isPaneWire(value: JsonValue | undefined): value is JsonValue & PaneWire
     return false;
   }
   const p: JsonObject = value;
-  // paneId and status are what the merge SORTS by and what the phone ADDRESSES by; a row missing
-  // either cannot be rendered or driven, so it is dropped rather than defaulted into the list.
+  // paneId is what the merge sorts by last and what the phone ADDRESSES by, and status is what every
+  // triage mark reads; a row missing either cannot be rendered or driven, so it is dropped rather
+  // than defaulted into the list.
   return (
     typeof p.paneId === "string" &&
     p.paneId.length > 0 &&

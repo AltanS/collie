@@ -23,39 +23,94 @@ describe("ThreadSidebar", () => {
     expect(screen.getByText("No agents running.")).toBeInTheDocument();
   });
 
-  it("groups agents into the same triage sections the dashboard uses", () => {
+  it("groups agents under their workspace, in the dashboard's order", () => {
     render(
-      <ThreadSidebar agents={[...fixtureAgents, idleAgent]} currentPaneId="" onSelect={vi.fn()} />,
+      <ThreadSidebar agents={[idleAgent, ...fixtureAgents]} currentPaneId="" onSelect={vi.fn()} />,
     );
-    // blocked → Needs you, working → Working, idle → Recent (lib/triage.ts)
-    expect(screen.getByText("Needs you")).toBeInTheDocument();
-    expect(screen.getByText("Working")).toBeInTheDocument();
-    expect(screen.getByText("Recent")).toBeInTheDocument();
-  });
-
-  it("keeps an unread idle completion above Working even when Recent is folded", () => {
-    const finished = { ...idleAgent, lastActiveAt: 200, lastSeenAt: 100 };
-    const props = { currentPaneId: "", onSelect: vi.fn(), recentOpen: false, onRecentOpenChange: vi.fn() };
-    const { rerender } = render(<ThreadSidebar {...props} agents={[...fixtureAgents, finished]} />);
+    // One heading per workspace, by workspace number, whatever order the list arrived in. The triage
+    // sections (Needs you, Working, Recent) are gone: they moved a row every time its status changed.
     expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
-      expect.stringContaining("Needs you"),
-      expect.stringContaining("Ready · unseen"),
-      expect.stringContaining("Working"),
+      expect.stringContaining("webapp"),
+      expect.stringContaining("collie"),
+      expect.stringContaining("sandbox"),
     ]);
-    expect(screen.getByRole("button", { name: /sandbox/ })).toBeInTheDocument();
-
-    rerender(<ThreadSidebar {...props} agents={[...fixtureAgents, { ...finished, lastSeenAt: 300 }]} />);
-    expect(screen.queryByText("Ready · unseen")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /sandbox/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Recent")).toBeInTheDocument();
-  });
-
-  it("omits groups that have no members", () => {
-    // Only a blocked agent → no Working / Recent headers.
-    render(<ThreadSidebar agents={[fixtureAgents[0]!]} currentPaneId="" onSelect={vi.fn()} />);
-    expect(screen.getByText("Needs you")).toBeInTheDocument();
     expect(screen.queryByText("Working")).toBeNull();
     expect(screen.queryByText("Recent")).toBeNull();
+  });
+
+  it("moves no row and no heading when a pane changes state (ADR 0063)", () => {
+    // Before, an unread completion jumped from Recent up into "Ready · unseen" and dropped back once
+    // read, and a blocked pane sat in "Needs you" above everything. Now every flip repaints only.
+    const finished = { ...idleAgent, lastActiveAt: 200, lastSeenAt: 100 };
+    const props = { currentPaneId: "", onSelect: vi.fn() };
+    const order = (c: HTMLElement) => ({
+      headings: [...c.querySelectorAll("h3")].map((h) => h.firstChild?.textContent ?? h.textContent),
+      rows: [...c.querySelectorAll("button[id^='switch-row-']")].map((b) => b.id),
+    });
+    const { container, rerender } = render(<ThreadSidebar {...props} agents={[...fixtureAgents, finished]} />);
+    const before = order(container);
+    expect(before.rows).toHaveLength(3);
+
+    rerender(<ThreadSidebar {...props} agents={[...fixtureAgents, { ...finished, lastSeenAt: 300 }]} />);
+    expect(order(container)).toEqual(before);
+
+    const flipped = fixtureAgents.map((a) => ({ ...a, status: a.status === "blocked" ? ("working" as const) : ("blocked" as const) }));
+    rerender(<ThreadSidebar {...props} agents={[...flipped, { ...finished, status: "blocked" as const }]} />);
+    expect(order(container)).toEqual(before);
+  });
+
+  it("says nothing needs you, in the same slot, when no pane does", () => {
+    render(<ThreadSidebar agents={[fixtureAgents[1]!, idleAgent]} currentPaneId="" onSelect={vi.fn()} />);
+    const line = screen.getByRole("button", { name: /nothing needs you/i });
+    expect(line).toBeDisabled();
+  });
+
+  it("counts what needs you on one line and jumps to the first of it", async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    // The blocked pane sits in the LAST workspace, so the jump has to find it in display order.
+    const blockedLast = { ...idleAgent, status: "blocked" as const };
+    render(
+      <ThreadSidebar agents={[{ ...fixtureAgents[0]!, status: "idle" }, blockedLast]} currentPaneId="" onSelect={vi.fn()} />,
+    );
+    const line = screen.getByRole("button", { name: /1 needs you/i });
+    await user.click(line);
+    const target = screen.getByRole("button", { name: /sandbox/ });
+    expect(target).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it("lights the heading of a workspace that needs you, and only that one", () => {
+    const { container } = render(
+      <ThreadSidebar agents={[...fixtureAgents, idleAgent]} currentPaneId="" onSelect={vi.fn()} />,
+    );
+    const lit = [...container.querySelectorAll("h3")].filter((h) => h.querySelector(".bg-status-blocked"));
+    expect(lit.map((h) => h.textContent)).toEqual([expect.stringContaining("webapp")]);
+  });
+
+  it("keys a row by its full address, so two machines' `w1:p1` are two rows", () => {
+    const lead = { ...fixtureAgents[0]!, host: "desk" };
+    const peer = { ...fixtureAgents[0]!, host: "laptop" };
+    const { container } = render(<ThreadSidebar agents={[lead, peer]} currentPaneId="" onSelect={vi.fn()} />);
+    const ids = [...container.querySelectorAll("button[id^='switch-row-']")].map((b) => b.id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("runs machines in the servers list's order, the lead first", () => {
+    const servers = [
+      { id: "desk", name: "desk", isLead: true, reachable: true, protocol: "ok" as const, lastSeenAt: 0 },
+      { id: "alpha", name: "alpha", isLead: false, reachable: true, protocol: "ok" as const, lastSeenAt: 0 },
+    ];
+    // The peer's pane arrives first and is blocked, which used to put its whole block on top.
+    const peer = { ...fixtureAgents[0]!, host: "alpha", workspaceLabel: "peerproj" };
+    const lead = { ...fixtureAgents[1]!, host: "desk", status: "idle" as const, workspaceNumber: 1 };
+    render(<ThreadSidebar agents={[peer, lead]} servers={servers} currentPaneId="" onSelect={vi.fn()} />);
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
+      expect.stringContaining("collie"),
+      expect.stringContaining("peerproj"),
+    ]);
   });
 
   it("marks the current pane with aria-current='page'", () => {
@@ -122,7 +177,7 @@ describe("ThreadSidebar", () => {
     expect(screen.queryByRole("button", { name: /close/i })).toBeNull();
   });
 
-  it("gives each section a status-colored bullet from the shared group palette", () => {
+  it("keeps the status palette on its marks: the lit heading, the counts, the Shells bullet", () => {
     const { container } = render(
       <ThreadSidebar
         agents={[...fixtureAgents, idleAgent]}
@@ -131,8 +186,9 @@ describe("ThreadSidebar", () => {
         onSelect={vi.fn()}
       />,
     );
-    // One dot per section, colored by the same status palette the badges use.
-    for (const cls of ["bg-status-blocked", "bg-status-working", "bg-status-idle", "bg-status-unknown"]) {
+    // The same status palette the badges use: the needs-you heading dot, the working count's dot, and
+    // the Shells section's bullet.
+    for (const cls of ["bg-status-blocked", "bg-status-working", "bg-status-unknown"]) {
       expect(container.getElementsByClassName(cls).length).toBeGreaterThan(0);
     }
   });
@@ -173,8 +229,8 @@ describe("ThreadSidebar — the cache reading on each row", () => {
   });
 });
 
-// The "Switch pane" sheet sees the WHOLE herd, so it has the dashboard's original problem: the two
-// long tails (Recent, and the bare shells) bury the handful of agents you opened it to reach.
+// The "Switch pane" sheet sees the WHOLE herd, so the long tail of bare shells would bury the
+// handful of agents you opened it to reach. That tail folds; a workspace group does not.
 describe("ThreadSidebar — folding the long tails", () => {
   const manyShells: AgentView[] = Array.from({ length: 12 }, (_, i) => ({
     paneId: `w3:s${i}`,
@@ -207,7 +263,7 @@ describe("ThreadSidebar — folding the long tails", () => {
     );
     expect(screen.getByText("(12)")).toBeInTheDocument();
     // The agents you came for are still there.
-    expect(screen.getByText("webapp")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /webapp/ })).toBeInTheDocument();
   });
 
   it("shows the shells again when expanded", () => {
@@ -241,37 +297,18 @@ describe("ThreadSidebar — folding the long tails", () => {
     expect(onShellsOpenChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 
-  it("folds Recent too, the same way the dashboard does", async () => {
-    const user = userEvent.setup();
-    const onRecentOpenChange = vi.fn();
-    render(
-      <ThreadSidebar
-        agents={[...fixtureAgents, idleAgent]}
-        currentPaneId=""
-        onSelect={vi.fn()}
-        recentOpen
-        onRecentOpenChange={onRecentOpenChange}
-      />,
-    );
-    expect(screen.getByText("sandbox")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /recent/i }));
-    expect(onRecentOpenChange).toHaveBeenCalledExactlyOnceWith(false);
-  });
-
-  it("never offers a fold on the attention sections", () => {
+  it("never offers a fold on a workspace group", () => {
     render(
       <ThreadSidebar
         agents={fixtureAgents}
         shellPanes={manyShells}
         currentPaneId=""
         onSelect={vi.fn()}
-        recentOpen
-        onRecentOpenChange={vi.fn()}
         shellsOpen
         onShellsOpenChange={vi.fn()}
       />,
     );
-    // fixtureAgents are blocked + working; only Shells should be expandable here.
+    // A workspace's handful of rows is not a tail to fold away; only Shells is expandable here.
     const expandable = screen.getAllByRole("button", { expanded: true }).map((b) => b.textContent);
     expect(expandable).toHaveLength(1);
     expect(expandable[0]).toMatch(/shells/i);

@@ -6,7 +6,7 @@
 //  • It sets no identity — not the pane's agent, not its status, not the session ref an agent named.
 //    The reasoning is `bridge/mux/types.ts` § `MuxPane.agent`, cited rather than restated, and it is
 //    why the port answers `"shell"` instead of guessing from a process name.
-//  • It arms no grammar, keys no journal adapter and never enters the triage sort. A hinted pane is
+//  • It arms no grammar, keys no journal adapter and never enters triage. A hinted pane is
 //    a shell of unknown standing that has a sentence attached to it.
 //  • What reaches the phone is finished English — no harness name, no multiplexer name — so
 //    `web/src` learns nothing new and renders text it does not interpret.

@@ -57,7 +57,7 @@ import type { AgentStatus } from "../types.ts";
  * definitive signals") after trying an LLM judge and output throughput, neither of which is adopted
  * here. Everything else is `unknown`, and that includes the case this milestone can most easily get
  * wrong: ABSENCE. "No beacon" and "the agent is resting" look identical from outside and mean
- * opposite things to a triage sort.
+ * opposite things to triage.
  */
 export type BeaconTrust = "definitive-via-hook" | "unknown";
 
@@ -70,10 +70,10 @@ export type BeaconTrust = "definitive-via-hook" | "unknown";
 const BEACON_STATUS = {
   working: "working",
   idle: "idle",
-  // `waiting` → `blocked` because `STATUS_RANK.blocked = 0` (bridge/types.ts) — the top of triage,
-  // which is exactly where an agent that has stopped and is waiting on the operator belongs. Every
-  // other Collie word ranks below it, so mapping to `idle` here would bury the one pane that needs a
-  // human at the bottom of the herd list.
+  // `waiting` → `blocked` because `STATUS_RANK.blocked = 0` (bridge/types.ts) — the most urgent
+  // mark, which is exactly what an agent that has stopped and is waiting on the operator must wear.
+  // Every other Collie word ranks below it, so mapping to `idle` here would leave the one pane that
+  // needs a human unmarked, out of the "Needs you" count and the push.
   waiting: "blocked",
 } satisfies Record<BeaconStatus, AgentStatus>;
 

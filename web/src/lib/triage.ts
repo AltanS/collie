@@ -1,7 +1,9 @@
-// The one ordering the whole app agrees on: what needs you, then what's newly ready, then what's
-// running, then everything else. Used by the dashboard, the in-pane sidebar and the command palette
-// — kept in one place so those three can't drift apart (which is the job the module this replaces,
-// agent-groups.ts, was written to do).
+// The one classification the whole app agrees on: what needs you, then what's newly ready, then
+// what's running, then everything else. Every mark reads it (the row wash, the chip dots, the
+// summary line), kept in one place so no two surfaces can disagree about what needs you.
+//
+// It CLASSIFIES; it no longer places. No list is laid out by bucket any more: the dashboard and the
+// pane switcher both keep every pane where it sits (ADR 0063), and a bucket only decides a mark.
 //
 // It puts each pane in a BUCKET and keeps the order the bridge sent inside it (see {@link triage}).
 // The two timestamps the bridge keeps per pane (bridge/activity.ts) still decide one bucket:
@@ -105,10 +107,10 @@ function sectionMeta() {
  * This buckets and it no longer SORTS. Each section used to be re-sorted by `lastActiveAt` (and
  * Recent by `lastSeenAt`), so a row moved under your thumb every time an agent took a turn: the pane
  * you were reaching for was somewhere else by the time you got there, and the list you learned this
- * morning was a different list this afternoon. The bridge already sends one stable order — status,
- * then space, then tab, then the pane's position in its tab (bridge/state-engine.ts) — and that is
+ * morning was a different list this afternoon. The bridge already sends one stable order — space,
+ * then tab, then the pane's position in its tab, never status (bridge/state-engine.ts) — and that is
  * the multiplexer's own arrangement, the one the operator made. Within a bucket, panes therefore
- * read in the order they sit on the desk, and a row only ever moves when it changes BUCKET.
+ * read in the order they sit on the desk.
  *
  * `dir` still reverses Recent, because that one is the operator asking, not the clock deciding.
  * "When did I last touch this" has not gone anywhere: it is on the row, as its time.
@@ -131,22 +133,6 @@ export function triage(agents: readonly AgentView[], dir: RecentDir = "newest"):
     { ...meta.working, agents: working },
     { ...meta.recent, agents: recent },
   ];
-}
-
-/**
- * The presentation fields a section header needs, in one place. Both the dashboard and the pane
- * switcher spread this rather than picking fields by hand — that's how the dashboard silently ended
- * up without the status-colour bullet the switcher had, and a new field would have done it again.
- */
-export function sectionHeaderProps(s: TriageSection) {
-  // `accent` is passed through as-is rather than conditionally spread: the prop is optional, so an
-  // explicit `undefined` and an absent key are the same thing to the component that destructures it.
-  return {
-    label: s.label,
-    count: s.agents.length,
-    dot: s.dot,
-    accent: s.accent,
-  };
 }
 
 /** The other direction — for the toggle. */

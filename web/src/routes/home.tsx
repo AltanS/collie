@@ -132,6 +132,7 @@ export function HomeRoute() {
             error={data.error}
             lastSeenAt={data.lastSeenAt}
             tabs={data.tabs}
+            servers={data.servers}
             isolated={prefs.isolatedSpace}
             hidden={prefs.hiddenSpaces}
             onIsolate={setIsolatedSpace}

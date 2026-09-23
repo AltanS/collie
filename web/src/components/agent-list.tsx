@@ -1,4 +1,4 @@
-import { Check, Inbox, WifiOff } from "lucide-react";
+import { Inbox, WifiOff } from "lucide-react";
 
 import { clockTime } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -6,10 +6,10 @@ import { SectionHeader } from "@/components/section-header";
 import { ListGroup } from "@/components/ui/list-group";
 import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { Chip } from "@/components/ui/chip";
-import { StatusCounts } from "@/components/status-counts";
+import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { bucketOf, triage, worstTriage, type TriageKey } from "@/lib/triage";
-import type { AgentView, BridgeStatus, TabView } from "@/lib/types";
+import type { AgentView, BridgeStatus, ServerSummary, TabView } from "@/lib/types";
 import { paneRowKey } from "@/lib/hosts";
 import { AgentCard } from "./agent-card";
 import { t } from "@/lib/i18n";
@@ -42,6 +42,8 @@ interface AgentListProps {
   lastSeenAt?: number;
   /** The raw tab list, for the multiplexer's own tab order inside a workspace. */
   tabs?: readonly TabView[];
+  /** The snapshot's machine list, for the order machines run in: the lead first (lib/pane-groups.ts). */
+  servers?: readonly ServerSummary[] | undefined;
   /**
    * The workspace filter the strip on top drives, per device (hooks/use-dash-prefs.ts). `isolated`
    * shows one workspace alone; `hidden` drops workspaces from the list while their chips stay in
@@ -121,6 +123,7 @@ export function AgentList({
   error = false,
   lastSeenAt,
   tabs,
+  servers,
   isolated = null,
   hidden = NO_KEYS,
   onIsolate,
@@ -179,7 +182,7 @@ export function AgentList({
   // the one summary line. Push and the badge carry the alarm; this screen answers "where".
   const all = triage(agents);
   const attention = all.filter((s) => ATTENTION.has(s.key) && s.agents.length > 0);
-  const groups = groupPanesByWorkspace(agents, shellPanes, { order: "fixed", tabs });
+  const groups = groupPanesByWorkspace(agents, shellPanes, { order: "fixed", tabs, servers });
   if (groups.length === 0) return null;
   // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped.
   const isolatedGroup = isolated === null ? undefined : groups.find((g) => workspacePrefKey(g) === isolated);
@@ -247,20 +250,11 @@ export function AgentList({
           word, once for the whole dashboard (the headings below repeat the numbers, not the words).
           The all-clear check leads when nothing needs you. A tap goes to the first workspace
           holding something urgent. */}
-      <button
-        type="button"
-        onClick={() => firstUrgent && jumpTo(firstUrgent)}
-        disabled={!firstUrgent}
-        className="flex min-h-8 items-center gap-3 text-left text-xs font-medium text-foreground disabled:opacity-100"
-      >
-        {allClear && (
-          <span className="flex items-center gap-1.5 leading-none">
-            <Check className="size-4 shrink-0 text-status-done" aria-hidden />
-            {t("home.allClear")}
-          </span>
-        )}
-        <StatusCounts panes={agents} labelled={!allClear} className={allClear ? "text-muted-foreground" : undefined} />
-      </button>
+      <StatusSummaryLine
+        panes={agents}
+        allClear={allClear}
+        onJump={firstUrgent ? () => jumpTo(firstUrgent) : undefined}
+      />
 
       {/* By workspace. The heading IS the landmark: full ink, its own case, and it lights up with a
           dot and a count when a pane inside needs you. Flat rows in ONE bordered group. */}

@@ -314,7 +314,7 @@ export interface SnapshotResponse {
   bridge: BridgeStatus;
   /** Per-device authorisation for the requesting client; absent when the feature is off. */
   device?: DeviceAuth;
-  /** Agent-bearing panes, triage-sorted (the home list). */
+  /** Agent-bearing panes, in place order: space, tab, position in the tab. Never by status (ADR 0063). */
   agents: PaneWire[];
   /** Bare shell panes (no agent) — surfaced so freshly-created tabs/spaces are reachable. */
   shellPanes: PaneWire[];
@@ -1099,7 +1099,10 @@ export interface SttCapability {
   reason?: string;
 }
 
-/** Rank for triage ordering — lower sorts first ("NEEDS YOU" at the top). */
+/**
+ * Urgency rank per status, lower is more urgent. It ranks a MARK, never a row: no list is sorted by
+ * it (ADR 0063). The merge also reads its keys as the set of valid status words.
+ */
 export const STATUS_RANK = {
   blocked: 0,
   working: 1,

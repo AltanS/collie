@@ -1157,6 +1157,13 @@ prevents (`web/src/lib/api.ts:201-203`).
   wire shape gains `host: string`, so the phone can address what it renders. Absent on a solo
   snapshot (§11).
 
+**The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
+first, then each peer's in member-id order. Inside one machine the order is workspace number, then
+the tab's index in the merged `tabs` list, then `tabPosition`, then the pane id. A status change
+therefore never moves a row. *(added 2026-09-23,
+[ADR 0063](./.adr/0063-a-pane-keeps-its-place-when-its-state-changes.md); the merge used to sort by
+status first.)*
+
 Merging is the *only* place the lead re-serialises. Its ETag over the merged body is **the lead's
 assertion about its own merged view**, not any peer's — it necessarily changes when any peer's
 contribution changes, and it says nothing about whether a given peer's snapshot changed.

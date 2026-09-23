@@ -8,6 +8,7 @@
 // filter — see lib/hosts.ts `spaceKey`, which degrades to a pure prefix (`"\0w1"`) on a solo
 // snapshot where no pane is host-tagged at all.
 import { paneSpaceKey, spaceKey } from "./hosts";
+import { byPlaceInTab } from "./pane-groups";
 import { bucketOf, TRIAGE_ORDER, type TriageKey } from "./triage";
 import type { AgentView, TabView, WorkspaceView } from "./types";
 
@@ -21,6 +22,11 @@ export interface TabGroup {
  * Group a workspace's panes (agents + shells) by tab, in tab order. Panes whose tab isn't in the
  * tab list yet (a brief poll race after a create) fall into a trailing group so they're never lost.
  *
+ * Inside a tab: its agents, then its shells, each by their position in the tab ({@link byPlaceInTab}).
+ * This used to keep the order the lists arrived in, and the bridge sent agents status-first, so a
+ * pane that blocked jumped to the head of its tab and back when it resumed (ADR 0063). The order is
+ * recomputed here so no arrival order can move a row.
+ *
  * `host` is the machine the workspace belongs to (undefined on a solo snapshot, and on the lead-local
  * navigator before the crew tags anything). Panes from any OTHER machine are not in this space, even
  * when they report the same workspace id.
@@ -33,7 +39,11 @@ export function groupPanesByTab(
   host?: string,
 ): TabGroup[] {
   const key = spaceKey(host, workspaceId);
-  const panes = [...agents, ...shellPanes].filter((p) => paneSpaceKey(p) === key);
+  const here = (p: AgentView) => paneSpaceKey(p) === key;
+  const panes = [
+    ...agents.filter(here).toSorted(byPlaceInTab),
+    ...shellPanes.filter(here).toSorted(byPlaceInTab),
+  ];
   // Same "untagged is ambient" rule as ambientPanes/findPane (lib/hosts.ts): a tab addressed on this
   // host matches when it carries that host's own tag OR no tag at all, so a solo snapshot — where no
   // tab is host-tagged — keeps grouping exactly as it always did.

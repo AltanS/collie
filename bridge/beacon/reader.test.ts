@@ -156,7 +156,7 @@ describe("expired is not absent", () => {
 
   test("an absent beacon supplies nothing — no reading, and never an idle one", async () => {
     // Absence must not become `idle`: "no beacon" and "the agent is resting" look identical from
-    // outside and mean opposite things to a triage sort.
+    // outside and mean opposite things to triage.
     expect(await sweep(directoryOf({}))).toEqual([]);
   });
 

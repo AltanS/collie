@@ -74,13 +74,14 @@ import type { MenuBlockAction } from "@/components/menu-block";
 import { locateReply } from "@/lib/latest-reply";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
+import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter } from "@/lib/journal-agents";
 import { paneRowKey } from "@/lib/hosts";
 import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
-import type { AgentView, BridgeStatus, DeviceAuth, TabView } from "@/lib/types";
+import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
 import type {
   MenuModel,
   MultiSelectModel,
@@ -100,6 +101,8 @@ interface AgentChatProps {
   agents: AgentView[];
   shellPanes: AgentView[];
   tabs: TabView[];
+  /** The snapshot's machine list, for the switcher's machine order (the lead first). Absent when solo. */
+  servers?: readonly ServerSummary[] | undefined;
   /** Pane output from the route loader (refreshed by polling/revalidation). */
   text: string;
   /** The same rows with soft wraps undone, present only when {@link text} splits a URL — frozen
@@ -186,6 +189,7 @@ export function AgentChat({
   agents,
   shellPanes,
   tabs,
+  servers,
   text,
   logicalText,
   requestedLines = 0,
@@ -252,22 +256,11 @@ export function AgentChat({
   // were the same pane. The address did not vanish, it moved down one line, where an address belongs.
   const name = agent === undefined ? "" : paneName(agent);
   const workspace = agent === undefined ? "" : panePlaceParts(agent, tabs).space;
-  // The panes that share this tab (agents + shells), in stable order — the switcher's whole list, and
-  // the order the numbers on its pills count in (pane-strip.tsx). Computed here, once: the row is far
-  // from the header in this file and the two must not disagree about which panes there are.
-  // THE BRIDGE'S ORDER, NOT A SECOND ONE. It used to sort by pane id, which is alphabetical order
-  // over an OPAQUE id (identity rule 1): `%10` before `%2`, `pN` before `pC`. Two panes side by side
-  // on the desk therefore reached the phone in an order the desk never showed. The bridge now sends
-  // every pane in the multiplexer's own arrangement — space, then tab, then the pane's position in
-  // that tab (bridge/state-engine.ts) — so the strip only has to keep what it was sent.
-  // Agents come before shells because they arrive in two arrays; within each, position is the mux's.
+  // The panes that share this tab (agents + shells), in the strip's stable order (lib/pane-ordinal.ts
+  // § panesOfTab: position in the tab, never status). Computed here, once: the row is far from the
+  // header in this file and the two must not disagree about which panes there are.
   const tabPanes = useMemo(
-    () =>
-      agent === undefined
-        ? []
-        : [...agents, ...shellPanes].filter(
-            (p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId,
-          ),
+    () => (agent === undefined ? [] : panesOfTab(agent, agents, shellPanes)),
     [agent, agents, shellPanes],
   );
   // This device may not type into agents: the backend rejects every write, so the composer drops to
@@ -2220,8 +2213,8 @@ export function AgentChat({
             shellPanes={shellPanes}
             currentPaneId={paneId}
             onSelect={switchTo}
-            recentOpen={dash.prefs.recentOpen}
-            onRecentOpenChange={dash.setRecentOpen}
+            tabs={tabs}
+            servers={servers}
             // Shells fold on the same count rule Spaces uses: on a herd with dozens of bare shells
             // they'd otherwise bury the agents you opened this sheet to reach.
             shellsOpen={openForCount(dash.prefs.shellsOpen, shellPanes.length)}

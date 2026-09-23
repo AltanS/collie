@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+
 import { StatusDot } from "@/components/status-badge";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { isUnseen } from "@/lib/triage";
@@ -91,5 +93,48 @@ export function StatusCounts({
         );
       })}
     </span>
+  );
+}
+
+/**
+ * The summary line: the twenty-times-a-day glance, in ONE slot of one height. The dashboard's line
+ * over every agent, and the pane switcher's "Needs you" line over the urgent ones alone, are this
+ * one component, so the two can never spell the same fact two ways.
+ *
+ * `allClear` leads with the check and the "Nothing needs you" words, and turns the counts muted and
+ * unlabelled; otherwise the counts carry their words. A tap goes to the first urgent thing via
+ * `onJump`; with no `onJump` the line is a disabled button that still reads at full ink, so the slot
+ * and its box are the same in every state (DESIGN.md §2).
+ */
+export function StatusSummaryLine({
+  panes,
+  allClear,
+  onJump,
+  className,
+}: {
+  panes: readonly AgentView[];
+  allClear: boolean;
+  onJump?: (() => void) | undefined;
+  className?: string;
+}) {
+  useLocale();
+  return (
+    <button
+      type="button"
+      onClick={onJump}
+      disabled={onJump === undefined}
+      className={cn(
+        "flex min-h-8 items-center gap-3 text-left text-xs font-medium text-foreground disabled:opacity-100",
+        className,
+      )}
+    >
+      {allClear && (
+        <span className="flex items-center gap-1.5 leading-none">
+          <Check className="size-4 shrink-0 text-status-done" aria-hidden />
+          {t("home.allClear")}
+        </span>
+      )}
+      <StatusCounts panes={panes} labelled={!allClear} className={allClear ? "text-muted-foreground" : undefined} />
+    </button>
   );
 }
