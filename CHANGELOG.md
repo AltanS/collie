@@ -48,6 +48,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The Changes tab's counts fade in instead of popping.** Each row holds a quiet placeholder until its count arrives, and coming back to the tab shows the last counts at once (ADR 0066).
 - **The dashboard's second tab is called Focus, and wears `CircleDot`.** It was "Needs you", then "Attention", both of which read as a demand even when nothing needed you; the count still shows only when something does, and the dot marks unseen finished work, not a notification (ADR 0066, ADR 0068).
 - **The six translated catalogs catch up on everything added since 1.12.1.** The Changes view, the belt size setting, the dashboard footer, update mode and the Focus badge's screen-reader labels had landed in English only; German, Spanish, Japanese, Korean, Simplified Chinese and Traditional Chinese now carry a wordsmith translation instead, English is untouched.
+- **Older strings that still read English in those six languages are translated too.** The harness bar, spaces, notification and pane settings, the prompt-cache sheet, the first-run tour and the update screen predate 1.12.1 and had never been translated.
 
 ### Fixed
 - **The last action on the belt now stops clear of the pane switcher.** Scrolled to the end, the last pill used to stop under the fade in front of the switcher mark. It now stops before the fade, with 16px of room to spare.
