@@ -226,6 +226,59 @@ describe("BottomSheet: pull-driven peek", () => {
     expect(panel.style.transform).toBe("translateY(0)");
   });
 
+  it("keeps the entrance skipped on every render after a peek-driven open, not just the first", () => {
+    // A poll, a keyboard resize or any parent state change re-renders the open sheet. The slide-in
+    // class must not appear on that render: adding `animate-in` to an already-shown panel starts
+    // the keyframe from translateY(100%), so the sheet drops out of view and slides back in.
+    const { container, rerender } = render(
+      <BottomSheet open={false} onClose={vi.fn()} title="Switch pane" pull={150}>
+        body
+      </BottomSheet>,
+    );
+    rerender(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane" pull={0}>
+        body
+      </BottomSheet>,
+    );
+    rerender(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane" pull={0}>
+        body again
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    expect(panel.className).not.toMatch(/animate-in/);
+    expect(panel.className).not.toMatch(/slide-in-from-bottom/);
+    const backdrop = container.querySelector<HTMLElement>('button[aria-hidden="true"]')!;
+    expect(backdrop.className).not.toMatch(/animate-in/);
+  });
+
+  it("plays the slide-in again on a tap-open after a drag-opened sheet has closed", () => {
+    // The drag's skip is held for one open only; a later open with no peek before it is a fresh
+    // open and gets the ordinary entrance.
+    const { container, rerender } = render(
+      <BottomSheet open={false} onClose={vi.fn()} title="Switch pane" pull={150}>
+        body
+      </BottomSheet>,
+    );
+    rerender(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane" pull={0}>
+        body
+      </BottomSheet>,
+    );
+    rerender(
+      <BottomSheet open={false} onClose={vi.fn()} title="Switch pane" pull={0}>
+        body
+      </BottomSheet>,
+    );
+    rerender(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane" pull={0}>
+        body
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    expect(panel.className).toMatch(/slide-in-from-bottom/);
+  });
+
   it("plays the ordinary slide-in entrance on a fresh open with no preceding peek", () => {
     const { container } = render(
       <BottomSheet open onClose={vi.fn()} title="Switch pane">
