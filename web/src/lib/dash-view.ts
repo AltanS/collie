@@ -1,8 +1,8 @@
 // The dashboard's three views, one per footer tab (ADR 0066): Panes (every pane, grouped by
-// workspace), Needs you (only the panes that need you, same groups, same order) and Changes (each
+// workspace), Attention (only the panes that need you, same groups, same order) and Changes (each
 // workspace's uncommitted changes). Each tab names what its list holds.
 //
-// Needs you is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves nothing.
+// Attention is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves nothing.
 import type { JsonValue } from "./json";
 import type { WorkspaceGroup } from "./pane-groups";
 import { needsYou } from "./triage";

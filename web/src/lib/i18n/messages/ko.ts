@@ -408,6 +408,7 @@ export const ko: Dictionary = {
   "home.row.unseen": "읽지 않음",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
+  "home.tabs.attention": "Attention",
   "home.changes.listAria": "Changes by workspace",
   "home.changes.loading": "Reading…",
   "home.changes.clean": "No changes",

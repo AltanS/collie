@@ -393,6 +393,7 @@ export const zhTW: Dictionary = {
   "home.row.unseen": "未讀",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
+  "home.tabs.attention": "Attention",
   "home.changes.listAria": "Changes by workspace",
   "home.changes.loading": "Reading…",
   "home.changes.clean": "No changes",

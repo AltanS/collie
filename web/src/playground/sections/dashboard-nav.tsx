@@ -398,7 +398,7 @@ function OptionThreeTabs({ initial, openWs = null }: { initial: View; openWs?: s
           { value: "panes", label: "Panes", icon: <Rows3 className={ICON} /> },
           {
             value: "needs",
-            label: "Needs you",
+            label: "Attention",
             icon: <BellRing className={ICON} />,
             badge: ATTENTION_COUNT,
             badgeLabel: `${ATTENTION_COUNT} need you`,
@@ -625,16 +625,16 @@ export function DashboardNavSection() {
         <Card state="dash-nav-option-1" label="option 1 · three-tab footer" reach={REACH} span={2}>
           <OptionHead
             n={1}
-            name="PICKED · Three-tab footer: Panes · Needs you · Changes"
+            name="PICKED · Three-tab footer: Panes · Attention · Changes"
             lines={[
-              "Picked 2026-09-23, with two corrections: the first tab is Panes (each tab names what its list holds, and the app counts panes everywhere), and Changes wears GitCompare, the icon the pane belt's Changes pill uses. These phones mount the shipped TabBar and WorkspaceChangesList (ADR 0066).",
+              "Picked 2026-09-23, with two corrections: the first tab is Panes (each tab names what its list holds, and the app counts panes everywhere), and Changes wears GitCompare, the icon the pane belt's Changes pill uses. Drawn as Needs you, renamed Attention the same day: the old name claimed something always needed you, even at zero. These phones mount the shipped TabBar and WorkspaceChangesList (ADR 0066).",
               "Thumb reach: every view is one tap from the bottom edge. The Changes tab lists every workspace with its file count, and a tap opens that workspace's Changes.",
-              `What moves: nothing between All and Needs you, the strip and summary hold their place. Changes swaps the whole body. Needs you carries a badge (${ATTENTION_COUNT}).`,
+              `What moves: nothing between Panes and Attention, the strip and summary hold their place. Changes swaps the whole body. Attention carries a badge (${ATTENTION_COUNT}) while it is above zero.`,
               "Cost: 56px of footer plus the safe area on the dashboard, always. Changes becomes a peer of the herd, so it reads as a main feature.",
             ]}
           />
           <Phones>
-            <Phone caption="a · Needs you selected">
+            <Phone caption="a · Attention selected">
               <OptionThreeTabs initial="needs" />
             </Phone>
             <Phone caption="b · Changes tab">

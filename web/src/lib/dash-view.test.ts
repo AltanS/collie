@@ -4,7 +4,7 @@ import { coerceDashView, shownGroups } from "./dash-view";
 import { groupPanesByWorkspace } from "./pane-groups";
 import type { AgentView } from "./types";
 
-// Issue 270's filter, as the "Needs you" tab draws it (ADR 0066): it removes rows and moves nothing.
+// Issue 270's filter, as the "Attention" tab draws it (ADR 0066): it removes rows and moves nothing.
 
 function pane(id: string, ws: number, status: AgentView["status"], extra: Partial<AgentView> = {}): AgentView {
   return {
@@ -41,7 +41,7 @@ describe("shownGroups", () => {
     expect(shown.map((s) => s.rows.length)).toEqual([3, 2, 2]);
   });
 
-  it("Needs you keeps only the panes that need you and drops a group with none", () => {
+  it("Attention keeps only the panes that need you and drops a group with none", () => {
     const shown = shownGroups(groups, true);
     expect(shown.map((s) => s.group.label)).toEqual(["ws1", "ws3"]);
     expect(shown.map((s) => s.rows.map((r) => r.paneId))).toEqual([["w1:p2"], ["w3:p1", "w3:p2"]]);

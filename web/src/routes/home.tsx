@@ -101,7 +101,8 @@ export function HomeRoute() {
   useLocale();
   const { prefs, setSpacesOpen, setLaunchOpen, setIsolatedSpace, toggleHiddenSpace, setDashView } = useDashPrefs();
   const view: DashView = prefs.dashView;
-  // The badge on Needs you: the same number the summary line counts, over every agent.
+  // The badge on Attention: the same number the summary line counts, over every agent. The tab
+  // shows it only while it is above zero.
   const needsCount = countNeedsYou(data.agents);
   const lookup = useMemo<ChangesLookup>(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
@@ -211,7 +212,7 @@ export function HomeRoute() {
             }
           />
           {/* Launch and the Spaces navigator belong to the whole herd, so they sit under Panes only.
-              Needs you and Changes are narrower lists, and a launcher under them would read as part
+              Attention and Changes are narrower lists, and a launcher under them would read as part
               of that list. */}
           {view === "panes" && (
             <>
@@ -252,7 +253,7 @@ export function HomeRoute() {
           { value: "panes", label: t("home.tabs.panes"), icon: <Rows3 className="size-5" /> },
           {
             value: "needs",
-            label: t("status.section.needsYou"),
+            label: t("home.tabs.attention"),
             icon: <BellRing className="size-5" />,
             badge: needsCount,
             badgeLabel: tn("status.count.needsYou", needsCount),

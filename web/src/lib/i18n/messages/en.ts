@@ -432,6 +432,7 @@ export const en = {
   "home.row.unseen": "unseen",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
+  "home.tabs.attention": "Attention",
   "home.changes.listAria": "Changes by workspace",
   "home.changes.loading": "Reading…",
   "home.changes.clean": "No changes",

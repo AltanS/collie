@@ -59,7 +59,7 @@ interface AgentListProps {
   /** Long-press a chip: hide the workspace, or show it again. */
   onToggleHidden?: (key: string) => void;
   /**
-   * The "Needs you" tab (issue 270, ADR 0066): a group shows only its panes that need you, and a
+   * The "Attention" tab (issue 270, ADR 0066): a group shows only its panes that need you, and a
    * group with none is dropped. A filter, never a sort. The strip, the summary line and every
    * heading's counts still count ALL panes, so the filter never understates the herd.
    */

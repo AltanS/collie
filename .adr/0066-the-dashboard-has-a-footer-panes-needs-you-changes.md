@@ -1,4 +1,4 @@
-# 0066 — The dashboard has a footer: Panes, Needs you, Changes
+# 0066 — The dashboard has a footer: Panes, Attention, Changes
 
 - **Status:** Accepted
 - **Date:** 2026-09-23
@@ -26,14 +26,18 @@ as "All", and its Changes tab wore a different icon from the one the pane belt u
 
 ## Decision
 
-**The dashboard has a footer with three tabs, and each tab names what its list holds: Panes, Needs
-you, Changes.**
+**The dashboard has a footer with three tabs, and each tab names what its list holds: Panes,
+Attention, Changes.**
 
 1. **Panes, not "All".** The app counts and names panes everywhere ("3 panes", "Your panes are
    under Spaces", the pane strip titled Panes), so the tab that lists every pane says so. "All"
-   named nothing. Needs you is the summary line's own section name (`status.section.needsYou`).
+   named nothing. Attention (`home.tabs.attention`) holds the panes blocked on you plus the finished
+   panes you have not seen yet. It was first shipped as "Needs you", the summary line's section
+   name, and renamed the same day: that label claimed something always needed you, and it was
+   false whenever the list was empty. "Attention" names the filter, and it is true at 0 and at 5.
+   The summary line keeps `status.section.needsYou`; only the tab changed.
    Changes wears `GitCompare`, the one Changes icon the belt and Settings already use.
-2. **Needs you is a filter, never a sort** (issue 270's rules). A workspace group shows only its
+2. **Attention is a filter, never a sort** (issue 270's rules). A workspace group shows only its
    panes whose `bucketOf()` is in `ATTENTION` (`needs`, `ready`), and a group with none is
    dropped. Workspaces keep their order and rows keep theirs. Every heading still counts its whole
    workspace, and the summary line still counts every pane, so the filter never understates the
@@ -56,7 +60,7 @@ you, Changes.**
 
 ## Consequences
 
-- **This amends nothing in ADR 0063.** No list is ordered by status; Needs you only removes rows.
+- **This amends nothing in ADR 0063.** No list is ordered by status; Attention only removes rows.
   The strip and the summary line stay where they are on all three tabs, and the footer sits outside
   the scroller, so a tab switch moves neither.
 - **The dashboard spends 56px plus the safe area on the footer, always.** The build stamp gives up

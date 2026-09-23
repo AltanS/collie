@@ -363,19 +363,19 @@ describe("the dashboard's footer (ADR 0066)", () => {
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
   });
 
-  it("badges Needs you with the summary line's count, and only that tab", async () => {
+  it("badges Attention with the summary line's count, and only that tab", async () => {
     renderHome(solo());
     await settled();
-    expect(tab(/^Needs you/)).toHaveAccessibleName("Needs you, 1 needs you");
+    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, 1 needs you");
     expect(tab(/^Panes$/)).toHaveTextContent(/^Panes$/);
     expect(tab(/^Changes$/)).toHaveTextContent(/^Changes$/);
   });
 
-  it("Needs you drops the quiet workspace, keeps the heading's full counts, and is remembered", async () => {
+  it("Attention drops the quiet workspace, keeps the heading's full counts, and is remembered", async () => {
     renderHome(solo());
     await settled();
-    await userEvent.click(tab(/^Needs you/));
-    expect(tab(/^Needs you/)).toHaveAttribute("aria-current", "page");
+    await userEvent.click(tab(/^Attention/));
+    expect(tab(/^Attention/)).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
     // The strip still offers every workspace: the filter removes rows, never places.
@@ -384,11 +384,11 @@ describe("the dashboard's footer (ADR 0066)", () => {
     expect(JSON.parse(localStorage.getItem("collie:dash-prefs:v1")!).dashView).toBe("needs");
   });
 
-  it("Needs you with nothing urgent shows the all-clear line and no list", async () => {
+  it("Attention with nothing urgent shows the all-clear line and no list", async () => {
     const calm = fixtureAgents.map((a) => Object.assign(structuredClone(a), { status: "working" as const }));
     renderHome(homeData({ agents: calm, shellPanes: fixtureShellPanes, sessions: fixtureSessions }));
     await settled();
-    await userEvent.click(tab(/^Needs you/));
+    await userEvent.click(tab(/^Attention/));
     expect(screen.getByText("Nothing needs you")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();

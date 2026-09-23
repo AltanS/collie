@@ -415,6 +415,7 @@ export const de: Dictionary = {
   "home.row.unseen": "ungesehen",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
+  "home.tabs.attention": "Attention",
   "home.changes.listAria": "Changes by workspace",
   "home.changes.loading": "Reading…",
   "home.changes.clean": "No changes",
