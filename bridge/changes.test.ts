@@ -14,6 +14,14 @@ import {
   MAX_DIFF_LINES,
   parseNumstatZ,
   parseStatusV2,
+  repoOfFolder,
+  SharedReads,
+  sharedDiffs,
+  sharedFileDiff,
+  sharedListChanges,
+  sharedLists,
+  gitRuns,
+  CHANGES_SHARE_MS,
   syntheticAddedDiff,
 } from "./changes.ts";
 import type { ChangesList } from "./types.ts";
@@ -291,8 +299,16 @@ describe("discovery", () => {
     const top = join(base, "deep");
     mkdirSync(top);
     repo(join(top, "a/b/c"));
-    expect((await discoverRepos(top, 2, true)).repos).toHaveLength(0);
-    expect((await discoverRepos(top, 3, true)).repos.map((r) => r.relPath)).toEqual(["a/b/c"]);
+    const shallow = await discoverRepos(top, 2, true);
+    expect(shallow.repos).toHaveLength(0);
+    // A repo sits one level past the walk, so a deeper setting would find it.
+    expect(shallow.depthLimited).toBe(true);
+    // Two levels short is not flagged: the look-ahead reads one level, never the whole tree.
+    expect((await discoverRepos(top, 1, true)).depthLimited).toBe(false);
+    const deep = await discoverRepos(top, 3, true);
+    expect(deep.repos.map((r) => r.relPath)).toEqual(["a/b/c"]);
+    expect(deep.depthLimited).toBe(false);
+    expect(available(await listChanges(top, { depth: 2, nested: true })).depthLimited).toBe(true);
     const ws = repo(join(base, "flat"));
     repo(join(ws, "child"));
     expect((await discoverRepos(ws, 2, false)).repos.map((r) => r.relPath)).toEqual(["."]);
@@ -446,5 +462,94 @@ describe("a hostile repo runs nothing", () => {
     write(join(dir, "a.txt"), "changed\n");
     const res = available(await listChanges(dir, P));
     expect(res.repos[0]!.files.map((f) => f.path)).toEqual(["a.txt"]);
+  });
+});
+
+describe("shared reads (ADR 0065 rule 8)", () => {
+  test("concurrent asks share one run, a finished answer serves until the window ends", async () => {
+    let clock = 0;
+    let runs = 0;
+    const shared = new SharedReads<number>(CHANGES_SHARE_MS, () => clock);
+    const run = async () => ++runs;
+    const [a, b] = await Promise.all([shared.read("k", run), shared.read("k", run)]);
+    expect([a, b, runs]).toEqual([1, 1, 1]);
+    clock = CHANGES_SHARE_MS - 1;
+    expect(await shared.read("k", run)).toBe(1);
+    clock = CHANGES_SHARE_MS;
+    expect(await shared.read("k", run)).toBe(2);
+    expect(await shared.read("other", run)).toBe(3);
+  });
+
+  test("a read that throws is not kept", async () => {
+    const shared = new SharedReads<number>(CHANGES_SHARE_MS, () => 0);
+    await expect(shared.read("k", () => Promise.reject(new Error("x")))).rejects.toThrow("x");
+    expect(await shared.read("k", async () => 7)).toBe(7);
+  });
+
+  describe("against real git", () => {
+    let dir: string;
+    beforeAll(() => {
+      dir = mkdtempSync(join(tmpdir(), "collie-changes-shared-"));
+      repo(join(dir, "r"));
+      write(join(dir, "r", "a.txt"), "changed\n");
+    });
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+    test("two concurrent list asks start git once between them", async () => {
+      const root = join(dir, "r");
+      // One read alone, to learn how many git runs one list takes.
+      const before = gitRuns.spawned;
+      await listChanges(root, P);
+      const one = gitRuns.spawned - before;
+      expect(one).toBeGreaterThan(0);
+      sharedLists.clear();
+      const start = gitRuns.spawned;
+      const [a, b] = await Promise.all([sharedListChanges(root, P), sharedListChanges(root, P)]);
+      expect(gitRuns.spawned - start).toBe(one);
+      expect(a).toBe(b);
+      // Within the window a third ask is answered without git.
+      const again = gitRuns.spawned;
+      await sharedListChanges(root, P);
+      expect(gitRuns.spawned).toBe(again);
+      // A different depth is a different key.
+      await sharedListChanges(root, { depth: 3, nested: true });
+      expect(gitRuns.spawned).toBeGreaterThan(again);
+    });
+
+    test("two concurrent diff asks start git once between them, and run again after the window", async () => {
+      const root = join(dir, "r");
+      sharedDiffs.clear();
+      const q = { depth: 2, nested: true, repo: ".", path: "a.txt" };
+      const start = gitRuns.spawned;
+      const [a, b] = await Promise.all([sharedFileDiff(root, q), sharedFileDiff(root, q)]);
+      const one = gitRuns.spawned - start;
+      expect(one).toBeGreaterThan(0);
+      expect(a).toBe(b);
+      await Bun.sleep(CHANGES_SHARE_MS + 50);
+      const later = gitRuns.spawned;
+      const c = await sharedFileDiff(root, q);
+      expect(gitRuns.spawned - later).toBe(one);
+      expect(c).not.toBe(a);
+    });
+  });
+});
+
+describe("repoOfFolder", () => {
+  test("names the deepest listed repo that holds the folder", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-changes-panerepo-"));
+    try {
+      mkdirSync(join(dir, "one", "deep"), { recursive: true });
+      mkdirSync(join(dir, "two"), { recursive: true });
+      const repos = [{ relPath: "." }, { relPath: "one" }, { relPath: "two" }];
+      expect(await repoOfFolder(dir, repos, join(dir, "one", "deep"))).toBe("one");
+      expect(await repoOfFolder(dir, repos, dir)).toBe(".");
+      expect(await repoOfFolder(dir, [{ relPath: "two" }], join(dir, "one"))).toBeUndefined();
+      expect(await repoOfFolder(dir, repos, "")).toBeUndefined();
+      // `one` is not a prefix match for `oneway`.
+      mkdirSync(join(dir, "oneway"));
+      expect(await repoOfFolder(dir, [{ relPath: "one" }], join(dir, "oneway"))).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

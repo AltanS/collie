@@ -5,7 +5,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
-import { changesParams, fileDiff, listChanges } from "./changes.ts";
+import { changesParams, repoOfFolder, sharedFileDiff, sharedListChanges } from "./changes.ts";
 import { rootOfWorkspace, type RootSnapshot } from "./changes-root.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
@@ -2452,8 +2452,12 @@ export async function paneChanges(
     ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
     : { paneId };
   try {
-    if (wantsDiff) return json({ ...subject, ...(await fileDiff(root, params)) } satisfies PaneChangeDiffResponse, accept);
-    return json({ ...subject, ...(await listChanges(root, params)) } satisfies PaneChangesResponse, accept);
+    if (wantsDiff) return json({ ...subject, ...(await sharedFileDiff(root, params)) } satisfies PaneChangeDiffResponse, accept);
+    const list = await sharedListChanges(root, params);
+    const paneRepo = list.available ? await repoOfFolder(list.root, list.repos, pane.cwd) : undefined;
+    const answer: PaneChangesResponse = { ...subject, ...list };
+    if (paneRepo !== undefined) answer.paneRepo = paneRepo;
+    return json(answer, accept);
   } catch (err) {
     return text(`changes read failed: ${errorText(err)}`, 502);
   }
@@ -2486,9 +2490,9 @@ export async function workspaceChanges(
   }
   try {
     if (wantsDiff) {
-      return json({ ...subject, ...(await fileDiff(found.root, params)) } satisfies WorkspaceChangeDiffResponse, accept);
+      return json({ ...subject, ...(await sharedFileDiff(found.root, params)) } satisfies WorkspaceChangeDiffResponse, accept);
     }
-    return json({ ...subject, ...(await listChanges(found.root, params)) } satisfies WorkspaceChangesResponse, accept);
+    return json({ ...subject, ...(await sharedListChanges(found.root, params)) } satisfies WorkspaceChangesResponse, accept);
   } catch (err) {
     return text(`changes read failed: ${errorText(err)}`, 502);
   }

@@ -52,7 +52,7 @@
 // theirs, like their shell.
 
 import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 import { containedRealpath } from "./journal/files.ts";
 import type { ChangeDiff, ChangedFile, ChangedRepo, ChangesList, ChangeStatus } from "./types.ts";
@@ -196,6 +196,9 @@ interface RepoDirs {
   gitDir: string;
 }
 
+/** How many git processes this module has started. Read by the tests that prove reads are shared. */
+export const gitRuns = { spawned: 0 };
+
 interface GitRun {
   code: number;
   stdout: Buffer;
@@ -225,6 +228,7 @@ async function runGit(
     ...extraConfig,
     ...args,
   ];
+  gitRuns.spawned++;
   const proc = Bun.spawn(argv, {
     cwd: repo.workTree,
     env: gitEnv(process.env),
@@ -318,7 +322,7 @@ export async function discoverRepos(
   cwd: string,
   depth: number,
   nested: boolean,
-): Promise<{ repos: FoundRepo[]; truncated: boolean }> {
+): Promise<{ repos: FoundRepo[]; truncated: boolean; depthLimited: boolean }> {
   const root = await realpath(cwd);
   const repos: FoundRepo[] = [];
   const found = (dir: string) => {
@@ -337,7 +341,7 @@ export async function discoverRepos(
     }
     if (dirname(dir) === dir) break;
   }
-  if (!nested) return { repos, truncated: false };
+  if (!nested) return { repos, truncated: false, depthLimited: false };
 
   let truncated = false;
   let entries = 0;
@@ -369,7 +373,29 @@ export async function discoverRepos(
     }
     level = next;
   }
-  return { repos, truncated };
+  const depthLimited = !truncated && depth < MAX_CHANGES_DEPTH && (await repoJustBelow(level, entries));
+  return { repos, truncated, depthLimited };
+}
+
+/**
+ * Whether one more level down holds a repo: the look-ahead behind `depthLimited`, so the view can
+ * say "look deeper" only when looking deeper would find something. It reads the folders one level
+ * past the walk, on what is left of the same entry budget, and stops at the first `.git`. Nothing it
+ * sees is listed. Not asked at the deepest setting, where there is no deeper to offer.
+ */
+async function repoJustBelow(level: readonly string[], spent: number): Promise<boolean> {
+  let entries = spent;
+  for (const parent of level) {
+    const children = await readdir(parent, { withFileTypes: true }).catch(() => []);
+    for (const child of children) {
+      entries++;
+      if (entries > MAX_WALK_ENTRIES) return false;
+      if (!child.isDirectory()) continue;
+      if (child.name.startsWith(".") || SKIP_DIRS.has(child.name)) continue;
+      if (await hasGitEntry(join(parent, child.name))) return true;
+    }
+  }
+  return false;
 }
 
 // ── Listing ─────────────────────────────────────────────────────────────────────────────────────
@@ -652,7 +678,29 @@ export async function listChanges(
     if (item.truncated) truncated = true;
     if (item.repo.files.length > 0) repos.push(item.repo);
   }
-  return { available: true, root: await realpath(cwd), repos, truncated };
+  return { available: true, root: await realpath(cwd), repos, truncated, depthLimited: found.depthLimited };
+}
+
+/**
+ * The repo in a list that holds `folder`: the deepest listed repo whose folder contains it, as its
+ * `relPath`, or undefined when none does (the pane's repo has no changes, or sits outside the root).
+ * The pane route names it so the view can mark the repo the asking pane works in (ADR 0065).
+ */
+export async function repoOfFolder(
+  root: string,
+  repos: readonly Pick<ChangedRepo, "relPath">[],
+  folder: string,
+): Promise<string | undefined> {
+  if (!folder.startsWith("/")) return undefined;
+  const real = await realpath(folder).catch(() => null);
+  if (real === null) return undefined;
+  let best: { relPath: string; length: number } | undefined;
+  for (const repo of repos) {
+    const dir = resolve(root, repo.relPath);
+    const inside = real === dir || real.startsWith(dir.endsWith(sep) ? dir : `${dir}${sep}`);
+    if (inside && (best === undefined || dir.length > best.length)) best = { relPath: repo.relPath, length: dir.length };
+  }
+  return best?.relPath;
 }
 
 // ── One file's diff ─────────────────────────────────────────────────────────────────────────────
@@ -740,4 +788,74 @@ export async function fileDiff(cwd: string, params: ChangesParams): Promise<Chan
   }
   const capped = capDiff(text);
   return { ...answer, diff: capped.diff, truncated: capped.truncated || run.capped || run.timedOut };
+}
+
+// ── Shared reads ────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How long one answer serves every asker of the same key. Several devices, the dashboard's Changes
+ * tab and a crew lead forwarding each device's poll all read the same repos on their own 5 s beats;
+ * without this each of them runs its own `git status` per repo. 1.5 s is the snapshot poll's fastest
+ * beat: an answer is never older than a poll would be, and git is still asked again after it.
+ */
+export const CHANGES_SHARE_MS = 1500;
+
+/**
+ * Concurrent asks for one key share one in-flight read, and a finished answer is reused until it is
+ * `ttlMs` old. A read that throws is never kept, so the next ask runs again. Expired keys are swept
+ * on each new read, so the map holds only what was asked in the last `ttlMs`.
+ */
+/** One shared read: the promise every asker gets, and when it finished (null while in flight). */
+interface SharedRead<T> {
+  promise: Promise<T>;
+  settledAt: number | null;
+}
+
+export class SharedReads<T> {
+  private readonly entries = new Map<string, SharedRead<T>>();
+
+  constructor(
+    private readonly ttlMs: number,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  read(key: string, run: () => Promise<T>): Promise<T> {
+    const at = this.now();
+    const hit = this.entries.get(key);
+    if (hit !== undefined && (hit.settledAt === null || at - hit.settledAt < this.ttlMs)) return hit.promise;
+    for (const [k, e] of this.entries) if (e.settledAt !== null && at - e.settledAt >= this.ttlMs) this.entries.delete(k);
+    const entry: SharedRead<T> = { promise: run(), settledAt: null };
+    this.entries.set(key, entry);
+    entry.promise.then(
+      () => {
+        entry.settledAt = this.now();
+        return undefined;
+      },
+      () => {
+        if (this.entries.get(key) === entry) this.entries.delete(key);
+      },
+    );
+    return entry.promise;
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+}
+
+/** The bridge's shared list reads, keyed on (root, depth, nested). Exported for the tests. */
+export const sharedLists = new SharedReads<ChangesList>(CHANGES_SHARE_MS);
+/** The bridge's shared diff reads, keyed on (root, repo, path, depth, nested). */
+export const sharedDiffs = new SharedReads<ChangeDiff>(CHANGES_SHARE_MS);
+
+/** `listChanges`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
+export function sharedListChanges(cwd: string, params: Pick<ChangesParams, "depth" | "nested">): Promise<ChangesList> {
+  const key = JSON.stringify([cwd, params.depth, params.nested]);
+  return sharedLists.read(key, () => listChanges(cwd, params));
+}
+
+/** `fileDiff`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
+export function sharedFileDiff(cwd: string, params: ChangesParams): Promise<ChangeDiff> {
+  const key = JSON.stringify([cwd, params.repo, params.path, params.depth, params.nested]);
+  return sharedDiffs.read(key, () => fileDiff(cwd, params));
 }

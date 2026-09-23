@@ -133,13 +133,16 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
     const b = await (await paneChanges(engine, "w1:p2", at(), req, home)).json();
     expect(a).toMatchObject({ paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "ws", available: true });
     expect(a.repos.map((r: { relPath: string }) => r.relPath).toSorted()).toEqual(["one", "two"]);
-    expect({ ...b, paneId: "w1:p1" }).toEqual(a);
+    // The list is the same; only the mark of the asking pane's own repo differs.
+    expect(a.paneRepo).toBe("one");
+    expect(b.paneRepo).toBe("two");
+    expect({ ...b, paneId: "w1:p1", paneRepo: "one" }).toEqual(a);
   });
 
   test("the workspace route answers the same list, and its diff form", async () => {
     const byPane = await (await paneChanges(engine, "w1:p1", at(), req, home)).json();
     const byWs = await (await workspaceChanges(engine, "w1", at(), req, home)).json();
-    const { paneId: _paneId, ...rest } = byPane;
+    const { paneId: _paneId, paneRepo: _paneRepo, ...rest } = byPane;
     expect(byWs).toEqual(rest);
     const diff = await (await workspaceChanges(engine, "w1", at("?repo=two&path=a.txt"), req, home)).json();
     expect(diff).toMatchObject({ workspaceId: "w1", workspaceLabel: "ws", available: true, repo: "two" });

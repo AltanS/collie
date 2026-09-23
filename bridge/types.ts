@@ -691,11 +691,13 @@ export type ChangesUnavailableReason = "no-pane" | "no-workspace" | "no-folder" 
 /**
  * The uncommitted changes under a workspace's folder, read-only (ADR 0065). Only repos with changes
  * are listed. `root` is the folder the list was read from; `truncated` means a discovery or listing
- * cap was reached, so the list may be incomplete.
+ * cap was reached, so the list may be incomplete. `depthLimited` means discovery stopped at the
+ * asked depth with a repo one level further down, so a deeper setting would find more. Optional:
+ * a bridge from before it sends none, which reads as false.
  */
 export type ChangesList =
   | { available: false; reason: ChangesUnavailableReason }
-  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
+  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean; depthLimited?: boolean };
 
 /**
  * One file's diff against HEAD, as raw unified-diff text. The phone parses it. `diff` is empty for
@@ -726,8 +728,12 @@ export interface ChangesWorkspace {
   workspaceLabel?: string;
 }
 
-/** GET /api/pane/:id/changes — the list for the pane's WORKSPACE (bridge/changes-root.ts). */
-export type PaneChangesResponse = { paneId: string } & ChangesWorkspace & ChangesList;
+/**
+ * GET /api/pane/:id/changes — the list for the pane's WORKSPACE (bridge/changes-root.ts). `paneRepo`
+ * is the `relPath` of the listed repo that holds the asking pane's folder, absent when that repo has
+ * no changes; the view marks that group "this pane".
+ */
+export type PaneChangesResponse = { paneId: string; paneRepo?: string } & ChangesWorkspace & ChangesList;
 /** GET /api/pane/:id/changes?repo=&path= — one file's diff in the pane's workspace. */
 export type PaneChangeDiffResponse = { paneId: string } & ChangesWorkspace & ChangeDiff;
 /** GET /api/workspace/:id/changes — the same list, asked by workspace. */
