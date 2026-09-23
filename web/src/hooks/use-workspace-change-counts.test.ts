@@ -6,7 +6,8 @@ import type { ChangesResponse } from "@/lib/types";
 const fetchChanges = vi.fn<(...args: unknown[]) => Promise<ChangesResponse>>();
 vi.mock("@/lib/api", () => ({ fetchChanges: (...args: unknown[]) => fetchChanges(...args) }));
 
-const { CHANGE_COUNT_REFRESH_MS, useWorkspaceChangeCounts } = await import("./use-workspace-change-counts");
+const { useWorkspaceChangeCounts } = await import("./use-workspace-change-counts");
+const { CHANGES_POLL_MS } = await import("./use-visible-interval");
 
 const CLEAN: ChangesResponse = { available: true, root: "/r", truncated: false, repos: [] };
 const targets = [
@@ -51,12 +52,12 @@ describe("useWorkspaceChangeCounts", () => {
     expect(fetchChanges).toHaveBeenCalledTimes(1);
     // The answer is slow: no second request while the first is still out.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(CHANGE_COUNT_REFRESH_MS * 3);
+      await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS * 3);
     });
     expect(fetchChanges).toHaveBeenCalledTimes(1);
     await act(async () => {
       release();
-      await vi.advanceTimersByTimeAsync(CHANGE_COUNT_REFRESH_MS - 1);
+      await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS - 1);
     });
     expect(fetchChanges).toHaveBeenCalledTimes(1);
     await act(async () => {
@@ -70,7 +71,7 @@ describe("useWorkspaceChangeCounts", () => {
     await flush();
     visibility = "hidden";
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(CHANGE_COUNT_REFRESH_MS * 4);
+      await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS * 4);
     });
     expect(fetchChanges).toHaveBeenCalledTimes(1);
     visibility = "visible";
@@ -88,9 +89,29 @@ describe("useWorkspaceChangeCounts", () => {
     await flush();
     rerender({ on: false });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(CHANGE_COUNT_REFRESH_MS * 4);
+      await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS * 4);
     });
     expect(fetchChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the same map through beats that answer the same, so the dashboard does not render", async () => {
+    const CHANGED: ChangesResponse = {
+      available: true,
+      root: "/r",
+      truncated: false,
+      repos: [{ relPath: ".", name: "r", files: [{ path: "a.ts", status: "M", added: 2, removed: 1, binary: false }] }],
+    };
+    // A fresh object every read, the way a fetch answers.
+    fetchChanges.mockImplementation(async () => structuredClone(CHANGED));
+    const { result } = renderHook(() => useWorkspaceChangeCounts(targets, lookup, true));
+    await flush();
+    const first = result.current;
+    expect(first.get("a")).toEqual({ kind: "changed", files: 1, added: 2, removed: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS * 3);
+    });
+    expect(fetchChanges).toHaveBeenCalledTimes(8);
+    expect(result.current).toBe(first);
   });
 
   it("keeps a row's last answer when a later read fails", async () => {
@@ -98,7 +119,7 @@ describe("useWorkspaceChangeCounts", () => {
     await flush();
     fetchChanges.mockRejectedValue(new Error("down"));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(CHANGE_COUNT_REFRESH_MS);
+      await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
     });
     expect(fetchChanges).toHaveBeenCalledTimes(2);
     expect(result.current.get("a")).toEqual({ kind: "clean" });

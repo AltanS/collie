@@ -19,6 +19,7 @@ import type { ChangedFile, ChangedRepo, ChangeStatus } from "@/lib/types";
 import {
   HIGHLIGHT_MAX_LINES,
   highlightDiff,
+  highlightDiffNow,
   languageForPath,
   type RowTokens,
   type SyntaxToken,
@@ -620,14 +621,22 @@ function TokenLine({ tokens }: { tokens: readonly SyntaxToken[] }) {
 
 /**
  * The rows' syntax tokens, once sugar-high has loaded, or null until then and for a file with no
- * known language or a diff too long to colour. The plain rows draw first; colour arrives after.
+ * known language or a diff too long to colour. The first diff of a language draws plain first and
+ * takes colour when the highlighter arrives. After that the colour is computed in the same render as
+ * the rows, so a diff that changes under the open view (the 5 s re-read) never flashes plain: its
+ * unchanged lines come out with the same tokens, and React leaves their spans alone.
  */
 function useSyntaxTokens(rows: readonly DiffRow[], path: string | undefined) {
   const lang = path === undefined ? null : languageForPath(path);
   const lines = useMemo(() => rows.filter((r) => r.kind !== "hunk" && r.kind !== "note").length, [rows]);
+  const colourable = lang !== null && lines <= HIGHLIGHT_MAX_LINES;
+  const now = useMemo(
+    () => (colourable && lang !== null ? highlightDiffNow(rows, lang) : null),
+    [colourable, rows, lang],
+  );
   const [done, setDone] = useState<{ rows: readonly DiffRow[]; tokens: RowTokens } | null>(null);
   useEffect(() => {
-    if (lang === null || lines > HIGHLIGHT_MAX_LINES) return;
+    if (!colourable || lang === null || now !== null) return;
     let live = true;
     const colour = async () => {
       try {
@@ -641,8 +650,23 @@ function useSyntaxTokens(rows: readonly DiffRow[], path: string | undefined) {
     return () => {
       live = false;
     };
-  }, [rows, lang, lines]);
-  return done?.rows === rows ? done.tokens : null;
+  }, [colourable, now, rows, lang]);
+  return now ?? (done?.rows === rows ? done.tokens : null);
+}
+
+/**
+ * A key per row that follows the row's content, not its index: a line added above keeps every row
+ * below on its own element, so React moves nothing but the new row in and the line numbers that
+ * really changed. The nth repeat of the same line gets its own key.
+ */
+export function diffRowKeys(rows: readonly DiffRow[]): string[] {
+  const seen = new Map<string, number>();
+  return rows.map((row) => {
+    const base = row.kind === "hunk" ? `h\u0000${row.header}` : `${row.kind}\u0000${row.text}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return `${base}\u0000${n}`;
+  });
 }
 
 /**
@@ -652,6 +676,7 @@ function useSyntaxTokens(rows: readonly DiffRow[], path: string | undefined) {
  */
 export function DiffView({ diff, path }: { diff: string; path?: string }) {
   const parsed = useMemo(() => parseUnifiedDiff(diff), [diff]);
+  const keys = useMemo(() => diffRowKeys(parsed.rows), [parsed]);
   const syntax = useSyntaxTokens(parsed.rows, path);
   // Both gutters sized once, by the widest number, so no row's text starts at a different x.
   const gutter = { width: `calc(${Math.max(String(parsed.maxLineNo).length, 2)}ch + 0.5rem)` };
@@ -667,7 +692,7 @@ export function DiffView({ diff, path }: { diff: string; path?: string }) {
         if (row.kind === "hunk") {
           return (
             <div
-              key={i}
+              key={keys[i]}
               className="border-y border-border px-3 py-1 text-muted-foreground wrap-anywhere whitespace-pre-wrap first:border-t-0"
             >
               {row.header}
@@ -676,13 +701,13 @@ export function DiffView({ diff, path }: { diff: string; path?: string }) {
         }
         if (row.kind === "note") {
           return (
-            <div key={i} className="px-3 text-muted-foreground italic">
+            <div key={keys[i]} className="px-3 text-muted-foreground italic">
               {row.text}
             </div>
           );
         }
         return (
-          <div key={i} className={cn("flex pl-1", ROW_TONE[row.kind])}>
+          <div key={keys[i]} className={cn("flex pl-1", ROW_TONE[row.kind])}>
             <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
               {row.oldNo ?? ""}
             </span>

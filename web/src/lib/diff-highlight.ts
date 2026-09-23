@@ -129,8 +129,24 @@ export function languageForPath(path: string): SyntaxLang | null {
 /** Tokens per diff row, index for index, or null for a row that stays plain. */
 export type RowTokens = (readonly SyntaxToken[] | null)[];
 
+type Engine = typeof import("@/lib/diff-highlight-engine");
+
+/**
+ * Each language's colouring, once its tokenizer has loaded. A diff that changes under an open view
+ * (the 5 s re-read) is coloured in the same render as its new rows, so no row ever draws plain in
+ * between: the plain frame was the flash the operator saw on every beat that changed the file.
+ */
+const ready = new Map<SyntaxLang, (rows: readonly DiffRow[]) => RowTokens>();
+
 /** Load the engine and the language (each once), then colour the rows. */
 export async function highlightDiff(rows: readonly DiffRow[], lang: SyntaxLang): Promise<RowTokens> {
-  const engine = await import("@/lib/diff-highlight-engine");
-  return engine.highlightRows(rows, await engine.loadTokenizer(lang));
+  const engine: Engine = await import("@/lib/diff-highlight-engine");
+  const tokenize = await engine.loadTokenizer(lang);
+  ready.set(lang, (r) => engine.highlightRows(r, tokenize));
+  return engine.highlightRows(rows, tokenize);
+}
+
+/** The rows' tokens at once, when `lang` has loaded before; null when only `highlightDiff` can say. */
+export function highlightDiffNow(rows: readonly DiffRow[], lang: SyntaxLang): RowTokens | null {
+  return ready.get(lang)?.(rows) ?? null;
 }

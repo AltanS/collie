@@ -5,13 +5,15 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { Profiler } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { PaneChangesResponse } from "@/lib/types";
 import { fixtureAgents, fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
-import { CHANGES_POLL_MS, ChangesRoute } from "./changes";
+
+import { ChangesRoute } from "./changes";
 
 const connected = (): HomeData => ({
   bridge: "connected",
@@ -165,17 +167,27 @@ describe("ChangesRoute — the list", () => {
   });
 });
 
+/**
+ * A diff line by its text, plain or coloured. A coloured line is several token spans, so the text is
+ * no single node's own: match the innermost element that reads the whole line, minus the sign a
+ * screen reader hears and the indent.
+ */
+const diffLine = (text: string) => {
+  const reads = (el: Element) => (el.textContent ?? "").replace(/^[+−] /, "").trim() === text;
+  return (_: string, el: Element | null) => el !== null && reads(el) && ![...el.children].some(reads);
+};
+
 describe("ChangesRoute — one file", () => {
   it("opens a file's diff, walks Next across repos, and goes back to the list", async () => {
     const router = renderAt("/pane/w1%3Ap1/changes");
     await userEvent.click(await screen.findByRole("button", { name: /checkout\.tsx/ }));
-    expect(await screen.findByText("const total = cartTotal(cart.items);")).toBeTruthy();
+    expect(await screen.findByText(diffLine("const total = cartTotal(cart.items);"))).toBeTruthy();
     expect(router.state.location.search).toBe("?repo=.&path=src%2Froutes%2Fcheckout.tsx");
     // First file: Previous is disabled, never hidden.
     expect(screen.getByRole("button", { name: /Previous file/ }).hasAttribute("disabled")).toBe(true);
 
     await userEvent.click(screen.getByRole("button", { name: /Next file/ }));
-    expect(await screen.findByText("export function cartTotal(items: { price: number }[]): number {")).toBeTruthy();
+    expect(await screen.findByText(diffLine("export function cartTotal(items: { price: number }[]): number {"))).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: /Next file/ }));
     expect(await screen.findByText(en["changes.file.binary"])).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: /Next file/ }));
@@ -189,7 +201,7 @@ describe("ChangesRoute — one file", () => {
 
   it("a deep link to a file still gets Previous / Next once the list lands", async () => {
     renderAt("/pane/w1%3Ap1/changes?repo=packages%2Fapi&path=notes.md");
-    expect(await screen.findByText("Orders moved under handlers/.")).toBeTruthy();
+    expect(await screen.findByText(diffLine("Orders moved under handlers/."))).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Previous file/ }).hasAttribute("disabled")).toBe(false),
     );

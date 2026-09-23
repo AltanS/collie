@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useVisibleInterval } from "@/hooks/use-visible-interval";
+import { CHANGES_POLL_MS, useVisibleInterval } from "@/hooks/use-visible-interval";
 import { fetchChanges, type ChangesLookup } from "@/lib/api";
 import { scopeKey, type Scope } from "@/lib/scope";
+import { shareEqual } from "@/lib/share-equal";
 import { runPool, summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
 
 /** One workspace the Changes tab asks about. `key` is the dashboard group's own key. */
@@ -15,21 +16,19 @@ export interface WorkspaceChangeTarget {
 
 /** At most this many workspaces are read at once: a git status per workspace is not free. */
 export const CHANGE_COUNT_CONCURRENCY = 3;
-/** The beat between two rounds. A round still out when the beat comes skips it, so none overlap. */
-export const CHANGE_COUNT_REFRESH_MS = 5_000;
 
 const LOADING: WorkspaceChangeCount = { kind: "loading" };
 
 /**
  * The Changes tab's numbers, per workspace (ADR 0066). While `active`, it reads every target at
  * once (up to {@link CHANGE_COUNT_CONCURRENCY} in flight), then again on every
- * {@link CHANGE_COUNT_REFRESH_MS} beat of `useVisibleInterval`, the loop the Changes screen uses
+ * {@link CHANGES_POLL_MS} beat of `useVisibleInterval`, the loop the Changes screen uses
  * too. Rounds never overlap: a beat that finds a round still out skips it. A hidden page stops the
  * beat and reads again the moment it is visible. Leaving the tab (`active` false) or unmounting
  * aborts what is in flight and stops.
  *
- * A row keeps its last answer through a refresh, so the numbers repaint and never blink back to
- * loading. A failed read keeps a row's last good answer too; a row that never had one says it is
+ * An answer equal to a row's last one changes no state at all. A row keeps its last answer through
+ * a refresh, so the numbers repaint and never blink back to loading. A failed read keeps a row's last good answer too; a row that never had one says it is
  * unavailable.
  */
 export function useWorkspaceChangeCounts(
@@ -45,15 +44,20 @@ export function useWorkspaceChangeCounts(
   const { depth, nested } = lookup;
   // The latest round, for the beat; each effect run below installs its own.
   const roundNow = useRef<() => void>(() => {});
-  useVisibleInterval(() => roundNow.current(), CHANGE_COUNT_REFRESH_MS, active);
+  // A round still out when the beat comes skips it, so none overlap.
+  useVisibleInterval(() => roundNow.current(), CHANGES_POLL_MS, active);
 
   useEffect(() => {
     if (!active) return;
     const ctl = new AbortController();
     let running = false;
 
+    // An answer equal to the row's last one keeps the map as it is, so the dashboard does not
+    // render again on a beat that changed nothing.
     const record = (key: string, next: WorkspaceChangeCount) =>
       setCounts((prev) => {
+        const had = prev.get(key);
+        if (had !== undefined && shareEqual(had, next) === had) return prev;
         const m = new Map(prev);
         m.set(key, next);
         return m;

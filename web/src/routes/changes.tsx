@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
-import { useVisibleInterval } from "@/hooks/use-visible-interval";
+import { CHANGES_POLL_MS, useVisibleInterval } from "@/hooks/use-visible-interval";
 import { fetchChangeDiff, fetchChanges, type ChangesLookup, type ChangesTarget } from "@/lib/api";
 import {
   countFiles,
@@ -55,13 +55,12 @@ import { cn } from "@/lib/utils";
 // NOT ON THE ROOT POLL LOOP, BUT ON ITS OWN SLOW ONE (ADR 0065 rule 8). The route has no loader
 // (router.tsx), so the root poll re-renders this screen and fetches nothing for it: git status over
 // a big tree is not a 1.5 s question. Instead, while the screen is mounted and the page visible, it
-// re-reads every CHANGES_POLL_MS: the list, and on the file view the open file's diff too. A re-read
-// that returns the same data changes nothing, down to object identity (`shareEqual`), so nothing
-// re-renders, no row moves and sugar-high does not re-colour. A failed re-read keeps the last good
-// data on screen. Refresh stays as the manual "now".
+// re-reads every CHANGES_POLL_MS (use-visible-interval.ts, which holds a beat while a finger
+// scrolls): the list, and on the file view the open file's diff too. A re-read that returns the same
+// data changes nothing, down to object identity (`shareEqual`), so nothing re-renders, no row moves
+// and sugar-high does not re-colour. A changed diff keeps its colour on every unchanged line
+// (DiffView). A failed re-read keeps the last good data on screen. Refresh stays as the manual "now".
 
-/** How often an open Changes screen re-reads while the page is visible (ADR 0065 rule 8). */
-export const CHANGES_POLL_MS = 5000;
 /** Consecutive failed re-reads before the header says the screen has stopped updating. */
 export const STALE_AFTER_FAILURES = 2;
 
