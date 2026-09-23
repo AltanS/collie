@@ -64,7 +64,7 @@ test("Attention shows only the panes that need you, and survives a reload", asyn
   // Both workspaces under Panes.
   await expect(page.getByRole("heading", { name: "webapp" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "collie" })).toBeVisible();
-  // One blocked pane (webapp), so the tab carries a 1.
+  // One blocked pane (webapp), so the tab carries a red 1.
   await expect(tab(page, ATTENTION)).toContainText("1");
 
   await tab(page, ATTENTION).click();
@@ -91,6 +91,69 @@ test("Attention with nothing urgent shows the all-clear line, not an empty list"
   await expect(page.getByRole("heading", { name: "collie" })).toHaveCount(0);
   // No badge when nothing needs you.
   await expect(tab(page, ATTENTION)).toHaveText(en["home.tabs.attention"]);
+});
+
+// The badge rule (ADR 0066): a red count means panes blocked on you; a finished pane you have not
+// opened gets a quiet dot and no number; neither gets nothing. The mark is addressed by the tab's
+// accessible name and its text, never by a class.
+const named = (mark: string) => new RegExp(`^${en["home.tabs.attention"]}\\s*, ${mark}$`, "u");
+
+async function withSnapshot(page: Page, edit: (snap: SnapshotResponse) => void) {
+  const snap: SnapshotResponse = structuredClone(fixtureSnapshot);
+  edit(snap);
+  await page.route("**/api/snapshot*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(snap) }),
+  );
+}
+
+test("Attention's badge: a red count only for blocked panes", async ({ page }) => {
+  // One blocked pane (webapp) and one finished pane nobody opened: the count is 1, not 2.
+  await withSnapshot(page, (snap) => {
+    const other = snap.agents.find((a) => a.status !== "blocked")!;
+    Object.assign(other, { status: "done", lastActiveAt: 2, lastSeenAt: 1 });
+  });
+  await page.goto("/");
+  const attention = tab(page, ATTENTION);
+  // Chromium joins the word and the screen-reader span with a space: "Attention , 1 blocked".
+  await expect(attention).toHaveAccessibleName(named("1 blocked"));
+  const count = attention.getByText("1", { exact: true });
+  await expect(count).toBeVisible();
+  // Red: the badge wears the blocked status colour, the same token the status dot uses.
+  const red = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--color-status-blocked)";
+    document.body.append(probe);
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  });
+  await expect(count).toHaveCSS("background-color", red);
+});
+
+test("Attention's badge: a quiet dot and no number when only finished panes wait unseen", async ({ page }) => {
+  await withSnapshot(page, (snap) => {
+    for (const a of snap.agents) a.status = "working";
+    Object.assign(snap.agents[0]!, { status: "done", lastActiveAt: 2, lastSeenAt: 1 });
+  });
+  await page.goto("/");
+  const attention = tab(page, ATTENTION);
+  await expect(attention).toHaveAccessibleName(named(en["home.tabs.unseen"]));
+  await expect(attention).not.toContainText(/\d/u);
+  // The dot is the unseen mark (ui/unseen-mark.tsx), drawn inside the icon's aria-hidden corner:
+  // the tab's own name already says it, so a screen reader hears it once.
+  const dot = attention.getByRole("img", { name: en["home.row.unseen"], includeHidden: true });
+  await expect(dot).toBeVisible();
+});
+
+test("Attention's badge: nothing when no pane is blocked or unseen", async ({ page }) => {
+  await withSnapshot(page, (snap) => {
+    for (const a of snap.agents) a.status = "working";
+  });
+  await page.goto("/");
+  const attention = tab(page, ATTENTION);
+  await expect(attention).toHaveAccessibleName(en["home.tabs.attention"]);
+  await expect(attention).toHaveText(en["home.tabs.attention"]);
+  await expect(attention.getByRole("img", { name: en["home.row.unseen"], includeHidden: true })).toHaveCount(0);
 });
 
 test("Changes lists each workspace with its counts and opens the workspace's Changes", async ({ page }) => {

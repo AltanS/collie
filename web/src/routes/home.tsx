@@ -30,7 +30,7 @@ import { t, tn } from "@/lib/i18n";
 import { panePath, spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
-import { countNeedsYou } from "@/lib/triage";
+import { countBlocked, hasReady } from "@/lib/triage";
 import type { AgentView, ServerSummary, SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 
@@ -101,9 +101,11 @@ export function HomeRoute() {
   useLocale();
   const { prefs, setSpacesOpen, setLaunchOpen, setIsolatedSpace, toggleHiddenSpace, setDashView } = useDashPrefs();
   const view: DashView = prefs.dashView;
-  // The badge on Attention: the same number the summary line counts, over every agent. The tab
-  // shows it only while it is above zero.
-  const needsCount = countNeedsYou(data.agents);
+  // Attention's corner mark (ADR 0066): a red count of the panes blocked on you, or, when none is
+  // blocked, a quiet dot for finished panes you have not opened. A count means something waits on
+  // you; the dot only says there is something new. The list itself still holds both kinds.
+  const blockedCount = countBlocked(data.agents);
+  const readyUnseen = blockedCount === 0 && hasReady(data.agents);
   const lookup = useMemo<ChangesLookup>(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
     [prefs.changesDepth, prefs.changesNested],
@@ -255,8 +257,9 @@ export function HomeRoute() {
             value: "needs",
             label: t("home.tabs.attention"),
             icon: <BellRing className="size-5" />,
-            badge: needsCount,
-            badgeLabel: tn("status.count.needsYou", needsCount),
+            badge: blockedCount,
+            dot: readyUnseen,
+            badgeLabel: blockedCount > 0 ? tn("home.tabs.blocked", blockedCount) : t("home.tabs.unseen"),
           },
           // GitCompare is the one Changes icon: the pane belt's Changes pill and the Settings row wear it.
           { value: "changes", label: t("changes.title"), icon: <GitCompare className="size-5" /> },

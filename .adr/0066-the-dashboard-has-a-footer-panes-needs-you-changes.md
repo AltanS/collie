@@ -7,7 +7,7 @@
   `attentionOnly`) · the playground's `dashboard-nav` round, four numbered options (commit
   186e777d), option 1 picked with two corrections · `web/src/components/ui/tab-bar.tsx` ·
   `web/src/routes/home.tsx` · `web/src/components/agent-list.tsx` (`needsYouOnly`, `renderBody`) ·
-  `web/src/lib/dash-view.ts` (`shownGroups`) · `web/src/lib/triage.ts` (`ATTENTION`, `needsYou`) ·
+  `web/src/lib/dash-view.ts` (`shownGroups`) · `web/src/lib/triage.ts` (`ATTENTION`, `needsYou`, `countBlocked`, `hasReady`) ·
   `web/src/components/workspace-changes-list.tsx` · `web/src/hooks/use-workspace-change-counts.ts` ·
   `web/src/hooks/use-dash-prefs.ts` (`dashView`) · [ADR 0063](./0063-a-pane-keeps-its-place-when-its-state-changes.md) ·
   [ADR 0065](./0065-the-changes-view-reads-git-read-only.md)
@@ -42,8 +42,7 @@ Attention, Changes.**
    dropped. Workspaces keep their order and rows keep theirs. Every heading still counts its whole
    workspace, and the summary line still counts every pane, so the filter never understates the
    herd. When nothing needs you, the summary line's all-clear is the whole answer, not an empty
-   list. The tab carries a badge with the summary line's count while it is above zero; the other
-   two tabs carry none.
+   list. The other two tabs carry no mark.
 3. **Changes lists workspaces, not files.** One row per workspace the strip leaves shown, in the
    dashboard's order, with the changed-file count and the summed +added −removed, read from
    `GET /api/workspace/<id>/changes` on the workspace's own machine and session, with the device's
@@ -57,6 +56,17 @@ Attention, Changes.**
    an operator who never taps the footer sees the dashboard they had.
 6. **At every width.** The dashboard is one centred column on a wide screen too, with no sidebar
    that would offer the same views twice.
+7. **Attention's corner mark: a red count of blocked panes, or a quiet dot, or nothing.** The red
+   number counts only the panes blocked on you (`countBlocked()`, the `needs` bucket). When none is
+   blocked but a finished pane waits unseen (`hasReady()`, the `ready` bucket), the tab shows a
+   small dot in the unseen mark's look (`ui/unseen-mark.tsx`) and no number. With neither, it shows
+   nothing. The count and the dot sit in the same absolutely placed corner slot, so a change
+   between them moves nothing. A screen reader hears "2 blocked" (`home.tabs.blocked`) or
+   "finished panes unseen" (`home.tabs.unseen`). The list under the tab is unchanged and still holds
+   both kinds, and the summary line keeps its own count of both. The reason: the badge first carried
+   the summary line's count, blocked and unseen together, and an operator read 0 blocked plus 5
+   finished panes as "5 urgent". A count should mean something waits on you. The dot says there is
+   something new without claiming it is urgent. Changed 2026-09-23, the same day it shipped.
 
 ## Consequences
 

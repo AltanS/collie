@@ -363,12 +363,42 @@ describe("the dashboard's footer (ADR 0066)", () => {
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
   });
 
-  it("badges Attention with the summary line's count, and only that tab", async () => {
+  it("badges Attention with the count of blocked panes, and only that tab", async () => {
     renderHome(solo());
     await settled();
-    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, 1 needs you");
+    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, 1 blocked");
+    expect(tab(/^Attention/).querySelector('[data-slot="tab-badge"]')).toHaveTextContent("1");
     expect(tab(/^Panes$/)).toHaveTextContent(/^Panes$/);
     expect(tab(/^Changes$/)).toHaveTextContent(/^Changes$/);
+  });
+
+  // The red count means something waits on you. A finished pane you have not opened is news, not a
+  // demand, so it gets the quiet dot and no number (ADR 0066).
+  const withAgents = (agents: SnapshotResponse["agents"]) =>
+    homeData({ agents, shellPanes: fixtureShellPanes, sessions: fixtureSessions });
+  const unseen = { ...fixtureAgents[1]!, status: "done" as const, lastActiveAt: 2, lastSeenAt: 1 };
+  const quiet = fixtureAgents.map((a) => ({ ...a, status: "working" as const }));
+
+  it("counts only the blocked panes when finished-unseen ones are there too", async () => {
+    renderHome(withAgents([fixtureAgents[0]!, unseen]));
+    await settled();
+    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, 1 blocked");
+    expect(tab(/^Attention/).querySelector('[data-slot="tab-dot"]')).toBeNull();
+  });
+
+  it("shows the quiet dot and no number when only finished-unseen panes wait", async () => {
+    renderHome(withAgents([quiet[0]!, unseen]));
+    await settled();
+    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, finished panes unseen");
+    expect(tab(/^Attention/).querySelector('[data-slot="tab-dot"]')).not.toBeNull();
+    expect(tab(/^Attention/).querySelector('[data-slot="tab-badge"]')).toBeNull();
+  });
+
+  it("marks nothing when no pane is blocked or unseen", async () => {
+    renderHome(withAgents(quiet));
+    await settled();
+    expect(tab(/^Attention/)).toHaveAccessibleName("Attention");
+    expect(tab(/^Attention/).querySelector('[data-slot="tab-dot"], [data-slot="tab-badge"]')).toBeNull();
   });
 
   it("Attention drops the quiet workspace, keeps the heading's full counts, and is remembered", async () => {

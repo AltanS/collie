@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { UnseenMark } from "@/components/ui/unseen-mark";
 import { cn } from "@/lib/utils";
 
 /** One tab. */
@@ -7,9 +8,14 @@ export interface TabBarItem<V extends string> {
   value: V;
   label: string;
   icon: ReactNode;
-  /** A small count on the icon's corner. Drawn only when above zero. */
+  /** A small red count on the icon's corner. Drawn only when above zero. It means something is
+   *  waiting on the operator, so a caller counts only that (ADR 0066). */
   badge?: number;
-  /** ALREADY TRANSLATED. What the badge says to a screen reader, e.g. "2 need you". */
+  /** A quiet mark in the same corner: something is new, with no claim that it is urgent. Drawn
+   *  only when there is no count; the two never show together. It wears the unseen mark's look
+   *  (ui/unseen-mark.tsx). */
+  dot?: boolean;
+  /** ALREADY TRANSLATED. What the badge or the dot says to a screen reader, e.g. "2 blocked". */
   badgeLabel?: string;
 }
 
@@ -32,7 +38,8 @@ export interface TabBarProps<V extends string> {
  * NOTHING MOVES ON A SWITCH (DESIGN.md §2). The active mark is a 2px top edge that every tab
  * reserves, transparent, so a switch recolours an edge and re-lays-out nothing. The word never
  * changes weight. A badge floats on the icon's corner, absolutely placed, so a count arriving,
- * changing width or leaving moves no label. The row is `min-h-14` (56px, above the 44px floor of
+ * changing width or leaving moves no label. The quiet dot takes the same absolutely placed corner
+ * slot, so a count turning into a dot, or either leaving, moves nothing either. The row is `min-h-14` (56px, above the 44px floor of
  * §6), and each word is one truncated line, so no locale can make one tab taller than the others.
  *
  * The safe area sits UNDER the row, inside the band, so the home indicator never covers a tab.
@@ -48,6 +55,8 @@ export function TabBar<V extends string>({ items, active, onSelect, label, class
         {items.map((it) => {
           const on = it.value === active;
           const badge = it.badge !== undefined && it.badge > 0 ? it.badge : undefined;
+          const dot = badge === undefined && it.dot === true;
+          const marked = badge !== undefined || dot;
           return (
             <button
               key={it.value}
@@ -64,13 +73,18 @@ export function TabBar<V extends string>({ items, active, onSelect, label, class
               <span className="relative flex size-5 items-center justify-center" aria-hidden>
                 {it.icon}
                 {badge !== undefined && (
-                  <span className="absolute -top-1.5 left-[calc(100%-0.25rem)] flex h-4 min-w-4 items-center justify-center rounded-sm bg-status-blocked px-1 text-[10px] leading-none font-semibold text-background tabular-nums">
+                  <span data-slot="tab-badge" className="absolute -top-1.5 left-[calc(100%-0.25rem)] flex h-4 min-w-4 items-center justify-center rounded-sm bg-status-blocked px-1 text-[10px] leading-none font-semibold text-background tabular-nums">
                     {badge}
+                  </span>
+                )}
+                {dot && (
+                  <span data-slot="tab-dot" className="absolute -top-0.5 left-[calc(100%-0.125rem)] flex">
+                    <UnseenMark />
                   </span>
                 )}
               </span>
               <span className="max-w-full truncate leading-tight">{it.label}</span>
-              {badge !== undefined && it.badgeLabel !== undefined && <span className="sr-only">, {it.badgeLabel}</span>}
+              {marked && it.badgeLabel !== undefined && <span className="sr-only">, {it.badgeLabel}</span>}
             </button>
           );
         })}

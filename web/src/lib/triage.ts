@@ -68,11 +68,20 @@ export function needsYou(a: AgentView): boolean {
   return ATTENTION.has(bucketOf(a));
 }
 
-/** How many panes need you: the summary line's number, and the "Attention" tab's badge. */
-export function countNeedsYou(agents: readonly AgentView[]): number {
+/**
+ * How many panes are blocked on you (the "needs" bucket alone): the "Attention" tab's red count.
+ * A finished pane you have not opened is not counted here; the tab marks it with the quiet dot
+ * instead, because a count should mean something is waiting on you (ADR 0066).
+ */
+export function countBlocked(agents: readonly AgentView[]): number {
   let n = 0;
-  for (const a of agents) if (needsYou(a)) n++;
+  for (const a of agents) if (bucketOf(a) === "needs") n++;
   return n;
+}
+
+/** Whether any pane is in the "ready" bucket: finished and unseen. The "Attention" tab's dot. */
+export function hasReady(agents: readonly AgentView[]): boolean {
+  return agents.some((a) => bucketOf(a) === "ready");
 }
 
 /** Display order, most urgent first. */

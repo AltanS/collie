@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countBlocked,
   flipDir,
+  hasReady,
   isUnseen,
   triage,
   TRIAGE_STATUS,
@@ -255,5 +257,29 @@ describe("TRIAGE_STATUS", () => {
       working: "working",
       recent: "idle",
     });
+  });
+});
+
+describe("countBlocked and hasReady — the Attention tab's two marks (ADR 0066)", () => {
+  const herd = [
+    agent("b1", "blocked"),
+    agent("b2", "blocked"),
+    agent("u1", "done", { active: 2, seen: 1 }),
+    agent("w1", "working"),
+    agent("s1", "idle", { active: 1, seen: 2 }),
+  ];
+
+  it("counts only the panes blocked on you, never the finished and unseen ones", () => {
+    expect(countBlocked(herd)).toBe(2);
+    expect(countBlocked([agent("u1", "done", { active: 2, seen: 1 })])).toBe(0);
+    expect(countBlocked([])).toBe(0);
+  });
+
+  it("reports a finished and unseen pane, and nothing else, as ready", () => {
+    expect(hasReady(herd)).toBe(true);
+    expect(hasReady([agent("b1", "blocked"), agent("w1", "working")])).toBe(false);
+    // Seen since it settled: not ready any more.
+    expect(hasReady([agent("s1", "done", { active: 1, seen: 2 })])).toBe(false);
+    expect(hasReady([])).toBe(false);
   });
 });
