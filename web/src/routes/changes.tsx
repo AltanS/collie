@@ -12,6 +12,7 @@ import {
   ChangesNoMatch,
   ChangesTree,
   DiffView,
+  folderKey,
   StatusLetter,
   type ChangeRef,
 } from "@/components/changes-view";
@@ -26,14 +27,25 @@ import {
   countFiles,
   EMPTY_FILTER,
   filterRepos,
+  folderInRepo,
   isFilterActive,
   layoutOrder,
+  openFolderChain,
   type ChangesFilter,
   type ChangesLayout,
 } from "@/lib/changes-tree";
 import { isAbortError } from "@/lib/loaders";
-import { t, type MessageKey } from "@/lib/i18n";
-import { canStepBack, changesPath, panePath, readFrom, spaceChangesPath, spacePath, upTarget } from "@/lib/nav";
+import { t, tn, type MessageKey } from "@/lib/i18n";
+import {
+  canStepBack,
+  changesPath,
+  changesSettingsPath,
+  panePath,
+  readFrom,
+  spaceChangesPath,
+  spacePath,
+  upTarget,
+} from "@/lib/nav";
 import { useRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { shareEqual } from "@/lib/share-equal";
@@ -104,7 +116,7 @@ function unavailableKey(reason: ChangesUnavailableReason): MessageKey {
  * Collapsed tree folders, per route target (a pane or a space), for this session: in memory, so
  * leaving the view and coming back keeps them, and a reload opens every folder again.
  */
-const collapsedByPane = new Map<string, Set<string>>();
+const collapsedByPane = new Map<string, ReadonlySet<string>>();
 
 /**
  * The last two segments of a folder, for the header: `…/projects/collie-workspace`. The full path
@@ -217,6 +229,30 @@ export function ChangesRoute() {
       }),
     [targetKey],
   );
+
+  // ── The asking pane's repo (pane route) ─────────────────────────────────
+  // The bridge names the repo that holds the pane's folder (`paneRepo`). On the FIRST answer only,
+  // its folder chain is opened in the tree and its group is scrolled into view; a 5 s re-read
+  // never moves the list, and a folder the operator closes afterwards stays closed.
+  const mainRef = useRef<HTMLElement>(null);
+  const markedFor = useRef<string | null>(null);
+  const paneCwd = pane?.cwd ?? "";
+  useEffect(() => {
+    if (list.phase !== "ready" || markedFor.current === targetKey) return;
+    markedFor.current = targetKey;
+    const data = list.data;
+    if (target.kind !== "pane" || !data.available || data.paneRepo === undefined) return;
+    const repo = data.paneRepo;
+    const inRepo = folderInRepo(paneCwd, data.root, repo);
+    if (inRepo !== null) {
+      setCollapsed((prev) => {
+        const next = openFolderChain(prev, folderKey(repo, ""), inRepo);
+        if (next !== prev) collapsedByPane.set(targetKey, next);
+        return next;
+      });
+    }
+    mainRef.current?.querySelector("[data-pane-repo]")?.scrollIntoView({ block: "start" });
+  }, [list, target.kind, targetKey, paneCwd]);
 
   const allRepos = useMemo<readonly ChangedRepo[]>(
     () => (list.phase === "ready" && list.data.available ? list.data.repos : []),
@@ -425,7 +461,7 @@ export function ChangesRoute() {
         )}
       </div>
 
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <main ref={mainRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {open ? (
           <FileScreen
             path={open.path}
@@ -443,6 +479,9 @@ export function ChangesRoute() {
             <ListBody
               state={list}
               repos={shownRepos}
+              paneRepo={target.kind === "pane" && list.phase === "ready" ? list.data.paneRepo : undefined}
+              depth={lookup.depth}
+              onLookDeeper={() => nav.down(changesSettingsPath(scope))}
               layout={layout}
               collapsed={collapsed}
               onToggle={toggleFolder}
@@ -463,6 +502,9 @@ function Quiet({ children }: { children: React.ReactNode }) {
 function ListBody({
   state,
   repos,
+  paneRepo,
+  depth,
+  onLookDeeper,
   layout,
   collapsed,
   onToggle,
@@ -472,6 +514,12 @@ function ListBody({
   state: ListState;
   /** The repos after the filter. */
   repos: readonly ChangedRepo[];
+  /** The repo holding the asking pane's folder, marked "This pane" (pane route only). */
+  paneRepo: string | undefined;
+  /** The depth the list was read at, for the depth note. */
+  depth: number;
+  /** Open Settings at the Changes card, for the depth note. */
+  onLookDeeper: () => void;
   layout: ChangesLayout;
   collapsed: ReadonlySet<string>;
   onToggle: (key: string) => void;
@@ -500,12 +548,26 @@ function ListBody({
   else if (repos.length === 0)
     body = <ChangesNoMatch onClear={onClearFilter} />;
   else if (layout === "tree")
-    body = <ChangesTree repos={repos} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} />;
-  else body = <ChangesList repos={repos} onOpen={onOpen} />;
+    body = <ChangesTree repos={repos} paneRepo={paneRepo} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} />;
+  else body = <ChangesList repos={repos} paneRepo={paneRepo} onOpen={onOpen} />;
+  // One quiet note at the end when a bound was hit. A cut list says so first, since it is missing
+  // things for sure; otherwise a repo past the depth offers the setting that would reach it.
+  let bound: React.ReactNode = null;
+  if (data.truncated) bound = <p className="text-xs text-muted-foreground">{t("changes.truncated")}</p>;
+  else if (data.depthLimited === true) {
+    bound = (
+      <p className="text-xs text-muted-foreground">
+        {tn("changes.bound.depth", depth)}{" "}
+        <button type="button" onClick={onLookDeeper} className="underline underline-offset-2 active:text-foreground">
+          {t("changes.bound.settings")}
+        </button>
+      </p>
+    );
+  }
   return (
     <div className="flex flex-col gap-4">
       {body}
-      {data.truncated && <p className="text-xs text-muted-foreground">{t("changes.truncated")}</p>}
+      {bound}
     </div>
   );
 }

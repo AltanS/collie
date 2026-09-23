@@ -84,6 +84,14 @@ export function updatesPath(scope?: Scope): string {
  */
 export const PAIRED_DEVICES_HASH = "paired-devices";
 
+/** The fragment naming the Changes card inside Settings, which `changes-control.tsx` answers to. */
+export const CHANGES_SETTINGS_HASH = "changes";
+
+/** Settings, scrolled to the Changes card: the Changes list's "look deeper" link (ADR 0065). */
+export function changesSettingsPath(scope?: Scope): string {
+  return `${settingsPath(scope)}#${CHANGES_SETTINGS_HASH}`;
+}
+
 /** Settings, scrolled to the card that pairs this phone — the read-only strip's remedy. */
 export function pairedDevicesPath(scope?: Scope): string {
   return `${settingsPath(scope)}#${PAIRED_DEVICES_HASH}`;

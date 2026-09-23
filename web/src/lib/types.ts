@@ -860,10 +860,13 @@ export interface ChangedRepo {
 
 export type ChangesUnavailableReason = "no-pane" | "no-workspace" | "no-folder" | "no-git";
 
-/** A Changes list. `root` is the workspace folder it was read from. Mirrors bridge/types.ts. */
+/**
+ * A Changes list. `root` is the workspace folder it was read from. `depthLimited`: discovery stopped
+ * at the asked depth with a repo one level further down. Mirrors bridge/types.ts.
+ */
 export type ChangesList =
   | { available: false; reason: ChangesUnavailableReason }
-  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
+  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean; depthLimited?: boolean };
 
 /** One file's diff as raw unified text. Mirrors bridge/types.ts. */
 export type ChangeDiff =
@@ -886,8 +889,11 @@ export interface ChangesWorkspace {
   workspaceLabel?: string;
 }
 
-/** GET /api/pane/:id/changes — the list for the pane's workspace. Mirrors bridge/types.ts. */
-export type PaneChangesResponse = { paneId: string } & ChangesWorkspace & ChangesList;
+/**
+ * GET /api/pane/:id/changes — the list for the pane's workspace. `paneRepo` is the listed repo that
+ * holds the pane's folder. Mirrors bridge/types.ts.
+ */
+export type PaneChangesResponse = { paneId: string; paneRepo?: string } & ChangesWorkspace & ChangesList;
 /** GET /api/pane/:id/changes?repo=&path= — one file's diff. Mirrors bridge/types.ts. */
 export type PaneChangeDiffResponse = { paneId: string } & ChangesWorkspace & ChangeDiff;
 /** GET /api/workspace/:id/changes — the same list, asked by workspace. */
@@ -895,8 +901,8 @@ export type WorkspaceChangesResponse = { workspaceId: string; workspaceLabel?: s
 /** GET /api/workspace/:id/changes?repo=&path= — the same diff, asked by workspace. */
 export type WorkspaceChangeDiffResponse = { workspaceId: string; workspaceLabel?: string } & ChangeDiff;
 
-/** Either Changes list, as the view reads it. */
-export type ChangesResponse = ChangesWorkspace & ChangesList;
+/** Either Changes list, as the view reads it. Only the pane form carries `paneRepo`. */
+export type ChangesResponse = ChangesWorkspace & { paneRepo?: string } & ChangesList;
 /** Either diff, as the view reads it. */
 export type ChangeDiffResponse = ChangesWorkspace & ChangeDiff;
 

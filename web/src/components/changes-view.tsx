@@ -99,9 +99,12 @@ export function ChangePath({ path, className }: { path: string; className?: stri
 /** The repos one under another, each named only when there is more than one. */
 function RepoSections({
   repos,
+  paneRepo,
   children,
 }: {
   repos: readonly ChangedRepo[];
+  /** The repo holding the asking pane's folder (the pane route only), marked "This pane". */
+  paneRepo?: string;
   children: (repo: ChangedRepo) => React.ReactNode;
 }) {
   useLocale();
@@ -109,29 +112,40 @@ function RepoSections({
   const headed = repos.length > 1;
   return (
     <div className="flex flex-col gap-4">
-      {repos.map((repo) => (
-        <section key={repo.relPath} aria-label={repo.name} className="flex flex-col">
-          {headed && (
-            <SectionLabel className="mb-1.5 truncate normal-case">
-              {tn("changes.repoFiles", repo.files.length, { name: repo.name })}
-            </SectionLabel>
-          )}
-          {children(repo)}
-        </section>
-      ))}
+      {repos.map((repo) => {
+        const mine = headed && repo.relPath === paneRepo;
+        return (
+          <section
+            key={repo.relPath}
+            aria-label={repo.name}
+            data-pane-repo={mine ? "" : undefined}
+            className="flex scroll-mt-4 flex-col"
+          >
+            {headed && (
+              <SectionLabel className="mb-1.5 flex min-w-0 items-baseline gap-2 normal-case">
+                <span className="min-w-0 truncate">{tn("changes.repoFiles", repo.files.length, { name: repo.name })}</span>
+                {mine && <span className="shrink-0 text-primary">{t("changes.thisPane")}</span>}
+              </SectionLabel>
+            )}
+            {children(repo)}
+          </section>
+        );
+      })}
     </div>
   );
 }
 
 export function ChangesList({
   repos,
+  paneRepo,
   onOpen,
 }: {
   repos: readonly ChangedRepo[];
+  paneRepo?: string;
   onOpen: (ref: ChangeRef) => void;
 }) {
   return (
-    <RepoSections repos={repos}>
+    <RepoSections repos={repos} paneRepo={paneRepo}>
       {(repo) => (
         <ListGroup as="ul">
           {repo.files.map((file) => (
@@ -260,18 +274,20 @@ function TreeRows({
  */
 export function ChangesTree({
   repos,
+  paneRepo,
   collapsed,
   onToggle,
   onOpen,
 }: {
   repos: readonly ChangedRepo[];
+  paneRepo?: string;
   collapsed: ReadonlySet<string>;
   onToggle: (key: string) => void;
   onOpen: (ref: ChangeRef) => void;
 }) {
   const trees = useMemo(() => new Map(repos.map((r) => [r.relPath, buildChangeTree(r.files)])), [repos]);
   return (
-    <RepoSections repos={repos}>
+    <RepoSections repos={repos} paneRepo={paneRepo}>
       {(repo) => (
         <TreeRows
           repo={repo}

@@ -143,6 +143,47 @@ describe("ChangesRoute — the list", () => {
     expect(await screen.findByText(en["changes.unavailable.noWorkspace"])).toBeTruthy();
   });
 
+  it("marks the pane's own repo and scrolls it into view on the first answer only", async () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, () => HttpResponse.json({ ...fixtureChanges, paneRepo: "packages/api" })),
+    );
+    renderAt("/pane/w1%3Ap1/changes");
+    const api = await screen.findByRole("region", { name: "api" });
+    expect(within(api).getByText(en["changes.thisPane"])).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "webapp" })).queryByText(en["changes.thisPane"])).toBeNull();
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toBe(api);
+    // A re-read keeps the mark and moves nothing.
+    await userEvent.click(screen.getByRole("button", { name: en["changes.refreshAria"] }));
+    await waitFor(() => expect(screen.getByRole("button", { name: en["changes.refreshAria"] }).hasAttribute("disabled")).toBe(false));
+    expect(within(screen.getByRole("region", { name: "api" })).getByText(en["changes.thisPane"])).toBeTruthy();
+    expect(scroll).toHaveBeenCalledTimes(1);
+    scroll.mockRestore();
+  });
+
+  it("ends the list with one quiet note when a repo sits past the depth, linking to Settings", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, () => HttpResponse.json({ ...fixtureChanges, depthLimited: true })),
+    );
+    const router = renderAt("/pane/w1%3Ap1/changes");
+    expect(await screen.findByText(/Stopped at 2 levels, with repos further down\./)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: en["changes.bound.settings"] }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings"));
+    expect(router.state.location.hash).toBe("#changes");
+  });
+
+  it("shows the limit note instead of the depth note when the list was cut", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, () =>
+        HttpResponse.json({ ...fixtureChanges, truncated: true, depthLimited: true }),
+      ),
+    );
+    renderAt("/pane/w1%3Ap1/changes");
+    expect(await screen.findByText(en["changes.truncated"])).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en["changes.bound.settings"] })).toBeNull();
+  });
+
   it("hides the repo heading when only one repo has changes", async () => {
     const one: PaneChangesResponse = fixtureChanges.available
       ? { ...fixtureChanges, repos: fixtureChanges.repos.slice(0, 1) }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  folderInRepo,
+  openFolderChain,
   buildChangeTree,
   EMPTY_FILTER,
   filterRepos,
@@ -123,5 +125,41 @@ describe("layoutOrder", () => {
       "api:server/orders.ts",
       "api:old.ts",
     ]);
+  });
+});
+
+describe("folderInRepo", () => {
+  it("places a pane's folder inside a repo of the list", () => {
+    expect(folderInRepo("/ws/one/deep/er", "/ws", "one")).toBe("deep/er");
+    expect(folderInRepo("/ws/one", "/ws", "one")).toBe("");
+    expect(folderInRepo("/ws/sub", "/ws", ".")).toBe("sub");
+    // A repo above the root, which discovery names with `..`.
+    expect(folderInRepo("/ws/sub/x", "/ws/sub", "..")).toBe("sub/x");
+  });
+
+  it("is null outside the repo, for a look-alike prefix, and for no folder", () => {
+    expect(folderInRepo("/ws/two", "/ws", "one")).toBeNull();
+    expect(folderInRepo("/ws/oneway", "/ws", "one")).toBeNull();
+    expect(folderInRepo("", "/ws", "one")).toBeNull();
+  });
+});
+
+describe("openFolderChain", () => {
+  const P = "one\n";
+  it("opens every closed folder on the way, and only those, in that repo only", () => {
+    const collapsed = new Set([`${P}deep/`, `${P}deep/er/`, `${P}other/`, `${P}deep/erx/`, "two\ndeep/"]);
+    expect([...openFolderChain(collapsed, P, "deep/er/x")].toSorted()).toEqual(
+      [`${P}deep/erx/`, `${P}other/`, "two\ndeep/"].toSorted(),
+    );
+  });
+
+  it("opens a compacted chain row as one", () => {
+    expect(openFolderChain(new Set([`${P}deep/er/`]), P, "deep/er").size).toBe(0);
+  });
+
+  it("returns the same set when nothing on the way was closed", () => {
+    const collapsed = new Set([`${P}other/`]);
+    expect(openFolderChain(collapsed, P, "deep")).toBe(collapsed);
+    expect(openFolderChain(collapsed, P, "")).toBe(collapsed);
   });
 });

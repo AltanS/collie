@@ -1,10 +1,12 @@
 import { GitCompare } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { CHANGES_DEPTHS, useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
+import { CHANGES_SETTINGS_HASH } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 // How a pane's Changes view finds repos (ADR 0065). Two per-device choices, sent as query params on
@@ -15,9 +17,17 @@ export function ChangesControl() {
   useLocale();
   const { prefs, setChangesNested, setChangesDepth } = useDashPrefs();
   const nested = prefs.changesNested;
+  // The Changes list's "look deeper" link lands here (`changesSettingsPath`), scrolled to the card.
+  // Read off the address at mount, so the card needs no router around it (its tests have none).
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (window.location.hash !== `#${CHANGES_SETTINGS_HASH}`) return;
+    cardRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    cardRef.current?.focus({ preventScroll: true });
+  }, []);
 
   return (
-    <Card className="gap-0 py-0">
+    <Card id={CHANGES_SETTINGS_HASH} ref={cardRef} tabIndex={-1} className="gap-0 py-0 outline-none">
       <div className="flex items-center justify-between gap-4 p-4">
         <div className="flex min-w-0 items-start gap-3">
           <GitCompare className="mt-0.5 size-5 shrink-0 text-muted-foreground" />

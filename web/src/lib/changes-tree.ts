@@ -163,3 +163,46 @@ export function layoutOrder(
     (layout === "tree" ? treeFiles(buildChangeTree(r.files)) : r.files).map((f) => ({ repo: r.relPath, path: f.path })),
   );
 }
+
+/** An absolute POSIX path with `.` and `..` segments resolved, and no trailing slash. */
+function normalizeAbs(path: string): string {
+  const out: string[] = [];
+  for (const seg of path.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") out.pop();
+    else out.push(seg);
+  }
+  return `/${out.join("/")}`;
+}
+
+/**
+ * Where a pane's folder sits inside one repo of a Changes list, as a path relative to the repo
+ * (`""` for the repo's own folder), or null when the folder is not inside it. `root` is the list's
+ * root and `relPath` the repo's path from it, which may climb (`..`) for a repo above the root.
+ */
+export function folderInRepo(cwd: string, root: string, relPath: string): string | null {
+  if (!cwd.startsWith("/")) return null;
+  const repoDir = normalizeAbs(`${root}/${relPath}`);
+  const at = normalizeAbs(cwd);
+  if (at === repoDir) return "";
+  const prefix = repoDir === "/" ? "/" : `${repoDir}/`;
+  return at.startsWith(prefix) ? at.slice(prefix.length) : null;
+}
+
+/**
+ * `collapsed` with every folder on the way to `inRepo` opened, in the repo whose collapse keys start
+ * with `prefix`. The folder keys are the tree's own (`src/lib/`, trailing slash), so a compacted
+ * chain row opens as one. Returns `collapsed` itself when nothing on the way was closed.
+ */
+export function openFolderChain(collapsed: ReadonlySet<string>, prefix: string, inRepo: string): ReadonlySet<string> {
+  if (inRepo === "") return collapsed;
+  const at = `${inRepo}/`;
+  const onTheWay = [...collapsed].filter((key) => {
+    if (!key.startsWith(prefix) || key.length === prefix.length) return false;
+    return at.startsWith(key.slice(prefix.length));
+  });
+  if (onTheWay.length === 0) return collapsed;
+  const next = new Set(collapsed);
+  for (const key of onTheWay) next.delete(key);
+  return next;
+}
