@@ -59,8 +59,9 @@ function seeded(
  * The Changes tab's numbers, per workspace (ADR 0066). While `active`, it reads every target at
  * once (up to {@link CHANGE_COUNT_CONCURRENCY} in flight), then again on every
  * {@link CHANGES_POLL_MS} beat of `useVisibleInterval`, the loop the Changes screen uses
- * too. Rounds never overlap: a beat that finds a round still out skips it. A hidden page stops the
- * beat and reads again the moment it is visible. Leaving the tab (`active` false) or unmounting
+ * too. Entering the tab reads at once, never waiting for the first beat. Rounds never overlap: a
+ * beat that finds a round still out skips it. A hidden page stops the beat and reads again the
+ * moment it is visible, replacing a round still out from before it was hidden. Leaving the tab (`active` false) or unmounting
  * aborts what is in flight and stops.
  *
  * A workspace answered before in this page session starts on its kept answer (see `lastCounts`), so
@@ -89,7 +90,6 @@ export function useWorkspaceChangeCounts(
   useEffect(() => {
     if (!active) return;
     const ctl = new AbortController();
-    let running = false;
     const at = { depth, nested };
     // A workspace that joined since the first paint may still have a kept answer.
     setCounts((prev) => seeded(prev, targetsRef.current, at));
@@ -107,15 +107,24 @@ export function useWorkspaceChangeCounts(
       });
     };
 
-    const round = async (): Promise<void> => {
-      if (running || ctl.signal.aborted) return;
-      running = true;
+    // The round in flight, with its own abort, so a read "now" can replace it (see `onVisible`).
+    let current: AbortController | null = null;
+    const round = async (replace = false): Promise<void> => {
+      if (ctl.signal.aborted) return;
+      if (current !== null) {
+        if (!replace) return;
+        current.abort();
+      }
+      const mine = new AbortController();
+      current = mine;
+      const stop = () => mine.abort();
+      ctl.signal.addEventListener("abort", stop, { once: true });
       const tasks = targetsRef.current.map((t) => async () => {
         try {
-          const res = await fetchChanges({ kind: "space", spaceId: t.workspaceId }, { depth, nested }, t.scope, ctl.signal);
-          if (!ctl.signal.aborted) record(t, summarizeChanges(res));
+          const res = await fetchChanges({ kind: "space", spaceId: t.workspaceId }, { depth, nested }, t.scope, mine.signal);
+          if (!mine.signal.aborted) record(t, summarizeChanges(res));
         } catch {
-          if (ctl.signal.aborted) return;
+          if (mine.signal.aborted) return;
           setCounts((prev) => {
             const had = prev.get(t.key);
             if (had !== undefined && had.kind !== "loading") return prev;
@@ -126,13 +135,31 @@ export function useWorkspaceChangeCounts(
         }
       });
       await runPool(tasks, CHANGE_COUNT_CONCURRENCY);
-      running = false;
+      ctl.signal.removeEventListener("abort", stop);
+      if (current === mine) current = null;
+    };
+
+    // Back on screen: read now, and replace a round still out from before the page was hidden. A
+    // phone that sleeps can leave a request hanging, and the beat alone would skip behind it. A
+    // round started since (the beat's own visible read) is left alone.
+    let outWhenHidden: AbortController | null = null;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") {
+        outWhenHidden = current;
+        return;
+      }
+      const stale = current !== null && current === outWhenHidden;
+      outWhenHidden = null;
+      void round(stale);
     };
 
     roundNow.current = () => void round();
+    // Entering the tab reads at once, not on the first beat.
     if (document.visibilityState === "visible") void round();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       ctl.abort();
+      document.removeEventListener("visibilitychange", onVisible);
       roundNow.current = () => {};
     };
   }, [active, identity, depth, nested]);

@@ -89,6 +89,43 @@ describe("useWorkspaceChangeCounts", () => {
     expect(fetchChanges).toHaveBeenCalledTimes(2);
   });
 
+  it("reads at once when the tab is entered, not on the first beat", async () => {
+    const { rerender } = renderHook(({ on }) => useWorkspaceChangeCounts(targets, lookup, on), {
+      initialProps: { on: false },
+    });
+    await flush();
+    expect(fetchChanges).not.toHaveBeenCalled();
+    rerender({ on: true });
+    await flush();
+    expect(fetchChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it("on coming back, replaces a round still out from before the page was hidden", async () => {
+    const signals: AbortSignal[] = [];
+    fetchChanges.mockImplementation((...args: unknown[]) => {
+      const signal = args[3];
+      if (signal instanceof AbortSignal) signals.push(signal);
+      return new Promise(() => {});
+    });
+    renderHook(() => useWorkspaceChangeCounts(targets.slice(0, 1), lookup, true));
+    await flush();
+    expect(fetchChanges).toHaveBeenCalledTimes(1);
+    visibility = "hidden";
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS * 2);
+    });
+    visibility = "visible";
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // The hung read is dropped and a new one is out at once.
+    expect(fetchChanges).toHaveBeenCalledTimes(2);
+    expect(signals[0]!.aborted).toBe(true);
+    expect(signals[1]!.aborted).toBe(false);
+  });
+
   it("stops when the tab is left", async () => {
     const { rerender } = renderHook(({ on }) => useWorkspaceChangeCounts(targets, lookup, on), {
       initialProps: { on: true },
