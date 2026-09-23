@@ -199,7 +199,7 @@ describe("crewAction", () => {
     expect(crewAction({ releaseAvailable: true, hasPeers: true, behind: 1, rolledBack: 0 })).toBe(
       "update-crew",
     );
-    expect(crewActionLabel("update-crew", "1.5.0")).toBe("Update crew to 1.5.0");
+    expect(crewActionLabel("update-crew", "1.5.0")).toBe("Update all machines to 1.5.0");
   });
 
   it("names only this machine when there are no peers", () => {
@@ -217,6 +217,8 @@ describe("crewAction", () => {
       "retry-crew",
     );
     expect(crewActionLabel("retry-crew", "1.5.0")).toBe("Retry crew update");
+    // One member: the button names it (ADR 0064).
+    expect(crewActionLabel("retry-crew", "1.5.0", ["minibuch"])).toBe("Try minibuch again");
   });
 
   it("offers nothing when the whole crew is level", () => {

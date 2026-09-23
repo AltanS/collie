@@ -1,5 +1,6 @@
 import { basePath, mounted } from "./base-path";
 import { BUILD, isStaleBuild } from "./build";
+import { UPDATE_MODE_HOLD, isReloadHeld, isReloadHeldBy, subscribeReloadHeld } from "./reload-guard";
 import { getServerBuild, subscribeServerBuild } from "./server-build";
 
 // Service-worker registration + update wiring, in one place. The worker is registered by hand
@@ -255,7 +256,38 @@ function onControllerChange() {
   }
   controllerChangedAt = Date.now();
   for (const listener of controllerListeners) listener();
-  reloadOnce("auto");
+  reloadWhenReleased();
+}
+
+/**
+ * THE SWAP'S RELOAD WAITS FOR THE RELOAD HOLD (ADR 0064).
+ *
+ * The swap used to reload at once, whatever the page was holding. Two holders cannot afford that:
+ * update mode, which saves the phone's own reload for the LAST step of an update and must not lose
+ * its screen while other machines still move, and a composer with unsent text, which the reload
+ * would eat. The page keeps running the bundle it booted; the new worker is already in control, and
+ * the reload fires the moment the last hold clears. The swap is stamped above either way, so the
+ * update screen still knows this device's download is over.
+ *
+ * `sw.ts` keeps `skipWaiting()` on install, so a worker another tab found can still take control of
+ * this one mid-hold. That is the case this deferral is for; this page itself stops LOOKING for a new
+ * worker while update mode holds (the periodic check below).
+ */
+let swapWaiting = false;
+
+function reloadWhenReleased(): void {
+  if (!isReloadHeld()) {
+    reloadOnce("auto");
+    return;
+  }
+  if (swapWaiting) return;
+  swapWaiting = true;
+  const stop = subscribeReloadHeld(() => {
+    if (isReloadHeld()) return;
+    stop();
+    swapWaiting = false;
+    reloadOnce("auto");
+  });
 }
 
 /**
@@ -430,7 +462,13 @@ function onRegistered(r: ServiceWorkerRegistration): void {
     // *replaces* a prior controller (see onControllerChange); the first-visit initial claim is not
     // an update and must not reload.
     navigator.serviceWorker?.addEventListener("controllerchange", onControllerChange);
-    setInterval(() => void r.update().catch(() => {}), UPDATE_CHECK_MS);
+    // PAUSED WHILE UPDATE MODE HOLDS (ADR 0064). A worker found here mid-update installs, skips
+    // waiting and takes control, which is this phone's reload arriving before the other machines are
+    // done. Update mode asks for the new app itself when its phone step starts.
+    setInterval(() => {
+      if (isReloadHeldBy(UPDATE_MODE_HOLD)) return;
+      void r.update().catch(() => {});
+    }, UPDATE_CHECK_MS);
   }
 }
 

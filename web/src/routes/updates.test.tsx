@@ -166,14 +166,14 @@ describe("updates page", () => {
     // Neutral weight: no red, and no reason line under the row.
     expect(list.querySelector(".text-status-blocked")).toBeNull();
     await waitFor(() => expect(screen.getByText("Up to date. Nothing to do.")).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: "Retry crew update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(Retry crew update|Try \S+ again)$/ })).not.toBeInTheDocument();
   });
 
   it("offers exactly one action button on the page", async () => {
     serveCheck(info(), CREW);
     renderUpdates(info(), LEAD_ROSTER);
-    expect(await screen.findByRole("button", { name: "Update crew to 1.4.0" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Update all machines to 1.4.0" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Update to/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Retry crew update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(Retry crew update|Try \S+ again)$/ })).not.toBeInTheDocument();
   });
 });

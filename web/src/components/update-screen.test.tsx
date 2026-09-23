@@ -1,204 +1,264 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { __resetUpdateAsk, type UpdateAsk } from "@/lib/update-ask";
+import { clearUpdateStarted, type UpdateClaim } from "@/lib/update-ribbon";
 import { updateScreenView, type UpdateScreenInput } from "@/lib/update-screen";
 import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-screen";
-import type { UpdateRun, UpdateRunState } from "@/lib/types";
+import type { UpdateCrewMember, UpdatePeerLeg, UpdateRun, UpdateRunState } from "@/lib/types";
 import { UpdateScreen } from "./update-screen";
 
-// The sheet a running update takes the screen with. The READING is pinned in
-// `lib/update-screen.test.ts`; this file is about what reaches the DOM — the dialog, the rows, the
-// device's own row, and the controls each way out offers.
+// Update mode's panel (ADR 0064). The READING is pinned in `lib/update-screen.test.ts`; this file is
+// about what reaches the DOM: the dialog, the band, the rows with their fixed boxes, the question a
+// member can raise, and the controls each state offers. The component takes its whole state as a
+// prop, exactly as `App.tsx` hands it over, so no store is driven here and no timer runs.
 //
-// The component takes its whole state as a prop, exactly as `App.tsx` hands it over, so no store is
-// driven here and no timer runs. What is asserted is that the component reads `view.dismissible` and
-// never re-derives it: a ✕ that appeared on its own judgement would be the second opinion the reducer
-// exists to remove.
+// jsdom lays nothing out, so the no-shift rule is not measured here: `e2e/update-screen.spec.ts` does
+// that in a real browser. What IS pinned here is the mechanism the measurement rests on: every slot
+// renders in every state, with the same fixed-height classes, whatever it holds.
 
 const NOW = 1_800_000_000_000;
+const FROM = "1.11.1";
+const TO = "1.12.0";
 
 const run = (state: UpdateRunState, over: Partial<UpdateRun> = {}): UpdateRun => ({
   schema: 1,
   state,
-  from: "1.8.2",
-  to: "1.9.0",
-  startedAt: NOW - 45_000,
+  from: FROM,
+  to: TO,
+  startedAt: NOW - 240_000,
   updatedAt: NOW - 4_000,
   pid: 99,
   attempt: 0,
+  runId: "run-1",
   ...over,
 });
 
+const leg = (name: string, state: UpdatePeerLeg["state"], over: Partial<UpdatePeerLeg> = {}): UpdatePeerLeg => ({
+  name,
+  state,
+  version: FROM,
+  updatedAt: NOW - 3_000,
+  ...over,
+});
+
+const CREW: UpdateCrewMember[] = [
+  { name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: NOW },
+  { name: "cellar", version: FROM, verdict: "green", reasons: [], asOf: NOW },
+];
+
+const CLAIM: UpdateClaim = { startedAt: NOW - 250_000, runId: "run-1", target: TO, peersOnly: false, bundleAtStart: "a", skipped: [], lead: "bluefin", members: ["minibuch", "cellar"], lastPhase: null };
+
 const BASE: UpdateScreenInput = {
   run: undefined,
-  crew: [],
+  crew: CREW,
   leadName: "bluefin",
   stage: "idle",
   progress: null,
   installingSince: null,
-  startedHere: false,
+  startedHere: true,
   controllerChangedAt: null,
-  downloadReleased: false,
-  leadReleased: false,
+  released: false,
   now: NOW,
+  claim: CLAIM,
+  bundle: { id: "a", version: FROM },
+  serverStale: false,
 };
 
-interface Spies {
-  setExpanded: Mock<(open: boolean) => void>;
-  releaseDownload: Mock<() => void>;
-  releaseLead: Mock<() => void>;
-  openUpdates: Mock<() => void>;
-}
+const ASK: UpdateAsk = { kind: "crew", version: TO, major: false, peersOnly: false, current: FROM };
 
-function mount(over: Partial<UpdateScreenInput>, expandedHere = false) {
-  const view = updateScreenView({ ...BASE, ...over });
-  const spies: Spies = {
+afterEach(() => {
+  __resetUpdateAsk();
+  clearUpdateStarted();
+});
+
+function mount(over: Partial<UpdateScreenInput>, opened = false) {
+  const input = { ...BASE, ...over };
+  const view = updateScreenView(input);
+  const spies = {
     setExpanded: vi.fn<(open: boolean) => void>(),
-    releaseDownload: vi.fn<() => void>(),
-    releaseLead: vi.fn<() => void>(),
+    release: vi.fn<() => void>(),
+    skip: vi.fn<(name: string) => void>(),
+    keepTrying: vi.fn<(name: string) => void>(),
+    back: vi.fn<() => void>(),
+    notNow: vi.fn<() => void>(),
+    retryMembers: vi.fn<() => void>(),
+    tryAgain: vi.fn<() => void>(),
     openUpdates: vi.fn<() => void>(),
   };
+  const mode = view.mode === "collapsed" && opened ? "expanded" : view.mode;
   const state: UpdateScreenState = {
     view,
-    // The one thing the hook adds on top of the reading: this document's own expand of a badge.
-    mode: view.mode === "collapsed" && expandedHere ? "expanded" : view.mode,
-    blocking: view.mode === "expanded" && !view.dismissible,
+    mode,
+    blocking: mode === "expanded",
+    ask: input.ask ?? null,
     setExpanded: spies.setExpanded,
-    releaseDownload: spies.releaseDownload,
-    releaseLead: spies.releaseLead,
+    release: spies.release,
+    skip: spies.skip,
+    keepTrying: spies.keepTrying,
+    back: spies.back,
+    notNow: spies.notNow,
+    retryMembers: spies.retryMembers,
+    tryAgain: spies.tryAgain,
   };
-  const result = render(<UpdateScreen screen={state} onOpenUpdates={spies.openUpdates} />);
-  return { ...result, spies, state };
+  const result = render(<UpdateScreen screen={state} onOpenUpdates={spies.openUpdates} onStarted={() => {}} />);
+  return { ...result, spies };
 }
 
-describe("accessible in every mode it renders at all", () => {
-  it("is a named modal dialog, with focus moved into the panel", async () => {
-    mount({ startedHere: true, run: run("staging") });
+/** A slot by its house handle. */
+function slot(container: HTMLElement, name: string): HTMLElement {
+  const el = container.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+  if (el === null) throw new Error(`no [data-slot="${name}"]`);
+  return el;
+}
+
+describe("the panel is a named modal dialog", () => {
+  it("is named by its heading, and focus moves into the panel", async () => {
+    const { container } = mount({ run: run("staging") });
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAccessibleName("Update in progress");
-    // `inert` on the app behind takes it out of the focus order; it does NOT move focus in. So the
-    // panel is a focus target and `useDialogFocus` puts focus there, exactly as `BottomSheet` does.
-    const panel = dialog.firstElementChild;
-    expect(panel).toHaveAttribute("tabindex", "-1");
-    await vi.waitFor(() => expect(document.activeElement).toBe(panel));
+    expect(dialog).toHaveAccessibleName(`Building ${TO} on bluefin`);
+    await vi.waitFor(() => expect(slot(container, "update-panel")).toHaveFocus());
   });
 
-  it("draws nothing at all on a device that did not ask for this", () => {
-    const { container } = mount({ startedHere: false, run: run("staging") });
-    // No dialog: a takeover nobody asked for reads as hijacked. And no badge either, since
-    // 2026-09-20 — the collapsed form is a strip in the band above the header now
-    // (`components/update-run-strip.test.tsx`), because at the bottom of the screen it lay on the
-    // composer's input row.
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(container).toBeEmptyDOMElement();
+  it("renders nothing for the strip or for no update at all", () => {
+    expect(mount({ run: run("staging"), startedHere: false, claim: null }).container).toBeEmptyDOMElement();
+    expect(mount({ claim: null, startedHere: false }).container).toBeEmptyDOMElement();
+  });
+});
+
+describe("the band: the step, the clock and the progress bar", () => {
+  it("says the step out of seven, with the clock from this device's own tap", () => {
+    const { container } = mount({ run: run("restarting") });
+    const band = slot(container, "update-band");
+    expect(band).toHaveTextContent("Update mode · step 3 of 7");
+    expect(band).toHaveTextContent("4:10");
+    expect(within(band).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "3");
   });
 
-  it("the machine list is a named list, and the progress bar reports its own numbers", () => {
-    mount({
-      startedHere: true,
-      run: run("done", { peers: [{ name: "minibuch", state: "done", version: "1.9.0" }] }),
-      stage: "installing",
-      installingSince: NOW - 9_000,
-      progress: { done: 12, total: 28, at: NOW - 200 },
+  it("is not drawn on Ready to start", () => {
+    const { container } = mount({ ask: ASK, claim: null, startedHere: false });
+    expect(container.querySelector('[data-slot="update-band"]')).toBeNull();
+  });
+});
+
+describe("every slot is there in every state, at its fixed height", () => {
+  const states: [string, Partial<UpdateScreenInput>][] = [
+    ["ready", { ask: ASK, claim: null, startedHere: false }],
+    ["check", { run: run("preflight") }],
+    ["members, one unreachable", { run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })] }) }],
+    ["phone downloading", { run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW }), stage: "installing", installingSince: NOW - 1_000, progress: { done: 5, total: 20, at: NOW } }],
+    ["done", { run: run("done", { settledAt: NOW }), bundle: { id: "b", version: TO } }],
+    ["stuck", { run: run("stuck", { recovery: "collie update --rollback" }) }],
+  ];
+  for (const [label, over] of states) {
+    it(label, () => {
+      const { container } = mount(over);
+      expect(slot(container, "update-heading")).toHaveClass("h-7", "truncate");
+      expect(slot(container, "update-subtitle")).toHaveClass("h-10");
+      expect(slot(container, "update-subtitle").firstElementChild).toHaveClass("line-clamp-2");
+      const rows = container.querySelectorAll('[data-slot="update-row"]');
+      expect(rows).toHaveLength(4);
+      for (const row of rows) expect(row).toHaveClass("h-13");
+      expect(slot(container, "update-rows")).toHaveStyle({ height: "208px" });
+      expect(slot(container, "update-note")).toHaveClass("h-[84px]");
+      expect(slot(container, "update-footer")).toHaveClass("h-24");
     });
-    expect(screen.getByRole("list", { name: "Machines" })).toBeInTheDocument();
+  }
+});
+
+describe("the rows", () => {
+  it("names each machine, its words and its versions, and puts the phone last", () => {
+    mount({ run: run("staging", { peers: [leg("minibuch", "waiting"), leg("cellar", "waiting")] }) });
+    const items = within(screen.getByRole("list", { name: "Machines" })).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      `bluefin · building ${TO}${FROM} → ${TO}`,
+      `minibuch · waits for bluefin${FROM} → ${TO}`,
+      `cellar · waits for bluefin${FROM} → ${TO}`,
+      `This phone · waits its turn${FROM} → ${TO}`,
+    ]);
+  });
+
+  it("animates only the active row", () => {
+    const { container } = mount({ run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting")] }) });
+    expect(container.querySelectorAll(".motion-safe\\:animate-spin")).toHaveLength(1);
+  });
+
+  it("draws this phone's download as a bar in the row's reserved slot", () => {
+    mount({
+      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW }),
+      stage: "installing",
+      installingSince: NOW - 1_000,
+      progress: { done: 5, total: 20, at: NOW },
+    });
     const bar = screen.getByRole("progressbar", { name: "Files downloaded" });
-    expect(bar).toHaveAttribute("aria-valuenow", "12");
-    expect(bar).toHaveAttribute("aria-valuemax", "28");
-  });
-
-  it("renders nothing at all when the reading says hidden", () => {
-    const { container } = mount({ run: run("idle") });
-    expect(container).toBeEmptyDOMElement();
+    expect(bar).toHaveAttribute("aria-valuenow", "25");
   });
 });
 
-describe("the close exists exactly where the reading allows it", () => {
-  it("is absent while a run this device started is in flight", () => {
-    mount({ startedHere: true, run: run("restarting") });
-    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+describe("the controls each state offers", () => {
+  it("Ready to start: Start update and Not now", async () => {
+    const { spies } = mount({ ask: ASK, claim: null, startedHere: false });
+    expect(screen.getByRole("button", { name: "Start update" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Not now" }));
+    expect(spies.notNow).toHaveBeenCalledOnce();
   });
 
-  it("is there on a run that ended badly, which is expanded everywhere and still closable", async () => {
-    const user = userEvent.setup();
-    const { spies } = mount({ startedHere: false, run: run("stuck", { reason: "the gate never answered" }) });
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    expect(spies.setExpanded).toHaveBeenCalledWith(false);
+  it("in flight on the device that started it: the lock line, and no way out until a stall", () => {
+    mount({ run: run("staging") });
+    expect(screen.getByText(/The app is locked until this finishes/)).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("is there on an expanded badge, on a device that did not start the run", () => {
-    mount({ startedHere: false, run: run("staging") }, true);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
-  });
-});
-
-describe("the rows on screen", () => {
-  it("names the lead first, then every peer, with its version and its word", () => {
-    mount({
-      startedHere: true,
-      run: run("staging", {
-        peers: [
-          { name: "minibuch", state: "updating", version: "1.8.2" },
-          { name: "cellar", state: "package-managed", version: "1.8.2" },
-        ],
-      }),
-    });
-    const items = screen.getAllByRole("listitem");
-    expect(items[0]).toHaveTextContent("bluefin");
-    expect(items[0]).toHaveTextContent("building");
-    expect(items[1]).toHaveTextContent("minibuch");
-    expect(items[2]).toHaveTextContent("package-managed");
-    expect(items[2]).toHaveTextContent(/package manager/);
+  it("a stall offers Use the app anyway", async () => {
+    const { spies } = mount({ run: run("staging", { updatedAt: NOW - 200_000 }) });
+    await userEvent.click(screen.getByRole("button", { name: "Use the app anyway" }));
+    expect(spies.release).toHaveBeenCalledOnce();
   });
 
-  it("a quiet peer dates itself and offers the page, never a cancel", async () => {
-    const user = userEvent.setup();
+  it("a member that needs you: Skip it, or keep trying", async () => {
+    const { spies } = mount({ run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })] }) });
+    await userEvent.click(screen.getByRole("button", { name: "Skip cellar" }));
+    expect(spies.skip).toHaveBeenCalledWith("cellar");
+    await userEvent.click(screen.getByRole("button", { name: "Keep trying" }));
+    expect(spies.keepTrying).toHaveBeenCalledWith("cellar");
+  });
+
+  it("a read-only panel on another device offers Back to the app instead of the lock", async () => {
+    const { spies } = mount({ run: run("restarting"), claim: null, startedHere: false }, true);
+    expect(screen.queryByText(/The app is locked/)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Back to the app" }));
+    expect(spies.back).toHaveBeenCalledOnce();
+  });
+
+  it("Done: Back to the app, and Try <name> again for a member left behind", async () => {
     const { spies } = mount({
-      startedHere: true,
-      run: run("verifying", {
-        peers: [{ name: "minibuch", state: "unreachable", reason: "missed 3 sweeps", updatedAt: NOW - 4 * 60_000 }],
-      }),
+      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "rolled-back", { reason: "gate" })], settledAt: NOW }),
+      bundle: { id: "b", version: TO },
     });
-    expect(screen.getByText(/last seen/)).toBeInTheDocument();
-    await user.click(screen.getAllByRole("button", { name: "See Updates" })[0]!);
-    expect(spies.openUpdates).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: /cancel/i })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Try cellar again" }));
+    expect(spies.retryMembers).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "Back to the app" }));
+    expect(spies.back).toHaveBeenCalledOnce();
   });
 
-  it("says once, small, that the run is on the machines and this screen only shows it", () => {
-    mount({ startedHere: true, run: run("staging") });
-    expect(screen.getByText(/closing the app does not stop it/)).toBeInTheDocument();
-  });
-});
-
-describe("the two ways out", () => {
-  it("a hung download offers 'keep using the app', and that is all it does", async () => {
-    const user = userEvent.setup();
-    const { spies } = mount({
-      startedHere: true,
-      run: run("staging"),
-      stage: "installing",
-      installingSince: NOW - 10 * 60_000,
-      progress: { done: 12, total: 28, at: NOW - 10 * 60_000 },
-    });
-    expect(screen.getByText(/Still downloading/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Keep using the app" }));
-    expect(spies.releaseDownload).toHaveBeenCalledTimes(1);
+  it("Rolled back: Back, Try again and Show log", async () => {
+    const { spies } = mount({ run: run("rolled-back", { reason: "gate" }) });
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(spies.tryAgain).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "Show log" }));
+    expect(spies.openUpdates).toHaveBeenCalledOnce();
   });
 
-  it("a stalled lead offers 'keep waiting' beside the page, and never a reload", async () => {
-    const user = userEvent.setup();
-    const { spies } = mount({
-      startedHere: true,
-      run: run("staging", { updatedAt: NOW - 10 * 60_000 }),
-    });
-    expect(screen.getByText(/waiting is the whole job/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Keep waiting" }));
-    expect(spies.releaseLead).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: /reload/i })).toBeNull();
+  it("Stuck: the command to run by hand, with Copy", () => {
+    mount({ run: run("stuck", { recovery: "collie update --rollback" }) });
+    expect(screen.getByText("collie update --rollback")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+  });
+
+  it("every button is at least 44px tall (size lg is h-11)", () => {
+    mount({ run: run("rolled-back", { reason: "gate" }) });
+    for (const button of screen.getAllByRole("button")) expect(button).toHaveClass("h-11");
   });
 });

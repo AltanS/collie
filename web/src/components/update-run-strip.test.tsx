@@ -8,16 +8,16 @@ import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-scree
 import type { UpdateRun, UpdateRunState } from "@/lib/types";
 import { UpdateRunStrip } from "./update-run-strip";
 
-// THE BADGE, AS A STRIP IN THE BAND (2026-09-20).
+// THE STRIP, IN THE BAND (2026-09-20, and update mode, ADR 0064).
 //
-// It was a `fixed inset-x-0 bottom-0` bar mounted beside the sheet until this change, and on a pane
-// screen that is exactly where the composer's input row sits — so the row that says "somebody else
-// is updating" covered the box you were typing in, including in the case where the operator had
-// just tapped "keep using the app" to get that box back.
+// It was a `fixed inset-x-0 bottom-0` bar mounted beside the sheet until 2026-09-20, and on a pane
+// screen that is exactly where the composer's input row sits. It lives in the band above the header.
+// Since update mode it says "Update running, started on another device. <step>." on a device that
+// did not start the run, and "Update running. <step>." on the one that took "Use the app anyway".
 //
-// The reading is pinned in `lib/update-screen.test.ts` and the sheet in `update-screen.test.tsx`.
-// This file is about the strip alone: when it registers a slot, what the line says, and that the
-// whole row is one tap that opens the sheet and does nothing else.
+// The reading is pinned in `lib/update-screen.test.ts` and the panel in `update-screen.test.tsx`.
+// This file is about the strip alone: when it registers a slot, what the line says, and that "View"
+// opens the panel and does nothing else.
 
 const NOW = 1_800_000_000_000;
 
@@ -42,21 +42,27 @@ const BASE: UpdateScreenInput = {
   installingSince: null,
   startedHere: false,
   controllerChangedAt: null,
-  downloadReleased: false,
-  leadReleased: false,
+  released: false,
   now: NOW,
 };
 
 function mount(over: Partial<UpdateScreenInput>, expandedHere = false) {
   const view = updateScreenView({ ...BASE, ...over });
   const setExpanded: Mock<(open: boolean) => void> = vi.fn();
+  const mode = view.mode === "collapsed" && expandedHere ? "expanded" : view.mode;
   const state: UpdateScreenState = {
     view,
-    mode: view.mode === "collapsed" && expandedHere ? "expanded" : view.mode,
-    blocking: view.mode === "expanded" && !view.dismissible,
+    mode,
+    blocking: mode === "expanded",
+    ask: null,
     setExpanded,
-    releaseDownload: vi.fn(),
-    releaseLead: vi.fn(),
+    release: vi.fn(),
+    skip: vi.fn(),
+    keepTrying: vi.fn(),
+    back: vi.fn(),
+    notNow: vi.fn(),
+    retryMembers: vi.fn(),
+    tryAgain: vi.fn(),
   };
   const result = render(
     <StripHost>
@@ -93,38 +99,27 @@ describe("when the band carries a run at all", () => {
 });
 
 describe("the one line it says", () => {
-  it("names whoever is still moving, and that machine's own word", () => {
-    // The lead is done and this phone is still fetching the bundle, which is what keeps the sheet
-    // alive past the lead's own record — the exact shape of the 1.11.0 run.
-    mount({
-      startedHere: false,
-      run: run("done", { peers: [{ name: "minibuch", state: "updating", version: "1.8.2" }] }),
-      stage: "installing",
-      installingSince: NOW - 9_000,
-    });
-    expect(screen.getByText("minibuch: updating")).toBeInTheDocument();
+  it("on a device that did not start the run: started elsewhere, and the step", () => {
+    mount({ startedHere: false, run: run("restarting") });
+    expect(strip()).toHaveTextContent("Update running, started on another device. bluefin is restarting.");
   });
 
-  it("falls back to this device's own download when no machine is moving", () => {
-    mount({
-      startedHere: false,
-      run: run("done"),
-      stage: "installing",
-      installingSince: NOW - 9_000,
-      progress: { done: 12, total: 28, at: NOW - 200 },
-    });
-    expect(screen.getByText("Downloading the new app")).toBeInTheDocument();
+  it("keeps saying so while the members are still moving after the lead's own done", () => {
+    mount({ startedHere: false, run: run("done", { peers: [{ name: "minibuch", state: "updating", version: "1.8.2", updatedAt: NOW }] }) });
+    expect(strip()).toHaveTextContent("Updating the other machines");
+  });
+
+  it("on the device that took the way out: no 'another device'", () => {
+    mount({ startedHere: true, released: true, run: run("staging") });
+    expect(strip()).toHaveTextContent("Update running. Building 1.9.0 on bluefin.");
   });
 });
 
-describe("the tap", () => {
-  it("is the whole row, and it only asks the sheet to open", async () => {
+describe("View", () => {
+  it("only asks the panel to open", async () => {
     const user = userEvent.setup();
     const { setExpanded } = mount({ startedHere: false, run: run("staging") });
-    const row = screen.getByRole("button");
-    // Named from its own text, so a screen reader hears the fact rather than an unnamed control.
-    expect(row).toHaveAccessibleName(/bluefin|Update in progress|building/);
-    await user.click(row);
+    await user.click(screen.getByRole("button", { name: "View" }));
     expect(setExpanded).toHaveBeenCalledWith(true);
   });
 

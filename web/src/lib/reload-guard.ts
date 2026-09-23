@@ -27,6 +27,21 @@ export function releaseReload(key: string): void {
   emit();
 }
 
+/** True while one named hold is active. The service worker's periodic check asks this of
+ *  {@link UPDATE_MODE_HOLD} alone, see `lib/pwa.ts`. */
+export function isReloadHeldBy(key: string): boolean {
+  return holds.has(key);
+}
+
+/**
+ * The hold update mode takes while machines still move (`hooks/use-update-screen.ts`, ADR 0064).
+ *
+ * Named here, beside the registry, because two files read it: the hook that takes it, and `lib/pwa.ts`,
+ * which pauses its 60 s worker check while it is held. The phone's own reload is the LAST step of an
+ * update, once, and a check that found the new worker early would start it in the middle.
+ */
+export const UPDATE_MODE_HOLD = "collie-update-mode";
+
 /** True while any hold is active — the self-updater defers its auto-reload. */
 export function isReloadHeld(): boolean {
   return holds.size > 0;

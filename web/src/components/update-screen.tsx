@@ -1,45 +1,68 @@
-import { useRef } from "react";
-import { Loader2, Package, TriangleAlert, X } from "lucide-react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { Check, Loader2, Lock, Minus, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { useDialogFocus } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
-import { t } from "@/lib/i18n";
+import { describeThrownError } from "@/lib/api-error-message";
+import { t, tn } from "@/lib/i18n";
 import { updatesPath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/scope";
+import { beginAskedUpdate } from "@/lib/update-ask";
+import { STEP_COUNT, formatClock, phaseFailed, phaseInFlight, type UpdateScreenRow } from "@/lib/update-screen";
 import { cn } from "@/lib/utils";
 import { router } from "@/router";
 import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-screen";
-import type { UpdateScreenDevice, UpdateScreenRow } from "@/lib/update-screen";
 
-// ── THE UPDATE IN PROGRESS TAKES THE SCREEN ─────────────────────────────────────────────────────
+// ── UPDATE MODE: THE LOCKED APP AND THE DOCKED PANEL (ADR 0064) ─────────────────────────────────
 //
-// One sheet owns a running update: a row per machine with its state, a row for this device's own
-// download, the app blocked behind it on the device that started it, a badge on every device that did
-// not, an end that announces itself, and a way out of every state that can stall.
+// The app stays in view behind a veil and takes no tap. A band across the top says where the update
+// is, "Update mode · step N of 7", with a clock, and its bottom edge is the progress bar. A panel
+// docked at the bottom walks the seven steps: a heading, a two-line subtitle, one row per machine
+// and one for this phone, a note with the one question the operator may be asked, and the footer.
+// Chosen by Altan from four drawn options on 2026-09-23 (option 4, "Locked app, docked panel").
+//
+// ── NOTHING IN THE PANEL MOVES BETWEEN TWO STATES ───────────────────────────
+// DESIGN.md §2, applied to a screen whose every state is a timer's. Every box below has a height of
+// its own, stated, never measured from what it holds:
+//
+//   heading    one line, `h-7`, truncated
+//   subtitle   `h-10`, which is two 20px lines, clamped to two; a one-line subtitle keeps both
+//   rows       `h-13` each (52px): a first line, and a 16px slot under it that holds a reason, a
+//              progress bar or nothing. The list is `rows × 52px`, scrolled inside past six.
+//   note       `h-[84px]`: two 16px lines, then one 44px row for the member question's two buttons,
+//              the stuck command, or nothing
+//   footer     two 44px rows: the lock line or a primary action, then a second action or nothing
+//
+// So the panel's height is a function of the machine count and of nothing else, and a state change
+// repaints it. `e2e/update-screen.spec.ts` walks every state at 375x812 in Chromium and WebKit and
+// asserts the heading, the subtitle box, each row and the footer stay put to half a pixel. That
+// measurement is the rule; this comment is its reason. The layout shift Altan saw in the drawn
+// options, between "Members, one unreachable" and "Phone downloading", was a subtitle changing its
+// line count and a row trading a second text line for a bar.
 //
 // ── IT IS MOUNTED IN `App.tsx`, BESIDE THE INERT WRAPPER ─────────────────────
-// Never inside the router. `App.tsx` wraps `BusyBar` and `RouterProvider` in a `display: contents`
-// div carrying `inert`, and this sheet is that div's SIBLING, next to `<IdleLock/>` — because a node
-// cannot be both inert and the host of the dialog that made it inert. The cost is real and paid
-// deliberately: no route loader data and no `CrewProvider` here, which is why the run, the census and
-// this machine's own name all come through `lib/update-run-store.ts`.
-//
-// ── `inert` AND `useDialogFocus`, BOTH ──────────────────────────────────────
-// `inert` takes the app behind out of the focus order and the a11y tree; it does not MOVE focus into
-// this panel. So the panel keeps `tabIndex={-1}` and `useDialogFocus` (`ui/sheet.tsx`), exactly as
-// `BottomSheet` does, and focus returns to whatever had it when the sheet closes. iOS Safari has
-// supported `inert` since 15.5, below any iOS this PWA targets.
+// Never inside the router, because a node cannot be both inert and the host of the dialog that made
+// it inert (ADR 0044). The run, the census and this machine's name come through
+// `lib/update-run-store.ts`; the ask comes through `lib/update-ask.ts`.
 //
 // ── IT DECIDES NOTHING ──────────────────────────────────────────────────────
-// Every state on screen, including whether the operator may close it, is `view` from
-// `lib/update-screen.ts`. This file reads `view.dismissible` and never re-derives it. It also never
-// reloads the page: the controller swap is the only trigger (`lib/pwa.ts`'s header), and it never
-// starts, retries or cancels an update — the Updates page owns every one of those controls, and "see
-// Updates" is how the sheet hands over.
+// Every word, row and control is `screen.view` from `lib/update-screen.ts`. This file never reloads
+// the page (the controller swap does, `lib/pwa.ts`), and the only update it starts is the one "Start
+// update" confirms.
 
-/** Where "see Updates" goes. The module-scoped router is reachable from outside the provider, which
- *  is the one thing this component needs from it. */
+/** One row's height, in px. Tailwind's `h-13`. The list's height is this times the rows shown. */
+const ROW_PX = 52;
+/** Past this many rows the list scrolls inside its own box rather than growing the panel. */
+const MAX_ROWS = 6;
+
+/** After "Start update" is accepted: pull the snapshot now rather than after the poll gap. */
+function revalidateNow(): void {
+  void router.revalidate();
+}
+
+/** Where "Show log" goes. The module-scoped router is reachable from outside the provider. */
 function goToUpdates(): void {
   void router.navigate(updatesPath(scopeFromUrl(window.location.href)));
 }
@@ -47,187 +70,340 @@ function goToUpdates(): void {
 export function UpdateScreen({
   screen,
   onOpenUpdates = goToUpdates,
+  onStarted = revalidateNow,
 }: {
   screen: UpdateScreenState;
-  /** Overridden only by the playground, which has no app router to navigate. */
+  /** Overridden by the playground, which has no app router to navigate. */
   onOpenUpdates?: () => void;
+  /** After "Start update" is accepted: pull the snapshot now rather than after the poll gap. */
+  onStarted?: () => void;
 }) {
   useLocale();
   const panelRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
   const { view, mode } = screen;
   useDialogFocus(mode === "expanded", panelRef);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // `hidden` and `collapsed` both draw nothing HERE. The badge is a strip in the band above the
-  // header now (`components/update-run-strip.tsx`), for the reason written in that file's header:
-  // at the bottom of the screen it sat on the composer's input row.
+  // `hidden` and `collapsed` draw nothing here. The strip is `components/update-run-strip.tsx`, in the
+  // band above the header.
   if (mode !== "expanded") return null;
 
+  const ready = view.phase === "ready";
+  const visibleRows = Math.min(Math.max(view.rows.length, 1), MAX_ROWS);
+
+  async function start(): Promise<void> {
+    const ask = screen.ask;
+    if (ask === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await beginAskedUpdate(ask);
+      onStarted();
+    } catch (thrown) {
+      // Every refusal the bridge can make is a code with a sentence (bridge/error-codes.ts).
+      setError(describeThrownError(thrown));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("updateScreen.dialogAria")}
-      className="fixed inset-0 z-50 flex flex-col bg-background/80 backdrop-blur-[3px]"
-    >
+    <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="fixed inset-0 z-50">
+      {/* THE VEIL. The app stays in view, dimmed and softened, so the operator can see what is locked
+          and that it is still there. It takes no pointer: `App.tsx` makes the app behind it inert. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
+      {!ready && <Band screen={screen} />}
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="mx-auto flex h-full w-full max-w-screen-sm flex-col overflow-y-auto overscroll-contain bg-card px-4 pt-[calc(env(safe-area-inset-top)_+_1rem)] pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-2xl"
+        data-slot="update-panel"
+        className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-screen-sm flex-col rounded-t-md border border-rule bg-card px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-2xl"
       >
-        <div className="flex items-start gap-2">
-          <h2 className="min-w-0 flex-1 text-base font-semibold">{t("updateScreen.title")}</h2>
-          {/* A CLOSE EXISTS ONLY WHERE THE READING SAYS IT MAY. While a run this device started is in
-              flight there is nothing to close to: the app behind is inert, and a close would be a
-              control that hands back a screen the operator cannot use. */}
-          {view.dismissible && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              aria-label={t("updateScreen.close")}
-              onClick={() => screen.setExpanded(false)}
-            >
-              <X className="size-4" />
-            </Button>
-          )}
+        <div aria-hidden="true" className="flex h-4 shrink-0 justify-center">
+          <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />
         </div>
-
-        <ul aria-label={t("updateScreen.rows.label")} className="mt-4 space-y-3">
+        <h2
+          id={headingId}
+          data-slot="update-heading"
+          aria-live="polite"
+          className={cn(
+            "h-7 shrink-0 truncate text-lg leading-7",
+            phaseFailed(view.phase) && "text-status-blocked",
+          )}
+        >
+          {view.heading}
+        </h2>
+        <div data-slot="update-subtitle" className="mt-1 h-10 shrink-0 text-[13px] leading-5 text-muted-foreground">
+          <p className="line-clamp-2">{view.subtitle}</p>
+        </div>
+        <ul
+          data-slot="update-rows"
+          aria-label={t("updateScreen.rows.label")}
+          className="mt-3 shrink-0 overflow-y-auto overscroll-contain"
+          style={{ height: visibleRows * ROW_PX }}
+        >
           {view.rows.map((row) => (
-            <MachineRow key={`${row.name}-${row.lead}`} row={row} onOpenUpdates={onOpenUpdates} />
+            <Row key={row.key} row={row} />
           ))}
         </ul>
-
-        {view.device !== null && (
-          <DeviceRow device={view.device} onRelease={screen.releaseDownload} />
-        )}
-
-        {/* THE LEAD HAS BEEN AT ONE THING TOO LONG. The sentence says so and the way out is to keep
-            waiting with the app back in your hands — never a forced reload, and never a cancel. */}
-        {view.leadStalled && (
-          <div className="mt-4 rounded-md border border-rule p-3">
-            <p className="text-sm">{t("updateScreen.lead.stalled")}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={screen.releaseLead}>
-                {t("updateScreen.keepWaiting")}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onOpenUpdates}>
-                {t("updateScreen.seeUpdates")}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {view.end.kind === "failed" && (
-          <div className="mt-4 flex items-start gap-2 rounded-md border border-rule p-3">
-            <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-status-blocked" />
-            <div className="min-w-0">
-              <p className="text-sm text-status-blocked">{view.end.sentence}</p>
-              <Button variant="outline" size="sm" className="mt-2" onClick={onOpenUpdates}>
-                {t("updateScreen.seeUpdates")}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* ONE SENTENCE OF TRUTH, small and last. The run is on the machines; this screen only shows
-            it, and closing the phone does not stop it. */}
-        <p className="mt-auto pt-6 text-xs text-muted-foreground">{t("updateScreen.truth")}</p>
+        <Note screen={screen} error={ready ? error : null} />
+        <Footer screen={screen} busy={busy} onStart={() => void start()} onOpenUpdates={onOpenUpdates} />
       </div>
     </div>
   );
 }
 
-/** One machine. Name, version, the state's own word, and — on a row that has gone quiet — when it was
- *  last heard from, with the two things the operator can actually do about it. */
-function MachineRow({ row, onOpenUpdates }: { row: UpdateScreenRow; onOpenUpdates: () => void }) {
+/** The band across the top: the step, the clock, and the progress bar along its bottom edge. */
+function Band({ screen }: { screen: UpdateScreenState }) {
+  const { view } = screen;
+  const inFlight = phaseInFlight(view.phase);
+  const failed = phaseFailed(view.phase);
+  const clock = view.elapsedMs === null ? null : formatClock(view.elapsedMs);
+  const text = inFlight
+    ? t("updateScreen.band.step", { step: String(view.step), total: String(STEP_COUNT) })
+    : failed
+      ? t("updateScreen.band.stopped")
+      : t("updateScreen.band.done");
+  // Half a step while one is under way: the bar says "in step N", not "N finished".
+  const fraction = view.phase === "done" ? 1 : inFlight ? (view.step - 0.5) / STEP_COUNT : view.step / STEP_COUNT;
+  const tone = failed ? "blocked" : view.phase === "done" ? "done" : "working";
+  // THE BAND IS A STRIP NOTICE (DESIGN.md §1 and §11): the tint recipe lives in `ui/notice.tsx` and
+  // nowhere else. The icon slot is filled in every state, so the words never move sideways.
   return (
-    <li className="flex items-start gap-2 text-sm">
-      {row.moving ? (
-        <Loader2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 animate-spin text-status-working" />
-      ) : row.packageManaged ? (
-        <Package aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <span
-          aria-hidden="true"
+    <div data-slot="update-band" className="absolute inset-x-0 top-0 bg-background pt-[env(safe-area-inset-top)]">
+      <Notice
+        tone={tone === "blocked" ? "danger" : tone === "done" ? "success" : "caution"}
+        variant="strip"
+        icon={tone === "blocked" ? <TriangleAlert /> : tone === "done" ? <Check /> : <Lock />}
+        action={clock !== null ? <span className="text-xs tabular-nums">{clock}</span> : undefined}
+      >
+        {text}
+      </Notice>
+      <div
+        role="progressbar"
+        aria-label={text}
+        aria-valuemin={0}
+        aria-valuemax={STEP_COUNT}
+        aria-valuenow={view.step}
+        className="h-1 w-full bg-muted"
+      >
+        <div
           className={cn(
-            "mt-1.5 size-1.5 shrink-0 rounded-full",
-            row.quiet ? "bg-status-working" : row.settled ? "bg-status-done" : "bg-status-idle",
+            "h-full motion-safe:transition-[width] motion-safe:duration-500",
+            tone === "working" && "bg-status-working",
+            tone === "done" && "bg-status-done",
+            tone === "blocked" && "bg-status-blocked",
           )}
+          style={{ width: `${Math.round(fraction * 100)}%` }}
         />
-      )}
+      </div>
+    </div>
+  );
+}
+
+/** One machine, or this phone. The box is the same in every state; see the file header. */
+function Row({ row }: { row: UpdateScreenRow }) {
+  return (
+    <li data-slot="update-row" className={cn("flex h-13 items-start gap-2.5 py-1.5", row.dim && "opacity-50")}>
+      <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center">
+        <RowIcon status={row.status} />
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-1.5">
-          <span className="font-medium">{row.name}</span>
-          {row.version !== null && (
-            <span className="font-mono text-xs text-muted-foreground">{row.version}</span>
+        <div className="flex h-5 items-baseline gap-2 text-sm leading-5">
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-medium">{row.name}</span>
+            <span className="text-muted-foreground"> · {row.word}</span>
+          </span>
+          {/* A bare semver is chrome, and chrome is sans (DESIGN.md §5). */}
+          {row.versions !== null && (
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{row.versions}</span>
           )}
-          <span className="text-xs text-muted-foreground">{row.word}</span>
         </div>
-        {row.detail !== null && <p className="text-xs text-muted-foreground">{row.detail}</p>}
-        {row.quiet && row.lastSeen !== null && (
-          <p className="text-xs text-muted-foreground">{row.lastSeen}</p>
-        )}
-        {row.quiet && (
-          <Button variant="ghost" size="sm" className="mt-1 -ml-2" onClick={onOpenUpdates}>
-            {t("updateScreen.seeUpdates")}
-          </Button>
-        )}
+        <div className="mt-1 h-4 text-xs leading-4 text-muted-foreground">
+          {row.progress !== null ? (
+            <div
+              role="progressbar"
+              aria-label={t("updateScreen.device.progressAria")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(row.progress * 100)}
+              className="mt-1.5 h-1 w-full overflow-hidden rounded-md bg-muted"
+            >
+              <div
+                className="h-full bg-status-working motion-safe:transition-[width]"
+                style={{ width: `${Math.round(row.progress * 100)}%` }}
+              />
+            </div>
+          ) : (
+            row.detail !== null && <p className="truncate">{row.detail}</p>
+          )}
+        </div>
       </div>
     </li>
   );
 }
 
-/** THIS DEVICE, VISUALLY APART. It is not a machine in the crew: it is the phone in your hand,
- *  fetching the bundle the machines now serve. Counted in FILES — see `lib/update-screen.ts`. */
-function DeviceRow({ device, onRelease }: { device: UpdateScreenDevice; onRelease: () => void }) {
-  const pct = device.total > 0 ? Math.min(100, Math.round((device.done / device.total) * 100)) : 0;
-  return (
-    <div className="mt-5 border-t border-rule pt-4">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        {t("updateScreen.device.title")}
-      </p>
-      <p className="mt-1 text-sm">
-        {device.phase === "switching"
-          ? t("updateScreen.device.switching")
-          : device.total > 0
-            ? t("updateScreen.device.downloading", {
-                done: String(device.done),
-                total: String(device.total),
-              })
-            : t("updateScreen.device.downloadingUnknown")}
-        {device.elapsedMs !== null && (
-          <span className="ml-1.5 tabular-nums text-xs text-muted-foreground">
-            {clockOf(device.elapsedMs)}
-          </span>
-        )}
-      </p>
-      {/* A bar weighted by FILES, and labelled as one. No `<progress>`: the row already says the
-          numbers, and the bar is the glance. */}
-      <div
-        role="progressbar"
-        aria-label={t("updateScreen.device.progressAria")}
-        aria-valuemin={0}
-        aria-valuemax={device.total}
-        aria-valuenow={device.done}
-        className="mt-2 h-1 w-full overflow-hidden rounded-md bg-muted"
-      >
-        <div className="h-full bg-status-working" style={{ width: `${pct}%` }} />
+/** Only the active row moves; every other status is a still mark. Motion respects the OS setting. */
+function RowIcon({ status }: { status: UpdateScreenRow["status"] }) {
+  switch (status) {
+    case "active":
+      return <Loader2 className="size-4 text-status-working motion-safe:animate-spin" />;
+    case "offline":
+      return <span className="size-3 rounded-full border-2 border-status-info motion-safe:animate-pulse" />;
+    case "queued":
+      return <span className="size-3 rounded-full border-[1.5px] border-rule" />;
+    case "ok":
+      return <Check className="size-4 text-status-done" />;
+    case "failed":
+      return <X className="size-4 text-status-blocked" />;
+    case "attention":
+      return <TriangleAlert className="size-4 text-status-working" />;
+    case "skipped":
+      return <Minus className="size-4 text-status-idle" />;
+  }
+}
+
+/** Two lines of what comes next, then one row for the question or the command. Always 84px. */
+function Note({ screen, error }: { screen: UpdateScreenState; error: string | null }) {
+  const { view } = screen;
+  const [copied, setCopied] = useState(false);
+  let actions: ReactNode = null;
+  if (view.ask !== null) {
+    const name = view.ask.name;
+    actions = (
+      <>
+        <Button variant="outline" size="lg" className="flex-1" onClick={() => screen.skip(name)}>
+          {t("updateScreen.action.skip", { name })}
+        </Button>
+        <Button variant="ghost" size="lg" className="flex-1" onClick={() => screen.keepTrying(name)}>
+          {t("updateScreen.action.keepTrying")}
+        </Button>
+      </>
+    );
+  } else if (view.recovery !== null) {
+    const command = view.recovery;
+    actions = (
+      <div className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-muted px-3">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs select-all">{command}</code>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shrink-0"
+          onClick={() => {
+            void navigator.clipboard?.writeText(command).then(() => setCopied(true));
+          }}
+        >
+          {copied ? t("updateScreen.action.copied") : t("updateScreen.action.copy")}
+        </Button>
       </div>
-      {device.hung && (
-        <div className="mt-2">
-          <p className="text-sm">{t("updateScreen.device.hung")}</p>
-          <Button variant="outline" size="sm" className="mt-2" onClick={onRelease}>
-            {t("updateScreen.device.keepUsing")}
-          </Button>
-        </div>
-      )}
+    );
+  }
+  return (
+    <div data-slot="update-note" className="mt-3 flex h-[84px] shrink-0 flex-col gap-2">
+      <p
+        className={cn(
+          "line-clamp-2 h-8 text-xs leading-4",
+          error !== null ? "text-status-blocked" : "text-muted-foreground",
+        )}
+      >
+        {error ?? view.note}
+      </p>
+      <div className="flex h-11 gap-2">{actions}</div>
     </div>
   );
 }
 
-/** `m:ss`, ticking. Monospaced digits at the call site, so the row does not jitter every second. */
-function clockOf(ms: number): string {
-  const total = Math.floor(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+/** Two 44px rows. What sits in them is the phase's; their size is not. */
+function Footer({
+  screen,
+  busy,
+  onStart,
+  onOpenUpdates,
+}: {
+  screen: UpdateScreenState;
+  busy: boolean;
+  onStart: () => void;
+  onOpenUpdates: () => void;
+}) {
+  const { view } = screen;
+  let first: ReactNode = null;
+  let second: ReactNode = null;
+  const showLog = (
+    <Button
+      variant="outline"
+      size="lg"
+      className="flex-1"
+      onClick={() => {
+        screen.back();
+        onOpenUpdates();
+      }}
+    >
+      {t("updateScreen.action.showLog")}
+    </Button>
+  );
+  if (view.phase === "ready") {
+    first = (
+      <Button size="lg" className="flex-1" disabled={busy} onClick={onStart}>
+        {busy && <Loader2 aria-hidden="true" className="size-4 motion-safe:animate-spin" />}
+        {t("updateScreen.action.start")}
+      </Button>
+    );
+    second = (
+      <Button variant="ghost" size="lg" className="flex-1" disabled={busy} onClick={screen.notNow}>
+        {t("updateScreen.action.notNow")}
+      </Button>
+    );
+  } else if (phaseInFlight(view.phase)) {
+    first = view.locked ? (
+      <p className="flex flex-1 items-center gap-2 text-xs leading-4 text-muted-foreground">
+        <Lock aria-hidden="true" className="size-4 shrink-0" />
+        <span className="line-clamp-2">{t("updateScreen.lock")}</span>
+      </p>
+    ) : (
+      <Button variant="outline" size="lg" className="flex-1" onClick={screen.back}>
+        {t("updateScreen.action.back")}
+      </Button>
+    );
+    if (view.canEscape) {
+      second = (
+        <Button variant="outline" size="lg" className="flex-1" onClick={screen.release}>
+          {t("updateScreen.action.escape")}
+        </Button>
+      );
+    }
+  } else {
+    first = (
+      <Button size="lg" className="flex-1" onClick={screen.back}>
+        {t("updateScreen.action.back")}
+      </Button>
+    );
+    if (view.phase === "done" && view.retryNames.length > 0) {
+      second = (
+        <Button variant="ghost" size="lg" className="flex-1" onClick={screen.retryMembers}>
+          {view.retryNames.length === 1
+            ? t("updateScreen.action.retryOne", { name: view.retryNames[0] ?? "" })
+            : tn("updateScreen.action.retryMany", view.retryNames.length)}
+        </Button>
+      );
+    } else if (view.phase === "rolled-back" || view.phase === "stopped") {
+      second = (
+        <>
+          <Button variant="outline" size="lg" className="flex-1" onClick={screen.tryAgain}>
+            {t("updateScreen.action.tryAgain")}
+          </Button>
+          {showLog}
+        </>
+      );
+    } else if (view.phase === "stuck") {
+      second = showLog;
+    }
+  }
+  return (
+    <div data-slot="update-footer" className="mt-3 flex h-24 shrink-0 flex-col gap-2">
+      <div className="flex h-11 gap-2">{first}</div>
+      <div className="flex h-11 gap-2">{second}</div>
+    </div>
+  );
 }

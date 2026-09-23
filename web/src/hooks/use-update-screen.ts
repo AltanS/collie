@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 
 import { useLocale } from "@/hooks/use-locale";
 import { useTick } from "@/hooks/use-tick";
+import { BUILD, isStaleBuild } from "@/lib/build";
 import { t } from "@/lib/i18n";
 import {
   checkForUpdate,
@@ -13,90 +14,114 @@ import {
   subscribePrecacheProgress,
   subscribeUpdateStage,
 } from "@/lib/pwa";
-import { setStatus } from "@/lib/status";
+import { UPDATE_MODE_HOLD, useHoldReload } from "@/lib/reload-guard";
+import { getServerBuild, subscribeServerBuild } from "@/lib/server-build";
+import { closeUpdateAsk, getUpdateAsk, openUpdateMode, subscribeUpdateAsk, type UpdateAsk } from "@/lib/update-ask";
 import { useUpdateRun } from "@/lib/update-run-store";
-import { clearUpdateStarted, getUpdateStarted, subscribeUpdateStarted } from "@/lib/update-ribbon";
 import {
-  endKey,
-  endSentence,
-  updateScreenView,
-  type UpdateScreenMode,
-  type UpdateScreenView,
-} from "@/lib/update-screen";
+  clearUpdateStarted,
+  getUpdateClaim,
+  noteClaimPhase,
+  noteMemberSkipped,
+  subscribeUpdateStarted,
+} from "@/lib/update-ribbon";
+import { updateScreenView, type UpdateScreenMode, type UpdateScreenView } from "@/lib/update-screen";
 
-// ── THE SHEET'S ONE READING, PLUS THE FOUR THINGS ONLY A COMPONENT CAN HOLD ──────────────────────
+// ── UPDATE MODE'S ONE READING, PLUS WHAT ONLY THIS DOCUMENT CAN HOLD ────────────────────────────
 //
 // `lib/update-screen.ts` decides everything that can be decided from facts. This hook supplies the
-// facts — the shared run store, the worker's stage, its per-file progress, the controller swap and
-// "this document tapped the confirm" — and holds the four pieces of state that are genuinely about
-// this document rather than about the run: the two ways out the operator has taken, whether a badge
-// was expanded by hand, and whether the end has already been announced.
+// facts (the shared run store, the worker's stage and progress, the controller swap, the bundle this
+// document runs, the ask and this device's claim) and holds the few things that are about this
+// document rather than about the run: "Use the app anyway", a strip opened by hand, "Keep trying"
+// per member, and which failed end the operator has closed.
 //
 // It is a hook rather than part of the component because `App.tsx` needs the same reading: the
-// wrapper holding `BusyBar` and the router goes `inert` on exactly `expanded && !dismissible`, and a
-// second derivation of that would be a second opinion about the thing that blocks the app.
+// wrapper holding `BusyBar` and the router goes `inert` whenever the panel is up, and a second
+// derivation of that would be a second opinion about the thing that locks the app (ADR 0044).
+//
+// THREE SIDE EFFECTS LIVE HERE, each guarded so it happens once:
+//   * the reload hold while machines move (`view.holdsReload`), which is what keeps this phone's own
+//     reload for step 6 (ADR 0064, and `lib/pwa.ts`);
+//   * the ask for the new app when step 6 starts (`view.kickPhone`);
+//   * one re-check when the download looks hung (`view.recheckDownload`).
 
 /**
- * How long this device's claim on the screen outlives the run that is over.
+ * How long a claim with nothing to show may stand before it is spent.
  *
- * Long enough for the page to notice the new bundle and start fetching it, short enough that a run
- * which produced no new bundle at all lets go while the operator is still looking at the toast. Not in
- * `lib/update-screen.ts` with the three thresholds, because it decides nothing the reducer decides: it
- * is the lifetime of a store this hook happens to own.
+ * A claim outlives a reload on purpose. It must not outlive the run: a start the bridge accepted and
+ * then never reported, or a crew-only start whose legs never came, leaves a claim that reopens
+ * nothing. Twenty seconds is two poll gaps and the begun beat (`CREW_BEGUN_MS`) with room to spare.
  */
 const CLAIM_GRACE_MS = 20_000;
 
-/** How long the end's own message stays up. See the call site for why it is not the channel's default. */
-const END_TOAST_MS = 6_000;
+/** Where a closed failure is remembered: per device, so a reload does not show it again. */
+const CLOSED_KEY = "collie:update-mode:closed:v1";
+
+function readClosed(): string | null {
+  try {
+    return localStorage.getItem(CLOSED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeClosed(key: string): void {
+  try {
+    localStorage.setItem(CLOSED_KEY, key);
+  } catch {
+    /* no storage: the close holds for this document */
+  }
+}
 
 export interface UpdateScreen {
   readonly view: UpdateScreenView;
-  /** The mode after this document's own expand, which the reducer cannot know about. */
+  /** The mode after this document's own choices, which the reducer cannot know about. */
   readonly mode: UpdateScreenMode;
-  /** True when the app behind the sheet must not take a tap or a keystroke. */
+  /** True whenever the panel is up: the app behind it takes no tap and no keystroke. */
   readonly blocking: boolean;
-  /** Expand a badge, or fold an expanded sheet back to one. */
+  /** What "Ready to start" is about, or null. */
+  readonly ask: UpdateAsk | null;
+  /** Open the strip into the panel, or fold a read-only panel back to the strip. */
   readonly setExpanded: (open: boolean) => void;
-  /** "Keep using the app" — the way out of a download that has stopped saying anything. */
-  readonly releaseDownload: () => void;
-  /** "Keep waiting" — the way out of a lead that has held one state too long. */
-  readonly releaseLead: () => void;
+  /** "Use the app anyway": the way out of a stall. Cancels nothing. */
+  readonly release: () => void;
+  /** "Skip <name>": stop waiting for that member. */
+  readonly skip: (name: string) => void;
+  /** "Keep trying": put the question about that member away for a while. */
+  readonly keepTrying: (name: string) => void;
+  /** "Back to the app" on an end, or on a read-only panel. */
+  readonly back: () => void;
+  /** "Not now" on "Ready to start". */
+  readonly notNow: () => void;
+  /** "Try <name> again" after Done: a run for the members the last one left behind. */
+  readonly retryMembers: () => void;
+  /** "Try again" after a rolled-back or stopped run: back to "Ready to start" for the same version. */
+  readonly tryAgain: () => void;
 }
 
 export function useUpdateScreen(): UpdateScreen {
   useLocale();
-  const { run, crew, leadName, crewRun } = useUpdateRun();
+  const { run, crew, leadName, crewRun, answered } = useUpdateRun();
   const stage = useSyncExternalStore(subscribeUpdateStage, getUpdateStage, getUpdateStage);
-  const progress = useSyncExternalStore(
-    subscribePrecacheProgress,
-    getPrecacheProgress,
-    getPrecacheProgress,
-  );
-  const controllerChangedAt = useSyncExternalStore(
-    subscribeControllerChanged,
-    getControllerChangedAt,
-    getControllerChangedAt,
-  );
-  const startedAt = useSyncExternalStore(subscribeUpdateStarted, getUpdateStarted, getUpdateStarted);
+  const progress = useSyncExternalStore(subscribePrecacheProgress, getPrecacheProgress, getPrecacheProgress);
+  const controllerChangedAt = useSyncExternalStore(subscribeControllerChanged, getControllerChangedAt, getControllerChangedAt);
+  const claim = useSyncExternalStore(subscribeUpdateStarted, getUpdateClaim, getUpdateClaim);
+  const ask = useSyncExternalStore(subscribeUpdateAsk, getUpdateAsk, getUpdateAsk);
+  const serverBuild = useSyncExternalStore(subscribeServerBuild, getServerBuild, getServerBuild);
 
-  const [downloadReleased, setDownloadReleased] = useState(false);
-  const [leadReleased, setLeadReleased] = useState(false);
+  const [released, setReleased] = useState(false);
   const [expandedHere, setExpandedHere] = useState(false);
-  /** The failed end the operator closed, by its key. Spent on that failure; the next one shows. */
-  const [closedEnd, setClosedEnd] = useState<string | null>(null);
+  const [keptTrying, setKeptTrying] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const [closedEnd, setClosedEnd] = useState<string | null>(readClosed);
 
   const runState = run?.state;
-  // A crew-only run is live too (M32), and it has no record here: its stall is counted on this clock.
   const crewLive = crewRun !== null && crewRun.settledAt === null;
-  const live = (runState !== undefined && runState !== "idle") || stage === "installing" || crewLive;
-  // The phone's own clock, so the elapsed numbers keep moving while the bridge is deliberately away.
-  // Only while there is something to count — a second tick for the app's whole life would be a timer
-  // nobody is reading.
+  const live = (runState !== undefined && runState !== "idle") || stage === "installing" || crewLive || claim !== null;
+  // The phone's own clock, so the band's clock keeps moving while the bridge is deliberately away.
   const now = useTick(live);
 
-  // BACKGROUNDED AND BACK. Coming to the foreground re-reads nothing of its own: every source here is
-  // a store the page kept subscribed to, so the only thing that can be stale is the clock. One extra
-  // tick on the way back in is the whole of it, and the sheet stays exactly where it was.
+  // BACKGROUNDED AND BACK: every source is a store the page kept subscribed to, so the only thing that
+  // can be stale is the clock. One extra tick on the way back in.
   const [wokeAt, setWokeAt] = useState(0);
   useEffect(() => {
     const onVisible = () => {
@@ -113,71 +138,43 @@ export function useUpdateScreen(): UpdateScreen {
     stage,
     progress,
     installingSince: getInstallingSince(),
-    startedHere: startedAt !== null,
+    startedHere: claim !== null,
     controllerChangedAt,
-    downloadReleased,
-    leadReleased,
+    released,
     crewRun,
     now: Math.max(now, wokeAt),
+    ask,
+    claim,
+    bundle: { id: BUILD.id, version: BUILD.version },
+    serverStale: isStaleBuild(BUILD.id, serverBuild),
+    keptTrying,
+    answered,
   });
 
-  // A NEW RUN GETS A NEW DECISION. Both ways out are about one run's one stall, so they are spent when
-  // the state they were taken against is gone — otherwise a release taken at 14:02 would hand the next
-  // run straight back before the operator had seen it.
+  // A NEW RUN GETS NEW DECISIONS. "Use the app anyway", an opened strip and "Keep trying" are all
+  // about one run; each edge of `inFlight` spends them.
+  const inFlight = view.inFlight;
   useEffect(() => {
-    if (runState === undefined || runState === "idle") {
-      setDownloadReleased(false);
-      setLeadReleased(false);
-      setExpandedHere(false);
-    }
-  }, [runState]);
-  // A CREW-ONLY RUN IS MARKED BY NO RECORD (M32), so the lead's state above never moves for it and
-  // the rule has to read the run itself. It starts and ends on `inFlight`, and each edge is a fresh
-  // decision: a "keep waiting" taken over one run, or a badge opened on it, is not a choice about the
-  // next.
-  const crewInFlight = view.inFlight === "crew";
-  useEffect(() => {
-    setLeadReleased(false);
+    setReleased(false);
     setExpandedHere(false);
-  }, [crewInFlight]);
+    setKeptTrying(new Map());
+  }, [inFlight]);
 
-  // (s) IS OVER WHEN THE SHEET IS, not when the run first speaks and not the instant the run ends.
-  //
-  // The store is what blocks this device, so it has to outlive the first status the detached updater
-  // writes — the band used to clear it there, which is the one thing it must not do now. It also has
-  // to outlive the RUN itself, and that is the part a grace window buys: the machines report `done`
-  // and the new bundle turns up a BEAT LATER, because discovering it takes a poll that reads the new
-  // build id and a worker that starts installing. Spending the claim in that gap demoted the device
-  // that asked for the update to a badge half way through its own download. Measured in
-  // `e2e/update-screen.spec.ts`, which is the only place the two events are a real sequence.
-  //
-  // The timer re-arms on every stage change and refuses to fire while a download is in progress, so a
-  // slow precache holds the claim for as long as it takes rather than for a number chosen here.
-  //
-  // A crew-only run speaks through its legs rather than a record (M32), so the claim is also over once
-  // the legs it produced have gone quiet on screen.
-  const failedKey = view.end.kind === "failed" ? view.end.key : null;
-  // A FAILED SHEET THE OPERATOR CLOSED IS CLOSED. The reading says a failed end is expanded and
-  // dismissible; this document's close is what spends it, on this failure only.
-  const closedHere = failedKey !== null && failedKey === closedEnd && view.mode === "expanded" && view.dismissible;
-  const mode: UpdateScreenMode = closedHere
-    ? "hidden"
-    : view.mode === "collapsed" && expandedHere
-      ? "expanded"
-      : view.mode;
-  const spoke = (runState !== undefined && runState !== "idle") || crewRun !== null;
-  const over = spoke && mode === "hidden";
+  // THIS PHONE'S RELOAD WAITS FOR STEP 6 (ADR 0064). Held on every device while machines still move,
+  // so no page reloads onto a bundle mid-run; released on step 6, when the reload is the point.
+  useHoldReload(UPDATE_MODE_HOLD, view.holdsReload);
+
+  // STEP 6 ASKS FOR THE NEW APP, ONCE PER RUN. The self-updater would get there too, but only if its
+  // once-per-build guard is unspent; the step must not depend on that.
+  const kicked = useRef<number | null>(null);
+  const runKey = view.startedAt;
   useEffect(() => {
-    if (!over) return;
-    const timer = setTimeout(() => {
-      if (getUpdateStage() === "idle") clearUpdateStarted();
-    }, CLAIM_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [over, stage]);
+    if (!view.kickPhone || kicked.current === runKey) return;
+    kicked.current = runKey;
+    void checkForUpdate();
+  }, [view.kickPhone, runKey]);
 
-  // THE RE-CHECK, ONCE. A badge can be lying about a worker that already died, and one
-  // `checkForUpdate()` is what corrects it. It is fired from here rather than from the reducer because
-  // it is a side effect, and guarded by a ref because a hung download stays hung for minutes.
+  // THE RE-CHECK, ONCE, when the download looks hung: a row can be lying about a worker that died.
   const rechecked = useRef(false);
   useEffect(() => {
     if (!view.recheckDownload) {
@@ -189,52 +186,85 @@ export function useUpdateScreen(): UpdateScreen {
     void checkForUpdate();
   }, [view.recheckDownload]);
 
-  // THE END ANNOUNCES ITSELF ONCE, through the status channel every other confirmation uses. Keyed by
-  // `endKey`: the version for a run the lead took part in, so a second run to a second version is a
-  // second toast and a re-render is not; the settle stamp for a crew-only run, whose every run levels
-  // to the same version (M32). Every key announced is remembered, not only the last, so a crew-only
-  // end cannot hand the lead's earlier end a second toast when the reading falls back to it.
-  const announced = useRef(new Set<string>());
-  const end = view.end;
+  // THE STEP ON SCREEN RIDES WITH THE CLAIM, so the next document opens on it (ADR 0064).
+  const shownPhase = view.mine && view.inFlight !== null ? view.phase : null;
   useEffect(() => {
-    const key = endKey(end);
-    if (key === null || announced.current.has(key)) return;
-    announced.current.add(key);
-    const sentence = endSentence(end);
-    // A LONGER TTL THAN A SEND CONFIRMATION, and for a plain reason: this one arrives on a page that
-    // has just reloaded itself onto a new bundle, so the operator may be looking at the boot rather
-    // than at the pill. `lib/status.ts`'s own default is 2.5 s, which is right for a send.
-    if (sentence !== null) setStatus(sentence, "success", END_TOAST_MS);
-  }, [end]);
+    if (shownPhase !== null) noteClaimPhase(shownPhase);
+  }, [shownPhase]);
 
-  // A WAY OUT FOLDS THE SHEET. The reducer answers `collapsed` once a release is taken, and this
-  // document's own expand would otherwise hold the panel open over the decision to let go of it.
-  const releaseDownload = useCallback(() => {
-    setDownloadReleased(true);
+  // A CLAIM WITH NOTHING TO SHOW IS SPENT after a grace. See {@link CLAIM_GRACE_MS}. Only once a
+  // source has answered: a document booted in the restart gap has heard nothing, which is not "no run".
+  const orphan = claim !== null && answered && view.phase === "none";
+  useEffect(() => {
+    if (!orphan) return;
+    const timer = setTimeout(() => {
+      if (getUpdateClaim() !== null) clearUpdateStarted();
+    }, CLAIM_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [orphan]);
+
+  const failedKey = view.end.kind === "failed" ? view.end.key : null;
+  const closedHere = failedKey !== null && failedKey === closedEnd;
+  const mode: UpdateScreenMode = closedHere
+    ? "hidden"
+    : view.mode === "collapsed" && expandedHere
+      ? "expanded"
+      : view.mode;
+
+  const release = useCallback(() => {
+    setReleased(true);
     setExpandedHere(false);
   }, []);
-  const releaseLead = useCallback(() => {
-    setLeadReleased(true);
-    setExpandedHere(false);
+  const skip = useCallback((name: string) => noteMemberSkipped(name), []);
+  const keepTrying = useCallback((name: string) => {
+    setKeptTrying((before) => new Map(before).set(name, Date.now()));
   }, []);
-  // Folding an expanded badge back, and closing a failed sheet, are the same tap on the same ✕. The
-  // second is spent on the failure on screen, by its key.
-  const setExpanded = useCallback(
-    (open: boolean) => {
-      setExpandedHere(open);
-      if (!open && failedKey !== null) setClosedEnd(failedKey);
-    },
-    [failedKey],
-  );
+  const phase = view.phase;
+  const back = useCallback(() => {
+    if (failedKey !== null) {
+      writeClosed(failedKey);
+      setClosedEnd(failedKey);
+    }
+    if (phase === "done" || failedKey !== null) {
+      clearUpdateStarted();
+      return;
+    }
+    setExpandedHere(false);
+  }, [failedKey, phase]);
+  const notNow = useCallback(() => closeUpdateAsk(), []);
+  const setExpanded = useCallback((open: boolean) => setExpandedHere(open), []);
+
+  const target = view.target;
+  const from = view.from;
+  const retryNames = view.retryNames;
+  const retryMembers = useCallback(() => {
+    if (target === null) return;
+    clearUpdateStarted();
+    openUpdateMode({ kind: "retry", version: target, major: false, peersOnly: true, current: target, names: retryNames });
+  }, [target, retryNames]);
+  const hasMembers = crew.some((member) => member.name !== leadName);
+  const tryAgain = useCallback(() => {
+    if (failedKey !== null) {
+      writeClosed(failedKey);
+      setClosedEnd(failedKey);
+    }
+    clearUpdateStarted();
+    if (target === null) return;
+    openUpdateMode({ kind: hasMembers ? "crew" : "single", version: target, major: false, peersOnly: false, current: from ?? "" });
+  }, [failedKey, target, from, hasMembers]);
 
   return {
     view,
     mode,
-    // The reducer's own answer, never a second reading of it: the app goes inert exactly while the
-    // sheet is expanded because a run this device started is in flight.
-    blocking: view.mode === "expanded" && !view.dismissible,
+    blocking: mode === "expanded",
+    ask,
     setExpanded,
-    releaseDownload,
-    releaseLead,
+    release,
+    skip,
+    keepTrying,
+    back,
+    notNow,
+    retryMembers,
+    tryAgain,
   };
 }

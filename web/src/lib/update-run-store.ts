@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { fetchStandbyRun, fetchUpdateState } from "./api";
-import { legsStillMoving, runInFlight } from "./update-ribbon";
+import { getUpdateStarted, legsStillMoving, runInFlight, subscribeUpdateStarted } from "./update-ribbon";
 import type { UpdateScreenCrewRun } from "./update-screen";
 import type { UpdateCheckResponse, UpdateCrewMember, UpdateInfo, UpdateRun } from "./types";
 
@@ -92,6 +92,13 @@ export interface UpdateRunSnapshot {
   /** Has the front door answered once? A card cannot claim anything about this machine before it has. */
   readonly checked: boolean;
   /**
+   * Has ANY source said anything about the run: the front door, the snapshot, the standby door or a
+   * 202? `checked` is true after a failed read too, which is right for the card and wrong for update
+   * mode: a document that boots during the restart gap has heard nothing, and must not read that as
+   * "there is no run" (ADR 0064).
+   */
+  readonly answered: boolean;
+  /**
    * What this machine is called, or null while nothing has said.
    *
    * Published by `routes/root.tsx` off the snapshot's roster ({@link noteLeadName}), because the
@@ -111,6 +118,7 @@ const EMPTY: UpdateRunSnapshot = {
   run: undefined,
   crew: [],
   checked: false,
+  answered: false,
   leadName: null,
   crewRun: null,
 };
@@ -196,6 +204,7 @@ function recompute(): void {
     run,
     crew: snapshot.check?.crew ?? [],
     checked: snapshot.checked,
+    answered: snapshot.answered || run !== undefined || snapshotCrew !== undefined,
     leadName: snapshot.leadName,
     // The same object while it says the same thing, so a poll that changed nothing about the crew
     // does not hand every reader a new one.
@@ -270,7 +279,7 @@ export async function readUpdateState(signal?: AbortSignal): Promise<void> {
     const check = await fetchUpdateState(signal);
     checkRun = check.run;
     checkCrew = { crew: crewRunOf(check), at: askedAt };
-    snapshot = { ...snapshot, check, checked: true };
+    snapshot = { ...snapshot, check, checked: true, answered: true };
   } catch {
     // A failed read is not an error to render: the versions come from the snapshot anyway, and the
     // preflight simply stays unknown, which disables nothing and claims nothing.
@@ -291,7 +300,9 @@ function stopTimers(): void {
 /** Start or stop the two intervals, so they exist exactly while a run is in flight and somebody is
  *  looking. Called after every change, and idempotent. */
 function arm(): void {
-  const wanted = listeners.size > 0 && (runInFlight(snapshot.run) || crewStillMoving());
+  // A CLAIM ASKS TOO (ADR 0064). A document that boots holding one, mid-restart, knows of no run yet:
+  // without this it would never ask the standby door, the one reader that answers in that window.
+  const wanted = listeners.size > 0 && (runInFlight(snapshot.run) || crewStillMoving() || getUpdateStarted() !== null);
   if (wanted === driving) return;
   if (!wanted) {
     stopTimers();
@@ -335,8 +346,15 @@ function arm(): void {
  */
 function crewStillMoving(): boolean {
   const crew = snapshot.crewRun;
-  return crew !== null && legsStillMoving(crew.legs, crew.settledAt);
+  if (crew !== null && legsStillMoving(crew.legs, crew.settledAt)) return true;
+  // THE LEAD'S OWN RUN, AFTER ITS OWN `done` (ADR 0064). Its members ride its record, and update mode
+  // stays on step 5 while one of them moves, so the front door is asked for as long as they do.
+  const run = snapshot.run;
+  return run !== undefined && legsStillMoving(run.peers ?? [], run.settledAt ?? null);
 }
+
+// The claim comes and goes on its own store; the intervals follow it.
+subscribeUpdateStarted(() => arm());
 
 export function subscribeUpdateRun(listener: () => void): () => void {
   const first = listeners.size === 0;

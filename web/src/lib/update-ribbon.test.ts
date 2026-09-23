@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  CLAIM_KEY,
+  CLAIM_MAX_AGE_MS,
+  noteMemberSkipped,
   clearUpdateStarted,
   dismissesLocally,
   dismissTarget,
@@ -272,6 +275,42 @@ describe("the just-posted store", () => {
     expect(getUpdateStarted()).toBeNull();
     expect(hits).toBe(2);
     off();
+  });
+
+  // THE CLAIM OUTLIVES THE PAGE (ADR 0064). The phone's reload is the last step of an update, and the
+  // document that boots must find the claim before its first paint. A module variable died with the
+  // page that set it (the 2026-09-23 study's fault 4).
+  it("survives a reload: a fresh copy of the module reads it back from sessionStorage", async () => {
+    noteUpdateStarted(Date.now(), "run-7", { target: "1.12.0", peersOnly: false, bundleAtStart: "abc" });
+    noteMemberSkipped("cellar");
+    vi.resetModules();
+    const fresh = await import("./update-ribbon");
+    expect(fresh.getUpdateClaim()).toMatchObject({
+      runId: "run-7",
+      target: "1.12.0",
+      peersOnly: false,
+      bundleAtStart: "abc",
+      skipped: ["cellar"],
+    });
+    fresh.clearUpdateStarted();
+    expect(sessionStorage.getItem(CLAIM_KEY)).toBeNull();
+    clearUpdateStarted();
+  });
+
+  it("throws away a claim older than CLAIM_MAX_AGE_MS instead of reopening a stale screen", async () => {
+    sessionStorage.setItem(CLAIM_KEY, JSON.stringify({ startedAt: Date.now() - CLAIM_MAX_AGE_MS - 1 }));
+    vi.resetModules();
+    const fresh = await import("./update-ribbon");
+    expect(fresh.getUpdateClaim()).toBeNull();
+    expect(sessionStorage.getItem(CLAIM_KEY)).toBeNull();
+  });
+
+  it("reads a hand-edited or truncated value as no claim", async () => {
+    sessionStorage.setItem(CLAIM_KEY, "{not json");
+    vi.resetModules();
+    const fresh = await import("./update-ribbon");
+    expect(fresh.getUpdateClaim()).toBeNull();
+    sessionStorage.removeItem(CLAIM_KEY);
   });
 });
 

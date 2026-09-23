@@ -36,8 +36,10 @@ function AppShell() {
   const covered = locked || catchingUp;
   // THE UPDATE SCREEN IS THE IDLE LOCK'S SECOND COUSIN, and it is mounted the same way: a sibling of
   // the wrapper it makes inert, never inside it, because a node cannot be both inert and the host of
-  // the dialog that made it inert. The reading decides whether it blocks at all — an update this
-  // device started blocks; one it merely heard about shows a badge (lib/update-screen.ts).
+  // the dialog that made it inert. The reading decides whether it shows at all: update mode's panel
+  // is up on the device that started the run, and a device that did not start it gets a strip in the
+  // band and keeps its app (lib/update-screen.ts, ADR 0064). Whenever the panel is up, the app behind
+  // its veil is inert.
   //
   // The wrapper's `inert` is the OR of the two facts, and each of them keeps its own reason: the idle
   // lock pauses a screen nobody is touching, and this blocks a screen whose machine is being rebuilt

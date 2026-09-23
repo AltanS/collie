@@ -237,9 +237,20 @@ export function crewAction(a: {
   return "none";
 }
 
-/** The label for that button. `none` never renders, so it has no label to give. */
-export function crewActionLabel(action: Exclude<CrewAction, "none">, version: string): string {
-  if (action === "retry-crew") return t("settings.updateCard.retryCrew");
-  if (action === "update-crew") return t("settings.updateCard.actionCrew", { version });
+/**
+ * The label for that button. `none` never renders, so it has no label to give.
+ *
+ * A retry for ONE member names it ("Try minibuch again", ADR 0064): the operator is being asked about
+ * a machine, and "Retry crew update" made them look up which one. `names` is who the retry is for.
+ */
+export function crewActionLabel(
+  action: Exclude<CrewAction, "none">,
+  version: string,
+  names: readonly string[] = [],
+): string {
+  if (action === "retry-crew") {
+    return names.length === 1 ? t("settings.updateCard.retryOne", { name: names[0] ?? "" }) : t("settings.updateCard.retryCrew");
+  }
+  if (action === "update-crew") return t("settings.updateCard.actionAll", { version });
   return t("settings.updateCard.action", { version });
 }
