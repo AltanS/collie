@@ -335,13 +335,13 @@ describe("the signature", () => {
 });
 
 describe("known live-box gaps the card inherits", () => {
-  // This is the #261 stall wearing the card: locateTail walks up from the bottom rule over
-  // continuation rows and stops at the first blank row, so a draft holding a blank row (a
-  // two-paragraph message) yields prompt: null. composerReady is then a definite false, and the
-  // M34 post-pass draws the unread-dialog card over a LIVE box holding the operator's own draft.
-  // When locateTail tolerates a bounded blank run inside the draft, this test must be INVERTED
-  // (card null, composerReady true), not deleted.
-  it("muse: a draft with a blank row inside it still gets the card (#261)", () => {
+  // INVERTED per the note this replaces (#274 supersedes the #261 bargain): locateTail now steps
+  // over the blank rows a paragraph break leaves inside the draft, so a two-paragraph message
+  // binds its prompt, composerReady answers true, and no card draws over the live box. The old
+  // bargain (card + two-tap escape hatch) proved actively harmful live: the hatch types without
+  // the pre-clear sweep, so each tap appended a full duplicate and verify — reading null forever
+  // — withheld every submit.
+  it("muse: a draft with a blank row inside it no longer gets the card (#274)", () => {
     const base = fixtureLines("muse--draft-single.txt");
     const texts = base.map(lineText);
     let boxRow = -1;
@@ -359,7 +359,7 @@ describe("known live-box gaps the card inherits", () => {
       ...base.slice(boxRow + 1),
     ];
 
-    expect(museAdapter.composerReady!(lines)).toBe(false);
-    expect(cardOf(pass("muse", lines))).not.toBeNull();
+    expect(museAdapter.composerReady!(lines)).toBe(true);
+    expect(cardOf(pass("muse", lines))).toBeNull();
   });
 });

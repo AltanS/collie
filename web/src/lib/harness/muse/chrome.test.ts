@@ -36,11 +36,19 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     );
   });
 
+  it("folds a blank paragraph break out of the draft (#274)", () => {
+    expect(extractInputDraft(lines("muse--draft-blank-row.txt"))).toBe(
+      "hello muse draft second paragraph",
+    );
+  });
+
   it("returns null for an empty box, the placeholder tip, and dialogs", () => {
     expect(extractInputDraft(lines("muse--fresh-idle.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--working.txt"))).toBeNull();
     // The done capture's box holds the "Start a message with !…" tip — not a draft.
     expect(extractInputDraft(lines("muse--done.txt"))).toBeNull();
+    // The tip rotates: the /loop variant is a placeholder too, not a ghost draft (#274).
+    expect(extractInputDraft(lines("muse--tip-loop.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--approval-ls.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-color.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-toppings.txt"))).toBeNull();

@@ -225,6 +225,14 @@ Probed recipe — digit alone (family `trust`): `1` submitted immediately
   reader now refuse a question/checkbox/note match only above a bare box, and a review match only
   with its live header above. Approval and trust need no such check: a match structurally implies
   no live box beside it.
+- **The tail walk steps over blank draft rows (added 2026-09-23, #274).** A paragraph break
+  inside the box used to stop the continuation walk, so a healthy two-paragraph draft read as
+  prompt null — "no composer". Verify then read null forever (stuck send), the unread-dialog
+  card drew over the live box, and each two-tap retry appended a full duplicate (the force path
+  types without the sweep). Observed live: one message typed six times. The walk now treats
+  blank rows as part of the draft run under the same bound; approval still resolves null at
+  its subject rows. Also probed the same night: the placeholder tip rotates (`/loop 10m
+  <prompt> schedules a recurring prompt`), so the set holds both known variants.
 - **Every lift keeps the rows above it (added at merge).** The prompt panel shows neither the
   approval's command nor the trust prompt's folder, so those rows stay on screen as raw text.
 - **The review cancel button says `Interrupt turn` (added at merge).** That row ends the whole
