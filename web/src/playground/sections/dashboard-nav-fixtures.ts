@@ -26,7 +26,7 @@ interface PaneSpec {
   shell?: boolean;
 }
 
-const WORKSPACES = ["collie", "sprqvntrs-api", "nixcfg", "blog", "collie-website", "dotfiles"] as const;
+const WORKSPACES = ["collie", "api", "infra", "blog", "collie-website", "dotfiles"] as const;
 
 function pane(s: PaneSpec): AgentView {
   const label = WORKSPACES[s.ws - 1]!;
@@ -57,12 +57,12 @@ const SPECS: PaneSpec[] = [
   { ws: 1, pane: 3, tab: "fix/cache-chip", agent: "claude", status: "working", ago: 14, name: "cache chip" },
   { ws: 1, pane: 4, tab: "docs", agent: "pi", status: "done", ago: 50, seen: 20 },
   { ws: 1, pane: 5, tab: "docs", agent: "", status: "idle", ago: 90, shell: true },
-  // sprqvntrs-api: 4 panes, one needs you
+  // api: 4 panes, one needs you
   { ws: 2, pane: 1, tab: "fix-deploy", agent: "codex", status: "blocked", ago: 7, hint: "asked you a question and is waiting for the answer" },
   { ws: 2, pane: 2, tab: "billing", agent: "claude", status: "working", ago: 3, name: "billing webhooks" },
   { ws: 2, pane: 3, tab: "billing", agent: "opencode", status: "idle", ago: 120 },
   { ws: 2, pane: 4, tab: "logs", agent: "", status: "idle", ago: 200, shell: true },
-  // nixcfg: 3 panes, all quiet
+  // infra: 3 panes, all quiet
   { ws: 3, pane: 1, tab: "flake-bump", agent: "claude", status: "working", ago: 11 },
   { ws: 3, pane: 2, tab: "flake-bump", agent: "codex", status: "done", ago: 80, seen: 30 },
   { ws: 3, pane: 3, tab: "shell", agent: "", status: "idle", ago: 300, shell: true },
@@ -115,11 +115,11 @@ export const navChanges = new Map<string, readonly ChangedRepo[]>([
     ],
   ],
   [
-    "sprqvntrs-api",
+    "api",
     [
     {
       relPath: ".",
-      name: "sprqvntrs-api",
+      name: "api",
       files: [
         f("src/billing/webhooks.ts", "M", 31, 12),
         f("src/billing/webhooks.test.ts", "A", 64, 0),
@@ -128,7 +128,7 @@ export const navChanges = new Map<string, readonly ChangedRepo[]>([
     },
     ],
   ],
-  ["nixcfg", [{ relPath: ".", name: "nixcfg", files: [f("flake.lock", "M", 24, 24)] }]],
+  ["infra", [{ relPath: ".", name: "infra", files: [f("flake.lock", "M", 24, 24)] }]],
   [
     "collie-website",
     [
