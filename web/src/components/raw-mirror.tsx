@@ -1,5 +1,6 @@
 import type { StyledLine } from "@/lib/blocks";
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
+import { renderCells } from "@/components/painted-cells";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,7 +25,7 @@ export function RawMirror({ lines }: { lines: StyledLine[] }) {
           {li > 0 ? "\n" : null}
           {line.segments.map((s, si) => (
             <span key={si} style={styleFor(s)}>
-              {s.text}
+              {renderCells(s.text)}
             </span>
           ))}
         </span>

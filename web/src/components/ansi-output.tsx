@@ -28,6 +28,7 @@ import {
   segmentClassName,
   segmentStyle,
 } from "@/components/mirror-space";
+import { renderCells } from "@/components/painted-cells";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";
 
@@ -220,7 +221,9 @@ const TABLE_RUN_CLASS =
 // Performance: parseAnsi + block-building run once per unique `text` (and `agent`) value (useMemo),
 // as does the link scan; React.memo prevents re-renders when props are unchanged — critical for the
 // polling cadence on mobile. With no query and no links the render skips splitSegment entirely and
-// emits the segment's own string, exactly as the pre-find flat renderer did.
+// emits the segment's own string, exactly as the pre-find flat renderer did — unless the segment
+// holds a Block or Powerline character, which is wrapped in its own painted span
+// (components/painted-cells.tsx).
 
 // One terminal-graphics image: the picture when the caller has one for this cluster, and the
 // "[Image]" badge when it does not. The badge is not a failure state — a cluster the ordering
@@ -385,7 +388,9 @@ export const AnsiOutput = memo(function AnsiOutput({
   // Thread a running global offset through raw blocks → lines → segments (advancing by 1 for each
   // inter-line/inter-block "\n" separator) so both splits below can map a segment's slices back to
   // the haystack. With no query and no links this costs one addition per segment and allocates
-  // nothing beyond the spans — the polling path stays as cheap as the old flat render.
+  // nothing beyond the spans — the polling path stays as cheap as the old flat render. A segment
+  // holding a Block or Powerline character is the one exception: it allocates its pieces and one
+  // style object per painted character (components/painted-cells.tsx).
   let offset = 0;
   let currentAssigned = false;
 
@@ -393,9 +398,9 @@ export const AnsiOutput = memo(function AnsiOutput({
   // highlighted. `currentAssigned` refs only the first slice of the focused match (a match can span
   // segments on a colour change) so scrollIntoView targets one stable node.
   const renderFind = (run: string, start: number): ReactNode => {
-    if (matches.length === 0) return run;
+    if (matches.length === 0) return renderCells(run);
     return splitSegment(run, start, matches).map((p, j) => {
-      if (p.matchIndex === null) return p.text;
+      if (p.matchIndex === null) return <Fragment key={j}>{renderCells(p.text)}</Fragment>;
       const isCurrent = p.matchIndex === currentMatch;
       const attach = isCurrent && !currentAssigned;
       if (attach) currentAssigned = true;
@@ -428,7 +433,7 @@ export const AnsiOutput = memo(function AnsiOutput({
               : "bg-yellow-400/30",
           )}
         >
-          {p.text}
+          {renderCells(p.text)}
         </span>
       );
     });
