@@ -423,11 +423,14 @@ around rather than a consequence of what it holds.
 **The second one is update mode's docked panel** (`components/update-screen.tsx`,
 [ADR 0064](./.adr/0064-an-update-puts-the-phone-in-update-mode.md)). Its heading is `h-7` and
 truncates, its subtitle is `h-10` and clamps to two lines, each row is `h-13` with a reserved
-second line, the note is `h-[84px]` and the footer two 44px rows. Both properties hold: every
+second line, the note is `h-[5.25rem]` and the footer two 44px rows, all in rem so a larger text
+size grows each box with its text, and the row list alone gives way, by scrolling, when the panel
+would reach up under the band. Both properties hold: every
 occupant states its box (truncate, `line-clamp-2`, fixed buttons), and the heights were designed
 around the seven steps rather than measured from them. It earns `h` over `min-h` for the reason
 the status band does: the panel's whole job is that a state change repaints it and never moves
-it, and `e2e/update-screen.spec.ts` measures that to half a pixel in Chromium and WebKit.
+it, and `e2e/update-screen.spec.ts` measures that to half a pixel in Chromium and WebKit, and
+once more at 150% text, where it also fails a box that spills or a clamp that cuts a line in half.
 
 ---
 

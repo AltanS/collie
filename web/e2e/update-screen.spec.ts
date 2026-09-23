@@ -483,9 +483,13 @@ async function bundleOnPage(page: Page): Promise<string> {
 // It lives in THIS file, serial with the three cases above, because all of them move the one served-
 // directory pointer of the swap server, and two files doing that at once would deploy onto each other.
 
+// THE LARGE-TEXT WALK. Android's font scale and a browser's text size raise the root font size, and
+// every box in the panel is in rem, so the panel must grow as one piece: same no-shift rule, nothing
+// spilling out of its box, and the panel still below the band. 150% is where a px box used to spill.
 for (const engine of [
-  { name: "Chromium, with the worker", project: "app-phone", worker: "allow" },
-  { name: "WebKit, with no worker", project: "app-phone-webkit", worker: "block" },
+  { name: "Chromium, with the worker", project: "app-phone", worker: "allow", text: null },
+  { name: "WebKit, with no worker", project: "app-phone-webkit", worker: "block", text: null },
+  { name: "Chromium, text at 150%", project: "app-phone", worker: "allow", text: "150%" },
 ] as const) {
   // WHY WEBKIT RUNS WITH THE WORKER BLOCKED. Playwright's WebKit does not route a request that goes
   // through a service worker, so with a worker in control every `/api/*` read here would reach the
@@ -499,16 +503,28 @@ for (const engine of [
       test.skip(testInfo.project.name !== engine.project, `this walk is the ${engine.name} one`);
       test.setTimeout(180_000);
       await installCrewBridge(page);
+      if (engine.text !== null) {
+        // A stylesheet rule rather than the element's style: the page's own boot rewrites `<html>`.
+        await page.addInitScript((size: string) => {
+          const add = () => {
+            const style = document.createElement("style");
+            style.textContent = `html { font-size: ${size} !important; }`;
+            document.head.append(style);
+          };
+          if (document.head !== null) add();
+          else document.addEventListener("DOMContentLoaded", add, { once: true });
+        }, engine.text);
+      }
     });
 
     test(NO_SHIFT_TITLE, async ({ page }) => {
-      await walkEveryState(page, engine.worker === "allow");
+      await walkEveryState(page, engine.worker === "allow", engine.text);
     });
   });
 }
 
 /** The walk itself: every state, measured against "Ready to start". */
-async function walkEveryState(page: Page, withWorker: boolean): Promise<void> {
+async function walkEveryState(page: Page, withWorker: boolean, text: string | null = null): Promise<void> {
   const seen: string[] = [];
   const dialog = page.getByRole("dialog");
   const heading = (name: string) => page.getByRole("heading", { name, exact: true });
@@ -517,6 +533,10 @@ async function walkEveryState(page: Page, withWorker: boolean): Promise<void> {
   // A worker in control, where this walk runs with one.
   if (withWorker) await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   await page.evaluate((key: string) => window.sessionStorage.setItem(key, "0"), RELOADS_KEY);
+  if (text !== null) {
+    const root = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
+    expect(root, "the larger text size is on the page").toBe(`${(16 * Number.parseFloat(text)) / 100}px`);
+  }
 
   // ── Ready to start. The card's button opens the mode; it does not grow the card. ──
   await page.getByRole("button", { name: fill(en["settings.updateCard.actionAll"], { version: TO }) }).click();
@@ -527,8 +547,10 @@ async function walkEveryState(page: Page, withWorker: boolean): Promise<void> {
 
   const measure = async (state: string) => {
     expectSame(state, await geometry(page), base);
+    expect(await spills(page), `${state}: nothing spills out of its box`).toEqual([]);
     seen.push(state);
   };
+  expect(await spills(page), "ready: nothing spills out of its box").toEqual([]);
 
   // ── Steps 1 to 4, the lead. ──
   await page.getByRole("button", { name: en["updateScreen.action.start"] }).click();
@@ -752,6 +774,58 @@ async function geometry(page: Page): Promise<Geometry> {
     note: only("note", note),
     footer: only("footer", footer),
   };
+}
+
+/**
+ * Everything drawn inside a slot that reaches past the slot's own box, by half a pixel or more, and
+ * the panel reaching up under the band. A clamped or truncated line stays inside its box by design;
+ * what this catches is a px box holding rem text, the large-text fault counsel named for ADR 0064.
+ */
+async function spills(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const panel = document.querySelector('[data-slot="update-panel"]');
+    const band = document.querySelector('[data-slot="update-band"]');
+    if (panel !== null && band !== null) {
+      const gap = panel.getBoundingClientRect().top - band.getBoundingClientRect().bottom;
+      if (gap < -0.5) out.push(`panel under the band by ${-gap}px`);
+    }
+    for (const slot of ["update-heading", "update-subtitle", "update-row", "update-note", "update-footer"]) {
+      for (const box of document.querySelectorAll(`[data-slot="${slot}"]`)) {
+        const outer = box.getBoundingClientRect();
+        for (const inner of box.querySelectorAll("*")) {
+          const r = inner.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          if (r.bottom - outer.bottom > 0.5 || outer.top - r.top > 0.5) {
+            out.push(`${slot}: <${inner.tagName.toLowerCase()}> ${r.top}-${r.bottom} outside ${outer.top}-${outer.bottom}`);
+          }
+          // A box a flex parent squeezed below its content: the rect stays inside, the text does not.
+          // A clamp, an ellipsis or a scroller holds more than it shows on purpose, and is left alone.
+          const css = getComputedStyle(inner);
+          const clamps =
+            (css.webkitLineClamp !== "" && css.webkitLineClamp !== "none") ||
+            css.textOverflow === "ellipsis" ||
+            css.overflowY === "auto" ||
+            css.overflowY === "scroll";
+          // A clamp is allowed to hide lines, never to cut one: a box squeezed to 1.25 lines shows the
+          // top of the second line and no ellipsis. Its height must be a whole number of lines.
+          const line = Number.parseFloat(css.lineHeight);
+          if (clamps && css.overflowY !== "auto" && css.overflowY !== "scroll" && line > 0 && inner.clientHeight > 0) {
+            const part = inner.clientHeight % line;
+            if (Math.min(part, line - part) > 1) {
+              out.push(`${slot}: <${inner.tagName.toLowerCase()} class="${inner.getAttribute("class") ?? ""}"> cuts a line, ${inner.clientHeight}px of ${line}px lines`);
+            }
+          }
+          // A decorative icon is left alone too: a spinning glyph's rotated corners count as overflow.
+          const decor = inner.closest('[aria-hidden="true"]') !== null;
+          if (!clamps && !decor && css.display !== "inline" && inner.scrollHeight - inner.clientHeight > 1) {
+            out.push(`${slot}: <${inner.tagName.toLowerCase()} class="${inner.getAttribute("class") ?? ""}"> holds ${inner.scrollHeight}px in ${inner.clientHeight}px`);
+          }
+        }
+      }
+    }
+    return out;
+  });
 }
 
 /** Half a pixel, in every direction, on every box. */

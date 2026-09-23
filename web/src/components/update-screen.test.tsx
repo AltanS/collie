@@ -161,8 +161,8 @@ describe("every slot is there in every state, at its fixed height", () => {
       const rows = container.querySelectorAll('[data-slot="update-row"]');
       expect(rows).toHaveLength(4);
       for (const row of rows) expect(row).toHaveClass("h-13");
-      expect(slot(container, "update-rows")).toHaveStyle({ height: "208px" });
-      expect(slot(container, "update-note")).toHaveClass("h-[84px]");
+      expect(slot(container, "update-rows")).toHaveStyle({ height: "13rem" });
+      expect(slot(container, "update-note")).toHaveClass("h-[5.25rem]");
       expect(slot(container, "update-footer")).toHaveClass("h-24");
     });
   }

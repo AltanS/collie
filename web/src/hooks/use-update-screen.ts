@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useLocale } from "@/hooks/use-locale";
+import { useScreenAwake } from "@/hooks/use-screen-awake";
 import { useTick } from "@/hooks/use-tick";
 import { BUILD, isStaleBuild } from "@/lib/build";
 import { t } from "@/lib/i18n";
@@ -163,6 +164,10 @@ export function useUpdateScreen(): UpdateScreen {
   // THIS PHONE'S RELOAD WAITS FOR STEP 6 (ADR 0064). Held on every device while machines still move,
   // so no page reloads onto a bundle mid-run; released on step 6, when the reload is the point.
   useHoldReload(UPDATE_MODE_HOLD, view.holdsReload);
+
+  // THE SCREEN STAYS ON WHILE THE MODE LOCKS THE APP (ADR 0064). A phone that sleeps mid-run
+  // freezes the band's clock and bar although the machines keep going.
+  useScreenAwake(view.locked);
 
   // STEP 6 ASKS FOR THE NEW APP, ONCE PER RUN. The self-updater would get there too, but only if its
   // once-per-build guard is unspent; the step must not depend on that.

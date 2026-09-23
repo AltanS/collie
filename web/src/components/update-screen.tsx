@@ -25,13 +25,16 @@ import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-scree
 //
 // ── NOTHING IN THE PANEL MOVES BETWEEN TWO STATES ───────────────────────────
 // DESIGN.md §2, applied to a screen whose every state is a timer's. Every box below has a height of
-// its own, stated, never measured from what it holds:
+// its own, stated, never measured from what it holds. Every one is in rem, so a larger text size
+// (the browser's, or Android's font scale) grows text and box together; the px below are at 16px:
 //
 //   heading    one line, `h-7`, truncated
 //   subtitle   `h-10`, which is two 20px lines, clamped to two; a one-line subtitle keeps both
 //   rows       `h-13` each (52px): a first line, and a 16px slot under it that holds a reason, a
-//              progress bar or nothing. The list is `rows × 52px`, scrolled inside past six.
-//   note       `h-[84px]`: two 16px lines, then one 44px row for the member question's two buttons,
+//              progress bar or nothing. The list is `rows × 52px`, scrolled inside past six, and it
+//              is the one box that gives way when a large text size makes the panel taller than the
+//              screen below the band. That cap is the viewport's, so it too is the same in every state.
+//   note       `h-[5.25rem]` (84px): two 16px lines, then one 44px row for the member question's two buttons,
 //              the stuck command, or nothing
 //   footer     two 44px rows: the lock line or a primary action, then a second action or nothing
 //
@@ -52,8 +55,10 @@ import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-scree
 // the page (the controller swap does, `lib/pwa.ts`), and the only update it starts is the one "Start
 // update" confirms.
 
-/** One row's height, in px. Tailwind's `h-13`. The list's height is this times the rows shown. */
-const ROW_PX = 52;
+/** One row's height, in rem. Tailwind's `h-13`, 52px at the default text size. The list's height is
+ *  this times the rows shown, in rem like every other box here, so a larger text size scales the
+ *  panel as one piece instead of spilling a px box. */
+const ROW_REM = 3.25;
 /** Past this many rows the list scrolls inside its own box rather than growing the panel. */
 const MAX_ROWS = 6;
 
@@ -119,7 +124,7 @@ export function UpdateScreen({
         ref={panelRef}
         tabIndex={-1}
         data-slot="update-panel"
-        className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-screen-sm flex-col rounded-t-md border border-rule bg-card px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-2xl"
+        className="absolute inset-x-0 bottom-0 mx-auto flex max-h-[calc(100dvh-env(safe-area-inset-top)-3.5rem)] w-full max-w-screen-sm flex-col rounded-t-md border border-rule bg-card px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-2xl"
       >
         <div aria-hidden="true" className="flex h-4 shrink-0 justify-center">
           <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />
@@ -135,14 +140,14 @@ export function UpdateScreen({
         >
           {view.heading}
         </h2>
-        <div data-slot="update-subtitle" className="mt-1 h-10 shrink-0 text-[13px] leading-5 text-muted-foreground">
+        <div data-slot="update-subtitle" className="mt-1 h-10 shrink-0 text-[0.8125rem] leading-5 text-muted-foreground">
           <p className="line-clamp-2">{view.subtitle}</p>
         </div>
         <ul
           data-slot="update-rows"
           aria-label={t("updateScreen.rows.label")}
-          className="mt-3 shrink-0 overflow-y-auto overscroll-contain"
-          style={{ height: visibleRows * ROW_PX }}
+          className="mt-3 min-h-0 overflow-y-auto overscroll-contain"
+          style={{ height: `${visibleRows * ROW_REM}rem` }}
         >
           {view.rows.map((row) => (
             <Row key={row.key} row={row} />
@@ -265,7 +270,7 @@ function RowIcon({ status }: { status: UpdateScreenRow["status"] }) {
   }
 }
 
-/** Two lines of what comes next, then one row for the question or the command. Always 84px. */
+/** Two lines of what comes next, then one row for the question or the command. Always 5.25rem, 84px at the default text size. */
 function Note({ screen, error }: { screen: UpdateScreenState; error: string | null }) {
   const { view } = screen;
   const [copied, setCopied] = useState(false);
@@ -301,7 +306,7 @@ function Note({ screen, error }: { screen: UpdateScreenState; error: string | nu
     );
   }
   return (
-    <div data-slot="update-note" className="mt-3 flex h-[84px] shrink-0 flex-col gap-2">
+    <div data-slot="update-note" className="mt-3 flex h-[5.25rem] shrink-0 flex-col gap-2">
       <p
         className={cn(
           "line-clamp-2 h-8 text-xs leading-4",
