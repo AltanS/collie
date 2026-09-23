@@ -378,8 +378,11 @@ export function AgentChat({
   // the floating way out in landscape would exit and instantly re-enter. The ref starts portrait so
   // mounting already sideways counts as a flip and opens chrome-free, matching a reload in hand.
   const shortViewport = useMediaQuery("(max-height: 520px)");
+  // A browser with no `screen.orientation` (iOS Safari before 16.4) falls back to the CSS query it
+  // always used, so auto-zen still follows the rotation there.
+  const cssLandscape = useMediaQuery("(orientation: landscape)");
   const [physicalLandscape, setPhysicalLandscape] = useState(
-    () => window.screen.orientation?.type.startsWith("landscape") ?? false,
+    () => window.screen.orientation?.type.startsWith("landscape") ?? null,
   );
   useEffect(() => {
     const orientation = window.screen.orientation;
@@ -392,7 +395,7 @@ export function AgentChat({
   // A soft keyboard can make a portrait cover display wider than its remaining viewport height.
   // CSS orientation then says landscape although the phone has not rotated; physical orientation
   // keeps auto-zen from unmounting the focused composer in that state.
-  const landscape = physicalLandscape && shortViewport;
+  const landscape = (physicalLandscape ?? cssLandscape) && shortViewport;
   const autoZenSetting = useAutoZenEnabled();
   const autoZenActive = zenAvailable && autoZenSetting;
   const autoZen = useRef(false);
