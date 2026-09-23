@@ -6,6 +6,8 @@
 - **Trail:** GitHub discussion 258 and issues 256 / 257 (@lighcen: "show me what the agent changed")
   · `bridge/changes.ts` · `bridge/server.ts` (`PANE_ROUTE`, `paneChanges`) ·
   `bridge/changes-root.ts` (`workspaceRoot`) · `WORKSPACE_CHANGES_ROUTE`, `workspaceChanges` ·
+  `bridge/changes.ts` (`SharedReads`, `repoOfFolder`, `depthLimited`) · `web/src/lib/changes-tree.ts`
+  (`folderInRepo`, `openFolderChain`) · `web/src/components/changes-control.tsx` ·
   `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header) · `web/src/routes/changes.tsx` ·
   `web/src/components/changes-view.tsx` · `web/src/lib/unified-diff.ts` ·
   `web/src/lib/diff-highlight.ts` · `web/src/lib/diff-highlight-engine.ts` ·
@@ -69,6 +71,22 @@ settings card) is about 4 KB.
    `node_modules`, `dist`, `build`, `vendor`, `target`, and stops at 20 repos or 5000 entries. A
    submodule or untracked nested repo that discovery finds is shown once, as its own repo, and its
    entry in the parent's list is dropped.
+
+   **A bound that was hit is said once, quietly, at the end of the list.** Below the asked depth
+   (and never at 4, the deepest there is) discovery reads one more level on what is left of the
+   same entry budget, stops at the first `.git`, and lists nothing it sees there; a repo found sets
+   `depthLimited`. The list then ends with "Stopped at 2 levels, with repos further down." and a
+   "Look deeper in Settings" link to the Changes card (`/settings#changes`). A list cut at 20 repos,
+   5000 entries or a per-repo cap keeps its own "The list hit a limit" line instead, since it is
+   missing things for sure. A look-ahead is the honest test: "there are folders below the depth"
+   is true of almost every workspace and would put the note on every list.
+
+   **Opened from a pane, the list marks the pane's own repo.** The pane route adds `paneRepo`, the
+   `relPath` of the deepest listed repo whose folder holds the pane's `cwd` (`repoOfFolder`),
+   absent when that repo has no changes. With more than one repo listed, that group's heading
+   carries "This pane", and on the first answer only its folder chain is opened in Tree view and
+   the group is scrolled into view. A 5 s re-read moves nothing, and a folder the operator closes
+   afterwards stays closed. The workspace route has no asking pane and sends no mark.
 4. **Hardened git.** argv only, no shell, a 5 s timeout and an output cap per run. Each run
    neutralises the repo-driven ways to execute: `core.fsmonitor=false`, `core.hooksPath=/dev/null`,
    `diff.external=` with `--no-ext-diff`, `--no-textconv`, every configured filter driver's
@@ -143,9 +161,17 @@ settings card) is about 4 KB.
    - **The cost bound.** One discovery walk plus one `git status` per discovered repo, per open
      screen, every 5 s; the file view adds one `git diff` of one file and a second walk. Measured
      on `collie-workspace` (4 repos) through `listChanges` itself: discovery 1.1 ms at depth 2 and
-     5.1 ms at depth 4, the whole list 24 to 25 ms. Discovery is not cached: at a few percent of a
-     read that is itself about 0.5% of the beat, a cache would only add a staleness window for a
-     new repo. `git status` is never cached, since it is the answer.
+     5.1 ms at depth 4, the whole list 24 to 25 ms.
+   - **Shared reads, for 1.5 s and no longer.** Several devices, the dashboard's Changes tab and a
+     crew lead forwarding each device's poll all read the same repos on their own 5 s beats, and
+     each used to run its own `git status` per repo. Now concurrent list asks for one
+     (root, depth, nested), and diff asks for one (root, repo, path, depth, nested), share one
+     in-flight git run, and the answer serves every asker for 1.5 s after it lands
+     (`SharedReads`, `CHANGES_SHARE_MS` in `bridge/changes.ts`). 1.5 s is the snapshot poll's
+     fastest beat, so an answer is never older than a poll would be, and git runs again for a key
+     at most every 1.5 s, never cached longer. A read that fails is not kept. The first cut said
+     `git status` is never cached, since it is the answer; one beat's worth of sharing keeps that
+     true for every asker while it stops N devices from multiplying the work.
 
    Both routes are reads like `history`, forwarded with `?host=` to the member that owns the pane
    or the workspace, additive-optional on the crew link.
@@ -183,6 +209,8 @@ settings card) is about 4 KB.
   Already so, and confirmed: the list's truncation flag, per-repo status run in parallel with a
   limit, rename-aware `-M` on both numstat and diff with both paths named, and a diff cut on a line
   boundary.
+- **Counsel, 2026-09-23 (batch).** Fixed here: shared reads (rule 8), the pane's repo mark and the
+  bound note (rule 3). What that round declined is listed in ADR 0067's Consequences.
 - **Highlighting, 2026-09-23.** Rule 7 first said "no highlighting". The operator asked for it once
   the view was in use, and it went in as rule 7 now reads: one small library, lazily loaded, and
   held to the view's no-shift and text-node rules.
