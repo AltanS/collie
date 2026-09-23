@@ -182,6 +182,21 @@ export function parseSubmitRow(text: string): { n: number; checked: number } | n
   return { n: Number(m[1]), checked: Number(m[2]) };
 }
 
+// The slash-command palette's suggestion row: 2-space indent (continuation-shaped, which is why it
+// pollutes the draft read), `/command`, a padded gap, the description (`  /usage  Show session
+// usage`). The gap is column padding, so two-or-more spaces. Unlike the option forms this is NOT
+// trimmed: the indent is structural. Only ever read under a slash-led prompt row (chrome.ts): the
+// palette opens for slash input alone, so that gate keeps a prose continuation starting with `/`
+// (a path) from parsing as a suggestion.
+const PALETTE_ROW = /^  (\/\S+)\s{2,}(\S.*)$/;
+
+/** Parse a palette suggestion row into its command, or null. */
+export function parsePaletteRow(text: string): { command: string } | null {
+  const m = PALETTE_ROW.exec(rstrip(text));
+  if (!m) return null;
+  return { command: m[1]! };
+}
+
 // A lifted menu's rows must be CONTIGUOUS screen rows. trailingMenuRows takes a numeric suffix,
 // which would otherwise fuse a transcript numbered list sitting above the menu into it whenever the
 // numbering happens to continue (transcript 1,2 + menu 3,4 reads as one run) — and the fused rows

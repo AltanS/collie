@@ -47,6 +47,8 @@ const PINNED = [
   "muse--draft-single.txt",
   "muse--draft-wrapped.txt",
   "muse--fresh-idle.txt",
+  "muse--palette-exact.txt",
+  "muse--palette-partial.txt",
   "muse--quoted-dialogs-bare.txt",
   "muse--trust-prompt.txt",
   "muse--working.txt",

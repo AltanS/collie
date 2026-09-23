@@ -227,6 +227,14 @@ Probed recipe — digit alone (family `trust`): `1` submitted immediately
   no live box beside it.
 - **Every lift keeps the rows above it (added at merge).** The prompt panel shows neither the
   approval's command nor the trust prompt's folder, so those rows stay on screen as raw text.
+- **The palette's exact-match row is not draft (added 2026-09-23, #276).** Typing `/usage`
+  opens one suggestion row inside the draft run, and folding it in could never verify. When
+  the prompt starts with `/` and the run below it is exactly one suggestion row naming that
+  same command, the draft reads as the prompt text alone — Enter submits the exact match
+  (probed). Partial input keeps the legacy polluted read and stalls safe: Enter there
+  accepts the highlighted suggestion (probed: `/us` ran `/usage`), so verifying the typed
+  text would bless a command the operator did not type. Multi-suggestion and slash-led
+  multi-line drafts stay unmeasured and stall the same safe way.
 - **The review cancel button says `Interrupt turn` (added at merge).** That row ends the whole
   turn, and the button carries the terminal's own words rather than "Cancel".
 
