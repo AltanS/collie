@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
+import { useNav } from "@/hooks/use-nav";
 import { CHANGES_POLL_MS, useVisibleInterval } from "@/hooks/use-visible-interval";
 import { fetchChangeDiff, fetchChanges, type ChangesLookup, type ChangesTarget } from "@/lib/api";
 import {
@@ -131,6 +132,7 @@ export function ChangesRoute() {
   const targetKey = target.kind === "pane" ? `pane:${paneId}` : `space:${spaceId}`;
   const scope = useScope();
   const navigate = useNavigate();
+  const nav = useNav();
   const location = useLocation();
   const [search] = useSearchParams();
   const root = useRootData();
@@ -302,7 +304,9 @@ export function ChangesRoute() {
     if (fromList) navigate(-1);
     else navigate(pathTo(), { replace: true });
   };
-  const backOut = () => navigate(target.kind === "pane" ? panePath(paneId, scope) : spacePath(spaceId, scope));
+  // Up one level (ADR 0067): a step back to the dashboard, space or pane this list was opened from,
+  // else a replace onto the pane or the space, never a push that leaves the list behind it.
+  const backOut = () => nav.up(target.kind === "pane" ? panePath(paneId, scope) : spacePath(spaceId, scope));
 
   // The header names the scope: the workspace, then its folder. The list's own answer wins, because
   // the bridge resolved the root; before it arrives the snapshot's label stands in.

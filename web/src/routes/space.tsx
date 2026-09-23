@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useRevalidator } from "react-router";
+import { useParams, useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -12,6 +12,7 @@ import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useNav } from "@/hooks/use-nav";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { homePath, panePath, spacePath } from "@/lib/nav";
 import { ambientHost, paneScope } from "@/lib/hosts";
@@ -28,7 +29,7 @@ import { useRootData } from "@/lib/route-data";
 export function SpaceRoute() {
   const data = useRootData();
   const { spaceId = "" } = useParams();
-  const navigate = useNavigate();
+  const nav = useNav();
   const revalidator = useRevalidator();
   const { newTab, newSpace, creatingTab, creatingSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
@@ -48,8 +49,9 @@ export function SpaceRoute() {
 
   const selectedWs = data.workspaces.find((w) => w.workspaceId === spaceId);
 
-  const toDashboard = () => navigate(homePath(data.scope));
-  const switchSpace = (id: string) => navigate(spacePath(id, data.scope));
+  // ADR 0067: the dashboard is up, another space is sideways, a pane is down.
+  const toDashboard = () => nav.up(homePath(data.scope));
+  const switchSpace = (id: string) => nav.side(spacePath(id, data.scope));
   const switchTab = (id: string | null) => setTab(id);
   // The machine THIS space is addressed on, not necessarily the one leading the crew. The loader's
   // `ambientSpaces` narrows `data.workspaces`/`data.tabs` to the host `?h=` names before this route
@@ -60,7 +62,7 @@ export function SpaceRoute() {
   // tab as "(empty tab)" (#209). Undefined when solo, which is `undefined` both ways.
   const navHost = ambientHost(data.servers, data.scope.host);
   const open = (pane: AgentView) =>
-    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
+    nav.down(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
 
   // Same fix as home.tsx's dashboard scroller, same cause: ScreenTransition remounts this route on
   // every space<->pane move, so the scroller below is a fresh DOM node each time. Keyed on scope +
@@ -78,12 +80,15 @@ export function SpaceRoute() {
   const gone = !selectedWs;
   const everExisted = useRef(false);
   if (selectedWs) everExisted.current = true;
+  // Up, once per space: an up can be a step back, and a second one would climb past the dashboard.
+  const exited = useRef<string | null>(null);
   useEffect(() => {
-    if (gone && data.bridge === "connected" && !data.error) {
+    if (gone && data.bridge === "connected" && !data.error && exited.current !== spaceId) {
+      exited.current = spaceId;
       setStatus(everExisted.current ? "Space closed" : "Space not found", "info");
-      navigate(homePath(data.scope), { replace: true });
+      nav.up(homePath(data.scope));
     }
-  }, [gone, data.bridge, data.error, data.scope, navigate]);
+  }, [gone, data.bridge, data.error, data.scope, nav, spaceId]);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">

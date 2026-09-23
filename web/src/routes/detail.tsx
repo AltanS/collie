@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
-import { useLoaderData, useLocation, useNavigate, useParams } from "react-router";
+import { useLoaderData, useLocation, useParams } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
+import { useNav } from "@/hooks/use-nav";
 import { type PaneData } from "@/lib/loaders";
 import { homePath, panePath } from "@/lib/nav";
 import { paneScopeKey } from "@/lib/scope";
@@ -26,7 +27,7 @@ export function DetailRoute() {
   // The session this pane belongs to (undefined = primary), read from the pane loader so every
   // navigation and write below stays scoped to it.
   const scope = pane.scope;
-  const navigate = useNavigate();
+  const nav = useNav();
   const location = useLocation();
   const stalled = useLoadingStalled();
 
@@ -60,19 +61,23 @@ export function DetailRoute() {
     (fresh && fresh.paneId === paneId && !seen ? fresh : undefined);
   const gone = !agent;
 
-  // Recover from a closed pane: once a healthy snapshot no longer has it, bounce Home instead of
+  // Recover from a closed pane: once a healthy snapshot no longer has it, go up a level instead of
   // leaving you on a dead "agent gone" view. Guarded on a connected, non-stale snapshot so a
-  // transient poll failure or reconnect doesn't evict a still-valid pane.
+  // transient poll failure or reconnect doesn't evict a still-valid pane. Up, not a replace onto
+  // Home: the dead pane must not stay in history for the next swipe to land on (ADR 0067). Once per
+  // pane, because an up can be a step back, and a second one would climb a level too far.
+  const exited = useRef<string | null>(null);
   useEffect(() => {
-    if (gone && root.bridge === "connected" && !root.error) {
+    if (gone && root.bridge === "connected" && !root.error && exited.current !== paneId) {
+      exited.current = paneId;
       // The operator did not close this pane from this phone. It went away under them — from
       // another device, from the terminal itself, or because the agent exited — and a poll is what
       // noticed. The status (and the orbit round it turns) is what stops the eviction that follows
       // being the first thing they see.
       setStatus("Pane closed", "info");
-      navigate(homePath(scope), { replace: true });
+      nav.up(homePath(scope));
     }
-  }, [gone, root.bridge, root.error, navigate, scope]);
+  }, [gone, root.bridge, root.error, nav, scope, paneId]);
 
   return (
     <AgentChat
@@ -97,9 +102,11 @@ export function DetailRoute() {
       bridge={root.bridge}
       error={root.error}
       stalled={stalled}
-      onBack={() => navigate(homePath(scope))}
+      // Up one level: to the space or the dashboard the pane was opened from (ADR 0067).
+      onBack={() => nav.up(homePath(scope))}
+      // Pane to pane is a sideways move: it replaces, and the pane's way up comes along.
       onSelect={(id) =>
-        navigate(
+        nav.side(
           panePath(
             id,
             paneScope(

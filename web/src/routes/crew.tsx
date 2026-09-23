@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Crown, Network, Shield } from "lucide-react";
-import { useLoaderData, useNavigate } from "react-router";
+import { useLoaderData } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { useCrew } from "@/components/crew-provider";
 import { healthTone, healthWord, CrewFormation } from "@/components/crew-formation";
 import { useLocale } from "@/hooks/use-locale";
+import { useNav } from "@/hooks/use-nav";
 import { timeAgoShort } from "@/lib/format";
 import { hostCounts } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
@@ -51,7 +52,7 @@ import { cn } from "@/lib/utils";
 // slow would report a dead machine as current. lib/host-health.ts's header has the full argument;
 // this page obeys it for `rotatedAt` and `enrolledAt` as well as for `lastSeenAt`.
 export function CrewRoute() {
-  const navigate = useNavigate();
+  const nav = useNav();
   const scope = useScope();
   useLocale();
   const root = useOptionalRootData();
@@ -93,7 +94,7 @@ export function CrewRoute() {
               size="icon"
               // 44px — the tap floor every control in this row shares. size="icon" alone is 36px.
               className="size-11"
-              onClick={() => navigate(homePath(scope))}
+              onClick={() => nav.up(homePath(scope))}
               aria-label={t("crew.nav.back")}
             >
               <ArrowLeft className="size-5" />
@@ -139,7 +140,9 @@ export function CrewRoute() {
                   // The ServerSwitcher's rule, restated because it is the one this milestone exists
                   // to enforce: a host switch goes HOME on that machine and NEVER carries a pane or
                   // session id across. `w1:p1` on the peer is a different terminal entirely.
-                  navigate(
+                  // Sideways onto that machine's dashboard: a replace, so Back does not return to
+                  // the census the operator just left for it (ADR 0067).
+                  nav.side(
                     homePath({ host: selected.isLead ? undefined : selected.id, session: undefined }),
                   );
                 }}

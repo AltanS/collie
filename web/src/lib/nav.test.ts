@@ -1,4 +1,15 @@
-import { homePath, panePath, settingsPath, updatesPath } from "./nav";
+import {
+  ancestorsOf,
+  homePath,
+  isAncestor,
+  panePath,
+  parentChain,
+  readFrom,
+  resolveUp,
+  resolveUpTo,
+  settingsPath,
+  updatesPath,
+} from "./nav";
 
 describe("panePath", () => {
   it("URL-encodes the colon in a pane id", () => {
@@ -63,5 +74,108 @@ describe("updatesPath", () => {
     // It is a path, not a fragment: PAIRED_DEVICES_HASH's shape would not have given it a route.
     expect(updatesPath()).not.toContain("#");
     expect(settingsPath()).toBe("/settings");
+  });
+});
+
+// ── ADR 0067: back goes up one level ────────────────────────────────────────────────────────────
+
+describe("readFrom", () => {
+  it("reads a from string beside other state", () => {
+    expect(readFrom({ from: "/space/w1", freshPane: {} })).toBe("/space/w1");
+  });
+
+  it("ignores anything that is not an app path", () => {
+    expect(readFrom(null)).toBeUndefined();
+    expect(readFrom("from")).toBeUndefined();
+    expect(readFrom({ fromList: true })).toBeUndefined();
+    expect(readFrom({ from: 3 })).toBeUndefined();
+    expect(readFrom({ from: "https://evil.example/" })).toBeUndefined();
+  });
+});
+
+describe("ancestorsOf / isAncestor: the level tree", () => {
+  it("has nothing above the dashboard", () => {
+    expect(ancestorsOf("/")).toEqual([]);
+  });
+
+  it.each([
+    ["/", "/space/w1", true],
+    ["/?h=badger", "/space/w1", true],
+    ["/settings", "/space/w1", false],
+    ["/", "/pane/w1%3Ap1", true],
+    ["/space/w1", "/pane/w1%3Ap1", true],
+    // Any space: a pane's space is not in its path.
+    ["/space/w9?h=badger", "/pane/w1%3Ap1", true],
+    ["/pane/w1%3Ap2", "/pane/w1%3Ap1", false],
+    ["/settings", "/pane/w1%3Ap1", false],
+    ["/pane/w1%3Ap1", "/pane/w1%3Ap1/history", true],
+    ["/pane/w1%3Ap2", "/pane/w1%3Ap1/history", false],
+    ["/pane/w1%3Ap1/history", "/pane/w1%3Ap1", false],
+    ["/pane/w1%3Ap1", "/pane/w1%3Ap1/changes", true],
+    ["/", "/space/w1/changes", true],
+    ["/space/w1", "/space/w1/changes", true],
+    ["/space/w2", "/space/w1/changes", false],
+    ["/", "/settings", true],
+    ["/pane/w1%3Ap1", "/settings", false],
+    ["/settings", "/settings/updates", true],
+    ["/", "/settings/updates", true],
+    ["/", "/crew", true],
+    ["/settings", "/crew", true],
+    ["/", "/nowhere", false],
+  ])("%s above %s: %s", (from, here, expected) => {
+    expect(isAncestor(from, here)).toBe(expected);
+  });
+});
+
+describe("resolveUp: the back arrow", () => {
+  it("steps back when the entry behind is a parent", () => {
+    expect(resolveUp("/pane/p1", "/space/w1", "/")).toEqual({ kind: "back" });
+    expect(resolveUp("/space/w1/changes", "/", "/space/w1")).toEqual({ kind: "back" });
+  });
+
+  it("replaces onto the structural parent when the entry behind is not one", () => {
+    expect(resolveUp("/settings", "/pane/p1", "/")).toEqual({ kind: "replace", to: "/" });
+    expect(resolveUp("/settings/updates", "/pane/p1", "/settings")).toEqual({ kind: "replace", to: "/settings" });
+  });
+
+  it("replaces on a cold entry with no from", () => {
+    expect(resolveUp("/pane/p1", undefined, "/?h=badger")).toEqual({ kind: "replace", to: "/?h=badger" });
+  });
+
+  it("never steps back from the router's first entry", () => {
+    expect(resolveUp("/pane/p1", "/", "/", false)).toEqual({ kind: "replace", to: "/" });
+  });
+});
+
+describe("resolveUpTo: a named parent", () => {
+  it("steps back only onto that very parent", () => {
+    expect(resolveUpTo("/space/w1", "/space/w1")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/space/w1?h=a", "/space/w1")).toEqual({ kind: "back" });
+  });
+
+  it("replaces when the pane came from somewhere else", () => {
+    expect(resolveUpTo("/", "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
+    expect(resolveUpTo("/space/w2", "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
+    expect(resolveUpTo(undefined, "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
+  });
+});
+
+describe("parentChain: what a cold deep link gets behind it", () => {
+  it.each([
+    ["/", "", []],
+    ["/pane/w1%3Ap1", "", ["/"]],
+    ["/pane/w1%3Ap1", "?h=badger&s=demo", ["/?h=badger&s=demo"]],
+    ["/pane/w1%3Ap1/history", "?h=badger", ["/?h=badger", "/pane/w1%3Ap1?h=badger"]],
+    ["/pane/w1%3Ap1/changes", "", ["/", "/pane/w1%3Ap1"]],
+    ["/pane/w1%3Ap1/changes", "?repo=.&path=a.ts", ["/", "/pane/w1%3Ap1", "/pane/w1%3Ap1/changes"]],
+    ["/space/w1", "", ["/"]],
+    ["/space/w1/changes", "", ["/", "/space/w1"]],
+    ["/space/w1/changes", "?repo=.&path=a.ts", ["/", "/space/w1", "/space/w1/changes"]],
+    ["/settings", "", ["/"]],
+    ["/settings/updates", "", ["/", "/settings"]],
+    ["/crew", "", ["/"]],
+    ["/nowhere", "", []],
+  ])("%s%s → %j", (pathname, search, expected) => {
+    expect(parentChain(pathname, search)).toEqual(expected);
   });
 });

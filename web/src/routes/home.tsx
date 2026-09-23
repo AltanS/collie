@@ -1,6 +1,5 @@
 import { BellRing, GitCompare, Rows3 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
@@ -21,6 +20,7 @@ import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { useWorkspaceChangeCounts } from "@/hooks/use-workspace-change-counts";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useNav } from "@/hooks/use-nav";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { ambientHost, ambientPanes, paneScope, sessionsOnHost } from "@/lib/hosts";
@@ -52,7 +52,7 @@ function ChangesTabBody({
   sessions: readonly SessionSummary[] | undefined;
   lookup: ChangesLookup;
 }) {
-  const navigate = useNavigate();
+  const nav = useNav();
   const rows = useMemo<WorkspaceChangesRow[]>(
     () =>
       groups.flatMap((g) => {
@@ -69,7 +69,7 @@ function ChangesTabBody({
     <WorkspaceChangesList
       rows={rows}
       counts={counts}
-      onOpen={(row) => navigate(spaceChangesPath(row.workspaceId, row.scope))}
+      onOpen={(row) => nav.down(spaceChangesPath(row.workspaceId, row.scope))}
     />
   );
 }
@@ -83,7 +83,7 @@ function ChangesTabBody({
 // drills into /space/:id; tapping a launcher creates a throwaway Space and types its command.
 export function HomeRoute() {
   const data = useRootData();
-  const navigate = useNavigate();
+  const nav = useNav();
   const { newSpace, newWorktree, showWorktree, creatingSpace } = useSpaceActions();
 
   // Which repos a worktree could be branched from: one entry per repo, taken from the space that
@@ -119,8 +119,8 @@ export function HomeRoute() {
   // other than where the URL currently points. Resolving it here is what stops a reply landing on the
   // right pane name on the wrong terminal. Solo: every pane is untagged, so this is `data.scope`.
   const open = (pane: AgentView) =>
-    navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
-  const drillInto = (id: string) => navigate(spacePath(id, data.scope));
+    nav.down(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
+  const drillInto = (id: string) => nav.down(spacePath(id, data.scope));
   // The space navigator shows the ADDRESSED machine's spaces — the loader's `ambientSpaces` has
   // already narrowed `data.workspaces`/`data.tabs` to the host `?h=` names (or the lead, absent one;
   // untagged rows, i.e. every solo snapshot, pass regardless). Their panes must be looked up under

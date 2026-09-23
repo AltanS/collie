@@ -4,7 +4,7 @@ import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
 import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
-import { openNotificationTarget, type OpenOutcome } from "./lib/notification-open";
+import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
 import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
 
 // Where this worker is mounted (ADR 0052): the directory it was fetched from, which is the mount
@@ -229,6 +229,19 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
   );
 });
 
+// A window as lib/notification-open sees it: the WindowClient itself, plus `openInApp`, which asks
+// the running app to push the URL in its own router (ADR 0067) and waits briefly for its answer.
+function asTarget(client: WindowClient): OpenTargetClient {
+  return {
+    url: client.url,
+    visibilityState: client.visibilityState,
+    focused: client.focused,
+    navigate: (target) => client.navigate(target),
+    focus: () => client.focus(),
+    openInApp: (target) => askInApp(client, target),
+  };
+}
+
 // Focus an existing Collie tab (navigating it to `path`) or open a new one. `path` is
 // origin-relative. The choice lives in lib/notification-open, which also documents why a window is
 // opened before any discarded client is navigated (#147, and the Android regression that fix grew).
@@ -241,7 +254,7 @@ async function openPath(path: string): Promise<OpenOutcome> {
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   return openNotificationTarget({
     url,
-    clients: windows,
+    clients: windows.map(asTarget),
     openWindow: (target) => self.clients.openWindow(target),
   });
 }

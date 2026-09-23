@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router";
 import { Check, Crown, Network, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useNav } from "@/hooks/use-nav";
 import { BottomSheet } from "@/components/ui/sheet";
 import { crewPath, homePath } from "@/lib/nav";
 import { hostHealth, linkPresentation, type HostHealth } from "@/lib/host-health";
@@ -62,7 +62,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
   useLocale();
   const current = scope.host;
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
+  const nav = useNav();
   // TIER-2 health, already derived once at the data root against the LEAD's clock (the only clock
   // `lastSeenAt` is comparable to — lib/host-health.ts). Mounted outside a provider (this component's
   // own unit tests), the fallback re-derives with no clock at all, which skips §10.2's tolerance and
@@ -85,7 +85,8 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
     // The lead carries no `?h=` — absent means the lead, so selecting it restores today's bare URL.
     const target = s.isLead ? undefined : s.id;
     if (target === current) return;
-    navigate(homePath({ host: target, session: scope.session }));
+    // Sideways: another machine's dashboard replaces this one, so Back never walks the machines (ADR 0067).
+    nav.side(homePath({ host: target, session: scope.session }));
   }
 
   return (
@@ -211,7 +212,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
             type="button"
             onClick={() => {
               setOpen(false);
-              navigate(crewPath(scope));
+              nav.down(crewPath(scope));
             }}
             className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-rule px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent active:bg-accent"
           >

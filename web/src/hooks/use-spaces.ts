@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { useNavigate, useRevalidator } from "react-router";
+import { useRevalidator } from "react-router";
 
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
@@ -7,6 +7,7 @@ import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { stampTopology } from "@/lib/poll-intent";
 import { panePath } from "@/lib/nav";
+import { useNav } from "@/hooks/use-nav";
 import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { Scope } from "@/lib/scope";
@@ -17,7 +18,7 @@ import { useOptionalRootData } from "@/lib/route-data";
 // we pass it through navigation state (`freshPane`) — the detail route falls back to it so the
 // composer is live immediately (no "agent gone" flash) while a revalidate catches the snapshot up.
 export function useSpaceActions() {
-  const navigate = useNavigate();
+  const nav = useNav();
   const revalidator = useRevalidator();
   // revalidator changes identity each revalidation cycle; keep the callbacks stable via a ref so
   // they don't break a memoized child when passed as props.
@@ -75,9 +76,11 @@ export function useSpaceActions() {
       // the dashboard behind it) should not wait out an idle-timed gap to show the new pane.
       stampTopology();
       revalidatorRef.current.revalidate();
-      navigate(panePath(p.paneId, at ?? scopeRef.current), { state: { freshPane: fresh } });
+      // `open`: a step DOWN from a dashboard or a space, SIDEWAYS from a pane (a new tab opened
+      // from inside one), so the new pane's way up is the level the operator started from (ADR 0067).
+      nav.open(panePath(p.paneId, at ?? scopeRef.current), { freshPane: fresh });
     },
-    [navigate],
+    [nav],
   );
 
   // ONE create per Space's "+" at a time — the same shape as `launch` below, and for the same

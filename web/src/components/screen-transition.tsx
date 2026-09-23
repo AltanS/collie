@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useNavigationType } from "react-router";
 
 import { cn } from "@/lib/utils";
 import { homePath, panePath } from "@/lib/nav";
+import { isInAppBack } from "@/lib/nav-entry";
 
 /**
  * The everyday move, animated: dashboard → pane slides in from the right, pane → dashboard slides
@@ -101,6 +102,12 @@ export function ScreenTransition({
   className?: string;
 }) {
   const { pathname, key } = useLocation();
+  // A POP is the phone's own back (the iOS edge swipe, Android's back, a browser button), and the
+  // phone draws its own animation for it; a slide of ours on top would play the move twice. The one
+  // POP that keeps the slide is the app's own back arrow stepping back (hooks/use-nav.ts), which
+  // marks the pathname it is about to land on (ADR 0067).
+  const navigationType = useNavigationType();
+  const pop = navigationType === "POP" && !isInAppBack(pathname);
   // The previous pathname, held as STATE and updated during render rather than through a ref or an
   // effect. A ref mutated in the render body is double-written under StrictMode's second pass, which
   // classifies every move as `none`; an effect runs after the commit, so the first frame of the new
@@ -122,7 +129,7 @@ export function ScreenTransition({
     mounts: number;
   }>(() => ({ pathname, key, move: "none", mounts: 0 }));
   if (seen.key !== key) {
-    const move = classifyMove(seen.pathname, pathname);
+    const move = pop ? "none" : classifyMove(seen.pathname, pathname);
     // A move that does not animate does not remount either. This is not an optimisation; it is the
     // difference between keying the outlet and breaking every screen that keeps state across a
     // navigation React Router would have reconciled: pane → pane through the pane strip, pane →

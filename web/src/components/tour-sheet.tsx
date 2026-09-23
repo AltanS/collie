@@ -1,8 +1,8 @@
 import * as React from "react";
 import { KeyRound, MonitorDown, SquarePlus, BellRing } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { Button } from "@/components/ui/button";
+import { useNav } from "@/hooks/use-nav";
 import { Card } from "@/components/ui/card";
 import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -440,7 +440,7 @@ export function TourHost({ home, onDecision }: TourHostProps) {
  * an app that never shows it from probing push at boot.
  */
 function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void }) {
-  const navigate = useNavigate();
+  const nav = useNav();
   const mux = useMuxName();
   const { state, busy, setEnabled } = usePushControl();
   const installOffer = useInstallOffer();
@@ -459,7 +459,7 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
   const exit = (reason: TourExit) => {
     onClosed();
     if (reason === "pair") {
-      navigate(pairedDevicesPath(home.scope));
+      nav.down(pairedDevicesPath(home.scope));
       return;
     }
     if (reason === "space") {
@@ -467,10 +467,11 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
       return;
     }
     if (reason === "pane" && blocked) {
-      navigate(panePath(blocked.paneId, paneScope(home.scope, blocked, home.servers, home.sessions)));
+      nav.down(panePath(blocked.paneId, paneScope(home.scope, blocked, home.servers, home.sessions)));
       return;
     }
-    if (reason === "dashboard" || reason === "pane") navigate(homePath(home.scope));
+    // The dashboard the tour sits on: a sideways replace, never a second dashboard entry (ADR 0067).
+    if (reason === "dashboard" || reason === "pane") nav.side(homePath(home.scope));
   };
 
   return (

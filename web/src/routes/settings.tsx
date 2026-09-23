@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Bell, Loader2 } from "lucide-react";
-import { useLoaderData, useNavigate } from "react-router";
+import { useLoaderData } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
 import { usePushControl } from "@/hooks/use-push";
 import { useLocale } from "@/hooks/use-locale";
+import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
 import { type DevicesData } from "@/lib/loaders";
 import { homePath } from "@/lib/nav";
@@ -41,7 +42,7 @@ const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: []
 // Settings page — currently just the push-notification toggle. Reachable from the home header gear.
 // Lives under the root route, so the snapshot polling/push-setup in RootLayout keeps running behind it.
 export function SettingsRoute() {
-  const navigate = useNavigate();
+  const nav = useNav();
   const scope = useScope();
   useLocale();
   const { state, busy, setEnabled } = usePushControl();
@@ -105,7 +106,7 @@ export function SettingsRoute() {
               size="icon"
               // 44px — the tap floor every control in this row shares. size="icon" alone is 36px.
               className="size-11"
-              onClick={() => navigate(homePath(scope))}
+              onClick={() => nav.up(homePath(scope))}
               aria-label={t("settings.nav.back")}
             >
               <ArrowLeft className="size-5" />

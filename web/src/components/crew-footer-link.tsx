@@ -1,7 +1,7 @@
 import { ChevronRight, Network } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { useCrew } from "@/components/crew-provider";
+import { useNav } from "@/hooks/use-nav";
 import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
 import { crewPath } from "@/lib/nav";
@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
  * any loader's answer.
  */
 export function CrewFooterLink({ scope, className }: { scope?: Scope; className?: string }) {
-  const navigate = useNavigate();
+  const nav = useNav();
   useLocale();
   const { servers, multi } = useCrew();
   if (!multi) return null;
@@ -47,7 +47,7 @@ export function CrewFooterLink({ scope, className }: { scope?: Scope; className?
   return (
     <button
       type="button"
-      onClick={() => navigate(crewPath(scope))}
+      onClick={() => nav.down(crewPath(scope))}
       aria-label={t("crew.footer.aria")}
       className={cn(
         "flex w-full items-center justify-center gap-1.5 text-[11px] leading-relaxed text-muted-foreground active:text-foreground",

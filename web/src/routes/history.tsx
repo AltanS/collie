@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useNavigate, useParams } from "react-router";
+import { useLoaderData, useParams } from "react-router";
 import { ArrowUpToLine, ChevronDown, ChevronUp, Loader2, ScrollText, Search, X } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
@@ -16,6 +16,7 @@ import type { TranscriptEntry } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { useNav } from "@/hooks/use-nav";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +59,7 @@ export function HistoryRoute() {
   useLocale();
   const root = useRootData();
   const { paneId = "" } = useParams();
-  const navigate = useNavigate();
+  const nav = useNav();
   const scope = data.scope;
   // Whether an agent session log can exist here at all — a property of the multiplexer THIS PANE's
   // machine runs (M22/03), not of the pane. See the empty-state branch below for what it changes.
@@ -215,7 +216,7 @@ export function HistoryRoute() {
     // where it is never the wider of the two.
     <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
       <RouteHeader
-        onHome={() => navigate(panePath(paneId, scope))}
+        onHome={() => nav.up(panePath(paneId, scope))}
         width="wide"
         override={
           findOpen ? (
@@ -255,7 +256,7 @@ export function HistoryRoute() {
         rightTrail={
           <button
             type="button"
-            onClick={() => navigate(panePath(paneId, scope))}
+            onClick={() => nav.up(panePath(paneId, scope))}
             aria-label={t("history.closeAria")}
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
           >

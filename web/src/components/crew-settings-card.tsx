@@ -1,7 +1,7 @@
 import { Network } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { Card } from "@/components/ui/card";
+import { useNav } from "@/hooks/use-nav";
 import { useCrew } from "@/components/crew-provider";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -14,7 +14,7 @@ import { useScope } from "@/lib/session";
  * rather than behind a check on the loader's answer (Settings has no crew loader to check).
  */
 export function CrewSettingsCard() {
-  const navigate = useNavigate();
+  const nav = useNav();
   const scope = useScope();
   useLocale();
   const { multi } = useCrew();
@@ -24,7 +24,7 @@ export function CrewSettingsCard() {
     <Card className="gap-0 py-0">
       <button
         type="button"
-        onClick={() => navigate(crewPath(scope))}
+        onClick={() => nav.down(crewPath(scope))}
         className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
       >
         <Network className="size-5 shrink-0 text-muted-foreground" />

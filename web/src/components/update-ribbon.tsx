@@ -1,8 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ArrowUpCircle, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { Notice } from "@/components/ui/notice";
+import { useNav } from "@/hooks/use-nav";
 import { StripSlot } from "@/components/ui/strip-host";
 import { UPDATE } from "@/lib/strip-priority";
 import { useLocale } from "@/hooks/use-locale";
@@ -79,7 +79,7 @@ import type { DismissScope } from "@/lib/types";
 
 export function UpdateRibbon() {
   useLocale();
-  const navigate = useNavigate();
+  const nav = useNav();
   const scope = useScope();
   const data = useOptionalRootData();
   // The self-updater's own flag. Reading it here is also what MOUNTS the controller — see the header.
@@ -138,7 +138,7 @@ export function UpdateRibbon() {
       void checkForUpdate();
       return;
     }
-    void navigate(updatesPath(scope));
+    nav.down(updatesPath(scope));
   }
 
   // `announce="status"` and nothing beside it: `role="status"` carries its own politeness, and an

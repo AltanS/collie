@@ -24,6 +24,8 @@
 // Every rejection is caught. A tap that raises nothing is the bug; a tap that raises the wrong
 // window is merely untidy, so each step degrades into the next instead of throwing.
 
+import { asJsonObject, asJsonString, type JsonValue } from "./json";
+
 /**
  * A window that ended up on screen. The narrowest thing this module needs back from `navigate`,
  * `focus` and `openWindow` — a real `WindowClient` satisfies it structurally, and `null` means the
@@ -43,6 +45,63 @@ export interface OpenTargetClient {
   readonly focused?: boolean;
   navigate(url: string): Promise<OpenedWindow | null>;
   focus(): Promise<OpenedWindow>;
+  /**
+   * Ask the running app to open `url` itself, as an in-app push (ADR 0067). Resolves true only when
+   * the app acknowledged it; an app from before the listener, or one that does not answer in time,
+   * resolves false and the plain `navigate` runs instead. Absent means "never ask".
+   */
+  openInApp?(url: string): Promise<boolean>;
+}
+
+/** The message a visible client is asked to open a URL with (`lib/nav-entry.ts` answers it). */
+export const OPEN_MESSAGE = "collie:open";
+
+export interface OpenMessage {
+  type: typeof OPEN_MESSAGE;
+  /** Origin-absolute URL the tap should land on. */
+  url: string;
+}
+
+/** A message read as `collie:open`, or `undefined` when it is any other message. */
+export function parseOpenMessage(data: JsonValue | undefined): OpenMessage | undefined {
+  const object = asJsonObject(data);
+  const url = asJsonString(object?.url);
+  if (object?.type !== OPEN_MESSAGE || url === undefined) return undefined;
+  return { type: OPEN_MESSAGE, url };
+}
+
+/** How long the worker waits for the app's answer before it navigates the old way. */
+export const IN_APP_ACK_MS = 600;
+
+/** The slice of `WindowClient` `askInApp` posts through. */
+export interface MessageTarget {
+  postMessage(message: OpenMessage, transfer: Transferable[]): void;
+}
+
+/**
+ * Post `collie:open` to a window with a reply port, and resolve with its acknowledgement: true when
+ * the app pushed the URL itself, false on a refusal, a throw or silence past `timeoutMs`.
+ */
+export async function askInApp(client: MessageTarget, url: string, timeoutMs = IN_APP_ACK_MS): Promise<boolean> {
+  const channel = new MessageChannel();
+  const reply = new Promise<boolean>((resolve) => {
+    channel.port1.addEventListener("message", (event: MessageEvent) => resolve(event.data === true), { once: true });
+  });
+  channel.port1.start();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const silence = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  let answer = false;
+  try {
+    client.postMessage({ type: OPEN_MESSAGE, url }, [channel.port2]);
+    answer = await Promise.race([reply, silence]);
+  } catch {
+    answer = false;
+  }
+  clearTimeout(timer);
+  channel.port1.close();
+  return answer;
 }
 
 /** What to do with the clients we were given, decided before a single async call is made. */
@@ -142,6 +201,17 @@ export async function openNotificationTarget(
   if (plan.kind === "navigate-focus") {
     // This client is visible, so it is alive: awaiting its navigate cannot cost us a corpse's worth
     // of activation, and we still hold the tap's activation if we need `openWindow` after it.
+    // The app is asked first to open the URL itself: an in-app push keeps one document and puts the
+    // screen the operator was on behind the pane, so a swipe goes back there (ADR 0067). A plain
+    // navigate loads a second document on top, whose back is a full reload of the first.
+    const client = input.clients[plan.index];
+    if (client?.openInApp && (await client.openInApp(input.url).catch(() => false))) {
+      const focused = await client.focus().then(
+        () => true,
+        () => false,
+      );
+      if (focused) return "navigated";
+    }
     if (await tryNavigate(input, [plan.index])) return "navigated";
     return (await tryOpenWindow(input)) ? "opened" : "failed";
   }

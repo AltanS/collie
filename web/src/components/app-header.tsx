@@ -12,9 +12,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Settings } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { isConnecting } from "@/lib/connection";
+import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
@@ -547,12 +547,12 @@ export function RouteHeader({
 // The Settings gear, shared so the dashboard and space headers don't each hand-roll it. Session-scoped
 // so the navigation stays on the session you're viewing.
 export function SettingsGear({ scope }: { scope?: Scope }) {
-  const navigate = useNavigate();
+  const nav = useNav();
   useLocale();
   return (
     <button
       type="button"
-      onClick={() => navigate(settingsPath(scope))}
+      onClick={() => nav.down(settingsPath(scope))}
       aria-label={t("nav.settings.aria")}
       // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
       // keeps icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px

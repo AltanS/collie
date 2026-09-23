@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  askInApp,
+  OPEN_MESSAGE,
+  parseOpenMessage,
+  type OpenMessage,
   openNotificationTarget,
   planNotificationOpen,
   type OpenTargetClient,
@@ -194,5 +198,83 @@ describe("openNotificationTarget", () => {
     await expect(openNotificationTarget({ url: URL_A, clients: [dead], openWindow })).resolves.toBe(
       "failed",
     );
+  });
+});
+
+// ADR 0067: a visible app is asked to open the URL in its own router first, so the screen the
+// operator was on stays behind the pane and a swipe goes back to it.
+describe("openInApp", () => {
+  const openWindow = () => Promise.resolve(null);
+
+  test("an app that acknowledges is focused and never navigated", async () => {
+    const log: string[] = [];
+    const client: OpenTargetClient = {
+      ...fakeClient(log, "live", { url: URL_B, visibilityState: "visible" }),
+      openInApp: (url) => {
+        log.push(`live.openInApp(${url})`);
+        return Promise.resolve(true);
+      },
+    };
+    await expect(openNotificationTarget({ url: URL_A, clients: [client], openWindow })).resolves.toBe("navigated");
+    expect(log).toEqual([`live.openInApp(${URL_A})`, "live.focus"]);
+  });
+
+  test("an app that does not answer is navigated the old way", async () => {
+    const log: string[] = [];
+    const client: OpenTargetClient = {
+      ...fakeClient(log, "live", { url: URL_B, visibilityState: "visible" }),
+      openInApp: () => Promise.resolve(false),
+    };
+    await expect(openNotificationTarget({ url: URL_A, clients: [client], openWindow })).resolves.toBe("navigated");
+    expect(log).toEqual([`live.navigate(${URL_A})`, "live.focus"]);
+  });
+
+  test("a hidden client is never asked: it may be a discarded tab", async () => {
+    const log: string[] = [];
+    const client: OpenTargetClient = {
+      ...fakeClient(log, "hidden", { url: URL_B, visibilityState: "hidden" }),
+      openInApp: () => {
+        log.push("hidden.openInApp");
+        return Promise.resolve(true);
+      },
+    };
+    await openNotificationTarget({ url: URL_A, clients: [client], openWindow: () => Promise.resolve({ url: URL_A }) });
+    expect(log).not.toContain("hidden.openInApp");
+  });
+});
+
+describe("askInApp", () => {
+  test("posts collie:open with a reply port and resolves with the answer", async () => {
+    const target = {
+      postMessage: (message: OpenMessage, transfer: Transferable[]) => {
+        expect(message).toEqual({ type: OPEN_MESSAGE, url: URL_A });
+        const [port] = transfer;
+        if (port instanceof MessagePort) port.postMessage(true, []);
+      },
+    };
+    await expect(askInApp(target, URL_A, 1000)).resolves.toBe(true);
+  });
+
+  test("resolves false on silence", async () => {
+    await expect(askInApp({ postMessage: () => {} }, URL_A, 10)).resolves.toBe(false);
+  });
+
+  test("resolves false when posting throws", async () => {
+    const target = {
+      postMessage: () => {
+        throw new Error("detached");
+      },
+    };
+    await expect(askInApp(target, URL_A, 1000)).resolves.toBe(false);
+  });
+});
+
+describe("parseOpenMessage", () => {
+  test("reads collie:open and nothing else", () => {
+    expect(parseOpenMessage({ type: OPEN_MESSAGE, url: URL_A })).toEqual({ type: OPEN_MESSAGE, url: URL_A });
+    expect(parseOpenMessage({ type: "precache-progress", done: 1 })).toBeUndefined();
+    expect(parseOpenMessage({ type: OPEN_MESSAGE, url: 3 })).toBeUndefined();
+    expect(parseOpenMessage(null)).toBeUndefined();
+    expect(parseOpenMessage(undefined)).toBeUndefined();
   });
 });

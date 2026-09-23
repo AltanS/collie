@@ -1,11 +1,11 @@
 import { Compass } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { homePath } from "@/lib/nav";
+import { useNav } from "@/hooks/use-nav";
 import { useScope } from "@/lib/session";
 import { resetTour } from "@/lib/tour";
 
@@ -19,7 +19,7 @@ import { resetTour } from "@/lib/tour";
 // not over the settings page.
 export function TourControl() {
   useLocale();
-  const navigate = useNavigate();
+  const nav = useNav();
   const scope = useScope();
 
   return (
@@ -40,7 +40,8 @@ export function TourControl() {
           className="min-h-11 shrink-0 px-4"
           onClick={() => {
             resetTour();
-            navigate(homePath(scope));
+            // Up to the dashboard the tour starts on (ADR 0067).
+            nav.up(homePath(scope));
           }}
         >
           {t("settings.tour.button")}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { useNavigate, useRevalidator } from "react-router";
+import { useRevalidator } from "react-router";
 import {
   ArrowUpToLine,
   ChevronUp,
@@ -13,6 +13,7 @@ import {
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useNav } from "@/hooks/use-nav";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
@@ -202,7 +203,7 @@ export function AgentChat({
   onSelect,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
-  const navigate = useNavigate();
+  const nav = useNav();
   useLocale();
   // Poll-truth "is the data on screen not live". The one header shell derives the same boolean from
   // the same two root-snapshot fields to drive the Collie mark; here we use it to dim the header's
@@ -1164,7 +1165,8 @@ export function AgentChat({
   function switchToPane(pane: AgentView) {
     closeDrawer();
     if (paneRowKey(pane) === hereKey) return;
-    navigate(panePath(pane.paneId, paneScope(scope ?? {}, pane, servers)));
+    // Sideways: a replace that keeps the pane's way up (ADR 0067).
+    nav.side(panePath(pane.paneId, paneScope(scope ?? {}, pane, servers)));
   }
 
   // Jump to another tab in this space by opening one of its panes (the in-pane tab bar).
@@ -1216,10 +1218,11 @@ export function AgentChat({
   }
 
   // Open a space from the nav hub — go to its detail route (its tabs + panes, incl. shells). A step
-  // back up out of the pane, so it slides backward.
+  // back up out of the pane to that named parent: a step back when the space opened this pane, else
+  // a replace, so the pane never stays under its own space (ADR 0067).
   function openSpace(workspaceId: string) {
     closeDrawer();
-    navigate(spacePath(workspaceId, scope));
+    nav.upTo(spacePath(workspaceId, scope));
   }
 
   // Tapping the terminal mirror focuses the composer so you can start typing right away. Three bails:
@@ -1906,7 +1909,7 @@ export function AgentChat({
                   {historyAvailable ? (
                     <button
                       type="button"
-                      onClick={() => navigate(historyPath(paneId, scope))}
+                      onClick={() => nav.down(historyPath(paneId, scope))}
                       className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
                     >
                       <ScrollText className="size-3.5" />
@@ -2229,7 +2232,7 @@ export function AgentChat({
                   // to say so (ADR 0065).
                   changesPill={
                     agent?.cwd
-                      ? { onClick: () => navigate(changesPath(paneId, scope)), label: t("chat.changes.label") }
+                      ? { onClick: () => nav.down(changesPath(paneId, scope)), label: t("chat.changes.label") }
                       : undefined
                   }
                   draftNoticeSlot={draftNoticeSlot}
@@ -2327,7 +2330,7 @@ export function AgentChat({
           onRenamed={() => revalidator.revalidate()}
           onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
           onFind={display ? openFind : undefined}
-          onHistory={historyAvailable ? () => navigate(historyPath(paneId, scope)) : undefined}
+          onHistory={historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
           // ZEN'S ONE ENTRY POINT, and the absence of this callback IS the gate — the sheet hides a
           // row it was given nothing for, exactly as it does for find and history. Gated twice: the
           // Settings toggle decides whether this phone offers zen at all, and `display` keeps it off

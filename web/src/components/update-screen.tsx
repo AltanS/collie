@@ -69,7 +69,9 @@ function revalidateNow(): void {
 
 /** Where "Show log" goes. The module-scoped router is reachable from outside the provider. */
 function goToUpdates(): void {
-  void router.navigate(updatesPath(scopeFromUrl(window.location.href)));
+  // A step down from wherever the app is, recording where from like every down move (ADR 0067).
+  const { pathname, search } = router.state.location;
+  void router.navigate(updatesPath(scopeFromUrl(window.location.href)), { state: { from: `${pathname}${search}` } });
 }
 
 export function UpdateScreen({

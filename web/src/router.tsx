@@ -1,6 +1,7 @@
 import { createBrowserRouter, replace } from "react-router";
 
 import { basePath } from "@/lib/base-path";
+import { listenForInAppOpen, probeStandalone, seedColdEntry } from "@/lib/nav-entry";
 
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
@@ -32,6 +33,23 @@ try {
   sessionStorage.removeItem("remix-router-transitions");
 } catch {
   // sessionStorage access can throw in locked-down / private contexts — ignore.
+}
+
+// A cold deep link gets its parents put behind it BEFORE the router reads the entry it boots on, so
+// the phone's first edge swipe goes up one level instead of doing nothing (ADR 0067, lib/nav-entry).
+seedColdEntry({
+  location: window.location,
+  history: window.history,
+  sessionStorage: safeSessionStorage(),
+  standalone: probeStandalone,
+});
+
+function safeSessionStorage(): Storage | undefined {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 // Created once at module scope so the idle-lock in App can unmount/remount RouterProvider without
@@ -108,3 +126,8 @@ export const router = createBrowserRouter([
   // the mount in front of them and takes it off what it reads from the address bar.
   basename: basePath(),
 });
+
+// A notification tapped while the app is on screen opens its pane in THIS router, as a push from
+// wherever the operator was (ADR 0067). The service worker asks and waits for the answer; an app
+// that does not answer gets the old full-document navigate.
+listenForInAppOpen(router);

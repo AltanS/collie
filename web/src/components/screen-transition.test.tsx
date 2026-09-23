@@ -1,6 +1,8 @@
 import { act, render } from "@testing-library/react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
+import { markInAppBack } from "@/lib/nav-entry";
+
 import { classifyMove, ScreenTransition } from "./screen-transition";
 
 // The classification is the whole feature: two moves animate and everything else must be silent,
@@ -135,5 +137,24 @@ describe("ScreenTransition — what the arriving screen carries", () => {
     await act(() => router.navigate("/pane/p1"));
     expect(wrapper(container)).not.toBe(beforeWrapper);
     expect(getByTestId("screen")).not.toBe(beforeChild);
+  });
+
+  // ADR 0067: a POP is the phone's own back, and the phone animates it. Our slide on top of iOS's
+  // edge-swipe animation played the move twice.
+  it("does not slide on a POP, the phone's swipe back", async () => {
+    markInAppBack("/", 0); // an old mark, long expired: nothing the app asked for
+    const { router, container } = mount();
+    await act(() => router.navigate("/pane/p1"));
+    await act(() => router.navigate(-1));
+    expect(router.state.location.pathname).toBe("/");
+    expect(wrapper(container).className).not.toMatch(/animate-in/);
+  });
+
+  it("keeps the slide on a POP the app's own back arrow marked", async () => {
+    const { router, container } = mount();
+    await act(() => router.navigate("/pane/p1"));
+    markInAppBack("/");
+    await act(() => router.navigate(-1));
+    expect(wrapper(container).className).toMatch(/slide-in-from-left/);
   });
 });

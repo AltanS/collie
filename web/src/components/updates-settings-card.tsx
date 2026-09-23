@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, ArrowUpCircle } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { Card } from "@/components/ui/card";
+import { useNav } from "@/hooks/use-nav";
 import { updateNotice } from "@/components/update-banner";
 import { useLocale } from "@/hooks/use-locale";
 import { fetchUpdateState } from "@/lib/api";
@@ -32,7 +32,7 @@ import type { UpdateInfo, UpdateCrewMember } from "@/lib/types";
  * which is every case except the peer count.
  */
 export function UpdatesSettingsCard() {
-  const navigate = useNavigate();
+  const nav = useNav();
   const scope = useScope();
   useLocale();
   const data = useOptionalRootData();
@@ -64,7 +64,7 @@ export function UpdatesSettingsCard() {
     <Card className="gap-0 py-0">
       <button
         type="button"
-        onClick={() => navigate(updatesPath(scope))}
+        onClick={() => nav.down(updatesPath(scope))}
         className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
       >
         <ArrowUpCircle className="size-5 shrink-0 text-muted-foreground" />
