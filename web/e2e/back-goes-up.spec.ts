@@ -97,7 +97,7 @@ test("C: the dashboard's Changes tab, a workspace's Changes, then the header bac
   await page.getByRole("list", { name: en["home.changes.listAria"] }).getByRole("button").first().click();
   await landed(page, "/space/w1/changes");
 
-  await page.getByRole("button", { name: en["changes.backSpaceAria"] }).click();
+  await page.getByRole("button", { name: en["changes.backAria.dashboard"] }).click();
   await landed(page, "/");
   await expect(dashboard(page)).toBeVisible();
   await page.goBack().catch(() => null);

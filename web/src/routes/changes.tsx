@@ -33,7 +33,7 @@ import {
 } from "@/lib/changes-tree";
 import { isAbortError } from "@/lib/loaders";
 import { t, type MessageKey } from "@/lib/i18n";
-import { changesPath, panePath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { canStepBack, changesPath, panePath, readFrom, spaceChangesPath, spacePath, upTarget } from "@/lib/nav";
 import { useRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { shareEqual } from "@/lib/share-equal";
@@ -306,7 +306,16 @@ export function ChangesRoute() {
   };
   // Up one level (ADR 0067): a step back to the dashboard, space or pane this list was opened from,
   // else a replace onto the pane or the space, never a push that leaves the list behind it.
-  const backOut = () => nav.up(target.kind === "pane" ? panePath(paneId, scope) : spacePath(spaceId, scope));
+  const backFallback = target.kind === "pane" ? panePath(paneId, scope) : spacePath(spaceId, scope);
+  const backOut = () => nav.up(backFallback);
+  // The arrow's accessible name says where it actually lands, not a fixed guess: the same
+  // resolution `nav.up()` itself runs (`upTarget`), read without moving anything.
+  const backDestination = upTarget(location.pathname, readFrom(location.state), backFallback, canStepBack());
+  const backAriaKey: MessageKey = backDestination.startsWith("/pane/")
+    ? "changes.backAria.pane"
+    : backDestination.startsWith("/space/")
+      ? "changes.backAria.workspace"
+      : "changes.backAria.dashboard";
 
   // The header names the scope: the workspace, then its folder. The list's own answer wins, because
   // the bridge resolved the root; before it arrives the snapshot's label stands in.
@@ -356,9 +365,7 @@ export function ChangesRoute() {
                 size="icon"
                 className="size-11 shrink-0"
                 onClick={open ? backToList : backOut}
-                aria-label={
-                  open ? t("changes.listBackAria") : target.kind === "pane" ? t("changes.backAria") : t("changes.backSpaceAria")
-                }
+                aria-label={open ? t("changes.listBackAria") : t(backAriaKey)}
               >
                 <ArrowLeft className="size-5" />
               </Button>

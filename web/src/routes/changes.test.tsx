@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import type { NavState } from "@/lib/nav";
 import type { PaneChangesResponse } from "@/lib/types";
 import { fixtureAgents, fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
@@ -33,7 +34,10 @@ const connected = (): HomeData => ({
   authError: false,
 });
 
-function renderAt(url: string, onCommit?: () => void) {
+/** `state` seeds the entry's `location.state` — e.g. `{ from: "/" }`, as ADR 0067's `down()` would
+ *  have written it — so a route test can pin what the back arrow's accessible name resolves to
+ *  without driving a whole navigation to get there. */
+function renderAt(url: string, onCommit?: () => void, state?: NavState) {
   const view = onCommit ? (
     <Profiler id="changes" onRender={onCommit}>
       <ChangesRoute />
@@ -57,7 +61,7 @@ function renderAt(url: string, onCommit?: () => void) {
         ],
       },
     ],
-    { initialEntries: [url] },
+    { initialEntries: [state === undefined ? url : { pathname: url, state }] },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -106,8 +110,27 @@ describe("ChangesRoute — the list", () => {
     // `find`, not `get`: the router commits a navigation as a transition, which a busy run can
     // still be rendering when the click resolves.
     await userEvent.click(await screen.findByRole("button", { name: en["changes.listBackAria"] }));
-    await userEvent.click(await screen.findByRole("button", { name: en["changes.backSpaceAria"] }));
+    await userEvent.click(await screen.findByRole("button", { name: en["changes.backAria.workspace"] }));
     expect(await screen.findByText("space screen")).toBeTruthy();
+  });
+
+  // ADR 0067: the header back arrow's accessible name says where it actually lands, computed by
+  // the same parent resolution `nav.up()` itself runs — never a fixed guess per route form.
+  describe("the back arrow names where it actually goes", () => {
+    it("says pane when a pane opened it", async () => {
+      renderAt("/pane/w1%3Ap1/changes", undefined, { from: "/pane/w1:p1" });
+      expect(await screen.findByRole("button", { name: en["changes.backAria.pane"] })).toBeTruthy();
+    });
+
+    it("says dashboard when the dashboard's Changes tab opened it", async () => {
+      renderAt("/space/w1/changes", undefined, { from: "/" });
+      expect(await screen.findByRole("button", { name: en["changes.backAria.dashboard"] })).toBeTruthy();
+    });
+
+    it("says workspace with no dashboard behind it (a cold link, or the space itself)", async () => {
+      renderAt("/space/w1/changes");
+      expect(await screen.findByRole("button", { name: en["changes.backAria.workspace"] })).toBeTruthy();
+    });
   });
 
   it("explains a workspace that is gone", async () => {

@@ -9,6 +9,7 @@ import {
   resolveUpTo,
   settingsPath,
   updatesPath,
+  upTarget,
 } from "./nav";
 
 describe("panePath", () => {
@@ -144,6 +145,25 @@ describe("resolveUp: the back arrow", () => {
 
   it("never steps back from the router's first entry", () => {
     expect(resolveUp("/pane/p1", "/", "/", false)).toEqual({ kind: "replace", to: "/" });
+  });
+});
+
+// The Changes header arrow names this pathname, so its accessible label never disagrees with what
+// the arrow itself does (changes.tsx `backAriaKey`).
+describe("upTarget: naming an UP move's destination without performing it", () => {
+  it("names `from` when the entry behind is a legitimate parent", () => {
+    expect(upTarget("/space/w1/changes", "/", "/space/w1")).toBe("/");
+    expect(upTarget("/pane/p1/changes", "/space/w1", "/pane/p1")).toBe("/space/w1");
+    expect(upTarget("/pane/p1/changes", "/pane/p1", "/pane/p1")).toBe("/pane/p1");
+  });
+
+  it("names the fallback's bare pathname when the entry behind is not a parent", () => {
+    expect(upTarget("/space/w1/changes", "/settings", "/space/w1")).toBe("/space/w1");
+    expect(upTarget("/space/w1/changes", undefined, "/pane/p1?h=badger")).toBe("/pane/p1");
+  });
+
+  it("never steps back from the router's first entry", () => {
+    expect(upTarget("/space/w1/changes", "/", "/space/w1", false)).toBe("/space/w1");
   });
 });
 

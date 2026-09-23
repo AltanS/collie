@@ -1242,8 +1242,9 @@ export const es: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Changes",
   "changes.title": "Changes",
-  "changes.backAria": "Back to the pane",
-  "changes.backSpaceAria": "Back to the workspace",
+  "changes.backAria.dashboard": "Back to the dashboard",
+  "changes.backAria.workspace": "Back to the workspace",
+  "changes.backAria.pane": "Back to the pane",
   "changes.listBackAria": "Back to the list",
   "changes.refreshAria": "Refresh changes",
   "changes.loading": "Reading changes…",

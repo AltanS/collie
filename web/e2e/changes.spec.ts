@@ -277,7 +277,7 @@ test("the header names the workspace and its folder, and the space form shows th
   await expect(page.getByText("webapp · 3 files")).toBeVisible();
   await expect(page.getByText("…/you/webapp")).toBeVisible();
   expect(asked).toContain(`/api/workspace/${PANE.workspaceId}/changes`);
-  await page.getByRole("button", { name: en["changes.backSpaceAria"] }).click();
+  await page.getByRole("button", { name: en["changes.backAria.workspace"] }).click();
   await expect(page).toHaveURL(new RegExp(`/space/${PANE.workspaceId}$`));
 });
 

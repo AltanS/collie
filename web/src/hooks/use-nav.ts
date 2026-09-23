@@ -2,8 +2,7 @@ import { useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { markInAppBack } from "@/lib/nav-entry";
-import { asJsonNumber, asJsonObject } from "@/lib/json";
-import { isAncestor, pathOnly, readFrom, resolveUp, resolveUpTo, type NavExtras, type UpMove } from "@/lib/nav";
+import { canStepBack, isAncestor, pathOnly, readFrom, resolveUp, resolveUpTo, type NavExtras, type UpMove } from "@/lib/nav";
 
 /**
  * The three moves of ADR 0067, for components. Every navigation in the app goes through one of
@@ -25,16 +24,6 @@ export interface Nav {
   open(to: string, state?: NavExtras): void;
   up(parent: string): void;
   upTo(parent: string): void;
-}
-
-/**
- * False on the browser router's first entry, where a step back would leave the app. A router that
- * does not stamp `window.history` (a memory router in a test) has no index to read, and `from` alone
- * decides there.
- */
-function canStepBack(): boolean {
-  const idx = asJsonNumber(asJsonObject(window.history.state)?.idx);
-  return idx === undefined ? true : idx > 0;
 }
 
 export function useNav(): Nav {

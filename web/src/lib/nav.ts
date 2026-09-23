@@ -6,7 +6,7 @@
 //
 // The host stays in the QUERY, never in the path: a `/host/:h/pane/:paneId` shape would fork every
 // route, break every existing deep link, and force the loaders' isPaneUrl() to grow a parser.
-import { asJsonObject, asJsonString, type JsonValue } from "./json";
+import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
 import { scopeFromSearchParams, scopeSearch, type Scope } from "./scope";
 import type { AgentView } from "./types";
 
@@ -178,16 +178,37 @@ export function isAncestor(from: string, here: string): boolean {
 export type UpMove = { kind: "back" } | { kind: "replace"; to: string };
 
 /**
+ * False when the router sits on its first entry (`history.state.idx === 0`), which a stale `from`
+ * could otherwise send out of the app. A router that does not stamp `window.history` (a memory
+ * router in a test) has no index to read, and `from` alone decides there — so this reads `true`.
+ */
+export function canStepBack(): boolean {
+  const idx = asJsonNumber(asJsonObject(window.history.state)?.idx);
+  return idx === undefined ? true : idx > 0;
+}
+
+/**
  * The back arrow, the Collie mark inside a level, and every automatic exit (a pane or a space that
  * closed under you). `fallback` is the structural parent, used when the entry behind us is not a
  * parent: a cold deep link, a Settings opened from a pane, an Updates page opened from the ribbon.
  *
- * `canStepBack` is false when the router sits on its first entry (`history.state.idx === 0`), which
+ * `canGoBack` is false when the router sits on its first entry (`history.state.idx === 0`), which
  * a stale `from` could otherwise send out of the app.
  */
-export function resolveUp(here: string, from: string | undefined, fallback: string, canStepBack = true): UpMove {
-  if (canStepBack && from !== undefined && isAncestor(from, here)) return { kind: "back" };
+export function resolveUp(here: string, from: string | undefined, fallback: string, canGoBack = true): UpMove {
+  if (canGoBack && from !== undefined && isAncestor(from, here)) return { kind: "back" };
   return { kind: "replace", to: fallback };
+}
+
+/**
+ * The pathname an UP move actually lands on — for a caller that only needs to NAME the destination
+ * (an accessible label), never to perform the move. Same guard as `resolveUp`, so the two can never
+ * disagree: `from` when it is a legitimate parent (the "back" case), else `fallback`'s own pathname
+ * (the "replace" case). Always a bare pathname, even when `fallback` carries a query.
+ */
+export function upTarget(here: string, from: string | undefined, fallback: string, canGoBack = true): string {
+  if (canGoBack && from !== undefined && isAncestor(from, here)) return pathOnly(from);
+  return pathOnly(fallback);
 }
 
 /**
@@ -195,8 +216,8 @@ export function resolveUp(here: string, from: string | undefined, fallback: stri
  * even when the dashboard opened the pane. It steps back only when the entry behind us is that very
  * parent, and otherwise replaces this entry with it, so the space's own up still finds the dashboard.
  */
-export function resolveUpTo(from: string | undefined, target: string, canStepBack = true): UpMove {
-  if (canStepBack && from !== undefined && pathOnly(from) === pathOnly(target)) return { kind: "back" };
+export function resolveUpTo(from: string | undefined, target: string, canGoBack = true): UpMove {
+  if (canGoBack && from !== undefined && pathOnly(from) === pathOnly(target)) return { kind: "back" };
   return { kind: "replace", to: target };
 }
 

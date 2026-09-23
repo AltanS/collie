@@ -78,7 +78,9 @@ and sits under its list). The dashboard's footer tabs are a device preference an
 - **The seed writes React Router's internal history-state shape** (`usr`, `key`, `idx`). It has
   been stable since React Router 6.4's data routers; a router upgrade that changes it breaks the
   seed quietly, and `web/src/lib/nav-entry.test.ts` pins the shape it writes.
-- **"Back to the workspace"** stays the Changes arrow's accessible name when the dashboard opened
-  it, although the arrow now goes to the dashboard there.
+- **The Changes arrow's accessible name says where it actually goes**, computed by the same parent
+  resolution as the move itself: "Back to the dashboard" when the dashboard's Changes tab opened it,
+  "Back to the workspace" from a cold link or the space itself, "Back to the pane" from within a
+  pane.
 - **Revisit** if a sheet ever needs to close on the swipe: that is a history entry per sheet, and
   every close path would then have to step back.
