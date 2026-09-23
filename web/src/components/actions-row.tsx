@@ -186,9 +186,38 @@ export function switchPillInset(scale: number, withChanges: boolean): number {
 /** The icon-only pills on the pinned block: square at the belt's scaled pill size, no padding and no
  *  border. With no border the pill's padding box IS its drawn box, so the vertical reach is
  *  `--belt-pad` rather than STRIP_ROW_PILL's `--belt-reach` (which adds 1px for the border the
- *  scroller's pills carry): the hit box ends on the band's edge, never 1px past it. */
+ *  scroller's pills carry): the hit box ends on the band's edge, never 1px past it.
+ *
+ * TAP FEEDBACK, IDENTICAL ON BOTH PINNED PILLS (operator, phone: "can we get a focus hover
+ * animation/color change on both icons? so I know I've clicked"). Living here, not at either call
+ * site, is what MAKES the two identical rather than two hand-kept copies.
+ *
+ *  - `active:bg-foreground/15` is the belt's own alpha-wash recipe (see the file header's ground
+ *    argument) at a stronger step than the belt's own ground (`bg-foreground/6`) — visible, and
+ *    symmetric across both themes by the same construction.
+ *  - `active:scale-[0.92]` OVERRIDES `ui/button.tsx`'s base `active:scale-[0.98]` — same class
+ *    group, same single `active:` modifier, so `cn()`'s `twMerge` keeps this one (it is appended
+ *    after the base string, at the Button component's own `cn()` call). `motion-reduce:` then
+ *    cancels it back to `scale-100` for an operator who asked the OS for less motion — the same
+ *    idiom `app-header.tsx`'s `motion-reduce:transition-none` uses, relying on Tailwind emitting a
+ *    media-wrapped variant AFTER the plain one so it wins the cascade without a merge conflict (a
+ *    `motion-safe:` gate on the plain rule would not: its modifier SET differs from the base rule's,
+ *    so `twMerge` would keep both, and which wins would depend on that same cascade order anyway —
+ *    cancelling is the one path that is unambiguous). The tint is untouched by either: a colour
+ *    change is not the motion the preference asks Collie to drop.
+ *  - `hover:bg-foreground/8`, a softer step below the active tint, plain `hover:` — the belt's own
+ *    general pills (`OFF` below) already hover unguarded through the ghost variant, so a
+ *    `(hover: hover)` gate here would make these two pills the one exception on the row.
+ *  - `duration-[120ms]` is the app's own tap speed (`ui/strip-host.tsx`'s `SWAP_CLASS`), layered
+ *    onto the base `transition-all` — no new transition-property, just a faster one.
+ *  - No size, border or padding changes in any state, so the 44px+ answered box
+ *    (`STRIP_ROW_PILL`'s `::before`) and the belt's height never move under a thumb.
+ *  - Nothing added for iOS: both pills are real `<button>` elements via `ui/button.tsx`, the same
+ *    element every other pressable row in this app uses with a bare `active:` class and no
+ *    touchstart shim (`command-palette.tsx`, `space-overview.tsx`, `agent-card.tsx`) — `:active`
+ *    already fires on tap there without one, and there is no precedent in this tree for adding one. */
 const PINNED_PILL =
-  "relative w-(--belt-pill) min-w-(--belt-pill) border-0 px-0 has-[>svg]:px-0 before:-inset-y-(--belt-pad)";
+  "relative w-(--belt-pill) min-w-(--belt-pill) border-0 px-0 has-[>svg]:px-0 before:-inset-y-(--belt-pad) hover:bg-foreground/8 active:bg-foreground/15 active:scale-[0.92] motion-reduce:active:scale-100 duration-[120ms]";
 
 /** Extra air between the last scrolling pill and the pinned block at full scroll-right, added to the
  *  trailing spacer. Altan, from his phone, 2026-09-23: "add a wider margin right to the belt content". */

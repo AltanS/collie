@@ -239,6 +239,34 @@ describe("ActionsRow", () => {
     expect(screen.queryByRole("button", { name: "Changes" })).not.toBeInTheDocument();
   });
 
+  // Operator, phone: "can we get a focus hover animation/color change on both icons? so I know
+  // I've clicked" — the Changes pill and the Switch mark share PINNED_PILL, so the tap feedback is
+  // asserted once per class and expected identical on both.
+  it("gives the Changes pill and the Switch mark identical, fast tap feedback", () => {
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }}
+        changes={{ onClick: vi.fn(), label: "Changes" }}
+      />,
+    );
+    const changesPill = screen.getByRole("button", { name: "Changes" });
+    const switchPill = screen.getByRole("button", { name: "Switch pane" });
+    for (const pill of [changesPill, switchPill]) {
+      expect(pill.className).toMatch(/(?:^|\s)hover:bg-foreground\/8(?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)active:bg-foreground\/15(?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)active:scale-\[0\.92\](?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)motion-reduce:active:scale-100(?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)duration-\[120ms\](?=\s|$)/);
+    }
+    // No layout shift: the drawn box stays borderless and padding-free in every state — only the
+    // background, the transform and the outline (focus-visible, from ui/button.tsx) move.
+    expect(changesPill.className).toMatch(/(?:^|\s)border-0(?=\s|$)/);
+    expect(changesPill.className).toMatch(/(?:^|\s)px-0(?=\s|$)/);
+  });
+
   it("stands the belt's scroller on the scaled padding, with no vertical scroll under a thumb", () => {
     // Option 6 of the belt-shade deck (playground, removed 2026-09-14 once it had served) first
     // dropped STRIP_SCROLLER's own `py-1.5` to `py-0`, the pill's own 32px. The phone read that as
