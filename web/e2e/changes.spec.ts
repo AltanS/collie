@@ -127,7 +127,8 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
 
   await field.fill("no-such-file");
   await expect(page.getByText(en["changes.filter.none"])).toBeVisible();
-  await page.getByRole("button", { name: en["changes.filter.clear"] }).click();
+  // The overlay covers the "no match" screen's own Clear button, so its own Clear stays reachable.
+  await page.getByRole("dialog", { name: en["changes.filter.button"] }).getByRole("button", { name: en["changes.filter.clear"] }).click();
   await expect(field).toHaveValue("");
   await expect(page.getByRole("button", { name: en["changes.filter.button"] })).toBeVisible();
 
@@ -141,6 +142,11 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await expect(page.getByRole("button", { name: "src/routes, 1 file" })).toBeVisible();
   await noSidewaysScroll(page);
 
+  // The overlay floats over the list, so a row underneath it is reached only once it is closed —
+  // Escape closes it and keeps the filter applied.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: en["changes.filter.button"] })).toHaveCount(0);
+
   // Previous / Next walk the two shown files, in tree order: logo.png, then checkout.tsx.
   await page.getByRole("button", { name: /checkout\.tsx/ }).click();
   await expect(page).toHaveURL(/path=src%2Froutes%2Fcheckout\.tsx$/);
@@ -152,16 +158,53 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await expect(prev).toBeDisabled();
   await expect(next).toBeEnabled();
 
-  // Back to the list: the filter, its row and the layout are all still there.
+  // Back to the list: the filter and the layout are still applied, though its own card stayed
+  // closed (Escape closed it above, and coming back from a file reopens nothing on its own).
   await page.goBack();
   await expect(page).toHaveURL(/\/changes$/);
+  await expect(page.getByRole("dialog", { name: en["changes.filter.button"] })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Filter files, 2 of 5 shown" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "src/routes, 1 file" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /notes\.md/ })).toHaveCount(0);
+
+  // Reopen the card: the status chip it applied is still pressed.
+  await page.getByRole("button", { name: "Filter files, 2 of 5 shown" }).click();
   await expect(page.getByRole("button", { name: en["changes.status.M"], exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(page.getByRole("button", { name: "Filter files, 2 of 5 shown" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "src/routes, 1 file" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /notes\.md/ })).toHaveCount(0);
+});
+
+// The operator's ask (2026-09-23, follow-up): the filter row floats OVER the list as a card, rather
+// than pushing it down, so opening and closing it must move neither the header nor a single row.
+test("opening and closing the filter never moves the list or the header", async ({ page }) => {
+  await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
+  await expect(page.getByText("webapp · 3 files")).toBeVisible();
+
+  const title = page.getByRole("heading", { name: en["changes.title"] });
+  const firstRow = page.getByRole("button", { name: /checkout\.tsx/ });
+  const titleBefore = (await title.boundingBox())!;
+  const rowBefore = (await firstRow.boundingBox())!;
+
+  const expectRowUnmoved = async (state: string) => {
+    const box = (await firstRow.boundingBox())!;
+    for (const key of ["x", "y", "width", "height"] as const) {
+      expect(
+        Math.abs(box[key] - rowBefore[key]),
+        `${state}: row.${key} moved from ${rowBefore[key]} to ${box[key]}`,
+      ).toBeLessThanOrEqual(0.5);
+    }
+  };
+
+  await page.getByRole("button", { name: en["changes.filter.button"] }).click();
+  await expect(page.getByRole("textbox", { name: en["changes.filter.placeholder"] })).toBeFocused();
+  expect(await title.boundingBox()).toEqual(titleBefore);
+  await expectRowUnmoved("opened");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: en["changes.filter.button"] })).toHaveCount(0);
+  expect(await title.boundingBox()).toEqual(titleBefore);
+  await expectRowUnmoved("closed");
 });
 
 // ADR 0065 rule 7: syntax colour arrives after the plain rows, and moves nothing. The highlighter's

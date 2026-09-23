@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, List, ListFilter, ListTree, Search, X } from "lucide-react";
 
 import { ListGroup } from "@/components/ui/list-group";
@@ -384,19 +384,24 @@ export function ChangesNoMatch({ onClear }: { onClear: () => void }) {
 const CHIP_STATUS = { M: "M", A: "A", D: "D", R: "R", U: "?" } as const satisfies Record<FilterStatus, ChangeStatus>;
 
 /**
- * The filter row under the header: a path field with a clear button, the status chips, and the
- * "3 of 12" count. The count's box is always there, only hidden while no filter is on, so typing
- * the first letter moves nothing.
+ * The filter row: a path field with a clear button, the status chips, and the "3 of 12" count with
+ * its own Clear action. The trailing group is always there, only hidden (not removed) while no
+ * filter is on, so typing the first letter moves nothing. Drawn inside `ChangesFilterOverlay`,
+ * which supplies the card's border, shadow and background.
  */
 export function ChangesFilterBar({
   filter,
   onChange,
+  onClear,
   shown,
   total,
   focusOnMount = false,
 }: {
   filter: ChangesFilter;
   onChange: (filter: ChangesFilter) => void;
+  /** Resets the whole filter — query and status chips — from a control that lives IN the row, so
+   *  it stays reachable while the overlay covers the "no match" screen's own Clear button below it. */
+  onClear: () => void;
   shown: number;
   total: number;
   /** Put the caret in the path field when the row appears: the operator opened it to type. */
@@ -414,7 +419,7 @@ export function ChangesFilterBar({
       statuses: filter.statuses.includes(s) ? filter.statuses.filter((x) => x !== s) : [...filter.statuses, s],
     });
   return (
-    <div className="flex flex-col gap-1 border-b border-rule px-4 pt-2 pb-1" data-slot="changes-filter">
+    <div className="flex flex-col gap-1 px-4 pt-2 pb-1" data-slot="changes-filter">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -468,14 +473,109 @@ export function ChangesFilterBar({
             );
           })}
         </div>
-        <span
-          aria-live="polite"
-          className={cn("ml-auto truncate pl-2 text-xs tabular-nums text-muted-foreground", !active && "invisible")}
-        >
-          {t("changes.filter.shown", { shown, total })}
-        </span>
+        <div className={cn("ml-auto flex shrink-0 items-center gap-1 pl-2", !active && "invisible")}>
+          <span aria-live="polite" className="truncate text-xs tabular-nums text-muted-foreground">
+            {t("changes.filter.shown", { shown, total })}
+          </span>
+          <button
+            type="button"
+            onClick={onClear}
+            className="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-primary active:bg-muted"
+          >
+            {t("changes.filter.clear")}
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The filter row as a floating card, drawn OVER the list rather than pushing it down. The caller
+ * wraps its header slot in a `relative` box and renders this right after it — `top-full` then lands
+ * on that box's own bottom edge, whatever height it is (zero, when the header itself is a portal
+ * target elsewhere and contributes none). Opening and closing move nothing: this is `absolute`, out
+ * of flow, and never touches the header's or the list's own box.
+ *
+ * A tap outside the card, or Escape, closes it; the filter itself stays applied — the dismiss
+ * surface only ever calls `onClose`. It is a plain `fixed` button, not a scrim (no dimming: this is
+ * a quick, reversible narrowing of a list, not a blocking question), and it sits BELOW the header's
+ * own stacking (`z-10` under the header's `z-20`) on purpose: a tap on the Filter button that opened
+ * this always reaches the button itself, never the dismiss surface, so it is the button's own toggle
+ * that closes it in that case, not this one.
+ *
+ * The text field autofocuses itself (`focusOnMount` below); this only RESTORES focus on close, to
+ * whatever held it before the field took it. It reads that target in a LAYOUT effect, which runs
+ * before the field's own (passive) focus effect app-wide, so it can never read the field itself back
+ * as "the thing to give focus to" — the ordinary case is the Filter button, which gets its focus
+ * back on Escape or an outside tap exactly as it would from a second tap on itself.
+ *
+ * DESIGN.md's corner rule: rounded corners take a uniform 1px border on all four sides plus a soft
+ * shadow, never a thick left accent.
+ */
+export function ChangesFilterOverlay({
+  open,
+  onClose,
+  filter,
+  onChange,
+  onClear,
+  shown,
+  total,
+}: {
+  open: boolean;
+  onClose: () => void;
+  filter: ChangesFilter;
+  onChange: (filter: ChangesFilter) => void;
+  onClear: () => void;
+  shown: number;
+  total: number;
+}) {
+  useLocale();
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    // SAFETY: `document.activeElement` is typed `Element | null`; the only thing read off it below
+    // is the optional `focus()`, which is what makes it an HTMLElement in practice. The optional
+    // call is what covers the case where it isn't one (an SVG element, say) — same reasoning as
+    // `ui/sheet.tsx`'s `useDialogFocus`, which this mirrors for the restore half only.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    return () => previouslyFocused?.focus?.();
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      {/* The dismiss surface: hidden from assistive tech (the dialog below is the one accessible
+          name, so nothing announces "Filter files" twice), but still dismisses on tap — the same
+          rule the sheet's own backdrop follows. Press and release must both land here, so the
+          release of the tap that OPENED this card never closes it again in the same gesture. */}
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        className="fixed inset-0 z-10 cursor-default"
+        onPointerDown={(e) => {
+          e.currentTarget.dataset.armed = "1";
+        }}
+        onClick={(e) => {
+          if (e.currentTarget.dataset.armed === "1") onClose();
+        }}
+      />
+      <div role="dialog" aria-label={t("changes.filter.button")} className="absolute inset-x-0 top-full z-20 px-4 pt-2">
+        <div className="overflow-hidden rounded-md border border-border bg-card shadow-lg">
+          <ChangesFilterBar filter={filter} onChange={onChange} onClear={onClear} shown={shown} total={total} focusOnMount />
+        </div>
+      </div>
+    </>
   );
 }
 

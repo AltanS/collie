@@ -5,8 +5,8 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide
 import { RouteHeader } from "@/components/app-header";
 import {
   ChangePath,
-  ChangesFilterBar,
   ChangesFilterButton,
+  ChangesFilterOverlay,
   ChangesLayoutToggle,
   ChangesList,
   ChangesNoMatch,
@@ -233,63 +233,79 @@ export function ChangesRoute() {
   return (
     // The pane's own column, like History: this view is one hop from the pane and keeps its edges.
     <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
-      <RouteHeader
-        width="wide"
-        override={
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-11 shrink-0"
-              onClick={open ? backToList : backOut}
-              aria-label={
-                open ? t("changes.listBackAria") : target.kind === "pane" ? t("changes.backAria") : t("changes.backSpaceAria")
-              }
-            >
-              <ArrowLeft className="size-5" />
-            </Button>
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">{t("changes.title")}</h1>
-              <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
-                <span className="shrink-0 truncate">{workspaceLabel}</span>
-                {rootFolder && (
-                  <span className="min-w-0 truncate font-mono" title={rootFolder}>
-                    {shortFolder(rootFolder)}
-                  </span>
-                )}
+      {/* `relative`, wrapping ONLY the header slot: `<RouteHeader/>` portals its content elsewhere
+          and renders nothing here, so this box is zero-height, and the filter overlay's `top-full`
+          below lands exactly on the header's own bottom edge, whatever height it is. Scoping the
+          `relative` to this small box (rather than the whole column) matters: the whole column also
+          contains `<main/>`, which would make it the overlay's containing block and put `top-full`
+          near the BOTTOM of the screen instead. */}
+      <div className="relative">
+        <RouteHeader
+          width="wide"
+          override={
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-11 shrink-0"
+                onClick={open ? backToList : backOut}
+                aria-label={
+                  open ? t("changes.listBackAria") : target.kind === "pane" ? t("changes.backAria") : t("changes.backSpaceAria")
+                }
+              >
+                <ArrowLeft className="size-5" />
+              </Button>
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">{t("changes.title")}</h1>
+                <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
+                  <span className="shrink-0 truncate">{workspaceLabel}</span>
+                  {rootFolder && (
+                    <span className="min-w-0 truncate font-mono" title={rootFolder}>
+                      {shortFolder(rootFolder)}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-            {!open && (
-              <>
-                <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
-                <ChangesFilterButton
-                  open={filterOpen}
-                  active={filtering}
-                  shown={shown}
-                  total={total}
-                  onClick={() => setFilterOpen((o) => !o)}
-                />
-              </>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-11 shrink-0"
-              onClick={() => void loadList()}
-              aria-label={t("changes.refreshAria")}
-              disabled={refreshing}
-            >
-              <RefreshCw className={cn("size-5", refreshing && "animate-spin")} />
-            </Button>
-          </>
-        }
-      />
+              {!open && (
+                <>
+                  <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
+                  <ChangesFilterButton
+                    open={filterOpen}
+                    active={filtering}
+                    shown={shown}
+                    total={total}
+                    onClick={() => setFilterOpen((o) => !o)}
+                  />
+                </>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-11 shrink-0"
+                onClick={() => void loadList()}
+                aria-label={t("changes.refreshAria")}
+                disabled={refreshing}
+              >
+                <RefreshCw className={cn("size-5", refreshing && "animate-spin")} />
+              </Button>
+            </>
+          }
+        />
 
-      {/* Under the header, outside the scroller: opening it pushes the list down and leaves the
-          header where it was. */}
-      {!open && filterOpen && (
-        <ChangesFilterBar filter={filter} onChange={setFilter} shown={shown} total={total} focusOnMount />
-      )}
+        {/* Floats over the list, anchored under the header: opening and closing move neither by a
+            pixel. Tapping outside it or Escape closes it; the filter itself stays applied. */}
+        {!open && (
+          <ChangesFilterOverlay
+            open={filterOpen}
+            onClose={() => setFilterOpen(false)}
+            filter={filter}
+            onChange={setFilter}
+            onClear={clearFilter}
+            shown={shown}
+            total={total}
+          />
+        )}
+      </div>
 
       <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {open ? (
@@ -310,7 +326,6 @@ export function ChangesRoute() {
               layout={layout}
               collapsed={collapsed}
               onToggle={toggleFolder}
-              filter={filtering && !filterOpen ? { shown, total } : null}
               onClearFilter={clearFilter}
               onOpen={openFile}
             />
@@ -331,7 +346,6 @@ function ListBody({
   layout,
   collapsed,
   onToggle,
-  filter,
   onClearFilter,
   onOpen,
 }: {
@@ -341,8 +355,6 @@ function ListBody({
   layout: ChangesLayout;
   collapsed: ReadonlySet<string>;
   onToggle: (key: string) => void;
-  /** Set while a filter is on and its row is closed: the count and the way out move here. */
-  filter: { shown: number; total: number } | null;
   onClearFilter: () => void;
   onOpen: (ref: ChangeRef) => void;
 }) {
@@ -372,14 +384,6 @@ function ListBody({
   else body = <ChangesList repos={repos} onOpen={onOpen} />;
   return (
     <div className="flex flex-col gap-4">
-      {filter && repos.length > 0 && (
-        <div className="-my-2 flex items-center justify-between gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground">{t("changes.filter.shown", filter)}</span>
-          <Button variant="ghost" className="h-11 shrink-0" onClick={onClearFilter}>
-            {t("changes.filter.clear")}
-          </Button>
-        </div>
-      )}
       {body}
       {data.truncated && <p className="text-xs text-muted-foreground">{t("changes.truncated")}</p>}
     </div>

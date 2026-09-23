@@ -8,8 +8,8 @@ import { useState } from "react";
 
 import {
   ChangePath,
-  ChangesFilterBar,
   ChangesFilterButton,
+  ChangesFilterOverlay,
   ChangesLayoutToggle,
   ChangesList,
   ChangesNoMatch,
@@ -42,6 +42,7 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
   const [open, setOpen] = useState(initialFilter !== undefined);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const shown = filterRepos(repos, filter);
+  const clear = () => setFilter({ query: "", statuses: [] });
   const toggle = (key: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -51,7 +52,7 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
   return (
     <Stage height={520}>
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-2 border-b border-rule px-2 py-1">
+        <div className="relative flex items-center gap-2 border-b border-rule px-2 py-1">
           <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("changes.title")}</span>
           <ChangesLayoutToggle layout={layout} onChange={setLayout} />
           <ChangesFilterButton
@@ -61,13 +62,19 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
             total={countFiles(repos)}
             onClick={() => setOpen((o) => !o)}
           />
+          <ChangesFilterOverlay
+            open={open}
+            onClose={() => setOpen(false)}
+            filter={filter}
+            onChange={setFilter}
+            onClear={clear}
+            shown={countFiles(shown)}
+            total={countFiles(repos)}
+          />
         </div>
-        {open && (
-          <ChangesFilterBar filter={filter} onChange={setFilter} shown={countFiles(shown)} total={countFiles(repos)} />
-        )}
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {shown.length === 0 ? (
-            <ChangesNoMatch onClear={() => setFilter({ query: "", statuses: [] })} />
+            <ChangesNoMatch onClear={clear} />
           ) : layout === "tree" ? (
             <ChangesTree repos={shown} collapsed={collapsed} onToggle={toggle} onOpen={() => {}} />
           ) : (

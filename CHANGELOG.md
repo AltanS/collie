@@ -49,6 +49,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **"Try minibuch again" names the machine.** A retry for one member used to say "Retry crew update". The button and the screen it opens now name the machine the retry is for.
 - **The keyboard stays open on a foldable's cover screen.** On a narrow cover screen such as the Galaxy Fold's, opening the keyboard made the page read as sideways, so auto-zen started and closed the reply box you had just tapped. Auto-zen now starts only when the phone itself is turned. Thanks @welldoingk.
 - **Update mode keeps the screen on and fits a larger text size.** The phone that started an update keeps its screen awake while the panel is up, so the clock and the progress bar do not stop when the phone would dim. With a larger text size, the panel now grows as one piece and the list of machines scrolls, where the note used to cut its second line in half (ADR 0064).
+- **The Changes filter overlay never says "Filter files" twice.** Its dismiss surface is hidden from assistive tech, and its own Clear action stays reachable while the card covers the list.
 
 ## [1.12.1] - 2026-09-23
 
