@@ -275,6 +275,20 @@ describe("the three thresholds, each with its own way out", () => {
     expect(view.rows[1]).toMatchObject({ quiet: true, moving: false, detail: "missed 3 sweeps" });
   });
 
+  it("a waiting leg shows the reason the lead gave, and none when it gave none", () => {
+    const view = read({
+      startedHere: true,
+      run: run("done", {
+        peers: [
+          { name: "minibuch", state: "waiting", reason: "rate-limited, retries by 08:55", updatedAt: NOW },
+          { name: "attic", state: "waiting", updatedAt: NOW },
+        ],
+      }),
+    });
+    expect(view.rows.find((r) => r.detail === "rate-limited, retries by 08:55")).toBeDefined();
+    expect(view.rows.filter((r) => r.detail !== null && r.detail !== undefined)).toHaveLength(1);
+  });
+
   it(`calls the download hung past DOWNLOAD_HUNG_MS (${DOWNLOAD_HUNG_MS} ms) with no new file`, () => {
     const at = (ago: number) =>
       read({

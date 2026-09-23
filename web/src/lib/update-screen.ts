@@ -292,9 +292,11 @@ function legWord(state: UpdatePeerLegState, version: string | null): string {
 }
 
 /** The sentence under a peer row, or null. A failure carries its own reason; a package-managed row
- *  carries the boundary instead, because nothing is wrong with it (ADR 0035). */
+ *  carries the boundary instead, because nothing is wrong with it (ADR 0035). A waiting row carries
+ *  a reason only when the lead knows why it is not moving yet, today a member's own hourly limit. */
 function legDetail(leg: UpdatePeerLeg): string | null {
   if (leg.state === "package-managed") return t("updateScreen.peer.packageManagedNote");
+  if (leg.state === "waiting") return leg.reason ?? null;
   if (!LEG_TERMINAL.has(leg.state) && leg.state !== "unreachable") return null;
   if (leg.state === "done") return null;
   return leg.reason ?? null;

@@ -2896,6 +2896,11 @@ whatever the headers say. It is not a tuning knob — it is the guard against a 
 cycling a member through restarts, and the clock is that member's own run record, so it survives the
 member's restart.
 
+*(Amended 2026-09-23, ADR 0062.)* One step is not a new attempt: when the member's last run
+finished `done` **in the run the turn names**, at a version below the one the lead now states, the
+member takes the next step inside the hour. Each such step needs a strictly higher version than the
+last one that succeeded, and a rolled-back step never qualifies, so a lead cannot go round.
+
 Artifact verification is **inherited, not invented**: the release manifest plus this platform's
 `sha256` on a binary install, an explicit `refs/tags/<tag>` fetch on a checkout. No new mechanism.
 
@@ -2904,6 +2909,16 @@ Artifact verification is **inherited, not invented**: the release manifest plus 
 The lead holds an **in-memory** ordered queue of members that are behind, eligible and
 preflight-clean, sorted by `TrustedMember.enrolledAt` — enrolment order, stated so it is stable and
 explainable rather than incidental. It grants one turn at a time.
+
+*(Amended 2026-09-23, ADR 0062.)* **A turn is granted only while the lead states the run's target**
+in `X-Crew-Lead-Release`. The turn carries no version, so the header is the only target a member can
+read, and a full run opens its queue on the confirm, while the lead still runs its old release. A
+lead that granted then sent a member one release behind to the lead's OLD version under the run's id.
+
+The lead also reads each waiting member's hourly limit off its `updateRun` report: an attempt whose
+`updatedAt` is inside the hour. Such a member is not granted the turn, its leg carries the reason
+`rate-limited, retries by HH:MM`, and its wall clock starts when the limit lifts. The report carries
+`updatedAt`, not `startedAt`, so the time is an upper bound. No field and no header changed.
 
 A turn is released on exactly three things: the member reports the new version; the member reports
 `rolled-back`; or the member misses **three consecutive sweeps**, after which it reads `unreachable`

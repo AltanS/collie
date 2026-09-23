@@ -426,6 +426,10 @@ its own preflight, its own health gate and its own rollback. Peers move one at a
 page keeps a line per member: `waiting`, `checking`, `staging`, `restarting`, `verifying`, `updated`,
 `rolled back` or `unreachable`.
 
+A member updates itself at most once an hour. A member that updated within the hour, for example
+by hand, waits with `rate-limited, retries by HH:MM` under its line, and the run goes on once that
+time passes.
+
 **1.7.0 to 1.8.0.** Lead first again, for a second reason: 1.8.0 renames the wire paths, the two
 environment keys, the three state files and the journal prefix to crew. A 1.8.0 lead answers the old
 `/pack/v1/*` paths for one release, so a member still on 1.7.0 follows the roll over the link it

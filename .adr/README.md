@@ -90,7 +90,7 @@ the pointer, it was a supersede.
 | [0013](./0013-a-peer-listens-without-becoming-a-front-door.md) | A peer listens without becoming a front door (amends 0001) | Accepted |
 | [0014](./0014-promote-is-a-confirm-on-the-lead.md) | Promotion is a confirm on the receiver, not a command from the claimant | Accepted |
 | [0015](./0015-pack-add-pushes-over-the-operators-ssh.md) | `pack add` pushes the lead's own commit over the operator's SSH (addendum 2026-09-21: a commitless lead installs from the release) | Accepted |
-| [0016](./0016-updates-ride-the-operators-ssh.md) | Updates ride the operator's SSH, never the pack wire (addendum 2026-09-04: peers follow) | Accepted |
+| [0016](./0016-updates-ride-the-operators-ssh.md) | Updates ride the operator's SSH, never the pack wire (addendum 2026-09-04: peers follow) | Amended in scope by 0062 |
 | [0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) | Recognising a password prompt changes what Collie says, never what it sends | Accepted |
 | [0018](./0018-operator-command-rows-replace-the-catalog.md) | The operator's command rows replace the catalog, never merge into it | Accepted |
 | [0019](./0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md) | oxlint + vendored anti-slop is the lint gate; one linter; TypeScript 7 | Accepted |
@@ -136,6 +136,7 @@ the pointer, it was a supersede.
 | [0059](./0059-a-card-docks-above-the-belt.md) | A card docks above the belt: every lifted card renders in one slot outside the mirror's scroller, directly above the actions belt, capped and scrolled inside (moves where 0056's card renders) | Accepted |
 | [0060](./0060-an-attachment-is-a-chip-not-a-path.md) | An attachment is a chip, not a path: an upload shows as a chip above the field and a `[Image #N]` marker in the draft, and Send swaps in the path where the marker stands | Accepted |
 | [0061](./0061-the-terminal-draft-notice-floats.md) | The terminal draft notice floats: it leaves the layout for an absolute slot at the mirror's bottom edge, above the card dock or the belt, and an x hides it until that draft is gone | Accepted |
+| [0062](./0062-a-crew-run-levels-to-its-target-and-its-second-step-is-not-a-new-attempt.md) | A crew run levels to its target, and its second step is not a new attempt: no turn below the target, the hourly limit exempts a step inside the same run, the lead names the limit (amends 0016) | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on

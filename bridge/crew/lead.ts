@@ -616,7 +616,9 @@ export class CrewLead {
       const kind = state.preflight?.installKind;
       return kind === undefined ? turnMember : { ...turnMember, installKind: kind };
     });
-    if (follow.turns.observe(members, this.now()).released) this.resweep();
+    // What this lead states about itself gates every grant: a turn is handed out only while that is
+    // the run's own target, so a member can never be sent to an intermediate release (§20).
+    if (follow.turns.observe(members, this.now(), { release: follow.leadRelease() }).released) this.resweep();
   }
 
   /**

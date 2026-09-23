@@ -1,6 +1,7 @@
 # 0016 — Updates ride the operator's SSH, never the pack wire
 
-Status: **Accepted** (2026-08-15)
+Status: **Accepted** (2026-08-15) · Amended in scope by
+[0062](./0062-a-crew-run-levels-to-its-target-and-its-second-step-is-not-a-new-attempt.md)
 
 Related: [ADR 0015](./0015-pack-add-pushes-over-the-operators-ssh.md) (the same channel, for the same
 reasons, one verb earlier) · [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (a

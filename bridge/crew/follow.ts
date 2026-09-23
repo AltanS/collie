@@ -232,8 +232,18 @@ export function followGuards(f: FollowFacts): FollowDecision {
   // tuning knob: it is the guard against a buggy or hostile lead cycling a peer through restarts,
   // and it is on the peer because that is the only side that can enforce it. The clock is the peer's
   // own last attempt, read off the run record, so it survives this machine's restart.
+  //
+  // ONE EXCEPTION, and it is the second step of the SAME run (2026-09-23). A lead older than the
+  // fix in {@link UpdateTurns.observe} handed out the turn while it was still on its OLD release,
+  // so a member one release further behind levelled to that intermediate version under the run's
+  // id, and then refused the lead's real target an hour long: the 1.12.0 release run left
+  // minibuch on 1.11.1 that way. A member whose last attempt is a `done` in this very run, to a
+  // version below the one the lead now states, is finishing an attempt the limit already counted.
+  // The loop protection holds: each such step needs a strictly higher version than the last one
+  // that succeeded, a rolled-back step never qualifies, and there is no downgrade path, so a lead
+  // can walk a member up the published tags at most once each and never round in a circle.
   const since = attemptAgeMs(f.run, f.now);
-  if (since !== null && since < FOLLOW_ATTEMPT_INTERVAL_MS) {
+  if (since !== null && since < FOLLOW_ATTEMPT_INTERVAL_MS && !continuesThisRun(f.run, lead, turn.runId)) {
     const minutes = Math.ceil((FOLLOW_ATTEMPT_INTERVAL_MS - since) / 60_000);
     return refuse("rate-limited", `this machine attempted an update ${Math.floor(since / 60_000)} minutes ago; it tries again in ${minutes}`);
   }
@@ -508,6 +518,13 @@ export const LEG_WALL_CLOCK_MS = 20 * 60_000;
 export const LEG_WALL_CLOCK_REASON = "no change for 20 minutes";
 
 /**
+ * How long a member holds the turn, unmoved, before the lead names a limit that member should have
+ * been exempt from. A current member starts within a sweep or two of its turn; one that has not
+ * moved in a minute is a build that predates the exemption and is waiting its hour out.
+ */
+const LIMIT_GRACE_MS = 60_000;
+
+/**
  * The lead's turn queue — **in memory, and never persisted**.
  *
  * §18.9's argument for `lastDialledAt` applies here unchanged: the queue describes a *process*, and
@@ -575,12 +592,33 @@ export class UpdateTurns {
   private readonly blocked = new Map<string, string>();
   /** When every leg first reached a terminal state, or null while the run is still moving. */
   private settled: number | null = null;
+  /**
+   * Each waiting member's own once-an-hour limit as its run report shows it ({@link followLimit}).
+   *
+   * Without it the queue handed the turn to a member that was bound to refuse, held it there for the
+   * whole wall clock, and then failed it as `unreachable (no change for 20 minutes)` — a member that
+   * had answered every sweep, on a lead that could read the cause off the report in its hand. With
+   * it the leg says `rate-limited, retries by HH:MM`, the turn goes to somebody else meanwhile, and
+   * the wall clock starts when the limit lifts rather than when the turn was granted.
+   */
+  private readonly limits = new Map<string, { readonly at: number; readonly continues: boolean }>();
+  /**
+   * The latest moment a limit was seen to lift, per member. The wall clock is measured from here,
+   * and it outlives the limit on purpose: the sweep after the limit lifts no longer reads one, and
+   * a clock that fell back to the grant would fail that member on the very sweep it became free.
+   */
+  private readonly limitEnds = new Map<string, number>();
+  /** The limit line already on the journal, per member, so a held limit costs one line. */
+  private readonly limitLogged = new Map<string, number>();
 
   /**
    * `log` is where a `[crew]` line goes — `console.log`, the bridge's journal, unless a caller
    * says otherwise. Injected so a test asserts the sentence and the suite stays silent.
    */
-  constructor(private readonly log: (line: string) => void = (line) => console.log(line)) {}
+  constructor(
+    private readonly log: (line: string) => void = (line) => console.log(line),
+    private readonly clock: (ms: number) => string = clockTime,
+  ) {}
 
   /** A run has started on this lead. Every peer behind `target` becomes a candidate. */
   begin(runId: string, target: string): void {
@@ -591,6 +629,9 @@ export class UpdateTurns {
     this.legs.clear();
     this.legChangedAt.clear();
     this.expired.clear();
+    this.limits.clear();
+    this.limitEnds.clear();
+    this.limitLogged.clear();
     this.settledLogged = false;
     this.swept = false;
     this.settled = null;
@@ -674,8 +715,18 @@ export class UpdateTurns {
    *
    * The turn is released on exactly three things and nothing else: the member reports the new
    * version, the member reports `rolled-back`, or it misses three consecutive sweeps.
+   *
+   * `lead` is what this lead states about itself on the same sweep ({@link leadReleaseHeader}).
+   * **A turn is granted only while that is the run's target** (§20, amended 2026-09-23). The turn
+   * carries no version, so a member levels to whatever the release header says — and a full run
+   * opens its queue the instant the operator confirms, before the detached updater has written a
+   * record, while the header still states the lead's OLD release. On the 1.12.0 run that sent
+   * minibuch from 1.11.0 to 1.11.1 under the run's id, and its hourly limit then refused 1.12.0.
+   * Waiting until the lead states the target is the whole fix on this side: the run's target is
+   * the only version a member can be sent to. The production caller always passes it; a caller
+   * that passes nothing is a test about the queue alone.
    */
-  observe(members: readonly TurnMember[], now: number): TurnSweep {
+  observe(members: readonly TurnMember[], now: number, lead?: { readonly release: string | null }): TurnSweep {
     if (this.run === null) return { released: false };
     const target = this.run.target;
     const runId = this.run.runId;
@@ -701,7 +752,7 @@ export class UpdateTurns {
       // reports the new version. Any other terminal answer — `rolled-back`, `package-managed` — is
       // also the member's own account and also wins. Only an OPEN state is refused.
       const expired = this.expired.get(m.memberId);
-      const leg = expired !== undefined && LEG_OPEN.has(fresh.state) ? expired : fresh;
+      let leg = expired !== undefined && LEG_OPEN.has(fresh.state) ? expired : fresh;
       if (!LEG_OPEN.has(fresh.state)) this.expired.delete(m.memberId);
       const was = this.legs.get(m.memberId);
       // `legOf` mints a fresh object every sweep, so the STATE is compared and never the object.
@@ -713,6 +764,8 @@ export class UpdateTurns {
           `[crew] update ${shortRunId(runId)}: ${m.memberId} ${was?.state ?? "new"} -> ${leg.state} (${leg.version ?? "unknown"})`,
         );
       }
+      const limited = this.limitReason(runId, m, leg, now);
+      if (limited !== null) leg = { ...leg, reason: limited };
       // EVERY LEG CARRIES A CLOCK (M20/12). `legOf` stamps only the legs a MEMBER reported — the
       // ones it took from that member's own run record — so `waiting`, `unreachable` and
       // `package-managed` reached the phone with no `updatedAt` at all. The band reads its elapsed
@@ -737,8 +790,11 @@ export class UpdateTurns {
     // precisely because a quiet sweep returned before reaching here.
     if (this.settleIfDone(runId, now)) return { released };
 
-    if (this.held === null) {
-      const next = ordered.find((m) => eligible(m, this.legs.get(m.memberId)));
+    const leadOn = lead === undefined || (lead.release !== null && bareVersion(lead.release) === target);
+    if (this.held === null && !leadOn) {
+      this.reportBlocked(runId, ordered, `this lead states ${lead?.release ?? "no settled release"}, not ${target} yet`);
+    } else if (this.held === null) {
+      const next = ordered.find((m) => eligible(m, this.legs.get(m.memberId), this.limits.get(m.memberId)));
       this.held = next?.memberId ?? null;
       // A GRANT is where the held member's wall clock starts, not the sweep that first saw it. The
       // member has been queued until now, and charging it the wait it spent behind another member's
@@ -748,10 +804,40 @@ export class UpdateTurns {
         this.progressAt = now;
         this.blocked.clear();
       } else {
-        this.reportBlocked(runId, ordered);
+        this.reportBlocked(runId, ordered, null);
       }
     }
     return { released };
+  }
+
+  /**
+   * Record `m`'s own rate limit, and answer the sentence its WAITING leg carries for it, or null.
+   *
+   * A limit this run's own `done` left behind ({@link followLimit}'s `continues`) is one a current
+   * member is exempt from, so it is granted the turn and named only once that member has held the
+   * turn a minute without moving: a member built before the exemption refuses in silence, and the
+   * minute is how the lead tells the two apart without reading a version number.
+   */
+  private limitReason(runId: string, m: TurnMember, leg: PeerLeg, now: number): string | null {
+    const limit = leg.state === "waiting" ? followLimit(m.run, runId, now) : null;
+    if (limit === null) {
+      this.limits.delete(m.memberId);
+      return null;
+    }
+    this.limits.set(m.memberId, limit);
+    this.limitEnds.set(m.memberId, Math.max(this.limitEnds.get(m.memberId) ?? 0, limit.at));
+    if (limit.continues) {
+      const heldFor = this.held === m.memberId ? now - (this.legChangedAt.get(m.memberId) ?? now) : 0;
+      if (heldFor < LIMIT_GRACE_MS) return null;
+    }
+    const reason = `rate-limited, retries by ${this.clock(limit.at)}`;
+    if (this.limitLogged.get(m.memberId) !== limit.at) {
+      this.limitLogged.set(m.memberId, limit.at);
+      this.log(
+        `[crew] update ${shortRunId(runId)}: ${m.memberId} waits on its own once-an-hour limit, it retries by ${this.clock(limit.at)}`,
+      );
+    }
+    return reason;
   }
 
   /**
@@ -762,13 +848,17 @@ export class UpdateTurns {
    * for that machine, which {@link eligible} refuses exactly as it refuses a red one, and which the
    * lead can fix by asking for a fresh one on its next dial (`crew/lead.ts`).
    */
-  private reportBlocked(runId: string, ordered: readonly TurnMember[]): void {
+  private reportBlocked(runId: string, ordered: readonly TurnMember[], leadWhy: string | null): void {
     for (const m of ordered) {
       if (this.legs.get(m.memberId)?.state !== "waiting") continue;
+      const limit = this.limits.get(m.memberId);
       const why =
-        m.verdict === null
-          ? "this lead holds no preflight verdict for it, and unknown is not green"
-          : `its own preflight is ${m.verdict}`;
+        leadWhy ??
+        (limit !== undefined && !limit.continues
+          ? `it updated within the hour, and its own limit lets it try again by ${this.clock(limit.at)}`
+          : m.verdict === null
+            ? "this lead holds no preflight verdict for it, and unknown is not green"
+            : `its own preflight is ${m.verdict}`);
       if (this.blocked.get(m.memberId) === why) continue;
       this.blocked.set(m.memberId, why);
       this.log(`[crew] update ${shortRunId(runId)}: ${m.memberId} is not being handed the turn — ${why}`);
@@ -792,7 +882,10 @@ export class UpdateTurns {
     for (const [memberId, leg] of this.legs) {
       if (!LEG_OPEN.has(leg.state)) continue;
       if (memberId !== this.held && leg.state !== "updating") continue;
-      if (now - (this.legChangedAt.get(memberId) ?? now) < LEG_WALL_CLOCK_MS) continue;
+      // A member waiting on its own hourly limit is held to the clock from the moment the limit
+      // lifts: until then it is not stalled, it is keeping a promise the lead can read.
+      const since = Math.max(this.legChangedAt.get(memberId) ?? now, this.limitEnds.get(memberId) ?? 0);
+      if (now - since < LEG_WALL_CLOCK_MS) continue;
       released = this.failLeg(runId, memberId, leg, now) || released;
       moved = true;
     }
@@ -807,7 +900,11 @@ export class UpdateTurns {
     // nothing at all has moved for twenty minutes still ends, which is the whole point.
     for (const [memberId, leg] of this.legs) {
       if (!LEG_OPEN.has(leg.state)) continue;
-      const since = Math.max(this.legChangedAt.get(memberId) ?? now, this.progressAt);
+      const since = Math.max(
+        this.legChangedAt.get(memberId) ?? now,
+        this.progressAt,
+        this.limitEnds.get(memberId) ?? 0,
+      );
       if (now - since < LEG_WALL_CLOCK_MS) continue;
       released = this.failLeg(runId, memberId, leg, now) || released;
     }
@@ -875,11 +972,18 @@ export interface TurnSweep {
   readonly released: boolean;
 }
 
-/** Whether a member may be handed the turn: behind, reachable, and preflight-clean. */
-function eligible(m: TurnMember, leg: PeerLeg | undefined): boolean {
+/** Whether a member may be handed the turn: behind, reachable, preflight-clean, and not rate-limited. */
+function eligible(
+  m: TurnMember,
+  leg: PeerLeg | undefined,
+  limit: { readonly continues: boolean } | undefined,
+): boolean {
   // Every terminal state excludes, and `package-managed` is one of them — which is why a packaged
   // member never receives `X-Crew-Update-Turn` without a second rule stated here.
   if (leg === undefined || leg.state !== "waiting") return false;
+  // A member inside its own hourly limit would refuse the turn, so the turn goes elsewhere until
+  // the limit lifts. The one limit a current member is exempt from is granted (see `followLimit`).
+  if (limit !== undefined && !limit.continues) return false;
   // `null` is UNKNOWN and it blocks, exactly as it does on the card (§19): "we could not check this
   // machine" is not "this machine is fine".
   return m.verdict === "green" || m.verdict === "amber";
@@ -963,6 +1067,44 @@ function rolledBackFrom(run: UpdateRun | null, version: string, runId: string): 
   if (run === null || run.state !== "rolled-back") return false;
   if (run.runId !== runId) return false;
   return run.to !== null && bareVersion(run.to) === version;
+}
+
+/**
+ * Whether this machine's last run finished `done` in run `runId`, below `lead` — which makes the
+ * next step toward `lead` part of the same attempt, not a new one. See the rate limit in
+ * {@link followGuards}.
+ */
+function continuesThisRun(run: UpdateRun | null, lead: string, runId: string): boolean {
+  if (run === null || run.state !== "done" || run.runId !== runId || run.to === null) return false;
+  const reached = bareVersion(run.to);
+  return reached !== null && compareSemver(lead, reached) > 0;
+}
+
+/**
+ * The lead's reading of the member's rate limit, from the run report that member sends (§20).
+ *
+ * The member's clock is its run's `startedAt`; the report carries only `updatedAt`, which is never
+ * earlier. So `at` is a bound — the member tries again BY then, never later — and a lead that waits
+ * for it is never early. `continues` marks the one case {@link followGuards} exempts: a `done` in
+ * THIS run. A member built before that exemption still refuses there, and the lead cannot tell the
+ * two builds apart, so it grants the turn anyway and only waits for the bound.
+ */
+export function followLimit(
+  report: PeerRunReport | null,
+  runId: string,
+  now: number,
+): { readonly at: number; readonly continues: boolean } | null {
+  if (report === null || report.updatedAt === null) return null;
+  if (PEER_IN_FLIGHT.has(report.state)) return null;
+  const at = report.updatedAt + FOLLOW_ATTEMPT_INTERVAL_MS;
+  if (now >= at) return null;
+  return { at, continues: report.runId === runId && report.state === "done" };
+}
+
+/** A lead-local wall clock time, `HH:MM`. The leg's reason is read on the operator's own phone. */
+export function clockTime(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 /** How long ago this machine last STARTED a run, or null when it has never started one. */
