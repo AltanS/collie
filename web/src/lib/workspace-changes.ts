@@ -50,3 +50,25 @@ export async function runPool(tasks: readonly (() => Promise<void>)[], limit: nu
   const lanes = Math.max(1, Math.min(limit, tasks.length));
   await Promise.all(Array.from({ length: lanes }, worker));
 }
+
+/** A count as one string: two counts that read the same have the same signature. */
+export function countSignature(count: WorkspaceChangeCount): string {
+  return count.kind === "changed" ? `changed:${count.files}:${count.added}:${count.removed}` : count.kind;
+}
+
+/**
+ * How a row's count line shows a new value, given the signature it showed before.
+ *   * `loading`: nothing to show yet, the skeleton holds the line.
+ *   * `still`: the first value of a row that never waited (a cached answer on re-entry), or the same
+ *     value again. No motion.
+ *   * `arrive`: the first answer after the skeleton. The skeleton fades out and the text fades in.
+ *   * `update`: a different value over a value. The text changes in place with a short opacity dip.
+ */
+export type CountArrival = "loading" | "still" | "arrive" | "update";
+
+export function countArrival(prev: string | null, next: WorkspaceChangeCount): CountArrival {
+  if (next.kind === "loading") return "loading";
+  const sig = countSignature(next);
+  if (prev === null || prev === sig) return "still";
+  return prev === "loading" ? "arrive" : "update";
+}

@@ -948,6 +948,68 @@
   }
 }
 
+/* THE CHANGES TAB'S COUNT LINE (components/workspace-changes-list.tsx CountSlot). Until a workspace's
+   first answer, a muted bar breathes in the line's own box; the answer fades in over it with a 3px
+   settle, and the bar fades out underneath. A later, different value dips and comes back. Opacity
+   and transform only, inside a fixed 16px line, so no box around it ever moves. The dimmed
+   "No changes"/"No folder" rows ease to their dim in the same 200ms. Reduced motion: every swap is
+   instant and the bar holds still. */
+.count-skeleton {
+  animation: count-skeleton-pulse 1.4s ease-in-out infinite;
+  transition: opacity 200ms ease-out;
+}
+.count-skeleton--done {
+  opacity: 0;
+  animation: none;
+}
+.count-arrive {
+  animation: count-arrive 200ms ease-out both;
+}
+.count-update {
+  animation: count-update 320ms ease-out both;
+}
+.count-row {
+  transition: opacity 200ms ease-out;
+}
+@keyframes count-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+@keyframes count-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes count-update {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .count-skeleton,
+  .count-arrive,
+  .count-update {
+    animation: none;
+  }
+  .count-skeleton,
+  .count-row {
+    transition: none;
+  }
+}
+
 /* THE ACTION BELT'S ONE SCALE (components/actions-row.tsx). The belt's root carries `--belt-scale`
    inline, from the Settings row "Action belt size" (1.15 default, 1.3, 1.5), and every size on the
    belt is derived from it here, so band, pills, icons and words grow together and never drift apart.

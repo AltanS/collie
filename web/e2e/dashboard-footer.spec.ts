@@ -110,3 +110,69 @@ test("Changes lists each workspace with its counts and opens the workspace's Cha
   await rows.nth(0).click();
   await expect(page).toHaveURL(/\/space\/w1\/changes$/u);
 });
+
+/** Like `routeChanges`, but every answer waits `ms` first, so the loading state can be seen. */
+async function routeChangesSlowly(page: Page, ms: number) {
+  const clean: ChangesResponse = { workspaceId: "w2", available: true, root: "/home/you/collie", truncated: false, repos: [] };
+  await page.route("**/api/workspace/*/changes*", async (route) => {
+    const id = decodeURIComponent(new URL(route.request().url()).pathname.split("/")[3]!);
+    await new Promise((r) => setTimeout(r, ms));
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(id === "w1" ? fixtureChanges : clean) }).catch(() => {});
+  });
+}
+
+const countLines = (page: Page) => page.getByRole("list", { name: en["home.changes.listAria"] }).locator('[data-slot="count-line"]');
+
+test("Changes shows a skeleton first, then the numbers, and the row does not move", async ({ page }) => {
+  await routeChangesSlowly(page, 1200);
+  await page.goto("/");
+  await tab(page, CHANGES).click();
+  const rows = page.getByRole("list", { name: en["home.changes.listAria"] }).getByRole("button");
+  const line = countLines(page).first();
+  await expect(line).toHaveAttribute("data-state", "loading");
+  await expect(line.locator(".count-skeleton")).toBeVisible();
+  const before = await box(rows.first());
+  await expect(rows.first()).toContainText("5 files");
+  await expect(line).toHaveAttribute("data-state", "arrive");
+  const after = await box(rows.first());
+  for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(after[k] - before[k])).toBeLessThanOrEqual(0.5);
+  // The dimmed row arrives the same way.
+  await expect(countLines(page).nth(1)).toHaveAttribute("data-state", "arrive");
+  await expect(rows.nth(1)).toContainText(en["home.changes.clean"]);
+});
+
+test("Changes shows the last numbers at once when the tab is entered again", async ({ page }) => {
+  await routeChangesSlowly(page, 300);
+  await page.goto("/");
+  await tab(page, CHANGES).click();
+  const rows = page.getByRole("list", { name: en["home.changes.listAria"] }).getByRole("button");
+  await expect(rows.first()).toContainText("5 files");
+  await tab(page, PANES).click();
+  await expect(tab(page, PANES)).toHaveAttribute("aria-current", "page");
+  // The answers now take far longer than the check below waits: only the kept numbers can pass it.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await routeChangesSlowly(page, 5000);
+  await tab(page, CHANGES).click();
+  const first = await countLines(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-state")));
+  expect(first).toEqual(["still", "still"]);
+  await expect(rows.first()).toContainText("5 files", { timeout: 500 });
+  await expect(rows.nth(1)).toContainText(en["home.changes.clean"], { timeout: 500 });
+});
+
+test("with reduced motion the numbers replace the skeleton with no transition", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await routeChangesSlowly(page, 600);
+  await page.goto("/");
+  await tab(page, CHANGES).click();
+  const line = countLines(page).first();
+  const skeleton = line.locator(".count-skeleton");
+  await expect(line).toHaveAttribute("data-state", "loading");
+  expect(await skeleton.evaluate((e) => getComputedStyle(e).animationName)).toBe("none");
+  await expect(line).toHaveAttribute("data-state", "arrive");
+  const style = await line.evaluate((e) => {
+    const text = e.querySelector(".count-arrive")!;
+    const bar = e.querySelector(".count-skeleton")!;
+    return { text: getComputedStyle(text).animationName, bar: getComputedStyle(bar).transitionDuration, opacity: getComputedStyle(bar).opacity };
+  });
+  expect(style).toEqual({ text: "none", bar: "0s", opacity: "0" });
+});
