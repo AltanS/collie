@@ -33,6 +33,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Changed
 - **A chip whose marker you deleted now says it goes in front.** Send puts such an attachment's path in front of your text. The chip now shows this before you send: its border turns dashed, its number gains an arrow, and its title and screen-reader text say where the path will go. Type the marker back to clear it (ADR 0060).
 
+### Fixed
+- **A block or Powerline character no longer stops short of its row.** In the terminal mirror, a prompt pill's round caps and a bar of `█` stopped a quarter of a row short, so the pill stepped in at both ends and stacked bars showed a stripe between rows. Block characters are now painted to the full row, so stacked rows meet and a half block splits at half the row. Powerline caps and arrows are painted to the same height as the pill beside them. The text, find and copy do not change. Thanks @enieuwy (#268, fixes #267).
+
 ## [1.12.0] - 2026-09-23
 
 ### Added

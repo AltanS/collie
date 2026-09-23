@@ -50,27 +50,131 @@
   }
 }
 
-/* One cell of the mirror, painted rather than typed — lib/cell-glyphs.ts has the whole argument.
+/* One cell of the mirror, painted rather than typed — lib/cell-glyphs.ts has the whole argument,
+   and its CELL_FILL table names every `data-cell` value below.
 
-   IT SETS NO GEOMETRY, AND THAT IS THE WHOLE TRICK. An inline box's background paints the same
-   content area as the background of the span beside it, so a painted cell and the chip it belongs
-   to start and end on the same two pixels with nothing to keep in step. Sizing a box instead —
-   inline-block, `1ch` wide, a line box tall — measures 0.27px short at each end in WebKit, because
-   `line-height: normal` and the content area disagree there; it was tried and dropped.
+   A BLOCK ELEMENT IS PAINTED ON A BAND THAT IS THE ROW. An inline box's own background covers the
+   font's content area, its ascent plus descent, and that is not the row: at 10px it measured 13px
+   against a 12.5px row in Chromium on Linux, and sat 0.75px above the row's centre. So the paint is
+   not the span's background. It is a `::before` box, absolutely positioned with `top` left `auto`,
+   and an absolutely positioned box that started out inline takes its STATIC POSITION: the top of
+   the line box it sits in. `height: 1lh` is the row pitch, and `left: 0; right: 0` is the span's
+   own advance, so the band is exactly one cell: the row's top and bottom in Chromium and WebKit,
+   with no offset of its own (web/e2e/cell-glyphs.spec.ts reads it off the pixels). Every shape is
+   then a background layer in percentages of that band.
 
-   It also means this changes no layout at all: the character keeps its own advance, so a Powerline
-   cap stays exactly as wide as the font makes it, columns move by nothing, and the only difference
-   is that the shape now reaches the top and bottom of its row.
+   HALF A PIXEL OVER, at the top only. Two bands that meet exactly are rounded to device pixels one
+   box at a time, and at device pixel ratio 3 WebKit rounded two stacked rows one pixel APART, a
+   dark line through a stacked bar. The extra 0.5px reaches up under the row above, which paints
+   first, and closes that at ratio 2 and up. It goes up and not down because the last row's band
+   would otherwise poke out of the <pre> and give it half a pixel to scroll. It moves a half
+   block's edge by 0.25px.
+
+   IT MOVES NOTHING. An absolutely positioned box takes no room, and the span sets no width, no
+   display and no padding, so every row and every column lands where it did. `inline-block` sized
+   to one cell measured 0.27px short at each end in WebKit and was dropped. The span is a stacking
+   context so the band can sit under its own text: a selection still shows over a painted cell.
+
+   ONE SPAN PER CHARACTER, on purpose. A span that holds a run is split across two lines when the
+   mirror wraps inside it, and an absolutely positioned child has one box, so the run's second line
+   would lose its paint and, with the ink emptied, show nothing at all.
 
    THE CHARACTER IS STILL IN HERE, as a text node — find offsets, link offsets, selection and copy
    all read it, and none of them may change. `-webkit-text-fill-color` is what stops it being seen:
    it empties the INK and leaves `color` alone, so `currentColor` in the paint still resolves to the
    segment's own foreground, and .adr/0002's inversion filter treats the paint exactly like text.
-   `color: transparent` would take the paint with it. */
-.cell-glyph {
-  background: var(--cell-fill);
-  border-radius: var(--cell-radius, 0);
-  -webkit-text-fill-color: transparent;
+   `color: transparent` would take the paint with it.
+
+   A browser without `lh` (Safari before 16.4) skips all of this and keeps the font's own glyph,
+   short but visible.
+
+   The Powerline four are the exception, and their rule below says why. */
+@supports (height: 1lh) {
+  .cell-glyph {
+    --ink: linear-gradient(currentColor, currentColor);
+    -webkit-text-fill-color: transparent;
+  }
+  .cell-glyph:not([data-cell^="wedge-"], [data-cell^="round-"]) {
+    position: relative;
+    z-index: 0;
+  }
+  .cell-glyph:not([data-cell^="wedge-"], [data-cell^="round-"])::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: calc(1lh + 0.5px);
+    margin-top: -0.5px;
+    z-index: -1;
+    pointer-events: none;
+    background-repeat: no-repeat;
+  }
+
+  /* `<position> / <size>` of each rectangle, in percentages of the band. Every rectangle a block
+     element draws is flush to an edge, so each position is 0% or 100%. */
+  .cell-glyph[data-cell="full"]::before { background-image: var(--ink); }
+  .cell-glyph[data-cell="lower-1"]::before { background: var(--ink) 0 100% / 100% 12.5% no-repeat; }
+  .cell-glyph[data-cell="lower-2"]::before { background: var(--ink) 0 100% / 100% 25% no-repeat; }
+  .cell-glyph[data-cell="lower-3"]::before { background: var(--ink) 0 100% / 100% 37.5% no-repeat; }
+  .cell-glyph[data-cell="lower-4"]::before { background: var(--ink) 0 100% / 100% 50% no-repeat; }
+  .cell-glyph[data-cell="lower-5"]::before { background: var(--ink) 0 100% / 100% 62.5% no-repeat; }
+  .cell-glyph[data-cell="lower-6"]::before { background: var(--ink) 0 100% / 100% 75% no-repeat; }
+  .cell-glyph[data-cell="lower-7"]::before { background: var(--ink) 0 100% / 100% 87.5% no-repeat; }
+  .cell-glyph[data-cell="upper-1"]::before { background: var(--ink) 0 0 / 100% 12.5% no-repeat; }
+  .cell-glyph[data-cell="upper-4"]::before { background: var(--ink) 0 0 / 100% 50% no-repeat; }
+  .cell-glyph[data-cell="left-1"]::before { background: var(--ink) 0 0 / 12.5% 100% no-repeat; }
+  .cell-glyph[data-cell="left-2"]::before { background: var(--ink) 0 0 / 25% 100% no-repeat; }
+  .cell-glyph[data-cell="left-3"]::before { background: var(--ink) 0 0 / 37.5% 100% no-repeat; }
+  .cell-glyph[data-cell="left-4"]::before { background: var(--ink) 0 0 / 50% 100% no-repeat; }
+  .cell-glyph[data-cell="left-5"]::before { background: var(--ink) 0 0 / 62.5% 100% no-repeat; }
+  .cell-glyph[data-cell="left-6"]::before { background: var(--ink) 0 0 / 75% 100% no-repeat; }
+  .cell-glyph[data-cell="left-7"]::before { background: var(--ink) 0 0 / 87.5% 100% no-repeat; }
+  .cell-glyph[data-cell="right-1"]::before { background: var(--ink) 100% 0 / 12.5% 100% no-repeat; }
+  .cell-glyph[data-cell="right-4"]::before { background: var(--ink) 100% 0 / 50% 100% no-repeat; }
+
+  /* Quadrants: each quarter is half the band each way, in its own corner. */
+  .cell-glyph[data-cell^="quad-"] {
+    --ul: var(--ink) 0 0 / 50% 50% no-repeat;
+    --ur: var(--ink) 100% 0 / 50% 50% no-repeat;
+    --ll: var(--ink) 0 100% / 50% 50% no-repeat;
+    --lr: var(--ink) 100% 100% / 50% 50% no-repeat;
+  }
+  .cell-glyph[data-cell="quad-ll"]::before { background: var(--ll); }
+  .cell-glyph[data-cell="quad-lr"]::before { background: var(--lr); }
+  .cell-glyph[data-cell="quad-ul"]::before { background: var(--ul); }
+  .cell-glyph[data-cell="quad-ur"]::before { background: var(--ur); }
+  .cell-glyph[data-cell="quad-ul-ll-lr"]::before { background: var(--ul), var(--ll), var(--lr); }
+  .cell-glyph[data-cell="quad-ul-lr"]::before { background: var(--ul), var(--lr); }
+  .cell-glyph[data-cell="quad-ul-ur-ll"]::before { background: var(--ul), var(--ur), var(--ll); }
+  .cell-glyph[data-cell="quad-ul-ur-lr"]::before { background: var(--ul), var(--ur), var(--lr); }
+  .cell-glyph[data-cell="quad-ur-ll"]::before { background: var(--ur), var(--ll); }
+  .cell-glyph[data-cell="quad-ur-ll-lr"]::before { background: var(--ur), var(--ll), var(--lr); }
+
+  /* Powerline: NOT the row, on purpose. These four exist to join a segment background beside them,
+     a prompt pill's middle, and a segment background covers the content area, not the row. So they
+     paint the span's own background, the content area, and meet the pill on the same two pixels in
+     any face. Painted to the row they would step out of the pill wherever the two differ. A wedge
+     is two half layers whose 50% stop lies on the layer's own diagonal, which IS the wedge's edge;
+     49.8% leaves the stop a sliver to antialias in. A cap is a full cell rounded all the way out
+     on one side, the half-ellipse the font draws. */
+  .cell-glyph[data-cell="wedge-right"] {
+    background:
+      linear-gradient(to top right, currentColor 49.8%, transparent 50%) 0 0 / 100% 50% no-repeat,
+      linear-gradient(to bottom right, currentColor 49.8%, transparent 50%) 0 100% / 100% 50% no-repeat;
+  }
+  .cell-glyph[data-cell="wedge-left"] {
+    background:
+      linear-gradient(to top left, currentColor 49.8%, transparent 50%) 0 0 / 100% 50% no-repeat,
+      linear-gradient(to bottom left, currentColor 49.8%, transparent 50%) 0 100% / 100% 50% no-repeat;
+  }
+  .cell-glyph[data-cell="round-right"] {
+    background: var(--ink);
+    border-radius: 0 100% 100% 0 / 0 50% 50% 0;
+  }
+  .cell-glyph[data-cell="round-left"] {
+    background: var(--ink);
+    border-radius: 100% 0 0 100% / 50% 0 0 50%;
+  }
 }
 
 /* `dark:` must fire for BOTH an explicitly-pinned dark root and a system-dark root the user hasn't

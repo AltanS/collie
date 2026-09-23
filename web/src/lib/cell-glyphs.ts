@@ -19,10 +19,23 @@
 // `pane.read` returns or to what the grammars consume. It changes how ONE character is painted,
 // in one span, inside the renderer that already exists.
 //
-// HOW. The character is wrapped in a `cell-glyph` span whose paint is `currentColor` — so it takes
-// the segment's own foreground, and the inversion filter (.adr/0002) treats it exactly like text.
-// The character itself STAYS in the span as a text node, so find offsets, link offsets, selection
-// and copy are byte-identical; only its ink is emptied. index.css has the span.
+// HOW. The character is wrapped in a `cell-glyph` span with a `data-cell` attribute naming its
+// shape, and index.css paints each shape as a background in `currentColor` — so it takes the
+// segment's own foreground, and the inversion filter (.adr/0002) treats it exactly like text. The
+// character itself STAYS in the span as a text node, so find offsets, link offsets, selection and
+// copy are byte-identical; only its ink is emptied.
+//
+// A BLOCK ELEMENT IS PAINTED TO THE ROW, NOT TO THE SPAN. An inline span's background covers the
+// font's CONTENT AREA (its ascent plus descent), and that is neither the em box nor the row, nor
+// even centred on the row: at 10px, 13px against a 12.5px row pitch and 0.75px high, in Chromium on
+// Linux. So a block's shape is painted on a `::before` band that takes the line box's own top and
+// is `1lh` tall: the row, exactly, in Chromium and WebKit. Stacked `█` rows meet with no gap and no
+// overlap, and a half block splits at half the row. index.css has the rules and the reason the
+// band lands there.
+//
+// A POWERLINE GLYPH IS PAINTED TO ITS NEIGHBOUR, the content area, because its job is to join the
+// segment background beside it, and that background covers the content area too. Painted to the
+// row, a cap would step out of its pill wherever the two differ.
 //
 // EVERY SHAPE IS A BACKGROUND, NEVER A `clip-path`, AND THAT IS MEASURED. A clipped box does not
 // meet the clipped box beside it: each one antialiases its own edge, so a run of full blocks — a
@@ -30,9 +43,16 @@
 // at device pixel ratio 3: `clip-path: inset(0)` leaves 6 visible seams in Chromium and 4 in
 // WebKit, and WebKit's drop all the way to the page background. The same twelve painted as
 // backgrounds leave none in either engine. So a rectangle is a `linear-gradient` layer sized and
-// positioned inside the box, and a round cap is `border-radius` on a full one.
+// positioned inside its box, and a round cap is `border-radius` on a full one.
 //
-// IT MOVES NOTHING. The span sets no geometry of its own, so the character keeps its own advance:
+// ONE SPAN PER CHARACTER, NEVER ONE PER RUN. A bar of forty `█` as one span would be cheaper, but
+// a wrapping mirror can break a long run across two lines, and the band is one box: the second
+// line would lose its paint and, with its ink emptied, show nothing. A single character never
+// breaks. What the hot path saves instead: one regex search answers "nothing to paint" for almost
+// every run, and a painted span carries a `data-cell` name and no style object.
+//
+// IT MOVES NOTHING. The span sets no width, no display and no padding, and the band is absolutely
+// positioned and takes no room, so the character keeps its own advance:
 // a Powerline cap stays as wide as the symbol face makes it, every column lands where it landed
 // before, and the only difference on screen is that the shape now reaches the top and bottom of its
 // row. The documented advance-width drift (index.css § "EXPECTED, NOT A BUG") is untouched, on
@@ -40,8 +60,9 @@
 // and a column-faithful box in the client is the grid ADR 0008 refuses. The browser case fails if a
 // later hand gives this span a size, so the boundary is held by a test and not by this paragraph.
 //
-// NO PANE BYTE EVER COMPOSES A CSS VALUE. A character selects one of the constant strings in the
-// table below by exact match, or it is left alone. Nothing is interpolated, parsed, or built.
+// NO PANE BYTE EVER COMPOSES A CSS VALUE. A character selects one of the constant names in the
+// table below by exact match, or it is left alone. Nothing is interpolated, parsed, or built, and
+// the element carries no inline style: the paint is a fixed rule per name in index.css.
 //
 // WHAT IS DELIBERATELY NOT HERE. One line covers three of the four: paint the character whose
 // glyph is a solid fill that must reach the edges of its cell, and leave every stroke and every
@@ -68,132 +89,112 @@
 // asks how to PAINT one character. Sharing a constant between the two would tie a renderer detail
 // to a grammar's false-positive budget.
 
-/** One rectangle of ink: `<position>/<size>`, in the `background` shorthand's own grammar. Every
- *  rectangle a block element draws is flush to an edge, so each position is `0%` or `100%` and the
- *  percentage-of-the-remainder rule that makes `background-position` awkward never bites. */
-function ink(...rects: string[]): string {
-  return rects.map((rect) => `linear-gradient(currentColor,currentColor) ${rect} no-repeat`).join(",");
-}
-
-/** A right-pointing wedge: the half-cell above the axis keeps its lower-left triangle, the half
- *  below keeps its upper-left. `to top right` and `to bottom right` put their 50% boundary on the
- *  sub-box's own diagonal, which IS the wedge's edge. `49.8%` rather than `50%` gives the hard stop
- *  a sliver to antialias in — a bare hard stop stairsteps. */
-const WEDGE_RIGHT =
-  "linear-gradient(to top right,currentColor 49.8%,transparent 50%) 0% 0%/100% 50% no-repeat," +
-  "linear-gradient(to bottom right,currentColor 49.8%,transparent 50%) 0% 100%/100% 50% no-repeat";
-const WEDGE_LEFT =
-  "linear-gradient(to top left,currentColor 49.8%,transparent 50%) 0% 0%/100% 50% no-repeat," +
-  "linear-gradient(to bottom left,currentColor 49.8%,transparent 50%) 0% 100%/100% 50% no-repeat";
-
-const SOLID = ink("0% 0%/100% 100%");
-
-/** How one character fills its cell: the ink, and the corners the ink is rounded off at. */
-export interface CellPaint {
-  /** A `background` shorthand value. */
-  fill: string;
-  /** A `border-radius` value; absent means square. */
-  radius?: string;
-}
+/** The name index.css keys a shape's paint on, as `.cell-glyph[data-cell="…"]`. The eighths count
+ *  how many eighths of the cell are inked, from the wall they grow from; a quadrant names the
+ *  quarters it inks. */
+export type CellFill =
+  | "full"
+  | `lower-${1 | 2 | 3 | 4 | 5 | 6 | 7}`
+  | `left-${1 | 2 | 3 | 4 | 5 | 6 | 7}`
+  | "upper-1"
+  | "upper-4"
+  | "right-1"
+  | "right-4"
+  | "quad-ll"
+  | "quad-lr"
+  | "quad-ul"
+  | "quad-ur"
+  | "quad-ul-ll-lr"
+  | "quad-ul-lr"
+  | "quad-ul-ur-ll"
+  | "quad-ul-ur-lr"
+  | "quad-ur-ll"
+  | "quad-ur-ll-lr"
+  | "wedge-right"
+  | "wedge-left"
+  | "round-right"
+  | "round-left";
 
 /** Keyed by the character, and written with escapes rather than the literal: several of these are
  *  invisible in an editor, and the Powerline four are private-use codepoints that show as tofu in
  *  most of them. */
-const CELL_PAINT = {
-  // Lower eighths: ink on the floor, growing up.
-  "\u2581": { fill: ink("0% 100%/100% 12.5%") },
-  "\u2582": { fill: ink("0% 100%/100% 25%") },
-  "\u2583": { fill: ink("0% 100%/100% 37.5%") },
-  "\u2584": { fill: ink("0% 100%/100% 50%") },
-  "\u2585": { fill: ink("0% 100%/100% 62.5%") },
-  "\u2586": { fill: ink("0% 100%/100% 75%") },
-  "\u2587": { fill: ink("0% 100%/100% 87.5%") },
-  "\u2588": { fill: SOLID },
-  // Left eighths: ink on the left wall, growing right. The full block above is the eighth of both
-  // runs and is written once.
-  "\u2589": { fill: ink("0% 0%/87.5% 100%") },
-  "\u258a": { fill: ink("0% 0%/75% 100%") },
-  "\u258b": { fill: ink("0% 0%/62.5% 100%") },
-  "\u258c": { fill: ink("0% 0%/50% 100%") },
-  "\u258d": { fill: ink("0% 0%/37.5% 100%") },
-  "\u258e": { fill: ink("0% 0%/25% 100%") },
-  "\u258f": { fill: ink("0% 0%/12.5% 100%") },
+export const CELL_FILL = {
+  // Lower eighths: ink on the floor, growing up. The full block is the eighth of both runs.
+  "\u2581": "lower-1",
+  "\u2582": "lower-2",
+  "\u2583": "lower-3",
+  "\u2584": "lower-4",
+  "\u2585": "lower-5",
+  "\u2586": "lower-6",
+  "\u2587": "lower-7",
+  "\u2588": "full",
+  // Left eighths: ink on the left wall, growing right.
+  "\u2589": "left-7",
+  "\u258a": "left-6",
+  "\u258b": "left-5",
+  "\u258c": "left-4",
+  "\u258d": "left-3",
+  "\u258e": "left-2",
+  "\u258f": "left-1",
   // The halves and eighths that grow the other way.
-  "\u2580": { fill: ink("0% 0%/100% 50%") },
-  "\u2590": { fill: ink("100% 0%/50% 100%") },
-  "\u2594": { fill: ink("0% 0%/100% 12.5%") },
-  "\u2595": { fill: ink("100% 0%/12.5% 100%") },
-  // Quadrants, one rectangle each.
-  "\u2596": { fill: ink("0% 100%/50% 50%") },
-  "\u2597": { fill: ink("100% 100%/50% 50%") },
-  "\u2598": { fill: ink("0% 0%/50% 50%") },
-  "\u259d": { fill: ink("100% 0%/50% 50%") },
-  // Quadrants, two rectangles: a half plus the quadrant across from its open corner, or the two
-  // diagonal pairs. Layered, so no shape here needs to be a single polygon.
-  "\u2599": { fill: ink("0% 0%/50% 100%", "100% 100%/50% 50%") },
-  "\u259a": { fill: ink("0% 0%/50% 50%", "100% 100%/50% 50%") },
-  "\u259b": { fill: ink("0% 0%/100% 50%", "0% 100%/50% 50%") },
-  "\u259c": { fill: ink("0% 0%/100% 50%", "100% 100%/50% 50%") },
-  "\u259e": { fill: ink("100% 0%/50% 50%", "0% 100%/50% 50%") },
-  "\u259f": { fill: ink("0% 100%/100% 50%", "100% 0%/50% 50%") },
-  // Powerline, the thick half of each pair: two separators and two round caps. A cap is a full cell
-  // with the corners on one side rounded all the way out — horizontally by the cell's whole width,
-  // vertically by half its height, which is the half-ellipse the font draws.
-  "\ue0b0": { fill: WEDGE_RIGHT },
-  "\ue0b2": { fill: WEDGE_LEFT },
-  "\ue0b4": { fill: SOLID, radius: "0 100% 100% 0 / 0 50% 50% 0" },
-  "\ue0b6": { fill: SOLID, radius: "100% 0 0 100% / 50% 0 0 50%" },
-} satisfies Record<string, CellPaint>;
+  "\u2580": "upper-4",
+  "\u2590": "right-4",
+  "\u2594": "upper-1",
+  "\u2595": "right-1",
+  // Quadrants, named by the quarters they ink.
+  "\u2596": "quad-ll",
+  "\u2597": "quad-lr",
+  "\u2598": "quad-ul",
+  "\u2599": "quad-ul-ll-lr",
+  "\u259a": "quad-ul-lr",
+  "\u259b": "quad-ul-ur-ll",
+  "\u259c": "quad-ul-ur-lr",
+  "\u259d": "quad-ur",
+  "\u259e": "quad-ur-ll",
+  "\u259f": "quad-ur-ll-lr",
+  // Powerline, the thick half of each pair: two separators and two round caps.
+  "\ue0b0": "wedge-right",
+  "\ue0b2": "wedge-left",
+  "\ue0b4": "round-right",
+  "\ue0b6": "round-left",
+} as const satisfies Record<string, CellFill>;
 
-/** How this character fills its cell, or `undefined` when this module does not paint it. */
-function cellPaint(ch: string): CellPaint | undefined {
-  // SAFETY: `Object.hasOwn` has just proved `ch` is one of this literal's own keys, which is all
-  // the assertion claims. The table has no inherited or shadowed entries to confuse it.
-  return Object.hasOwn(CELL_PAINT, ch) ? CELL_PAINT[ch as keyof typeof CELL_PAINT] : undefined;
-}
+/** Exactly the keys of CELL_FILL, as one character class; cell-glyphs.test.ts holds the two in
+ *  step. Global, so one pass finds every match. */
+const PAINTED = /[\u2580-\u2590\u2594-\u259f\ue0b0\ue0b2\ue0b4\ue0b6]/g;
 
-/** A slice of a segment: plain text, or one character to paint as a cell. */
+/** A slice of a segment: plain text, or one painted character. */
 export interface CellPiece {
   text: string;
-  /** How to paint this one character; absent means render `text` as it always was. */
-  paint?: CellPaint;
+  /** How to paint `text`; absent means render it as it always was. */
+  cell?: CellFill;
 }
 
 /**
  * Split a rendered run into plain stretches and the single characters that must be painted.
  *
  * Returns `null` — not `[{ text }]` — when the run holds none, which is almost every run in the
- * mirror. The caller then emits the string it already had, and this path allocates nothing.
+ * mirror. The first regex search is the whole cost of that answer: no per-character loop, and the
+ * caller then emits the string it already had.
  *
- * Every covered character is in the BMP, so indexing by code unit is safe: no surrogate pair can
- * be cut in half here.
+ * Every covered character is in the BMP, so the regex never matches half a surrogate pair.
  */
 export function cellPieces(text: string): CellPiece[] | null {
-  let first = -1;
-  for (let i = 0; i < text.length; i++) {
-    if (cellPaint(text[i]!) !== undefined) {
-      first = i;
-      break;
-    }
-  }
-  if (first === -1) return null;
+  PAINTED.lastIndex = 0;
+  let match = PAINTED.exec(text);
+  if (match === null) return null;
 
   const pieces: CellPiece[] = [];
-  if (first > 0) pieces.push({ text: text.slice(0, first) });
-  let plain = -1; // where the current plain stretch started, or -1 inside painted characters
-  for (let i = first; i < text.length; i++) {
-    const ch = text[i]!;
-    const paint = cellPaint(ch);
-    if (paint === undefined) {
-      if (plain === -1) plain = i;
-      continue;
-    }
-    if (plain !== -1) {
-      pieces.push({ text: text.slice(plain, i) });
-      plain = -1;
-    }
-    pieces.push({ text: ch, paint });
+  let plain = 0; // where the plain stretch before the next match starts
+  while (match !== null) {
+    if (match.index > plain) pieces.push({ text: text.slice(plain, match.index) });
+    // SAFETY: PAINTED's class is exactly CELL_FILL's keys, one code unit each, and the test above
+    // walks both ranges to hold them equal.
+    const ch = match[0] as keyof typeof CELL_FILL;
+    pieces.push({ text: ch, cell: CELL_FILL[ch] });
+    plain = PAINTED.lastIndex;
+    match = PAINTED.exec(text);
   }
-  if (plain !== -1) pieces.push({ text: text.slice(plain) });
+  if (plain < text.length) pieces.push({ text: text.slice(plain) });
   return pieces;
 }

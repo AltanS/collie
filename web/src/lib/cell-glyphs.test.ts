@@ -1,19 +1,22 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { cellPieces } from "./cell-glyphs";
+import { CELL_FILL, cellPieces } from "./cell-glyphs";
 
-const FULL_BLOCK = "\u2588";
-const RIGHT_EIGHTH = "\u2595";
-const LEFT_EIGHTH = "\u258f";
-const LOWER_EIGHTH = "\u2581";
-const UPPER_EIGHTH = "\u2594";
-const LOWER_LEFT_QUADRANT = "\u2596";
-const LEFT_CAP = "\ue0b6";
-const RIGHT_CAP = "\ue0b4";
-const RIGHT_WEDGE = "\ue0b0";
-const LEFT_WEDGE = "\ue0b2";
-const LIGHT_SHADE = "\u2591";
-const BOX_VERTICAL = "\u2502";
+const FULL_BLOCK = "█";
+const LOWER_HALF = "▄";
+const RIGHT_EIGHTH = "▕";
+const LEFT_EIGHTH = "▏";
+const LOWER_EIGHTH = "▁";
+const UPPER_EIGHTH = "▔";
+const LEFT_CAP = "";
+const RIGHT_CAP = "";
+const RIGHT_WEDGE = "";
+const LEFT_WEDGE = "";
+const LIGHT_SHADE = "░";
+const BOX_VERTICAL = "│";
 
 describe("cell glyph splitting", () => {
   // The whole hot path of the mirror is runs with none of these characters, so the answer for them
@@ -25,8 +28,8 @@ describe("cell glyph splitting", () => {
     expect(cellPieces(`${BOX_VERTICAL} a framed row ${BOX_VERTICAL}`)).toBeNull();
   });
 
-  // Every piece is one character or one plain stretch, and the concatenation must be the input:
-  // find offsets, link offsets and a clipboard copy are all defined over these text nodes.
+  // Every piece is one painted character or one plain stretch, and the concatenation must be the
+  // input: find offsets, link offsets and a clipboard copy are all defined over these text nodes.
   it("reassembles to the run it was given", () => {
     const run = `${LEFT_CAP}CX${RIGHT_CAP} 7d ${FULL_BLOCK.repeat(4)}${RIGHT_EIGHTH}`;
     expect(
@@ -36,75 +39,78 @@ describe("cell glyph splitting", () => {
     ).toBe(run);
   });
 
-  it("paints one character per piece and leaves the text between them whole", () => {
+  it("paints each cap on its own and leaves the text between them whole", () => {
     const pieces = cellPieces(`${LEFT_CAP}CX${RIGHT_CAP}`)!;
     expect(pieces.map((piece) => piece.text)).toEqual([LEFT_CAP, "CX", RIGHT_CAP]);
-    expect(pieces[1]!.paint).toBeUndefined();
-    // A cap is a full cell with the corners on one side rounded all the way out, horizontally by
-    // the whole cell and vertically by half of it — the half-ellipse the font draws.
-    expect(pieces[0]!.paint!.radius).toBe("100% 0 0 100% / 50% 0 0 50%");
-    expect(pieces[2]!.paint!.radius).toBe("0 100% 100% 0 / 0 50% 50% 0");
+    expect(pieces.map((piece) => piece.cell)).toEqual(["round-left", undefined, "round-right"]);
+  });
+
+  // A span per CHARACTER, never per run: a wrapping mirror can break a run across two lines, and
+  // the painted band is one box, so the run's second line would show nothing.
+  it("paints every character on its own, a bar included", () => {
+    expect(cellPieces(FULL_BLOCK.repeat(3))).toEqual([
+      { text: FULL_BLOCK, cell: "full" },
+      { text: FULL_BLOCK, cell: "full" },
+      { text: FULL_BLOCK, cell: "full" },
+    ]);
+    expect(cellPieces(`${FULL_BLOCK}${LOWER_HALF} 91%`)).toEqual([
+      { text: FULL_BLOCK, cell: "full" },
+      { text: LOWER_HALF, cell: "lower-4" },
+      { text: " 91%" },
+    ]);
   });
 
   // The eighths are what a bar is drawn from, and getting the axis or the direction wrong is
-  // invisible in a screenshot of a full bar. `▕` inks the RIGHT eighth, so its layer is an eighth
-  // of the cell wide and sits flush against the right wall.
-  it("sizes and places each partial block against the wall it grows from", () => {
-    expect(cellPieces(RIGHT_EIGHTH)![0]!.paint!.fill).toContain("100% 0%/12.5% 100%");
-    expect(cellPieces(LEFT_EIGHTH)![0]!.paint!.fill).toContain("0% 0%/12.5% 100%");
-    expect(cellPieces(LOWER_EIGHTH)![0]!.paint!.fill).toContain("0% 100%/100% 12.5%");
-    expect(cellPieces(UPPER_EIGHTH)![0]!.paint!.fill).toContain("0% 0%/100% 12.5%");
-    expect(cellPieces(FULL_BLOCK)![0]!.paint!.fill).toContain("0% 0%/100% 100%");
-  });
-
-  // A shape is never a `clip-path`: a clipped box does not meet the clipped box beside it, so a run
-  // of full blocks would grow a seam per cell — measured at device pixel ratio 3, six in Chromium
-  // and four in WebKit, WebKit's all the way down to the page background. Backgrounds leave none.
-  // The colour is always `currentColor`, so a painted cell inherits the segment's foreground and
-  // .adr/0002's inversion filter treats it exactly like the text beside it.
-  it("draws every shape as a background in the inherited colour", () => {
-    const run = `${LEFT_CAP}${FULL_BLOCK}${LOWER_LEFT_QUADRANT}${RIGHT_WEDGE}${RIGHT_EIGHTH}`;
-    for (const piece of cellPieces(run)!) {
-      expect(piece.paint!.fill).toContain("linear-gradient");
-      expect(piece.paint!.fill).toContain("currentColor");
-      expect(piece.paint!.fill).not.toContain("clip-path");
-      expect(piece.paint!.fill).not.toMatch(/#[0-9a-f]{3,8}|rgb\(/i);
-    }
+  // invisible in a screenshot of a full bar. `▕` inks the RIGHT eighth.
+  it("names each partial block by the wall it grows from and how far", () => {
+    expect(cellPieces(RIGHT_EIGHTH)![0]!.cell).toBe("right-1");
+    expect(cellPieces(LEFT_EIGHTH)![0]!.cell).toBe("left-1");
+    expect(cellPieces(LOWER_EIGHTH)![0]!.cell).toBe("lower-1");
+    expect(cellPieces(UPPER_EIGHTH)![0]!.cell).toBe("upper-1");
+    expect(cellPieces("▀")![0]!.cell).toBe("upper-4");
+    expect(cellPieces("▐")![0]!.cell).toBe("right-4");
+    expect(cellPieces("▉")![0]!.cell).toBe("left-7");
+    expect(cellPieces("▇")![0]!.cell).toBe("lower-7");
   });
 
   // The two separators are mirror images, and a wedge pointing the wrong way is the one error in
-  // this table that still looks deliberate on screen. `` opens to the right, so both of its
-  // gradients run rightward and its diagonal is the font's own.
+  // this table that still looks deliberate on screen. `` opens to the right.
   it("points each Powerline separator the way the font draws it", () => {
-    const right = cellPieces(RIGHT_WEDGE)![0]!.paint!.fill;
-    const left = cellPieces(LEFT_WEDGE)![0]!.paint!.fill;
-    expect(right).toContain("to top right");
-    expect(right).toContain("to bottom right");
-    expect(left).toContain("to top left");
-    expect(left).toContain("to bottom left");
-    expect(right).not.toBe(left);
+    expect(cellPieces(RIGHT_WEDGE)![0]!.cell).toBe("wedge-right");
+    expect(cellPieces(LEFT_WEDGE)![0]!.cell).toBe("wedge-left");
   });
 
-  // The six quadrants that are not one rectangle are the easiest entries to transpose, and every
-  // one of them is a half plus the quadrant across from its open corner, or a diagonal pair. Each
-  // row below reads the character's own Unicode name back as areas. Six call sites in lockstep.
-  it("assembles each multi-part quadrant from the areas its name lists", () => {
-    const areas = (ch: string) =>
-      [...cellPieces(ch)![0]!.paint!.fill.matchAll(/\d[\d.]*% \d[\d.]*%\/\d[\d.]*% \d[\d.]*%/g)].map(
-        (match) => match[0],
+  // The six quadrants that are not one rectangle are the easiest entries to transpose. Each row
+  // reads the character's own Unicode name back as the quarters it inks.
+  it("names each quadrant by the quarters its Unicode name lists", () => {
+    // UPPER LEFT AND LOWER LEFT AND LOWER RIGHT
+    expect(cellPieces("▙")![0]!.cell).toBe("quad-ul-ll-lr");
+    // UPPER LEFT AND LOWER RIGHT
+    expect(cellPieces("▚")![0]!.cell).toBe("quad-ul-lr");
+    // UPPER LEFT AND UPPER RIGHT AND LOWER LEFT
+    expect(cellPieces("▛")![0]!.cell).toBe("quad-ul-ur-ll");
+    // UPPER LEFT AND UPPER RIGHT AND LOWER RIGHT
+    expect(cellPieces("▜")![0]!.cell).toBe("quad-ul-ur-lr");
+    // UPPER RIGHT AND LOWER LEFT
+    expect(cellPieces("▞")![0]!.cell).toBe("quad-ur-ll");
+    // UPPER RIGHT AND LOWER LEFT AND LOWER RIGHT
+    expect(cellPieces("▟")![0]!.cell).toBe("quad-ur-ll-lr");
+  });
+
+  // The splitter's regex and the shape table are two spellings of one set. A character in one and
+  // not the other either paints nothing or throws, so every candidate in both ranges is walked.
+  it("paints exactly the characters the shape table names", () => {
+    const candidates = [
+      ...Array.from({ length: 0x100 }, (_, i) => String.fromCharCode(0x2500 + i)),
+      ...Array.from({ length: 0x20 }, (_, i) => String.fromCharCode(0xe0a0 + i)),
+    ];
+    for (const ch of candidates) {
+      const pieces = cellPieces(ch);
+      // SAFETY: `Object.hasOwn` has just proved `ch` is one of the table's own keys.
+      expect(pieces === null ? undefined : pieces[0]!.cell, ch.codePointAt(0)!.toString(16)).toBe(
+        Object.hasOwn(CELL_FILL, ch) ? CELL_FILL[ch as keyof typeof CELL_FILL] : undefined,
       );
-    // UPPER LEFT AND LOWER LEFT AND LOWER RIGHT: the left half, plus the lower right.
-    expect(areas("\u2599")).toEqual(["0% 0%/50% 100%", "100% 100%/50% 50%"]);
-    // UPPER LEFT AND LOWER RIGHT: the falling diagonal.
-    expect(areas("\u259a")).toEqual(["0% 0%/50% 50%", "100% 100%/50% 50%"]);
-    // UPPER LEFT AND UPPER RIGHT AND LOWER LEFT: the upper half, plus the lower left.
-    expect(areas("\u259b")).toEqual(["0% 0%/100% 50%", "0% 100%/50% 50%"]);
-    // UPPER LEFT AND UPPER RIGHT AND LOWER RIGHT: the upper half, plus the lower right.
-    expect(areas("\u259c")).toEqual(["0% 0%/100% 50%", "100% 100%/50% 50%"]);
-    // UPPER RIGHT AND LOWER LEFT: the rising diagonal.
-    expect(areas("\u259e")).toEqual(["100% 0%/50% 50%", "0% 100%/50% 50%"]);
-    // UPPER RIGHT AND LOWER LEFT AND LOWER RIGHT: the lower half, plus the upper right.
-    expect(areas("\u259f")).toEqual(["0% 100%/100% 50%", "100% 0%/50% 50%"]);
+    }
   });
 
   // The splitter walks code UNITS, which is safe only because every character it paints is in the
@@ -113,7 +119,7 @@ describe("cell glyph splitting", () => {
     const run = `${FULL_BLOCK}\u{1F642}${FULL_BLOCK}`;
     const pieces = cellPieces(run)!;
     expect(pieces.map((piece) => piece.text)).toEqual([FULL_BLOCK, "\u{1F642}", FULL_BLOCK]);
-    expect(pieces[1]!.paint).toBeUndefined();
+    expect(pieces[1]!.cell).toBeUndefined();
     expect(pieces.map((piece) => piece.text).join("")).toBe(run);
   });
 
@@ -123,5 +129,30 @@ describe("cell glyph splitting", () => {
   it("leaves the shades and box drawing to the font", () => {
     expect(cellPieces(LIGHT_SHADE)).toBeNull();
     expect(cellPieces(BOX_VERTICAL)).toBeNull();
+  });
+});
+
+// The paint lives in index.css, one rule per shape. A shape the table names with no rule would
+// render as an invisible character: the ink is emptied and nothing is painted in its place.
+describe("cell glyph paint rules", () => {
+  const css = readFileSync(resolve(import.meta.dirname, "../index.css"), "utf8");
+  const block = css.slice(
+    css.indexOf("@supports (height: 1lh)"),
+    css.indexOf("/* `dark:` must fire"),
+  );
+
+  it("has a rule for every shape", () => {
+    for (const fill of new Set(Object.values(CELL_FILL))) {
+      expect(block, fill).toContain(`.cell-glyph[data-cell="${fill}"]`);
+    }
+  });
+
+  // `currentColor` is the whole reason a painted cell needs no colour of its own: it takes the
+  // segment's foreground, and .adr/0002's inversion filter then treats it exactly like text. A
+  // literal colour would render correctly in dark and wrongly in light. A shape is never a
+  // `clip-path`: a clipped box does not meet the one beside it, so a bar would grow seams.
+  it("paints in the inherited colour and never clips", () => {
+    expect(block).toContain("currentColor");
+    expect(block).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|oklch\(|clip-path/i);
   });
 });

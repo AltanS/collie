@@ -222,7 +222,7 @@ const TABLE_RUN_CLASS =
 // as does the link scan; React.memo prevents re-renders when props are unchanged — critical for the
 // polling cadence on mobile. With no query and no links the render skips splitSegment entirely and
 // emits the segment's own string, exactly as the pre-find flat renderer did — unless the segment
-// holds a Block or Powerline character, which is wrapped in its own painted span
+// holds a Block or Powerline character, which is wrapped in a painted span
 // (components/painted-cells.tsx).
 
 // One terminal-graphics image: the picture when the caller has one for this cluster, and the
@@ -390,7 +390,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   // the haystack. With no query and no links this costs one addition per segment and allocates
   // nothing beyond the spans — the polling path stays as cheap as the old flat render. A segment
   // holding a Block or Powerline character is the one exception: it allocates its pieces and one
-  // style object per painted character (components/painted-cells.tsx).
+  // span per painted run, with no style object (components/painted-cells.tsx).
   let offset = 0;
   let currentAssigned = false;
 

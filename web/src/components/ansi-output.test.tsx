@@ -709,8 +709,8 @@ describe("cell-filling glyphs", () => {
     const container = mirror(`${LEFT_CAP}CX${RIGHT_CAP} 7d`);
     const caps = container.querySelectorAll(".cell-glyph");
     expect(caps).toHaveLength(2);
-    expect(caps[0]!.getAttribute("style")).toContain("--cell-radius: 100% 0 0 100% / 50% 0 0 50%");
-    expect(caps[1]!.getAttribute("style")).toContain("--cell-radius: 0 100% 100% 0 / 0 50% 50% 0");
+    expect(caps[0]!.getAttribute("data-cell")).toBe("round-left");
+    expect(caps[1]!.getAttribute("data-cell")).toBe("round-right");
     // The character is still a text node inside the box. It is invisible because its ink and the
     // fill behind it are both currentColor — not because it was replaced.
     expect(caps[0]!.textContent).toBe(LEFT_CAP);
@@ -721,14 +721,12 @@ describe("cell-filling glyphs", () => {
     expect(mirror("ordinary output").querySelectorAll(".cell-glyph")).toHaveLength(0);
   });
 
-  // `currentColor` is the whole reason a painted cell needs no colour of its own: it takes the
-  // segment's foreground, and .adr/0002's inversion filter then treats it exactly like text. A
-  // literal colour here would render correctly in dark and wrongly in light.
-  it("takes its colour from the segment rather than naming one", () => {
+  // The paint is a fixed rule per shape in index.css, keyed on `data-cell`. The polling path
+  // builds no style object for it, and a pane byte never reaches a style attribute.
+  it("names its shape and carries no inline style", () => {
     const cap = mirror(`${LEFT_CAP}CX${RIGHT_CAP}`).querySelector(".cell-glyph")!;
-    const style = cap.getAttribute("style")!;
-    expect(style).toContain("currentColor");
-    expect(style).not.toMatch(/#[0-9a-f]{3,8}|rgb\(/i);
+    expect(cap.getAttribute("data-cell")).toBe("round-left");
+    expect(cap.hasAttribute("style")).toBe(false);
   });
 
   // Find splits a segment by OFFSET into the visible text. Painting happens inside each piece, so
