@@ -163,3 +163,54 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await expect(page.getByRole("button", { name: "src/routes, 1 file" })).toBeVisible();
   await expect(page.getByRole("button", { name: /notes\.md/ })).toHaveCount(0);
 });
+
+// ADR 0065 rule 7: syntax colour arrives after the plain rows, and moves nothing. The highlighter's
+// chunks are held at the network until the plain rows are measured, then let through.
+test("a TypeScript diff takes syntax colour after it loads, and no row changes height", async ({ page }) => {
+  await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
+  await expect(page.getByText("webapp · 3 files")).toBeVisible();
+
+  // Everything the app has fetched is in; from here every script request waits for the gate.
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => (open = resolve));
+  const held: string[] = [];
+  await page.route(/\.js(\?|$)/, async (route) => {
+    held.push(route.request().url());
+    await gate;
+    await route.continue();
+  });
+
+  await page.getByRole("button", { name: /checkout\.tsx/ }).click();
+  const long = page.getByText(/including shipping to/);
+  await expect(long).toBeVisible();
+  const diff = page.locator('[data-slot="diff"]');
+  const measure = () =>
+    diff.evaluate((el) => ({
+      rows: [...el.children].map((row) => row.getBoundingClientRect().height),
+      total: el.getBoundingClientRect().height,
+    }));
+  const inkOf = (word: string) =>
+    diff.evaluate((el, w) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (n.textContent === w) return getComputedStyle(n.parentElement!).color;
+      }
+      return null;
+    }, word);
+
+  // Plain: the keyword is one text node inside the row's text, in the row's own ink.
+  await expect(diff).not.toHaveAttribute("data-highlighted");
+  expect(held.length).toBeGreaterThan(0);
+  const before = await measure();
+  const plainInk = await long.evaluate((el) => getComputedStyle(el).color);
+
+  open();
+  await expect(diff).toHaveAttribute("data-highlighted", "");
+  // `const` now sits in its own span, in a colour that is not the row's text colour.
+  const keywordInk = await inkOf("const");
+  expect(keywordInk).not.toBeNull();
+  expect(keywordInk).not.toBe(plainInk);
+  expect(await measure()).toEqual(before);
+  await noSidewaysScroll(page);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

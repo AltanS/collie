@@ -28,7 +28,8 @@ export const DEF: SectionDef = {
   title: "Changes",
   intent:
     "The pane's Changes view: the list of files changed since the last commit, grouped by repo, " +
-    "one file's diff with both line gutters, and the Settings card that decides where it looks. " +
+    "one file's diff with both line gutters and syntax colour, and the Settings card that decides " +
+    "where it looks. " +
     "The list draws flat or as a folder tree, and a filter row narrows it by path and status.",
 };
 
@@ -78,7 +79,30 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
   );
 }
 
-function Diff({ repo, path }: { repo: string; path: string }) {
+/**
+ * A diff no fixture file carries: a block comment whose opener was deleted runs on into a context
+ * line, so that line is coloured as a comment from the old side, not as code.
+ */
+const HIGHLIGHT_DIFF = [
+  "diff --git a/src/lib/price.ts b/src/lib/price.ts",
+  "--- a/src/lib/price.ts",
+  "+++ b/src/lib/price.ts",
+  "@@ -1,9 +1,10 @@",
+  "-/* Prices are in cents.",
+  "   Never format them twice. */",
+  " import { currency } from \"./locale\";",
+  " ",
+  "-export function formatPrice(cents: number) {",
+  "-  return (cents / 100).toFixed(2) + \" \" + currency;",
+  "+export function formatPrice(cents: number, withCode = true): string {",
+  "+  const amount = (cents / 100).toFixed(2);",
+  "+  // The code follows the amount, as the receipt prints it.",
+  "+  return withCode ? `${amount} ${currency}` : amount;",
+  " }",
+  "",
+].join("\n");
+
+function Diff({ repo, path, diff }: { repo: string; path: string; diff?: string }) {
   const answer = fixtureChangeDiff(repo, path);
   const file = repos.find((r) => r.relPath === repo)?.files.find((f) => f.path === path);
   return (
@@ -88,7 +112,13 @@ function Diff({ repo, path }: { repo: string; path: string }) {
           {file && <StatusLetter status={file.status} />}
           <ChangePath path={path} className="flex-1" />
         </div>
-        <div className="py-2">{answer.available && <DiffView diff={answer.diff} />}</div>
+        <div className="py-2">
+          {diff !== undefined ? (
+            <DiffView diff={diff} path={path} />
+          ) : (
+            answer.available && <DiffView diff={answer.diff} path={path} />
+          )}
+        </div>
       </div>
     </Stage>
   );
@@ -180,6 +210,16 @@ export function ChangesSection() {
 
         <Card state="changes-diff-added" label="diff, a new file" reach="tap a file staged as new.">
           <Diff repo="." path="src/lib/cart.ts" />
+        </Card>
+
+        <Card
+          state="changes-diff-highlighted"
+          label="diff, syntax colour across a block comment"
+          reach="tap a TypeScript file whose change deletes the first line of a block comment. The
+            plain rows draw first; colour follows once the highlighter loads, and no row moves. The
+            comment's second line keeps its comment colour, read from the old side."
+        >
+          <Diff repo="." path="src/lib/price.ts" diff={HIGHLIGHT_DIFF} />
         </Card>
       </Group>
 

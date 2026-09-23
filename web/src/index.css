@@ -395,6 +395,31 @@
      (alpha-bar.tsx). */
   --status-info: light-dark(oklch(0.46 0.14 230), oklch(0.8 0.15 230));
 
+  /* Syntax colour for the Changes view's diff (components/changes-view.tsx, lib/diff-highlight.ts,
+     ADR 0065 rule 7). Six inks, all colour and nothing else: no weight, no italic, so a coloured
+     line keeps the plain line's glyphs and line boxes. Kinds without an ink (names, punctuation,
+     JSX text) keep --foreground.
+
+     Hues keep off the two row tints: no green (the added-row wash, done 152) and no red (the
+     deleted-row wash, blocked 25). Light halves sit at L 0.45-0.50 like the status palette, dark
+     halves at 0.76-0.80 like its glow. Comments are --muted-foreground's values, grey on purpose.
+
+     Contrast, computed in sRGB with the /12 row tint mixed over --background (plain alpha is the
+     pessimistic side of the oklab mix Tailwind emits), ground: page / card / added / deleted:
+       keyword   light 6.17 6.73 5.15 4.92   dark 8.60 7.78 7.29 7.60
+       string    light 6.82 7.43 5.69 5.44   dark 10.7 9.72 9.10 9.50
+       constant  light 6.26 6.83 5.23 5.00   dark 10.3 9.33 8.74 9.12
+       property  light 6.15 6.70 5.13 4.90   dark 11.0 9.94 9.31 9.71
+       entity    light 6.55 7.15 5.47 5.23   dark 8.84 8.00 7.49 7.82
+       comment   light 5.99 6.54 5.00 4.78   dark 7.63 6.91 6.47 6.75
+     Every cell clears 4.5. The tightest is light on the deleted row; darken there, never lighten. */
+  --syntax-keyword: light-dark(oklch(0.5 0.2 350), oklch(0.76 0.15 350));
+  --syntax-string: light-dark(oklch(0.45 0.13 250), oklch(0.8 0.1 240));
+  --syntax-constant: light-dark(oklch(0.48 0.13 55), oklch(0.8 0.12 60));
+  --syntax-property: light-dark(oklch(0.46 0.09 200), oklch(0.8 0.09 195));
+  --syntax-entity: light-dark(oklch(0.48 0.18 300), oklch(0.76 0.13 300));
+  --syntax-comment: light-dark(oklch(0.48 0 0), oklch(0.708 0 0));
+
   /* ── Per-host identity palette (components/host-chip.tsx, lib/hosts.ts) ──────────────────────
      Ten hues, `--host-0` … `--host-9`, handed to machines by lib/hosts.ts `hostSlot`. They are an
      IDENTITY, never a state: nothing about a host's health, version or reachability is encoded
@@ -520,6 +545,12 @@
   --color-status-blocked: var(--status-blocked);
   --color-status-working: var(--status-working);
   --color-status-done: var(--status-done);
+  --color-syntax-keyword: var(--syntax-keyword);
+  --color-syntax-string: var(--syntax-string);
+  --color-syntax-constant: var(--syntax-constant);
+  --color-syntax-property: var(--syntax-property);
+  --color-syntax-entity: var(--syntax-entity);
+  --color-syntax-comment: var(--syntax-comment);
   --color-status-idle: var(--status-idle);
   --color-status-unknown: var(--status-unknown);
   --color-status-info: var(--status-info);

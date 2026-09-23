@@ -11,6 +11,7 @@
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
         "react-router": "^7.18.0",
+        "sugar-high": "2.4.1",
         "tailwind-merge": "^3.6.0",
       },
       "devDependencies": {
@@ -1023,6 +1024,8 @@
     "strip-comments": ["strip-comments@2.0.1", "", {}, "sha512-ZprKx+bBLXv067WTCALv8SSz5l2+XhpYCsVtSqlMnkAXMWDq+/ekVbl1ghqP9rUHTzv6sm/DwCOiYutU/yp1fw=="],
 
     "strip-indent": ["strip-indent@3.0.0", "", { "dependencies": { "min-indent": "^1.0.0" } }, "sha512-laJTa3Jb+VQpaC6DseHhF7dXVqHTfJPCRDaEbid/drOhgitgYku/letMUqOXFoWV0zIIUbjpdH2t+tYj4bQMRQ=="],
+
+    "sugar-high": ["sugar-high@2.4.1", "", { "peerDependencies": { "gpu-lexer": ">=0.0.2" }, "optionalPeers": ["gpu-lexer"] }, "sha512-w4uhunMgEP+9f/2W/ZLBjvrVBLY14oL4b6a2+Ca/JWECd0Rc45KqL89bDvUOVFGrr0D14q5hoEqBXkgxwxL6RQ=="],
 
     "supports-preserve-symlinks-flag": ["supports-preserve-symlinks-flag@1.0.0", "", {}, "sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w=="],
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, List, ListFilter, ListTree, Search, X } from "lucide-react";
 
 import { ListGroup } from "@/components/ui/list-group";
@@ -16,13 +16,21 @@ import {
 } from "@/lib/changes-tree";
 import { t, tn, type MessageKey } from "@/lib/i18n";
 import type { ChangedFile, ChangedRepo, ChangeStatus } from "@/lib/types";
-import { parseUnifiedDiff } from "@/lib/unified-diff";
+import {
+  HIGHLIGHT_MAX_LINES,
+  highlightDiff,
+  languageForPath,
+  type RowTokens,
+  type SyntaxToken,
+} from "@/lib/diff-highlight";
+import { parseUnifiedDiff, type DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
 
 // The Changes view's two drawings (ADR 0065): the list of changed files, grouped by repo, and one
-// file's diff as plain monospace rows. Presentational only, so the route and the playground mount
-// the same markup. Paths and diff lines are machine-authored content: `font-mono`, rendered as text
-// nodes, never as markup.
+// file's diff as monospace rows, syntax-coloured once sugar-high loads. Presentational only, so the
+// route and the playground mount the same markup. Paths and diff lines are machine-authored
+// content: `font-mono`, rendered as text nodes (a coloured token is a span around a text node),
+// never as markup.
 
 const STATUS_WORD = {
   M: "changes.status.M",
@@ -481,17 +489,80 @@ const SIGN = { add: "+", del: "−", context: " " } as const;
 const SIGN_TONE = { add: "text-status-done", del: "text-status-blocked", context: "" } as const;
 
 /**
+ * The ink per token kind (`--syntax-*` in index.css, AA on plain and tinted rows in both themes).
+ * Colour only: no weight and no italic, so a coloured line has the same glyphs and the same line
+ * boxes as the plain one it replaces. Kinds with no entry keep the row's own ink.
+ */
+const TOKEN_TONE = new Map<SyntaxToken["type"], string>([
+  ["keyword", "text-syntax-keyword"],
+  ["string", "text-syntax-string"],
+  ["class", "text-syntax-constant"],
+  ["property", "text-syntax-property"],
+  ["entity", "text-syntax-entity"],
+  ["comment", "text-syntax-comment"],
+]);
+
+/** A line's tokens as spans, neighbours of the same ink merged into one. Text nodes only. */
+function TokenLine({ tokens }: { tokens: readonly SyntaxToken[] }) {
+  const runs: { tone: string | undefined; text: string }[] = [];
+  for (const token of tokens) {
+    const tone = TOKEN_TONE.get(token.type);
+    const last = runs.at(-1);
+    if (last && last.tone === tone) last.text += token.value;
+    else runs.push({ tone, text: token.value });
+  }
+  return runs.map((run, i) => (
+    <span key={i} className={run.tone}>
+      {run.text}
+    </span>
+  ));
+}
+
+/**
+ * The rows' syntax tokens, once sugar-high has loaded, or null until then and for a file with no
+ * known language or a diff too long to colour. The plain rows draw first; colour arrives after.
+ */
+function useSyntaxTokens(rows: readonly DiffRow[], path: string | undefined) {
+  const lang = path === undefined ? null : languageForPath(path);
+  const lines = useMemo(() => rows.filter((r) => r.kind !== "hunk" && r.kind !== "note").length, [rows]);
+  const [done, setDone] = useState<{ rows: readonly DiffRow[]; tokens: RowTokens } | null>(null);
+  useEffect(() => {
+    if (lang === null || lines > HIGHLIGHT_MAX_LINES) return;
+    let live = true;
+    const colour = async () => {
+      try {
+        const tokens = await highlightDiff(rows, lang);
+        if (live) setDone({ rows, tokens });
+      } catch {
+        // No highlighter (offline, a stale chunk): the plain rows are the whole answer.
+      }
+    };
+    void colour();
+    return () => {
+      live = false;
+    };
+  }, [rows, lang, lines]);
+  return done?.rows === rows ? done.tokens : null;
+}
+
+/**
  * One file's diff: two line-number gutters, a sign, the line. Long lines WRAP (a phone cannot
  * scroll sideways through code comfortably), anywhere, so a minified line cannot push the page wide.
+ * With `path` naming a language sugar-high knows, the lines take syntax colour once it loads.
  */
-export function DiffView({ diff }: { diff: string }) {
+export function DiffView({ diff, path }: { diff: string; path?: string }) {
   const parsed = useMemo(() => parseUnifiedDiff(diff), [diff]);
+  const syntax = useSyntaxTokens(parsed.rows, path);
   // Both gutters sized once, by the widest number, so no row's text starts at a different x.
   const gutter = { width: `calc(${Math.max(String(parsed.maxLineNo).length, 2)}ch + 0.5rem)` };
   return (
     // Ligatures off: a diff is read character by character, and `=>` drawn as one arrow hides what
     // the file holds.
-    <div className="font-mono text-xs leading-5 [font-variant-ligatures:none]" data-slot="diff">
+    <div
+      className="font-mono text-xs leading-5 [font-variant-ligatures:none]"
+      data-slot="diff"
+      data-highlighted={syntax ? "" : undefined}
+    >
       {parsed.rows.map((row, i) => {
         if (row.kind === "hunk") {
           return (
@@ -524,7 +595,7 @@ export function DiffView({ diff }: { diff: string }) {
             <span className="min-w-0 flex-1 pr-3 wrap-anywhere whitespace-pre-wrap">
               {row.kind === "add" && <span className="sr-only">+ </span>}
               {row.kind === "del" && <span className="sr-only">− </span>}
-              {row.text}
+              {syntax?.[i] ? <TokenLine tokens={syntax[i]} /> : row.text}
             </span>
           </div>
         );

@@ -7,6 +7,7 @@
   · `bridge/changes.ts` · `bridge/server.ts` (`PANE_ROUTE`, `paneChanges`) ·
   `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header) · `web/src/routes/changes.tsx` ·
   `web/src/components/changes-view.tsx` · `web/src/lib/unified-diff.ts` ·
+  `web/src/lib/diff-highlight.ts` · `web/src/lib/diff-highlight-engine.ts` ·
   `web/src/hooks/use-dash-prefs.ts` · [ADR 0060](./0060-an-attachment-is-a-chip-not-a-path.md)
 
 ## Context
@@ -77,9 +78,31 @@ settings card) is about 4 KB.
    does.
 6. **This is the second place a client-supplied value becomes a path**, after the journal, and the
    listed-paths rule is its bound. `files.ts`'s header and `CLAUDE.md` say so.
-7. **No diff library and no highlighting.** The bridge sends git's raw unified text; a 60-line
-   parser in the web app reads hunks and line kinds, and the view draws plain monospace rows with
-   two line-number gutters, tinted add and delete rows, and lines that wrap.
+7. **No diff library; syntax colour by sugar-high, loaded lazily.** The bridge sends git's raw
+   unified text; a 60-line parser in the web app reads hunks and line kinds, and the view draws
+   monospace rows with two line-number gutters, tinted add and delete rows, and lines that wrap.
+   Colour comes from [sugar-high](https://github.com/huozhi/sugar-high) 2.4.1 (MIT), pinned
+   exactly. It is the lightest highlighter that covers the language list (TypeScript and
+   JavaScript, JSON, CSS, HTML, Markdown, Python, Go, Rust, shell, YAML, TOML, and 14 more), against
+   Prism at about 18 KB, highlight.js at about 27 KB and Shiki's fine-grained build at 54 KB base,
+   all gzipped. The rules around it:
+   - **Nothing of it is in the main bundle.** `lib/diff-highlight.ts` maps a path to a language and
+     holds one dynamic import; the engine (`lib/diff-highlight-engine.ts`, with sugar-high's core)
+     and each language module are their own chunks, fetched when a diff of that language opens.
+     Measured on the build, gzipped: the main chunk grows 0.95 KB (the map, the hook and the
+     spans), the CSS 0.16 KB. A TypeScript diff then fetches 5.6 KB (engine 1.36, core 0.86,
+     shared 0.43, the JavaScript scanner 2.84, the TypeScript preset 0.12); a Python diff 2.9 KB.
+     All 32 chunks together are 15.0 KB.
+   - **A hunk is coloured as its two files.** The old side (context and deleted lines) and the new
+     side (context and added lines) are each highlighted as one text, so a block comment or a
+     template string that spans rows is read whole; a deleted row takes old-side tokens, an added
+     row new-side tokens, a context row the side of the nearest changed row above it.
+   - **Colour never moves a glyph.** Tokens are React spans around text nodes, never markup, and the
+     six `--syntax-*` inks in `index.css` set colour only, no weight and no italic, each at 4.5:1
+     or better on the page and on both row tints in both themes. A row whose tokens do not spell its
+     text exactly stays plain. The plain rows draw first; colour follows with no layout shift, and
+     `e2e/changes.spec.ts` measures every row's height before and after.
+   - **A diff over 2000 lines, or of a file with no known language, stays plain**, with no notice.
 8. **Not on the poll loop.** The list is read on open and on the refresh button. The route is a
    read like `history`, forwarded to the member that owns the pane with `?host=`, additive-optional
    on the crew link.
@@ -109,8 +132,11 @@ settings card) is about 4 KB.
   Already so, and confirmed: the list's truncation flag, per-repo status run in parallel with a
   limit, rename-aware `-M` on both numstat and diff with both paths named, and a diff cut on a line
   boundary.
-- **Revisit** if a real repo needs highlighting to be readable on a phone (measure the cost against
-  the numbers above first), or if rule 4 misses a vector: a new git config key that executes during
+- **Highlighting, 2026-09-23.** Rule 7 first said "no highlighting". The operator asked for it once
+  the view was in use, and it went in as rule 7 now reads: one small library, lazily loaded, and
+  held to the view's no-shift and text-node rules.
+- **Revisit** if a language the operator reads daily is missing from sugar-high, or a real diff
+  shows a wrong colour worse than no colour; or if rule 4 misses a vector: a new git config key that executes during
   status or diff belongs in `bridge/changes.ts`'s `HARDENING` list and in its hostile-repo test.
 - **Later, on the same rails:** a Files view (browse the tree, read-only, the same listed-paths
   shape) and review comments on a diff line that attach to the composer as a chip, reusing the

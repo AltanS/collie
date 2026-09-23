@@ -430,7 +430,7 @@ function FileBody({ state }: { state: FileState | null }) {
   if (data.diff.trim() === "" || !data.diff.includes("@@")) return <Quiet>{t("changes.file.noLines")}</Quiet>;
   return (
     <>
-      <DiffView diff={data.diff} />
+      <DiffView diff={data.diff} path={data.path} />
       {data.truncated && <p className="px-4 pt-3 text-xs text-muted-foreground">{t("changes.file.truncated")}</p>}
     </>
   );
