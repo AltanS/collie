@@ -1,9 +1,14 @@
 import { act, render } from "@testing-library/react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
+import { glideOwnsMove, noteGlideLocation } from "@/lib/glide";
 import { markInAppBack } from "@/lib/nav-entry";
 
 import { classifyMove, ScreenTransition } from "./screen-transition";
+
+// The glide engine, stood in for: the slide only reads whether a glide owns the move, and reports
+// each location change. The engine's own behaviour is lib/glide.test.ts's.
+vi.mock("@/lib/glide", () => ({ glideOwnsMove: vi.fn(() => false), noteGlideLocation: vi.fn() }));
 
 // The classification is the whole feature: two moves animate and everything else must be silent,
 // including the one that used to break this app — a poll revalidation, which lands on the pathname
@@ -156,5 +161,32 @@ describe("ScreenTransition — what the arriving screen carries", () => {
     markInAppBack("/");
     await act(() => router.navigate(-1));
     expect(wrapper(container).className).toMatch(/slide-in-from-left/);
+  });
+  // lib/glide.ts: a glide in flight moves the named parts itself, and the slide on top of it would
+  // play the move twice. Both ways; and the pathname asked is the one being landed on.
+  it("does not slide on a move a glide owns, either way", async () => {
+    const { router, container } = mount();
+    vi.mocked(glideOwnsMove).mockReturnValue(true);
+    try {
+      await act(() => router.navigate("/pane/p1"));
+      expect(glideOwnsMove).toHaveBeenLastCalledWith("/pane/p1");
+      expect(wrapper(container).className).not.toMatch(/animate-in/);
+      markInAppBack("/");
+      await act(() => router.navigate(-1));
+      expect(glideOwnsMove).toHaveBeenLastCalledWith("/");
+      expect(wrapper(container).className).not.toMatch(/animate-in/);
+    } finally {
+      vi.mocked(glideOwnsMove).mockReturnValue(false);
+    }
+  });
+
+  it("reports every location change to the glide engine once, and a revalidation not at all", async () => {
+    const { router } = mount();
+    vi.mocked(noteGlideLocation).mockClear();
+    await act(() => router.navigate("/settings"));
+    expect(noteGlideLocation).toHaveBeenCalledTimes(1);
+    expect(noteGlideLocation).toHaveBeenLastCalledWith("/settings");
+    await act(() => router.revalidate());
+    expect(noteGlideLocation).toHaveBeenCalledTimes(1);
   });
 });

@@ -833,8 +833,8 @@
    on a revalidation for a device carrying a stale persisted transition map from an older build (see
    router.tsx). Keep the whole document unnamed so any such stray transition captures nothing and swaps
    instantly — no full-page crossfade flicker. This is a no-op-izing safety net, not a transition.
-   The one transition the app starts itself, the Changes glide below, names only its own parts under
-   `html.changes-glide` and leaves this rule alone. */
+   The transitions the app starts itself, the glides below (lib/glide.ts), name only their own parts
+   under `html.glide` and leave this rule alone. */
 :root {
   view-transition-name: none;
 }
@@ -1014,45 +1014,50 @@
   }
 }
 
-/* THE GLIDE FROM A CHANGES TAB ROW INTO ITS SCREEN (lib/changes-glide.ts). Live only while
-   `html.changes-glide` is set, for one hand-started view transition. The tapped row carries the two
-   names inline; the arriving header's label and count line take them here. The header row and the
-   screen crossfade under them. `:root` stays unnamed (above), so nothing else is captured. The
-   script never starts it under reduced motion; the media query below is the second lock. */
-.changes-glide [data-slot="header-row"] [data-glide="label"] {
-  view-transition-name: changes-glide-label;
+/* THE GLIDE (lib/glide.ts). Live only while `html.glide` is set, for one hand-started view
+   transition. The script names each flying part inline, on exactly one element at a time, as
+   `glide-<pair>-<part>`; the header row and the screen wrapper take the two names below so the rest
+   crossfades under the parts. `:root` stays unnamed (above), so nothing else is captured.
+   `--glide-duration` and `--glide-ease` are the one timing every pair shares; the pseudo-elements
+   inherit them from `<html>`. The script never starts a glide under reduced motion; the media query
+   below is the second lock. The overlay takes no pointer events, so a tap during the 250ms reaches
+   the live screen under it instead of the document. */
+:root {
+  --glide-duration: 250ms;
+  --glide-ease: ease-out;
 }
-.changes-glide [data-slot="header-row"] [data-glide="count"] {
-  view-transition-name: changes-glide-count;
+.glide [data-slot="header-row"] {
+  view-transition-name: glide-header;
 }
-.changes-glide [data-slot="header-row"] {
-  view-transition-name: changes-glide-header;
+.glide [data-slot="screen-transition"] {
+  view-transition-name: glide-screen;
 }
-.changes-glide [data-slot="screen-transition"] {
-  view-transition-name: changes-glide-screen;
+.glide::view-transition {
+  pointer-events: none;
 }
-.changes-glide::view-transition-group(*),
-.changes-glide::view-transition-old(*),
-.changes-glide::view-transition-new(*) {
-  animation-duration: 250ms;
-  animation-timing-function: ease-out;
+.glide::view-transition-group(*),
+.glide::view-transition-old(*),
+.glide::view-transition-new(*) {
+  animation-duration: var(--glide-duration);
+  animation-timing-function: var(--glide-ease);
 }
-/* Text changes size on the way (14px row label, 12px header label): the snapshots scale with their
-   box, pinned to the start edge, instead of stretching to a box of another shape. */
-.changes-glide::view-transition-old(changes-glide-label),
-.changes-glide::view-transition-new(changes-glide-label),
-.changes-glide::view-transition-old(changes-glide-count),
-.changes-glide::view-transition-new(changes-glide-count) {
+@media (prefers-reduced-motion: reduce) {
+  .glide::view-transition-group(*),
+  .glide::view-transition-old(*),
+  .glide::view-transition-new(*) {
+    animation: none;
+  }
+}
+/* The Changes pair: a dashboard Changes tab row and the header of `/space/:id/changes`. Text changes
+   size on the way (14px row label, 18px header label): the snapshots scale with their box, pinned to
+   the start edge, instead of stretching to a box of another shape. Both ways. */
+.glide-changes::view-transition-old(glide-changes-label),
+.glide-changes::view-transition-new(glide-changes-label),
+.glide-changes::view-transition-old(glide-changes-count),
+.glide-changes::view-transition-new(glide-changes-count) {
   height: 100%;
   width: auto;
   object-position: left center;
-}
-@media (prefers-reduced-motion: reduce) {
-  .changes-glide::view-transition-group(*),
-  .changes-glide::view-transition-old(*),
-  .changes-glide::view-transition-new(*) {
-    animation: none;
-  }
 }
 
 /* THE ACTION BELT'S ONE SCALE (components/actions-row.tsx). The belt's root carries `--belt-scale`

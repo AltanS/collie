@@ -24,8 +24,8 @@ import {
   ROOT_ROUTE_ID,
 } from "@/lib/loaders";
 
-// We don't use React Router's view transitions (the Changes glide starts its own, by hand, and
-// never touches this map: lib/changes-glide.ts). React Router persists an "applied view transitions" map to
+// We don't use React Router's view transitions (the glides start their own, by hand, and never
+// touch this map: lib/glide.ts). React Router persists an "applied view transitions" map to
 // sessionStorage ("remix-router-transitions") and replays a phantom same-location transition on every
 // revalidation for any path it once saw a `viewTransition: true` navigation from. A device that ran an
 // older Collie build (which did use them) can carry a stale entry that fires

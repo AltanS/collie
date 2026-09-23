@@ -5,6 +5,7 @@ import { ListGroup } from "@/components/ui/list-group";
 import { countFor, type WorkspaceChangeTarget } from "@/hooks/use-workspace-change-counts";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { spaceChangesPath } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import type { WorkspaceChangeCount } from "@/lib/workspace-changes";
 
@@ -17,7 +18,8 @@ export interface WorkspaceChangesRow extends WorkspaceChangeTarget {
  * The dashboard's Changes tab (ADR 0066): every workspace the strip leaves shown, in the dashboard's
  * own order, with its changed-file count and its summed +added −removed. A tap opens that
  * workspace's Changes route, and hands the row's button along so the label and the count line can
- * glide into that screen's header (lib/changes-glide.ts).
+ * glide into that screen's header (lib/glide.ts, the `changes` pair). Each button is the pair's
+ * origin, keyed by the path it opens, so that screen's back arrow can find it and glide back into it.
  *
  * NO ROW MOVES AS ANSWERS ARRIVE. Every row is listed from the first paint, each with its two lines
  * reserved, and a count fills its own line in place. A workspace with nothing to show (clean, or no
@@ -43,6 +45,8 @@ export function WorkspaceChangesList({
           <li key={row.key}>
             <button
               type="button"
+              data-glide-origin="changes"
+              data-glide-key={spaceChangesPath(row.workspaceId, row.scope)}
               onClick={(e) => onOpen(row, e.currentTarget)}
               className={cn(
                 "flex min-h-13 w-full items-center gap-3 px-3.5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",

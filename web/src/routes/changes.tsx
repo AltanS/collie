@@ -47,6 +47,7 @@ import {
   type ChangesLayout,
 } from "@/lib/changes-tree";
 import { keepChangesList, keptChangesList } from "@/lib/changes-list-cache";
+import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
 import { isAbortError } from "@/lib/loaders";
 import { t, tn, type MessageKey } from "@/lib/i18n";
 import {
@@ -104,7 +105,8 @@ import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-cha
 //
 // THE FIRST FRAME. The header carries the workspace's count line (`3 files +12 −4`), the same line
 // the dashboard's Changes tab draws on the row that was tapped, seeded from the tab's kept answer so
-// it is right before any read; the tab row's label and count glide into it (lib/changes-glide.ts).
+// it is right before any read; the tab row's label and count glide into it, and back down into the
+// row on the back arrow (lib/glide.ts).
 // The list starts on the last list this page read for the screen (lib/changes-list-cache.ts), or,
 // on a first visit, on skeleton rows in the real rows' box, which the first answer fades out of. A
 // re-read never shows the skeleton again.
@@ -527,10 +529,19 @@ export function ChangesRoute() {
   // Up one level (ADR 0067): a step back to the dashboard, space or pane this list was opened from,
   // else a replace onto the pane or the space, never a push that leaves the list behind it.
   const backFallback = target.kind === "pane" ? panePath(paneId, scope) : spacePath(spaceId, scope);
-  const backOut = () => nav.up(backFallback);
   // The arrow's accessible name says where it actually lands, not a fixed guess: the same
   // resolution `nav.up()` itself runs (`upTarget`), read without moving anything.
   const backDestination = upTarget(location.pathname, readFrom(location.state), backFallback, canStepBack());
+  // The way back to the dashboard's Changes tab glides the header's label and count line back down
+  // into the tab row this list was opened from (lib/glide.ts, the `changes` pair, rule 1). Only from
+  // a workspace's list (the one screen that calls `backOut`), only when the arrow lands on the
+  // dashboard, and only when the dashboard will show the Changes tab, which is where the row lives.
+  const glidesHome =
+    target.kind === "space" && GLIDE_PAIRS.changes.origin(backDestination) && prefs.dashView === "changes";
+  const backOut = () => {
+    if (glidesHome) glideBack("changes", spaceChangesPath(spaceId, scope), () => nav.up(backFallback));
+    else nav.up(backFallback);
+  };
   const backAriaKey: MessageKey = backDestination.startsWith("/pane/")
     ? "changes.backAria.pane"
     : backDestination.startsWith("/space/")
@@ -631,10 +642,10 @@ export function ChangesRoute() {
               {/* The list screen's header is the tab row it was opened from, larger: the workspace
                   on the first line (the heading still says "Changes" to a screen reader), its count
                   line under it, so the row's two lines glide straight into these two
-                  (lib/changes-glide.ts). A file and the commit view keep the screen's title with
+                  (lib/glide.ts). A file and the commit view keep the screen's title with
                   the workspace under it. At 375px the column is about 105px wide, too narrow for a
                   title, a label and a count side by side. */}
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1" data-glide-destination={listScreen ? "changes" : undefined}>
                 {listScreen ? (
                   <>
                     <div className="flex min-w-0 items-baseline gap-1.5">

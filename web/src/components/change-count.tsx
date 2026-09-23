@@ -38,7 +38,7 @@ function ChangeCountText({ count }: { count: Exclude<WorkspaceChangeCount, { kin
  * renders the same classes and touches no node. The motion lives in index.css (`.count-*`), which
  * turns all of it off under reduced motion.
  *
- * `glide` marks the line for the tab-to-screen view transition (lib/changes-glide.ts).
+ * `glide` marks the line for the tab-to-screen view transition (lib/glide.ts).
  */
 export function ChangeCountSlot({
   count,
