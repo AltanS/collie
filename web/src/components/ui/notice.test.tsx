@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP } from "./notice";
 
@@ -167,18 +168,19 @@ describe("Notice — the one notice surface", () => {
   });
 
   it("keeps the announcement off a whole-surface tap target, so it stays a button", () => {
-    // The role rides the BODY rather than the root. On the `onActivate` shape the root is a real
-    // <button>, and a role="status" on it would replace its button semantics in the accessibility
-    // tree — the operator would be told there is a status line and not that it can be tapped.
+    // The role rides the BODY, and the `onActivate` shape's button is an EMPTY overlay beside the
+    // body rather than a wrapper around it (see NoticeInteraction's header) — so a role="status" on
+    // the body never has to fight the button's own semantics: the button carries no role at all and
+    // no text of its own, and the status line is the sibling `aria-labelledby` names it from.
     render(
       <Notice tone="info" variant="strip" announce="status" onActivate={() => {}}>
         A new version is ready
       </Notice>,
     );
     const button = screen.getByRole("button", { name: /new version/i });
-    expect(button).toBeInTheDocument();
     expect(button).not.toHaveAttribute("role");
-    expect(button.querySelector('[role="status"]')).not.toBeNull();
+    expect(button).toBeEmptyDOMElement();
+    expect(screen.getByRole("status")).toHaveTextContent("A new version is ready");
   });
 
   it("names the whole-surface button from its body text, even though that body is a live region", () => {
@@ -203,6 +205,31 @@ describe("Notice — the one notice surface", () => {
       </Notice>,
     );
     expect(screen.getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("combines a whole-surface tap with its own ✕ — two buttons, neither nested in the other", async () => {
+    const onActivate = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <Notice
+        tone="info"
+        variant="strip"
+        onActivate={onActivate}
+        onDismiss={onDismiss}
+        dismissLabel="Dismiss"
+      >
+        Collie 1.6.0 available.
+      </Notice>,
+    );
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+    const user = userEvent.setup();
+    // The ✕ is a later, `relative` sibling of the overlay, so it is the topmost element under the
+    // tap and the overlay's `onActivate` never fires from a click that landed on it.
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onActivate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Collie 1.6.0 available." }));
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
   it("refuses a dismiss control with no accessible name", () => {
@@ -236,6 +263,15 @@ describe("Notice — the one notice surface", () => {
     );
     expect(both).toBeTruthy();
     expect(unnamed).toBeTruthy();
+
+    // The pair `action` excludes is NOT the pair `onDismiss` excludes: this one compiles clean,
+    // pinning the capability the test above this one relies on.
+    const activateAndDismiss = (
+      <Notice tone="info" variant="strip" onActivate={() => {}} onDismiss={() => {}} dismissLabel="Dismiss">
+        copy
+      </Notice>
+    );
+    expect(activateAndDismiss).toBeTruthy();
   });
 
   it("buys the action button's 44px floor as HIT area, at the measured inset", () => {

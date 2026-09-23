@@ -258,36 +258,100 @@ describe("a run in progress is not this band's row", () => {
 });
 
 describe("available navigates, never runs", () => {
-  // THE OFFER'S TAP IS A NAMED CONTROL, not the row. `ui/notice.tsx` forbids a whole-surface tap
-  // beside a dismiss ✕ at the type level, because a <button> may not hold a second one and the
-  // browsers that tolerate the nesting disagree about which of them a tap fires. The offer carries a
-  // ✕, so it gives up the row-wide target; the states that carry none keep it (see the reload cases
-  // below, which are still tapped on their copy).
-  it("tapping the offer opens the Updates page", async () => {
+  // THE WHOLE ROW IS THE TARGET, ✕ INCLUDED (2026-09-23). `ui/notice.tsx` used to forbid a
+  // whole-surface tap beside a dismiss ✕ at the type level, because a real <button> may not hold a
+  // second one — so the offer gave up the row-wide target for a small "View" button, easy to miss
+  // on a phone and dead everywhere else on the row. `Notice` now renders the whole-surface tap as
+  // an EMPTY overlay button beside the body (not around it), so the ✕ stays a sibling rather than a
+  // nested button, and both are independently tappable — see the dismiss-still-works case below.
+  it("tapping anywhere on the row opens the Updates page", async () => {
     const user = userEvent.setup();
     await renderBand(info());
-    await user.click(screen.getByRole("button", { name: "View" }));
+    // Addressed by its accessible name, which `aria-labelledby` takes from the row's own copy —
+    // there is no separate "View" label any more, the row IS the control.
+    await user.click(screen.getByRole("button", { name: "Collie 1.5.0 available." }));
     expect(await screen.findByText("the updates page")).toBeInTheDocument();
   });
 
-  it("the copy itself is not the target when there is a ✕ beside it", async () => {
-    // The pair a button cannot hold, stated as the absence it now is: no ancestor of the copy is a
-    // button, so there is no nesting for a browser to have an opinion about.
-    await renderBand(info());
-    expect(
-      screen.getByText("Collie 1.5.0 available.").closest("button"),
-    ).toBeNull();
+  it("the copy sits beside the row's button, not inside it — and the row still has exactly one activation target", async () => {
+    const { container } = await renderBand(info());
+    // No ancestor of the visible copy is a button: the overlay is a sibling, not a wrapper, which
+    // is what lets the ✕ sit on the same row without nesting one button in another.
+    expect(screen.getByText("Collie 1.5.0 available.").closest("button")).toBeNull();
+    // Exactly two buttons on the row: the whole-surface overlay and the named ✕.
+    expect(band(container)?.querySelectorAll("button")).toHaveLength(2);
   });
 
-  it("tapping the offer never reloads the bundle and never posts an update", async () => {
+  it("tapping the row never reloads the bundle and never posts an update", async () => {
     const user = userEvent.setup();
     const posts = vi.fn();
     globalThis.addEventListener("submit", posts);
     await renderBand(info());
-    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(screen.getByRole("button", { name: "Collie 1.5.0 available." }));
     expect(checkForUpdate).not.toHaveBeenCalled();
     expect(posts).not.toHaveBeenCalled();
     globalThis.removeEventListener("submit", posts);
+  });
+
+  it("the ✕ dismisses without also navigating", async () => {
+    const user = userEvent.setup();
+    await renderBand(info());
+    await user.click(screen.getByRole("button", { name: "Dismiss this version" }));
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "offer");
+    expect(screen.queryByText("the updates page")).not.toBeInTheDocument();
+  });
+
+  it("the row is reachable and activatable from the keyboard", async () => {
+    const user = userEvent.setup();
+    await renderBand(info());
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Collie 1.5.0 available." })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("the updates page")).toBeInTheDocument();
+  });
+});
+
+// THE REPORTED BUG: on a phone this row ran off the right edge, cut mid-word ("...See U"), and
+// nothing but the tiny "View" button answered a tap. `truncate` (ui/notice.tsx) never clips
+// mid-glyph — it is CSS-level and never touches the text node — and the row is now the same kind
+// of whole-surface target the offer is above.
+describe("a peer failure navigates too, and truncates instead of clipping", () => {
+  it("tapping anywhere on the row opens the Updates page, not just a small button", async () => {
+    const user = userEvent.setup();
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "unreachable", reason: "no change for 20 minutes" },
+    ];
+    await renderBand(info({ run: run("done", { peers }) }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Could not update minibuch: no change for 20 minutes. See Updates.",
+      }),
+    );
+    expect(await screen.findByText("the updates page")).toBeInTheDocument();
+  });
+
+  it("the accessible name carries the full sentence, never the visually truncated line", async () => {
+    // The visible span is `min-w-0 flex-1 truncate` — an ellipsis on overflow, not a cut mid-word —
+    // and truncation is paint-only, so the text node (and the name `aria-labelledby` reads off it)
+    // is always the whole sentence regardless of how narrow the phone is.
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "unreachable", reason: "no change for 20 minutes" },
+    ];
+    await renderBand(info({ run: run("done", { peers }) }));
+    const full = "Could not update minibuch: no change for 20 minutes. See Updates.";
+    expect(screen.getByRole("button", { name: full })).toBeInTheDocument();
+    expect(screen.getByText(full)).toHaveClass("truncate");
+  });
+
+  it("the ✕ still closes it, independently of the row's own tap target", async () => {
+    const user = userEvent.setup();
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "unreachable", reason: "no change for 20 minutes" },
+    ];
+    await renderBand(info({ run: run("done", { peers }) }));
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "crew");
+    expect(screen.queryByText("the updates page")).not.toBeInTheDocument();
   });
 });
 
@@ -401,7 +465,11 @@ describe("auto-reload unless held", () => {
     holdReload("an-open-composer-draft");
     confirmStaleBundle();
     await renderBand(info({ releaseAvailable: false, run: run("done") }));
-    await user.click(screen.getByText("New version — tap to update"));
+    // By role, not by the text node: the row's tap target is a sibling overlay button rather than a
+    // wrapper around the copy (see ui/notice.tsx), so a real tap lands on the overlay because it
+    // paints on top, but a synthetic click dispatched straight at the text node has no DOM ancestor
+    // to bubble to it through. Addressing the button by its name is what the click actually is.
+    await user.click(screen.getByRole("button", { name: "New version — tap to update" }));
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
   });
 });
@@ -463,7 +531,7 @@ describe("a packaged host on the band", () => {
   it("still taps through to the updates page, where the command is", async () => {
     const user = userEvent.setup();
     await renderBand(packaged());
-    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(screen.getByRole("button", { name: "Collie 1.5.0 available via pacman." }));
     expect(await screen.findByText("the updates page")).toBeInTheDocument();
   });
 
@@ -522,13 +590,11 @@ describe("one height in every state, and the band's own", () => {
       );
       expect(vertical).toEqual(["min-h-[33px]", "py-1"]);
     }
-    // And the states really do differ only by tone, not by shape. Two tokens are allowed to vary
-    // and neither changes a height: the status tint, and `text-left` — which a state wearing the
-    // row-wide tap carries because its root is a <button>, and a <button> centres its text by
-    // default while this one is a sentence.
-    const recipes = new Set(
-      classes.map((c) => c.replaceAll(/\S*status-\S+/g, "").replace("text-left", "").trim()),
-    );
+    // And the states really do differ only by tone, not by shape. Only the status tint token is
+    // allowed to vary; every case here carries a row-wide tap, so `relative` (which the root wears
+    // only to give the whole-surface overlay button something to position itself against) is on
+    // all of them alike and never a source of divergence.
+    const recipes = new Set(classes.map((c) => c.replaceAll(/\S*status-\S+/g, "").trim()));
     expect(recipes.size).toBe(1);
   });
 });
@@ -550,15 +616,23 @@ describe("the band owns the row; this feature owns the words", () => {
   });
 
   it("takes no position out of the layout flow, anywhere in the band", async () => {
+    // `absolute` is no longer banned outright: `ui/notice.tsx`'s whole-surface overlay button uses
+    // it to become a hit target the size of the row without adding to the row's own box, and it is
+    // scoped entirely inside a `relative` ancestor that never leaves this row — see the assertion
+    // below. What stays banned is anything that could escape the row: `fixed`/`sticky` position
+    // against the viewport or a scrolling ancestor, and any `z-` utility, which would let a piece of
+    // this feature climb above or below a neighbouring strip instead of leaving that to the host.
     const { container } = await renderBand(info());
     for (const element of container.querySelectorAll("*")) {
       // `getAttribute`, not `.className`: an SVG's is an SVGAnimatedString and stringifies to
       // "[object SVGAnimatedString]", which passes every assertion below by saying nothing.
       const tokens = (element.getAttribute("class") ?? "").split(/\s+/);
       expect(tokens).not.toContain("fixed");
-      expect(tokens).not.toContain("absolute");
       expect(tokens).not.toContain("sticky");
       expect(tokens.some((token) => token.startsWith("z-"))).toBe(false);
+      if (tokens.includes("absolute")) {
+        expect(element.parentElement?.getAttribute("class")).toMatch(/(?:^|\s)relative(?:\s|$)/);
+      }
     }
   });
 
