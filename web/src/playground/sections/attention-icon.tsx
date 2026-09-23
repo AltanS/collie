@@ -108,9 +108,12 @@ function Strip({ caption, children }: { caption: string; children: ReactNode }) 
   );
 }
 
-function CandidateRow({ c }: { c: Candidate }) {
+/** `state` is passed as a string literal at each call site, never built from `c.n`: e2e/handles.spec.ts
+ *  reads every card's handle out of the source as a quoted `state` prop, so a template literal hides the
+ *  card from that roll call. */
+function CandidateRow({ state, c }: { state: string; c: Candidate }) {
   return (
-    <Card state={`attention-icon-option-${c.n}`} label={`option ${c.n} · ${c.name}`} reach="not in the app. Pick a number." span={2}>
+    <Card state={state} label={`option ${c.n} · ${c.name}`} reach="not in the app. Pick a number." span={2}>
       <div className="flex flex-col gap-3">
         <div className="flex items-baseline gap-3">
           <span className="text-4xl font-bold tabular-nums leading-none">{c.n}</span>
@@ -137,9 +140,18 @@ export function AttentionIconSection() {
   return (
     <Section def={DEF}>
       <Group title="Options">
-        {CANDIDATES.map((c) => (
-          <CandidateRow key={c.n} c={c} />
-        ))}
+        <CandidateRow state="attention-icon-option-1" c={CANDIDATES[0]!} />
+        <CandidateRow state="attention-icon-option-2" c={CANDIDATES[1]!} />
+        <CandidateRow state="attention-icon-option-3" c={CANDIDATES[2]!} />
+        <CandidateRow state="attention-icon-option-4" c={CANDIDATES[3]!} />
+        <CandidateRow state="attention-icon-option-5" c={CANDIDATES[4]!} />
+        <CandidateRow state="attention-icon-option-6" c={CANDIDATES[5]!} />
+        <CandidateRow state="attention-icon-option-7" c={CANDIDATES[6]!} />
+        <CandidateRow state="attention-icon-option-8" c={CANDIDATES[7]!} />
+        <CandidateRow state="attention-icon-option-9" c={CANDIDATES[8]!} />
+        <CandidateRow state="attention-icon-option-10" c={CANDIDATES[9]!} />
+        <CandidateRow state="attention-icon-option-11" c={CANDIDATES[10]!} />
+        <CandidateRow state="attention-icon-option-12" c={CANDIDATES[11]!} />
       </Group>
     </Section>
   );
