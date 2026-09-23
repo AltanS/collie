@@ -242,7 +242,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `GET` | `/crew/v1/snapshot` | `GET /api/snapshot` (`bridge/server.ts:177`) | **merged** — the only merged route |
 | `GET` | `/crew/v1/pane/:id` | `GET /api/pane/:id` (`:276`) | proxied byte-for-byte |
 | `GET` | `/crew/v1/pane/:id/history` | `GET …/history` (`:277`) | proxied byte-for-byte |
-| `GET` | `/crew/v1/pane/:id/changes` | `GET …/changes` | proxied byte-for-byte — additive-optional (§7.1). Read-only git over the folder of the pane's WORKSPACE on the machine that owns it (ADR 0065); the query (`depth`, `nested`, `repo`, `path`) rides through untouched. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `GET` | `/crew/v1/pane/:id/changes` | `GET …/changes` | proxied byte-for-byte — additive-optional (§7.1). Read-only git over the folder of the pane's WORKSPACE on the machine that owns it (ADR 0065); the query (`depth`, `nested`, `repo`, `path`, and `view=commit` for the repo's last commit) rides through untouched. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/crew/v1/workspace/:id/changes` | `GET …/workspace/:id/changes` | proxied byte-for-byte — additive-optional (§7.1). The same list asked by workspace rather than by pane (ADR 0065), with the same query. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `POST` | `/crew/v1/pane/:id/reply` | `POST …/reply` (`:279`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/keys` | `POST …/keys` (`:280`) | forwarded |

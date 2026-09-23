@@ -9,7 +9,7 @@
   `bridge/changes.ts` (`SharedReads`, `repoOfFolder`, `depthLimited`) · `web/src/lib/changes-tree.ts`
   (`folderInRepo`, `openFolderChain`) · `web/src/components/changes-control.tsx` ·
   `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header) · `web/src/routes/changes.tsx` ·
-  `web/src/components/changes-view.tsx` · `web/src/lib/unified-diff.ts` ·
+  `web/src/components/changes-view.tsx` · `web/src/components/changes-commit.tsx` · `web/src/lib/unified-diff.ts` ·
   `web/src/lib/diff-highlight.ts` · `web/src/lib/diff-highlight-engine.ts` ·
   `web/src/hooks/use-dash-prefs.ts` · `web/src/hooks/use-visible-interval.ts` ·
   `web/src/lib/share-equal.ts` · [ADR 0060](./0060-an-attachment-is-a-chip-not-a-path.md)
@@ -175,6 +175,31 @@ settings card) is about 4 KB.
 
    Both routes are reads like `history`, forwarded with `?host=` to the member that owns the pane
    or the workspace, additive-optional on the crew link.
+9. **The commit view reads HEAD, and only HEAD.** Agents commit their own work, so the list
+   against HEAD goes empty right after the change the operator most wants to read. A repo that
+   discovery found with nothing uncommitted and at least one commit is listed in the answer's
+   optional `clean`, and the view offers "Show last commit" for it. `?view=commit&repo=` on either
+   route answers that repo's HEAD: subject, author, author time, short hash, and its files with
+   status letters, renames and `+N −M`; `&path=` answers one file's diff. The rules:
+   - **HEAD against its first parent**, or against the empty tree for a root commit. The client
+     names a repo, never a revision, so no request can walk the history. A merge shows what it
+     brought in over its first parent.
+   - **Read-only and hardened like every other run** (rule 4): the same runner, the same `-c`
+     list, the same environment, the filter drivers switched off, `--no-ext-diff` and
+     `--no-textconv`. The commit object is read with `git cat-file commit` and parsed in the
+     bridge, so no pretty format, mailmap, notes or `log.showSignature` (which would run
+     `gpg.program`) is ever consulted.
+   - **The listed-paths rule holds** (rule 5): a file's diff is served only for a repo the same
+     discovery returns and a path the same read of HEAD listed. The diff answer carries the commit's
+     `hash`, so a view still showing an older commit never draws a newer commit's file as its own.
+   - **Shared like the other reads** (rule 8): one in-flight run per (root, repo, depth, nested),
+     and per path for a file, kept for `CHANGES_SHARE_MS`. The screen re-reads on the same 5 s beat,
+     together with the list. A newer HEAD never replaces the files on screen: a quiet "A newer
+     commit exists" waits for a tap. New uncommitted changes in the repo show "New uncommitted
+     changes", which goes back to the list.
+   - **A level below the list** (ADR 0067): `/pane/:id/changes/commit?repo=` and the space form,
+     opened by a down move, left by an up move. The router matches `changes/*`, so the list stays
+     mounted under the commit.
 
 ## Consequences
 
@@ -214,6 +239,9 @@ settings card) is about 4 KB.
 - **Highlighting, 2026-09-23.** Rule 7 first said "no highlighting". The operator asked for it once
   the view was in use, and it went in as rule 7 now reads: one small library, lazily loaded, and
   held to the view's no-shift and text-node rules.
+- **The commit view, 2026-09-23 (operator decision).** Rule 9. Reading any revision the client
+  names was left out on purpose: HEAD answers "what did the agent just do", and a history browser
+  is a different feature with a larger surface.
 - **Revisit** if a language the operator reads daily is missing from sugar-high, or a real diff
   shows a wrong colour worse than no colour; or if rule 4 misses a vector: a new git config key that executes during
   status or diff belongs in `bridge/changes.ts`'s `HARDENING` list and in its hostile-repo test.

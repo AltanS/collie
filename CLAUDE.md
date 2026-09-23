@@ -446,7 +446,8 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls
   followed by `revalidator.revalidate()`. There is **no TanStack Query** — don't reintroduce it.
 - Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId`,
-  `/pane/:paneId/history`, `/pane/:paneId/changes` and `/space/:spaceId/changes`. The router
+  `/pane/:paneId/history`, `/pane/:paneId/changes` and `/space/:spaceId/changes` (both matched as
+  `changes/*`, so the commit view `…/changes/commit` shares the list's component). The router
   instance is module-scoped so it keeps its location.
 - **Back goes up one level.** Navigate through `useNav()` (`web/src/hooks/use-nav.ts`): down is a
   push that records `from`, sideways is a replace, up steps back onto a legitimate parent or
