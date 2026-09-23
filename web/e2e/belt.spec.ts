@@ -13,9 +13,9 @@ import { installApiStub } from "./fixtures/api";
 //    the overflow; WebKit counted it as scrollable and let a thumb nudge the belt up. The fix made
 //    every box inside the scroller fit the band, and this case is the guard: `scrollHeight` equals
 //    `clientHeight`, and a `scrollTop` written by hand reads back as 0.
-//  * The last pill is reachable. The scroller ends in a spacer as wide as the pinned block, so at
-//    `scrollLeft` max the last real pill stops LEFT of the Switch cell's hairline rather than
-//    hiding under its fade.
+//  * The last pill is reachable. The scroller ends in a spacer as wide as the pinned block plus 16px
+//    of air (`BELT_END_AIR`, operator, 2026-09-23), so at `scrollLeft` max the last real pill stops
+//    at least 16px LEFT of the pinned block, fade included, rather than hiding under it.
 //
 // Runs under every `app-*` project, so Chromium and WebKit answer the same questions.
 
@@ -38,7 +38,7 @@ test("the belt scrolls sideways only, in this engine too", async ({ page }) => {
   expect(box.scrollTop).toBe(0);
 });
 
-test("the last pill stops before the Switch cell at the scroll end", async ({ page }) => {
+test("the last pill stops 16px clear of the pinned block at the scroll end", async ({ page }) => {
   await page.goto("/pane/w1:p1");
   const switchButton = page.getByRole("button", { name: en["chat.switcher.aria"] });
   await expect(switchButton).toBeVisible();
@@ -49,10 +49,15 @@ test("the last pill stops before the Switch cell at the scroll end", async ({ pa
     // room; the last PILL is the last button in document order.
     const pills = el.querySelectorAll("button");
     const last = pills[pills.length - 1];
-    return { overflows: el.scrollWidth > el.clientWidth + 1, lastRight: last?.getBoundingClientRect().right ?? NaN };
+    // The pinned block is the belt's own direct `<span>` child: its left edge is where the fade starts.
+    const block = el.closest('[data-slot="composer-actions"]')!.querySelector(":scope > span")!;
+    return {
+      overflows: el.scrollWidth > el.clientWidth + 1,
+      lastRight: last?.getBoundingClientRect().right ?? NaN,
+      blockLeft: block.getBoundingClientRect().left,
+    };
   });
-  const switchLeft = (await switchButton.boundingBox())?.x ?? NaN;
   // A wide viewport may fit every pill; the promise only exists when the belt overflows.
   test.skip(!edges.overflows, "every pill fits at this width, nothing scrolls");
-  expect(edges.lastRight).toBeLessThanOrEqual(switchLeft);
+  expect(edges.lastRight).toBeLessThanOrEqual(edges.blockLeft - 16);
 });

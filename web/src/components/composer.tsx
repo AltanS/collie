@@ -164,6 +164,10 @@ interface ComposerProps {
    * (a composer mounted alone, as in its tests), the notice floats above the composer itself.
    */
   draftNoticeSlot?: HTMLElement | null;
+
+  /** EXPERIMENT (operator, 2026-09-23): the Changes pill on the belt's pinned block, beside the
+   *  switcher mark (actions-row.tsx's `changes`). Absent when the pane reports no folder. */
+  changesPill?: { onClick: () => void; label: string };
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -281,7 +285,7 @@ function revokePreview(attachment: ComposerAttachment) {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle, draftNoticeSlot },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle, draftNoticeSlot, changesPill },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1475,6 +1479,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // belt itself as the drag surface behind it. The pane decides whether there is one
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
+          changes={changesPill}
         />
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────
             Every strip below arrives and leaves through `Collapse`, which is the only sanctioned way

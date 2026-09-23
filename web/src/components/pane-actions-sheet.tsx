@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GitCompare, Maximize2, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
+import { Maximize2, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -47,10 +47,6 @@ interface PaneActionsSheetProps {
   onFind?: () => void;
   /** Open the agent's own transcript. */
   onHistory?: () => void;
-  /** Open the Changes view: what changed under the pane's folder since the last commit (ADR 0065).
-   *  A read like history. The pane header passes it only when the pane reports a folder (zellij
-   *  reports none, so its panes never show the row). */
-  onChanges?: () => void;
   /** Open this pane's own settings — today one switch, the prompt-cache warning (ADR 0042).
    *
    *  The FOURTH read row, and it is a read in the sense the other three are: it changes a preference on
@@ -88,7 +84,6 @@ export function PaneActionsSheet({
   onClosed,
   onFind,
   onHistory,
-  onChanges,
   onSettings,
   onZen,
 }: PaneActionsSheetProps) {
@@ -268,7 +263,7 @@ export function PaneActionsSheet({
           sheet; rename and close are the half you arrive at deliberately.
           Hidden in `rename` mode with the rest of the list — that view is a sub-screen, not a
           section. */}
-      {mode === "actions" && (onFind || onHistory || onChanges || onSettings || onZen) && (
+      {mode === "actions" && (onFind || onHistory || onSettings || onZen) && (
         <div className="mb-1 flex flex-col gap-1">
           {onFind && (
             <ActionRow
@@ -289,17 +284,6 @@ export function PaneActionsSheet({
               onClick={() => {
                 onClose();
                 onHistory();
-              }}
-            />
-          )}
-          {/* Changes is a looking row too: read-only git over the pane's folder, beside history. */}
-          {onChanges && (
-            <ActionRow
-              icon={<GitCompare className="size-4 shrink-0 text-muted-foreground" />}
-              label={t("chat.changes.label")}
-              onClick={() => {
-                onClose();
-                onChanges();
               }}
             />
           )}

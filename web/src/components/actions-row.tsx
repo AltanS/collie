@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Layers } from "lucide-react";
+import { GitCompare, Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -141,6 +141,10 @@ const OFF = "text-muted-foreground";
  * it ANSWERS is unchanged at 46px — `STRIP_ROW_PILL`'s `::before` reaches past the drawn box, the
  * way every pill on this belt does.
  *
+ * WITH THE CHANGES PILL (EXPERIMENT, operator, 2026-09-23) the block holds a second 32px pill to the
+ * left of the mark, 6px apart (the belt's one pill gap): 117 + 32 + 6 = 155, see
+ * {@link SWITCH_PILL_INSET_WITH_CHANGES}.
+ *
  * THIS NUMBER IS NO LONGER THE ANSWER — IT IS THE GUESS BEFORE ONE EXISTS. A constant here drifts
  * the moment the Switch block's own box changes (a locale with a wider glyph, a future word back on
  * the pill) and nothing re-measures it, which is exactly how the last pill ended up hidden under the
@@ -150,6 +154,15 @@ const OFF = "text-muted-foreground";
  * block, not the belt, is what gets measured.
  */
 const SWITCH_PILL_INSET = 117;
+
+/** EXPERIMENT (operator, 2026-09-23): the first-frame fallback when the Changes pill stands beside
+ *  the mark. 117 + 32 (the Changes pill) + 6 (`gap-1.5` between the two pills) = 155. The Changes
+ *  pill ALONE (no mark to switch to) is the same 32px box, so it falls back to 117. */
+const SWITCH_PILL_INSET_WITH_CHANGES = 155;
+
+/** Extra air between the last scrolling pill and the pinned block at full scroll-right, added to the
+ *  trailing spacer. Altan, from his phone, 2026-09-23: "add a wider margin right to the belt content". */
+const BELT_END_AIR = 16;
 
 /**
  * The pinned Switch block's own width, read off its DOM node — the trailing spacer's width must
@@ -190,7 +203,10 @@ function useSwitchBlockWidth(active: boolean): SwitchBlockWidth {
       if (!node || !active || !hasResizeObserver()) return;
       const ro = new ResizeObserver((entries) => {
         const entry = entries[0];
-        if (entry) setWidth(entry.contentRect.width);
+        // The BORDER box, not `contentRect`: `contentRect` is the content box and leaves out the
+        // block's own `pl-16` and `pr-3` (76px), so the spacer came out 76px short and the last pill
+        // stopped under the fade. Measured in Chromium at 390px, 2026-09-23.
+        if (entry) setWidth(entry.borderBoxSize?.[0]?.inlineSize ?? node.getBoundingClientRect().width);
       });
       ro.observe(node);
       observerRef.current = ro;
@@ -284,14 +300,29 @@ export interface ActionsRowProps {
     /** Another pane needs you: a red dot on the mark's corner. The label says so in words. */
     alert?: boolean;
   };
+  /**
+   * EXPERIMENT (operator, 2026-09-23): the Changes view's entry (ADR 0065), moved out of the pane
+   * actions sheet onto the pinned block, as an icon-only pill LEFT of the Switch mark. Absent when
+   * the pane reports no folder (the caller decides). To revert: drop this prop and its pill, and put
+   * the `onChanges` row back in pane-actions-sheet.tsx (git history).
+   */
+  changes?: {
+    /** Opens the Changes route for this pane. */
+    onClick: () => void;
+    /** ALREADY TRANSLATED. The button's accessible name, `chat.changes.label`. */
+    label: string;
+  };
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: ActionsRowProps) {
+export function ActionsRow({ general, agent, mine, onRun, disabled, handle, changes }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
-  const switchBlock = useSwitchBlockWidth(!!handle);
-  const switchInset = switchBlock.width ?? SWITCH_PILL_INSET;
+  // Anything pinned at the right end: the Switch mark, the Changes pill, or both. The drag surface
+  // (`handle.ref`, `touch-pan-x`) stays tied to `handle` alone.
+  const pinned = !!handle || !!changes;
+  const switchBlock = useSwitchBlockWidth(pinned);
+  const switchInset = switchBlock.width ?? (changes && handle ? SWITCH_PILL_INSET_WITH_CHANGES : SWITCH_PILL_INSET);
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
@@ -368,11 +399,11 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           `overflow-y` to compute to `auto` too, which turns that overflow into a real vertical
           scrollbar under a thumb. `STRIP_SCROLLER` keeps forcing `overflow-x-auto`; this belt alone
           forces the other axis shut. */}
-      <OverflowEdges edges={handle ? "left" : "both"} cue="none">
+      <OverflowEdges edges={pinned ? "left" : "both"} cue="none">
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
-            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3 py-1 overflow-y-hidden", !handle && "pr-3")}
+            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3 py-1 overflow-y-hidden", !pinned && "pr-3")}
           >
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
@@ -423,8 +454,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
                 fade. `shrink-0` and an explicit inline width sidestep the whole question — a real
                 child always counts toward `scrollWidth`, at any nesting depth. `aria-hidden`
                 because it draws nothing and answers nothing; the width tracks
-                {@link useSwitchBlockWidth} exactly the way the removed padding used to. */}
-            {handle && <span aria-hidden className="h-full shrink-0" style={{ width: switchInset }} />}
+                {@link useSwitchBlockWidth} exactly the way the removed padding used to, plus
+                {@link BELT_END_AIR} so the last pill stops with clear air before the block. */}
+            {pinned && <span aria-hidden className="h-full shrink-0" style={{ width: switchInset + BELT_END_AIR }} />}
           </div>
         )}
       </OverflowEdges>
@@ -459,7 +491,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           included, is exactly the width the scroller's `paddingRight` must match (see
           {@link useSwitchBlockWidth}), so measuring anything narrower (the inner button alone, say)
           would under-report it and the last pill would scroll in under the fade again. */}
-      {handle && (
+      {pinned && (
         <span
           ref={switchBlock.ref}
           className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-16"
@@ -485,34 +517,53 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
               IT DRAWS NOTHING AND ANNOUNCES "Switch pane", so the accessible name is now the only
               name it has — WCAG 2.5.3 has nothing to reconcile once there is no visible word, and a
               test addresses that name rather than a glyph. */}
-          <span className="pointer-events-auto flex items-center self-stretch">
-            <span aria-hidden className="mr-2 h-5 w-px bg-border" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label={handle.label}
-              aria-haspopup="dialog"
-              onClick={handle.onClick}
-              // No padding and no border: what is left of the pill is `STRIP_ROW_PILL`'s own box,
-              // narrowed on this one pill alone. `w-8 min-w-8` drops `min-w-11`'s 44px floor — the
-              // floor every OTHER pill on this belt still stands on — down to 32px, the operator's
-              // pick ("Option 6" of the belt-shade deck; playground, removed 2026-09-14 once it had
-              // served, see git history): the Switch mark is a single centred icon with no label, so
-              // it alone can go narrower than a pill with a word to hold. Both classes are needed —
-              // `min-w-11` would otherwise still win against a bare `w-8`.
-              className={cn(`${STRIP_ROW_PILL} relative w-8 min-w-8 border-0 px-0 has-[>svg]:px-0`)}
-            >
-              <Layers className="size-4 shrink-0 text-primary" />
-              {/* The red dot, on the mark's top-right corner, absolutely placed so it never moves the
-                  belt. `ring-chrome` cuts it out of the glyph it overlaps. */}
-              {handle.alert === true && (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-status-blocked ring-2 ring-chrome"
-                />
-              )}
-            </Button>
+          <span className="pointer-events-auto flex items-center gap-1.5 self-stretch">
+            {/* The hairline keeps its 8px to the first pill: the row's `gap-1.5` (6px) plus `mr-0.5`
+                (2px). The two pills stand 6px apart, the belt's one pill gap. */}
+            <span aria-hidden className="mr-0.5 h-5 w-px bg-border" />
+            {/* EXPERIMENT (operator, 2026-09-23): the Changes entry, moved here from the pane actions
+                sheet. Same box as the Switch mark beside it; it navigates rather than opening a sheet,
+                so no `aria-haspopup`. Revert with the `changes` prop above. */}
+            {changes && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={changes.label}
+                onClick={changes.onClick}
+                className={cn(`${STRIP_ROW_PILL} relative w-8 min-w-8 border-0 px-0 has-[>svg]:px-0`)}
+              >
+                <GitCompare className="size-4 shrink-0 text-primary" />
+              </Button>
+            )}
+            {handle && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={handle.label}
+                aria-haspopup="dialog"
+                onClick={handle.onClick}
+                // No padding and no border: what is left of the pill is `STRIP_ROW_PILL`'s own box,
+                // narrowed on this one pill alone. `w-8 min-w-8` drops `min-w-11`'s 44px floor — the
+                // floor every OTHER pill on this belt still stands on — down to 32px, the operator's
+                // pick ("Option 6" of the belt-shade deck; playground, removed 2026-09-14 once it had
+                // served, see git history): the Switch mark is a single centred icon with no label, so
+                // it alone can go narrower than a pill with a word to hold. Both classes are needed —
+                // `min-w-11` would otherwise still win against a bare `w-8`.
+                className={cn(`${STRIP_ROW_PILL} relative w-8 min-w-8 border-0 px-0 has-[>svg]:px-0`)}
+              >
+                <Layers className="size-4 shrink-0 text-primary" />
+                {/* The red dot, on the mark's top-right corner, absolutely placed so it never moves the
+                    belt. `ring-chrome` cuts it out of the glyph it overlaps. */}
+                {handle.alert === true && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-status-blocked ring-2 ring-chrome"
+                  />
+                )}
+              </Button>
+            )}
           </span>
         </span>
       )}

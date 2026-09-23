@@ -2784,3 +2784,21 @@ describe("AgentChat — the terminal draft notice floats (ADR 0061)", () => {
     expect(container.querySelector('[data-slot="draft-notice-slot"]')!.childElementCount).toBe(0);
   });
 });
+
+// EXPERIMENT (operator, 2026-09-23): the Changes entry (ADR 0065) moved off the ⋮ sheet onto the
+// belt's pinned block, beside the switcher mark. Still gated on the pane reporting a folder.
+describe("AgentChat — the belt's Changes pill", () => {
+  it("shows on the belt when the pane has a folder, and not in the pane menu", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat();
+    const belt = container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    expect(within(belt).getByRole("button", { name: "Changes" })).toBeInTheDocument();
+    await openPaneMenu(user);
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Changes" })).toBeNull();
+  });
+
+  it("is hidden when the pane reports no folder", () => {
+    renderChat({ agent: { ...fixtureAgents[0]!, cwd: "" } });
+    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
+  });
+});

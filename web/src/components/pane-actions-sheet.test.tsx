@@ -303,22 +303,6 @@ describe("PaneActionsSheet — the read rows", () => {
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
-  // The Changes row (ADR 0065) is a read beside history, and absence is its gate like the others:
-  // the pane header passes no callback for a pane that reports no folder (zellij).
-  it("offers Changes only when given a callback, and closes before opening it", async () => {
-    const user = userEvent.setup();
-    const onChanges = vi.fn();
-    const props = renderSheet({ onChanges });
-    await user.click(screen.getByRole("button", { name: "Changes" }));
-    expect(props.onClose).toHaveBeenCalledTimes(1);
-    expect(onChanges).toHaveBeenCalledTimes(1);
-  });
-
-  it("has no Changes row without a callback", () => {
-    renderSheet({ onHistory: vi.fn() });
-    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
-  });
-
   it("goes away in rename mode — that view is a sub-screen, not a section", async () => {
     const user = userEvent.setup();
     renderSheet({ onFind: vi.fn() });

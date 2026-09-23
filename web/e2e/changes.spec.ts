@@ -29,10 +29,25 @@ async function noSidewaysScroll(page: Page) {
   expect(scroll).toBeLessThanOrEqual(width);
 }
 
-test("the pane menu opens Changes, the list groups by repo, and a diff wraps", async ({ page }) => {
+// EXPERIMENT (operator, 2026-09-23): the entry is a pill on the belt's pinned block, immediately
+// left of the switcher mark, no longer a row in the pane menu.
+test("the belt's Changes pill opens Changes, the list groups by repo, and a diff wraps", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}`);
+  const pill = page.getByRole("button", { name: en["chat.changes.label"] });
+  const switcher = page.getByRole("button", { name: en["chat.switcher.aria"] });
+  await expect(pill).toBeVisible();
+  const [p, s] = [(await pill.boundingBox())!, (await switcher.boundingBox())!];
+  // Same 32px box as the mark, on the same line, directly to its left.
+  expect(p.width).toBe(32);
+  expect(p.height).toBe(s.height);
+  expect(p.y).toBe(s.y);
+  expect(p.x + p.width).toBeLessThanOrEqual(s.x);
+  expect(s.x - (p.x + p.width)).toBeLessThanOrEqual(8);
+  // The pane menu no longer carries it.
   await page.getByRole("button", { name: en["chat.paneMenu.aria"] }).click();
-  await page.getByRole("button", { name: en["chat.changes.label"] }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: en["chat.changes.label"] })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await pill.click();
 
   await expect(page).toHaveURL(/\/changes$/);
   await expect(page.getByText("webapp · 3 files")).toBeVisible();

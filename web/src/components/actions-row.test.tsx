@@ -195,11 +195,44 @@ describe("ActionsRow", () => {
     expect(scroller.className).not.toMatch(/(?:^|\s)pr-3(?=\s|$)/);
     const spacer = scroller.lastElementChild!;
     expect(spacer.getAttribute("aria-hidden")).toBe("true");
-    expect(spacer.getAttribute("style")).toBe("width: 117px;");
+    // 117 (the block's first-frame fallback) + 16 (BELT_END_AIR, the operator's wider right margin).
+    expect(spacer.getAttribute("style")).toBe("width: 133px;");
     // The masked wrapper one level out never carries a right-hand gradient stop — `edges="left"`
     // took effect.
     const masked = scroller.parentElement!;
     expect(masked.className).not.toContain("black_calc");
+  });
+
+  // EXPERIMENT (operator, 2026-09-23): the Changes entry rides the pinned block, left of the mark.
+  it("draws the Changes pill immediately left of the Switch mark, same 32px box, and widens the fallback", async () => {
+    const onChanges = vi.fn();
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }}
+        changes={{ onClick: onChanges, label: "Changes" }}
+      />,
+    );
+    const pill = screen.getByRole("button", { name: "Changes" });
+    const grip = screen.getByRole("button", { name: "Switch pane" });
+    expect(pill.nextElementSibling).toBe(grip);
+    expect(pill.className).toMatch(/(?:^|\s)w-8(?=\s|$)/);
+    expect(pill.className).toMatch(/(?:^|\s)min-w-8(?=\s|$)/);
+    expect(pill).not.toHaveAttribute("aria-haspopup");
+    await userEvent.click(pill);
+    expect(onChanges).toHaveBeenCalledTimes(1);
+    // 155 (117 + the 32px pill + its 6px gap) + 16 of end air.
+    const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
+    expect(scroller.lastElementChild!.getAttribute("style")).toBe("width: 171px;");
+  });
+
+  it("has no Changes pill without the prop", () => {
+    render(
+      <ActionsRow general={[general()]} agent="claude" onRun={took} handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }} />,
+    );
+    expect(screen.queryByRole("button", { name: "Changes" })).not.toBeInTheDocument();
   });
 
   it("stands the belt's scroller at py-1 (40px), with no vertical scroll under a thumb", () => {
