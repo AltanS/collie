@@ -49,6 +49,12 @@ place; Send swaps in the path there. The terminal gets the same line it got befo
    byte for byte, and still loads.
 6. **CSP.** `img-src` admits `blob:`. A blob URL is minted only by this page's own script from a
    file the operator picked, so it opens no new origin.
+7. **A chip whose marker is gone says so before Send.** Counsel asked that point 3 not be silent.
+   While the chip's marker is missing from the text, its border turns dashed, its `#N` badge gains
+   an arrow to the line's start, and its title and a screen-reader line read "Its marker is gone
+   from your text, so Send puts <name> in front." Typing the marker back clears it. No dialog, no
+   toast: the cue sits where the operator already looks, and the send itself is unchanged.
+   `markerMissing` in `web/src/lib/attachments.ts` answers for both the chip and `composeLine`.
 
 ## Consequences
 

@@ -30,6 +30,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+- **A chip whose marker you deleted now says it goes in front.** Send puts such an attachment's path in front of your text. The chip now shows this before you send: its border turns dashed, its number gains an arrow, and its title and screen-reader text say where the path will go. Type the marker back to clear it (ADR 0060).
+
 ## [1.12.0] - 2026-09-23
 
 ### Added

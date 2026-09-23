@@ -251,6 +251,7 @@ export const en = {
   "composer.attach.files": "Files",
   "composer.attach.listAria": "Attachments",
   "composer.attach.removeAria": "Remove {name}",
+  "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
   "composer.send.typeAnyway": "Type anyway?",
   "composer.send.reallySend": "Really send?",
   "composer.send.stopTypingAria": "Stop typing into terminal",

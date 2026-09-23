@@ -223,6 +223,7 @@ export const zh: Dictionary = {
   "composer.attach.files": "文件",
   "composer.attach.listAria": "附件",
   "composer.attach.removeAria": "移除 {name}",
+  "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
   "composer.send.typeAnyway": "仍要输入？",
   "composer.send.reallySend": "确认发送？",
   "composer.send.stopTypingAria": "停止向终端输入",

@@ -6,6 +6,7 @@ import {
   extensionOf,
   insertMarker,
   markerFor,
+  markerMissing,
   removeMarker,
   shortName,
   limitMb,
@@ -184,6 +185,32 @@ describe("composeLine", () => {
   it("leaves a marker with no chip behind it as typed", () => {
     expect(composeLine("[Image #7] and [File #1]", [a])).toBe("/a.png [Image #7] and [File #1]");
     expect(composeLine("[Image #7] stays", [])).toBe("[Image #7] stays");
+  });
+});
+
+describe("markerMissing", () => {
+  const a = { n: 1, kind: "image" as const };
+
+  it("is false while the marker stands anywhere in the text", () => {
+    expect(markerMissing("see [Image #1] here", a)).toBe(false);
+  });
+
+  it("is true once the marker is edited away, and for a different number or kind", () => {
+    expect(markerMissing("see here", a)).toBe(true);
+    expect(markerMissing("see [Image #1", a)).toBe(true);
+    expect(markerMissing("[Image #11]", { n: 2, kind: "image" })).toBe(true);
+    expect(markerMissing("[File #1]", a)).toBe(true);
+  });
+
+  it("agrees with composeLine on which chips go in front", () => {
+    const chips = [
+      { n: 1, path: "/a.png", kind: "image" as const },
+      { n: 2, path: "/b.md", kind: "file" as const },
+    ];
+    const text = "read [File #2]";
+    const inFront = chips.filter((chip) => markerMissing(text, chip)).map((chip) => chip.path);
+    expect(inFront).toEqual(["/a.png"]);
+    expect(composeLine(text, chips).startsWith(`${inFront.join(" ")} `)).toBe(true);
   });
 });
 

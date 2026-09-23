@@ -237,6 +237,7 @@ export const de: Dictionary = {
   "composer.attach.files": "Dateien",
   "composer.attach.listAria": "Anhänge",
   "composer.attach.removeAria": "{name} entfernen",
+  "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
   "composer.send.typeAnyway": "Trotzdem tippen",
   "composer.send.reallySend": "Senden bestätigen",
   "composer.send.stopTypingAria": "Eingabe ins Terminal abbrechen",

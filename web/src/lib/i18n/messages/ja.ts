@@ -233,6 +233,7 @@ export const ja: Dictionary = {
   "composer.attach.files": "ファイル",
   "composer.attach.listAria": "添付ファイル",
   "composer.attach.removeAria": "{name}を削除",
+  "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
   "composer.send.typeAnyway": "強制的に入力しますか？",
   "composer.send.reallySend": "送信しますか？",
   "composer.send.stopTypingAria": "ターミナルへの入力を停止",

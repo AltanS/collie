@@ -1,4 +1,4 @@
-import { FileText, Image, X } from "lucide-react";
+import { ArrowLeftToLine, FileText, Image, X } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { shortName } from "@/lib/attachments";
@@ -28,35 +28,54 @@ const CHIP_REMOVE_TAP_TARGET = "before:absolute before:-inset-3 before:content-[
  * marker together.
  *
  * One uniform 1px border and no shadow: it is a token inside the composer's box, not a card.
+ *
+ * `inFront` is the chip whose marker the operator deleted from the text: Send will put its path in
+ * front of the words, not where the marker stood (ADR 0060, point 7). It says so before Send, not
+ * after: the border turns dashed, the badge gains an arrow to the line's start, and the title and
+ * a screen-reader line spell it out. No dialog, no toast; typing the marker back clears it.
  */
 export function AttachmentChip({
   attachment,
   onRemove,
   disabled,
+  inFront = false,
 }: {
   attachment: ComposerAttachment;
   onRemove: () => void;
   disabled?: boolean;
+  inFront?: boolean;
 }) {
   useLocale();
   const Icon = attachment.kind === "image" ? Image : FileText;
+  const inFrontNote = inFront ? t("composer.attach.inFront", { name: attachment.name }) : null;
+  const edge = inFront ? "border-dashed border-foreground/60" : "border-border";
   return (
-    <li className="relative shrink-0" title={attachment.name}>
+    <li
+      className="relative shrink-0"
+      title={inFrontNote ?? attachment.name}
+      data-in-front={inFront ? "" : undefined}
+    >
       {attachment.previewUrl !== undefined ? (
         <img
           src={attachment.previewUrl}
           alt={attachment.name}
-          className="size-10 rounded-md border border-border object-cover"
+          className={cn("size-10 rounded-md border object-cover", edge)}
         />
       ) : (
-        <div className="flex h-10 max-w-40 items-center gap-1.5 rounded-md border border-border bg-muted/40 pr-6 pl-2 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "flex h-10 max-w-40 items-center gap-1.5 rounded-md border bg-muted/40 pr-6 pl-2 text-xs text-muted-foreground",
+            edge,
+          )}
+        >
           <Icon aria-hidden="true" className="size-4 shrink-0" />
           <span className="truncate">{shortName(attachment.name)}</span>
         </div>
       )}
-      <span className="pointer-events-none absolute -top-1 -left-1 rounded border border-border bg-background px-1 font-mono text-[10px] leading-3.5 text-foreground">
-        #{attachment.n}
+      <span className="pointer-events-none absolute -top-1 -left-1 flex items-center gap-0.5 rounded border border-border bg-background px-1 font-mono text-[10px] leading-3.5 text-foreground">
+        {inFront && <ArrowLeftToLine aria-hidden="true" className="size-2.5" />}#{attachment.n}
       </span>
+      {inFrontNote !== null && <span className="sr-only">{inFrontNote}</span>}
       <button
         type="button"
         onClick={onRemove}

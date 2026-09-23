@@ -232,6 +232,7 @@ export const ko: Dictionary = {
   "composer.attach.files": "파일",
   "composer.attach.listAria": "첨부 파일",
   "composer.attach.removeAria": "{name} 제거",
+  "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
   "composer.send.typeAnyway": "그대로 입력할까요?",
   "composer.send.reallySend": "전송할까요?",
   "composer.send.stopTypingAria": "터미널 입력 중단",

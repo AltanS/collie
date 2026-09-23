@@ -38,6 +38,7 @@ import {
   insertMarker,
   limitMb,
   markerFor,
+  markerMissing,
   offersFiles,
   PHOTO_ACCEPT,
   rejectAttachment,
@@ -1181,7 +1182,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   /** The chip's x: the chip goes, and so does its marker (with one space beside it). Deleting the
-   *  marker by hand instead keeps the chip, and Send puts its path in front (`composeLine`). */
+   *  marker by hand instead keeps the chip, which then shows it will go in front (`inFront`), and
+   *  Send puts its path there (`composeLine`). */
   function removeAttachment(attachment: ComposerAttachment) {
     revokePreview(attachment);
     attachmentsRef.current = attachmentsRef.current.filter((a) => a.n !== attachment.n);
@@ -1627,6 +1629,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   attachment={attachment}
                   onRemove={() => removeAttachment(attachment)}
                   disabled={sending}
+                  inFront={markerMissing(input, attachment)}
                 />
               ))}
             </ul>

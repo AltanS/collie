@@ -235,6 +235,7 @@ export const es: Dictionary = {
   "composer.attach.files": "Archivos",
   "composer.attach.listAria": "Adjuntos",
   "composer.attach.removeAria": "Quitar {name}",
+  "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
   "composer.send.typeAnyway": "¿Escribir de todos modos?",
   "composer.send.reallySend": "¿Confirmar envío?",
   "composer.send.stopTypingAria": "Detener escritura en la terminal",
