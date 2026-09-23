@@ -55,6 +55,7 @@ import * as cache from "./sections/cache";
 import * as paneSettings from "./sections/pane-settings";
 import * as changes from "./sections/changes";
 import * as dashboardNav from "./sections/dashboard-nav";
+import * as attentionIcon from "./sections/attention-icon";
 
 /** What a section's `render` gets handed — the page-level knobs a section needs. Today only the
  *  shared connection clock (`BootSection`'s `clock` prop); a section that needs nothing reads
@@ -95,6 +96,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: paneSettings.DEF, render: () => <paneSettings.PaneSettingsSection /> },
   { def: changes.DEF, render: () => <changes.ChangesSection /> },
   { def: dashboardNav.DEF, render: () => <dashboardNav.DashboardNavSection /> },
+  { def: attentionIcon.DEF, render: () => <attentionIcon.AttentionIconSection /> },
 ];
 
 const THEME_OPTIONS = [
