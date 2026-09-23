@@ -395,6 +395,15 @@ export const zh: Dictionary = {
   "home.sidebar.paneActionsTitle": "查看窗格操作选项",
   "home.row.tabPosition": "标签页 {n}",
   "home.row.unseen": "未读",
+  "home.tabs.aria": "Dashboard views",
+  "home.tabs.panes": "Panes",
+  "home.changes.listAria": "Changes by workspace",
+  "home.changes.loading": "Reading…",
+  "home.changes.clean": "No changes",
+  "home.changes.noFolder": "No folder",
+  "home.changes.unavailable": "Can't read changes",
+  "home.changes.files.one": "{count} file",
+  "home.changes.files.other": "{count} files",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "待处理",

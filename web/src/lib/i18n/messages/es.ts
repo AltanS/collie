@@ -412,6 +412,15 @@ export const es: Dictionary = {
   "home.sidebar.paneActionsTitle": "Ver acciones del panel",
   "home.row.tabPosition": "pestaña {n}",
   "home.row.unseen": "sin ver",
+  "home.tabs.aria": "Dashboard views",
+  "home.tabs.panes": "Panes",
+  "home.changes.listAria": "Changes by workspace",
+  "home.changes.loading": "Reading…",
+  "home.changes.clean": "No changes",
+  "home.changes.noFolder": "No folder",
+  "home.changes.unavailable": "Can't read changes",
+  "home.changes.files.one": "{count} file",
+  "home.changes.files.other": "{count} files",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "Requiere atención",

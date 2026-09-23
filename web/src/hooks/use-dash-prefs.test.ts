@@ -38,6 +38,7 @@ describe("coerceDashPrefs", () => {
       changesDepth: 2,
       changesLayout: "list",
       beltScale: 1.15,
+      dashView: "panes",
     });
   });
 
@@ -54,6 +55,7 @@ describe("coerceDashPrefs", () => {
         changesDepth: 4,
         changesLayout: "tree",
         beltScale: 1.5,
+        dashView: "changes",
       }),
     ).toEqual({
       spacesOpen: false,
@@ -66,6 +68,7 @@ describe("coerceDashPrefs", () => {
       changesDepth: 4,
       changesLayout: "tree",
       beltScale: 1.5,
+      dashView: "changes",
     });
   });
 
@@ -75,6 +78,12 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({ changesDepth: "3" }).changesDepth).toBe(2);
     expect(coerceDashPrefs({ changesNested: "no" }).changesNested).toBe(true);
     expect(coerceDashPrefs({ changesLayout: "grid" }).changesLayout).toBe("list");
+  });
+
+  it("keeps the dashboard tab to the three views, Panes by default", () => {
+    expect(coerceDashPrefs({ dashView: "needs" }).dashView).toBe("needs");
+    expect(coerceDashPrefs({ dashView: "all" }).dashView).toBe("panes");
+    expect(coerceDashPrefs({ dashView: 2 }).dashView).toBe("panes");
   });
 
   it("keeps the belt size to the three offered scales", () => {
@@ -111,6 +120,7 @@ describe("coerceDashPrefs", () => {
       changesDepth: 2,
       changesLayout: "list",
       beltScale: 1.15,
+      dashView: "panes",
     });
   });
 });
@@ -131,6 +141,7 @@ describe("useDashPrefs", () => {
       changesDepth: 2,
       changesLayout: "list",
       beltScale: 1.15,
+      dashView: "panes",
     });
   });
 
@@ -148,6 +159,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setChangesDepth(3));
     act(() => first.result.current.setChangesLayout("tree"));
     act(() => first.result.current.setBeltScale(1.3));
+    act(() => first.result.current.setDashView("needs"));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -161,6 +173,7 @@ describe("useDashPrefs", () => {
       changesDepth: 3,
       changesLayout: "tree",
       beltScale: 1.3,
+      dashView: "needs",
     });
   });
 

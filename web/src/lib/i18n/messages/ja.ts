@@ -408,6 +408,15 @@ export const ja: Dictionary = {
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
   "home.row.tabPosition": "タブ {n}",
   "home.row.unseen": "未読",
+  "home.tabs.aria": "Dashboard views",
+  "home.tabs.panes": "Panes",
+  "home.changes.listAria": "Changes by workspace",
+  "home.changes.loading": "Reading…",
+  "home.changes.clean": "No changes",
+  "home.changes.noFolder": "No folder",
+  "home.changes.unavailable": "Can't read changes",
+  "home.changes.files.one": "{count} file",
+  "home.changes.files.other": "{count} files",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "要対応",

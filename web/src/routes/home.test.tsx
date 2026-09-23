@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { vi } from "vitest";
 
@@ -20,6 +21,7 @@ import {
 } from "@/test/handlers";
 import type { SnapshotResponse } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
+import { server } from "@/test/setup";
 import { HomeRoute } from "./home";
 
 // The dashboard, one machine and several. The point of the pair is that the FIRST one is unchanged:
@@ -65,6 +67,7 @@ function renderHome(data: HomeData, initialPath?: string) {
         ),
       },
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
+      { path: "/space/:spaceId/changes", element: <div data-testid="space-changes" /> },
       { path: "/crew", element: <div data-testid="crew" /> },
     ],
     { initialEntries: [initialPath ?? (data.scope.host ? `/?h=${data.scope.host}` : "/")] },
@@ -345,5 +348,66 @@ describe("the dashboard across sessions", () => {
     renderHome(widened(), "/?all=1");
     await settled();
     expect(screen.getAllByLabelText(/1 pane/i).length).toBe(1);
+  });
+});
+
+describe("the dashboard's footer (ADR 0066)", () => {
+  const footer = () => screen.getByRole("navigation", { name: "Dashboard views" });
+  const tab = (name: RegExp) => within(footer()).getByRole("button", { name });
+
+  it("opens on Panes, with every workspace listed", async () => {
+    renderHome(solo());
+    await settled();
+    expect(tab(/^Panes$/)).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
+  });
+
+  it("badges Needs you with the summary line's count, and only that tab", async () => {
+    renderHome(solo());
+    await settled();
+    expect(tab(/^Needs you/)).toHaveAccessibleName("Needs you, 1 needs you");
+    expect(tab(/^Panes$/)).toHaveTextContent(/^Panes$/);
+    expect(tab(/^Changes$/)).toHaveTextContent(/^Changes$/);
+  });
+
+  it("Needs you drops the quiet workspace, keeps the heading's full counts, and is remembered", async () => {
+    renderHome(solo());
+    await settled();
+    await userEvent.click(tab(/^Needs you/));
+    expect(tab(/^Needs you/)).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
+    // The strip still offers every workspace: the filter removes rows, never places.
+    const strip = screen.getByRole("navigation", { name: /spaces/i });
+    expect(within(strip).getByRole("button", { name: /collie/ })).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem("collie:dash-prefs:v1")!).dashView).toBe("needs");
+  });
+
+  it("Needs you with nothing urgent shows the all-clear line and no list", async () => {
+    const calm = fixtureAgents.map((a) => Object.assign(structuredClone(a), { status: "working" as const }));
+    renderHome(homeData({ agents: calm, shellPanes: fixtureShellPanes, sessions: fixtureSessions }));
+    await settled();
+    await userEvent.click(tab(/^Needs you/));
+    expect(screen.getByText("Nothing needs you")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
+  });
+
+  it("Changes lists each workspace with its counts, says No folder, and opens the workspace's Changes", async () => {
+    server.use(
+      http.get(/\/api\/workspace\/w2\/changes/, () => HttpResponse.json({ workspaceId: "w2", available: false, reason: "no-folder" })),
+    );
+    const router = renderHome(solo());
+    await settled();
+    await userEvent.click(tab(/^Changes$/));
+    const list = await screen.findByRole("list", { name: "Changes by workspace" });
+    // fixtureChanges: 3 files in webapp's root repo and 2 in packages/api, +10 −2 over all five.
+    await within(list).findByText("5 files");
+    await within(list).findByText("No folder");
+    const rows = within(list).getAllByRole("button");
+    expect(rows.map((r) => r.textContent)).toEqual(["webapp5 files+10 −2", "collieNo folder"]);
+    await userEvent.click(rows[0]!);
+    await waitFor(() => expect(url(router)).toBe("/space/w1/changes"));
   });
 });

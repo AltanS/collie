@@ -430,6 +430,15 @@ export const en = {
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
   "home.row.tabPosition": "tab {n}",
   "home.row.unseen": "unseen",
+  "home.tabs.aria": "Dashboard views",
+  "home.tabs.panes": "Panes",
+  "home.changes.listAria": "Changes by workspace",
+  "home.changes.loading": "Reading…",
+  "home.changes.clean": "No changes",
+  "home.changes.noFolder": "No folder",
+  "home.changes.unavailable": "Can't read changes",
+  "home.changes.files.one": "{count} file",
+  "home.changes.files.other": "{count} files",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "Needs you",

@@ -42,6 +42,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer; there is no popover, no dialog, no tooltip. |
 | `ui/strip-host.tsx` | The top band above the header. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. Domain-blind: a bigger number wins, and it does not know what a connection is. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
+| `ui/tab-bar.tsx` | A bottom tab bar: equal icon-over-word tabs on the page colour, a rule above, the safe area below. The active mark is a reserved 2px top edge, and a count badge floats on the icon, so a switch or a count never moves a word. The dashboard footer (ADR 0066). |
 | `ui/toast-viewport.tsx` | Where a transient event floats: `dock="bottom"` fixed to the viewport, `dock="top"` absolute inside a route's content region. Owns position and nothing else. |
 | `ui/chat/chat-input.tsx` | The composer's text box shell. |
 | `ui/chat/chat-message-list.tsx` | The transcript's scrolling list. |

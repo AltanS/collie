@@ -3,6 +3,12 @@
 // options, each drawn at phone size (375 x 812 CSS px, plus a simulated 34px home-indicator inset)
 // and each fully tappable: switch views, open a workspace's Changes, go back.
 //
+// PICKED: option 1, the three-tab footer, with two corrections: the first tab is "Panes", not
+// "All", and the Changes tab wears `GitCompare`, the one Changes icon the pane belt and Settings
+// already use. It shipped as `TabBar` (components/ui/tab-bar.tsx) and `WorkspaceChangesList` in
+// routes/home.tsx (ADR 0066); option 1's phones below mount those two real components. Options 2
+// to 4 stay as they were drawn, for the record, apart from the Changes icon.
+//
 // HONESTY: this is a mock composed from the app's own parts, not a mount of `AgentList`. The rows
 // (`AgentCard`), headings (`SectionHeader`), counts (`StatusCounts`, `StatusSummaryLine`), chips
 // (`Chip`), list frames (`ListGroup`), the Changes list (`ChangesList`), `Switch` and `BottomSheet`
@@ -10,7 +16,7 @@
 // the attention filter, the per-workspace Changes screen) is new and exists only here, because
 // `AgentList` has no attention filter and no heading slot for a Changes entry yet.
 
-import { BellRing, ChevronLeft, ChevronRight, FileDiff, Rows3, Settings } from "lucide-react";
+import { BellRing, ChevronLeft, ChevronRight, GitCompare, Rows3, Settings } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
 import { AgentCard } from "@/components/agent-card";
@@ -22,9 +28,12 @@ import { STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { ListGroup } from "@/components/ui/list-group";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { TabBar } from "@/components/ui/tab-bar";
+import { WorkspaceChangesList, type WorkspaceChangesRow } from "@/components/workspace-changes-list";
 import { paneRowKey } from "@/lib/hosts";
 import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { bucketOf, worstTriage, type TriageKey } from "@/lib/triage";
+import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
 import type { AgentView, ChangedRepo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Card, Group, Section, type SectionDef } from "../harness";
@@ -34,6 +43,7 @@ export const DEF: SectionDef = {
   id: "dashboard-nav",
   title: "Dashboard nav",
   intent:
+    "PICKED: option 1, with the first tab named Panes and GitCompare as the Changes icon (ADR 0066). " +
     "Design round: four numbered ways to put a nav on the dashboard that reaches each workspace's " +
     "Changes and carries issue 270's attention-only view (only panes that need you or are ready and " +
     "unseen, empty workspaces dropped, order unchanged, the summary still counts every pane, kept per " +
@@ -189,8 +199,11 @@ function Row({ pane }: { pane: AgentView }) {
 function DashBody({
   attentionOnly,
   onOpenChanges,
+  quietNote = true,
 }: {
   attentionOnly: boolean;
+  /** The mock's "N quiet panes hidden" line. The picked option shipped without it (ADR 0066). */
+  quietNote?: boolean;
   /** Option 2 only: draws a Changes chip on each heading and opens that workspace's Changes. */
   onOpenChanges?: (ws: string) => void;
 }) {
@@ -248,7 +261,7 @@ function DashBody({
         </section>
       ))}
 
-      {attentionOnly && hiddenCount > 0 && (
+      {quietNote && attentionOnly && hiddenCount > 0 && (
         <p className="text-center text-xs text-muted-foreground">
           {hiddenCount} quiet panes hidden by Needs you.
         </p>
@@ -340,9 +353,20 @@ function Scroll({ children }: { children: ReactNode }) {
 
 const ICON = "size-5";
 
-// ── Option 1: three-tab footer ───────────────────────────────────────────────────────────────────
+// ── Option 1: three-tab footer (PICKED, shipped as TabBar + WorkspaceChangesList) ─────────────────
 
-type View = "all" | "needs" | "changes";
+type View = "panes" | "needs" | "changes";
+
+/** Option 1's Changes rows: the real list's rows, fed the fixture's answers instead of a fetch. */
+const REAL_ROWS: readonly WorkspaceChangesRow[] = GROUPS.map((g) => ({
+  key: g.key,
+  label: g.label,
+  workspaceId: g.panes[0]?.workspaceId ?? g.key,
+  scope: {},
+}));
+const REAL_COUNTS: ReadonlyMap<string, WorkspaceChangeCount> = new Map(
+  GROUPS.map((g) => [g.key, summarizeChanges({ available: true, root: "/", truncated: false, repos: [...changesOf(g.label)] })]),
+);
 
 function OptionThreeTabs({ initial, openWs = null }: { initial: View; openWs?: string | null }) {
   const [view, setView] = useState<View>(initial);
@@ -355,23 +379,31 @@ function OptionThreeTabs({ initial, openWs = null }: { initial: View; openWs?: s
     <>
       <MockHeader />
       <Scroll>
-        {view === "changes" ? (
-          ws === null ? (
-            <ChangesIndexScreen onOpen={setWs} />
-          ) : (
-            <WorkspaceChangesScreen ws={ws} onBack={() => setWs(null)} />
-          )
+        {view === "changes" && ws !== null ? (
+          <WorkspaceChangesScreen ws={ws} onBack={() => setWs(null)} />
+        ) : view === "changes" ? (
+          <div className="flex flex-col gap-5 px-4 py-4">
+            <WorkspaceChangesList rows={REAL_ROWS} counts={REAL_COUNTS} onOpen={(row) => setWs(row.label)} />
+          </div>
         ) : (
-          <DashBody attentionOnly={view === "needs"} />
+          <DashBody attentionOnly={view === "needs"} quietNote={false} />
         )}
       </Scroll>
-      <FooterTabs<View>
+      <TabBar<View>
+        label="Dashboard views"
         active={view}
         onSelect={select}
+        className="pb-[max(env(safe-area-inset-bottom),var(--sim-sab,0px))]"
         items={[
-          { value: "all", label: "All", icon: <Rows3 className={ICON} /> },
-          { value: "needs", label: "Needs you", icon: <BellRing className={ICON} />, badge: ATTENTION_COUNT },
-          { value: "changes", label: "Changes", icon: <FileDiff className={ICON} /> },
+          { value: "panes", label: "Panes", icon: <Rows3 className={ICON} /> },
+          {
+            value: "needs",
+            label: "Needs you",
+            icon: <BellRing className={ICON} />,
+            badge: ATTENTION_COUNT,
+            badgeLabel: `${ATTENTION_COUNT} need you`,
+          },
+          { value: "changes", label: "Changes", icon: <GitCompare className={ICON} /> },
         ]}
       />
     </>
@@ -391,7 +423,7 @@ function HeadingChangesChip({ ws, onOpen }: { ws: string; onOpen: (ws: string) =
       onClick={() => onOpen(ws)}
       className="relative flex h-6 items-center gap-1 rounded-sm border border-rule px-1.5 font-mono text-[11px] text-foreground tabular-nums before:absolute before:-inset-x-1 before:-inset-y-2.5 before:content-['']"
     >
-      <FileDiff className="size-3.5" aria-hidden />
+      <GitCompare className="size-3.5" aria-hidden />
       {files}
     </button>
   );
@@ -432,10 +464,12 @@ function OptionTwoTabsHeadingChip({ initial, openWs = null }: { initial: Filter;
 
 // ── Option 3: segmented control at the top, no footer ───────────────────────────────────────────
 
-function OptionTopSegmented({ initial, openWs = null }: { initial: View; openWs?: string | null }) {
-  const [view, setView] = useState<View>(initial);
+type SegView = "all" | "needs" | "changes";
+
+function OptionTopSegmented({ initial, openWs = null }: { initial: SegView; openWs?: string | null }) {
+  const [view, setView] = useState<SegView>(initial);
   const [ws, setWs] = useState<string | null>(openWs);
-  const segs: { value: View; label: string }[] = [
+  const segs: { value: SegView; label: string }[] = [
     { value: "all", label: "All" },
     { value: "needs", label: `Needs you · ${ATTENTION_COUNT}` },
     { value: "changes", label: "Changes" },
@@ -537,7 +571,7 @@ function OptionToggleAndSheet({
             onClick={() => setSheet(true)}
             className="flex min-h-14 flex-1 items-center justify-center gap-2 text-sm font-medium"
           >
-            <FileDiff className={ICON} aria-hidden />
+            <GitCompare className={ICON} aria-hidden />
             Changes
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{TOTAL_CHANGED_FILES}</span>
           </button>
@@ -591,8 +625,9 @@ export function DashboardNavSection() {
         <Card state="dash-nav-option-1" label="option 1 · three-tab footer" reach={REACH} span={2}>
           <OptionHead
             n={1}
-            name="Three-tab footer: All · Needs you · Changes"
+            name="PICKED · Three-tab footer: Panes · Needs you · Changes"
             lines={[
+              "Picked 2026-09-23, with two corrections: the first tab is Panes (each tab names what its list holds, and the app counts panes everywhere), and Changes wears GitCompare, the icon the pane belt's Changes pill uses. These phones mount the shipped TabBar and WorkspaceChangesList (ADR 0066).",
               "Thumb reach: every view is one tap from the bottom edge. The Changes tab lists every workspace with its file count, and a tap opens that workspace's Changes.",
               `What moves: nothing between All and Needs you, the strip and summary hold their place. Changes swaps the whole body. Needs you carries a badge (${ATTENTION_COUNT}).`,
               "Cost: 56px of footer plus the safe area on the dashboard, always. Changes becomes a peer of the herd, so it reads as a main feature.",

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 
 import type { ChangesLayout } from "@/lib/changes-tree";
+import { coerceDashView, type DashView } from "@/lib/dash-view";
 import type { RecentDir } from "@/lib/triage";
 
 // Dashboard layout preferences, persisted in localStorage. Deliberately separate from
@@ -49,6 +50,8 @@ export interface DashPrefs {
    * the icons slightly larger, like 15%"); the other two are the Settings row's way up from there.
    */
   beltScale: BeltScale;
+  /** The dashboard's footer tab: Panes, Needs you or Changes (ADR 0066). Panes by default. */
+  dashView: DashView;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
@@ -74,6 +77,7 @@ const DEFAULTS: DashPrefs = {
   changesDepth: 2,
   changesLayout: "list",
   beltScale: 1.15,
+  dashView: "panes",
 };
 
 function coerceDepth(raw: JsonValue | undefined): number {
@@ -121,6 +125,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     changesDepth: coerceDepth(p.changesDepth),
     changesLayout: p.changesLayout === "tree" ? "tree" : DEFAULTS.changesLayout,
     beltScale: coerceBeltScale(p.beltScale),
+    dashView: coerceDashView(p.dashView),
   };
 }
 
@@ -156,6 +161,7 @@ export interface UseDashPrefsReturn {
   setChangesDepth: (depth: number) => void;
   setChangesLayout: (layout: ChangesLayout) => void;
   setBeltScale: (scale: number) => void;
+  setDashView: (view: DashView) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -187,6 +193,8 @@ export function useDashPrefs(): UseDashPrefsReturn {
     [update],
   );
 
+  const setDashView = useCallback((dashView: DashView) => update({ dashView }), [update]);
+
   const setIsolatedSpace = useCallback((isolatedSpace: string | null) => update({ isolatedSpace }), [update]);
   const toggleHiddenSpace = useCallback((key: string) => {
     setPrefs((p) => {
@@ -211,5 +219,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setChangesDepth,
     setChangesLayout,
     setBeltScale,
+    setDashView,
   };
 }
