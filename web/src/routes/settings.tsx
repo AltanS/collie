@@ -15,6 +15,7 @@ import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
 import { ZenControl } from "@/components/zen-control";
+import { ChangesControl } from "@/components/changes-control";
 import { TourControl } from "@/components/tour-control";
 import { InstallControl } from "@/components/install-control";
 import { LanguageControl } from "@/components/language-control";
@@ -166,6 +167,10 @@ export function SettingsRoute() {
             not a rendering pref (those live in the pane's own Display dock). Off by default, because
             zen takes away every way back except one floating button. */}
         <ZenControl />
+
+        {/* How a pane's Changes view looks for repos (ADR 0065). A per-device choice, like zen's
+            availability above it, and read by the pane menu's Changes row, not by anything here. */}
+        <ChangesControl />
 
         {/* Last of the "how this phone treats you" block, and the ONLY way back to a tour that was
             interrupted — the tour is marked seen the moment it opens. An action, so the row ends in

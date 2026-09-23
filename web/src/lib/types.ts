@@ -836,6 +836,53 @@ export interface TranscriptEntry {
   parts: TranscriptPart[];
 }
 
+/** A file's state against HEAD, staged and unstaged together (ADR 0065). `?` = untracked. */
+export type ChangeStatus = "M" | "A" | "D" | "R" | "?";
+
+/** One changed file. `path` is relative to its repo's top level; an untracked folder ends in `/`. */
+export interface ChangedFile {
+  path: string;
+  oldPath?: string;
+  status: ChangeStatus;
+  added: number;
+  removed: number;
+  binary: boolean;
+}
+
+/** One repo with changes. `relPath` is its id (`.`, `..`, `sub/dir`), `name` its folder's name. */
+export interface ChangedRepo {
+  relPath: string;
+  name: string;
+  files: ChangedFile[];
+}
+
+export type ChangesUnavailableReason = "no-pane" | "no-folder" | "no-git";
+
+/** GET /api/pane/:id/changes — mirrors bridge/types.ts. */
+export type PaneChangesResponse =
+  | { paneId: string; available: false; reason: ChangesUnavailableReason }
+  | { paneId: string; available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
+
+/** GET /api/pane/:id/changes?repo=&path= — one file's diff as raw unified text. Mirrors bridge/types.ts. */
+export type PaneChangeDiffResponse =
+  | {
+      paneId: string;
+      available: false;
+      reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path";
+    }
+  | {
+      paneId: string;
+      available: true;
+      repo: string;
+      path: string;
+      oldPath?: string;
+      status: ChangeStatus;
+      binary: boolean;
+      directory: boolean;
+      truncated: boolean;
+      diff: string;
+    };
+
 /**
  * GET /api/pane/:id/history — real conversation history, read from the agent's own session log.
  *

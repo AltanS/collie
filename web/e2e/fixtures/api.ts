@@ -3,6 +3,8 @@ import type { Page, Route } from "@playwright/test";
 import type { Locale } from "@/lib/i18n/locale";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "@/lib/tour";
 import {
+  fixtureChangeDiff,
+  fixtureChanges,
   fixtureCrewSnapshot,
   fixtureCrewStatus,
   fixtureSnapshot,
@@ -52,6 +54,15 @@ async function answer(route: Route, path: string): Promise<void> {
   const method = route.request().method();
 
   if (path === "/api/snapshot") return fulfillJson(route, fixtureSnapshot);
+
+  // The Changes view (ADR 0065): the list, or with `?repo=&path=` one file's diff.
+  if (/^\/api\/pane\/[^/]+\/changes$/.test(path)) {
+    const q = new URL(route.request().url()).searchParams;
+    const repo = q.get("repo");
+    const file = q.get("path");
+    if (repo !== null && file !== null) return fulfillJson(route, fixtureChangeDiff(repo, file));
+    return fulfillJson(route, fixtureChanges);
+  }
 
   if (/^\/api\/pane\/[^/]+\/history$/.test(path)) {
     return fulfillJson(route, {

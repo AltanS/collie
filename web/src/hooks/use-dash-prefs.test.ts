@@ -34,6 +34,8 @@ describe("coerceDashPrefs", () => {
       recentDir: "newest",
       isolatedSpace: null,
       hiddenSpaces: [],
+      changesNested: true,
+      changesDepth: 2,
     });
   });
 
@@ -46,6 +48,8 @@ describe("coerceDashPrefs", () => {
         recentDir: "oldest",
         isolatedSpace: "k1",
         hiddenSpaces: ["k2", 3, "k3"],
+        changesNested: false,
+        changesDepth: 4,
       }),
     ).toEqual({
       spacesOpen: false,
@@ -54,7 +58,16 @@ describe("coerceDashPrefs", () => {
       recentDir: "oldest",
       isolatedSpace: "k1",
       hiddenSpaces: ["k2", "k3"],
+      changesNested: false,
+      changesDepth: 4,
     });
+  });
+
+  it("keeps the Changes depth inside 1..4", () => {
+    expect(coerceDashPrefs({ changesDepth: 9 }).changesDepth).toBe(2);
+    expect(coerceDashPrefs({ changesDepth: 0 }).changesDepth).toBe(2);
+    expect(coerceDashPrefs({ changesDepth: "3" }).changesDepth).toBe(2);
+    expect(coerceDashPrefs({ changesNested: "no" }).changesNested).toBe(true);
   });
 
   it("rejects a bogus direction rather than trusting it", () => {
@@ -81,6 +94,8 @@ describe("coerceDashPrefs", () => {
       recentDir: "oldest",
       isolatedSpace: null,
       hiddenSpaces: [],
+      changesNested: true,
+      changesDepth: 2,
     });
   });
 });
@@ -97,6 +112,8 @@ describe("useDashPrefs", () => {
       recentDir: "newest",
       isolatedSpace: null,
       hiddenSpaces: [],
+      changesNested: true,
+      changesDepth: 2,
     });
   });
 
@@ -110,6 +127,8 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.toggleHiddenSpace("k2"));
     act(() => first.result.current.toggleHiddenSpace("k3"));
     act(() => first.result.current.toggleHiddenSpace("k2"));
+    act(() => first.result.current.setChangesNested(false));
+    act(() => first.result.current.setChangesDepth(3));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -119,6 +138,8 @@ describe("useDashPrefs", () => {
       recentDir: "oldest",
       isolatedSpace: "k1",
       hiddenSpaces: ["k3"],
+      changesNested: false,
+      changesDepth: 3,
     });
   });
 

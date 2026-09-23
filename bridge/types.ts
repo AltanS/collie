@@ -650,6 +650,70 @@ export type PaneHistoryResponse =
     };
 
 /**
+ * One changed file in a Changes list (ADR 0065). `status` is the file's state against HEAD, staged
+ * and unstaged together: Modified, Added, Deleted, Renamed, or `?` untracked. An untracked FOLDER
+ * (git lists one entry for a new folder under `--untracked-files=normal`) keeps its trailing `/`.
+ */
+export type ChangeStatus = "M" | "A" | "D" | "R" | "?";
+
+export interface ChangedFile {
+  /** Relative to the repo's top level, `/`-separated, exactly as git spelled it. */
+  path: string;
+  /** The old path of a rename. Absent otherwise. */
+  oldPath?: string;
+  status: ChangeStatus;
+  added: number;
+  removed: number;
+  binary: boolean;
+}
+
+export interface ChangedRepo {
+  /** Where the repo sits relative to the pane's folder: `.` (the folder itself), `..` style for a
+   *  repo that contains the folder, or `sub/dir` for one found below it. The id a diff names. */
+  relPath: string;
+  /** The repo folder's own name, for display. */
+  name: string;
+  files: ChangedFile[];
+}
+
+/** Why a Changes request has nothing to show. Ordinary answers, never errors. */
+export type ChangesUnavailableReason = "no-pane" | "no-folder" | "no-git";
+
+/**
+ * GET /api/pane/:id/changes — the uncommitted changes under the pane's folder, read-only
+ * (ADR 0065). Only repos with changes are listed. `truncated` means a discovery or listing cap was
+ * reached, so the list may be incomplete.
+ */
+export type PaneChangesResponse =
+  | { paneId: string; available: false; reason: ChangesUnavailableReason }
+  | { paneId: string; available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
+
+/**
+ * GET /api/pane/:id/changes?repo=&path= — one file's diff against HEAD, as raw unified-diff text.
+ * The phone parses it. `diff` is empty for a binary file and for an untracked folder.
+ */
+export type PaneChangeDiffResponse =
+  | {
+      paneId: string;
+      available: false;
+      reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path";
+    }
+  | {
+      paneId: string;
+      available: true;
+      repo: string;
+      path: string;
+      oldPath?: string;
+      status: ChangeStatus;
+      binary: boolean;
+      /** An untracked folder: git lists it as one entry and there is no single file to show. */
+      directory: boolean;
+      /** The diff hit a line or byte cap and was cut at a line boundary. */
+      truncated: boolean;
+      diff: string;
+    };
+
+/**
  * POST /api/pane/:id/{reply,keys} — result of a send. Discriminated on `ok`: a failure always
  * carries the reason Herdr rejected it. `textDelivered` distinguishes the reply partial-failure case
  * (text was typed but the submit keypress failed) so the client knows NOT to resend — resending would

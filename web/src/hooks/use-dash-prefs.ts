@@ -31,9 +31,20 @@ export interface DashPrefs {
   isolatedSpace: string | null;
   /** Workspaces hidden from the dashboard list (long-press a chip); their chips stay, dimmed. */
   hiddenSpaces: string[];
+  /**
+   * Whether the Changes view also looks for repos INSIDE the pane's folder, not only the repo that
+   * contains it (ADR 0065). On by default: a workspace that keeps its member repos gitignored shows
+   * nothing otherwise.
+   */
+  changesNested: boolean;
+  /** How many folder levels below the pane's folder that search goes, 1 to 4. */
+  changesDepth: number;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
+
+/** The depths the Changes setting offers. The bridge clamps to the same range on its side. */
+export const CHANGES_DEPTHS = [1, 2, 3, 4] as const;
 
 /** Above this many rows, an un-chosen foldable section starts collapsed. */
 export const COLLAPSE_THRESHOLD = 8;
@@ -45,7 +56,13 @@ const DEFAULTS: DashPrefs = {
   recentDir: "newest",
   isolatedSpace: null,
   hiddenSpaces: [],
+  changesNested: true,
+  changesDepth: 2,
 };
+
+function coerceDepth(raw: JsonValue | undefined): number {
+  return CHANGES_DEPTHS.find((d) => d === raw) ?? DEFAULTS.changesDepth;
+}
 
 /**
  * The effective open state of a count-sensitive section: an explicit choice always wins, otherwise
@@ -80,6 +97,8 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
           return key === undefined ? [] : [key];
         })
       : [],
+    changesNested: asJsonBoolean(p.changesNested) ?? DEFAULTS.changesNested,
+    changesDepth: coerceDepth(p.changesDepth),
   };
 }
 
@@ -111,6 +130,8 @@ export interface UseDashPrefsReturn {
   setRecentDir: (dir: RecentDir) => void;
   setIsolatedSpace: (key: string | null) => void;
   toggleHiddenSpace: (key: string) => void;
+  setChangesNested: (nested: boolean) => void;
+  setChangesDepth: (depth: number) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -128,6 +149,12 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setShellsOpen = useCallback((shellsOpen: boolean) => update({ shellsOpen }), [update]);
   const setLaunchOpen = useCallback((launchOpen: boolean) => update({ launchOpen }), [update]);
   const setRecentDir = useCallback((recentDir: RecentDir) => update({ recentDir }), [update]);
+
+  const setChangesNested = useCallback((changesNested: boolean) => update({ changesNested }), [update]);
+  const setChangesDepth = useCallback(
+    (depth: number) => update({ changesDepth: coerceDepth(depth) }),
+    [update],
+  );
 
   const setIsolatedSpace = useCallback((isolatedSpace: string | null) => update({ isolatedSpace }), [update]);
   const toggleHiddenSpace = useCallback((key: string) => {
@@ -149,5 +176,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setRecentDir,
     setIsolatedSpace,
     toggleHiddenSpace,
+    setChangesNested,
+    setChangesDepth,
   };
 }

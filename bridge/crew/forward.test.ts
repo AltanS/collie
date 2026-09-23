@@ -189,7 +189,7 @@ describe("which routes cross a link", () => {
     const tab = server.match(/^const TAB_ACTION_ROUTE = (.+);$/m)![1]!;
     const alternation = /\(([a-z]+(?:\|[a-z]+)+)\)/;
     const paneActions = pane.match(alternation)![1]!.split("|").toSorted();
-    expect(paneActions).toEqual(["close", "focus", "history", "keys", "rename", "reply", "upload"]);
+    expect(paneActions).toEqual(["changes", "close", "focus", "history", "keys", "rename", "reply", "upload"]);
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
@@ -206,6 +206,7 @@ describe("which routes cross a link", () => {
   test("read vs write is decided exactly as server.ts decides it — history is a READ", () => {
     expect(forwardKind("pane/w1:p1")).toBe("read");
     expect(forwardKind("pane/w1:p1/history")).toBe("read");
+    expect(forwardKind("pane/w1:p1/changes")).toBe("read");
     for (const action of ["reply", "keys", "upload", "close", "rename"]) {
       expect(forwardKind(`pane/w1:p1/${action}`)).toBe("write");
     }
@@ -226,6 +227,7 @@ describe("which routes cross a link", () => {
     // Reads are not audited today and do not become audited by crossing a link.
     expect(forwardAuditAction("pane/w1:p1")).toBeNull();
     expect(forwardAuditAction("pane/w1:p1/history")).toBeNull();
+    expect(forwardAuditAction("pane/w1:p1/changes")).toBeNull();
   });
 });
 

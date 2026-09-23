@@ -4,6 +4,8 @@ import type {
   AgentView,
   CacheRuleWire,
   CrewStatusResponse,
+  PaneChangeDiffResponse,
+  PaneChangesResponse,
   ServerSummary,
   SessionSummary,
   SnapshotResponse,
@@ -366,11 +368,116 @@ export const fixtureCacheRules: CacheRuleWire[] = [
   },
 ];
 
+// The Changes view (ADR 0065): a workspace repo with two member repos below it, the shape the
+// feature was asked for. Shared by the unit suite, the e2e stub and the playground.
+export const fixtureChanges: PaneChangesResponse = {
+  paneId: "w1:p1",
+  available: true,
+  root: "/home/you/webapp",
+  truncated: false,
+  repos: [
+    {
+      relPath: ".",
+      name: "webapp",
+      files: [
+        { path: "src/routes/checkout.tsx", status: "M", added: 3, removed: 1, binary: false },
+        { path: "src/lib/cart.ts", status: "A", added: 4, removed: 0, binary: false },
+        { path: "public/logo.png", status: "M", added: 0, removed: 0, binary: true },
+      ],
+    },
+    {
+      relPath: "packages/api",
+      name: "api",
+      files: [
+        { path: "server/handlers/orders.ts", oldPath: "server/orders.ts", status: "R", added: 1, removed: 1, binary: false },
+        { path: "notes.md", status: "?", added: 2, removed: 0, binary: false },
+      ],
+    },
+  ],
+};
+
+const FIXTURE_DIFFS = {
+  ".\nsrc/routes/checkout.tsx": [
+    "diff --git a/src/routes/checkout.tsx b/src/routes/checkout.tsx",
+    "index 1a2b3c4..5d6e7f8 100644",
+    "--- a/src/routes/checkout.tsx",
+    "+++ b/src/routes/checkout.tsx",
+    "@@ -12,5 +12,7 @@ export function Checkout() {",
+    "   const cart = useCart();",
+    "-  const total = cart.items.reduce((sum, item) => sum + item.price, 0);",
+    "+  const total = cartTotal(cart.items);",
+    "+  const shipping = total > 50 ? 0 : 4.9;",
+    "+  const label = `${formatPrice(total + shipping)} including shipping to ${cart.address?.city ?? \"your door\"}`;",
+    "   return (",
+    "     <section>",
+    "       <h1>Checkout</h1>",
+    "",
+  ].join("\n"),
+  ".\nsrc/lib/cart.ts": [
+    "diff --git a/src/lib/cart.ts b/src/lib/cart.ts",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/src/lib/cart.ts",
+    "@@ -0,0 +1,4 @@",
+    "+export function cartTotal(items: { price: number }[]): number {",
+    "+  return items.reduce((sum, item) => sum + item.price, 0);",
+    "+}",
+    "+",
+    "",
+  ].join("\n"),
+  "packages/api\nserver/handlers/orders.ts": [
+    "diff --git a/server/orders.ts b/server/handlers/orders.ts",
+    "similarity index 90%",
+    "rename from server/orders.ts",
+    "rename to server/handlers/orders.ts",
+    "@@ -1,3 +1,3 @@",
+    "-import { db } from \"./db\";",
+    "+import { db } from \"../db\";",
+    " ",
+    " export async function listOrders() {",
+    "",
+  ].join("\n"),
+  "packages/api\nnotes.md": "diff --git a/notes.md b/notes.md\nnew file\n--- /dev/null\n+++ b/notes.md\n@@ -0,0 +1,2 @@\n+# Notes\n+Orders moved under handlers/.\n",
+};
+
+function diffFor(key: string): string | undefined {
+  return Object.entries(FIXTURE_DIFFS).find(([k]) => k === key)?.[1];
+}
+
+/** The fixture diff for one listed file, answered the way the bridge answers it. */
+export function fixtureChangeDiff(repo: string, path: string): PaneChangeDiffResponse {
+  const file = fixtureChanges.available
+    ? fixtureChanges.repos.find((r) => r.relPath === repo)?.files.find((f) => f.path === path)
+    : undefined;
+  if (!file) return { paneId: "w1:p1", available: false, reason: "unknown-path" };
+  const answer: PaneChangeDiffResponse = {
+    paneId: "w1:p1",
+    available: true,
+    repo,
+    path,
+    status: file.status,
+    binary: file.binary,
+    directory: false,
+    truncated: false,
+    diff: file.binary ? "" : (diffFor(`${repo}\n${path}`) ?? ""),
+  };
+  if (file.oldPath !== undefined) answer.oldPath = file.oldPath;
+  return answer;
+}
+
 export const handlers = [
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),
   ),
+  // The Changes view: the list, or with ?repo=&path= one file's diff.
+  http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {
+    const q = new URL(request.url).searchParams;
+    const repo = q.get("repo");
+    const path = q.get("path");
+    if (repo !== null && path !== null) return HttpResponse.json(fixtureChangeDiff(repo, path));
+    return HttpResponse.json(fixtureChanges);
+  }),
   // Pane transcript history. Two turns, newest-anchored, with nothing older behind them.
   http.get(/\/api\/pane\/[^/]+\/history/, () =>
     HttpResponse.json({

@@ -7,6 +7,7 @@ import { HomeRoute } from "@/routes/home";
 import { SpaceRoute } from "@/routes/space";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
+import { ChangesRoute } from "@/routes/changes";
 import { SettingsRoute } from "@/routes/settings";
 import { CrewRoute } from "@/routes/crew";
 import { UpdatesRoute } from "@/routes/updates";
@@ -80,6 +81,15 @@ export const router = createBrowserRouter([
         // hundreds of turns — re-pulling it every 1.5s would be pure waste, and it would fight the
         // view's own "load older" paging by resetting the page under it. History is fetched on
         // navigation; the view pages back through it with direct api calls.
+        shouldRevalidate: () => false,
+      },
+      {
+        // The Changes view (ADR 0065). No loader: the list is read on open and on the view's own
+        // refresh button, and a file's diff when it is opened (`?repo=&path=`), so the poll loop's
+        // revalidate() fetches nothing for it. `shouldRevalidate` states the same opt-out as
+        // History's, should a loader ever be added.
+        path: "pane/:paneId/changes",
+        element: <ChangesRoute />,
         shouldRevalidate: () => false,
       },
     ],
