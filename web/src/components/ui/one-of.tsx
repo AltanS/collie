@@ -77,7 +77,9 @@ export function OneOf({
             inert={!front}
             aria-hidden={front ? undefined : true}
             className={cn(
-              "[grid-area:1/1]",
+              // `min-w-0`: the header above states why. Without it the single `auto` column sizes to
+              // the widest layer's min-content width, and a `truncate` run inside never truncates.
+              "min-w-0 [grid-area:1/1]",
               layerClassName,
               // `opacity-100` is written out rather than left to the default, so a layer says which
               // side of the swap it is on in its own class list — the front layer is a positive

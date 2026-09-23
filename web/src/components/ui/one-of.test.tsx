@@ -31,6 +31,9 @@ describe("OneOf — one box, several alternatives, one shown", () => {
     expect(front).toHaveLength(1);
     expect(front[0]).toHaveTextContent("needs you");
     expect(front[0]).toHaveClass("opacity-100");
+    // Every layer, winner and loser, carries `min-w-0` (the header in `one-of.tsx` says why). jsdom
+    // cannot see the overflow itself; `e2e/update-band-overflow.spec.ts` measures it in a browser.
+    for (const layer of layers(container)) expect(layer).toHaveClass("min-w-0");
 
     // `inert` AND `aria-hidden`. `inert` is the load-bearing one: a losing layer may hold a
     // focusable control, and hiding a focusable thing from the accessibility tree without also

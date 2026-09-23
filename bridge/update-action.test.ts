@@ -241,6 +241,24 @@ describe("POST api/update — the update write gate's verdict", () => {
     expect(v).toMatchObject({ kind: "refuse", status: 409, body: { code: "update.in_progress" } });
   });
 
+  test("a second confirm while the crew run is still open is refused, full or peers-only (A5)", () => {
+    // The lead is done, a member is still waiting out its own hourly limit, and the operator taps
+    // again. Accepting would replace the run's legs while that member may be building under the
+    // first run's id, so it is refused with the code and sentence every phone already renders.
+    const refused = {
+      kind: "refuse",
+      status: 409,
+      body: {
+        error: "an update is already running (levelling the crew); nothing was started",
+        code: "update.in_progress",
+        detail: { state: "levelling the crew" },
+      },
+    } as const;
+    expect(updateStartVerdict(ask(), state({ run: runAt("done"), crewRunOpen: true }))).toEqual(refused);
+    expect(updateStartVerdict(ask({ peersOnly: true }), state({ current: "1.4.0", crewRunOpen: true }))).toEqual(refused);
+    expect(updateStartVerdict(ask(), state({ run: runAt("done"), crewRunOpen: false })).kind).toBe("start");
+  });
+
   test("a finished run does not block the next one", () => {
     expect(updateStartVerdict(ask(), state({ run: runAt("done") })).kind).toBe("start");
     expect(updateStartVerdict(ask(), state({ run: runAt("rolled-back") })).kind).toBe("start");

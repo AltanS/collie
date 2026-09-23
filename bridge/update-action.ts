@@ -785,6 +785,12 @@ export interface UpdateStartState {
    * a member behind the lead's own version, or one that rolled back.
    */
   readonly peers?: readonly { readonly name: string; readonly state: string }[];
+  /**
+   * Whether this lead's crew run is still open (`UpdateTurns.open`). Absent ⇒ no run. A second
+   * confirm while one is open is refused: it would replace the run's legs while a member may still
+   * be building under the first run's id (A5).
+   */
+  readonly crewRunOpen?: boolean;
 }
 
 /**
@@ -812,6 +818,10 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   if (running || state.lockHeld) {
     return refuse(409, "update.in_progress", { state: state.run?.state ?? "staging" });
   }
+  // One confirm at a time for the CREW too (A5). The same code and sentence an older phone already
+  // renders: "An update is already running (levelling the crew). Nothing was started." The run is
+  // bounded (`CREW_RUN_TTL_MS`), so this refusal is too.
+  if (state.crewRunOpen === true) return refuse(409, "update.in_progress", { state: "levelling the crew" });
 
   // ── THE PEERS-ONLY RUN (M16/04) ─────────────────────────────────────────────
   // Decided here, above the preflight, because the gates below are about THIS machine's own move and

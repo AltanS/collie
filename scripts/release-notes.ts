@@ -14,6 +14,11 @@
 // group's name, and links the changelog for the detail. That is the whole reason the lead is
 // bold and short: it is the release page's own sentence, written once.
 //
+// A lead keeps its credit. When the bullet's detail credits someone ("Thanks @x (#12).",
+// "Reported by @y (#34)."), the page line ends with that credit, so a reader sees who did what,
+// and the @mention is what makes GitHub draw the release's Contributors avatars. See
+// `creditsOf` for which @ counts.
+//
 // The order on the page is the reader's, not the file's. A phone arrives here from the in-app
 // update banner to copy one command, so the update block is FIRST and is never folded into a
 // `<details>` a thumb has to find. What changed comes second. Only the by-hand checksum recipe is
@@ -31,10 +36,20 @@ export const GROUPS = ["Added", "Changed", "Fixed", "Packaging", "Docs"] as cons
 
 export type GroupName = (typeof GROUPS)[number];
 
+/** One credit phrase of a bullet, as the author wrote it: `Thanks`, `Reported by`, … */
+export interface Credit {
+	/** The words before the handles, first letter upper-cased: `Thanks`, `Reported by`. */
+	phrase: string;
+	/** The GitHub logins it names, without the `@`, in the bullet's order. */
+	handles: string[];
+}
+
 export interface Group {
 	name: GroupName;
 	/** One lead per bullet, in the order the changelog lists them, `**` already stripped. */
 	leads: string[];
+	/** Parallel to `leads`: the credits each bullet carries, empty when it names nobody. */
+	credits: Credit[][];
 }
 
 export interface Section {
@@ -108,6 +123,85 @@ function leadOf(line: string, where: string): string {
 	return line.slice(4, end).trim();
 }
 
+/** The maintainer. His own handle in a bullet is not a contributor credit. */
+const MAINTAINER = "altans";
+
+/** A GitHub login: letters, digits and single inner hyphens, at most 39 characters. The lookahead
+ *  refuses a match that runs on into a path or a longer word (`@types/node`, `@scope-`). */
+const HANDLE = String.raw`@([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})(?![A-Za-z0-9/_-])`;
+
+/** A handle as a bullet writes it: bare, `@x`, or linked to its profile, `[@x](https://github.com/x)`. */
+const WRITTEN_HANDLE = String.raw`\[?${HANDLE}(?:\]\(https:\/\/github\.com\/[^)\s]*\))?`;
+
+/** A credit: `Thanks`, `thanks to` or `<word> by`, then one or more handles joined by commas or
+ *  `and`. The phrase must directly precede the first handle. */
+const CREDIT = new RegExp(
+	String.raw`(?<![A-Za-z])(thanks(?: to)?|(?:[A-Za-z]+ )?by)\s+(${WRITTEN_HANDLE}(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)${WRITTEN_HANDLE})*)`,
+	"gi",
+);
+
+/**
+ * The credits in one bullet line.
+ *
+ * WHICH @ COUNTS. Only a handle that directly follows a credit phrase: `Thanks @x`,
+ * `thanks to @x`, `Reported by @x`, `Suggested by @x and @y`. A bare `@word` anywhere in the
+ * bullet does NOT count. The looser rule (every login-shaped `@`) would credit prose like
+ * "the `@effort` token", an npm scope in running text, or a mention of a harness's own `@agent`
+ * syntax, and every false hit is a stranger's avatar on the release page and a notification
+ * in their inbox. A missed credit is a changelog edit; a false one is already sent.
+ *
+ * A handle linked to its profile (`[@x](https://github.com/x)`, as 1.10.2 and 1.11.0 wrote them)
+ * counts too, and the page prints it bare, because GitHub does not mention a user from link text.
+ *
+ * Code spans are removed before the scan, so `` `Thanks @x` `` inside backticks is text, not a
+ * credit. An e-mail address never matches: its `@` follows a letter, not the phrase and a space.
+ * The maintainer's own handle is dropped, and a phrase left with no handle is dropped with it.
+ */
+function creditsOf(line: string): Credit[] {
+	const prose = line.replace(/`[^`]*`/g, "");
+	const credits: Credit[] = [];
+	for (const match of prose.matchAll(CREDIT)) {
+		const words = match[1] ?? "";
+		const handles = [...(match[2] ?? "").matchAll(new RegExp(HANDLE, "g"))]
+			.map((h) => h[1] ?? "")
+			.filter((h) => h.toLowerCase() !== MAINTAINER);
+		if (handles.length === 0) continue;
+		credits.push({ phrase: words.charAt(0).toUpperCase() + words.slice(1), handles });
+	}
+	return credits;
+}
+
+/** A bullet's credits as the page prints them after the lead: `Thanks @a. Reported by @b.` */
+function creditText(credits: Credit[]): string {
+	return credits
+		.map(({ phrase, handles }) => {
+			const names = handles.map((h) => `@${h}`);
+			const joined =
+				names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+			return `${phrase} ${joined}.`;
+		})
+		.join(" ");
+}
+
+/**
+ * Every handle a section credits, once each, in the order the page first names them. Case is
+ * GitHub's business, not ours, so `@Foo` and `@foo` are one person and the first spelling wins.
+ */
+export function creditedHandles(section: Section): string[] {
+	const seen = new Map<string, string>();
+	for (const group of section.groups) {
+		for (const credits of group.credits) {
+			for (const credit of credits) {
+				for (const handle of credit.handles) {
+					const key = handle.toLowerCase();
+					if (!seen.has(key)) seen.set(key, handle);
+				}
+			}
+		}
+	}
+	return [...seen.values()];
+}
+
 /**
  * Reads a section's lines into its groups. Throws with the reason when the shape is wrong.
  * `where` names the section in the message, so a failure says which one it read.
@@ -125,7 +219,7 @@ function groupsOf(lines: string[], where: string): Group[] {
 						`The five are: ${GROUPS.join(", ")}.`,
 				);
 			}
-			current = { name, leads: [] };
+			current = { name, leads: [], credits: [] };
 			groups.push(current);
 			continue;
 		}
@@ -137,6 +231,7 @@ function groupsOf(lines: string[], where: string): Group[] {
 			);
 		}
 		current.leads.push(leadOf(line, where));
+		current.credits.push(creditsOf(line));
 	}
 
 	groups.sort((a, b) => GROUPS.indexOf(a.name) - GROUPS.indexOf(b.name));
@@ -334,7 +429,10 @@ export function renderBody(
 	for (const group of section.groups) {
 		if (group.leads.length === 0) continue;
 		lines.push(`**${group.name}**`, "");
-		for (const lead of group.leads) lines.push(`- ${lead}`);
+		group.leads.forEach((lead, i) => {
+			const credits = group.credits[i] ?? [];
+			lines.push(credits.length > 0 ? `- ${lead} ${creditText(credits)}` : `- ${lead}`);
+		});
 		lines.push("");
 	}
 

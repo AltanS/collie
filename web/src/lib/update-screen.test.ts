@@ -235,9 +235,9 @@ describe("a member that needs the operator, on step 5", () => {
 
   it("names a member's hourly limit in the row's detail slot (ADR 0062) and still offers the skip", () => {
     const view = read({
-      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { reason: "rate-limited, retries by 08:14" })] }),
+      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { reason: "rate-limited, retries in about 14 min" })] }),
     });
-    expect(view.rows[2]).toMatchObject({ status: "attention", detail: "rate-limited, retries by 08:14" });
+    expect(view.rows[2]).toMatchObject({ status: "attention", detail: "rate-limited, retries in about 14 min" });
     expect(view.note).toBe("cellar waits out its once-an-hour limit. You can skip it.");
     expect(view.ask).toEqual({ name: "cellar" });
   });

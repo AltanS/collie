@@ -870,7 +870,7 @@ const updateAction = canRunUpdate
       newRunId,
       start: startDetachedUpdate,
       beginCrewRun: (a: { runId: string; to: string }) => {
-        updateTurns.begin(a.runId, a.to);
+        updateTurns.begin(a.runId, a.to, Date.now());
         // §20's FIRST immediate sweep: the operator has confirmed, so the first turn goes out on a
         // sweep of its own rather than waiting out the idle cadence.
         crewLead?.resweep();
@@ -1345,6 +1345,7 @@ const crewLead = (() => {
     // mid-life, and the roster changes under a running bridge.
     follow: {
       leadRelease: () => leadReleaseHeader({ version: crewVersion, run: readUpdateRun(cfg.stateDir) }),
+      leadRun: () => readUpdateRun(cfg.stateDir),
       turns: updateTurns,
       enrolledAt: (memberId) =>
         trustStore.current()?.peers.find((m) => m.memberId === memberId)?.enrolledAt ?? 0,
@@ -1537,7 +1538,7 @@ function settleUpdateGate(): void {
   // whose name nobody knows and whose journal outlives it by nothing, so a trace left only there is
   // a trace left nowhere. Once per run id per process, so a poll tick cannot make it a stream.
   console.log(`[crew] update ${start.runId}: levelling peers to ${start.to}`);
-  updateTurns.begin(start.runId, start.to);
+  updateTurns.begin(start.runId, start.to, Date.now());
   crewLead?.resweep();
 }
 
