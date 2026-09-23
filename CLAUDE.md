@@ -448,6 +448,11 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
 - Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId`,
   `/pane/:paneId/history`, `/pane/:paneId/changes` and `/space/:spaceId/changes`. The router
   instance is module-scoped so it keeps its location.
+- **Back goes up one level.** Navigate through `useNav()` (`web/src/hooks/use-nav.ts`): down is a
+  push that records `from`, sideways is a replace, up steps back onto a legitimate parent or
+  replaces onto the structural one, never a push. A new route gets its place in `ancestorsOf` and
+  `parentChain` (`web/src/lib/nav.ts`). Sheets own no history
+  ([ADR 0067](./.adr/0067-back-goes-up-one-level.md), DESIGN.md §12).
 - **The idle lock pauses; it does not gate.** It only appears when Collie is left *open, visible and
   untouched* — a hidden page never locks, and returning to the foreground auto-resumes. It covers a
   still-mounted router (unmounting it ate in-progress composer drafts) and pauses polling through

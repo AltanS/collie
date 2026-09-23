@@ -686,3 +686,21 @@ the reason §6 gives at `app-header.tsx:212`. They are **floors** — a two-line
 legitimately grows its box — and what they buy is that two one-line notices are the same height
 whether or not one carries a button, so swapping one strip for another inside the open band
 repaints it and never moves it.
+
+## 12. Navigation — back goes up one level
+
+On a phone the edge swipe is history back, so the history stack must be the level tree
+([ADR 0067](./.adr/0067-back-goes-up-one-level.md)). Navigate through `useNav()`
+(`web/src/hooks/use-nav.ts`), never a bare `navigate(path)`:
+
+- **Down** (`nav.down`) pushes and records `from`. Opening a space, a pane, History, Changes,
+  Settings, Crew, Updates.
+- **Sideways** (`nav.side`) replaces and carries `from`. Pane to pane, tab to tab, space chip to
+  space chip, the machine and session switchers. `nav.open` picks down or sideways for a new pane.
+- **Up** (`nav.up(parent)`, `nav.upTo(parent)`) steps back when the entry behind is a legitimate
+  parent, else replaces onto `parent`. Every back arrow, the Collie mark inside a level, every close
+  and every automatic exit. Never push a parent.
+- **A new route** gets its place in `ancestorsOf` and `parentChain` (`web/src/lib/nav.ts`) in the
+  same change.
+- **A sheet owns no history entry.** It opens and closes without navigating.
+
