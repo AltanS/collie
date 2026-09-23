@@ -5,6 +5,8 @@ import { TOUR_STORAGE_KEY, TOUR_VERSION } from "@/lib/tour";
 import {
   fixtureChangeDiff,
   fixtureChanges,
+  fixtureCommit,
+  fixtureCommitDiff,
   fixtureCrewSnapshot,
   fixtureCrewStatus,
   fixtureSnapshot,
@@ -61,6 +63,9 @@ async function answer(route: Route, path: string): Promise<void> {
     const q = new URL(route.request().url()).searchParams;
     const repo = q.get("repo");
     const file = q.get("path");
+    if (q.get("view") === "commit") {
+      return fulfillJson(route, repo !== null && file !== null ? fixtureCommitDiff(repo, file) : fixtureCommit);
+    }
     if (repo !== null && file !== null) return fulfillJson(route, fixtureChangeDiff(repo, file));
     return fulfillJson(route, fixtureChanges);
   }

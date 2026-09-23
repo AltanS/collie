@@ -45,6 +45,30 @@ export function spaceChangesPath(spaceId: string, scope?: Scope, file?: { repo: 
   return `${base}${base.includes("?") ? "&" : "?"}${q.toString()}`;
 }
 
+/**
+ * The last commit of one repo, below a Changes list (ADR 0065, the commit view): `base` is the list's
+ * path (`/pane/:id/changes` or `/space/:id/changes`, scope query included). With `file`, one file of
+ * that commit. A level below the list, so "back" lands on the list.
+ */
+function commitUnder(base: string, repo: string, path?: string): string {
+  const cut = base.indexOf("?");
+  const [pathname, search] = cut === -1 ? [base, ""] : [base.slice(0, cut), base.slice(cut + 1)];
+  const q = new URLSearchParams(search);
+  q.set("repo", repo);
+  if (path !== undefined) q.set("path", path);
+  return `${pathname}/commit?${q.toString()}`;
+}
+
+/** A pane's commit view: the last commit of `repo`, or with `path` one file of it. */
+export function changesCommitPath(paneId: string, scope: Scope | undefined, repo: string, path?: string): string {
+  return commitUnder(changesPath(paneId, scope), repo, path);
+}
+
+/** A space's commit view: the same, asked by space. */
+export function spaceChangesCommitPath(spaceId: string, scope: Scope | undefined, repo: string, path?: string): string {
+  return commitUnder(spaceChangesPath(spaceId, scope), repo, path);
+}
+
 /** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
 export function spacePath(spaceId: string, scope?: Scope): string {
   return `/space/${encodeURIComponent(spaceId)}${scopeSearch(scope)}`;
@@ -149,7 +173,9 @@ const ANY_SPACE = "/space/*";
  *   L0 `/`
  *   L1 `/space/:id`, `/settings`, `/crew`
  *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/updates`
- *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`)
+ *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
+ *      `/space/:id/changes/commit`
+ *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`)
  *
  * A pane's parent is whichever of the dashboard or a space opened it. `/crew` also accepts
  * `/settings`, because the crew card in Settings opens it, and a step back to Settings is the only
@@ -161,6 +187,12 @@ export function ancestorsOf(pathname: string): string[] {
   if (seg.length === 0) return [];
   if (head === "space" && seg.length === 2) return ["/"];
   if (head === "space" && seg.length === 3 && leaf === "changes") return [`/space/${id}`, "/"];
+  if (head === "space" && seg.length === 4 && leaf === "changes" && seg[3] === "commit") {
+    return [`/space/${id}/changes`, `/space/${id}`, "/"];
+  }
+  if (head === "pane" && seg.length === 4 && leaf === "changes" && seg[3] === "commit") {
+    return [`/pane/${id}/changes`, `/pane/${id}`, ANY_SPACE, "/"];
+  }
   if (head === "pane" && seg.length === 2) return [ANY_SPACE, "/"];
   if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "changes")) {
     return [`/pane/${id}`, ANY_SPACE, "/"];
@@ -246,6 +278,14 @@ export function parentChain(pathname: string, search: string): string[] {
   if (head === "space" && seg.length === 3 && leaf === "changes") {
     const space = `/space/${id}${q}`;
     return file ? [home, space, `/space/${id}/changes${q}`] : [home, space];
+  }
+  // The commit view sits under its list, and the commit's file view under the commit.
+  if ((head === "space" || head === "pane") && seg.length === 4 && leaf === "changes" && seg[3] === "commit") {
+    const params = new URLSearchParams(search);
+    const repo = params.get("repo");
+    const list = `/${head}/${id}/changes${q}`;
+    const chain = [home, `/${head}/${id}${q}`, list];
+    return repo !== null && params.has("path") ? [...chain, commitUnder(list, repo)] : chain;
   }
   if (head === "pane" && seg.length === 2) return [home];
   if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "changes")) {

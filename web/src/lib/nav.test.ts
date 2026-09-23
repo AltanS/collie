@@ -1,5 +1,6 @@
 import {
   ancestorsOf,
+  changesCommitPath,
   homePath,
   isAncestor,
   panePath,
@@ -8,9 +9,18 @@ import {
   resolveUp,
   resolveUpTo,
   settingsPath,
+  spaceChangesCommitPath,
   updatesPath,
   upTarget,
 } from "./nav";
+
+describe("the commit view's paths", () => {
+  it("sits one level below the list, with the repo and the file in the query", () => {
+    expect(changesCommitPath("w1:p1", undefined, ".")).toBe("/pane/w1%3Ap1/changes/commit?repo=.");
+    expect(changesCommitPath("w1:p1", undefined, "one", "a b.ts")).toBe("/pane/w1%3Ap1/changes/commit?repo=one&path=a+b.ts");
+    expect(spaceChangesCommitPath("w1", undefined, ".")).toBe("/space/w1/changes/commit?repo=.");
+  });
+});
 
 describe("panePath", () => {
   it("URL-encodes the colon in a pane id", () => {
@@ -116,6 +126,11 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/", "/space/w1/changes", true],
     ["/space/w1", "/space/w1/changes", true],
     ["/space/w2", "/space/w1/changes", false],
+    ["/pane/w1%3Ap1/changes?h=badger", "/pane/w1%3Ap1/changes/commit", true],
+    ["/pane/w1%3Ap1", "/pane/w1%3Ap1/changes/commit", true],
+    ["/pane/w1%3Ap2/changes", "/pane/w1%3Ap1/changes/commit", false],
+    ["/space/w1/changes", "/space/w1/changes/commit", true],
+    ["/space/w1/changes/commit", "/space/w1/changes", false],
     ["/", "/settings", true],
     ["/pane/w1%3Ap1", "/settings", false],
     ["/settings", "/settings/updates", true],
@@ -191,6 +206,13 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/space/w1", "", ["/"]],
     ["/space/w1/changes", "", ["/", "/space/w1"]],
     ["/space/w1/changes", "?repo=.&path=a.ts", ["/", "/space/w1", "/space/w1/changes"]],
+    ["/pane/w1%3Ap1/changes/commit", "?repo=.", ["/", "/pane/w1%3Ap1", "/pane/w1%3Ap1/changes"]],
+    [
+      "/pane/w1%3Ap1/changes/commit",
+      "?h=badger&repo=one&path=a.ts",
+      ["/?h=badger", "/pane/w1%3Ap1?h=badger", "/pane/w1%3Ap1/changes?h=badger", "/pane/w1%3Ap1/changes/commit?h=badger&repo=one"],
+    ],
+    ["/space/w1/changes/commit", "?repo=.&path=a.ts", ["/", "/space/w1", "/space/w1/changes", "/space/w1/changes/commit?repo=."]],
     ["/settings", "", ["/"]],
     ["/settings/updates", "", ["/", "/settings"]],
     ["/crew", "", ["/"]],

@@ -866,7 +866,36 @@ export type ChangesUnavailableReason = "no-pane" | "no-workspace" | "no-folder" 
  */
 export type ChangesList =
   | { available: false; reason: ChangesUnavailableReason }
-  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean; depthLimited?: boolean };
+  | {
+      available: true;
+      root: string;
+      repos: ChangedRepo[];
+      truncated: boolean;
+      depthLimited?: boolean;
+      /** Repos with nothing uncommitted and a commit to show. Absent when none, or from an older bridge. */
+      clean?: CleanRepo[];
+    };
+
+/** A repo with no uncommitted changes and a HEAD commit: what "Show last commit" is offered for. */
+export interface CleanRepo {
+  relPath: string;
+  name: string;
+}
+
+/** The commit a commit view shows: the repo's HEAD at the time of the read. Mirrors bridge/types.ts. */
+export interface CommitInfo {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  /** Author time, Unix seconds. */
+  time: number;
+}
+
+/** The last commit of one repo (ADR 0065, the commit view). Mirrors bridge/types.ts. */
+export type ChangeCommit =
+  | { available: false; reason: ChangesUnavailableReason | "unknown-repo" | "no-commit" }
+  | { available: true; repo: string; name: string; commit: CommitInfo; files: ChangedFile[]; truncated: boolean };
 
 /** One file's diff as raw unified text. Mirrors bridge/types.ts. */
 export type ChangeDiff =
@@ -882,6 +911,11 @@ export type ChangeDiff =
       truncated: boolean;
       diff: string;
     };
+
+/** One file of the last commit. `hash` names the commit it was read from. Mirrors bridge/types.ts. */
+export type ChangeCommitDiff =
+  | { available: false; reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path" | "no-commit" }
+  | (Extract<ChangeDiff, { available: true }> & { hash: string });
 
 /** Which workspace a Changes answer covers. Present whenever the bridge found the workspace. */
 export interface ChangesWorkspace {
@@ -905,6 +939,10 @@ export type WorkspaceChangeDiffResponse = { workspaceId: string; workspaceLabel?
 export type ChangesResponse = ChangesWorkspace & { paneRepo?: string } & ChangesList;
 /** Either diff, as the view reads it. */
 export type ChangeDiffResponse = ChangesWorkspace & ChangeDiff;
+/** GET …/changes?view=commit&repo= — the repo's last commit, asked by pane or by workspace. */
+export type ChangeCommitResponse = ChangesWorkspace & ChangeCommit;
+/** GET …/changes?view=commit&repo=&path= — one file of that commit. */
+export type ChangeCommitDiffResponse = ChangesWorkspace & ChangeCommitDiff;
 
 /**
  * GET /api/pane/:id/history — real conversation history, read from the agent's own session log.

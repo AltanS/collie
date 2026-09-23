@@ -697,7 +697,24 @@ export type ChangesUnavailableReason = "no-pane" | "no-workspace" | "no-folder" 
  */
 export type ChangesList =
   | { available: false; reason: ChangesUnavailableReason }
-  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean; depthLimited?: boolean };
+  | {
+      available: true;
+      root: string;
+      repos: ChangedRepo[];
+      truncated: boolean;
+      depthLimited?: boolean;
+      /**
+       * The discovered repos with nothing uncommitted and at least one commit: what the view offers
+       * "Show last commit" for. Absent when there are none, and from a bridge that predates it.
+       */
+      clean?: CleanRepo[];
+    };
+
+/** A repo discovery found with no uncommitted changes and a HEAD commit to show. */
+export interface CleanRepo {
+  relPath: string;
+  name: string;
+}
 
 /**
  * One file's diff against HEAD, as raw unified-diff text. The phone parses it. `diff` is empty for
@@ -718,6 +735,35 @@ export type ChangeDiff =
       truncated: boolean;
       diff: string;
     };
+
+/** The commit a commit view shows: always the repo's HEAD at the time of the read. */
+export interface CommitInfo {
+  /** The full object id. The view compares it across re-reads to notice a newer commit. */
+  hash: string;
+  shortHash: string;
+  /** The message's first paragraph on one line, as `git log --format=%s` prints it. */
+  subject: string;
+  author: string;
+  /** Author time, Unix seconds. */
+  time: number;
+}
+
+/**
+ * The last commit of one discovered repo, read-only (ADR 0065, the commit view): HEAD against its
+ * first parent, or against the empty tree for a root commit. `files` carry `M`, `A`, `D` or `R`.
+ * `no-commit` is a repo whose HEAD names no commit yet.
+ */
+export type ChangeCommit =
+  | { available: false; reason: ChangesUnavailableReason | "unknown-repo" | "no-commit" }
+  | { available: true; repo: string; name: string; commit: CommitInfo; files: ChangedFile[]; truncated: boolean };
+
+/**
+ * One file of the last commit. `hash` names the commit the diff was read from, so a view still
+ * showing an older commit can tell the answer belongs to a newer one.
+ */
+export type ChangeCommitDiff =
+  | { available: false; reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path" | "no-commit" }
+  | (Extract<ChangeDiff, { available: true }> & { hash: string });
 
 /**
  * Which workspace a Changes answer covers, so the screen can say so. Present whenever the workspace
@@ -740,6 +786,14 @@ export type PaneChangeDiffResponse = { paneId: string } & ChangesWorkspace & Cha
 export type WorkspaceChangesResponse = { workspaceId: string; workspaceLabel?: string } & ChangesList;
 /** GET /api/workspace/:id/changes?repo=&path= — the same diff, asked by workspace. */
 export type WorkspaceChangeDiffResponse = { workspaceId: string; workspaceLabel?: string } & ChangeDiff;
+/** GET /api/pane/:id/changes?view=commit&repo= — the last commit of one repo in the pane's workspace. */
+export type PaneChangeCommitResponse = { paneId: string } & ChangesWorkspace & ChangeCommit;
+/** GET /api/pane/:id/changes?view=commit&repo=&path= — one file of that commit. */
+export type PaneChangeCommitDiffResponse = { paneId: string } & ChangesWorkspace & ChangeCommitDiff;
+/** GET /api/workspace/:id/changes?view=commit&repo= — the same commit, asked by workspace. */
+export type WorkspaceChangeCommitResponse = { workspaceId: string; workspaceLabel?: string } & ChangeCommit;
+/** GET /api/workspace/:id/changes?view=commit&repo=&path= — the same file, asked by workspace. */
+export type WorkspaceChangeCommitDiffResponse = { workspaceId: string; workspaceLabel?: string } & ChangeCommitDiff;
 
 /**
  * POST /api/pane/:id/{reply,keys} — result of a send. Discriminated on `ok`: a failure always

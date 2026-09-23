@@ -149,6 +149,17 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
     expect(diff.diff).toContain("+two change");
   });
 
+  test("both routes answer the commit view with ?view=commit", async () => {
+    const byWs = await (await workspaceChanges(engine, "w1", at("?view=commit&repo=two"), req, home)).json();
+    expect(byWs).toMatchObject({ workspaceId: "w1", workspaceLabel: "ws", available: true, repo: "two" });
+    expect(byWs.commit.subject).toBe("init");
+    expect(byWs.files.map((f: { path: string }) => f.path)).toEqual(["a.txt"]);
+    const byPane = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=two&path=a.txt"), req, home)).json();
+    expect(byPane).toMatchObject({ paneId: "w1:p1", available: true, repo: "two", path: "a.txt", hash: byWs.commit.hash });
+    const unlisted = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=two&path=b.txt"), req, home)).json();
+    expect(unlisted).toMatchObject({ available: false, reason: "unknown-path" });
+  });
+
   test("the mux folder is preferred over the panes' common folder", async () => {
     const saved = snap;
     snap = { ...snap, workspaces: [space("w1", "ws", join(ws, "two")), space("w2", "home")] };

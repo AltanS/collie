@@ -108,7 +108,9 @@ export const router = createBrowserRouter([
         // itself, on open, on its own 5 s beat while visible and on its refresh button, so the poll
         // loop's revalidate() fetches nothing for it. `shouldRevalidate` states the same opt-out as
         // History's, should a loader ever be added.
-        path: "pane/:paneId/changes",
+        // `/*` so the commit view below the list (`changes/commit`, ADR 0065) is the same route
+        // and the same mounted component: the list keeps its state under the commit.
+        path: "pane/:paneId/changes/*",
         element: <ChangesRoute />,
         shouldRevalidate: () => false,
       },
@@ -116,7 +118,7 @@ export const router = createBrowserRouter([
         // The same view asked by workspace: every pane of a space shows one list (ADR 0065), and
         // this form lets a dashboard entry open it without naming a pane. Host-aware through the
         // scope query like every other route.
-        path: "space/:spaceId/changes",
+        path: "space/:spaceId/changes/*",
         element: <ChangesRoute />,
         shouldRevalidate: () => false,
       },

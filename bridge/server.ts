@@ -5,7 +5,14 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
-import { changesParams, repoOfFolder, sharedFileDiff, sharedListChanges } from "./changes.ts";
+import {
+  changesParams,
+  repoOfFolder,
+  sharedCommitFileDiff,
+  sharedFileDiff,
+  sharedListChanges,
+  sharedReadCommit,
+} from "./changes.ts";
 import { rootOfWorkspace, type RootSnapshot } from "./changes-root.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
@@ -86,8 +93,12 @@ import type {
   CacheWatchListResponse,
   CacheWatchResponse,
   PaneCache,
+  PaneChangeCommitDiffResponse,
+  PaneChangeCommitResponse,
   PaneChangeDiffResponse,
   PaneChangesResponse,
+  WorkspaceChangeCommitDiffResponse,
+  WorkspaceChangeCommitResponse,
   WorkspaceChangeDiffResponse,
   WorkspaceChangesResponse,
   PaneHistoryResponse,
@@ -2427,7 +2438,8 @@ export interface ChangesSnapshotSource {
  *
  * The folder comes off the live snapshot, keyed by pane id; the client never sends one. With
  * `?repo=&path=` the answer is one file's diff, and bridge/changes.ts serves it only for a repo its
- * own discovery returns and a path git listed there.
+ * own discovery returns and a path git listed there. With `?view=commit&repo=` it is that repo's
+ * last commit (HEAD), and with `&path=` one file of it, under the same rule.
  */
 export async function paneChanges(
   engine: ChangesSnapshotSource,
@@ -2452,6 +2464,12 @@ export async function paneChanges(
     ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
     : { paneId };
   try {
+    if (params.view === "commit") {
+      if (params.path !== null) {
+        return json({ ...subject, ...(await sharedCommitFileDiff(root, params)) } satisfies PaneChangeCommitDiffResponse, accept);
+      }
+      return json({ ...subject, ...(await sharedReadCommit(root, params)) } satisfies PaneChangeCommitResponse, accept);
+    }
     if (wantsDiff) return json({ ...subject, ...(await sharedFileDiff(root, params)) } satisfies PaneChangeDiffResponse, accept);
     const list = await sharedListChanges(root, params);
     const paneRepo = list.available ? await repoOfFolder(list.root, list.repos, pane.cwd) : undefined;
@@ -2489,6 +2507,15 @@ export async function workspaceChanges(
     return json({ ...subject, available: false, reason: "no-folder" } satisfies WorkspaceChangesResponse, accept);
   }
   try {
+    if (params.view === "commit") {
+      if (params.path !== null) {
+        return json(
+          { ...subject, ...(await sharedCommitFileDiff(found.root, params)) } satisfies WorkspaceChangeCommitDiffResponse,
+          accept,
+        );
+      }
+      return json({ ...subject, ...(await sharedReadCommit(found.root, params)) } satisfies WorkspaceChangeCommitResponse, accept);
+    }
     if (wantsDiff) {
       return json({ ...subject, ...(await sharedFileDiff(found.root, params)) } satisfies WorkspaceChangeDiffResponse, accept);
     }

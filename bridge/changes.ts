@@ -8,7 +8,9 @@
 // `path`. The id is a lookup (the folder comes off the live snapshot, never off the request). The repo
 // and the path are LOOKED UP, never joined blind: a diff is served only for a `repo` the same
 // discovery (same depth, same nested flag) returns, and only for a `path` git itself listed as
-// changed in that repo. Anything else is `unknown-repo` / `unknown-path` before a path exists. An
+// changed in that repo. Anything else is `unknown-repo` / `unknown-path` before a path exists. The
+// commit view (`view=commit`) names a repo the same way and never a revision: it reads HEAD only,
+// and serves a file only when the same read of HEAD listed it. An
 // untracked file is the one read this module does off the disk itself, and it additionally goes
 // through `containedRealpath` (bridge/journal/files.ts), so a listed symlink that points out of the
 // repo is refused on the real paths. That makes this the SECOND place a client-supplied value
@@ -55,7 +57,17 @@ import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 import { containedRealpath } from "./journal/files.ts";
-import type { ChangeDiff, ChangedFile, ChangedRepo, ChangesList, ChangeStatus } from "./types.ts";
+import type {
+  ChangeCommit,
+  ChangeCommitDiff,
+  ChangeDiff,
+  ChangedFile,
+  ChangedRepo,
+  ChangesList,
+  ChangeStatus,
+  CleanRepo,
+  CommitInfo,
+} from "./types.ts";
 
 // ── Limits ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -96,6 +108,9 @@ export interface ChangesParams {
   nested: boolean;
   repo: string | null;
   path: string | null;
+  /** `commit` (`?view=commit`): the repo's last commit instead of what is uncommitted. Absent
+   *  reads as `changes`. */
+  view?: "changes" | "commit";
 }
 
 /** The query, clamped. Pure + exported so the clamping is unit-tested without Bun.serve. */
@@ -108,7 +123,8 @@ export function changesParams(url: URL): ChangesParams {
   const nested = url.searchParams.get("nested") !== "0";
   const repo = url.searchParams.get("repo");
   const path = url.searchParams.get("path");
-  return { depth, nested, repo, path };
+  const view = url.searchParams.get("view") === "commit" ? "commit" : "changes";
+  return { depth, nested, repo, path, view };
 }
 
 // ── Git, run safely ─────────────────────────────────────────────────────────────────────────────
@@ -508,15 +524,29 @@ export function parseNumstatZ(
   return out;
 }
 
-/** The tree `diff` compares against: HEAD, or the empty tree in a repo with no commits yet. */
-async function baseTree(git: string, repo: RepoDirs): Promise<string | null> {
+/** A full object id, SHA-1 or SHA-256. */
+const OBJECT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+/** HEAD's commit id, or null in a repo with no commits yet. */
+async function headCommit(git: string, repo: RepoDirs): Promise<string | null> {
   const head = await runGit(git, repo, ["rev-parse", "--verify", "-q", "HEAD^{commit}"], [], 4096);
-  if (head.code === 0) return "HEAD";
-  // The empty tree's id depends on the repo's hash (SHA-1 or SHA-256), so ask rather than hard-code.
+  if (head.code !== 0) return null;
+  const id = head.stdout.toString("utf8").trim();
+  return OBJECT_ID.test(id) ? id : null;
+}
+
+/** The empty tree's id. It depends on the repo's hash (SHA-1 or SHA-256), so ask rather than hard-code. */
+async function emptyTree(git: string, repo: RepoDirs): Promise<string | null> {
   const empty = await runGit(git, repo, ["hash-object", "-t", "tree", "/dev/null"], [], 4096);
   if (empty.code !== 0) return null;
   const id = empty.stdout.toString("utf8").trim();
-  return /^[0-9a-f]{40,64}$/.test(id) ? id : null;
+  return OBJECT_ID.test(id) ? id : null;
+}
+
+/** The tree `diff` compares against: HEAD, or the empty tree in a repo with no commits yet. */
+async function baseTree(git: string, repo: RepoDirs): Promise<string | null> {
+  if ((await headCommit(git, repo)) !== null) return "HEAD";
+  return emptyTree(git, repo);
 }
 
 /** First bytes of a file hold a NUL: git's own "binary" rule. */
@@ -590,7 +620,7 @@ async function listRepo(
   repo: FoundRepo,
   all: readonly FoundRepo[],
   budget: { bytes: number },
-): Promise<{ repo: ChangedRepo; truncated: boolean } | null> {
+): Promise<{ repo: ChangedRepo; truncated: boolean; committed?: boolean } | null> {
   const status = await repoStatus(git, repo);
   if (status === null) return null;
   let entries = withoutNestedRepos(repo, status.entries, all);
@@ -599,7 +629,11 @@ async function listRepo(
     entries = entries.slice(0, MAX_FILES_PER_REPO);
     truncated = true;
   }
-  if (entries.length === 0) return { repo: { relPath: repo.relPath, name: repo.name, files: [] }, truncated };
+  if (entries.length === 0) {
+    // A clean repo is offered "Show last commit" only when it has a commit to show.
+    const committed = (await headCommit(git, repo)) !== null;
+    return { repo: { relPath: repo.relPath, name: repo.name, files: [] }, truncated, committed };
+  }
 
   const counts = new Map<string, { added: number; removed: number; binary: boolean }>();
   if (entries.some((e) => e.status !== "?")) {
@@ -673,12 +707,16 @@ export async function listChanges(
   const listed = await mapLimited(found.repos, REPO_CONCURRENCY, (r) => listRepo(git, r, found.repos, budget));
   let truncated = found.truncated;
   const repos: ChangedRepo[] = [];
+  const clean: CleanRepo[] = [];
   for (const item of listed) {
     if (item === null) continue;
     if (item.truncated) truncated = true;
     if (item.repo.files.length > 0) repos.push(item.repo);
+    else if (item.committed === true) clean.push({ relPath: item.repo.relPath, name: item.repo.name });
   }
-  return { available: true, root: await realpath(cwd), repos, truncated, depthLimited: found.depthLimited };
+  const list: ChangesList = { available: true, root: await realpath(cwd), repos, truncated, depthLimited: found.depthLimited };
+  if (clean.length > 0) list.clean = clean;
+  return list;
 }
 
 /**
@@ -790,6 +828,229 @@ export async function fileDiff(cwd: string, params: ChangesParams): Promise<Chan
   return { ...answer, diff: capped.diff, truncated: capped.truncated || run.capped || run.timedOut };
 }
 
+// ── The last commit ─────────────────────────────────────────────────────────────────────────────
+// Agents commit their own work, so the uncommitted list goes empty right after the change the
+// operator most wants to see. The commit view reads HEAD, and only HEAD: the client names a repo,
+// never a revision. HEAD is diffed against its first parent, or the empty tree for a root commit.
+// Same runner, same hardening, same listed-paths rule: a file's diff is served only for a path the
+// same read of the same commit listed.
+
+/** Bytes of one commit object read. A message past it is cut; the headers come first. */
+const MAX_COMMIT_BYTES = 256 * 1024;
+/** Characters of a subject kept. */
+const MAX_SUBJECT_CHARS = 500;
+
+/** What a commit view needs out of one commit object. */
+export interface ParsedCommit {
+  /** The first parent, or null for a root commit. */
+  parent: string | null;
+  author: string;
+  /** Author time, Unix seconds. */
+  time: number;
+  subject: string;
+}
+
+/**
+ * A raw commit object (`git cat-file commit`) → its first parent, author, time and subject. Pure +
+ * exported for the test. `cat-file` interprets no config: no pretty format, no mailmap, no
+ * signature check (a `log.showSignature` would run gpg), no notes.
+ */
+export function parseCommitObject(raw: string): ParsedCommit {
+  const split = raw.indexOf("\n\n");
+  const head = split < 0 ? raw : raw.slice(0, split);
+  const message = split < 0 ? "" : raw.slice(split + 2);
+  let parent: string | null = null;
+  let author = "";
+  let time = 0;
+  for (const line of head.split("\n")) {
+    // A continuation line (a signature's body) starts with a space.
+    if (line.startsWith("parent ") && parent === null) {
+      const id = line.slice(7).trim();
+      if (OBJECT_ID.test(id)) parent = id;
+    } else if (line.startsWith("author ")) {
+      const m = /^author (.*?) ?<[^>]*> (\d+) [+-]\d{4}$/.exec(line);
+      if (m) {
+        author = m[1]!;
+        time = Number(m[2]);
+      }
+    }
+  }
+  // `%s`: the first paragraph, its lines joined by one space.
+  const paragraph = message.replace(/^\n+/, "").split(/\n[ \t]*\n/)[0] ?? "";
+  const subject = paragraph
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+    .join(" ")
+    .slice(0, MAX_SUBJECT_CHARS);
+  return { parent, author, time, subject };
+}
+
+/** One file of a commit, before counts. */
+export interface CommitEntry {
+  path: string;
+  oldPath?: string;
+  status: ChangeStatus;
+}
+
+/**
+ * `git diff --name-status -z -M` between two trees → status records. Pure + exported for the test.
+ * A copy reads as added, a type change as modified; an unmerged or unknown letter is dropped.
+ */
+export function parseNameStatusZ(raw: string): CommitEntry[] {
+  const fields = raw.split("\0");
+  const out: CommitEntry[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const code = fields[i]!;
+    if (code === "") continue;
+    const letter = code[0];
+    if (letter === "R" || letter === "C") {
+      const oldPath = fields[i + 1];
+      const path = fields[i + 2];
+      i += 2;
+      if (oldPath === undefined || path === undefined) continue;
+      out.push(letter === "R" ? { path, oldPath, status: "R" } : { path, status: "A" });
+      continue;
+    }
+    const path = fields[i + 1];
+    i++;
+    if (path === undefined) continue;
+    if (letter === "A" || letter === "D" || letter === "M") out.push({ path, status: letter });
+    else if (letter === "T") out.push({ path, status: "M" });
+  }
+  return out;
+}
+
+/** One read of HEAD: what it is, what it is diffed against, and its files. */
+interface LoadedCommit {
+  config: string[];
+  base: string;
+  commit: CommitInfo;
+  files: ChangedFile[];
+  truncated: boolean;
+}
+
+async function loadCommit(git: string, repo: RepoDirs): Promise<LoadedCommit | "no-commit" | "unreadable"> {
+  const config = await filterOverrides(git, repo);
+  if (config === null) return "unreadable";
+  const hash = await headCommit(git, repo);
+  if (hash === null) return "no-commit";
+  const object = await runGit(git, repo, ["cat-file", "commit", hash], config, MAX_COMMIT_BYTES);
+  if (object.timedOut || (object.code !== 0 && !object.capped)) return "unreadable";
+  const parsed = parseCommitObject(object.stdout.toString("utf8"));
+  const base = parsed.parent ?? (await emptyTree(git, repo));
+  if (base === null) return "unreadable";
+  const range = [base, hash];
+  const diffFlags = ["-z", "-M", "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty"];
+  const names = await runGit(git, repo, ["diff", "--name-status", ...diffFlags, ...range], config, MAX_LIST_BYTES);
+  if (names.timedOut || (names.code !== 0 && !names.capped)) return "unreadable";
+  const counts = await runGit(git, repo, ["diff", "--numstat", ...diffFlags, ...range], config, MAX_LIST_BYTES);
+  const numbers = counts.timedOut ? new Map() : parseNumstatZ(counts.stdout.toString("utf8"));
+  let entries = parseNameStatusZ(names.stdout.toString("utf8"));
+  if (names.capped) entries.pop();
+  let truncated = names.capped;
+  if (entries.length > MAX_FILES_PER_REPO) {
+    entries = entries.slice(0, MAX_FILES_PER_REPO);
+    truncated = true;
+  }
+  const files = entries.map((e): ChangedFile => {
+    const file: ChangedFile = { path: e.path, status: e.status, added: 0, removed: 0, binary: false };
+    if (e.oldPath !== undefined) file.oldPath = e.oldPath;
+    const c = numbers.get(e.path);
+    if (c) Object.assign(file, c);
+    return file;
+  });
+  const commit: CommitInfo = {
+    hash,
+    shortHash: hash.slice(0, 7),
+    subject: parsed.subject,
+    author: parsed.author,
+    time: parsed.time,
+  };
+  return { config, base, commit, files, truncated };
+}
+
+/** A repo the same discovery returns, by `relPath`. */
+async function discoveredRepo(cwd: string, params: ChangesParams): Promise<FoundRepo | undefined> {
+  const found = await discoverRepos(cwd, params.depth, params.nested);
+  return found.repos.find((r) => r.relPath === params.repo);
+}
+
+/** The last commit of one discovered repo. Refuses a repo discovery did not return. */
+export async function readCommit(cwd: string, params: ChangesParams): Promise<ChangeCommit> {
+  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
+  const git = await gitBinary();
+  if (git === null) return { available: false, reason: "no-git" };
+  const repo = await discoveredRepo(cwd, params);
+  if (repo === undefined) return { available: false, reason: "unknown-repo" };
+  const loaded = await loadCommit(git, repo);
+  if (loaded === "no-commit") return { available: false, reason: "no-commit" };
+  if (loaded === "unreadable") return { available: false, reason: "unknown-repo" };
+  return {
+    available: true,
+    repo: repo.relPath,
+    name: repo.name,
+    commit: loaded.commit,
+    files: loaded.files,
+    truncated: loaded.truncated,
+  };
+}
+
+/**
+ * One file of the last commit. Refuses a repo discovery did not return and a path the same read
+ * of HEAD did not list.
+ */
+export async function commitFileDiff(cwd: string, params: ChangesParams): Promise<ChangeCommitDiff> {
+  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
+  const git = await gitBinary();
+  if (git === null) return { available: false, reason: "no-git" };
+  const repo = await discoveredRepo(cwd, params);
+  if (repo === undefined) return { available: false, reason: "unknown-repo" };
+  const loaded = await loadCommit(git, repo);
+  if (loaded === "no-commit") return { available: false, reason: "no-commit" };
+  if (loaded === "unreadable") return { available: false, reason: "unknown-repo" };
+  const entry = loaded.files.find((f) => f.path === params.path);
+  if (entry === undefined) return { available: false, reason: "unknown-path" };
+
+  const answer: Extract<ChangeCommitDiff, { available: true }> = {
+    available: true,
+    repo: repo.relPath,
+    path: entry.path,
+    status: entry.status,
+    binary: false,
+    directory: false,
+    truncated: false,
+    diff: "",
+    hash: loaded.commit.hash,
+  };
+  if (entry.oldPath !== undefined) answer.oldPath = entry.oldPath;
+  const paths = entry.oldPath !== undefined ? [entry.oldPath, entry.path] : [entry.path];
+  const run = await runGit(
+    git,
+    repo,
+    [
+      "diff",
+      "--no-color",
+      "--no-ext-diff",
+      "--no-textconv",
+      "-M",
+      "--ignore-submodules=dirty",
+      loaded.base,
+      loaded.commit.hash,
+      "--",
+      ...paths,
+    ],
+    loaded.config,
+    MAX_DIFF_BYTES + 1,
+  );
+  const text = run.stdout.toString("utf8");
+  if (entry.binary || /^Binary files .* differ$/m.test(text) || /^GIT binary patch$/m.test(text)) {
+    return { ...answer, binary: true };
+  }
+  const capped = capDiff(text);
+  return { ...answer, diff: capped.diff, truncated: capped.truncated || run.capped || run.timedOut };
+}
+
 // ── Shared reads ────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -858,4 +1119,21 @@ export function sharedListChanges(cwd: string, params: Pick<ChangesParams, "dept
 export function sharedFileDiff(cwd: string, params: ChangesParams): Promise<ChangeDiff> {
   const key = JSON.stringify([cwd, params.repo, params.path, params.depth, params.nested]);
   return sharedDiffs.read(key, () => fileDiff(cwd, params));
+}
+
+/** The shared last-commit reads, keyed on (root, repo, depth, nested). */
+export const sharedCommits = new SharedReads<ChangeCommit>(CHANGES_SHARE_MS);
+/** The shared last-commit file reads, keyed on (root, repo, path, depth, nested). */
+export const sharedCommitDiffs = new SharedReads<ChangeCommitDiff>(CHANGES_SHARE_MS);
+
+/** `readCommit`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
+export function sharedReadCommit(cwd: string, params: ChangesParams): Promise<ChangeCommit> {
+  const key = JSON.stringify([cwd, params.repo, params.depth, params.nested]);
+  return sharedCommits.read(key, () => readCommit(cwd, params));
+}
+
+/** `commitFileDiff`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
+export function sharedCommitFileDiff(cwd: string, params: ChangesParams): Promise<ChangeCommitDiff> {
+  const key = JSON.stringify([cwd, params.repo, params.path, params.depth, params.nested]);
+  return sharedCommitDiffs.read(key, () => commitFileDiff(cwd, params));
 }

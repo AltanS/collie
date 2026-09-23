@@ -6,14 +6,18 @@ import { join } from "node:path";
 import {
   capDiff,
   changesParams,
+  commitFileDiff,
   discoverRepos,
   fileDiff,
   GIT_TIMEOUT_MS,
   gitEnv,
   listChanges,
   MAX_DIFF_LINES,
+  parseCommitObject,
+  parseNameStatusZ,
   parseNumstatZ,
   parseStatusV2,
+  readCommit,
   repoOfFolder,
   SharedReads,
   sharedDiffs,
@@ -24,7 +28,7 @@ import {
   CHANGES_SHARE_MS,
   syntheticAddedDiff,
 } from "./changes.ts";
-import type { ChangesList } from "./types.ts";
+import type { ChangeCommit, ChangesList } from "./types.ts";
 
 // Real git, in throwaway folders. The module's whole job is how it drives git, so a fake would
 // test the fake.
@@ -88,13 +92,16 @@ afterAll(() => {
 describe("changesParams", () => {
   test("defaults, and clamps depth to 1..4", () => {
     const at = (q: string) => changesParams(new URL(`http://x/api/pane/p/changes${q}`));
-    expect(at("")).toEqual({ depth: 2, nested: true, repo: null, path: null });
+    expect(at("")).toEqual({ depth: 2, nested: true, repo: null, path: null, view: "changes" });
     expect(at("?depth=0").depth).toBe(1);
     expect(at("?depth=99").depth).toBe(4);
     expect(at("?depth=abc").depth).toBe(2);
     expect(at("?nested=0").nested).toBe(false);
     expect(at("?nested=1").nested).toBe(true);
     expect(at("?repo=.&path=a%20b").path).toBe("a b");
+    expect(at("").view).toBe("changes");
+    expect(at("?view=commit&repo=.").view).toBe("commit");
+    expect(at("?view=HEAD~3").view).toBe("changes");
   });
 });
 
@@ -462,6 +469,145 @@ describe("a hostile repo runs nothing", () => {
     write(join(dir, "a.txt"), "changed\n");
     const res = available(await listChanges(dir, P));
     expect(res.repos[0]!.files.map((f) => f.path)).toEqual(["a.txt"]);
+  });
+});
+
+describe("the last commit (ADR 0065 rule 9)", () => {
+  const commitAt = (repoRel: string | null, path: string | null = null) => ({ ...params(repoRel, path), view: "commit" as const });
+  function committed(res: ChangeCommit) {
+    if (!res.available) throw new Error(`unavailable: ${res.reason}`);
+    return res;
+  }
+
+  test("parses a raw commit object and name-status output", () => {
+    const parent = "a".repeat(40);
+    const raw =
+      `tree ${"b".repeat(40)}\nparent ${parent}\nparent ${"c".repeat(40)}\n` +
+      "author Ada Lovelace <ada@x> 1700000000 +0100\ncommitter C <c@x> 1700000001 +0100\n" +
+      "gpgsig -----BEGIN PGP SIGNATURE-----\n \n -----END PGP SIGNATURE-----\n\n" +
+      "Fix the thing\nacross two lines\n\nBody text.\n";
+    expect(parseCommitObject(raw)).toEqual({ parent, author: "Ada Lovelace", time: 1700000000, subject: "Fix the thing across two lines" });
+    expect(parseCommitObject(`tree ${"b".repeat(40)}\nauthor A <a> 1 +0000\n\nroot\n`).parent).toBeNull();
+    expect(parseNameStatusZ("M\0a b.txt\0R087\0old.txt\0new.txt\0A\0n\0D\0d\0T\0t\0C100\0x\0y\0U\0u\0")).toEqual([
+      { path: "a b.txt", status: "M" },
+      { path: "new.txt", oldPath: "old.txt", status: "R" },
+      { path: "n", status: "A" },
+      { path: "d", status: "D" },
+      { path: "t", status: "M" },
+      { path: "y", status: "A" },
+    ]);
+  });
+
+  test("lists HEAD's files with counts, renames and binaries, and serves each diff", async () => {
+    const dir = repo(join(base, "commit"), { "a.txt": "one\ntwo\nthree\n", "b.txt": "b\n", "c.txt": "c\nc\nc\n" });
+    write(join(dir, "a.txt"), "one\nTWO\nthree\nfour\n");
+    git(dir, "rm", "-q", "b.txt");
+    git(dir, "mv", "c.txt", "c2.txt");
+    write(join(dir, "new.txt"), "x\ny\n");
+    write(join(dir, "blob.bin"), new Uint8Array([0, 1, 2, 0, 3]));
+    git(dir, "add", "-A");
+    git(dir, "-c", "user.name=Agent Smith", "commit", "-q", "-m", "Second\n\nbody");
+    const hash = git(dir, "rev-parse", "HEAD").trim();
+
+    const res = committed(await readCommit(dir, commitAt(".")));
+    expect(res.repo).toBe(".");
+    expect(res.name).toBe("commit");
+    expect(res.commit).toMatchObject({ hash, shortHash: hash.slice(0, 7), subject: "Second", author: "Agent Smith" });
+    expect(Math.abs(res.commit.time - Date.now() / 1000)).toBeLessThan(120);
+    const byPath = Object.fromEntries(res.files.map((f) => [f.path, f]));
+    expect(Object.keys(byPath).toSorted()).toEqual(["a.txt", "b.txt", "blob.bin", "c2.txt", "new.txt"]);
+    expect(byPath["a.txt"]).toMatchObject({ status: "M", added: 2, removed: 1 });
+    expect(byPath["b.txt"]).toMatchObject({ status: "D", removed: 1 });
+    expect(byPath["c2.txt"]).toMatchObject({ status: "R", oldPath: "c.txt" });
+    expect(byPath["new.txt"]).toMatchObject({ status: "A", added: 2 });
+    expect(byPath["blob.bin"]).toMatchObject({ status: "A", binary: true });
+
+    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"));
+    expect(diff).toMatchObject({ available: true, status: "M", binary: false, hash });
+    if (diff.available) expect(diff.diff).toContain("+TWO\n");
+    const renamed = await commitFileDiff(dir, commitAt(".", "c2.txt"));
+    expect(renamed).toMatchObject({ available: true, status: "R", oldPath: "c.txt" });
+    if (renamed.available) expect(renamed.diff).toContain("rename from c.txt");
+    expect(await commitFileDiff(dir, commitAt(".", "blob.bin"))).toMatchObject({ available: true, binary: true, diff: "" });
+
+    // A clean repo with a commit is offered in the list; its uncommitted list is empty.
+    const list = available(await listChanges(dir, P));
+    expect(list.repos).toEqual([]);
+    expect(list.clean).toEqual([{ relPath: ".", name: "commit" }]);
+  });
+
+  test("a root commit diffs against the empty tree; a repo with no commits has none", async () => {
+    const dir = repo(join(base, "rootcommit"), { "a.txt": "1\n2\n" });
+    const res = committed(await readCommit(dir, commitAt(".")));
+    expect(res.commit.subject).toBe("init");
+    expect(res.files).toEqual([{ path: "a.txt", status: "A", added: 2, removed: 0, binary: false }]);
+    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"));
+    if (!diff.available) throw new Error("root diff refused");
+    expect(diff.diff).toContain("@@ -0,0 +1,2 @@");
+
+    const empty = join(base, "nocommit");
+    mkdirSync(empty);
+    git(empty, "init", "-q");
+    expect(await readCommit(empty, commitAt("."))).toEqual({ available: false, reason: "no-commit" });
+    // No commit to show, so the list offers nothing.
+    expect(available(await listChanges(empty, P)).clean).toBeUndefined();
+  });
+
+  test("refuses a path the commit did not list, a ../ path and an unknown repo", async () => {
+    const dir = repo(join(base, "commit-refuse"), { "a.txt": "a\n", "kept.txt": "k\n" });
+    write(join(dir, "a.txt"), "b\n");
+    git(dir, "commit", "-q", "-am", "change a");
+    write(join(dir, "kept.txt"), "uncommitted\n");
+    write(join(base, "outside.txt"), "secret\n");
+    // kept.txt is in the tree and changed in the worktree, but not in HEAD's diff.
+    expect(await commitFileDiff(dir, commitAt(".", "kept.txt"))).toMatchObject({ reason: "unknown-path" });
+    expect(await commitFileDiff(dir, commitAt(".", "../outside.txt"))).toMatchObject({ reason: "unknown-path" });
+    expect(await commitFileDiff(dir, commitAt(".", "/etc/passwd"))).toMatchObject({ reason: "unknown-path" });
+    expect(await commitFileDiff(dir, commitAt("..", "outside.txt"))).toMatchObject({ reason: "unknown-repo" });
+    expect(await readCommit(dir, commitAt("nope"))).toMatchObject({ reason: "unknown-repo" });
+    expect(await readCommit(dir, commitAt(null))).toMatchObject({ reason: "unknown-repo" });
+    expect(await commitFileDiff(dir, commitAt(".", "a.txt"))).toMatchObject({ available: true });
+  });
+
+  test("a hostile repo runs nothing on the commit view", async () => {
+    const dir = repo(join(base, "commit-hostile"), { "a.txt": "aaaa\n", ".gitattributes": "*.txt diff=evil filter=evil\n" });
+    write(join(dir, "a.txt"), "bbbb\n");
+    git(dir, "commit", "-q", "-am", "change");
+    const markers = join(base, "commit-markers");
+    mkdirSync(markers);
+    const hook = (name: string, body: string) => {
+      const path = join(base, `commit-${name}.sh`);
+      writeFileSync(path, `#!/bin/sh\ntouch '${join(markers, name)}'\n${body}\n`);
+      chmodSync(path, 0o755);
+      return path;
+    };
+    git(dir, "config", "core.fsmonitor", hook("fsmonitor", "exit 1"));
+    git(dir, "config", "diff.external", hook("external", "exit 0"));
+    git(dir, "config", "diff.evil.textconv", hook("textconv", 'cat "$1"'));
+    git(dir, "config", "diff.evil.command", hook("command", "exit 0"));
+    git(dir, "config", "filter.evil.clean", hook("clean", "cat"));
+    git(dir, "config", "filter.evil.smudge", hook("smudge", "cat"));
+    git(dir, "config", "filter.evil.required", "true");
+    git(dir, "config", "log.showSignature", "true");
+    git(dir, "config", "gpg.program", hook("gpg", "exit 1"));
+
+    // CONTROL: plain git on this repo DOES run them. Without this the test could pass vacuously.
+    Bun.spawnSync(["git", "show", "HEAD"], { cwd: dir, env: gitEnv(process.env), stdout: "ignore", stderr: "ignore" });
+    Bun.spawnSync(["git", "diff", "HEAD~1", "HEAD", "--textconv", "--no-ext-diff"], { cwd: dir, env: gitEnv(process.env), stdout: "ignore" });
+    const fired = ["external", "textconv"].filter((m) => existsSync(join(markers, m)));
+    expect(fired.length).toBeGreaterThan(0);
+    rmSync(markers, { recursive: true });
+    mkdirSync(markers);
+
+    const res = committed(await readCommit(dir, commitAt(".")));
+    expect(res.files.map((f) => f.path)).toEqual(["a.txt"]);
+    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"));
+    if (!diff.available) throw new Error("hostile commit diff refused");
+    expect(diff.diff).toContain("+bbbb\n");
+    await listChanges(dir, P);
+    for (const m of ["fsmonitor", "external", "textconv", "command", "clean", "smudge", "gpg"]) {
+      expect(existsSync(join(markers, m)), `${m} ran`).toBe(false);
+    }
   });
 });
 

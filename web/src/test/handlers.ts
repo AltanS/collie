@@ -3,6 +3,8 @@ import { http, HttpResponse } from "msw";
 import type {
   AgentView,
   CacheRuleWire,
+  ChangeCommitDiffResponse,
+  ChangeCommitResponse,
   CrewStatusResponse,
   PaneChangeDiffResponse,
   PaneChangesResponse,
@@ -469,6 +471,59 @@ export function fixtureChangeDiff(repo: string, path: string): PaneChangeDiffRes
   return answer;
 }
 
+// The commit view (ADR 0065): the same workspace after the agent committed its work. The list is
+// empty and offers the repo's last commit; that commit holds two of the files above.
+export const fixtureCleanChanges: PaneChangesResponse = {
+  paneId: "w1:p1",
+  workspaceId: "w1",
+  workspaceLabel: "webapp",
+  available: true,
+  root: "/home/you/webapp",
+  truncated: false,
+  repos: [],
+  clean: [{ relPath: ".", name: "webapp" }],
+};
+
+export const fixtureCommit: ChangeCommitResponse & { paneId: string } = {
+  paneId: "w1:p1",
+  workspaceId: "w1",
+  workspaceLabel: "webapp",
+  available: true,
+  repo: ".",
+  name: "webapp",
+  commit: {
+    hash: "3f2a9c1e5b7d4f60a8e2c4b6d8f0a1c3e5b7d9f1",
+    shortHash: "3f2a9c1",
+    subject: "Move the cart total into its own helper and charge shipping under 50",
+    author: "Claude",
+    time: 1_790_000_000,
+  },
+  truncated: false,
+  files: [
+    { path: "src/routes/checkout.tsx", status: "M", added: 3, removed: 1, binary: false },
+    { path: "src/lib/cart.ts", status: "A", added: 4, removed: 0, binary: false },
+  ],
+};
+
+/** One file of the fixture commit, answered the way the bridge answers it. */
+export function fixtureCommitDiff(repo: string, path: string): ChangeCommitDiffResponse & { paneId: string } {
+  const head = { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "webapp" };
+  const file = fixtureCommit.available && repo === fixtureCommit.repo ? fixtureCommit.files.find((f) => f.path === path) : undefined;
+  if (!file || !fixtureCommit.available) return { ...head, available: false, reason: "unknown-path" };
+  return {
+    ...head,
+    available: true,
+    repo,
+    path,
+    status: file.status,
+    binary: false,
+    directory: false,
+    truncated: false,
+    diff: diffFor(`${repo}\n${path}`) ?? "",
+    hash: fixtureCommit.commit.hash,
+  };
+}
+
 export const handlers = [
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
@@ -480,6 +535,9 @@ export const handlers = [
     const q = new URL(request.url).searchParams;
     const repo = q.get("repo");
     const path = q.get("path");
+    if (q.get("view") === "commit") {
+      return HttpResponse.json(repo !== null && path !== null ? fixtureCommitDiff(repo, path) : fixtureCommit);
+    }
     if (repo !== null && path !== null) return HttpResponse.json(fixtureChangeDiff(repo, path));
     return HttpResponse.json(fixtureChanges);
   }),

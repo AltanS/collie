@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
 import type { PaneChangesResponse } from "@/lib/types";
-import { fixtureAgents, fixtureChanges } from "@/test/handlers";
+import { fixtureAgents, fixtureChanges, fixtureCleanChanges, fixtureCommit } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
 
@@ -319,4 +319,41 @@ test("the list re-reads on its own and shows a change without a tap", async ({ p
   await expect(firstRow).toBeVisible();
   await expect(refresh).toBeEnabled();
   expect(reads).toHaveLength(3);
+});
+
+// The commit view (ADR 0065, operator decision 2026-09-23): agents commit their own work, so the
+// list goes empty right after the change worth reading. The empty list offers the last commit, a
+// level down; its file is a level below that, and two swipes back land on the list again.
+test("an empty list shows the last commit, its file, and back twice lands on the list", async ({ page }) => {
+  await page.route(/\/api\/pane\/[^/]+\/changes(\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("view") === "commit" || url.searchParams.has("path")) return route.fallback();
+    return route.fulfill({ json: fixtureCleanChanges });
+  });
+  const list = `/pane/${encodeURIComponent(PANE.paneId)}/changes`;
+  await page.goto(list);
+  await expect(page.getByText(en["changes.empty"])).toBeVisible();
+  const show = page.getByRole("button", { name: en["changes.commit.show"] });
+  expect((await show.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await show.click();
+
+  await expect(page).toHaveURL(/\/changes\/commit\?repo=\.$/);
+  await expect(page.getByRole("heading", { name: en["changes.commit.title"] })).toBeVisible();
+  if (!fixtureCommit.available) throw new Error("fixture");
+  const subject = page.getByText(fixtureCommit.commit.subject);
+  await expect(subject).toBeVisible();
+  await expect(page.getByText(fixtureCommit.commit.shortHash)).toBeVisible();
+  await noSidewaysScroll(page);
+
+  await page.getByRole("button", { name: /checkout\.tsx/ }).click();
+  await expect(page).toHaveURL(/\/changes\/commit\?repo=\.&path=src%2Froutes%2Fcheckout\.tsx$/);
+  await expect(page.getByText(/including shipping to/)).toBeVisible();
+  await noSidewaysScroll(page);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/changes\/commit\?repo=\.$/);
+  await expect(subject).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/changes$/);
+  await expect(page.getByText(en["changes.empty"])).toBeVisible();
 });

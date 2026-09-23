@@ -21,6 +21,8 @@ import type {
   CacheWatchState,
   LaunchersResponse,
   NotifyPrefs,
+  ChangeCommitDiffResponse,
+  ChangeCommitResponse,
   ChangeDiffResponse,
   ChangesResponse,
   PaneHistoryResponse,
@@ -520,6 +522,33 @@ export function fetchChangeDiff(
 ): Promise<ChangeDiffResponse> {
   const path = `${changesBase(target)}?${changesQuery(lookup, file)}`;
   return req<ChangeDiffResponse>(withScope(path, scope), { signal });
+}
+
+/** The last commit of one repo in the workspace (ADR 0065, the commit view). HEAD only. */
+export function fetchChangeCommit(
+  target: ChangesTarget,
+  lookup: ChangesLookup,
+  repo: string,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<ChangeCommitResponse> {
+  const q = new URLSearchParams(changesQuery(lookup));
+  q.set("view", "commit");
+  q.set("repo", repo);
+  return req<ChangeCommitResponse>(withScope(`${changesBase(target)}?${q.toString()}`, scope), { signal });
+}
+
+/** One file of that commit. The bridge serves only a path the same read of HEAD listed. */
+export function fetchChangeCommitDiff(
+  target: ChangesTarget,
+  lookup: ChangesLookup,
+  file: { repo: string; path: string },
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<ChangeCommitDiffResponse> {
+  const q = new URLSearchParams(changesQuery(lookup, file));
+  q.set("view", "commit");
+  return req<ChangeCommitDiffResponse>(withScope(`${changesBase(target)}?${q.toString()}`, scope), { signal });
 }
 
 export function sendReply(

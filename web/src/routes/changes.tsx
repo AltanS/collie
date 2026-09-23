@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
+import { CleanRepos, CommitHead } from "@/components/changes-commit";
 import {
   ChangePath,
   ChangesFilterButton,
@@ -18,11 +19,19 @@ import {
 } from "@/components/changes-view";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
+import { SectionLabel } from "@/components/ui/section-label";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { CHANGES_POLL_MS, useVisibleInterval } from "@/hooks/use-visible-interval";
-import { fetchChangeDiff, fetchChanges, type ChangesLookup, type ChangesTarget } from "@/lib/api";
+import {
+  fetchChangeCommit,
+  fetchChangeCommitDiff,
+  fetchChangeDiff,
+  fetchChanges,
+  type ChangesLookup,
+  type ChangesTarget,
+} from "@/lib/api";
 import {
   countFiles,
   EMPTY_FILTER,
@@ -38,10 +47,12 @@ import { isAbortError } from "@/lib/loaders";
 import { t, tn, type MessageKey } from "@/lib/i18n";
 import {
   canStepBack,
+  changesCommitPath,
   changesPath,
   changesSettingsPath,
   panePath,
   readFrom,
+  spaceChangesCommitPath,
   spaceChangesPath,
   spacePath,
   upTarget,
@@ -50,11 +61,14 @@ import { useRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { shareEqual } from "@/lib/share-equal";
 import type {
+  ChangeCommitDiffResponse,
+  ChangeCommitResponse,
   ChangedRepo,
   ChangeDiffResponse,
   ChangesResponse,
   ChangeStatus,
   ChangesUnavailableReason,
+  CleanRepo,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +78,15 @@ import { cn } from "@/lib/utils";
 // same list, and the header names the workspace and its folder so the scope is never a guess.
 // Two screens: the list, and with `?repo=&path=` one file's diff. Both live in this one component
 // so the list survives the hop to a file and back, and Previous / Next can walk it.
+//
+// THE COMMIT VIEW. Agents commit their own work, so the list goes empty right after the change the
+// operator most wants to read. A clean repo offers "Show last commit": `…/changes/commit?repo=` is
+// that repo's HEAD, and `&path=` one file of it, with the same list, filter and diff. It is a level
+// below the list (a down move; up returns to the list), matched by the same route (`changes/*` in
+// router.tsx), so this component stays mounted and the list under it keeps its state. The 5 s beat
+// re-reads the commit too, but a newer HEAD never replaces the files on screen: it shows a quiet
+// "A newer commit exists" to tap, and new uncommitted changes in that repo show a line back to the
+// list.
 //
 // NOT ON THE ROOT POLL LOOP, BUT ON ITS OWN SLOW ONE (ADR 0065 rule 8). The route has no loader
 // (router.tsx), so the root poll re-renders this screen and fetches nothing for it: git status over
@@ -85,24 +108,54 @@ type ListState =
   | { phase: "error" }
   | { phase: "ready"; data: ChangesResponse };
 
+/** A diff either screen reads: an uncommitted file's, or one file of the last commit. */
+type AnyDiff = ChangeDiffResponse | ChangeCommitDiffResponse;
+
 type FileState =
   | { phase: "loading"; key: string }
   | { phase: "error"; key: string }
   // `gone`: a re-read found the file no longer changed. `data` stays the last diff that was.
-  | { phase: "ready"; key: string; data: ChangeDiffResponse; gone?: true };
+  // `moved`: a commit file's first read came from a newer commit than the one on screen.
+  | { phase: "ready"; key: string; data: AnyDiff; gone?: true; moved?: true };
 
 /**
  * The file state after a read of `key` answered `data`. The same answer keeps the old state object,
  * so React skips the render. A file that has left the list keeps its last diff and is marked gone,
- * rather than turning into an error screen under the operator's eyes.
+ * rather than turning into an error screen under the operator's eyes. A commit file answered from a
+ * commit other than `shownHash` (HEAD moved) keeps the diff on screen, or, on a first read, says so.
  */
-function nextFile(prev: FileState | null, key: string, data: ChangeDiffResponse): FileState {
-  if (prev?.key !== key || prev.phase !== "ready") return { phase: "ready", key, data };
+function nextFile(prev: FileState | null, key: string, data: AnyDiff, shownHash?: string): FileState {
+  const same = prev?.key === key && prev.phase === "ready" ? prev : null;
+  if (shownHash !== undefined && data.available && "hash" in data && data.hash !== shownHash) {
+    return same ?? { phase: "ready", key, data, moved: true };
+  }
+  if (same === null) return { phase: "ready", key, data };
   const left = !data.available && (data.reason === "unknown-path" || data.reason === "unknown-repo");
-  if (left && prev.data.available) return prev.gone ? prev : { ...prev, gone: true };
-  const shared = shareEqual(prev.data, data);
-  if (shared === prev.data && !prev.gone) return prev;
+  if (left && same.data.available) return same.gone ? same : { ...same, gone: true };
+  const shared = shareEqual(same.data, data);
+  if (shared === same.data && !same.gone && !same.moved) return same;
   return { phase: "ready", key, data: shared };
+}
+
+type CommitState =
+  | { phase: "loading"; repo: string }
+  | { phase: "error"; repo: string }
+  // `newer`: a re-read found a newer HEAD. It waits for a tap; `data` stays on screen.
+  | { phase: "ready"; repo: string; data: ChangeCommitResponse; newer?: ChangeCommitResponse };
+
+/** The commit state after a re-read of `repo` answered `data`. Never swaps the commit on screen. */
+function nextCommit(prev: CommitState | null, repo: string, data: ChangeCommitResponse): CommitState {
+  if (prev?.repo !== repo || prev.phase !== "ready") return { phase: "ready", repo, data };
+  const shown = prev.data;
+  if (shown.available && data.available && data.commit.hash !== shown.commit.hash) {
+    const newer = prev.newer === undefined ? data : shareEqual(prev.newer, data);
+    return newer === prev.newer ? prev : { ...prev, newer };
+  }
+  // A re-read that cannot see the repo any more keeps the commit on screen.
+  if (shown.available && !data.available) return prev;
+  const shared = shareEqual(shown, data);
+  if (shared === shown && prev.newer === undefined) return prev;
+  return { phase: "ready", repo, data: shared };
 }
 
 function unavailableKey(reason: ChangesUnavailableReason): MessageKey {
@@ -135,7 +188,7 @@ interface FromList {
 
 export function ChangesRoute() {
   useLocale();
-  const { paneId = "", spaceId = "" } = useParams();
+  const { paneId = "", spaceId = "", "*": splat = "" } = useParams();
   // Which route this is: the pane form or the space form. Both read the same list.
   const target: ChangesTarget = useMemo(
     () => (spaceId !== "" ? { kind: "space", spaceId } : { kind: "pane", paneId }),
@@ -157,7 +210,12 @@ export function ChangesRoute() {
 
   const repoParam = search.get("repo");
   const pathParam = search.get("path");
-  const open: ChangeRef | null = repoParam !== null && pathParam !== null ? { repo: repoParam, path: pathParam } : null;
+  // `…/changes/commit`: the commit view. Its repo and file ride the same two query names.
+  const commitView = splat === "commit";
+  const fileRef: ChangeRef | null = repoParam !== null && pathParam !== null ? { repo: repoParam, path: pathParam } : null;
+  const open: ChangeRef | null = commitView ? null : fileRef;
+  const commitRepo = commitView ? repoParam : null;
+  const commitOpen: ChangeRef | null = commitView ? fileRef : null;
 
   const pane =
     target.kind === "pane"
@@ -254,21 +312,91 @@ export function ChangesRoute() {
     mainRef.current?.querySelector("[data-pane-repo]")?.scrollIntoView({ block: "start" });
   }, [list, target.kind, targetKey, paneCwd]);
 
-  const allRepos = useMemo<readonly ChangedRepo[]>(
+  // ── The last commit (commit view) ────────────────────────────────────────
+  const [commit, setCommit] = useState<CommitState | null>(null);
+  const commitNow = useRef(commit);
+  commitNow.current = commit;
+  const commitCtl = useRef<AbortController | null>(null);
+
+  /** Read the repo's last commit. Same contract as `readList`. */
+  const readCommit = useCallback(
+    async (repo: string, mode: ReadMode): Promise<boolean> => {
+      if (mode === "poll" && commitCtl.current !== null) return true;
+      commitCtl.current?.abort();
+      const ctl = new AbortController();
+      commitCtl.current = ctl;
+      // Opening asks for the commit that is last NOW, so it starts clean rather than as a re-read.
+      if (mode === "open") setCommit({ phase: "loading", repo });
+      try {
+        const data = await fetchChangeCommit(target, lookup, repo, scope, ctl.signal);
+        const next = nextCommit(commitNow.current, repo, data);
+        if (next !== commitNow.current) setCommit(next);
+        return true;
+      } catch (e) {
+        if (isAbortError(e)) return true;
+        const prev = commitNow.current;
+        if (mode === "open" || prev?.repo !== repo || prev.phase !== "ready") setCommit({ phase: "error", repo });
+        return false;
+      } finally {
+        if (commitCtl.current === ctl) commitCtl.current = null;
+      }
+    },
+    [target, lookup, scope],
+  );
+
+  useEffect(() => {
+    if (commitRepo === null) return;
+    void readCommit(commitRepo, "open");
+    return () => {
+      commitCtl.current?.abort();
+      commitCtl.current = null;
+    };
+  }, [commitRepo, readCommit]);
+
+  const loadNewer = () =>
+    setCommit((prev) => (prev?.phase === "ready" && prev.newer ? { phase: "ready", repo: prev.repo, data: prev.newer } : prev));
+
+  const commitState = commit !== null && commit.repo === commitRepo ? commit : null;
+  const commitData = commitState?.phase === "ready" && commitState.data.available ? commitState.data : null;
+  const commitRepos = useMemo<readonly ChangedRepo[]>(
+    () => (commitData ? [{ relPath: commitData.repo, name: commitData.name, files: commitData.files }] : []),
+    [commitData],
+  );
+  // The commit keeps its own filter and folds: it is another list, and one narrowed for the
+  // uncommitted files should not hide the commit's.
+  const [commitFilter, setCommitFilter] = useState<ChangesFilter>(EMPTY_FILTER);
+  const [commitCollapsed, setCommitCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleCommitFolder = useCallback(
+    (key: string) =>
+      setCommitCollapsed((prev) => {
+        const next = new Set(prev);
+        if (!next.delete(key)) next.add(key);
+        return next;
+      }),
+    [],
+  );
+  useEffect(() => setFilterOpen(false), [commitView]);
+
+  const listRepos = useMemo<readonly ChangedRepo[]>(
     () => (list.phase === "ready" && list.data.available ? list.data.repos : []),
     [list],
   );
-  const shownRepos = useMemo(() => filterRepos(allRepos, filter), [allRepos, filter]);
+  const allRepos = commitView ? commitRepos : listRepos;
+  const activeFilter = commitView ? commitFilter : filter;
+  const setActiveFilter = commitView ? setCommitFilter : setFilter;
+  const shownRepos = useMemo(() => filterRepos(allRepos, activeFilter), [allRepos, activeFilter]);
   const total = countFiles(allRepos);
   const shown = countFiles(shownRepos);
-  const filtering = isFilterActive(filter);
-  const clearFilter = () => setFilter(EMPTY_FILTER);
+  const filtering = isFilterActive(activeFilter);
+  const clearFilter = () => setActiveFilter(EMPTY_FILTER);
 
   // Previous / Next walk what the list shows: the filtered files, in the layout's order.
   const order = useMemo(() => layoutOrder(shownRepos, layout), [shownRepos, layout]);
 
   // ── One file ──────────────────────────────────────────────────────────────
-  const openKey = open ? `${open.repo}\n${open.path}` : null;
+  // Keyed with the screen it belongs to, so a commit's file and the same uncommitted file differ.
+  const current = open ?? commitOpen;
+  const openKey = current ? `${commitView ? "commit" : "changes"}\n${current.repo}\n${current.path}` : null;
   const [file, setFile] = useState<FileState | null>(null);
   const fileNow = useRef(file);
   fileNow.current = file;
@@ -281,11 +409,20 @@ export function ChangesRoute() {
       fileCtl.current?.abort();
       const ctl = new AbortController();
       fileCtl.current = ctl;
-      const [repo = "", path = ""] = key.split("\n");
+      const [kind = "", repo = "", ...rest] = key.split("\n");
+      const ref = { repo, path: rest.join("\n") };
       if (mode === "open") setFile({ phase: "loading", key });
       try {
-        const data = await fetchChangeDiff(target, lookup, { repo, path }, scope, ctl.signal);
-        const next = nextFile(fileNow.current, key, data);
+        let data: AnyDiff;
+        let shownHash: string | undefined;
+        if (kind === "commit") {
+          data = await fetchChangeCommitDiff(target, lookup, ref, scope, ctl.signal);
+          const c = commitNow.current;
+          shownHash = c?.phase === "ready" && c.repo === repo && c.data.available ? c.data.commit.hash : undefined;
+        } else {
+          data = await fetchChangeDiff(target, lookup, ref, scope, ctl.signal);
+        }
+        const next = nextFile(fileNow.current, key, data, shownHash);
         if (next !== fileNow.current) setFile(next);
         return true;
       } catch (e) {
@@ -316,7 +453,9 @@ export function ChangesRoute() {
   const [failures, setFailures] = useState(0);
   const reread = async (mode: "manual" | "poll") => {
     if (mode === "manual") setRefreshing(true);
+    // On the commit view the list is still read: it is what says the repo has new uncommitted work.
     const reads = [readList(mode)];
+    if (commitRepo !== null) reads.push(readCommit(commitRepo, mode));
     if (openKey !== null) reads.push(readFile(openKey, mode));
     const ok = (await Promise.all(reads)).every(Boolean);
     if (mode === "manual") setRefreshing(false);
@@ -328,17 +467,24 @@ export function ChangesRoute() {
 
   const pathTo = (ref?: ChangeRef) =>
     target.kind === "pane" ? changesPath(paneId, scope, ref) : spaceChangesPath(spaceId, scope, ref);
+  const commitPathTo = (repo: string, path?: string) =>
+    target.kind === "pane" ? changesCommitPath(paneId, scope, repo, path) : spaceChangesCommitPath(spaceId, scope, repo, path);
+  const filePathTo = (ref: ChangeRef) => (commitView ? commitPathTo(ref.repo, ref.path) : pathTo(ref));
   const openFile = (ref: ChangeRef) => {
     const state: FromList = { fromList: true };
-    navigate(pathTo(ref), { state });
+    navigate(filePathTo(ref), { state });
   };
+  // Down one level to a repo's last commit (ADR 0067): a push that records the list as `from`.
+  const showCommit = (repo: string) => nav.down(commitPathTo(repo));
+  // Up from the commit to the list: a step back onto it, or a replace when opened cold.
+  const upToList = () => nav.up(pathTo());
   // Previous / Next REPLACE the entry, so browser back from any file lands on the list.
-  const stepTo = (ref: ChangeRef) => navigate(pathTo(ref), { replace: true, state: location.state });
+  const stepTo = (ref: ChangeRef) => navigate(filePathTo(ref), { replace: true, state: location.state });
   const backToList = () => {
     // SAFETY: `location.state` is only ever written by `openFile` above, as `FromList`.
     const fromList = (location.state as FromList | null)?.fromList === true;
     if (fromList) navigate(-1);
-    else navigate(pathTo(), { replace: true });
+    else navigate(commitRepo !== null ? commitPathTo(commitRepo) : pathTo(), { replace: true });
   };
   // Up one level (ADR 0067): a step back to the dashboard, space or pane this list was opened from,
   // else a replace onto the pane or the space, never a push that leaves the list behind it.
@@ -360,18 +506,23 @@ export function ChangesRoute() {
   const rootFolder = ready?.available ? ready.root : null;
 
   const fileState = file && file.key === openKey ? file : null;
-  const listedFile =
-    open && list.phase === "ready" && list.data.available
+  const listedFile = open
+    ? list.phase === "ready" && list.data.available
       ? list.data.repos.find((r) => r.relPath === open.repo)?.files.find((f) => f.path === open.path)
+      : undefined
+    : commitOpen
+      ? commitData?.files.find((f) => f.path === commitOpen.path)
       : undefined;
   const shownDiff = fileState?.phase === "ready" && fileState.data.available ? fileState.data : undefined;
-  // Gone: the diff read says so, or the list no longer names a file whose diff we hold.
+  // Gone: the diff read says so, or the list no longer names a file whose diff we hold. A commit's
+  // files never leave it, so the commit view has no gone.
   const gone =
+    !commitView &&
     fileState?.phase === "ready" &&
     (fileState.gone === true ||
       (shownDiff !== undefined && list.phase === "ready" && list.data.available && listedFile === undefined));
 
-  const at = open ? order.findIndex((r) => r.repo === open.repo && r.path === open.path) : -1;
+  const at = current ? order.findIndex((r) => r.repo === current.repo && r.path === current.path) : -1;
   // Where the open file last sat in the order, so a file that leaves keeps its neighbours: Previous
   // is the one before it, Next the one that slid into its place.
   const lastAt = useRef<{ key: string; at: number } | null>(null);
@@ -400,13 +551,21 @@ export function ChangesRoute() {
                 variant="ghost"
                 size="icon"
                 className="size-11 shrink-0"
-                onClick={open ? backToList : backOut}
-                aria-label={open ? t("changes.listBackAria") : t(backAriaKey)}
+                onClick={current ? backToList : commitView ? upToList : backOut}
+                aria-label={
+                  commitOpen
+                    ? t("changes.commit.backAria")
+                    : open || commitView
+                      ? t("changes.listBackAria")
+                      : t(backAriaKey)
+                }
               >
                 <ArrowLeft className="size-5" />
               </Button>
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">{t("changes.title")}</h1>
+                <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">
+                  {commitView ? t("changes.commit.title") : t("changes.title")}
+                </h1>
                 <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
                   <span className="shrink-0 truncate">{workspaceLabel}</span>
                   {rootFolder && (
@@ -420,7 +579,7 @@ export function ChangesRoute() {
                   </span>
                 </div>
               </div>
-              {!open && (
+              {!current && (
                 <>
                   <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
                   <ChangesFilterButton
@@ -448,12 +607,12 @@ export function ChangesRoute() {
 
         {/* Floats over the list, anchored under the header: opening and closing move neither by a
             pixel. Tapping outside it or Escape closes it; the filter itself stays applied. */}
-        {!open && (
+        {!current && (
           <ChangesFilterOverlay
             open={filterOpen}
             onClose={() => setFilterOpen(false)}
-            filter={filter}
-            onChange={setFilter}
+            filter={activeFilter}
+            onChange={setActiveFilter}
             onClear={clearFilter}
             shown={shown}
             total={total}
@@ -462,9 +621,9 @@ export function ChangesRoute() {
       </div>
 
       <main ref={mainRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {open ? (
+        {current ? (
           <FileScreen
-            path={open.path}
+            path={current.path}
             // The diff carries both too, so a file that has left keeps its letter and its line.
             oldPath={listedFile ? listedFile.oldPath : shownDiff?.oldPath}
             status={listedFile?.status ?? shownDiff?.status}
@@ -474,6 +633,26 @@ export function ChangesRoute() {
             next={next}
             onStep={stepTo}
           />
+        ) : commitView ? (
+          <div className="p-4">
+            <CommitBody
+              state={commitState}
+              repos={shownRepos}
+              layout={layout}
+              collapsed={commitCollapsed}
+              onToggle={toggleCommitFolder}
+              onClearFilter={clearFilter}
+              onOpen={openFile}
+              uncommitted={
+                commitRepo !== null &&
+                list.phase === "ready" &&
+                list.data.available &&
+                list.data.repos.some((r) => r.relPath === commitRepo)
+              }
+              onLoadNewer={loadNewer}
+              onShowUncommitted={upToList}
+            />
+          </div>
         ) : (
           <div className="p-4">
             <ListBody
@@ -487,6 +666,7 @@ export function ChangesRoute() {
               onToggle={toggleFolder}
               onClearFilter={clearFilter}
               onOpen={openFile}
+              onShowCommit={showCommit}
             />
           </div>
         )}
@@ -510,6 +690,7 @@ function ListBody({
   onToggle,
   onClearFilter,
   onOpen,
+  onShowCommit,
 }: {
   state: ListState;
   /** The repos after the filter. */
@@ -525,15 +706,10 @@ function ListBody({
   onToggle: (key: string) => void;
   onClearFilter: () => void;
   onOpen: (ref: ChangeRef) => void;
+  /** Open a clean repo's last commit. */
+  onShowCommit: (repo: string) => void;
 }) {
-  if (state.phase === "loading") {
-    return (
-      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        {t("changes.loading")}
-      </div>
-    );
-  }
+  if (state.phase === "loading") return <Loading label={t("changes.loading")} />;
   if (state.phase === "error") {
     return (
       <Notice variant="box" tone="danger" announce="alert">
@@ -543,9 +719,16 @@ function ListBody({
   }
   const data = state.data;
   if (!data.available) return <Quiet>{t(unavailableKey(data.reason))}</Quiet>;
+  const clean: readonly CleanRepo[] = data.clean ?? [];
   let body: React.ReactNode;
-  if (data.repos.length === 0) body = <Quiet>{t("changes.empty")}</Quiet>;
-  else if (repos.length === 0)
+  if (data.repos.length === 0) {
+    body = (
+      <div className="flex flex-col gap-4 py-16">
+        <p className="px-2 text-center text-sm leading-relaxed text-muted-foreground">{t("changes.empty")}</p>
+        <CleanRepos repos={clean} onShow={onShowCommit} />
+      </div>
+    );
+  } else if (repos.length === 0)
     body = <ChangesNoMatch onClear={onClearFilter} />;
   else if (layout === "tree")
     body = <ChangesTree repos={repos} paneRepo={paneRepo} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} />;
@@ -567,7 +750,86 @@ function ListBody({
   return (
     <div className="flex flex-col gap-4">
       {body}
+      {/* Beside other repos' changes, the clean ones still offer their last commit, named. */}
+      {data.repos.length > 0 && clean.length > 0 && (
+        <section aria-label={t("changes.commit.cleanHeading")} className="flex flex-col">
+          <SectionLabel className="mb-1.5 normal-case">{t("changes.commit.cleanHeading")}</SectionLabel>
+          <CleanRepos repos={clean} onShow={onShowCommit} rows />
+        </section>
+      )}
       {bound}
+    </div>
+  );
+}
+
+function Loading({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin" />
+      {label}
+    </div>
+  );
+}
+
+function commitUnavailableKey(reason: Extract<ChangeCommitResponse, { available: false }>["reason"]): MessageKey {
+  if (reason === "no-commit") return "changes.commit.noCommit";
+  if (reason === "unknown-repo") return "changes.commit.unknown";
+  return unavailableKey(reason);
+}
+
+/** The commit view's list screen: the commit's head, then its files, drawn like the Changes list. */
+function CommitBody({
+  state,
+  repos,
+  layout,
+  collapsed,
+  onToggle,
+  onClearFilter,
+  onOpen,
+  uncommitted,
+  onLoadNewer,
+  onShowUncommitted,
+}: {
+  state: CommitState | null;
+  /** The commit's one repo, after the filter. */
+  repos: readonly ChangedRepo[];
+  layout: ChangesLayout;
+  collapsed: ReadonlySet<string>;
+  onToggle: (key: string) => void;
+  onClearFilter: () => void;
+  onOpen: (ref: ChangeRef) => void;
+  /** The repo now has uncommitted changes. */
+  uncommitted: boolean;
+  onLoadNewer: () => void;
+  onShowUncommitted: () => void;
+}) {
+  if (state === null) return <Quiet>{t("changes.commit.unknown")}</Quiet>;
+  if (state.phase === "loading") return <Loading label={t("changes.commit.loading")} />;
+  if (state.phase === "error") {
+    return (
+      <Notice variant="box" tone="danger" announce="alert">
+        {t("changes.commit.error")}
+      </Notice>
+    );
+  }
+  const data = state.data;
+  if (!data.available) return <Quiet>{t(commitUnavailableKey(data.reason))}</Quiet>;
+  let body: React.ReactNode;
+  if (data.files.length === 0) body = <Quiet>{t("changes.commit.empty")}</Quiet>;
+  else if (repos.length === 0) body = <ChangesNoMatch onClear={onClearFilter} />;
+  else if (layout === "tree") body = <ChangesTree repos={repos} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} />;
+  else body = <ChangesList repos={repos} onOpen={onOpen} />;
+  return (
+    <div className="flex flex-col gap-4">
+      <CommitHead
+        commit={data.commit}
+        newer={state.newer !== undefined}
+        uncommitted={uncommitted}
+        onLoadNewer={onLoadNewer}
+        onShowUncommitted={onShowUncommitted}
+      />
+      {body}
+      {data.truncated && <p className="text-xs text-muted-foreground">{t("changes.truncated")}</p>}
     </div>
   );
 }
@@ -632,14 +894,7 @@ function FileScreen({
 }
 
 function FileBody({ state }: { state: FileState | null }) {
-  if (state === null || state.phase === "loading") {
-    return (
-      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        {t("changes.loading")}
-      </div>
-    );
-  }
+  if (state === null || state.phase === "loading") return <Loading label={t("changes.loading")} />;
   if (state.phase === "error") {
     return (
       <div className="px-4">
@@ -649,12 +904,15 @@ function FileBody({ state }: { state: FileState | null }) {
       </div>
     );
   }
+  if (state.moved) return <Quiet>{t("changes.commit.fileNewer")}</Quiet>;
   const data = state.data;
   if (!data.available) {
     const reason = data.reason;
     return (
       <Quiet>
-        {reason === "unknown-repo" || reason === "unknown-path" ? t("changes.file.unknown") : t(unavailableKey(reason))}
+        {reason === "unknown-repo" || reason === "unknown-path" || reason === "no-commit"
+          ? t("changes.file.unknown")
+          : t(unavailableKey(reason))}
       </Quiet>
     );
   }
