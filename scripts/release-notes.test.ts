@@ -16,6 +16,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	changelogAnchor,
 	checkUnreleased,
+	creditedHandles,
 	parseSection,
 	parseUrgent,
 	renderBody,
@@ -138,7 +139,9 @@ describe("checkUnreleased", () => {
 			"## [Unreleased]\n",
 			"## [Unreleased]\n\n### Fixed\n\n- **A thing is fixed.** The detail follows here. (#1)\n",
 		);
-		expect(checkUnreleased(filled)).toEqual([{ name: "Fixed", leads: ["A thing is fixed."] }]);
+		expect(checkUnreleased(filled)).toEqual([
+			{ name: "Fixed", leads: ["A thing is fixed."], credits: [[]] },
+		]);
 	});
 
 	test("a bullet with no bold lead fails, and the message names the section", () => {
@@ -196,7 +199,7 @@ Check with \`collie version\` or \`herdr plugin action invoke version --plugin h
 
 **Added**
 
-- The crew levels itself.
+- The crew levels itself. Thanks @someone.
 
 **Changed**
 
@@ -256,6 +259,72 @@ HTTPS and the pinned github.com host carry that.
 		expect(body).not.toContain("**Fixed**");
 		expect(body).not.toContain("**Packaging**");
 		expect(body).not.toContain("**Docs**");
+	});
+});
+
+// ── Credits ─────────────────────────────────────────────────────────────────────────────────────
+// GitHub draws a release's Contributors avatars only for users the body @mentions, so the page line
+// keeps the credit its bullet carries.
+
+const CREDITS = `# Changelog
+
+## [3.0.0] - 2026-11-01
+
+### Added
+
+- **A.** Detail. Thanks @alice (#1, fixes #2). ([aaaaaaa](https://github.com/AltanS/collie/commit/aaaaaaa))
+- **B.** Detail. Reported by @bob (#3). ([bbbbbbb](https://github.com/AltanS/collie/commit/bbbbbbb))
+- **C.** Detail. Thanks to @carol and @dave-x, and suggested by @Alice. (#4)
+- **D.** Contributed by [@erin](https://github.com/erin) (#5).
+
+### Fixed
+
+- **E.** The \`@effort\` token, \`Thanks @mallory\`, the @types/node scope, mail me@example.com and the @word in prose.
+- **F.** Thanks @AltanS for the review, and thanks @frank.
+- **G.** Built by @AltanS alone.
+`;
+
+describe("credits", () => {
+	test("each bullet keeps its own credit, phrase as written", () => {
+		const section = parseSection(CREDITS, "3.0.0");
+		const added = section.groups.find((g) => g.name === "Added");
+		expect(added?.credits).toEqual([
+			[{ phrase: "Thanks", handles: ["alice"] }],
+			[{ phrase: "Reported by", handles: ["bob"] }],
+			[
+				{ phrase: "Thanks to", handles: ["carol", "dave-x"] },
+				{ phrase: "Suggested by", handles: ["Alice"] },
+			],
+			[{ phrase: "Contributed by", handles: ["erin"] }],
+		]);
+	});
+
+	test("code spans, scopes, e-mail, bare @words and the maintainer do not count", () => {
+		const fixed = parseSection(CREDITS, "3.0.0").groups.find((g) => g.name === "Fixed");
+		expect(fixed?.credits).toEqual([[], [{ phrase: "Thanks", handles: ["frank"] }], []]);
+	});
+
+	test("the section's handles are deduped, first spelling wins", () => {
+		expect(creditedHandles(parseSection(CREDITS, "3.0.0"))).toEqual([
+			"alice",
+			"bob",
+			"carol",
+			"dave-x",
+			"erin",
+			"frank",
+		]);
+	});
+
+	test("the page line ends with the credit, as a bare @mention", () => {
+		const body = renderBody(CREDITS, "3.0.0", REPO, "v3.0.0");
+		expect(body).toContain("- A. Thanks @alice.\n");
+		expect(body).toContain("- B. Reported by @bob.\n");
+		expect(body).toContain("- C. Thanks to @carol and @dave-x. Suggested by @Alice.\n");
+		expect(body).toContain("- D. Contributed by @erin.\n");
+		expect(body).toContain("- E.\n");
+		expect(body).toContain("- F. Thanks @frank.\n");
+		expect(body).toContain("- G.\n");
+		expect(body).not.toContain("@AltanS");
 	});
 });
 
@@ -364,6 +433,26 @@ describe("the repository's CHANGELOG.md", () => {
 		const section = parseSection(changelog, newest ?? "");
 		expect(section.groups.length).toBeGreaterThan(0);
 		for (const group of section.groups) expect(group.leads.length).toBeGreaterThan(0);
+	});
+
+	test("1.12.1 credits the contributor its changelog names", () => {
+		expect(creditedHandles(parseSection(changelog, "1.12.1"))).toEqual(["enieuwy"]);
+	});
+
+	test("1.12.0 credits every contributor its changelog names", () => {
+		expect(creditedHandles(parseSection(changelog, "1.12.0"))).toEqual([
+			"edwinhu",
+			"CorrectRoadH",
+			"fonnesbeck",
+			"waynehoover",
+			"jyothyswaroop",
+			"bendrucker",
+			"lighcen",
+			"dantebarba",
+			"jpcarranza94",
+			"ubuntudroid",
+			"Femoon",
+		]);
 	});
 
 	test("every bullet under Unreleased is grouped and has a bold lead", () => {
