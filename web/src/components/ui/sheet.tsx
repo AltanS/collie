@@ -77,9 +77,14 @@ export function BottomSheet({
   // tree's point of view either way; the dialog role below is only meaningful once `open` is true.
   const peeking = !open && pull > 0;
   // Remembers whether the LAST render was a peek, so the render where `open` flips true can tell
-  // "this is a drag continuing into an open" from "this open had nothing before it" and skip the
-  // slide-in entrance in the former case.
+  // "this is a drag continuing into an open" from "this open had nothing before it". That one render
+  // takes the 180ms glide below; it is true for that render only.
   const wasPeeking = React.useRef(false);
+  // Whether the CURRENT open began as a peek, held until the sheet closes. The entrance classes read
+  // this, not `continuingFromPeek`: that is true for one render only, so the next re-render of the
+  // open sheet (a poll, a keyboard resize) added `animate-in`, which restarts the keyframe at
+  // translateY(100%) — the sheet dropped out of view and slid back in.
+  const openedFromPeek = React.useRef(false);
   useDialogFocus(open, panelRef);
 
   // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
@@ -157,6 +162,8 @@ export function BottomSheet({
   // fresh open from a drag continuing into one. Updated for the NEXT render right after.
   const continuingFromPeek = open && wasPeeking.current;
   wasPeeking.current = peeking;
+  openedFromPeek.current = open && (openedFromPeek.current || continuingFromPeek);
+  const skipEntrance = openedFromPeek.current;
 
   if (!open && !peeking) return null;
 
@@ -207,7 +214,7 @@ export function BottomSheet({
         tabIndex={-1}
         className={cn(
           "absolute inset-0 bg-black/50",
-          !peeking && !continuingFromPeek && "duration-200 animate-in fade-in",
+          !peeking && !skipEntrance && "duration-200 animate-in fade-in",
         )}
         style={peeking ? { opacity: Math.min(1, pull / 120) * 0.5 } : undefined}
         onPointerDown={() => {
@@ -245,7 +252,7 @@ export function BottomSheet({
           // The slide-in entrance plays on a fresh open only. A peek has no entrance (it's tracking
           // the finger, not animating), and a drag that continues into an open gets its own 180ms
           // transform transition above rather than restarting from the keyframe's own 100%.
-          !peeking && !continuingFromPeek && "duration-200 animate-in slide-in-from-bottom",
+          !peeking && !skipEntrance && "duration-200 animate-in slide-in-from-bottom",
           "pb-[calc(env(safe-area-inset-bottom)_+_1rem)]",
           className,
         )}
