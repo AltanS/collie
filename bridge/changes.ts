@@ -38,6 +38,14 @@
 //   • The environment: every inherited `GIT_*` variable is dropped (a stray `GIT_DIR`,
 //     `GIT_EXTERNAL_DIFF` or `GIT_CONFIG_PARAMETERS` in the bridge's env must not steer this), then
 //     `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0` and `GIT_CONFIG_NOSYSTEM=1` are set.
+//   • No network, ever. In a partial clone a missing blob makes git lazy-fetch from the promisor
+//     remote, and the repo's config picks that remote's transport (`core.sshCommand`, `ext::`,
+//     a credential helper). `GIT_NO_LAZY_FETCH=1`, `GIT_ALLOW_PROTOCOL=` (empty: every transport
+//     refused, whatever the repo's `protocol.<name>.allow` says), `GIT_PROTOCOL_FROM_USER=0`, and
+//     `-c protocol.allow=never`, `protocol.ext.allow=never`, `credential.helper=`,
+//     `core.sshCommand=`, `core.askPass=`, `fetch.recurseSubmodules=false`,
+//     `submodule.recurse=false`. A missing blob then fails that one git run: the list keeps its
+//     files with zero counts, and that file's diff comes back empty.
 // Harmless and left alone: `core.untrackedCache` (a cache, never a program), `include.path` (it only
 // reads more config, and a `-c` on the command line outranks anything it includes), trace2 (git
 // reads it from system and global config only). The operator's own global config is trusted: it is
@@ -149,6 +157,13 @@ export function gitEnv(base: Record<string, string | undefined>) {
   env.GIT_TERMINAL_PROMPT = "0";
   env.GIT_OPTIONAL_LOCKS = "0";
   env.GIT_CONFIG_NOSYSTEM = "1";
+  // Never touch the network. In a partial clone a missing blob triggers a lazy fetch from the
+  // promisor remote, whose URL and transport the repo's own config names. `GIT_ALLOW_PROTOCOL`
+  // empty refuses every transport and, unlike `protocol.allow`, outranks a repo's
+  // `protocol.<name>.allow=always`.
+  env.GIT_NO_LAZY_FETCH = "1";
+  env.GIT_ALLOW_PROTOCOL = "";
+  env.GIT_PROTOCOL_FROM_USER = "0";
   env.GIT_PAGER = "cat";
   env.PAGER = "cat";
   return env;
@@ -167,6 +182,16 @@ const HARDENING: readonly string[] = [
   "diff.noprefix=false",
   "diff.mnemonicPrefix=false",
   "diff.relative=false",
+  // No transport, no credential, no ssh program: we never fetch (see `gitEnv`). A repo's own
+  // `protocol.<name>.allow` outranks `protocol.allow`, so `ext` (which runs a command) is named too.
+  // An empty `credential.helper` resets the helper list.
+  "protocol.allow=never",
+  "protocol.ext.allow=never",
+  "credential.helper=",
+  "core.sshCommand=",
+  "core.askPass=",
+  "fetch.recurseSubmodules=false",
+  "submodule.recurse=false",
 ].flatMap((kv) => ["-c", kv]);
 
 /** A repo the way git is run against it: the folder that holds `.git`, and that `.git` entry. */

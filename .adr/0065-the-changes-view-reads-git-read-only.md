@@ -58,7 +58,15 @@ settings card) is about 4 KB.
    submodule under that repo's config). `--git-dir` and `--work-tree` are explicit, so a repo's
    `core.worktree` cannot move the scan; `--literal-pathspecs`, so a file name is never a pattern.
    Every inherited `GIT_*` variable is dropped, then `GIT_TERMINAL_PROMPT=0`,
-   `GIT_OPTIONAL_LOCKS=0` and `GIT_CONFIG_NOSYSTEM=1` are set. Left alone as harmless:
+   `GIT_OPTIONAL_LOCKS=0` and `GIT_CONFIG_NOSYSTEM=1` are set. **No run touches the network.** In
+   a partial clone a missing blob makes git lazy-fetch from the promisor remote, and the repo's own
+   config picks that remote's transport. So every run also sets `GIT_NO_LAZY_FETCH=1`,
+   `GIT_ALLOW_PROTOCOL=` (empty, so every transport is refused, and unlike `protocol.allow` it
+   outranks a repo's `protocol.<name>.allow=always`) and `GIT_PROTOCOL_FROM_USER=0`, and carries
+   `protocol.allow=never`, `protocol.ext.allow=never`, `credential.helper=` (empty resets the
+   helper list), `core.sshCommand=`, `core.askPass=`, `fetch.recurseSubmodules=false` and
+   `submodule.recurse=false`. A missing blob then fails that one run: the file stays listed with
+   zero counts and an empty diff. Left alone as harmless:
    `core.untrackedCache`, `include.path` (a `-c` outranks what it includes), trace2 (read from
    system and global config only). The operator's global config is trusted, like their shell.
 5. **The listed-paths rule.** A diff is served only for a `repo` that the same discovery (same
@@ -87,6 +95,20 @@ settings card) is about 4 KB.
   answers `no-folder` if reached by URL.
 - **Untracked folders are one entry.** `--untracked-files=normal` keeps a new `node_modules` from
   listing a hundred thousand files; the view says the folder is new and does not list inside it.
+- **Counsel, 2026-09-23.** Fixed here: the lazy fetch in a partial clone, and with it every
+  repo-chosen transport, credential helper and `core.sshCommand` (rule 4, and the partial-clone case
+  in the hostile-repo test). Declined, with the reason:
+  - Rejecting `.git` pointer files. Git worktrees and submodules use them, and Herdr opens worktrees
+    ([ADR 0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md)). A pointer that leads elsewhere only
+    mislabels the list; it grants nothing the agent in that folder could not already read.
+  - The race between checking an untracked file and reading it. The only party able to win it is
+    the agent running as the same user, and that agent can already read any file the bridge can.
+  - `safe.directory` stays at git's default. A repo owned by another user then fails with an error
+    rather than being trusted wholesale.
+
+  Already so, and confirmed: the list's truncation flag, per-repo status run in parallel with a
+  limit, rename-aware `-M` on both numstat and diff with both paths named, and a diff cut on a line
+  boundary.
 - **Revisit** if a real repo needs highlighting to be readable on a phone (measure the cost against
   the numbers above first), or if rule 4 misses a vector: a new git config key that executes during
   status or diff belongs in `bridge/changes.ts`'s `HARDENING` list and in its hostile-repo test.

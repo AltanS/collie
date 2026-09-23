@@ -8,6 +8,7 @@ import {
   changesParams,
   discoverRepos,
   fileDiff,
+  GIT_TIMEOUT_MS,
   gitEnv,
   listChanges,
   MAX_DIFF_LINES,
@@ -22,11 +23,20 @@ import type { PaneChangesResponse } from "./types.ts";
 
 let base: string;
 
+/** gitEnv with transports allowed again, so fixtures can clone. The runner under test refuses them. */
+function fixtureEnv(): Record<string, string> {
+  const env = gitEnv(process.env);
+  delete env.GIT_ALLOW_PROTOCOL;
+  delete env.GIT_NO_LAZY_FETCH;
+  delete env.GIT_PROTOCOL_FROM_USER;
+  return env;
+}
+
 /** Plain git for building fixtures — NOT the hardened runner under test. */
 function git(cwd: string, ...args: string[]): string {
   const run = Bun.spawnSync(
     ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args],
-    { cwd, env: gitEnv(process.env), stdout: "pipe", stderr: "pipe" },
+    { cwd, env: fixtureEnv(), stdout: "pipe", stderr: "pipe" },
   );
   if (run.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${run.stderr.toString()}`);
   return run.stdout.toString();
@@ -372,6 +382,59 @@ describe("a hostile repo runs nothing", () => {
     expect(env.GIT_DIR).toBeUndefined();
     expect(env.GIT_EXTERNAL_DIFF).toBeUndefined();
     expect(env).toMatchObject({ HOME: "/h", GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_CONFIG_NOSYSTEM: "1" });
+  });
+
+  test("a partial clone's missing blob never lazy-fetches through the repo's transport", async () => {
+    // A bare source that serves filters, and a blob:none clone of it.
+    const src = repo(join(base, "lazy-src"), { "a.txt": "one\n", "b.txt": "two\n" });
+    const bare = join(base, "lazy-src.git");
+    git(base, "clone", "-q", "--bare", src, bare);
+    git(bare, "config", "uploadpack.allowFilter", "true");
+    const dir = join(base, "lazy");
+    const clone = Bun.spawnSync(
+      ["git", "clone", "-q", "--filter=blob:none", "--no-checkout", `file://${bare}`, dir],
+      { env: fixtureEnv(), stdout: "pipe", stderr: "pipe" },
+    );
+    if (clone.exitCode !== 0) throw new Error(`clone: ${clone.stderr.toString()}`);
+    // The index names HEAD's blobs, none of which is present. a.txt changed on disk, b.txt is
+    // gone: numstat, status and the diff all want the missing HEAD blobs.
+    git(dir, "read-tree", "HEAD");
+    write(join(dir, "a.txt"), "changed\n");
+
+    const markers = join(base, "lazy-markers");
+    mkdirSync(markers);
+    const marker = join(base, "lazy-marker.sh");
+    writeFileSync(marker, `#!/bin/sh\ntouch '${markers}'/"$1"\nexit 1\n`);
+    chmodSync(marker, 0o755);
+    const transports = [
+      { name: "ssh", set: () => {
+        git(dir, "config", "remote.origin.url", "ssh://x/y");
+        git(dir, "config", "core.sshCommand", `${marker} ssh`);
+      } },
+      { name: "ext", set: () => {
+        git(dir, "config", "remote.origin.url", `ext::${marker} ext`);
+        git(dir, "config", "protocol.ext.allow", "always");
+      } },
+    ];
+
+    for (const t of transports) {
+      t.set();
+      // CONTROL: plain git on this clone DOES run the transport. Without this the test could pass
+      // vacuously.
+      Bun.spawnSync(["git", "diff", "--numstat", "HEAD"], { cwd: dir, env: fixtureEnv(), stdout: "ignore", stderr: "ignore" });
+      expect(existsSync(join(markers, t.name)), `${t.name} control`).toBe(true);
+      rmSync(markers, { recursive: true });
+      mkdirSync(markers);
+
+      const started = Date.now();
+      const res = available(await listChanges("p", dir, P));
+      // The list still names both files; the counts the missing blobs would give are simply absent.
+      expect(res.repos[0]!.files.map((f) => f.path).toSorted()).toEqual(["a.txt", "b.txt"]);
+      await fileDiff("p", dir, params(".", "a.txt"));
+      await fileDiff("p", dir, params(".", "b.txt"));
+      expect(Date.now() - started).toBeLessThan(GIT_TIMEOUT_MS);
+      expect(existsSync(join(markers, t.name)), `${t.name} ran`).toBe(false);
+    }
   });
 
   test("core.worktree in a repo's config cannot move the scan", async () => {
