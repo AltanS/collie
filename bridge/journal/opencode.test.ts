@@ -10,6 +10,7 @@ import {
   opencodeJournal,
   opencodeKey,
   opencodeResets,
+  opencodeResetsV2,
   parseOpencodeTranscript,
   splitOpencodeKey,
 } from "./opencode.ts";
@@ -60,6 +61,33 @@ const toolPart = (tool: string, state: Record<string, JsonValue>) => ({
   tool,
   callID: "call_1",
   state,
+});
+
+// V2 (opencode 2.0.12, verified 2026-09-22): a message row's `data` carries no `role` — the row's
+// `type` column does — and, for an assistant turn, the parts inline as `content`. Builders for the
+// on-disk shapes the source composes from.
+
+const v2UserData = (text: string, created = 1785743162994) => ({
+  time: { created },
+  text,
+  files: [],
+  agent: "build",
+  model: { providerID: "opencode-go", id: "deepseek-v4.1-flash", variant: "max" },
+});
+
+const v2AssistantData = (created = 1785743163208, content: JsonValue[] = [textPart("I'll open the file.")]) => ({
+  time: { created, streamed: created + 1, completed: created + 2 },
+  agent: "build",
+  model: { providerID: "opencode-go", id: "deepseek-v4.1-flash", variant: "max" },
+  content,
+});
+
+const v2CompactionData = (created = 1785743164000) => ({
+  time: { created },
+  status: "completed",
+  reason: "manual",
+  model: { providerID: "opencode-go", id: "deepseek-v4.1-flash", variant: "max" },
+  summary: "## Objective\nShip the fix.",
 });
 
 describe("isOpencodeSessionId", () => {
@@ -178,6 +206,72 @@ describe("parseOpencodeTranscript", () => {
     expect(entries[0]!.parts[0]).toEqual({ kind: "tool", name: "bash", summary: "sleep 5" });
   });
 
+  // V2 tool parts spell the name `name` (V1 spells it `tool`) and hold the result as a `content`
+  // array where V1 wrote `state.output` — both shapes are pinned because both are on disk today.
+  test("a V2 tool call reads its `name` and joins its content-array result", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_b", assistantData(), [
+        {
+          type: "tool",
+          id: "call_00_Ag99YRR4kyERibbscesO5674",
+          name: "skill",
+          executed: false,
+          state: {
+            status: "completed",
+            input: { id: "opencode" },
+            content: [
+              { type: "text", text: "skill loaded" },
+              { type: "text", text: "second line" },
+            ],
+          },
+        },
+      ]),
+    );
+    expect(entries[0]!.parts[0]).toEqual({
+      kind: "tool",
+      name: "skill",
+      summary: "opencode",
+      result: { text: "skill loaded\nsecond line" },
+    });
+  });
+
+  test("a V2 errored tool call reads its sentence from the content array too", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_b", assistantData(), [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "bash",
+          state: {
+            status: "error",
+            input: { command: "false" },
+            content: [{ type: "text", text: "exit status 1" }],
+          },
+        },
+      ]),
+    );
+    expect(entries[0]!.parts[0]).toEqual({
+      kind: "tool",
+      name: "bash",
+      summary: "false",
+      result: { text: "exit status 1", isError: true },
+    });
+  });
+
+  test("a V2 running tool call has no result yet", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_b", assistantData(), [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "bash",
+          state: { status: "running", input: { command: "sleep 5" } },
+        },
+      ]),
+    );
+    expect(entries[0]!.parts[0]).toEqual({ kind: "tool", name: "bash", summary: "sleep 5" });
+  });
+
   test("step-start / step-finish are bookkeeping and render nothing", () => {
     const entries = parseOpencodeTranscript(
       line("msg_b", assistantData(), [
@@ -194,6 +288,15 @@ describe("parseOpencodeTranscript", () => {
       line("msg_b", assistantData(), [{ type: "patch", hunks: [] }, textPart("done")]),
     );
     expect(entries[0]!.parts).toEqual([{ kind: "text", text: "done" }]);
+  });
+
+  // V2 composes a compaction as the `summary` role — the transcript vocabulary renders it set apart
+  // from speech rather than as an assistant turn.
+  test("a summary role renders (V2's compaction)", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_c", { role: "summary", time: { created: 1789482840361 } }, [textPart("## Objective")]),
+    );
+    expect(entries.map((e) => [e.uuid, e.role])).toEqual([["msg_c", "summary"]]);
   });
 
   // Same rule and same rationale as codex.ts's `developer` guard: an unmodelled role is plumbing, and
@@ -466,6 +569,194 @@ describe("OpencodeTranscriptSource — several data dirs", () => {
   });
 });
 
+// V2 (opencode 2.0.12, verified 2026-09-22): sessions live in `session_v2`, and each turn is ONE
+// `session_message` row whose `data` carries the role-less message plus its inline `content`. This
+// fixture deliberately has NO V1 tables, which is what proves stat/load never fall back to them.
+describe("OpencodeTranscriptSource — the V2 store", () => {
+  const V2_SID = "ses_f34fa06cfffepZ7TTIJqHH4SiU";
+
+  async function fixture() {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-v2-")));
+    const root = join(base, "data");
+    await mkdir(root, { recursive: true });
+    const db = new Database(join(root, "opencode.db"));
+    db.run(
+      "create table session_v2 (id text primary key, parent_id text, title text, time_created integer, time_updated integer)",
+    );
+    db.run(
+      "create table session_message (id text primary key, session_id text, type text, seq integer, time_created integer, time_updated integer, data text)",
+    );
+    const session = (id: string, parentId: string | null) =>
+      db.run("insert into session_v2 values (?, ?, 'session', 1, 100)", [id, parentId]);
+    const msg = (id: string, type: string, seq: number, created: number, updated: number, data: JsonValue) =>
+      db.run("insert into session_message values (?, ?, ?, ?, ?, ?, ?)", [
+        id,
+        V2_SID,
+        type,
+        seq,
+        created,
+        updated,
+        JSON.stringify(data),
+      ]);
+    return { base, root, db, session, msg };
+  }
+
+  test("resolves a V2 session to the virtual key", async () => {
+    const { base, root, db, session } = await fixture();
+    session(V2_SID, null);
+    db.close();
+    expect(await new OpencodeTranscriptSource(root).resolve({ kind: "id", value: V2_SID })).toBe(
+      `${join(root, "opencode.db")}#${V2_SID}`,
+    );
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("stat counts session_message rows and takes the newest touch", async () => {
+    const { base, root, db, session, msg } = await fixture();
+    session(V2_SID, null);
+    msg("msg_a", "user", 1, 10, 10, v2UserData("hi", 10));
+    msg("msg_b", "assistant", 2, 20, 30, v2AssistantData(20));
+    db.close();
+    const src = new OpencodeTranscriptSource(root);
+    const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+    expect(await src.stat(key)).toEqual({ size: 2, mtimeMs: 30 });
+    await rm(base, { recursive: true, force: true });
+  });
+
+  // The cache-validity contract, V2 half: a streaming session bumps the assistant row's
+  // `time_updated` (measured live, +497 ms over five seconds) and must invalidate.
+  test("stat moves when a session_message row is added", async () => {
+    const { base, root, db, session, msg } = await fixture();
+    session(V2_SID, null);
+    msg("msg_a", "user", 1, 10, 10, v2UserData("hi", 10));
+    db.close();
+    const src = new OpencodeTranscriptSource(root);
+    const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+    const before = (await src.stat(key))!;
+    const db2 = new Database(join(root, "opencode.db"));
+    db2.run("insert into session_message values (?, ?, ?, ?, ?, ?, ?)", [
+      "msg_b",
+      V2_SID,
+      "assistant",
+      2,
+      20,
+      40,
+      JSON.stringify(v2AssistantData(20, [textPart("streaming")])),
+    ]);
+    db2.close();
+    const after = (await src.stat(key))!;
+    expect(after.size).toBe(before.size + 1);
+    expect(after.mtimeMs).toBeGreaterThan(before.mtimeMs);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("load composes rows in seq order, with roles from the type column", async () => {
+    const { base, root, db, session, msg } = await fixture();
+    session(V2_SID, null);
+    // Inserted out of order: `seq` is what orders them, not insertion order or the id.
+    msg("msg_c", "compaction", 3, 50, 50, v2CompactionData(50));
+    msg("msg_a", "user", 1, 10, 10, v2UserData("fix the types", 10));
+    msg("msg_b", "assistant", 2, 20, 30, v2AssistantData(20, [reasoningPart("The user wants…"), textPart("done")]));
+    db.close();
+    const src = new OpencodeTranscriptSource(root);
+    const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+    const { text, complete, size, mtimeMs } = await src.load(key);
+    expect(complete).toBe(true);
+    expect(size).toBe(3);
+    expect(mtimeMs).toBe(50);
+    const entries = parseOpencodeTranscript(text);
+    expect(entries.map((e) => [e.uuid, e.role])).toEqual([
+      ["msg_a", "user"],
+      ["msg_b", "assistant"],
+      ["msg_c", "summary"],
+    ]);
+    expect(entries[0]!.parts).toEqual([{ kind: "text", text: "fix the types" }]);
+    expect(entries[1]!.parts).toEqual([
+      { kind: "thinking", text: "The user wants…" },
+      { kind: "text", text: "done" },
+    ]);
+    expect(entries[2]!.parts).toEqual([{ kind: "text", text: "## Objective\nShip the fix." }]);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("unmodelled row types render nothing", async () => {
+    const { base, root, db, session, msg } = await fixture();
+    session(V2_SID, null);
+    msg("msg_a", "system", 1, 10, 10, { time: { created: 10 }, text: "plumbing" });
+    msg("msg_b", "synthetic", 2, 20, 20, { time: { created: 20 }, text: "plumbing" });
+    msg("msg_c", "model-switched", 3, 30, 30, { time: { created: 30 }, model: { providerID: "p", id: "m" } });
+    msg("msg_d", "user", 4, 40, 40, v2UserData("real", 40));
+    db.close();
+    const src = new OpencodeTranscriptSource(root);
+    const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+    const { text } = await src.load(key);
+    expect(parseOpencodeTranscript(text).map((e) => e.uuid)).toEqual(["msg_d"]);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a subagent session still resolves — the plugin never reports one, but nothing here lies", async () => {
+    const { base, root, db, session } = await fixture();
+    const sub = "ses_0531ed10affel9vU6GggxXLdd5";
+    session(V2_SID, null);
+    session(sub, V2_SID);
+    db.close();
+    expect(await new OpencodeTranscriptSource(root).resolve({ kind: "id", value: sub })).toBe(
+      `${join(root, "opencode.db")}#${sub}`,
+    );
+    await rm(base, { recursive: true, force: true });
+  });
+});
+
+// A machine that upgraded keeps both generations in the same opencode.db — V1 sessions in `session`
+// and everything new in `session_v2`. Both must resolve, and each must be served by its own tables.
+describe("OpencodeTranscriptSource — both generations side by side", () => {
+  const V1_SID = "ses_03969c19cffeJrZCPOT6zG8Bm7";
+  const V2_SID = "ses_f34fa06cfffepZ7TTIJqHH4SiU";
+
+  async function fixture() {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-both-")));
+    const root = join(base, "data");
+    await mkdir(root, { recursive: true });
+    const db = new Database(join(root, "opencode.db"));
+    db.run("create table session (id text primary key, parent_id text, time_created integer, time_updated integer)");
+    db.run("create table message (id text primary key, session_id text, time_created integer, time_updated integer, data text)");
+    db.run("create table part (id text primary key, message_id text, session_id text, time_created integer, time_updated integer, data text)");
+    db.run("create table session_v2 (id text primary key, parent_id text, time_created integer, time_updated integer)");
+    db.run("create table session_message (id text primary key, session_id text, type text, seq integer, time_created integer, time_updated integer, data text)");
+    db.run("insert into session values (?, null, 1, 100)", [V1_SID]);
+    db.run("insert into message values ('msg_v1', ?, 10, 10, ?)", [V1_SID, JSON.stringify(userData(10))]);
+    db.run("insert into part values ('prt_v1', 'msg_v1', ?, 10, 10, ?)", [V1_SID, JSON.stringify(textPart("v1 turn"))]);
+    db.run("insert into session_v2 values (?, null, 1, 100)", [V2_SID]);
+    db.run("insert into session_message values ('msg_v2', ?, 'user', 1, 10, 10, ?)", [
+      V2_SID,
+      JSON.stringify(v2UserData("v2 turn", 10)),
+    ]);
+    db.close();
+    return { base, root };
+  }
+
+  test("each session resolves and reads through its own store", async () => {
+    const { base, root } = await fixture();
+    const src = new OpencodeTranscriptSource(root);
+    const v1Key = (await src.resolve({ kind: "id", value: V1_SID }))!;
+    const v2Key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+    expect(v1Key).toBe(`${join(root, "opencode.db")}#${V1_SID}`);
+    expect(v2Key).toBe(`${join(root, "opencode.db")}#${V2_SID}`);
+
+    // V1 counts message + part (2 rows); V2 counts session_message (1 row).
+    expect(await src.stat(v1Key)).toEqual({ size: 2, mtimeMs: 10 });
+    expect(await src.stat(v2Key)).toEqual({ size: 1, mtimeMs: 10 });
+
+    const v1 = parseOpencodeTranscript((await src.load(v1Key)).text);
+    const v2 = parseOpencodeTranscript((await src.load(v2Key)).text);
+    expect(v1.map((e) => [e.uuid, e.role])).toEqual([["msg_v1", "user"]]);
+    expect(v2.map((e) => [e.uuid, e.role])).toEqual([["msg_v2", "user"]]);
+    expect(v1[0]!.parts).toEqual([{ kind: "text", text: "v1 turn" }]);
+    expect(v2[0]!.parts).toEqual([{ kind: "text", text: "v2 turn" }]);
+    await rm(base, { recursive: true, force: true });
+  });
+});
+
 // Actions that drop the cache between turns (issue #236), from STRUCTURED fields only: a user
 // message's `model`, and an assistant message's `mode: "compaction"` / `summary: true`. The shapes are
 // the ones a live `opencode.db` carries; the values are made up.
@@ -541,5 +832,103 @@ describe("opencodeResets", () => {
     await rm(base, { recursive: true, force: true });
     expect(probe?.lastRequestAt).toBe(2000);
     expect(ids(probe?.resets ?? [])).toEqual(["opencode.reset.model"]);
+  });
+});
+
+// V2 records the two cache-dropping actions as their own rows instead of V1's inference: a
+// `model-switched` row carries `previous` and the new `model`, and a `compaction` row's `summary`
+// replaces the history. Shapes from a live opencode.db (2.0.12, 2026-09-22); values are made up.
+describe("opencodeResetsV2", () => {
+  type Message = { [key: string]: JsonValue | undefined };
+  const assistant = (at: number, providerID: string, id: string): Message => ({
+    type: "assistant",
+    model: { providerID, id },
+    time: { created: at - 10, completed: at },
+    tokens: { input: 10, cache: { read: 900, write: 0 } },
+  });
+  const switched = (at: number, from: string, to: string): Message => ({
+    type: "model-switched",
+    time: { created: at },
+    previous: { providerID: "p", id: from },
+    model: { providerID: "p", id: to },
+  });
+  const compaction = (at: number): Message => ({ type: "compaction", time: { created: at }, summary: "…" });
+  const ids = (events: readonly { ruleId: string }[]) => events.map((e) => e.ruleId);
+
+  test("a model switch newer than the turn is pending, just after it", () => {
+    const events = opencodeResetsV2([switched(3000, "a", "b"), assistant(2000, "p", "b")], 1);
+    expect(ids(events)).toEqual(["opencode.reset.model"]);
+    expect((events[0]?.at ?? 0) > 2000).toBe(true);
+    expect(events[0]?.evidence).toBe("model p/a → p/b");
+  });
+
+  test("a compaction newer than the turn is pending", () => {
+    const events = opencodeResetsV2([compaction(3000), assistant(2000, "p", "b")], 1);
+    expect(ids(events)).toEqual(["opencode.reset.compaction"]);
+    expect((events[0]?.at ?? 0) > 2000).toBe(true);
+  });
+
+  test("a compaction before the turn explains it, at its own time", () => {
+    const events = opencodeResetsV2([assistant(3000, "p", "b"), compaction(2000)], 0);
+    expect(ids(events)).toEqual(["opencode.reset.compaction"]);
+    expect(events[0]?.at).toBe(2000);
+  });
+
+  test("a model switch before the turn explains it", () => {
+    const events = opencodeResetsV2([assistant(3000, "p", "b"), switched(2000, "a", "b")], 0);
+    expect(ids(events)).toEqual(["opencode.reset.model"]);
+    expect(events[0]?.evidence).toBe("model p/a → p/b");
+  });
+
+  test("the newest of each kind wins among the pending rows", () => {
+    const events = opencodeResetsV2(
+      [switched(3000, "b", "c"), compaction(2500), assistant(2000, "p", "b")],
+      2,
+    );
+    expect(ids(events)).toEqual(["opencode.reset.compaction", "opencode.reset.model"]);
+    expect(events[1]?.evidence).toBe("model p/b → p/c");
+  });
+
+  test("no event rows around the turn is nothing", () => {
+    expect(opencodeResetsV2([assistant(2000, "p", "b")], 0)).toEqual([]);
+  });
+
+  test("the V2 probe reads tokens, the nested model, and the explicit resets", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-v2-probe-")));
+    const db = new Database(join(base, "opencode.db"));
+    db.run("create table session_v2 (id text primary key)");
+    db.run(
+      "create table session_message (id text primary key, session_id text, type text, seq integer, time_created integer, time_updated integer, data text)",
+    );
+    db.run("insert into session_v2 values (?)", [SID]);
+    const msg = (id: string, type: string, seq: number, created: number, data: Message) =>
+      db.run("insert into session_message values (?, ?, ?, ?, ?, ?, ?)", [
+        id,
+        SID,
+        type,
+        seq,
+        created,
+        created,
+        JSON.stringify(data),
+      ]);
+    msg("msg_a", "assistant", 1, 1995, {
+      time: { created: 1990, completed: 2000 },
+      model: { providerID: "opencode-go", id: "deepseek-v4.1-flash" },
+      tokens: { input: 10, cache: { read: 850, write: 0 } },
+    });
+    msg("msg_b", "compaction", 2, 2500, { time: { created: 2500 }, summary: "…" });
+    msg("msg_c", "model-switched", 3, 3000, {
+      time: { created: 3000 },
+      previous: { providerID: "opencode-go", id: "deepseek-v4.1-flash" },
+      model: { providerID: "opencode-go", id: "kimi-k2" },
+    });
+    db.close();
+    const probe = await opencodeJournal(base).cacheProbe?.({ kind: "id", value: SID });
+    await rm(base, { recursive: true, force: true });
+    expect(probe?.lastRequestAt).toBe(2000);
+    expect(probe?.turnId).toBe("1995");
+    expect(probe?.cacheReadTokens).toBe(850);
+    expect(probe?.model).toBe("opencode-go:deepseek-v4.1-flash");
+    expect(ids(probe?.resets ?? [])).toEqual(["opencode.reset.compaction", "opencode.reset.model"]);
   });
 });
