@@ -66,7 +66,7 @@ import type {
 // A superseded revalidation is aborted via the loader's request.signal; that surfaces as an
 // AbortError we must RETHROW so React Router discards the stale run — swallowing it into the
 // stale-data/error-banner path would flash a spurious "reconnecting…" on every fast poll.
-function isAbortError<TThrown>(e: TThrown): boolean {
+export function isAbortError<TThrown>(e: TThrown): boolean {
   // `fetch` rejects an aborted request with a DOMException, which is an Error subclass in every
   // engine Collie runs in (and in jsdom) — so an `instanceof Error` test reaches it without having
   // to inspect the shape of an arbitrary thrown value.

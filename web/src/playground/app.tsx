@@ -53,6 +53,7 @@ import * as updateScreen from "./sections/update-screen";
 import * as motion from "./sections/motion";
 import * as cache from "./sections/cache";
 import * as paneSettings from "./sections/pane-settings";
+import * as changes from "./sections/changes";
 
 /** What a section's `render` gets handed — the page-level knobs a section needs. Today only the
  *  shared connection clock (`BootSection`'s `clock` prop); a section that needs nothing reads
@@ -91,6 +92,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: motion.DEF, render: () => <motion.MotionSection /> },
   { def: cache.DEF, render: () => <cache.CacheSection /> },
   { def: paneSettings.DEF, render: () => <paneSettings.PaneSettingsSection /> },
+  { def: changes.DEF, render: () => <changes.ChangesSection /> },
 ];
 
 const THEME_OPTIONS = [

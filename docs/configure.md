@@ -553,6 +553,31 @@ The terminal mirror continues polling in Zen mode, and interactive buffer elemen
 functional. Prompt buttons, "Load older", and "Show entire history" controls stay available because
 they are part of the content stream rather than chrome.
 
+## Changes
+
+The pane menu's **Changes** row shows what changed in the pane's folder since the last commit.
+
+Open a pane, tap the ⋮, then **Changes**. The list groups the changed files by git repo, with
+added and removed line counts. Tap a file to read its diff, and use **Previous file** and
+**Next file** to step through the list. The refresh button reads the folder again; the list does
+not update on its own.
+
+The diff is against the last commit, so staged and unstaged changes show together. A new file
+shows as all added lines. A binary file shows no lines.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Look for repos inside this folder | on | Also lists repos in folders below the pane's folder, even ones the parent repo ignores |
+| How deep to look | 2 | How many folder levels below the pane's folder the search goes, 1 to 4 |
+
+Both live in **Settings → Changes** and are stored per device.
+
+> **Note.** Changes only reads. It never stages, commits or edits, and a repo's own hooks, filters
+> and diff programs never run while Collie reads it
+> ([ADR 0065](../.adr/0065-the-changes-view-reads-git-read-only.md)).
+
+zellij panes have no Changes row, because zellij does not report a pane's folder.
+
 ## Language
 
 Collie's interface is available in six languages. Configure this under **Settings → Language**.

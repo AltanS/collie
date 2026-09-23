@@ -21,6 +21,17 @@ export function historyPath(paneId: string, scope?: Scope): string {
   return `/pane/${encodeURIComponent(paneId)}/history${scopeSearch(scope)}`;
 }
 
+/**
+ * A pane's Changes view (ADR 0065): the list, or with `file` one file's diff. The file rides in the
+ * query (`repo`, `path`) beside the scope, so browser back walks from a diff to the list.
+ */
+export function changesPath(paneId: string, scope?: Scope, file?: { repo: string; path: string }): string {
+  const base = `/pane/${encodeURIComponent(paneId)}/changes${scopeSearch(scope)}`;
+  if (!file) return base;
+  const q = new URLSearchParams({ repo: file.repo, path: file.path });
+  return `${base}${base.includes("?") ? "&" : "?"}${q.toString()}`;
+}
+
 /** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
 export function spacePath(spaceId: string, scope?: Scope): string {
   return `/space/${encodeURIComponent(spaceId)}${scopeSearch(scope)}`;

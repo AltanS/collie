@@ -78,7 +78,7 @@ import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter } from "@/lib/journal-agents";
 import { paneRowKey, paneScope } from "@/lib/hosts";
-import { historyPath, panePath, spacePath } from "@/lib/nav";
+import { changesPath, historyPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
 import type { AgentView, BridgeStatus, DeviceAuth, ServerSummary, TabView } from "@/lib/types";
@@ -2299,6 +2299,9 @@ export function AgentChat({
           onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
           onFind={display ? openFind : undefined}
           onHistory={historyAvailable ? () => navigate(historyPath(paneId, scope)) : undefined}
+          // Hidden when the pane reports no folder: zellij gives an empty cwd, and the view would
+          // only be able to say so (ADR 0065).
+          onChanges={agent?.cwd ? () => navigate(changesPath(paneId, scope)) : undefined}
           // ZEN'S ONE ENTRY POINT, and the absence of this callback IS the gate — the sheet hides a
           // row it was given nothing for, exactly as it does for find and history. Gated twice: the
           // Settings toggle decides whether this phone offers zen at all, and `display` keeps it off

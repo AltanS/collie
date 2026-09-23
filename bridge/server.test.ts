@@ -1599,6 +1599,10 @@ describe("marksPaneSeen — CSRF guard on marking a pane seen", () => {
     expect(marksPaneSeen(withHeader({ [SEEN_HEADER]: "1" }), "history")).toBe(true);
   });
 
+  test("changes is a read too — a git view of the folder does not mark the pane seen on its own", () => {
+    expect(marksPaneSeen(withHeader(), "changes")).toBe(false);
+  });
+
   test("write actions count without it — they already cleared the Origin-requiring write gate", () => {
     for (const action of ["reply", "keys", "upload", "close", "rename"]) {
       expect(marksPaneSeen(withHeader(), action)).toBe(true);

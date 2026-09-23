@@ -445,8 +445,9 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls
   followed by `revalidator.revalidate()`. There is **no TanStack Query** — don't reintroduce it.
-- Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId` and
-  `/pane/:paneId/history`. The router instance is module-scoped so it keeps its location.
+- Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId`,
+  `/pane/:paneId/history` and `/pane/:paneId/changes`. The router instance is module-scoped so it
+  keeps its location.
 - **The idle lock pauses; it does not gate.** It only appears when Collie is left *open, visible and
   untouched* — a hidden page never locks, and returning to the foreground auto-resumes. It covers a
   still-mounted router (unmounting it ate in-progress composer drafts) and pauses polling through
@@ -601,10 +602,15 @@ the rule below: `stt.json` in the state dir when the operator ran `collie stt se
 font files under `<config-dir>/fonts`, served read-only through `bridge/operator-fonts.ts`
 ([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)).
 
-**The law is that the journal is the only place a CLIENT-SUPPLIED value becomes a path** — and even
-there it is a pane id, never a path. `GET /api/fonts/<basename>` does not become a second such place:
-the request's name is **looked up** in the rows the operator's own `theme.toml` declared and that
-row's path is taken, so a name nobody declared is refused before any path exists. The containment
+**The law is that a CLIENT-SUPPLIED value becomes a path in two places only: the journal, and the
+Changes view** — in the journal it is a pane id, never a path. The Changes view
+(`bridge/changes.ts`, [ADR 0065](./.adr/0065-the-changes-view-reads-git-read-only.md)) is bounded by
+a listed-paths rule: a diff is served only for a repo the bridge's own discovery returned and a path
+git listed there, and an untracked read goes through `containedRealpath` too. Its git runs are
+hardened against repo-driven code execution (fsmonitor, external diff, textconv, filter drivers);
+don't drop a `-c` there without reading the module header. `GET /api/fonts/<basename>` does not
+become a third such place: the request's name is **looked up** in the rows the operator's own
+`theme.toml` declared and that row's path is taken, so a name nobody declared is refused before any path exists. The containment
 rule in [`files.ts`](./bridge/journal/files.ts) then runs anyway, on both surfaces and as an
 independent second check: **every** path about to be read goes through `containedRealpath` — after
 symlink resolution, on the real paths, including paths derived from one already checked. Reuse that

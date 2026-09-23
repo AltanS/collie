@@ -21,6 +21,8 @@ import type {
   CacheWatchState,
   LaunchersResponse,
   NotifyPrefs,
+  PaneChangeDiffResponse,
+  PaneChangesResponse,
   PaneHistoryResponse,
   CrewStatusResponse,
   PaneReadResponse,
@@ -464,6 +466,48 @@ export function fetchHistory(
     signal,
     headers: { "x-collie-seen": "1" },
   });
+}
+
+/** How far the Changes view looks for repos below the pane's folder (Settings → Changes). */
+export interface ChangesLookup {
+  depth: number;
+  nested: boolean;
+}
+
+function changesQuery(lookup: ChangesLookup, file?: { repo: string; path: string }): string {
+  const q = new URLSearchParams({ depth: String(lookup.depth), nested: lookup.nested ? "1" : "0" });
+  if (file) {
+    q.set("repo", file.repo);
+    q.set("path", file.path);
+  }
+  return q.toString();
+}
+
+/**
+ * The uncommitted changes under a pane's folder, read-only (ADR 0065). Fetched on open and on the
+ * view's refresh button, never on the poll loop. No seen header: a git view of the folder is not
+ * the pane's conversation, so it does not mark the pane seen.
+ */
+export function fetchChanges(
+  paneId: string,
+  lookup: ChangesLookup,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<PaneChangesResponse> {
+  const path = `/api/pane/${encodeURIComponent(paneId)}/changes?${changesQuery(lookup)}`;
+  return req<PaneChangesResponse>(withScope(path, scope), { signal });
+}
+
+/** One changed file's diff. The bridge serves only a repo and path its own list names. */
+export function fetchChangeDiff(
+  paneId: string,
+  lookup: ChangesLookup,
+  file: { repo: string; path: string },
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<PaneChangeDiffResponse> {
+  const path = `/api/pane/${encodeURIComponent(paneId)}/changes?${changesQuery(lookup, file)}`;
+  return req<PaneChangeDiffResponse>(withScope(path, scope), { signal });
 }
 
 export function sendReply(
