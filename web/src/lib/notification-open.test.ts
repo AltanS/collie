@@ -8,10 +8,13 @@ import {
   openNotificationTarget,
   planNotificationOpen,
   type OpenTargetClient,
+  withOpenMarker,
 } from "@/lib/notification-open";
 
 const URL_A = "https://collie.example/pane/p1";
 const URL_B = "https://collie.example/settings";
+/** What `openWindow` is asked for: the target with the notification marker (ADR 0067). */
+const OPENED_A = `${URL_A}?from=notification`;
 
 /** A fake WindowClient that records the order its methods were called in, on a shared log. */
 function fakeClient(
@@ -84,7 +87,7 @@ describe("openNotificationTarget", () => {
     await expect(openNotificationTarget({ url: URL_A, clients: [], openWindow })).resolves.toBe(
       "opened",
     );
-    expect(openWindow).toHaveBeenCalledExactlyOnceWith(URL_A);
+    expect(openWindow).toHaveBeenCalledExactlyOnceWith(OPENED_A);
   });
 
   test("a stale non-visible client is not awaited before openWindow", async () => {
@@ -101,7 +104,7 @@ describe("openNotificationTarget", () => {
     await expect(
       openNotificationTarget({ url: URL_A, clients: [stale], openWindow }),
     ).resolves.toBe("opened");
-    expect(log).toEqual([`openWindow(${URL_A})`]);
+    expect(log).toEqual([`openWindow(${OPENED_A})`]);
   });
 
   test("a visible client already on the target URL is only focused", async () => {
@@ -155,7 +158,7 @@ describe("openNotificationTarget", () => {
     await expect(openNotificationTarget({ url: URL_A, clients: [live], openWindow })).resolves.toBe(
       "opened",
     );
-    expect(log).toEqual([`live.navigate(${URL_A})`, `openWindow(${URL_A})`]);
+    expect(log).toEqual([`live.navigate(${URL_A})`, `openWindow(${OPENED_A})`]);
   });
 
   test("#147: a discarded client whose navigate resolves null does not swallow the tap", async () => {
@@ -169,7 +172,7 @@ describe("openNotificationTarget", () => {
     await expect(
       openNotificationTarget({ url: URL_A, clients: [discarded], openWindow }),
     ).resolves.toBe("opened");
-    expect(log).toEqual([`openWindow(${URL_A})`]);
+    expect(log).toEqual([`openWindow(${OPENED_A})`]);
   });
 
   test("when openWindow is refused twice it falls back to navigating a hidden client", async () => {
@@ -184,8 +187,8 @@ describe("openNotificationTarget", () => {
       openNotificationTarget({ url: URL_A, clients: [hidden], openWindow }),
     ).resolves.toBe("navigated");
     expect(log).toEqual([
-      `openWindow(${URL_A})`,
-      `openWindow(${URL_A})`,
+      `openWindow(${OPENED_A})`,
+      `openWindow(${OPENED_A})`,
       `hidden.navigate(${URL_A})`,
       "hidden.focus",
     ]);
@@ -276,5 +279,13 @@ describe("parseOpenMessage", () => {
     expect(parseOpenMessage({ type: OPEN_MESSAGE, url: 3 })).toBeUndefined();
     expect(parseOpenMessage(null)).toBeUndefined();
     expect(parseOpenMessage(undefined)).toBeUndefined();
+  });
+});
+
+describe("withOpenMarker", () => {
+  test("adds the marker to the query, before any hash, keeping what is there", () => {
+    expect(withOpenMarker("https://c.test/pane/p1")).toBe("https://c.test/pane/p1?from=notification");
+    expect(withOpenMarker("https://c.test/pane/p1?h=a")).toBe("https://c.test/pane/p1?h=a&from=notification");
+    expect(withOpenMarker("https://c.test/settings#x")).toBe("https://c.test/settings?from=notification#x");
   });
 });

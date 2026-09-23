@@ -138,6 +138,24 @@ test("E: a cold deep link to a pane, then back is the dashboard", async ({ page 
   await expect(dashboard(page)).toBeVisible();
 });
 
+test("E2: a deep link in a plain browser tab gets no seeded history", async ({ page }) => {
+  // A desktop deep link opened in a new tab: not the installed app, no notification marker.
+  await page.goto(PANE_A);
+  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  // The router's own stamp at index 0: nothing was put behind the entry.
+  expect(await page.evaluate(() => JSON.stringify(history.state))).toContain('"idx":0');
+});
+
+test("E3: a window a notification opened is seeded, and loses its marker", async ({ page }) => {
+  // `openWindow` in the service worker adds `from=notification` (lib/notification-open).
+  await page.goto(`${PANE_A}?from=notification`);
+  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => location.search)).toBe("");
+  await page.goBack();
+  await landed(page, "/");
+  await expect(dashboard(page)).toBeVisible();
+});
+
 test("a swipe back (POP) draws no slide of ours, the app's own up arrow still slides", async ({ page }) => {
   const screen = page.locator("[data-slot='screen-transition']");
   await page.goto("/");

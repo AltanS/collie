@@ -147,10 +147,30 @@ export interface OpenNotificationTargetInput {
   openWindow: (url: string) => Promise<OpenedWindow | null>;
 }
 
+/**
+ * The URL a NEW window opens on: the target with `from=notification` added. A window `openWindow`
+ * makes is a fresh document, and the marker is how the app tells it apart from a deep link typed or
+ * opened in a browser tab, which it must not seed with parents (ADR 0067; `stripOpenMarker` in
+ * `lib/nav-entry.ts` takes it off again at boot). Only this path adds it: a window already open
+ * navigates, or opens in its own router, on the plain URL.
+ */
+export const OPEN_MARKER = "from=notification";
+
+/** `url` with {@link OPEN_MARKER} added to its query, before any hash. */
+export function withOpenMarker(url: string): string {
+  const hashAt = url.indexOf("#");
+  const head = hashAt < 0 ? url : url.slice(0, hashAt);
+  const hash = hashAt < 0 ? "" : url.slice(hashAt);
+  let joiner = "?";
+  if (head.includes("?")) joiner = /[?&]$/.test(head) ? "" : "&";
+  return `${head}${joiner}${OPEN_MARKER}${hash}`;
+}
+
 /** `openWindow` is retried once on a throw: NotAllowedError is racy, and a second try is cheap. */
 async function tryOpenWindow(input: OpenNotificationTargetInput): Promise<boolean> {
+  const url = withOpenMarker(input.url);
   for (let attempt = 0; attempt < 2; attempt++) {
-    const opened = await input.openWindow(input.url).catch(() => null);
+    const opened = await input.openWindow(url).catch(() => null);
     if (opened) return true;
   }
   return false;

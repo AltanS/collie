@@ -1,7 +1,9 @@
 import { createBrowserRouter, replace } from "react-router";
 
 import { basePath } from "@/lib/base-path";
-import { listenForInAppOpen, probeStandalone, seedColdEntry } from "@/lib/nav-entry";
+import { listenForInAppOpen, markBooted, openPendingTarget, probeStandalone, seedColdEntry, type OpenGate } from "@/lib/nav-entry";
+import { isReloadInFlight } from "@/lib/pwa";
+import { UPDATE_MODE_HOLD, isReloadHeldBy, subscribeReloadHeld } from "@/lib/reload-guard";
 
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
@@ -127,7 +129,19 @@ export const router = createBrowserRouter([
   basename: basePath(),
 });
 
+// This tab has booted: a later fresh entry in it is a reload (iOS evicting the installed app drops
+// `history.state`), never a cold start to seed (ADR 0067).
+markBooted(safeSessionStorage());
+
 // A notification tapped while the app is on screen opens its pane in THIS router, as a push from
 // wherever the operator was (ADR 0067). The service worker asks and waits for the answer; an app
-// that does not answer gets the old full-document navigate.
-listenForInAppOpen(router);
+// that does not answer gets the old full-document navigate. While update mode holds the reload, or
+// a reload is already on its way, the target waits in sessionStorage for the fresh page, which opens
+// it right here at boot.
+const openGate: OpenGate = {
+  busy: () => isReloadHeldBy(UPDATE_MODE_HOLD) || isReloadInFlight(),
+  subscribe: subscribeReloadHeld,
+  storage: safeSessionStorage(),
+};
+openPendingTarget(router, openGate);
+listenForInAppOpen(router, openGate);

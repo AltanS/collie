@@ -94,6 +94,15 @@ const spent = new Set<ReloadLane>();
 let navigating = false;
 
 /**
+ * Whether this page has asked for its reload and is on its way out. A notification's in-app open
+ * reads it (`lib/nav-entry.ts`): a move now would be lost with the page, so the target waits for the
+ * fresh one.
+ */
+export function isReloadInFlight(): boolean {
+  return navigating;
+}
+
+/**
  * How long a page waits for its own reload before it decides the reload is not coming.
  *
  * `location.reload()` normally does not return, and this timer never fires. When it does — a
