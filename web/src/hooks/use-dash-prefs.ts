@@ -39,12 +39,23 @@ export interface DashPrefs {
   changesNested: boolean;
   /** How many folder levels below the pane's folder that search goes, 1 to 4. */
   changesDepth: number;
+  /**
+   * The composer's action belt size, one factor for the whole belt: band, pills, icons and words
+   * all grow from it together (`--belt-scale`, `components/actions-row.tsx`). One of
+   * {@link BELT_SCALES}. 1.15 is the baseline Altan asked for on 2026-09-23 ("slightly higher and
+   * the icons slightly larger, like 15%"); the other two are the Settings row's way up from there.
+   */
+  beltScale: BeltScale;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
 
 /** The depths the Changes setting offers. The bridge clamps to the same range on its side. */
 export const CHANGES_DEPTHS = [1, 2, 3, 4] as const;
+
+/** The belt sizes the Settings row offers: Default, Large, Larger. */
+export const BELT_SCALES = [1.15, 1.3, 1.5] as const;
+export type BeltScale = (typeof BELT_SCALES)[number];
 
 /** Above this many rows, an un-chosen foldable section starts collapsed. */
 export const COLLAPSE_THRESHOLD = 8;
@@ -58,10 +69,15 @@ const DEFAULTS: DashPrefs = {
   hiddenSpaces: [],
   changesNested: true,
   changesDepth: 2,
+  beltScale: 1.15,
 };
 
 function coerceDepth(raw: JsonValue | undefined): number {
   return CHANGES_DEPTHS.find((d) => d === raw) ?? DEFAULTS.changesDepth;
+}
+
+function coerceBeltScale(raw: JsonValue | undefined): BeltScale {
+  return BELT_SCALES.find((s) => s === raw) ?? DEFAULTS.beltScale;
 }
 
 /**
@@ -99,6 +115,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
       : [],
     changesNested: asJsonBoolean(p.changesNested) ?? DEFAULTS.changesNested,
     changesDepth: coerceDepth(p.changesDepth),
+    beltScale: coerceBeltScale(p.beltScale),
   };
 }
 
@@ -132,6 +149,7 @@ export interface UseDashPrefsReturn {
   toggleHiddenSpace: (key: string) => void;
   setChangesNested: (nested: boolean) => void;
   setChangesDepth: (depth: number) => void;
+  setBeltScale: (scale: number) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -153,6 +171,11 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setChangesNested = useCallback((changesNested: boolean) => update({ changesNested }), [update]);
   const setChangesDepth = useCallback(
     (depth: number) => update({ changesDepth: coerceDepth(depth) }),
+    [update],
+  );
+
+  const setBeltScale = useCallback(
+    (scale: number) => update({ beltScale: coerceBeltScale(scale) }),
     [update],
   );
 
@@ -178,5 +201,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
     toggleHiddenSpace,
     setChangesNested,
     setChangesDepth,
+    setBeltScale,
   };
 }

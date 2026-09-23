@@ -37,12 +37,14 @@ test("the belt's Changes pill opens Changes, the list groups by repo, and a diff
   const switcher = page.getByRole("button", { name: en["chat.switcher.aria"] });
   await expect(pill).toBeVisible();
   const [p, s] = [(await pill.boundingBox())!, (await switcher.boundingBox())!];
-  // Same 32px box as the mark, on the same line, directly to its left.
-  expect(p.width).toBe(32);
+  // Same box as the mark, on the same line, directly to its left: 37px square at the belt's default
+  // 1.15 scale (it was 32px before the belt scaled, 2026-09-23).
+  expect(p.width).toBe(37);
   expect(p.height).toBe(s.height);
   expect(p.y).toBe(s.y);
   expect(p.x + p.width).toBeLessThanOrEqual(s.x);
   expect(s.x - (p.x + p.width)).toBeLessThanOrEqual(8);
+  expect(p.height).toBe(37);
   // The pane menu no longer carries it.
   await page.getByRole("button", { name: en["chat.paneMenu.aria"] }).click();
   await expect(page.getByRole("dialog").getByRole("button", { name: en["chat.changes.label"] })).toHaveCount(0);

@@ -118,8 +118,19 @@ export const STRIP_SCROLLER =
  * `has-[>svg]:px-2.5`, and tailwind-merge does not read that as conflicting with a bare `px-*` —
  * different modifier, so both survive and the MODIFIED one wins on every pill that carries an icon,
  * which is all of them in the actions row. Measured: the bare number alone moved nothing at all.
+ *
+ * SCALED, SINCE 2026-09-23. The height, the `::before` reach and the word's size read the belt's
+ * `--belt-*` custom properties (`index.css`, derived from the one `--belt-scale` the belt's root
+ * sets), so the pill grows with the Settings row "Action belt size". The reach is no longer
+ * cancelled: the scaled scroller has real padding again (`--belt-pad`), and `--belt-reach` runs from
+ * the pill's padding box exactly to the band's edge, so every pill answers the whole band (45px at
+ * the default scale) and nothing overflows the scroller. Outside the belt no `--belt-*` is defined
+ * and the fallbacks are the old fixed box: 32px tall, no vertical reach, 12px words.
  */
-export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px before:inset-y-0 h-8 min-w-11 shrink-0 touch-manipulation px-2 has-[>svg]:px-2 select-none`;
+export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px before:-inset-y-[var(--belt-reach,0px)] h-[var(--belt-pill,2rem)] min-w-11 shrink-0 touch-manipulation px-2 has-[>svg]:px-2 text-[length:var(--belt-text,0.75rem)] select-none`;
+
+/** An icon on a belt pill: `--belt-icon`, 18px at the default scale, 16px outside the belt. */
+export const BELT_ICON = "size-[var(--belt-icon,1rem)] shrink-0";
 
 /**
  * A SECTION OF THE BELT — the rectangle a group of {@link STRIP_ROW_PILL}s sits in when it needs a

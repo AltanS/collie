@@ -916,3 +916,24 @@
     animation: none;
   }
 }
+
+/* THE ACTION BELT'S ONE SCALE (components/actions-row.tsx). The belt's root carries `--belt-scale`
+   inline, from the Settings row "Action belt size" (1.15 default, 1.3, 1.5), and every size on the
+   belt is derived from it here, so band, pills, icons and words grow together and never drift apart.
+   Each is rounded to a whole pixel, so a pill never lands on half a pixel and the pinned block's
+   measured width is a whole number. `--belt-pad` rounds DOWN so the band stays close to the asked
+   factor: 1.15 gives 4px + 37px + 4px = 45px, 1.3 gives 52px, 1.5 gives 60px. At scale 1 these are
+   the old belt to the pixel, 4 + 32 + 4 = 40.
+   `--belt-reach` is how far a pill's `::before` hit box reaches above and below its drawn box: from
+   the pill's padding box (1px inside its reserved transparent border) exactly to the band's edge, so
+   every pill answers the whole band, 45px or more, and nothing overflows the scroller. Outside the
+   belt none of these is defined, and STRIP_ROW_PILL's fallbacks are the old fixed sizes. */
+[data-slot="composer-actions"] {
+  --belt-pad: round(down, calc(0.25rem * var(--belt-scale)), 1px);
+  --belt-pill: round(calc(2rem * var(--belt-scale)), 1px);
+  --belt-band: calc(var(--belt-pill) + 2 * var(--belt-pad));
+  --belt-reach: calc(var(--belt-pad) + 1px);
+  --belt-icon: round(calc(1rem * var(--belt-scale)), 1px);
+  --belt-text: calc(0.75rem * var(--belt-scale));
+  --belt-rule: round(calc(1.25rem * var(--belt-scale)), 1px);
+}

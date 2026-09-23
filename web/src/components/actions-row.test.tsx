@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import { ActionsRow, type GeneralAction } from "./actions-row";
 
-afterEach(() => __resetHarnessBar());
+afterEach(() => {
+  __resetHarnessBar();
+  localStorage.clear();
+});
 
 const took = async () => true;
 
@@ -195,8 +198,9 @@ describe("ActionsRow", () => {
     expect(scroller.className).not.toMatch(/(?:^|\s)pr-3(?=\s|$)/);
     const spacer = scroller.lastElementChild!;
     expect(spacer.getAttribute("aria-hidden")).toBe("true");
-    // 117 (the block's first-frame fallback) + 16 (BELT_END_AIR, the operator's wider right margin).
-    expect(spacer.getAttribute("style")).toBe("width: 133px;");
+    // 122 (the block's first-frame fallback at the default 1.15 scale: 85 + the 37px mark) + 16
+    // (BELT_END_AIR, the operator's wider right margin).
+    expect(spacer.getAttribute("style")).toBe("width: 138px;");
     // The masked wrapper one level out never carries a right-hand gradient stop — `edges="left"`
     // took effect.
     const masked = scroller.parentElement!;
@@ -218,14 +222,14 @@ describe("ActionsRow", () => {
     const pill = screen.getByRole("button", { name: "Changes" });
     const grip = screen.getByRole("button", { name: "Switch pane" });
     expect(pill.nextElementSibling).toBe(grip);
-    expect(pill.className).toMatch(/(?:^|\s)w-8(?=\s|$)/);
-    expect(pill.className).toMatch(/(?:^|\s)min-w-8(?=\s|$)/);
+    expect(pill.className).toMatch(/(?:^|\s)w-\(--belt-pill\)(?=\s|$)/);
+    expect(pill.className).toMatch(/(?:^|\s)min-w-\(--belt-pill\)(?=\s|$)/);
     expect(pill).not.toHaveAttribute("aria-haspopup");
     await userEvent.click(pill);
     expect(onChanges).toHaveBeenCalledTimes(1);
-    // 155 (117 + the 32px pill + its 6px gap) + 16 of end air.
+    // 165 (122 + the 37px pill + its 6px gap, at the default 1.15 scale) + 16 of end air.
     const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
-    expect(scroller.lastElementChild!.getAttribute("style")).toBe("width: 171px;");
+    expect(scroller.lastElementChild!.getAttribute("style")).toBe("width: 181px;");
   });
 
   it("has no Changes pill without the prop", () => {
@@ -235,20 +239,21 @@ describe("ActionsRow", () => {
     expect(screen.queryByRole("button", { name: "Changes" })).not.toBeInTheDocument();
   });
 
-  it("stands the belt's scroller at py-1 (40px), with no vertical scroll under a thumb", () => {
+  it("stands the belt's scroller on the scaled padding, with no vertical scroll under a thumb", () => {
     // Option 6 of the belt-shade deck (playground, removed 2026-09-14 once it had served) first
     // dropped STRIP_SCROLLER's own `py-1.5` to `py-0`, the pill's own 32px. The phone read that as
     // too thin, so it came back up to `py-1` — 40px, 4px above and below the 32px pills — and
     // `overflow-y-hidden` stays paired with it so STRIP_TAP_TARGET's 46px `::before` reach, still
     // wider than the 4px of padding on each side, cannot force a vertical scrollbar the way it did
     // in the playground.
+    // Since 2026-09-23 the 4px is `--belt-pad`, derived from the belt's one `--belt-scale`.
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
     const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
-    expect(scroller.className).toMatch(/(?:^|\s)py-1(?=\s|$)/);
+    expect(scroller.className).toMatch(/(?:^|\s)py-\(--belt-pad\)(?=\s|$)/);
     expect(scroller.className).toMatch(/(?:^|\s)overflow-y-hidden(?=\s|$)/);
   });
 
-  it("narrows the Switch button to 32px, the operator's pick", () => {
+  it("narrows the Switch button to the pill's own scaled height, square, the operator's pick", () => {
     render(
       <ActionsRow
         general={[general()]}
@@ -258,8 +263,30 @@ describe("ActionsRow", () => {
       />,
     );
     const grip = screen.getByRole("button", { name: "Switch pane" });
-    expect(grip.className).toMatch(/(?:^|\s)w-8(?=\s|$)/);
-    expect(grip.className).toMatch(/(?:^|\s)min-w-8(?=\s|$)/);
+    expect(grip.className).toMatch(/(?:^|\s)w-\(--belt-pill\)(?=\s|$)/);
+    expect(grip.className).toMatch(/(?:^|\s)min-w-\(--belt-pill\)(?=\s|$)/);
+  });
+
+  // ONE SCALE FOR THE WHOLE BELT (operator, 2026-09-23): the root carries `--belt-scale` from the
+  // dash pref, 1.15 by default, and the first-frame fallback follows it.
+  it("sets --belt-scale from the dash pref, 1.15 by default", () => {
+    const { unmount } = render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
+    const belt = () => document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    expect(belt().style.getPropertyValue("--belt-scale")).toBe("1.15");
+    unmount();
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ beltScale: 1.5 }));
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }}
+      />,
+    );
+    expect(belt().style.getPropertyValue("--belt-scale")).toBe("1.5");
+    // 85 + the 48px mark + 16 of end air.
+    const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
+    expect(scroller.lastElementChild!.getAttribute("style")).toBe("width: 149px;");
   });
 
   it("gives the scroller symmetric px-3 padding, no trailing spacer, and OverflowEdges its default edges when there is no handle", () => {

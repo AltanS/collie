@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { GitCompare, Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
-import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
+import { BELT_ICON, STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
+import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { hasResizeObserver } from "@/lib/env";
 import { t as translate } from "@/lib/i18n";
@@ -114,6 +115,16 @@ import { cn } from "@/lib/utils";
 //  * The row is a scroller by design and the edge mask already says "there is more this way", which
 //    is the answer it was built to give. One thumb-flick reaches the harness section.
 //
+// ONE SCALE FOR THE WHOLE BELT (operator, 2026-09-23, from the phone: "make the belt slightly
+// higher and the icons slightly larger, like 15%", plus a Settings row to go further). The root
+// carries `--belt-scale` inline, from the dash pref `beltScale` (1.15 default, 1.3 Large, 1.5
+// Larger), and `index.css` derives every size on the belt from it: the band (`--belt-band`), its
+// padding, the pill height, the icon-only pills' width, the icons and the words. Nothing on the belt
+// picks a size of its own any more, so nothing can grow out of step. The px figures in the comments
+// below are the scale-1 belt they were measured on; at the default scale the band is 45px (4 + 37 +
+// 4), the pills 37px, the icons 18px. The key rail and every other strip are untouched: the
+// `--belt-*` properties exist only under this root.
+//
 // The general pills DRAW a short word and ANNOUNCE the full one (`word` vs `label` below): the row
 // has one word of room per pill, and "Type into terminal" and "Display settings" are still what a
 // screen reader hears and what a test addresses.
@@ -159,6 +170,25 @@ const SWITCH_PILL_INSET = 117;
  *  the mark. 117 + 32 (the Changes pill) + 6 (`gap-1.5` between the two pills) = 155. The Changes
  *  pill ALONE (no mark to switch to) is the same 32px box, so it falls back to 117. */
 const SWITCH_PILL_INSET_WITH_CHANGES = 155;
+
+/**
+ * The first-frame fallback AT A BELT SCALE. The two constants above are the scale-1 arithmetic; only
+ * the icon-only pills grow with `--belt-scale` (the hairline, the gaps, `pr-3` and the 64px fade do
+ * not), so each 32 in them becomes `--belt-pill`, the same `round(2rem * scale)` index.css uses.
+ * Default scale 1.15: 85 + 37 = 122 alone, 85 + 37 + 6 + 37 = 165 with the Changes pill.
+ */
+export function switchPillInset(scale: number, withChanges: boolean): number {
+  const pill = Math.round(32 * scale);
+  const fixed = SWITCH_PILL_INSET - 32;
+  return withChanges ? SWITCH_PILL_INSET_WITH_CHANGES - 64 + 2 * pill : fixed + pill;
+}
+
+/** The icon-only pills on the pinned block: square at the belt's scaled pill size, no padding and no
+ *  border. With no border the pill's padding box IS its drawn box, so the vertical reach is
+ *  `--belt-pad` rather than STRIP_ROW_PILL's `--belt-reach` (which adds 1px for the border the
+ *  scroller's pills carry): the hit box ends on the band's edge, never 1px past it. */
+const PINNED_PILL =
+  "relative w-(--belt-pill) min-w-(--belt-pill) border-0 px-0 has-[>svg]:px-0 before:-inset-y-(--belt-pad)";
 
 /** Extra air between the last scrolling pill and the pinned block at full scroll-right, added to the
  *  trailing spacer. Altan, from his phone, 2026-09-23: "add a wider margin right to the belt content". */
@@ -318,11 +348,12 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
+  const { beltScale } = useDashPrefs().prefs;
   // Anything pinned at the right end: the Switch mark, the Changes pill, or both. The drag surface
   // (`handle.ref`, `touch-pan-x`) stays tied to `handle` alone.
   const pinned = !!handle || !!changes;
   const switchBlock = useSwitchBlockWidth(pinned);
-  const switchInset = switchBlock.width ?? (changes && handle ? SWITCH_PILL_INSET_WITH_CHANGES : SWITCH_PILL_INSET);
+  const switchInset = switchBlock.width ?? switchPillInset(beltScale, !!changes && !!handle);
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
@@ -357,6 +388,11 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
       // and that is not the "conditional class" the paragraph above warns against — `touch-pan-x`
       // with no listener behind it would forbid a vertical page gesture and give nothing back.
       ref={handle?.ref}
+      // The belt's one scale; index.css derives every `--belt-*` size from it (header above).
+      // SAFETY: a CSS CUSTOM PROPERTY, and the value is a number from BELT_SCALES. React passes it
+      // through to the style attribute verbatim; `CSSProperties` only declares the known property
+      // names, so a `--*` key has no other way to be spelled.
+      style={{ "--belt-scale": beltScale } as CSSProperties}
       className={cn(
         "relative -mx-3 mb-1 flex items-center border-b border-border bg-foreground/6",
         handle && "touch-pan-x",
@@ -398,12 +434,15 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
           the `::before` still overflows the scroller's box, and `overflow-x: auto` forces
           `overflow-y` to compute to `auto` too, which turns that overflow into a real vertical
           scrollbar under a thumb. `STRIP_SCROLLER` keeps forcing `overflow-x-auto`; this belt alone
-          forces the other axis shut. */}
+          forces the other axis shut.
+          SCALED since 2026-09-23: `py-1` is `py-(--belt-pad)` now, 4px at the default scale and 5px
+          and 6px at the larger two, and the pills' `::before` reaches exactly that far again
+          (`--belt-reach`, STRIP_ROW_PILL), so every pill answers the whole band. */}
       <OverflowEdges edges={pinned ? "left" : "both"} cue="none">
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
-            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3 py-1 overflow-y-hidden", !pinned && "pr-3")}
+            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3 py-(--belt-pad) overflow-y-hidden", !pinned && "pr-3")}
           >
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
@@ -433,9 +472,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
                     aria-expanded={action.expanded}
                     aria-pressed={action.pressed}
                     onClick={action.onSelect}
-                    className={cn(`${STRIP_ROW_PILL} gap-1.5 text-xs`, action.on === true ? ON : OFF)}
+                    className={cn(`${STRIP_ROW_PILL} gap-1.5`, action.on === true ? ON : OFF)}
                   >
-                    <action.icon className="size-4 shrink-0" />
+                    <action.icon className={BELT_ICON} />
                     {action.word ?? action.label}
                   </Button>
                 ))}
@@ -520,7 +559,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
           <span className="pointer-events-auto flex items-center gap-1.5 self-stretch">
             {/* The hairline keeps its 8px to the first pill: the row's `gap-1.5` (6px) plus `mr-0.5`
                 (2px). The two pills stand 6px apart, the belt's one pill gap. */}
-            <span aria-hidden className="mr-0.5 h-5 w-px bg-border" />
+            <span aria-hidden className="mr-0.5 h-(--belt-rule) w-px bg-border" />
             {/* EXPERIMENT (operator, 2026-09-23): the Changes entry, moved here from the pane actions
                 sheet. Same box as the Switch mark beside it; it navigates rather than opening a sheet,
                 so no `aria-haspopup`. Revert with the `changes` prop above. */}
@@ -531,9 +570,12 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
                 size="sm"
                 aria-label={changes.label}
                 onClick={changes.onClick}
-                className={cn(`${STRIP_ROW_PILL} relative w-8 min-w-8 border-0 px-0 has-[>svg]:px-0`)}
+                // `PINNED_PILL` below, and a hit box that reaches 7px left (into the 8px beside the
+                // hairline) and 3px right (half the 6px gap to the mark), 47px across at the default
+                // scale, so the two reaches never meet.
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL} before:-left-[7px] before:-right-[3px]`)}
               >
-                <GitCompare className="size-4 shrink-0 text-primary" />
+                <GitCompare className={cn(BELT_ICON, "text-primary")} />
               </Button>
             )}
             {handle && (
@@ -551,9 +593,13 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
                 // served, see git history): the Switch mark is a single centred icon with no label, so
                 // it alone can go narrower than a pill with a word to hold. Both classes are needed —
                 // `min-w-11` would otherwise still win against a bare `w-8`.
-                className={cn(`${STRIP_ROW_PILL} relative w-8 min-w-8 border-0 px-0 has-[>svg]:px-0`)}
+                // SCALED since 2026-09-23: `w-8 min-w-8` is `PINNED_PILL`'s `w-(--belt-pill)` now,
+                // square with the pill's own scaled height, 37px at the default scale. Its hit box
+                // reaches 3px left (half the 6px gap to the Changes pill) and 7px right (into `pr-3`),
+                // 47px across.
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL} before:-left-[3px] before:-right-[7px]`)}
               >
-                <Layers className="size-4 shrink-0 text-primary" />
+                <Layers className={cn(BELT_ICON, "text-primary")} />
                 {/* The red dot, on the mark's top-right corner, absolutely placed so it never moves the
                     belt. `ring-chrome` cuts it out of the glyph it overlaps. */}
                 {handle.alert === true && (

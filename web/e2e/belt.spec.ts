@@ -5,8 +5,8 @@ import { en } from "@/lib/i18n/messages/en";
 import { installApiStub } from "./fixtures/api";
 
 // THE COMPOSER'S BELT, measured in a real engine. The belt (`components/actions-row.tsx`) is a
-// 32px sideways scroller with a pinned Switch block fading in over its right end. Two of its
-// promises are geometry no unit test can see, and one of them was broken in Safari alone:
+// sideways scroller, 45px at the default scale, with a pinned Switch block fading in over its right
+// end. Two of its promises are geometry no unit test can see, and one was broken in Safari alone:
 //
 //  * It scrolls sideways ONLY. On 2026-09-14 the belt's harness section reached 6px past the band
 //    with a negative margin, and the pills' tap box reached 7px further still. Chromium clipped
@@ -60,4 +60,74 @@ test("the last pill stops 16px clear of the pinned block at the scroll end", asy
   // A wide viewport may fit every pill; the promise only exists when the belt overflows.
   test.skip(!edges.overflows, "every pill fits at this width, nothing scrolls");
   expect(edges.lastRight).toBeLessThanOrEqual(edges.blockLeft - 16);
+});
+
+// ONE SCALE FOR THE WHOLE BELT (operator, 2026-09-23). The Settings row "Action belt size" stores
+// `beltScale` in the dash prefs; the belt's root carries it as `--belt-scale`, and index.css derives
+// band, pill, icon and word from it. Measured at 375x812, the narrowest phone the Changes case uses,
+// in Chromium: the band, a pill and its icon at each of the three sizes, every pill answering the
+// whole band, and at the largest size the last pill still stopping clear of the pinned block.
+test.describe("the belt's size setting", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+
+  const SIZES = [
+    { scale: 1.15, band: 45, pill: 37, icon: 18 },
+    { scale: 1.3, band: 52, pill: 42, icon: 21 },
+    { scale: 1.5, band: 60, pill: 48, icon: 24 },
+  ] as const;
+
+  for (const size of SIZES) {
+    test(`at scale ${size.scale} the band is ${size.band}px, a pill ${size.pill}px, an icon ${size.icon}px`, async ({
+      page,
+    }, testInfo) => {
+      test.skip(testInfo.project.name !== "app-phone", "measured once, in Chromium at phone width");
+      await page.addInitScript((beltScale) => {
+        localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ beltScale }));
+      }, size.scale);
+      await page.goto("/pane/w1:p1");
+      const switchButton = page.getByRole("button", { name: en["chat.switcher.aria"] });
+      await expect(switchButton).toBeVisible();
+
+      const m = await page.locator(SCROLLER).evaluate((el) => {
+        const pill = el.querySelector("button")!;
+        const icon = pill.querySelector("svg")!;
+        const band = el.getBoundingClientRect();
+        const p = pill.getBoundingClientRect();
+        const i = icon.getBoundingClientRect();
+        // The pill's hit box reaches the band's own edges: a probe 1px inside the band's top and
+        // bottom, over the pill's middle, lands on the pill.
+        const x = p.left + p.width / 2;
+        const hit = (y: number) => pill.contains(document.elementFromPoint(x, y));
+        return {
+          band: band.height,
+          pill: p.height,
+          icon: [i.width, i.height],
+          top: hit(band.top + 1),
+          bottom: hit(band.bottom - 1),
+          scroll: [el.scrollHeight, el.clientHeight],
+        };
+      });
+      expect(m.band).toBe(size.band);
+      expect(m.pill).toBe(size.pill);
+      expect(m.icon).toEqual([size.icon, size.icon]);
+      expect(m.band).toBeGreaterThanOrEqual(44);
+      expect(m.top).toBe(true);
+      expect(m.bottom).toBe(true);
+      expect(m.scroll[0]).toBe(m.scroll[1]);
+      // The pinned mark is square at the pill's own height.
+      const s = (await switchButton.boundingBox())!;
+      expect(s.width).toBe(size.pill);
+      expect(s.height).toBe(size.pill);
+
+      if (size.scale !== 1.5) return;
+      const edges = await page.locator(SCROLLER).evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+        const pills = el.querySelectorAll("button");
+        const last = pills[pills.length - 1]!;
+        const block = el.closest('[data-slot="composer-actions"]')!.querySelector(":scope > span")!;
+        return { lastRight: last.getBoundingClientRect().right, blockLeft: block.getBoundingClientRect().left };
+      });
+      expect(edges.lastRight).toBeLessThanOrEqual(edges.blockLeft - 16);
+    });
+  }
 });
