@@ -36,11 +36,20 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     );
   });
 
+  it("reads attach tokens verbatim (the attach grammar verifies them, not this) (#278)", () => {
+    expect(extractInputDraft(lines("muse--draft-image-chip.txt"))).toBe("[Image #1]");
+    expect(extractInputDraft(lines("muse--draft-quoted-path.txt"))).toBe(
+      '"/tmp/repro-before.txt"',
+    );
+  });
+
   it("returns null for an empty box, the placeholder tip, and dialogs", () => {
     expect(extractInputDraft(lines("muse--fresh-idle.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--working.txt"))).toBeNull();
     // The done capture's box holds the "Start a message with !…" tip — not a draft.
     expect(extractInputDraft(lines("muse--done.txt"))).toBeNull();
+    // The tip rotates per context: the paste variant is a placeholder too (#278).
+    expect(extractInputDraft(lines("muse--tip-paste.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--approval-ls.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-color.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-toppings.txt"))).toBeNull();
