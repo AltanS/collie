@@ -143,6 +143,7 @@ the pointer, it was a supersede.
 | [0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md) | The dashboard has a footer: Panes, Attention, Changes. Attention filters to the attention panes and never sorts, Changes lists workspaces with counts that refresh every 5 s only while the tab is on screen, the tab is kept per device (amends nothing in 0063) | Amended in scope by 0068 |
 | [0067](./0067-back-goes-up-one-level.md) | Back goes up one level: down is a push that records `from`, sideways is a replace that carries it, up steps back onto a legitimate parent or replaces onto the structural one, a cold deep link is seeded with its parents, a POP draws no slide, and sheets own no history | Accepted |
 | [0068](./0068-the-second-tab-is-focus-not-attention.md) | The dashboard's second tab is Focus, not Attention: renamed for the same reason "Needs you" was, and `CircleDot` replaces `BellRing`, which read as a notification even in the quiet state (amends 0066 in scope) | Accepted |
+| [0069](./0069-a-row-glides-into-its-header.md) | A row glides into its header: one engine, hand-started same-document view transitions, forward on the tap and reverse only on the in-app back arrow, a crossfade when the landing isn't real, and no frozen screen because a network wait is paid before the transition starts, not during it | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on

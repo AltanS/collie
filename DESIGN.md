@@ -704,3 +704,9 @@ On a phone the edge swipe is history back, so the history stack must be the leve
   same change.
 - **A sheet owns no history entry.** It opens and closes without navigating.
 
+**A glide is reserved for the one case where a row IS the next screen's header** — one element
+carries its identity forward, not merely its position ([ADR 0069](./.adr/0069-a-row-glides-into-its-header.md),
+`web/src/lib/glide.ts`). Forward is the tap on that row; reverse is the in-app back arrow alone,
+never the swipe. Every other move stays what it was: a sideways move crossfades or slides, and the
+phone's own edge swipe plays the phone's own animation, never one of ours.
+
