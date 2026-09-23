@@ -5,6 +5,8 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
+import { resetChangeCountCache } from "@/hooks/use-workspace-change-counts";
+import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { ChangeCommitResponse, PaneChangesResponse } from "@/lib/types";
@@ -73,6 +75,9 @@ function answer(list: () => PaneChangesResponse, commit: () => ChangeCommitRespo
 afterEach(() => {
   vi.useRealTimers();
   localStorage.clear();
+  // The route keeps its last list and count for the page session; each case starts cold.
+  resetChangesListCache();
+  resetChangeCountCache();
 });
 
 describe("ChangesRoute — Show last commit", () => {

@@ -829,10 +829,12 @@
   }
 }
 
-/* We don't use view transitions (removed). But React Router can still fire document.startViewTransition
+/* React Router's view transitions stay off (removed). But React Router can still fire document.startViewTransition
    on a revalidation for a device carrying a stale persisted transition map from an older build (see
    router.tsx). Keep the whole document unnamed so any such stray transition captures nothing and swaps
-   instantly — no full-page crossfade flicker. This is a no-op-izing safety net, not a transition. */
+   instantly — no full-page crossfade flicker. This is a no-op-izing safety net, not a transition.
+   The one transition the app starts itself, the Changes glide below, names only its own parts under
+   `html.changes-glide` and leaves this rule alone. */
 :root {
   view-transition-name: none;
 }
@@ -948,7 +950,9 @@
   }
 }
 
-/* THE CHANGES TAB'S COUNT LINE (components/workspace-changes-list.tsx CountSlot). Until a workspace's
+/* THE CHANGES COUNT LINE (components/change-count.tsx ChangeCountSlot), on each row of the dashboard's
+   Changes tab and in the Changes screen's header. The screen's list skeleton (routes/changes.tsx)
+   breathes with `.count-skeleton` too, and its first real rows arrive with `.count-arrive`. Until a workspace's
    first answer, a muted bar breathes in the line's own box; the answer fades in over it with a 3px
    settle, and the bar fades out underneath. A later, different value dips and comes back. Opacity
    and transform only, inside a fixed 16px line, so no box around it ever moves. The dimmed
@@ -1007,6 +1011,47 @@
   .count-skeleton,
   .count-row {
     transition: none;
+  }
+}
+
+/* THE GLIDE FROM A CHANGES TAB ROW INTO ITS SCREEN (lib/changes-glide.ts). Live only while
+   `html.changes-glide` is set, for one hand-started view transition. The tapped row carries the two
+   names inline; the arriving header's label and count line take them here. The header row and the
+   screen crossfade under them. `:root` stays unnamed (above), so nothing else is captured. The
+   script never starts it under reduced motion; the media query below is the second lock. */
+.changes-glide [data-slot="header-row"] [data-glide="label"] {
+  view-transition-name: changes-glide-label;
+}
+.changes-glide [data-slot="header-row"] [data-glide="count"] {
+  view-transition-name: changes-glide-count;
+}
+.changes-glide [data-slot="header-row"] {
+  view-transition-name: changes-glide-header;
+}
+.changes-glide [data-slot="screen-transition"] {
+  view-transition-name: changes-glide-screen;
+}
+.changes-glide::view-transition-group(*),
+.changes-glide::view-transition-old(*),
+.changes-glide::view-transition-new(*) {
+  animation-duration: 250ms;
+  animation-timing-function: ease-out;
+}
+/* Text changes size on the way (14px row label, 12px header label): the snapshots scale with their
+   box, pinned to the start edge, instead of stretching to a box of another shape. */
+.changes-glide::view-transition-old(changes-glide-label),
+.changes-glide::view-transition-new(changes-glide-label),
+.changes-glide::view-transition-old(changes-glide-count),
+.changes-glide::view-transition-new(changes-glide-count) {
+  height: 100%;
+  width: auto;
+  object-position: left center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .changes-glide::view-transition-group(*),
+  .changes-glide::view-transition-old(*),
+  .changes-glide::view-transition-new(*) {
+    animation: none;
   }
 }
 

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -6,10 +6,13 @@ import { Profiler } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
+import { keepChangeCount, resetChangeCountCache } from "@/hooks/use-workspace-change-counts";
+import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { NavState } from "@/lib/nav";
 import type { PaneChangesResponse } from "@/lib/types";
+import { summarizeChanges } from "@/lib/workspace-changes";
 import { fixtureAgents, fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
@@ -67,7 +70,11 @@ function renderAt(url: string, onCommit?: () => void, state?: NavState) {
   return router;
 }
 
-afterEach(() => localStorage.clear());
+afterEach(() => {
+  localStorage.clear();
+  resetChangesListCache();
+  resetChangeCountCache();
+});
 
 describe("ChangesRoute — the list", () => {
   it("groups files by repo and names each repo when there are two", async () => {
@@ -240,6 +247,87 @@ const diffLine = (text: string) => {
   const reads = (el: Element) => (el.textContent ?? "").replace(/^[+−] /, "").trim() === text;
   return (_: string, el: Element | null) => el !== null && reads(el) && ![...el.children].some(reads);
 };
+
+// The first frame (the operator's ask, 2026-09-23): the header carries the tab's count line, seeded
+// from the tab's kept answer, and the list waits on skeleton rows only when nothing is kept.
+describe("ChangesRoute — the first frame", () => {
+  const LOOKUP = { depth: 2, nested: true };
+  const fixtureCount = summarizeChanges(fixtureChanges);
+
+  /** Hold every list read of the space form until `release()`; diff reads fall through. */
+  function holdLists() {
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    server.use(
+      http.get(/\/api\/workspace\/[^/]+\/changes/, async ({ request }) => {
+        if (new URL(request.url).searchParams.has("path")) return undefined;
+        await gate;
+        return HttpResponse.json(fixtureChanges);
+      }),
+    );
+    return () => act(() => release());
+  }
+
+  const headerLine = () => {
+    const line = document.querySelector<HTMLElement>('[data-slot="header-row"] [data-slot="count-line"]');
+    expect(line).not.toBeNull();
+    return line!;
+  };
+
+  it("shows the tab's kept count in the header before the list answers, and keeps it when the answer agrees", async () => {
+    expect(fixtureCount.kind).toBe("changed");
+    keepChangeCount({ scope: {}, workspaceId: "w1" }, LOOKUP, fixtureCount);
+    const release = holdLists();
+    renderAt("/space/w1/changes");
+    // The list is still on its skeleton.
+    await waitFor(() => expect(document.querySelector('[data-slot="changes-skeleton"]')).not.toBeNull());
+    expect(headerLine().dataset.state).toBe("still");
+    expect(headerLine().textContent).toContain("5 files");
+    const before = headerLine().innerHTML;
+    await release();
+    expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
+    expect(document.querySelector('[data-slot="changes-skeleton"]')).toBeNull();
+    expect(headerLine().innerHTML).toBe(before);
+  });
+
+  it("changes the seeded count in place when the list sums to another one", async () => {
+    keepChangeCount({ scope: {}, workspaceId: "w1" }, LOOKUP, { kind: "changed", files: 9, added: 1, removed: 1 });
+    const release = holdLists();
+    renderAt("/space/w1/changes");
+    await waitFor(() => expect(headerLine().textContent).toContain("9 files"));
+    await release();
+    await waitFor(() => expect(headerLine().textContent).toContain("5 files"));
+    expect(headerLine().dataset.state).toBe("update");
+  });
+
+  it("with nothing kept, holds skeletons in header and list, then fades the answer in", async () => {
+    const release = holdLists();
+    renderAt("/space/w1/changes");
+    await waitFor(() => expect(document.querySelector('[data-slot="changes-skeleton"]')).not.toBeNull());
+    expect(headerLine().dataset.state).toBe("loading");
+    expect(screen.getByText(en["changes.loading"])).toBeTruthy();
+    await release();
+    expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
+    expect(headerLine().dataset.state).toBe("arrive");
+    expect(document.querySelector('[data-slot="changes-skeleton"]')).toBeNull();
+    expect(document.querySelector("main .count-arrive")).not.toBeNull();
+  });
+
+  it("a second visit opens on the kept list, with no skeleton and no fade", async () => {
+    const first = renderAt("/space/w1/changes");
+    expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
+    first.dispose();
+    cleanup();
+    const release = holdLists();
+    renderAt("/space/w1/changes");
+    // Before any read answers: the kept list, and the header's count from it.
+    expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
+    expect(document.querySelector('[data-slot="changes-skeleton"]')).toBeNull();
+    expect(document.querySelector("main .count-arrive")).toBeNull();
+    expect(headerLine().dataset.state).toBe("still");
+    await release();
+  });
+});
 
 describe("ChangesRoute — one file", () => {
   it("opens a file's diff, walks Next across repos, and goes back to the list", async () => {

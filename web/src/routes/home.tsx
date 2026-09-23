@@ -27,6 +27,7 @@ import { ambientHost, ambientPanes, paneScope, sessionsOnHost } from "@/lib/host
 import type { ChangesLookup } from "@/lib/api";
 import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
+import { glideInto } from "@/lib/changes-glide";
 import { panePath, spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -69,7 +70,7 @@ function ChangesTabBody({
     <WorkspaceChangesList
       rows={rows}
       counts={counts}
-      onOpen={(row) => nav.down(spaceChangesPath(row.workspaceId, row.scope))}
+      onOpen={(row, from) => glideInto(from, () => nav.down(spaceChangesPath(row.workspaceId, row.scope)))}
     />
   );
 }

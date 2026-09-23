@@ -30,6 +30,18 @@ async function noSidewaysScroll(page: Page) {
   expect(scroll).toBeLessThanOrEqual(width);
 }
 
+/**
+ * The first answer's rows fade in and settle 3px (`count-arrive`, a transform), so a box measured
+ * during those 200ms is where the rows are passing through, not where they sit. Wait it out.
+ */
+async function listSettled(page: Page) {
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every((a) => !(a instanceof CSSAnimation && a.animationName === "count-arrive") || a.playState === "finished"),
+  );
+}
+
 // EXPERIMENT (operator, 2026-09-23): the entry is a pill on the belt's pinned block, immediately
 // left of the switcher mark, no longer a row in the pane menu.
 test("the belt's Changes pill opens Changes, the list groups by repo, and a diff wraps", async ({ page }) => {
@@ -55,6 +67,7 @@ test("the belt's Changes pill opens Changes, the list groups by repo, and a diff
   await expect(page).toHaveURL(/\/changes$/);
   await expect(page.getByText("webapp · 3 files")).toBeVisible();
   await expect(page.getByText("api · 2 files")).toBeVisible();
+  await listSettled(page);
   await noSidewaysScroll(page);
 
   // Every row is a 44px target.
@@ -181,6 +194,7 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
 test("opening and closing the filter never moves the list or the header", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
   await expect(page.getByText("webapp · 3 files")).toBeVisible();
+  await listSettled(page);
 
   const title = page.getByRole("heading", { name: en["changes.title"] });
   const firstRow = page.getByRole("button", { name: /checkout\.tsx/ });
@@ -301,6 +315,7 @@ test("the list re-reads on its own and shows a change without a tap", async ({ p
 
   await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
   await expect(page.getByText("api · 2 files")).toBeVisible();
+  await listSettled(page);
   const refresh = page.getByRole("button", { name: en["changes.refreshAria"] });
   const firstRow = page.getByRole("button", { name: /checkout\.tsx/ });
   const before = (await firstRow.boundingBox())!;

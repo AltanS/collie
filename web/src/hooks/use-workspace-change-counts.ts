@@ -29,8 +29,31 @@ const UNAVAILABLE: WorkspaceChangeCount = { kind: "unavailable" };
  */
 const lastCounts = new Map<string, WorkspaceChangeCount>();
 
-function cacheKey(t: WorkspaceChangeTarget, lookup: ChangesLookup): string {
+function cacheKey(t: Pick<WorkspaceChangeTarget, "scope" | "workspaceId">, lookup: ChangesLookup): string {
   return `${scopeKey(t.scope)}\u0001${t.workspaceId}\u0001${lookup.nested ? 1 : 0}\u0001${lookup.depth}`;
+}
+
+/**
+ * The answer this page last kept for one workspace, if any. The Changes screen seeds its header
+ * with it, so a tap on a tab row shows the row's own numbers on the screen's first frame.
+ */
+export function keptChangeCount(
+  t: Pick<WorkspaceChangeTarget, "scope" | "workspaceId">,
+  lookup: ChangesLookup,
+): WorkspaceChangeCount | undefined {
+  return lastCounts.get(cacheKey(t, lookup));
+}
+
+/**
+ * Keep a workspace's count from outside the tab: the Changes screen writes what its own list read
+ * sums to, so the tab shows that number at once on the way back.
+ */
+export function keepChangeCount(
+  t: Pick<WorkspaceChangeTarget, "scope" | "workspaceId">,
+  lookup: ChangesLookup,
+  count: WorkspaceChangeCount,
+): void {
+  if (count.kind !== "loading") lastCounts.set(cacheKey(t, lookup), count);
 }
 
 /** Tests only: forget every kept answer. */

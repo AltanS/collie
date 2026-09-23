@@ -18,6 +18,11 @@ import { isInAppBack } from "@/lib/nav-entry";
  * pathname, so a revalidation — which does not change the pathname — is invisible to it by
  * construction rather than by a suppression flag someone can get wrong.
  *
+ * ONE PAIR OF SCREENS GLIDES INSTEAD. A tap on a dashboard Changes tab row starts one view transition
+ * by hand, never through the router's flag, so the router remembers nothing and a poll cannot replay
+ * it (lib/changes-glide.ts). That pair, dashboard → `/space/:id/changes`, classifies as `none` here,
+ * so it never gets the slide as well; a POP never meets the glide at all.
+ *
  * WHAT ANIMATES IS THE ARRIVING SCREEN, AND ONLY IT. There is no exit: the old screen is simply
  * gone the moment React commits the new route, because holding a leaving route mounted means
  * holding its loader data, its composer draft and its polling alive beside the arriving one. A

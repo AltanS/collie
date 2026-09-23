@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
+import { ChangeCountSlot } from "@/components/change-count";
 import { CleanRepos, CommitHead } from "@/components/changes-commit";
 import {
   ChangePath,
@@ -10,6 +11,7 @@ import {
   ChangesFilterOverlay,
   ChangesLayoutToggle,
   ChangesList,
+  ChangesListSkeleton,
   ChangesNoMatch,
   ChangesTree,
   DiffView,
@@ -24,6 +26,7 @@ import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { CHANGES_POLL_MS, useVisibleInterval } from "@/hooks/use-visible-interval";
+import { keepChangeCount, keptChangeCount } from "@/hooks/use-workspace-change-counts";
 import {
   fetchChangeCommit,
   fetchChangeCommitDiff,
@@ -43,6 +46,7 @@ import {
   type ChangesFilter,
   type ChangesLayout,
 } from "@/lib/changes-tree";
+import { keepChangesList, keptChangesList } from "@/lib/changes-list-cache";
 import { isAbortError } from "@/lib/loaders";
 import { t, tn, type MessageKey } from "@/lib/i18n";
 import {
@@ -71,6 +75,7 @@ import type {
   CleanRepo,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
 
 // The Changes view (ADR 0065): what changed under a WORKSPACE's folder since the last commit,
 // read-only. Two routes share it: `/pane/:paneId/changes` (the bridge resolves the pane's workspace)
@@ -96,12 +101,22 @@ import { cn } from "@/lib/utils";
 // data changes nothing, down to object identity (`shareEqual`), so nothing re-renders, no row moves
 // and sugar-high does not re-colour. A changed diff keeps its colour on every unchanged line
 // (DiffView). A failed re-read keeps the last good data on screen. Refresh stays as the manual "now".
+//
+// THE FIRST FRAME. The header carries the workspace's count line (`3 files +12 −4`), the same line
+// the dashboard's Changes tab draws on the row that was tapped, seeded from the tab's kept answer so
+// it is right before any read; the tab row's label and count glide into it (lib/changes-glide.ts).
+// The list starts on the last list this page read for the screen (lib/changes-list-cache.ts), or,
+// on a first visit, on skeleton rows in the real rows' box, which the first answer fades out of. A
+// re-read never shows the skeleton again.
 
 /** Consecutive failed re-reads before the header says the screen has stopped updating. */
 export const STALE_AFTER_FAILURES = 2;
 
 /** Why a read runs: the screen opened, the operator tapped refresh, or the timer fired. */
 type ReadMode = "open" | "manual" | "poll";
+
+const COUNT_LOADING: WorkspaceChangeCount = { kind: "loading" };
+const COUNT_UNAVAILABLE: WorkspaceChangeCount = { kind: "unavailable" };
 
 type ListState =
   | { phase: "loading" }
@@ -224,7 +239,19 @@ export function ChangesRoute() {
   const space = root.workspaces.find((w) => w.workspaceId === (target.kind === "space" ? spaceId : pane?.workspaceId));
 
   // ── The list ──────────────────────────────────────────────────────────────
-  const [list, setList] = useState<ListState>({ phase: "loading" });
+  // A screen this page has read before opens on that list, and the open read replaces it only if
+  // the answer differs.
+  const [list, setList] = useState<ListState>(() => {
+    const kept = keptChangesList(scope, targetKey, lookup);
+    return kept ? { phase: "ready", data: kept } : { phase: "loading" };
+  });
+  // The first answer after the skeleton fades in (`count-arrive`). Set once, on that answer only, so
+  // a re-read, a cached open and a return from a file show the rows without motion.
+  const [listArrive, setListArrive] = useState(false);
+  // Whether a read has answered on this visit: until then the header trusts the tab's kept count
+  // over a kept list, which may be older.
+  const [answered, setAnswered] = useState(false);
+  const answeredNow = useRef(false);
   // What is on screen now, for a read that has to decide whether to touch state at all. An unchanged
   // answer then calls no setter, so not even this component renders again.
   const listNow = useRef(list);
@@ -244,10 +271,21 @@ export function ChangesRoute() {
       try {
         const data = await fetchChanges(target, lookup, scope, ctl.signal);
         const prev = listNow.current;
-        if (prev.phase !== "ready") setList({ phase: "ready", data });
-        else {
+        if (prev.phase !== "ready") {
+          setList({ phase: "ready", data });
+          setListArrive(true);
+          keepChangesList(scope, targetKey, lookup, data);
+        } else {
           const shared = shareEqual(prev.data, data);
-          if (shared !== prev.data) setList({ phase: "ready", data: shared });
+          if (shared !== prev.data) {
+            setList({ phase: "ready", data: shared });
+            keepChangesList(scope, targetKey, lookup, shared);
+          }
+        }
+        // Once per visit, so a later read with the same answer still sets nothing at all.
+        if (!answeredNow.current) {
+          answeredNow.current = true;
+          setAnswered(true);
         }
         return true;
       } catch (e) {
@@ -259,7 +297,7 @@ export function ChangesRoute() {
         if (listCtl.current === ctl) listCtl.current = null;
       }
     },
-    [target, lookup, scope],
+    [target, targetKey, lookup, scope],
   );
 
   useEffect(() => {
@@ -505,6 +543,21 @@ export function ChangesRoute() {
   const workspaceLabel = ready?.workspaceLabel ?? space?.label ?? pane?.workspaceLabel ?? (target.kind === "space" ? spaceId : paneId);
   const rootFolder = ready?.available ? ready.root : null;
 
+  // The header's count line: the tab's kept answer until this visit's first read, then what the
+  // list sums to, which the tab keeps in turn so the way back shows it at once.
+  const workspaceId = target.kind === "space" ? spaceId : pane?.workspaceId;
+  const [seedCount] = useState(() => (workspaceId === undefined ? undefined : keptChangeCount({ scope, workspaceId }, lookup)));
+  const listCount = useMemo(() => (list.phase === "ready" ? summarizeChanges(list.data) : null), [list]);
+  let headerCount: WorkspaceChangeCount;
+  if (listCount !== null && (answered || seedCount === undefined)) headerCount = listCount;
+  else if (seedCount !== undefined) headerCount = seedCount;
+  else headerCount = list.phase === "error" ? COUNT_UNAVAILABLE : COUNT_LOADING;
+  useEffect(() => {
+    if (answered && listCount !== null && workspaceId !== undefined) keepChangeCount({ scope, workspaceId }, lookup, listCount);
+  }, [answered, listCount, workspaceId, scope, lookup]);
+  // The rows fade in once, on the list screen; a file or the commit view ends that for good.
+  if (listArrive && (current !== null || commitView)) setListArrive(false);
+
   const fileState = file && file.key === openKey ? file : null;
   const listedFile = open
     ? list.phase === "ready" && list.data.available
@@ -532,6 +585,19 @@ export function ChangesRoute() {
   const slot = at < 0 && gone && lastAt.current?.key === openKey ? lastAt.current.at : -1;
   const prev = at > 0 ? order[at - 1] : slot > 0 ? order[slot - 1] : undefined;
   const next = at >= 0 && at < order.length - 1 ? order[at + 1] : slot >= 0 ? order[slot] : undefined;
+
+  const listScreen = current === null && !commitView;
+  const folderLine = rootFolder && (
+    <span className="min-w-0 truncate font-mono text-xs leading-tight text-muted-foreground" title={rootFolder}>
+      {shortFolder(rootFolder)}
+    </span>
+  );
+  // Quiet, on a line that is already there, so it moves nothing.
+  const staleNote = (
+    <span role="status" className="shrink-0">
+      {stale ? t("changes.stale") : ""}
+    </span>
+  );
 
   return (
     // The pane's own column, like History: this view is one hop from the pane and keeps its edges.
@@ -562,22 +628,44 @@ export function ChangesRoute() {
               >
                 <ArrowLeft className="size-5" />
               </Button>
+              {/* The list screen's header is the tab row it was opened from, larger: the workspace
+                  on the first line (the heading still says "Changes" to a screen reader), its count
+                  line under it, so the row's two lines glide straight into these two
+                  (lib/changes-glide.ts). A file and the commit view keep the screen's title with
+                  the workspace under it. At 375px the column is about 105px wide, too narrow for a
+                  title, a label and a count side by side. */}
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">
-                  {commitView ? t("changes.commit.title") : t("changes.title")}
-                </h1>
-                <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
-                  <span className="shrink-0 truncate">{workspaceLabel}</span>
-                  {rootFolder && (
-                    <span className="min-w-0 truncate font-mono" title={rootFolder}>
-                      {shortFolder(rootFolder)}
-                    </span>
-                  )}
-                  {/* Quiet, on the line that is already there, so it moves nothing. */}
-                  <span role="status" className="shrink-0">
-                    {stale ? t("changes.stale") : ""}
-                  </span>
-                </div>
+                {listScreen ? (
+                  <>
+                    <div className="flex min-w-0 items-baseline gap-1.5">
+                      <h1
+                        data-glide="label"
+                        className="max-w-full shrink-0 truncate text-lg font-semibold leading-tight tracking-tight"
+                      >
+                        <span className="sr-only">{t("changes.title")} </span>
+                        {workspaceLabel}
+                      </h1>
+                      {folderLine}
+                    </div>
+                    {/* A fixed 16px count line, so a skeleton, a value or a change of value moves
+                        nothing; the stale note shares it, as it shared the folder's line before. */}
+                    <div className="flex h-4 min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground tabular-nums">
+                      <ChangeCountSlot count={headerCount} glide="count" className="shrink-0" />
+                      {staleNote}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">
+                      {commitView ? t("changes.commit.title") : t("changes.title")}
+                    </h1>
+                    <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
+                      <span className="shrink-0 truncate">{workspaceLabel}</span>
+                      {folderLine}
+                      {staleNote}
+                    </div>
+                  </>
+                )}
               </div>
               {!current && (
                 <>
@@ -657,6 +745,7 @@ export function ChangesRoute() {
           <div className="p-4">
             <ListBody
               state={list}
+              arrive={listArrive}
               repos={shownRepos}
               paneRepo={target.kind === "pane" && list.phase === "ready" ? list.data.paneRepo : undefined}
               depth={lookup.depth}
@@ -681,6 +770,7 @@ function Quiet({ children }: { children: React.ReactNode }) {
 
 function ListBody({
   state,
+  arrive,
   repos,
   paneRepo,
   depth,
@@ -693,6 +783,8 @@ function ListBody({
   onShowCommit,
 }: {
   state: ListState;
+  /** The first answer after the skeleton: the rows fade in and settle. */
+  arrive: boolean;
   /** The repos after the filter. */
   repos: readonly ChangedRepo[];
   /** The repo holding the asking pane's folder, marked "This pane" (pane route only). */
@@ -709,7 +801,7 @@ function ListBody({
   /** Open a clean repo's last commit. */
   onShowCommit: (repo: string) => void;
 }) {
-  if (state.phase === "loading") return <Loading label={t("changes.loading")} />;
+  if (state.phase === "loading") return <ChangesListSkeleton label={t("changes.loading")} />;
   if (state.phase === "error") {
     return (
       <Notice variant="box" tone="danger" announce="alert">
@@ -748,7 +840,7 @@ function ListBody({
     );
   }
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", arrive && "count-arrive")}>
       {body}
       {/* Beside other repos' changes, the clean ones still offer their last commit, named. */}
       {data.repos.length > 0 && clean.length > 0 && (

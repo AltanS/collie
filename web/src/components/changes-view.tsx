@@ -167,6 +167,34 @@ export function ChangesList({
   );
 }
 
+/** How wide each skeleton row's path bar is, so the rows read as a list and not as one block. */
+const SKELETON_PATHS = ["68%", "52%", "80%", "44%", "60%"] as const;
+
+/**
+ * The list before its first answer: five rows in the real rows' own box (the 44px row, the status
+ * letter's 12px slot, the path, the counts), each part a muted bar breathing like the Changes tab's
+ * count line (`.count-skeleton` in index.css, still under reduced motion). The route shows it only
+ * on a first read with nothing kept; a re-read never comes back here. `label` is announced once.
+ */
+export function ChangesListSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status" data-slot="changes-skeleton">
+      <span className="sr-only">{label}</span>
+      <ListGroup as="ul" aria-hidden>
+        {SKELETON_PATHS.map((width) => (
+          <li key={width} className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2">
+            <span className="count-skeleton h-3 w-3 shrink-0 rounded-sm bg-muted" />
+            <span className="flex min-w-0 flex-1">
+              <span className="count-skeleton h-2.5 rounded-full bg-muted" style={{ width }} />
+            </span>
+            <span className="count-skeleton h-2.5 w-10 shrink-0 rounded-full bg-muted" />
+          </li>
+        ))}
+      </ListGroup>
+    </div>
+  );
+}
+
 /** The collapse key of one folder: repo and folder path, so two repos' `src/` stay apart. */
 export function folderKey(repo: string, folder: string): string {
   return `${repo}\n${folder}`;
