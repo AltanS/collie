@@ -36,6 +36,7 @@ describe("coerceDashPrefs", () => {
       hiddenSpaces: [],
       changesNested: true,
       changesDepth: 2,
+      changesLayout: "list",
       beltScale: 1.15,
     });
   });
@@ -51,6 +52,7 @@ describe("coerceDashPrefs", () => {
         hiddenSpaces: ["k2", 3, "k3"],
         changesNested: false,
         changesDepth: 4,
+        changesLayout: "tree",
         beltScale: 1.5,
       }),
     ).toEqual({
@@ -62,6 +64,7 @@ describe("coerceDashPrefs", () => {
       hiddenSpaces: ["k2", "k3"],
       changesNested: false,
       changesDepth: 4,
+      changesLayout: "tree",
       beltScale: 1.5,
     });
   });
@@ -71,6 +74,7 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({ changesDepth: 0 }).changesDepth).toBe(2);
     expect(coerceDashPrefs({ changesDepth: "3" }).changesDepth).toBe(2);
     expect(coerceDashPrefs({ changesNested: "no" }).changesNested).toBe(true);
+    expect(coerceDashPrefs({ changesLayout: "grid" }).changesLayout).toBe("list");
   });
 
   it("keeps the belt size to the three offered scales", () => {
@@ -105,6 +109,7 @@ describe("coerceDashPrefs", () => {
       hiddenSpaces: [],
       changesNested: true,
       changesDepth: 2,
+      changesLayout: "list",
       beltScale: 1.15,
     });
   });
@@ -124,6 +129,7 @@ describe("useDashPrefs", () => {
       hiddenSpaces: [],
       changesNested: true,
       changesDepth: 2,
+      changesLayout: "list",
       beltScale: 1.15,
     });
   });
@@ -140,6 +146,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.toggleHiddenSpace("k2"));
     act(() => first.result.current.setChangesNested(false));
     act(() => first.result.current.setChangesDepth(3));
+    act(() => first.result.current.setChangesLayout("tree"));
     act(() => first.result.current.setBeltScale(1.3));
 
     const second = renderHook(() => useDashPrefs());
@@ -152,6 +159,7 @@ describe("useDashPrefs", () => {
       hiddenSpaces: ["k3"],
       changesNested: false,
       changesDepth: 3,
+      changesLayout: "tree",
       beltScale: 1.3,
     });
   });

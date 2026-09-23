@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 
+import type { ChangesLayout } from "@/lib/changes-tree";
 import type { RecentDir } from "@/lib/triage";
 
 // Dashboard layout preferences, persisted in localStorage. Deliberately separate from
@@ -39,6 +40,8 @@ export interface DashPrefs {
   changesNested: boolean;
   /** How many folder levels below the pane's folder that search goes, 1 to 4. */
   changesDepth: number;
+  /** The Changes list drawn flat, one row per file, or as a folder tree. */
+  changesLayout: ChangesLayout;
   /**
    * The composer's action belt size, one factor for the whole belt: band, pills, icons and words
    * all grow from it together (`--belt-scale`, `components/actions-row.tsx`). One of
@@ -69,6 +72,7 @@ const DEFAULTS: DashPrefs = {
   hiddenSpaces: [],
   changesNested: true,
   changesDepth: 2,
+  changesLayout: "list",
   beltScale: 1.15,
 };
 
@@ -115,6 +119,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
       : [],
     changesNested: asJsonBoolean(p.changesNested) ?? DEFAULTS.changesNested,
     changesDepth: coerceDepth(p.changesDepth),
+    changesLayout: p.changesLayout === "tree" ? "tree" : DEFAULTS.changesLayout,
     beltScale: coerceBeltScale(p.beltScale),
   };
 }
@@ -149,6 +154,7 @@ export interface UseDashPrefsReturn {
   toggleHiddenSpace: (key: string) => void;
   setChangesNested: (nested: boolean) => void;
   setChangesDepth: (depth: number) => void;
+  setChangesLayout: (layout: ChangesLayout) => void;
   setBeltScale: (scale: number) => void;
 }
 
@@ -173,6 +179,8 @@ export function useDashPrefs(): UseDashPrefsReturn {
     (depth: number) => update({ changesDepth: coerceDepth(depth) }),
     [update],
   );
+
+  const setChangesLayout = useCallback((changesLayout: ChangesLayout) => update({ changesLayout }), [update]);
 
   const setBeltScale = useCallback(
     (scale: number) => update({ beltScale: coerceBeltScale(scale) }),
@@ -201,6 +209,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     toggleHiddenSpace,
     setChangesNested,
     setChangesDepth,
+    setChangesLayout,
     setBeltScale,
   };
 }

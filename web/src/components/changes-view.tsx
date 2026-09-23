@@ -1,8 +1,19 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { ChevronRight, List, ListFilter, ListTree, Search, X } from "lucide-react";
 
 import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
+import {
+  buildChangeTree,
+  FILTER_STATUSES,
+  isFilterActive,
+  visibleTreeRows,
+  type ChangesFilter,
+  type ChangesLayout,
+  type FilterStatus,
+  type TreeNode,
+} from "@/lib/changes-tree";
 import { t, tn, type MessageKey } from "@/lib/i18n";
 import type { ChangedFile, ChangedRepo, ChangeStatus } from "@/lib/types";
 import { parseUnifiedDiff } from "@/lib/unified-diff";
@@ -33,11 +44,6 @@ const STATUS_TONE = {
 export interface ChangeRef {
   repo: string;
   path: string;
-}
-
-/** Every file of every repo, in the order the list draws them. */
-export function flattenChanges(repos: readonly ChangedRepo[]): ChangeRef[] {
-  return repos.flatMap((r) => r.files.map((f) => ({ repo: r.relPath, path: f.path })));
 }
 
 function splitPath(path: string) {
@@ -81,12 +87,13 @@ export function ChangePath({ path, className }: { path: string; className?: stri
   );
 }
 
-export function ChangesList({
+/** The repos one under another, each named only when there is more than one. */
+function RepoSections({
   repos,
-  onOpen,
+  children,
 }: {
   repos: readonly ChangedRepo[];
-  onOpen: (ref: ChangeRef) => void;
+  children: (repo: ChangedRepo) => React.ReactNode;
 }) {
   useLocale();
   // One repo needs no heading: the header already names the folder.
@@ -100,23 +107,366 @@ export function ChangesList({
               {tn("changes.repoFiles", repo.files.length, { name: repo.name })}
             </SectionLabel>
           )}
-          <ListGroup as="ul">
-            {repo.files.map((file) => (
-              <li key={file.path}>
-                <button
-                  type="button"
-                  onClick={() => onOpen({ repo: repo.relPath, path: file.path })}
-                  className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted"
-                >
-                  <StatusLetter status={file.status} />
-                  <ChangePath path={file.path} className="flex-1" />
-                  <Counts file={file} />
-                </button>
-              </li>
-            ))}
-          </ListGroup>
+          {children(repo)}
         </section>
       ))}
+    </div>
+  );
+}
+
+export function ChangesList({
+  repos,
+  onOpen,
+}: {
+  repos: readonly ChangedRepo[];
+  onOpen: (ref: ChangeRef) => void;
+}) {
+  return (
+    <RepoSections repos={repos}>
+      {(repo) => (
+        <ListGroup as="ul">
+          {repo.files.map((file) => (
+            <li key={file.path}>
+              <button
+                type="button"
+                onClick={() => onOpen({ repo: repo.relPath, path: file.path })}
+                className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted"
+              >
+                <StatusLetter status={file.status} />
+                <ChangePath path={file.path} className="flex-1" />
+                <Counts file={file} />
+              </button>
+            </li>
+          ))}
+        </ListGroup>
+      )}
+    </RepoSections>
+  );
+}
+
+/** The collapse key of one folder: repo and folder path, so two repos' `src/` stay apart. */
+export function folderKey(repo: string, folder: string): string {
+  return `${repo}\n${folder}`;
+}
+
+/** 12px a level, and no deeper than eight levels, so a 375px row keeps room for the name. */
+const INDENT_STEP = 12;
+const INDENT_MAX_LEVELS = 8;
+function indent(depth: number) {
+  return { paddingLeft: 14 + Math.min(depth, INDENT_MAX_LEVELS) * INDENT_STEP };
+}
+
+/**
+ * A name that truncates from the LEFT, so the end of a deep path (the part that tells two rows
+ * apart) stays readable. The outer box runs right to left only to put the ellipsis on the left;
+ * the text inside is isolated left to right, so `src/lib` never reads `lib/src`.
+ */
+function LeftTruncate({ text, className }: { text: string; className?: string }) {
+  return (
+    <span dir="rtl" className={cn("min-w-0 truncate text-left", className)}>
+      <bdi dir="ltr">{text}</bdi>
+    </span>
+  );
+}
+
+function SumCounts({ added, removed }: { added: number; removed: number }) {
+  return (
+    <span className="shrink-0 font-mono text-xs tabular-nums">
+      <span className="text-status-done">+{added}</span> <span className="text-status-blocked">−{removed}</span>
+    </span>
+  );
+}
+
+function TreeRows({
+  repo,
+  nodes,
+  collapsed,
+  onToggle,
+  onOpen,
+}: {
+  repo: ChangedRepo;
+  nodes: TreeNode[];
+  collapsed: ReadonlySet<string>;
+  onToggle: (key: string) => void;
+  onOpen: (ref: ChangeRef) => void;
+}) {
+  // The tree's own keys are bare folder paths; the shared set keys them by repo too.
+  const closed = useMemo(() => {
+    const prefix = folderKey(repo.relPath, "");
+    return new Set([...collapsed].flatMap((k) => (k.startsWith(prefix) ? [k.slice(prefix.length)] : [])));
+  }, [collapsed, repo.relPath]);
+  const rows = visibleTreeRows(nodes, closed);
+  return (
+    <ListGroup as="ul">
+      {rows.map((node) => {
+        if (node.kind === "folder") {
+          const open = !closed.has(node.key);
+          return (
+            <li key={`d:${node.key}`}>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-label={tn("changes.tree.folderAria", node.fileCount, { name: node.label })}
+                onClick={() => onToggle(folderKey(repo.relPath, node.key))}
+                style={indent(node.depth)}
+                className="flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted"
+              >
+                <ChevronRight
+                  aria-hidden
+                  className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
+                />
+                <LeftTruncate text={`${node.label}/`} className="font-mono text-[13px] text-muted-foreground" />
+                <span aria-hidden className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {node.fileCount}
+                </span>
+                <span className="flex-1" />
+                {/* A folder of binaries or new folders has no line counts, and shows none. */}
+                {(node.added > 0 || node.removed > 0) && <SumCounts added={node.added} removed={node.removed} />}
+              </button>
+            </li>
+          );
+        }
+        return (
+          <li key={`f:${node.key}`}>
+            <button
+              type="button"
+              onClick={() => onOpen({ repo: repo.relPath, path: node.file.path })}
+              style={indent(node.depth)}
+              className="flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted"
+            >
+              <StatusLetter status={node.file.status} />
+              <LeftTruncate text={node.name} className="flex-1 font-mono text-[13px] font-medium text-foreground" />
+              <Counts file={node.file} />
+            </button>
+          </li>
+        );
+      })}
+    </ListGroup>
+  );
+}
+
+/**
+ * The same files as a folder tree, per repo: folders first, single-folder chains compacted into one
+ * row (`src/lib/`), every folder open unless its key is in `collapsed`.
+ */
+export function ChangesTree({
+  repos,
+  collapsed,
+  onToggle,
+  onOpen,
+}: {
+  repos: readonly ChangedRepo[];
+  collapsed: ReadonlySet<string>;
+  onToggle: (key: string) => void;
+  onOpen: (ref: ChangeRef) => void;
+}) {
+  const trees = useMemo(() => new Map(repos.map((r) => [r.relPath, buildChangeTree(r.files)])), [repos]);
+  return (
+    <RepoSections repos={repos}>
+      {(repo) => (
+        <TreeRows
+          repo={repo}
+          nodes={trees.get(repo.relPath) ?? []}
+          collapsed={collapsed}
+          onToggle={onToggle}
+          onOpen={onOpen}
+        />
+      )}
+    </RepoSections>
+  );
+}
+
+/** List or Tree: a two-way segmented choice of 44px squares, for the header. */
+export function ChangesLayoutToggle({
+  layout,
+  onChange,
+}: {
+  layout: ChangesLayout;
+  onChange: (layout: ChangesLayout) => void;
+}) {
+  useLocale();
+  const options = [
+    { value: "list", label: t("changes.layout.list"), Icon: List },
+    { value: "tree", label: t("changes.layout.tree"), Icon: ListTree },
+  ] as const;
+  return (
+    <div role="radiogroup" aria-label={t("changes.layout.aria")} className="flex shrink-0 rounded-md">
+      {options.map(({ value, label, Icon }) => {
+        const selected = value === layout;
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-label={label}
+            onClick={() => onChange(value)}
+            className={cn(
+              "flex size-11 items-center justify-center rounded-md transition-colors",
+              selected ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
+            )}
+          >
+            <Icon className="size-5" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The header's Filter button. While a filter is on it takes the primary tint and a small count of
+ * the files still shown, drawn over its corner so the header never re-lays-out.
+ */
+export function ChangesFilterButton({
+  open,
+  active,
+  shown,
+  total,
+  onClick,
+}: {
+  open: boolean;
+  active: boolean;
+  shown: number;
+  total: number;
+  onClick: () => void;
+}) {
+  useLocale();
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={active ? t("changes.filter.buttonActive", { shown, total }) : t("changes.filter.button")}
+      onClick={onClick}
+      className={cn(
+        "relative flex size-11 shrink-0 items-center justify-center rounded-md transition-colors",
+        active ? "bg-primary/10 text-primary" : open ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
+      )}
+    >
+      <ListFilter className="size-5" />
+      {active && (
+        <span
+          aria-hidden
+          className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold leading-4 tabular-nums text-primary-foreground"
+        >
+          {shown}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** What the list shows when the filter leaves nothing: the sentence and the way out. */
+export function ChangesNoMatch({ onClear }: { onClear: () => void }) {
+  useLocale();
+  return (
+    <div className="flex flex-col items-center gap-2 py-12">
+      <p className="text-sm text-muted-foreground">{t("changes.filter.none")}</p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="flex min-h-11 items-center rounded-md px-4 text-sm font-medium text-primary active:bg-muted"
+      >
+        {t("changes.filter.clear")}
+      </button>
+    </div>
+  );
+}
+
+const CHIP_STATUS = { M: "M", A: "A", D: "D", R: "R", U: "?" } as const satisfies Record<FilterStatus, ChangeStatus>;
+
+/**
+ * The filter row under the header: a path field with a clear button, the status chips, and the
+ * "3 of 12" count. The count's box is always there, only hidden while no filter is on, so typing
+ * the first letter moves nothing.
+ */
+export function ChangesFilterBar({
+  filter,
+  onChange,
+  shown,
+  total,
+  focusOnMount = false,
+}: {
+  filter: ChangesFilter;
+  onChange: (filter: ChangesFilter) => void;
+  shown: number;
+  total: number;
+  /** Put the caret in the path field when the row appears: the operator opened it to type. */
+  focusOnMount?: boolean;
+}) {
+  useLocale();
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusOnMount) input.current?.focus();
+  }, [focusOnMount]);
+  const active = isFilterActive(filter);
+  const toggle = (s: FilterStatus) =>
+    onChange({
+      ...filter,
+      statuses: filter.statuses.includes(s) ? filter.statuses.filter((x) => x !== s) : [...filter.statuses, s],
+    });
+  return (
+    <div className="flex flex-col gap-1 border-b border-rule px-4 pt-2 pb-1" data-slot="changes-filter">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          inputMode="search"
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          ref={input}
+          value={filter.query}
+          onChange={(e) => onChange({ ...filter, query: e.target.value })}
+          placeholder={t("changes.filter.placeholder")}
+          aria-label={t("changes.filter.placeholder")}
+          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-11 font-mono text-base placeholder:font-sans placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        />
+        {filter.query !== "" && (
+          <button
+            type="button"
+            aria-label={t("changes.filter.clearText")}
+            onClick={() => onChange({ ...filter, query: "" })}
+            className="absolute right-0 top-0 flex size-11 items-center justify-center text-muted-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+      <div className="flex items-center">
+        <div role="group" aria-label={t("changes.filter.statusAria")} className="-ml-1.5 flex">
+          {FILTER_STATUSES.map((s) => {
+            const on = filter.statuses.includes(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={on}
+                aria-label={t(STATUS_WORD[CHIP_STATUS[s]])}
+                onClick={() => toggle(s)}
+                className="flex h-11 min-w-11 items-center justify-center"
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-full border font-mono text-xs font-semibold transition-colors",
+                    on ? "border-primary bg-primary text-primary-foreground" : cn("border-border", STATUS_TONE[CHIP_STATUS[s]]),
+                  )}
+                >
+                  {s}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <span
+          aria-live="polite"
+          className={cn("ml-auto truncate pl-2 text-xs tabular-nums text-muted-foreground", !active && "invisible")}
+        >
+          {t("changes.filter.shown", { shown, total })}
+        </span>
+      </div>
     </div>
   );
 }

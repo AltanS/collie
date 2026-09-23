@@ -3,18 +3,39 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
-import { ChangePath, ChangesList, DiffView, flattenChanges, StatusLetter, type ChangeRef } from "@/components/changes-view";
+import {
+  ChangePath,
+  ChangesFilterBar,
+  ChangesFilterButton,
+  ChangesLayoutToggle,
+  ChangesList,
+  ChangesNoMatch,
+  ChangesTree,
+  DiffView,
+  StatusLetter,
+  type ChangeRef,
+} from "@/components/changes-view";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { fetchChangeDiff, fetchChanges, type ChangesLookup } from "@/lib/api";
+import {
+  countFiles,
+  EMPTY_FILTER,
+  filterRepos,
+  isFilterActive,
+  layoutOrder,
+  type ChangesFilter,
+  type ChangesLayout,
+} from "@/lib/changes-tree";
 import { isAbortError } from "@/lib/loaders";
 import { t, type MessageKey } from "@/lib/i18n";
 import { changesPath, panePath } from "@/lib/nav";
 import { useRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import type {
+  ChangedRepo,
   ChangeStatus,
   ChangesUnavailableReason,
   PaneChangeDiffResponse,
@@ -47,6 +68,12 @@ function unavailableKey(reason: ChangesUnavailableReason): MessageKey {
   return "changes.unavailable.noFolder";
 }
 
+/**
+ * Collapsed tree folders, per pane, for this session: in memory, so leaving the view and coming
+ * back keeps them, and a reload opens every folder again.
+ */
+const collapsedByPane = new Map<string, Set<string>>();
+
 /** Where the back arrow of a file view goes: the list entry it came from, when there is one. */
 interface FromList {
   fromList: true;
@@ -60,7 +87,8 @@ export function ChangesRoute() {
   const location = useLocation();
   const [search] = useSearchParams();
   const root = useRootData();
-  const { prefs } = useDashPrefs();
+  const { prefs, setChangesLayout } = useDashPrefs();
+  const layout = prefs.changesLayout;
   const lookup: ChangesLookup = useMemo(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
     [prefs.changesDepth, prefs.changesNested],
@@ -100,10 +128,36 @@ export function ChangesRoute() {
     return () => listAbort.current?.abort();
   }, [loadList]);
 
-  const order = useMemo(
-    () => (list.phase === "ready" && list.data.available ? flattenChanges(list.data.repos) : []),
+  // ── Filter and layout ─────────────────────────────────────────────────────
+  // The filter lives in this component, which stays mounted across the hop to a file and back, so
+  // it survives Previous / Next and the back arrow. It does not survive a reload, on purpose: a
+  // stale filter on a fresh list would hide files the operator did not know were hidden.
+  const [filter, setFilter] = useState<ChangesFilter>(EMPTY_FILTER);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => collapsedByPane.get(paneId) ?? new Set());
+  const toggleFolder = useCallback(
+    (key: string) =>
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        if (!next.delete(key)) next.add(key);
+        collapsedByPane.set(paneId, next);
+        return next;
+      }),
+    [paneId],
+  );
+
+  const allRepos = useMemo<readonly ChangedRepo[]>(
+    () => (list.phase === "ready" && list.data.available ? list.data.repos : []),
     [list],
   );
+  const shownRepos = useMemo(() => filterRepos(allRepos, filter), [allRepos, filter]);
+  const total = countFiles(allRepos);
+  const shown = countFiles(shownRepos);
+  const filtering = isFilterActive(filter);
+  const clearFilter = () => setFilter(EMPTY_FILTER);
+
+  // Previous / Next walk what the list shows: the filtered files, in the layout's order.
+  const order = useMemo(() => layoutOrder(shownRepos, layout), [shownRepos, layout]);
 
   // ── One file ──────────────────────────────────────────────────────────────
   const openKey = open ? `${open.repo}\n${open.path}` : null;
@@ -165,6 +219,18 @@ export function ChangesRoute() {
               <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">{t("changes.title")}</h1>
               <div className="truncate text-xs leading-tight text-muted-foreground">{subtitle}</div>
             </div>
+            {!open && (
+              <>
+                <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
+                <ChangesFilterButton
+                  open={filterOpen}
+                  active={filtering}
+                  shown={shown}
+                  total={total}
+                  onClick={() => setFilterOpen((o) => !o)}
+                />
+              </>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -179,6 +245,12 @@ export function ChangesRoute() {
         }
       />
 
+      {/* Under the header, outside the scroller: opening it pushes the list down and leaves the
+          header where it was. */}
+      {!open && filterOpen && (
+        <ChangesFilterBar filter={filter} onChange={setFilter} shown={shown} total={total} focusOnMount />
+      )}
+
       <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {open ? (
           <FileScreen
@@ -192,7 +264,16 @@ export function ChangesRoute() {
           />
         ) : (
           <div className="p-4">
-            <ListBody state={list} onOpen={openFile} />
+            <ListBody
+              state={list}
+              repos={shownRepos}
+              layout={layout}
+              collapsed={collapsed}
+              onToggle={toggleFolder}
+              filter={filtering && !filterOpen ? { shown, total } : null}
+              onClearFilter={clearFilter}
+              onOpen={openFile}
+            />
           </div>
         )}
       </main>
@@ -204,7 +285,27 @@ function Quiet({ children }: { children: React.ReactNode }) {
   return <p className="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground">{children}</p>;
 }
 
-function ListBody({ state, onOpen }: { state: ListState; onOpen: (ref: ChangeRef) => void }) {
+function ListBody({
+  state,
+  repos,
+  layout,
+  collapsed,
+  onToggle,
+  filter,
+  onClearFilter,
+  onOpen,
+}: {
+  state: ListState;
+  /** The repos after the filter. */
+  repos: readonly ChangedRepo[];
+  layout: ChangesLayout;
+  collapsed: ReadonlySet<string>;
+  onToggle: (key: string) => void;
+  /** Set while a filter is on and its row is closed: the count and the way out move here. */
+  filter: { shown: number; total: number } | null;
+  onClearFilter: () => void;
+  onOpen: (ref: ChangeRef) => void;
+}) {
   if (state.phase === "loading") {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
@@ -222,9 +323,24 @@ function ListBody({ state, onOpen }: { state: ListState; onOpen: (ref: ChangeRef
   }
   const data = state.data;
   if (!data.available) return <Quiet>{t(unavailableKey(data.reason))}</Quiet>;
+  let body: React.ReactNode;
+  if (data.repos.length === 0) body = <Quiet>{t("changes.empty")}</Quiet>;
+  else if (repos.length === 0)
+    body = <ChangesNoMatch onClear={onClearFilter} />;
+  else if (layout === "tree")
+    body = <ChangesTree repos={repos} collapsed={collapsed} onToggle={onToggle} onOpen={onOpen} />;
+  else body = <ChangesList repos={repos} onOpen={onOpen} />;
   return (
     <div className="flex flex-col gap-4">
-      {data.repos.length === 0 ? <Quiet>{t("changes.empty")}</Quiet> : <ChangesList repos={data.repos} onOpen={onOpen} />}
+      {filter && repos.length > 0 && (
+        <div className="-my-2 flex items-center justify-between gap-2">
+          <span className="text-xs tabular-nums text-muted-foreground">{t("changes.filter.shown", filter)}</span>
+          <Button variant="ghost" className="h-11 shrink-0" onClick={onClearFilter}>
+            {t("changes.filter.clear")}
+          </Button>
+        </div>
+      )}
+      {body}
       {data.truncated && <p className="text-xs text-muted-foreground">{t("changes.truncated")}</p>}
     </div>
   );
@@ -266,8 +382,8 @@ function FileScreen({
         <FileBody state={state} />
       </div>
 
-      {/* Across the WHOLE list, repos included. Disabled rather than hidden at either end, so the
-          pair never moves. */}
+      {/* Across what the list shows, repos included: the filtered files, in the layout's order.
+          Disabled rather than hidden at either end, so the pair never moves. */}
       <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-rule bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <Button variant="outline" className="h-11" disabled={!prev} onClick={() => prev && onStep(prev)}>
           <ChevronLeft className="size-4" />

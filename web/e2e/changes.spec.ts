@@ -87,3 +87,79 @@ test("a binary file says so and draws no rows", async ({ page }) => {
   await expect(page.getByText(en["changes.file.binary"])).toBeVisible();
   await expect(page.getByRole("button", { name: en["changes.file.prev"] })).toBeEnabled();
 });
+
+// The operator's ask (2026-09-23): a List / Tree toggle and a Filter button at the top of the list.
+// Tree order for the fixture: webapp public/logo.png, src/lib/cart.ts, src/routes/checkout.tsx; api
+// server/handlers/orders.ts (a compacted chain), notes.md.
+test("the tree folds, the filter narrows, and Previous / Next walk only what is shown", async ({ page }) => {
+  await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
+  await expect(page.getByText("webapp · 3 files")).toBeVisible();
+
+  const tree = page.getByRole("radio", { name: en["changes.layout.tree"] });
+  expect((await tree.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await tree.click();
+  await expect(tree).toHaveAttribute("aria-checked", "true");
+
+  // A chain of single folders is one row, and every folder starts open.
+  const chain = page.getByRole("button", { name: "server/handlers, 1 file" });
+  await expect(chain).toHaveAttribute("aria-expanded", "true");
+  const src = page.getByRole("button", { name: "src, 2 files" });
+  expect((await src.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await src.click();
+  await expect(src).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: /checkout\.tsx/ })).toHaveCount(0);
+  await noSidewaysScroll(page);
+  await src.click();
+  await expect(page.getByRole("button", { name: /checkout\.tsx/ })).toBeVisible();
+
+  // The filter row opens under the header and leaves the header where it was.
+  const title = page.getByRole("heading", { name: en["changes.title"] });
+  const before = (await title.boundingBox())!;
+  await page.getByRole("button", { name: en["changes.filter.button"] }).click();
+  const field = page.getByRole("textbox", { name: en["changes.filter.placeholder"] });
+  await expect(field).toBeFocused();
+  expect(await title.boundingBox()).toEqual(before);
+
+  await field.fill("ORDERS");
+  await expect(page.getByRole("button", { name: /orders\.ts/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /checkout\.tsx/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Filter files, 1 of 5 shown" })).toBeVisible();
+
+  await field.fill("no-such-file");
+  await expect(page.getByText(en["changes.filter.none"])).toBeVisible();
+  await page.getByRole("button", { name: en["changes.filter.clear"] }).click();
+  await expect(field).toHaveValue("");
+  await expect(page.getByRole("button", { name: en["changes.filter.button"] })).toBeVisible();
+
+  const modified = page.getByRole("button", { name: en["changes.status.M"], exact: true });
+  expect((await modified.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await modified.click();
+  await expect(modified).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("2 of 5 files")).toBeVisible();
+  await expect(page.getByRole("button", { name: /cart\.ts/ })).toHaveCount(0);
+  // With only routes/ left under src/, the chain compacts.
+  await expect(page.getByRole("button", { name: "src/routes, 1 file" })).toBeVisible();
+  await noSidewaysScroll(page);
+
+  // Previous / Next walk the two shown files, in tree order: logo.png, then checkout.tsx.
+  await page.getByRole("button", { name: /checkout\.tsx/ }).click();
+  await expect(page).toHaveURL(/path=src%2Froutes%2Fcheckout\.tsx$/);
+  const prev = page.getByRole("button", { name: en["changes.file.prev"] });
+  const next = page.getByRole("button", { name: en["changes.file.next"] });
+  await expect(next).toBeDisabled();
+  await prev.click();
+  await expect(page).toHaveURL(/path=public%2Flogo\.png$/);
+  await expect(prev).toBeDisabled();
+  await expect(next).toBeEnabled();
+
+  // Back to the list: the filter, its row and the layout are all still there.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/changes$/);
+  await expect(page.getByRole("button", { name: en["changes.status.M"], exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("button", { name: "Filter files, 2 of 5 shown" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "src/routes, 1 file" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /notes\.md/ })).toHaveCount(0);
+});
