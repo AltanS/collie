@@ -56,3 +56,26 @@ test("the last pill stops before the Switch cell at the scroll end", async ({ pa
   test.skip(!edges.overflows, "every pill fits at this width, nothing scrolls");
   expect(edges.lastRight).toBeLessThanOrEqual(switchLeft);
 });
+
+test("a portrait cover display keeps its focused composer when the keyboard shrinks the viewport", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("collie:zen-enabled:v1", "1");
+    localStorage.setItem("collie:auto-zen-enabled:v1", "1");
+    // Only the viewport shrinks on keyboard opening; the device never rotates.
+    Object.defineProperty(screen, "orientation", {
+      configurable: true,
+      value: { type: "portrait-primary", addEventListener() {}, removeEventListener() {} },
+    });
+  });
+  await page.setViewportSize({ width: 430, height: 900 });
+  await page.goto("/pane/w1:p1");
+  const box = page.getByRole("textbox", { name: en["composer.placeholder.reply"] });
+  await box.focus();
+
+  await page.setViewportSize({ width: 430, height: 360 });
+
+  expect(await page.evaluate(() => matchMedia("(orientation: landscape)").matches)).toBe(true);
+  await expect(box).toBeVisible();
+  await expect(box).toBeFocused();
+  await expect(page.getByRole("button", { name: "Exit zen mode" })).toHaveCount(0);
+});

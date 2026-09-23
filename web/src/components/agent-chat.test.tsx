@@ -2014,24 +2014,22 @@ describe("AgentChat — zen mode", () => {
   });
 
   describe("auto-zen follows the rotation", () => {
-    // The query AgentChat asks for, spelled out once so a case can say what it is holding.
-    const LANDSCAPE_QUERY = "(orientation: landscape) and (max-height: 520px)";
+    // The viewport-height query AgentChat asks for.
+    const LANDSCAPE_QUERY = "(max-height: 520px)";
 
-    // A controllable `matchMedia` fake for the rotation query: the shared stub in test/setup.ts
-    // never fires, which is fine for every other suite and useless for the one mechanism here that
-    // has no other trigger. Installed per case, removed after.
-    //
-    // `viewportHeight` is what makes the fake honest about the `and (max-height: 520px)` half of the
-    // query. A query the viewport is too tall for can never match, however the phone is held, so the
-    // fake hands back a dead list for it rather than the live one — which is exactly what a desktop
-    // browser does.
+    // ScreenOrientation tracks physical rotation; matchMedia tracks viewport height independently.
+    // A keyboard may shrink the viewport without ever rotating the phone.
     let emitOrientation: (landscape: boolean) => void;
+    let emitViewport: (short: boolean) => void;
     function installOrientation(initial: boolean, viewportHeight = 380) {
+      const orientation = new EventTarget();
+      Object.defineProperty(orientation, "type", { configurable: true, value: initial ? "landscape-primary" : "portrait-primary" });
+      Object.defineProperty(window.screen, "orientation", { configurable: true, value: orientation });
       // The fake speaks only the half of MediaQueryListEvent the hook reads (`matches`) — a full
       // event object here would need a cast that discards type evidence for nothing.
       const listeners = new Set<(e: { matches: boolean }) => void>();
       const mql = {
-        matches: initial,
+        matches: viewportHeight <= 520,
         media: LANDSCAPE_QUERY,
         onchange: null,
         addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
@@ -2041,23 +2039,36 @@ describe("AgentChat — zen mode", () => {
           void listeners.delete(fn);
         },
       };
-      const dead = {
-        matches: false,
-        media: LANDSCAPE_QUERY,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      };
-      const short = viewportHeight <= 520;
-      vi.stubGlobal("matchMedia", (query: string) =>
-        query.includes("max-height: 520px") && !short ? dead : mql,
-      );
+      vi.stubGlobal("matchMedia", () => mql);
       emitOrientation = (landscape: boolean) => {
-        mql.matches = landscape;
-        for (const fn of listeners) fn({ matches: landscape });
+        Object.defineProperty(orientation, "type", { configurable: true, value: landscape ? "landscape-primary" : "portrait-primary" });
+        orientation.dispatchEvent(new Event("change"));
+      };
+      emitViewport = (short: boolean) => {
+        mql.matches = short;
+        for (const fn of listeners) fn({ matches: short });
       };
     }
-    afterEach(() => vi.unstubAllGlobals());
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(window.screen, "orientation");
+    });
+
+    it("keeps the composer focused when a portrait cover screen becomes viewport-landscape under the keyboard", async () => {
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false, 900);
+      const { container } = renderChat();
+      const box = screen.getByPlaceholderText(/type a reply/i);
+      box.focus();
+
+      // A keyboard changes only the CSS viewport; ScreenOrientation does not change.
+      act(() => emitViewport(true));
+
+      expect(headerRowOf(container)).not.toBeNull();
+      expect(box).toBeInTheDocument();
+      expect(box).toHaveFocus();
+    });
 
     it("enters zen on rotation to landscape and leaves on rotation back", async () => {
       setZenEnabled(true);

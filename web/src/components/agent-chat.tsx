@@ -358,10 +358,12 @@ export function AgentChat({
     closeFind();
     setZen(true);
   }
-  // Auto-zen follows the ROTATION, and only the rotation: turning the phone sideways enters zen
+  // Auto-zen follows PHYSICAL ROTATION, and only that rotation: turning the phone sideways enters zen
   // (a narrow tall mirror becomes a short wide one, and every chrome row costs terminal lines),
   // turning it back leaves. The query asks for a SHORT landscape viewport, not landscape alone:
-  // under 520px of height is a phone on its side, where the chrome rows hurt. A desktop window and
+  // under 520px of height is a phone on its side, where the chrome rows hurt. The physical orientation
+  // check matters on a narrow cover display: opening its keyboard can make CSS report landscape
+  // without any rotation, and entering zen would unmount the focused textarea. A desktop window and
   // a tablet are landscape all day and have the height to spare, so neither one ever matches. But only a zen this effect entered — a hand-entered zen (the actions
   // sheet's row, tapped in either orientation) is the operator's explicit choice and rotation must
   // not steal it, so `autoZen` marks the effect's own entry and the portrait exit fires only on a
@@ -375,7 +377,22 @@ export function AgentChat({
   // just made — so it acts ONLY on a flip (`wasLandscape`), never re-asserts. Without that, tapping
   // the floating way out in landscape would exit and instantly re-enter. The ref starts portrait so
   // mounting already sideways counts as a flip and opens chrome-free, matching a reload in hand.
-  const landscape = useMediaQuery("(orientation: landscape) and (max-height: 520px)");
+  const shortViewport = useMediaQuery("(max-height: 520px)");
+  const [physicalLandscape, setPhysicalLandscape] = useState(
+    () => window.screen.orientation?.type.startsWith("landscape") ?? false,
+  );
+  useEffect(() => {
+    const orientation = window.screen.orientation;
+    if (!orientation) return;
+    const update = () => setPhysicalLandscape(orientation.type.startsWith("landscape"));
+    orientation.addEventListener("change", update);
+    update();
+    return () => orientation.removeEventListener("change", update);
+  }, []);
+  // A soft keyboard can make a portrait cover display wider than its remaining viewport height.
+  // CSS orientation then says landscape although the phone has not rotated; physical orientation
+  // keeps auto-zen from unmounting the focused composer in that state.
+  const landscape = physicalLandscape && shortViewport;
   const autoZenSetting = useAutoZenEnabled();
   const autoZenActive = zenAvailable && autoZenSetting;
   const autoZen = useRef(false);
