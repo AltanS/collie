@@ -1,11 +1,11 @@
-// THE CHANGES VIEW'S BRIDGE HALF — what changed under a pane's folder since the last commit, read
-// with git and nothing else (ADR 0065). Read-only by construction: no verb here stages, commits,
-// checks out or writes, and every git run carries `GIT_OPTIONAL_LOCKS=0`, so not even the index's
-// stat cache is refreshed on disk.
+// THE CHANGES VIEW'S BRIDGE HALF — what changed under a workspace's folder since the last commit,
+// read with git and nothing else (ADR 0065). Which folder that is, is bridge/changes-root.ts.
+// Read-only by construction: no verb here stages, commits, checks out or writes, and every git run
+// carries `GIT_OPTIONAL_LOCKS=0`, so not even the index's stat cache is refreshed on disk.
 //
 // ── WHAT THE CLIENT MAY NAME ────────────────────────────────────────────────────────────────────
-// The request carries a pane id, a depth, a nested flag, and for a diff a `repo` and a `path`. The
-// pane id is a Map lookup (the folder comes off the live snapshot, never off the request). The repo
+// The request carries a pane or workspace id, a depth, a nested flag, and for a diff a `repo` and a
+// `path`. The id is a lookup (the folder comes off the live snapshot, never off the request). The repo
 // and the path are LOOKED UP, never joined blind: a diff is served only for a `repo` the same
 // discovery (same depth, same nested flag) returns, and only for a `path` git itself listed as
 // changed in that repo. Anything else is `unknown-repo` / `unknown-path` before a path exists. An
@@ -55,17 +55,11 @@ import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 
 import { containedRealpath } from "./journal/files.ts";
-import type {
-  ChangedFile,
-  ChangedRepo,
-  ChangeStatus,
-  PaneChangeDiffResponse,
-  PaneChangesResponse,
-} from "./types.ts";
+import type { ChangeDiff, ChangedFile, ChangedRepo, ChangesList, ChangeStatus } from "./types.ts";
 
 // ── Limits ──────────────────────────────────────────────────────────────────────────────────────
 
-/** How deep discovery walks below the pane's folder when the client names no depth. */
+/** How deep discovery walks below the workspace root when the client names no depth. */
 export const DEFAULT_CHANGES_DEPTH = 2;
 /** The deepest walk a client may ask for. Four levels covers `~/projects/<org>/<repo>` and more. */
 export const MAX_CHANGES_DEPTH = 4;
@@ -640,15 +634,14 @@ async function usableFolder(cwd: string): Promise<boolean> {
   return st !== null && st.isDirectory();
 }
 
-/** The Changes list for a folder. `paneId` only rides into the body. */
+/** The Changes list for a folder (the workspace root, bridge/changes-root.ts). */
 export async function listChanges(
-  paneId: string,
   cwd: string,
   params: Pick<ChangesParams, "depth" | "nested">,
-): Promise<PaneChangesResponse> {
-  if (!(await usableFolder(cwd))) return { paneId, available: false, reason: "no-folder" };
+): Promise<ChangesList> {
+  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
   const git = await gitBinary();
-  if (git === null) return { paneId, available: false, reason: "no-git" };
+  if (git === null) return { available: false, reason: "no-git" };
   const found = await discoverRepos(cwd, params.depth, params.nested);
   const budget = { bytes: MAX_COUNT_BUDGET_BYTES };
   const listed = await mapLimited(found.repos, REPO_CONCURRENCY, (r) => listRepo(git, r, found.repos, budget));
@@ -659,7 +652,7 @@ export async function listChanges(
     if (item.truncated) truncated = true;
     if (item.repo.files.length > 0) repos.push(item.repo);
   }
-  return { paneId, available: true, root: await realpath(cwd), repos, truncated };
+  return { available: true, root: await realpath(cwd), repos, truncated };
 }
 
 // ── One file's diff ─────────────────────────────────────────────────────────────────────────────
@@ -697,24 +690,19 @@ export function syntheticAddedDiff(path: string, content: string): string {
 }
 
 /** One file's diff. Refuses a repo discovery did not return and a path git did not list. */
-export async function fileDiff(
-  paneId: string,
-  cwd: string,
-  params: ChangesParams,
-): Promise<PaneChangeDiffResponse> {
-  if (!(await usableFolder(cwd))) return { paneId, available: false, reason: "no-folder" };
+export async function fileDiff(cwd: string, params: ChangesParams): Promise<ChangeDiff> {
+  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
   const git = await gitBinary();
-  if (git === null) return { paneId, available: false, reason: "no-git" };
+  if (git === null) return { available: false, reason: "no-git" };
   const found = await discoverRepos(cwd, params.depth, params.nested);
   const repo = found.repos.find((r) => r.relPath === params.repo);
-  if (repo === undefined) return { paneId, available: false, reason: "unknown-repo" };
+  if (repo === undefined) return { available: false, reason: "unknown-repo" };
   const status = await repoStatus(git, repo);
-  if (status === null) return { paneId, available: false, reason: "unknown-repo" };
+  if (status === null) return { available: false, reason: "unknown-repo" };
   const entry = withoutNestedRepos(repo, status.entries, found.repos).find((e) => e.path === params.path);
-  if (entry === undefined) return { paneId, available: false, reason: "unknown-path" };
+  if (entry === undefined) return { available: false, reason: "unknown-path" };
 
-  const answer: Extract<PaneChangeDiffResponse, { available: true }> = {
-    paneId,
+  const answer: Extract<ChangeDiff, { available: true }> = {
     available: true,
     repo: repo.relPath,
     path: entry.path,
@@ -729,7 +717,7 @@ export async function fileDiff(
   if (entry.status === "?") {
     if (entry.path.endsWith("/")) return { ...answer, directory: true };
     const read = await readUntracked(repo, entry.path);
-    if (read === null) return { paneId, available: false, reason: "unknown-path" };
+    if (read === null) return { available: false, reason: "unknown-path" };
     if (read.kind === "link") return { ...answer, diff: syntheticAddedDiff(entry.path, `${read.target}\n`) };
     if (looksBinary(read.bytes)) return { ...answer, binary: true };
     const capped = capDiff(syntheticAddedDiff(entry.path, new TextDecoder().decode(read.bytes)));
@@ -737,7 +725,7 @@ export async function fileDiff(
   }
 
   const base = await baseTree(git, repo);
-  if (base === null) return { paneId, available: false, reason: "unknown-repo" };
+  if (base === null) return { available: false, reason: "unknown-repo" };
   const paths = entry.oldPath !== undefined ? [entry.oldPath, entry.path] : [entry.path];
   const run = await runGit(
     git,

@@ -372,6 +372,8 @@ export const fixtureCacheRules: CacheRuleWire[] = [
 // feature was asked for. Shared by the unit suite, the e2e stub and the playground.
 export const fixtureChanges: PaneChangesResponse = {
   paneId: "w1:p1",
+  workspaceId: "w1",
+  workspaceLabel: "webapp",
   available: true,
   root: "/home/you/webapp",
   truncated: false,
@@ -449,9 +451,11 @@ export function fixtureChangeDiff(repo: string, path: string): PaneChangeDiffRes
   const file = fixtureChanges.available
     ? fixtureChanges.repos.find((r) => r.relPath === repo)?.files.find((f) => f.path === path)
     : undefined;
-  if (!file) return { paneId: "w1:p1", available: false, reason: "unknown-path" };
+  if (!file) return { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "webapp", available: false, reason: "unknown-path" };
   const answer: PaneChangeDiffResponse = {
     paneId: "w1:p1",
+    workspaceId: "w1",
+    workspaceLabel: "webapp",
     available: true,
     repo,
     path,
@@ -470,8 +474,9 @@ export const handlers = [
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),
   ),
-  // The Changes view: the list, or with ?repo=&path= one file's diff.
-  http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {
+  // The Changes view: the list, or with ?repo=&path= one file's diff. Asked by pane or by
+  // workspace, the answer is the same list (ADR 0065).
+  http.get(/\/api\/(?:pane|workspace)\/[^/]+\/changes/, ({ request }) => {
     const q = new URL(request.url).searchParams;
     const repo = q.get("repo");
     const path = q.get("path");

@@ -803,15 +803,20 @@ function toSnapshot(listing: TmuxListing, ownLabels: ReadonlyMap<string, string>
   const paneCounts = new Map<string, number>();
   for (const pane of listing.panes) paneCounts.set(pane.sessionId, (paneCounts.get(pane.sessionId) ?? 0) + 1);
 
-  const spaces: MuxSpace[] = listing.sessions.map((session) => ({
-    spaceId: session.id,
-    number: numberById.get(session.id) ?? 0,
-    label: session.name.length > 0 ? session.name : session.id,
-    focused: liveliest?.id === session.id,
-    activeTabId: activeTabBySession.get(session.id) ?? "",
-    tabCount: session.windows,
-    paneCount: paneCounts.get(session.id) ?? 0,
-  }));
+  const spaces: MuxSpace[] = listing.sessions.map((session) => {
+    const space: MutableMuxSpace = {
+      spaceId: session.id,
+      number: numberById.get(session.id) ?? 0,
+      label: session.name.length > 0 ? session.name : session.id,
+      focused: liveliest?.id === session.id,
+      activeTabId: activeTabBySession.get(session.id) ?? "",
+      tabCount: session.windows,
+      paneCount: paneCounts.get(session.id) ?? 0,
+    };
+    // The folder the session was started in. Omitted, never empty, when tmux reports none.
+    if (session.path.length > 0) space.folder = session.path;
+    return space;
+  });
   const tabs: MuxTab[] = listing.windows
     .filter((window) => sessionById.has(window.sessionId))
     .map((window) => ({
@@ -878,6 +883,10 @@ function clientsToSwitch(listing: TmuxListing, sessionId: string): TmuxClient[] 
 type MutableMuxPane = { -readonly [K in keyof MuxPane]: MuxPane[K] };
 
 /** One tmux pane record as a {@link MuxPane}. */
+
+/** A {@link MuxSpace} while it is being built, so an optional field is set only when present. */
+type MutableMuxSpace = { -readonly [K in keyof MuxSpace]: MuxSpace[K] };
+
 function toMuxPane(
   raw: TmuxPaneRecord,
   sessionById: ReadonlyMap<string, TmuxSession>,

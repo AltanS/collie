@@ -21,8 +21,8 @@ import type {
   CacheWatchState,
   LaunchersResponse,
   NotifyPrefs,
-  PaneChangeDiffResponse,
-  PaneChangesResponse,
+  ChangeDiffResponse,
+  ChangesResponse,
   PaneHistoryResponse,
   CrewStatusResponse,
   PaneReadResponse,
@@ -468,7 +468,7 @@ export function fetchHistory(
   });
 }
 
-/** How far the Changes view looks for repos below the pane's folder (Settings → Changes). */
+/** How far the Changes view looks for repos below the workspace folder (Settings → Changes). */
 export interface ChangesLookup {
   depth: number;
   nested: boolean;
@@ -484,30 +484,42 @@ function changesQuery(lookup: ChangesLookup, file?: { repo: string; path: string
 }
 
 /**
- * The uncommitted changes under a pane's folder, read-only (ADR 0065). Fetched on open and on the
- * view's refresh button, never on the poll loop. No seen header: a git view of the folder is not
- * the pane's conversation, so it does not mark the pane seen.
+ * Whose Changes list: a pane's (the bridge resolves the pane's workspace) or a workspace asked
+ * directly. Both answer the same shape (ADR 0065).
+ */
+export type ChangesTarget = { kind: "pane"; paneId: string } | { kind: "space"; spaceId: string };
+
+function changesBase(target: ChangesTarget): string {
+  return target.kind === "pane"
+    ? `/api/pane/${encodeURIComponent(target.paneId)}/changes`
+    : `/api/workspace/${encodeURIComponent(target.spaceId)}/changes`;
+}
+
+/**
+ * The uncommitted changes under a workspace's folder, read-only (ADR 0065). Fetched on open and on
+ * the view's refresh button, never on the poll loop. No seen header: a git view of the folder is
+ * not the pane's conversation, so it does not mark the pane seen.
  */
 export function fetchChanges(
-  paneId: string,
+  target: ChangesTarget,
   lookup: ChangesLookup,
   scope?: Scope,
   signal?: AbortSignal,
-): Promise<PaneChangesResponse> {
-  const path = `/api/pane/${encodeURIComponent(paneId)}/changes?${changesQuery(lookup)}`;
-  return req<PaneChangesResponse>(withScope(path, scope), { signal });
+): Promise<ChangesResponse> {
+  const path = `${changesBase(target)}?${changesQuery(lookup)}`;
+  return req<ChangesResponse>(withScope(path, scope), { signal });
 }
 
 /** One changed file's diff. The bridge serves only a repo and path its own list names. */
 export function fetchChangeDiff(
-  paneId: string,
+  target: ChangesTarget,
   lookup: ChangesLookup,
   file: { repo: string; path: string },
   scope?: Scope,
   signal?: AbortSignal,
-): Promise<PaneChangeDiffResponse> {
-  const path = `/api/pane/${encodeURIComponent(paneId)}/changes?${changesQuery(lookup, file)}`;
-  return req<PaneChangeDiffResponse>(withScope(path, scope), { signal });
+): Promise<ChangeDiffResponse> {
+  const path = `${changesBase(target)}?${changesQuery(lookup, file)}`;
+  return req<ChangeDiffResponse>(withScope(path, scope), { signal });
 }
 
 export function sendReply(

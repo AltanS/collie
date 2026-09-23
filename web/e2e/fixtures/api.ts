@@ -55,8 +55,9 @@ async function answer(route: Route, path: string): Promise<void> {
 
   if (path === "/api/snapshot") return fulfillJson(route, fixtureSnapshot);
 
-  // The Changes view (ADR 0065): the list, or with `?repo=&path=` one file's diff.
-  if (/^\/api\/pane\/[^/]+\/changes$/.test(path)) {
+  // The Changes view (ADR 0065): the list, or with `?repo=&path=` one file's diff. Asked by pane or
+  // by workspace, the answer is the same list.
+  if (/^\/api\/(?:pane|workspace)\/[^/]+\/changes$/.test(path)) {
     const q = new URL(route.request().url()).searchParams;
     const repo = q.get("repo");
     const file = q.get("path");

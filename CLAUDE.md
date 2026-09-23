@@ -446,8 +446,8 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls
   followed by `revalidator.revalidate()`. There is **no TanStack Query** — don't reintroduce it.
 - Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId`,
-  `/pane/:paneId/history` and `/pane/:paneId/changes`. The router instance is module-scoped so it
-  keeps its location.
+  `/pane/:paneId/history`, `/pane/:paneId/changes` and `/space/:spaceId/changes`. The router
+  instance is module-scoped so it keeps its location.
 - **The idle lock pauses; it does not gate.** It only appears when Collie is left *open, visible and
   untouched* — a hidden page never locks, and returning to the foreground auto-resumes. It covers a
   still-mounted router (unmounting it ate in-progress composer drafts) and pauses polling through

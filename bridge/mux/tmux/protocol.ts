@@ -76,6 +76,8 @@ export interface TmuxSession {
   readonly windows: number;
   /** tmux's last-activity stamp. The only ordering tmux offers over sessions — see `focused`. */
   readonly activity: number;
+  /** `session_path`: the folder the session was started in. Empty when tmux reports none. */
+  readonly path: string;
 }
 
 /** One tmux window — what Collie calls a TAB. `id` is `@N`. */
@@ -146,7 +148,16 @@ export interface TmuxListing {
   readonly clients: readonly TmuxClient[];
 }
 
-const SESSION_FORMAT = [SESSION_TAG, "#{session_id}", "#{session_windows}", "#{session_activity}", "#{session_name}"].join(SEP);
+// `session_path` sits before the name because the name is the free-text field `fields()` folds any
+// stray separator back into, and so it must stay last.
+const SESSION_FORMAT = [
+  SESSION_TAG,
+  "#{session_id}",
+  "#{session_windows}",
+  "#{session_activity}",
+  "#{session_path}",
+  "#{session_name}",
+].join(SEP);
 const WINDOW_FORMAT = [
   WINDOW_TAG,
   "#{window_id}",
@@ -254,9 +265,9 @@ export function parseListing(stdout: string): TmuxListing {
   for (const line of unescapeSeparators(stdout).split("\n")) {
     if (line.length === 0) continue;
     if (line.startsWith(SESSION_TAG + SEP)) {
-      const [, id, windowCount, activity, name] = fields(line, 5);
+      const [, id, windowCount, activity, path, name] = fields(line, 6);
       if (id === undefined || id.length === 0) continue;
-      sessions.push({ id, name: name ?? id, windows: num(windowCount), activity: num(activity) });
+      sessions.push({ id, name: name ?? id, windows: num(windowCount), activity: num(activity), path: path ?? "" });
       continue;
     }
     if (line.startsWith(WINDOW_TAG + SEP)) {

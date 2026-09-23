@@ -601,6 +601,10 @@ function toMuxSpace(raw: WireWorkspace): MuxSpace {
     // every worktree of it — probed 2026-08-28, and the pair is what lets a list nest one under the
     // other without a second call.
     space.isWorktree = raw.worktree.is_linked_worktree === true;
+    // The workspace's own folder: the checkout it sits in. Herdr's workspace record carries no cwd
+    // of its own (probed 2026-09-23 on herdr 0.9.0), so this is the only folder it names.
+    const folder = raw.worktree.checkout_path ?? raw.worktree.repo_root;
+    if (folder) space.folder = folder;
   }
   return space;
 }

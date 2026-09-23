@@ -406,6 +406,7 @@ export class StateEngine {
             view.repoRoot = s.repoRoot;
             view.isWorktree = s.isWorktree === true;
           }
+          if (s.folder !== undefined) view.folder = s.folder;
           return view;
         })
         .toSorted((a, b) => a.number - b.number);

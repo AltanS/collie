@@ -237,6 +237,12 @@ export interface WorkspaceView {
    */
   isWorktree?: boolean;
   /**
+   * The space's own folder, when the multiplexer keeps one (MuxSpace.folder): herdr's worktree
+   * checkout, tmux's `session_path`. Absent otherwise. The Changes view prefers it as its root
+   * (bridge/changes-root.ts); without it the root is the panes' common folder.
+   */
+  folder?: string;
+  /**
    * Which member of the crew this space lives on — the same tag panes and sessions carry.
    *
    * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise (§11), so a
@@ -676,30 +682,28 @@ export interface ChangedRepo {
   files: ChangedFile[];
 }
 
-/** Why a Changes request has nothing to show. Ordinary answers, never errors. */
-export type ChangesUnavailableReason = "no-pane" | "no-folder" | "no-git";
+/**
+ * Why a Changes request has nothing to show. Ordinary answers, never errors. `no-workspace` is the
+ * workspace route's `no-pane`: the id names no workspace in the snapshot.
+ */
+export type ChangesUnavailableReason = "no-pane" | "no-workspace" | "no-folder" | "no-git";
 
 /**
- * GET /api/pane/:id/changes — the uncommitted changes under the pane's folder, read-only
- * (ADR 0065). Only repos with changes are listed. `truncated` means a discovery or listing cap was
- * reached, so the list may be incomplete.
+ * The uncommitted changes under a workspace's folder, read-only (ADR 0065). Only repos with changes
+ * are listed. `root` is the folder the list was read from; `truncated` means a discovery or listing
+ * cap was reached, so the list may be incomplete.
  */
-export type PaneChangesResponse =
-  | { paneId: string; available: false; reason: ChangesUnavailableReason }
-  | { paneId: string; available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
+export type ChangesList =
+  | { available: false; reason: ChangesUnavailableReason }
+  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
 
 /**
- * GET /api/pane/:id/changes?repo=&path= — one file's diff against HEAD, as raw unified-diff text.
- * The phone parses it. `diff` is empty for a binary file and for an untracked folder.
+ * One file's diff against HEAD, as raw unified-diff text. The phone parses it. `diff` is empty for
+ * a binary file and for an untracked folder.
  */
-export type PaneChangeDiffResponse =
+export type ChangeDiff =
+  | { available: false; reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path" }
   | {
-      paneId: string;
-      available: false;
-      reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path";
-    }
-  | {
-      paneId: string;
       available: true;
       repo: string;
       path: string;
@@ -712,6 +716,24 @@ export type PaneChangeDiffResponse =
       truncated: boolean;
       diff: string;
     };
+
+/**
+ * Which workspace a Changes answer covers, so the screen can say so. Present whenever the workspace
+ * was found, including when the pane route fell back to the pane's own folder.
+ */
+export interface ChangesWorkspace {
+  workspaceId?: string;
+  workspaceLabel?: string;
+}
+
+/** GET /api/pane/:id/changes — the list for the pane's WORKSPACE (bridge/changes-root.ts). */
+export type PaneChangesResponse = { paneId: string } & ChangesWorkspace & ChangesList;
+/** GET /api/pane/:id/changes?repo=&path= — one file's diff in the pane's workspace. */
+export type PaneChangeDiffResponse = { paneId: string } & ChangesWorkspace & ChangeDiff;
+/** GET /api/workspace/:id/changes — the same list, asked by workspace. */
+export type WorkspaceChangesResponse = { workspaceId: string; workspaceLabel?: string } & ChangesList;
+/** GET /api/workspace/:id/changes?repo=&path= — the same diff, asked by workspace. */
+export type WorkspaceChangeDiffResponse = { workspaceId: string; workspaceLabel?: string } & ChangeDiff;
 
 /**
  * POST /api/pane/:id/{reply,keys} — result of a send. Discriminated on `ok`: a failure always

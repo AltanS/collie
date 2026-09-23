@@ -231,6 +231,8 @@ export interface WorkspaceView {
   repoRoot?: string;
   /** Whether this space is a linked worktree of `repoRoot`, not the repo's own checkout. */
   isWorktree?: boolean;
+  /** The space's own folder, when the multiplexer keeps one (herdr worktree, tmux session_path). */
+  folder?: string;
   /**
    * Which member of the crew this space lives on — the same tag a pane and a session carry.
    *
@@ -856,22 +858,17 @@ export interface ChangedRepo {
   files: ChangedFile[];
 }
 
-export type ChangesUnavailableReason = "no-pane" | "no-folder" | "no-git";
+export type ChangesUnavailableReason = "no-pane" | "no-workspace" | "no-folder" | "no-git";
 
-/** GET /api/pane/:id/changes — mirrors bridge/types.ts. */
-export type PaneChangesResponse =
-  | { paneId: string; available: false; reason: ChangesUnavailableReason }
-  | { paneId: string; available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
+/** A Changes list. `root` is the workspace folder it was read from. Mirrors bridge/types.ts. */
+export type ChangesList =
+  | { available: false; reason: ChangesUnavailableReason }
+  | { available: true; root: string; repos: ChangedRepo[]; truncated: boolean };
 
-/** GET /api/pane/:id/changes?repo=&path= — one file's diff as raw unified text. Mirrors bridge/types.ts. */
-export type PaneChangeDiffResponse =
+/** One file's diff as raw unified text. Mirrors bridge/types.ts. */
+export type ChangeDiff =
+  | { available: false; reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path" }
   | {
-      paneId: string;
-      available: false;
-      reason: ChangesUnavailableReason | "unknown-repo" | "unknown-path";
-    }
-  | {
-      paneId: string;
       available: true;
       repo: string;
       path: string;
@@ -882,6 +879,26 @@ export type PaneChangeDiffResponse =
       truncated: boolean;
       diff: string;
     };
+
+/** Which workspace a Changes answer covers. Present whenever the bridge found the workspace. */
+export interface ChangesWorkspace {
+  workspaceId?: string;
+  workspaceLabel?: string;
+}
+
+/** GET /api/pane/:id/changes — the list for the pane's workspace. Mirrors bridge/types.ts. */
+export type PaneChangesResponse = { paneId: string } & ChangesWorkspace & ChangesList;
+/** GET /api/pane/:id/changes?repo=&path= — one file's diff. Mirrors bridge/types.ts. */
+export type PaneChangeDiffResponse = { paneId: string } & ChangesWorkspace & ChangeDiff;
+/** GET /api/workspace/:id/changes — the same list, asked by workspace. */
+export type WorkspaceChangesResponse = { workspaceId: string; workspaceLabel?: string } & ChangesList;
+/** GET /api/workspace/:id/changes?repo=&path= — the same diff, asked by workspace. */
+export type WorkspaceChangeDiffResponse = { workspaceId: string; workspaceLabel?: string } & ChangeDiff;
+
+/** Either Changes list, as the view reads it. */
+export type ChangesResponse = ChangesWorkspace & ChangesList;
+/** Either diff, as the view reads it. */
+export type ChangeDiffResponse = ChangesWorkspace & ChangeDiff;
 
 /**
  * GET /api/pane/:id/history — real conversation history, read from the agent's own session log.

@@ -42,6 +42,8 @@ function renderAt(url: string) {
           { index: true, element: <div /> },
           { path: "pane/:paneId", element: <div>pane screen</div> },
           { path: "pane/:paneId/changes", element: <ChangesRoute /> },
+          { path: "space/:spaceId", element: <div>space screen</div> },
+          { path: "space/:spaceId/changes", element: <ChangesRoute /> },
         ],
       },
     ],
@@ -63,6 +65,47 @@ describe("ChangesRoute — the list", () => {
     expect(within(api).getByText("server/handlers/")).toBeTruthy();
     expect(within(api).getByText(en["changes.status.untracked"])).toBeTruthy();
     expect(screen.getByText(en["changes.binaryShort"])).toBeTruthy();
+  });
+
+  it("names the workspace and its folder in the header", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, () =>
+        HttpResponse.json({ ...fixtureChanges, workspaceLabel: "collie-workspace", root: "/home/you/projects/collie-workspace" }),
+      ),
+    );
+    renderAt("/pane/w1%3Ap1/changes");
+    expect(await screen.findByText("collie-workspace")).toBeTruthy();
+    const folder = screen.getByText("…/projects/collie-workspace");
+    expect(folder.getAttribute("title")).toBe("/home/you/projects/collie-workspace");
+  });
+
+  it("the space form asks by workspace, shows the same list, and goes back to the space", async () => {
+    const asked: string[] = [];
+    server.use(
+      // Records the ask and falls through to the shared handler, which answers list and diff.
+      http.get(/\/api\/workspace\/[^/]+\/changes/, ({ request }) => {
+        asked.push(new URL(request.url).pathname);
+      }),
+    );
+    const router = renderAt("/space/w1/changes");
+    expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
+    expect(asked[0]).toBe("/api/workspace/w1/changes");
+    await userEvent.click(await screen.findByRole("button", { name: /checkout\.tsx/ }));
+    expect(router.state.location.pathname).toBe("/space/w1/changes");
+    expect(router.state.location.search).toBe("?repo=.&path=src%2Froutes%2Fcheckout.tsx");
+    await userEvent.click(screen.getByRole("button", { name: en["changes.listBackAria"] }));
+    await userEvent.click(await screen.findByRole("button", { name: en["changes.backSpaceAria"] }));
+    expect(await screen.findByText("space screen")).toBeTruthy();
+  });
+
+  it("explains a workspace that is gone", async () => {
+    server.use(
+      http.get(/\/api\/workspace\/[^/]+\/changes/, () =>
+        HttpResponse.json({ workspaceId: "w9", available: false, reason: "no-workspace" }),
+      ),
+    );
+    renderAt("/space/w9/changes");
+    expect(await screen.findByText(en["changes.unavailable.noWorkspace"])).toBeTruthy();
   });
 
   it("hides the repo heading when only one repo has changes", async () => {

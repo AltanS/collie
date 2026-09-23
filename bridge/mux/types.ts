@@ -276,6 +276,13 @@ export interface MuxSpace {
    * always a bug. `false` means "this is the repo itself", which is what a worktree row nests under.
    */
   readonly isWorktree?: boolean;
+  /**
+   * The space's own folder, when the multiplexer keeps one: herdr reports the checkout of the
+   * worktree a workspace sits in, tmux reports `session_path` (the folder a session was started
+   * in). zellij keeps none, and omits it. A FACT the adapter reads, never a guess from the panes:
+   * the Changes view derives its fallback from the panes itself (bridge/changes-root.ts).
+   */
+  readonly folder?: string;
 }
 
 /** One tab within a space — a layout holding one or more panes. */

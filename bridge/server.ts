@@ -6,6 +6,7 @@ import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
 import { changesParams, fileDiff, listChanges } from "./changes.ts";
+import { rootOfWorkspace, type RootSnapshot } from "./changes-root.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
@@ -87,6 +88,8 @@ import type {
   PaneCache,
   PaneChangeDiffResponse,
   PaneChangesResponse,
+  WorkspaceChangeDiffResponse,
+  WorkspaceChangesResponse,
   PaneHistoryResponse,
   PaneReadResponse,
   PaneWire,
@@ -236,6 +239,13 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
  */
 const WORKTREE_LIST_ROUTE = /^\/api\/workspace\/([^/]+)\/worktrees$/;
 const WORKTREE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree(?:\/(open))?$/;
+
+/**
+ * `GET /api/workspace/<id>/changes` — the Changes view asked by workspace rather than by pane
+ * (ADR 0065). The same list every pane of that workspace shows. A READ, forwarded with `?host=` like
+ * the pane route: `bridge/crew/forward.ts` mirrors this shape and `forward.test.ts` pins it.
+ */
+const WORKSPACE_CHANGES_ROUTE = /^\/api\/workspace\/([^/]+)\/changes$/;
 
 /**
  * Header the web app sets on its own pane reads, and the ONLY thing that lets a read mark a pane
@@ -1040,6 +1050,22 @@ export function startServer(opts: {
         return text("malformed URL", 400);
       }
       return blobRoute(hash, cfg.journalRoots.pi, req.headers.get("if-none-match"));
+    }
+
+    // ── Changes, asked by workspace (ADR 0065): the list every pane of the space shows ──
+    const workspaceChangesMatch = pathname.match(WORKSPACE_CHANGES_ROUTE);
+    if (workspaceChangesMatch && req.method === "GET") {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      let workspaceId: string;
+      try {
+        workspaceId = decodeURIComponent(workspaceChangesMatch[1]!);
+      } catch {
+        return text("malformed URL", 400);
+      }
+      return workspaceChanges(rt.engine, workspaceId, url, req);
     }
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
@@ -2389,27 +2415,80 @@ async function paneHistory(
   }
 }
 
+/** The snapshot a Changes route reads its root off. The state engine is one. */
+export interface ChangesSnapshotSource {
+  current(): RootSnapshot;
+}
+
 /**
- * GET /api/pane/:id/changes — what changed under the pane's folder since the last commit (ADR 0065).
+ * GET /api/pane/:id/changes — what changed under the pane's WORKSPACE folder since the last commit
+ * (ADR 0065). The root is bridge/changes-root.ts's rule over the live snapshot; when the workspace
+ * has no narrow enough folder, the pane's own cwd is the root, as it was before.
  *
  * The folder comes off the live snapshot, keyed by pane id; the client never sends one. With
  * `?repo=&path=` the answer is one file's diff, and bridge/changes.ts serves it only for a repo its
  * own discovery returns and a path git listed there.
  */
-async function paneChanges(engine: StateEngine, paneId: string, url: URL, req: Request): Promise<Response> {
+export async function paneChanges(
+  engine: ChangesSnapshotSource,
+  paneId: string,
+  url: URL,
+  req: Request,
+  home: string = homedir(),
+): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
   const params = changesParams(url);
-  const { agents, shellPanes } = engine.current();
-  const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
+  const snap = engine.current();
+  const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === paneId);
   const wantsDiff = params.repo !== null || params.path !== null;
   if (!pane) {
     return wantsDiff
       ? json({ paneId, available: false, reason: "no-pane" } satisfies PaneChangeDiffResponse, accept)
       : json({ paneId, available: false, reason: "no-pane" } satisfies PaneChangesResponse, accept);
   }
+  const found = rootOfWorkspace(snap, pane.workspaceId, home);
+  const root = found?.root ?? pane.cwd;
+  const subject = found
+    ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
+    : { paneId };
   try {
-    if (wantsDiff) return json(await fileDiff(paneId, pane.cwd, params), accept);
-    return json(await listChanges(paneId, pane.cwd, params), accept);
+    if (wantsDiff) return json({ ...subject, ...(await fileDiff(root, params)) } satisfies PaneChangeDiffResponse, accept);
+    return json({ ...subject, ...(await listChanges(root, params)) } satisfies PaneChangesResponse, accept);
+  } catch (err) {
+    return text(`changes read failed: ${errorText(err)}`, 502);
+  }
+}
+
+/**
+ * GET /api/workspace/:id/changes — the same list, asked by workspace (ADR 0065). The root rule is
+ * the pane route's, without the fallback: a workspace with no narrow enough folder answers
+ * `no-folder`, because there is no asking pane whose folder could stand in.
+ */
+export async function workspaceChanges(
+  engine: ChangesSnapshotSource,
+  workspaceId: string,
+  url: URL,
+  req: Request,
+  home: string = homedir(),
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  const params = changesParams(url);
+  const wantsDiff = params.repo !== null || params.path !== null;
+  const found = rootOfWorkspace(engine.current(), workspaceId, home);
+  if (found === null) {
+    return wantsDiff
+      ? json({ workspaceId, available: false, reason: "no-workspace" } satisfies WorkspaceChangeDiffResponse, accept)
+      : json({ workspaceId, available: false, reason: "no-workspace" } satisfies WorkspaceChangesResponse, accept);
+  }
+  const subject = { workspaceId, workspaceLabel: found.workspace.label };
+  if (found.root === null) {
+    return json({ ...subject, available: false, reason: "no-folder" } satisfies WorkspaceChangesResponse, accept);
+  }
+  try {
+    if (wantsDiff) {
+      return json({ ...subject, ...(await fileDiff(found.root, params)) } satisfies WorkspaceChangeDiffResponse, accept);
+    }
+    return json({ ...subject, ...(await listChanges(found.root, params)) } satisfies WorkspaceChangesResponse, accept);
   } catch (err) {
     return text(`changes read failed: ${errorText(err)}`, 502);
   }

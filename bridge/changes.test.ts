@@ -16,7 +16,7 @@ import {
   parseStatusV2,
   syntheticAddedDiff,
 } from "./changes.ts";
-import type { PaneChangesResponse } from "./types.ts";
+import type { ChangesList } from "./types.ts";
 
 // Real git, in throwaway folders. The module's whole job is how it drives git, so a fake would
 // test the fake.
@@ -65,7 +65,7 @@ const params = (repoRel: string | null, path: string | null, over: Partial<typeo
   path,
 });
 
-function available(res: PaneChangesResponse) {
+function available(res: ChangesList) {
   if (!res.available) throw new Error(`unavailable: ${res.reason}`);
   return res;
 }
@@ -134,8 +134,8 @@ describe("parsers", () => {
 
 describe("list and diff", () => {
   test("a blank folder (zellij) answers no-folder", async () => {
-    expect(await listChanges("p", "", P)).toEqual({ paneId: "p", available: false, reason: "no-folder" });
-    expect(await fileDiff("p", "", params(".", "a.txt"))).toMatchObject({ available: false, reason: "no-folder" });
+    expect(await listChanges("", P)).toEqual({ available: false, reason: "no-folder" });
+    expect(await fileDiff("", params(".", "a.txt"))).toMatchObject({ available: false, reason: "no-folder" });
   });
 
   test("lists modified, added, deleted, renamed and untracked files with counts", async () => {
@@ -146,7 +146,7 @@ describe("list and diff", () => {
     write(join(dir, "new.txt"), "x\ny\n");
     git(dir, "add", "new.txt");
     write(join(dir, "loose.txt"), "1\n2\n3\n");
-    const res = available(await listChanges("p", dir, P));
+    const res = available(await listChanges(dir, P));
     expect(res.repos).toHaveLength(1);
     const [only] = res.repos;
     expect(only!.relPath).toBe(".");
@@ -158,15 +158,15 @@ describe("list and diff", () => {
     expect(byPath["new.txt"]).toMatchObject({ status: "A", added: 2 });
     expect(byPath["loose.txt"]).toMatchObject({ status: "?", added: 3 });
 
-    const diff = await fileDiff("p", dir, params(".", "a.txt"));
+    const diff = await fileDiff(dir, params(".", "a.txt"));
     expect(diff).toMatchObject({ available: true, status: "M", binary: false, truncated: false });
     if (diff.available) expect(diff.diff).toContain("+TWO\n");
 
-    const renamed = await fileDiff("p", dir, params(".", "c2.txt"));
+    const renamed = await fileDiff(dir, params(".", "c2.txt"));
     expect(renamed).toMatchObject({ available: true, status: "R", oldPath: "c.txt" });
     if (renamed.available) expect(renamed.diff).toContain("rename from c.txt");
 
-    const loose = await fileDiff("p", dir, params(".", "loose.txt"));
+    const loose = await fileDiff(dir, params(".", "loose.txt"));
     if (!loose.available) throw new Error("loose unavailable");
     expect(loose.diff).toContain("@@ -0,0 +1,3 @@\n+1\n+2\n+3\n");
   });
@@ -174,22 +174,22 @@ describe("list and diff", () => {
   test("a subfolder of a repo names the repo `..`", async () => {
     const dir = repo(join(base, "up"), { "sub/a.txt": "a\n" });
     write(join(dir, "sub/a.txt"), "b\n");
-    const res = available(await listChanges("p", join(dir, "sub"), P));
+    const res = available(await listChanges(join(dir, "sub"), P));
     expect(res.repos.map((r) => r.relPath)).toEqual([".."]);
     expect(res.repos[0]!.files[0]!.path).toBe("sub/a.txt");
-    expect(await fileDiff("p", join(dir, "sub"), params("..", "sub/a.txt"))).toMatchObject({ available: true });
+    expect(await fileDiff(join(dir, "sub"), params("..", "sub/a.txt"))).toMatchObject({ available: true });
   });
 
   test("refuses an unlisted path, a ../ path and an unknown repo", async () => {
     const dir = repo(join(base, "refuse"), { "a.txt": "a\n", "clean.txt": "clean\n" });
     write(join(dir, "a.txt"), "changed\n");
     write(join(base, "outside.txt"), "secret\n");
-    expect(await fileDiff("p", dir, params(".", "clean.txt"))).toMatchObject({ reason: "unknown-path" });
-    expect(await fileDiff("p", dir, params(".", "../outside.txt"))).toMatchObject({ reason: "unknown-path" });
-    expect(await fileDiff("p", dir, params(".", "/etc/passwd"))).toMatchObject({ reason: "unknown-path" });
-    expect(await fileDiff("p", dir, params("..", "outside.txt"))).toMatchObject({ reason: "unknown-repo" });
-    expect(await fileDiff("p", dir, params("nope", "a.txt"))).toMatchObject({ reason: "unknown-repo" });
-    expect(await fileDiff("p", dir, params(null, "a.txt"))).toMatchObject({ reason: "unknown-repo" });
+    expect(await fileDiff(dir, params(".", "clean.txt"))).toMatchObject({ reason: "unknown-path" });
+    expect(await fileDiff(dir, params(".", "../outside.txt"))).toMatchObject({ reason: "unknown-path" });
+    expect(await fileDiff(dir, params(".", "/etc/passwd"))).toMatchObject({ reason: "unknown-path" });
+    expect(await fileDiff(dir, params("..", "outside.txt"))).toMatchObject({ reason: "unknown-repo" });
+    expect(await fileDiff(dir, params("nope", "a.txt"))).toMatchObject({ reason: "unknown-repo" });
+    expect(await fileDiff(dir, params(null, "a.txt"))).toMatchObject({ reason: "unknown-repo" });
   });
 
   test("an untracked symlink out of the repo is listed but never read", async () => {
@@ -197,12 +197,12 @@ describe("list and diff", () => {
     write(join(base, "link-target.txt"), "secret\nsecret\n");
     symlinkSync(join(base, "link-target.txt"), join(dir, "leak"));
     symlinkSync("a.txt", join(dir, "inside"));
-    const res = available(await listChanges("p", dir, P));
+    const res = available(await listChanges(dir, P));
     const leak = res.repos[0]!.files.find((f) => f.path === "leak");
     expect(leak).toMatchObject({ status: "?", added: 0 });
-    expect(await fileDiff("p", dir, params(".", "leak"))).toMatchObject({ available: false, reason: "unknown-path" });
+    expect(await fileDiff(dir, params(".", "leak"))).toMatchObject({ available: false, reason: "unknown-path" });
     // A link that stays inside shows what git would show: the link's own text, not the file.
-    const inside = await fileDiff("p", dir, params(".", "inside"));
+    const inside = await fileDiff(dir, params(".", "inside"));
     if (!inside.available) throw new Error("inside link refused");
     expect(inside.diff).toContain("+a.txt\n");
   });
@@ -211,12 +211,12 @@ describe("list and diff", () => {
     const dir = repo(join(base, "bin"), { "img.bin": "\0\x01\x02" });
     write(join(dir, "img.bin"), new Uint8Array([0, 1, 2, 3, 4]));
     write(join(dir, "new.bin"), new Uint8Array([9, 0, 9]));
-    const res = available(await listChanges("p", dir, P));
+    const res = available(await listChanges(dir, P));
     const files = Object.fromEntries(res.repos[0]!.files.map((f) => [f.path, f]));
     expect(files["img.bin"]).toMatchObject({ binary: true });
     expect(files["new.bin"]).toMatchObject({ binary: true, status: "?" });
-    expect(await fileDiff("p", dir, params(".", "img.bin"))).toMatchObject({ binary: true, diff: "" });
-    expect(await fileDiff("p", dir, params(".", "new.bin"))).toMatchObject({ binary: true, diff: "" });
+    expect(await fileDiff(dir, params(".", "img.bin"))).toMatchObject({ binary: true, diff: "" });
+    expect(await fileDiff(dir, params(".", "new.bin"))).toMatchObject({ binary: true, diff: "" });
   });
 
   test("a long diff is truncated", async () => {
@@ -224,7 +224,7 @@ describe("list and diff", () => {
     write(join(dir, "a.txt"), Array.from({ length: 6000 }, (_, i) => `line ${i}`).join("\n") + "\n");
     write(join(dir, "big.txt"), Array.from({ length: 6000 }, (_, i) => `line ${i}`).join("\n") + "\n");
     for (const path of ["a.txt", "big.txt"]) {
-      const res = await fileDiff("p", dir, params(".", path));
+      const res = await fileDiff(dir, params(".", path));
       if (!res.available) throw new Error(`${path} unavailable`);
       expect(res.truncated).toBe(true);
       expect(res.diff.split("\n").length - 1).toBeLessThanOrEqual(MAX_DIFF_LINES);
@@ -238,11 +238,11 @@ describe("list and diff", () => {
     write(join(dir, "staged.txt"), "s1\ns2\n");
     git(dir, "add", "staged.txt");
     write(join(dir, "loose.txt"), "l\n");
-    const res = available(await listChanges("p", dir, P));
+    const res = available(await listChanges(dir, P));
     const files = Object.fromEntries(res.repos[0]!.files.map((f) => [f.path, f]));
     expect(files["staged.txt"]).toMatchObject({ status: "A", added: 2 });
     expect(files["loose.txt"]).toMatchObject({ status: "?", added: 1 });
-    const diff = await fileDiff("p", dir, params(".", "staged.txt"));
+    const diff = await fileDiff(dir, params(".", "staged.txt"));
     if (!diff.available) throw new Error("staged unavailable");
     expect(diff.diff).toContain("+s1\n+s2\n");
   });
@@ -251,9 +251,9 @@ describe("list and diff", () => {
     const dir = repo(join(base, "udir"));
     write(join(dir, "fresh/one.txt"), "1\n");
     write(join(dir, "fresh/two.txt"), "2\n");
-    const res = available(await listChanges("p", dir, P));
+    const res = available(await listChanges(dir, P));
     expect(res.repos[0]!.files.map((f) => f.path)).toEqual(["fresh/"]);
-    expect(await fileDiff("p", dir, params(".", "fresh/"))).toMatchObject({ directory: true, diff: "" });
+    expect(await fileDiff(dir, params(".", "fresh/"))).toMatchObject({ directory: true, diff: "" });
   });
 });
 
@@ -263,11 +263,11 @@ describe("discovery", () => {
     const member = repo(join(ws, "member"));
     write(join(member, "a.txt"), "member change\n");
     write(join(ws, "readme.md"), "ws change\n");
-    const res = available(await listChanges("p", ws, P));
+    const res = available(await listChanges(ws, P));
     expect(res.repos.map((r) => r.relPath).toSorted()).toEqual([".", "member"]);
     const parent = res.repos.find((r) => r.relPath === ".")!;
     expect(parent.files.map((f) => f.path)).toEqual(["readme.md"]);
-    const diff = await fileDiff("p", ws, params("member", "a.txt"));
+    const diff = await fileDiff(ws, params("member", "a.txt"));
     expect(diff).toMatchObject({ available: true, repo: "member" });
   });
 
@@ -276,14 +276,14 @@ describe("discovery", () => {
     mkdirSync(projects);
     const one = repo(join(projects, "one"));
     write(join(one, "a.txt"), "x\n");
-    const res = available(await listChanges("p", projects, P));
+    const res = available(await listChanges(projects, P));
     expect(res.repos.map((r) => r.relPath)).toEqual(["one"]);
 
     // Not ignored, not a submodule: the parent's status would say `? inner/`.
     const outer = repo(join(base, "outer"));
     const inner = repo(join(outer, "inner"));
     write(join(inner, "a.txt"), "y\n");
-    const res2 = available(await listChanges("p", outer, P));
+    const res2 = available(await listChanges(outer, P));
     expect(res2.repos.map((r) => r.relPath)).toEqual(["inner"]);
   });
 
@@ -298,7 +298,7 @@ describe("discovery", () => {
     expect((await discoverRepos(ws, 2, false)).repos.map((r) => r.relPath)).toEqual(["."]);
     // The diff route uses the same discovery, so a nested repo is unknown with nested off.
     write(join(ws, "child/a.txt"), "z\n");
-    expect(await fileDiff("p", ws, params("child", "a.txt", { nested: false }))).toMatchObject({
+    expect(await fileDiff(ws, params("child", "a.txt", { nested: false }))).toMatchObject({
       reason: "unknown-repo",
     });
   });
@@ -323,10 +323,10 @@ describe("discovery", () => {
     write(join(child, "a.txt"), "moved\n");
     git(child, "commit", "-q", "-am", "move");
     write(join(child, "a.txt"), "dirty\n");
-    const withChild = available(await listChanges("p", parent, P));
+    const withChild = available(await listChanges(parent, P));
     expect(withChild.repos.map((r) => r.relPath)).toEqual(["child"]);
     // With nested off the child is not discovered, so the parent keeps its gitlink entry.
-    const alone = available(await listChanges("p", parent, { depth: 2, nested: false }));
+    const alone = available(await listChanges(parent, { depth: 2, nested: false }));
     expect(alone.repos[0]!.files.map((f) => f.path)).toEqual(["child"]);
   });
 });
@@ -365,13 +365,13 @@ describe("a hostile repo runs nothing", () => {
     rmSync(markers, { recursive: true });
     mkdirSync(markers);
 
-    const res = available(await listChanges("p", dir, P));
+    const res = available(await listChanges(dir, P));
     const files = res.repos[0]!.files.map((f) => f.path).toSorted();
     expect(files).toEqual(["a.txt", "b.txt"]);
-    const diff = await fileDiff("p", dir, params(".", "a.txt"));
+    const diff = await fileDiff(dir, params(".", "a.txt"));
     if (!diff.available) throw new Error("hostile diff refused");
     expect(diff.diff).toContain("+bbbb\n");
-    await fileDiff("p", dir, params(".", "b.txt"));
+    await fileDiff(dir, params(".", "b.txt"));
     for (const m of ["fsmonitor", "external", "textconv", "command", "clean", "smudge"]) {
       expect(existsSync(join(markers, m)), `${m} ran`).toBe(false);
     }
@@ -427,11 +427,11 @@ describe("a hostile repo runs nothing", () => {
       mkdirSync(markers);
 
       const started = Date.now();
-      const res = available(await listChanges("p", dir, P));
+      const res = available(await listChanges(dir, P));
       // The list still names both files; the counts the missing blobs would give are simply absent.
       expect(res.repos[0]!.files.map((f) => f.path).toSorted()).toEqual(["a.txt", "b.txt"]);
-      await fileDiff("p", dir, params(".", "a.txt"));
-      await fileDiff("p", dir, params(".", "b.txt"));
+      await fileDiff(dir, params(".", "a.txt"));
+      await fileDiff(dir, params(".", "b.txt"));
       expect(Date.now() - started).toBeLessThan(GIT_TIMEOUT_MS);
       expect(existsSync(join(markers, t.name)), `${t.name} ran`).toBe(false);
     }
@@ -444,7 +444,7 @@ describe("a hostile repo runs nothing", () => {
     const dir = repo(join(base, "wt"));
     git(dir, "config", "core.worktree", elsewhere);
     write(join(dir, "a.txt"), "changed\n");
-    const res = available(await listChanges("p", dir, P));
+    const res = available(await listChanges(dir, P));
     expect(res.repos[0]!.files.map((f) => f.path)).toEqual(["a.txt"]);
   });
 });

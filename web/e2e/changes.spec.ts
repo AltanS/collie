@@ -214,3 +214,25 @@ test("a TypeScript diff takes syntax colour after it loads, and no row changes h
   await noSidewaysScroll(page);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+// Operator decision (2026-09-23): Changes covers the pane's WORKSPACE folder, and the header says
+// which one. The space form asks the same list by workspace and returns to the space.
+test("the header names the workspace and its folder, and the space form shows the same list", async ({ page }) => {
+  await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
+  await expect(page.getByText("webapp · 3 files")).toBeVisible();
+  const folder = page.getByText("…/you/webapp");
+  await expect(folder).toBeVisible();
+  await expect(folder).toHaveAttribute("title", "/home/you/webapp");
+  await noSidewaysScroll(page);
+
+  const asked: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/workspace/")) asked.push(new URL(r.url()).pathname);
+  });
+  await page.goto(`/space/${encodeURIComponent(PANE.workspaceId)}/changes`);
+  await expect(page.getByText("webapp · 3 files")).toBeVisible();
+  await expect(page.getByText("…/you/webapp")).toBeVisible();
+  expect(asked).toContain(`/api/workspace/${PANE.workspaceId}/changes`);
+  await page.getByRole("button", { name: en["changes.backSpaceAria"] }).click();
+  await expect(page).toHaveURL(new RegExp(`/space/${PANE.workspaceId}$`));
+});

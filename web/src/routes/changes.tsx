@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
-import { fetchChangeDiff, fetchChanges, type ChangesLookup } from "@/lib/api";
+import { fetchChangeDiff, fetchChanges, type ChangesLookup, type ChangesTarget } from "@/lib/api";
 import {
   countFiles,
   EMPTY_FILTER,
@@ -31,21 +31,24 @@ import {
 } from "@/lib/changes-tree";
 import { isAbortError } from "@/lib/loaders";
 import { t, type MessageKey } from "@/lib/i18n";
-import { changesPath, panePath } from "@/lib/nav";
+import { changesPath, panePath, spaceChangesPath, spacePath } from "@/lib/nav";
 import { useRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import type {
   ChangedRepo,
+  ChangeDiffResponse,
+  ChangesResponse,
   ChangeStatus,
   ChangesUnavailableReason,
-  PaneChangeDiffResponse,
-  PaneChangesResponse,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// The Changes view (ADR 0065): what changed under a pane's folder since the last commit, read-only.
-// One route, two screens: the list, and with `?repo=&path=` one file's diff. Both live in this one
-// component so the list survives the hop to a file and back, and Previous / Next can walk it.
+// The Changes view (ADR 0065): what changed under a WORKSPACE's folder since the last commit,
+// read-only. Two routes share it: `/pane/:paneId/changes` (the bridge resolves the pane's workspace)
+// and `/space/:spaceId/changes` (the workspace asked directly). Every pane of a workspace shows the
+// same list, and the header names the workspace and its folder so the scope is never a guess.
+// Two screens: the list, and with `?repo=&path=` one file's diff. Both live in this one component
+// so the list survives the hop to a file and back, and Previous / Next can walk it.
 //
 // NOT ON THE POLL LOOP. The list is read when the view opens and when the operator taps refresh,
 // never on a timer: git status over a big tree is not a 1.5 s question, and a list that reshuffled
@@ -55,24 +58,35 @@ import { cn } from "@/lib/utils";
 type ListState =
   | { phase: "loading" }
   | { phase: "error" }
-  | { phase: "ready"; data: PaneChangesResponse };
+  | { phase: "ready"; data: ChangesResponse };
 
 type FileState =
   | { phase: "loading"; key: string }
   | { phase: "error"; key: string }
-  | { phase: "ready"; key: string; data: PaneChangeDiffResponse };
+  | { phase: "ready"; key: string; data: ChangeDiffResponse };
 
 function unavailableKey(reason: ChangesUnavailableReason): MessageKey {
   if (reason === "no-git") return "changes.unavailable.noGit";
   if (reason === "no-pane") return "changes.unavailable.noPane";
+  if (reason === "no-workspace") return "changes.unavailable.noWorkspace";
   return "changes.unavailable.noFolder";
 }
 
 /**
- * Collapsed tree folders, per pane, for this session: in memory, so leaving the view and coming
- * back keeps them, and a reload opens every folder again.
+ * Collapsed tree folders, per route target (a pane or a space), for this session: in memory, so
+ * leaving the view and coming back keeps them, and a reload opens every folder again.
  */
 const collapsedByPane = new Map<string, Set<string>>();
+
+/**
+ * The last two segments of a folder, for the header: `…/projects/collie-workspace`. The full path
+ * rides in the `title`, so a long-press or hover still shows it whole.
+ */
+function shortFolder(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= 2) return path;
+  return `…/${parts.slice(-2).join("/")}`;
+}
 
 /** Where the back arrow of a file view goes: the list entry it came from, when there is one. */
 interface FromList {
@@ -81,7 +95,13 @@ interface FromList {
 
 export function ChangesRoute() {
   useLocale();
-  const { paneId = "" } = useParams();
+  const { paneId = "", spaceId = "" } = useParams();
+  // Which route this is: the pane form or the space form. Both read the same list.
+  const target: ChangesTarget = useMemo(
+    () => (spaceId !== "" ? { kind: "space", spaceId } : { kind: "pane", paneId }),
+    [paneId, spaceId],
+  );
+  const targetKey = target.kind === "pane" ? `pane:${paneId}` : `space:${spaceId}`;
   const scope = useScope();
   const navigate = useNavigate();
   const location = useLocation();
@@ -99,8 +119,10 @@ export function ChangesRoute() {
   const open: ChangeRef | null = repoParam !== null && pathParam !== null ? { repo: repoParam, path: pathParam } : null;
 
   const pane =
-    root.agents.find((a) => a.paneId === paneId) ?? root.shellPanes.find((p) => p.paneId === paneId);
-  const subtitle = pane?.paneLabel ?? pane?.sessionName ?? pane?.cwd ?? paneId;
+    target.kind === "pane"
+      ? (root.agents.find((a) => a.paneId === paneId) ?? root.shellPanes.find((p) => p.paneId === paneId))
+      : undefined;
+  const space = root.workspaces.find((w) => w.workspaceId === (target.kind === "space" ? spaceId : pane?.workspaceId));
 
   // ── The list ──────────────────────────────────────────────────────────────
   const [list, setList] = useState<ListState>({ phase: "loading" });
@@ -113,7 +135,7 @@ export function ChangesRoute() {
     listAbort.current = ctl;
     setRefreshing(true);
     try {
-      const data = await fetchChanges(paneId, lookup, scope, ctl.signal);
+      const data = await fetchChanges(target, lookup, scope, ctl.signal);
       setList({ phase: "ready", data });
     } catch (e) {
       if (isAbortError(e)) return;
@@ -121,7 +143,7 @@ export function ChangesRoute() {
     } finally {
       if (listAbort.current === ctl) setRefreshing(false);
     }
-  }, [paneId, lookup, scope]);
+  }, [target, lookup, scope]);
 
   useEffect(() => {
     void loadList();
@@ -134,16 +156,16 @@ export function ChangesRoute() {
   // stale filter on a fresh list would hide files the operator did not know were hidden.
   const [filter, setFilter] = useState<ChangesFilter>(EMPTY_FILTER);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => collapsedByPane.get(paneId) ?? new Set());
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => collapsedByPane.get(targetKey) ?? new Set());
   const toggleFolder = useCallback(
     (key: string) =>
       setCollapsed((prev) => {
         const next = new Set(prev);
         if (!next.delete(key)) next.add(key);
-        collapsedByPane.set(paneId, next);
+        collapsedByPane.set(targetKey, next);
         return next;
       }),
-    [paneId],
+    [targetKey],
   );
 
   const allRepos = useMemo<readonly ChangedRepo[]>(
@@ -168,26 +190,35 @@ export function ChangesRoute() {
     const [repo = "", path = ""] = openKey.split("\n");
     const ctl = new AbortController();
     setFile({ phase: "loading", key: openKey });
-    fetchChangeDiff(paneId, lookup, { repo, path }, scope, ctl.signal)
+    fetchChangeDiff(target, lookup, { repo, path }, scope, ctl.signal)
       .then((data) => setFile({ phase: "ready", key: openKey, data }))
       .catch((e) => {
         if (!isAbortError(e)) setFile({ phase: "error", key: openKey });
       });
     return () => ctl.abort();
-  }, [openKey, paneId, lookup, scope]);
+  }, [openKey, target, lookup, scope]);
 
+  const pathTo = (ref?: ChangeRef) =>
+    target.kind === "pane" ? changesPath(paneId, scope, ref) : spaceChangesPath(spaceId, scope, ref);
   const openFile = (ref: ChangeRef) => {
     const state: FromList = { fromList: true };
-    navigate(changesPath(paneId, scope, ref), { state });
+    navigate(pathTo(ref), { state });
   };
   // Previous / Next REPLACE the entry, so browser back from any file lands on the list.
-  const stepTo = (ref: ChangeRef) => navigate(changesPath(paneId, scope, ref), { replace: true, state: location.state });
+  const stepTo = (ref: ChangeRef) => navigate(pathTo(ref), { replace: true, state: location.state });
   const backToList = () => {
     // SAFETY: `location.state` is only ever written by `openFile` above, as `FromList`.
     const fromList = (location.state as FromList | null)?.fromList === true;
     if (fromList) navigate(-1);
-    else navigate(changesPath(paneId, scope), { replace: true });
+    else navigate(pathTo(), { replace: true });
   };
+  const backOut = () => navigate(target.kind === "pane" ? panePath(paneId, scope) : spacePath(spaceId, scope));
+
+  // The header names the scope: the workspace, then its folder. The list's own answer wins, because
+  // the bridge resolved the root; before it arrives the snapshot's label stands in.
+  const ready = list.phase === "ready" ? list.data : null;
+  const workspaceLabel = ready?.workspaceLabel ?? space?.label ?? pane?.workspaceLabel ?? (target.kind === "space" ? spaceId : paneId);
+  const rootFolder = ready?.available ? ready.root : null;
 
   const at = open ? order.findIndex((r) => r.repo === open.repo && r.path === open.path) : -1;
   const prev = at > 0 ? order[at - 1] : undefined;
@@ -210,14 +241,23 @@ export function ChangesRoute() {
               variant="ghost"
               size="icon"
               className="size-11 shrink-0"
-              onClick={open ? backToList : () => navigate(panePath(paneId, scope))}
-              aria-label={open ? t("changes.listBackAria") : t("changes.backAria")}
+              onClick={open ? backToList : backOut}
+              aria-label={
+                open ? t("changes.listBackAria") : target.kind === "pane" ? t("changes.backAria") : t("changes.backSpaceAria")
+              }
             >
               <ArrowLeft className="size-5" />
             </Button>
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">{t("changes.title")}</h1>
-              <div className="truncate text-xs leading-tight text-muted-foreground">{subtitle}</div>
+              <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
+                <span className="shrink-0 truncate">{workspaceLabel}</span>
+                {rootFolder && (
+                  <span className="min-w-0 truncate font-mono" title={rootFolder}>
+                    {shortFolder(rootFolder)}
+                  </span>
+                )}
+              </div>
             </div>
             {!open && (
               <>

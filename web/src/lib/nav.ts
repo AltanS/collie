@@ -32,6 +32,17 @@ export function changesPath(paneId: string, scope?: Scope, file?: { repo: string
   return `${base}${base.includes("?") ? "&" : "?"}${q.toString()}`;
 }
 
+/**
+ * A space's Changes view (ADR 0065): the same list every pane of the space shows, asked by space.
+ * A child of the space route so "back" lands on the space.
+ */
+export function spaceChangesPath(spaceId: string, scope?: Scope, file?: { repo: string; path: string }): string {
+  const base = `/space/${encodeURIComponent(spaceId)}/changes${scopeSearch(scope)}`;
+  if (!file) return base;
+  const q = new URLSearchParams({ repo: file.repo, path: file.path });
+  return `${base}${base.includes("?") ? "&" : "?"}${q.toString()}`;
+}
+
 /** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
 export function spacePath(spaceId: string, scope?: Scope): string {
   return `/space/${encodeURIComponent(spaceId)}${scopeSearch(scope)}`;

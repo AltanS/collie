@@ -364,6 +364,9 @@ const WORKSPACE_KEYS = {
   paneCount: true,
   repoRoot: true,
   isWorktree: true,
+  // The space's own folder when the multiplexer keeps one (Changes view root, ADR 0065). Optional and
+  // not a crew dimension: it is present on a solo instance whenever the mux reports it.
+  folder: true,
   // A crew dimension, and the SAME one a pane and a session carry: Herdr numbers spaces per machine,
   // so `(host, workspaceId)` is a space's identity in a crew and `workspaceId` alone collides. Like
   // `PaneWire.host` it is present exactly when `servers` is, which is never in this baseline — the
@@ -482,6 +485,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
     expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
       "activeTabId",
       "focused",
+      "folder",
       "host",
       "isWorktree",
       "label",
@@ -600,6 +604,9 @@ describe("solo zero-tax — routes", () => {
       // like `history` beside it and forwarded to the member that owns the pane.
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|changes|focus))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      // The Changes view asked by workspace (ADR 0065): the same read as the pane route's `changes`,
+      // read-gated and forwarded with `?host=` to the member that owns the space.
+      "/^\\/api\\/workspace\\/([^/]+)\\/changes$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`

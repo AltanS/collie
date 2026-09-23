@@ -92,6 +92,14 @@ export const router = createBrowserRouter([
         element: <ChangesRoute />,
         shouldRevalidate: () => false,
       },
+      {
+        // The same view asked by workspace: every pane of a space shows one list (ADR 0065), and
+        // this form lets a dashboard entry open it without naming a pane. Host-aware through the
+        // scope query like every other route.
+        path: "space/:spaceId/changes",
+        element: <ChangesRoute />,
+        shouldRevalidate: () => false,
+      },
     ],
   },
 ], {

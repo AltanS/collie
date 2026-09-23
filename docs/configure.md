@@ -555,7 +555,7 @@ they are part of the content stream rather than chrome.
 
 ## Changes
 
-The pane menu's **Changes** row shows what changed in the pane's folder since the last commit.
+The pane menu's **Changes** row shows what changed in the pane's workspace since the last commit.
 
 Open a pane, tap the ⋮, then **Changes**. The list groups the changed files by git repo, with
 added and removed line counts. Tap a file to read its diff, and use **Previous file** and
@@ -565,10 +565,19 @@ not update on its own.
 The diff is against the last commit, so staged and unstaged changes show together. A new file
 shows as all added lines. A binary file shows no lines.
 
+The list covers the pane's whole workspace, so every pane in one workspace shows the same list.
+The header names the workspace and its folder. Collie picks that folder in this order:
+
+| Order | Folder |
+| --- | --- |
+| 1 | The workspace's own folder, when the multiplexer keeps one: herdr's worktree, tmux's session folder |
+| 2 | The deepest folder that holds every pane of the workspace |
+| 3 | The pane's own folder, when the first two would be `/`, your home folder, or above it |
+
 | Setting | Default | What it does |
 | --- | --- | --- |
-| Look for repos inside this folder | on | Also lists repos in folders below the pane's folder, even ones the parent repo ignores |
-| How deep to look | 2 | How many folder levels below the pane's folder the search goes, 1 to 4 |
+| Look for repos inside this folder | on | Also lists repos in folders below the workspace folder, even ones the parent repo ignores |
+| How deep to look | 2 | How many folder levels below the workspace folder the search goes, 1 to 4 |
 
 Both live in **Settings → Changes** and are stored per device.
 

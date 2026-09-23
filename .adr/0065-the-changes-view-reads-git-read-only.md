@@ -5,6 +5,7 @@
 - **Shipped in:** pending
 - **Trail:** GitHub discussion 258 and issues 256 / 257 (@lighcen: "show me what the agent changed")
   · `bridge/changes.ts` · `bridge/server.ts` (`PANE_ROUTE`, `paneChanges`) ·
+  `bridge/changes-root.ts` (`workspaceRoot`) · `WORKSPACE_CHANGES_ROUTE`, `workspaceChanges` ·
   `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header) · `web/src/routes/changes.tsx` ·
   `web/src/components/changes-view.tsx` · `web/src/lib/unified-diff.ts` ·
   `web/src/lib/diff-highlight.ts` · `web/src/lib/diff-highlight-engine.ts` ·
@@ -42,9 +43,26 @@ settings card) is about 4 KB.
    for the list, `git diff <base> --numstat` for the counts, `git diff <base> -- <path>` for one
    file. A repo with no commits diffs against the empty tree. An untracked file is read by the
    bridge and sent as an all-added diff.
-3. **Discovery finds nested repos, bounded by two per-device settings.** The repo that contains the
-   pane's folder is found by walking up to the nearest `.git`. With "Look for repos inside this
-   folder" on (the default), the bridge also walks the folder's subtree down to "How deep to look"
+3. **The root is the pane's WORKSPACE folder, not the pane's own.** The workspace is the mux's
+   container the pane belongs to: a herdr workspace, a tmux session, a zellij session. Every pane in
+   one workspace shows the same list. `bridge/changes-root.ts` (`workspaceRoot`, pure and tested)
+   picks the root in this order:
+   - the mux's own folder for the workspace, when it keeps one and it is within the bound: herdr's
+     `worktree.checkout_path` (its workspace record carries no cwd of its own, probed on herdr
+     0.9.0), tmux's `session_path`. zellij keeps none;
+   - else the deepest common ancestor of every pane's cwd in the workspace, blank cwds ignored;
+   - **never `/`, the home folder itself, or a folder above home.** Past that bound the pane route
+     falls back to the asking pane's own cwd (today's behaviour), and the workspace route answers
+     `no-folder`. A mux folder past the bound (a tmux session started in `~`) falls through to the
+     common ancestor rather than ending the search.
+
+   The workspace can also be asked directly: `GET /api/workspace/<id>/changes` takes the same query
+   and answers the same shape, `?repo=&path=` included. Both answers carry `root`, `workspaceId` and
+   `workspaceLabel`, and the header prints the label and the root's last two segments.
+
+   **Discovery then finds nested repos below the root, bounded by two per-device settings.** The
+   repo that contains the root is found by walking up to the nearest `.git`. With "Look for repos
+   inside this folder" on (the default), the bridge also walks the root's subtree down to "How deep to look"
    (1 to 4, default 2) for folders holding a `.git` entry. The walk does not ask git, so a repo the
    parent ignores is found. It never follows a symlink, never enters a dot-folder or
    `node_modules`, `dist`, `build`, `vendor`, `target`, and stops at 20 repos or 5000 entries. A
@@ -103,11 +121,19 @@ settings card) is about 4 KB.
      text exactly stays plain. The plain rows draw first; colour follows with no layout shift, and
      `e2e/changes.spec.ts` measures every row's height before and after.
    - **A diff over 2000 lines, or of a file with no known language, stays plain**, with no notice.
-8. **Not on the poll loop.** The list is read on open and on the refresh button. The route is a
-   read like `history`, forwarded to the member that owns the pane with `?host=`, additive-optional
-   on the crew link.
+8. **Not on the poll loop.** The list is read on open and on the refresh button. Both routes are
+   reads like `history`, forwarded with `?host=` to the member that owns the pane or the workspace,
+   additive-optional on the crew link.
 
 ## Consequences
+
+- **Workspace root, 2026-09-23 (operator decision).** The first cut used the pane's own folder. A
+  pane sitting in a subfolder (`collie-workspace/experiments/session-stream`) then showed only that
+  subfolder's repo, a partial and misleading picture, while the operator thinks in workspaces
+  (`collie-workspace`, `klaracase`, `openplate-workspace`). Rule 3 now reads the workspace, and the
+  workspace route is shaped so a dashboard entry per workspace can ask for it without a pane. The
+  cost: a workspace whose panes spread across unrelated folders under home reads its asking pane's
+  folder, as before, rather than a merged view.
 
 - **Git LFS files may read as modified.** With the clean filter off, a tracked LFS file whose stat
   changed is compared against its pointer. That is the price of rule 4, and it is only wrong in the
