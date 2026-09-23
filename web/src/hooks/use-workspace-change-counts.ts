@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useVisibleInterval } from "@/hooks/use-visible-interval";
 import { fetchChanges, type ChangesLookup } from "@/lib/api";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { runPool, summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
@@ -14,17 +15,18 @@ export interface WorkspaceChangeTarget {
 
 /** At most this many workspaces are read at once: a git status per workspace is not free. */
 export const CHANGE_COUNT_CONCURRENCY = 3;
-/** The pause between two rounds, counted from the end of one to the start of the next. */
+/** The beat between two rounds. A round still out when the beat comes skips it, so none overlap. */
 export const CHANGE_COUNT_REFRESH_MS = 5_000;
 
 const LOADING: WorkspaceChangeCount = { kind: "loading" };
 
 /**
  * The Changes tab's numbers, per workspace (ADR 0066). While `active`, it reads every target at
- * once (up to {@link CHANGE_COUNT_CONCURRENCY} in flight), then waits
- * {@link CHANGE_COUNT_REFRESH_MS} and reads again. Rounds never overlap: the next wait starts when
- * the last answer of this round is in. A hidden page skips its round and reads again the moment it
- * is visible. Leaving the tab (`active` false) or unmounting aborts what is in flight and stops.
+ * once (up to {@link CHANGE_COUNT_CONCURRENCY} in flight), then again on every
+ * {@link CHANGE_COUNT_REFRESH_MS} beat of `useVisibleInterval`, the loop the Changes screen uses
+ * too. Rounds never overlap: a beat that finds a round still out skips it. A hidden page stops the
+ * beat and reads again the moment it is visible. Leaving the tab (`active` false) or unmounting
+ * aborts what is in flight and stops.
  *
  * A row keeps its last answer through a refresh, so the numbers repaint and never blink back to
  * loading. A failed read keeps a row's last good answer too; a row that never had one says it is
@@ -41,11 +43,13 @@ export function useWorkspaceChangeCounts(
   targetsRef.current = targets;
   const identity = targets.map((t) => `${t.key}\u0001${t.workspaceId}\u0001${scopeKey(t.scope)}`).join("\u0002");
   const { depth, nested } = lookup;
+  // The latest round, for the beat; each effect run below installs its own.
+  const roundNow = useRef<() => void>(() => {});
+  useVisibleInterval(() => roundNow.current(), CHANGE_COUNT_REFRESH_MS, active);
 
   useEffect(() => {
     if (!active) return;
     const ctl = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
     let running = false;
 
     const record = (key: string, next: WorkspaceChangeCount) =>
@@ -56,9 +60,7 @@ export function useWorkspaceChangeCounts(
       });
 
     const round = async (): Promise<void> => {
-      timer = undefined;
       if (running || ctl.signal.aborted) return;
-      if (document.visibilityState !== "visible") return; // `onVisible` starts the next one.
       running = true;
       const tasks = targetsRef.current.map((t) => async () => {
         try {
@@ -77,21 +79,13 @@ export function useWorkspaceChangeCounts(
       });
       await runPool(tasks, CHANGE_COUNT_CONCURRENCY);
       running = false;
-      if (!ctl.signal.aborted) timer = setTimeout(() => void round(), CHANGE_COUNT_REFRESH_MS);
     };
 
-    const onVisible = () => {
-      if (document.visibilityState !== "visible" || running) return;
-      if (timer !== undefined) clearTimeout(timer);
-      void round();
-    };
-
-    document.addEventListener("visibilitychange", onVisible);
-    void round();
+    roundNow.current = () => void round();
+    if (document.visibilityState === "visible") void round();
     return () => {
       ctl.abort();
-      if (timer !== undefined) clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisible);
+      roundNow.current = () => {};
     };
   }, [active, identity, depth, nested]);
 

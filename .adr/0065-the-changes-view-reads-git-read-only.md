@@ -9,7 +9,8 @@
   `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header) · `web/src/routes/changes.tsx` ·
   `web/src/components/changes-view.tsx` · `web/src/lib/unified-diff.ts` ·
   `web/src/lib/diff-highlight.ts` · `web/src/lib/diff-highlight-engine.ts` ·
-  `web/src/hooks/use-dash-prefs.ts` · [ADR 0060](./0060-an-attachment-is-a-chip-not-a-path.md)
+  `web/src/hooks/use-dash-prefs.ts` · `web/src/hooks/use-visible-interval.ts` ·
+  `web/src/lib/share-equal.ts` · [ADR 0060](./0060-an-attachment-is-a-chip-not-a-path.md)
 
 ## Context
 
@@ -121,9 +122,33 @@ settings card) is about 4 KB.
      text exactly stays plain. The plain rows draw first; colour follows with no layout shift, and
      `e2e/changes.spec.ts` measures every row's height before and after.
    - **A diff over 2000 lines, or of a file with no known language, stays plain**, with no notice.
-8. **Not on the poll loop.** The list is read on open and on the refresh button. Both routes are
-   reads like `history`, forwarded with `?host=` to the member that owns the pane or the workspace,
-   additive-optional on the crew link.
+8. **Not on the root poll loop; on its own 5 s beat while the screen is visible.** The route has no
+   loader, so the snapshot poll (1.5 s at its fastest) never runs git. Instead an open Changes
+   screen re-reads every 5 s (`CHANGES_POLL_MS`) while `document.visibilityState` is `visible`,
+   through `hooks/use-visible-interval.ts`: the list, and on the file view the open diff as well,
+   because the list is what says the file has left and what Previous / Next walk. A hidden page
+   stops the beat and reads once the moment it is visible again; the idle lock skips a beat, as it
+   does the root poll. No read is stacked on one still in flight, and leaving the screen aborts
+   what is out. The refresh button stays as the manual "now", and only it spins.
+
+   - **Why a timer at all.** The first cut read only on open and on refresh. The operator asked on
+     2026-09-23 not to have to press refresh while watching an agent work on a file.
+   - **Nothing moves on a re-read.** An answer that deep-equals what is on screen changes no state
+     (`lib/share-equal.ts` keeps each unchanged repo and file by identity), so no row renders
+     again and sugar-high does not re-colour. Scroll, the filter card, folded folders and the
+     field's focus all live in the mounted component and survive. A file that leaves the list
+     (reverted or committed) keeps its last diff, with "No longer changed" in its own header row;
+     the view never jumps away. A failed re-read keeps the last good data; after two in a row the
+     header says "Not updating", and the next success clears it.
+   - **The cost bound.** One discovery walk plus one `git status` per discovered repo, per open
+     screen, every 5 s; the file view adds one `git diff` of one file and a second walk. Measured
+     on `collie-workspace` (4 repos) through `listChanges` itself: discovery 1.1 ms at depth 2 and
+     5.1 ms at depth 4, the whole list 24 to 25 ms. Discovery is not cached: at a few percent of a
+     read that is itself about 0.5% of the beat, a cache would only add a staleness window for a
+     new repo. `git status` is never cached, since it is the answer.
+
+   Both routes are reads like `history`, forwarded with `?host=` to the member that owns the pane
+   or the workspace, additive-optional on the crew link.
 
 ## Consequences
 

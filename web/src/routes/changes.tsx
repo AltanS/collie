@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
+import { useVisibleInterval } from "@/hooks/use-visible-interval";
 import { fetchChangeDiff, fetchChanges, type ChangesLookup, type ChangesTarget } from "@/lib/api";
 import {
   countFiles,
@@ -34,6 +35,7 @@ import { t, type MessageKey } from "@/lib/i18n";
 import { changesPath, panePath, spaceChangesPath, spacePath } from "@/lib/nav";
 import { useRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
+import { shareEqual } from "@/lib/share-equal";
 import type {
   ChangedRepo,
   ChangeDiffResponse,
@@ -50,10 +52,21 @@ import { cn } from "@/lib/utils";
 // Two screens: the list, and with `?repo=&path=` one file's diff. Both live in this one component
 // so the list survives the hop to a file and back, and Previous / Next can walk it.
 //
-// NOT ON THE POLL LOOP. The list is read when the view opens and when the operator taps refresh,
-// never on a timer: git status over a big tree is not a 1.5 s question, and a list that reshuffled
-// under a thumb would be the layout shift DESIGN.md §2 forbids. The route has no loader for the same
-// reason (router.tsx), so the root poll re-renders this screen and fetches nothing for it.
+// NOT ON THE ROOT POLL LOOP, BUT ON ITS OWN SLOW ONE (ADR 0065 rule 8). The route has no loader
+// (router.tsx), so the root poll re-renders this screen and fetches nothing for it: git status over
+// a big tree is not a 1.5 s question. Instead, while the screen is mounted and the page visible, it
+// re-reads every CHANGES_POLL_MS: the list, and on the file view the open file's diff too. A re-read
+// that returns the same data changes nothing, down to object identity (`shareEqual`), so nothing
+// re-renders, no row moves and sugar-high does not re-colour. A failed re-read keeps the last good
+// data on screen. Refresh stays as the manual "now".
+
+/** How often an open Changes screen re-reads while the page is visible (ADR 0065 rule 8). */
+export const CHANGES_POLL_MS = 5000;
+/** Consecutive failed re-reads before the header says the screen has stopped updating. */
+export const STALE_AFTER_FAILURES = 2;
+
+/** Why a read runs: the screen opened, the operator tapped refresh, or the timer fired. */
+type ReadMode = "open" | "manual" | "poll";
 
 type ListState =
   | { phase: "loading" }
@@ -63,7 +76,22 @@ type ListState =
 type FileState =
   | { phase: "loading"; key: string }
   | { phase: "error"; key: string }
-  | { phase: "ready"; key: string; data: ChangeDiffResponse };
+  // `gone`: a re-read found the file no longer changed. `data` stays the last diff that was.
+  | { phase: "ready"; key: string; data: ChangeDiffResponse; gone?: true };
+
+/**
+ * The file state after a read of `key` answered `data`. The same answer keeps the old state object,
+ * so React skips the render. A file that has left the list keeps its last diff and is marked gone,
+ * rather than turning into an error screen under the operator's eyes.
+ */
+function nextFile(prev: FileState | null, key: string, data: ChangeDiffResponse): FileState {
+  if (prev?.key !== key || prev.phase !== "ready") return { phase: "ready", key, data };
+  const left = !data.available && (data.reason === "unknown-path" || data.reason === "unknown-repo");
+  if (left && prev.data.available) return prev.gone ? prev : { ...prev, gone: true };
+  const shared = shareEqual(prev.data, data);
+  if (shared === prev.data && !prev.gone) return prev;
+  return { phase: "ready", key, data: shared };
+}
 
 function unavailableKey(reason: ChangesUnavailableReason): MessageKey {
   if (reason === "no-git") return "changes.unavailable.noGit";
@@ -126,29 +154,50 @@ export function ChangesRoute() {
 
   // ── The list ──────────────────────────────────────────────────────────────
   const [list, setList] = useState<ListState>({ phase: "loading" });
+  // What is on screen now, for a read that has to decide whether to touch state at all. An unchanged
+  // answer then calls no setter, so not even this component renders again.
+  const listNow = useRef(list);
+  listNow.current = list;
+  // Only a manual refresh spins the button; the timer's reads are silent.
   const [refreshing, setRefreshing] = useState(false);
-  const listAbort = useRef<AbortController | null>(null);
+  const listCtl = useRef<AbortController | null>(null);
 
-  const loadList = useCallback(async () => {
-    listAbort.current?.abort();
-    const ctl = new AbortController();
-    listAbort.current = ctl;
-    setRefreshing(true);
-    try {
-      const data = await fetchChanges(target, lookup, scope, ctl.signal);
-      setList({ phase: "ready", data });
-    } catch (e) {
-      if (isAbortError(e)) return;
-      setList({ phase: "error" });
-    } finally {
-      if (listAbort.current === ctl) setRefreshing(false);
-    }
-  }, [target, lookup, scope]);
+  /** Read the list. Resolves false on a failed read, true otherwise (an abort is not a failure). */
+  const readList = useCallback(
+    async (mode: ReadMode): Promise<boolean> => {
+      // The timer never stacks a read on one still in flight; it waits for the next tick.
+      if (mode === "poll" && listCtl.current !== null) return true;
+      listCtl.current?.abort();
+      const ctl = new AbortController();
+      listCtl.current = ctl;
+      try {
+        const data = await fetchChanges(target, lookup, scope, ctl.signal);
+        const prev = listNow.current;
+        if (prev.phase !== "ready") setList({ phase: "ready", data });
+        else {
+          const shared = shareEqual(prev.data, data);
+          if (shared !== prev.data) setList({ phase: "ready", data: shared });
+        }
+        return true;
+      } catch (e) {
+        if (isAbortError(e)) return true;
+        // A re-read that fails keeps the last good list; only a failed first read shows the error.
+        if (mode === "open" || listNow.current.phase !== "ready") setList({ phase: "error" });
+        return false;
+      } finally {
+        if (listCtl.current === ctl) listCtl.current = null;
+      }
+    },
+    [target, lookup, scope],
+  );
 
   useEffect(() => {
-    void loadList();
-    return () => listAbort.current?.abort();
-  }, [loadList]);
+    void readList("open");
+    return () => {
+      listCtl.current?.abort();
+      listCtl.current = null;
+    };
+  }, [readList]);
 
   // ── Filter and layout ─────────────────────────────────────────────────────
   // The filter lives in this component, which stays mounted across the hop to a file and back, so
@@ -184,19 +233,61 @@ export function ChangesRoute() {
   // ── One file ──────────────────────────────────────────────────────────────
   const openKey = open ? `${open.repo}\n${open.path}` : null;
   const [file, setFile] = useState<FileState | null>(null);
+  const fileNow = useRef(file);
+  fileNow.current = file;
+  const fileCtl = useRef<AbortController | null>(null);
+
+  /** Read one file's diff. Same contract as `readList`. */
+  const readFile = useCallback(
+    async (key: string, mode: ReadMode): Promise<boolean> => {
+      if (mode === "poll" && fileCtl.current !== null) return true;
+      fileCtl.current?.abort();
+      const ctl = new AbortController();
+      fileCtl.current = ctl;
+      const [repo = "", path = ""] = key.split("\n");
+      if (mode === "open") setFile({ phase: "loading", key });
+      try {
+        const data = await fetchChangeDiff(target, lookup, { repo, path }, scope, ctl.signal);
+        const next = nextFile(fileNow.current, key, data);
+        if (next !== fileNow.current) setFile(next);
+        return true;
+      } catch (e) {
+        if (isAbortError(e)) return true;
+        const prev = fileNow.current;
+        if (mode === "open" || prev?.key !== key || prev.phase !== "ready") setFile({ phase: "error", key });
+        return false;
+      } finally {
+        if (fileCtl.current === ctl) fileCtl.current = null;
+      }
+    },
+    [target, lookup, scope],
+  );
+
   // Keyed on the joined string, not on `open`, so a re-render (every root poll) never refetches.
   useEffect(() => {
     if (openKey === null) return;
-    const [repo = "", path = ""] = openKey.split("\n");
-    const ctl = new AbortController();
-    setFile({ phase: "loading", key: openKey });
-    fetchChangeDiff(target, lookup, { repo, path }, scope, ctl.signal)
-      .then((data) => setFile({ phase: "ready", key: openKey, data }))
-      .catch((e) => {
-        if (!isAbortError(e)) setFile({ phase: "error", key: openKey });
-      });
-    return () => ctl.abort();
-  }, [openKey, target, lookup, scope]);
+    void readFile(openKey, "open");
+    return () => {
+      fileCtl.current?.abort();
+      fileCtl.current = null;
+    };
+  }, [openKey, readFile]);
+
+  // ── Re-reading ────────────────────────────────────────────────────────────
+  // One pass reads the list, and on the file view the open diff as well: the list is what says the
+  // file has left, and what Previous / Next walk, so it must not go stale under an open file.
+  const [failures, setFailures] = useState(0);
+  const reread = async (mode: "manual" | "poll") => {
+    if (mode === "manual") setRefreshing(true);
+    const reads = [readList(mode)];
+    if (openKey !== null) reads.push(readFile(openKey, mode));
+    const ok = (await Promise.all(reads)).every(Boolean);
+    if (mode === "manual") setRefreshing(false);
+    if (!ok) setFailures((n) => n + 1);
+    else if (failures !== 0) setFailures(0);
+  };
+  useVisibleInterval(() => void reread("poll"), CHANGES_POLL_MS);
+  const stale = failures >= STALE_AFTER_FAILURES;
 
   const pathTo = (ref?: ChangeRef) =>
     target.kind === "pane" ? changesPath(paneId, scope, ref) : spaceChangesPath(spaceId, scope, ref);
@@ -220,15 +311,28 @@ export function ChangesRoute() {
   const workspaceLabel = ready?.workspaceLabel ?? space?.label ?? pane?.workspaceLabel ?? (target.kind === "space" ? spaceId : paneId);
   const rootFolder = ready?.available ? ready.root : null;
 
-  const at = open ? order.findIndex((r) => r.repo === open.repo && r.path === open.path) : -1;
-  const prev = at > 0 ? order[at - 1] : undefined;
-  const next = at >= 0 && at < order.length - 1 ? order[at + 1] : undefined;
-
   const fileState = file && file.key === openKey ? file : null;
   const listedFile =
     open && list.phase === "ready" && list.data.available
       ? list.data.repos.find((r) => r.relPath === open.repo)?.files.find((f) => f.path === open.path)
       : undefined;
+  const shownDiff = fileState?.phase === "ready" && fileState.data.available ? fileState.data : undefined;
+  // Gone: the diff read says so, or the list no longer names a file whose diff we hold.
+  const gone =
+    fileState?.phase === "ready" &&
+    (fileState.gone === true ||
+      (shownDiff !== undefined && list.phase === "ready" && list.data.available && listedFile === undefined));
+
+  const at = open ? order.findIndex((r) => r.repo === open.repo && r.path === open.path) : -1;
+  // Where the open file last sat in the order, so a file that leaves keeps its neighbours: Previous
+  // is the one before it, Next the one that slid into its place.
+  const lastAt = useRef<{ key: string; at: number } | null>(null);
+  useEffect(() => {
+    if (openKey !== null && at >= 0) lastAt.current = { key: openKey, at };
+  }, [openKey, at]);
+  const slot = at < 0 && gone && lastAt.current?.key === openKey ? lastAt.current.at : -1;
+  const prev = at > 0 ? order[at - 1] : slot > 0 ? order[slot - 1] : undefined;
+  const next = at >= 0 && at < order.length - 1 ? order[at + 1] : slot >= 0 ? order[slot] : undefined;
 
   return (
     // The pane's own column, like History: this view is one hop from the pane and keeps its edges.
@@ -264,6 +368,10 @@ export function ChangesRoute() {
                       {shortFolder(rootFolder)}
                     </span>
                   )}
+                  {/* Quiet, on the line that is already there, so it moves nothing. */}
+                  <span role="status" className="shrink-0">
+                    {stale ? t("changes.stale") : ""}
+                  </span>
                 </div>
               </div>
               {!open && (
@@ -282,7 +390,7 @@ export function ChangesRoute() {
                 variant="ghost"
                 size="icon"
                 className="size-11 shrink-0"
-                onClick={() => void loadList()}
+                onClick={() => void reread("manual")}
                 aria-label={t("changes.refreshAria")}
                 disabled={refreshing}
               >
@@ -311,8 +419,10 @@ export function ChangesRoute() {
         {open ? (
           <FileScreen
             path={open.path}
-            oldPath={listedFile?.oldPath}
-            status={listedFile?.status}
+            // The diff carries both too, so a file that has left keeps its letter and its line.
+            oldPath={listedFile ? listedFile.oldPath : shownDiff?.oldPath}
+            status={listedFile?.status ?? shownDiff?.status}
+            gone={gone}
             state={fileState}
             prev={prev}
             next={next}
@@ -394,6 +504,7 @@ function FileScreen({
   path,
   oldPath,
   status,
+  gone,
   state,
   prev,
   next,
@@ -402,6 +513,8 @@ function FileScreen({
   path: string;
   oldPath: string | undefined;
   status: ChangeStatus | undefined;
+  /** A re-read found the file no longer changed; the diff below is the last one there was. */
+  gone: boolean;
   state: FileState | null;
   prev: ChangeRef | undefined;
   next: ChangeRef | undefined;
@@ -420,6 +533,10 @@ function FileScreen({
             </div>
           )}
         </div>
+        {/* In the row that is already there, so the diff under it does not move. */}
+        <span role="status" className="shrink-0 text-xs text-muted-foreground">
+          {gone ? t("changes.file.gone") : ""}
+        </span>
       </div>
 
       <div className="flex-1 py-2">

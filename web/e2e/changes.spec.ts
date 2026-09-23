@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
-import { fixtureAgents } from "@/test/handlers";
+import type { PaneChangesResponse } from "@/lib/types";
+import { fixtureAgents, fixtureChanges } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
 
@@ -278,4 +279,44 @@ test("the header names the workspace and its folder, and the space form shows th
   expect(asked).toContain(`/api/workspace/${PANE.workspaceId}/changes`);
   await page.getByRole("button", { name: en["changes.backSpaceAria"] }).click();
   await expect(page).toHaveURL(new RegExp(`/space/${PANE.workspaceId}$`));
+});
+
+// ADR 0065 rule 8, the operator's ask (2026-09-23): an open Changes screen re-reads every 5 s while
+// the page is visible, so a change shows up without a tap on refresh. The page clock is installed
+// before the app loads, so the 5 s pass in one step instead of on the wall clock.
+test("the list re-reads on its own and shows a change without a tap", async ({ page }) => {
+  await page.clock.install();
+  let changed = false;
+  const reads: string[] = [];
+  const oneRepo: PaneChangesResponse = fixtureChanges.available
+    ? { ...fixtureChanges, repos: fixtureChanges.repos.slice(0, 1) }
+    : fixtureChanges;
+  await page.route(/\/api\/pane\/[^/]+\/changes(\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("path")) return route.fallback();
+    reads.push(url.search);
+    if (!changed) return route.fallback();
+    return route.fulfill({ json: oneRepo });
+  });
+
+  await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
+  await expect(page.getByText("api · 2 files")).toBeVisible();
+  const refresh = page.getByRole("button", { name: en["changes.refreshAria"] });
+  const firstRow = page.getByRole("button", { name: /checkout\.tsx/ });
+  const before = (await firstRow.boundingBox())!;
+  expect(reads).toHaveLength(1);
+
+  // The first beat reads the same list: nothing on screen moves.
+  await page.clock.runFor(5000);
+  await expect.poll(() => reads.length).toBe(2);
+  expect(await firstRow.boundingBox()).toEqual(before);
+
+  // The list changes; the next beat shows it, with no tap on refresh.
+  changed = true;
+  await page.clock.runFor(5000);
+  await expect(page.getByText("api · 2 files")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /orders\.ts/ })).toHaveCount(0);
+  await expect(firstRow).toBeVisible();
+  await expect(refresh).toBeEnabled();
+  expect(reads).toHaveLength(3);
 });

@@ -1,16 +1,17 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { Profiler } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { PaneChangesResponse } from "@/lib/types";
-import { fixtureAgents, fixtureChanges } from "@/test/handlers";
+import { fixtureAgents, fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
-import { ChangesRoute } from "./changes";
+import { CHANGES_POLL_MS, ChangesRoute } from "./changes";
 
 const connected = (): HomeData => ({
   bridge: "connected",
@@ -30,7 +31,14 @@ const connected = (): HomeData => ({
   authError: false,
 });
 
-function renderAt(url: string) {
+function renderAt(url: string, onCommit?: () => void) {
+  const view = onCommit ? (
+    <Profiler id="changes" onRender={onCommit}>
+      <ChangesRoute />
+    </Profiler>
+  ) : (
+    <ChangesRoute />
+  );
   const router = createMemoryRouter(
     [
       {
@@ -41,7 +49,7 @@ function renderAt(url: string) {
         children: [
           { index: true, element: <div /> },
           { path: "pane/:paneId", element: <div>pane screen</div> },
-          { path: "pane/:paneId/changes", element: <ChangesRoute /> },
+          { path: "pane/:paneId/changes", element: view },
           { path: "space/:spaceId", element: <div>space screen</div> },
           { path: "space/:spaceId/changes", element: <ChangesRoute /> },
         ],
@@ -93,7 +101,9 @@ describe("ChangesRoute — the list", () => {
     await userEvent.click(await screen.findByRole("button", { name: /checkout\.tsx/ }));
     expect(router.state.location.pathname).toBe("/space/w1/changes");
     expect(router.state.location.search).toBe("?repo=.&path=src%2Froutes%2Fcheckout.tsx");
-    await userEvent.click(screen.getByRole("button", { name: en["changes.listBackAria"] }));
+    // `find`, not `get`: the router commits a navigation as a transition, which a busy run can
+    // still be rendering when the click resolves.
+    await userEvent.click(await screen.findByRole("button", { name: en["changes.listBackAria"] }));
     await userEvent.click(await screen.findByRole("button", { name: en["changes.backSpaceAria"] }));
     expect(await screen.findByText("space screen")).toBeTruthy();
   });
@@ -184,5 +194,191 @@ describe("ChangesRoute — one file", () => {
       expect(screen.getByRole("button", { name: /Previous file/ }).hasAttribute("disabled")).toBe(false),
     );
     expect(screen.getByRole("button", { name: /Next file/ }).hasAttribute("disabled")).toBe(true);
+  });
+});
+
+// ADR 0065 rule 8, the operator's ask (2026-09-23): while a Changes screen is open and the page is
+// visible, it re-reads every CHANGES_POLL_MS on its own. Only the interval is faked, so MSW and
+// Testing Library keep their real timeouts.
+describe("ChangesRoute — re-reading while open", () => {
+  let visibility: DocumentVisibilityState = "visible";
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+  const setVisibility = (next: DocumentVisibilityState) => {
+    visibility = next;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+  };
+  const tick = () =>
+    act(() => {
+      vi.advanceTimersByTime(CHANGES_POLL_MS);
+    });
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 50)));
+
+  /** Counts list reads (not diff reads) and answers each with whatever `answer()` returns now. */
+  function countLists(answer: () => Response | Promise<Response> = () => HttpResponse.json(fixtureChanges)) {
+    const reads = { list: 0, diff: 0 };
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {
+        const q = new URL(request.url).searchParams;
+        if (q.has("path")) {
+          reads.diff++;
+          return undefined;
+        }
+        reads.list++;
+        return answer();
+      }),
+    );
+    return reads;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    visibility = "visible";
+  });
+
+  it("re-reads the list every 5 s without a tap", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const reads = countLists();
+    renderAt("/pane/w1%3Ap1/changes");
+    await screen.findByText("checkout.tsx");
+    expect(reads.list).toBe(1);
+    tick();
+    await vi.waitFor(() => expect(reads.list).toBe(2));
+    tick();
+    await vi.waitFor(() => expect(reads.list).toBe(3));
+  });
+
+  it("never stacks a read on one still in flight", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let release!: () => void;
+    let held = false;
+    const reads = countLists(() => {
+      if (!held) return HttpResponse.json(fixtureChanges);
+      return new Promise<Response>((resolve) => {
+        release = () => resolve(HttpResponse.json(fixtureChanges));
+      });
+    });
+    renderAt("/pane/w1%3Ap1/changes");
+    await screen.findByText("checkout.tsx");
+    held = true;
+    tick();
+    await vi.waitFor(() => expect(reads.list).toBe(2));
+    tick();
+    tick();
+    await settle();
+    expect(reads.list).toBe(2);
+    release();
+    await settle();
+    held = false;
+    tick();
+    await vi.waitFor(() => expect(reads.list).toBe(3));
+  });
+
+  it("stops while the page is hidden and reads once at once when it comes back", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const reads = countLists();
+    renderAt("/pane/w1%3Ap1/changes");
+    await screen.findByText("checkout.tsx");
+    setVisibility("hidden");
+    tick();
+    tick();
+    tick();
+    await settle();
+    expect(reads.list).toBe(1);
+    setVisibility("visible");
+    await vi.waitFor(() => expect(reads.list).toBe(2));
+    tick();
+    await vi.waitFor(() => expect(reads.list).toBe(3));
+  });
+
+  it("a re-read with the same answer commits nothing; a changed one shows without a tap", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let answer: PaneChangesResponse = fixtureChanges;
+    const reads = countLists(() => HttpResponse.json(answer));
+    let commits = 0;
+    renderAt("/pane/w1%3Ap1/changes", () => commits++);
+    await screen.findByText("checkout.tsx");
+    await settle();
+    const before = commits;
+    const row = screen.getByRole("button", { name: /checkout\.tsx/ });
+    tick();
+    await vi.waitFor(() => expect(reads.list).toBe(2));
+    await settle();
+    expect(commits).toBe(before);
+    expect(screen.getByRole("button", { name: /checkout\.tsx/ })).toBe(row);
+
+    answer = fixtureChanges.available
+      ? { ...fixtureChanges, repos: fixtureChanges.repos.slice(0, 1) }
+      : fixtureChanges;
+    tick();
+    await vi.waitFor(() => expect(screen.queryByText(/api · 2 files/)).toBeNull());
+    expect(commits).toBeGreaterThan(before);
+  });
+
+  it("a file that stops being changed says so in place and keeps its diff", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let gone = false;
+    const reads = { diff: 0 };
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {
+        const q = new URL(request.url).searchParams;
+        const repo = q.get("repo");
+        const path = q.get("path");
+        const without: PaneChangesResponse = fixtureChanges.available
+          ? {
+              ...fixtureChanges,
+              repos: fixtureChanges.repos.map((r) => ({ ...r, files: r.files.filter((f) => f.path !== "src/lib/cart.ts") })),
+            }
+          : fixtureChanges;
+        if (repo === null || path === null) return HttpResponse.json(gone ? without : fixtureChanges);
+        reads.diff++;
+        if (gone) return HttpResponse.json({ paneId: "w1:p1", available: false, reason: "unknown-path" });
+        return HttpResponse.json(fixtureChangeDiff(repo, path));
+      }),
+    );
+    const router = renderAt("/pane/w1%3Ap1/changes?repo=.&path=src%2Flib%2Fcart.ts");
+    const line = "export function cartTotal(items: { price: number }[]): number {";
+    // Read off the diff's text, not one node: syntax colour may split the line into spans.
+    const diffText = () => document.querySelector('[data-slot="diff"]')?.textContent ?? "";
+    await vi.waitFor(() => expect(diffText()).toContain(line));
+    // Wait for the list too, so Previous / Next know where the file sits.
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: /Previous file/ }).hasAttribute("disabled")).toBe(false),
+    );
+    expect(screen.queryByText(en["changes.file.gone"])).toBeNull();
+
+    gone = true;
+    tick();
+    expect(await screen.findByText(en["changes.file.gone"])).toBeTruthy();
+    expect(reads.diff).toBe(2);
+    // Still here, on the same file, with the diff it had and both neighbours.
+    expect(diffText()).toContain(line);
+    expect(router.state.location.search).toBe("?repo=.&path=src%2Flib%2Fcart.ts");
+    expect(screen.getByRole("button", { name: /Previous file/ }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: /Next file/ }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("keeps the last list through failed re-reads, and says so only after two in a row", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let failing = false;
+    const reads = countLists(() =>
+      failing ? new HttpResponse(null, { status: 500 }) : HttpResponse.json(fixtureChanges),
+    );
+    renderAt("/pane/w1%3Ap1/changes");
+    await screen.findByText("checkout.tsx");
+    failing = true;
+    tick();
+    await vi.waitFor(() => expect(reads.list).toBe(2));
+    await settle();
+    expect(screen.queryByText(en["changes.stale"])).toBeNull();
+    expect(screen.getByText("checkout.tsx")).toBeTruthy();
+    tick();
+    expect(await screen.findByText(en["changes.stale"])).toBeTruthy();
+    expect(screen.getByText("checkout.tsx")).toBeTruthy();
+    expect(screen.queryByText(en["changes.error"])).toBeNull();
+    failing = false;
+    tick();
+    await vi.waitFor(() => expect(screen.queryByText(en["changes.stale"])).toBeNull());
   });
 });

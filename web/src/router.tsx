@@ -84,9 +84,9 @@ export const router = createBrowserRouter([
         shouldRevalidate: () => false,
       },
       {
-        // The Changes view (ADR 0065). No loader: the list is read on open and on the view's own
-        // refresh button, and a file's diff when it is opened (`?repo=&path=`), so the poll loop's
-        // revalidate() fetches nothing for it. `shouldRevalidate` states the same opt-out as
+        // The Changes view (ADR 0065). No loader: the view reads the list and an open file's diff
+        // itself, on open, on its own 5 s beat while visible and on its refresh button, so the poll
+        // loop's revalidate() fetches nothing for it. `shouldRevalidate` states the same opt-out as
         // History's, should a loader ever be added.
         path: "pane/:paneId/changes",
         element: <ChangesRoute />,

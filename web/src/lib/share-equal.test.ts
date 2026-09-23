@@ -1,0 +1,30 @@
+import { describe, expect, it } from "vitest";
+
+import { shareEqual } from "./share-equal";
+
+describe("shareEqual", () => {
+  /** A deep copy that shares no object with `prev`, the way a fresh fetch answers. */
+  const copy = () => structuredClone(prev);
+  const prev = { root: "/r", repos: [{ name: "a", files: [{ path: "x" }] }, { name: "b", files: [{ path: "y" }] }] };
+
+  it("hands back the old object when the new one is deep-equal", () => {
+    const next = copy();
+    expect(shareEqual(prev, next)).toBe(prev);
+  });
+
+  it("keeps every unchanged part and replaces only what moved", () => {
+    const next = copy();
+    next.repos[1]!.files[0]!.path = "z";
+    const out = shareEqual(prev, next);
+    expect(out).not.toBe(prev);
+    expect(out).toEqual(next);
+    expect(out.repos[0]).toBe(prev.repos[0]);
+    expect(out.repos[1]).not.toBe(prev.repos[1]);
+  });
+
+  it("sees an added or dropped key and a shorter array", () => {
+    expect(shareEqual<Record<string, number>>({ a: 1 }, { a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
+    expect(shareEqual<Record<string, number | undefined>>({ a: 1, b: 2 }, { a: 1 })).toEqual({ a: 1 });
+    expect(shareEqual([1, 2], [1])).toEqual([1]);
+  });
+});
