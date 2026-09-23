@@ -525,6 +525,26 @@ export const LEG_WALL_CLOCK_REASON = "no change for 20 minutes";
 const LIMIT_GRACE_MS = 60_000;
 
 /**
+ * The most a member's own limit may hold a run open, measured on THIS lead's clock from the sweep
+ * that first read it (2026-09-23 counsel, A2). The limit's end is the member's own `updatedAt` plus
+ * an hour, and that stamp is the member's clock: a member set ten hours ahead, or one reporting a
+ * stamp from the future, would otherwise keep a waiting leg open for as long as it liked. An hour is
+ * the most the real limit can ever be; the two minutes are sweep jitter.
+ */
+export const LIMIT_CAP_MS = FOLLOW_ATTEMPT_INTERVAL_MS + 2 * 60_000;
+
+/**
+ * The longest a crew run stays open, whatever its legs say (A6). A run is one confirm, and one
+ * confirm must end: every open leg is closed at this bound with {@link CREW_RUN_TTL_REASON}. Two
+ * hours covers the longest honest run — a member's own hourly limit, then the twenty-minute wall
+ * clock, then a few serial builds — with room to spare.
+ */
+export const CREW_RUN_TTL_MS = 2 * 60 * 60_000;
+
+/** The sentence a leg carries when the run's own bound closed it. */
+export const CREW_RUN_TTL_REASON = "the run did not finish within 2 hours";
+
+/**
  * The lead's turn queue — **in memory, and never persisted**.
  *
  * §18.9's argument for `lastDialledAt` applies here unchanged: the queue describes a *process*, and
@@ -610,6 +630,22 @@ export class UpdateTurns {
   private readonly limitEnds = new Map<string, number>();
   /** The limit line already on the journal, per member, so a held limit costs one line. */
   private readonly limitLogged = new Map<string, number>();
+  /**
+   * When this lead first read each member's current limit, keyed by the report's own stamp. The
+   * limit's end is capped against it ({@link LIMIT_CAP_MS}), so the cap does not creep forward
+   * with every sweep. A new stamp is a new attempt and starts a new reading.
+   */
+  private readonly limitSeen = new Map<string, { readonly updatedAt: number; readonly seenAt: number }>();
+  /** When this run began, on this lead's clock, or null until it is known. {@link CREW_RUN_TTL_MS}. */
+  private beganAt: number | null = null;
+  /**
+   * Since when this lead has stated neither the target nor a run in flight, or null (A1). A lead
+   * that is done and still does not state the target — it took a different version, or its binary
+   * is not the one its record names — gets one wall clock and no more.
+   */
+  private leadAwaySince: number | null = null;
+  /** Whether the last sweep found this lead off the target. The sweep that finds it on restarts the queue's clock. */
+  private leadAway = false;
 
   /**
    * `log` is where a `[crew]` line goes — `console.log`, the bridge's journal, unless a caller
@@ -620,10 +656,19 @@ export class UpdateTurns {
     private readonly clock: (ms: number) => string = clockTime,
   ) {}
 
-  /** A run has started on this lead. Every peer behind `target` becomes a candidate. */
-  begin(runId: string, target: string): void {
+  /**
+   * A run has started on this lead. Every peer behind `target` becomes a candidate.
+   *
+   * `now` starts the run's own bound ({@link CREW_RUN_TTL_MS}). A caller that passes none starts
+   * it on the first sweep instead.
+   */
+  begin(runId: string, target: string, now?: number): void {
     if (this.run?.runId === runId) return;
     this.run = { runId, target: bareVersion(target) ?? target };
+    this.beganAt = now ?? null;
+    this.leadAwaySince = null;
+    this.leadAway = false;
+    this.limitSeen.clear();
     this.held = null;
     this.missed.clear();
     this.legs.clear();
@@ -660,6 +705,18 @@ export class UpdateTurns {
   /** The run this lead is currently driving, or null. */
   current(): { readonly runId: string; readonly target: string } | null {
     return this.run;
+  }
+
+  /**
+   * Whether a run is still open at `now` — what refuses a second confirm (A5). A second run would
+   * replace this one's legs while a member may still be building under this run's id, so one
+   * confirm is finished, or bounded out, before the next is taken. Past {@link CREW_RUN_TTL_MS} it
+   * answers false even when no sweep has closed the run yet: a lead that stopped sweeping must not
+   * refuse every update after it.
+   */
+  open(now: number): boolean {
+    if (this.run === null) return false;
+    return this.beganAt === null || now - this.beganAt < CREW_RUN_TTL_MS;
   }
 
   /** The turn value for `memberId`, or null when it does not hold one. */
@@ -726,13 +783,14 @@ export class UpdateTurns {
    * the only version a member can be sent to. The production caller always passes it; a caller
    * that passes nothing is a test about the queue alone.
    */
-  observe(members: readonly TurnMember[], now: number, lead?: { readonly release: string | null }): TurnSweep {
+  observe(members: readonly TurnMember[], now: number, lead?: LeadFacts): TurnSweep {
     if (this.run === null) return { released: false };
     const target = this.run.target;
     const runId = this.run.runId;
     let released = false;
 
     if (this.progressAt === 0) this.progressAt = now;
+    this.beganAt ??= now;
 
     const ordered = [...members].toSorted((a, b) => a.enrolledAt - b.enrolledAt || a.memberId.localeCompare(b.memberId));
     for (const m of ordered) {
@@ -783,14 +841,31 @@ export class UpdateTurns {
         released = true;
       }
     }
-    if (this.expire(runId, now)) released = true;
+    const leadOn = lead === undefined || (lead.release !== null && bareVersion(lead.release) === target);
+    // THE LEAD'S OWN RUN DECIDES WHETHER THE CREW'S RUN CAN HAPPEN AT ALL (A1, 2026-09-23). Turns
+    // wait for the lead to state the target, so a lead that will never state it must close the run
+    // itself, and say why, rather than leave the phone showing a crew that is "waiting".
+    if (leadOn) {
+      // The lead has just arrived on the target: whatever the queue waited through until now was
+      // the lead's build, not a member stalling, so the queue's clock starts here.
+      if (this.leadAway) this.progressAt = now;
+      this.leadAway = false;
+      this.leadAwaySince = null;
+    } else {
+      this.leadAway = true;
+      const why = this.leadStop(lead, runId, target, now);
+      if (why !== null && this.closeOpen(runId, why, now, "waiting")) released = true;
+    }
+    if (now - this.beganAt >= CREW_RUN_TTL_MS && this.closeOpen(runId, CREW_RUN_TTL_REASON, now, "all")) {
+      released = true;
+    }
+    if (this.expire(runId, now, leadOn)) released = true;
     this.swept = true;
     // The settle check runs on EVERY tick, folded members or none. A leg that can move on the
     // evidence already in hand has to move on the tick that holds it, and the drill's run froze
     // precisely because a quiet sweep returned before reaching here.
     if (this.settleIfDone(runId, now)) return { released };
 
-    const leadOn = lead === undefined || (lead.release !== null && bareVersion(lead.release) === target);
     if (this.held === null && !leadOn) {
       this.reportBlocked(runId, ordered, `this lead states ${lead?.release ?? "no settled release"}, not ${target} yet`);
     } else if (this.held === null) {
@@ -819,25 +894,77 @@ export class UpdateTurns {
    * minute is how the lead tells the two apart without reading a version number.
    */
   private limitReason(runId: string, m: TurnMember, leg: PeerLeg, now: number): string | null {
-    const limit = leg.state === "waiting" ? followLimit(m.run, runId, now) : null;
+    const stamp = leg.state === "waiting" ? (m.run?.updatedAt ?? null) : null;
+    const seen = this.limitSeen.get(m.memberId);
+    const seenAt = stamp !== null && seen?.updatedAt === stamp ? seen.seenAt : now;
+    const limit = leg.state === "waiting" ? followLimit(m.run, runId, now, seenAt) : null;
     if (limit === null) {
       this.limits.delete(m.memberId);
       return null;
     }
+    if (stamp !== null) this.limitSeen.set(m.memberId, { updatedAt: stamp, seenAt });
     this.limits.set(m.memberId, limit);
     this.limitEnds.set(m.memberId, Math.max(this.limitEnds.get(m.memberId) ?? 0, limit.at));
     if (limit.continues) {
       const heldFor = this.held === m.memberId ? now - (this.legChangedAt.get(m.memberId) ?? now) : 0;
       if (heldFor < LIMIT_GRACE_MS) return null;
     }
-    const reason = `rate-limited, retries by ${this.clock(limit.at)}`;
+    // RELATIVE ON THE PHONE, A CLOCK TIME IN THE JOURNAL (A2). The reason is a string this lead
+    // writes and the phone prints as it is, so a clock time in it would be the LEAD's time zone
+    // shown on a phone that may sit in another one. "In about N min" needs no zone, and the sweep
+    // rewrites it every time it folds. The journal is read on the lead, so it keeps the lead's clock
+    // and says so.
+    const reason = `rate-limited, retries in about ${Math.max(1, Math.ceil((limit.at - now) / 60_000))} min`;
     if (this.limitLogged.get(m.memberId) !== limit.at) {
       this.limitLogged.set(m.memberId, limit.at);
       this.log(
-        `[crew] update ${shortRunId(runId)}: ${m.memberId} waits on its own once-an-hour limit, it retries by ${this.clock(limit.at)}`,
+        `[crew] update ${shortRunId(runId)}: ${m.memberId} waits on its own once-an-hour limit, it retries by ${this.clock(limit.at)} (this lead's clock)`,
       );
     }
     return reason;
+  }
+
+  /**
+   * Why the crew's run cannot happen while this lead does not state its target, or null to keep
+   * waiting (A1). Three readings of the lead's own run record:
+   *
+   * - **This run ended anywhere but `done`** — rolled back, stuck, interrupted. The lead is on its
+   *   old release for good, so the run closes on this sweep, members untouched.
+   * - **A run is in flight here** — the lead is still taking the release. Nothing to decide yet;
+   *   the run's own bound ({@link CREW_RUN_TTL_MS}) is what holds a build that never ends.
+   * - **Anything else** — done at another version, a binary that is not the one its record names,
+   *   a record from an earlier run that the updater has not replaced yet. One wall clock, then close.
+   */
+  private leadStop(lead: LeadFacts | undefined, runId: string, target: string, now: number): string | null {
+    const run = lead?.run ?? null;
+    if (run !== null && run.runId === runId && PEER_FAILED.has(run.state)) {
+      return `not started: the lead's update ${run.state === "rolled-back" ? "rolled back" : `ended ${run.state}`}`;
+    }
+    if (run !== null && PEER_IN_FLIGHT.has(run.state)) {
+      this.leadAwaySince = null;
+      return null;
+    }
+    this.leadAwaySince ??= now;
+    if (now - this.leadAwaySince < LEG_WALL_CLOCK_MS) return null;
+    return `not started: the lead states ${lead?.release ?? "no settled release"}, not ${target}`;
+  }
+
+  /**
+   * Close open legs with `reason` — the `waiting` ones, or every open one — and answer whether a
+   * turn was released doing it.
+   *
+   * `unreachable` again, for the reason {@link expire} gives: it is the terminal state every phone
+   * already renders as "this leg did not happen", and a new state would be a word no older phone
+   * knows. The reason is what tells the operator which kind of not-happening it was.
+   */
+  private closeOpen(runId: string, reason: string, now: number, which: "waiting" | "all"): boolean {
+    let released = false;
+    for (const [memberId, leg] of this.legs) {
+      if (!LEG_OPEN.has(leg.state)) continue;
+      if (which === "waiting" && leg.state !== "waiting") continue;
+      released = this.failLeg(runId, memberId, leg, now, reason) || released;
+    }
+    return released;
   }
 
   /**
@@ -874,7 +1001,7 @@ export class UpdateTurns {
    * seventh leg state would put a word on the wire that no older phone knows. The reason is what
    * separates the two, and the reason is the part an operator reads.
    */
-  private expire(runId: string, now: number): boolean {
+  private expire(runId: string, now: number, leadOn: boolean): boolean {
     // PASS ONE, the member the run is actually waiting on: the one holding the turn, and any member
     // that reported `updating`. Its clock is its own, and it started when the turn was granted.
     let released = false;
@@ -895,6 +1022,9 @@ export class UpdateTurns {
       this.progressAt = now;
       return released;
     }
+    // While the lead is not on the target, a queued member is waiting on the LEAD, not stalling:
+    // {@link leadStop} and the run's own bound decide those legs, and this pass stays out of it.
+    if (!leadOn) return released;
     // PASS TWO, the members merely QUEUED. They answer every sweep and are asked for nothing, so the
     // clock they are held to is the RUN's: a queue that is moving never expires, and a run where
     // nothing at all has moved for twenty minutes still ends, which is the whole point.
@@ -911,13 +1041,13 @@ export class UpdateTurns {
     return released;
   }
 
-  /** Flip one open leg to `unreachable` with the wall clock's reason, and say whether a turn fell. */
-  private failLeg(runId: string, memberId: string, leg: PeerLeg, now: number): boolean {
-    const failed: PeerLeg = { ...leg, state: "unreachable", reason: LEG_WALL_CLOCK_REASON, updatedAt: now };
+  /** Flip one open leg to `unreachable` with `reason` (the wall clock's by default), and say whether a turn fell. */
+  private failLeg(runId: string, memberId: string, leg: PeerLeg, now: number, reason = LEG_WALL_CLOCK_REASON): boolean {
+    const failed: PeerLeg = { ...leg, state: "unreachable", reason, updatedAt: now };
     this.legs.set(memberId, failed);
     this.expired.set(memberId, failed);
     this.legChangedAt.set(memberId, now);
-    this.log(`[crew] update ${shortRunId(runId)}: ${memberId} ${leg.state} -> unreachable (${LEG_WALL_CLOCK_REASON})`);
+    this.log(`[crew] update ${shortRunId(runId)}: ${memberId} ${leg.state} -> unreachable (${reason})`);
     if (this.held !== memberId) return false;
     this.held = null;
     return true;
@@ -964,6 +1094,15 @@ export class UpdateTurns {
 /** A run id is long and opaque; eight characters is enough to grep one run out of a journal. */
 function shortRunId(runId: string): string {
   return runId.slice(0, 8);
+}
+
+/**
+ * What the lead states about itself on one sweep: its release header ({@link leadReleaseHeader}),
+ * and its own run record, which is what tells "still taking the release" from "never will" (A1).
+ */
+export interface LeadFacts {
+  readonly release: string | null;
+  readonly run?: Pick<UpdateRun, "state" | "runId" | "to"> | null;
 }
 
 /** What one folded sweep answers. Named, because a turn being released is what earns a re-sweep. */
@@ -1088,15 +1227,23 @@ function continuesThisRun(run: UpdateRun | null, lead: string, runId: string): b
  * for it is never early. `continues` marks the one case {@link followGuards} exempts: a `done` in
  * THIS run. A member built before that exemption still refuses there, and the lead cannot tell the
  * two builds apart, so it grants the turn anyway and only waits for the bound.
+ *
+ * `seenAt` is when THIS lead first read that report, on its own clock. The member's stamp is the
+ * member's clock, so the end is capped at `seenAt` + {@link LIMIT_CAP_MS}: a member whose clock
+ * runs ahead cannot hold the run open past the longest the real limit can be (A2). A member whose
+ * clock runs BEHIND reads as free early; the lead grants it the turn, the member refuses on its own
+ * limit, and the wall clock fails it twenty minutes after the grant — what every lead did before it
+ * read the limit at all.
  */
 export function followLimit(
   report: PeerRunReport | null,
   runId: string,
   now: number,
+  seenAt: number = now,
 ): { readonly at: number; readonly continues: boolean } | null {
   if (report === null || report.updatedAt === null) return null;
   if (PEER_IN_FLIGHT.has(report.state)) return null;
-  const at = report.updatedAt + FOLLOW_ATTEMPT_INTERVAL_MS;
+  const at = Math.min(report.updatedAt + FOLLOW_ATTEMPT_INTERVAL_MS, seenAt + LIMIT_CAP_MS);
   if (now >= at) return null;
   return { at, continues: report.runId === runId && report.state === "done" };
 }

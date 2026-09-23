@@ -427,8 +427,9 @@ page keeps a line per member: `waiting`, `checking`, `staging`, `restarting`, `v
 `rolled back` or `unreachable`.
 
 A member updates itself at most once an hour. A member that updated within the hour, for example
-by hand, waits with `rate-limited, retries by HH:MM` under its line, and the run goes on once that
-time passes.
+by hand, waits with `rate-limited, retries in about N min` under its line, and the run goes on once
+that time passes. If the lead's own update rolls back, the members are not touched, and their lines
+say so. A new update waits until the crew run has finished, 2 hours at most.
 
 **1.7.0 to 1.8.0.** Lead first again, for a second reason: 1.8.0 renames the wire paths, the two
 environment keys, the three state files and the journal prefix to crew. A 1.8.0 lead answers the old

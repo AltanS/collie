@@ -2924,8 +2924,20 @@ lead that granted then sent a member one release behind to the lead's OLD versio
 
 The lead also reads each waiting member's hourly limit off its `updateRun` report: an attempt whose
 `updatedAt` is inside the hour. Such a member is not granted the turn, its leg carries the reason
-`rate-limited, retries by HH:MM`, and its wall clock starts when the limit lifts. The report carries
-`updatedAt`, not `startedAt`, so the time is an upper bound. No field and no header changed.
+`rate-limited, retries in about N min`, and its wall clock starts when the limit lifts. The report
+carries `updatedAt`, not `startedAt`, so the time is an upper bound. That stamp is the member's
+clock, so the lead caps the limit's end at `FOLLOW_ATTEMPT_INTERVAL_MS` plus two minutes after it
+first read that stamp, on its own clock. The reason states a span, never a clock time: the lead's
+time zone is not the phone's. No field and no header changed.
+
+Every run ends. The lead reads its own run record on each sweep. If this run's record ends
+`rolled-back`, `stuck` or `interrupted`, every `waiting` leg closes on that sweep as `unreachable`,
+reason `not started: the lead's update rolled back` (or `ended stuck`, `ended interrupted`). If the
+lead is not in flight and still does not state the target after `LEG_WALL_CLOCK_MS`, the legs close
+with `not started: the lead states <x>, not <target>`. While the lead's own run is in flight, a
+queued leg does not expire. No run stays open past `CREW_RUN_TTL_MS` (2 hours); its open legs close
+with `the run did not finish within 2 hours`. A second confirm while a run is open is refused with
+`update.in_progress`, state `levelling the crew`.
 
 A turn is released on exactly three things: the member reports the new version; the member reports
 `rolled-back`; or the member misses **three consecutive sweeps**, after which it reads `unreachable`

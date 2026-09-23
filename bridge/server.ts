@@ -1916,6 +1916,8 @@ export function startServer(opts: {
           crew: opts.crewLead?.updateRows() ?? [],
           // And the legs of the last run, which is what "Retry crew update" is about (M16/04).
           peers: opts.crewLead?.updatePeers() ?? [],
+          // A crew run still open refuses a second confirm (A5).
+          crewRunOpen: opts.crewLead?.updateRunOpen() ?? false,
         });
         if (verdict.kind === "refuse") {
           return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));

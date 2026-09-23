@@ -29,6 +29,7 @@ import {
   type CrewUpdateRow,
 } from "../update-action.ts";
 import { UpdateTurns, type PeerLeg, type TurnMember } from "./follow.ts";
+import type { UpdateRun } from "../update-run.ts";
 
 // The lead's side of the crew, assembled: sweep the peers, remember the last-good body, merge.
 //
@@ -293,6 +294,12 @@ export interface FollowDistribution {
    * boot would keep a whole crew waiting for a restart.
    */
   readonly leadRelease: () => string | null;
+  /**
+   * This lead's own run record, resolved, or null. The queue reads it to tell a lead still taking
+   * the release from one whose update rolled back and will never state the target (A1). Optional:
+   * a caller that passes none leaves the queue to its wall clock and its run bound.
+   */
+  readonly leadRun?: () => Pick<UpdateRun, "state" | "runId" | "to"> | null;
   /** The in-memory queue. Never persisted — a lead restart re-derives it and re-grants. */
   readonly turns: UpdateTurns;
   /** `enrolledAt` per member, the trust store's own ordering. Read through the store each sweep. */
@@ -618,7 +625,8 @@ export class CrewLead {
     });
     // What this lead states about itself gates every grant: a turn is handed out only while that is
     // the run's own target, so a member can never be sent to an intermediate release (§20).
-    if (follow.turns.observe(members, this.now(), { release: follow.leadRelease() }).released) this.resweep();
+    const lead = { release: follow.leadRelease(), run: follow.leadRun?.() ?? null };
+    if (follow.turns.observe(members, this.now(), lead).released) this.resweep();
   }
 
   /**
@@ -1007,6 +1015,14 @@ export class CrewLead {
    */
   updateSettledAt(): number | null {
     return this.deps.follow?.turns.settledAt() ?? null;
+  }
+
+  /**
+   * Whether the crew run this lead drives is still open, which refuses a second confirm (A5). It
+   * dials nobody.
+   */
+  updateRunOpen(): boolean {
+    return this.deps.follow?.turns.open(this.now()) ?? false;
   }
 
   /**

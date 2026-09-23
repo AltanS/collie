@@ -280,12 +280,12 @@ describe("the three thresholds, each with its own way out", () => {
       startedHere: true,
       run: run("done", {
         peers: [
-          { name: "minibuch", state: "waiting", reason: "rate-limited, retries by 08:55", updatedAt: NOW },
+          { name: "minibuch", state: "waiting", reason: "rate-limited, retries in about 38 min", updatedAt: NOW },
           { name: "attic", state: "waiting", updatedAt: NOW },
         ],
       }),
     });
-    expect(view.rows.find((r) => r.detail === "rate-limited, retries by 08:55")).toBeDefined();
+    expect(view.rows.find((r) => r.detail === "rate-limited, retries in about 38 min")).toBeDefined();
     expect(view.rows.filter((r) => r.detail !== null && r.detail !== undefined)).toHaveLength(1);
   });
 

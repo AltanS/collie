@@ -40,9 +40,18 @@ it.**
    the turn names, at a version below the one the lead now states. That member is finishing an
    attempt the limit already counted.
 3. **The lead reads the limit off the member's report.** A waiting member whose report shows an
-   attempt inside the hour is skipped for the turn, its leg reads `rate-limited, retries by HH:MM`,
-   and the wall clock starts when the limit lifts. The member's report carries `updatedAt`, not
-   `startedAt`, so the time is an upper bound: the member retries by then, never later.
+   attempt inside the hour is skipped for the turn, its leg reads `rate-limited, retries in about
+   N min`, and the wall clock starts when the limit lifts. The member's report carries `updatedAt`,
+   not `startedAt`, so the time is an upper bound: the member retries by then, never later.
+4. **Every crew run ends, and says why** (amended after counsel, same day). The stamp is the
+   member's clock, so the lead caps the limit's end at an hour and two minutes after it first read
+   it, on its own clock. The leg states a span, not a clock time, because the lead's time zone is
+   not the phone's. If the lead's own update ends rolled back, stuck or interrupted, the run closes
+   on that sweep. If the lead is done but does not state the target, it closes after the 20-minute
+   wall clock. While the lead is still updating, queued legs do not expire. Every run closes after
+   2 hours at most. A closed leg reads `unreachable` with its reason, for example `not started: the
+   lead's update rolled back`, so no older phone meets a new state. A second confirm while a run is
+   open is refused as `update.in_progress` (`levelling the crew`).
 
 ## Why the exemption keeps the protection
 
@@ -68,4 +77,6 @@ exemption does not reopen that:
 - **Both sides older** behave as on 2026-09-23. The remedy is **Retry crew update** on the phone
   once the member's hour is up.
 - **A run can now stay open up to about 80 minutes**, the hour plus the wall clock, when a member is
-  rate-limited. It is not stalled: the lead can say when it moves.
+  rate-limited. It is not stalled: the lead can say when it moves. No run stays open past 2 hours,
+  and none outlives a lead update that did not arrive.
+- **One crew run at a time.** A new confirm, full or peers-only, waits until the open run settles.
