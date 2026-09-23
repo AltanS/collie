@@ -551,15 +551,23 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Download this release's integrity manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          gh release download "$GITHUB_REF_NAME" \
-            --pattern "collie-$version.manifest.json" \
-            --dir "$RUNNER_TEMP"
-          echo "MANIFEST=$RUNNER_TEMP/collie-$version.manifest.json" >> "$GITHUB_ENV"
+          manifest="collie-$version.manifest.json"
+          # NOT `gh release download`. On 2026-09-23 (v1.12.1) the by-tag release endpoint that
+          # command reads — and `gh release view`/`gh api .../releases/tags/<tag>` alongside it —
+          # showed 0 assets for over 40 minutes, on a release `gh api
+          # .../releases/<id>/assets` already listed all 11 for, and three straight reruns of this
+          # job failed the same "no assets to download" way. The plain download URL served the
+          # asset the whole time: it reads the release's storage directly rather than that
+          # lagging endpoint, so it is fetched by hand here, with retries for the ordinary kind of
+          # transient failure.
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          curl -fsSL --retry 10 --retry-delay 15 --retry-all-errors -o "$RUNNER_TEMP/$manifest" "$base/$manifest"
+          curl -fsSL --retry 10 --retry-delay 15 --retry-all-errors -o "$RUNNER_TEMP/$manifest.sha256" "$base/$manifest.sha256"
+          (cd "$RUNNER_TEMP" && sha256sum -c "$manifest.sha256")
+          echo "MANIFEST=$RUNNER_TEMP/$manifest" >> "$GITHUB_ENV"
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Rewrite packaging/ from the manifest
