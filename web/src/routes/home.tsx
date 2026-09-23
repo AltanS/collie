@@ -1,4 +1,4 @@
-import { BellRing, GitCompare, Rows3 } from "lucide-react";
+import { CircleDot, GitCompare, Rows3 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
@@ -101,9 +101,10 @@ export function HomeRoute() {
   useLocale();
   const { prefs, setSpacesOpen, setLaunchOpen, setIsolatedSpace, toggleHiddenSpace, setDashView } = useDashPrefs();
   const view: DashView = prefs.dashView;
-  // Attention's corner mark (ADR 0066): a red count of the panes blocked on you, or, when none is
-  // blocked, a quiet dot for finished panes you have not opened. A count means something waits on
-  // you; the dot only says there is something new. The list itself still holds both kinds.
+  // Focus's corner mark (ADR 0066, renamed from Attention by ADR 0068): a red count of the panes
+  // blocked on you, or, when none is blocked, a quiet dot for finished panes you have not opened. A
+  // count means something waits on you; the dot only says there is something new. The list itself
+  // still holds both kinds.
   const blockedCount = countBlocked(data.agents);
   const readyUnseen = blockedCount === 0 && hasReady(data.agents);
   const lookup = useMemo<ChangesLookup>(
@@ -198,7 +199,7 @@ export function HomeRoute() {
             hidden={prefs.hiddenSpaces}
             onIsolate={setIsolatedSpace}
             onToggleHidden={toggleHiddenSpace}
-            needsYouOnly={view === "needs"}
+            needsYouOnly={view === "focus"}
             renderBody={
               view === "changes"
                 ? (shown) => (
@@ -214,7 +215,7 @@ export function HomeRoute() {
             }
           />
           {/* Launch and the Spaces navigator belong to the whole herd, so they sit under Panes only.
-              Attention and Changes are narrower lists, and a launcher under them would read as part
+              Focus and Changes are narrower lists, and a launcher under them would read as part
               of that list. */}
           {view === "panes" && (
             <>
@@ -243,7 +244,7 @@ export function HomeRoute() {
         <BuildStamp className="px-4 pt-3 pb-2" />
       </div>
 
-      {/* The dashboard's footer (ADR 0066): three lists, each named for what it holds. It sits
+      {/* The dashboard's footer (ADR 0066, ADR 0068): three lists, each named for what it holds. It sits
           OUTSIDE the scroller, so the content scrolls above it and a switch moves neither it nor the
           strip and summary line at the top of the list. At every width: the dashboard has no
           sidebar on a wide screen (it is one centred column), so nothing else offers these views. */}
@@ -254,9 +255,9 @@ export function HomeRoute() {
         items={[
           { value: "panes", label: t("home.tabs.panes"), icon: <Rows3 className="size-5" /> },
           {
-            value: "needs",
-            label: t("home.tabs.attention"),
-            icon: <BellRing className="size-5" />,
+            value: "focus",
+            label: t("home.tabs.focus"),
+            icon: <CircleDot className="size-5" />,
             badge: blockedCount,
             dot: readyUnseen,
             badgeLabel: blockedCount > 0 ? tn("home.tabs.blocked", blockedCount) : t("home.tabs.unseen"),

@@ -1,18 +1,25 @@
 // The dashboard's three views, one per footer tab (ADR 0066): Panes (every pane, grouped by
-// workspace), Attention (only the panes that need you, same groups, same order) and Changes (each
-// workspace's uncommitted changes). Each tab names what its list holds.
+// workspace), Focus (only the panes that need you, same groups, same order) and Changes (each
+// workspace's uncommitted changes). Each tab names what its list holds. Focus was named Attention
+// until ADR 0068 renamed it and swapped its icon.
 //
-// Attention is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves nothing.
+// Focus is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves nothing.
 import type { JsonValue } from "./json";
 import type { WorkspaceGroup } from "./pane-groups";
 import { needsYou } from "./triage";
 import type { AgentView } from "./types";
 
-export const DASH_VIEWS = ["panes", "needs", "changes"] as const;
+export const DASH_VIEWS = ["panes", "focus", "changes"] as const;
 export type DashView = (typeof DASH_VIEWS)[number];
 
-/** A stored value as a view; anything unknown is the default, Panes. */
+/**
+ * A stored value as a view; anything unknown is the default, Panes. `"needs"` is the value a
+ * device stored before ADR 0068 renamed the tab (Attention → Focus); `"attention"` is handled the
+ * same way in case any build ever wrote the label instead of the internal name. Both read back as
+ * `"focus"`, and only `"focus"` is ever written from here on.
+ */
 export function coerceDashView(raw: JsonValue | undefined): DashView {
+  if (raw === "needs" || raw === "attention") return "focus";
   return DASH_VIEWS.find((v) => v === raw) ?? "panes";
 }
 

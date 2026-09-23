@@ -393,7 +393,7 @@ export const zhTW: Dictionary = {
   "home.row.unseen": "未讀",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
-  "home.tabs.attention": "Attention",
+  "home.tabs.focus": "Focus",
   "home.tabs.blocked.one": "{count} 個受阻",
   "home.tabs.blocked.other": "{count} 個受阻",
   "home.tabs.unseen": "已完成的未讀窗格",

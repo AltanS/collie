@@ -410,7 +410,7 @@ export const ja: Dictionary = {
   "home.row.unseen": "未読",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
-  "home.tabs.attention": "Attention",
+  "home.tabs.focus": "Focus",
   "home.tabs.blocked.one": "{count} 件ブロック中",
   "home.tabs.blocked.other": "{count} 件ブロック中",
   "home.tabs.unseen": "完了した未読のペイン",

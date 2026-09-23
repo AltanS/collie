@@ -4,7 +4,8 @@ import { coerceDashView, shownGroups } from "./dash-view";
 import { groupPanesByWorkspace } from "./pane-groups";
 import type { AgentView } from "./types";
 
-// Issue 270's filter, as the "Attention" tab draws it (ADR 0066): it removes rows and moves nothing.
+// Issue 270's filter, as the "Focus" tab draws it (ADR 0066, renamed by ADR 0068): it removes rows
+// and moves nothing.
 
 function pane(id: string, ws: number, status: AgentView["status"], extra: Partial<AgentView> = {}): AgentView {
   return {
@@ -41,7 +42,7 @@ describe("shownGroups", () => {
     expect(shown.map((s) => s.rows.length)).toEqual([3, 2, 2]);
   });
 
-  it("Attention keeps only the panes that need you and drops a group with none", () => {
+  it("Focus keeps only the panes that need you and drops a group with none", () => {
     const shown = shownGroups(groups, true);
     expect(shown.map((s) => s.group.label)).toEqual(["ws1", "ws3"]);
     expect(shown.map((s) => s.rows.map((r) => r.paneId))).toEqual([["w1:p2"], ["w3:p1", "w3:p2"]]);
@@ -75,9 +76,16 @@ describe("shownGroups", () => {
 describe("coerceDashView", () => {
   it("keeps the three views and turns anything else into Panes", () => {
     expect(coerceDashView("panes")).toBe("panes");
-    expect(coerceDashView("needs")).toBe("needs");
+    expect(coerceDashView("focus")).toBe("focus");
     expect(coerceDashView("changes")).toBe("changes");
     expect(coerceDashView("all")).toBe("panes");
     expect(coerceDashView(undefined)).toBe("panes");
+  });
+
+  it("reads a pre-rename stored value as Focus (ADR 0068)", () => {
+    // "needs" is what a device stored before the tab was named Attention; "attention" is handled
+    // the same way in case any build ever wrote the label instead of the internal name.
+    expect(coerceDashView("needs")).toBe("focus");
+    expect(coerceDashView("attention")).toBe("focus");
   });
 });

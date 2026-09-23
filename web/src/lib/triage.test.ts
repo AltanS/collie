@@ -260,7 +260,7 @@ describe("TRIAGE_STATUS", () => {
   });
 });
 
-describe("countBlocked and hasReady — the Attention tab's two marks (ADR 0066)", () => {
+describe("countBlocked and hasReady — the Focus tab's two marks (ADR 0066)", () => {
   const herd = [
     agent("b1", "blocked"),
     agent("b2", "blocked"),

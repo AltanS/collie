@@ -81,9 +81,14 @@ describe("coerceDashPrefs", () => {
   });
 
   it("keeps the dashboard tab to the three views, Panes by default", () => {
-    expect(coerceDashPrefs({ dashView: "needs" }).dashView).toBe("needs");
+    expect(coerceDashPrefs({ dashView: "focus" }).dashView).toBe("focus");
     expect(coerceDashPrefs({ dashView: "all" }).dashView).toBe("panes");
     expect(coerceDashPrefs({ dashView: 2 }).dashView).toBe("panes");
+  });
+
+  it("reads a pre-rename dashView value as focus (ADR 0068)", () => {
+    expect(coerceDashPrefs({ dashView: "needs" }).dashView).toBe("focus");
+    expect(coerceDashPrefs({ dashView: "attention" }).dashView).toBe("focus");
   });
 
   it("keeps the belt size to the three offered scales", () => {
@@ -159,7 +164,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setChangesDepth(3));
     act(() => first.result.current.setChangesLayout("tree"));
     act(() => first.result.current.setBeltScale(1.3));
-    act(() => first.result.current.setDashView("needs"));
+    act(() => first.result.current.setDashView("focus"));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -173,7 +178,7 @@ describe("useDashPrefs", () => {
       changesDepth: 3,
       changesLayout: "tree",
       beltScale: 1.3,
-      dashView: "needs",
+      dashView: "focus",
     });
   });
 

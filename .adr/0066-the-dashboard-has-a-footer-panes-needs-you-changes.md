@@ -1,6 +1,8 @@
 # 0066 — The dashboard has a footer: Panes, Attention, Changes
 
 - **Status:** Accepted
+- **Amended in scope by:** [ADR 0068](./0068-the-second-tab-is-focus-not-attention.md) — the second
+  tab is renamed Focus and wears `CircleDot`; everything else below stands.
 - **Date:** 2026-09-23
 - **Shipped in:** pending
 - **Trail:** GitHub issue 270 (@simplysoft: a `Needs you` chip on the workspace strip, persisted as

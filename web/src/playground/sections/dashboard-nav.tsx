@@ -9,6 +9,11 @@
 // routes/home.tsx (ADR 0066); option 1's phones below mount those two real components. Options 2
 // to 4 stay as they were drawn, for the record, apart from the Changes icon.
 //
+// The second tab shipped that day as "Attention" with `BellRing`, then renamed "Focus" with
+// `CircleDot` the same day, once the `attention-icon` round found the bell read as a notification
+// even in its quiet state (ADR 0068). Option 1's phones below carry that second rename too, since
+// they mount the real `TabBar`; options 2 to 4 still say "Needs you", as they were drawn.
+//
 // HONESTY: this is a mock composed from the app's own parts, not a mount of `AgentList`. The rows
 // (`AgentCard`), headings (`SectionHeader`), counts (`StatusCounts`, `StatusSummaryLine`), chips
 // (`Chip`), list frames (`ListGroup`), the Changes list (`ChangesList`), `Switch` and `BottomSheet`
@@ -16,7 +21,7 @@
 // the attention filter, the per-workspace Changes screen) is new and exists only here, because
 // `AgentList` has no attention filter and no heading slot for a Changes entry yet.
 
-import { BellRing, ChevronLeft, ChevronRight, GitCompare, Rows3, Settings } from "lucide-react";
+import { BellRing, ChevronLeft, ChevronRight, CircleDot, GitCompare, Rows3, Settings } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
 import { AgentCard } from "@/components/agent-card";
@@ -355,7 +360,7 @@ const ICON = "size-5";
 
 // ── Option 1: three-tab footer (PICKED, shipped as TabBar + WorkspaceChangesList) ─────────────────
 
-type View = "panes" | "needs" | "changes";
+type View = "panes" | "focus" | "changes";
 
 /** Option 1's Changes rows: the real list's rows, fed the fixture's answers instead of a fetch. */
 const REAL_ROWS: readonly WorkspaceChangesRow[] = GROUPS.map((g) => ({
@@ -386,7 +391,7 @@ function OptionThreeTabs({ initial, openWs = null }: { initial: View; openWs?: s
             <WorkspaceChangesList rows={REAL_ROWS} counts={REAL_COUNTS} onOpen={(row) => setWs(row.label)} />
           </div>
         ) : (
-          <DashBody attentionOnly={view === "needs"} quietNote={false} />
+          <DashBody attentionOnly={view === "focus"} quietNote={false} />
         )}
       </Scroll>
       <TabBar<View>
@@ -397,9 +402,9 @@ function OptionThreeTabs({ initial, openWs = null }: { initial: View; openWs?: s
         items={[
           { value: "panes", label: "Panes", icon: <Rows3 className={ICON} /> },
           {
-            value: "needs",
-            label: "Attention",
-            icon: <BellRing className={ICON} />,
+            value: "focus",
+            label: "Focus",
+            icon: <CircleDot className={ICON} />,
             badge: ATTENTION_COUNT,
             badgeLabel: `${ATTENTION_COUNT} need you`,
           },
@@ -625,17 +630,17 @@ export function DashboardNavSection() {
         <Card state="dash-nav-option-1" label="option 1 · three-tab footer" reach={REACH} span={2}>
           <OptionHead
             n={1}
-            name="PICKED · Three-tab footer: Panes · Attention · Changes"
+            name="PICKED · Three-tab footer: Panes · Focus · Changes"
             lines={[
-              "Picked 2026-09-23, with two corrections: the first tab is Panes (each tab names what its list holds, and the app counts panes everywhere), and Changes wears GitCompare, the icon the pane belt's Changes pill uses. Drawn as Needs you, renamed Attention the same day: the old name claimed something always needed you, even at zero. These phones mount the shipped TabBar and WorkspaceChangesList (ADR 0066).",
+              "Picked 2026-09-23, with two corrections: the first tab is Panes (each tab names what its list holds, and the app counts panes everywhere), and Changes wears GitCompare, the icon the pane belt's Changes pill uses. Drawn as Needs you, renamed Attention the same day, then renamed Focus with CircleDot the same day again: the bell read as a notification even in its quiet state (ADR 0068). These phones mount the shipped TabBar and WorkspaceChangesList (ADR 0066).",
               "Thumb reach: every view is one tap from the bottom edge. The Changes tab lists every workspace with its file count, and a tap opens that workspace's Changes.",
-              `What moves: nothing between Panes and Attention, the strip and summary hold their place. Changes swaps the whole body. Attention carries a badge (${ATTENTION_COUNT}) while it is above zero.`,
+              `What moves: nothing between Panes and Focus, the strip and summary hold their place. Changes swaps the whole body. Focus carries a badge (${ATTENTION_COUNT}) while it is above zero.`,
               "Cost: 56px of footer plus the safe area on the dashboard, always. Changes becomes a peer of the herd, so it reads as a main feature.",
             ]}
           />
           <Phones>
-            <Phone caption="a · Attention selected">
-              <OptionThreeTabs initial="needs" />
+            <Phone caption="a · Focus selected">
+              <OptionThreeTabs initial="focus" />
             </Phone>
             <Phone caption="b · Changes tab">
               <OptionThreeTabs initial="changes" />

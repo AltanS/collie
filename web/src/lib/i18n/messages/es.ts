@@ -414,7 +414,7 @@ export const es: Dictionary = {
   "home.row.unseen": "sin ver",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
-  "home.tabs.attention": "Attention",
+  "home.tabs.focus": "Focus",
   "home.tabs.blocked.one": "{count} bloqueado",
   "home.tabs.blocked.other": "{count} bloqueados",
   "home.tabs.unseen": "paneles terminados sin ver",

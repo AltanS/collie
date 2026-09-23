@@ -50,7 +50,7 @@ export interface DashPrefs {
    * the icons slightly larger, like 15%"); the other two are the Settings row's way up from there.
    */
   beltScale: BeltScale;
-  /** The dashboard's footer tab: Panes, Attention or Changes (ADR 0066). Panes by default. */
+  /** The dashboard's footer tab: Panes, Focus or Changes (ADR 0066, renamed by ADR 0068). Panes by default. */
   dashView: DashView;
 }
 

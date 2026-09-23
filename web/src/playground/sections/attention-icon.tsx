@@ -3,6 +3,11 @@
 // The badge rule changes with this round (ADR 0066): a red count means panes blocked on you, and a
 // quiet mark means finished panes you have not opened. This section asks which ICON fits that tab.
 //
+// PICKED: option 10, CircleDot. Shipped with the tab itself renamed Attention → Focus (ADR 0068):
+// a ringing bell read as a notification even in the quiet state, and CircleDot reads as a place you
+// look, not an alert. Options 1-9, 11 and 12 (BellRing, today's icon when this round was drawn) stay
+// as they were drawn, for the record.
+//
 // Every row mounts the REAL `TabBar` (components/ui/tab-bar.tsx) at 375 CSS px, the full three-tab
 // footer, so the candidate is judged next to Rows3 and GitCompare at the size it ships. Each row is
 // numbered: the operator picks "option N".
@@ -36,7 +41,8 @@ export const DEF: SectionDef = {
     "Design round: twelve numbered icons for the dashboard footer's Attention tab. Each row is the " +
     "shipped TabBar at 375 px: Attention selected with the red count (2 blocked), unselected with " +
     "the red count, and unselected with the quiet mark (finished panes unseen, nothing blocked). " +
-    "Pick by number. Option 12 is today's icon.",
+    "Pick by number. PICKED 2026-09-23: option 10, CircleDot — the tab itself is renamed Focus in " +
+    "the same round (ADR 0068). The rows below stay as drawn, for the record.",
 };
 
 type View = "panes" | "needs" | "changes";
@@ -58,9 +64,9 @@ const CANDIDATES: readonly Candidate[] = [
   { n: 7, name: "ListTodo", Icon: ListTodo },
   { n: 8, name: "Radar", Icon: Radar },
   { n: 9, name: "Target", Icon: Target },
-  { n: 10, name: "CircleDot", Icon: CircleDot },
+  { n: 10, name: "CircleDot", Icon: CircleDot, note: "picked — ADR 0068" },
   { n: 11, name: "BellDot", Icon: BellDot, note: "a quieter bell, for comparison" },
-  { n: 12, name: "BellRing", Icon: BellRing, note: "current" },
+  { n: 12, name: "BellRing", Icon: BellRing, note: "previous — replaced by option 10" },
 ];
 
 const ICON = "size-5";

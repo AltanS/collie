@@ -408,7 +408,7 @@ export const ko: Dictionary = {
   "home.row.unseen": "읽지 않음",
   "home.tabs.aria": "Dashboard views",
   "home.tabs.panes": "Panes",
-  "home.tabs.attention": "Attention",
+  "home.tabs.focus": "Focus",
   "home.tabs.blocked.one": "{count}개 차단됨",
   "home.tabs.blocked.other": "{count}개 차단됨",
   "home.tabs.unseen": "완료된 읽지 않은 패널",

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -363,11 +363,23 @@ describe("the dashboard's footer (ADR 0066)", () => {
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
   });
 
-  it("badges Attention with the count of blocked panes, and only that tab", async () => {
+  it("opens on Focus when a device's stored dashView pre-dates the rename (ADR 0068)", async () => {
+    // "needs" is what the tab's internal name was before ADR 0068 renamed the label to Focus;
+    // "attention" is handled the same way in case any build ever wrote the label instead.
+    for (const stored of ["needs", "attention"]) {
+      localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ dashView: stored }));
+      renderHome(solo());
+      await settled();
+      expect(tab(/^Focus/)).toHaveAttribute("aria-current", "page");
+      cleanup();
+    }
+  });
+
+  it("badges Focus with the count of blocked panes, and only that tab", async () => {
     renderHome(solo());
     await settled();
-    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, 1 blocked");
-    expect(tab(/^Attention/).querySelector('[data-slot="tab-badge"]')).toHaveTextContent("1");
+    expect(tab(/^Focus/)).toHaveAccessibleName("Focus, 1 blocked");
+    expect(tab(/^Focus/).querySelector('[data-slot="tab-badge"]')).toHaveTextContent("1");
     expect(tab(/^Panes$/)).toHaveTextContent(/^Panes$/);
     expect(tab(/^Changes$/)).toHaveTextContent(/^Changes$/);
   });
@@ -382,43 +394,43 @@ describe("the dashboard's footer (ADR 0066)", () => {
   it("counts only the blocked panes when finished-unseen ones are there too", async () => {
     renderHome(withAgents([fixtureAgents[0]!, unseen]));
     await settled();
-    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, 1 blocked");
-    expect(tab(/^Attention/).querySelector('[data-slot="tab-dot"]')).toBeNull();
+    expect(tab(/^Focus/)).toHaveAccessibleName("Focus, 1 blocked");
+    expect(tab(/^Focus/).querySelector('[data-slot="tab-dot"]')).toBeNull();
   });
 
   it("shows the quiet dot and no number when only finished-unseen panes wait", async () => {
     renderHome(withAgents([quiet[0]!, unseen]));
     await settled();
-    expect(tab(/^Attention/)).toHaveAccessibleName("Attention, finished panes unseen");
-    expect(tab(/^Attention/).querySelector('[data-slot="tab-dot"]')).not.toBeNull();
-    expect(tab(/^Attention/).querySelector('[data-slot="tab-badge"]')).toBeNull();
+    expect(tab(/^Focus/)).toHaveAccessibleName("Focus, finished panes unseen");
+    expect(tab(/^Focus/).querySelector('[data-slot="tab-dot"]')).not.toBeNull();
+    expect(tab(/^Focus/).querySelector('[data-slot="tab-badge"]')).toBeNull();
   });
 
   it("marks nothing when no pane is blocked or unseen", async () => {
     renderHome(withAgents(quiet));
     await settled();
-    expect(tab(/^Attention/)).toHaveAccessibleName("Attention");
-    expect(tab(/^Attention/).querySelector('[data-slot="tab-dot"], [data-slot="tab-badge"]')).toBeNull();
+    expect(tab(/^Focus/)).toHaveAccessibleName("Focus");
+    expect(tab(/^Focus/).querySelector('[data-slot="tab-dot"], [data-slot="tab-badge"]')).toBeNull();
   });
 
-  it("Attention drops the quiet workspace, keeps the heading's full counts, and is remembered", async () => {
+  it("Focus drops the quiet workspace, keeps the heading's full counts, and is remembered", async () => {
     renderHome(solo());
     await settled();
-    await userEvent.click(tab(/^Attention/));
-    expect(tab(/^Attention/)).toHaveAttribute("aria-current", "page");
+    await userEvent.click(tab(/^Focus/));
+    expect(tab(/^Focus/)).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
     // The strip still offers every workspace: the filter removes rows, never places.
     const strip = screen.getByRole("navigation", { name: /spaces/i });
     expect(within(strip).getByRole("button", { name: /collie/ })).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem("collie:dash-prefs:v1")!).dashView).toBe("needs");
+    expect(JSON.parse(localStorage.getItem("collie:dash-prefs:v1")!).dashView).toBe("focus");
   });
 
-  it("Attention with nothing urgent shows the all-clear line and no list", async () => {
+  it("Focus with nothing urgent shows the all-clear line and no list", async () => {
     const calm = fixtureAgents.map((a) => Object.assign(structuredClone(a), { status: "working" as const }));
     renderHome(homeData({ agents: calm, shellPanes: fixtureShellPanes, sessions: fixtureSessions }));
     await settled();
-    await userEvent.click(tab(/^Attention/));
+    await userEvent.click(tab(/^Focus/));
     expect(screen.getByText("Nothing needs you")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
