@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
 import { groupPanesByWorkspace } from "@/lib/pane-groups";
+import { paneName } from "@/lib/pane-name";
 import { workspacePrefKey } from "./agent-list";
 import type { AgentStatus, AgentView } from "@/lib/types";
 
@@ -216,7 +217,36 @@ describe("AgentList — two axes, urgency then workspace", () => {
     render(<AgentList agents={[row]} onOpen={onOpen} />);
     // Scoped to the row buttons: the Spaces strip also carries a chip named "p1" now.
     await user.click(rowButtons()[0]!);
-    expect(onOpen).toHaveBeenCalledExactlyOnceWith(row);
+    // …and the row's own button, which the pane glide flies from (lib/glide.ts).
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(row, rowButtons()[0]);
+  });
+
+  it("marks each row as the pane glide's origin, keyed by the path its caller spells", () => {
+    const row = agent("p1", "working");
+    render(<AgentList agents={[row]} onOpen={vi.fn()} glideKeyOf={(a) => `/pane/${a.paneId}`} />);
+    const button = rowButtons()[0]!;
+    expect(button.dataset.glideOrigin).toBe("pane");
+    expect(button.dataset.glideKey).toBe("/pane/p1");
+    // The three parts that fly: the dot, the tile and the name, once each.
+    for (const part of ["dot", "tile", "name"]) {
+      expect(button.querySelectorAll(`[data-glide="${part}"]`)).toHaveLength(1);
+    }
+    expect(button.querySelector('[data-glide="name"]')?.textContent).toBe(paneName(row));
+  });
+
+  it("starts the pane's read when the finger lands, before the tap", () => {
+    const onPress = vi.fn();
+    const onOpen = vi.fn();
+    const row = agent("p1", "working");
+    render(<AgentList agents={[row]} onOpen={onOpen} onPress={onPress} />);
+    fireEvent.pointerDown(rowButtons()[0]!);
+    expect(onPress).toHaveBeenCalledExactlyOnceWith(row);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("leaves a row out of every glide when no key is given", () => {
+    render(<AgentList agents={[agent("p1", "working")]} onOpen={vi.fn()} />);
+    expect(rowButtons()[0]!.dataset.glideOrigin).toBeUndefined();
   });
 });
 

@@ -382,11 +382,16 @@ const paneCache = new Map<string, PaneCacheEntry>();
 // pane's last body). 20 comfortably covers any panes in flight on a phone.
 const PANE_CACHE_MAX = 20;
 
+/**
+ * Read one pane's mirror. `seen: false` leaves the pane's unseen mark alone: the read a finger
+ * starts on `pointerdown` (lib/pane-prefetch.ts) may be the start of a scroll, not an open.
+ */
 export async function fetchPane(
   paneId: string,
   lines?: number,
   scope?: Scope,
   signal?: AbortSignal,
+  { seen = true }: { seen?: boolean } = {},
 ): Promise<PaneReadResponse> {
   const q = lines ? `?lines=${lines}` : "";
   const url = withScope(`/api/pane/${encodeURIComponent(paneId)}${q}`, scope);
@@ -401,12 +406,12 @@ export async function fetchPane(
   // seen. A cross-site no-cors GET can't set a custom header, so it can't clear your alerts by
   // guessing pane ids (bridge/server.ts → marksPaneSeen).
   const headers = new Headers({
-    "x-collie-seen": "1",
     [XHR_HEADER]: XHR_HEADER_VALUE,
     // A read needs no token, but the bridge stamps `lastSeenAt` off whatever it resolves — so a
     // paired device's polls are what keep its "last seen" honest. Same injection point as `doReq`.
     ...authHeader(),
   });
+  if (seen) headers.set("x-collie-seen", "1");
   if (cached) headers.set("if-none-match", cached.etag);
 
   const res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });

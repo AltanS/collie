@@ -43,6 +43,7 @@ export function StatusDot({
   label,
   stale,
   live = false,
+  glide,
   className,
 }: {
   status: AgentStatus;
@@ -77,6 +78,8 @@ export function StatusDot({
    * the same "working" state — the colour still says it, just without the motion.
    */
   live?: boolean;
+  /** The dot's `data-glide` part name, where it flies in a glide (lib/glide.ts). */
+  glide?: string;
   className?: string;
 }) {
   const hollow = RESTING.has(status);
@@ -86,6 +89,7 @@ export function StatusDot({
       role={label === undefined ? undefined : "img"}
       aria-label={label}
       aria-hidden={label === undefined ? true : undefined}
+      data-glide={glide}
       className={cn(
         "relative flex size-2.5 shrink-0 transition-opacity",
         stale === true && "opacity-40",

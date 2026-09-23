@@ -21,6 +21,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useWorkspaceChangeCounts } from "@/hooks/use-workspace-change-counts";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
+import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { ambientHost, ambientPanes, paneScope, sessionsOnHost } from "@/lib/hosts";
@@ -28,11 +29,11 @@ import type { ChangesLookup } from "@/lib/api";
 import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
 import { glideForward } from "@/lib/glide";
-import { panePath, spaceChangesPath, spacePath } from "@/lib/nav";
+import { spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { countBlocked, hasReady } from "@/lib/triage";
-import type { AgentView, ServerSummary, SessionSummary } from "@/lib/types";
+import type { ServerSummary, SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 
 /**
@@ -126,8 +127,8 @@ export function HomeRoute() {
   // every machine (hosts are a label, not a split), so the row you tapped may well live somewhere
   // other than where the URL currently points. Resolving it here is what stops a reply landing on the
   // right pane name on the wrong terminal. Solo: every pane is untagged, so this is `data.scope`.
-  const open = (pane: AgentView) =>
-    nav.down(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
+  // The tap glides the row into the pane header when the pane's read is in time (use-pane-open.ts).
+  const paneOpen = usePaneOpen(data.scope, data.servers, data.sessions);
   const drillInto = (id: string) => nav.down(spacePath(id, data.scope));
   // The space navigator shows the ADDRESSED machine's spaces — the loader's `ambientSpaces` has
   // already narrowed `data.workspaces`/`data.tabs` to the host `?h=` names (or the lead, absent one;
@@ -194,7 +195,9 @@ export function HomeRoute() {
             agents={data.agents}
             shellPanes={data.shellPanes}
             bridge={data.bridge}
-            onOpen={open}
+            onOpen={paneOpen.open}
+            glideKeyOf={paneOpen.glideKeyOf}
+            onPress={paneOpen.press}
             error={data.error}
             lastSeenAt={data.lastSeenAt}
             tabs={data.tabs}

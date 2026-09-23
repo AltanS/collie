@@ -2,10 +2,12 @@ import { useEffect, useRef } from "react";
 import { useLoaderData, useLocation, useParams } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
+import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useNav } from "@/hooks/use-nav";
 import { type PaneData } from "@/lib/loaders";
-import { homePath, panePath } from "@/lib/nav";
+import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
+import { canStepBack, homePath, panePath, readFrom, upTarget } from "@/lib/nav";
 import { paneScopeKey } from "@/lib/scope";
 import { findPane, paneScope } from "@/lib/hosts";
 import { setStatus } from "@/lib/status";
@@ -30,6 +32,7 @@ export function DetailRoute() {
   const nav = useNav();
   const location = useLocation();
   const stalled = useLoadingStalled();
+  const dashView = useDashPrefs().prefs.dashView;
 
   // SAFETY: `location.state` is whatever the navigation that got here attached — `unknown` by
   // definition. The only shape Collie ever puts there is `{ freshPane }` (components/agent-list's
@@ -79,6 +82,20 @@ export function DetailRoute() {
     }
   }, [gone, root.bridge, root.error, nav, scope, paneId]);
 
+  // Up one level: to the space or the dashboard the pane was opened from (ADR 0067).
+  const up = () => nav.up(homePath(scope));
+  // The back arrow glides the header's dot, tile and name back down into the row this pane was
+  // opened from (lib/glide.ts, the `pane` pair, rule 1), when the arrow lands where such a row can
+  // be: the dashboard's Panes or Focus list, or a space. Not the dashboard's Changes tab, which lists
+  // workspaces, so the arrow slides there as it always did. Where the row is gone or off screen, the
+  // engine crossfades. The landing is the same resolution `nav.up` runs (`upTarget`).
+  const backArrow = () => {
+    const lands = upTarget(location.pathname, readFrom(location.state), homePath(scope), canStepBack());
+    const rowsThere = GLIDE_PAIRS.pane.origin(lands) && (lands !== "/" || dashView !== "changes");
+    if (rowsThere) glideBack("pane", panePath(paneId, scope), up);
+    else up();
+  };
+
   return (
     <AgentChat
       // Keyed by the pane's FULL address, not its id. The key exists to remount the composer on a
@@ -102,8 +119,8 @@ export function DetailRoute() {
       bridge={root.bridge}
       error={root.error}
       stalled={stalled}
-      // Up one level: to the space or the dashboard the pane was opened from (ADR 0067).
-      onBack={() => nav.up(homePath(scope))}
+      onBack={up}
+      onBackArrow={backArrow}
       // Pane to pane is a sideways move: it replaces, and the pane's way up comes along.
       onSelect={(id) =>
         nav.side(

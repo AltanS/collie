@@ -123,7 +123,14 @@ interface AgentChatProps {
   bridge?: BridgeStatus | undefined;
   error?: boolean;
   stalled?: boolean;
+  /** Up one level: the header's back arrow (the Collie mark) and every exit from a pane that closed. */
   onBack: () => void;
+  /**
+   * The header's back arrow alone, when it does more than `onBack`: the glide back into the row this
+   * pane was opened from (routes/detail.tsx, lib/glide.ts). A pane that closed under you leaves by
+   * `onBack` and never glides.
+   */
+  onBackArrow?: () => void;
   onSelect: (paneId: string) => void;
 }
 
@@ -200,6 +207,7 @@ export function AgentChat({
   error = false,
   stalled = false,
   onBack,
+  onBackArrow,
   onSelect,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
@@ -1301,7 +1309,7 @@ export function AgentChat({
             not the 640px every other route uses: a 640px column minus its 16px gutters clips an
             80-column mirror, so the pane pair get their own claim. */}
         <RouteHeader
-          onHome={onBack}
+          onHome={onBackArrow ?? onBack}
           width="wide"
           // Zen takes the whole row off the screen — the one shell owns the <header> element, so
           // only the shell can stop drawing it, and this is how a route asks. See HeaderClaim.hidden
@@ -1431,6 +1439,11 @@ export function AgentChat({
             // the route-local growth `min-h-15` exists to prevent.
             <div
               data-slot="pane-identity-block"
+              // The pane pair's destination (lib/glide.ts): a dashboard or space row's dot, tile and
+              // name fly into the three marked below, and back down on the back arrow. Only this
+              // block is marked, so the tab strip's cell, which can read the same word as the name,
+              // never takes a part.
+              data-glide-destination="pane"
               className="relative -mx-1 flex min-h-11 min-w-0 flex-1 items-center rounded-lg px-1 text-left"
             >
               <button
@@ -1509,7 +1522,7 @@ export function AgentChat({
                 <div className="flex min-w-0 items-center gap-2 leading-5">
                   <div className="relative shrink-0">
                     {isShell ? (
-                      <div className="flex size-4 items-center justify-center rounded-sm border bg-muted">
+                      <div data-glide="tile" className="flex size-4 items-center justify-center rounded-sm border bg-muted">
                         <TerminalSquare className="size-2.5 text-muted-foreground" />
                         {/* A shell pane has no agent status, so there is no dot to name — and the
                             composer's status band, which used to say "shell" in words a thumb's
@@ -1519,7 +1532,7 @@ export function AgentChat({
                         <span className="sr-only">{t("status.shellBadge")}</span>
                       </div>
                     ) : (
-                      <AgentIcon agent={agent.agent} className="size-4" />
+                      <AgentIcon agent={agent.agent} className="size-4" glide="tile" />
                     )}
                     {/* A shell pane has no agent status, so it gets no badge — the tile alone says
                         what it is, and the composer strip's "shell" says it in words. The dot IS
@@ -1537,11 +1550,12 @@ export function AgentChat({
                         stale={connecting}
                         live
                         surface="bg-background"
+                        glide="dot"
                         className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-background"
                       />
                     )}
                   </div>
-                  <span data-slot="pane-name" className="block truncate font-semibold leading-5">
+                  <span data-slot="pane-name" data-glide="name" className="block truncate font-semibold leading-5">
                     {name}
                   </span>
                 </div>

@@ -14,7 +14,16 @@ import { useLocale } from "@/hooks/use-locale";
 
 interface AgentCardProps {
   agent: AgentView;
-  onClick: () => void;
+  /** The tap. Handed the row's own button, which is the glide's origin when `glideKey` is set. */
+  onClick: (row: HTMLButtonElement) => void;
+  /**
+   * The row as a glide origin (lib/glide.ts, the `pane` pair): the pane's own path, `panePath`,
+   * which the pane header's back arrow spells the same way to find this row again. Unset, the row
+   * takes no part in a glide.
+   */
+  glideKey?: string;
+  /** The finger landed on the row: the moment to start the pane's read (lib/pane-prefetch.ts). */
+  onPress?: () => void;
   /**
    * Where the row is being shown. "herd" (default) is a flat list across every space, so line 2
    * carries the place. "tab" is a list already grouped under its space and tab, so line 2 is the
@@ -93,6 +102,8 @@ interface RowLines {
 export function AgentCard({
   agent,
   onClick,
+  glideKey,
+  onPress,
   scope = "herd",
   statusStyle = "badge",
   density = "card",
@@ -174,7 +185,10 @@ export function AgentCard({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => onClick(e.currentTarget)}
+      onPointerDown={onPress}
+      data-glide-origin={glideKey === undefined ? undefined : "pane"}
+      data-glide-key={glideKey}
       className={cn(
         "w-full text-left transition-transform active:scale-[0.99]",
         // No radius on a flat row, in ANY state. These sit in a `divide-y` list, and a rounded fill
@@ -229,6 +243,7 @@ export function AgentCard({
                 // A hollow resting ring must be filled with the colour it actually sits on — a card
                 // is `--card`, a flat row is the page.
                 surface={flat ? "bg-background" : "bg-card"}
+                glide="dot"
               />
             )}
             {/* An avatar is a FRAME around someone else's artwork, not a shape that means
@@ -236,19 +251,23 @@ export function AgentCard({
                 `agent-chat.tsx` are all framed at the house radius — a circle would crop the
                 artwork. Full-round stays RESERVED for things that are a circle in meaning: the
                 status dot above, the switch thumb, round icon buttons. */}
+            {/* The dot, the tile and the name are the three parts that fly into the pane header
+                when the row opens it (`data-glide`, lib/glide.ts); they mean nothing otherwise. */}
             {isShell ? (
-              <div className="flex size-4 shrink-0 items-center justify-center rounded-sm border bg-muted">
+              <div data-glide="tile" className="flex size-4 shrink-0 items-center justify-center rounded-sm border bg-muted">
                 <TerminalSquare className="size-2.5 text-muted-foreground" />
               </div>
             ) : (
-              <AgentIcon agent={agent.agent} className="size-4" />
+              <AgentIcon agent={agent.agent} className="size-4" glide="tile" />
             )}
             {/* No longer `flex-1`: that let the name claim the whole line, which pushed the unseen
                 dot all the way to the far end, beside the meta, instead of beside the NAME. It now
                 sizes to its own text and only `min-w-0` lets it truncate below that — the dot still
                 sits right after whatever survives the truncation. `PaneMeta`'s own `ml-auto` is what
                 claims the row's spare width now, so it still lands at the end. */}
-            <span className="min-w-0 truncate self-baseline font-medium">{primary}</span>
+            <span data-glide="name" className="min-w-0 truncate self-baseline font-medium">
+              {primary}
+            </span>
             {/* A finished pane you haven't opened yet: the square (ui/unseen-mark.tsx). Right after
                 the name, never before it, and its slot is reserved on a flat row so the name
                 truncates at one width whether the mark is drawn or not. */}

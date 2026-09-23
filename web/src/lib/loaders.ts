@@ -36,6 +36,7 @@ import {
 } from "@/lib/last-seen";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { markPollResult } from "@/lib/poll-intent";
+import { prefetchPane, takePanePrefetch } from "@/lib/pane-prefetch";
 import { clearNotPaired, markNotPaired } from "@/lib/pairing";
 import {
   internScope,
@@ -452,6 +453,17 @@ function holdsNoEchoPrompt(text: string): boolean {
   return detectNoEchoPrompt(splitLines(parseAnsi(tail))) !== null;
 }
 
+/**
+ * Start the read `paneLoader` will need for this pane, from a row's `pointerdown`, so the answer is
+ * usually in by the tap's `click` (lib/pane-prefetch.ts). Returns a promise that settles when it is,
+ * and never rejects. Nothing starts during a known outage, where the loader answers from its cache
+ * without a read.
+ */
+export function prefetchPaneData(paneId: string, scope: Scope | undefined): Promise<void> {
+  if (isLostLatched()) return Promise.resolve();
+  return prefetchPane(paneId, scope, getRequestedLines(paneId, scope));
+}
+
 export async function paneLoader({
   params,
   request,
@@ -481,7 +493,16 @@ export async function paneLoader({
     // On a 304 fetchPane returns the cached body, so `read.text` is populated either way; the
     // `?? lastPaneText` is just belt-and-suspenders. Both paths are a success (not the error
     // branch) so the connection bar doesn't flicker on an unchanged poll.
-    const read: PaneReadResponse = await fetchPane(paneId, lines, scope, request?.signal);
+    // A navigation takes the read the row's `pointerdown` already started, when one is fresh
+    // (lib/pane-prefetch.ts). That read left the pane's unseen mark alone, so the seen read follows
+    // it, once it is in: by then the ETag cache holds its body and the bridge answers a 304. Nothing
+    // waits on it. A poll never takes a prefetched read.
+    const prefetched = isNavigation ? takePanePrefetch(paneId, scope, lines) : undefined;
+    if (prefetched) {
+      const markSeen = () => fetchPane(paneId, lines, scope).catch(() => {});
+      void prefetched.then(markSeen, markSeen);
+    }
+    const read: PaneReadResponse = await (prefetched ?? fetchPane(paneId, lines, scope, request?.signal));
     const text = read.text || lastPaneText.get(key) || "";
     // THE "IS THE SCREEN STILL MOVING" SIGNAL, taken at the one place that can honestly answer it.
     //

@@ -40,6 +40,11 @@
 //   7. Names live for one transition. Each part gets its `view-transition-name` inline on exactly one
 //      element at a time (the leaving one until the "before" picture is taken, then the arriving
 //      one), and every name and class comes off when the transition finishes or is skipped.
+//   8. No frozen screen. The browser paints nothing while the update callback runs, so a destination
+//      whose loader awaits the network must have its data in BEFORE the transition starts. Its tap
+//      goes through `glideForwardWhenReady`, which waits at most READY_WAIT_MS for the data and
+//      otherwise navigates the plain way, with the slide. The pane pair's data is started on the
+//      row's `pointerdown` (lib/pane-prefetch.ts), so it is usually in by the `click`.
 //
 // ADDING A PAIR.
 //   · An entry in GLIDE_PAIRS: the parts that fly, and the two pathname matchers.
@@ -48,8 +53,10 @@
 //     both screens can spell it without sharing state.
 //   · The destination container (the header's text column): `data-glide-destination="<id>"`.
 //   · Each part, on both sides: `data-glide="<part>"` inside those two elements.
-//   · The tap: `glideForward(id, key, go, from)`. The back arrow, only when its up target is the
-//     origin screen: `glideBack(id, key, go)`.
+//   · The tap: `glideForward(id, key, go, from)`, or `glideForwardWhenReady` when the destination's
+//     loader awaits the network (rule 8). The back arrow, only when its up target is the origin
+//     screen: `glideBack(id, key, go)`. The way back needs no wait: the origin screens read the
+//     snapshot the root loader already holds.
 //   · Pair-specific CSS, if any (the snapshot shape of text that changes size), under
 //     `html.glide-<id>` in index.css. Timing is shared and needs nothing.
 
@@ -64,14 +71,29 @@ export interface GlidePair {
 }
 
 /**
- * Every glide in the app. `changes`: a dashboard Changes tab row (workspace-changes-list.tsx) and
- * the list screen of `/space/:id/changes` (routes/changes.tsx), keyed by `spaceChangesPath`.
+ * Every glide in the app.
+ *
+ * `changes`: a dashboard Changes tab row (workspace-changes-list.tsx) and the list screen of
+ * `/space/:id/changes` (routes/changes.tsx), keyed by `spaceChangesPath`.
+ *
+ * `pane`: a pane row (agent-card.tsx), on the dashboard's Panes and Focus lists and in a space's
+ * list, and the pane screen's header identity (agent-chat.tsx), keyed by `panePath`. The status dot,
+ * the agent's tile and the name fly; a space row draws its status as a word at the row's end, so it
+ * has no dot to send, and the header's dot fades in on its own. The machine chip stays: the row's
+ * meta cluster (machine, session, cache) and the header's (machine, cache) are not one shape, and a
+ * chip that flew alone would split its cluster. The pane loader awaits a read, so the tap waits for
+ * it, briefly, before it glides (`glideForwardWhenReady`).
  */
 export const GLIDE_PAIRS = {
   changes: {
     parts: ["label", "count"],
     origin: (pathname) => pathname === "/",
     destination: (pathname) => /^\/space\/[^/]+\/changes$/u.test(pathname),
+  },
+  pane: {
+    parts: ["dot", "tile", "name"],
+    origin: (pathname) => pathname === "/" || /^\/space\/[^/]+$/u.test(pathname),
+    destination: (pathname) => /^\/pane\/[^/]+$/u.test(pathname),
   },
 } as const satisfies Record<string, GlidePair>;
 
@@ -205,6 +227,10 @@ interface Active {
 
 let active: Active | null = null;
 
+/** Bumped by every data wait and every navigation: a wait whose number is no longer current is
+ *  dropped (`glideForwardWhenReady`). */
+let waiting = 0;
+
 /** Whether `pathname` is where this glide lands. */
 function landsOn(a: Active, pathname: string): boolean {
   const pair: GlidePair = GLIDE_PAIRS[a.id];
@@ -231,6 +257,9 @@ export function glideOwnsMove(pathname: string): boolean {
  * key). The glide's own landing is noted; any other navigation skips the glide in flight.
  */
 export function noteGlideLocation(pathname: string): void {
+  // A tap still waiting on its data (`glideForwardWhenReady`) loses to any navigation that lands
+  // first: the operator has moved on, and a late open would pull them back.
+  waiting++;
   const a = active;
   if (a === null) return;
   if (!a.landed && landsOn(a, pathname)) {
@@ -312,4 +341,53 @@ export function glideForward(id: GlidePairId, key: string, go: () => void, from?
  */
 export function glideBack(id: GlidePairId, key: string, go: () => void): void {
   run(id, "back", key, go);
+}
+
+// ── A destination that needs data first ──────────────────────────────────────────────────────────
+
+/**
+ * How long a tap waits for its destination's data before it gives up the glide. The navigation runs
+ * inside the transition's update callback, and the browser paints nothing until that callback ends,
+ * so a destination whose loader awaits a network read would hold the old screen frozen for the
+ * read's whole length. Waiting BEFORE the transition starts keeps the screen live instead. 120 ms is
+ * the most a tap may cost on top of what it cost before the glide existed; a read not in by then
+ * opens the plain way, with the slide, and the loader waits for the same read it would have.
+ */
+export const READY_WAIT_MS = 120;
+
+/**
+ * The tap on an origin row whose destination loads data first: `glideForward` once `ready` has
+ * settled, if it settles within {@link READY_WAIT_MS}; otherwise `go` at that deadline, with no
+ * glide. Where no glide can run (`canGlide`), `go` runs at once. A second tap, or any navigation
+ * that lands while this one waits, drops it, so one tap moves the screen at most once.
+ *
+ * `ready` should settle, never reject, when the data is in (or has failed: either way the loader
+ * will not wait on the network again). `from` is dropped if React replaced the row while it waited.
+ */
+export function glideForwardWhenReady(
+  id: GlidePairId,
+  key: string,
+  ready: Promise<unknown>,
+  go: () => void,
+  from?: HTMLElement,
+): void {
+  const mine = ++waiting;
+  if (!canGlide()) {
+    go();
+    return;
+  }
+  let decided = false;
+  const decide = (glide: boolean) => {
+    if (decided) return;
+    decided = true;
+    clearTimeout(timer);
+    if (mine !== waiting) return;
+    if (glide) glideForward(id, key, go, from?.isConnected === true ? from : undefined);
+    else go();
+  };
+  const timer = setTimeout(() => decide(false), READY_WAIT_MS);
+  void ready.then(
+    () => decide(true),
+    () => decide(true),
+  );
 }

@@ -1059,6 +1059,19 @@
   width: auto;
   object-position: left center;
 }
+/* The pane pair: a pane row (dashboard or space) and the pane screen's header identity. The name
+   changes size and weight on the way (14px medium in the row, 16px semibold in the header), so it
+   takes the same start-pinned scaling as the Changes label. The tile is 16px on both sides and the
+   dot 10px against 8px, so both keep the default box morph. Everything else on the pane screen, the
+   mirror, the composer and the belt, is inside `glide-screen` and crossfades as one picture; nothing
+   in it moves or is measured again, because a view transition animates snapshots and leaves the
+   live layout alone. */
+.glide-pane::view-transition-old(glide-pane-name),
+.glide-pane::view-transition-new(glide-pane-name) {
+  height: 100%;
+  width: auto;
+  object-position: left center;
+}
 
 /* THE ACTION BELT'S ONE SCALE (components/actions-row.tsx). The belt's root carries `--belt-scale`
    inline, from the Settings row "Action belt size" (1.15 default, 1.3, 1.5), and every size on the

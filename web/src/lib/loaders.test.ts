@@ -153,6 +153,54 @@ describe("rootLoader", () => {
   });
 });
 
+describe("paneLoader and the read a row started (lib/pane-prefetch.ts)", () => {
+  /** Every pane read the page makes, with whether it asked to mark the pane seen. */
+  function recordPaneReads(): { seen: boolean }[] {
+    const reads: { seen: boolean }[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, ({ request }) => {
+        reads.push({ seen: request.headers.has("x-collie-seen") });
+        return HttpResponse.json({ paneId: "w1:p1", text: "from the bridge", truncated: false, revision: 3 });
+      }),
+    );
+    return reads;
+  }
+  const open = (paneId: string) =>
+    new Request(`http://localhost/pane/${encodeURIComponent(paneId)}`);
+
+  it("takes the prefetched read on the navigation, then marks the pane seen after it", async () => {
+    const reads = recordPaneReads();
+    const { paneLoader, prefetchPaneData } = await import("./loaders");
+    await prefetchPaneData("w1:p1", undefined);
+    expect(reads).toEqual([{ seen: false }]);
+
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(data.text).toBe("from the bridge");
+    expect(data.error).toBe(false);
+    // The loader waited on no read of its own; the one that follows is the seen mark.
+    await vi.waitFor(() => expect(reads).toEqual([{ seen: false }, { seen: true }]));
+  });
+
+  it("takes it once: the next poll reads the bridge itself", async () => {
+    const reads = recordPaneReads();
+    const { paneLoader, prefetchPaneData } = await import("./loaders");
+    await prefetchPaneData("w1:p1", undefined);
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    await vi.waitFor(() => expect(reads).toHaveLength(2));
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(reads).toHaveLength(3);
+    expect(reads[2]).toEqual({ seen: true });
+  });
+
+  it("does not hand one pane's read to another pane", async () => {
+    const reads = recordPaneReads();
+    const { paneLoader, prefetchPaneData } = await import("./loaders");
+    await prefetchPaneData("w1:p1", undefined);
+    await paneLoader({ params: { paneId: "w2:p1" }, request: open("w2:p1") });
+    expect(reads).toEqual([{ seen: false }, { seen: true }]);
+  });
+});
+
 describe("paneLoader", () => {
   it("returns pane text on success", async () => {
     const { paneLoader } = await import("./loaders");

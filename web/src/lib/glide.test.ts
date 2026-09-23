@@ -6,8 +6,10 @@ import {
   GLIDE_CLASS,
   GLIDE_CROSSFADE_CLASS,
   GLIDE_PAIRS,
+  READY_WAIT_MS,
   glideBack,
   glideForward,
+  glideForwardWhenReady,
   glideInFlight,
   glideOwnsMove,
   noteGlideLocation,
@@ -103,6 +105,24 @@ describe("the pair registry", () => {
     expect(destination("/space/w1")).toBe(false);
     expect(destination("/space/w1/changes/commit")).toBe(false);
     expect(destination("/pane/w1%3Ap1/changes")).toBe(false);
+  });
+});
+
+describe("the pane pair", () => {
+  it("opens from the dashboard and from a space, and lands on the pane screen alone", () => {
+    const { origin, destination } = GLIDE_PAIRS.pane;
+    expect(origin("/")).toBe(true);
+    expect(origin("/space/w1")).toBe(true);
+    expect(origin("/space/w1/changes")).toBe(false);
+    expect(origin("/settings")).toBe(false);
+    expect(destination("/pane/w1%3Ap1")).toBe(true);
+    expect(destination("/pane/w1%3Ap1/history")).toBe(false);
+    expect(destination("/pane/w1%3Ap1/changes")).toBe(false);
+    expect(destination("/space/w1")).toBe(false);
+  });
+
+  it("flies the dot, the tile and the name", () => {
+    expect(GLIDE_PAIRS.pane.parts).toEqual(["dot", "tile", "name"]);
   });
 });
 
@@ -282,5 +302,121 @@ describe("one glide at a time", () => {
     noteGlideLocation("/");
     expect(glideOwnsMove("/")).toBe(false);
     expect(glideInFlight()).toBe(false);
+  });
+});
+
+describe("glideForwardWhenReady: the data first, never a frozen screen", () => {
+  const PANE = "/pane/w1%3Ap1";
+
+  /** A pane row, as agent-card.tsx draws it. */
+  function paneRow(): HTMLElement {
+    const button = document.createElement("button");
+    button.dataset.glideOrigin = "pane";
+    button.dataset.glideKey = PANE;
+    button.innerHTML = '<span data-glide="dot"></span><svg data-glide="tile"></svg><span data-glide="name">claude</span>';
+    document.body.append(button);
+    return button;
+  }
+
+  it("glides once the data is in, within the wait", async () => {
+    vi.useFakeTimers();
+    const made = installStart();
+    const go = vi.fn(() => {
+      const dest = document.createElement("div");
+      dest.dataset.glideDestination = "pane";
+      dest.innerHTML = '<span data-glide="name">claude</span>';
+      document.body.append(dest);
+    });
+    glideForwardWhenReady("pane", PANE, Promise.resolve(), go, paneRow());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(made).toHaveLength(1);
+    expect(root.classList.contains("glide-pane")).toBe(true);
+    await made[0]!.update();
+    expect(go).toHaveBeenCalledTimes(1);
+  });
+
+  it("glides when the data lands just inside the wait", async () => {
+    vi.useFakeTimers();
+    const made = installStart();
+    let land = () => {};
+    const ready = new Promise<void>((r) => (land = r));
+    glideForwardWhenReady("pane", PANE, ready, vi.fn(), paneRow());
+    await vi.advanceTimersByTimeAsync(READY_WAIT_MS - 1);
+    expect(made).toHaveLength(0);
+    land();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(made).toHaveLength(1);
+  });
+
+  it("navigates the plain way, with no transition, when the data is not in by the deadline", async () => {
+    vi.useFakeTimers();
+    const made = installStart();
+    let land = () => {};
+    const ready = new Promise<void>((r) => (land = r));
+    const go = vi.fn();
+    glideForwardWhenReady("pane", PANE, ready, go, paneRow());
+    await vi.advanceTimersByTimeAsync(READY_WAIT_MS - 1);
+    expect(go).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(made).toHaveLength(0);
+    expect(root.className).toBe("");
+    // The late answer changes nothing: the tap moved the screen once.
+    land();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(made).toHaveLength(0);
+  });
+
+  it("glides when the read failed in time: the loader will not wait on the network either", async () => {
+    vi.useFakeTimers();
+    const made = installStart();
+    glideForwardWhenReady("pane", PANE, Promise.reject(new Error("down")), vi.fn(), paneRow());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(made).toHaveLength(1);
+  });
+
+  it("navigates at once, waiting for nothing, where no glide can run", () => {
+    const go = vi.fn();
+    glideForwardWhenReady("pane", PANE, new Promise(() => {}), go, paneRow());
+    expect(go).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a waiting tap when a second tap comes first", async () => {
+    vi.useFakeTimers();
+    installStart();
+    const first = vi.fn();
+    const second = vi.fn();
+    glideForwardWhenReady("pane", PANE, new Promise(() => {}), first, paneRow());
+    glideForwardWhenReady("pane", PANE, new Promise(() => {}), second, paneRow());
+    await vi.advanceTimersByTimeAsync(READY_WAIT_MS);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a waiting tap when another navigation lands while it waits", async () => {
+    vi.useFakeTimers();
+    installStart();
+    const go = vi.fn();
+    glideForwardWhenReady("pane", PANE, new Promise(() => {}), go, paneRow());
+    noteGlideLocation("/settings");
+    await vi.advanceTimersByTimeAsync(READY_WAIT_MS);
+    expect(go).not.toHaveBeenCalled();
+  });
+
+  it("flies from the row by its key when React replaced the tapped one while it waited", async () => {
+    vi.useFakeTimers();
+    installStart();
+    const tapped = paneRow();
+    let land = () => {};
+    const ready = new Promise<void>((r) => (land = r));
+    glideForwardWhenReady("pane", PANE, ready, vi.fn(), tapped);
+    tapped.remove();
+    const fresh = paneRow();
+    land();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(nameOf(fresh, "name")).toBe("glide-pane-name");
+    expect(nameOf(fresh, "tile")).toBe("glide-pane-tile");
+    expect(nameOf(fresh, "dot")).toBe("glide-pane-dot");
   });
 });

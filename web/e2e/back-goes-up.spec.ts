@@ -157,6 +157,10 @@ test("E3: a window a notification opened is seeded, and loses its marker", async
 });
 
 test("a swipe back (POP) draws no slide of ours, the app's own up arrow still slides", async ({ page }) => {
+  // The pane row and the pane's arrow glide instead where the engine has view transitions
+  // (lib/glide.ts, e2e/pane-glide.spec.ts). The slide is what they fall back to, and what this case
+  // pins, so the engine is taken away here.
+  await page.addInitScript(() => Reflect.deleteProperty(Document.prototype, "startViewTransition"));
   const screen = page.locator("[data-slot='screen-transition']");
   await page.goto("/");
   await paneRow(page, "claude").click();

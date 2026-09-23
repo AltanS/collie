@@ -13,11 +13,11 @@ import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
+import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
-import { homePath, panePath, spacePath } from "@/lib/nav";
-import { ambientHost, paneScope } from "@/lib/hosts";
+import { homePath, spacePath } from "@/lib/nav";
+import { ambientHost } from "@/lib/hosts";
 import { scopeKey } from "@/lib/scope";
-import type { AgentView } from "@/lib/types";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
@@ -61,8 +61,9 @@ export function SpaceRoute() {
   // re-derive one from the workspace row. Keying on the lead instead matched nothing and drew every
   // tab as "(empty tab)" (#209). Undefined when solo, which is `undefined` both ways.
   const navHost = ambientHost(data.servers, data.scope.host);
-  const open = (pane: AgentView) =>
-    nav.down(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
+  // A pane is down, and its tap glides the row into the pane header when the pane's read is in time
+  // (use-pane-open.ts); the header's back arrow glides it back into this list.
+  const paneOpen = usePaneOpen(data.scope, data.servers, data.sessions);
 
   // Same fix as home.tsx's dashboard scroller, same cause: ScreenTransition remounts this route on
   // every space<->pane move, so the scroller below is a fresh DOM node each time. Keyed on scope +
@@ -148,7 +149,9 @@ export function SpaceRoute() {
                 agents={data.agents}
                 shellPanes={data.shellPanes}
                 selectedTab={tab}
-                onOpen={open}
+                onOpen={paneOpen.open}
+                glideKeyOf={paneOpen.glideKeyOf}
+                onPress={paneOpen.press}
                 host={navHost}
               />
             </main>

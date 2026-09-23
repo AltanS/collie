@@ -12,8 +12,12 @@ interface SpaceViewProps {
   shellPanes: AgentView[];
   /** Selected tab id, or null for "All" (every tab as a labelled section). */
   selectedTab: string | null;
-  /** Open a row — the PANE, not its id (ids repeat across machines). */
-  onOpen: (pane: AgentView) => void;
+  /** Open a row — the PANE, not its id (ids repeat across machines). Handed the row's button. */
+  onOpen: (pane: AgentView, row?: HTMLElement) => void;
+  /** A row's glide key, its pane's path (lib/glide.ts, the `pane` pair). Omit and no row glides. */
+  glideKeyOf?: (pane: AgentView) => string;
+  /** The finger landed on a row (lib/pane-prefetch.ts). */
+  onPress?: (pane: AgentView) => void;
   /** The machine this space is on — the WORKSPACE's host, not the crew's lead. Undefined when solo. */
   host?: string;
 }
@@ -22,7 +26,17 @@ interface SpaceViewProps {
 // TabStrip header row above; here we render either the selected tab's panes, or every tab as a
 // labelled section when "All" is active. A freshly-created tab's shell shows up here so you can open
 // it and launch your own agent.
-export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, onOpen, host }: SpaceViewProps) {
+export function SpaceView({
+  workspace,
+  tabs,
+  agents,
+  shellPanes,
+  selectedTab,
+  onOpen,
+  glideKeyOf,
+  onPress,
+  host,
+}: SpaceViewProps) {
   useLocale();
   // Host-qualified: another machine's `w1` is not this space, however identically it is numbered.
   const allGroups = groupPanesByTab(workspace.workspaceId, tabs, agents, shellPanes, host);
@@ -75,7 +89,9 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
                 <AgentCard
                   key={p.paneId}
                   agent={p}
-                  onClick={() => onOpen(p)}
+                  onClick={(el) => onOpen(p, el)}
+                  glideKey={glideKeyOf?.(p)}
+                  onPress={onPress && (() => onPress(p))}
                   scope="tab"
                 />
               ))}

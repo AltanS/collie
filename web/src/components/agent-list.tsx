@@ -31,7 +31,11 @@ interface AgentListProps {
    * Open a row. Takes the PANE, not its id: `w1:p1` names a different terminal on every machine in a
    * crew, and this list is one herd across all of them — an id alone cannot say which row was tapped.
    */
-  onOpen: (pane: AgentView) => void;
+  onOpen: (pane: AgentView, row?: HTMLElement) => void;
+  /** A row's glide key, its pane's path (lib/glide.ts, the `pane` pair). Omit and no row glides. */
+  glideKeyOf?: (pane: AgentView) => string;
+  /** The finger landed on a row (lib/pane-prefetch.ts). */
+  onPress?: (pane: AgentView) => void;
   /** Show the "no agents" placeholder when the herd is empty (default true). */
   emptyState?: boolean;
   /**
@@ -124,6 +128,8 @@ export function AgentList({
   shellPanes = NO_PANES,
   bridge,
   onOpen,
+  glideKeyOf,
+  onPress,
   emptyState = true,
   error = false,
   lastSeenAt,
@@ -218,7 +224,9 @@ export function AgentList({
     <AgentCard
       key={paneRowKey(a)}
       agent={a}
-      onClick={() => onOpen(a)}
+      onClick={(el) => onOpen(a, el)}
+      glideKey={glideKeyOf?.(a)}
+      onPress={onPress && (() => onPress(a))}
       scope="place"
       statusStyle="dot"
       density="row"
