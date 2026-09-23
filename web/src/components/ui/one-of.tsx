@@ -35,6 +35,19 @@ import { cn } from "@/lib/utils";
  * edge, `justify-items-start` for one anchored on the left. The primitive states no opinion, the
  * same way it states no opinion about tone — where the reserved space falls is a fact about the
  * strip, not about stacking.
+ *
+ * **Every layer carries `min-w-0`, for the reason `ui/collapse.tsx` states at length: a grid
+ * item's automatic minimum size is its content on BOTH axes.** `[grid-area:1/1]` makes each layer a
+ * grid item of the single implicit column, and without an explicit override that column's `auto`
+ * track sizes to the WIDEST layer's min-content width — which, for a `white-space: nowrap` run (a
+ * truncating strip's own copy), is the whole unbroken sentence, since nowrap forbids the line break
+ * that would otherwise give it a smaller one. Measured on the update band at 375px: the column
+ * computed to 497px, the strip laid out at that width, and the `overflow-hidden` ancestor two levels
+ * up (`ui/collapse.tsx`'s inner wrapper) then clipped the excess HARD, past the ellipsis the strip's
+ * own `truncate` span never got a chance to draw, because the span was never forced narrower than
+ * its content in the first place — a real phone showed a sentence cut off mid-word, and jsdom could
+ * not: it never runs this algorithm. `min-w-0` here is what lets the column shrink to the space this
+ * primitive actually has, so a caller's `truncate` inside it truncates against a real number.
  */
 export function OneOf({
   active,
