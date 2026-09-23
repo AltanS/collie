@@ -140,6 +140,7 @@ the pointer, it was a supersede.
 | [0063](./0063-a-pane-keeps-its-place-when-its-state-changes.md) | A pane keeps its place when its state changes: no list is ordered by status, the bridge and the crew merge send place order, every surface recomputes it, and urgency is a mark plus one summary line | Accepted |
 | [0064](./0064-an-update-puts-the-phone-in-update-mode.md) | An update puts the phone in update mode: a locked app, a docked panel, seven steps that end only on Done, Rolled back or Stuck, the phone's own reload last and once, and a panel that never moves (amends 0044) | Accepted |
 | [0065](./0065-the-changes-view-reads-git-read-only.md) | The Changes view reads git, read-only: HEAD as the base, nested repo discovery under two per-device settings, git hardened against repo-driven execution, and a diff served only for a repo and path the bridge itself listed | Accepted |
+| [0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md) | The dashboard has a footer: Panes, Needs you, Changes. Needs you filters to the attention panes and never sorts, Changes lists workspaces with counts that refresh every 5 s only while the tab is on screen, the tab is kept per device (amends nothing in 0063) | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
