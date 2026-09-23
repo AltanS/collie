@@ -92,28 +92,24 @@ function groupDomId(key: string): string {
   return `ws-group-${key.replace(/[^A-Za-z0-9_-]/gu, "_")}`;
 }
 
-// ── THE DASHBOARD ASKS TWO QUESTIONS, IN THIS ORDER ──────────────────────────
-// FIRST, what needs you. Needs you → Ready · unseen, pinned to the top under an accented header,
-// and each row still carrying its own place on line 2 — those two groups are by URGENCY, so a row
-// in them has to say where it came from. That is the dashboard's job and it does not move.
+// ── THE DASHBOARD, IN ONE FIXED ORDER (ADR 0063) ─────────────────────────────
+// BY WORKSPACE, always. One group per workspace, headed by its name and counted, in machine and
+// workspace-number order (lib/pane-groups.ts), with the panes inside in the order the bridge sent.
+// Rows under one workspace heading are panes, because that is what a workspace holds. The workspace
+// is the level the operator thinks in, so it is the level the heading names; the tab drops onto
+// line 2 of the row (`AgentCard` at `scope="place"`), where it tells two rows apart without
+// spending a heading, and the group reads as one 44px pitch.
 //
-// THEN, everything else, BY WORKSPACE. One group per workspace, headed by its name and counted, in
-// machine and workspace-number order (lib/pane-groups.ts), with the panes inside in the order the
-// bridge sent. What this replaces is the Working and Recent sections, and the argument for replacing
-// them is the complaint they caused: a flat list of eighteen rows, each repeating an address, said
-// nothing about what KIND of thing a row was, and a status word the row's own dot already carries
-// is a poor heading to spend a group on. Rows under one workspace heading are panes, because that is
-// what a workspace holds. The workspace is the level the operator thinks in, so it is the level the
-// heading names; the tab drops onto line 2 of the row (`AgentCard` at `scope="place"`), where it
-// tells two rows apart without spending a heading, and the group reads as one 44px pitch.
+// A PANE'S ROW NEVER MOVES WHEN ITS STATE CHANGES. The operator finds a pane by where it sits, not
+// by what it is doing right now, and every arrangement that once reordered on a status change — a
+// "Needs you" section pulled to the top, the Working and Recent sections, the sort toggle — broke
+// exactly that and is gone (ADR 0063).
 //
-// A ROW IS LISTED ONCE. An urgent pane is PULLED out of its workspace rather than copied to the top:
-// it is one thing, and two rows for it would mean answering it twice. So the group's count counts
-// the rows actually under the heading, and a workspace whose every pane needs you has no group left
-// at all — it is entirely on top, which is where you are already looking.
-//
-// The sort toggle and the Recent fold went with those two sections: a workspace's handful of rows is
-// not a tail to fold away, and there is no clock left in the order to reverse.
+// URGENCY IS A MARK NOW, NEVER A POSITION. A workspace holding a pane that needs you lights its own
+// heading (a dot) and its own count (`StatusCounts`); the pane's own row takes a full-colour wash
+// (`AgentCard`'s `tint`) rather than moving anywhere; and ONE summary line above every group counts
+// what needs you across the whole herd and jumps to the first of it. A row is listed once, in its
+// one place, and its marks say the rest.
 export function AgentList({
   agents,
   shellPanes = NO_PANES,

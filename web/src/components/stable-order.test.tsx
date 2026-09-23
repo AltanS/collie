@@ -78,7 +78,7 @@ const lead = (agents: readonly AgentView[]) => agents.filter((a) => a.host === "
 function surfaces(agents: AgentView[]) {
   const here = agents.find((a) => a.paneLabel === "L-one-a")!;
   const sidebar = render(
-    <ThreadSidebar agents={agents} shellPanes={SHELLS} tabs={tabs} servers={servers} currentPaneId="" onSelect={vi.fn()} />,
+    <ThreadSidebar agents={agents} shellPanes={SHELLS} tabs={tabs} servers={servers} currentPaneKey="" onSelect={vi.fn()} />,
   );
   const switcher = [...sidebar.container.querySelectorAll("button[id^='switch-row-']")].map(
     (b) => agents.find((a) => b.textContent?.includes(a.paneLabel!))?.paneLabel,

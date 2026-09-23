@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ThreadSidebar } from "./agent-sidebar";
-import { fixtureAgents } from "@/test/handlers";
+import { paneRowKey } from "@/lib/hosts";
+import { fixtureAgents, fixtureCrewAgents, fixtureServers } from "@/test/handlers";
 import type { AgentView, Launcher } from "@/lib/types";
 
 const idleAgent: AgentView = {
@@ -19,13 +20,13 @@ const idleAgent: AgentView = {
 
 describe("ThreadSidebar", () => {
   it("renders an empty state when there are no agents", () => {
-    render(<ThreadSidebar agents={[]} currentPaneId="" onSelect={vi.fn()} />);
+    render(<ThreadSidebar agents={[]} currentPaneKey="" onSelect={vi.fn()} />);
     expect(screen.getByText("No agents running.")).toBeInTheDocument();
   });
 
   it("groups agents under their workspace, in the dashboard's order", () => {
     render(
-      <ThreadSidebar agents={[idleAgent, ...fixtureAgents]} currentPaneId="" onSelect={vi.fn()} />,
+      <ThreadSidebar agents={[idleAgent, ...fixtureAgents]} currentPaneKey="" onSelect={vi.fn()} />,
     );
     // One heading per workspace, by workspace number, whatever order the list arrived in. The triage
     // sections (Needs you, Working, Recent) are gone: they moved a row every time its status changed.
@@ -42,7 +43,7 @@ describe("ThreadSidebar", () => {
     // Before, an unread completion jumped from Recent up into "Ready · unseen" and dropped back once
     // read, and a blocked pane sat in "Needs you" above everything. Now every flip repaints only.
     const finished = { ...idleAgent, lastActiveAt: 200, lastSeenAt: 100 };
-    const props = { currentPaneId: "", onSelect: vi.fn() };
+    const props = { currentPaneKey: "", onSelect: vi.fn() };
     const order = (c: HTMLElement) => ({
       headings: [...c.querySelectorAll("h3")].map((h) => h.firstChild?.textContent ?? h.textContent),
       rows: [...c.querySelectorAll("button[id^='switch-row-']")].map((b) => b.id),
@@ -60,7 +61,7 @@ describe("ThreadSidebar", () => {
   });
 
   it("says nothing needs you, in the same slot, when no pane does", () => {
-    render(<ThreadSidebar agents={[fixtureAgents[1]!, idleAgent]} currentPaneId="" onSelect={vi.fn()} />);
+    render(<ThreadSidebar agents={[fixtureAgents[1]!, idleAgent]} currentPaneKey="" onSelect={vi.fn()} />);
     const line = screen.getByRole("button", { name: /nothing needs you/i });
     expect(line).toBeDisabled();
   });
@@ -72,7 +73,7 @@ describe("ThreadSidebar", () => {
     // The blocked pane sits in the LAST workspace, so the jump has to find it in display order.
     const blockedLast = { ...idleAgent, status: "blocked" as const };
     render(
-      <ThreadSidebar agents={[{ ...fixtureAgents[0]!, status: "idle" }, blockedLast]} currentPaneId="" onSelect={vi.fn()} />,
+      <ThreadSidebar agents={[{ ...fixtureAgents[0]!, status: "idle" }, blockedLast]} currentPaneKey="" onSelect={vi.fn()} />,
     );
     const line = screen.getByRole("button", { name: /1 needs you/i });
     await user.click(line);
@@ -83,7 +84,7 @@ describe("ThreadSidebar", () => {
 
   it("lights the heading of a workspace that needs you, and only that one", () => {
     const { container } = render(
-      <ThreadSidebar agents={[...fixtureAgents, idleAgent]} currentPaneId="" onSelect={vi.fn()} />,
+      <ThreadSidebar agents={[...fixtureAgents, idleAgent]} currentPaneKey="" onSelect={vi.fn()} />,
     );
     const lit = [...container.querySelectorAll("h3")].filter((h) => h.querySelector(".bg-status-blocked"));
     expect(lit.map((h) => h.textContent)).toEqual([expect.stringContaining("webapp")]);
@@ -92,7 +93,7 @@ describe("ThreadSidebar", () => {
   it("keys a row by its full address, so two machines' `w1:p1` are two rows", () => {
     const lead = { ...fixtureAgents[0]!, host: "desk" };
     const peer = { ...fixtureAgents[0]!, host: "laptop" };
-    const { container } = render(<ThreadSidebar agents={[lead, peer]} currentPaneId="" onSelect={vi.fn()} />);
+    const { container } = render(<ThreadSidebar agents={[lead, peer]} currentPaneKey="" onSelect={vi.fn()} />);
     const ids = [...container.querySelectorAll("button[id^='switch-row-']")].map((b) => b.id);
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(2);
@@ -106,7 +107,7 @@ describe("ThreadSidebar", () => {
     // The peer's pane arrives first and is blocked, which used to put its whole block on top.
     const peer = { ...fixtureAgents[0]!, host: "alpha", workspaceLabel: "peerproj" };
     const lead = { ...fixtureAgents[1]!, host: "desk", status: "idle" as const, workspaceNumber: 1 };
-    render(<ThreadSidebar agents={[peer, lead]} servers={servers} currentPaneId="" onSelect={vi.fn()} />);
+    render(<ThreadSidebar agents={[peer, lead]} servers={servers} currentPaneKey="" onSelect={vi.fn()} />);
     expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
       expect.stringContaining("collie"),
       expect.stringContaining("peerproj"),
@@ -114,7 +115,13 @@ describe("ThreadSidebar", () => {
   });
 
   it("marks the current pane with aria-current='page'", () => {
-    render(<ThreadSidebar agents={fixtureAgents} currentPaneId="w2:p1" onSelect={vi.fn()} />);
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneKey={paneRowKey(fixtureAgents[1]!)}
+        onSelect={vi.fn()}
+      />,
+    );
     const current = screen.getByRole("button", { current: "page" });
     // w2:p1 lives in the "collie" workspace and has no name of its own, so line 1 is its agent word
     // and line 2 is its place. Same way round as every other list in the app (lib/pane-name.ts).
@@ -122,17 +129,62 @@ describe("ThreadSidebar", () => {
     expect(current).toHaveTextContent("codex");
   });
 
-  it("does not mark any pane current when the id matches nothing", () => {
-    render(<ThreadSidebar agents={fixtureAgents} currentPaneId="nope" onSelect={vi.fn()} />);
+  it("does not mark any pane current when the key matches nothing", () => {
+    render(<ThreadSidebar agents={fixtureAgents} currentPaneKey="nope" onSelect={vi.fn()} />);
     expect(screen.queryByRole("button", { current: "page" })).toBeNull();
   });
 
-  it("fires onSelect with the pane id when a thread is tapped", async () => {
+  it("keeps only the CURRENT HOST's row current, when two machines share a paneId", () => {
+    // fixtureCrewAgents holds bluefin's own w1:p1 and workshop's w1:p1 — an id collision, on
+    // purpose (test/handlers.ts). Comparing `paneId` alone would mark BOTH as current.
+    render(
+      <ThreadSidebar
+        agents={fixtureCrewAgents}
+        servers={fixtureServers}
+        currentPaneKey={paneRowKey(fixtureCrewAgents[0]!)}
+        onSelect={vi.fn()}
+      />,
+    );
+    const current = screen.getAllByRole("button", { current: "page" });
+    expect(current).toHaveLength(1);
+    // bluefin's own w1:p1 sits in "webapp"; workshop's identically-numbered pane sits in
+    // "moonward" and must stay unmarked.
+    expect(current[0]).toHaveTextContent("claude");
+    expect(screen.getByRole("heading", { name: /moonward/ }).closest("section")).not.toContainElement(
+      current[0]!,
+    );
+  });
+
+  it("fires onSelect with the tapped HOST's own pane, not the id alone, when a paneId is shared", async () => {
+    // The unforgivable failure this exists to catch: tapping workshop's row must hand back
+    // workshop's pane, never bluefin's identically-numbered one (home.tsx's dashboard `open`
+    // guards the same failure the same way).
     const user = userEvent.setup();
     const onSelect = vi.fn();
-    render(<ThreadSidebar agents={fixtureAgents} currentPaneId="w2:p1" onSelect={onSelect} />);
+    render(
+      <ThreadSidebar
+        agents={fixtureCrewAgents}
+        servers={fixtureServers}
+        currentPaneKey={paneRowKey(fixtureCrewAgents[0]!)}
+        onSelect={onSelect}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /moonward/ }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(fixtureCrewAgents[2]);
+  });
+
+  it("fires onSelect with the pane when a thread is tapped", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneKey={paneRowKey(fixtureAgents[1]!)}
+        onSelect={onSelect}
+      />,
+    );
     await user.click(screen.getByRole("button", { name: /webapp/ }));
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p1");
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(fixtureAgents[0]);
   });
 
   const shellPane: AgentView = {
@@ -155,7 +207,7 @@ describe("ThreadSidebar", () => {
       <ThreadSidebar
         agents={fixtureAgents}
         shellPanes={[shellPane]}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={onSelect}
       />,
     );
@@ -163,17 +215,17 @@ describe("ThreadSidebar", () => {
     // The shell row is titled by its space like every other row; the terminal glyph is what marks
     // it as a shell. It's the only pane in "sandbox" here, so the name is unambiguous.
     await user.click(screen.getByRole("button", { name: /sandbox/ }));
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("w3:p2");
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(shellPane);
   });
 
   it("still renders shells when there are no agents (fresh space reachable)", () => {
-    render(<ThreadSidebar agents={[]} shellPanes={[shellPane]} currentPaneId="" onSelect={vi.fn()} />);
+    render(<ThreadSidebar agents={[]} shellPanes={[shellPane]} currentPaneKey="" onSelect={vi.fn()} />);
     expect(screen.queryByText("No agents running.")).toBeNull();
     expect(screen.getByText("Shells")).toBeInTheDocument();
   });
 
   it("is switch-only — no close control on any row", () => {
-    render(<ThreadSidebar agents={[fixtureAgents[0]!]} currentPaneId="" onSelect={vi.fn()} />);
+    render(<ThreadSidebar agents={[fixtureAgents[0]!]} currentPaneKey="" onSelect={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /close/i })).toBeNull();
   });
 
@@ -182,7 +234,7 @@ describe("ThreadSidebar", () => {
       <ThreadSidebar
         agents={[...fixtureAgents, idleAgent]}
         shellPanes={[shellPane]}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
       />,
     );
@@ -210,18 +262,18 @@ describe("ThreadSidebar — the cache reading on each row", () => {
   };
 
   it("shows the cache chip's remaining time on a pane with a warm cache", () => {
-    render(<ThreadSidebar agents={[warmAgent]} currentPaneId="" onSelect={vi.fn()} />);
+    render(<ThreadSidebar agents={[warmAgent]} currentPaneKey="" onSelect={vi.fn()} />);
     expect(document.querySelector('[data-slot="cache-chip"]')).toHaveTextContent("12m");
   });
 
   it("shows no chip on a pane with no cache reading", () => {
-    render(<ThreadSidebar agents={fixtureAgents} currentPaneId="" onSelect={vi.fn()} />);
+    render(<ThreadSidebar agents={fixtureAgents} currentPaneKey="" onSelect={vi.fn()} />);
     expect(document.querySelector('[data-slot="cache-chip"]')).toBeNull();
   });
 
   it("never nests a button inside the row's own button", () => {
     const { container } = render(
-      <ThreadSidebar agents={[warmAgent]} currentPaneId="" onSelect={vi.fn()} />,
+      <ThreadSidebar agents={[warmAgent]} currentPaneKey="" onSelect={vi.fn()} />,
     );
     for (const row of container.querySelectorAll("button")) {
       expect(row.querySelector("button")).toBeNull();
@@ -250,7 +302,7 @@ describe("ThreadSidebar — folding the long tails", () => {
       <ThreadSidebar
         agents={fixtureAgents}
         shellPanes={manyShells}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         shellsOpen={false}
         onShellsOpenChange={vi.fn()}
@@ -271,7 +323,7 @@ describe("ThreadSidebar — folding the long tails", () => {
       <ThreadSidebar
         agents={fixtureAgents}
         shellPanes={manyShells}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         shellsOpen
         onShellsOpenChange={vi.fn()}
@@ -287,7 +339,7 @@ describe("ThreadSidebar — folding the long tails", () => {
       <ThreadSidebar
         agents={fixtureAgents}
         shellPanes={manyShells}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         shellsOpen
         onShellsOpenChange={onShellsOpenChange}
@@ -302,7 +354,7 @@ describe("ThreadSidebar — folding the long tails", () => {
       <ThreadSidebar
         agents={fixtureAgents}
         shellPanes={manyShells}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         shellsOpen
         onShellsOpenChange={vi.fn()}
@@ -319,7 +371,7 @@ describe("ThreadSidebar — folding the long tails", () => {
       <ThreadSidebar
         agents={fixtureAgents}
         shellPanes={manyShells}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
       />,
     );
@@ -340,7 +392,7 @@ describe("ThreadSidebar: Launch section", () => {
     render(
       <ThreadSidebar
         agents={fixtureAgents}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         launchers={[peek, quota]}
         onLaunch={onLaunch}
@@ -358,7 +410,7 @@ describe("ThreadSidebar: Launch section", () => {
     render(
       <ThreadSidebar
         agents={fixtureAgents}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         launchers={[peek]}
       />,
@@ -369,7 +421,7 @@ describe("ThreadSidebar: Launch section", () => {
 
   it("hides the section when no launchers are declared, even with onLaunch given", () => {
     render(
-      <ThreadSidebar agents={fixtureAgents} currentPaneId="" onSelect={vi.fn()} onLaunch={vi.fn()} />,
+      <ThreadSidebar agents={fixtureAgents} currentPaneKey="" onSelect={vi.fn()} onLaunch={vi.fn()} />,
     );
     expect(screen.queryByText("Launch")).not.toBeInTheDocument();
   });
@@ -380,7 +432,7 @@ describe("ThreadSidebar: Launch section", () => {
     render(
       <ThreadSidebar
         agents={fixtureAgents}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         launchers={[peek, quota]}
         onLaunch={onLaunch}
@@ -398,7 +450,7 @@ describe("ThreadSidebar: Launch section", () => {
     render(
       <ThreadSidebar
         agents={[]}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         launchers={[peek]}
         onLaunch={vi.fn()}
@@ -414,7 +466,7 @@ describe("ThreadSidebar: Launch section", () => {
     render(
       <ThreadSidebar
         agents={fixtureAgents}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         launchers={[peek, top]}
         launchersHome="/home"
@@ -431,7 +483,7 @@ describe("ThreadSidebar: Launch section", () => {
     render(
       <ThreadSidebar
         agents={fixtureAgents}
-        currentPaneId=""
+        currentPaneKey=""
         onSelect={vi.fn()}
         launchers={[peek, quota]}
         onLaunch={vi.fn()}

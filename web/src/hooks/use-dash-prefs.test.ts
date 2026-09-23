@@ -31,7 +31,6 @@ describe("coerceDashPrefs", () => {
       spacesOpen: null,
       shellsOpen: null,
       launchOpen: null,
-      recentOpen: true,
       recentDir: "newest",
       isolatedSpace: null,
       hiddenSpaces: [],
@@ -44,7 +43,6 @@ describe("coerceDashPrefs", () => {
         spacesOpen: false,
         shellsOpen: true,
         launchOpen: false,
-        recentOpen: false,
         recentDir: "oldest",
         isolatedSpace: "k1",
         hiddenSpaces: ["k2", 3, "k3"],
@@ -53,7 +51,6 @@ describe("coerceDashPrefs", () => {
       spacesOpen: false,
       shellsOpen: true,
       launchOpen: false,
-      recentOpen: false,
       recentDir: "oldest",
       isolatedSpace: "k1",
       hiddenSpaces: ["k2", "k3"],
@@ -66,9 +63,25 @@ describe("coerceDashPrefs", () => {
 
   it("survives garbage", () => {
     expect(coerceDashPrefs(null).recentDir).toBe("newest");
-    expect(coerceDashPrefs("nope").recentOpen).toBe(true);
+    expect(coerceDashPrefs("nope").recentDir).toBe("newest");
     expect(coerceDashPrefs({ spacesOpen: "yes" }).spacesOpen).toBeNull();
     expect(coerceDashPrefs({ launchOpen: 1 }).launchOpen).toBeNull();
+  });
+
+  it("ignores a retired `recentOpen` key from an older version's stored blob", () => {
+    // The Recent fold this once toggled is gone (agent-list.tsx no longer sorts into it), so the
+    // key is dropped from DashPrefs — but a device that saved it under an older Collie must still
+    // parse today, with the rest of its stored choices intact.
+    expect(
+      coerceDashPrefs({ spacesOpen: true, recentOpen: false, recentDir: "oldest" }),
+    ).toEqual({
+      spacesOpen: true,
+      shellsOpen: null,
+      launchOpen: null,
+      recentDir: "oldest",
+      isolatedSpace: null,
+      hiddenSpaces: [],
+    });
   });
 });
 
@@ -81,7 +94,6 @@ describe("useDashPrefs", () => {
       spacesOpen: null,
       shellsOpen: null,
       launchOpen: null,
-      recentOpen: true,
       recentDir: "newest",
       isolatedSpace: null,
       hiddenSpaces: [],
@@ -93,7 +105,6 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setSpacesOpen(true));
     act(() => first.result.current.setShellsOpen(true));
     act(() => first.result.current.setLaunchOpen(false));
-    act(() => first.result.current.setRecentOpen(false));
     act(() => first.result.current.setRecentDir("oldest"));
     act(() => first.result.current.setIsolatedSpace("k1"));
     act(() => first.result.current.toggleHiddenSpace("k2"));
@@ -105,7 +116,6 @@ describe("useDashPrefs", () => {
       spacesOpen: true,
       shellsOpen: true,
       launchOpen: false,
-      recentOpen: false,
       recentDir: "oldest",
       isolatedSpace: "k1",
       hiddenSpaces: ["k3"],

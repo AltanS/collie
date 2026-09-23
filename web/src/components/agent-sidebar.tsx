@@ -18,8 +18,19 @@ interface ThreadSidebarProps {
   agents: AgentView[];
   /** Bare shell panes (no agent) — listed in a trailing "Shells" group so fresh spaces are reachable. */
   shellPanes?: AgentView[];
-  currentPaneId: string;
-  onSelect: (paneId: string) => void;
+  /**
+   * The open pane's full row identity ({@link paneRowKey}), never its bare id. `w1:p1` names a
+   * different terminal on every machine in a crew, so on a widened switcher list two rows can
+   * answer to the same id — comparing ids alone would mark BOTH as current. Pass `paneRowKey` of
+   * the pane you're actually in (agent-chat.tsx already computes this for its own "elsewhere needs
+   * you" check).
+   */
+  currentPaneKey: string;
+  /**
+   * Open a row. Takes the PANE, not its id — the same reason `agent-list.tsx`'s `onOpen` does: a
+   * pane id is unique only within one machine, so an id alone cannot say which row was tapped.
+   */
+  onSelect: (pane: AgentView) => void;
   /** The raw tab list, for the multiplexer's own tab order inside a workspace (lib/pane-groups.ts). */
   tabs?: readonly TabView[];
   /** The snapshot's machine list, for the order machines run in: the lead first. */
@@ -79,7 +90,7 @@ function rowDomId(pane: AgentView): string {
 export function ThreadSidebar({
   agents,
   shellPanes = NO_PANES,
-  currentPaneId,
+  currentPaneKey,
   onSelect,
   tabs,
   servers,
@@ -151,7 +162,7 @@ export function ThreadSidebar({
               key={paneRowKey(a)}
               id={rowDomId(a)}
               pane={a}
-              active={a.paneId === currentPaneId}
+              active={paneRowKey(a) === currentPaneKey}
               onSelect={onSelect}
             />
           ))}
@@ -170,7 +181,7 @@ export function ThreadSidebar({
             <PaneRow
               key={paneRowKey(p)}
               pane={p}
-              active={p.paneId === currentPaneId}
+              active={paneRowKey(p) === currentPaneKey}
               onSelect={onSelect}
             />
           ))}
@@ -255,7 +266,7 @@ function PaneRow({
   id?: string;
   pane: AgentView;
   active: boolean;
-  onSelect: (paneId: string) => void;
+  onSelect: (pane: AgentView) => void;
 }) {
   const isShell = pane.kind === "shell";
   // ONE NAME, ONE PLACE (lib/pane-name.ts), the same way round as every other row in the app: the
@@ -270,7 +281,7 @@ function PaneRow({
     <button
       id={id}
       type="button"
-      onClick={() => onSelect(pane.paneId)}
+      onClick={() => onSelect(pane)}
       aria-current={active ? "page" : undefined}
       className={cn(
         // The border is in the base string and transparent at rest, so an alarm edge only ever
