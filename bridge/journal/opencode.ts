@@ -1,40 +1,66 @@
 // OpenCode's journal adapter.
 //
-// SHAPE OF THE SOURCE (live-verified against opencode 1.18.9 + herdr 0.7.5, 2026-08-03) — and it is
-// the odd one out: OpenCode keeps NO per-session log file. Everything lives in ONE SQLite database,
+// SHAPE OF THE SOURCE — and it is the odd one out: OpenCode keeps NO per-session log file. Everything
+// lives in ONE SQLite database,
 //   <dataDir>/opencode.db     (WAL mode; the `-shm`/`-wal` siblings sit beside it)
-// where dataDir is `$XDG_DATA_HOME/opencode`, defaulting to `~/.local/share/opencode`. The three
-// tables this adapter reads (schema verified):
-//   session(id TEXT PK, project_id, workspace_id, parent_id, slug, directory, title, …,
-//           time_created INT ms, time_updated INT ms)   — a non-null `parent_id` marks a SUBAGENT
-//                                                         (task-tool) session
-//   message(id TEXT PK, session_id, time_created INT ms, time_updated INT ms, data TEXT json)
-//   part(id TEXT PK, message_id, session_id, time_created, time_updated, data TEXT json)
+// where dataDir is `$XDG_DATA_HOME/opencode`, defaulting to `~/.local/share/opencode`. TWO storage
+// generations sit in that one file, and neither migrates the other away:
+//
+//   V1 (live-verified against opencode 1.18.9 + herdr 0.7.5, 2026-08-03):
+//     session(id TEXT PK, project_id, workspace_id, parent_id, slug, directory, title, …,
+//             time_created INT ms, time_updated INT ms)   — a non-null `parent_id` marks a SUBAGENT
+//                                                           (task-tool) session
+//     message(id TEXT PK, session_id, time_created INT ms, time_updated INT ms, data TEXT json)
+//     part(id TEXT PK, message_id, session_id, time_created, time_updated, data TEXT json)
+//
+//   V2 (live-verified against opencode 2.0.12, 2026-09-22):
+//     session_v2(id TEXT PK, parent_id, title, …, time_created INT ms, time_updated INT ms)
+//     session_message(id TEXT PK, session_id, type, seq INT, time_created INT ms,
+//                     time_updated INT ms, data TEXT json)
+//       — `type` is the role (`user`, `assistant`) or a session event (`compaction`, `synthetic`,
+//         `system`, `idle`, `agent-switched`, `model-switched`), and each turn's parts are INLINE in
+//         `data.content` instead of joined from a `part` table.
+//
+// A machine that upgraded keeps its V1 sessions in `session` (still readable) while every new one
+// lands in `session_v2`, so both lookups run and a session is served by whichever table holds it.
 //
 // SECURITY — THE SAME DATABASE HOLDS OAUTH TOKENS. `account`, `credential` and `control_account` are
-// tables in this very file. So: this module queries `session`, `message` and `part` and NOTHING else;
-// every query is opened READONLY and uses BOUND PARAMETERS (never string interpolation); the session
-// id is regex-validated before it can touch a query at all; and the database path is fixed
-// (`<root>/opencode.db`, never derived from the ref) and still passed through `containedRealpath`,
-// because the containment rule in CLAUDE.md is absolute even for a constant path.
+// tables in this very file. So: this module queries `session`, `message`, `part`, `session_v2` and
+// `session_message` and NOTHING else; every query is opened READONLY and uses BOUND PARAMETERS
+// (never string interpolation); the session id is regex-validated before it can touch a query at
+// all; and the database path is fixed (`<root>/opencode.db`, never derived from the ref) and still
+// passed through `containedRealpath`, because the containment rule in CLAUDE.md is absolute even
+// for a constant path.
 //
 // Message `data` json, verified samples:
-//   user      {"role":"user","time":{"created":1785311866628},"agent":"build","model":{…},
-//              "summary":{"diffs":[]}}
-//   assistant {"parentID":"msg_…","role":"assistant","mode":"build","agent":"build",
-//              "variant":"medium","path":{…},"cost":…,"time":{"created":…}}
+//   V1 user      {"role":"user","time":{"created":1785311866628},"agent":"build","model":{…},
+//                 "summary":{"diffs":[]}}
+//   V1 assistant {"parentID":"msg_…","role":"assistant","mode":"build","agent":"build",
+//                 "variant":"medium","path":{…},"cost":…,"time":{"created":…}}
+//   V2 user      {"time":{"created":…},"text":"…","files":[],"agent":"build","model":{…}}
+//                 — no `role`: the row's `type` column carries it, and the text is one field.
+//   V2 assistant {"time":{"created":…,"streamed":…,"completed":…},"agent":"build",
+//                 "model":{"id":…,"providerID":…,"variant":…},"content":[…]}
+//                 — `content` items are `text{text}`, `reasoning{text}` and
+//                   `tool{name, state{status, input, content[]}}`, so a tool's result is a content
+//                   array here where V1 wrote `state.output`.
+//   V2 compaction {"time":{"created":…},"status":"completed","reason":"manual","model":{…},
+//                 "summary":"## Objective\n…"}   — the summary is a STRING, not V1's boolean flag.
+//
 // Part `data` json `type` values, verified: `text`, `reasoning`, `tool`, `step-start`, `step-finish`.
 //
-// WHERE HERDR'S ID COMES FROM: `herdr integration install opencode` installs a plugin (integration
-// version 9) that calls `pane.report_agent_session {agent_session_id}`, so the pane record carries
+// WHERE HERDR'S ID COMES FROM: `herdr integration install opencode` installs a plugin that calls
+// `pane.report_agent_session {agent_session_id}`, so the pane record carries
 // `agent_session: {source:"herdr:opencode", agent:"opencode", kind:"id",
-// value:"ses_03969c19cffeJrZCPOT6zG8Bm7"}` — a kind-`id` ref of `ses_` + base62. Without the
-// integration installed there is no ref at all and the history route already answers "no-session".
+// value:"ses_03969c19cffeJrZCPOT6zG8Bm7"}` — a kind-`id` ref of `ses_` + base62, unchanged by V2.
+// Without the integration installed there is no ref at all and the history route already answers
+// "no-session".
 //
 // NO SIDECHAIN FILTERING IS NEEDED, unlike Claude's adapter. A subagent turn is not interleaved into
-// its parent's rows: it lives in its OWN `session` row (the one carrying `parent_id`), with its own
-// messages and parts, and the herdr plugin already refuses to report a parentID-carrying session. The
-// ref is therefore always a root session, and the subagent rows are simply never queried.
+// its parent's rows: it lives in its OWN session row (the one carrying `parent_id`) in either
+// generation, with its own messages, and the herdr plugin already refuses to report a
+// parentID-carrying session. The ref is therefore always a root session, and the subagent rows are
+// simply never queried.
 
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
@@ -106,6 +132,40 @@ function withDb<T>(dbPath: string, fn: (db: Database) => T): T | null {
   }
 }
 
+/** Which of OpenCode's two stores holds a session: V1's `session`/`message`/`part`, or V2's. */
+type OpencodeStore = "v1" | "v2";
+
+/** Whether a table exists in this database — the V2 tables are absent on a pre-2.0 install. */
+function hasTable(db: Database, name: string): boolean {
+  const row = db
+    .query<{ n: number }, [string]>(
+      "select count(*) n from sqlite_master where type = 'table' and name = ?",
+    )
+    .get(name);
+  return (row?.n ?? 0) > 0;
+}
+
+/**
+ * Which store holds this session, or null when neither does.
+ *
+ * Both live in the same database and neither is migrated away, so the lookup asks V2 first (what
+ * every current OpenCode writes) and falls back to V1 (a machine that upgraded keeps its old
+ * sessions readable). A session id is unique within a database, so the two cannot disagree.
+ */
+function sessionStore(db: Database, sessionId: string): OpencodeStore | null {
+  if (hasTable(db, "session_v2")) {
+    const v2 = db
+      .query<{ id: string }, [string]>("select id from session_v2 where id = ?")
+      .get(sessionId);
+    if (v2) return "v2";
+  }
+  if (hasTable(db, "session")) {
+    const v1 = db.query<{ id: string }, [string]>("select id from session where id = ?").get(sessionId);
+    if (v1) return "v1";
+  }
+  return null;
+}
+
 interface CountRow {
   c: number;
   m: number;
@@ -114,8 +174,26 @@ interface CountRow {
 /** What a session's row counts stand in for, in place of a file's size + mtime. */
 type SessionMeta = { size: number; mtimeMs: number };
 
-/** Row counts + newest touch across `message` and `part` for one session. */
+/**
+ * Row COUNT stands in for "size" and the newest `time_updated` for mtime, per store. Streaming
+ * bumps the touched row continuously in both generations (`part.time_updated` in V1,
+ * `session_message.time_updated` in V2 — verified 2026-09-22: +497 ms over five streaming seconds),
+ * so a live session invalidates on every poll while a finished one stays cached — exactly the
+ * behaviour a file's mtime gives the other adapters. Count is not a byte-exact size, but combined
+ * with the timestamp a false cache hit would need an add and a delete inside the SAME millisecond,
+ * which sqlite's ms-resolution stamps make effectively impossible.
+ */
 function sessionMeta(db: Database, sessionId: string): SessionMeta {
+  const store = sessionStore(db, sessionId);
+  if (store === "v2") return sessionMetaV2(db, sessionId);
+  if (store === "v1") return sessionMetaV1(db, sessionId);
+  // The session vanished between resolve and read; an empty reading is the honest answer, and it
+  // keeps the caller off a table this database may not have.
+  return { size: 0, mtimeMs: 0 };
+}
+
+/** Row counts + newest touch across `message` and `part` for one V1 session. */
+function sessionMetaV1(db: Database, sessionId: string): SessionMeta {
   const msg = db
     .query<CountRow, [string]>(
       "select count(*) c, coalesce(max(time_updated),0) m from message where session_id = ?",
@@ -130,6 +208,16 @@ function sessionMeta(db: Database, sessionId: string): SessionMeta {
     size: (msg?.c ?? 0) + (part?.c ?? 0),
     mtimeMs: Math.max(msg?.m ?? 0, part?.m ?? 0),
   };
+}
+
+/** Row counts + newest touch across `session_message` for one V2 session. */
+function sessionMetaV2(db: Database, sessionId: string): SessionMeta {
+  const row = db
+    .query<CountRow, [string]>(
+      "select count(*) c, coalesce(max(time_updated),0) m from session_message where session_id = ?",
+    )
+    .get(sessionId);
+  return { size: row?.c ?? 0, mtimeMs: row?.m ?? 0 };
 }
 
 /** Parse a `data` column, or null when it isn't json. The row still renders what it can. */
@@ -156,6 +244,14 @@ interface PartRow {
   data: string | null;
 }
 
+/** A V2 row: the role/event `type` column, plus the inline-parts `data` json. */
+interface MessageRowV2 {
+  id: string;
+  type: string;
+  time_created: number;
+  data: string | null;
+}
+
 /** One composed JSONL line — the text `parse()` reads, once it has parsed to an object at all. */
 type OpencodeLine = JsonObject;
 
@@ -164,9 +260,18 @@ type OpencodeLine = JsonObject;
  *
  * The line format is this adapter's own (there is no file on disk to mirror), chosen so `parse()` can
  * stay PURE and table-testable exactly like every other harness's: the source produces text, the
- * parser reads text, and no test needs a database to pin the grammar.
+ * parser reads text, and no test needs a database to pin the grammar. Both stores normalise into the
+ * same line, so `parse()` never learns which generation wrote the row.
  */
 function composeLines(db: Database, sessionId: string): string[] {
+  const store = sessionStore(db, sessionId);
+  if (store === "v2") return composeLinesV2(db, sessionId);
+  if (store === "v1") return composeLinesV1(db, sessionId);
+  return [];
+}
+
+/** V1: one `message` row per turn, its `part` rows joined by message id. */
+function composeLinesV1(db: Database, sessionId: string): string[] {
   const messages = db
     .query<MessageRow, [string]>(
       "select id, time_created, data from message where session_id = ? order by time_created, id",
@@ -197,6 +302,59 @@ function composeLines(db: Database, sessionId: string): string[] {
   );
 }
 
+/** The role a V2 row's `type` column stands for, or null for a row that is plumbing, not speech. */
+function v2Role(type: string): "user" | "assistant" | "summary" | null {
+  if (type === "user" || type === "assistant") return type;
+  // A compaction writes the summary that replaces the history, and the transcript vocabulary has a
+  // role for exactly that. Every other type (`system`, `synthetic`, `idle`, `agent-switched`,
+  // `model-switched`) is plumbing — rendering it as speech would put words in the operator's mouth.
+  return type === "compaction" ? "summary" : null;
+}
+
+/** A V2 row's inline parts: `content` when the row carries it, else the row's one text field. */
+function v2Parts(record: JsonObject): JsonValue[] {
+  if (Array.isArray(record.content)) return record.content;
+  // User turns keep their text in `text`; a compaction keeps its summary in `summary`. V1's user
+  // `summary` was an OBJECT, so the string check is what tells the two spellings apart.
+  const text =
+    typeof record.text === "string" ? record.text : typeof record.summary === "string" ? record.summary : "";
+  return text === "" ? [] : [{ type: "text", text }];
+}
+
+/**
+ * V2: one `session_message` row per turn, its parts inline.
+ *
+ * The role lives in the row's `type` column (V2's json carries none) and the parts are already a
+ * `content` array, so the composed line is normalised here — `data.role` from `type`, parts as
+ * `{id, data}` — and `parse()` keeps reading one grammar for both generations. Only the fields the
+ * parser reads travel on: copying `content` into `data` as well would double every line's bytes
+ * against the transcript cap.
+ */
+function composeLinesV2(db: Database, sessionId: string): string[] {
+  const rows = db
+    .query<MessageRowV2, [string]>(
+      // `seq` is V2's per-session order (unique index `session_message_session_seq_idx`), and unlike
+      // `time_created` two rows can never share it.
+      "select id, type, time_created, data from session_message where session_id = ? order by seq, id",
+    )
+    .all(sessionId);
+  const lines: string[] = [];
+  for (const row of rows) {
+    const role = v2Role(row.type);
+    if (role === null) continue;
+    const record = asRecord(parseData(row.data)) ?? {};
+    lines.push(
+      JSON.stringify({
+        id: row.id,
+        ts: row.time_created,
+        data: { role, time: record.time },
+        parts: v2Parts(record).map((part, index) => ({ id: `prt_${row.id}_${index}`, data: part })),
+      }),
+    );
+  }
+  return lines;
+}
+
 /**
  * Keep the NEWEST lines that fit under the byte cap — the same "keep the tail" policy `loadTail`
  * applies to a file, applied to composed text instead.
@@ -214,6 +372,27 @@ function clipToCap(lines: string[]): ClippedText {
     }
   }
   return { text: lines.slice(start).join("\n"), complete: start === 0 };
+}
+
+/**
+ * A completed tool call's result text. V1 writes one `state.output` string, while V2 writes
+ * `state.content` — the same content array a message carries (verified 2026-09-22 on 2.0.12) — so its
+ * text items are joined.
+ */
+function toolOutputText(state: JsonObject): string {
+  if (typeof state.output === "string") return state.output;
+  if (!Array.isArray(state.content)) return "";
+  const texts: string[] = [];
+  for (const item of state.content) {
+    const record = asRecord(item);
+    if (record !== null && typeof record.text === "string") texts.push(record.text);
+  }
+  return texts.join("\n");
+}
+
+/** An errored call's sentence: `state.error` first, then whatever output also made it. */
+function toolErrorText(state: JsonObject): string {
+  return typeof state.error === "string" ? state.error : toolOutputText(state);
 }
 
 /** Map one part's `data` json onto a renderable part. Null for anything we don't model. */
@@ -239,21 +418,16 @@ export function opencodePart(data: JsonValue | undefined): TranscriptPart | null
         : {};
     const part: Extract<TranscriptPart, { kind: "tool" }> = {
       kind: "tool",
-      name: typeof d.tool === "string" ? d.tool : "tool",
+      // V1 spells the tool `tool`; V2 spells it `name` (verified on 2.0.12).
+      name: typeof d.tool === "string" ? d.tool : typeof d.name === "string" ? d.name : "tool",
       summary: summarizeToolInput(state.input),
     };
     if (state.status === "completed") {
-      const out = stripAnsi(typeof state.output === "string" ? state.output : "");
+      const out = stripAnsi(toolOutputText(state));
       if (out !== "") part.result = clamp(out, MAX_RESULT_CHARS);
     } else if (state.status === "error") {
-      // The error text lives in `error`; `output` is usually absent on a failed call.
-      const err = stripAnsi(
-        typeof state.error === "string"
-          ? state.error
-          : typeof state.output === "string"
-            ? state.output
-            : "",
-      );
+      // The error text lives in `error`, falling back to whatever output also made it.
+      const err = stripAnsi(toolErrorText(state));
       part.result = { ...clamp(err, MAX_RESULT_CHARS), isError: true };
     }
     // pending/running: the call is on screen, its result simply hasn't happened yet.
@@ -296,8 +470,9 @@ export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
         : {};
     // Roles are matched EXPLICITLY, never "assistant or else user" — same rule and same rationale as
     // codex.ts's `developer` guard: an unmodelled role is plumbing, and rendering it as speech would
-    // put words in the operator's mouth.
-    if (data.role !== "user" && data.role !== "assistant") continue;
+    // put words in the operator's mouth. `summary` is V2's compaction role (composeLinesV2), which the
+    // transcript vocabulary renders set apart from speech.
+    if (data.role !== "user" && data.role !== "assistant" && data.role !== "summary") continue;
     const role = data.role;
 
     const parts: TranscriptPart[] = [];
@@ -356,11 +531,10 @@ export class OpencodeTranscriptSource implements TranscriptSource {
       // the root has nothing it may serve, and the next one is asked on its own terms.
       const real = await containedRealpath(join(root, DB_FILE), root);
       if (real === null) continue;
-      const found = withDb(real, (db) =>
-        db.query<{ id: string }, [string]>("select id from session where id = ?").get(ref.value),
-      );
-      // The session id is unique across databases, so the first database holding it is the right one.
-      if (found) return opencodeKey(real, ref.value);
+      const found = withDb(real, (db) => sessionStore(db, ref.value));
+      // The session id is unique across databases, so the first database holding it is the right one
+      // — in whichever of the two stores holds it.
+      if (found !== null) return opencodeKey(real, ref.value);
     }
     return null;
   }
@@ -407,21 +581,25 @@ export function opencodeJournal(roots: string | readonly string[]): JournalAdapt
 
 // ── The prompt-cache probe ───────────────────────────────────────────────────
 //
-// "Seek, don't stream" becomes "query, don't scan". Ported from herdr-cache-alert
-// `src/harness/opencode.ts:210-256`, with its query unchanged: the twelve newest messages for THIS
-// session by indexed key, because the last row is often the operator's own message rather than an
-// assistant turn. Read-only, bound parameters, and nothing outside `message` — the same three rules
-// the rest of this module works under, because the same database holds OAuth tokens.
+// "Seek, don't stream" becomes "query, don't scan": the twelve newest turns for THIS session by
+// indexed key, because the last row is often the operator's own message rather than an assistant
+// turn. Read-only, bound parameters, and the same tables the rest of this module reads — nothing
+// outside them, because the same database holds OAuth tokens. V1's query is ported from
+// herdr-cache-alert `src/harness/opencode.ts:210-256`; V2's reads `session_message` instead, where
+// the role lives in the `type` column and the resets are explicit rows.
 //
-// The cache lifetime is the UPSTREAM's, not opencode's: every session records its own `providerID`, so
-// `model` is reported as `providerID:modelID` and `bridge/cache/rules/providers.ts` unwraps a gateway
-// prefix out of it. `tokens.cache.read` / `.write` is the warm/cold verdict, and it is the trustworthy
-// part of the chip even where the upstream documents no TTL at all.
+// The cache lifetime is the UPSTREAM's, not opencode's: every session records its own provider, so
+// `model` is reported as `providerID:model` and `bridge/cache/rules/providers.ts` unwraps a gateway
+// prefix out of it. `tokens.cache.read` / `.write` is the warm/cold verdict, and it is the
+// trustworthy part of the chip even where the upstream documents no TTL at all.
 //
-// Verified against opencode's live database on 2026-09-13: an assistant message's `data` carries
-// `tokens.cache.{read,write}`, `providerID`, `modelID` and `time.{created,completed}` together.
+// Verified against opencode's live database on 2026-09-13 (V1) and 2026-09-22 (V2): an assistant
+// message's `data` carries `tokens.cache.{read,write}` and `time.{created,completed}` in both, and
+// the model pair is `providerID`/`modelID` at the top level in V1 but `model:{providerID, id}` in V2.
 
 interface ProbeRow {
+  /** V2's role/event column; the V1 query aliases `null` in so both rows share one shape. */
+  type: string | null;
   data: string | null;
   time_created: number;
 }
@@ -436,6 +614,10 @@ interface ProbeRow {
 //   an ASSISTANT message's `mode: "compaction"`       the summary a compaction writes, together with
 //     and `summary: true`                             `summary: true` (a user message's `summary` is an
 //                                                     object, so only the boolean counts)
+//
+// V2 writes the same two actions as EXPLICIT `model-switched` and `compaction` rows instead, so its
+// probe reads those (`opencodeResetsV2`) rather than inferring from a user message's model field —
+// which V2 does not write (verified 2026-09-22).
 
 /** The ids this module reports. Each is a shipped rule (`bridge/cache/rules/opencode.ts`). */
 const OPENCODE_RESET_IDS = {
@@ -455,6 +637,20 @@ function modelKey(provider: JsonValue | undefined, model: JsonValue | undefined)
   return p !== undefined && m !== undefined ? `${p}/${m}` : null;
 }
 
+/**
+ * The `provider/model` a message names, or null when either half is missing.
+ *
+ * Both spellings must read: V1 keeps `providerID`/`modelID` on the message itself (assistant rows) or
+ * under `model` (user rows), while V2 always nests `model: {providerID, id}` (verified on 2.0.12).
+ */
+function messageModelKey(message: JsonObject): string | null {
+  const nested = asRecord(message.model);
+  if (nested !== null) {
+    return modelKey(nested.providerID, nested.id) ?? modelKey(nested.providerID, nested.modelID);
+  }
+  return modelKey(message.providerID, message.modelID);
+}
+
 /** An epoch-ms instant as the evidence line prints it. */
 function when(ms: number): string {
   return new Date(ms).toISOString();
@@ -467,7 +663,8 @@ function messageAt(message: JsonObject, fallback: number): number {
 }
 
 /**
- * Reset events around the newest assistant turn, oldest first.
+ * Reset events around the newest assistant turn in a V1 session, oldest first. V2 writes the same
+ * actions as explicit rows instead — see {@link opencodeResetsV2}.
  *
  * `messages` runs NEWEST FIRST, as the probe's query returns them, and `newest` indexes the assistant
  * turn the probe chose. Three cases, and the engine sorts them by the turn's own time:
@@ -482,7 +679,7 @@ export function opencodeResets(messages: ReadonlyArray<JsonObject | null>, newes
   const turn = messages[newest];
   if (turn === undefined || turn === null) return [];
   const at = messageAt(turn, 0);
-  const current = modelKey(turn.providerID, turn.modelID);
+  const current = messageModelKey(turn);
   const events: ResetEvent[] = [];
 
   if (isCompaction(turn)) {
@@ -493,8 +690,7 @@ export function opencodeResets(messages: ReadonlyArray<JsonObject | null>, newes
   for (let i = 0; i < newest; i++) {
     const message = messages[i];
     if (message === undefined || message === null || message.role !== "user") continue;
-    const model = asRecord(message.model);
-    const picked = modelKey(model?.providerID, model?.modelID);
+    const picked = messageModelKey(message);
     if (current !== null && picked !== null && picked !== current) {
       const pickedAt = Math.max(messageAt(message, at + 1), at + 1);
       events.push({ ruleId: OPENCODE_RESET_IDS.model, at: pickedAt, evidence: `model ${current} → ${picked}` });
@@ -511,13 +707,77 @@ export function opencodeResets(messages: ReadonlyArray<JsonObject | null>, newes
       events.push({ ruleId: OPENCODE_RESET_IDS.compaction, at: was, evidence: `compaction at ${when(was)}` });
       break;
     }
-    const before = modelKey(message.providerID, message.modelID);
+    const before = messageModelKey(message);
     if (before !== null && current !== null && before !== current) {
       events.push({ ruleId: OPENCODE_RESET_IDS.model, at, evidence: `model ${before} → ${current}` });
     }
     break;
   }
   return events.toSorted((a, b) => a.at - b.at);
+}
+
+/**
+ * Reset events for a V2 session, off the explicit event rows V2 writes instead of V1's inference.
+ *
+ * `messages` runs NEWEST FIRST, and `newest` indexes the assistant turn the probe chose. V2 records
+ * the two cache-dropping actions as their own `session_message` rows — `model-switched` (carrying
+ * `previous` and the new `model`) and `compaction` (whose `summary` replaces the history) — so
+ * nothing has to be inferred from a user message's model or a boolean flag:
+ *
+ *  - a `model-switched`/`compaction` row NEWER than the turn is pending: the next request pays the
+ *    full rate, so the event sits just after the turn's own clock, newest of each kind only;
+ *  - the nearest such row OLDER than the turn explains the cold turn it followed.
+ */
+export function opencodeResetsV2(messages: ReadonlyArray<JsonObject | null>, newest: number): ResetEvent[] {
+  const turn = messages[newest];
+  if (turn === undefined || turn === null) return [];
+  const at = messageAt(turn, 0);
+  const events: ResetEvent[] = [];
+
+  // Pending: the newest of each kind among the rows newer than the turn (index < newest).
+  let pendingModel: JsonObject | null = null;
+  let pendingCompaction: JsonObject | null = null;
+  for (let i = 0; i < newest; i++) {
+    const message = messages[i];
+    if (message === undefined || message === null) continue;
+    if (pendingModel === null && message.type === "model-switched") pendingModel = message;
+    if (pendingCompaction === null && message.type === "compaction") pendingCompaction = message;
+  }
+  if (pendingModel !== null) {
+    const event = v2ModelEvent(pendingModel, Math.max(messageAt(pendingModel, at + 1), at + 1));
+    if (event !== null) events.push(event);
+  }
+  if (pendingCompaction !== null) {
+    const resetAt = Math.max(messageAt(pendingCompaction, at + 1), at + 1);
+    events.push({ ruleId: OPENCODE_RESET_IDS.compaction, at: resetAt, evidence: `compaction at ${when(resetAt)}` });
+  }
+
+  // History: the nearest event row older than the turn (index > newest).
+  for (let i = newest + 1; i < messages.length; i++) {
+    const message = messages[i];
+    if (message === undefined || message === null) continue;
+    if (message.type === "compaction") {
+      const was = messageAt(message, at);
+      events.push({ ruleId: OPENCODE_RESET_IDS.compaction, at: was, evidence: `compaction at ${when(was)}` });
+      break;
+    }
+    if (message.type === "model-switched") {
+      const event = v2ModelEvent(message, at);
+      if (event !== null) events.push(event);
+      break;
+    }
+  }
+  return events.toSorted((a, b) => a.at - b.at);
+}
+
+/** One V2 `model-switched` row as a reset event, or null when it names no model to switch to. */
+function v2ModelEvent(row: JsonObject, at: number): ResetEvent | null {
+  const before = asRecord(row.previous);
+  const after = asRecord(row.model);
+  const to = after === null ? null : modelKey(after.providerID, after.id ?? after.modelID);
+  if (to === null) return null;
+  const from = before === null ? null : modelKey(before.providerID, before.id ?? before.modelID);
+  return { ruleId: OPENCODE_RESET_IDS.model, at, evidence: `model ${from ?? "?"} → ${to}` };
 }
 
 async function opencodeCacheProbe(
@@ -528,16 +788,33 @@ async function opencodeCacheProbe(
   if (key === null) return null;
   const split = splitOpencodeKey(key);
   if (split === null) return null;
-  const rows =
-    withDb(split.dbPath, (db) =>
-      db
-        .query<ProbeRow, [string]>(
-          "select data, time_created from message where session_id = ? order by time_created desc limit 12",
-        )
-        .all(split.sessionId),
-    ) ?? [];
+  const read = withDb(split.dbPath, (db) => {
+    const store = sessionStore(db, split.sessionId);
+    const rows =
+      store === "v2"
+        ? db
+            .query<ProbeRow, [string]>(
+              // `seq` is V2's per-session order, so newest-first is its reverse.
+              "select type, data, time_created from session_message where session_id = ? order by seq desc limit 12",
+            )
+            .all(split.sessionId)
+        : db
+            .query<ProbeRow, [string]>(
+              "select null type, data, time_created from message where session_id = ? order by time_created desc limit 12",
+            )
+            .all(split.sessionId);
+    return { store, rows };
+  });
+  // A database that failed to open, or a session that vanished between resolve and read, has no
+  // reading to give — the tracker treats null as "nothing new" and ages the last one.
+  if (read === null) return null;
+  const { store, rows } = read;
+  const messages = rows.map((row) => {
+    const parsed = asRecord(parseData(row.data)) ?? {};
+    // V2 keeps the role in the `type` column rather than the row's json; a V1 row already has it.
+    return row.type === null ? parsed : { ...parsed, role: row.type, type: row.type };
+  });
 
-  const messages = rows.map((row) => asRecord(parseData(row.data)));
   for (const [index, row] of rows.entries()) {
     const message = messages[index] ?? null;
     if (message === null || message.role !== "assistant") continue;
@@ -551,8 +828,11 @@ async function opencodeCacheProbe(
     const cache = asRecord(tokens.cache);
     const cacheReadTokens = tokenCount(cache?.read);
     const cacheCreationTokens = tokenCount(cache?.write);
-    const provider = asText(message.providerID);
-    const model = asText(message.modelID);
+    // The model pair sits on the message itself in V1 and under `model` in V2; both come out as
+    // `provider:model` for the rules lookup, and a half-known pair claims only what it knows.
+    const nested = asRecord(message.model);
+    const provider = asText(nested?.providerID) ?? asText(message.providerID);
+    const model = asText(nested?.id) ?? asText(nested?.modelID) ?? asText(message.modelID);
     const pair = provider !== undefined && model !== undefined ? `${provider}:${model}` : model;
     const probe: CacheProbe = {
       lastRequestAt: at,
@@ -566,7 +846,7 @@ async function opencodeCacheProbe(
     if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
     if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
     if (pair !== undefined) probe.model = pair;
-    const resets = opencodeResets(messages, index);
+    const resets = store === "v2" ? opencodeResetsV2(messages, index) : opencodeResets(messages, index);
     if (resets.length > 0) probe.resets = resets;
     return probe;
   }

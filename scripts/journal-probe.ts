@@ -129,11 +129,25 @@ async function candidateRefsUnder(
     }
     try {
       // Root sessions only — a `parent_id` row is a subagent session, which herdr never reports.
-      const rows = db
-        .query<{ id: string }, [number]>(
-          "select id from session where parent_id is null order by time_updated desc limit ?",
-        )
-        .all(MAX_CANDIDATES);
+      // V2's table first: that is what every current OpenCode writes, while a machine that upgraded
+      // keeps its older sessions in `session`, so V1 is the fallback rather than the other way round.
+      let rows: { id: string }[];
+      try {
+        rows = db
+          .query<{ id: string }, [number]>(
+            "select id from session_v2 where parent_id is null order by time_updated desc limit ?",
+          )
+          .all(MAX_CANDIDATES);
+      } catch {
+        rows = [];
+      }
+      if (rows.length === 0) {
+        rows = db
+          .query<{ id: string }, [number]>(
+            "select id from session where parent_id is null order by time_updated desc limit ?",
+          )
+          .all(MAX_CANDIDATES);
+      }
       const refs: AgentSessionRef[] = rows.map((r) => ({ kind: "id", value: r.id }));
       return { refs, total: refs.length };
     } catch {
