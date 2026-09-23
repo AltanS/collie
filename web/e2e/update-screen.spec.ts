@@ -11,8 +11,10 @@ import {
   clearDelay,
   clearFail,
   clearThrottle,
+  holdSwapServer,
   readBuildStamp,
   readEntryScript,
+  releaseSwapServer,
   serveBuild,
   setThrottle,
 } from "./fixtures/builds";
@@ -65,7 +67,8 @@ const RELOADS_KEY = "e2e:reloads";
 test.use({ baseURL: SWAP_BASE_URL });
 
 // SERIAL: one origin, one service-worker scope, one served-directory pointer. Two of these at once
-// would be two deploys landing on each other.
+// would be two deploys landing on each other. Serial covers this file in one project only; the lock
+// in `beforeEach` (`holdSwapServer`) covers service-worker.spec.ts and the other projects.
 test.describe.configure({ mode: "serial" });
 
 /** The run this "bridge" is reporting right now. One assignment is one step of the run. */
@@ -107,8 +110,13 @@ test.beforeEach(async ({ page }, testInfo) => {
     !projects.has(testInfo.project.name),
     "two real bundles and a real precache; a second viewport proves nothing new here",
   );
-  // Two builds, a precache over a throttled link, and a run walked through five states.
-  test.setTimeout(120_000);
+  // One case at a time on the swap server, across both files and every project (`holdSwapServer`
+  // says why). No timeout while queued for it (`holdSwapServer` bounds the wait itself), then the
+  // case's own budget on top of the wait: two builds, a precache over a throttled link, and a run
+  // walked through five states.
+  test.setTimeout(0);
+  const queued = await holdSwapServer();
+  test.setTimeout(120_000 + queued);
 
   clearDelay();
   clearFail();
@@ -222,6 +230,7 @@ test.afterEach(() => {
   clearThrottle();
   clearDelay();
   clearFail();
+  releaseSwapServer();
 });
 
 function updateInfo(): UpdateInfo {
@@ -480,8 +489,10 @@ async function bundleOnPage(page: Page): Promise<string> {
 // step 6 takes the no-worker path, a plain reload, and lands on the same Done screen; the download
 // state is measured when it happens.
 //
-// It lives in THIS file, serial with the three cases above, because all of them move the one served-
-// directory pointer of the swap server, and two files doing that at once would deploy onto each other.
+// It moves the one served-directory pointer of the swap server, like the three cases above and every
+// case in service-worker.spec.ts. Being in this file does not keep it apart from those: the WebKit
+// walk is another project and service-worker.spec.ts another file, so each case holds the swap
+// server's lock (`holdSwapServer`, taken in the file's `beforeEach`) for as long as it runs.
 
 // THE LARGE-TEXT WALK. Android's font scale and a browser's text size raise the root font size, and
 // every box in the panel is in rem, so the panel must grow as one piece: same no-shift rule, nothing
@@ -501,7 +512,8 @@ for (const engine of [
 
     test.beforeEach(async ({ page }, testInfo) => {
       test.skip(testInfo.project.name !== engine.project, `this walk is the ${engine.name} one`);
-      test.setTimeout(180_000);
+      // Sixty seconds more than the file's budget, which already carries any wait for the swap server.
+      test.setTimeout(testInfo.timeout + 60_000);
       await installCrewBridge(page);
       if (engine.text !== null) {
         // A stylesheet rule rather than the element's style: the page's own boot rewrites `<html>`.

@@ -12,8 +12,10 @@ import {
   clearDelay,
   clearFail,
   clearThrottle,
+  holdSwapServer,
   readBuildStamp,
   readEntryScript,
+  releaseSwapServer,
   serveBuild,
   setDelay,
   setFail,
@@ -114,7 +116,8 @@ test.use({ baseURL: SWAP_BASE_URL });
 
 // SERIAL, and not because the cases are order-dependent: they share one origin, one service-worker
 // scope and one served-directory pointer. Two of them running at once would be two deploys landing
-// on each other.
+// on each other. Serial covers this file in one project only; the lock in `beforeEach`
+// (`holdSwapServer`) covers the other file and the other projects that move the same pointer.
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(() => {
@@ -132,8 +135,14 @@ test.beforeEach(async ({ page }, testInfo) => {
     !PHONE_PROJECTS.has(testInfo.project.name),
     "the service worker has no viewport, and the playground registers no worker",
   );
-  // Two real builds, several installs and a stuck guard at 8 s each: this file is the slow one.
-  test.setTimeout(120_000);
+  // The swap server is shared with update-screen.spec.ts and with this file in other projects;
+  // `mode: "serial"` below does not reach across either (`holdSwapServer` says why). No timeout
+  // while queued for it (`holdSwapServer` bounds the wait itself), then the case's own budget on
+  // top of the wait: two real builds, several installs and a stuck guard at 8 s each, this file is
+  // the slow one.
+  test.setTimeout(0);
+  const queued = await holdSwapServer();
+  test.setTimeout(120_000 + queued);
 
   clearDelay();
   clearFail();
@@ -160,6 +169,7 @@ test.afterEach(() => {
   clearDelay();
   clearFail();
   clearThrottle();
+  releaseSwapServer();
 });
 
 /** Stamp this build's id on every following snapshot response. The deploy, from the app's side. */

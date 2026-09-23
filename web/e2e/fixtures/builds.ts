@@ -154,6 +154,86 @@ export function readThrottle(): ThrottleDirective | undefined {
   }
 }
 
+/**
+ * ONE CASE AT A TIME ON THE SWAP SERVER, ACROSS FILES, PROJECTS AND WORKERS.
+ *
+ * The pointer and the three directives above are one piece of state for the whole server, and two
+ * files move them: `service-worker.spec.ts` and `update-screen.spec.ts`. `mode: "serial"` keeps the
+ * cases of ONE file in ONE project in order, and nothing more. The two files, and the same file in
+ * `app-phone` and `app-phone-webkit`, are separate groups that Playwright hands to separate workers
+ * (two in CI). On 2026-09-23 that is what failed CI run 35924287410: update mode's WebKit walk ran
+ * its `clearThrottle()` and `serveBuild("a")` while the service-worker case "a tap while build B is
+ * still installing" held build B's entry chunk on a slow link. The throttle went, B installed inside
+ * the eight-second window, and the page reloaded where the case says it must not.
+ *
+ * So a case takes this lock before its first write and gives it back after its last. `mkdir` is
+ * atomic, so two workers cannot both win it. The owner's pid sits inside, so a lock left by a worker
+ * that died is taken over instead of waited on forever. The caller lifts its timeout for the wait
+ * and sets it again from the returned wait: time spent queued is not time the case spent failing.
+ */
+const LOCK = join(BUILDS_DIR, "lock");
+const LOCK_OWNER = join(LOCK, "pid");
+/** How often a waiting case looks again. Short next to any case, long next to a `mkdir`. */
+const LOCK_POLL_MS = 100;
+/**
+ * The longest a case waits in the queue. The caller lifts its own timeout for the wait (a local run
+ * with default workers queues every repetition of both files behind one another), so this is the
+ * bound instead: far past any queue a real run builds, short of a CI job's own limit.
+ */
+const LOCK_WAIT_MAX_MS = 15 * 60_000;
+
+function lockOwner(): number | undefined {
+  try {
+    const pid = Number.parseInt(readFileSync(LOCK_OWNER, "utf8"), 10);
+    return Number.isNaN(pid) ? undefined : pid;
+  } catch {
+    return undefined;
+  }
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM means the process exists and belongs to someone else. Only ESRCH means it is gone.
+    // SAFETY: `process.kill` throws only system errors, and every Node system error carries `code`.
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+/** Wait for the swap server to be free and take it. Resolves to the milliseconds spent waiting. */
+export async function holdSwapServer(): Promise<number> {
+  const started = Date.now();
+  for (;;) {
+    try {
+      mkdirSync(LOCK);
+      writeFileSync(LOCK_OWNER, String(process.pid));
+      return Date.now() - started;
+    } catch (error) {
+      // SAFETY: `mkdirSync` and `writeFileSync` throw only system errors, which always carry `code`.
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    // The pid is written a moment after the directory, so a missing one is a lock being taken right
+    // now, not an abandoned one. Only a pid that names a dead process frees the lock.
+    const owner = lockOwner();
+    if (owner === process.pid) return Date.now() - started;
+    if (owner !== undefined && !isAlive(owner)) {
+      rmSync(LOCK, { recursive: true, force: true });
+      continue;
+    }
+    if (Date.now() - started > LOCK_WAIT_MAX_MS) {
+      throw new Error(`e2e: the swap server stayed held by pid ${owner ?? "?"} for ${LOCK_WAIT_MAX_MS} ms`);
+    }
+    await new Promise((done) => setTimeout(done, LOCK_POLL_MS));
+  }
+}
+
+/** Give the swap server back. A no-op for a case that never took it, e.g. one that skipped. */
+export function releaseSwapServer(): void {
+  if (lockOwner() === process.pid) rmSync(LOCK, { recursive: true, force: true });
+}
+
 export interface BuildStamp {
   readonly version: string;
   readonly sha: string;
