@@ -196,8 +196,8 @@ values one frame apart. Ask it of every diff that touches a state: which box cha
 position, and who caused it. If the answer is "the app did", it needs a reason from the list
 above or it does not land.
 
-§6 grants one exception, the status band's fixed height, and §11 grants the other, `Collapse`.
-Add a third only by adding it to this list.
+§6 grants one exception, the fixed-height reservations (the status band, and update mode's
+panel), and §11 grants the other, `Collapse`. Add a third only by adding it to this list.
 
 ---
 
@@ -419,6 +419,15 @@ warns about is paid honestly — nothing here can grow, because nothing here is 
 and it is written down at the line. Add a second one only with the same two properties:
 every occupant states its own box, and the strip's height is a number the layout was designed
 around rather than a consequence of what it holds.
+
+**The second one is update mode's docked panel** (`components/update-screen.tsx`,
+[ADR 0064](./.adr/0064-an-update-puts-the-phone-in-update-mode.md)). Its heading is `h-7` and
+truncates, its subtitle is `h-10` and clamps to two lines, each row is `h-13` with a reserved
+second line, the note is `h-[84px]` and the footer two 44px rows. Both properties hold: every
+occupant states its box (truncate, `line-clamp-2`, fixed buttons), and the heights were designed
+around the seven steps rather than measured from them. It earns `h` over `min-h` for the reason
+the status band does: the panel's whole job is that a state change repaints it and never moves
+it, and `e2e/update-screen.spec.ts` measures that to half a pixel in Chromium and WebKit.
 
 ---
 

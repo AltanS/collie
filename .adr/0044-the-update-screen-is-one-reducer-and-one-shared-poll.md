@@ -2,6 +2,11 @@
 
 **Status:** accepted, 2026-09-13
 
+**Amended in scope by:** [ADR 0064](./0064-an-update-puts-the-phone-in-update-mode.md): the one reducer
+and the one poll stand; the screen they decide is now update mode, which ends only on Done, Rolled
+back or Stuck (never on a toast), holds this phone's reload for its own last step, and keeps the
+device's claim across that reload.
+
 ## Context
 
 A running Collie update has three independent truths, and for three releases they were read on three
