@@ -240,10 +240,10 @@ async function installBridge(page: Page): Promise<void> {
   );
 }
 
+// The release clears the three directives, and only for the case that holds the lock. This hook also
+// runs for a case `beforeEach` skipped, which never took the lock and must not touch the directives of
+// the case that did (the note above `LOCK` in `fixtures/builds.ts` says what that cost in CI).
 test.afterEach(() => {
-  clearThrottle();
-  clearDelay();
-  clearFail();
   releaseSwapServer();
 });
 
