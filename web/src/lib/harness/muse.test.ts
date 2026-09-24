@@ -44,7 +44,9 @@ const PINNED = [
   "muse--ask-toppings.txt",
   "muse--done.txt",
   "muse--draft-blank-row.txt",
+  "muse--draft-image-chip.txt",
   "muse--draft-paste-token.txt",
+  "muse--draft-quoted-path.txt",
   "muse--draft-single.txt",
   "muse--draft-wrapped.txt",
   "muse--fresh-idle.txt",
@@ -52,6 +54,7 @@ const PINNED = [
   "muse--palette-partial.txt",
   "muse--quoted-dialogs-bare.txt",
   "muse--tip-loop.txt",
+  "muse--tip-paste.txt",
   "muse--trust-prompt.txt",
   "muse--working.txt",
 ];

@@ -338,6 +338,8 @@ export const INPUT_PLACEHOLDERS: ReadonlySet<string> = new Set([
   "Start a message with ! to run a shell command yourself",
   // Seen live 2026-09-23: the tip rotates (#274 addendum).
   "/loop 10m <prompt> schedules a recurring prompt",
+  // Seen live 2026-09-23: the tip rotates per context (#278 addendum).
+  "Paste an image with Ctrl+V — file paths and URLs work too",
 ]);
 
 /**

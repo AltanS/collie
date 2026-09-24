@@ -243,6 +243,15 @@ Probed recipe — digit alone (family `trust`): `1` submitted immediately
   accepts the highlighted suggestion (probed: `/us` ran `/usage`), so verifying the typed
   text would bless a command the operator did not type. Multi-suggestion and slash-led
   multi-line drafts stay unmeasured and stall the same safe way.
+- **Image paths attach on sight; other paths quote (added 2026-09-23, #278).** Typing an
+  image path converts it in place to `[Image #N]` (N in attach order); a second image becomes
+  `[Image #2]` beside it. A non-image path is double-quoted in place instead. Both break the
+  generic verify (sent path vs token text), so the adapter's second look maps chips back to
+  the sent text's image runs positionally, unquotes spans the sent text carries bare, and
+  requires whole-string equality — stale chips, count mismatches and mis-orderings all fail
+  it and stall safe. The draft read itself stays verbatim. The pre-clear sweep removes
+  chips, so retries re-attach from #1. Also probed: the placeholder tip rotates per
+  context (`Paste an image with Ctrl+V — file paths and URLs work too`), listed alongside.
 - **The review cancel button says `Interrupt turn` (added at merge).** That row ends the whole
   turn, and the button carries the terminal's own words rather than "Cancel".
 

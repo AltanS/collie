@@ -55,6 +55,7 @@ import {
   stripChrome,
 } from "./chrome";
 import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, rstrip } from "./markers";
+import { museAttachCarriesSend } from "./attach";
 import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
@@ -158,6 +159,9 @@ export const museAdapter: HarnessAdapter = {
   extractInputDraft,
   extractStatusLines,
   composerPrompt,
-  draftCarriesSend: musePasteCarriesSend,
+  // Two token grammars, either of which proves the send landed: the paste collapse and the
+  // attach chips/quotes (#278). Each is sound on its own; the OR only widens evidence.
+  draftCarriesSend: (sent, draft) =>
+    musePasteCarriesSend(sent, draft) || museAttachCarriesSend(sent, draft),
   draftIsOpaque: museDraftIsOpaque,
 };
