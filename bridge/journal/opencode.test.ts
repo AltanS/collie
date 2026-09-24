@@ -277,6 +277,31 @@ describe("parseOpencodeTranscript", () => {
     });
   });
 
+  // Upstream's `ToolStateError` (2.0.12, packages/schema/src/session-message.ts): `error` is a
+  // `{type, message}` record and `content` is optional, so the message is the only sentence.
+  test("a V2 errored tool call with no content shows its error record's message", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_b", assistantData(), [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "bash",
+          state: {
+            status: "error",
+            input: { command: "false" },
+            error: { type: "tool.execution", message: "command exited 1" },
+          },
+        },
+      ]),
+    );
+    expect(entries[0]!.parts[0]).toEqual({
+      kind: "tool",
+      name: "bash",
+      summary: "false",
+      result: { text: "command exited 1", isError: true },
+    });
+  });
+
   test("a V2 running tool call has no result yet", () => {
     const entries = parseOpencodeTranscript(
       line("msg_b", assistantData(), [
@@ -1002,6 +1027,12 @@ describe("opencodeResetsV2", () => {
     );
     expect(ids(events)).toEqual(["opencode.reset.compaction", "opencode.reset.model"]);
     expect(events[1]?.evidence).toBe("model p/b → p/c");
+  });
+
+  test("a failed compaction claims nothing, before or after the turn", () => {
+    const failed = (at: number): Message => ({ ...compaction(at), status: "failed" });
+    expect(opencodeResetsV2([failed(3000), assistant(2000, "p", "b")], 1)).toEqual([]);
+    expect(opencodeResetsV2([assistant(3000, "p", "b"), failed(2000)], 0)).toEqual([]);
   });
 
   test("no event rows around the turn is nothing", () => {

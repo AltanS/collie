@@ -28,11 +28,11 @@
 //
 // SECURITY — THE SAME DATABASE HOLDS OAUTH TOKENS. `account`, `credential` and `control_account` are
 // tables in this very file. So: this module queries `session`, `message`, `part`, `session_v2` and
-// `session_message` and NOTHING else; every query is opened READONLY and uses BOUND PARAMETERS
-// (never string interpolation); the session id is regex-validated before it can touch a query at
-// all; and the database path is fixed (`<root>/opencode.db`, never derived from the ref) and still
-// passed through `containedRealpath`, because the containment rule in CLAUDE.md is absolute even
-// for a constant path.
+// `session_message`, plus the table names in `sqlite_master`, and NOTHING else; every query is
+// opened READONLY and uses BOUND PARAMETERS (never string interpolation); the session id is
+// regex-validated before it can touch a query at all; and the database path is fixed
+// (`<root>/opencode.db`, never derived from the ref) and still passed through `containedRealpath`,
+// because the containment rule in CLAUDE.md is absolute even for a constant path.
 //
 // Message `data` json, verified samples:
 //   V1 user      {"role":"user","time":{"created":1785311866628},"agent":"build","model":{…},
@@ -401,9 +401,16 @@ function toolOutputText(state: JsonObject): string {
   return texts.join("\n");
 }
 
-/** An errored call's sentence: `state.error` first, then whatever output also made it. */
+/**
+ * An errored call's sentence: `state.error` first, then whatever output also made it. V1 writes the
+ * error as a string; V2 writes `{type, message}` (`SessionError.Error` upstream) and may leave out
+ * `content` entirely, so its `message` is the only sentence there is.
+ */
 function toolErrorText(state: JsonObject): string {
-  return typeof state.error === "string" ? state.error : toolOutputText(state);
+  if (typeof state.error === "string") return state.error;
+  const error = asRecord(state.error);
+  if (error !== null && typeof error.message === "string") return error.message;
+  return toolOutputText(state);
 }
 
 /** Map one part's `data` json onto a renderable part. Null for anything we don't model. */
@@ -766,7 +773,7 @@ export function opencodeResetsV2(messages: ReadonlyArray<JsonObject | null>, new
     const message = messages[i];
     if (message === undefined || message === null) continue;
     if (pendingModel === null && message.type === "model-switched") pendingModel = message;
-    if (pendingCompaction === null && message.type === "compaction") pendingCompaction = message;
+    if (pendingCompaction === null && isV2Compaction(message)) pendingCompaction = message;
     if (pendingModel !== null && pendingCompaction !== null) break;
   }
   if (pendingModel !== null) {
@@ -781,7 +788,7 @@ export function opencodeResetsV2(messages: ReadonlyArray<JsonObject | null>, new
   for (let i = newest + 1; i < messages.length; i++) {
     const message = messages[i];
     if (message === undefined || message === null) continue;
-    if (message.type === "compaction") {
+    if (isV2Compaction(message)) {
       events.push(compactionReset(messageAt(message, at)));
       break;
     }
@@ -792,6 +799,14 @@ export function opencodeResetsV2(messages: ReadonlyArray<JsonObject | null>, new
     }
   }
   return events.toSorted((a, b) => a.at - b.at);
+}
+
+/**
+ * A V2 compaction that replaces, or is replacing, the history. A `failed` one left the history as it
+ * was, so the cache it would have dropped is still warm and it claims nothing.
+ */
+function isV2Compaction(row: JsonObject): boolean {
+  return row.type === "compaction" && row.status !== "failed";
 }
 
 /** One V2 `model-switched` row as a reset event, or null when it names no model to switch to. */
