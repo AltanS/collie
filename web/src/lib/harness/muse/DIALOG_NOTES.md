@@ -64,6 +64,32 @@ Option 2 ("Always allow …") persists a workspace rule. It is still a plain
 digit answer — the persistence is Muse's own semantics for that row, and the
 label says so on the button. No special-casing.
 
+## 1b. Approval — "Would you like to allow this network access?" (added 2026-09-23, #280)
+
+Fixtures: `muse--approval-network.txt` (pointer on 1), `muse--approval-network-moved.txt`
+(pointer on 2, as seen live).
+
+```
+Would you like to allow this network access?
+
+  network: www.gt:443 https
+  full URL: https://www.gt/sitio/faq.php#faq-47
+
+› 1. Yes, proceed (y)
+  2. Yes, don't ask again this session (p)  www.gt:443 (https)
+  3. Always allow this network destination  www.gt:443 (https)
+  4. No, and tell Muse Code what to do differently (esc)
+```
+
+Same tail contract as §1 (box replaced, no footer row, digit alone) with its own
+question + subject pair. Options 2–3 carry a trailing scope (`host:port (scheme)`)
+that the lifted labels keep — it names what the digit blesses. Option 3 carries
+no parenthetical shortcut (digit-only on the terminal too).
+
+Probed recipe — digit alone (family `permission`): `1` ALONE approved once and
+the fetch ran (`◆ Fetched https://example.com`), no Enter. `keys: ["1"]` /
+`["2"]` / `["3"]` / `["4"]`.
+
 ## 2. Single-select question — "Enter to select"
 
 Fixtures: `muse--ask-color.txt` (pointer on 1), `muse--ask-color-moved.txt`
@@ -225,8 +251,33 @@ Probed recipe — digit alone (family `trust`): `1` submitted immediately
   reader now refuse a question/checkbox/note match only above a bare box, and a review match only
   with its live header above. Approval and trust need no such check: a match structurally implies
   no live box beside it.
+- **The tail walk steps over blank draft rows (added 2026-09-23, #274).** A paragraph break
+  inside the box used to stop the continuation walk, so a healthy two-paragraph draft read as
+  prompt null — "no composer". Verify then read null forever (stuck send), the unread-dialog
+  card drew over the live box, and each two-tap retry appended a full duplicate (the force path
+  types without the sweep). Observed live: one message typed six times. The walk now treats
+  blank rows as part of the draft run under the same bound; approval still resolves null at
+  its subject rows. Also probed the same night: the placeholder tip rotates (`/loop 10m
+  <prompt> schedules a recurring prompt`), so the set holds both known variants.
 - **Every lift keeps the rows above it (added at merge).** The prompt panel shows neither the
   approval's command nor the trust prompt's folder, so those rows stay on screen as raw text.
+- **The palette's exact-match row is not draft (added 2026-09-23, #276).** Typing `/usage`
+  opens one suggestion row inside the draft run, and folding it in could never verify. When
+  the prompt starts with `/` and the run below it is exactly one suggestion row naming that
+  same command, the draft reads as the prompt text alone — Enter submits the exact match
+  (probed). Partial input keeps the legacy polluted read and stalls safe: Enter there
+  accepts the highlighted suggestion (probed: `/us` ran `/usage`), so verifying the typed
+  text would bless a command the operator did not type. Multi-suggestion and slash-led
+  multi-line drafts stay unmeasured and stall the same safe way.
+- **Image paths attach on sight; other paths quote (added 2026-09-23, #278).** Typing an
+  image path converts it in place to `[Image #N]` (N in attach order); a second image becomes
+  `[Image #2]` beside it. A non-image path is double-quoted in place instead. Both break the
+  generic verify (sent path vs token text), so the adapter's second look maps chips back to
+  the sent text's image runs positionally, unquotes spans the sent text carries bare, and
+  requires whole-string equality — stale chips, count mismatches and mis-orderings all fail
+  it and stall safe. The draft read itself stays verbatim. The pre-clear sweep removes
+  chips, so retries re-attach from #1. Also probed: the placeholder tip rotates per
+  context (`Paste an image with Ctrl+V — file paths and URLs work too`), listed alongside.
 - **The review cancel button says `Interrupt turn` (added at merge).** That row ends the whole
   turn, and the button carries the terminal's own words rather than "Cancel".
 
@@ -234,7 +285,7 @@ Probed recipe — digit alone (family `trust`): `1` submitted immediately
 
 - The command palette, `/resume` picker, `/tasks` drawer and `/workflows`
   control room: out of this file's scope, no captures, no detectors.
-- Network/peer approval variants: no capture showed them; they ride along only
-  if a future capture shows the approval shape above.
+- File/peer approval variants: no capture showed them; they ride along only
+  if a future capture shows the approval shape above. (Network graduated to §1b on its capture.)
 - Plan approval: Muse 1.3.0 showed no plan-approval dialog shape to lift.
 - The `!`-shell escape and voice-input rule: chrome/tips, never dialogs.

@@ -11,8 +11,10 @@
 //     ─────────────────                 (full-width bottom rule)
 //       muse-spark-1.3 · …              (opaque statusline)
 //
-//   - Approval REPLACES the box (no ❯ row): `Would you like to run the following command?` + `$` /
-//     `Stage N/M` / `Current argv:` subject + `› N.` options. Digit alone (family `permission`).
+//   - Approval REPLACES the box (no ❯ row): command (`Would you like to run the following
+//     command?` + `$` / `Stage N/M` / `Current argv:`) or network (`Would you like to allow this
+//     network access?` + `network:` / `full URL:`) + `› N.` options. Digit alone (family
+//     `permission`).
 //   - Questions LEAVE the bare ❯ under them: `Request user input` header (live timer — anchors
 //     detection, never enters a signature) + question + `› N.` options + footer. Digits MOVE the
 //     pointer; Enter selects (family `select`, keys [digit, Enter]).
@@ -24,8 +26,9 @@
 //     options. Digit alone (family `trust`).
 //
 // Registering this adapter flips Muse panes off one-shot sends onto the guarded reply path:
-// type-then-verify against `extractInputDraft`, with the paste-token supplement (paste.ts) for the
-// per-line `[Pasted Content N chars]` collapse. Three accepted tradeoffs are stated here because
+// type-then-verify against `extractInputDraft`, with two supplements: the paste token (paste.ts)
+// for the per-line `[Pasted Content N chars]` collapse, and the attach chips and quoted paths
+// (attach.ts) for a typed path Muse rewrites in place. Three accepted tradeoffs are stated here because
 // they are load-bearing for review:
 //
 //   1. Signatures run question → dialog end with NO transcript lookback. The transcript rows above
@@ -33,16 +36,20 @@
 //      tap. Cost: two consecutive byte-identical dialogs share one signature, so a tap on the first
 //      may land on the second — the same command/answer the user consented to. Same bargain on all
 //      four dialogs.
-//   2. The palette, `/resume` picker, `/tasks` drawer and `/workflows` room are unmeasured (outside
+//   2. The `/resume` picker, `/tasks` drawer and `/workflows` room are unmeasured (outside
 //      the dialog notes' scope): if one leaves a live ❯ below it, the pre-flight types into it and type-then-verify
 //      withholds the submit key (a stall, not a misfire — the backstop holds where the pre-flight
-//      cannot see). See composerReady.
+//      cannot see). See composerReady. The slash palette is measured narrowly (#276): one
+//      suggestion row naming the exact slash-led prompt reads as the prompt alone (Enter submits
+//      the exact match); partial or multi-row palettes keep the stalling read, because Enter
+//      there accepts the suggestion rather than submitting the typed text.
 //   3. An open `Note (optional):` row declines its dialog to raw (it owns the keyboard — probed) and
 //      fails the composer gate, so the phone shows the mirror and the keys pad, never buttons.
 
 import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { detectApprovalRegion } from "./approval";
+import { museAttachCarriesSend } from "./attach";
 import { detectCheckboxRegion } from "./checkbox";
 import {
   composerPrompt,
@@ -155,6 +162,9 @@ export const museAdapter: HarnessAdapter = {
   extractInputDraft,
   extractStatusLines,
   composerPrompt,
-  draftCarriesSend: musePasteCarriesSend,
+  // Two token grammars, either of which proves the send landed: the paste collapse and the
+  // attach chips/quotes (#278). Each is sound on its own; the OR only widens evidence.
+  draftCarriesSend: (sent, draft) =>
+    musePasteCarriesSend(sent, draft) || museAttachCarriesSend(sent, draft),
   draftIsOpaque: museDraftIsOpaque,
 };

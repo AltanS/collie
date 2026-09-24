@@ -755,6 +755,14 @@ else needed it: no username, hostname, home path, session id, credential-shaped
 string or UUID appears, and the cwd is the generic sandbox dir. Verified with
 an email/path/UUID/secret-shape sweep, which returns only the fabricated token.
 
+**The nine files added 2026-09-23 are hand-built, not captures** (#274 to #280):
+`muse--draft-blank-row`, `muse--tip-loop`, `muse--palette-exact`, `muse--palette-partial`,
+`muse--draft-image-chip`, `muse--draft-quoted-path`, `muse--tip-paste`,
+`muse--approval-network` and `muse--approval-network-moved`. Each starts from one of the 18
+captures above and swaps the box or dialog rows for the text the contributor saw live on Muse
+1.3.0 under Collie 1.12.1. The transcript, the rules and the statusline are the capture's bytes;
+the swapped rows reuse the styling of the rows they replace, so their colours are not evidence.
+
 **The headline: Muse's questions are digit-MOVES, not digit-answers, and its
 checkbox/review phases need pointer choreography.** A digit jumps the `›`
 pointer; `Enter` selects (single), toggles (checkbox), or submits (review).
@@ -777,14 +785,23 @@ signature.
 |---|---|---|
 | `muse--trust-prompt.txt` | Pre-session workspace trust: `Do you trust this workspace?`, `> 1  Trust and continue` / `  2  Quit` (two spaces, NO period — unlike every other Muse dialog), `Use Up/Down or 1/2, then Enter. Esc quits.` footer. Digit `1` live-probed: submits immediately | `blocked` |
 | `muse--fresh-idle.txt` | Post-trust idle: banner, Voice rule, bare `❯`, bottom rule, `muse-spark-1.3 · max · <cwd> · Launch overrides` statusline | `idle` |
+| `muse--palette-exact.txt` | Slash palette open under an exact command: `❯ /usage` + one suggestion row naming `/usage`. The read is the command alone, so verify passes and Enter submits it (#276) | `idle` |
+| `muse--palette-partial.txt` | Slash palette open under partial input: `❯ /us` + the `/usage` suggestion. The read stays polluted on purpose — Enter would accept the suggestion, so verifying the typed text would bless another command (#276) | `idle` |
 | `muse--draft-single.txt` | Stranded one-line draft on the `❯` row | `idle` |
 | `muse--draft-wrapped.txt` | Long draft soft-wrapped onto a 2-space-indented continuation row (breaks at the hyphen in `soft-wrap`) | `idle` |
 | `muse--draft-paste-token.txt` | A 3003-char single line collapsed to `[Pasted Content 3003 chars]` — per-LINE collapse (a 3300-char burst of short lines stayed literal), N in code points, threshold in (1000, 1200] | `idle` |
+| `muse--draft-blank-row.txt` | Two-paragraph draft: a blank row between the `❯` head and the continuation. The tail walk steps over it, so the prompt binds, the draft folds, and no card draws (#274) | `idle` |
+| `muse--draft-image-chip.txt` | An attached image path converted in place to `[Image #1]` (N in attach order). The read stays verbatim; the attach grammar maps it back for verify (#278) | `idle` |
+| `muse--draft-quoted-path.txt` | A non-image path double-quoted in place (`"/tmp/…"`). Same split: verbatim read, attach grammar verifies (#278) | `idle` |
 | `muse--working.txt` | Mid-turn: `◇ Double checking (2m 40s · esc to interrupt)` above the live composer | `working` |
 | `muse--done.txt` | Completed turn: `◆ Ran command …`, `◆` summary, `◆ Worked for 1m 06s`, idle composer holding the `Start a message with ! to run a shell command yourself` placeholder (grey, not a draft) | `idle` |
+| `muse--tip-loop.txt` | The same idle composer holding the rotated `/loop 10m <prompt> schedules a recurring prompt` placeholder tip — the tip rotates, and an unlisted one reads as a ghost draft (#274) | `idle` |
+| `muse--tip-paste.txt` | The same idle composer holding the `Paste an image with Ctrl+V — file paths and URLs work too` placeholder tip — the tip rotates per context (#278) | `idle` |
 | `muse--quoted-dialogs-bare.txt` | Model-printed facsimiles (approval + single-select + review) as the last reply above a bare box — the model paraphrased the review pointer (`│`), so no detector matches; nothing lifts and the reply stays allowed (#260) | `idle` |
 | `muse--approval-ls.txt` | `Would you like to run the following command?`, `$` + `Stage 1/1` + `Current argv:` subject, `› 1. Allow this stage once (y)` / `2. Always allow … (p)` / `3. Abort … (esc)`. No footer row. Digit `1` live-probed: approves alone | `blocked` |
 | `muse--approval-ls-moved.txt` | Same dialog after one `Down` (`›` on option 2) | `blocked` |
+| `muse--approval-network.txt` | `Would you like to allow this network access?`, `network: host:port scheme` + `full URL:` subject, four options with `(y)`/`(p)`/`(esc)` hints and a `host:port (scheme)` scope on 2–3. Digit `1` live-probed: approves once, fetch runs (#280) | `blocked` |
+| `muse--approval-network-moved.txt` | Same dialog with `›` on option 2, as seen live | `blocked` |
 | `muse--ask-color.txt` | Single-select: `Request user input` header, question, `› 1. Red (Recommended)` / `2.` / `3.` / auto-added `4. None of the above`, `Enter to select · ↑/↓ to move · Tab for an optional note · Esc to interrupt` footer | `blocked` |
 | `muse--ask-color-moved.txt` | Same dialog after one `Down` (`›` on option 2) | `blocked` |
 | `muse--ask-color-notes-open.txt` | After `Tab`: inline `Note (optional): ▌` row under the pointed option, footer unchanged. The lift must decline: the note owns the keyboard | `blocked` |

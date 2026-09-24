@@ -33,6 +33,8 @@ const allAgyFixtures = readdirSync(PANES_DIR)
 const PINNED = [
   "muse--approval-ls-moved.txt",
   "muse--approval-ls.txt",
+  "muse--approval-network-moved.txt",
+  "muse--approval-network.txt",
   "muse--ask-color-moved.txt",
   "muse--ask-color-notes-open.txt",
   "muse--ask-color-notes-typed.txt",
@@ -43,11 +45,18 @@ const PINNED = [
   "muse--ask-toppings-review.txt",
   "muse--ask-toppings.txt",
   "muse--done.txt",
+  "muse--draft-blank-row.txt",
+  "muse--draft-image-chip.txt",
   "muse--draft-paste-token.txt",
+  "muse--draft-quoted-path.txt",
   "muse--draft-single.txt",
   "muse--draft-wrapped.txt",
   "muse--fresh-idle.txt",
+  "muse--palette-exact.txt",
+  "muse--palette-partial.txt",
   "muse--quoted-dialogs-bare.txt",
+  "muse--tip-loop.txt",
+  "muse--tip-paste.txt",
   "muse--trust-prompt.txt",
   "muse--working.txt",
 ];
@@ -58,6 +67,8 @@ const PINNED = [
 const LIFTED = [
   "muse--approval-ls-moved.txt",
   "muse--approval-ls.txt",
+  "muse--approval-network-moved.txt",
+  "muse--approval-network.txt",
   "muse--ask-color-moved.txt",
   "muse--ask-color.txt",
   "muse--ask-drinks.txt",
@@ -134,6 +145,24 @@ describe("museBuildBlocks", () => {
         "Abort the entire command (esc)",
       ]);
       expect(prompt.prompt.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    }
+  });
+
+  it("lifts the network approval (both pointer positions) with digit-alone keys", () => {
+    for (const name of ["muse--approval-network.txt", "muse--approval-network-moved.txt"]) {
+      const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+      const prompt = museAdapter.buildBlocks(lines).find((b) => b.kind === "prompt-select");
+      expect(prompt?.kind, name).toBe("prompt-select");
+      if (prompt?.kind !== "prompt-select") continue;
+      expect(prompt.prompt.family).toBe("permission");
+      expect(prompt.prompt.question).toBe("Would you like to allow this network access?");
+      expect(prompt.prompt.options.map((o) => o.label)).toEqual([
+        "Yes, proceed (y)",
+        "Yes, don't ask again this session (p)  www.gt:443 (https)",
+        "Always allow this network destination  www.gt:443 (https)",
+        "No, and tell Muse Code what to do differently (esc)",
+      ]);
+      expect(prompt.prompt.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"], ["4"]]);
     }
   });
 
@@ -265,6 +294,16 @@ describe("muse: a lift shows its subject and needs a live dialog", () => {
     expect(above).toContain("Would you like to run the following command?");
     expect(above).toContain("$ ls -la /private/tmp/collie-muse-sandbox");
     expect(above).toContain('Current argv: ["ls","-la","/private/tmp/collie-muse-sandbox"]');
+    expect(above).not.toContain("Voice input");
+  });
+
+  it("a network approval keeps its question and destination on screen above the buttons", () => {
+    const blocks = museAdapter.buildBlocks(load("muse--approval-network.txt"));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    const above = rawText(blocks[0]!);
+    expect(above).toContain("Would you like to allow this network access?");
+    expect(above).toContain("network: www.gt:443 https");
+    expect(above).toContain("full URL: https://www.gt/sitio/faq.php#faq-47");
     expect(above).not.toContain("Voice input");
   });
 

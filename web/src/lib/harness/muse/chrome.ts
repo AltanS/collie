@@ -32,6 +32,7 @@ import {
   isContinuationRow,
   isNoteRow,
   locateTail,
+  parsePaletteRow,
   promptRowText,
   rstrip,
 } from "./markers";
@@ -135,6 +136,22 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
 
   const prompt = promptRowText(texts[tail.prompt]!);
   if (prompt === null) return null;
+  // Slash-command palette (#276): typing `/usage` opens a suggestion row INSIDE the draft run, and
+  // folding it in (`/usage /usage Show session usage`) can never verify. When the prompt itself
+  // starts with `/` and the run below it is exactly one suggestion row naming that same command,
+  // the draft is the prompt text alone — Enter submits the exact match (probed). Anything else
+  // keeps the legacy read and stalls safe: Enter on partial input accepts the highlighted
+  // suggestion (probed: `/us` ran `/usage`), so verifying the typed text there would bless a
+  // command the operator did not type.
+  const trimmed = prompt.trim();
+  if (trimmed.startsWith("/")) {
+    const run: string[] = [];
+    for (let i = tail.prompt + 1; i < tail.rule; i++) run.push(texts[i]!);
+    if (run.length === 1) {
+      const suggestion = parsePaletteRow(run[0]!);
+      if (suggestion !== null && suggestion.command === trimmed) return trimmed;
+    }
+  }
   const parts = [prompt.trim()];
   for (let i = tail.prompt + 1; i < tail.rule; i++) {
     const row = texts[i]!;

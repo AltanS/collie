@@ -107,7 +107,8 @@ export interface MuseTail {
  *
  *     (optional Voice rule)     (d) titled rule, tolerated absent
  *     ❯ <draft…>                (c) the prompt row — may be missing (approval)
- *       <continuations…>        (c) 0..MAX_DRAFT_ROWS indented rows below it
+ *       <continuations…>        (c) 0..MAX_DRAFT_ROWS indented rows below it, blank
+ *                                 paragraph breaks inside the draft included (#274)
  *     ─────────────────         (a) the bottom rule — the anchor
  *       <statusline>            (b) opaque status row, last non-blank
  *
@@ -123,9 +124,19 @@ export function locateTail(lines: StyledLine[]): MuseTail | null {
   const rule = status - 1;
   if (!isBottomRule(texts[rule]!)) return null;
 
-  // (c) Walk up over draft continuations to the prompt row.
+  // (c) Walk up over the draft run to the prompt row: continuations AND the blank rows a
+  // paragraph break leaves inside the box (#274). A blank used to stop the walk, so a healthy
+  // two-paragraph draft read as prompt null — "no composer" — which wedged the send path (verify
+  // reads null forever) and drew the unread-dialog card over the live box. The walk still stops
+  // at the first non-blank non-continuation row, so an approval option run resolves the same
+  // null at its subject rows, and the ❯ row itself always stops the walk before transcript.
   let i = rule - 1;
-  while (i >= 0 && rule - 1 - i < MAX_DRAFT_ROWS && isContinuationRow(texts[i]!)) i--;
+  while (
+    i >= 0 &&
+    rule - 1 - i < MAX_DRAFT_ROWS &&
+    (isContinuationRow(texts[i]!) || isBlank(texts[i]!))
+  )
+    i--;
   // A prompt row heading the run — or null when continuation-shaped rows (an approval option run)
   // or nothing sits above the rule. Either way the tail chrome below stays real; only the box is
   // absent.
@@ -180,6 +191,21 @@ export function parseSubmitRow(text: string): { n: number; checked: number } | n
   const m = SUBMIT_ROW.exec(rstrip(text).trimStart());
   if (!m) return null;
   return { n: Number(m[1]), checked: Number(m[2]) };
+}
+
+// The slash-command palette's suggestion row: 2-space indent (continuation-shaped, which is why it
+// pollutes the draft read), `/command`, a padded gap, the description (`  /usage  Show session
+// usage`). The gap is column padding, so two-or-more spaces. Unlike the option forms this is NOT
+// trimmed: the indent is structural. Only ever read under a slash-led prompt row (chrome.ts): the
+// palette opens for slash input alone, so that gate keeps a prose continuation starting with `/`
+// (a path) from parsing as a suggestion.
+const PALETTE_ROW = /^  (\/\S+)\s{2,}(\S.*)$/;
+
+/** Parse a palette suggestion row into its command, or null. */
+export function parsePaletteRow(text: string): { command: string } | null {
+  const m = PALETTE_ROW.exec(rstrip(text));
+  if (!m) return null;
+  return { command: m[1]! };
 }
 
 // A lifted menu's rows must be CONTIGUOUS screen rows. trailingMenuRows takes a numeric suffix,
@@ -310,6 +336,10 @@ export function trailingMenuRows<T extends { n: number }>(rows: T[]): T[] {
 // verify — typing replaces the tip, so the guard compares against real text either way.
 export const INPUT_PLACEHOLDERS: ReadonlySet<string> = new Set([
   "Start a message with ! to run a shell command yourself",
+  // Seen live 2026-09-23: the tip rotates (#274 addendum).
+  "/loop 10m <prompt> schedules a recurring prompt",
+  // Seen live 2026-09-23: the tip rotates per context (#278 addendum).
+  "Paste an image with Ctrl+V — file paths and URLs work too",
 ]);
 
 /**
