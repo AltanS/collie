@@ -151,6 +151,7 @@ describe("every slot is there in every state, at its fixed height", () => {
     ["phone downloading", { run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW }), stage: "installing", installingSince: NOW - 1_000, progress: { done: 5, total: 20, at: NOW } }],
     ["done", { run: run("done", { settledAt: NOW }), bundle: { id: "b", version: TO } }],
     ["stuck", { run: run("stuck", { recovery: "collie update --rollback" }) }],
+    ["failed", { run: run("idle", { reason: "the new version did not start here (exit 1): Killed: 9" }) }],
   ];
   for (const [label, over] of states) {
     it(label, () => {
@@ -245,6 +246,18 @@ describe("the controls each state offers", () => {
 
   it("Rolled back: Back, Try again and Show log", async () => {
     const { spies } = mount({ run: run("rolled-back", { reason: "gate" }) });
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(spies.tryAgain).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "Show log" }));
+    expect(spies.openUpdates).toHaveBeenCalledOnce();
+  });
+
+  it("Failed (#283): the reason, Back to the app, Try again and Show log", async () => {
+    const { spies } = mount({ run: run("idle", { reason: "the new version did not start here (exit 1): Killed: 9" }) });
+    expect(screen.getByRole("heading", { name: "The update failed on bluefin" })).toBeInTheDocument();
+    expect(screen.getByText("the new version did not start here (exit 1): Killed: 9")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Back to the app" }));
+    expect(spies.back).toHaveBeenCalledOnce();
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(spies.tryAgain).toHaveBeenCalledOnce();
     await userEvent.click(screen.getByRole("button", { name: "Show log" }));

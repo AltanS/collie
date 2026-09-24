@@ -897,6 +897,10 @@ const STATE_DIR_ENTRIES = [
   // Speech-to-text settings. Absent until the operator runs `collie stt setup`, and READ ONLY by
   // the bridge — `bridge/stt/config.ts` names this path and never writes it.
   "stt.json",
+  // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
+  // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
+  // only to hand the descriptor to the runner it spawns.
+  "update-runner.log",
   "update-state.json",
   // The detached updater's run record and its lock (M15/04). WRITTEN BY THE CLI, never by the
   // bridge — `bridge/update-run.ts` only reads them, so the scan below sees the names here and no

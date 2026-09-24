@@ -155,6 +155,7 @@ import { crewTurnStart, readUpdateRun, updateLockHeld } from "./update-run.ts";
 import {
   FreshPreflightGate,
   launchUpdateRunner,
+  openRunnerLog,
   parsePreflightReport,
   peerPreflightWire,
   peerRunWire,
@@ -847,7 +848,10 @@ const startDetachedUpdate = (a: { major: boolean; runId: string; toTag?: string 
     runId: a.runId,
     toTag: a.toTag ?? null,
   });
-  return launchUpdateRunner(plan, { cwd: rootDir, spawn: (command, options) => Bun.spawn(command, options) });
+  // THE RUNNER'S OWN OUTPUT IS KEPT (#283): a runner that dies before it writes a run record used to
+  // leave nothing behind at all.
+  const log = openRunnerLog(cfg.stateDir, `${new Date().toISOString()} ${plan.command.join(" ")}`);
+  return launchUpdateRunner(plan, { cwd: rootDir, spawn: (command, options) => Bun.spawn(command, options), log });
 };
 
 /**

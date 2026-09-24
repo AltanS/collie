@@ -394,7 +394,7 @@ function Footer({
             : tn("updateScreen.action.retryMany", view.retryNames.length)}
         </Button>
       );
-    } else if (view.phase === "rolled-back" || view.phase === "stopped") {
+    } else if (view.phase === "rolled-back" || view.phase === "stopped" || view.phase === "failed") {
       second = (
         <>
           <Button variant="outline" size="lg" className="flex-1" onClick={screen.tryAgain}>

@@ -30,6 +30,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+- **An update started from the phone on a Mac installs again.** The updater the phone starts inherits the service's install folder, so the new version's start-up check read the old version and gave up silently, and its build and restart would have used the old folder too. The same held on Linux without a systemd user manager, and on a Mac crew member following its lead. Each of those steps now finds its own folder, as a `collie update` typed in a terminal always did. An update that gives up before the switch now ends on "The update failed on <machine>" with the reason, instead of the panel closing, and the updater's own output is kept in `update-runner.log` in the state folder (ADR 0064, docs/upgrading.md). Reported by @ubuntudroid (#283).
+
 ## [1.13.0] - 2026-09-24
 
 ### Added

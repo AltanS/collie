@@ -215,6 +215,15 @@ const STATES: readonly StepState[] = [
     input: { run: run("interrupted", { peers: WAITING, reason: "the updater was killed during the build" }) },
   },
   {
+    label: "Failed before the switch",
+    input: {
+      run: run("idle", {
+        peers: WAITING,
+        reason: "the new version did not start here (killed by SIGKILL): zsh: killed  collie version",
+      }),
+    },
+  },
+  {
     label: "Lead stalled, the way out",
     input: { run: run("staging", { peers: WAITING, updatedAt: NOW - LEAD_STALLED_MS - 30_000 }) },
   },

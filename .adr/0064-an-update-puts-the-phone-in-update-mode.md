@@ -116,6 +116,16 @@ three end screens, each with "Back to the app".**
   claim has none to end. The old-bundle window can fail only a language bundle, the one lazy
   chunk, and a failed one falls back to English (`lib/i18n`). Deferred: a notification at Done,
   Stuck, or a member's question, so the phone can be put down; it is a feature of its own.
+- **A run that gives up before the switch is a fourth end, "failed", Stuck's sibling (#283,
+  2026-09-24).** The updater closes a staging it abandons as `idle` with a reason, because nothing
+  flipped and nothing restarted. The reducer read every `idle` as "no update", so in 1.13.0 the panel
+  vanished mid-run and the reason was never shown. Now the run this device's claim names, matched by
+  its run id and nothing looser, ends on *The update failed on <lead>*, with the reason as the note
+  and "Back to the app", "Try again" and "Show log" below it. It is step 2, because every abort
+  happens while the updater stages. An `idle` record with no reason, with no claim, or with another
+  run's id is still no update at all, so a device that did not start the run is never shown it.
+  The boxes are the same as every other state, and the end has its own key, so a close is kept
+  across a reload.
 - **Revisit** if a crew grows past six machines as a common case: the rows scroll inside their box
   past six, which keeps the panel still but hides a row. The answer then is a different panel, not a
   taller one.

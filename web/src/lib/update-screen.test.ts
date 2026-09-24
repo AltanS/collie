@@ -350,6 +350,43 @@ describe("the three ends, each with a way back and never a toast alone", () => {
   });
 });
 
+describe("a run this device started that gave up before anything moved (#283)", () => {
+  const REASON = "the new version did not start here (exit 1): Killed: 9";
+  const gaveUp = (over: Partial<UpdateRun> = {}) => run("idle", { reason: REASON, peers: WAITING, ...over });
+
+  it("is the failed end, with the reason as its note, instead of a panel that vanishes", () => {
+    const view = read({ run: gaveUp() });
+    expect(view).toMatchObject({ phase: "failed", step: 2, mode: "expanded", locked: false, dismissible: true, recovery: null });
+    expect(view.heading).toBe("The update failed on bluefin");
+    expect(view.subtitle).toBe(`Nothing was changed. bluefin still runs ${FROM}. The reason is below.`);
+    expect(view.note).toBe(REASON);
+    expect(view.rows[0]).toMatchObject({ key: "lead", status: "failed", word: "failed", versions: FROM, detail: null });
+    // A member it never reached, and this phone, were not touched.
+    expect(view.rows[1]).toMatchObject({ status: "skipped", word: "not touched" });
+    expect(view.rows.at(-1)).toMatchObject({ key: "phone", status: "skipped" });
+    // A key of its own, so "Back to the app" closes this end and only this one.
+    expect(view.end).toEqual({ kind: "failed", key: `run:run-1:${gaveUp().startedAt}:idle` });
+    expect(view.inFlight).toBeNull();
+    expect(view.holdsReload).toBe(false);
+  });
+
+  it("the same row count as every other state, so the panel does not move", () => {
+    expect(read({ run: gaveUp() }).rows).toHaveLength(read({ run: run("staging", { peers: WAITING }) }).rows.length);
+  });
+
+  it("is nothing on a device that did not start it, or for a run its claim does not name", () => {
+    expect(other({ run: gaveUp() })).toMatchObject({ phase: "none", mode: "hidden" });
+    expect(read({ run: gaveUp({ runId: "run-2" }) })).toMatchObject({ phase: "none", mode: "hidden" });
+    expect(read({ run: gaveUp({ runId: undefined }) })).toMatchObject({ phase: "none", mode: "hidden" });
+    expect(read({ run: gaveUp(), claim: { ...CLAIM, runId: null } })).toMatchObject({ phase: "none", mode: "hidden" });
+  });
+
+  it("an idle record with no reason is still no update at all", () => {
+    expect(read({ run: run("idle") })).toMatchObject({ phase: "none", mode: "hidden" });
+    expect(read({ run: run("idle", { reason: "" }) })).toMatchObject({ phase: "none", mode: "hidden" });
+  });
+});
+
 // ── THE WAY OUT OF A STALL ───────────────────────────────────────────────────────────────────────
 
 describe("Use the app anyway, only after a stall", () => {

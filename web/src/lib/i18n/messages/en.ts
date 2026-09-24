@@ -1305,6 +1305,8 @@ export const en = {
   "updateScreen.stuck.heading": "The update stopped on {lead}",
   "updateScreen.stuck.subtitle": "It did not finish or go back on its own. Terminal sessions keep running. Run this on {lead}:",
   "updateScreen.stopped.subtitle": "It stopped before it finished. Nothing was left half-installed. {lead} still runs {from}.",
+  "updateScreen.failed.heading": "The update failed on {lead}",
+  "updateScreen.failed.subtitle": "Nothing was changed. {lead} still runs {from}. The reason is below.",
   // A member that needs you, on step 5.
   "updateScreen.ask.quiet": "{name} has not answered for {elapsed}. You can skip it.",
   "updateScreen.ask.limited": "{name} waits out its once-an-hour limit. You can skip it.",
@@ -1322,6 +1324,7 @@ export const en = {
   "updateScreen.row.backOn": "back on {version}",
   "updateScreen.row.stuck": "stuck",
   "updateScreen.row.stopped": "stopped",
+  "updateScreen.row.failed": "failed",
   "updateScreen.row.skipped": "skipped",
   "updateScreen.row.stillOn": "Still on {version}.",
   "updateScreen.row.untouched": "not touched",

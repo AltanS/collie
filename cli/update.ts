@@ -39,6 +39,7 @@ import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter
 import {
   type BunReadiness,
   type Exec,
+  type ExecResult,
   type Files,
   type Net,
   type NetFailure,
@@ -886,7 +887,7 @@ const HOOKS_CHECK_TIMEOUT_MS = 5_000;
 function nudgeHooks(deps: UpdateDeps, binary: string): void {
   let r;
   try {
-    r = deps.exec.capture(binary, ["hooks", "status", "--check"], HOOKS_CHECK_TIMEOUT_MS);
+    r = deps.exec.capture(binary, ["hooks", "status", "--check"], HOOKS_CHECK_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
   } catch {
     // `capture` throws when the child cannot even start (ENOEXEC, EACCES) — spawn failure, silence.
     return;
@@ -1284,11 +1285,89 @@ function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): b
  *  hang the update with it. */
 const SMOKE_TIMEOUT_MS = 20_000;
 
-/** `<dir>/bin/collie version` must exit 0, name `version`, and answer within the bound. This is
- *  where a wrong architecture, a truncated payload, a Gatekeeper refusal and a hang all surface. */
-function smoke(deps: UpdateDeps, dir: string, version: string): boolean {
-  const r = deps.exec.capture(join(dir, "bin", "collie"), ["version"], SMOKE_TIMEOUT_MS);
-  return r.found && r.code === 0 && r.stdout.includes(version);
+/**
+ * What a child that is ANOTHER install's `collie` must not inherit from this process (#283).
+ *
+ * `bridge/root.ts` takes `COLLIE_PLUGIN_ROOT` before anything else, and this process may well carry
+ * one: the macOS LaunchAgent and the systemd unit both inject the service's root, and the phone's
+ * update runs as a child of that service. A candidate run under it reads the OLD root's version
+ * files and answers with the OLD version; a `build` run under it builds the old tree; a `restart`
+ * run under it writes the old root back into the unit. So the variable is REMOVED, never set: the
+ * child then finds its own root from its own path (`<dir>/bin/collie`, or the source it runs from),
+ * which is exactly what it does when an operator types `collie update` in a shell — the path that
+ * has always worked. Setting it to the child's directory would say the same for a smoke and bake
+ * `current` into the unit for a restart, which no interactive update ever wrote.
+ */
+const ITS_OWN_ROOT = { COLLIE_PLUGIN_ROOT: null } as const;
+
+/** The longest complaint a staging abort carries. It lands in the run record, which the phone
+ *  prints, so a binary's own wall of stderr does not get to blow up that screen. */
+const COMPLAINT_MAX = 160;
+
+function capComplaint(line: string): string {
+  return line.length <= COMPLAINT_MAX ? line : `${line.slice(0, COMPLAINT_MAX)}…`;
+}
+
+/** The last `n` non-empty lines of a stream, trimmed. */
+function tailLines(text: string, n: number): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+    .slice(-n);
+}
+
+/**
+ * What the smoke found. `why` is one short clause; `headline` is the one line of the child's own
+ * that goes into the record (its first complaint on stderr, else its last word on stdout); `tail` is
+ * its last lines, for the log and the terminal.
+ */
+export type SmokeResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly why: string; readonly headline?: string; readonly tail: readonly string[] };
+
+/**
+ * `<dir>/bin/collie version` must exit 0, name `version`, and answer within the bound. This is
+ * where a wrong architecture, a truncated payload, a Gatekeeper refusal and a hang all surface.
+ *
+ * Run with {@link ITS_OWN_ROOT}, or the candidate answers with this process's version (#283). A
+ * failure says why and keeps the child's last lines, because "did not run" with nothing after it is
+ * the report that took a macOS operator three attempts and a log dive to not explain.
+ */
+export function smoke(deps: Pick<UpdateDeps, "exec">, dir: string, version: string): SmokeResult {
+  let r: ExecResult;
+  try {
+    r = deps.exec.capture(join(dir, "bin", "collie"), ["version"], SMOKE_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
+  } catch (err) {
+    // `capture` throws when the child cannot even start (ENOEXEC, EACCES).
+    return { ok: false, why: `it could not be started: ${err instanceof Error ? err.message : String(err)}`, tail: [] };
+  }
+  if (!r.found) return { ok: false, why: "its binary is missing or not executable", tail: [] };
+  const tail = tailLines(`${r.stdout}\n${r.stderr}`, SMOKE_TAIL_LINES);
+  const headline = r.stderr.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? tailLines(r.stdout, 1)[0];
+  const failed = (why: string): SmokeResult =>
+    headline === undefined ? { ok: false, why, tail } : { ok: false, why, headline, tail };
+  if (r.signal !== undefined) return failed(`killed by ${r.signal}`);
+  if (r.code === 124) return failed(`no answer in ${Math.round(SMOKE_TIMEOUT_MS / 1000)}s`);
+  if (r.code !== 0) return failed(`exit ${r.code}`);
+  if (!r.stdout.includes(version)) {
+    const said = tailLines(r.stdout, 1)[0] ?? "nothing";
+    return { ok: false, why: `\`collie version\` answered ${said}, not ${version}`, tail: [] };
+  }
+  return { ok: true };
+}
+
+/** How many of the candidate's own lines a failed smoke keeps, for the log and the terminal. */
+const SMOKE_TAIL_LINES = 5;
+
+/**
+ * The run record's reason for a failed smoke, one line in the voice of the other aborts, capped as
+ * they are. The child's headline goes after the clause: on a Mac that is where a `dyld` or a
+ * Gatekeeper refusal names itself.
+ */
+export function smokeReason(result: Extract<SmokeResult, { ok: false }>): string {
+  const said = result.headline === undefined ? "" : `: ${result.headline}`;
+  return capComplaint(`the new version did not start here (${result.why})${said}`);
 }
 
 /**
@@ -1453,10 +1532,18 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
 
   // 9. Smoke BEFORE the flip: nothing the operator can see has moved yet.
   progress.note(`checking that ${target.version} runs here`);
-  if (!smoke(deps, laid, target.version)) {
+  const smoked = smoke(deps, laid, target.version);
+  if (!smoked.ok) {
     toTrash(deps, layout, target.version);
-    deps.io.err(`error: ${target.version} did not run here (\`collie version\` failed before the swap).`);
+    const reason = smokeReason(smoked);
+    // The child's own lines go to the staging log and the terminal (the runner log, on a phone's
+    // run): the reason in the record is one capped line, and this is the rest of it.
+    progress.note(reason);
+    for (const line of smoked.tail) progress.note(`  ${line}`);
+    deps.io.err(`error: ${target.version} did not run here (\`collie version\` failed before the swap: ${smoked.why}).`);
+    for (const line of smoked.tail) deps.io.err(`       | ${line}`);
     deps.io.err(`       Nothing was changed — this install is still ${installed ?? "where it was"}.`);
+    abandonStaging(deps, reason);
     return EXIT.FAIL;
   }
 
@@ -1520,12 +1607,15 @@ async function rollbackBinary(deps: UpdateDeps): Promise<number> {
   deps.io.out(`rolling back ${at} → ${target}…`);
   if (!flipCurrent(deps, layout, target)) return EXIT.FAIL;
   const restarted = await deps.restart();
-  if (restarted !== EXIT.OK || !smoke(deps, layout.currentLink, target)) {
+  const smoked: SmokeResult =
+    restarted === EXIT.OK ? smoke(deps, layout.currentLink, target) : { ok: false, why: "the restart failed", tail: [] };
+  if (!smoked.ok) {
     // Roll FORWARD again to where this started, and say so: a rollback that half-lands is worse than
     // one that never happened.
     flipCurrent(deps, layout, at);
     await deps.restart();
-    deps.io.err(`error: ${target} did not come up — rolled forward to ${at} again. Nothing was changed.`);
+    deps.io.err(`error: ${target} did not come up (${smoked.why}) — rolled forward to ${at} again. Nothing was changed.`);
+    for (const line of smoked.tail) deps.io.err(`       | ${line}`);
     return EXIT.FAIL;
   }
   deps.io.out(`✓ rolled back to ${target}`);
@@ -1760,7 +1850,16 @@ export function pruneVersions(
  * the stable name is the one that was switched.
  */
 function restartThroughCurrent(deps: UpdateDeps, layout: BinaryLayout): boolean {
-  const r = deps.exec.runIn(join(layout.currentLink, "bin", "collie"), ["restart"], layout.installRoot);
+  // ITS OWN ROOT (#283): under this process's `COLLIE_PLUGIN_ROOT` the new binary would take the OLD
+  // root for its own and write it back into the unit, which is the cosmetic flip this function exists
+  // to prevent, arriving by the environment instead.
+  const r = deps.exec.runIn(
+    join(layout.currentLink, "bin", "collie"),
+    ["restart"],
+    layout.installRoot,
+    undefined,
+    ITS_OWN_ROOT,
+  );
   return r.found && r.code === 0;
 }
 
@@ -1944,7 +2043,9 @@ async function updateStagedCheckout(
   // THE LONGEST STEP OF THE LONGEST WINDOW. Said out loud before it starts, because a minute of
   // silence here is the minute that produced "Still starting. The host has not reported the run yet."
   progress.note(`building ${target.tag} — this is the slow part`);
-  const built = deps.exec.runIn(bun.path, [join(at, "cli", "main.ts"), "build"], at, dirname(bun.path));
+  // ITS OWN ROOT (#283): the new source resolves its root from `COLLIE_PLUGIN_ROOT` first, so under
+  // this process's value it would build the RUNNING tree and leave the worktree without a binary.
+  const built = deps.exec.runIn(bun.path, [join(at, "cli", "main.ts"), "build"], at, dirname(bun.path), ITS_OWN_ROOT);
   if (!built.found || built.code !== 0) {
     deps.io.err(`error: update stopped at the BUILD stage — ${target.tag} did not build.`);
     deps.io.err("       `current` never moved: the running bridge and the served UI are unchanged.");
@@ -2339,14 +2440,7 @@ function handOff(
   // A handoff that did not happen is a FAILURE, printed and recorded. Without this branch the record
   // sits at `staging` until the staleness rule reads it as `interrupted` ten minutes later, the phone
   // shows a live-looking run for that whole window, and a retry is refused for it.
-  // The complaint text ends up in the abort reason, which the phone displays, so a manager's own
-  // wall of stderr does not get to blow up that screen. 160 characters is a headline, not a log.
-  const COMPLAINT_MAX = 160;
-  const capComplaint = (line: string | undefined): string | undefined => {
-    if (line === undefined) return undefined;
-    if (line.length <= COMPLAINT_MAX) return line;
-    return `${line.slice(0, COMPLAINT_MAX)}…`;
-  };
+  // The complaint text ends up in the abort reason, which the phone displays: {@link COMPLAINT_MAX}.
 
   const refused = (reason: string, said: string): number => {
     releaseLock(deps.files, deps.ctx.stateDir);
@@ -2371,7 +2465,8 @@ function handOff(
     if (client.code !== 0) {
       // The manager's own complaint, because `exit 1` on its own tells an operator nothing. Capped:
       // this text lands in the abort reason, which the phone displays, and a manager can be verbose.
-      const complaint = capComplaint(client.stderr.split("\n").map((l) => l.trim()).find((l) => l !== ""));
+      const first = client.stderr.split("\n").map((l) => l.trim()).find((l) => l !== "");
+      const complaint = first === undefined ? undefined : capComplaint(first);
       const why = client.timedOut ? `timeout after ${Math.round(HANDOFF_CONFIRM_MS / 1000)}s` : `exit ${client.code}`;
       const reason = `the ${plan.kind} handoff was refused (${why})${complaint === undefined ? "" : `: ${complaint}`}`;
       return refused(reason, `the update was staged, but ${reason}.`);

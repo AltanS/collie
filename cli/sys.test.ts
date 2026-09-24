@@ -10,6 +10,7 @@ import {
   resolveRunnableBun,
   resolveTool,
   toolCandidates,
+  withEnvOverride,
   withoutGitRelocators,
   withPathPrefix,
 } from "./sys.ts";
@@ -384,6 +385,62 @@ describe("realExec strips them from the child it actually starts", () => {
       // without the post-merge filter this one WOULD reach the child. No caller passes a git name
       // today; the invariant is not allowed to depend on that staying true.
       expect(r.stdout.trim()).toBe("[unset]");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a per-call override wins over the Exec's own environment (#283)", () => {
+  const dir = () => mkdtempSync(join(tmpdir(), "collie-envover-"));
+  const PRINT = 'echo "[${COLLIE_PLUGIN_ROOT:-unset}][${FOO:-unset}][${GIT_DIR:-unset}]"';
+
+  test("withEnvOverride: null removes, a string sets, nothing to apply allocates nothing", () => {
+    const env = { COLLIE_PLUGIN_ROOT: "/old", FOO: "exec" };
+    expect(withEnvOverride(env, undefined)).toBe(env);
+    expect(withEnvOverride(env, {})).toBe(env);
+    expect(withEnvOverride(env, { COLLIE_PLUGIN_ROOT: null, FOO: "over" })).toEqual({ FOO: "over" });
+    // The caller's object is never mutated: `ctx.env` is read by everything else.
+    expect(env.COLLIE_PLUGIN_ROOT).toBe("/old");
+  });
+
+  test("capture: envAdd < the Exec's env < envOverride, and the relocators are filtered after all three", () => {
+    const d = dir();
+    try {
+      const exec = realExec({ PATH: process.env.PATH ?? "", COLLIE_PLUGIN_ROOT: "/old", FOO: "exec" }, d);
+      // envAdd alone loses to the Exec's own env.
+      expect(exec.capture("sh", ["-c", PRINT], undefined, { FOO: "add" }).stdout.trim()).toBe("[/old][exec][unset]");
+      // The override beats both, removing one name and replacing the other.
+      expect(
+        exec.capture("sh", ["-c", PRINT], undefined, { FOO: "add" }, { COLLIE_PLUGIN_ROOT: null, FOO: "over" }).stdout.trim(),
+      ).toBe("[unset][over][unset]");
+      // And cannot put a git relocator back.
+      expect(exec.capture("sh", ["-c", PRINT], undefined, undefined, { GIT_DIR: "/elsewhere/.git" }).stdout.trim()).toBe(
+        "[/old][exec][unset]",
+      );
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  test("runIn takes the same override, and the same filter", () => {
+    const d = dir();
+    try {
+      const exec = realExec({ PATH: process.env.PATH ?? "", COLLIE_PLUGIN_ROOT: "/old" }, d);
+      const out = join(d, "out");
+      const r = exec.runIn("sh", ["-c", `${PRINT} > ${out}`], d, undefined, { COLLIE_PLUGIN_ROOT: null, GIT_DIR: "/x" });
+      expect(r.code).toBe(0);
+      expect(readFileSync(out, "utf8").trim()).toBe("[unset][unset][unset]");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  test("a child killed by a signal says which one", () => {
+    const d = dir();
+    try {
+      const r = realExec({ PATH: process.env.PATH ?? "" }, d).capture("sh", ["-c", "kill -KILL $$"]);
+      expect(r.signal).toBe("SIGKILL");
     } finally {
       rmSync(d, { recursive: true, force: true });
     }

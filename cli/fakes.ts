@@ -5,7 +5,7 @@ import type { CliContext, Environment } from "./context.ts";
 import { effectiveServePort, instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
 import type { LinkProbe, LinkWriter } from "./link.ts";
-import type { Exec, ExecResult, Files } from "./sys.ts";
+import type { EnvOverride, Exec, ExecResult, Files } from "./sys.ts";
 
 // Fakes for the two seams every verb reaches the world through (cli/sys.ts), shared by the verb
 // suites. TEST-ONLY: nothing under `cli/` that ships imports this, so it never reaches the compiled
@@ -38,6 +38,12 @@ export interface FakeExec extends Exec {
   ran: { command: string[]; cwd: string; env: Record<string, string>; logPath: string; timeoutMs: number }[];
   /** Every {@link Exec.capture} call that named a timeout — the call line and the bound it passed. */
   timeouts: { call: string; ms: number }[];
+  /**
+   * Every {@link Exec.capture} or {@link Exec.runIn} call that passed an `envOverride`: the call line
+   * as {@link FakeExec.calls} spells it, and the override. A call without one is not recorded, so a
+   * test can tell "passed nothing" from "passed an empty override" only by its absence here.
+   */
+  overrides: { call: string; env: EnvOverride }[];
 }
 
 /**
@@ -111,20 +117,30 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
     }
     return { code: 0, stdout: "", stderr: "", found: true };
   };
+  const overrides: { call: string; env: EnvOverride }[] = [];
+  const noteOverride = (env: EnvOverride | undefined): void => {
+    if (env !== undefined) overrides.push({ call: calls.at(-1) ?? "", env });
+  };
   return {
     calls,
     killed,
     spawned,
     ran,
     timeouts,
+    overrides,
     which: (tool) => (absent.has(tool) ? null : `/fake/${tool}`),
-    capture: (tool, args, timeoutMs, envAdd) => {
+    capture: (tool, args, timeoutMs, envAdd, envOverride) => {
       const r = answer(tool, args, undefined, undefined, envAdd);
+      noteOverride(envOverride);
       if (timeoutMs !== undefined) timeouts.push({ call: [tool, ...args].join(" "), ms: timeoutMs });
       return r;
     },
     inherit: (tool, args) => answer(tool, args),
-    runIn: (tool, args, cwd, pathPrefix) => answer(tool, args, cwd, pathPrefix),
+    runIn: (tool, args, cwd, pathPrefix, envOverride) => {
+      const r = answer(tool, args, cwd, pathPrefix);
+      noteOverride(envOverride);
+      return r;
+    },
     runLogged(command, opts) {
       const line = command.join(" ");
       calls.push(line);

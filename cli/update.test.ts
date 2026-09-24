@@ -42,6 +42,8 @@ import {
   cmdApplyUpdate,
   cmdUpdate,
   isManagedCheckout,
+  smoke,
+  smokeReason,
   majorVerdict,
   nextMajorRelease,
   parseApiTags,
@@ -1139,6 +1141,8 @@ interface BinaryOptions {
   downloadFailure?: { status: number | null; message: string };
   restart?: number;
   smoke?: { pre?: boolean; post?: boolean };
+  /** The laid candidate's whole answer to `version`, when a case needs more than a wrong word. */
+  smokeAnswer?: Partial<import("./sys.ts").ExecResult>;
   /** What `<root>/current/bin/collie version` answers — the post-flip check reads it. */
   currentSays?: string;
   env?: Record<string, string | undefined>;
@@ -1184,7 +1188,10 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
   const answers: NonNullable<Scripted["answers"]> = [
     // Not a git checkout: the whole point of this shape.
     [`git -C ${BROOT} rev-parse --show-prefix`, { code: 1 }],
-    [`/inst/versions/${NEW}/bin/collie version`, { stdout: over.smoke?.pre === false ? "boom\n" : `${NEW}\n` }],
+    [
+      `/inst/versions/${NEW}/bin/collie version`,
+      over.smokeAnswer ?? { stdout: over.smoke?.pre === false ? "boom\n" : `${NEW}\n` },
+    ],
     [
       `${INST}/current/bin/collie version`,
       { stdout: over.smoke?.post === false ? "boom\n" : `${over.currentSays ?? NEW}\n` },
@@ -2532,5 +2539,87 @@ describe("staging reports itself while it builds", () => {
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     expect(h.files.ops.join("\n")).not.toContain("update-staging-");
     expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("staging");
+  });
+});
+
+describe("#283: another install's collie runs under its own root", () => {
+  // The updater a phone starts is a child of the service, and the service carries
+  // `COLLIE_PLUGIN_ROOT` (the LaunchAgent and the unit both inject it). Every child that is a
+  // DIFFERENT install's `collie` must start without it, or it takes this install's root for its own.
+  const RUN = "r-283";
+  const OWN_ROOT = { COLLIE_PLUGIN_ROOT: null };
+  const overrideOf = (exec: FakeExec, suffix: string) => exec.overrides.find((o) => o.call.endsWith(suffix))?.env;
+
+  test("the smoke of the laid candidate removes the inherited variable", async () => {
+    const h = binaryHarness({ env: { COLLIE_PLUGIN_ROOT: BROOT } });
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.OK);
+    expect(overrideOf(h.exec, `/inst/versions/${NEW}/bin/collie version`)).toEqual(OWN_ROOT);
+  });
+
+  test("a candidate that answers with the wrong version ends the run idle, with the reason on it", async () => {
+    const h = binaryHarness({ smoke: { pre: false } });
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run?.state).toBe("idle");
+    expect(run?.runId).toBe(RUN);
+    expect(run?.reason).toBe("the new version did not start here (`collie version` answered boom, not 1.1.0)");
+    // The phone's progress lines carry the same sentence: the last thing the staging log says.
+    expect(h.files.read(stagingLogPath(STATE, RUN))).toContain("the new version did not start here");
+    expect(h.io.stderr.join("\n")).toContain("answered boom, not 1.1.0");
+  });
+
+  test("a candidate that exits non-zero keeps its exit code and its own last line", async () => {
+    const h = binaryHarness({
+      smokeAnswer: { code: 1, stderr: "dyld[123]: Library not loaded: /usr/lib/libfoo.dylib\n  Reason: tried: nothing\n" },
+    });
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run?.state).toBe("idle");
+    expect(run?.reason).toBe("the new version did not start here (exit 1): dyld[123]: Library not loaded: /usr/lib/libfoo.dylib");
+    // The whole tail goes to the staging log and the terminal; the record keeps the one line.
+    expect(h.files.read(stagingLogPath(STATE, RUN))).toContain("dyld[123]: Library not loaded");
+    expect(h.io.stderr.join("\n")).toContain("| dyld[123]: Library not loaded");
+  });
+
+  test("the reason is capped, like every other abort the phone prints", () => {
+    const reason = smokeReason({ ok: false, why: "exit 1", headline: "x".repeat(400), tail: [] });
+    expect(reason.length).toBeLessThanOrEqual(161);
+    expect(reason.endsWith("…")).toBe(true);
+  });
+
+  test("a signal and a hang are named as such, not as an exit code", () => {
+    const killed = smoke(
+      { exec: fakeExec({ answers: [["/c/bin/collie version", { code: 124, signal: "SIGKILL" }]] }) },
+      "/c",
+      NEW,
+    );
+    expect(killed.ok || smokeReason(killed)).toBe("the new version did not start here (killed by SIGKILL)");
+    const hung = smoke({ exec: fakeExec({ answers: [["/c/bin/collie version", { code: 124 }]] }) }, "/c", NEW);
+    expect(hung.ok || smokeReason(hung)).toBe("the new version did not start here (no answer in 20s)");
+  });
+
+  test("the rollback's smoke removes it too", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], currentSays: "0.9.0", env: { COLLIE_PLUGIN_ROOT: BROOT } });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(overrideOf(h.exec, `${INST}/current/bin/collie version`)).toEqual(OWN_ROOT);
+  });
+
+  test("the runner's restart and hooks check through `current` remove it", async () => {
+    const h = binaryHarness({ env: { COLLIE_PLUGIN_ROOT: BROOT } });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(overrideOf(h.exec, `${INST}/current/bin/collie hooks status --check`)).toEqual(OWN_ROOT);
+    const staged = legacyClone();
+    staged.files.write(`${WT("v0.32.0")}/.collie-build`, JSON.stringify({ version: "0.32.0", commit: "b2peeled" }));
+    staged.files.entries.set(`${CURRENT}/bin/collie`, { text: "NEW BINARY" });
+    expect(
+      await runner(staged, { to: "v0.32.0", from: null, version: "0.32.0", commit: "b2peeled", kind: "checkout" }),
+    ).toBe(EXIT.OK);
+    expect(overrideOf(staged.exec, `${CURRENT}/bin/collie restart`)).toEqual(OWN_ROOT);
+  });
+
+  test("the staged build of the new source removes it, or it would build the running tree", async () => {
+    const h = legacyClone();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(overrideOf(h.exec, `${WT("v0.32.0")}/cli/main.ts build`)).toEqual(OWN_ROOT);
   });
 });

@@ -93,9 +93,12 @@ let lead: "behind" | "current" = "behind";
 let crewLegs: UpdatePeerLeg[] | null = null;
 /** When the lead stamped that run settled, or null while a leg is open. */
 let crewSettledAt: number | null = null;
+/** The run id the fake run carries, and so the one this device's claim takes off the 202. Unset,
+ *  the run has none, which is what every case before #283 walked. */
+let fakeRunId: string | undefined;
 
 function runAt(state: UpdateRunState): UpdateRun {
-  return {
+  const run: UpdateRun = {
     schema: 1,
     state,
     from: FROM,
@@ -105,6 +108,8 @@ function runAt(state: UpdateRunState): UpdateRun {
     pid: 4242,
     attempt: 0,
   };
+  if (fakeRunId !== undefined) run.runId = fakeRunId;
+  return run;
 }
 
 /** Walk the run to its next state. The phone picks it up on its next poll of either door. */
@@ -135,6 +140,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   lead = "behind";
   crewLegs = null;
   crewSettledAt = null;
+  fakeRunId = undefined;
 
   await installBridge(page);
   await installReloadCounter(page);
@@ -388,6 +394,52 @@ test("update mode locks the app for a run this device started, reloads once at s
   await expect.poll(() => appIsInert(page), { timeout: 10_000 }).toBe(false);
 
   // And a later load does not announce it again.
+  await page.reload();
+  await expect(page.getByRole("button", { name: UPDATE_ACTION })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("a run this device started that gives up before anything moved ends on its failed screen, with the reason (#283)", async ({
+  page,
+}) => {
+  // The 1.13.0 shape of #283: the updater closed its staging as `idle` with a reason, the reducer
+  // read `idle` as "no update at all", and the panel simply vanished mid-run. The reason was on the
+  // record the whole time.
+  const reason = "the new version did not start here (killed by SIGKILL): zsh: killed  collie version";
+  fakeRunId = "run-e2e-283";
+  await page.goto("/settings/updates");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+
+  await page.getByRole("button", { name: UPDATE_ACTION }).click();
+  const panel = page.getByRole("dialog");
+  await expect(panel.getByRole("heading", { name: fill(en["updateScreen.ready.heading"], { version: TO }) })).toBeVisible();
+  const base = await geometry(page);
+  await page.getByRole("button", { name: CONFIRM }).click();
+  await expect(panel.getByText(LOCK)).toBeVisible({ timeout: 15_000 });
+
+  step("staging");
+  await expect(panel.getByRole("heading", { name: fill(en["updateScreen.build.heading"], { version: TO, lead: "bluefin" }) })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // The updater gives up: nothing moved, so the record goes back to `idle`, carrying the reason.
+  currentRun = { ...runAt("idle"), reason };
+  const failed = page.getByRole("dialog", { name: fill(en["updateScreen.failed.heading"], { lead: "bluefin" }) });
+  await expect(failed).toBeVisible({ timeout: 15_000 });
+  await expect(failed.getByText(reason)).toBeVisible();
+  await expect(failed.getByText(fill(en["updateScreen.failed.subtitle"], { lead: "bluefin", from: FROM }))).toBeVisible();
+  // Its boxes are where Ready to start put them (DESIGN.md §6).
+  expectSame("failed", await geometry(page), base);
+  expect(await spills(page), "failed: nothing spills out of its box").toEqual([]);
+  // Nothing is in flight any more: the lock line is gone, and there is a way back.
+  await expect(failed.getByText(LOCK)).toHaveCount(0);
+  await expect(failed.getByRole("button", { name: en["updateScreen.action.tryAgain"] })).toBeVisible();
+
+  await failed.getByRole("button", { name: BACK }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect.poll(() => appIsInert(page), { timeout: 10_000 }).toBe(false);
+
+  // Closed is closed: the same record on a later load does not bring the screen back.
   await page.reload();
   await expect(page.getByRole("button", { name: UPDATE_ACTION })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("dialog")).toHaveCount(0);

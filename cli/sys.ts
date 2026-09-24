@@ -40,6 +40,34 @@ export interface ExecResult {
   stderr: string;
   /** False when the tool is not installed anywhere we look — distinct from "ran and failed". */
   found: boolean;
+  /**
+   * The signal that ended the child, when one did and the bound had not expired (`SIGKILL` from a
+   * code-signing refusal, say). Absent otherwise. `code` still reads 124 then, as it always has.
+   */
+  signal?: string;
+}
+
+/**
+ * Per-call changes to a child's environment that WIN over the {@link Exec}'s own: a string sets the
+ * name, `null` removes it. See {@link Exec.capture} for where this sits in the precedence.
+ */
+export type EnvOverride = Readonly<Record<string, string | null>>;
+
+/**
+ * `env` with {@link EnvOverride} applied: `null` deletes, a string sets. `env` itself when there is
+ * nothing to apply, so the usual call allocates nothing. Exported for `cli/sys.test.ts`.
+ */
+export function withEnvOverride(env: Environment, over: EnvOverride | undefined): Environment {
+  if (over === undefined) return env;
+  const names = Object.keys(over);
+  if (names.length === 0) return env;
+  const out: Environment = { ...env };
+  for (const name of names) {
+    const value = over[name];
+    if (value === null || value === undefined) delete out[name];
+    else out[name] = value;
+  }
+  return out;
 }
 
 const NOT_FOUND: ExecResult = { code: 127, stdout: "", stderr: "", found: false };
@@ -62,17 +90,27 @@ export interface Exec {
    * killed and the result reads as an ordinary failure (code 124, the coreutils `timeout`
    * convention) — a caller probing a binary it does not yet trust must never hang with it.
    *
-   * `envAdd` layers UNDER this `Exec`'s own environment — a name already set there is never
-   * overridden — and applies to this one call only; the process's real environment is never
-   * touched. It exists for a probe that needs a plausible default for a name the caller's env may
-   * simply lack (`systemdUserReachable` in `cli/lifecycle.ts`, `XDG_RUNTIME_DIR`), not for a caller
-   * that wants to force a value — that belongs in `Exec`'s own env instead.
+   * THE CHILD'S ENVIRONMENT, lowest to highest precedence, for this one call only (the process's
+   * real environment is never touched):
+   *
+   *   1. `envAdd`, a default. It layers UNDER this `Exec`'s own environment, so a name already set
+   *      there is never overridden. It exists for a probe that needs a plausible value for a name
+   *      the caller's env may simply lack (`systemdUserReachable` in `cli/lifecycle.ts`,
+   *      `XDG_RUNTIME_DIR`).
+   *   2. This `Exec`'s own environment.
+   *   3. `envOverride`, which WINS: a string replaces the name, `null` removes it. It exists for a
+   *      child that must not see what this process inherited, the case being ANOTHER install's
+   *      `collie`. That binary resolves its own root from `COLLIE_PLUGIN_ROOT` first
+   *      (`bridge/root.ts`), so a candidate smoke-tested under this process's value reports this
+   *      process's version, not its own (#283).
+   *   4. Then the git relocators are filtered out, whatever 1 to 3 said ({@link withoutGitRelocators}).
    */
   capture(
     tool: string,
     args: readonly string[],
     timeoutMs?: number,
     envAdd?: Readonly<Record<string, string>>,
+    envOverride?: EnvOverride,
   ): ExecResult;
   /** Run `tool` with our own stdio — for `journalctl`, whose output IS the result. */
   inherit(tool: string, args: readonly string[]): ExecResult;
@@ -86,8 +124,11 @@ export interface Exec {
    * cli/main.ts build` spawns `bun install` and Vite — so running the absolute path alone would
    * hand the grandchild the very lookup failure the resolution just repaired. `scripts/collie-ctl.sh`
    * carries the same prepend for the same reason. Already-present directories are not re-added.
+   *
+   * `envOverride` wins over this `Exec`'s own environment exactly as it does for
+   * {@link Exec.capture}, and the git relocators stay filtered after it.
    */
-  runIn(tool: string, args: readonly string[], cwd: string, pathPrefix?: string): ExecResult;
+  runIn(tool: string, args: readonly string[], cwd: string, pathPrefix?: string, envOverride?: EnvOverride): ExecResult;
   /**
    * Run `command` in `cwd` synchronously with a bound, appending both streams to `logPath`.
    *
@@ -391,14 +432,17 @@ export function realExec(rawEnv: Environment, home: string): Exec {
   const resolve = (tool: string): string | null => findTool(tool, env, home);
   return {
     which: resolve,
-    capture(tool, args, timeoutMs, envAdd) {
+    capture(tool, args, timeoutMs, envAdd, envOverride) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
-      // `env` (this Exec's own) is spread LAST so a name it already carries always wins over the
-      // caller-supplied default — see the seam's doc comment. Filtered AFTER the merge, not only in
-      // the closure: `env` no longer carries a relocator, so `envAdd` is the one way one could come
-      // back, and "every child starts without them" has to hold without trusting a caller.
-      const spawnEnv = withoutGitRelocators(envAdd === undefined ? env : { ...envAdd, ...env });
+      // `env` (this Exec's own) is spread OVER `envAdd`, so a name it already carries wins over the
+      // caller-supplied default, and `envOverride` goes over both — see the seam's doc comment.
+      // Filtered AFTER the merge, not only in the closure: `env` no longer carries a relocator, so a
+      // caller's layer is the one way one could come back, and "every child starts without them"
+      // has to hold without trusting a caller.
+      const spawnEnv = withoutGitRelocators(
+        withEnvOverride(envAdd === undefined ? env : { ...envAdd, ...env }, envOverride),
+      );
       const r = Bun.spawnSync([bin, ...args], {
         env: spawnEnv,
         timeout: timeoutMs,
@@ -406,13 +450,15 @@ export function realExec(rawEnv: Environment, home: string): Exec {
         killSignal: "SIGKILL",
       });
       const timedOut = r.exitedDueToTimeout === true;
-      return {
+      const result: ExecResult = {
         // Check Bun's timeout fact before its exit code: a timed-out child has no successful answer.
         code: timedOut ? 124 : (r.exitCode ?? 124),
         stdout: r.stdout.toString(),
         stderr: r.stderr.toString(),
         found: true,
       };
+      if (!timedOut && r.exitCode === null && r.signalCode) result.signal = r.signalCode;
+      return result;
     },
     inherit(tool, args) {
       const bin = resolve(tool);
@@ -424,12 +470,12 @@ export function realExec(rawEnv: Environment, home: string): Exec {
       });
       return { code: r.exitCode, stdout: "", stderr: "", found: true };
     },
-    runIn(tool, args, cwd, pathPrefix) {
+    runIn(tool, args, cwd, pathPrefix, envOverride) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
       const r = Bun.spawnSync([bin, ...args], {
         cwd,
-        env: withPathPrefix(env, pathPrefix),
+        env: withoutGitRelocators(withEnvOverride(withPathPrefix(env, pathPrefix), envOverride)),
         stdout: "inherit",
         stderr: "inherit",
       });

@@ -20,7 +20,8 @@ import type { UpdateCrewMember, UpdatePeerLeg, UpdatePeerLegState, UpdateRun } f
 // run produced. That rule stands. What 0064 changes is what the one reading says.
 //
 // ── THE MODE ENDS IN THREE PLACES, AND NEVER ON A TOAST ─────────────────────
-// Done, Rolled back and Stuck (a run that stopped reads as Stuck's sibling, "stopped"). Each is a
+// Done, Rolled back and Stuck (a run that stopped reads as Stuck's sibling, "stopped", and so does a
+// run this device started that gave up before anything moved, "failed"). Each is a
 // screen with "Back to the app", and the app stays locked until the phone's own step is over. The
 // old sheet closed itself the moment the lead said `done` while the members still waited, and fired
 // "Crew updated" over them: the lead's run is not the update. So `done` on the lead is step 5 while a
@@ -101,7 +102,8 @@ export type UpdatePhase =
   | "done"
   | "rolled-back"
   | "stuck"
-  | "stopped";
+  | "stopped"
+  | "failed";
 
 /** The step each phase is, 1 to 7. The two failed ends keep the step they stopped on. */
 const STEP_OF = {
@@ -117,6 +119,8 @@ const STEP_OF = {
   "rolled-back": 4,
   stuck: 3,
   stopped: 2,
+  // Every abort the updater writes happens while it stages, which is step 2.
+  failed: 2,
 } satisfies Record<UpdatePhase, number>;
 
 const IN_FLIGHT: ReadonlySet<UpdatePhase> = new Set<UpdatePhase>([
@@ -135,7 +139,7 @@ export function phaseInFlight(phase: UpdatePhase): boolean {
 
 /** The ends that did not arrive. */
 export function phaseFailed(phase: UpdatePhase): boolean {
-  return phase === "rolled-back" || phase === "stuck" || phase === "stopped";
+  return phase === "rolled-back" || phase === "stuck" || phase === "stopped" || phase === "failed";
 }
 
 /**
@@ -560,8 +564,28 @@ export function updateScreenView(input: UpdateScreenInput): UpdateScreenView {
   if (crewOnly !== null && (crewLive(crewOnly) || (input.startedHere && input.claim?.peersOnly === true))) {
     return crewOnlyView(input, crewOnly);
   }
+  if (run !== undefined && state === "idle" && failedHere(input, run)) return leadView(input, run);
   if (run === undefined || state === "idle") return noneView();
   return leadView(input, run);
+}
+
+/**
+ * THIS DEVICE'S RUN, GIVEN UP BEFORE ANYTHING MOVED (#283). The updater closes a staging it gives up
+ * on as `idle` with a reason, because nothing was flipped and nothing restarted. Read as any other
+ * `idle` that was nothing at all: the panel vanished mid-run and the reason was never shown. So the
+ * run this device's claim names, by its run id and only by it, ends on the "failed" screen instead.
+ * An `idle` record with no claim, another device's claim or no reason stays what it was.
+ */
+function failedHere(input: UpdateScreenInput, run: UpdateRun): boolean {
+  const claim = input.claim ?? null;
+  return (
+    input.startedHere &&
+    claim !== null &&
+    !claim.peersOnly &&
+    claim.runId !== null &&
+    run.runId === claim.runId &&
+    (run.reason ?? "") !== ""
+  );
 }
 
 /** A crew-only run with a leg still moving, or none yet in the beat after this device's confirm. */
@@ -628,7 +652,8 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
     !(claim !== null && claim.peersOnly) &&
     !(claim?.runId != null && run.runId !== undefined && run.runId !== claim.runId);
 
-  let phase = leadPhaseOf(run.state);
+  // An `idle` record reaches here only through {@link failedHere}.
+  let phase: UpdatePhase = run.state === "idle" ? "failed" : leadPhaseOf(run.state);
   const membersMoving = settledAt === null && legs.some((leg) => legMoving(leg) && !skipped.has(leg.name));
   let phone: PhoneState = { kind: "waiting" };
   if (phase === "done") {
@@ -675,7 +700,7 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
   const managed = managedNames(legs);
   const retryNames =
     phase === "done" ? rows.filter((row) => row.key.startsWith("peer:") && behindRow(row, managed)).map((row) => row.name) : [];
-  const words = copyOf({ phase, lead, target, from, rows, phone, managed });
+  const words = copyOf({ phase, lead, target, from, rows, phone, managed, reason: run.reason ?? null });
 
   return {
     mode,
@@ -754,6 +779,9 @@ function leadRow(run: UpdateRun, phase: UpdatePhase, lead: string, target: strin
       return { ...base, status: "failed", dim: false, word: t("updateScreen.row.stuck"), versions: run.from, detail: run.reason ?? null };
     case "stopped":
       return { ...base, status: "failed", dim: false, word: t("updateScreen.row.stopped"), versions: run.from, detail: run.reason ?? null };
+    case "failed":
+      // The reason is the note's, two lines under the rows; this line would cut it at one.
+      return { ...base, status: "failed", dim: false, word: t("updateScreen.row.failed"), versions: run.from, detail: null };
     default:
       return { ...base, status: "ok", dim: false, word: t("updateScreen.row.on", { version: target ?? unknownVersion() }), versions: target, detail: null };
   }
@@ -775,6 +803,8 @@ function copyOf(a: {
   rows: readonly UpdateScreenRow[];
   phone: PhoneState;
   managed: ReadonlySet<string>;
+  /** The run record's reason, which the "failed" end prints as its note. */
+  reason: string | null;
 }): PhaseCopy {
   const version = a.target ?? unknownVersion();
   const from = a.from ?? unknownVersion();
@@ -804,6 +834,8 @@ function copyOf(a: {
       return { heading: t("updateScreen.stuck.heading", { lead: a.lead }), subtitle: t("updateScreen.stuck.subtitle", { lead: a.lead }), note: null };
     case "stopped":
       return { heading: t("updateScreen.stuck.heading", { lead: a.lead }), subtitle: t("updateScreen.stopped.subtitle", { lead: a.lead, from }), note: null };
+    case "failed":
+      return { heading: t("updateScreen.failed.heading", { lead: a.lead }), subtitle: t("updateScreen.failed.subtitle", { lead: a.lead, from }), note: a.reason };
     case "ready":
     case "none":
       return { heading: "", subtitle: "", note: null };
@@ -966,7 +998,7 @@ function provisionalView(input: UpdateScreenInput, claim: UpdateClaim): UpdateSc
     ...claim.members.map((name) => readingRow(`peer:${name}`, name)),
     readingRow("phone", t("updateScreen.phone"), { phone: true }),
   ];
-  const words = copyOf({ phase, lead, target: claim.target, from: null, rows, phone: { kind: "waiting" }, managed: new Set() });
+  const words = copyOf({ phase, lead, target: claim.target, from: null, rows, phone: { kind: "waiting" }, managed: new Set(), reason: null });
   return {
     ...noneView(),
     mode: "expanded",
