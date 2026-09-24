@@ -844,6 +844,49 @@ describe("OpencodeTranscriptSource — both generations side by side", () => {
   });
 });
 
+// OpenCode 1.18.x already ships an EMPTY `session_message` table (its foreign key points at
+// `session`) but no `session_v2` (schema read from a live 1.18.32 install, 2026-09-24). The V1 path
+// must still serve that database; the V2 table's presence alone must not flip the store.
+describe("OpencodeTranscriptSource — an OpenCode 1.18 database", () => {
+  const V1_18_SCHEMA = [
+    ...V1_SCHEMA,
+    "create table session_message (id text primary key, session_id text not null references session(id), type text not null, seq integer not null, time_created integer not null, time_updated integer not null, data text not null)",
+  ] as const;
+
+  test("reads the V1 tables, stat, load and probe alike", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-118-")));
+    const db = openDb(join(base, "opencode.db"), V1_18_SCHEMA);
+    db.run("insert into session values (?, null, 'session', 1, 100)", [SID]);
+    db.run("insert into message values ('msg_a', ?, 10, 10, ?)", [SID, JSON.stringify(userData(10))]);
+    db.run("insert into message values ('msg_b', ?, 20, 30, ?)", [
+      SID,
+      JSON.stringify({
+        ...assistantData(20),
+        providerID: "anthropic",
+        modelID: "claude-sonnet-5",
+        tokens: { input: 5, cache: { read: 400, write: 0 } },
+      }),
+    ]);
+    db.run("insert into part values ('prt_a1', 'msg_a', ?, 10, 10, ?)", [SID, JSON.stringify(textPart("hi"))]);
+    db.run("insert into part values ('prt_b1', 'msg_b', ?, 20, 25, ?)", [SID, JSON.stringify(textPart("hello"))]);
+    db.close();
+
+    const journal = opencodeJournal(base);
+    const key = (await journal.source.resolve({ kind: "id", value: SID }))!;
+    expect(key).toBe(`${join(base, "opencode.db")}#${SID}`);
+    expect(await journal.source.stat(key)).toEqual({ size: 4, mtimeMs: 30 });
+    const entries = parseOpencodeTranscript((await journal.source.load(key)).text);
+    expect(entries.map((e) => [e.uuid, e.role])).toEqual([
+      ["msg_a", "user"],
+      ["msg_b", "assistant"],
+    ]);
+    const probe = await journal.cacheProbe?.({ kind: "id", value: SID });
+    expect(probe?.cacheReadTokens).toBe(400);
+    expect(probe?.model).toBe("anthropic:claude-sonnet-5");
+    await rm(base, { recursive: true, force: true });
+  });
+});
+
 // A session can exist in BOTH stores: the migration copied it into `session_v2`, and it may have kept
 // running in V1 afterwards (measured live 2026-09-23: 30 ids in both, one with newer V1 rows). The
 // newer store wins; a tie reads as V2.
