@@ -33,10 +33,13 @@
 //      tap. Cost: two consecutive byte-identical dialogs share one signature, so a tap on the first
 //      may land on the second — the same command/answer the user consented to. Same bargain on all
 //      four dialogs.
-//   2. The palette, `/resume` picker, `/tasks` drawer and `/workflows` room are unmeasured (outside
+//   2. The `/resume` picker, `/tasks` drawer and `/workflows` room are unmeasured (outside
 //      the dialog notes' scope): if one leaves a live ❯ below it, the pre-flight types into it and type-then-verify
 //      withholds the submit key (a stall, not a misfire — the backstop holds where the pre-flight
-//      cannot see). See composerReady.
+//      cannot see). See composerReady. The slash palette is measured narrowly (#276): one
+//      suggestion row naming the exact slash-led prompt reads as the prompt alone (Enter submits
+//      the exact match); partial or multi-row palettes keep the stalling read, because Enter
+//      there accepts the suggestion rather than submitting the typed text.
 //   3. An open `Note (optional):` row declines its dialog to raw (it owns the keyboard — probed) and
 //      fails the composer gate, so the phone shows the mirror and the keys pad, never buttons.
 

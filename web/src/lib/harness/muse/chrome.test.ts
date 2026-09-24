@@ -42,6 +42,18 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     );
   });
 
+  it("reads a slash command alone when the palette names that same command (#276)", () => {
+    expect(extractInputDraft(lines("muse--palette-exact.txt"))).toBe("/usage");
+  });
+
+  it("keeps the legacy polluted read on partial palette input, stalling safe (#276)", () => {
+    // `/us` + Enter accepts the highlighted suggestion (probed: ran `/usage`), so verifying
+    // the typed text would bless a command the operator did not type. The mismatch stalls.
+    expect(extractInputDraft(lines("muse--palette-partial.txt"))).toBe(
+      "/us /usage  Show session usage",
+    );
+  });
+
   it("returns null for an empty box, the placeholder tip, and dialogs", () => {
     expect(extractInputDraft(lines("muse--fresh-idle.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--working.txt"))).toBeNull();
