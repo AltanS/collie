@@ -19,6 +19,11 @@
 //     generic match verifies first) keep failing here, never passing.
 //   * Anything outside the grammar (an image extension outside the set, chips mixed with paste
 //     tokens) fails here and stalls exactly as today.
+//
+// One residual hole, the same kind as the paste token's: a chip carries no content, so a stale
+// `[Image #1]` from another image would vouch for a send of one bare image path that never landed.
+// It needs the pre-clear sweep to have been skipped (the forced send) AND every typed key lost; a
+// typed path that did land adds a second chip, and the count check refuses that.
 
 /** What counts as an image path in the sent text, by extension (case-insensitive). Static on
  *  purpose: the adapter is offline-pure and cannot see the server-published UploadCapability, and

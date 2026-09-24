@@ -26,8 +26,9 @@
 //     options. Digit alone (family `trust`).
 //
 // Registering this adapter flips Muse panes off one-shot sends onto the guarded reply path:
-// type-then-verify against `extractInputDraft`, with the paste-token supplement (paste.ts) for the
-// per-line `[Pasted Content N chars]` collapse. Three accepted tradeoffs are stated here because
+// type-then-verify against `extractInputDraft`, with two supplements: the paste token (paste.ts)
+// for the per-line `[Pasted Content N chars]` collapse, and the attach chips and quoted paths
+// (attach.ts) for a typed path Muse rewrites in place. Three accepted tradeoffs are stated here because
 // they are load-bearing for review:
 //
 //   1. Signatures run question → dialog end with NO transcript lookback. The transcript rows above
@@ -48,6 +49,7 @@
 import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { detectApprovalRegion } from "./approval";
+import { museAttachCarriesSend } from "./attach";
 import { detectCheckboxRegion } from "./checkbox";
 import {
   composerPrompt,
@@ -57,7 +59,6 @@ import {
   stripChrome,
 } from "./chrome";
 import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, rstrip } from "./markers";
-import { museAttachCarriesSend } from "./attach";
 import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
