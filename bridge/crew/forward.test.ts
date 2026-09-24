@@ -189,7 +189,7 @@ describe("which routes cross a link", () => {
     const tab = server.match(/^const TAB_ACTION_ROUTE = (.+);$/m)![1]!;
     const alternation = /\(([a-z]+(?:\|[a-z]+)+)\)/;
     const paneActions = pane.match(alternation)![1]!.split("|").toSorted();
-    expect(paneActions).toEqual(["close", "focus", "history", "keys", "rename", "reply", "upload"]);
+    expect(paneActions).toEqual(["close", "fit", "focus", "history", "keys", "rename", "reply", "unfit", "upload"]);
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
@@ -601,6 +601,8 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
       "/api/pane/w1:p1/close",
       "/api/pane/w1:p1/rename",
       "/api/pane/w1:p1/focus",
+      "/api/pane/w1:p1/fit",
+      "/api/pane/w1:p1/unfit",
       "/api/pane/w1:p1/upload",
       "/api/tab",
       "/api/tab/w1/rename",

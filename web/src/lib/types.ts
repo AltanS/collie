@@ -837,6 +837,17 @@ export type ActionResponse =
       detail?: ApiErrorDetail;
     };
 
+/**
+ * The answer to `POST /api/pane/:id/fit` — the "Fit to phone" lease (ADR 0049).
+ *
+ * On success the bridge echoes the size it leased and how long the lease lives without a renewal.
+ * `lapseMs` is informational: the phone renews on its own fixed cadence, well inside it, and never
+ * computes a deadline from it. A refusal is the ordinary `ActionResponse` failure shape.
+ */
+export type FitResponse =
+  | { ok: true; cols: number; rows: number; lapseMs: number }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+
 export type UploadResponse =
   | { ok: true; path: string }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
@@ -923,6 +934,7 @@ export const MUX_CAPABILITIES = [
   "renamePane",
   "closePane",
   "setFocus",
+  "fitToPhone",
   "createTab",
   "renameTab",
   "closeTab",

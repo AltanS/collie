@@ -2588,3 +2588,99 @@ describe("AgentChat — full latest reply", () => {
     expect(card()).not.toBeInTheDocument();
   });
 });
+
+// "Fit to phone" wired end to end (ADR 0049): the row in the ⋮ sheet, the lease the pane view owns,
+// the notice that says so, and the release on leaving. jsdom has no layout, so the one case that
+// needs a real measurement states the boxes outright: a 390×540 mirror and a 6px × 12.5px cell. No
+// stylesheet is loaded under jsdom, so the scroller's padding computes to zero and the grid is
+// exactly 390/6 × 540/12.5 = 65×43.
+describe("AgentChat — Fit to phone", () => {
+  function recordFits() {
+    const bodies: { cols: number; rows: number }[] = [];
+    const releases: string[] = [];
+    server.use(
+      http.post<never, { cols: number; rows: number }>(/\/api\/pane\/[^/]+\/fit$/, async ({ request }) => {
+        const body = await request.json();
+        bodies.push(body);
+        return HttpResponse.json({ ok: true, cols: body.cols, rows: body.rows, lapseMs: 120_000 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/unfit$/, ({ request }) => {
+        releases.push(new URL(request.url).pathname);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    return { bodies, releases };
+  }
+
+  function stateTheLayout() {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(390);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(540);
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ width: 120, height: 12.5 }),
+    );
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("never fits on opening a pane — only the tap does", async () => {
+    const { bodies } = recordFits();
+    renderChat();
+    await screen.findByText("recent pane output");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, COLLAPSE_MS * 2));
+    });
+    expect(bodies).toEqual([]);
+  });
+
+  it("fits the pane to the measured mirror, says so, and releases on leaving the pane view", async () => {
+    stateTheLayout();
+    const { bodies, releases } = recordFits();
+    const user = userEvent.setup();
+    renderChat();
+    await openPaneMenu(user);
+    await user.click(await screen.findByRole("button", { name: "Fit to phone" }));
+
+    expect(await screen.findByText("Fitted to 65×43")).toBeInTheDocument();
+    expect(bodies).toEqual([{ cols: 65, rows: 43 }]);
+
+    // The same row now reads as the release.
+    await openPaneMenu(user);
+    expect(await screen.findByRole("button", { name: "Release phone fit" })).toBeInTheDocument();
+
+    cleanup();
+    await waitFor(() => expect(releases).toEqual([`/api/pane/${encodeURIComponent(fixtureAgents[0]!.paneId)}/unfit`]));
+  });
+
+  it("lets go on the notice's Release", async () => {
+    stateTheLayout();
+    const { releases } = recordFits();
+    const user = userEvent.setup();
+    renderChat();
+    await openPaneMenu(user);
+    await user.click(await screen.findByRole("button", { name: "Fit to phone" }));
+    await screen.findByText("Fitted to 65×43");
+
+    await user.click(screen.getByRole("button", { name: "Release" }));
+    await waitFor(() => expect(releases).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByText("Fitted to 65×43")).not.toBeInTheDocument());
+  });
+
+  it("refuses and explains when another device holds the terminal's size", async () => {
+    stateTheLayout();
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/fit$/, () =>
+        HttpResponse.json({ ok: false, error: "busy", code: "pane.fit_busy" }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderChat();
+    await openPaneMenu(user);
+    await user.click(await screen.findByRole("button", { name: "Fit to phone" }));
+    expect(
+      await screen.findByText(
+        "Another device or tool is controlling this terminal's size. Try again after it lets go.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Fitted to/)).not.toBeInTheDocument();
+  });
+});

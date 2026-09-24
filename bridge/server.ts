@@ -61,10 +61,12 @@ import type { CrewHandler, CrewSurface } from "./crew/router.ts";
 import type { CrewTlsOptions } from "./crew/transport.ts";
 import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeRequest } from "./stt/http.ts";
 import type { SttProvider } from "./stt/provider.ts";
+import { FIT_BOUNDS, fitSizeInBounds, type FitLeases } from "./fit-leases.ts";
 import { uploadTooLarge } from "./uploads.ts";
-import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
+import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, decodeFitBody, journalAgentOf, toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
+  FitResponse,
   AgentView,
   BridgeConfig,
   CreateResponse,
@@ -178,7 +180,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
 }
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|focus))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|focus|fit|unfit))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -597,6 +599,11 @@ export interface UpdateActionDeps {
 
 export function startServer(opts: {
   cfg: Config;
+  /**
+   * Every "Fit to phone" lease this bridge holds (ADR 0049). Owned by index.ts, which ends them all
+   * on shutdown; the routes below only take, renew and release.
+   */
+  fitLeases: FitLeases;
   registry: SessionRegistry;
   push: Push;
   snooze: Snooze;
@@ -1112,6 +1119,8 @@ export function startServer(opts: {
       if (action === "close" && req.method === "POST") return closePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "rename" && req.method === "POST") return renamePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "focus" && req.method === "POST") return focusPane(herdr, rt.engine, paneId, req, audit_, device, session);
+      if (action === "fit" && req.method === "POST") return fitPane(herdr, opts.fitLeases, paneId, req, audit_, device, session);
+      if (action === "unfit" && req.method === "POST") return unfitPane(opts.fitLeases, paneId, req, audit_, device, session);
       return text("method not allowed", 405);
     }
 
@@ -2838,6 +2847,76 @@ async function focusPane(
   // unfocused for as long as the adapter's declared bound (ADR 0031).
   await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
+}
+
+/**
+ * Take, move or renew the "Fit to phone" lease on a pane (ADR 0049).
+ *
+ * Body `{cols, rows, renew?}`. Without `renew` it is the operator's tap: take a lease at that size,
+ * or move Collie's own lease to it. With `renew: true` it only extends a lease that is still held,
+ * and a lapsed one answers `pane.fit_lapsed` — a renewal is the phone keeping a promise it already
+ * made, never a new one, so it may not start a lease the operator did not tap for.
+ *
+ * `unsupported` needs no branch of its own: the row is hidden where the capability is absent, so it
+ * arrives only from a stale client, as `pane.fit_failed` with the adapter's sentence.
+ */
+async function fitPane(
+  herdr: MuxAdapter,
+  leases: FitLeases,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Promise<Response> {
+  const ae = req.headers.get("accept-encoding");
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; every field is checked below.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const parsed = decodeFitBody(body);
+  if (parsed === null || !fitSizeInBounds(parsed)) {
+    return json({ ok: false, ...apiError("pane.fit_invalid", { ...FIT_BOUNDS }) } satisfies FitResponse, ae, 400);
+  }
+  const size = { cols: parsed.cols, rows: parsed.rows };
+  if (parsed.renew) {
+    const renewed = leases.renew(session, paneId);
+    if (renewed === null) return json({ ok: false, ...apiError("pane.fit_lapsed") } satisfies FitResponse, ae);
+    return json(
+      { ok: true, cols: renewed.size.cols, rows: renewed.size.rows, lapseMs: renewed.lapseMs } satisfies FitResponse,
+      ae,
+    );
+  }
+  const held = await leases.take(herdr, session, paneId, size);
+  if (!held.ok) {
+    const failure =
+      held.reason === "refused"
+        ? apiError("pane.fit_busy", { reason: held.detail })
+        : apiError("pane.fit_failed", { reason: held.detail });
+    return json({ ok: false, ...failure } satisfies FitResponse, ae);
+  }
+  audit.record({ action: "pane.fit", paneId, session, device, detail: { cols: size.cols, rows: size.rows } });
+  return json(
+    { ok: true, cols: held.value.size.cols, rows: held.value.size.rows, lapseMs: held.value.lapseMs } satisfies FitResponse,
+    ae,
+  );
+}
+
+/** Release a pane's "Fit to phone" lease. Idempotent: a pane with no lease answers ok too. */
+function unfitPane(
+  leases: FitLeases,
+  paneId: string,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+): Response {
+  leases.release(session, paneId);
+  audit.record({ action: "pane.unfit", paneId, session, device, detail: {} });
+  return json({ ok: true } satisfies ActionResponse, req.headers.get("accept-encoding"));
 }
 
 // Set or clear a pane's label. Structural metadata op — strictly less powerful than the text/keys

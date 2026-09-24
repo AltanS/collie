@@ -325,6 +325,7 @@ export function withAgentBeacons(
     renamePane: (paneId, label) => adapter.renamePane(paneId, label),
     closePane: (paneId) => adapter.closePane(paneId),
     setFocus: (paneId) => adapter.setFocus(paneId),
+    holdSize: (paneId, size) => adapter.holdSize(paneId, size),
     createTab: (request) => adapter.createTab(request),
     renameTab: (tabId, label) => adapter.renameTab(tabId, label),
     closeTab: (tabId) => adapter.closeTab(tabId),

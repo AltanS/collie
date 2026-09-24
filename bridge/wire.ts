@@ -126,3 +126,23 @@ export function decodeStreamLine(line: string): StreamLine {
   }
   throw new Error(`herdr events: unrecognized stream line: ${line}`);
 }
+
+/**
+ * The `type` and `reason` of one `herdr terminal session control` record, or null when the line is
+ * not a record at all. Read ONLY for the first line of a hold (`mux/herdr/size-hold.ts`): it says
+ * whether the hold took. Every later line is drained unread, and nothing here looks inside a frame's
+ * `bytes` — decoding those would be the emulator ADR 0008 refuses (ADR 0049, HERDR_API.md).
+ */
+export function decodeControlRecord(line: string): { type: string; reason: string } | null {
+  let msg: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` returns exactly a JsonValue by construction, as in decodeReplyLine above.
+    msg = JSON.parse(line) as JsonValue;
+  } catch {
+    return null;
+  }
+  if (msg === null || typeof msg !== "object" || Array.isArray(msg)) return null;
+  const { type, reason } = msg;
+  if (typeof type !== "string") return null;
+  return { type, reason: typeof reason === "string" ? reason : "" };
+}

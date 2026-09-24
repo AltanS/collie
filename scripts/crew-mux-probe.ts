@@ -58,6 +58,7 @@ import {
   type MuxPane,
   type MuxRefusalOutcome,
   type MuxSession,
+  type MuxSizeHold,
   type MuxSnapshot,
   type MuxSpace,
   type MuxSubscription,
@@ -284,6 +285,9 @@ class CrewFacade implements MuxAdapter {
   }
   setFocus(): Promise<MuxAck> {
     return Promise.resolve(this.writeVerb("setFocus"));
+  }
+  holdSize(): Promise<MuxOutcome<MuxSizeHold>> {
+    return Promise.resolve(this.writeVerb("holdSize"));
   }
   renameTab(): Promise<MuxAck> {
     return Promise.resolve(this.writeVerb("renameTab"));

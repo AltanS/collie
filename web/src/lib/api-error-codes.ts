@@ -47,6 +47,12 @@ export const API_ERROR_CODES = [
   "pane.rename_failed",
   "pane.focus_failed",
 
+  // The "Fit to phone" lease — POST /api/pane/:id/fit (ADR 0049)
+  "pane.fit_busy",
+  "pane.fit_lapsed",
+  "pane.fit_failed",
+  "pane.fit_invalid",
+
   // Tab & space structure — POST /api/tab[/:id/…], /api/workspace
   "tab.create_failed",
   "tab.rename_failed",

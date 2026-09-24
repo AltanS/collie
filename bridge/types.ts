@@ -4,6 +4,7 @@
 import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
+import type { JsonValue } from "./json.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
 import type { UpdateRun } from "./update-run.ts";
@@ -670,6 +671,27 @@ export type ActionResponse =
       code?: ErrorCode;
       detail?: ApiErrorDetail;
     };
+
+/**
+ * POST /api/pane/:id/fit — the size now held on the pane's terminal, and how long the lease lasts
+ * without another renewal (ADR 0049). `/unfit` answers a plain {@link ActionResponse}.
+ */
+export type FitResponse =
+  | { ok: true; cols: number; rows: number; lapseMs: number }
+  | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
+
+/**
+ * A `POST /api/pane/:id/fit` body, parsed: whole-cell `cols` and `rows`, and whether it is only a
+ * renewal. Null for anything else. Whether the size is inside the lease's bounds is the lease's
+ * question (`fit-leases.ts` § fitSizeInBounds), asked after this.
+ */
+export function decodeFitBody(body: JsonValue | undefined): { cols: number; rows: number; renew: boolean } | null {
+  if (body === null || body === undefined || typeof body !== "object" || Array.isArray(body)) return null;
+  const { cols, rows, renew } = body;
+  if (typeof cols !== "number" || typeof rows !== "number") return null;
+  if (!Number.isInteger(cols) || !Number.isInteger(rows)) return null;
+  return { cols, rows, renew: renew === true };
+}
 
 /** POST /api/pane/:id/upload — image saved to a host file; `path` is the absolute path to ref. */
 export type UploadResponse =

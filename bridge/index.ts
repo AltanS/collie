@@ -51,6 +51,7 @@ import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./not
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
 import { createSttGate } from "./stt/index.ts";
+import { FitLeases } from "./fit-leases.ts";
 import { runBootGate } from "./crew/boot-gate.ts";
 import { PEER_BROWSER_ENV, resolveCrewRuntime, warnsOnWildcardBind } from "./crew/config.ts";
 import {
@@ -1747,8 +1748,13 @@ if (standbyServer !== null && standbyDoor !== null) {
   );
 }
 
+// Every "Fit to phone" lease is a `herdr terminal session control` child this process owns
+// (ADR 0049). Created here, beside the other spawns, so shutdown below can end them all.
+const fitLeases = new FitLeases();
+
 const server = startServer({
   cfg,
+  fitLeases,
   registry,
   push,
   snooze,
@@ -1866,6 +1872,9 @@ const shutdown = async () => {
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.
   stt.close();
+  // Each lease is a child holding a pane's terminal size. Ending them is the release, and Herdr
+  // hands the desk its size back; left running they would outlive the bridge (ADR 0049).
+  fitLeases.closeAll();
   // Writes are debounced, so the last few seconds of "you looked at this" live only in memory —
   // persist them before exiting, or every restart quietly resurrects alerts you'd already cleared.
   activity.stop();

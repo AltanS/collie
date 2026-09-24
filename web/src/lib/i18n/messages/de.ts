@@ -361,6 +361,13 @@ export const de: Dictionary = {
   "paneActions.focus.labelFallback": "Im Terminal fokussieren",
   "paneActions.focus.done": "Im Terminal fokussiert",
   "paneActions.focus.failed": "Fokussieren im Terminal fehlgeschlagen",
+  "paneActions.fit.label": "An Handy anpassen",
+  "paneActions.fit.release": "Handy-Anpassung aufheben",
+  "paneActions.fit.failed": "Anpassen an das Handy fehlgeschlagen",
+  "paneActions.fit.unmeasurable": "Die Terminalansicht auf diesem Handy konnte nicht vermessen werden.",
+  "paneActions.fit.fitting": "Wird an das Handy angepasst…",
+  "paneActions.fit.fitted": "Angepasst auf {cols}×{rows}",
+  "paneActions.fit.releaseShort": "Aufheben",
   "paneActions.empty.fallback": "Dieser Multiplexer unterstützt keine Pane-Aktionen.",
   "paneActions.status.renamed": "Umbenannt",
   "paneActions.status.labelCleared": "Label entfernt",
@@ -761,6 +768,13 @@ export const de: Dictionary = {
   "apiError.pane.close_failed": "Pane konnte nicht geschlossen werden: {reason}",
   "apiError.pane.rename_failed": "Pane konnte nicht umbenannt werden: {reason}",
   "apiError.pane.focus_failed": "Pane konnte im Terminal nicht fokussiert werden: {reason}",
+  "apiError.pane.fit_busy":
+    "Ein anderes Gerät oder Werkzeug steuert die Größe dieses Terminals. Versuche es erneut, sobald es sie freigibt.",
+  "apiError.pane.fit_lapsed":
+    "Die Handy-Anpassung war bereits abgelaufen. Tippe auf „An Handy anpassen“, um sie erneut anzuwenden.",
+  "apiError.pane.fit_failed": "Pane konnte nicht an das Handy angepasst werden: {reason}",
+  "apiError.pane.fit_invalid":
+    "Größe außerhalb des Bereichs: Das Terminal erlaubt {minCols}–{maxCols} Spalten und {minRows}–{maxRows} Zeilen.",
   "apiError.tab.create_failed": "Tab konnte nicht erstellt werden: {reason}",
   "apiError.tab.rename_failed": "Tab konnte nicht umbenannt werden: {reason}",
   "apiError.tab.close_failed": "Tab konnte nicht geschlossen werden: {reason}",

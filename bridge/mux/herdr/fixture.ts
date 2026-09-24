@@ -25,6 +25,7 @@
 
 import type { AgentStatus } from "../../types.ts";
 import type { MuxConformanceFixture, MuxConformanceWorld, MuxWrite } from "../conformance.ts";
+import { muxOk, type MuxSizeHold } from "../types.ts";
 import { HerdrMux } from "./adapter.ts";
 import type {
   CreatedShell,
@@ -521,10 +522,16 @@ export const herdrConformanceFixture: MuxConformanceFixture = {
     const fake = new FakeHerdr();
     // Two sessions, because the `listSessions` leg of conformance has to see a real answer: the
     // primary's own socket plus one named session, exactly the shape `./sessions.ts` reads off disk.
-    const adapter = new HerdrMux(fake, () => [
-      { name: "default", endpoint: "/tmp/collie-conformance/herdr.sock" },
-      { name: "conformance", endpoint: "/tmp/collie-conformance/sessions/conformance/herdr.sock" },
-    ]);
+    const adapter = new HerdrMux(
+      fake,
+      () => [
+        { name: "default", endpoint: "/tmp/collie-conformance/herdr.sock" },
+        { name: "conformance", endpoint: "/tmp/collie-conformance/sessions/conformance/herdr.sock" },
+      ],
+      // The hold is a CLI child in the real adapter (./size-hold.ts). Here the terminal lookup is the
+      // real one, over the fake's panes, and only the child is replaced by a hold that takes at once.
+      () => Promise.resolve(muxOk<MuxSizeHold>({ release: () => undefined, ended: Promise.resolve("released") })),
+    );
     return Promise.resolve({
       adapter,
       writes: () => fake.writes(),

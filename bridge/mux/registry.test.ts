@@ -30,6 +30,7 @@ function stubAdapter(mux: string, target: MuxTarget): MuxAdapter {
     renamePane: () => Promise.resolve(muxUnsupported("renamePane", "stub")),
     closePane: () => Promise.resolve(muxUnsupported("closePane", "stub")),
     setFocus: () => Promise.resolve(muxUnsupported("setFocus", "stub")),
+    holdSize: () => Promise.resolve(muxUnsupported("fitToPhone", "stub")),
     listWorktrees: () => Promise.resolve(muxUnsupported("listWorktrees", "stub")),
     createWorktree: () => Promise.resolve(muxUnsupported("createWorktree", "stub")),
     openWorktree: () => Promise.resolve(muxUnsupported("openWorktree", "stub")),

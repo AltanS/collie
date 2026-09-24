@@ -536,9 +536,13 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   colors/weights. Keep it that way — it's the XSS boundary. Strict CSP + same-origin gate stay.
 - **Collie runs no terminal emulator** — `pane.read` returns Herdr's already-rendered grid, so the
   parser needs colour and nothing else. Don't add one on either side, and don't reach for
-  `terminal session observe`/`control`: a stale mirror is a transport problem, cursor position is an
-  upstream ask, and `control` resizes the *shared* PTY
-  ([ADR 0008](./.adr/0008-collie-does-not-run-a-terminal-emulator.md)).
+  `terminal session observe`: a stale mirror is a transport problem, and cursor position is an
+  upstream ask ([ADR 0008](./.adr/0008-collie-does-not-run-a-terminal-emulator.md)).
+- **`terminal session control` has exactly one use: the "Fit to phone" lease.** It starts on the
+  named tap, never on navigation. It lapses two minutes after the phone's last renewal, and its
+  frames are drained and never parsed. Releasing it is ending the child: Herdr restores the size,
+  never Collie. Collie never passes `--takeover`. No other geometry write exists: no `pane.zoom`, no
+  `pane.resize` ([ADR 0049](./.adr/0049-fit-to-phone-is-a-leased-geometry-write.md)).
 - **A table pans; the mirror around it keeps wrapping** — `lib/table-run.ts` groups a table's rows
   into a single scroller inside the wrapping `<pre>` (`ansi-output.tsx`). One scroller per table,
   never one per row. Each grammar anchors on a row nothing else prints — a markdown delimiter row,

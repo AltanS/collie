@@ -52,7 +52,7 @@ export function crewRouteFor(pathname: string): string | null {
  * but not across a link (or, worse, the reverse).
  */
 const FORWARDABLE: readonly RegExp[] = [
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|focus))?$/,
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|focus|fit|unfit))?$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
   /^workspace$/,

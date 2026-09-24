@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
+import {
+  Maximize2,
+  Monitor,
+  Pencil,
+  ScrollText,
+  Search,
+  SlidersHorizontal,
+  Smartphone,
+  XCircle,
+} from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -60,6 +69,17 @@ interface PaneActionsSheetProps {
    *  buffered output to look at. Absence IS the gate, exactly as it is for find and history above —
    *  a device that never asked for zen sees a sheet byte-identical to today's. */
   onZen?: () => void;
+  /**
+   * "Fit to phone" (ADR 0049) — the lease the PANE VIEW owns (hooks/use-fit-to-phone.ts), handed in.
+   *
+   * A WRITE row, so it sits with focus under the read-only and host gates, and it is gated twice:
+   * the multiplexer must declare `fitToPhone`, and the caller must pass this. Only the pane header
+   * does — the fit measures the mirror on screen, and a strip pill can open this sheet on a pane that
+   * has no mirror here to measure. Absence is the gate, the way it is for find and zen.
+   *
+   * `active` is any lease in hand or on the wire; the row then reads as its release.
+   */
+  fit?: { active: boolean; onFit: () => void; onRelease: () => void };
 }
 
 type Mode = "actions" | "rename";
@@ -86,6 +106,7 @@ export function PaneActionsSheet({
   onHistory,
   onSettings,
   onZen,
+  fit,
 }: PaneActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -115,6 +136,8 @@ export function PaneActionsSheet({
   const canRename = useMuxCapability("renamePane", paneHost);
   const canClose = useMuxCapability("closePane", paneHost);
   const canFocus = useMuxCapability("setFocus", paneHost);
+  const canFit = useMuxCapability("fitToPhone", paneHost);
+  const fitRow = canFit.capable ? fit : undefined;
   const [focusing, setFocusing] = useState(false);
   // The mux name for the "Focus in <mux>" row and its toast — see `focusMux` below for why this
   // is gated to panes on the LOCAL machine before it's trusted.
@@ -357,6 +380,21 @@ export function PaneActionsSheet({
               onClick={() => void showInTerminal()}
             />
           )}
+          {/* The second write that reaches the desk's own screen, and focus's sibling for that reason:
+              it too happens only on this tap, never on navigating (ADR 0049 under ADR 0031). While a
+              lease is held the same row is its release. Close-then-act: the answer — the fit notice,
+              and the mirror redrawn at phone width — is on the pane view behind the sheet. */}
+          {fitRow && (
+            <ActionRow
+              icon={<Smartphone className="size-4 shrink-0 text-muted-foreground" />}
+              label={fitRow.active ? t("paneActions.fit.release") : t("paneActions.fit.label")}
+              onClick={() => {
+                onClose();
+                if (fitRow.active) fitRow.onRelease();
+                else fitRow.onFit();
+              }}
+            />
+          )}
           {canClose.capable && (
             <DestructiveActionRow
               icon={<XCircle className="size-4 shrink-0" />}
@@ -373,7 +411,7 @@ export function PaneActionsSheet({
           {/* An EMPTY sheet is the one case that must speak. Long-pressing a pane and being handed
               a blank box says nothing at all, so when every row is gone the adapter's own reason
               takes their place — hide the meaningless, explain the expected. */}
-          {!canRename.capable && !canClose.capable && !canFocus.capable && (
+          {!canRename.capable && !canClose.capable && !canFocus.capable && !fitRow && (
             <p className="py-2 text-sm leading-snug text-muted-foreground">
               {canRename.note || canClose.note || canFocus.note || t("paneActions.empty.fallback")}
             </p>

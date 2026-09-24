@@ -15,6 +15,7 @@ import type {
   CreateResponse,
   DismissScope,
   DevicesResponse,
+  FitResponse,
   CacheRulesResponse,
   CacheWatchListResponse,
   CacheWatchState,
@@ -545,6 +546,46 @@ export function closePane(paneId: string, scope?: Scope): Promise<ActionResponse
  */
 export function focusPane(paneId: string, scope?: Scope): Promise<ActionResponse> {
   return req<ActionResponse>(withScope(`/api/pane/${encodeURIComponent(paneId)}/focus`, scope), {
+    method: "POST",
+  });
+}
+
+/**
+ * Take, replace or renew this phone's "Fit to phone" lease on a pane (ADR 0049) — the one write in
+ * this file that changes a terminal's SIZE.
+ *
+ * Only ever reached from a named tap and the renewals that tap started (hooks/use-fit-to-phone.ts),
+ * never from navigation. `renew: true` only EXTENDS a lease the bridge already holds for Collie and
+ * answers `pane.fit_lapsed` when there is none, so a renewal can never quietly re-take a lease the
+ * operator let go of; only a call without it takes one.
+ *
+ * A renewal skips the busy tracker (it goes straight to `doReq`): it is housekeeping on a 30 s
+ * cadence, not an act the operator just performed, and lighting the top progress bar for it would be
+ * a heartbeat nobody asked to watch. The first fit, the operator's own tap, is tracked like any write.
+ */
+export function fitPane(
+  paneId: string,
+  size: { cols: number; rows: number },
+  scope?: Scope,
+  renew = false,
+): Promise<FitResponse> {
+  const path = withScope(`/api/pane/${encodeURIComponent(paneId)}/fit`, scope);
+  // The key is omitted rather than sent as `false`: the contract names `renew?: true` and nothing
+  // else, and an absent key is the "take" the bridge defaults to.
+  const body = renew ? { cols: size.cols, rows: size.rows, renew: true } : { cols: size.cols, rows: size.rows };
+  const init: RequestInit = { method: "POST", body: JSON.stringify(body) };
+  return renew ? doReq<FitResponse>(path, init) : req<FitResponse>(path, init);
+}
+
+/**
+ * Release this phone's "Fit to phone" lease on a pane. Idempotent on the bridge (`{ ok: true }`
+ * whether or not a lease was held), and restoring the size is Herdr's, never Collie's (ADR 0049).
+ *
+ * Untracked for the renewal's reason: it fires as a side effect of LEAVING the pane view, and a
+ * progress bar lit by walking away from something is noise.
+ */
+export function unfitPane(paneId: string, scope?: Scope): Promise<ActionResponse> {
+  return doReq<ActionResponse>(withScope(`/api/pane/${encodeURIComponent(paneId)}/unfit`, scope), {
     method: "POST",
   });
 }

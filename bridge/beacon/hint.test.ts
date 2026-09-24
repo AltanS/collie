@@ -10,6 +10,8 @@ import {
   type MuxGridRequest,
   type MuxPane,
   type MuxSession,
+  type MuxSize,
+  type MuxSizeHold,
   type MuxSnapshot,
   type MuxSpaceRequest,
   type MuxSubscription,
@@ -157,6 +159,11 @@ class StubAdapter implements MuxAdapter {
   setFocus(_paneId: string) {
     this.calls.push("setFocus");
     return Promise.resolve(muxAck());
+  }
+
+  holdSize(_paneId: string, _size: MuxSize) {
+    this.calls.push("holdSize");
+    return Promise.resolve(muxOk<MuxSizeHold>({ release: () => undefined, ended: Promise.resolve("released") }));
   }
 
   renamePane(_paneId: string, _label: string | null) {

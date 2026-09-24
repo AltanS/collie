@@ -33,6 +33,7 @@ export const MUX_CAPABILITIES = [
   "renamePane",
   "closePane",
   "setFocus",
+  "fitToPhone",
   "createTab",
   "renameTab",
   "closeTab",
@@ -90,6 +91,8 @@ export const MUX_CAPABILITY_ROUTES = {
   closePane: "POST /api/pane/:id/close — kill the pane and the agent in it.",
   setFocus:
     "POST /api/pane/:id/focus — the pane action sheet's \"Show in terminal\" row, the one act by which the phone moves the operator's own screen. Absent ⇒ the row is not there (hide the meaningless), and the phone can still SEE which pane the terminal shows, because `MuxPane.focused` is on the floor.",
+  fitToPhone:
+    "POST /api/pane/:id/fit and /unfit — the pane action sheet's \"Fit to phone\" row, a two-minute lease on the pane's terminal size, renewed by the phone that took it and released when it leaves. The second act by which the phone moves the operator's screen, and like `setFocus` it happens only on a named tap (ADR 0049). Absent ⇒ no row, and the mirror shows the pane at the size the desk gave it.",
   createTab: "POST /api/tab — a new tab in a space, opening a fresh shell.",
   renameTab: "POST /api/tab/:id/rename.",
   closeTab: "POST /api/tab/:id/close — a bulk pane-close.",
@@ -202,6 +205,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     renamePane: claimed.has("renamePane"),
     closePane: claimed.has("closePane"),
     setFocus: claimed.has("setFocus"),
+    fitToPhone: claimed.has("fitToPhone"),
     createTab: claimed.has("createTab"),
     renameTab: claimed.has("renameTab"),
     closeTab: claimed.has("closeTab"),

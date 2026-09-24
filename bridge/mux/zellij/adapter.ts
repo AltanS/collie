@@ -76,6 +76,8 @@ import {
   type MuxGrid,
   type MuxGridRequest,
   type MuxOutcome,
+  type MuxSize,
+  type MuxSizeHold,
   type MuxPane,
   type MuxRefusalOutcome,
   type MuxSession,
@@ -488,6 +490,13 @@ export class ZellijMux implements MuxAdapter {
         "setFocus",
         "zellij's `focus-pane-id` exits 0 and moves nothing (probed on 0.44.2), so Collie cannot promise a pane is in front",
       ),
+    );
+  }
+
+  /** Unprobed on this multiplexer, so declared absent (MUX_CONTRACT.md, ADR 0049). */
+  holdSize(_paneId: string, _size: MuxSize): Promise<MuxOutcome<MuxSizeHold>> {
+    return Promise.resolve(
+      muxUnsupported("fitToPhone", "holding a pane's terminal size is not probed on this multiplexer"),
     );
   }
 

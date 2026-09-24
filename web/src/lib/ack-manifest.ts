@@ -88,6 +88,20 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "The one act whose outcome lands on a screen the operator is not looking at (the terminal, ADR 0031) — nothing here can show it, so the phone has to say it.",
   },
+  fitPane: {
+    channel: "inline",
+    // TWO paths reach this export, as with `sendKeys`: the operator's tap (a take) and the 30 s
+    // renewals that tap started. The classification names the tap. A renewal is SILENT by design —
+    // it is housekeeping the operator did not just perform, so a success says nothing and a lapse
+    // (`pane.fit_lapsed`) simply drops the notice, because a toast every 30 s, or one announcing a
+    // lease the operator already walked away from, would be noise about a heartbeat. The one renewal
+    // outcome that does speak is losing the terminal to another controller (`pane.fit_busy`), once.
+    why: "The answer is a standing fact — the desktop's pane stays at phone size until released — so it is the pane view's own fit notice (components/fit-notice.tsx) that says so and carries Release; a refusal, above all 'another device controls this terminal's size', is an error status that persists until read (hooks/use-fit-to-phone.ts).",
+  },
+  unfitPane: {
+    channel: "silent",
+    why: "The bridge answers ok whether or not a lease was held, and it fires on leaving the pane view, where nothing is left to acknowledge on; on an explicit Release the fit notice sliding shut is the receipt, in the same tap.",
+  },
   renamePane: {
     channel: "status",
     why: "The sheet closes on success and the new label only reaches the strip on the next poll, so at the moment of the tap there is nothing on screen that changed.",

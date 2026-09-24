@@ -389,6 +389,14 @@ export const handlers = [
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/rename$/, () => HttpResponse.json({ ok: true })),
+  // "Fit to phone" (ADR 0049): the lease is granted at the size asked for, and releasing always
+  // answers ok, as the bridge's idempotent route does. A test that wants a refusal (busy, lapsed)
+  // overrides this with `server.use`.
+  http.post<never, { cols: number; rows: number }>(/\/api\/pane\/[^/]+\/fit$/, async ({ request }) => {
+    const { cols, rows } = await request.json();
+    return HttpResponse.json({ ok: true, cols, rows, lapseMs: 120_000 });
+  }),
+  http.post(/\/api\/pane\/[^/]+\/unfit$/, () => HttpResponse.json({ ok: true })),
   http.post("/api/tab", () =>
     HttpResponse.json({
       ok: true,

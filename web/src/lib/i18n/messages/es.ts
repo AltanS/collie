@@ -360,6 +360,13 @@ export const es: Dictionary = {
   "paneActions.focus.labelFallback": "Enfocar en el terminal",
   "paneActions.focus.done": "Enfocado en el terminal",
   "paneActions.focus.failed": "No se pudo enfocar en el terminal",
+  "paneActions.fit.label": "Ajustar al teléfono",
+  "paneActions.fit.release": "Liberar ajuste al teléfono",
+  "paneActions.fit.failed": "No se pudo ajustar al teléfono",
+  "paneActions.fit.unmeasurable": "No se pudo medir la vista del terminal en este teléfono.",
+  "paneActions.fit.fitting": "Ajustando al teléfono…",
+  "paneActions.fit.fitted": "Ajustado a {cols}×{rows}",
+  "paneActions.fit.releaseShort": "Liberar",
   "paneActions.empty.fallback": "Este multiplexor no admite acciones sobre paneles.",
   "paneActions.status.renamed": "Renombrado",
   "paneActions.status.labelCleared": "Etiqueta eliminada",
@@ -758,6 +765,13 @@ export const es: Dictionary = {
   "apiError.pane.close_failed": "Error al cerrar el panel: {reason}",
   "apiError.pane.rename_failed": "Error al renombrar el panel: {reason}",
   "apiError.pane.focus_failed": "Error al enfocar el panel en la terminal: {reason}",
+  "apiError.pane.fit_busy":
+    "Otro dispositivo o herramienta controla el tamaño de este terminal. Inténtalo de nuevo cuando lo suelte.",
+  "apiError.pane.fit_lapsed":
+    "El ajuste al teléfono ya había caducado. Pulsa «Ajustar al teléfono» para volver a ajustarlo.",
+  "apiError.pane.fit_failed": "Error al ajustar el panel al teléfono: {reason}",
+  "apiError.pane.fit_invalid":
+    "Tamaño fuera de rango: el terminal admite {minCols}–{maxCols} columnas y {minRows}–{maxRows} filas.",
   "apiError.tab.create_failed": "Error al crear la pestaña: {reason}",
   "apiError.tab.rename_failed": "Error al renombrar la pestaña: {reason}",
   "apiError.tab.close_failed": "Error al cerrar la pestaña: {reason}",

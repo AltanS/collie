@@ -14,6 +14,8 @@ import {
   type MuxOutcome,
   type MuxPane,
   type MuxSession,
+  type MuxSize,
+  type MuxSizeHold,
   type MuxSnapshot,
   type MuxSpaceRequest,
   type MuxSubscription,
@@ -120,6 +122,11 @@ class StubAdapter implements MuxAdapter {
   setFocus(paneId: string) {
     this.note("setFocus", paneId);
     return Promise.resolve(muxAck());
+  }
+
+  holdSize(paneId: string, size: MuxSize) {
+    this.note("holdSize", paneId, size);
+    return Promise.resolve(muxOk<MuxSizeHold>({ release: () => undefined, ended: Promise.resolve("released") }));
   }
 
   createTab(request: MuxTabRequest) {
@@ -265,6 +272,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     renamePane: true,
     closePane: true,
     setFocus: true,
+    holdSize: true,
     createTab: true,
     renameTab: true,
     closeTab: true,
@@ -356,6 +364,7 @@ describe("everything but capabilities and snapshot is a pass-through", () => {
     await decorated.renamePane("%1", null);
     await decorated.closePane("%1");
     await decorated.setFocus("%1");
+    await decorated.holdSize("%1", { cols: 48, rows: 36 });
     await decorated.createTab({ spaceId: "space" });
     await decorated.renameTab("tab", "label");
     await decorated.closeTab("tab");
@@ -370,6 +379,7 @@ describe("everything but capabilities and snapshot is a pass-through", () => {
       { method: "renamePane", args: ["%1", null] },
       { method: "closePane", args: ["%1"] },
       { method: "setFocus", args: ["%1"] },
+      { method: "holdSize", args: ["%1", { cols: 48, rows: 36 }] },
       { method: "createTab", args: [{ spaceId: "space" }] },
       { method: "renameTab", args: ["tab", "label"] },
       { method: "closeTab", args: ["tab"] },

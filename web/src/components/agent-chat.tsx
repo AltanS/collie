@@ -30,7 +30,12 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
-import { Collapse, CollapseSwap } from "@/components/ui/collapse";
+import { Collapse, CollapseSwap, COLLAPSE_MS } from "@/components/ui/collapse";
+import { FitNotice } from "@/components/fit-notice";
+import { useFitToPhone } from "@/hooks/use-fit-to-phone";
+import { FIT_PROBE_TEXT, measureMirrorGrid } from "@/lib/fit-grid";
+import { hasResizeObserver } from "@/lib/env";
+import { useLocked } from "@/lib/idle";
 import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AnsiOutput } from "@/components/ansi-output";
@@ -384,6 +389,47 @@ export function AgentChat({
   const composerRef = useRef<ComposerHandle>(null);
 
   const gone = !agent;
+
+  // "FIT TO PHONE" (ADR 0049). The lease lives HERE, with the pane view, and not in the sheet its
+  // row sits in: the sheet closes on the tap, and the lease has to last as long as the operator is
+  // looking at this pane — and end the moment they stop (this component is keyed by the pane's
+  // address in routes/detail.tsx, so a pane switch unmounts it and the hook releases). Asked of the
+  // PANE's machine, the way the sheet asks it, so the row, the probe and the notice always agree.
+  const canFit = useMuxCapability("fitToPhone", { host: agent?.host });
+  // The one cell measurement in web/src: a hidden run of glyphs in the mirror's own font, beside it.
+  const fitProbeRef = useRef<HTMLSpanElement>(null);
+  const measureFit = useCallback(() => {
+    const scroller = listRef.current?.getScrollElement() ?? null;
+    const probe = fitProbeRef.current;
+    return scroller === null || probe === null ? null : measureMirrorGrid(scroller, probe);
+  }, []);
+  const idlePaused = useLocked();
+  const fitter = useFitToPhone({
+    paneId,
+    scope,
+    measure: measureFit,
+    // Every reason the view has stopped being live pauses the renewals (and releases nothing — the
+    // lapse is the grace period). `hostBlock` and `readOnly` are declared further up this body.
+    suspended: gone || readOnly || hostBlock !== undefined || idlePaused,
+    // Let the fit notice finish arriving before the mirror is measured — see FitNotice.
+    settleMs: COLLAPSE_MS + 60,
+  });
+  const fitted = fitter.phase.kind === "fitted";
+  const { noteResize: noteFitResize } = fitter;
+  const noteFitResizeRef = useRef(noteFitResize);
+  noteFitResizeRef.current = noteFitResize;
+  // Follow a rotation or a font step while a lease is held. Observed only while fitted, and only
+  // where the runtime can observe at all (jsdom cannot — lib/env.ts).
+  useEffect(() => {
+    if (!fitted || !hasResizeObserver()) return;
+    const scroller = listRef.current?.getScrollElement() ?? null;
+    const probe = fitProbeRef.current;
+    if (scroller === null || probe === null) return;
+    const observer = new ResizeObserver(() => noteFitResizeRef.current());
+    observer.observe(scroller);
+    observer.observe(probe);
+    return () => observer.disconnect();
+  }, [fitted]);
 
   // Drag the ACTIONS BELT up to bring up the pane switcher, tracked finger-by-finger so the sheet
   // peeks up under the thumb rather than appearing on release. The whole belt is the drag surface —
@@ -1564,6 +1610,11 @@ export function AgentChat({
                 nothing on a solo install, or while the host is live. */}
             <HostStaleBanner health={hostHealth} className="mx-3 mt-1.5" />
 
+            {/* The desktop's copy of this pane is at phone size (ADR 0049) — a standing condition of
+                this view, so it holds a row rather than floating (DESIGN.md §11), with its Release
+                beside it. Renders nothing unless the operator tapped "Fit to phone". */}
+            <FitNotice phase={fitter.phase} onRelease={fitter.release} className="mx-3 mt-1.5" />
+
             {/* THE TWO STRIPS, AND THE THIN BAR THAT STANDS IN FOR THEM — one band that morphs, not
                 two rows taking turns. `CollapseSwap` is nested inside zen's `Collapse`, so zen still
                 takes the whole band folded or not: the bar is chrome about the pane exactly as the
@@ -1736,12 +1787,28 @@ export function AgentChat({
             role="presentation"
             className={cn(
               mirrorGap,
-              "min-h-0 min-w-0 flex-1 border-t border-rule",
+              // `relative` anchors the fit probe below, and nothing else here is positioned against it.
+              "relative min-h-0 min-w-0 flex-1 border-t border-rule",
               mirrorFace.className,
             )}
             style={mirrorFace.style}
             onClick={focusFromMirror}
           >
+            {/* The fit probe (lib/fit-grid.ts): one run of glyphs set EXACTLY as the mirror's <pre>
+                sets its text — `font-mono` under this wrapper's terminal face, the mirror's font size,
+                `leading-[1.25]`, no tracking, no ligatures — so its box is N cells wide and one line
+                tall. Laid out and never painted (`invisible`), unreachable to a pointer, a selection or
+                a screen reader. Rendered only where the multiplexer can fit at all. */}
+            {canFit.capable && (
+              <span
+                ref={fitProbeRef}
+                aria-hidden
+                className="pointer-events-none invisible absolute top-0 left-0 font-mono leading-[1.25] tracking-normal whitespace-pre select-none [font-variant-ligatures:none]"
+                style={{ fontSize: `${prefs.fontSize}px` }}
+              >
+                {FIT_PROBE_TEXT}
+              </span>
+            )}
             <ChatMessageList
               ref={listRef}
               dep={display}
@@ -2154,6 +2221,14 @@ export function AgentChat({
           // already spent. It hands over to the sheet below in one React event, so the actions sheet
           // unmounts in the same commit the settings sheet mounts.
           onSettings={() => setDrawer("paneSettings")}
+          // "Fit to phone": only this caller passes it, because only this screen has a mirror to
+          // measure. The lease is the pane view's (see `fitter` above), so the sheet is handed the
+          // two verbs and whether a lease is in hand — never the lease itself.
+          fit={{
+            active: fitter.phase.kind !== "idle",
+            onFit: () => void fitter.fit(),
+            onRelease: fitter.release,
+          }}
         />
         {/* This pane's own settings — one switch today, the prompt-cache warning (ADR 0042). Scoped to
             the PANE's machine, because `?host=` there names where the pane lives; the preference itself

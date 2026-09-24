@@ -29,6 +29,7 @@ import { declareCapabilities } from "../capabilities.ts";
 import { herdrMachineCandidates } from "./machine-list.ts";
 import { herdrSessionSource } from "./sessions.ts";
 import { HERDR_LOGO_SVG } from "./logo.ts";
+import { herdrSizeHolder, noSizeHolder, type HerdrSizeHolder } from "./size-hold.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxAck,
@@ -46,6 +47,8 @@ import {
   type MuxPane,
   type MuxRefusalOutcome,
   type MuxSession,
+  type MuxSize,
+  type MuxSizeHold,
   type MuxSnapshot,
   type MuxSpace,
   type MuxSpaceRequest,
@@ -96,6 +99,7 @@ const HERDR_CAPABILITIES = declareCapabilities({
     "renamePane",
     "closePane",
     "setFocus",
+    "fitToPhone",
     "createTab",
     "renameTab",
     "closeTab",
@@ -225,6 +229,10 @@ export class HerdrMux implements MuxAdapter {
   constructor(
     private readonly client: HerdrRpc,
     private readonly sessions: () => readonly MuxSession[],
+    // The "Fit to phone" hold is a CLI child, not a socket call (./size-hold.ts), so it is injected
+    // beside the client rather than folded into it. A test-built adapter that leaves it out refuses
+    // honestly instead of starting a real `herdr`.
+    private readonly sizeHolder: HerdrSizeHolder = noSizeHolder,
   ) {}
 
   /** Reachability for the connected/disconnected banner — one cheap list call. */
@@ -371,6 +379,23 @@ export class HerdrMux implements MuxAdapter {
   /** Show this pane on the operator's own screen. One RPC moves pane, tab and workspace (client.ts). */
   async setFocus(paneId: string): Promise<MuxAck> {
     return this.attempt(() => this.client.focusPane(paneId));
+  }
+
+  /**
+   * Hold the pane's terminal at `size` — `terminal session control`, which addresses a TERMINAL, so
+   * the pane's `terminal_id` is looked up first. One list call; the snapshot's pane record does not
+   * carry the id past this adapter, and nothing above it needs to know one exists.
+   */
+  async holdSize(paneId: string, size: MuxSize): Promise<MuxOutcome<MuxSizeHold>> {
+    let panes: WirePane[];
+    try {
+      panes = await this.client.listPanes();
+    } catch (err) {
+      return transportRefusal(err);
+    }
+    const pane = panes.find((candidate) => candidate.pane_id === paneId);
+    if (pane === undefined) return muxGone(`pane ${paneId} not found`);
+    return this.sizeHolder(pane.terminal_id, size);
   }
 
   /**
@@ -631,6 +656,7 @@ export const herdrMuxFactory: MuxAdapterFactory = {
     return new HerdrMux(
       new HerdrClient(target.endpoint, target.timeoutMs || DEFAULT_TIMEOUT_MS, dialModeOf(target.options)),
       herdrSessionSource(target.endpoint),
+      herdrSizeHolder(target.endpoint),
     );
   },
   describeTarget(endpoint: string) {

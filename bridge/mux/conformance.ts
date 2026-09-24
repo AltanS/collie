@@ -343,6 +343,18 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       run: async () => refusalOf(await adapter.setFocus(targets.paneId)),
     },
     {
+      capability: "fitToPhone",
+      // It resizes the OPERATOR's terminal for as long as it is held, so it is a write in the same
+      // sense `setFocus` is. The declared side proves a hold can be both taken and let go.
+      writes: true,
+      run: async () => {
+        const held = await adapter.holdSize(targets.paneId, { cols: 48, rows: 36 });
+        if (!held.ok) return held;
+        held.value.release();
+        return null;
+      },
+    },
+    {
       capability: "listSessions",
       // A read, and the reason it is safe against a live multiplexer: an adapter that keeps such a
       // list answers it from configuration it already has, and one that does not refuses before it
@@ -1015,6 +1027,7 @@ const PANE_ADDRESSED = new Set<MuxCapability>([
   "renamePane",
   "closePane",
   "setFocus",
+  "fitToPhone",
 ]);
 
 const revisionMovesWithContent: MuxWorldCheck = {

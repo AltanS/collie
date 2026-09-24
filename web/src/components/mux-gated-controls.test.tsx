@@ -283,6 +283,82 @@ describe("Pane actions — renamePane and closePane", () => {
   });
 });
 
+// ── Fit to phone → fitToPhone (ADR 0049) ─────────────────────────────────────
+
+describe("Pane actions — fitToPhone", () => {
+  const pane = {
+    paneId: "w1:p1",
+    workspaceId: "w1",
+    workspaceLabel: "webapp",
+    workspaceNumber: 1,
+    tabId: "w1:t1",
+    agent: "claude",
+    status: "idle" as const,
+    cwd: "/home/you/webapp",
+    focused: false,
+  };
+
+  function fitSheet(fit: ComponentProps<typeof PaneActionsSheet>["fit"], onClose = vi.fn()) {
+    render(
+      <PaneActionsSheet
+        open
+        onClose={onClose}
+        pane={pane}
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+        fit={fit}
+      />,
+    );
+  }
+
+  it("offers 'Fit to phone' where the multiplexer can fit, right after the focus row", async () => {
+    declares({ renamePane: true, closePane: true, setFocus: true, fitToPhone: true });
+    fitSheet({ active: false, onFit: vi.fn(), onRelease: vi.fn() });
+    const row = await screen.findByRole("button", { name: "Fit to phone" });
+    const focus = screen.getByRole("button", { name: "Focus in reference" });
+    // DOCUMENT_POSITION_FOLLOWING: the fit row comes after the focus row.
+    expect(focus.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("drops the row where fitToPhone is declared absent — the other rows stay", async () => {
+    declares({ renamePane: true, closePane: true, setFocus: true, fitToPhone: false });
+    fitSheet({ active: false, onFit: vi.fn(), onRelease: vi.fn() });
+    expect(await screen.findByText("Focus in reference")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Fit to phone" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Release phone fit" })).toBeNull();
+  });
+
+  it("offers no row to a caller with no mirror to measure (the pane strip passes no `fit`)", async () => {
+    declares({ renamePane: true, closePane: true, fitToPhone: true });
+    fitSheet(undefined);
+    expect(await screen.findByText("Rename")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Fit to phone" })).toBeNull();
+  });
+
+  it("closes the sheet and fits on the tap — and only on the tap", async () => {
+    declares({ fitToPhone: true });
+    const onFit = vi.fn();
+    const onClose = vi.fn();
+    fitSheet({ active: false, onFit, onRelease: vi.fn() }, onClose);
+    const row = await screen.findByRole("button", { name: "Fit to phone" });
+    expect(onFit).not.toHaveBeenCalled();
+    await userEvent.click(row);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onFit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads as the release while a lease is held", async () => {
+    declares({ fitToPhone: true });
+    const onFit = vi.fn();
+    const onRelease = vi.fn();
+    fitSheet({ active: true, onFit, onRelease });
+    await userEvent.click(await screen.findByRole("button", { name: "Release phone fit" }));
+    expect(onRelease).toHaveBeenCalledTimes(1);
+    expect(onFit).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Fit to phone" })).toBeNull();
+  });
+});
+
 describe("Tab actions — renameTab and closeTab", () => {
   const tab = { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "1", focused: true, paneCount: 2 };
 

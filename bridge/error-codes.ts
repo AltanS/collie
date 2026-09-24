@@ -70,6 +70,16 @@ export const ERROR_CODES = {
   /** The multiplexer would not put this pane on the operator's screen (gone, or it cannot). */
   "pane.focus_failed": "{reason}",
 
+  // ── Fit to phone: POST /api/pane/:id/fit → FitResponse (ADR 0049) ─────────────────
+  /** Another controller holds this terminal's size. Collie never takes it over. */
+  "pane.fit_busy": "another device or tool is controlling this terminal's size: {reason}",
+  /** A renewal found no lease: it lapsed or was released. A renewal never takes a new one. */
+  "pane.fit_lapsed": "the fit has already been released",
+  /** The multiplexer could not hold the size (gone, unreachable, or it cannot). */
+  "pane.fit_failed": "{reason}",
+  /** The body's size is not whole cells inside the bounds (400). */
+  "pane.fit_invalid": "cols must be {minCols}-{maxCols} and rows {minRows}-{maxRows}",
+
   // ── Tab & space structure: POST /api/tab[/:id/…] , /api/workspace → CreateResponse ─
   "tab.create_failed": "{reason}",
   "tab.rename_failed": "{reason}",

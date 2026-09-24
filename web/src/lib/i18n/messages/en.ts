@@ -378,6 +378,14 @@ export const en = {
   "paneActions.focus.labelFallback": "Focus in the terminal",
   "paneActions.focus.done": "Focused in the terminal",
   "paneActions.focus.failed": "Couldn't focus in the terminal",
+  // "Fit to phone" (ADR 0049): a lease that resizes the pane's terminal to this phone's mirror.
+  "paneActions.fit.label": "Fit to phone",
+  "paneActions.fit.release": "Release phone fit",
+  "paneActions.fit.failed": "Couldn't fit to phone",
+  "paneActions.fit.unmeasurable": "Couldn't measure the terminal view on this phone.",
+  "paneActions.fit.fitting": "Fitting to phone…",
+  "paneActions.fit.fitted": "Fitted to {cols}×{rows}",
+  "paneActions.fit.releaseShort": "Release",
   "paneActions.empty.fallback": "This multiplexer offers no actions for a pane.",
   "paneActions.status.renamed": "Renamed",
   "paneActions.status.labelCleared": "Label cleared",
@@ -791,6 +799,12 @@ export const en = {
   "apiError.pane.close_failed": "The pane couldn't be closed: {reason}",
   "apiError.pane.rename_failed": "The pane couldn't be renamed: {reason}",
   "apiError.pane.focus_failed": "The pane couldn't be shown in the terminal: {reason}",
+  "apiError.pane.fit_busy":
+    "Another device or tool is controlling this terminal's size. Try again after it lets go.",
+  "apiError.pane.fit_lapsed": "The phone fit had already lapsed. Tap Fit to phone to fit it again.",
+  "apiError.pane.fit_failed": "The pane couldn't be fitted to the phone: {reason}",
+  "apiError.pane.fit_invalid":
+    "That size is out of range: the terminal takes {minCols}–{maxCols} columns and {minRows}–{maxRows} rows.",
   "apiError.tab.create_failed": "The tab couldn't be created: {reason}",
   "apiError.tab.rename_failed": "The tab couldn't be renamed: {reason}",
   "apiError.tab.close_failed": "The tab couldn't be closed: {reason}",

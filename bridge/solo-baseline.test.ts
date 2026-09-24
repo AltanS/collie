@@ -590,13 +590,14 @@ describe("solo zero-tax — routes", () => {
     expect(declaredRoutes()).toEqual([
       "/",
       // `focus` is the pane action that moves the OPERATOR's own terminal, and it is named here for
-      // the reason every other one is: a route arrives on purpose or it does not arrive.
+      // the reason every other one is: a route arrives on purpose or it does not arrive. `fit` and
+      // `unfit` are the "Fit to phone" lease on that same terminal's size (ADR 0049), named for it too.
       // One content-addressed image out of a pi/omp journal's blob store — a SOLO route that
       // legitimately extends this list, named here rather than exempted. Session-scoped and
       // read-gated like the pane read beside it, so a `?host=` call forwards to the member whose
       // journal named the file (CREW_PROTOCOL.md §9.1).
       "/^\\/api\\/blobs\\/([^/]+)$/",
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|focus))?$/",
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|focus|fit|unfit))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",

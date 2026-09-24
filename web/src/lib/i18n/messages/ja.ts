@@ -356,6 +356,13 @@ export const ja: Dictionary = {
   "paneActions.focus.labelFallback": "ターミナルでフォーカス",
   "paneActions.focus.done": "ターミナルでフォーカスしました",
   "paneActions.focus.failed": "ターミナルでフォーカスできませんでした",
+  "paneActions.fit.label": "スマホに合わせる",
+  "paneActions.fit.release": "スマホ合わせを解除",
+  "paneActions.fit.failed": "スマホに合わせられませんでした",
+  "paneActions.fit.unmeasurable": "このスマホでターミナル表示のサイズを測定できませんでした。",
+  "paneActions.fit.fitting": "スマホに合わせています…",
+  "paneActions.fit.fitted": "{cols}×{rows} に合わせました",
+  "paneActions.fit.releaseShort": "解除",
   "paneActions.empty.fallback": "このマルチプレクサにはペイン用のアクションがありません。",
   "paneActions.status.renamed": "名前を変更しました",
   "paneActions.status.labelCleared": "ラベルを消去しました",
@@ -750,6 +757,13 @@ export const ja: Dictionary = {
   "apiError.pane.close_failed": "ペインを閉じられませんでした: {reason}",
   "apiError.pane.rename_failed": "ペインのリネームに失敗しました: {reason}",
   "apiError.pane.focus_failed": "ターミナルへのペイン表示に失敗しました: {reason}",
+  "apiError.pane.fit_busy":
+    "別のデバイスまたはツールがこのターミナルのサイズを制御しています。解放されてから再度お試しください。",
+  "apiError.pane.fit_lapsed":
+    "スマホ合わせはすでに期限切れです。「スマホに合わせる」をタップして再度合わせてください。",
+  "apiError.pane.fit_failed": "ペインをスマホに合わせられませんでした: {reason}",
+  "apiError.pane.fit_invalid":
+    "サイズが範囲外です。ターミナルは {minCols}〜{maxCols} 列、{minRows}〜{maxRows} 行に対応しています。",
   "apiError.tab.create_failed": "タブの作成に失敗しました: {reason}",
   "apiError.tab.rename_failed": "タブのリネームに失敗しました: {reason}",
   "apiError.tab.close_failed": "タブを閉じられませんでした: {reason}",

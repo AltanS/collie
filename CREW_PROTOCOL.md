@@ -248,6 +248,8 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/pane/:id/close` | `POST …/close` (`:282`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/rename` | `POST …/rename` (`:283`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/focus` | `POST …/focus` | forwarded — additive-optional (§7.1). Shows the pane on **the peer machine's** terminal; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `POST` | `/crew/v1/pane/:id/fit` | `POST …/fit` | forwarded — additive-optional (§7.1). Takes, moves or renews the "Fit to phone" lease on **the peer machine's** terminal ([ADR 0049](./.adr/0049-fit-to-phone-is-a-leased-geometry-write.md)); the peer holds the lease and lapses it, so a lost link lets go on its own. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `POST` | `/crew/v1/pane/:id/unfit` | `POST …/unfit` | forwarded — additive-optional (§7.1). Releases that lease; idempotent. Same version posture as `…/fit` |
 | `POST` | `/crew/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/crew/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
 | `POST` | `/crew/v1/workspace` | `POST /api/workspace` (`:225`) | forwarded |

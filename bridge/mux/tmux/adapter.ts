@@ -65,6 +65,8 @@ import {
   type MuxGrid,
   type MuxGridRequest,
   type MuxOutcome,
+  type MuxSize,
+  type MuxSizeHold,
   type MuxPane,
   type MuxRefusalOutcome,
   type MuxSession,
@@ -483,6 +485,13 @@ export class TmuxMux implements MuxAdapter {
     }
     const result = await this.attemptRun(args);
     return result.ok ? muxAck() : result;
+  }
+
+  /** Unprobed on this multiplexer, so declared absent (MUX_CONTRACT.md, ADR 0049). */
+  holdSize(_paneId: string, _size: MuxSize): Promise<MuxOutcome<MuxSizeHold>> {
+    return Promise.resolve(
+      muxUnsupported("fitToPhone", "holding a pane's terminal size is not probed on this multiplexer"),
+    );
   }
 
   /**

@@ -343,6 +343,25 @@ export interface MuxGrid {
   readonly revision: number;
 }
 
+/** A terminal size in character cells. What `holdSize` asks for. */
+export interface MuxSize {
+  readonly cols: number;
+  readonly rows: number;
+}
+
+/**
+ * A size the adapter is holding on a pane's terminal (`MuxAdapter.holdSize`).
+ *
+ * `release` is idempotent and returns at once; the multiplexer restores the size in its own time.
+ * `ended` settles once the hold is over for ANY reason (released, taken by another controller, the
+ * process behind it gone) with a sentence saying which, and never rejects. It is how the lease
+ * learns that a hold it still counts as held has already been lost.
+ */
+export interface MuxSizeHold {
+  release(): void;
+  readonly ended: Promise<string>;
+}
+
 /** A freshly-created shell pane — enough to navigate into it before the next snapshot. */
 export interface MuxCreatedPane {
   readonly paneId: string;
@@ -621,6 +640,23 @@ export interface MuxAdapter {
    * A pane that has gone away answers `gone`, like every other pane-addressed call.
    */
   setFocus(paneId: string): Promise<MuxAck>;
+
+  /**
+   * Hold this pane's terminal at `size` until the returned hold is released. Needs `fitToPhone`.
+   *
+   * The second and last way the phone may move a human's screen, and like {@link setFocus} it exists
+   * only behind a named tap ("Fit to phone"). Nothing in the bridge calls it except the lease in
+   * `bridge/fit-leases.ts`, which owns the lapse and the release ([ADR 0049](../../.adr/)).
+   *
+   * THE HOLD IS THE WHOLE WRITE. Releasing it is the only undo, and the undo is the multiplexer's:
+   * an adapter never writes a "previous" size back, because it cannot know the PTY's size and the
+   * desk re-imposes its own anyway. An adapter that can resize but cannot let go declares this
+   * ABSENT.
+   *
+   * Another party already holding the terminal answers `refused`, and the adapter never takes it
+   * over. A pane that has gone away answers `gone`.
+   */
+  holdSize(paneId: string, size: MuxSize): Promise<MuxOutcome<MuxSizeHold>>;
 
   /** New tab in a space, opening a fresh shell. Needs `createTab`. */
   createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>>;
