@@ -755,6 +755,14 @@ else needed it: no username, hostname, home path, session id, credential-shaped
 string or UUID appears, and the cwd is the generic sandbox dir. Verified with
 an email/path/UUID/secret-shape sweep, which returns only the fabricated token.
 
+**The nine files added 2026-09-23 are hand-built, not captures** (#274 to #280):
+`muse--draft-blank-row`, `muse--tip-loop`, `muse--palette-exact`, `muse--palette-partial`,
+`muse--draft-image-chip`, `muse--draft-quoted-path`, `muse--tip-paste`,
+`muse--approval-network` and `muse--approval-network-moved`. Each starts from one of the 18
+captures above and swaps the box or dialog rows for the text the contributor saw live on Muse
+1.3.0 under Collie 1.12.1. The transcript, the rules and the statusline are the capture's bytes;
+the swapped rows reuse the styling of the rows they replace, so their colours are not evidence.
+
 **The headline: Muse's questions are digit-MOVES, not digit-answers, and its
 checkbox/review phases need pointer choreography.** A digit jumps the `›`
 pointer; `Enter` selects (single), toggles (checkbox), or submits (review).
