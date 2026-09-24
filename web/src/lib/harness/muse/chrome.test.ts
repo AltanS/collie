@@ -9,6 +9,7 @@ import {
   composerReady,
   extractInputDraft,
   extractStatusLines,
+  hasComposer,
   stripChrome,
 } from "./chrome";
 
@@ -78,6 +79,21 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     expect(extractInputDraft(lines("muse--trust-prompt.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-color-notes-typed.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--quoted-dialogs-bare.txt"))).toBeNull();
+  });
+});
+
+describe("the tail walk over blank rows stays inside the box (#274)", () => {
+  // The walk now steps over blank rows, so the rows that stop it carry the safety: the `›` pointer
+  // and the column-0 question. An unmeasured box-less dialog with its pointer torn off is the case
+  // where the walk crosses blanks furthest, and it must still find no box and draw the card.
+  it("an unknown box-less dialog with no pointer still reads as no composer", () => {
+    const raw = readFileSync(join(PANES_DIR, "muse--approval-ls.txt"), "utf8")
+      .replace("Would you like to run the following command?", "Would you like to open this file now? ")
+      .replace("›", " ");
+    const torn = splitLines(parseAnsi(raw));
+    expect(hasComposer(torn)).toBe(false);
+    expect(composerReady(torn)).toBe(false);
+    expect(extractInputDraft(torn)).toBeNull();
   });
 });
 
