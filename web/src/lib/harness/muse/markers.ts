@@ -107,7 +107,8 @@ export interface MuseTail {
  *
  *     (optional Voice rule)     (d) titled rule, tolerated absent
  *     ❯ <draft…>                (c) the prompt row — may be missing (approval)
- *       <continuations…>        (c) 0..MAX_DRAFT_ROWS indented rows below it
+ *       <continuations…>        (c) 0..MAX_DRAFT_ROWS indented rows below it, blank
+ *                                 paragraph breaks inside the draft included (#274)
  *     ─────────────────         (a) the bottom rule — the anchor
  *       <statusline>            (b) opaque status row, last non-blank
  *
@@ -123,9 +124,19 @@ export function locateTail(lines: StyledLine[]): MuseTail | null {
   const rule = status - 1;
   if (!isBottomRule(texts[rule]!)) return null;
 
-  // (c) Walk up over draft continuations to the prompt row.
+  // (c) Walk up over the draft run to the prompt row: continuations AND the blank rows a
+  // paragraph break leaves inside the box (#274). A blank used to stop the walk, so a healthy
+  // two-paragraph draft read as prompt null — "no composer" — which wedged the send path (verify
+  // reads null forever) and drew the unread-dialog card over the live box. The walk still stops
+  // at the first non-blank non-continuation row, so an approval option run resolves the same
+  // null at its subject rows, and the ❯ row itself always stops the walk before transcript.
   let i = rule - 1;
-  while (i >= 0 && rule - 1 - i < MAX_DRAFT_ROWS && isContinuationRow(texts[i]!)) i--;
+  while (
+    i >= 0 &&
+    rule - 1 - i < MAX_DRAFT_ROWS &&
+    (isContinuationRow(texts[i]!) || isBlank(texts[i]!))
+  )
+    i--;
   // A prompt row heading the run — or null when continuation-shaped rows (an approval option run)
   // or nothing sits above the rule. Either way the tail chrome below stays real; only the box is
   // absent.
@@ -310,6 +321,8 @@ export function trailingMenuRows<T extends { n: number }>(rows: T[]): T[] {
 // verify — typing replaces the tip, so the guard compares against real text either way.
 export const INPUT_PLACEHOLDERS: ReadonlySet<string> = new Set([
   "Start a message with ! to run a shell command yourself",
+  // Seen live 2026-09-23: the tip rotates (#274 addendum).
+  "/loop 10m <prompt> schedules a recurring prompt",
 ]);
 
 /**
