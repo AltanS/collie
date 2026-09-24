@@ -2,6 +2,10 @@
 
 Status: **Accepted** (2026-08-04)
 
+Superseded on the geometry clause of its 2026-09-05 amendment by
+[ADR 0049](./0049-fit-to-phone-is-a-leased-geometry-write.md) (2026-09-24): Collie may hold a pane's
+size through a named "Fit to phone" lease. The emulator refusal and the client contract stand.
+
 ## Context
 
 "Render the pane properly, with a real terminal emulator" is the most re-proposed idea in this repo,

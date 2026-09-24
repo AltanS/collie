@@ -269,6 +269,46 @@ Two sibling structural ops reorder objects. Both live-verified 2026-07-20 on the
 - The event catalog lists sibling `tab.moved` / `workspace.moved` events (0.7.2); emission not
   observed here (no live subscription during the probe).
 
+## `terminal session control` — the geometry lease (probed)
+
+A CLI child-process contract, not the socket. Collie uses it for one thing, the "Fit to phone"
+lease ([ADR 0049](./.adr/0049-fit-to-phone-is-a-leased-geometry-write.md)). Probed 2026-09-24
+against herdr 0.9.1 (protocol 22) on Windows (ConPTY), in a throwaway named session
+(`herdr --session probe-fit server`). The operator's own session was never touched.
+
+```
+herdr [--session <name>] terminal session control <terminal_id> [--takeover] [--cols N] [--rows N]
+herdr [--session <name>] terminal session observe <terminal_id> [--cols N] [--rows N]
+```
+
+`<terminal_id>` is the pane record's `terminal_id` (`term_…`), not the pane id. Stdout is NDJSON:
+`{"type":"terminal.frame","seq","full","width","height","encoding":"ansi","bytes":<base64>}`, then
+one `{"type":"terminal.closed","reason"}` when the controller ends. The controller ends cleanly on
+stdin EOF (`reason: "detached"`).
+
+| Probe | Result |
+| --- | --- |
+| `control --cols 50 --rows 30`, no desktop client | The PTY becomes 50×30: the process inside reads `[Console]::WindowWidth` = 50. |
+| Controller exits, no desktop client | The PTY **keeps** 50×30. `pane.get`'s `scroll.viewport_rows` reports 30. |
+| A desktop client attaches later | Its rect is imposed on attach: a stale 45×22 became 93×29. |
+| Controller exits, desktop client attached | The desktop's rect returns at once (93×29). |
+| Controller killed (`taskkill /F`), desktop attached | The same as a clean exit, within a second. |
+| Desktop splits the pane while a lease is held | The lease holds. On release the new rect applies (44×27). |
+| Second `control`, no `--takeover` | `terminal.closed`, `reason: "terminal attach failed: terminal <id> already has an attached client; retry with --takeover"`. |
+| Second `control --takeover` | The first gets `terminal.closed` `"terminal attach taken over"`, and the second's size applies. |
+| A desktop client, as far as `control` is concerned | Not "an attached client": `control` attaches with no `--takeover` while the desktop is on. |
+| `observe --cols 30 --rows 20` during a 48×36 lease | The PTY is untouched. `observe` frames are drawn at the observer's size, so neither `observe` nor `pane.layout` (120×40 over a 119×40 PTY) reports the PTY size. |
+
+A real OpenTUI console fitted to 48×36 redrew in its narrow layout and kept answering
+`pane.send_keys`.
+
+> **Note.** On Windows, a process learns of a ConPTY resize only while it reads stdin in raw mode.
+> A Bun script with no stdin reader kept `columns = 119`; the same script with `setRawMode(true)`
+> got `resize` and `SIGWINCH` at once. Every full-screen TUI reads stdin raw, but a silent probe
+> program will look like a failed resize.
+
+Linux and macOS are unprobed.
+
 ## Object shapes (observed)
 
 ```jsonc

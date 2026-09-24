@@ -74,7 +74,7 @@ the pointer, it was a supersede.
 | [0005](./0005-a-composed-key-queue-never-outlives-its-dock.md) | A composed key queue never outlives its dock | Accepted |
 | [0006](./0006-update-advances-the-checkout-herdr-installed.md) | `update` advances the checkout Herdr installed, and never re-links it | Accepted |
 | [0007](./0007-the-idle-lock-is-a-pause-not-a-gate.md) | The idle lock is a pause, not a gate | Accepted |
-| [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Collie does not run a terminal emulator | Accepted |
+| [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Collie does not run a terminal emulator | Superseded in part by 0049 |
 | [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu is driven by the keys it names, never by digits | Accepted |
 | [0010](./0010-long-sends-are-verified-via-the-paste-placeholder.md) | Long sends are verified via the paste placeholder, not by chunking them | Accepted |
 | [0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) | The pack protocol is the mux-driver seam, and peers are full collies | Accepted |
@@ -115,6 +115,7 @@ the pointer, it was a supersede.
 | [0046](./0046-an-urgent-patch-keeps-the-daily-cadence.md) | An urgent patch keeps the daily cadence | Accepted |
 | [0047](./0047-muse-panes-render-natively.md) | Muse panes render natively: no light-theme inversion | Accepted |
 | [0048](./0048-the-input-box-is-found-by-its-own-frame.md) | The input box is found by its own frame; the statusline bound only bounds what is stripped (amends 0004) | Accepted |
+| [0049](./0049-fit-to-phone-is-a-leased-geometry-write.md) | "Fit to phone" is a named, leased geometry write (supersedes 0008's geometry clause) | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
