@@ -84,9 +84,9 @@ export const DEFAULT_OPENCODE_FLOOR_MS = 10_000;
  *
  * Named by agent rather than sniffed, because "is this backed by a database" is not a question a
  * `TranscriptSource` answers and inventing a flag for one adapter would be a worse seam than a list of
- * one. opencode's `stat` is two indexed counts over `message` and `part` (journal/opencode.ts §
- * sessionMeta), which already IS the cheap "did anything move" probe — so no second query is needed,
- * only a longer gap between them.
+ * one. opencode's `stat` is one indexed count over `session_message` (V2) or two over
+ * `message`/`part` (V1) plus the store lookup (journal/opencode.ts § sessionMeta), which already IS
+ * the cheap "did anything move" probe — so no second query is needed, only a longer gap between them.
  */
 export const QUERY_BACKED_AGENTS: ReadonlySet<string> = new Set(["opencode"]);
 
