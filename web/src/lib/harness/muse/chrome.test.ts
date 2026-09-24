@@ -71,6 +71,7 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     // The tip rotates per context: the paste variant is a placeholder too (#278).
     expect(extractInputDraft(lines("muse--tip-paste.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--approval-ls.txt"))).toBeNull();
+    expect(extractInputDraft(lines("muse--approval-network.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-color.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-toppings.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-toppings-review.txt"))).toBeNull();
@@ -117,6 +118,7 @@ describe("composerPrompt — the sweep's binding region", () => {
   it("is null exactly where composerReady is false", () => {
     for (const name of [
       "muse--approval-ls.txt",
+      "muse--approval-network.txt",
       "muse--ask-color.txt",
       "muse--ask-toppings.txt",
       "muse--ask-toppings-review.txt",

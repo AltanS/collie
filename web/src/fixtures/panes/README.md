@@ -792,6 +792,8 @@ signature.
 | `muse--quoted-dialogs-bare.txt` | Model-printed facsimiles (approval + single-select + review) as the last reply above a bare box — the model paraphrased the review pointer (`│`), so no detector matches; nothing lifts and the reply stays allowed (#260) | `idle` |
 | `muse--approval-ls.txt` | `Would you like to run the following command?`, `$` + `Stage 1/1` + `Current argv:` subject, `› 1. Allow this stage once (y)` / `2. Always allow … (p)` / `3. Abort … (esc)`. No footer row. Digit `1` live-probed: approves alone | `blocked` |
 | `muse--approval-ls-moved.txt` | Same dialog after one `Down` (`›` on option 2) | `blocked` |
+| `muse--approval-network.txt` | `Would you like to allow this network access?`, `network: host:port scheme` + `full URL:` subject, four options with `(y)`/`(p)`/`(esc)` hints and a `host:port (scheme)` scope on 2–3. Digit `1` live-probed: approves once, fetch runs (#280) | `blocked` |
+| `muse--approval-network-moved.txt` | Same dialog with `›` on option 2, as seen live | `blocked` |
 | `muse--ask-color.txt` | Single-select: `Request user input` header, question, `› 1. Red (Recommended)` / `2.` / `3.` / auto-added `4. None of the above`, `Enter to select · ↑/↓ to move · Tab for an optional note · Esc to interrupt` footer | `blocked` |
 | `muse--ask-color-moved.txt` | Same dialog after one `Down` (`›` on option 2) | `blocked` |
 | `muse--ask-color-notes-open.txt` | After `Tab`: inline `Note (optional): ▌` row under the pointed option, footer unchanged. The lift must decline: the note owns the keyboard | `blocked` |

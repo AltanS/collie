@@ -19,6 +19,8 @@ describe("detector disjointness — each dialog lifts under exactly one grammar"
   const cases: [string, "approval" | "question" | "checkbox" | "trust"][] = [
     ["muse--approval-ls.txt", "approval"],
     ["muse--approval-ls-moved.txt", "approval"],
+    ["muse--approval-network.txt", "approval"],
+    ["muse--approval-network-moved.txt", "approval"],
     ["muse--ask-color.txt", "question"],
     ["muse--ask-color-moved.txt", "question"],
     ["muse--ask-toppings.txt", "checkbox"],
@@ -70,6 +72,14 @@ describe("moved twins — the pointer moves the signature, not the identity", ()
   it("approval: same options, signature moves, core stable", () => {
     const a = detectApproval(lines("muse--approval-ls.txt"))!;
     const b = detectApproval(lines("muse--approval-ls-moved.txt"))!;
+    expect(a.options).toEqual(b.options);
+    expect(a.signature).not.toBe(b.signature);
+    expect(a.coreSignature).toBe(b.coreSignature);
+  });
+
+  it("network approval: same options, signature moves, core stable", () => {
+    const a = detectApproval(lines("muse--approval-network.txt"))!;
+    const b = detectApproval(lines("muse--approval-network-moved.txt"))!;
     expect(a.options).toEqual(b.options);
     expect(a.signature).not.toBe(b.signature);
     expect(a.coreSignature).toBe(b.coreSignature);
