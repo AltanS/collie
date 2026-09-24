@@ -501,13 +501,27 @@ The updater writes one record, `<state dir>/update.json` (by default
 state, the version the run came from, the version it was going to, the updater's pid, and on a
 failure a tail of the service log and the recovery command.
 
-An update the phone started does not print to your terminal at all. It runs under a transient
-systemd unit of its own, named `collie-api-update-<stamp>`, and `--collect` removes that unit as
-soon as it exits, so its transcript is only in the journal:
+An update the phone started does not print to your terminal at all. On Linux with a systemd user
+manager it runs under a transient unit of its own, named `collie-api-update-<stamp>`, and
+`--collect` removes that unit as soon as it exits, so its transcript is only in the journal:
 
 ```bash
 journalctl --user -u 'collie-api-update-*' --since '30 min ago'
 ```
+
+Everywhere else, macOS included, the updater's own output goes to a file in the state directory:
+
+```bash
+cat ~/.local/state/collie/update-runner.log
+```
+
+Each update the phone starts empties that file and keeps the run before it as
+`update-runner.log.1`. On the systemd tier the file holds only the one line `systemd-run` prints,
+and the journal above has the rest.
+
+A run that gives up before the switch, a new version that will not start on this machine for
+instance, changes nothing on disk. The phone that started it says that the update failed on that
+machine and gives the reason, and the same reason is the `reason` field of `update.json`.
 
 That is where to look when the phone reported success and something downstream did not happen — a
 warning that the run record could not be written, for instance, which is a lead that updated itself
