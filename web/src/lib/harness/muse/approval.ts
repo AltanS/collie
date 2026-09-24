@@ -1,6 +1,6 @@
-// Approval detection — the grammar that recognises Muse's command-approval dialog sitting
-// directly above the composer tail chrome and lifts it into a `PromptModel` the UI renders as
-// native buttons.
+// Approval detection — the grammar that recognises Muse's approval dialogs sitting directly
+// above the composer tail chrome and lifts them into a `PromptModel` the UI renders as native
+// buttons. Two variants share the numbered-options tail; each pins its own question + subject:
 //
 //     Would you like to run the following command?
 //
@@ -14,13 +14,26 @@
 //     ────… (bottom rule)
 //       <statusline>
 //
+//     Would you like to allow this network access?
+//
+//       network: www.gt:443 https
+//       full URL: https://www.gt/sitio/faq.php#faq-47
+//
+//     › 1. Yes, proceed (y)
+//       2. Yes, don't ask again this session (p)  www.gt:443 (https)
+//       3. Always allow this network destination  www.gt:443 (https)
+//       4. No, and tell Muse Code what to do differently (esc)
+//     ────… (bottom rule)
+//       <statusline>
+//
 // Everything here is a PURE function over `StyledLine[]`, driven entirely by the fixture corpus
 // (web/src/fixtures/panes/muse--*.txt). It never touches a pane or the network. The tail invariant
 // is the backbone: the options must sit directly above the bottom rule, so an approval that has
 // scrolled up (with transcript below it) simply doesn't match — the false-positive guard.
 //
-// Only the COMMAND shape above is lifted (DIALOG_NOTES.md, scope): file/network/peer approval variants ride along only
-// when a capture shows them sharing it. Anything else answers null and stays raw.
+// Only the COMMAND and NETWORK shapes above are lifted (DIALOG_NOTES.md, scope): file/peer
+// approval variants ride along only when a capture shows them sharing it. Anything else answers
+// null and stays raw.
 
 import { lineText, type StyledLine } from "../../blocks";
 import type { PromptModel, PromptOption } from "../prompt-model";
@@ -33,10 +46,11 @@ import {
   trailingMenuRows,
 } from "./markers";
 
-// The question is Muse's fixed string for a command approval — matched EXACTLY, not as a prefix.
-// A looser match would risk lifting an unprobed approval KIND (file? network?) whose keys were
-// never measured, and a wrong digit there approves a real side effect.
-const APPROVAL_QUESTION = "Would you like to run the following command?";
+// Each question is Muse's fixed string for its approval kind — matched EXACTLY, not as a
+// prefix. A looser match would risk lifting an unprobed approval KIND (file? peer?) whose keys
+// were never measured, and a wrong digit there approves a real side effect.
+const APPROVAL_COMMAND_QUESTION = "Would you like to run the following command?";
+const APPROVAL_NETWORK_QUESTION = "Would you like to allow this network access?";
 
 // The command-approval subject, in order between question and options: the shell line, the
 // stage counter, the parsed argv. All three are required — together they are what makes this a
@@ -44,6 +58,11 @@ const APPROVAL_QUESTION = "Would you like to run the following command?";
 const SUBJECT_DOLLAR = /^\s*\$\s+\S/;
 const SUBJECT_STAGE = /^\s*Stage \d+\/\d+\s*$/;
 const SUBJECT_ARGV = /^\s*Current argv:/;
+
+// The network-approval subject, in order: the destination + scheme, the full URL. Both required,
+// for the same reason as the command triple.
+const SUBJECT_NETWORK = /^\s*network:\s+\S/;
+const SUBJECT_FULL_URL = /^\s*full URL:\s+\S/;
 
 // Options live within a couple dozen lines of the tail; scanning a bounded window keeps a stray
 // "N." far up in scrollback history from ever being mistaken for a menu row.
@@ -61,8 +80,8 @@ export interface ApprovalRegion {
 }
 
 /**
- * Detect a command-approval dialog above the tail chrome. Returns the model + its start line, or
- * null when the tail isn't one. Pure; the caller owns pane access.
+ * Detect a command- or network-approval dialog above the tail chrome. Returns the model + its
+ * start line, or null when the tail isn't one. Pure; the caller owns pane access.
  */
 export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
@@ -103,19 +122,32 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
   let qj = qi;
   while (qj >= 0 && texts[qj]!.trim() !== "" && !parseNumberedOption(texts[qj]!)) qj--;
   while (qj >= 0 && texts[qj]!.trim() === "") qj--;
-  if (qj < 0 || texts[qj]!.trim() !== APPROVAL_QUESTION) return null;
+  if (qj < 0) return null;
+  const question = texts[qj]!.trim();
+  const isCommand = question === APPROVAL_COMMAND_QUESTION;
+  const isNetwork = question === APPROVAL_NETWORK_QUESTION;
+  if (!isCommand && !isNetwork) return null;
   const questionAt = qj;
 
-  // 4. The command subject, in order, between question and options.
+  // 4. The subject, in order, between question and options — the triple for a command approval,
+  //    the destination pair for a network one.
   const subject = texts.slice(questionAt + 1, firstOpt).filter((t) => t.trim() !== "");
-  const dollar = subject.findIndex((t) => SUBJECT_DOLLAR.test(t));
-  const stage = subject.findIndex((t) => SUBJECT_STAGE.test(t));
-  const argv = subject.findIndex((t) => SUBJECT_ARGV.test(t));
-  if (dollar < 0 || stage < 0 || argv < 0 || !(dollar < stage && stage < argv)) return null;
+  if (isCommand) {
+    const dollar = subject.findIndex((t) => SUBJECT_DOLLAR.test(t));
+    const stage = subject.findIndex((t) => SUBJECT_STAGE.test(t));
+    const argv = subject.findIndex((t) => SUBJECT_ARGV.test(t));
+    if (dollar < 0 || stage < 0 || argv < 0 || !(dollar < stage && stage < argv)) return null;
+  } else {
+    const network = subject.findIndex((t) => SUBJECT_NETWORK.test(t));
+    const url = subject.findIndex((t) => SUBJECT_FULL_URL.test(t));
+    if (network < 0 || url < 0 || !(network < url)) return null;
+  }
 
   // 5. Build the options. Labels keep their parenthesised shortcut hints — terminal-honest text, and
-  //    the digit alone is the whole recipe (family `permission`: probed on the live dialog, `1`
-  //    approved with no Enter — a trailing Enter would leak into whatever renders next).
+  //    the digit alone is the whole recipe (family `permission`: probed on both live variants, `1`
+  //    approved with no Enter — a trailing Enter would leak into whatever renders next). Network
+  //    labels keep the trailing scope (`www.gt:443 (https)`) for the same reason: it names what
+  //    the digit blesses.
   const options: PromptOption[] = menu.map((row) => ({ label: row.label, keys: [String(row.n)] }));
 
   // The signature runs question → last option: contiguous literal rows the bridge can bind a write
@@ -129,13 +161,13 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
     .map((t) => t.replaceAll("›", " "))
     .join("\n");
   return {
-    model: { question: APPROVAL_QUESTION, options, family: "permission", signature, coreSignature },
+    model: { question, options, family: "permission", signature, coreSignature },
     startLine: firstOpt,
   };
 }
 
 /**
- * Detect a command-approval dialog at the tail of `lines`, returning just the model (or null). The
+ * Detect an approval dialog at the tail of `lines`, returning just the model (or null). The
  * thin public matcher — used by the race guard to re-derive from a fresh buffer and by tests.
  * buildBlocks uses {@link detectApprovalRegion} for the render boundary.
  */

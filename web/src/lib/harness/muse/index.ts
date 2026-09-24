@@ -11,8 +11,10 @@
 //     ─────────────────                 (full-width bottom rule)
 //       muse-spark-1.3 · …              (opaque statusline)
 //
-//   - Approval REPLACES the box (no ❯ row): `Would you like to run the following command?` + `$` /
-//     `Stage N/M` / `Current argv:` subject + `› N.` options. Digit alone (family `permission`).
+//   - Approval REPLACES the box (no ❯ row): command (`Would you like to run the following
+//     command?` + `$` / `Stage N/M` / `Current argv:`) or network (`Would you like to allow this
+//     network access?` + `network:` / `full URL:`) + `› N.` options. Digit alone (family
+//     `permission`).
 //   - Questions LEAVE the bare ❯ under them: `Request user input` header (live timer — anchors
 //     detection, never enters a signature) + question + `› N.` options + footer. Digits MOVE the
 //     pointer; Enter selects (family `select`, keys [digit, Enter]).
