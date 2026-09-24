@@ -129,11 +129,28 @@ async function candidateRefsUnder(
     }
     try {
       // Root sessions only — a `parent_id` row is a subagent session, which herdr never reports.
-      const rows = db
-        .query<{ id: string }, [number]>(
-          "select id from session where parent_id is null order by time_updated desc limit ?",
-        )
-        .all(MAX_CANDIDATES);
+      // BOTH generations are sampled, half the budget each: on a machine that upgraded, a V2-only
+      // list would never exercise the V1 path the adapter still serves, which is the drift this
+      // probe exists to catch. The tables are constants, never built from input.
+      const perStore = Math.ceil(MAX_CANDIDATES / 2);
+      const newest = (table: "session_v2" | "session"): { id: string }[] => {
+        try {
+          return table === "session_v2"
+            ? db
+                .query<{ id: string }, [number]>(
+                  "select id from session_v2 where parent_id is null order by time_updated desc limit ?",
+                )
+                .all(perStore)
+            : db
+                .query<{ id: string }, [number]>(
+                  "select id from session where parent_id is null order by time_updated desc limit ?",
+                )
+                .all(perStore);
+        } catch {
+          return []; // the table does not exist in this generation
+        }
+      };
+      const rows = [...newest("session_v2"), ...newest("session")].slice(0, MAX_CANDIDATES);
       const refs: AgentSessionRef[] = rows.map((r) => ({ kind: "id", value: r.id }));
       return { refs, total: refs.length };
     } catch {
