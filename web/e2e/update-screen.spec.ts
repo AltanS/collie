@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
@@ -48,9 +50,15 @@ const PHONE_PROJECTS = new Set(["app-phone", "phone"]);
 const NO_SHIFT_PROJECTS = new Set([...PHONE_PROJECTS, "app-phone-webkit"]);
 const NO_SHIFT_TITLE = "every state of update mode keeps the panel's boxes where they were";
 
-/** The versions the fake run moves between. Above this bundle's own, so this phone has a step 6. */
-const FROM = "1.12.0";
-const TO = "1.13.0";
+/** This bundle's own version, read from the manifest the release bumps. */
+// SAFETY: web/package.json always carries a string `version`; scripts/check-version.sh enforces it.
+const OWN = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
+const [OWN_MAJOR = 1, OWN_MINOR = 0] = OWN.split(".").map(Number);
+/** The versions the fake run moves between. Derived from this bundle's own, never written down: a
+ *  target above it gives this phone a step 6, and a release that bumps the version can never make
+ *  the fake run a no-op (1.13.0's release commit did exactly that to a hard-coded "1.13.0"). */
+const FROM = `${OWN_MAJOR}.${Math.max(OWN_MINOR - 1, 0)}.0`;
+const TO = `${OWN_MAJOR}.${OWN_MINOR + 1}.0`;
 /** The card's action button, and "Start update" on update mode's first screen (ADR 0064). */
 const UPDATE_ACTION = fill(en["settings.updateCard.action"], { version: TO });
 const CONFIRM = en["updateScreen.action.start"];
