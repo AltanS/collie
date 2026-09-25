@@ -68,6 +68,20 @@ describe("terminal mirror colour space", () => {
   });
 });
 
+// The mirror must stay selectable on the phone. An installed iOS PWA (display:standalone) suppresses
+// long-press selection app-wide unless an element opts back in with -webkit-user-select:text — so
+// without these the operator can't select-and-copy the terminal text on the phone at all (the pane
+// menu's "Copy output" is the one-tap alternative). Pinned as the classes that PRODUCE the behaviour,
+// the way the colour-space tests above are, since jsdom runs no selection.
+describe("terminal mirror text selection (mobile copy)", () => {
+  it("opts the <pre> back into text selection, both spellings", () => {
+    const { container } = render(<AnsiOutput text="hello" />);
+    const pre = container.querySelector("pre")!;
+    expect(pre.className).toContain("select-text");
+    expect(pre.className).toContain("[-webkit-user-select:text]");
+  });
+});
+
 // Native mirrors (muse in .adr/0047) skip the light-theme inversion: the palette reads raw on
 // the reference ground, while inversion drops body text to ~2:1. opencode is NOT one: on its
 // dark background answer the body is rgb(238,238,238), 1.13:1 raw against 17.32:1 inverted.
