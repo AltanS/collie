@@ -760,6 +760,23 @@ export function AgentChat({
     setFindQuery("");
   }
 
+  // Copy the pane's buffered terminal output to the clipboard, from the FROZEN snapshot the operator
+  // is looking at (`shown`, not the live props) so a poll landing mid-tap can't swap what gets
+  // copied. Prefer the unwrapped logical text — the buffer without the phone-width hard wraps, so a
+  // paste reads as real lines — and fall back to the display text when the agent reports no unwrapped
+  // form. `navigator.clipboard` is absent over plain HTTP (an insecure context, a supported deploy —
+  // see status-detail-sheet's copy), so this can reject; `canCopyOutput` keeps the row off that
+  // deploy, and the catch keeps a failure honest rather than claiming a copy that never happened.
+  const canCopyOutput = !!navigator.clipboard;
+  async function copyOutput() {
+    try {
+      await navigator.clipboard.writeText(shown.logicalText || shown.text);
+      setStatus(t("chat.copyOutput.done"), "success");
+    } catch {
+      setStatus(t("chat.copyOutput.failed"), "error");
+    }
+  }
+
   // What the top of the buffer can offer — see the JSX for why these are mutually exclusive.
   // `historyAvailable`: the pane reported an agent session, so a transcript exists to open.
   // `moreScrollback`: Herdr says this pane can still yield lines beyond the window we've asked for,
@@ -2345,6 +2362,10 @@ export function AgentChat({
           onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
           onFind={display ? openFind : undefined}
           onHistory={historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
+          // Copy the buffered output — gated on there being output AND a clipboard to write to (absent
+          // over plain HTTP), so the row hides where it could only fail, the way find hides with no
+          // output. Same read-row family as find and history.
+          onCopyOutput={display && canCopyOutput ? copyOutput : undefined}
           // ZEN'S ONE ENTRY POINT, and the absence of this callback IS the gate — the sheet hides a
           // row it was given nothing for, exactly as it does for find and history. Gated twice: the
           // Settings toggle decides whether this phone offers zen at all, and `display` keeps it off
