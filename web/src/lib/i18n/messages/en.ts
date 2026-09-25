@@ -316,6 +316,9 @@ export const en = {
   "chat.strips.show.panes": "Show panes. {panes} hidden.",
   "chat.find.label": "Find in output",
   "chat.history.label": "Conversation history",
+  "chat.copyOutput.label": "Copy output",
+  "chat.copyOutput.done": "Copied output to clipboard",
+  "chat.copyOutput.failed": "Couldn't copy output",
   // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.
   "chat.paneMenu.aria": "Pane actions",
   "chat.header.openOverviewAria": "Open {workspace} overview{status}",

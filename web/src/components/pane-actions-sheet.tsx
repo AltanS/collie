@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
+import { Copy, Maximize2, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -47,6 +47,11 @@ interface PaneActionsSheetProps {
   onFind?: () => void;
   /** Open the agent's own transcript. */
   onHistory?: () => void;
+  /** Copy the pane's buffered terminal output to the clipboard. The sheet closes and a status toast
+   *  reports the result. Gated by the caller on there being output AND a usable clipboard (it is
+   *  absent over plain HTTP, a supported deploy), so an unusable row is HIDDEN — the same "a row is a
+   *  thing you can do" rule find/history/zen follow. */
+  onCopyOutput?: () => void;
   /** Open this pane's own settings — today one switch, the prompt-cache warning (ADR 0042).
    *
    *  The FOURTH read row, and it is a read in the sense the other three are: it changes a preference on
@@ -84,6 +89,7 @@ export function PaneActionsSheet({
   onClosed,
   onFind,
   onHistory,
+  onCopyOutput,
   onSettings,
   onZen,
 }: PaneActionsSheetProps) {
@@ -263,7 +269,7 @@ export function PaneActionsSheet({
           sheet; rename and close are the half you arrive at deliberately.
           Hidden in `rename` mode with the rest of the list — that view is a sub-screen, not a
           section. */}
-      {mode === "actions" && (onFind || onHistory || onSettings || onZen) && (
+      {mode === "actions" && (onFind || onHistory || onCopyOutput || onSettings || onZen) && (
         <div className="mb-1 flex flex-col gap-1">
           {onFind && (
             <ActionRow
@@ -284,6 +290,20 @@ export function PaneActionsSheet({
               onClick={() => {
                 onClose();
                 onHistory();
+              }}
+            />
+          )}
+          {/* Copy the buffered terminal output. Same "act on the output you're looking at" family as
+              find and history, so it sits with them. Close-then-act like the rows above — the copy
+              fires inside this same tap, so the clipboard write still counts as user-initiated even as
+              the sheet unmounts. */}
+          {onCopyOutput && (
+            <ActionRow
+              icon={<Copy className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("chat.copyOutput.label")}
+              onClick={() => {
+                onClose();
+                onCopyOutput();
               }}
             />
           )}

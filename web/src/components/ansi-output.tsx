@@ -155,6 +155,14 @@ function preClass(
   const native = rendersNativeMirror(agent, nativeMirror);
   return cn(
     "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
+    // Opt the mirror back INTO text selection, so an operator can long-press a line and Copy it
+    // straight off the phone. An installed iOS PWA (display:standalone, which Collie is) suppresses
+    // long-press selection app-wide unless the element sets -webkit-user-select:text — the exact
+    // inverse of the `select-none [-webkit-touch-callout:none]` the strip pills carry to STOP the
+    // loupe. Both spellings, like those pills, so the -webkit prefix is present whatever the build
+    // does. The pane menu's "Copy output" is the one-tap path (robust while output keeps arriving);
+    // this is the direct-selection one, best on a pane you have scrolled up to freeze.
+    "select-text [-webkit-user-select:text]",
     native ? MUSE_MIRROR : MIRROR_SPACE,
     native ? null : MIRROR_INVERT,
     wrap

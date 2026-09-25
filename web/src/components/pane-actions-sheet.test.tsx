@@ -264,6 +264,7 @@ describe("PaneActionsSheet — the read rows", () => {
     renderSheet();
     expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Conversation history" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy output" })).toBeNull();
   });
 
   it("shows only the row it was given a callback for", () => {
@@ -282,6 +283,25 @@ describe("PaneActionsSheet — the read rows", () => {
     // Order matters: the find bar takes over the header row, and the sheet must not still be over it.
     expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(
       onFind.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("shows the Copy output row only when given onCopyOutput", () => {
+    const { rerender } = render(<PaneActionsSheet {...renderProps()} />);
+    expect(screen.queryByRole("button", { name: "Copy output" })).toBeNull();
+    rerender(<PaneActionsSheet {...renderProps({ onCopyOutput: vi.fn() })} />);
+    expect(screen.getByRole("button", { name: "Copy output" })).toBeInTheDocument();
+  });
+
+  it("closes the sheet BEFORE it copies, so the copy fires as the sheet unmounts", async () => {
+    const user = userEvent.setup();
+    const onCopyOutput = vi.fn();
+    const props = renderSheet({ onCopyOutput });
+    await user.click(screen.getByRole("button", { name: "Copy output" }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(onCopyOutput).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(
+      onCopyOutput.mock.invocationCallOrder[0]!,
     );
   });
 
@@ -314,8 +334,8 @@ describe("PaneActionsSheet — the read rows", () => {
   // slides up under the finger. Every row in here states the floor — `min-h-11` around a 20px
   // `text-sm` line, because `px-3 py-2.5` alone drew 40.
   it("gives every row a 44px hit box", () => {
-    renderSheet({ onFind: vi.fn(), onHistory: vi.fn() });
-    for (const name of ["Find in output", "Conversation history", "Rename", "Close pane"]) {
+    renderSheet({ onFind: vi.fn(), onHistory: vi.fn(), onCopyOutput: vi.fn() });
+    for (const name of ["Find in output", "Conversation history", "Copy output", "Rename", "Close pane"]) {
       expect(screen.getByRole("button", { name })).toHaveClass("min-h-11");
     }
   });
