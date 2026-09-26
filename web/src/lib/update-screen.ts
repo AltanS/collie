@@ -222,6 +222,11 @@ export interface UpdateScreenView {
   readonly holdsReload: boolean;
   /** Which run is on screen: the lead's own, one that moves only the members, or none. */
   readonly inFlight: "lead" | "crew" | null;
+  /**
+   * This device's claim names a start whose run has written nothing for {@link LEAD_STALLED_MS}: the
+   * record on hand is still an earlier run's ({@link earlierRunOnHand}). The hook spends the claim.
+   */
+  readonly claimExpired: boolean;
 }
 
 /**
@@ -532,6 +537,7 @@ function noneView(): UpdateScreenView {
     kickPhone: false,
     holdsReload: false,
     inFlight: null,
+    claimExpired: false,
   };
 }
 
@@ -555,6 +561,11 @@ export function updateScreenView(input: UpdateScreenInput): UpdateScreenView {
 
   // "READY TO START" comes first while nothing is running: the operator just asked for it.
   if (input.ask != null && !runActive && !crewActive) return readyView(input, input.ask);
+
+  // THIS DEVICE'S START, BEFORE ITS RUN HAS WRITTEN ITS RECORD: the record on hand is the last run's.
+  if (input.startedHere && input.claim != null && run !== undefined && earlierRunOnHand(run, input.claim, input.bundle?.id)) {
+    return awaitingView(input, input.claim);
+  }
 
   // A RUN THE LEAD TAKES NO PART IN (M32). Only when the lead's own run is not in flight.
   // A device that asked for a FULL run and holds its claim reads the lead's record to the end, even
@@ -586,6 +597,32 @@ function failedHere(input: UpdateScreenInput, run: UpdateRun): boolean {
     run.runId === claim.runId &&
     (run.reason ?? "") !== ""
   );
+}
+
+/**
+ * THE RECORD ON HAND IS AN EARLIER RUN'S, NOT THE ONE THIS DEVICE'S CLAIM BEGAN (2026-09-26).
+ *
+ * `POST /api/update` reads the record before it starts the updater, and the updater writes the new
+ * run's record a beat later (on a checkout that advances in place, only at the very end). Until then
+ * every source holds the LAST run's record, settled. Read as this run, it put "Update finished" on
+ * screen at 0:00 with the old versions on every row, and the real run then read as another device's.
+ *
+ * So a SETTLED record is this run's only when the claim's id names it; a claim with no id cannot tell,
+ * and waits. A record in flight under another id stays what it was, somebody else's run, which gets
+ * the strip, and an `idle` one stays {@link failedHere}'s or nothing. Once this document has reloaded
+ * onto a new app the lead has swapped, so whatever it reads is at least as new as this run.
+ *
+ * Exported for the Updates card, which must not print the last run's result as this one's either.
+ */
+export function earlierRunOnHand(run: UpdateRun, claim: UpdateClaim, bundleId: string | undefined): boolean {
+  if (claim.peersOnly || run.state === "idle" || RUN_IN_FLIGHT.has(run.state)) return false;
+  if (claim.runId !== null && run.runId === claim.runId) return false;
+  return !reloadedSince(claim, bundleId);
+}
+
+/** This document runs a different bundle than the one that tapped: it reloaded onto the new app. */
+function reloadedSince(claim: UpdateClaim, bundleId: string | undefined): boolean {
+  return bundleId !== undefined && claim.bundleAtStart !== null && bundleId !== claim.bundleAtStart;
 }
 
 /** A crew-only run with a leg still moving, or none yet in the beat after this device's confirm. */
@@ -728,6 +765,7 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
     kickPhone: mine && phase === "phone" && phone.kind === "looking" && phone.kick,
     holdsReload: inFlight && phase !== "phone",
     inFlight: inFlight ? "lead" : null,
+    claimExpired: false,
   };
 }
 
@@ -964,6 +1002,7 @@ function crewOnlyView(input: UpdateScreenInput, crew: UpdateScreenCrewRun): Upda
     kickPhone: false,
     holdsReload: live,
     inFlight: live ? "crew" : null,
+    claimExpired: false,
   };
 }
 
@@ -989,7 +1028,7 @@ function readingRow(key: string, name: string, extra: Partial<UpdateScreenRow> =
 }
 
 function provisionalView(input: UpdateScreenInput, claim: UpdateClaim): UpdateScreenView {
-  const reloaded = input.bundle !== undefined && claim.bundleAtStart !== null && input.bundle.id !== claim.bundleAtStart;
+  const reloaded = reloadedSince(claim, input.bundle?.id);
   const last = PHASES.find((phase) => phase === claim.lastPhase);
   const phase: UpdatePhase = reloaded ? "phone" : (last ?? "check");
   const lead = claim.lead ?? input.leadName;
@@ -1017,6 +1056,16 @@ function provisionalView(input: UpdateScreenInput, claim: UpdateClaim): UpdateSc
     holdsReload: phase !== "phone",
     inFlight: claim.peersOnly ? "crew" : "lead",
   };
+}
+
+/**
+ * The same screen while this device's start has written nothing yet ({@link earlierRunOnHand}), with
+ * an end: past {@link LEAD_STALLED_MS} from the tap, the longest the lead may hold one state, the start
+ * is taken as one that never ran and the claim is spent. Measured from the tap, so a reload does not
+ * restart it.
+ */
+function awaitingView(input: UpdateScreenInput, claim: UpdateClaim): UpdateScreenView {
+  return { ...provisionalView(input, claim), claimExpired: input.now - claim.startedAt >= LEAD_STALLED_MS };
 }
 
 // ── READY TO START ───────────────────────────────────────────────────────────────────────────────

@@ -397,6 +397,44 @@ describe("the button opens update mode, and Start update there is the confirm (A
   });
 });
 
+// ── A LEAD THAT HAS UPDATED BEFORE (2026-09-26) ─────────────────────────────────────────────────
+//
+// The real bridge reads the record before it starts the updater, so its 202 carries the LAST run's
+// record, and the new run's id beside it. Every case above answers `run: null`, which is a lead's
+// first update only, and so none of them saw the phone say "Update finished" at 0:00 with the old
+// versions on every row.
+describe("Start update on a lead that has updated before", () => {
+  it("shows the check step, not the last run's Done, and the card sets the last result aside", async () => {
+    const user = userEvent.setup();
+    const last = runAt("done", {
+      from: "1.2.0",
+      to: "1.3.0",
+      runId: "old",
+      startedAt: Date.now() - 86_500_000,
+      updatedAt: Date.now() - 86_400_000,
+    });
+    const update = info({ run: last });
+    serveCheck(update, GREEN);
+    server.use(
+      http.post("/api/update", () =>
+        HttpResponse.json({ ok: true, to: "1.4.0", major: false, run: last, runId: "new" }, { status: 202 }),
+      ),
+    );
+    renderCard(update);
+    expect(await screen.findByText("Updated to 1.3.0.")).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "Update to 1.4.0" }));
+    await user.click(screen.getByRole("button", { name: "Start update" }));
+
+    // The panel is up at once; what it is called is the whole question.
+    await waitFor(() => expect(screen.getByRole("dialog")).not.toHaveAccessibleName("Update to 1.4.0"));
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Checking This machine");
+    // The card behind the panel does not print the last run's result as this one's either. The line
+    // slides shut rather than vanishing (`ui/collapse.tsx`), so it is gone after the slide.
+    await waitFor(() => expect(screen.queryByText("Updated to 1.3.0.")).toBeNull());
+  });
+});
+
 describe("major — a crossing is consented to on its own (ADR 0020)", () => {
   const withMajor = info({ majorAvailable: "2.0.0", majorUrl: "https://example.invalid/2.0.0" });
 

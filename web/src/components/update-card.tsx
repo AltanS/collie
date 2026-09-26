@@ -23,7 +23,7 @@ import {
   type PeerRow,
 } from "@/lib/update-crew";
 import {
-  getUpdateStarted,
+  getUpdateClaim,
   linkChangeNote,
   minutesWord,
   crewMoving,
@@ -32,6 +32,8 @@ import {
   subscribeUpdateStarted,
 } from "@/lib/update-ribbon";
 import { legStillFailed, memberBehind } from "@/lib/crew-level";
+import { BUILD } from "@/lib/build";
+import { earlierRunOnHand } from "@/lib/update-screen";
 import { cn } from "@/lib/utils";
 import type {
   PreflightCheck,
@@ -124,7 +126,12 @@ export function UpdateCard() {
   // THIS DEVICE'S CLAIM ON AN UPDATE, which update mode stamps when "Start update" is accepted. The
   // card goes inert on it for the beat before the first run record, when `running` is still false and
   // a second tap would ask the bridge twice (the bridge refuses with `update.in_progress` anyway).
-  const startedHere = useSyncExternalStore(subscribeUpdateStarted, getUpdateStarted, getUpdateStarted) !== null;
+  const claim = useSyncExternalStore(subscribeUpdateStarted, getUpdateClaim, getUpdateClaim);
+  const startedHere = claim !== null;
+  // THE LAST RUN'S RESULT IS NOT THIS ONE'S (2026-09-26). Right after this device's confirm every
+  // source still holds the last run's record, and "Updated to 1.13.2." under a card that has just
+  // started 1.13.3 reads as the answer to the tap. Set aside on the same test update mode takes.
+  const shownRun = run !== undefined && claim !== null && earlierRunOnHand(run, claim, BUILD.id) ? undefined : run;
   const [dismissed, setDismissed] = useState(false);
 
   const snapshot = data?.update;
@@ -453,16 +460,16 @@ export function UpdateCard() {
           than the only control on it. Each still wears the `Collapse`: the row above is fixed
           either way, and a section that snapped open would still jump the page under a reader who
           is looking at the section. */}
-      <Collapse open={run !== undefined && run.state !== "idle"}>
-        {run !== undefined && run.state !== "idle" ? (
+      <Collapse open={shownRun !== undefined && shownRun.state !== "idle"}>
+        {shownRun !== undefined && shownRun.state !== "idle" ? (
           <RunSection
-            run={run}
+            run={shownRun}
             // Retry re-opens the SAME confirm the first attempt went through. A dead end with no next
             // action is what sends the operator to a terminal they may not have.
             onRetry={() =>
               openUpdateMode({
                 kind: hasPeers ? "crew" : "single",
-                version: run.to ?? latest ?? current,
+                version: shownRun.to ?? latest ?? current,
                 major: false,
                 peersOnly: false,
                 current,

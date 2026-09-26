@@ -208,6 +208,14 @@ export function useUpdateScreen(): UpdateScreen {
     return () => clearTimeout(timer);
   }, [orphan]);
 
+  // A START WHOSE RUN NEVER WROTE ITS RECORD is spent too, on the reducer's word (`claimExpired`): the
+  // screen waited on the check step while the record on hand was still the last run's, and the lead's
+  // own stall bound has passed since the tap.
+  const expired = view.claimExpired;
+  useEffect(() => {
+    if (expired && getUpdateClaim() !== null) clearUpdateStarted();
+  }, [expired]);
+
   const failedKey = view.end.kind === "failed" ? view.end.key : null;
   const closedHere = failedKey !== null && failedKey === closedEnd;
   const mode: UpdateScreenMode = closedHere

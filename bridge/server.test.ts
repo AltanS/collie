@@ -3123,6 +3123,21 @@ describe("update status peers — the legs of a crew-wide run", () => {
     const peersBranch = handler.slice(handler.indexOf('if (verdict.kind === "peers")'));
     expect(peersBranch.slice(0, peersBranch.indexOf("return json"))).not.toContain("action.start");
   });
+
+  test("both 202s carry the id this confirm minted, beside the record read before the start", () => {
+    // `run` in the 202 is `status.run`, read BEFORE the start: on a lead that has updated before it is
+    // the LAST run's record, and the new run writes its own a beat later. So the new run's id travels
+    // on its own, or the phone keys its claim on the old record and shows its Done (2026-09-26).
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
+    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    const accepted = [...handler.matchAll(/return json\(\s*(\{[^}]*\})/g)].map((m) => m[1] ?? "");
+    expect(accepted).toHaveLength(2);
+    for (const body of accepted) {
+      expect(body).toContain("run: status.run ?? null");
+      expect(body).toMatch(/\brunId\b/);
+    }
+  });
 });
 
 describe("hasSplitUrl — is a URL cut by the pane's column edge?", () => {

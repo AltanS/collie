@@ -1990,7 +1990,11 @@ export function startServer(opts: {
             device: whois(req).device,
             detail: { to: verdict.to, major: false, peersOnly: true },
           });
-          return json({ ok: true, to: verdict.to, major: false, run: status.run ?? null }, req.headers.get("accept-encoding"), 202);
+          return json(
+            { ok: true, to: verdict.to, major: false, run: status.run ?? null, runId },
+            req.headers.get("accept-encoding"),
+            202,
+          );
         }
         const started = action.start({ major: verdict.major, runId });
         if (!started.ok) {
@@ -2013,8 +2017,13 @@ export function startServer(opts: {
         // holding the request open across that would mean answering with a socket that is about to
         // be closed by the thing the request asked for. The card watches the run record instead, on
         // the snapshot it already polls, and on `/standby/update` while this door is shut.
+        //
+        // `run` is the record as `status` read it BEFORE the start, so on a lead that has updated before
+        // it is the LAST run's, and the new run writes its own a beat later. `runId` is how the phone
+        // tells the two apart: it names the run this confirm began (2026-09-26, the 1.13.3 update that
+        // showed "Update finished" at 0:00 with the old versions).
         return json(
-          { ok: true, to: verdict.to, major: verdict.major, run: status.run ?? null },
+          { ok: true, to: verdict.to, major: verdict.major, run: status.run ?? null, runId },
           req.headers.get("accept-encoding"),
           202,
         );

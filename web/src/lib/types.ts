@@ -767,7 +767,16 @@ export interface UpdateStartResponse {
   /** The version the bridge is installing. */
   to: string;
   major: boolean;
+  /**
+   * The record as the bridge read it BEFORE the start. On a lead that has updated before it is the
+   * LAST run's record, not this one's: the new run writes its own a beat later.
+   */
   run: UpdateRun | null;
+  /**
+   * The id of the run this confirm began, the one its record will carry. Absent on a bridge older
+   * than the field, which reads as "no id to key on".
+   */
+  runId?: string;
 }
 
 export interface SnapshotResponse {

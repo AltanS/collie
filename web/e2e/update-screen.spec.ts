@@ -59,12 +59,16 @@ const [OWN_MAJOR = 1, OWN_MINOR = 0] = OWN.split(".").map(Number);
  *  the fake run a no-op (1.13.0's release commit did exactly that to a hard-coded "1.13.0"). */
 const FROM = `${OWN_MAJOR}.${Math.max(OWN_MINOR - 1, 0)}.0`;
 const TO = `${OWN_MAJOR}.${OWN_MINOR + 1}.0`;
+/** The version the LAST run went from, on a lead that has updated before. */
+const EARLIER = `${OWN_MAJOR}.${Math.max(OWN_MINOR - 2, 0)}.0`;
 /** The card's action button, and "Start update" on update mode's first screen (ADR 0064). */
 const UPDATE_ACTION = fill(en["settings.updateCard.action"], { version: TO });
 const CONFIRM = en["updateScreen.action.start"];
 /** The lock line the panel shows while a run this device started is in flight. */
 const LOCK = en["updateScreen.lock"];
 const DONE = en["updateScreen.done.heading"];
+/** Step 1's heading, on the lead this "bridge" is. */
+const CHECK = fill(en["updateScreen.check.heading"], { lead: "bluefin" });
 const BACK = en["updateScreen.action.back"];
 /** The crew-only case's button (M32): it names the one member it is for. */
 const RETRY_CREW = fill(en["settings.updateCard.retryOne"], { name: "minibuch" });
@@ -96,6 +100,12 @@ let crewSettledAt: number | null = null;
 /** The run id the fake run carries, and so the one this device's claim takes off the 202. Unset,
  *  the run has none, which is what every case before #283 walked. */
 let fakeRunId: string | undefined;
+/**
+ * A start the 202 accepted whose record has not been written yet. The real bridge reads the record
+ * BEFORE it starts the updater, and the updater writes the new run's record a beat later; here that
+ * beat ends on the next read of any door, unless the case walks the run on first.
+ */
+let startPending = false;
 
 function runAt(state: UpdateRunState): UpdateRun {
   const run: UpdateRun = {
@@ -114,7 +124,13 @@ function runAt(state: UpdateRunState): UpdateRun {
 
 /** Walk the run to its next state. The phone picks it up on its next poll of either door. */
 function step(state: UpdateRunState): void {
+  startPending = false;
   currentRun = runAt(state);
+}
+
+/** The updater writes the record of the run the 202 began, if it has not yet. Called by every read. */
+function landStart(): void {
+  if (startPending) step("preflight");
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -141,6 +157,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   crewLegs = null;
   crewSettledAt = null;
   fakeRunId = undefined;
+  startPending = false;
 
   await installBridge(page);
   await installReloadCounter(page);
@@ -160,8 +177,9 @@ async function installBridge(page: Page): Promise<void> {
   // rather than three that can disagree.
   await page.route(
     (url) => url.pathname === "/api/snapshot",
-    (route) =>
-      route.fulfill({
+    (route) => {
+      landStart();
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         headers: { [SERVER_BUILD_HEADER]: stampedBuildId },
@@ -178,12 +196,14 @@ async function installBridge(page: Page): Promise<void> {
           ],
           update: { ...updateInfo(), run: currentRun ?? undefined },
         }),
-      }),
+      });
+    },
   );
   await page.route(
     (url) => url.pathname === "/api/update/check",
-    (route) =>
-      route.fulfill({
+    (route) => {
+      landStart();
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -200,22 +220,27 @@ async function installBridge(page: Page): Promise<void> {
               ? [{ name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: Date.now() }]
               : [],
         }),
-      }),
+      });
+    },
   );
   // The standby door, on the second port in real life and on this origin here. It is the one reader
   // that still answers while the bridge restarts, which is the state this case walks through.
   await page.route(
     (url) => url.pathname === "/standby/update",
-    (route) =>
-      currentRun === null
+    (route) => {
+      landStart();
+      return currentRun === null
         ? route.fulfill({ status: 404, contentType: "text/plain", body: "no run" })
         : route.fulfill({
             status: 200,
             contentType: "application/json",
             body: JSON.stringify(currentRun),
-          }),
+          });
+    },
   );
-  // The 202. It mints nothing and starts nothing: the case owns the run from here.
+  // The 202, shaped as the real bridge shapes it. It starts nothing: the case owns the run from here.
+  // `run` is the record as it was at the tap, read before the start, so on a lead that has updated
+  // before it is the LAST run's (2026-09-26). The id of the run just begun rides beside it.
   await page.route(
     (url) => url.pathname === "/api/update",
     (route) => {
@@ -227,14 +252,16 @@ async function installBridge(page: Page): Promise<void> {
         return route.fulfill({
           status: 202,
           contentType: "application/json",
-          body: JSON.stringify({ ok: true, to: TO, major: false, run: null }),
+          body: JSON.stringify({ ok: true, to: TO, major: false, run: currentRun, runId: "run-e2e-crew" }),
         });
       }
-      step("preflight");
+      const before = currentRun;
+      fakeRunId ??= "run-e2e";
+      startPending = true;
       return route.fulfill({
         status: 202,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, to: TO, major: false, run: currentRun }),
+        body: JSON.stringify({ ok: true, to: TO, major: false, run: before, runId: fakeRunId }),
       });
     },
   );
@@ -334,20 +361,57 @@ async function appIsInert(page: Page): Promise<boolean> {
   return page.evaluate(() => document.querySelectorAll("#root > [inert]").length > 0);
 }
 
+/**
+ * Watch, from inside the page, for update mode's Done heading. A poll can step between two frames of
+ * a heading that stood for one beat; an observer cannot. The mark lives on `<html>`, so it outlives
+ * the heading and ends with the document.
+ */
+async function watchForDone(page: Page): Promise<void> {
+  await page.evaluate((done: string) => {
+    const root = document.documentElement;
+    const look = () => {
+      for (const heading of document.querySelectorAll('[data-slot="update-heading"]')) {
+        if (heading.textContent?.includes(done) === true) root.dataset.e2eSawDone = "yes";
+      }
+    };
+    new MutationObserver(look).observe(document.body, { subtree: true, childList: true, characterData: true });
+    look();
+  }, DONE);
+}
+
+/** Has this document shown the Done heading since {@link watchForDone}? */
+async function sawDone(page: Page): Promise<boolean> {
+  return page.evaluate(() => document.documentElement.dataset.e2eSawDone === "yes");
+}
+
 test("update mode locks the app for a run this device started, reloads once at step 6, and ends on Done", async ({
   page,
 }) => {
+  // A LEAD THAT HAS UPDATED BEFORE (2026-09-26). Every source reports the last run's settled record
+  // until the new run writes its own, and the 202 carries that record too. The phone used to show it
+  // as this run's end: "Update finished" at 0:00 with the old versions, then "started on another
+  // device" once the real run spoke.
+  currentRun = {
+    ...runAt("done"),
+    from: EARLIER,
+    to: FROM,
+    runId: "run-e2e-earlier",
+    startedAt: Date.now() - 86_500_000,
+    updatedAt: Date.now() - 86_400_000,
+  };
   await page.goto("/settings/updates");
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   await page.evaluate((key: string) => window.sessionStorage.setItem(key, "0"), RELOADS_KEY);
+  await watchForDone(page);
 
   // The card's button opens update mode at Ready to start, and Start update is the confirm.
   await page.getByRole("button", { name: UPDATE_ACTION }).click();
   await page.getByRole("button", { name: CONFIRM }).click();
 
-  // THE PANEL TAKES THE SCREEN, and the app behind it is genuinely out of reach.
+  // THE PANEL TAKES THE SCREEN, on step 1, and the app behind it is genuinely out of reach.
   const panel = page.getByRole("dialog");
   await expect(panel).toBeVisible({ timeout: 15_000 });
+  await expect(panel.getByRole("heading", { name: CHECK })).toBeVisible({ timeout: 15_000 });
   await expect(panel).toHaveAttribute("aria-modal", "true");
   await expect(panel.getByText(LOCK)).toBeVisible();
   expect(await appIsInert(page), "the wrapper in App.tsx is inert while the run is in flight").toBe(true);
@@ -358,6 +422,7 @@ test("update mode locks the app for a run this device started, reloads once at s
   // only the standby door answers.
   for (const state of ["staging", "restarting", "verifying"] as const) step(state);
   await expect(panel.getByRole("heading", { name: "Checking the new version on bluefin" })).toBeVisible({ timeout: 15_000 });
+  expect(await sawDone(page), "nothing said Update finished before the lead's own run did").toBe(false);
 
   // THE LEAD IS DONE, AND THAT IS NOT THE END. This phone's own step comes next: the bridge serves a
   // new bundle, at a real rate, and update mode asks for it by itself.
@@ -750,6 +815,7 @@ function crewUpdateInfo(): UpdateInfo {
 }
 
 async function installCrewBridge(page: Page): Promise<void> {
+  crewStartPending = false;
   await installApiStub(page);
   const servers = ["bluefin", "minibuch", "cellar"].map((name) => ({
     id: name,
@@ -760,18 +826,21 @@ async function installCrewBridge(page: Page): Promise<void> {
   }));
   await page.route(
     (url) => url.pathname === "/api/snapshot",
-    (route) =>
-      route.fulfill({
+    (route) => {
+      landCrewStart();
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         headers: { [SERVER_BUILD_HEADER]: stampedBuildId },
         body: JSON.stringify({ ...fixtureSnapshot, servers, update: { ...crewUpdateInfo(), run: currentRun ?? undefined } }),
-      }),
+      });
+    },
   );
   await page.route(
     (url) => url.pathname === "/api/update/check",
-    (route) =>
-      route.fulfill({
+    (route) => {
+      landCrewStart();
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         headers: { [SERVER_BUILD_HEADER]: stampedBuildId },
@@ -781,26 +850,41 @@ async function installCrewBridge(page: Page): Promise<void> {
           preflight: { schema: 1, verdict: "green", checks: [{ id: "disk", verdict: "green", reason: "4.2 GB free" }] },
           crew: CENSUS(),
         }),
-      }),
-  );
-  await page.route(
-    (url) => url.pathname === "/standby/update",
-    (route) =>
-      currentRun === null
-        ? route.fulfill({ status: 404, contentType: "text/plain", body: "no run" })
-        : route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentRun) }),
-  );
-  await page.route(
-    (url) => url.pathname === "/api/update",
-    (route) => {
-      currentRun = crewRunAt("preflight", WAITING());
-      return route.fulfill({
-        status: 202,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: true, to: TO, major: false, run: currentRun }),
       });
     },
   );
+  await page.route(
+    (url) => url.pathname === "/standby/update",
+    (route) => {
+      landCrewStart();
+      return currentRun === null
+        ? route.fulfill({ status: 404, contentType: "text/plain", body: "no run" })
+        : route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentRun) });
+    },
+  );
+  // The 202 as the real bridge sends it: the record read before the start, and the new run's id. The
+  // run's own record lands on the next read of any door.
+  await page.route(
+    (url) => url.pathname === "/api/update",
+    (route) => {
+      const before = currentRun;
+      crewStartPending = true;
+      return route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, to: TO, major: false, run: before, runId: "run-e2e" }),
+      });
+    },
+  );
+}
+
+/** The crew walk's own pending start: its run's first record, written on the next read. */
+let crewStartPending = false;
+
+function landCrewStart(): void {
+  if (!crewStartPending) return;
+  crewStartPending = false;
+  currentRun = crewRunAt("preflight", WAITING());
 }
 
 interface Box {
