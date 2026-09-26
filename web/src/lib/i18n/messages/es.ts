@@ -218,6 +218,8 @@ export const es: Dictionary = {
   "composer.controls.agent": "Agente",
   "composer.controls.displayAria": "Ajustes de pantalla",
   "composer.controls.display": "Pantalla",
+  "composer.controls.clear": "Clear message",
+  "composer.controls.undoClear": "Undo clear",
   "composer.sentPreview.label": "Enviado:",
   "composer.placeholder.gone": "El panel ya no existe",
   "composer.placeholder.readOnly": "Solo lectura: dispositivo no autorizado",

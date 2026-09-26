@@ -1,10 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Keyboard, Terminal } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
-import { ActionsRow, type GeneralAction } from "./actions-row";
+import { ActionsRow, switchPillInset, type ActionsRowProps, type GeneralAction } from "./actions-row";
 
 afterEach(() => {
   __resetHarnessBar();
@@ -348,3 +348,194 @@ describe("ActionsRow — the switcher mark's alert", () => {
   });
 });
 
+
+// THE COMPOSER'S CLEAR SLOT (M40 spec 04, issue #291; Altan, 2026-09-26/27): an icon-only X on the
+// pinned block, directly left of the Changes pill, left of the Switch mark without one, alone when
+// neither shows. The composer decides WHEN (a draft in the box, or the Undo window after a tap);
+// this file decides WHERE and how it is drawn.
+describe("ActionsRow — the composer's clear slot", () => {
+  const handle = () => ({ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" });
+  const changes = () => ({ onClick: vi.fn(), label: "Changes" });
+  const clearX = (over: Partial<NonNullable<ActionsRowProps["clear"]>> = {}) => ({
+    mode: "clear" as const,
+    onClick: vi.fn(),
+    label: "Clear message",
+    ...over,
+  });
+  /** The trailing spacer's inline width, the first-frame fallback plus BELT_END_AIR's 16. */
+  const spacerStyle = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>(".overflow-x-auto")!.lastElementChild!.getAttribute("style");
+
+  it("draws no X without the prop: the belt at rest is unchanged", () => {
+    const { container } = render(
+      <ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} changes={changes()} />,
+    );
+    expect(screen.queryByRole("button", { name: "Clear message" })).not.toBeInTheDocument();
+    // Two pills pinned, 165 + 16: exactly the number the Changes case above pins.
+    expect(spacerStyle(container)).toBe("width: 181px;");
+  });
+
+  it("stands directly left of the Changes pill, on the pinned block and outside the scroller", async () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={handle()}
+        changes={changes()}
+        clear={clearX({ onClick })}
+      />,
+    );
+    const x = screen.getByRole("button", { name: "Clear message" });
+    const changesPill = screen.getByRole("button", { name: "Changes" });
+    const grip = screen.getByRole("button", { name: "Switch pane" });
+    expect(x.nextElementSibling).toBe(changesPill);
+    expect(changesPill.nextElementSibling).toBe(grip);
+    // Icon-only: the accessible name is the only name it has.
+    expect(x.textContent).toBe("");
+    // The pinned block, never the masked scroller: a pill in there would fade with the scroll.
+    const belt = container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    expect(belt.contains(x)).toBe(true);
+    expect(belt.querySelector(".overflow-x-auto")!.contains(x)).toBe(false);
+    // The scrolling pills are still all there, in their order: the X adds, it replaces nothing.
+    expect(names().slice(0, 5)).toEqual(["Keys", "Model", "Effort", "Compact", "Resume"]);
+    await userEvent.click(x);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("stands directly left of the Switch mark when the pane has no Changes pill", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} clear={clearX()} />);
+    const x = screen.getByRole("button", { name: "Clear message" });
+    expect(x.nextElementSibling).toBe(screen.getByRole("button", { name: "Switch pane" }));
+  });
+
+  it("stands alone when neither shows, and still pins a block to stand on", () => {
+    const { container } = render(<ActionsRow general={[general()]} agent="claude" onRun={took} clear={clearX()} />);
+    const x = screen.getByRole("button", { name: "Clear message" });
+    expect(x.nextElementSibling).toBeNull();
+    // A pinned block needs its spacer, and the scroller drops its own `pr-3` for it: one pill, 122 + 16.
+    expect(spacerStyle(container)).toBe("width: 138px;");
+    const scroller = container.querySelector<HTMLElement>(".overflow-x-auto")!;
+    expect(scroller.className).not.toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+  });
+
+  it("widens the first-frame fallback for the third pill: 85 + 3 × 37 + 2 × 6 = 208 at the default scale", () => {
+    const { container } = render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={handle()}
+        changes={changes()}
+        clear={clearX()}
+      />,
+    );
+    expect(spacerStyle(container)).toBe("width: 224px;");
+  });
+
+  it("keeps the inset arithmetic one formula for one, two and three pinned pills", () => {
+    // The scale-1 constants, as documented at SWITCH_PILL_INSET: 117, 155, 193.
+    expect([1, 2, 3].map((n) => switchPillInset(1, n))).toEqual([117, 155, 193]);
+    // The three belt sizes: only the pills grow, the fixed 85 and the 6px gaps do not.
+    expect([1, 2, 3].map((n) => switchPillInset(1.15, n))).toEqual([122, 165, 208]);
+    expect([1, 2, 3].map((n) => switchPillInset(1.3, n))).toEqual([127, 175, 223]);
+    expect([1, 2, 3].map((n) => switchPillInset(1.5, n))).toEqual([133, 187, 241]);
+  });
+
+  it("swaps the X for Undo in the same slot: same element, same box, the belt does not move", () => {
+    const { container, rerender } = render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={handle()}
+        changes={changes()}
+        clear={clearX()}
+      />,
+    );
+    const x = screen.getByRole("button", { name: "Clear message" });
+    const before = {
+      className: x.className,
+      children: x.childElementCount,
+      text: x.textContent,
+      icon: x.querySelector("svg")!.getAttribute("class"),
+      spacer: spacerStyle(container),
+    };
+    rerender(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={handle()}
+        changes={changes()}
+        clear={clearX({ mode: "undo", label: "Undo clear" })}
+      />,
+    );
+    const undo = screen.getByRole("button", { name: "Undo clear" });
+    // The same DOM node: a reader's focus stays on it and hears the new name.
+    expect(undo).toBe(x);
+    // Only the glyph changed. Box, children and the block's reserved width are identical.
+    expect(undo.className).toBe(before.className);
+    expect(undo.childElementCount).toBe(before.children);
+    expect(undo.textContent).toBe(before.text);
+    expect(spacerStyle(container)).toBe(before.spacer);
+    expect(undo.querySelector("svg")!.getAttribute("class")).not.toBe(before.icon);
+    expect(undo.nextElementSibling).toBe(screen.getByRole("button", { name: "Changes" }));
+  });
+
+  it("wears the Changes pill's shape and tap feedback", () => {
+    render(
+      <ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} changes={changes()} clear={clearX()} />,
+    );
+    const x = screen.getByRole("button", { name: "Clear message" });
+    for (const cls of [
+      /(?:^|\s)w-\(--belt-pill\)(?=\s|$)/,
+      /(?:^|\s)min-w-\(--belt-pill\)(?=\s|$)/,
+      /(?:^|\s)border-0(?=\s|$)/,
+      /(?:^|\s)px-0(?=\s|$)/,
+      /(?:^|\s)hover:bg-foreground\/8(?=\s|$)/,
+      /(?:^|\s)active:bg-foreground\/15(?=\s|$)/,
+      /(?:^|\s)active:scale-\[0\.92\](?=\s|$)/,
+      /(?:^|\s)duration-\[120ms\](?=\s|$)/,
+    ]) {
+      expect(x.className).toMatch(cls);
+    }
+  });
+
+  it("gives each pinned pill a hit box by its place: 7px out at the block's ends, 3px toward a neighbour", () => {
+    render(
+      <ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} changes={changes()} clear={clearX()} />,
+    );
+    const reach = (name: string) => {
+      const cls = screen.getByRole("button", { name }).className;
+      return [cls.match(/before:-left-\[(\d+)px\]/)?.[1], cls.match(/before:-right-\[(\d+)px\]/)?.[1]];
+    };
+    expect(reach("Clear message")).toEqual(["7", "3"]);
+    expect(reach("Changes")).toEqual(["3", "3"]);
+    expect(reach("Switch pane")).toEqual(["3", "7"]);
+  });
+
+  it("refuses its own mousedown, so the field under the thumb keeps focus and the keyboard stays up", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} clear={clearX()} />);
+    const x = screen.getByRole("button", { name: "Clear message" });
+    // `fireEvent` answers false when a listener called preventDefault.
+    expect(fireEvent.mouseDown(x)).toBe(false);
+    // …and NOT its pointerdown: WebKit on a phone drops the whole click after a cancelled one.
+    expect(fireEvent.pointerDown(x)).toBe(true);
+    // The Switch mark refuses neither: it opens a sheet, and the keyboard going down there is right.
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: "Switch pane" }))).toBe(true);
+  });
+
+  it("an inert X is aria-disabled and dimmed, and ignores the tap", async () => {
+    const onClick = vi.fn();
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} clear={clearX({ onClick, inert: true })} />);
+    const x = screen.getByRole("button", { name: "Clear message" });
+    expect(x).toHaveAttribute("aria-disabled", "true");
+    // Not `disabled`: a disabled button takes no mousedown, and the tap would drop the keyboard.
+    expect(x).not.toBeDisabled();
+    expect(x.className).toMatch(/(?:^|\s)opacity-50(?=\s|$)/);
+    await userEvent.click(x);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+});

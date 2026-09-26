@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { GitCompare, Layers } from "lucide-react";
+import { GitCompare, Layers, Undo2, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -154,7 +154,9 @@ const OFF = "text-muted-foreground";
  *
  * WITH THE CHANGES PILL (EXPERIMENT, operator, 2026-09-23) the block holds a second 32px pill to the
  * left of the mark, 6px apart (the belt's one pill gap): 117 + 32 + 6 = 155, see
- * {@link SWITCH_PILL_INSET_WITH_CHANGES}.
+ * {@link SWITCH_PILL_INSET_WITH_CHANGES}. WITH THE COMPOSER'S X (M40 spec 04) a third pill stands
+ * left of both while the phone's box holds a draft: 155 + 32 + 6 = 193, see
+ * {@link SWITCH_PILL_INSET_WITH_CLEAR}.
  *
  * THIS NUMBER IS NO LONGER THE ANSWER — IT IS THE GUESS BEFORE ONE EXISTS. A constant here drifts
  * the moment the Switch block's own box changes (a locale with a wider glyph, a future word back on
@@ -168,19 +170,37 @@ const SWITCH_PILL_INSET = 117;
 
 /** EXPERIMENT (operator, 2026-09-23): the first-frame fallback when the Changes pill stands beside
  *  the mark. 117 + 32 (the Changes pill) + 6 (`gap-1.5` between the two pills) = 155. The Changes
- *  pill ALONE (no mark to switch to) is the same 32px box, so it falls back to 117. */
+ *  pill ALONE (no mark to switch to) is the same 32px box, so it falls back to 117. Any TWO pinned
+ *  pills take this number, the X and the mark included: every pinned pill is the same box. */
 const SWITCH_PILL_INSET_WITH_CHANGES = 155;
 
+/** The first-frame fallback with all THREE pinned pills: the composer's X (see `clear` below), the
+ *  Changes pill and the mark. 155 + 32 (the X) + 6 (its gap) = 193. */
+const SWITCH_PILL_INSET_WITH_CLEAR = 193;
+
+/** The three constants above, indexed by how many pills the block holds, less one. */
+const SWITCH_PILL_INSETS = [SWITCH_PILL_INSET, SWITCH_PILL_INSET_WITH_CHANGES, SWITCH_PILL_INSET_WITH_CLEAR] as const;
+
 /**
- * The first-frame fallback AT A BELT SCALE. The two constants above are the scale-1 arithmetic; only
- * the icon-only pills grow with `--belt-scale` (the hairline, the gaps, `pr-3` and the 64px fade do
- * not), so each 32 in them becomes `--belt-pill`, the same `round(2rem * scale)` index.css uses.
- * Default scale 1.15: 85 + 37 = 122 alone, 85 + 37 + 6 + 37 = 165 with the Changes pill.
+ * The first-frame fallback AT A BELT SCALE, for a block holding `pills` pinned pills (1 to 3). The
+ * three constants above are the scale-1 arithmetic; only the icon-only pills grow with `--belt-scale`
+ * (the hairline, the gaps, `pr-3` and the 64px fade do not), so each 32 in them becomes
+ * `--belt-pill`, the same `round(2rem * scale)` index.css uses. Default scale 1.15: 85 + 37 = 122
+ * for one pill, 85 + 37 + 6 + 37 = 165 for two, 85 + 3 × 37 + 2 × 6 = 208 for three.
  */
-export function switchPillInset(scale: number, withChanges: boolean): number {
+export function switchPillInset(scale: number, pills: number): number {
+  const count = Math.min(Math.max(Math.round(pills), 1), SWITCH_PILL_INSETS.length);
   const pill = Math.round(32 * scale);
-  const fixed = SWITCH_PILL_INSET - 32;
-  return withChanges ? SWITCH_PILL_INSET_WITH_CHANGES - 64 + 2 * pill : fixed + pill;
+  return SWITCH_PILL_INSETS[count - 1] - count * 32 + count * pill;
+}
+
+/** Each pinned pill's answered box, by where it stands in the block. On the block's outer side it
+ *  reaches 7px: on the left into the 8px beside the hairline, on the right into `pr-3`. Toward a
+ *  neighbour it reaches 3px, half the 6px gap, so two reaches never meet. At the default scale that
+ *  is 37 + 7 + 3 = 47px across for an end pill and 43px for the middle one, over the 44px floor
+ *  either way. Literal class names, so Tailwind's scan finds all four. */
+function pinnedReach(first: boolean, last: boolean): string {
+  return cn(first ? "before:-left-[7px]" : "before:-left-[3px]", last ? "before:-right-[7px]" : "before:-right-[3px]");
 }
 
 /** The icon-only pills on the pinned block: square at the belt's scaled pill size, no padding and no
@@ -188,9 +208,10 @@ export function switchPillInset(scale: number, withChanges: boolean): number {
  *  `--belt-pad` rather than STRIP_ROW_PILL's `--belt-reach` (which adds 1px for the border the
  *  scroller's pills carry): the hit box ends on the band's edge, never 1px past it.
  *
- * TAP FEEDBACK, IDENTICAL ON BOTH PINNED PILLS (operator, phone: "can we get a focus hover
- * animation/color change on both icons? so I know I've clicked"). Living here, not at either call
- * site, is what MAKES the two identical rather than two hand-kept copies.
+ * TAP FEEDBACK, IDENTICAL ON EVERY PINNED PILL (operator, phone: "can we get a focus hover
+ * animation/color change on both icons? so I know I've clicked"). Living here, not at any call
+ * site, is what MAKES them identical rather than hand-kept copies. The composer's X (M40 spec 04)
+ * took the same class on arrival, so it answers a tap exactly as the Changes pill does.
  *
  *  - `active:bg-foreground/15` is the belt's own alpha-wash recipe (see the file header's ground
  *    argument) at a stronger step than the belt's own ground (`bg-foreground/6`) — visible, and
@@ -212,7 +233,7 @@ export function switchPillInset(scale: number, withChanges: boolean): number {
  *    onto the base `transition-all` — no new transition-property, just a faster one.
  *  - No size, border or padding changes in any state, so the 44px+ answered box
  *    (`STRIP_ROW_PILL`'s `::before`) and the belt's height never move under a thumb.
- *  - Nothing added for iOS: both pills are real `<button>` elements via `ui/button.tsx`, the same
+ *  - Nothing added for iOS: the pills are real `<button>` elements via `ui/button.tsx`, the same
  *    element every other pressable row in this app uses with a bare `active:` class and no
  *    touchstart shim (`command-palette.tsx`, `space-overview.tsx`, `agent-card.tsx`) — `:active`
  *    already fires on tap there without one, and there is no precedent in this tree for adding one. */
@@ -371,18 +392,49 @@ export interface ActionsRowProps {
     /** ALREADY TRANSLATED. The button's accessible name, `chat.changes.label`. */
     label: string;
   };
+  /**
+   * THE COMPOSER'S CLEAR SLOT (M40 spec 04, issue #291; Altan, 2026-09-26/27). An icon-only X on
+   * the pinned block, directly LEFT of the Changes pill, left of the Switch mark when there is no
+   * Changes pill, alone when neither shows. The scrolling pills are for acts inside the terminal;
+   * the pinned block holds Collie's own controls, and emptying the phone's own draft is one of them.
+   *
+   * The composer passes it only while its box holds text or chips (`mode: "clear"`), and for the
+   * Undo window after a tap (`mode: "undo"`). Absent otherwise, so the belt at rest is unchanged.
+   * While it is here the block is one pill wider and grows LEFT, over the scroller's end; the
+   * scrolling pills do not move. The X and Undo are the same button in the same box, only the glyph
+   * and the name swap, so the swap moves nothing (a reserved slot, DESIGN.md §2).
+   *
+   * It keeps the phone keyboard up: the button refuses its own `mousedown`, the event whose default
+   * moves focus, so the field keeps it. NOT `pointerdown`, which the composer's attach button
+   * refuses: measured under Playwright's WebKit with the iPhone descriptor (2026-09-27), a tap on a
+   * button that cancels its own `pointerdown` gets no `mousedown`, no `mouseup` and no `click` at
+   * all. Cancelling `mousedown` keeps the focus in both engines and the click in both
+   * (`e2e/composer-clear.spec.ts`).
+   */
+  clear?: {
+    /** `"clear"` draws the X; `"undo"` draws the Undo mark in the same box. */
+    mode: "clear" | "undo";
+    onClick: () => void;
+    /** ALREADY TRANSLATED. "Clear message" or "Undo clear". */
+    label: string;
+    /** Inert (`aria-disabled`, dimmed, the tap ignored) while a send is in flight or Type is armed.
+     *  Not `disabled`: a disabled button takes no `mousedown`, so a tap on it would blur the field
+     *  and drop the keyboard. */
+    inert?: boolean;
+  };
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, handle, changes }: ActionsRowProps) {
+export function ActionsRow({ general, agent, mine, onRun, disabled, handle, changes, clear }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
   const { beltScale } = useDashPrefs().prefs;
-  // Anything pinned at the right end: the Switch mark, the Changes pill, or both. The drag surface
-  // (`handle.ref`, `touch-pan-x`) stays tied to `handle` alone.
-  const pinned = !!handle || !!changes;
+  // Anything pinned at the right end: the composer's X, the Changes pill, the Switch mark, in any
+  // mix. The drag surface (`handle.ref`, `touch-pan-x`) stays tied to `handle` alone.
+  const pinnedCount = (clear ? 1 : 0) + (changes ? 1 : 0) + (handle ? 1 : 0);
+  const pinned = pinnedCount > 0;
   const switchBlock = useSwitchBlockWidth(pinned);
-  const switchInset = switchBlock.width ?? switchPillInset(beltScale, !!changes && !!handle);
+  const switchInset = switchBlock.width ?? switchPillInset(beltScale, pinnedCount);
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
@@ -589,6 +641,36 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
             {/* The hairline keeps its 8px to the first pill: the row's `gap-1.5` (6px) plus `mr-0.5`
                 (2px). The two pills stand 6px apart, the belt's one pill gap. */}
             <span aria-hidden className="mr-0.5 h-(--belt-rule) w-px bg-border" />
+            {/* THE COMPOSER'S X, AND UNDO IN THE SAME BOX (M40 spec 04, the `clear` prop above).
+                First in the block, so it grows the block to the left and nothing to its right moves.
+                ONE element in both modes: only the glyph and the name change, so the swap cannot
+                move a pixel, and a screen reader's focus stays on the button and hears the new name.
+                `onMouseDown` refuses the press's focus move, which keeps the field focused and the
+                phone keyboard up; the `clear` prop says why it is not `onPointerDown`. */}
+            {clear && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={clear.label}
+                aria-disabled={clear.inert === true ? true : undefined}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (clear.inert !== true) clear.onClick();
+                }}
+                className={cn(
+                  `${STRIP_ROW_PILL} ${PINNED_PILL}`,
+                  pinnedReach(true, pinnedCount === 1),
+                  clear.inert === true && "opacity-50",
+                )}
+              >
+                {clear.mode === "undo" ? (
+                  <Undo2 className={cn(BELT_ICON, "text-primary")} />
+                ) : (
+                  <X className={cn(BELT_ICON, "text-primary")} />
+                )}
+              </Button>
+            )}
             {/* EXPERIMENT (operator, 2026-09-23): the Changes entry, moved here from the pane actions
                 sheet. Same box as the Switch mark beside it; it navigates rather than opening a sheet,
                 so no `aria-haspopup`. Revert with the `changes` prop above. */}
@@ -599,10 +681,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
                 size="sm"
                 aria-label={changes.label}
                 onClick={changes.onClick}
-                // `PINNED_PILL` below, and a hit box that reaches 7px left (into the 8px beside the
-                // hairline) and 3px right (half the 6px gap to the mark), 47px across at the default
-                // scale, so the two reaches never meet.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL} before:-left-[7px] before:-right-[3px]`)}
+                // `PINNED_PILL` below, and a hit box set by where the pill stands (`pinnedReach`):
+                // 7px out on an end of the block, 3px toward a neighbour, so two reaches never meet.
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !handle))}
               >
                 <GitCompare className={cn(BELT_ICON, "text-primary")} />
               </Button>
@@ -624,9 +705,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
                 // `min-w-11` would otherwise still win against a bare `w-8`.
                 // SCALED since 2026-09-23: `w-8 min-w-8` is `PINNED_PILL`'s `w-(--belt-pill)` now,
                 // square with the pill's own scaled height, 37px at the default scale. Its hit box
-                // reaches 3px left (half the 6px gap to the Changes pill) and 7px right (into `pr-3`),
-                // 47px across.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL} before:-left-[3px] before:-right-[7px]`)}
+                // reaches 3px left (half the 6px gap to a pill beside it, 7px when it stands alone)
+                // and 7px right (into `pr-3`), 47px across.
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !changes, true))}
               >
                 <Layers className={cn(BELT_ICON, "text-primary")} />
                 {/* The red dot, on the mark's top-right corner, absolutely placed so it never moves the

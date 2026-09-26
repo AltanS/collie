@@ -216,6 +216,8 @@ export const ja: Dictionary = {
   "composer.controls.agent": "エージェント",
   "composer.controls.displayAria": "表示設定",
   "composer.controls.display": "表示",
+  "composer.controls.clear": "Clear message",
+  "composer.controls.undoClear": "Undo clear",
   "composer.sentPreview.label": "送信済み:",
   "composer.placeholder.gone": "ペインが存在しません",
   "composer.placeholder.readOnly": "読み取り専用です。権限がありません",

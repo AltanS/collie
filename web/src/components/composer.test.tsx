@@ -12,7 +12,7 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
-import { Composer, TUI_SETTLE_MS } from "./composer";
+import { CLEAR_UNDO_MS, Composer, TUI_SETTLE_MS } from "./composer";
 import { type ServerSummary } from "@/lib/types";
 
 // A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
@@ -3380,5 +3380,355 @@ describe("Composer — an attachment is a chip (ADR 0060)", () => {
       expect(screen.getByRole("list", { name: "Attachments" })).toHaveTextContent("a-rather-long…");
     });
 
+  });
+});
+
+// THE BELT'S X AND ITS UNDO (M40 spec 04, issue #291; Altan, 2026-09-26/27). An icon-only X on the
+// belt's pinned block while the phone's box holds text or chips. One tap empties the text, the chips
+// and the stored draft of this pane and sends nothing to the pane; the slot then shows Undo for
+// CLEAR_UNDO_MS, or until the next keystroke or chip, and Undo puts all three back.
+describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
+  const chip = { n: 1, path: "/tmp/a.png", name: "a.png", kind: "image" as const };
+  // SAFETY: the composer's only placeholder-bearing control is its ChatInput, a `<textarea>`, and
+  // `getByPlaceholderText` throws when it is absent.
+  const field = () => screen.getByPlaceholderText(/type a reply/i) as HTMLTextAreaElement;
+  const xButton = () => screen.queryByRole("button", { name: "Clear message" });
+  const undoButton = () => screen.queryByRole("button", { name: "Undo clear" });
+
+  /** Every request that is not a read, as `METHOD /path`. The X and Undo must add none: no key, no
+   *  reply, no upload reaches any pane. */
+  const writes: string[] = [];
+  function logWrites({ request }: { request: Request }) {
+    if (request.method !== "GET") writes.push(`${request.method} ${new URL(request.url).pathname}`);
+  }
+  beforeEach(() => {
+    writes.length = 0;
+    server.events.on("request:start", logWrites);
+  });
+  afterEach(() => {
+    server.events.removeListener("request:start", logWrites);
+    vi.useRealTimers();
+  });
+
+  function pick(...files: File[]) {
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const photos = screen.getByTestId("attach-photos") as HTMLInputElement;
+    fireEvent.change(photos, { target: { files } });
+  }
+
+  it("draws no X on an empty box", () => {
+    renderComposer();
+    expect(xButton()).not.toBeInTheDocument();
+    expect(undoButton()).not.toBeInTheDocument();
+  });
+
+  it("draws the X on the belt once the box holds text, and takes it away when the text goes", () => {
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "half a thought" } });
+    const x = xButton();
+    expect(x).toBeInTheDocument();
+    expect(x!.closest('[data-slot="composer-actions"]')).not.toBeNull();
+    fireEvent.change(field(), { target: { value: "" } });
+    expect(xButton()).not.toBeInTheDocument();
+  });
+
+  it("draws the X for a box that holds only a chip", () => {
+    saveDraft(undefined, "w1:p1", "", [chip], 2);
+    renderComposer();
+    expect(field()).toHaveValue("");
+    expect(xButton()).toBeInTheDocument();
+  });
+
+  it("one tap clears the text, the chips and the stored draft, and sends nothing to the pane", async () => {
+    const user = userEvent.setup();
+    saveDraft(undefined, "w1:p1", "see [Image #1] this", [chip], 2);
+    renderComposer();
+    expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+
+    await user.click(xButton()!);
+
+    expect(field()).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Remove a.png" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Attachments" })).not.toBeInTheDocument();
+    expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+    // The slot is Undo now, and the empty box is back to its microphone-or-Send rest.
+    expect(undoButton()).toBeInTheDocument();
+    expect(xButton()).not.toBeInTheDocument();
+    expect(writes).toEqual([]);
+  });
+
+  it("clear, then Undo: the text, the chips, their numbering and the stored draft all come back", async () => {
+    const user = userEvent.setup();
+    saveDraft(undefined, "w1:p1", "see [Image #1] this", [chip], 2);
+    renderComposer();
+
+    await user.click(xButton()!);
+    await user.click(undoButton()!);
+
+    expect(field()).toHaveValue("see [Image #1] this");
+    expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+    expect(loadDraftEntry(undefined, "w1:p1")).toEqual({ text: "see [Image #1] this", attachments: [chip], next: 2 });
+    // The window is spent: the box holds a draft again, so the slot is the X again.
+    expect(undoButton()).not.toBeInTheDocument();
+    expect(xButton()).toBeInTheDocument();
+    expect(writes).toEqual([]);
+  });
+
+  it("clear keeps the numbering it restarted: a chip after an Undo continues from the old next", async () => {
+    const user = userEvent.setup();
+    saveDraft(undefined, "w1:p1", "[Image #1] [Image #2] ", [chip, { ...chip, n: 2, name: "b.png" }], 3);
+    renderComposer();
+    await user.click(xButton()!);
+    // Cleared, the draft is gone from the store, numbering and all.
+    expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+    await user.click(undoButton()!);
+    expect(loadDraftEntry(undefined, "w1:p1")?.next).toBe(3);
+  });
+
+  it("clear: Undo ends after CLEAR_UNDO_MS, and the draft stays gone", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "never mind" } });
+
+    await user.click(xButton()!);
+    expect(undoButton()).toBeInTheDocument();
+
+    await act(() => vi.advanceTimersByTimeAsync(CLEAR_UNDO_MS - 100));
+    expect(undoButton()).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    expect(undoButton()).not.toBeInTheDocument();
+    // An empty box after the window: the slot empties, nothing comes back.
+    expect(xButton()).not.toBeInTheDocument();
+    expect(field()).toHaveValue("");
+    expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("clear: the next keystroke ends the Undo window, and the slot is the X again", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "first try" } });
+    await user.click(xButton()!);
+
+    await user.type(field(), "n");
+
+    expect(field()).toHaveValue("n");
+    expect(undoButton()).not.toBeInTheDocument();
+    expect(xButton()).toBeInTheDocument();
+    // The keystroke's draft is the stored one, never the cleared text.
+    expect(loadDraftEntry(undefined, "w1:p1")?.text).toBe("n");
+  });
+
+  it("clear: a new chip ends the Undo window, and numbers from #1 again", async () => {
+    const user = userEvent.setup();
+    server.use(http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/tmp/new.png" })));
+    saveDraft(undefined, "w1:p1", "[Image #1] ", [chip], 2);
+    renderComposer();
+    await user.click(xButton()!);
+
+    pick(new File(["x"], "new.png", { type: "image/png" }));
+
+    await waitFor(() => expect(field()).toHaveValue("[Image #1] "));
+    expect(screen.getByRole("button", { name: "Remove new.png" })).toBeInTheDocument();
+    expect(undoButton()).not.toBeInTheDocument();
+    expect(xButton()).toBeInTheDocument();
+  });
+
+  it("clear: a pane switch ends the Undo window, and the cleared draft never comes back", async () => {
+    const user = userEvent.setup();
+    let swap: ((id: string) => void) | null = null;
+    function Harness() {
+      const [paneId, setPaneId] = useState("w1:p1");
+      swap = setPaneId;
+      return (
+        <Composer
+          paneId={paneId}
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          dialogPresent={false}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+          setWrap={vi.fn()}
+          stepFontSize={vi.fn()}
+          setRawTerminal={vi.fn()}
+          setTapToFocus={vi.fn()}
+          mirrorNative={false}
+          setMirrorNative={vi.fn()}
+          setExpandClippedReply={vi.fn()}
+          onSent={vi.fn()}
+        />
+      );
+    }
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
+    fireEvent.change(field(), { target: { value: "for pane A" } });
+    await user.click(xButton()!);
+    expect(undoButton()).toBeInTheDocument();
+
+    act(() => swap?.("w1:p2"));
+    expect(undoButton()).not.toBeInTheDocument();
+    act(() => swap?.("w1:p1"));
+    expect(field()).toHaveValue("");
+    expect(undoButton()).not.toBeInTheDocument();
+    expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("clear keeps the field focused, so the phone keyboard stays up", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    await user.click(field());
+    await user.keyboard("hello");
+    expect(field()).toHaveFocus();
+
+    await user.click(xButton()!);
+    expect(field()).toHaveValue("");
+    expect(field()).toHaveFocus();
+
+    await user.click(undoButton()!);
+    expect(field()).toHaveValue("hello");
+    expect(field()).toHaveFocus();
+  });
+
+  it("clear disarms a pending Really send? confirm, because the draft it was about is gone", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "rm -rf build" } });
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByRole("button", { name: "Really send?" })).toBeInTheDocument();
+
+    await user.click(xButton()!);
+    expect(screen.queryByRole("button", { name: "Really send?" })).not.toBeInTheDocument();
+    expect(writes).toEqual([]);
+  });
+
+  describe("when the X is inert, and when it is not", () => {
+    it("is inert while a send is in flight: aria-disabled, and a tap clears nothing", async () => {
+      const user = userEvent.setup();
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      server.use(
+        http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+          const body = await request.json();
+          await held;
+          recordReply(body);
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+      const props = renderComposer();
+      fireEvent.change(field(), { target: { value: "looks good" } });
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      const x = xButton()!;
+      await waitFor(() => expect(x).toHaveAttribute("aria-disabled", "true"));
+      await user.click(x);
+      expect(field()).toHaveValue("looks good");
+      expect(undoButton()).not.toBeInTheDocument();
+
+      release();
+      await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+      // The request log is live: the send itself is in it, so the empty logs above are real.
+      expect(writes.some((w) => /^POST \/api\/pane\/[^/]+\/reply$/.test(w))).toBe(true);
+      // The verified send emptied the box itself, so the slot is empty, not Undo.
+      expect(xButton()).not.toBeInTheDocument();
+      expect(undoButton()).not.toBeInTheDocument();
+    });
+
+    it("is inert while Type is armed: the field is a live keyboard then, not a draft", async () => {
+      const user = userEvent.setup();
+      // Chips alone with no text: the one draft Type can still arm over.
+      saveDraft(undefined, "w1:p1", "", [chip], 2);
+      renderComposer();
+      await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+      const x = xButton()!;
+      expect(x).toHaveAttribute("aria-disabled", "true");
+      await user.click(x);
+      expect(screen.getByRole("button", { name: "Remove a.png" })).toBeInTheDocument();
+    });
+
+    it("arming Type ends an open Undo window", async () => {
+      const user = userEvent.setup();
+      renderComposer();
+      fireEvent.change(field(), { target: { value: "draft" } });
+      await user.click(xButton()!);
+      expect(undoButton()).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+      expect(undoButton()).not.toBeInTheDocument();
+    });
+
+    it("is not inert on a locked composer: the draft is this phone's own", async () => {
+      const user = userEvent.setup();
+      saveDraft(undefined, "w1:p1", "typed before the pane went", [], 1);
+      renderComposer({ gone: true });
+      // A gone pane has its own placeholder, so the field is addressed by its role here.
+      const box = screen.getByRole("textbox");
+      expect(box).toBeDisabled();
+      const x = xButton()!;
+      expect(x).not.toHaveAttribute("aria-disabled");
+      await user.click(x);
+      expect(box).toHaveValue("");
+      expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+      await user.click(undoButton()!);
+      expect(box).toHaveValue("typed before the pane went");
+      expect(writes).toEqual([]);
+    });
+  });
+
+  describe("with object URLs", () => {
+    const revoked: string[] = [];
+    beforeEach(() => {
+      revoked.length = 0;
+      let n = 0;
+      Object.defineProperty(URL, "createObjectURL", {
+        value: () => `blob:test/${++n}`,
+        configurable: true,
+        writable: true,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        value: (url: string) => revoked.push(url),
+        configurable: true,
+        writable: true,
+      });
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(URL, "createObjectURL");
+      Reflect.deleteProperty(URL, "revokeObjectURL");
+    });
+
+    it("clear holds a photo's preview for Undo, and releases it only when the window ends without one", async () => {
+      const user = userEvent.setup();
+      server.use(http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/tmp/a.png" })));
+      renderComposer();
+      pick(new File(["x"], "a.png", { type: "image/png" }));
+      expect(await screen.findByRole("img", { name: "a.png" })).toHaveAttribute("src", "blob:test/1");
+
+      await user.click(xButton()!);
+      expect(screen.queryByRole("img", { name: "a.png" })).not.toBeInTheDocument();
+      expect(revoked).toEqual([]);
+
+      await user.click(undoButton()!);
+      expect(screen.getByRole("img", { name: "a.png" })).toHaveAttribute("src", "blob:test/1");
+      expect(revoked).toEqual([]);
+
+      // Cleared again, and this time a keystroke ends the window: now the preview goes.
+      await user.click(xButton()!);
+      await user.type(field(), "x");
+      expect(revoked).toEqual(["blob:test/1"]);
+    });
+
+    it("clear: an Undo window open at unmount releases the previews it held", async () => {
+      const user = userEvent.setup();
+      server.use(http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/tmp/a.png" })));
+      renderComposer();
+      pick(new File(["x"], "a.png", { type: "image/png" }));
+      await screen.findByRole("img", { name: "a.png" });
+      await user.click(xButton()!);
+      cleanup();
+      expect(revoked).toEqual(["blob:test/1"]);
+    });
   });
 });

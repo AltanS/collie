@@ -205,6 +205,8 @@ export const zhTW: Dictionary = {
   "composer.controls.agent": "Agent",
   "composer.controls.displayAria": "顯示設定",
   "composer.controls.display": "顯示",
+  "composer.controls.clear": "Clear message",
+  "composer.controls.undoClear": "Undo clear",
   "composer.sentPreview.label": "已傳送：",
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "唯讀模式，未授權",

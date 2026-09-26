@@ -220,6 +220,8 @@ export const de: Dictionary = {
   "composer.controls.agent": "Agent",
   "composer.controls.displayAria": "Anzeigeeinstellungen",
   "composer.controls.display": "Anzeige",
+  "composer.controls.clear": "Clear message",
+  "composer.controls.undoClear": "Undo clear",
   "composer.sentPreview.label": "Gesendet:",
   "composer.placeholder.gone": "Pane existiert nicht mehr",
   "composer.placeholder.readOnly": "Schreibgeschützt: Gerät nicht autorisiert",

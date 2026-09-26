@@ -206,6 +206,8 @@ export const zh: Dictionary = {
   "composer.controls.agent": "智能体",
   "composer.controls.displayAria": "显示设置",
   "composer.controls.display": "显示",
+  "composer.controls.clear": "Clear message",
+  "composer.controls.undoClear": "Undo clear",
   "composer.sentPreview.label": "已发送：",
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "只读模式，未授权",
