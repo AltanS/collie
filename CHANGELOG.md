@@ -34,6 +34,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A ledger records which agent version each reader was last verified on.** `verified-versions.json` carries claude, codex, grok, omp, agy, antigravity and muse's last-verified version and date, plus opencode and pi's installed one (no reader yet, so `how: "unverified"`). `bun run harness:drift` (`scripts/harness-drift.ts`) compares the ledger against what's actually installed and prints `same`, `NEWER, run the canary`, `older` or `not installed` per agent. It is read-only: it only runs `<agent> --version`.
 - **A canary drives real agents and checks what the phone would read.** `bun run canary` starts claude, codex, opencode and pi in a Herdr session of its own (`collie-canary`), types 15 kinds of draft and three real sends, and judges each screen with Collie's own readers and each send with the client's reply guard over the bridge's reply handler, in process. It never touches another session's panes, a port or a paired device, and it tears everything down. `--readers` points it at an older checkout, `--record` writes a clean agent into the ledger. See `scripts/harness-canary/README.md`.
 
+### Fixed
+- **Codex panes started with no Herdr client attached show their input box again.** A Codex started while no Herdr client was attached gets no answer to its colour queries, and 0.156.1 then paints the ` · ` between its status fields with no colour at all. Collie read that row as no status row, found no input box, and showed the unread-dialog card over every idle pane. The status row now accepts a separator with no paint, with the rest of the rule unchanged: coloured fields, one paint for every separator, and the row at the bottom under the `›` prompt (#294).
+
 ## [1.13.2] - 2026-09-26
 
 ### Fixed

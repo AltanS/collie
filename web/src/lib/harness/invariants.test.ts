@@ -15,7 +15,8 @@
 //      text that was typed (`draftCarriesSend`, the reply guard's own check).
 //   2. PAINT INVARIANCE. The composer band and the status and separator rows under it are
 //      repainted (dim to plain, dim to a muted foreground, one colour to another, bold on and off,
-//      no paint at all). Whether the composer is ready must not change.
+//      the fill and muted colour a client-less pane loses, no paint at all). Whether the composer is
+//      ready must not change.
 //
 // A case a reader does not pass yet is pinned as `it.fails` in KNOWN_DRAFT_GAPS or
 // KNOWN_PAINT_GAPS, with its reason, never silently left out.
@@ -303,6 +304,8 @@ const COMPOSERS: Composer[] = [
       "codex--v0156-idle.txt",
       "codex--v0156-idle-50.txt",
       "codex--v0156-draft-multiline.txt",
+      "codex--v0156-headless-idle.txt",
+      "codex--v0156-headless-draft.txt",
     ],
     band(texts) {
       let status = texts.length - 1;
@@ -535,7 +538,11 @@ const REPAINTS = {
   }),
   "bold on": (s) => (hasInk(s) ? { ...s, bold: true } : s),
   "bold off": (s) => ({ ...s, bold: false }),
-  // Codex 0.156.1 with no Herdr client attached: no fill behind the composer, no colour anywhere.
+  // Codex 0.156.1 started with no Herdr client attached (#294, codex--v0156-headless-idle.txt): no
+  // colour query is answered, so the composer loses its fill and the separators their muted colour.
+  // The fields keep their own colours, and SGR 2 stays where it was.
+  "no client attached": (s) => ({ ...s, bg: undefined, fg: s.fg === MUTED ? undefined : s.fg }),
+  // Stronger than any capture: the fields lose their colours too.
   "no paint at all": () => ({}),
 } satisfies Record<string, (s: AnsiSegment) => Paint>;
 
@@ -565,10 +572,9 @@ const CODEX_READ_BY_PAINT = [
   "codex--v0156-idle.txt",
   "codex--v0156-idle-50.txt",
   "codex--v0156-draft-multiline.txt",
+  "codex--v0156-headless-idle.txt",
+  "codex--v0156-headless-draft.txt",
 ];
-// Of those, the frames whose separators are SGR 2 (0.150 to 0.154). "Dim to plain" changes nothing
-// on a 0.156.1 frame, whose separators already carry a foreground instead.
-const CODEX_DIM_SEPARATORS = CODEX_READ_BY_PAINT.filter((f) => !f.startsWith("codex--v0156"));
 
 /**
  * Repaints a reader does not survive yet, per composer and frame. Each runs as `it.fails`, so it shows
@@ -576,21 +582,25 @@ const CODEX_DIM_SEPARATORS = CODEX_READ_BY_PAINT.filter((f) => !f.startsWith("co
  */
 const KNOWN_PAINT_GAPS: { composer: string; paint: RepaintName; frames: string[]; why: string }[] = [
   {
-    // #294, found 2026-09-26: with no Herdr client attached, Codex 0.156.1 paints its composer with
-    // no fill and its status separators with no colour and no SGR 2. The status row then has no
-    // quiet separator paint to anchor on, locateComposer finds no composer, and the idle pane reads
-    // as a dialog. Main's reader does not pass this yet; this spec pins it and does not fix it.
+    // With no paint at all the status row is `  <model> · <cwd>` in plain text, the same bytes as a
+    // line of prose, and the styled acceptor refuses that ON PURPOSE (codex.test.ts, "refuses the
+    // same text with no styling at all"). #294 fixed the real headless screen, whose fields keep
+    // their colours ("no client attached" above passes); this stronger repaint stays refused by
+    // design, no issue filed.
     composer: "codex",
     paint: "no paint at all",
     frames: CODEX_READ_BY_PAINT,
-    why: "#294, separators with no paint",
+    why: "a status row with no paint is prose by design, no issue filed",
   },
   {
-    // The same row as above, reached from the older dim renderer: separators with no paint left.
+    // The right-aligned notice (`⚠ 1 warning · f2 to view`) is accepted only when every one of its
+    // segments is painted (codex/markers.ts, isRightNotice), and its glue text carries the same muted
+    // colour the separators lose here. No headless capture shows a notice, so how Codex paints one
+    // with no client attached is not known yet; the notice rule was left as it is (#294).
     composer: "codex",
-    paint: "dim to plain",
-    frames: CODEX_DIM_SEPARATORS,
-    why: "#294, separators with no paint",
+    paint: "no client attached",
+    frames: ["codex--v0156-draft-multiline.txt"],
+    why: "#294, a right-aligned notice with no colour, no capture yet",
   },
   {
     // The status-row acceptor refuses a bold field or a bold separator ON PURPOSE: every Codex

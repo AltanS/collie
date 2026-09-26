@@ -44,7 +44,7 @@ export function rstrip(text: string): string {
 //
 // STATUS_ROW stays as the fast path for rows that still carry `Context`, and it is the ONLY
 // text-shaped acceptor. The styled acceptor keys on RENDERER PAINT — an unstyled two-space
-// indent, coloured non-dim fields, and quiet ` · ` separators — and never on field names, because
+// indent, coloured non-dim fields, and ` · ` separators painted apart from them — and never on field names, because
 // field names are exactly the part the operator configures. Current Codex may paint one final
 // low-priority field together with its separator as a single quiet segment (` · Main [default]`);
 // that suffix is accepted only after two ordinary coloured fields and only at the end. A text-only
@@ -60,6 +60,17 @@ export function rstrip(text: string): string {
 // separator on the row carry one and the same paint, and that no field carry it. 0.156.1 also
 // right-aligns a notice on the row when it has one (`⚠ 1 warning · f2 to view`); that is accepted
 // only after a gap and a left half that is already a whole status row (`isRightNotice`).
+//
+// A third renderer has no paint at all. A Codex started while no Herdr client is attached gets no
+// answer to its colour queries, so 0.156.1 paints the separator with no SGR and the composer with
+// no fill, while the fields keep their colours (#294, codex--v0156-headless-idle.txt). Refusing
+// that separator left every such idle pane with no composer and the unread-dialog card on top. It
+// is now its own paint, `plain`, under the same rules: one paint for every separator on the row,
+// at least two coloured fields, and the tail shape below. What the widening lets in is a transcript
+// row with coloured words and a plain ` · ` (an agent reply naming two bits of inline code); such a
+// row sits under its reply's column-0 `• ` row, and the tail walk refuses at that row
+// (codex.test.ts pins both halves). The right-aligned notice still wants every segment painted;
+// no headless capture shows one yet.
 //
 // Why a dialog cannot pass: every 0.156.1 dialog footer (`enter continue · esc quit`, `enter select
 // · esc back`, `Press enter to confirm or esc to cancel`) paints its key names BOLD, and its glue
@@ -118,7 +129,7 @@ function isFieldSegment(segment: AnsiSegment): boolean {
 
 /**
  * The QUIET paint Codex gives a status separator, as a comparable key, or null when the segment is
- * not painted that way. Two renderers are known:
+ * not painted that way. Three renderers are known:
  *
  *   - `"dim"` — SGR 2 with no colour of its own (0.150.1 to 0.154.0).
  *   - `"fg:<colour>"` — no SGR 2, an explicit foreground instead (0.156.1 paints ` · ` as
@@ -126,6 +137,8 @@ function isFieldSegment(segment: AnsiSegment): boolean {
  *     a theme change would silently darken every pane. What the row test asks of it instead is
  *     that every separator on the row carries the SAME paint, and that no field shares it
  *     (`isStyledStatusRow`), i.e. the separators are painted apart from the fields they divide.
+ *   - `"plain"` — no paint at all: 0.156.1 started with no Herdr client attached, so no colour query
+ *     was answered (#294). A field always carries a foreground, so it can never share this paint.
  *
  * Bold, underline, italic and a background are never separator paint: a dialog footer's key names
  * are bold, and the 0.156.1 dialogs that sit on a fill (the update prompt) carry a background.
@@ -134,7 +147,7 @@ function separatorPaint(segment: AnsiSegment): string | null {
   if (segment.bg !== undefined || segment.bold === true) return null;
   if (segment.italic === true || segment.underline === true) return null;
   if (segment.dim === true) return segment.fg === undefined ? "dim" : null;
-  return segment.fg === undefined ? null : `fg:${segment.fg}`;
+  return segment.fg === undefined ? "plain" : `fg:${segment.fg}`;
 }
 
 /** A ` \u00b7 ` separator segment, painted quietly and nothing else. Its paint key, or null. */

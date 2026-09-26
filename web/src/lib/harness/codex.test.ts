@@ -54,6 +54,8 @@ const PINNED = [
   "codex--v0156-approval-patch.txt",
   "codex--v0156-draft-blank-line.txt",
   "codex--v0156-draft-multiline.txt",
+  "codex--v0156-headless-draft.txt",
+  "codex--v0156-headless-idle.txt",
   "codex--v0156-idle-50.txt",
   "codex--v0156-idle.txt",
   "codex--v0156-paste-placeholder.txt",
@@ -482,9 +484,58 @@ describe("the styled status-row acceptor fails closed", () => {
     expect(isStatusRow(text)).toBe(false);
   });
 
-  it("refuses coloured fields whose separator is not dim", () => {
+  // #294: a Codex started with no Herdr client attached gets no answer to its colour queries, and
+  // paints its separators with no SGR at all (codex--v0156-headless-idle.txt). Its fields keep their
+  // colours. Such a separator is its own paint, `plain`, and the rest of the rule is unchanged.
+  it("accepts coloured fields whose separators carry no paint at all", () => {
     const { text, line } = painted(["model", "/dir"], " · ");
-    expect(isStatusRow(text, line)).toBe(false);
+    expect(isStatusRow(text, line)).toBe(true);
+    const suffix = row(`  ${FG}model${OFF} · ${FG2}/dir${OFF} · Main [default]`);
+    expect(isStatusRow(suffix.text, suffix.line)).toBe(true);
+  });
+
+  it("still refuses a plain separator next to a painted one, and a single coloured field", () => {
+    // One paint for every separator on the row: plain beside dim, or beside a foreground, is refused.
+    const plainThenDim = row(`  ${FG}model${OFF} · ${FG2}/dir${OFF}${SEP}${FG}main${OFF}`);
+    expect(isStatusRow(plainThenDim.text, plainThenDim.line)).toBe(false);
+    const MUTED = "\u001b[38;2;135;140;164m";
+    const plainThenMuted = row(`  ${FG}model${OFF} · ${FG2}/dir${OFF}${MUTED} · ${OFF}${FG}main${OFF}`);
+    expect(isStatusRow(plainThenMuted.text, plainThenMuted.line)).toBe(false);
+    // A plain final suffix after a dim separator is two paints too.
+    const dimThenPlainSuffix = row(`  ${FG}model${OFF}${SEP}${FG2}/dir${OFF} · Main [default]`);
+    expect(isStatusRow(dimThenPlainSuffix.text, dimThenPlainSuffix.line)).toBe(false);
+    // Two coloured fields are still the minimum.
+    const single = row(`  ${FG}model${OFF} · plain prose after it`);
+    expect(isStatusRow(single.text, single.line)).toBe(false);
+  });
+
+  // What the widening lets in: a transcript row that is indented two spaces and holds coloured words
+  // with a plain ` · ` between them, e.g. an agent reply listing two inline-code names. The row test
+  // alone now accepts it. The tail shape is what keeps it from claiming the composer: a reply's
+  // continuation rows sit under the reply's own column-0 `• ` row, and the walk up from the status
+  // row refuses at the first row with text at column 0, before it can reach an echoed `› ` row.
+  it("a reply row with coloured words and a plain ` · ` never claims the composer", () => {
+    const CODE = "\u001b[38;5;81m";
+    const replyRow = `  ${CODE}alpha${OFF} · ${CODE}beta${OFF}`;
+    const one = row(replyRow);
+    expect(isStatusRow(one.text, one.line)).toBe(true);
+
+    const atTail = splitLines(
+      parseAnsi(["› which two names?", "", "• The two names are:", replyRow].join("\n")),
+    );
+    expect(locateComposer(atTail)).toBeNull();
+    expect(codexAdapter.composerReady!(atTail)).toBe(false);
+    // The control: take the `• ` row away and the same tail does read as a composer. The column-0
+    // row is the whole guard, so this pins that it is still there.
+    const noBullet = splitLines(parseAnsi(["› which two names?", "", replyRow].join("\n")));
+    expect(locateComposer(noBullet)).not.toBeNull();
+
+    // Above a live composer it is transcript: the status row is still the last one.
+    const status = `  ${FG}model${OFF}${SEP}${FG2}/dir${OFF}`;
+    const live = splitLines(
+      parseAnsi(["• The two names are:", replyRow, "", "› a draft", "", status].join("\n")),
+    );
+    expect(locateComposer(live)).toEqual({ top: 3, promptRow: 3, statusRow: 5 });
   });
 
   it("refuses a separator that is not exactly ` · `", () => {
@@ -730,6 +781,30 @@ describe("Codex 0.156.1", () => {
     ["codex--v0156-paste-placeholder.txt", "first paragraph [Pasted Content 1024 chars]"],
   ] as const)("%s: the draft reads back", (name, draft) => {
     expect(codexAdapter.extractInputDraft(fixtureLines(name))).toBe(draft);
+  });
+
+  // #294: the same idle and draft screens from a Codex started while no Herdr client was attached.
+  // Nothing answered its colour queries, so the composer has no fill and the ` · ` separator no
+  // paint; the fields keep their colours (fixtures README, "Codex 0.156.1 headless").
+  const HEADLESS = [
+    ["codex--v0156-headless-idle.txt", null],
+    ["codex--v0156-headless-draft.txt", "hello from the phone probe"],
+  ] as const;
+
+  it.each(HEADLESS)("%s: the composer is found under a status row whose separator has no paint", (name, draft) => {
+    const lines = fixtureLines(name);
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    const status = codexAdapter.extractStatusLines(lines);
+    expect(status).toHaveLength(1);
+    expect(lineText(status[0]!).trimEnd()).toBe("  GPT-6-Luna low · /tmp/i294-proj-codex");
+    const sep = status[0]!.segments.find((seg) => seg.text === " · ")!;
+    expect(sep.fg).toBeUndefined();
+    expect(sep.dim).not.toBe(true);
+    // No fill behind the prompt row either.
+    const box = locateComposer(lines)!;
+    expect(lines[box.promptRow]!.segments.every((seg) => seg.bg === undefined)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe(draft);
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
   });
 
   it("a placeholder with other text beside it is not paste evidence", () => {
