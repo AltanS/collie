@@ -31,6 +31,8 @@ export interface BuildDeps {
   io: Io;
   exec: Exec;
   files: Files;
+  /** Defaults to `process.platform`; injected so the Windows swap is testable on any host. */
+  platform?: string;
 }
 
 /** The narrow seam shared by the full build and `bun run build:cli`. */
@@ -40,6 +42,8 @@ export interface CliCompileDeps {
   io: Io;
   exec: Exec;
   files: Files;
+  /** Defaults to `process.platform`; injected so the Windows swap is testable on any host. */
+  platform?: string;
 }
 
 /** Optional release inputs; ordinary source builds use the local Bun, target and live binary. */
@@ -63,6 +67,18 @@ export const webStaging = (root: string): string => join(root, "web", "dist-stag
  * executable carries its payload INSIDE the file.
  */
 export const collieBinaryStaging = (root: string): string => `${collieBinary(root)}.new`;
+
+/**
+ * The file `bun build --compile --outfile <path>` actually writes. On Windows Bun appends `.exe` to
+ * an outfile that lacks it, so `bin/collie.new` lands as `bin/collie.new.exe` and a rename of the
+ * bare name dies with ENOENT after every other step has succeeded. The live binary it replaces is
+ * `bin/collie.exe` for the same reason, and that is also the file `bin/collie` resolves to when
+ * Windows spawns it. Everywhere else the path is returned unchanged.
+ */
+export function compiledPath(outfile: string, platform: string = process.platform): string {
+  if (platform !== "win32" || outfile.toLowerCase().endsWith(".exe")) return outfile;
+  return `${outfile}.exe`;
+}
 
 /** Prefixes for private, atomically-created directories under the checkout's real `bin`. */
 export const bunCompileSandboxPrefix = (root: string): string => join(root, "bin", ".bun-compile-");
@@ -265,7 +281,8 @@ export function compileCliToLive(
   }
 
   try {
-    deps.files.rename(output, collieBinary(paths.root));
+    const live = compiledPath(collieBinary(paths.root), deps.platform);
+    deps.files.rename(compiledPath(output, deps.platform), live);
   } catch (err) {
     deps.io.err(`error: could not publish the compiled collie binary (${String(err)})`);
     cleanOwnedDirectory(deps, staging, "CLI output staging directory");
@@ -328,9 +345,15 @@ export function cmdBuild(deps: BuildDeps): number {
   // 4. The CLI, into its staging path. `compileCli` also serves `bun run build:cli`, so neither
   // supported route can run Bun from the checkout root before Vite samples its Git identity.
   const binaryStaging = collieBinaryStaging(root);
-  deps.files.remove(binaryStaging);
-  if (!compileCli({ root, io: deps.io, exec: deps.exec, files: deps.files }, { outfile: binaryStaging })) {
-    deps.files.remove(binaryStaging);
+  const binaryWritten = compiledPath(binaryStaging, deps.platform);
+  deps.files.remove(binaryWritten);
+  if (
+    !compileCli(
+      { root, io: deps.io, exec: deps.exec, files: deps.files, platform: deps.platform },
+      { outfile: binaryStaging },
+    )
+  ) {
+    deps.files.remove(binaryWritten);
     return EXIT.FAIL;
   }
 
@@ -347,12 +370,12 @@ export function cmdBuild(deps: BuildDeps): number {
   if (!built) {
     // Neither artifact has been swapped in: `web/dist` is exactly what it was, and the running
     // binary is still the one that started this build.
-    deps.files.remove(binaryStaging);
+    deps.files.remove(binaryWritten);
     return EXIT.FAIL;
   }
 
   // 6. The swaps, last. The binary first because it is the smaller window, then the served bundle.
-  deps.files.rename(binaryStaging, collieBinary(root));
+  deps.files.rename(binaryWritten, compiledPath(collieBinary(root), deps.platform));
   deps.files.removeTree(webDist(root));
   deps.files.rename(staging, webDist(root));
   return EXIT.OK;
