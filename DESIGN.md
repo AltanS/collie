@@ -28,6 +28,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 
 | Primitive | What it is FOR |
 | --- | --- |
+| `ui/add-button.tsx` | The dashed "+" at the end of a row that makes one more of what the row holds: a space, a tab. Two faces, 28px and 32px, a circle each; the busy spinner swaps in place. The caller passes the tap reach, because only the call site can measure what sits around it. |
 | `ui/button.tsx` | Every clickable control with a label. Six variants, one box. Exports `buttonVariants` so a real `<a>` can wear the clothes. |
 | `ui/badge.tsx` | A small static label pill. Not a status chip — it carries no dot and no tap floor. |
 | `ui/card.tsx` | A filled panel on `--card` with its own edge. The Settings surface. |
@@ -221,10 +222,10 @@ its neighbour by picking a bigger step.
 round came back softer than the direction that was chosen.
 
 **Full-round is RESERVED** for shapes whose width equals their height, where it draws a
-circle: status dots, the avatar, the switch thumb, a bead, the square 32px "+" buttons in
-the strips. Anything wider than it is tall becomes a *stadium*, and there is no stadium in
-the mark. The chip, the pane pill and the switch track all take 2px, each with a comment at
-the line saying why, so nobody "fixes" one back.
+circle: status dots, the avatar, the switch thumb, a bead, the dashed "+" of
+`ui/add-button.tsx` at both its sizes. Anything wider than it is tall becomes a *stadium*,
+and there is no stadium in the mark. The chip, the pane pill and the switch track all take
+2px, each with a comment at the line saying why, so nobody "fixes" one back.
 
 ---
 

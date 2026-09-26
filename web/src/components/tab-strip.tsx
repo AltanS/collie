@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
-import { Loader2, Plus } from "lucide-react";
 
+import { AddButton } from "@/components/ui/add-button";
 import { STRIP_TAP_TARGET, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
@@ -244,30 +244,17 @@ export function TabStrip({
               adapter shipped today declares `createTab`, so this hides on none of them — it asks
               anyway, because the alternative is a fourth adapter discovering the answer by 500ing. */}
           {newTab.capable && (
-            <button
-              type="button"
+            // 28px drawn, 44x44 hit. 28 and not the old 32 because the row is 30 now: the circle
+            // must sit inside it. The hit is TAB_ROW_SQUARE_TAP_TARGET's: from the row's top edge
+            // down to the tabs' own 44px line, and 8px out on each side, where it is last in the row
+            // and the scroller's 12px gap keeps it clear of the last tab.
+            <AddButton
+              size="sm"
+              reach={TAB_ROW_SQUARE_TAP_TARGET}
+              label={translate("space.tabStrip.new.aria")}
+              busy={creatingTab}
               onClick={() => onNewTab(workspaceId)}
-              disabled={creatingTab}
-              aria-label={translate("space.tabStrip.new.aria")}
-              aria-busy={creatingTab}
-              // 28px drawn, 44x44 hit, a true square, which is the one shape allowed to keep
-              // `rounded-full`. 28 and not the old 32 because the row is 30 now: the circle must sit
-              // inside it. The hit is TAB_ROW_SQUARE_TAP_TARGET's: from the row's top edge down to
-              // the tabs' own 44px line, and 8px out on each side, where it is last in the row and
-              // the scroller's 12px gap keeps it clear of the last tab.
-              className={cn(
-                TAB_ROW_SQUARE_TAP_TARGET,
-                "flex size-7 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
-              )}
-            >
-              {/* Same box, same icon size, swapped in place — the button never resizes between its
-                  idle and busy shapes (DESIGN.md's no-shift rule). */}
-              {creatingTab ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Plus className="size-4" />
-              )}
-            </button>
+            />
           )}
         </div>
         {/* The pinned slot. `self-center`: whatever stands here is a control beside the tabs, not a

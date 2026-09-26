@@ -17,6 +17,8 @@ import { SpaceOverview } from "./space-overview";
 import { SpaceStrip } from "./space-strip";
 import { TabActionsSheet } from "./tab-actions-sheet";
 import { TabStrip } from "./tab-strip";
+import { STRIP_TAP_TARGET_SQUARE, TAB_ROW_SQUARE_TAP_TARGET } from "./ui/labelled-strip";
+import { cn } from "@/lib/utils";
 
 // EVERY CAPABILITY-GATED CONTROL, IN BOTH STATES (M10/06). One file rather than a case bolted onto
 // each component's own suite, because the thing under test is a RULE that spans them — hide what is
@@ -49,6 +51,21 @@ function declares(
   const mux: MuxConfig = { name: "reference", capabilities, unsupportedKeys, notes };
   server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux })));
 }
+
+/**
+ * The dashed "+" exactly as a strip drew it by hand before `ui/add-button.tsx` held it: the same
+ * `cn(reach, face)` call, so tailwind-merge drops the same overridden inset it dropped then. The
+ * class SET on the primitive's button must equal it, token for token, nothing added or lost.
+ */
+function handRolledPlus(reach: string, size: "size-7" | "size-8"): string[] {
+  return cn(
+    reach,
+    `flex ${size} shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100`,
+  )
+    .split(/\s+/u)
+    .toSorted();
+}
+const classSet = (el: HTMLElement) => [...el.classList].toSorted();
 
 /** Serve a bridge that publishes no mux block at all — the older-bridge case. */
 function saysNothing(): void {
@@ -133,6 +150,21 @@ describe("New space — createSpace", () => {
     );
     expect(await screen.findByRole("button", { name: "New space" })).toBeInTheDocument();
   });
+
+  it("the strip's '+' is the shared dashed one, at its old 32px and its old reach", async () => {
+    declares({ createSpace: true });
+    render(
+      <SpaceStrip
+        workspaces={[workspace]}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewSpace={vi.fn()}
+      />,
+    );
+    const plus = await screen.findByRole("button", { name: "New space" });
+    expect(classSet(plus)).toEqual(handRolledPlus(STRIP_TAP_TARGET_SQUARE, "size-8"));
+  });
 });
 
 // ── How many spaces the multiplexer can hold → `spaces` ──────────────────────
@@ -215,6 +247,13 @@ describe("New tab — createTab", () => {
     tabStrip();
     await waitFor(() => expect(screen.queryByRole("button", { name: "New tab" })).toBeNull());
     expect(screen.queryByText("no tabs here.")).toBeNull();
+  });
+
+  it("is the shared dashed '+', at its old 28px and its old tab-row reach", async () => {
+    declares({ createTab: true });
+    tabStrip();
+    const plus = await screen.findByRole("button", { name: "New tab" });
+    expect(classSet(plus)).toEqual(handRolledPlus(TAB_ROW_SQUARE_TAP_TARGET, "size-7"));
   });
 });
 

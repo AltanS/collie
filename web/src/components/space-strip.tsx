@@ -1,6 +1,7 @@
 import { useRef } from "react";
-import { ChevronLeft, Loader2, Plus } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
+import { AddButton } from "@/components/ui/add-button";
 import { Chip } from "@/components/ui/chip";
 import {
   LabelledStrip,
@@ -125,26 +126,15 @@ export function SpaceStrip({
           — the other place this "+" appears — carries the adapter's reason in full. Saying it twice
           in two shapes is how one wording rule turns into two. */}
       {newSpace.capable && (
-        <button
-          type="button"
+        // 32px drawn, 46x46 hit: STRIP_TAP_TARGET_SQUARE adds the horizontal half of the floor,
+        // which only this button needs and only this button can safely take (it is last in the row).
+        <AddButton
+          size="md"
+          reach={STRIP_TAP_TARGET_SQUARE}
+          label={t("space.overview.new.aria")}
+          busy={creatingSpace}
           onClick={onNewSpace}
-          disabled={creatingSpace}
-          aria-label={t("space.overview.new.aria")}
-          aria-busy={creatingSpace}
-          // 32px drawn, 46x46 hit: STRIP_TAP_TARGET_SQUARE adds the horizontal half of the floor,
-          // which only this button needs and only this button can safely take (it is last in the
-          // row). `rounded-full` stays — width equals height, so it is a circle and not a stadium.
-          className={cn(
-            STRIP_TAP_TARGET_SQUARE,
-            "flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
-          )}
-        >
-          {creatingSpace ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <Plus className="size-4" />
-          )}
-        </button>
+        />
       )}
     </LabelledStrip>
   );
