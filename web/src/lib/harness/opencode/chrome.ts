@@ -3,11 +3,10 @@
 // below it), and re-surfaces the three things the strip would otherwise destroy: the statusline, a
 // stranded draft, and — the reason this layer exists at all — `composerReady`.
 //
-// The bar run is NOT "the composer" the way omp's box is: the agent's live run (tool output rows, a
-// spinner row, hint rows without the bar) paints INSIDE the same run of ┃ rows, above the draft. So
-// the scanner is deliberately a TAIL scanner — it claims only [draft block … status rows] and
-// leaves every row above (the run's live content and the transcript) on the mirror. Its structure,
-// bottom-up:
+// A ┃ row is NOT "the composer" the way omp's box is: the transcript's messages and tool runs draw
+// the same bar above it. So the scanner is deliberately a TAIL scanner — it claims only
+// [draft block … status rows] and leaves every row above (the run's live content and the
+// transcript) on the mirror. Its structure, bottom-up:
 //
 //     [ … transcript / interior content … ]   <- kept, always
 //     ┃  <the draft, wrapped>                  } the draft block: the contiguous non-blank bar run
@@ -17,9 +16,10 @@
 //     ╹▀▀▀▀▀▀▀▀▀▀▀▀                            <- the bottom rule
 //     <cwd> … ctrl+p commands                  <- status rows (chrome; re-surfaced by the probe)
 //
-// Every gate is a glyph predicate or an adjacency; nothing measures widths, and no predicate reads a
-// row's CONTENT except where the contract names it (the draft gutter, the placeholder prefix, the
-// dialog footer's own hints). Pure; no pane access, no network.
+// Every gate is a glyph predicate or an adjacency, and no predicate reads a row's CONTENT except where
+// the contract names it (the draft gutter, the placeholder prefix, the dialog footer's own hints, a
+// picker's `esc` and `Search`). Only the picker check measures anything: it compares two columns.
+// Pure; no pane access, no network.
 
 import type { StyledLine } from "../../blocks";
 import {

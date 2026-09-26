@@ -938,45 +938,48 @@ dir; every question was answered with the sandbox's own test data. The dialogs
 left open at the end were dismissed with `Escape`.
 
 
-## opencode corpus (captured 2026-09-20, opencode 2.0.8, sandbox pane)
+## opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)
 
-Captures of **opencode 2.0.8** (Go TUI) driven in a sandbox pane with a scratch config
-(`OPENCODE_CONFIG` pointing at a file whose `permission` block asks for `bash`, `edit` and
-`webfetch`), and run `--standalone` so the pane owns its server and no global permission state. Two
-widths: the full tab (≈190 columns) and a 95-column split. Byte-faithful `format:ansi` captures,
-no substitutions — the sandbox painted only probe strings (`echo fixture-corpus-probe`,
-`hello`), never real work or credentials. The permission dialogs were resolved at the end of the
-run with the pointer moved to `Reject` and confirmed with `Enter`.
+Captures of **opencode 1.18.32** in a private Herdr session with a colour-answering client (the
+canary's client, so the panes paint as a person's terminal would), read through the bridge's own
+`readPane`. Scratch config only: `OPENCODE_CONFIG` pointed at a file in `/tmp` whose `permission`
+block asks for `bash`, `edit` and `webfetch`, and the project was a fresh `git init` in `/tmp`. Two
+widths: the Herdr pane's own 120 columns and 50 columns (`stty cols 50`, the canary's narrow
+width). Byte-faithful `format:ansi`, no substitutions: every file was checked for user and host
+names, home paths and keys, and holds only probe strings and `/tmp` paths. These replace the
+contributor's captures of 2026-09-20, whose version string matched no opencode release.
 
-The composer is a LEFT VERTICAL BAR run (`┃`, U+2503) with a `╹▀▀▀` rule under it; the agent's
-live run (spinner, tool rows, hint rows without the bar) paints INSIDE the same run above the
-draft. Permission dialogs paint inside the run too — see
-`web/src/lib/grammar/OPENCODE_PERMISSION_NOTES.md` for the probed choreography (Left/Right move,
-Enter confirms, wrap probed, Tab inert).
+The composer is a LEFT VERTICAL BAR run (`┃`, U+2503) with a `╹▀▀▀` rule under it and the status
+rows below the rule. The transcript draws the same bar: each user message and each tool run is a
+`┃` block of its own above the composer. Permission dialogs paint inside the composer's run. See
+`web/src/lib/grammar/OPENCODE_PERMISSION_NOTES.md` for the probed recipe (Right and Left move and
+wrap, Tab does nothing, Enter confirms, Escape declines, no digit).
 
 | Fixture | State / what's in it | Herdr status |
 | --- | --- | --- |
-| `oc--fresh-idle.txt` | Splash logo (empty session), empty composer with the `Ask anything…` placeholder, model row, rule, cwd status row + version row | `idle` |
+| `oc--fresh-idle.txt` | Splash logo, empty composer with an `Ask anything… "…"` placeholder, model row, rule, `tab agents  ctrl+p commands`, the cwd/version row at the foot | `idle` |
 | `oc--draft-single.txt` | One draft row on a two-space-gutter interior row | `idle` |
 | `oc--draft-wrapped.txt` | A long draft word-wrapped onto three interior rows | `idle` |
-| `oc--draft-while-working.txt` | A draft typed while the run streamed: the spinner row and the `Press ctrl+b` hint sit above it across MORE blank rows — the case that pins the draft-vs-run boundary | `working` |
-| `oc--working.txt` | A finished tool row (`Command exited with code 0.`) still inside the box, the esc-interrupt status row | `working` |
-| `oc--done--tool-run.txt` | Idle after a completed turn: empty interior, model row, rule, status row | `idle` |
-| `oc--composer-plan.txt` | The agent cycled to `Plan` (`shift+tab`): the model row reads `Plan · …` | `idle` |
-| `oc--slash-palette.txt` | The `/` palette painted INSIDE the box above the input row (rows carry a right bar too) | `idle` |
-| `oc--command-palette.txt` | The ctrl+p palette floating OVER the box's middle; the composer's tail stays intact underneath, which is why the overlay predicate exists | `working` |
-| `oc--agents-picker.txt` | Captured 2026-09-26 on opencode 1.18.32: the `/agents` picker, `Select agent … esc` over `Search`, floating over the splash while the composer's tail stays intact underneath. The picker-shape check refuses it | `idle` |
-| `oc--command-palette-query.txt` | Captured 2026-09-26 on opencode 1.18.32: the ctrl+p palette with the filter `mod` typed, which stands where `Search` was. A known gap, pinned as `it.fails`: `composerReady` answers true here | `done` |
-| `oc--permission-bash.txt` | The bash permission dialog, pointer on `Allow once` (the accent chip) | `blocked` |
-| `oc--permission-bash--moved.txt` | After one `Right`: chip on `Always allow`; the dialog's subject row swaps for the always-allow warning + pattern list | `blocked` |
-| `oc--permission-bash--reject.txt` | Chip on `Reject` | `blocked` |
-| `oc--permission-bash--wrap.txt` | `Right` past `Reject` wrapped back to `Allow once` — the wrap the keys arithmetic relies on | `blocked` |
-| `oc--permission-edit.txt` | The edit permission dialog: `→ Edit probe.txt` subject + diff rows | `blocked` |
-| `oc--permission-edit--moved.txt` | Chip on `Always allow` | `blocked` |
-| `oc--permission-always-bash.txt` | Captured 2026-09-26 on opencode 1.18.32: `Allow always` + Enter opened the second step, `△ Always allow`, its body naming the pattern (`- echo *`), chips `Confirm` / `Cancel`, pointer on `Confirm` | `blocked` |
+| `oc--draft-while-working.txt` | A draft typed while `sleep 10 && echo done` ran: the running command and its spinner sit in the transcript above, the status row reads `esc interrupt` | `working` |
+| `oc--working.txt` | The same run with an empty composer | `working` |
+| `oc--done--tool-run.txt` | After the run finished: the command's output in the transcript, the empty composer, the cwd/tokens/cost status row | `done` |
+| `oc--composer-plan.txt` | The agent switched with `tab`: the model row reads `Plan · …` | `idle` |
+| `oc--slash-palette.txt` | `/` typed: the command list painted inside the box, above the input row. The composer still holds the keyboard | `idle` |
+| `oc--command-palette.txt` | The ctrl+p palette, `Commands … esc` over `Search`, over the middle of the screen; on 1.18.32 it also cuts through the rule | `idle` |
+| `oc--agents-picker.txt` | The `/agents` picker, `Select agent … esc` over `Search`, floating over the splash while the composer's tail stays intact underneath. The picker-shape check refuses it | `idle` |
+| `oc--command-palette-query.txt` | The ctrl+p palette with the filter `mod` typed, which stands where `Search` was. A known gap, pinned as `it.fails`: `composerReady` answers true here | `done` |
+| `oc--permission-bash.txt` | The bash permission dialog: `△ Permission required`, the heading `# Shell command`, the command `$ echo fixture-corpus-probe`, chips `Allow once` / `Allow always` / `Reject` with the pointer on `Allow once` | `blocked` |
+| `oc--permission-bash--moved.txt` | After one `Right`: pointer on `Allow always`. The body does not change | `blocked` |
+| `oc--permission-bash--reject.txt` | After a second `Right`: pointer on `Reject` | `blocked` |
+| `oc--permission-bash--wrap.txt` | After a third `Right`: the pointer wrapped back to `Allow once` | `blocked` |
+| `oc--permission-edit.txt` | The edit permission dialog: the heading `→ Edit probe.txt`, then the diff row `1 + hello` | `blocked` |
+| `oc--permission-edit--moved.txt` | The same dialog, pointer on `Allow always` | `blocked` |
+| `oc--permission-webfetch.txt` | The webfetch permission dialog: the heading `% WebFetch https://example.com`, then `URL: https://example.com` | `blocked` |
+| `oc--permission-always-bash.txt` | `Allow always` + Enter opened the second step, `△ Always allow`, its body naming the pattern (`- echo *`), chips `Confirm` / `Cancel`, pointer on `Confirm` | `blocked` |
 | `oc--permission-always-bash--cancel.txt` | The same step after one `Right`: pointer on `Cancel`, on two chips where no plurality of backgrounds exists | `blocked` |
 | `oc--permission-always-edit.txt` | The second step for an edit: `This will allow edit until OpenCode is restarted.`, no pattern list | `blocked` |
-| `oc--narrow--permission-always-bash.txt` | The second step at 50 columns: the body wraps over two rows, the chips and the hints sit on rows of their own | `blocked` |
-| `oc--narrow--fresh-idle.txt` | Recaptured 2026-09-26 on opencode 1.18.32 at 50 columns: the placeholder wraps over two rows, the model row squeezes its dots (`Build ·GPT-6 Astra Pro OpenRouter· medium`), a bare bar row sits between it and the rule, and a tip wraps over two rows under the key hints. `composerReady` must be TRUE | `idle` |
-| `oc--narrow--permission-bash.txt` | The dialog at narrow width: the footer wraps — options row + hint row separated by a blank | `blocked` |
-| `oc--narrow--draft-wrapped.txt` | A draft wrapped over the edge at narrow width | `idle` |
+| `oc--narrow--fresh-idle.txt` | 50 columns: the placeholder wraps over two rows, the model row squeezes its dots (`Build ·GPT-6 Astra Pro OpenRouter· medium`), a bare bar row sits between it and the rule, and a tip wraps over two rows under the key hints. `composerReady` must be TRUE | `idle` |
+| `oc--narrow--draft-wrapped.txt` | 50 columns: a draft wrapped over three rows, the same bare bar row under the model row | `idle` |
+| `oc--narrow--done.txt` | 50 columns, after a rejected command: the cwd/tokens/cost status row folds onto two rows | `done` |
+| `oc--narrow--permission-bash.txt` | 50 columns: the chips on a bar row of their own, a bare bar row, then the hints on a row of their own | `blocked` |
+| `oc--narrow--permission-always-bash.txt` | 50 columns, the second step: the body wraps over two rows, chips and hints on rows of their own | `blocked` |

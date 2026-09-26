@@ -3,20 +3,22 @@
 // functions over the PARSED line text, no I/O, no React) and deliberately NOT their code: opencode
 // draws a composer unlike every other TUI in the tree.
 //
-// opencode 2.0.8's composer is not a rounded box. It is a LEFT VERTICAL BAR run with a rule under it:
+// opencode 1.18.32's composer (measured 2026-09-26) is not a rounded box. It is a LEFT VERTICAL BAR
+// run with a rule under it:
 //
 //     ┃  (blank interior padding)
 //     ┃  Ask anything… "Fix broken tests"        <- the placeholder, when the draft is empty
 //     ┃  <the draft, word-wrapped onto more bar rows>
 //     ┃
-//     ┃  Build · GLM-5.3-Flash OpenCode Go · max  <- the model/agent row: the LAST interior row
+//     ┃  Build · GPT-6 Astra Pro OpenRouter · medium  <- the model/agent row: the last text row
 //     ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                        <- the bottom rule (composer-width)
-//     <cwd> … shift+tab agents  ctrl+p commands   <- status rows BELOW the rule (chrome, not content)
+//     tab agents  ctrl+p commands                 <- status rows BELOW the rule (chrome, not content)
 //
-// The agent's live run (tool output, a spinner row, hint rows) paints INSIDE the same bar run, above
-// the draft — so the bar run is NOT "the composer" the way omp's box is; only its TAIL is composer
-// chrome and the strip below cuts exactly that tail. Everything here is therefore anchored at the
-// buffer tail, and every predicate can only ever REJECT.
+// The transcript draws the same bar: each user message and each tool run above the composer is a
+// ┃ run of its own, and a permission dialog paints inside the composer's run. So a ┃ row is NOT "the
+// composer" the way omp's box is; only the TAIL is composer chrome and the strip cuts exactly that
+// tail. Everything here is therefore anchored at the buffer tail, and every predicate can only ever
+// REJECT.
 
 import { isBlank, lineText } from "../../blocks";
 
@@ -37,13 +39,12 @@ export function rstrip(text: string): string {
  *  Claude's boxes are drawn with it, and a foreign buffer must never match. */
 export const BAR = "┃";
 
-// The composer interior row: optional leading pad, then the bar as the row's FIRST glyph. opencode
-// pads its rows out to the full terminal width, so nothing else carries a leading ┃ — the transcript
-// is indented without one (capture census: every ┃ row in the corpus is composer interior, and no
-// transcript row opens with one).
+// A bar row: optional leading pad, then the bar as the row's FIRST glyph. The composer's interior
+// rows are bar rows, and so are the transcript's message and tool blocks above it (1.18.32). Only
+// the scanners' position — hung off the rule at the tail — says which bar rows are the composer's.
 const BAR_ROW = /^\s*┃/;
 
-/** True when this row is a composer interior row (the bar as the first glyph after the pad). */
+/** True when this row is a bar row (the bar as the first glyph after the pad). */
 export function isBarRow(text: string): boolean {
   return BAR_ROW.test(rstrip(text));
 }

@@ -20,10 +20,10 @@ import { promptsSameIdentity } from "./prompt-model";
 
 // The opencode adapter's CI gate. Tier 1 chrome (composer strip, status/draft probes, the composer
 // gate) plus the Tier-2 permission-dialog lift, gated on the captured corpus:
-// web/src/fixtures/panes/oc--*.txt — every capture a sandbox opencode 2.0.8 pane, driven and
-// captured 2026-09-20 over the crew (see README.md's opencode section).
+// web/src/fixtures/panes/oc--*.txt — every capture an opencode 1.18.32 pane in a private Herdr
+// session with a scratch config, captured 2026-09-26 (see README.md's opencode section).
 //
-// The own cohort is the six+ permission-dialog captures (each must lift a `prompt-select`); the
+// The own cohort is the permission-step captures (each must lift a `prompt-select`); the
 // neutral cohort is every other opencode capture — composer states, the slash palette, the command
 // palette, the narrow-width variants — each of which must stay raw AND must say so about the
 // keyboard (composerReady true exactly on the live-composer screens). The foreign cohort is every
@@ -59,12 +59,9 @@ describe("opencode permission dialog lift", () => {
     const region = detectPermissionDialog(loadLines("oc--permission-bash.txt"));
     expect(region).not.toBeNull();
     expect(region!.model.family).toBe("permission");
+    // The `# Shell command` heading names only the kind of request; the command is the question.
     expect(region!.model.question).toBe("$ echo fixture-corpus-probe");
-    expect(region!.model.options.map((o) => o.label)).toEqual([
-      "Allow once",
-      "Always allow",
-      "Reject",
-    ]);
+    expect(region!.model.options.map((o) => o.label)).toEqual(["Allow once", "Allow always", "Reject"]);
     // The pointer starts on the first option: Enter alone confirms it, forward offsets ride Right.
     expect(region!.model.options.map((o) => o.keys)).toEqual([
       ["Enter"],
@@ -77,13 +74,11 @@ describe("opencode permission dialog lift", () => {
 
   it("moved selection: the keys follow the pointer the screen currently shows", () => {
     const moved = detectPermissionDialog(loadLines("oc--permission-bash--moved.txt"));
-    expect(moved?.model.options.map((o) => o.label)).toEqual([
-      "Allow once",
-      "Always allow",
-      "Reject",
-    ]);
-    // The pointer sits on "Always allow": it confirms with Enter alone; reaching "Allow once"
-    // wraps forward two steps (probed) rather than sending Left, which was never probed.
+    expect(moved?.model.options.map((o) => o.label)).toEqual(["Allow once", "Allow always", "Reject"]);
+    // The body does not change with the pointer on 1.18.32.
+    expect(moved?.model.question).toBe("$ echo fixture-corpus-probe");
+    // The pointer sits on "Allow always": it confirms with Enter alone; reaching "Allow once"
+    // wraps forward two steps (probed) rather than sending Left, which the adapter never sends.
     expect(moved?.model.options.map((o) => o.keys)).toEqual([
       ["Right", "Right", "Enter"],
       ["Enter"],
@@ -96,32 +91,35 @@ describe("opencode permission dialog lift", () => {
     expect(rejected?.model.options.at(-1)?.keys).toEqual(["Enter"]);
   });
 
-  it("edit dialog: same shape, the subject names the file", () => {
-    const edit = detectPermissionDialog(loadLines("oc--permission-edit.txt"));
-    expect(edit?.model.question).toBe("→ Edit probe.txt");
-    expect(edit?.model.options.map((o) => o.label)).toEqual([
-      "Allow once",
-      "Always allow",
-      "Reject",
-    ]);
+  it("wrapped selection: Right past Reject lands back on Allow once", () => {
+    const wrapped = detectPermissionDialog(loadLines("oc--permission-bash--wrap.txt"));
+    expect(wrapped?.model.options[0]?.keys).toEqual(["Enter"]);
   });
 
-  it("narrow width: the hint row is its own row and the options row sits above it", () => {
+  it("edit dialog: same shape, the subject names the file", () => {
+    const edit = detectPermissionDialog(loadLines("oc--permission-edit.txt"));
+    // The heading names the subject itself here, so it is the question.
+    expect(edit?.model.question).toBe("→ Edit probe.txt");
+    expect(edit?.model.options.map((o) => o.label)).toEqual(["Allow once", "Allow always", "Reject"]);
+  });
+
+  it("webfetch dialog: same shape, the heading names the URL", () => {
+    const fetch = detectPermissionDialog(loadLines("oc--permission-webfetch.txt"));
+    expect(fetch?.model.question).toBe("% WebFetch https://example.com");
+    expect(fetch?.model.options.map((o) => o.label)).toEqual(["Allow once", "Allow always", "Reject"]);
+  });
+
+  it("50 columns: the hint row is its own row and the options row sits above it", () => {
     const narrow = detectPermissionDialog(loadLines("oc--narrow--permission-bash.txt"));
     expect(narrow?.model.question).toBe("$ echo narrow-width-probe");
-    expect(narrow?.model.options.map((o) => o.label)).toEqual([
-      "Allow once",
-      "Always allow",
-      "Reject",
-    ]);
+    expect(narrow?.model.options.map((o) => o.label)).toEqual(["Allow once", "Allow always", "Reject"]);
     expect(hasComposer(loadLines("oc--narrow--permission-bash.txt"))).toBe(false);
   });
 
-  it("the lifted signature is the dialog's own rows, stable across spinner frames", () => {
+  it("the lifted signature is the dialog's own rows, from the title to the footer", () => {
     const region = detectPermissionDialog(loadLines("oc--permission-bash.txt"));
-    // The spinner row sits ABOVE the title, outside the region.
-    expect(region?.model.signature).not.toContain("⠙");
-    expect(region?.model.signature).toContain("Permission required");
+    // The pending tool row sits ABOVE the title, outside the region.
+    expect(region?.model.signature.startsWith("  ┃  △ Permission required")).toBe(true);
     expect(region?.model.signature).toContain("$ echo fixture-corpus-probe");
     // The signature is byte-faithful and ends at the footer — the bridge binds to it.
     expect(region?.model.signature.endsWith("enter confirm")).toBe(true);
@@ -141,7 +139,7 @@ describe("opencode Always allow step", () => {
   it("lifts Confirm and Cancel, with the keys walking from the pointer", () => {
     const region = detectPermissionDialog(loadLines("oc--permission-always-bash.txt"));
     expect(region?.model.family).toBe("permission");
-    expect(region?.model.question).toContain("This will allow the following patterns");
+    expect(region?.model.question).toBe("This will allow the following patterns until OpenCode is restarted");
     expect(region?.model.options.map((o) => o.label)).toEqual(["Confirm", "Cancel"]);
     // Pointer on Confirm: Enter alone, so the badge is ⏎ (ADR 0055); Cancel walks one Right.
     expect(region?.model.options.map((o) => o.keys)).toEqual([["Enter"], ["Right", "Enter"]]);
@@ -162,6 +160,8 @@ describe("opencode Always allow step", () => {
 
   it("lifts at 50 columns, where the hints sit on a row of their own", () => {
     const region = detectPermissionDialog(loadLines("oc--narrow--permission-always-bash.txt"));
+    // The sentence wraps over two rows here; the question is the whole paragraph.
+    expect(region?.model.question).toBe("This will allow the following patterns until OpenCode is restarted");
     expect(region?.model.options.map((o) => [o.label, o.keys])).toEqual([
       ["Confirm", ["Enter"]],
       ["Cancel", ["Right", "Enter"]],
@@ -214,6 +214,7 @@ describe("opencode composer chrome", () => {
       "oc--done--tool-run.txt",
       "oc--narrow--fresh-idle.txt",
       "oc--narrow--draft-wrapped.txt",
+      "oc--narrow--done.txt",
       // The slash palette is painted INSIDE the box: the composer still owns the keyboard.
       "oc--slash-palette.txt",
     ]) {
@@ -231,42 +232,48 @@ describe("opencode composer chrome", () => {
     expect(extractInputDraft(loadLines("oc--draft-single.txt"))).toBe(
       "hello from the fixture corpus",
     );
-    expect(
-      extractInputDraft(loadLines("oc--draft-wrapped.txt"))?.startsWith(
-        "a reasonably long draft line",
-      ),
-    ).toBe(true);
-    // The decisive case: the tool rows and spinner sit across MORE blanks than the draft's one.
+    expect(extractInputDraft(loadLines("oc--draft-wrapped.txt"))).toBe(
+      "a reasonably long draft line that the composer has to wrap over several interior rows so " +
+        "the fixture pins the fold, with more words after the edge of the box interior and then a " +
+        "few more to be sure",
+    );
+    // Typed while a tool ran: the run paints in the transcript above, the draft stays in the box.
     expect(extractInputDraft(loadLines("oc--draft-while-working.txt"))).toBe(
       "draft typed while the agent was working",
     );
     expect(extractInputDraft(loadLines("oc--narrow--draft-wrapped.txt"))).toBe(
       "draft text at narrow width wrapping over the edge of the box interior to capture the " +
-        "composer fold at ninety columns of terminal width, this should wrap twice or more",
+        "composer fold at fifty columns",
     );
   });
 
   it("an empty composer answers null — the placeholder is content, not a draft", () => {
     expect(extractInputDraft(loadLines("oc--fresh-idle.txt"))).toBeNull();
     expect(extractInputDraft(loadLines("oc--working.txt"))).toBeNull();
+    expect(extractInputDraft(loadLines("oc--done--tool-run.txt"))).toBeNull();
   });
 
   it("extractStatusLines re-surfaces the rows below the rule", () => {
-    const status = extractStatusLines(loadLines("oc--fresh-idle.txt"));
-    expect(status.length).toBeGreaterThanOrEqual(2); // cwd row + version row
-    expect(lineText(status[0]!)).toContain("shift+tab");
+    const status = extractStatusLines(loadLines("oc--fresh-idle.txt")).map((l) => lineText(l).trim());
+    // The key-hint row, then the cwd/version row at the pane's foot.
+    expect(status[0]).toBe("tab agents  ctrl+p commands");
+    expect(status.at(-1)).toMatch(/^\/tmp\/\S+\s+1\.18\.32$/);
+    // While a turn runs, the row under the rule carries the interrupt hint and the token count.
+    expect(lineText(extractStatusLines(loadLines("oc--working.txt"))[0]!)).toContain("esc interrupt");
   });
 
   it("the strip keeps the agent's live run and loses only the composer's own rows", () => {
     const lines = loadLines("oc--draft-while-working.txt");
     const raw = opencodeAdapter.buildBlocks(lines).at(-1)!;
     const text = raw.lines.map((l) => lineText(l)).join("\n");
-    expect(text).toContain("Press ctrl+b to move running work to the background");
-    expect(text).toContain("sleep 8 && echo done");
-    // The composer's own model row is gone; the transcript's turn-footer rows ("Build · …") above
-    // it are content and stay — hence the distinctive tail of the composer's row.
-    expect(text).not.toContain("OpenCode Go · max");
+    // The running command, with its spinner, and the turn's footer stay on the mirror.
+    expect(text).toContain("sleep 10 && echo done");
+    expect(text).toContain("▣  Build · GPT-6 Astra Pro");
+    // The composer's own model row is gone; the transcript's turn-footer row ("Build · …") above
+    // it is content and stays — hence the distinctive tail of the composer's row.
+    expect(text).not.toContain("OpenRouter · medium");
     expect(text).not.toContain("draft typed while the agent was working");
+    expect(text).not.toContain("esc interrupt");
   });
 
   it("a foreign buffer is returned raw and untouched (same shape, no opencode chrome)", () => {

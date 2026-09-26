@@ -43,9 +43,10 @@ import {
   lineText,
   rstrip,
 } from "./markers";
-// How far above the option row the title may sit. The dialog paints blanks between its subject and
-// the options (nine in the edit capture — the box interior is padded tall), so the bound is generous
-// but bounded; a title further than this is not this dialog's title.
+// How far above the option row the title may sit. The edit dialog pads its box tall: 12 rows from
+// title to options in the 1.18.32 capture, and a 40-line diff scrolls inside that same box rather
+// than growing it (measured at a 40-row pane). The bound is generous but bounded; a title further
+// than this is not this dialog's title.
 const MAX_TITLE_GAP = 16;
 
 /** The detected dialog: the model plus `startLine`, the first row the block REPLACES (the option
@@ -133,16 +134,15 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   }
   if (titleRow < 0) return null;
 
-  // 4. The subject: the first interior row UNDER the title that carries text — `$ echo …` or
-  //    `→ Edit …`. The box pads its interior with bare-bar rows, which are chrome, not content:
-  //    a row whose interior is empty does not stop the search.
-  let subject = "";
-  for (let i = titleRow + 1; i < optionRow; i++) {
-    if (isBlank(texts[i]!)) continue;
-    subject = interiorText(texts[i]!);
-    if (subject.length > 0) break;
-  }
-  if (subject.length === 0) return null;
+  // 4. The question: the first paragraph UNDER the title that says what is asked. 1.18.32 opens
+  //    the body with a heading row, and a `# ` heading names only the kind of request
+  //    (`# Shell command`), so it is passed over for the paragraph under it (`$ echo …`); any other
+  //    heading names the subject itself (`→ Edit probe.txt`, `% WebFetch <url>`) and is the
+  //    question. A paragraph is a run of text rows, joined with one space, because a narrow pane
+  //    wraps the body (the second step's sentence folds at 50 columns). Bare-bar rows are the box's
+  //    padding, not content: they end a paragraph and never start one.
+  const subject = firstParagraph(texts, titleRow + 1, optionRow);
+  if (subject === null) return null;
 
   // The dialog's own rows are static while it is up: the spinner and the running-command rows sit
   // ABOVE the title (measured), so the region text neither churns with the spinner frame nor moves
@@ -158,6 +158,23 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
     coreSignature: signature,
   };
   return { model, startLine: optionRow };
+}
+
+/** The first paragraph of interior text in rows [from, to), skipping a `# ` heading, or null. */
+function firstParagraph(texts: string[], from: number, to: number): string | null {
+  let parts: string[] = [];
+  for (let i = from; i <= to; i++) {
+    const text = i < to ? interiorText(texts[i]!) : "";
+    if (text.length > 0) {
+      parts.push(text);
+      continue;
+    }
+    if (parts.length === 0) continue;
+    const paragraph = parts.join(" ");
+    if (!paragraph.startsWith("# ")) return paragraph;
+    parts = [];
+  }
+  return null;
 }
 
 /** The background of the first cell carrying `text` on `line`, or undefined when unpainted. */
