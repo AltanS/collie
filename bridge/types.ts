@@ -1095,6 +1095,21 @@ export interface LaunchersResponse {
 }
 
 /**
+ * GET /api/folders, and the answer to POST /api/folders/star — THIS host's own folder list for the
+ * new-space sheet (#289), read from its `folders.json` (bridge/folders.ts). Session-scoped only so a
+ * `?host=` call forwards to the peer whose folders they are (CREW_PROTOCOL.md §5); the list itself is
+ * one per machine, never per session. `recent` is newest first, at most eight, and holds only folders
+ * a space was created in; `favourites` is in starred order, at most twelve, and never overlaps it.
+ * `home` is that host's home dir, never an entry, so the client can shorten a folder with a leading
+ * `~` without knowing which machine answered — `LaunchersResponse.home`'s reason.
+ */
+export interface FoldersResponse {
+  recent: string[];
+  favourites: string[];
+  home: string;
+}
+
+/**
  * One rule as the pane sheet reads it — the catalog entry behind a pane's `cache.ruleId`.
  *
  * The source title and the retrieved date do NOT ride every pane: seven small fields do, and the sheet

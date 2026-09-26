@@ -808,6 +808,8 @@ export const ko: Dictionary = {
   "apiError.tab.workspace_required": "새 탭을 생성할 작업 공간이 지정되지 않았습니다.",
   "apiError.launch.not_allowlisted": "해당 명령은 등록된 실행 항목이 아닙니다",
   "apiError.launch.pane_unknown": "해당 창을 찾을 수 없어 실행하지 못했습니다",
+  "apiError.folders.unknown": "That folder is no longer in Recent, so it can't be starred.",
+  "apiError.folders.favourites_full": "Favourites are full ({max}). Remove one first.",
   "apiError.workspace.create_failed": "작업 공간을 생성하지 못했습니다: {reason}",
   "apiError.upload.too_large": "파일이 너무 큽니다. 제한은 {maxMb}MB입니다.",
   "apiError.upload.no_file": "전송된 파일이 없습니다.",

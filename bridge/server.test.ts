@@ -13,6 +13,11 @@ import {
   cacheControlFor,
   checkAccess,
   launch,
+  createWorkspace,
+  foldersBody,
+  parseStarFolderRequest,
+  serveFolderRoute,
+  type FolderRouteCaller,
   marksPaneSeen,
   SEEN_HEADER,
   deviceAuth,
@@ -54,6 +59,8 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
+import { FolderStore, MAX_FAVOURITES, MAX_FOLDER_CHARS } from "./folders.ts";
+import type { SessionRuntime } from "./sessions.ts";
 import type { Config } from "./config.ts";
 import { declareCapabilities, MUX_CAPABILITIES } from "./mux/capabilities.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
@@ -87,6 +94,7 @@ import {
   type AgentView,
   type Launcher,
   type CacheRulesResponse,
+  type FoldersResponse,
   type LaunchersResponse,
   type MuxConfig,
   type PaneReadResponse,
@@ -2066,11 +2074,11 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All ELEVEN session-scoped routes (tab create, workspace create, launch, this host's launcher
-    // rows, one journal blob, a workspace's Changes list, tab action, the pane family, "look now",
-    // the worktree listing and the worktree actions) reach their runtime through the caller's
-    // resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(11);
+    // All THIRTEEN session-scoped routes (tab create, workspace create, launch, this host's launcher
+    // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
+    // tab action, the pane family, "look now", the worktree listing and the worktree actions) reach
+    // their runtime through the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(13);
     // Exactly seven `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -2802,6 +2810,324 @@ describe("GET /api/launchers — this host's own rows, home included", () => {
     const res = await launchersRoute(() => Promise.resolve([]), null);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ launchers: [], home: homedir() });
+  });
+});
+
+// ── The new-space folder list (#289, M40/02) ─────────────────────────────────────────────────
+// The store itself is pinned in folders.test.ts. What is pinned HERE is the two places the HTTP
+// layer touches it: the space create that records a folder, and the two routes that read and star.
+
+describe("POST /api/workspace — a create that worked records the folder the multiplexer reported", () => {
+  /** Only what `createWorkspace` reaches: the create, and the refresh every structural create settles on. */
+  class FakeSpaceMux {
+    created: MuxSpaceRequest | null = null;
+    constructor(
+      private readonly reported: string,
+      private readonly refuse = false,
+    ) {}
+    createSpace(request_: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+      this.created = request_;
+      if (this.refuse) return Promise.resolve(muxRefused("no such directory"));
+      return Promise.resolve(
+        muxOk({ paneId: "w4:p1", spaceId: "w4", spaceLabel: "proj", tabId: "w4:t1", cwd: this.reported }),
+      );
+    }
+    refresh(): Promise<void> {
+      return Promise.resolve();
+    }
+  }
+  const engineStub: Partial<StateEngine> = { pokeNow: () => {} };
+  // SAFETY: after a create, `createWorkspace` asks the engine for exactly one thing — `pokeNow()` —
+  // and the adapter for exactly the two calls FakeSpaceMux implements. Nothing else is reachable.
+  const engine = engineStub as StateEngine;
+  function asSpaceMux(fake: Partial<MuxAdapter>): MuxAdapter {
+    // SAFETY: as above — only `createSpace` and `refresh` are reachable from `createWorkspace`.
+    return fake as MuxAdapter;
+  }
+  function body(json: string): Request {
+    return new Request("http://localhost/api/workspace", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: json,
+    });
+  }
+  const HOME = "/home/op";
+
+  async function create(requestBody: string, mux: FakeSpaceMux) {
+    const dir = await mkdtemp(join(tmpdir(), "collie-ws-folders-"));
+    const store = new FolderStore({ stateDir: dir }, HOME);
+    try {
+      const res = await createWorkspace(asSpaceMux(mux), engine, body(requestBody), new AuditLog(() => {}), null, "default", store);
+      return { res, lists: store.current(), written: await Bun.file(join(dir, "folders.json")).exists() };
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("records the REPORTED folder, not the typed text", async () => {
+    const mux = new FakeSpaceMux("/home/op/proj");
+    const { res, lists, written } = await create(JSON.stringify({ cwd: "~/proj" }), mux);
+    expect(res.status).toBe(200);
+    expect(mux.created?.cwd).toBe("~/proj");
+    expect(lists.recent).toEqual(["/home/op/proj"]);
+    expect(written).toBe(true);
+  });
+
+  test("a refused create records nothing", async () => {
+    const { res, lists, written } = await create(JSON.stringify({ cwd: "/srv/typo" }), new FakeSpaceMux("", true));
+    expect(await res.json()).toMatchObject({ ok: false, code: "workspace.create_failed" });
+    expect(lists.recent).toEqual([]);
+    expect(written).toBe(false);
+  });
+
+  test("a blank or whitespace field means home and records nothing", async () => {
+    for (const requestBody of [JSON.stringify({}), JSON.stringify({ cwd: "" }), JSON.stringify({ cwd: "   " })]) {
+      // Even when the multiplexer reports a real folder: the operator named none.
+      const { lists, written } = await create(requestBody, new FakeSpaceMux("/srv/somewhere"));
+      expect(lists.recent).toEqual([]);
+      expect(written).toBe(false);
+    }
+  });
+
+  test("an empty reported folder, or home itself, records nothing", async () => {
+    for (const reported of ["", HOME]) {
+      const { res, lists, written } = await create(JSON.stringify({ cwd: "/srv/x" }), new FakeSpaceMux(reported));
+      expect(res.status).toBe(200);
+      expect(lists.recent).toEqual([]);
+      expect(written).toBe(false);
+    }
+  });
+
+  test("with no store (a bridge built by hand), the create is exactly today's", async () => {
+    const mux = new FakeSpaceMux("/home/op/proj");
+    const res = await createWorkspace(asSpaceMux(mux), engine, body(JSON.stringify({ cwd: "~/proj" })), new AuditLog(() => {}), null, "default");
+    expect(await res.json()).toMatchObject({ ok: true, pane: { cwd: "/home/op/proj" } });
+  });
+});
+
+describe("the folder routes — GET /api/folders and POST /api/folders/star", () => {
+  const HOME = "/home/op";
+  const runtimeStub: Partial<SessionRuntime> = { name: "default" };
+  // SAFETY: the folder routes only test `rt instanceof Response` and never read a member of the
+  // runtime, so a stub with none of them is enough to stand for "resolved locally".
+  const localRuntime = runtimeStub as SessionRuntime;
+
+  /** A caller that resolves locally and whose gate says `denyAt` (or nothing). Records what was asked. */
+  function caller(opts: { denyAt?: "read" | "write"; resolve?: Response } = {}) {
+    const asked: string[] = [];
+    const c: FolderRouteCaller = {
+      gate: (level) => {
+        asked.push(`gate:${level}`);
+        return level === opts.denyAt ? new Response("read-only device", { status: 403 }) : null;
+      },
+      resolve: () => {
+        asked.push("resolve");
+        return Promise.resolve(opts.resolve ?? localRuntime);
+      },
+    };
+    return { c, asked };
+  }
+  function get(): Request {
+    return new Request("http://localhost/api/folders");
+  }
+  function star(payload: string): Request {
+    return new Request("http://localhost/api/folders/star", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: payload,
+    });
+  }
+  async function storeWith(recent: string[]): Promise<{ store: FolderStore; dir: string }> {
+    const dir = await mkdtemp(join(tmpdir(), "collie-folder-route-"));
+    const store = new FolderStore({ stateDir: dir }, HOME);
+    for (const f of recent.toReversed()) await store.recordRecent(f);
+    return { store, dir };
+  }
+  async function read(res: Response | null): Promise<FoldersResponse> {
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(200);
+    // SAFETY: a 200 from either folder route is `foldersBody`'s output, and `foldersBody` is typed
+    // to return `FoldersResponse`.
+    return (await res!.json()) as FoldersResponse;
+  }
+
+  test("a path that is neither route is not answered here", async () => {
+    const { c, asked } = caller();
+    expect(await serveFolderRoute(get(), "/api/launchers", c, undefined)).toBeNull();
+    // A GET on the star path is not the star route either.
+    expect(await serveFolderRoute(new Request("http://localhost/api/folders/star"), "/api/folders/star", c, undefined)).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  test("read: both lists and this machine's home, gated as a READ", async () => {
+    const { store, dir } = await storeWith(["/srv/a", "/srv/b"]);
+    try {
+      await store.star("/srv/b", true);
+      const { c, asked } = caller();
+      expect(await read(await serveFolderRoute(get(), "/api/folders", c, store))).toEqual({
+        recent: ["/srv/a"],
+        favourites: ["/srv/b"],
+        home: HOME,
+      });
+      expect(asked).toEqual(["gate:read", "resolve"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a read-only device can read the list", async () => {
+    const { store, dir } = await storeWith(["/srv/a"]);
+    try {
+      const { c } = caller({ denyAt: "write" });
+      expect((await read(await serveFolderRoute(get(), "/api/folders", c, store))).recent).toEqual(["/srv/a"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("star, then unstar: the answer is the new list, and the file says the same", async () => {
+    const { store, dir } = await storeWith(["/srv/a", "/srv/b"]);
+    try {
+      const { c, asked } = caller();
+      const starred = await read(await serveFolderRoute(star(JSON.stringify({ folder: "/srv/b", starred: true })), "/api/folders/star", c, store));
+      expect(starred).toEqual({ recent: ["/srv/a"], favourites: ["/srv/b"], home: HOME });
+      expect(asked).toEqual(["gate:write", "resolve"]);
+      expect(await Bun.file(join(dir, "folders.json")).json()).toEqual({ recent: ["/srv/a"], favourites: ["/srv/b"] });
+
+      const unstarred = await read(await serveFolderRoute(star(JSON.stringify({ folder: "/srv/b", starred: false })), "/api/folders/star", c, store));
+      expect(unstarred).toEqual({ recent: ["/srv/b", "/srv/a"], favourites: [], home: HOME });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("refused: a read-only device — before the resolver, and nothing is written", async () => {
+    const { store, dir } = await storeWith(["/srv/a"]);
+    try {
+      const before = await Bun.file(join(dir, "folders.json")).text();
+      const { c, asked } = caller({ denyAt: "write" });
+      const res = await serveFolderRoute(star(JSON.stringify({ folder: "/srv/a", starred: true })), "/api/folders/star", c, store);
+      expect(res!.status).toBe(403);
+      expect(asked).toEqual(["gate:write"]);
+      expect(store.current().favourites).toEqual([]);
+      expect(await Bun.file(join(dir, "folders.json")).text()).toBe(before);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the real write gate refuses a device the allowlist does not name, and lets it read", () => {
+    // The gate the browser caller hands in is `guard(req, cfg, level)`; this is its answer for the
+    // two levels the folder routes ask at, for a device that is read-only under the header gate.
+    const c = cfg({ deviceHeader: "x-device-id", deviceAllowlist: ["phone"] });
+    const headers = { host: "collie.ts.net", origin: "https://collie.ts.net", "x-device-id": "tablet" };
+    expect(guard(new Request("http://collie.ts.net/api/folders/star", { method: "POST", headers }), c, "write")!.status).toBe(403);
+    expect(guard(new Request("http://collie.ts.net/api/folders", { headers }), c, "read")).toBeNull();
+  });
+
+  test("refused: an unknown folder, as a coded 409, and nothing is written", async () => {
+    const { store, dir } = await storeWith(["/srv/a"]);
+    try {
+      const { c } = caller();
+      const res = await serveFolderRoute(star(JSON.stringify({ folder: "/etc", starred: true })), "/api/folders/star", c, store);
+      expect(res!.status).toBe(409);
+      expect(await res!.json()).toMatchObject({ code: "folders.unknown", detail: { folder: "/etc" } });
+      expect(store.current()).toEqual({ recent: ["/srv/a"], favourites: [] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("refused: a thirteenth favourite, as a coded 409 naming the bound", async () => {
+    const recent = Array.from({ length: MAX_FAVOURITES + 1 }, (_, i) => `/srv/p${i}`);
+    const dir = await mkdtemp(join(tmpdir(), "collie-folder-route-"));
+    try {
+      const store = new FolderStore({ stateDir: dir }, HOME);
+      const { c } = caller();
+      // Record-and-star one at a time: Recent holds eight, so it has to be refilled as it goes.
+      for (const f of recent.slice(0, MAX_FAVOURITES)) {
+        await store.recordRecent(f);
+        await store.star(f, true);
+      }
+      await store.recordRecent(recent[MAX_FAVOURITES]!);
+      const res = await serveFolderRoute(star(JSON.stringify({ folder: recent[MAX_FAVOURITES], starred: true })), "/api/folders/star", c, store);
+      expect(res!.status).toBe(409);
+      expect(await res!.json()).toMatchObject({ code: "folders.favourites_full", detail: { max: MAX_FAVOURITES } });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("refused: a bad body, as a plain 400, and nothing is written", async () => {
+    const { store, dir } = await storeWith(["/srv/a"]);
+    try {
+      const { c } = caller();
+      for (const payload of [
+        "{ not json",
+        JSON.stringify(null),
+        JSON.stringify(["/srv/a"]),
+        JSON.stringify({ folder: "/srv/a" }),
+        JSON.stringify({ starred: true }),
+        JSON.stringify({ folder: 7, starred: true }),
+        JSON.stringify({ folder: "/srv/a", starred: "yes" }),
+        JSON.stringify({ folder: "", starred: true }),
+        JSON.stringify({ folder: `/${"a".repeat(MAX_FOLDER_CHARS)}`, starred: true }),
+      ]) {
+        const res = await serveFolderRoute(star(payload), "/api/folders/star", c, store);
+        expect(res!.status).toBe(400);
+      }
+      expect(store.current()).toEqual({ recent: ["/srv/a"], favourites: [] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a ?host= call answered by the resolver is handed back untouched; this store is never read", async () => {
+    // What a lead's resolver returns for a peer: the PEER's answer. The lead's own list must not leak
+    // into it, and a star must not land in the lead's file.
+    const { store, dir } = await storeWith(["/srv/lead-only"]);
+    try {
+      const peerAnswer = new Response(JSON.stringify({ recent: ["/peer/x"], favourites: [], home: "/home/p" }));
+      const { c } = caller({ resolve: peerAnswer });
+      expect(await serveFolderRoute(get(), "/api/folders", c, store)).toBe(peerAnswer);
+      const peerStar = new Response("{}");
+      const { c: c2 } = caller({ resolve: peerStar });
+      expect(await serveFolderRoute(star(JSON.stringify({ folder: "/srv/lead-only", starred: true })), "/api/folders/star", c2, store)).toBe(peerStar);
+      expect(store.current()).toEqual({ recent: ["/srv/lead-only"], favourites: [] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a bridge with no store answers both routes 404 — the shape a phone reads as 'no list'", async () => {
+    const { c } = caller();
+    expect((await serveFolderRoute(get(), "/api/folders", c, undefined))!.status).toBe(404);
+    expect((await serveFolderRoute(star(JSON.stringify({ folder: "/a", starred: true })), "/api/folders/star", c, undefined))!.status).toBe(404);
+  });
+
+  test("the star body parser takes one bounded folder string and one boolean", () => {
+    expect(parseStarFolderRequest({ folder: "/srv/a", starred: false })).toEqual({ folder: "/srv/a", starred: false });
+    // Extra keys are ignored rather than refused.
+    expect(parseStarFolderRequest({ folder: "/srv/a", starred: true, label: "x" })).toEqual({ folder: "/srv/a", starred: true });
+    expect(parseStarFolderRequest(undefined)).toBeNull();
+    expect(parseStarFolderRequest({ folder: "/srv/a", starred: 1 })).toBeNull();
+  });
+
+  test("foldersBody never carries more than the two lists and home", async () => {
+    const { store, dir } = await storeWith(["/srv/a"]);
+    try {
+      expect(Object.keys(foldersBody(store)).toSorted()).toEqual(["favourites", "home", "recent"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the session dispatch reaches the folder routes through this one function", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    // Wired once, inside serveSessionRoute, so a crew peer's dispatch reaches it too (§5).
+    expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders\)/g)]).toHaveLength(1);
+    // And the create is handed the same store, so a peer records into its OWN list.
+    expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);");
   });
 });
 

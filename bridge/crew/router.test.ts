@@ -933,6 +933,9 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
       ["tab/w1:t1/rename", "POST"],
       ["tab/w1:t1/close", "POST"],
       ["workspace", "POST"],
+      // The new-space folder list (#289): the peer's own `folders.json`, read and starred there.
+      ["folders", "GET"],
+      ["folders/star", "POST"],
     ];
     for (const [route, method] of routes) {
       // A GET with a `body` key at all is a TypeError from `new Request`, so the key is added only

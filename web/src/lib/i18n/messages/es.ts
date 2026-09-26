@@ -822,6 +822,8 @@ export const es: Dictionary = {
   "apiError.tab.workspace_required": "No se especificó un espacio para la nueva pestaña.",
   "apiError.launch.not_allowlisted": "Ese comando no está en tus lanzadores",
   "apiError.launch.pane_unknown": "Ese panel ya no existe, no se inició nada",
+  "apiError.folders.unknown": "That folder is no longer in Recent, so it can't be starred.",
+  "apiError.folders.favourites_full": "Favourites are full ({max}). Remove one first.",
   "apiError.workspace.create_failed": "Error al crear el espacio: {reason}",
   "apiError.upload.too_large": "El archivo es demasiado grande, el límite es {maxMb} MB.",
   "apiError.upload.no_file": "No se especificó ningún archivo.",

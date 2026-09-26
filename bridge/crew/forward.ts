@@ -65,6 +65,12 @@ const FORWARDABLE: readonly RegExp[] = [
   // lead's. Both ride the crew link exactly like `workspace` does.
   /^launch$/,
   /^launchers$/,
+  // The new-space sheet's folder list (#289): folders exist on ONE machine, so the list is that
+  // machine's own `folders.json`, read and starred on the member that holds it — the lead keeps no
+  // copy. Additive-optional (CREW_PROTOCOL.md §7.1): a member that predates it answers 404, and the
+  // phone reads that as "no list", never as an error.
+  /^folders$/,
+  /^folders\/star$/,
   // A blob is bytes on ONE machine's disk: the journal that named it is that member's journal, and
   // the lead holds no copy. So a `?host=` blob read is proxied byte for byte exactly like
   // `history` (CREW_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
@@ -95,6 +101,11 @@ export function forwardKind(route: string): ForwardKind {
   // this lead has not heard from in a while, never refused before it is tried (§10.3's "a READ to a
   // dead member is still attempted").
   if (route === "launchers") return "read";
+  // The folder list is a GET that changes nothing, read even from a stale member like the rows
+  // above; a star writes that member's file, so it is a write and a member not taking writes
+  // refuses it before it is tried (§10.3), as a read-only device does on the member itself.
+  if (route === "folders") return "read";
+  if (route === "folders/star") return "write";
   // A blob read serves a file off the owning member's disk and changes nothing there — the same
   // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
   if (route.startsWith("blobs/")) return "read";
@@ -119,7 +130,10 @@ export function forwardPaneId(route: string): string | undefined {
  * the two independent logs can be read against each other without a translation table.
  *
  * `null` ⇒ a read, which is not audited on either side today and does not become audited by crossing
- * a link.
+ * a link — or a write neither side audits, which is one only: a star on the folder list. It is a
+ * preference, like `notifications/prefs`, and the audit log records what reaches a terminal
+ * (keystrokes, replies, uploads, pane and tab lifecycle), so the peer writes no line for it and the
+ * lead's line would have nothing to be read against.
  */
 export function forwardAuditAction(route: string): string | null {
   if (route === "tab") return "tab.create";
@@ -129,6 +143,7 @@ export function forwardAuditAction(route: string): string | null {
   // target host"), and the peer's own audit line is the accurate record of which one ran.
   if (route === "launch") return "launch";
   if (route === "launchers") return null;
+  if (route === "folders" || route === "folders/star") return null; // a read, and a preference
   if (route.startsWith("blobs/")) return null; // a read
   if (isWorkspaceChanges(route)) return null; // a read
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";

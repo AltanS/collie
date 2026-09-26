@@ -825,6 +825,8 @@ export const de: Dictionary = {
   "apiError.tab.workspace_required": "Für den neuen Tab wurde kein Space angegeben.",
   "apiError.launch.not_allowlisted": "Dieser Befehl ist kein definierter Launcher",
   "apiError.launch.pane_unknown": "Dieses Pane ist nicht mehr da, nichts wurde gestartet",
+  "apiError.folders.unknown": "That folder is no longer in Recent, so it can't be starred.",
+  "apiError.folders.favourites_full": "Favourites are full ({max}). Remove one first.",
   "apiError.workspace.create_failed": "Space konnte nicht erstellt werden: {reason}",
   "apiError.upload.too_large": "Die Datei ist zu groß, maximal sind {maxMb} MB erlaubt.",
   "apiError.upload.no_file": "Es wurde keine Datei übermittelt.",

@@ -88,6 +88,16 @@ export const ERROR_CODES = {
    */
   "launch.pane_unknown": "pane not found",
 
+  // ── The new-space folder list: POST /api/folders/star (#289, M40/02) ───────────────
+  /**
+   * The folder is in neither list. Only a folder a space already opened in can be starred, so this
+   * is a RACE GUARD: the sheet offers a star only on a row it read, and this is the tap that landed
+   * after that row aged out of Recent on another device's create. Nothing was stored.
+   */
+  "folders.unknown": "{folder} is not in Recent, so it cannot be starred",
+  /** Twelve favourites already. A star never drops one the operator chose, so nothing was stored. */
+  "folders.favourites_full": "favourites are full ({max}); remove one first",
+
   // ── Worktrees: /api/workspace/:id/worktree[s|/open|/remove] (ADR 0032) ─────────────
   /** The list could not be read — the space is not in a Git work tree, or the mux refused. */
   "worktree.list_failed": "{reason}",

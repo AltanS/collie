@@ -814,6 +814,8 @@ export const ja: Dictionary = {
   "apiError.tab.workspace_required": "新規タブのスペースが指定されていません。",
   "apiError.launch.not_allowlisted": "そのコマンドはランチャーに登録されていません",
   "apiError.launch.pane_unknown": "そのペインは見つかりません。何も起動されませんでした",
+  "apiError.folders.unknown": "That folder is no longer in Recent, so it can't be starred.",
+  "apiError.folders.favourites_full": "Favourites are full ({max}). Remove one first.",
   "apiError.workspace.create_failed": "スペースの作成に失敗しました: {reason}",
   "apiError.upload.too_large": "ファイルが大きすぎます。上限は {maxMb} MB です。",
   "apiError.upload.no_file": "ファイルが指定されていません。",

@@ -11,6 +11,7 @@ import { CONFIG_SETTINGS } from "./config-schema.ts";
 import { computeEtag } from "./http-cache.ts";
 import { muxOk } from "./mux/types.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
+import { FolderStore } from "./folders.ts";
 import type { PushMessage } from "./push.ts";
 import { TrustStore } from "./crew/trust-store.ts";
 import { Snooze } from "./snooze.ts";
@@ -623,6 +624,13 @@ describe("solo zero-tax — routes", () => {
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.
       "/api/devices",
       "/api/devices/revoke",
+      // The new-space sheet's folder list (M40/02, #289) — two SOLO routes that legitimately extend
+      // this list, named here rather than exempted. Session-scoped through the same closure
+      // `/api/launchers` rides, the read gated as a read and the star as a write, so a `?host=` call
+      // forwards to the member whose folders they are. A solo instance registers both and answers
+      // about its own `folders.json`, which it writes only once the operator uses it (see §6 below).
+      "/api/folders",
+      "/api/folders/star",
       // The detached updater's probe (M15/04) — a solo feature that legitimately extends this list,
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
       // updater holding no credential, and what it answers is `{ ok, version, deposed, mode }`.
@@ -887,6 +895,12 @@ const STATE_DIR_ENTRIES = [
   // under the global switch — both are events, so a bridge that is merely started still writes the four
   // entries asserted below.
   "cache-watch.json",
+  // The new-space sheet's folder list (M40/02, #289), and a §11 row RENEGOTIATED ON PURPOSE: it is
+  // the one entry here a solo instance's own operator writes through ordinary use, from the phone.
+  // Absent until the first space created with a folder or the first star — both are acts, and a
+  // bridge that is only started, only read, or only ever asked for spaces in home writes none of it,
+  // so the four entries asserted below hold. Driven in "the folder list appears only on use".
+  "folders.json",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.
@@ -996,6 +1010,12 @@ describe("solo zero-tax — the filesystem", () => {
       const cfg: Config = { ...loadConfig(), stateDir };
       await new Snooze(cfg, () => TS).set(TS + 60_000);
       await new NotifyPrefsStore(cfg).set({ blocked: false });
+      // The folder list, loaded as index.ts loads it at startup and fed the two things an idle solo
+      // bridge sees: a space created in home, and nothing at all. Neither is an entry, so no file.
+      const folders = new FolderStore(cfg, "/home/op");
+      await folders.load();
+      await folders.recordRecent("/home/op");
+      await folders.recordRecent("");
       const ledger = new ActivityLedger({ stateDir }, () => TS, 60 * 60 * 1000);
       ledger.ensure("default", "w1:p1");
       await ledger.flush();
@@ -1013,6 +1033,22 @@ describe("solo zero-tax — the filesystem", () => {
       const written = (await readdir(stateDir)).toSorted();
       expect(written).toEqual(["activity.json", "audit.log", "notify-prefs.json", "snooze.json"]);
       expect(written.filter((f) => !STATE_DIR_ENTRIES.includes(f))).toEqual([]);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  // §11's "Files written" row, amended on purpose by M40/02: `folders.json` is written by use and by
+  // nothing else. Driven, so the amendment is a fact about the store rather than a sentence.
+  test("the folder list appears only on use: a create with a folder, or a star", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "collie-solo-baseline-"));
+    try {
+      const folders = new FolderStore({ stateDir }, "/home/op");
+      await folders.load();
+      expect(await readdir(stateDir)).toEqual([]);
+      await folders.recordRecent("/home/op/proj");
+      expect(await readdir(stateDir)).toEqual(["folders.json"]);
+      expect(STATE_DIR_ENTRIES).toContain("folders.json");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

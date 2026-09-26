@@ -25,6 +25,7 @@ import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
+import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
@@ -86,6 +87,7 @@ import type {
   OperatorFontRow,
   OperatorQuickReplyRow,
   CrewStatusResponse,
+  FoldersResponse,
   Launcher,
   LaunchersResponse,
   CacheRulesResponse,
@@ -769,6 +771,16 @@ export function startServer(opts: {
    * operator toggles something, so a bridge nobody asks still writes exactly today's four entries.
    */
   cacheWatch?: CacheWatchSurface;
+  /**
+   * This machine's folder list for the new-space sheet (#289, `bridge/folders.ts`).
+   *
+   * Absent means the two folder routes answer 404 and a space create records nothing, which is every
+   * caller that builds this server by hand in a test — and exactly what a phone reads from a peer
+   * that predates the list. `bridge/index.ts` always passes one: the store writes no file until a
+   * space is created with a folder or a folder is starred, so a bridge nobody asks still writes
+   * exactly today's four entries.
+   */
+  folders?: FolderSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -776,6 +788,7 @@ export function startServer(opts: {
   // `COLLIE_TRANSCRIPT` is off: no journal, no probe, and every pane reads exactly as it did in 1.8.2.
   const cache = opts.cache;
   const pairing = opts.pairing;
+  const folders = opts.folders;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
   // the same bounded process-local capacity (bridge/stt/http.ts).
@@ -1018,7 +1031,7 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name);
+      return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);
     }
     // A launch is a `/api/workspace` create the operator pre-declared: the client names a row in
     // `launchers.toml` and the bridge, never the client, supplies the command line. It sits here
@@ -1042,6 +1055,11 @@ export function startServer(opts: {
       if (rt instanceof Response) return rt;
       return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"));
     }
+    // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
+    // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
+    // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
+    const folderAnswer = await serveFolderRoute(req, pathname, caller, folders);
+    if (folderAnswer !== null) return folderAnswer;
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
     // A READ, and gated as one: it hands back a picture an agent already put in its own log, so a
@@ -3209,13 +3227,21 @@ async function createTab(
 // Create a new workspace ("space") with a fresh shell pane. `cwd` defaults to the user's home dir
 // when the client doesn't specify one (typing a path on a phone is painful) — it's a shell, so you
 // can cd from there. Same structural-only threat model as createTab.
-async function createWorkspace(
+//
+// A create that WORKED, and that named a folder, puts the folder the multiplexer REPORTED for the new
+// pane at the top of this machine's Recent list (#289, bridge/folders.ts). The reported one, not the
+// typed text: a typo that failed never gets here, and two spellings of one folder that the multiplexer
+// resolves alike are one entry. A blank field means home, and home is never an entry, so it records
+// nothing — and neither does a refusal. The request body is unchanged: the phone sends nothing extra for this. Exported so
+// `bun test` can drive it with a fake adapter, exactly as `launch` below is.
+export async function createWorkspace(
   herdr: MuxAdapter,
   engine: StateEngine,
   req: Request,
   audit: AuditLog,
   device: string | null,
   session: string,
+  folders?: Pick<FolderSurface, "recordRecent">,
 ): Promise<Response> {
   let body: JsonValue;
   try {
@@ -3228,7 +3254,8 @@ async function createWorkspace(
   }
   const fields = asJsonRecord(body) ?? {};
   // Checked, not declared — see createTab.
-  const cwd = (typeof fields.cwd === "string" ? fields.cwd.trim() : "") || homedir();
+  const typed = typeof fields.cwd === "string" ? fields.cwd.trim() : "";
+  const cwd = typed || homedir();
   const label = typeof fields.label === "string" ? fields.label : undefined;
   const ae = req.headers.get("accept-encoding");
   const outcome = await herdr.createSpace({ cwd, label });
@@ -3246,6 +3273,8 @@ async function createWorkspace(
     device,
     detail: { label, cwd },
   });
+  // Never throws: a list that could not be saved costs a Recent entry, never the space just made.
+  if (typed !== "" && folders !== undefined) await folders.recordRecent(created.cwd);
   await settleTopology(herdr, engine);
   return json({
     ok: true,
@@ -3482,6 +3511,90 @@ export async function launchersRoute(
 ): Promise<Response> {
   const rows = await getLaunchers();
   return json({ launchers: rows, home: homedir() } satisfies LaunchersResponse, acceptEncoding);
+}
+
+// ── The new-space folder list (#289, bridge/folders.ts) ──────────────────────────
+//
+// Two routes, one per act: `GET /api/folders` reads this machine's list, `POST /api/folders/star`
+// stars or unstars one of its folders. A read and a write, gated as such: a read-only device can see
+// the list and cannot change it, exactly as it can see a pane and cannot type into it.
+//
+// Pulled out of `serveSessionRoute` into one exported function so `bun test` can hold the ORDER that
+// makes it safe with a fake caller: the gate first, then the resolver (which forwards a `?host=`
+// call to the peer that owns the folders and hands back its answer untouched), and only then this
+// machine's own store. `server.test.ts`'s "every session-scoped route resolves through the gate"
+// read counts the two `caller.resolve()` calls below with the rest.
+
+/** What the folder routes need of their caller: its gate and its resolver, and nothing else. */
+export type FolderRouteCaller = Pick<RouteCaller, "gate" | "resolve">;
+
+/** The list as the phone reads it: both lists, plus the home dir they were never allowed to hold. */
+export function foldersBody(folders: FolderSurface): FoldersResponse {
+  return { ...folders.current(), home: folders.home };
+}
+
+/**
+ * Validate an untrusted `POST /api/folders/star` body: `{ folder, starred }`, a non-empty folder
+ * string no longer than {@link MAX_FOLDER_CHARS} and a boolean. Anything else is `null` → 400. The
+ * folder is only a string to compare: the store refuses one that is not already in its lists, so a
+ * phone can star what a multiplexer reported and nothing else (bridge/folders.ts).
+ */
+export function parseStarFolderRequest(v: JsonValue | undefined): { folder: string; starred: boolean } | null {
+  const o = asJsonRecord(v);
+  if (o === null || typeof o.folder !== "string" || typeof o.starred !== "boolean") return null;
+  if (o.folder === "" || o.folder.length > MAX_FOLDER_CHARS) return null;
+  return { folder: o.folder, starred: o.starred };
+}
+
+/** The folder routes, or `null` when `pathname` is neither. `folders` absent answers both with 404. */
+export async function serveFolderRoute(
+  req: Request,
+  pathname: string,
+  caller: FolderRouteCaller,
+  folders: FolderSurface | undefined,
+): Promise<Response | null> {
+  const ae = req.headers.get("accept-encoding");
+  if (pathname === "/api/folders" && req.method === "GET") {
+    const denied = caller.gate("read");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    if (folders === undefined) return text("not found", 404);
+    return json(foldersBody(folders), ae);
+  }
+  if (pathname === "/api/folders/star" && req.method === "POST") {
+    const denied = caller.gate("write");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    if (folders === undefined) return text("not found", 404);
+    let body: JsonValue;
+    try {
+      // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseStarFolderRequest`
+      // rejects anything that is not one bounded folder string and one boolean.
+      body = (await req.json()) as JsonValue;
+    } catch {
+      return text("bad body", 400);
+    }
+    const parsed = parseStarFolderRequest(body);
+    if (parsed === null) return text("bad body", 400);
+    let outcome: Awaited<ReturnType<FolderSurface["star"]>>;
+    try {
+      outcome = await folders.star(parsed.folder, parsed.starred);
+    } catch (err) {
+      console.warn(`[folders] star not saved: ${errorText(err)}`);
+      return text("the folder list could not be saved", 500);
+    }
+    if (!outcome.ok) {
+      const refusal =
+        outcome.code === "folders.unknown"
+          ? apiError(outcome.code, { folder: parsed.folder })
+          : apiError(outcome.code, { max: MAX_FAVOURITES });
+      return jsonError(refusal, 409, ae);
+    }
+    return json(foldersBody(folders), ae);
+  }
+  return null;
 }
 
 // GET /api/cache-rules — the rule catalog behind every cache chip on THIS host, plus the overrides

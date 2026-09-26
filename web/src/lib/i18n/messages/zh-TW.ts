@@ -790,6 +790,8 @@ export const zhTW: Dictionary = {
   "apiError.tab.workspace_required": "未指定新分頁的工作區。",
   "apiError.launch.not_allowlisted": "此指令不在你的啟動器清單中",
   "apiError.launch.pane_unknown": "找不到此窗格，未啟動任何內容",
+  "apiError.folders.unknown": "That folder is no longer in Recent, so it can't be starred.",
+  "apiError.folders.favourites_full": "Favourites are full ({max}). Remove one first.",
   "apiError.workspace.create_failed": "建立工作區失敗：{reason}",
   "apiError.upload.too_large": "檔案過大，上限為 {maxMb} MB。",
   "apiError.upload.no_file": "未提供任何檔案。",
