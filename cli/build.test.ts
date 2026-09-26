@@ -21,6 +21,7 @@ import {
   cmdBuild,
   compileCli,
   collieBinaryStaging,
+  compiledPath,
   ensureBuild,
   webDist,
   webStaging,
@@ -344,6 +345,21 @@ describe("build: the ordered steps", () => {
     expect(h.files.ops).toContain(`mv ${BINARY_NEW} ${BINARY}`);
   });
 
+  test("Windows: the swap renames the `.exe` Bun wrote onto the live `.exe`", () => {
+    // `bun build --compile --outfile bin/collie.new` writes `bin/collie.new.exe` on Windows. Renaming
+    // the bare name died with ENOENT after the web bundle had already built, so neither swap landed.
+    const h = harness({ files: { [`${STAGING}/index.html`]: "<!doctype html>NEW" } });
+    h.deps.platform = "win32";
+    expect(cmdBuild(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls.find(compilerCall)).toEndWith(`--outfile ${BINARY_NEW}`);
+    expect(h.files.ops.slice(-4)).toEqual([
+      `rm -rf ${STAGING}`,
+      `mv ${BINARY_NEW}.exe ${BINARY}.exe`,
+      `rm -rf ${DIST}`,
+      `mv ${STAGING} ${DIST}`,
+    ]);
+  });
+
   test("SKIP_VERSION_CHECK=1 and SKIP_TYPECHECK=1 drop exactly their own step", () => {
     const h = harness({ env: { SKIP_VERSION_CHECK: "1", SKIP_TYPECHECK: "1" } });
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
@@ -374,6 +390,19 @@ describe("build: the ordered steps", () => {
     expect(h.io.stderr.join("\n")).toContain("bun not found");
     expect(h.exec.calls).toEqual([]);
     expect(h.files.ops).toEqual([]);
+  });
+});
+
+describe("compiledPath: the file Bun's compiler actually writes", () => {
+  test("Windows gains `.exe`; an outfile that already has one is left alone", () => {
+    expect(compiledPath("C:\\c\\bin\\collie.new", "win32")).toBe("C:\\c\\bin\\collie.new.exe");
+    expect(compiledPath("C:\\c\\bin\\collie.EXE", "win32")).toBe("C:\\c\\bin\\collie.EXE");
+  });
+
+  test("everywhere else the outfile is the file", () => {
+    for (const platform of ["linux", "darwin"] as const) {
+      expect(compiledPath("/c/bin/collie.new", platform)).toBe("/c/bin/collie.new");
+    }
   });
 });
 
