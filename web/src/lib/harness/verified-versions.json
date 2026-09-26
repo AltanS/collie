@@ -53,9 +53,9 @@
     "opencode": {
       "version": "1.18.32",
       "verified": "2026-09-26",
-      "how": "capture",
+      "how": "canary",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md § \"opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)\"; web/src/lib/harness/opencode/PERMISSION_NOTES.md"
+      "evidence": "canary run 20260926T221657Z: idle, drafts, sends, narrow, start-exit pass"
     },
     "pi": {
       "version": "0.87.1",
