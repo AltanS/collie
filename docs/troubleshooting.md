@@ -151,6 +151,14 @@ not taken a turn yet, which is not a fault: nothing is shown before it is measur
 on the agent's first reply. A harness whose vendor publishes no cache lifetime shows nothing either,
 and `cache-claims` lists every rule this build does ship.
 
+**A new Codex pane says it has no history yet.** Expected until its first turn. Codex reports its
+session to Herdr only when the first prompt is sent, not when it starts, so a fresh pane has no
+session, and no History link, until then. `collie doctor` lists such a pane under `agent-sessions`
+as not reported yet, and does not count it as a fault. If the note is still there after Codex has
+replied, open `/hooks` in Codex. When its hooks change, Codex asks you to review them, and "Continue
+without trusting" turns the Herdr hook off while `herdr integration status` still says it is
+current. Trust the hook there, or run `herdr integration install codex` and start a new session.
+
 **An update started from the phone stays at staging.** On Collie up to 1.6.0, an update tapped on
 the phone could stage the new version and then stop: the runner that performs the swap was never
 started, the service kept serving the old version, and the run record sat at `staging` with the lock

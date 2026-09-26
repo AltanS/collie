@@ -1312,6 +1312,18 @@ describe("AgentChat — no session reported", () => {
     expect(screen.getByRole("button", { name: /show entire history/i })).toBeInTheDocument();
   });
 
+  // #294: Codex reports its session only once its first prompt is submitted, so a fresh Codex pane
+  // has none and nothing is broken. Its note must not tell the operator to reinstall a working hook.
+  it("tells a Codex pane with no session yet that it reports on its first message", () => {
+    const agent = { ...fixtureAgents[0]!, agent: "codex" };
+    renderChat({ agent, agents: [agent] });
+    expect(noSessionNote()).not.toBeInTheDocument();
+    const note = screen.getByText(/reports its session to Herdr only after its first message/i);
+    expect(note).toHaveTextContent(/^codex /);
+    expect(note).toHaveTextContent("/hooks in codex");
+    expect(note.closest("button")).toBeNull();
+  });
+
   it("says nothing for an agent with no journal adapter — there is no transcript to promise", () => {
     const agent = { ...fixtureAgents[0]!, agent: "unknown-agent" }; // block grammars, no journal
     renderChat({ agent, agents: [agent] });

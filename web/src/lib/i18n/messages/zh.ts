@@ -289,6 +289,8 @@ export const zh: Dictionary = {
   "chat.scrollback.loading": "正在加载…",
   "chat.scrollback.noSessionReported":
     "{agent} 尚未向 Herdr 上报会话。请安装或更新对应的 Herdr 集成，并在当前窗格重启该 Agent。",
+  "chat.scrollback.noSessionYet":
+    "{agent} reports its session to Herdr only after its first message, so there is no history yet. If this note stays after {agent} has replied, review its hooks with /hooks in {agent}, or update the Herdr integration and restart the agent.",
   "chat.fullReply.title": "完整回复",
   "chat.fullReply.fromTranscript": "来自日志",
   "chat.fullReply.showingTerminal": "正在显示终端",

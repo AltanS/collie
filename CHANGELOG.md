@@ -36,6 +36,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 - **Codex panes started with no Herdr client attached show their input box again.** A Codex started while no Herdr client was attached gets no answer to its colour queries, and 0.156.1 then paints the ` · ` between its status fields with no colour at all. Collie read that row as no status row, found no input box, and showed the unread-dialog card over every idle pane. The status row now accepts a separator with no paint, with the rest of the rule unchanged: coloured fields, one paint for every separator, and the row at the bottom under the `›` prompt (#294).
+- **A new Codex pane no longer blames the Herdr integration for its missing history.** Codex reports its session to Herdr only when its first prompt is sent, not when it starts, so every fresh Codex pane showed "has not reported a session" and told you to reinstall a hook that was fine. The phone now says Codex reports its session after its first message, and names the remedy only for a note that stays after a reply: review its hooks with `/hooks` in Codex (declining to trust changed hooks turns the Herdr hook off while `herdr integration status` still says current), or update the integration. `collie doctor` lists such a pane under `agent-sessions` and `integration-codex` as not reported yet, not as a fault (#294).
 
 ## [1.13.2] - 2026-09-26
 

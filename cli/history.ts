@@ -1,4 +1,4 @@
-import { KNOWN_HARNESS_NAMES } from "../bridge/journal/registry.ts";
+import { KNOWN_HARNESS_NAMES, REPORTS_SESSION_ON_FIRST_PROMPT } from "../bridge/journal/registry.ts";
 import { resolveJournalRoots } from "../bridge/config.ts";
 import type { CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type Finding } from "./finding.ts";
@@ -16,6 +16,10 @@ import type { Exec, Files } from "./sys.ts";
 // that agent is restarted. Miss any of it and the pane looks perfectly normal while both affordances
 // simply are not drawn, with nothing anywhere saying why. `/api/pane/:id/history` is not consulted
 // for the hide, so its own `no-log` / `disabled` reasons never get a chance to explain themselves.
+//
+// One agent's session start is late on purpose: Codex fires the hook only on its first prompt
+// (issue #294, `REPORTS_SESSION_ON_FIRST_PROMPT`), so its pane with no session is explained here and
+// never counted as a fault on its own.
 //
 // This section walks that chain in order — versions, the integration per agent, the interpreter the
 // hook needs, what the running bridge actually reports per pane, and where a journal would be read
@@ -135,6 +139,26 @@ export function paneVerdicts(
 /** The panes that would hide their History link silently: a journalled agent with no session ref. */
 export const silentPanes = (verdicts: readonly PaneVerdict[]): PaneVerdict[] =>
   verdicts.filter((v) => v.journalled && !v.pane.hasSession);
+
+/**
+ * Whether `agent` reports its session only once its first prompt is submitted (issue #294, reason at
+ * `REPORTS_SESSION_ON_FIRST_PROMPT`). Such a pane with no session may just not have had a turn, which
+ * is not a fault, so neither `agent-sessions` nor `integration-<agent>` counts it as one on its own.
+ */
+export const reportsOnFirstPrompt = (agent: string): boolean => REPORTS_SESSION_ON_FIRST_PROMPT.includes(agent);
+
+/** `w2:p5 (claude), w4:p2 (codex)`: how a finding names the panes it is about. */
+const namePanes = (panes: readonly PaneVerdict[]): string =>
+  panes.map((v) => `${v.pane.paneId} (${v.pane.agent})`).join(", ");
+
+/** The one explanation both findings give for a first-prompt pane with no session yet. */
+export function firstPromptNote(agent: string): string {
+  return (
+    `${agent} reports its session to Herdr only after its first prompt, so a pane with no turn yet has none;` +
+    ` if one still has none after a reply, review its hooks with \`/hooks\` in ${agent} (a hook left` +
+    ` untrusted never runs), then \`herdr integration install ${agent}\` and a new session`
+  );
+}
 
 // ── Journal roots ────────────────────────────────────────────────────────────
 
@@ -270,14 +294,21 @@ function integration(
   const affected = (verdicts ?? []).filter((v) => v.pane.agent === agent && !v.pane.hasSession);
   const running = affected.map((v) => v.pane.paneId).join(", ");
   if (line.state === "installed") {
-    return affected.length === 0
-      ? ok(check, "installed and current")
-      : warn(
-          check,
-          `installed and current, and ${String(affected.length)} ${agent} pane(s) still report no` +
-            ` session (${running}) — those sessions started before the hook did`,
-          `restart ${agent} in ${running}; \`herdr integration status\` confirms the hook is current`,
-        );
+    if (affected.length === 0) return ok(check, "installed and current");
+    // A current hook under a pane that has had no turn yet is the normal state for these agents.
+    if (reportsOnFirstPrompt(agent)) {
+      return ok(
+        check,
+        `installed and current; ${String(affected.length)} ${agent} pane(s) report no session yet` +
+          ` (${running}) — ${firstPromptNote(agent)}`,
+      );
+    }
+    return warn(
+      check,
+      `installed and current, and ${String(affected.length)} ${agent} pane(s) still report no` +
+        ` session (${running}) — those sessions started before the hook did`,
+      `restart ${agent} in ${running}; \`herdr integration status\` confirms the hook is current`,
+    );
   }
   if (line.state === "unknown") {
     return warn(
@@ -362,11 +393,21 @@ function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead): 
     `${String(verdicts.length)} agent pane(s), ${String(journalled)} of them on an agent this build can` +
     " read a journal for";
   if (silent.length === 0) return ok(check, `${summary} — every one of those reports a session`);
-  const named = silent.map((v) => `${v.pane.paneId} (${v.pane.agent})`).join(", ");
+  // Issue #294: a pane of an agent that reports only on its first prompt may just not have had a turn.
+  // It is named and explained, and it never makes this line an error on its own.
+  const waiting = silent.filter((v) => reportsOnFirstPrompt(v.pane.agent));
+  const faulty = silent.filter((v) => !reportsOnFirstPrompt(v.pane.agent));
+  const waitingAgents = [...new Set(waiting.map((v) => v.pane.agent))];
+  const notYet =
+    waiting.length === 0
+      ? ""
+      : `; ${String(waiting.length)} report no session YET: ${namePanes(waiting)} — ` +
+        waitingAgents.map((agent) => firstPromptNote(agent)).join("; ");
+  if (faulty.length === 0) return ok(check, `${summary}${notYet}`);
   return bad(
     check,
-    `${summary}; ${String(silent.length)} report NO session: ${named} — their History link and icon are` +
-      " hidden, and the pane looks otherwise normal",
+    `${summary}; ${String(faulty.length)} report NO session: ${namePanes(faulty)} — their History link and icon are` +
+      ` hidden, and the pane looks otherwise normal${notYet}`,
     `\`herdr integration install <agent>\` for each agent named above (the \`integration-…\` lines say which),` +
       ` ${INSTALL_NOTE}`,
   );

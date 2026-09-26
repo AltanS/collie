@@ -35,6 +35,21 @@ const JOURNAL_AGENTS: ReadonlySet<string> = new Set([
   "pi",
 ]);
 
+/** The agents that report their session to Herdr on the FIRST PROMPT, not at start. Mirrors
+ *  `REPORTS_SESSION_ON_FIRST_PROMPT` in `bridge/journal/registry.ts`, which holds the reason (#294):
+ *  Codex fires the hook Herdr's integration listens on only when its first prompt is submitted.
+ *  Must come after `JOURNAL_AGENTS` in this file: registry.test.ts reads the first set as that one. */
+const FIRST_PROMPT_AGENTS: ReadonlySet<string> = new Set(["codex"]);
+
+/**
+ * Whether `agent` reports its session only once its first prompt is submitted. A pane of such an
+ * agent with no session may simply not have had a turn yet, so the note must not blame the
+ * integration outright.
+ */
+export function reportsSessionOnFirstPrompt(agent: string | undefined): boolean {
+  return agent !== undefined && FIRST_PROMPT_AGENTS.has(agent);
+}
+
 /**
  * Whether `agent` is one whose sessions Collie could read a transcript from.
  *

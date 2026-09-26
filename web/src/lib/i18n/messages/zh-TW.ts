@@ -288,6 +288,8 @@ export const zhTW: Dictionary = {
   "chat.scrollback.loading": "正在載入…",
   "chat.scrollback.noSessionReported":
     "{agent} 尚未向 Herdr 回報工作階段。請安裝或更新對應的 Herdr 整合，並在目前窗格重新啟動該 Agent。",
+  "chat.scrollback.noSessionYet":
+    "{agent} reports its session to Herdr only after its first message, so there is no history yet. If this note stays after {agent} has replied, review its hooks with /hooks in {agent}, or update the Herdr integration and restart the agent.",
   "chat.fullReply.title": "完整回覆",
   "chat.fullReply.fromTranscript": "來自記錄",
   "chat.fullReply.showingTerminal": "正在顯示終端機",

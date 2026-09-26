@@ -77,7 +77,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { hasJournalAdapter } from "@/lib/journal-agents";
+import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { changesPath, historyPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
@@ -785,8 +785,16 @@ export function AgentChat({
   // the worse answer). `sessionLog.capable` is required as well, because when the MULTIPLEXER keeps
   // no agent session log the note above already says so in the adapter's own words — and telling
   // the operator to reinstall a hook that could never help would contradict it.
+  //
+  // Codex reports its session only once its first prompt is submitted (#294, the reason sits at
+  // `REPORTS_SESSION_ON_FIRST_PROMPT` in bridge/journal/registry.ts), so on a fresh Codex pane the
+  // absent session is expected, not a broken hook. Its note says so and names the remedy only for
+  // a note that outlives a reply. The bridge keeps no "has had a turn" fact to hide it with instead.
   const noSessionReported =
     sessionLog.capable && hasJournalAdapter(agent?.agent) && !agent?.hasSession;
+  const noSessionKey = reportsSessionOnFirstPrompt(agent?.agent)
+    ? "chat.scrollback.noSessionYet"
+    : "chat.scrollback.noSessionReported";
   // Scrollback has its own capability, and it is a genuinely different one: a multiplexer can keep
   // screen history while knowing nothing about agents. Hidden rather than explained when absent —
   // "there is nothing older to load" is not a fact anyone comes looking for.
@@ -1966,7 +1974,7 @@ export function AgentChat({
                       agent runs on, so the sentence names it and stops. */}
                   {noSessionReported && (
                     <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
-                      {t("chat.scrollback.noSessionReported", { agent: agent?.agent ?? "" })}
+                      {t(noSessionKey, { agent: agent?.agent ?? "" })}
                     </p>
                   )}
                   {/* The newest reply in full, standing IN PLACE OF the rows it covers (the mirror

@@ -300,6 +300,8 @@ export const ko: Dictionary = {
   "chat.scrollback.loading": "불러오는 중…",
   "chat.scrollback.noSessionReported":
     "{agent}가 Herdr에 세션을 보고하지 않았습니다. 에이전트용 Herdr 연동 패키지를 설치하거나 업데이트한 후 이 창에서 에이전트를 재시작하십시오.",
+  "chat.scrollback.noSessionYet":
+    "{agent} reports its session to Herdr only after its first message, so there is no history yet. If this note stays after {agent} has replied, review its hooks with /hooks in {agent}, or update the Herdr integration and restart the agent.",
   "chat.fullReply.title": "답변 전체",
   "chat.fullReply.fromTranscript": "로그에서",
   "chat.fullReply.showingTerminal": "터미널 표시 중",

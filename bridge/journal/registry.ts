@@ -76,6 +76,21 @@ export function buildJournalRegistry(roots: JournalRoots): Record<string, Journa
 export const AGENT_ALIASES = { omp: "pi" } as const;
 
 /**
+ * Agents that report their session to Herdr on the FIRST PROMPT, not when they start (issue #294).
+ *
+ * Codex fires its SessionStart hook only when the first prompt is submitted (openai/codex#15266), and
+ * Herdr's codex hook reports from SessionStart alone. So a Codex pane that has not had a turn yet has
+ * no session, and that is not a fault: the hook is fine, the agent has simply not reported yet. The
+ * phone's note and `collie doctor` both read this list, so neither blames the integration for a pane
+ * that has not had a turn. Codex has a second silent cause as well: when its hooks change it asks to
+ * review them, and "Continue without trusting" disables the Herdr hook while `herdr integration
+ * status` still says current. `/hooks` in Codex is where that is reviewed.
+ *
+ * `web/src/lib/journal-agents.ts` mirrors it by hand (registry.test.ts fails when the two drift).
+ */
+export const REPORTS_SESSION_ON_FIRST_PROMPT: readonly string[] = ["codex"];
+
+/**
  * The same pairs as a Map, which is how {@link adapterFor} asks.
  *
  * A Map rather than a property read because the key is an agent name that ORIGINATES in an agent's

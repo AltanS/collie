@@ -233,6 +233,34 @@ describe("the history section", () => {
     expect(good.get("agent-sessions")?.status).toBe("ok");
   });
 
+  // Issue #294: Codex reports its session only after its first prompt, so a fresh Codex pane under a
+  // current hook has none and nothing is broken. Both lines name it and explain, neither blames the hook.
+  test("a Codex pane with no session yet is explained, never counted as a fault on its own", async () => {
+    const byCheck = await run({ snapshot: snapshotOf([{ paneId: "w4:p2", agent: "codex" }]) });
+    const sessions = byCheck.get("agent-sessions");
+    expect(sessions?.status).toBe("ok");
+    expect(sessions?.detail).toContain("w4:p2 (codex)");
+    expect(sessions?.detail).toContain("only after its first prompt");
+    expect(sessions?.detail).toContain("`/hooks` in codex");
+    const hook = byCheck.get("integration-codex");
+    expect(hook?.status).toBe("ok");
+    expect(hook?.detail).toContain("w4:p2");
+    expect(hook?.detail).toContain("only after its first prompt");
+  });
+
+  test("a Codex pane waiting for its first prompt does not hide a real fault beside it", async () => {
+    const byCheck = await run({
+      snapshot: snapshotOf([
+        { paneId: "w2:p5", agent: "claude" },
+        { paneId: "w4:p2", agent: "codex" },
+      ]),
+    });
+    const sessions = byCheck.get("agent-sessions");
+    expect(sessions?.status).toBe("error");
+    expect(sessions?.detail).toContain("1 report NO session: w2:p5 (claude)");
+    expect(sessions?.detail).toContain("1 report no session YET: w4:p2 (codex)");
+  });
+
   test("a bridge that does not answer is `skipped`, never a pass — and takes nothing else down", async () => {
     const byCheck = await run({ snapshot: null });
     expect(byCheck.get("agent-sessions")?.status).toBe("skipped");
