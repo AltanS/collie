@@ -1,6 +1,9 @@
 # 0063 — A pane keeps its place when its state changes
 
 - **Status:** Accepted
+- **Amended in scope by:** [ADR 0070](./0070-a-pin-is-a-place-the-operator-chose.md): a pane gains
+  one more place, the Pinned group the operator pins it to, in place order; no list is ordered by
+  status, and everything else below stands.
 - **Date:** 2026-09-23
 - **Shipped in:** pending
 - **Trail:** `bridge/state-engine.ts` (`byPlace`) · `bridge/crew/merge.ts` (`placeSorted`, which

@@ -3,6 +3,9 @@
 - **Status:** Accepted
 - **Amended in scope by:** [ADR 0068](./0068-the-second-tab-is-focus-not-attention.md) — the second
   tab is renamed Focus and wears `CircleDot`; everything else below stands.
+- **Amended in scope by:** [ADR 0070](./0070-a-pin-is-a-place-the-operator-chose.md): a Pinned
+  group sits under the summary line on all three tabs, so Focus is no longer empty under its
+  all-clear when pins exist; the footer, the filter and the Changes rows stand.
 - **Date:** 2026-09-23
 - **Shipped in:** pending
 - **Trail:** GitHub issue 270 (@simplysoft: a `Needs you` chip on the workspace strip, persisted as

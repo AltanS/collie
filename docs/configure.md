@@ -293,8 +293,8 @@ Either way the bridge types the `command` into the fresh shell and sends Enter. 
 its own lifetime: one that closes itself takes the Space or tab with it, and `htop` stays until you
 quit it.
 
-`cwd` is where that new Space or tab opens. Pin one (as `htop` does above) and it wins wherever you
-tap the row.
+`cwd` is where that new Space or tab opens. Give a row a fixed folder (as `htop` does above) and it
+wins wherever you tap the row.
 
 Leave it out and it means "here": the dashboard opens it in your home dir, a pane opens it in
 *that pane's own* cwd — one cwd-less row follows you around your checkouts instead of always
@@ -305,8 +305,8 @@ exactly, so a phone can start nothing that is not in the file. Changes apply imm
 restart, but an already-open tab re-reads the rows only on its next load.
 
 Your rows appear in two places: a **Launch** section on the dashboard, which folds like Spaces,
-and a **Launch** section in the switcher sheet (swipe up from a pane). A pinned row shows
-its folder, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
+and a **Launch** section in the switcher sheet (swipe up from a pane). A row with a fixed folder
+shows it, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
 implies home, so it says nothing there). Declare no rows and neither section appears.
 
 On a crew (several machines, one phone-facing lead), each machine reads its own copy of this file —
