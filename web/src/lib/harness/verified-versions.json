@@ -1,0 +1,68 @@
+{
+  "$comment": "M37 spec 01 — one entry per Herdr agent name: the version Collie's reader was last verified against, when, how, whether it has a block-grammar adapter (registry.ts), and the evidence that version is real. `scripts/harness-drift.ts` reads this file; `verified-versions.test.ts` pins every key the adapter registry maps, plus opencode and pi (no adapter — raw mirror, one-shot send). `how` is one of canary | live sweep | capture | unverified.",
+  "agents": {
+    "claude": {
+      "version": "2.1.283",
+      "verified": "2026-09-26",
+      "how": "live sweep",
+      "adapter": true,
+      "evidence": "collie commit 71b28a1e (live sweep of Claude Code 2.1.283 in sandbox panes, shipped 1.13.2)"
+    },
+    "codex": {
+      "version": "0.156.1",
+      "verified": "2026-09-26",
+      "how": "live sweep",
+      "adapter": true,
+      "evidence": "collie commit 100bf7e3 (live sweep of Codex 0.156.1 in sandbox panes, shipped 1.13.2)"
+    },
+    "grok": {
+      "version": "1.0.5",
+      "verified": "2026-08-23",
+      "how": "capture",
+      "adapter": true,
+      "evidence": "web/src/fixtures/panes/README.md § \"Grok corpus (live panes 2026-08-21-23)\"; web/src/lib/harness/grok/PERMISSION_NOTES.md, ASK_NOTES.md, PLAN_NOTES.md name Grok Build 1.0.5"
+    },
+    "omp": {
+      "version": "18.1.19",
+      "verified": "2026-09-13",
+      "how": "capture",
+      "adapter": true,
+      "evidence": "web/src/fixtures/panes/README.md § \"OMP `/tree` capture (2026-09-13, oh-my-pi `omp` v18.1.19, throwaway Herdr pane)\" — the newest of the omp corpus sections"
+    },
+    "agy": {
+      "version": "1.1.17",
+      "verified": "2026-08-26",
+      "how": "capture",
+      "adapter": true,
+      "evidence": "web/src/fixtures/panes/README.md § \"agy corpus (captured 2026-08-26, Antigravity CLI 1.1.17, sandbox panes)\""
+    },
+    "antigravity": {
+      "version": "1.1.17",
+      "verified": "2026-08-26",
+      "how": "capture",
+      "adapter": true,
+      "evidence": "Same binary as agy, filed under Herdr's other name for it (agent-commands.ts CATALOG comment) — web/src/fixtures/panes/README.md § \"agy corpus (captured 2026-08-26, Antigravity CLI 1.1.17, sandbox panes)\""
+    },
+    "muse": {
+      "version": "1.3.0",
+      "verified": "2026-09-18",
+      "how": "capture",
+      "adapter": true,
+      "evidence": "web/src/fixtures/panes/README.md § \"Muse corpus (captured 2026-09-18, Muse Code 1.3.0, sandbox pane)\""
+    },
+    "opencode": {
+      "version": "1.18.32",
+      "verified": "2026-09-26",
+      "how": "unverified",
+      "adapter": false,
+      "evidence": "installed 2026-09-26, first canary run pending (M37 spec 02)"
+    },
+    "pi": {
+      "version": "0.87.1",
+      "verified": "2026-09-26",
+      "how": "unverified",
+      "adapter": false,
+      "evidence": "installed 2026-09-26, first canary run pending (M37 spec 02)"
+    }
+  }
+}
