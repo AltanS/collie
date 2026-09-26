@@ -159,7 +159,12 @@ function preClass(
     native ? MUSE_MIRROR : MIRROR_SPACE,
     native ? null : MIRROR_INVERT,
     wrap
-      ? "whitespace-pre-wrap break-words"
+      ? // `text-pretty`: a 133-column agent row rewraps at phone width, and plain greedy breaking
+        // strands one word on a paragraph's last line ("form." alone under a bullet). Pretty
+        // rebalances the last lines instead. Line-breaking only: bytes, find offsets, link hrefs
+        // and selection text are untouched. (`hyphens-none` was tried for "multi-" / "session"
+        // splits and removed: Chrome keeps breaking after a literal hyphen with it set.)
+        "whitespace-pre-wrap break-words text-pretty"
       : // Horizontal pan for wide TUI tables. `overflow-x-auto` forces `overflow-y` to compute to
         // `auto` (CSS overflow quirk), and a flex item with non-visible overflow may shrink below its
         // content height — the <pre> then becomes the vertical scroller and ChatMessageList's

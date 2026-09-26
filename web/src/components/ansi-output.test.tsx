@@ -190,6 +190,13 @@ describe("mirror line wrapping", () => {
     expect(cls).not.toContain("whitespace-pre-wrap");
   });
 
+  it("rebalances rewrapped lines against orphans while wrapping", () => {
+    const cls = preFor({}).className;
+    expect(cls).toContain("text-pretty");
+    // ...and off the panning path: a column-faithful pan breaks nothing at all.
+    expect(preFor({ wrap: false }).className).not.toContain("text-pretty");
+  });
+
   it("keeps a live-shaped ANSI labelled rule clipped while muting only its rule runs", () => {
     const purple = "rgb(209, 131, 232)";
     const leadBg = "rgb(24, 25, 26)";
