@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { coerceDashView, pinnedRows, shownGroups } from "./dash-view";
+import { coerceDashView, pinnedRows, shownGroups, stripEntries, type StripEntry } from "./dash-view";
 import { groupPanesByWorkspace } from "./pane-groups";
 import { currentPins, pinMatcher, setPinned } from "./pins";
 import type { AgentView } from "./types";
@@ -151,5 +151,42 @@ describe("coerceDashView", () => {
     // the same way in case any build ever wrote the label instead of the internal name.
     expect(coerceDashView("needs")).toBe("focus");
     expect(coerceDashView("attention")).toBe("focus");
+  });
+});
+
+// The workspace strip with a machine hidden (issue #288): one stand-in per hidden machine, at the
+// place its first workspace held, carrying every pane of that machine; isolate keeps its chip.
+describe("stripEntries — a hidden machine's stand-in", () => {
+  const crew = [
+    pane("p1", 1, "idle", { host: "bluefin" }),
+    pane("p1", 1, "idle", { host: "workshop" }),
+    pane("p1", 2, "blocked", { host: "workshop" }),
+    pane("p1", 1, "working", { host: "attic" }),
+  ];
+  const crewGroups = groupPanesByWorkspace(crew, [], { order: "fixed" });
+  const names = (entries: StripEntry[]) =>
+    entries.map((e) => (e.kind === "machine" ? `[${e.host}:${e.panes.length}]` : e.group.label));
+
+  it("is one chip per workspace when nothing is hidden", () => {
+    expect(names(stripEntries(crewGroups, new Set(), undefined))).toEqual(["ws1", "ws1", "ws2", "ws1"]);
+  });
+
+  it("folds a hidden machine's workspaces into one stand-in at its place, holding all its panes", () => {
+    const entries = stripEntries(crewGroups, new Set(["workshop"]), undefined);
+    expect(names(entries)).toEqual(["ws1", "[workshop:2]", "ws1"]);
+  });
+
+  it("keeps an isolated workspace's chip, right after its machine's stand-in", () => {
+    const isolated = crewGroups.find((g) => g.panes[0]!.host === "workshop" && g.label === "ws2")!;
+    expect(names(stripEntries(crewGroups, new Set(["workshop"]), isolated.key))).toEqual([
+      "ws1",
+      "[workshop:2]",
+      "ws2",
+      "ws1",
+    ]);
+  });
+
+  it("draws no stand-in for a hidden machine with no workspace", () => {
+    expect(names(stripEntries(crewGroups, new Set(["cellar"]), undefined))).toEqual(["ws1", "ws1", "ws2", "ws1"]);
   });
 });

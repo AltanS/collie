@@ -408,6 +408,7 @@ export const ko: Dictionary = {
   "home.workspace.paneCount.one": "창 {count}개",
   "home.workspace.paneCount.other": "창 {count}개",
   "home.workspace.hidden": "숨김",
+  "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "셸",
   "home.pinned.title": "Pinned",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
@@ -586,6 +587,8 @@ export const ko: Dictionary = {
   "connection.session.allAria": "전체 세션 표시 중. 세션 전환",
   "connection.server.title": "머신",
   "connection.server.aria": "호스트: {name}. 호스트 전환",
+  "connection.server.show": "Show on the dashboard",
+  "connection.server.showLocked": "The machine you are on is always shown",
 
   // --- crew ---
   "crew.title": "크루",

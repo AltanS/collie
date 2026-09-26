@@ -7,6 +7,10 @@
 //
 // Pinned panes lead all three under the summary line (ADR 0070), in place order, and leave their
 // workspace group on Panes and Focus so each pane is listed once.
+//
+// A hidden machine (lib/hidden-machines.ts, issue #288) leaves all three too, and its workspace chips
+// give way to one stand-in chip in the strip (`stripEntries`).
+import { hostKey } from "./hosts";
 import type { JsonValue } from "./json";
 import type { WorkspaceGroup } from "./pane-groups";
 import { needsYou } from "./triage";
@@ -67,4 +71,48 @@ export function pinnedRows(
   pinned: (pane: AgentView) => boolean,
 ): AgentView[] {
   return groups.flatMap((g) => g.panes).filter(pinned);
+}
+
+/** The machine a workspace group sits on: its panes' `hostKey`, `""` when solo. A group is never empty. */
+export function groupHost(group: WorkspaceGroup): string {
+  return hostKey(group.panes[0]);
+}
+
+/** One chip of the workspace strip: a workspace, or the one stand-in for a hidden machine. */
+export type StripEntry =
+  | { kind: "space"; group: WorkspaceGroup }
+  | { kind: "machine"; host: string; panes: AgentView[] };
+
+/**
+ * The workspace strip's chips, in the list's own order (issue #288). A workspace on a shown machine
+ * keeps its chip. A hidden machine's workspace chips give way to ONE stand-in entry, at the place its
+ * first workspace held, carrying every pane of that machine so the chip can show the worst dot:
+ * hiding a machine never silences it. A workspace that is isolated keeps its chip right after its
+ * machine's stand-in, because isolate wins over the machine filter. A hidden machine with no
+ * workspace has no stand-in: there is nothing to hide. Nothing here reads status for ORDER.
+ */
+export function stripEntries(
+  groups: readonly WorkspaceGroup[],
+  hiddenMachines: ReadonlySet<string>,
+  isolatedKey: string | undefined,
+): StripEntry[] {
+  if (hiddenMachines.size === 0) return groups.map((group) => ({ kind: "space", group }));
+  const out: StripEntry[] = [];
+  const standIns = new Map<string, AgentView[]>();
+  for (const group of groups) {
+    const host = groupHost(group);
+    if (!hiddenMachines.has(host)) {
+      out.push({ kind: "space", group });
+      continue;
+    }
+    let panes = standIns.get(host);
+    if (panes === undefined) {
+      panes = [];
+      standIns.set(host, panes);
+      out.push({ kind: "machine", host, panes });
+    }
+    panes.push(...group.panes);
+    if (group.key === isolatedKey) out.push({ kind: "space", group });
+  }
+  return out;
 }

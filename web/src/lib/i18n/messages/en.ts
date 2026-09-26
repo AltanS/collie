@@ -432,6 +432,7 @@ export const en = {
   "home.workspace.paneCount.one": "{count} pane",
   "home.workspace.paneCount.other": "{count} panes",
   "home.workspace.hidden": "hidden",
+  "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Pinned",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
@@ -619,6 +620,8 @@ export const en = {
   "connection.session.allAria": "Showing every session. Switch session",
   "connection.server.title": "Machines",
   "connection.server.aria": "Host: {name}. Switch host",
+  "connection.server.show": "Show on the dashboard",
+  "connection.server.showLocked": "The machine you are on is always shown",
 
   // --- crew (the read-only /crew census; role names stay English, ADR 0030) ---
   "crew.title": "Crew",

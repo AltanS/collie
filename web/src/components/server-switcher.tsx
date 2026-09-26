@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Crown, Network, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useNav } from "@/hooks/use-nav";
 import { BottomSheet } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { crewPath, homePath } from "@/lib/nav";
 import { hostHealth, linkPresentation, type HostHealth } from "@/lib/host-health";
 import { useCrew } from "@/components/crew-provider";
-import { HOST_TEXT_CLASSES, countsFor, hostCounts, hostSlot } from "@/lib/hosts";
+import { HOST_TEXT_CLASSES, countsFor, hostCounts, hostSlot, isMultiHost } from "@/lib/hosts";
+import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary } from "@/lib/types";
 import { t, tn } from "@/lib/i18n";
@@ -50,6 +52,14 @@ interface ServerSwitcherProps {
 // this machine yet" rather than a spinner. So the row goes where it says it goes, and stays visually
 // degraded to say what you will find there.
 //
+// ── AND A SECOND QUESTION, ON ITS OWN TARGET (issue #288, M40/01 Option A1) ─────
+// Each row also carries a Show switch: "which machines do I want to see in the list", beside "which
+// machine am I addressing". The switch sits BESIDE the row's button, in its own 44px cell, never
+// inside it, so a tap on the row still goes to the machine and a tap on the switch never navigates.
+// It writes lib/hidden-machines.ts and nothing else: no `?h=`, no history entry, no bridge call. The
+// addressed machine's switch is on and disabled, with its reason under the row, because the dashboard
+// always shows the machine you are on. The counts on every row stay herd-wide, hidden or not.
+//
 // ── AND WHAT IT IS NOT ───────────────────────────────────────────────────────
 // Not crew administration. It lists members and lets you go to one; join / leave / promote / rotate
 // are CLI verbs, and an unreachable row gets no "reconnect" button — the lead is already retrying on
@@ -68,6 +78,12 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
   // own unit tests), the fallback re-derives with no clock at all, which skips §10.2's tolerance and
   // presents the lead's plain boolean — the same answer this sheet gave before the threshold existed.
   const { health } = useCrew();
+  // The ids this device leaves off the dashboard. Read before the early return (a hook cannot sit
+  // behind it); a solo roster reads nothing.
+  const hiddenMachines = useHiddenMachines(isMultiHost(servers));
+  const captionId = useId();
+  const nameIdBase = useId();
+  const reasonId = useId();
 
   const reachableCount = servers.filter((s) => s.reachable).length;
   const onPeer = current !== undefined;
@@ -105,9 +121,19 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
           become the containing block and clip a `fixed inset-0` sheet to the header band. */}
       {createPortal(
         <BottomSheet open={open} onClose={() => setOpen(false)} title={t("connection.server.title")}>
+          {/* The switches' column caption, said once for the eye. Each switch is named by this caption
+              plus its row's machine name (`aria-labelledby`), so a screen reader hears both. */}
+          <p id={captionId} className="pb-1 pr-1.5 text-right text-[11px] text-muted-foreground">
+            {t("connection.server.show")}
+          </p>
           <ul className="flex flex-col gap-1">
-            {servers.map((s) => {
+            {servers.map((s, i) => {
               const active = isActive(s);
+              const nameId = `${nameIdBase}-name-${i}`;
+              const switchId = `${nameIdBase}-switch-${i}`;
+              // The addressed machine always shows, whatever is stored (lib/hidden-machines.ts), so its
+              // switch reads on and cannot be turned off.
+              const onDashboard = active || !hiddenMachines.includes(s.id);
               const c = countsFor(counts, s.id);
               const h = health.get(s.id) ?? hostHealth(s, { at: 0, pollMs: 0 });
               // This sheet names machines WITHOUT a HostChip — the rows are its own — so it carries
@@ -116,95 +142,124 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
               const slot = hostSlot(servers, s.id);
               return (
                 <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => select(s)}
-                    aria-current={active ? "true" : undefined}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
-                      // A 2px inset cut in --primary, not a fill — see session-switcher.tsx for the
-                      // measurements. The fill was 1.17:1 light / 1.31:1 dark on the sheet's
-                      // bg-background while grounding the status pills at blocked 4.13 in dark.
-                      active
-                        ? "shadow-[inset_2px_0_0_0_var(--primary)]"
-                        : "hover:bg-accent active:bg-accent",
-                      // Dimmed, not disabled: what you will find there is last-known and read-only,
-                      // and the row says both — but it still goes there (see the note above).
-                      !h.writable && "opacity-60",
-                    )}
-                  >
-                    <Server
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => select(s)}
+                      aria-current={active ? "true" : undefined}
                       className={cn(
-                        "size-4 shrink-0",
-                        slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot],
+                        "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                        // A 2px inset cut in --primary, not a fill — see session-switcher.tsx for the
+                        // measurements. The fill was 1.17:1 light / 1.31:1 dark on the sheet's
+                        // bg-background while grounding the status pills at blocked 4.13 in dark.
+                        active
+                          ? "shadow-[inset_2px_0_0_0_var(--primary)]"
+                          : "hover:bg-accent active:bg-accent",
+                        // Dimmed, not disabled: what you will find there is last-known and read-only,
+                        // and the row says both — but it still goes there (see the note above).
+                        !h.writable && "opacity-60",
                       )}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate text-sm font-medium">{s.name || s.id}</span>
-                        {s.isLead && (
-                          <span className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            <Crown className="size-2.5" aria-hidden />
-                            {t("connection.host.lead")}
-                          </span>
+                    >
+                      <Server
+                        className={cn(
+                          "size-4 shrink-0",
+                          slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot],
                         )}
-                        {/* Listed, never hidden (CREW_PROTOCOL.md §10.2): a member that is down or
-                            speaking another protocol keeps its row, its counts and an honest reason.
-                            A vanished machine reads as "I have no agents there", which is a lie. */}
-                        {h.incompatible ? (
-                          <span className="text-[11px] font-medium text-status-blocked">
-                            {t("connection.host.incompatible")}
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span id={nameId} className="truncate text-sm font-medium">
+                            {s.name || s.id}
                           </span>
-                        ) : (
-                          h.state !== "live" && (
-                            <span className="text-[11px] text-muted-foreground">
-                              {/* Presented-stale, not merely "the last poll missed" (§10.2): below the
-                                  tolerance a dropped sweep is invisible here, so a healthy member
-                                  can't flash "unreachable" between two good polls. The age is the
-                                  LEAD's receipt time measured on the LEAD's clock, and 0 means it has
-                                  never answered at all — which "0s ago" would misreport as just-now.
-
-                                  The WORD, though, belongs to `writable` and not to `state`: a stale
-                                  receipt beside `reachable: true` is an old receipt, not a down
-                                  machine, and this row spelled it "unreachable" beside a peer whose
-                                  every request was landing. See host-stale-banner.tsx's table. */}
-                              {h.writable ? h.lastSeenLabel : degradedLabel(h)}
-                            </span>
-                          )
-                        )}
-                      </div>
-                      {/* The peer's refusal reason, verbatim — never paraphrased, because the
-                          operator's next move is to read it and go fix a version somewhere. */}
-                      {h.incompatible && h.protocolDetail && (
-                        <p className="mt-0.5 break-words font-mono text-[10px] leading-tight text-muted-foreground">
-                          {s.protocolDetail}
-                        </p>
-                      )}
-                      {(c.blocked > 0 || c.working > 0) && (
-                        <div className="mt-1 flex items-center gap-1.5">
-                          {c.blocked > 0 && (
-                            <span className="rounded-md border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
-                              {tn("status.count.needsYou", c.blocked)}
+                          {s.isLead && (
+                            <span className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              <Crown className="size-2.5" aria-hidden />
+                              {t("connection.host.lead")}
                             </span>
                           )}
-                          {c.working > 0 && (
-                            <span className="rounded-md border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
-                              {tn("status.count.working", c.working)}
+                          {/* Listed, never hidden (CREW_PROTOCOL.md §10.2): a member that is down or
+                              speaking another protocol keeps its row, its counts and an honest reason.
+                              A vanished machine reads as "I have no agents there", which is a lie. */}
+                          {h.incompatible ? (
+                            <span className="text-[11px] font-medium text-status-blocked">
+                              {t("connection.host.incompatible")}
                             </span>
+                          ) : (
+                            h.state !== "live" && (
+                              <span className="text-[11px] text-muted-foreground">
+                                {/* Presented-stale, not merely "the last poll missed" (§10.2): below the
+                                    tolerance a dropped sweep is invisible here, so a healthy member
+                                    can't flash "unreachable" between two good polls. The age is the
+                                    LEAD's receipt time measured on the LEAD's clock, and 0 means it has
+                                    never answered at all — which "0s ago" would misreport as just-now.
+
+                                    The WORD, though, belongs to `writable` and not to `state`: a stale
+                                    receipt beside `reachable: true` is an old receipt, not a down
+                                    machine, and this row spelled it "unreachable" beside a peer whose
+                                    every request was landing. See host-stale-banner.tsx's table. */}
+                                {h.writable ? h.lastSeenLabel : degradedLabel(h)}
+                              </span>
+                            )
                           )}
                         </div>
-                      )}
-                    </div>
-                    {active && <Check className="size-4 shrink-0 text-primary" />}
-                  </button>
+                        {/* The peer's refusal reason, verbatim — never paraphrased, because the
+                            operator's next move is to read it and go fix a version somewhere. */}
+                        {h.incompatible && h.protocolDetail && (
+                          <p className="mt-0.5 break-words font-mono text-[10px] leading-tight text-muted-foreground">
+                            {s.protocolDetail}
+                          </p>
+                        )}
+                        {(c.blocked > 0 || c.working > 0) && (
+                          <div className="mt-1 flex items-center gap-1.5">
+                            {c.blocked > 0 && (
+                              <span className="rounded-md border border-status-blocked/30 bg-status-blocked/15 px-1.5 py-0.5 text-[10px] font-medium text-status-blocked">
+                                {tn("status.count.needsYou", c.blocked)}
+                              </span>
+                            )}
+                            {c.working > 0 && (
+                              <span className="rounded-md border border-status-working/30 bg-status-working/15 px-1.5 py-0.5 text-[10px] font-medium text-status-working">
+                                {tn("status.count.working", c.working)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {active && <Check className="size-4 shrink-0 text-primary" />}
+                    </button>
+                    {/* Its own 44px target beside the row. A <label> around the switch makes the whole
+                        cell answer a tap (a button is labelable); the name still comes from
+                        `aria-labelledby`, which outranks the label's empty text. */}
+                    <label
+                      htmlFor={switchId}
+                      className="flex h-11 w-14 shrink-0 cursor-pointer items-center justify-center has-[:disabled]:cursor-not-allowed"
+                    >
+                      <Switch
+                        id={switchId}
+                        checked={onDashboard}
+                        disabled={active}
+                        onCheckedChange={(on) => setMachineHidden(s.id, !on, servers)}
+                        aria-labelledby={`${captionId} ${nameId}`}
+                        aria-describedby={active ? reasonId : undefined}
+                      />
+                    </label>
+                  </div>
+                  {/* Why the switch above is off-limits, in words for the eye and for the switch's
+                      description. Under the name's own left edge: the row's px-3, the 16px glyph and
+                      its gap-2.5 make 38px. */}
+                  {active && (
+                    <p id={reasonId} className="pb-1 pl-9.5 pr-14 text-[11px] leading-snug text-muted-foreground">
+                      {t("connection.server.showLocked")}
+                    </p>
+                  )}
                 </li>
               );
             })}
           </ul>
 
           {/* The way OUT of the switcher and into the whole picture. The sheet answers "which
-              machine do I want", one row at a time; the census answers "is my crew well" — secret
+              machine do I want", one row at a time, and beside it "which do I want to see"; the
+              census answers "is my crew well" — secret
               generation, deputy, version skew, a second lead — which is more than a row can hold and
               less than a sheet should try. Still not administration: it goes to a page that reports
               and nothing more. */}

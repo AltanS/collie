@@ -7,7 +7,8 @@ import { paneName } from "@/lib/pane-name";
 import { workspacePrefKey } from "./agent-list";
 import { paneRowKey } from "@/lib/hosts";
 import { currentPins, setPinned } from "@/lib/pins";
-import type { AgentStatus, AgentView } from "@/lib/types";
+import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
+import type { AgentStatus, AgentView, ServerSummary } from "@/lib/types";
 
 function agent(
   paneId: string,
@@ -706,5 +707,168 @@ describe("AgentList — pinned panes", () => {
     const line = screen.getByRole("button", { name: /nothing needs you/i });
     expect(line).toHaveAttribute("aria-disabled", "true");
     expect(line).toHaveFocus();
+  });
+});
+
+// HIDING A MACHINE (issue #288, M40/01): a crew's dashboard can leave a machine out. Its workspace
+// groups leave Panes, Focus and Changes, its chips give way to one dimmed stand-in chip with its worst
+// dot, pins and isolate still win, the addressed machine always shows, and solo renders as before.
+describe("AgentList — hiding a machine", () => {
+  const member = (id: string, isLead = false): ServerSummary => ({
+    id,
+    name: id,
+    isLead,
+    reachable: true,
+    protocol: "ok",
+    lastSeenAt: 1_000,
+  });
+  const servers = [member("bluefin", true), member("workshop"), member("attic")];
+  const on = (host: string, workspaceId: string, workspaceLabel: string, workspaceNumber: number) =>
+    ({ host, workspaceId, workspaceLabel, workspaceNumber, tabId: `${workspaceId}:t1` }) as const;
+  const herd = [
+    agent("w1:p1", "idle", { ...on("bluefin", "w1", "collie", 1), sessionName: "lead-idle" }),
+    agent("w1:p2", "blocked", { ...on("bluefin", "w1", "collie", 1), sessionName: "lead-stuck" }),
+    agent("w1:p1", "blocked", { ...on("workshop", "w1", "moonward", 1), sessionName: "peer-stuck" }),
+    agent("w2:p1", "idle", { ...on("workshop", "w2", "docs", 2), sessionName: "peer-idle" }),
+    agent("w1:p1", "working", { ...on("attic", "w1", "attic-ws", 1), sessionName: "attic-busy" }),
+  ];
+  const byName = (name: string) => herd.find((a) => a.sessionName === name)!;
+  const strip = () => within(screen.getByRole("navigation", { name: /spaces/i }));
+  const chipNames = () => strip().getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent);
+  const standIn = (name: string) => strip().getByRole("button", { name: `Show ${name}'s panes` });
+  const summaryLine = () => screen.getByRole("button", { name: /^\d+ needs you/ });
+
+  it("leaves a hidden machine's workspaces out of Panes, and the summary line still counts them", () => {
+    render(<AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} onOpen={vi.fn()} />);
+    expect(headings()).toEqual(["collie", "attic-ws"]);
+    // workshop's blocked pane is off the list and still in the count: nothing is silenced.
+    expect(summaryLine()).toHaveAccessibleName(/^2 needs you/);
+  });
+
+  it("leaves a hidden machine out of Focus too", () => {
+    render(<AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} needsYouOnly onOpen={vi.fn()} />);
+    expect(headings()).toEqual(["collie"]);
+    expect(rowButtons()).toHaveLength(1);
+  });
+
+  it("hands Changes only the shown machines' workspaces, so it stops asking a hidden machine", () => {
+    const renderBody = vi.fn((_shown: readonly WorkspaceGroup[]) => <p>changes body</p>);
+    render(
+      <AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} renderBody={renderBody} onOpen={vi.fn()} />,
+    );
+    expect(renderBody.mock.calls[0]![0].map((g) => g.label)).toEqual(["collie", "attic-ws"]);
+  });
+
+  it("keeps a pinned pane on a hidden machine in the Pinned group, leading the list", () => {
+    setPinned(byName("peer-idle"), true, herd, 1);
+    render(
+      <AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} pins={currentPins()} onOpen={vi.fn()} />,
+    );
+    expect(headings()).toEqual(["pinned", "collie", "attic-ws"]);
+    const pinned = screen.getByRole("region", { name: "Pinned" });
+    expect(within(pinned).getByText("peer-idle")).toBeInTheDocument();
+  });
+
+  it("lets isolate win: an isolated workspace on a hidden machine shows, its chip right after the machine's", () => {
+    const isolated = prefKeyOf(byName("peer-idle"));
+    render(
+      <AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} isolated={isolated} onOpen={vi.fn()} />,
+    );
+    expect(headings()).toEqual(["docs"]);
+    expect(chipNames()).toEqual(["All", "collie", "Show workshop's panes", "docs", "attic-ws"].map((n) => expect.stringContaining(n)));
+    expect(strip().getByRole("button", { name: /docs/ })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("jumps the summary line to an urgent pane on a hidden machine by isolating its workspace", async () => {
+    const user = userEvent.setup();
+    const onIsolate = vi.fn();
+    // Only the peer's pane needs you, so the jump's target is on the hidden machine.
+    const calmLead = herd.map((a) => (a.sessionName === "lead-stuck" ? { ...a, status: "idle" as const } : a));
+    render(
+      <AgentList agents={calmLead} servers={servers} hiddenMachines={["workshop"]} onIsolate={onIsolate} onOpen={vi.fn()} />,
+    );
+    await user.click(summaryLine());
+    expect(onIsolate).toHaveBeenCalledExactlyOnceWith(prefKeyOf(byName("peer-stuck")));
+  });
+
+  it("never hides the machine the dashboard addresses: the lead when ?h= is absent", () => {
+    const { rerender } = render(
+      <AgentList agents={herd} servers={servers} hiddenMachines={["bluefin", "workshop"]} onOpen={vi.fn()} />,
+    );
+    expect(headings()).toEqual(["collie", "attic-ws"]);
+    // On workshop the stored lead comes back into force, and workshop itself shows.
+    rerender(
+      <AgentList
+        agents={herd}
+        servers={servers}
+        hiddenMachines={["bluefin", "workshop"]}
+        addressedHost="workshop"
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(headings()).toEqual(["moonward", "docs", "attic-ws"]);
+  });
+
+  it("filters nothing with a machine id the roster no longer lists", () => {
+    render(<AgentList agents={herd} servers={servers} hiddenMachines={["cellar"]} onOpen={vi.fn()} />);
+    expect(headings()).toEqual(["collie", "moonward", "docs", "attic-ws"]);
+  });
+
+  it("renders a solo machine list byte-identically, whatever is stored", () => {
+    const solo = herd.map(({ host: _host, ...rest }) => rest);
+    const { container, rerender } = render(<AgentList agents={solo} onOpen={vi.fn()} />);
+    const before = container.innerHTML;
+    rerender(<AgentList agents={solo} hiddenMachines={["workshop", ""]} onOpen={vi.fn()} />);
+    expect(container.innerHTML).toBe(before);
+  });
+
+  it("swaps a hidden machine's chips for one dimmed stand-in chip, at its place, with its worst dot", () => {
+    render(<AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} onOpen={vi.fn()} />);
+    expect(chipNames()).toEqual(["All", "collie", "Show workshop's panes", "attic-ws"].map((n) => expect.stringContaining(n)));
+    const chip = standIn("workshop");
+    // The machine's name for the eye, its worst status for the ear, and the server glyph in its tint.
+    expect(chip).toHaveTextContent("workshop");
+    expect(chip).toHaveAccessibleDescription("needs you");
+    expect(chip.querySelector("svg")?.getAttribute("class")).toMatch(/text-host-\d/);
+    // Drawn dimmed, like a hidden workspace's chip.
+    expect(chip.className).toContain("border-dashed");
+    expect(chip).not.toHaveAttribute("aria-current");
+  });
+
+  it("draws no stand-in chip for a hidden machine with no panes", () => {
+    const leadOnly = herd.filter((a) => a.host !== "attic");
+    render(<AgentList agents={leadOnly} servers={servers} hiddenMachines={["attic"]} onOpen={vi.fn()} />);
+    expect(strip().queryByRole("button", { name: /^Show attic/ })).toBeNull();
+  });
+
+  it("keeps the stand-in chip of a hidden machine that is down, with its last good dot", () => {
+    const down = servers.map((s) => (s.id === "workshop" ? { ...s, reachable: false } : s));
+    render(<AgentList agents={herd} servers={down} hiddenMachines={["workshop"]} onOpen={vi.fn()} />);
+    expect(standIn("workshop")).toHaveAccessibleDescription("needs you");
+  });
+
+  it("a tap on the stand-in chip shows the machine again, and focus lands on the chip in its place", async () => {
+    const user = userEvent.setup();
+    function Dashboard() {
+      const hidden = useHiddenMachines(true);
+      return (
+        <AgentList
+          agents={herd}
+          servers={servers}
+          hiddenMachines={hidden}
+          onShowMachine={(host) => setMachineHidden(host, false, servers)}
+          onOpen={vi.fn()}
+        />
+      );
+    }
+    setMachineHidden("workshop", true, servers);
+    render(<Dashboard />);
+    expect(headings()).toEqual(["collie", "attic-ws"]);
+
+    await user.click(standIn("workshop"));
+    expect(headings()).toEqual(["collie", "moonward", "docs", "attic-ws"]);
+    expect(strip().queryByRole("button", { name: /^Show workshop/ })).toBeNull();
+    // The machine's first workspace chip took the stand-in's place, and focus with it.
+    expect(strip().getByRole("button", { name: /moonward/ })).toHaveFocus();
   });
 });

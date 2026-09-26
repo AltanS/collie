@@ -1,5 +1,5 @@
-import { Inbox, WifiOff } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { Inbox, Server, WifiOff } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { clockTime } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -10,9 +10,10 @@ import { Chip } from "@/components/ui/chip";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { ATTENTION, bucketOf, triage, worstTriage } from "@/lib/triage";
-import { pinnedRows, shownGroups } from "@/lib/dash-view";
+import { groupHost, pinnedRows, shownGroups, stripEntries } from "@/lib/dash-view";
 import type { AgentView, BridgeStatus, ServerSummary, TabView } from "@/lib/types";
-import { paneRowKey } from "@/lib/hosts";
+import { HOST_TEXT_CLASSES, hostName, hostSlot, paneRowKey } from "@/lib/hosts";
+import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { AgentCard } from "./agent-card";
 import { t } from "@/lib/i18n";
@@ -64,6 +65,18 @@ interface AgentListProps {
   /** Long-press a chip: hide the workspace, or show it again. */
   onToggleHidden?: (key: string) => void;
   /**
+   * The machines this device leaves off the dashboard, as STORED (lib/hidden-machines.ts, issue
+   * #288). The list never hides `addressedHost`, and an id `servers` does not list filters nothing.
+   * A hidden machine's workspace groups leave the list on every tab, and its chips give way to one
+   * dimmed stand-in chip in the strip. Pins and isolate still win. On a solo list, nothing. Omit and
+   * the list renders as it did.
+   */
+  hiddenMachines?: readonly string[];
+  /** The machine the dashboard addresses, the scope's `?h=`: undefined is the lead. It always shows. */
+  addressedHost?: string | undefined;
+  /** Tap a hidden machine's stand-in chip: show that machine again. */
+  onShowMachine?: (host: string) => void;
+  /**
    * The "Focus" tab (issue 270, ADR 0066, renamed by ADR 0068): a group shows only its panes that need you, and a
    * group with none is dropped. A filter, never a sort. The strip, the summary line and every
    * heading's counts still count ALL panes, so the filter never understates the herd.
@@ -94,6 +107,7 @@ interface AgentListProps {
 const NO_PANES: AgentView[] = [];
 const NO_KEYS: readonly string[] = [];
 const NO_PINS: readonly Pin[] = [];
+const NO_MACHINES: readonly string[] = [];
 
 /** The heading's dot, in the worst URGENT status inside the group; none when quiet. */
 function urgentDot(g: WorkspaceGroup): string | undefined {
@@ -179,6 +193,9 @@ export function AgentList({
   hidden = NO_KEYS,
   onIsolate,
   onToggleHidden,
+  hiddenMachines = NO_MACHINES,
+  addressedHost,
+  onShowMachine,
   needsYouOnly = false,
   renderBody,
   pins = NO_PINS,
@@ -198,6 +215,17 @@ export function AgentList({
     const target = document.getElementById(rowDomId(reveal.rowKey)) ?? document.getElementById(SUMMARY_ID);
     if (target) revealElement(target);
   }, [reveal]);
+  // A tap on a hidden machine's stand-in chip shows the machine, and the chip itself leaves. Its place
+  // in the strip goes to the machine's first workspace chip, so focus goes there rather than falling
+  // to `body`. Runs after every render and is cheap: it acts once, after the tap set the index.
+  const stripRef = useRef<HTMLDivElement>(null);
+  const refocusChipAt = useRef<number | null>(null);
+  useEffect(() => {
+    const at = refocusChipAt.current;
+    if (at === null) return;
+    refocusChipAt.current = null;
+    stripRef.current?.querySelectorAll<HTMLElement>("button")[at]?.focus();
+  });
   // A herd with nothing but bare shells in it is still something to show, and "No agents running."
   // is then true rather than empty — so the placeholder waits for BOTH lists to be empty.
   if (agents.length === 0 && shellPanes.length === 0) {
@@ -252,7 +280,16 @@ export function AgentList({
   // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped.
   const isolatedGroup = isolated === null ? undefined : groups.find((g) => workspacePrefKey(g) === isolated);
   const hiddenSet = new Set(hidden);
-  const shown = isolatedGroup ? [isolatedGroup] : groups.filter((g) => !hiddenSet.has(workspacePrefKey(g)));
+  // THE MACHINE FILTER (issue #288), one clause beside hide: a group on a hidden machine leaves
+  // `shown`, so Panes, Focus and Changes follow at once. Isolate still wins, because the isolated
+  // group was found among ALL groups above; the Pinned group below is drawn from all groups too
+  // (ADR 0070). The addressed machine is never in this set, so the filter cannot empty the list, and
+  // on a solo list the set is empty and the clause never matches (lib/hidden-machines.ts).
+  const machineHidden = machinesHiddenFrom(hiddenMachines, servers, addressedHost);
+  const shown = isolatedGroup
+    ? [isolatedGroup]
+    : groups.filter((g) => !hiddenSet.has(workspacePrefKey(g)) && !machineHidden.has(groupHost(g)));
+  const strip = stripEntries(groups, machineHidden, isolatedGroup?.key);
   const allClear = attention.length === 0;
   // THE PINNED GROUP (ADR 0070). Drawn from EVERY workspace, before isolate and hide apply, and never
   // through the Focus filter: a pin means "always show me this one", and the summary line above
@@ -318,25 +355,60 @@ export function AgentList({
           All to see everything again. Long-press a chip to hide the workspace, and again to bring it
           back; a hidden chip stays in the strip, dimmed, with its dot, so hiding never silences a
           workspace that needs you. One height always, so nothing below moves.
+          A hidden MACHINE (issue #288) is one dimmed stand-in chip instead of its workspace chips:
+          the server glyph in its tint, its name, and the worst dot of all its panes, so a machine
+          that needs you is never silent either. A tap shows it again, which is also the way back
+          when the Machines sheet itself is hidden (a peer is down). An isolated workspace on a hidden
+          machine keeps its chip, right after the stand-in.
           The scroller keeps STRIP_SCROLLER's own `py-1.5` and must: that padding is the room a
           chip's STRIP_TAP_TARGET `::before` reaches into for the 44px tap floor. Trimmed to `py-0`
           it cost both halves at once — the reach was clipped away, so the chips answered a 34px
           touch, and the same overflow became 6px of vertical scroll that dragged their bottom edge
           out of sight. `actions-row.tsx` hit this before; its note carries the mechanism. */}
       <nav aria-label={t("space.strip.title")} className="-mx-4">
-        <div className={cn(STRIP_SCROLLER, "px-4")}>
+        <div ref={stripRef} className={cn(STRIP_SCROLLER, "px-4")}>
           <Chip label={t("space.tabStrip.all")} active={!isolatedGroup} onClick={() => onIsolate?.(null)} />
-          {groups.map((g) => (
-            <Chip
-              key={g.key}
-              label={g.label}
-              active={isolatedGroup?.key === g.key}
-              dimmed={!isolatedGroup && hiddenSet.has(workspacePrefKey(g))}
-              status={worstTriage(g.panes)}
-              onClick={() => onIsolate?.(isolatedGroup?.key === g.key ? null : workspacePrefKey(g))}
-              onLongPress={onToggleHidden ? () => onToggleHidden(workspacePrefKey(g)) : undefined}
-            />
-          ))}
+          {strip.map((entry, i) => {
+            if (entry.kind === "machine") {
+              const name = hostName(servers, entry.host) ?? entry.host;
+              const slot = hostSlot(servers, entry.host);
+              return (
+                <Chip
+                  // A group key always holds two NULs and this one holds one, so they never collide.
+                  key={`machine\u0000${entry.host}`}
+                  glyph={
+                    <Server
+                      aria-hidden
+                      className={cn("size-3.5 shrink-0", slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot])}
+                    />
+                  }
+                  label={name}
+                  ariaLabel={t("home.machineHidden.show", { name })}
+                  active={false}
+                  dimmed
+                  status={worstTriage(entry.panes)}
+                  onClick={() => {
+                    if (!onShowMachine) return;
+                    // After "All", one button per entry: the machine's first chip takes this index.
+                    refocusChipAt.current = i + 1;
+                    onShowMachine(entry.host);
+                  }}
+                />
+              );
+            }
+            const g = entry.group;
+            return (
+              <Chip
+                key={g.key}
+                label={g.label}
+                active={isolatedGroup?.key === g.key}
+                dimmed={!isolatedGroup && hiddenSet.has(workspacePrefKey(g))}
+                status={worstTriage(g.panes)}
+                onClick={() => onIsolate?.(isolatedGroup?.key === g.key ? null : workspacePrefKey(g))}
+                onLongPress={onToggleHidden ? () => onToggleHidden(workspacePrefKey(g)) : undefined}
+              />
+            );
+          })}
         </div>
       </nav>
 

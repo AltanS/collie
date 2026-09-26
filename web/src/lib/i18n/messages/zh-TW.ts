@@ -393,6 +393,7 @@ export const zhTW: Dictionary = {
   "home.workspace.paneCount.one": "{count} 個窗格",
   "home.workspace.paneCount.other": "{count} 個窗格",
   "home.workspace.hidden": "已隱藏",
+  "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "終端機執行個體",
   "home.pinned.title": "Pinned",
   "home.sidebar.paneActionsTitle": "查看窗格操作選項",
@@ -571,6 +572,8 @@ export const zhTW: Dictionary = {
   "connection.session.allAria": "正在顯示所有工作階段。切換工作階段",
   "connection.server.title": "主機",
   "connection.server.aria": "主機：{name}。切換主機",
+  "connection.server.show": "Show on the dashboard",
+  "connection.server.showLocked": "The machine you are on is always shown",
 
   // --- crew ---
   "crew.title": "機組",

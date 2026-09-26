@@ -26,7 +26,8 @@ import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { ambientHost, ambientPanes, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
+import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
+import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
 import type { ChangesLookup } from "@/lib/api";
 import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
@@ -166,6 +167,11 @@ export function HomeRoute() {
   const { refused: notPaired } = usePairing();
   const readOnly = isReadOnly(data.device) || notPaired;
   const herd = useMemo(() => [...data.agents, ...data.shellPanes], [data.agents, data.shellPanes]);
+  // THE MACHINE FILTER (issue #288): the machines this device leaves off the list, as stored. The
+  // list itself keeps the addressed machine and drops ids off the roster (lib/hidden-machines.ts). A
+  // solo snapshot reads nothing. The stand-in chip's tap is the second place it is written, beside
+  // the Machines sheet's switch.
+  const hiddenMachines = useHiddenMachines(isMultiHost(data.servers));
 
   // ScreenTransition remounts this whole route on every dashboard<->pane move (both directions), so
   // the scroller below is a fresh DOM node with scrollTop 0 each time — the document itself never
@@ -222,6 +228,9 @@ export function HomeRoute() {
             hidden={prefs.hiddenSpaces}
             onIsolate={setIsolatedSpace}
             onToggleHidden={toggleHiddenSpace}
+            hiddenMachines={hiddenMachines}
+            addressedHost={data.scope.host}
+            onShowMachine={(host) => setMachineHidden(host, false, data.servers)}
             pins={pins}
             onHold={setHeld}
             reveal={reveal}

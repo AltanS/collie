@@ -410,6 +410,7 @@ export const ja: Dictionary = {
   "home.workspace.paneCount.one": "{count}ペイン",
   "home.workspace.paneCount.other": "{count}ペイン",
   "home.workspace.hidden": "非表示",
+  "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "シェル",
   "home.pinned.title": "Pinned",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
@@ -588,6 +589,8 @@ export const ja: Dictionary = {
   "connection.session.allAria": "全セッションを表示中。セッションを切り替え",
   "connection.server.title": "マシン",
   "connection.server.aria": "ホスト: {name}。ホストを切り替え",
+  "connection.server.show": "Show on the dashboard",
+  "connection.server.showLocked": "The machine you are on is always shown",
 
   // --- crew ---
   "crew.title": "クルー",

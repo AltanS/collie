@@ -415,6 +415,7 @@ export const de: Dictionary = {
   "home.workspace.paneCount.one": "{count} Pane",
   "home.workspace.paneCount.other": "{count} Panes",
   "home.workspace.hidden": "ausgeblendet",
+  "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Pinned",
   "home.sidebar.paneActionsTitle": "Pane-Aktionen anzeigen",
@@ -594,6 +595,8 @@ export const de: Dictionary = {
   "connection.session.allAria": "Alle Sitzungen werden angezeigt. Sitzung wechseln",
   "connection.server.title": "Rechner",
   "connection.server.aria": "Host: {name}. Host wechseln",
+  "connection.server.show": "Show on the dashboard",
+  "connection.server.showLocked": "The machine you are on is always shown",
 
   // --- crew ---
   "crew.title": "Crew",

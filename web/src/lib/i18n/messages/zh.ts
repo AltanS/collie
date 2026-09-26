@@ -397,6 +397,7 @@ export const zh: Dictionary = {
   "home.workspace.paneCount.one": "{count} 个窗格",
   "home.workspace.paneCount.other": "{count} 个窗格",
   "home.workspace.hidden": "已隐藏",
+  "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "终端实例",
   "home.pinned.title": "Pinned",
   "home.sidebar.paneActionsTitle": "查看窗格操作选项",
@@ -575,6 +576,8 @@ export const zh: Dictionary = {
   "connection.session.allAria": "正在显示全部会话。切换会话",
   "connection.server.title": "主机",
   "connection.server.aria": "主机：{name}。切换主机",
+  "connection.server.show": "Show on the dashboard",
+  "connection.server.showLocked": "The machine you are on is always shown",
 
   // --- crew ---
   "crew.title": "机组",
