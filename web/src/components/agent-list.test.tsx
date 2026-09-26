@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -1055,5 +1055,138 @@ describe("AgentList — the heading's new tab (M40/03)", () => {
     expect(HEADING_ADD_REACH).toContain("before:-inset-[9px]");
     expect(button.closest("section")).toHaveClass("gap-2");
     expect(headingRow("webapp")).toHaveClass("min-h-7");
+  });
+});
+
+// THE PIN HINT (M38/02): one quiet line on the Panes tab, where the Pinned group will stand, saying a
+// hold pins a pane. Only on Panes, only with a hold wired, only while nothing is pinned, only on three
+// or more rows, and gone for good on this device after its X or the first pin.
+describe("AgentList — the pin hint", () => {
+  const herd = [
+    agent("a1", "idle", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", sessionName: "orchestrator" }),
+    agent("a2", "blocked", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", sessionName: "stuck" }),
+    agent("b1", "working", { workspaceId: "w2", workspaceLabel: "two", workspaceNumber: 2, tabId: "w2:t1", sessionName: "builder" }),
+  ];
+  const HOLD = "Hold a pane to pin it here.";
+  const RIGHT_CLICK = "Right-click a pane to pin it here.";
+  const FLAG = "collie:pin-hint:v1";
+  const hint = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="notice"]');
+  const dismiss = () => screen.getByRole("button", { name: "Dismiss hint" });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A device whose primary pointer is a mouse: `(pointer: fine)` matches, nothing else does. */
+  function finePointer() {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(pointer: fine)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+  }
+
+  it("hint: shows on Panes under the summary line, before the first group, with the pin glyph", () => {
+    const { container } = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} />);
+    const line = hint(container)!;
+    expect(line).toHaveTextContent(HOLD);
+    // The quiet register: the neutral notice, muted ink, a uniform edge and no status colour.
+    expect(line).toHaveClass("border", "text-muted-foreground");
+    expect(line.className).not.toMatch(/status-|border-l-|primary/u);
+    expect(line.querySelector("svg.lucide-pin")).not.toBeNull();
+    const summary = screen.getByRole("button", { name: /^\d+ needs you/ });
+    expect(summary.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(groupSection("one")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // It leaves through a Collapse, never a bare unmount.
+    expect(line.closest('[data-slot="collapse"]')).not.toBeNull();
+  });
+
+  it("hint: never on Focus or Changes", () => {
+    const { container, rerender } = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} needsYouOnly />);
+    expect(hint(container)).toBeNull();
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} renderBody={() => <p>changes body</p>} />);
+    expect(hint(container)).toBeNull();
+    expect(screen.queryByText(HOLD)).toBeNull();
+  });
+
+  it("hint: never on a list without a hold to teach", () => {
+    const { container } = render(<AgentList agents={herd} onOpen={vi.fn()} />);
+    expect(hint(container)).toBeNull();
+  });
+
+  it("hint: needs at least three pane rows on show, shells included, after isolate", async () => {
+    const { container, rerender } = render(<AgentList agents={herd.slice(0, 2)} onOpen={vi.fn()} onHold={vi.fn()} />);
+    expect(hint(container)).toBeNull();
+    // A bare shell is a pane row too.
+    const shell = agent("s1", "idle", { kind: "shell", workspaceId: "w2", workspaceLabel: "two", workspaceNumber: 2, tabId: "w2:t1" });
+    rerender(<AgentList agents={herd.slice(0, 2)} shellPanes={[shell]} onOpen={vi.fn()} onHold={vi.fn()} />);
+    expect(hint(container)).toHaveTextContent(HOLD);
+    // Isolating workspace one leaves two rows on show, and the line slides shut.
+    const isolateOne = workspacePrefKey(groupPanesByWorkspace([herd[0]!])[0]!);
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} isolated={isolateOne} />);
+    await waitFor(() => expect(screen.queryByText(HOLD)).toBeNull());
+  });
+
+  it("hint: hidden while a pin is stored, a dormant one too", () => {
+    const { container, rerender } = render(
+      <AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} pins={[{ row: paneRowKey(herd[2]!), space: "two", at: 1 }]} />,
+    );
+    expect(hint(container)).toBeNull();
+    // A pin whose pane is not on screen draws nothing, and still says the gesture is known.
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} pins={[{ row: "gone", space: "elsewhere", at: 1 }]} />);
+    expect(hint(container)).toBeNull();
+    expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
+  });
+
+  it("hint: the X writes the flag, the line slides shut, and it stays gone on this device", async () => {
+    const user = userEvent.setup();
+    const { container, unmount } = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} />);
+    expect(localStorage.getItem(FLAG)).toBeNull();
+    await user.click(dismiss());
+    expect(localStorage.getItem(FLAG)).toBe("1");
+    // Collapse holds the words through its exit, then the box leaves.
+    await waitFor(() => expect(hint(container)).toBeNull());
+    unmount();
+    // A fresh mount, as a reload would give, draws nothing.
+    const again = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} />);
+    expect(hint(again.container)).toBeNull();
+  });
+
+  it("hint: the X hands focus to the first row below, never to body", async () => {
+    const user = userEvent.setup();
+    render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} />);
+    dismiss().focus();
+    await user.keyboard("{Enter}");
+    expect(within(groupSection("one")).getAllByRole("button")[0]).toHaveFocus();
+  });
+
+  it("hint: the first pin writes the flag, and the line stays gone after every pin is removed", async () => {
+    const { container, rerender } = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} pins={currentPins()} />);
+    expect(hint(container)).toHaveTextContent(HOLD);
+    act(() => setPinned(herd[2]!, true, herd));
+    expect(localStorage.getItem(FLAG)).toBe("1");
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} pins={currentPins()} />);
+    expect(screen.getByRole("region", { name: "Pinned" })).toBeInTheDocument();
+    act(() => setPinned(herd[2]!, false, herd));
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} pins={currentPins()} />);
+    expect(currentPins()).toHaveLength(0);
+    await waitFor(() => expect(hint(container)).toBeNull());
+  });
+
+  it("hint: a render, a tab switch or a poll writes no flag", () => {
+    const { rerender } = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} />);
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} needsYouOnly />);
+    rerender(<AgentList agents={[...herd]} onOpen={vi.fn()} onHold={vi.fn()} />);
+    expect(localStorage.getItem(FLAG)).toBeNull();
+  });
+
+  it("hint: says right-click on a device whose pointer is a mouse", () => {
+    finePointer();
+    const { container } = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} />);
+    expect(hint(container)).toHaveTextContent(RIGHT_CLICK);
+    expect(screen.queryByText(HOLD)).toBeNull();
   });
 });

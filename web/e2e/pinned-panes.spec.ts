@@ -40,6 +40,15 @@ const mainRow = (page: Page, agent: keyof typeof AGENT_ROW) => row(page.getByRol
 /** The dashboard's headings, in the order the page draws them. */
 const headings = (page: Page) => page.getByRole("main").getByRole("heading").allTextContents();
 
+/** The pin hint (M38/02): its words, as this browser's primary pointer picks them, and its X. */
+async function hintWords(page: Page) {
+  const fine = await page.evaluate(() => matchMedia("(pointer: fine)").matches);
+  return fine ? en["home.pinHint.rightClick"] : en["home.pinHint.hold"];
+}
+const hintLine = (page: Page, words: string) => page.getByRole("main").getByText(words, { exact: true });
+const dismissHint = (page: Page) => page.getByRole("button", { name: en["home.pinHint.dismiss"] });
+const HINT_FLAG = "collie:pin-hint:v1";
+
 /** Open a row's pane menu with a right-click (the hold's `contextmenu` twin) and tap a row in it. */
 async function viaMenu(page: Page, target: Locator, action: "paneActions.pin.label" | "paneActions.unpin.label") {
   await target.click({ button: "right" });
@@ -287,4 +296,98 @@ test("hold: unpinning an idle pane on Focus takes it off the list and hands focu
   await viaMenu(page, row(pinnedGroup(page), "codex"), "paneActions.unpin.label");
   await expect(mainRow(page, "codex")).toHaveCount(0);
   await expect(summary(page)).toBeFocused();
+});
+
+// THE PIN HINT (M38/02). The fixture herd is three pane rows (two agents and a shell), so a fresh
+// device sees the hint on Panes; the cases below retire it the two ways the spec allows.
+test("hint: shows on Panes with no pins, leaves on the first pin, and stays gone after a reload and an unpin", async ({ page }) => {
+  await page.goto("/");
+  const words = await hintWords(page);
+  const line = hintLine(page, words);
+  await expect(line).toBeVisible();
+  // Under the summary line, in the place the Pinned group takes, and never on Focus or Changes.
+  const s0 = await box(summary(page));
+  expect((await box(line)).y).toBeGreaterThan(s0.y + s0.height - 1);
+  expect((await box(line)).y).toBeLessThan((await box(page.getByRole("heading", { name: "webapp" }))).y);
+  await tab(page, FOCUS).click();
+  await expect(hintLine(page, words)).toHaveCount(0);
+  await tab(page, CHANGES).click();
+  await expect(hintLine(page, words)).toHaveCount(0);
+  await tab(page, /^Panes$/u).click();
+  await expect(line).toBeVisible();
+  expect(await page.evaluate((k) => localStorage.getItem(k), HINT_FLAG)).toBeNull();
+
+  // The first pin retires it: the Pinned group takes the place and the line slides shut.
+  await viaMenu(page, mainRow(page, "codex"), "paneActions.pin.label");
+  await expect(pinnedGroup(page)).toBeVisible();
+  await expect(line).toHaveCount(0);
+  expect(await page.evaluate((k) => localStorage.getItem(k), HINT_FLAG)).toBe("1");
+
+  // Gone for good on this device: after a reload, and after the only pin is removed.
+  await page.reload();
+  await expect(pinnedGroup(page)).toBeVisible();
+  await expect(line).toHaveCount(0);
+  await viaMenu(page, row(pinnedGroup(page), "codex"), "paneActions.unpin.label");
+  await expect(pinnedGroup(page)).toHaveCount(0);
+  await page.reload();
+  await expect(mainRow(page, "codex")).toBeVisible();
+  await expect(line).toHaveCount(0);
+});
+
+test("hint: the X dismisses it for good, and the rows below close up without a jump", async ({ page }) => {
+  await page.goto("/");
+  const line = hintLine(page, await hintWords(page));
+  await expect(line).toBeVisible();
+  const heading = page.getByRole("heading", { name: "webapp" });
+  const before = await box(heading);
+  const notice = await box(page.getByRole("main").locator('[data-slot="notice"]'));
+
+  // Every frame's heading position, from the tap until well past the 240ms collapse and its unmount.
+  const frames = page.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const el = [...document.querySelectorAll("main h2")].find((h) => h.textContent === "webapp")!;
+        const ys: number[] = [];
+        const start = performance.now();
+        const tick = () => {
+          ys.push(el.getBoundingClientRect().y);
+          if (performance.now() - start < 600) requestAnimationFrame(tick);
+          else resolve(ys);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  await dismissHint(page).click();
+  const ys = await frames;
+  await expect(line).toHaveCount(0);
+  expect(await page.evaluate((k) => localStorage.getItem(k), HINT_FLAG)).toBe("1");
+  // It closed up by exactly the box and the gap above it, so no 20px gap is left behind...
+  const after = await box(heading);
+  expect(after.y).toBeCloseTo(before.y - notice.height - 20, 0);
+  // ...and it got there as a glide: positions in between, and the last step into its final place is
+  // the tail of the ease, never the 20px gap dropping out when the box unmounts. (Not a per-frame
+  // bound: a loaded runner drops frames, and the ease's first frames then cover more ground.)
+  const final = ys.at(-1)!;
+  expect(final).toBeCloseTo(after.y, 0);
+  const between = new Set(ys.filter((y) => y < before.y - 0.5 && y > final + 0.5).map((y) => Math.round(y)));
+  expect(between.size).toBeGreaterThanOrEqual(2);
+  const last = ys.findLastIndex((y, i) => i > 0 && Math.abs(y - ys[i - 1]!) > 0.1);
+  expect(Math.abs(ys[last]! - ys[last - 1]!)).toBeLessThan(12);
+
+  await page.reload();
+  await expect(mainRow(page, "codex")).toBeVisible();
+  await expect(line).toHaveCount(0);
+  await expect(pinnedGroup(page)).toHaveCount(0);
+});
+
+test.describe("hint with a mouse", () => {
+  test.use({ hasTouch: false, isMobile: false });
+
+  test("hint: a fine pointer is told to right-click", async ({ page }) => {
+    await page.goto("/");
+    const fine = await page.evaluate(() => matchMedia("(pointer: fine)").matches);
+    test.skip(!fine, "this engine reports no fine pointer without touch emulation");
+    await expect(hintLine(page, en["home.pinHint.rightClick"])).toBeVisible();
+    await expect(hintLine(page, en["home.pinHint.hold"])).toHaveCount(0);
+  });
 });

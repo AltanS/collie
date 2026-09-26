@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { paneRowKey } from "./hosts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "./json";
 import { panePlaceParts } from "./pane-name";
+import { retirePinHint } from "./pin-hint";
 import type { AgentView } from "./types";
 
 // PINS: the panes this device asked to lead the dashboard and the switcher (ADR 0070).
@@ -185,6 +186,9 @@ function prune(list: readonly Pin[], herd: readonly AgentView[], keep: PinId | n
  * Pin or unpin one pane, the operator's act. `herd` is every pane the caller's list holds (agents and
  * shells); the prune reads it to tell a live record from a dormant one and to spot a reused id. The
  * pane itself counts as live whether or not the caller's list carries it.
+ *
+ * A pin, from whichever door, also retires the Panes tab's hint for good (`pin-hint.ts`): the
+ * operator has found the gesture it teaches. An unpin retires nothing.
  */
 export function setPinned(
   pane: AgentView,
@@ -196,6 +200,7 @@ export function setPinned(
   const kept = pins.filter((p) => !same(p, id));
   const next = on ? [...kept, { ...id, at: now }] : kept;
   save(prune(next, [...herd, pane], on ? id : null));
+  if (on) retirePinHint();
 }
 
 /**

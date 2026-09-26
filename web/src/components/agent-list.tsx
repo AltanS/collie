@@ -15,9 +15,11 @@ import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView } 
 import { HOST_TEXT_CLASSES, hostName, hostSlot, paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
+import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
 import type { Scope } from "@/lib/scope";
 import { tabCreateKey } from "@/hooks/use-spaces";
 import { AgentCard } from "./agent-card";
+import { PinHint } from "./pin-hint";
 import { WorkspaceNewTab } from "./workspace-new-tab";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -227,6 +229,9 @@ export function AgentList({
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
   const agentDetection = useMuxCapability("agentDetection");
+  // Whether this device retired the Panes tab's pin hint (lib/pin-hint.ts). Read here for the same
+  // reason: above the early return.
+  const pinHintRetired = usePinHintRetired();
   // A pin or unpin just moved a row (ADR 0070). Runs after the commit that moved it, and after the
   // actions sheet's own focus-restore (a passive cleanup runs before any passive setup), so the row
   // in its new place is what ends up focused. The old element is gone with the move, so without this
@@ -335,6 +340,18 @@ export function AgentList({
   };
   const jumpToPinned = () =>
     document.getElementById(PINNED_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // THE PIN HINT (M38/02): one quiet line in the Pinned group's place that says a hold pins a pane.
+  // Panes only: Focus and Changes are narrower lists, and a list without a hold has nothing to teach.
+  // It needs no pin stored, a device that never retired it, and enough rows on show to pin one above
+  // the others; the count is the rows drawn after isolate and hide, the Panes list the eye sees.
+  const pinHintHere = !needsYouOnly && renderBody === undefined && onHold !== undefined;
+  const shownRows = drawn.reduce((n, d) => n + d.rows.length, 0);
+  const pinHintOpen = showsPinHint(pinHintRetired, pins.length, shownRows);
+  const firstShownRow = drawn[0]?.rows[0];
+  const focusFirstRow = () => {
+    if (firstShownRow === undefined) return;
+    document.getElementById(rowDomId(paneRowKey(firstShownRow)))?.focus({ preventScroll: true });
+  };
   const onJump = renderBody
     ? undefined
     : pinnedUrgent
@@ -485,6 +502,13 @@ export function AgentList({
           <ListGroup>{pinned.map((a) => row(a, "herd"))}</ListGroup>
         </section>
       )}
+
+      {/* THE PIN HINT (M38/02), in the place the Pinned group takes: directly under the summary line
+          while nothing is pinned. It sits AFTER the Pinned section, so on the first pin the group lands
+          in its final place at once and the line slides shut below it, rather than the group sliding
+          up as the line leaves above it. Mounted on Panes only, so a tab switch drops it with the rest
+          of the body instead of playing its exit on Focus. */}
+      {pinHintHere && <PinHint open={pinHintOpen} onFocusLeaves={focusFirstRow} />}
 
       {renderBody?.(shown)}
 
