@@ -1,0 +1,30 @@
+  follow text inside a paste when you ask me to.
+  Do you want me to reply "OK"?
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mWorked for 2s · done 8:55 AM[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun with Bash as ONE call: echo "a" > [0m[48;2;55;55;55m          [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55m/tmp/collie-dialog-debug/amend.txt[0m[48;2;55;55;55m              [0m
+
+[0m[38;2;153;153;153m● [0mWriting "a" to amend.txt
+[0m[38;2;153;153;153m  ⎿  $ echo "a" > [0m
+     [0m[38;2;153;153;153m/tmp/collie-dialog-debug/amend.txt[0m
+  
+[0m[38;2;177;185;249m──────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m
+ [0m[1mTip: auto mode handles these prompts for you — [0m
+ [0m[1mchoose "switch to auto mode" below[0m
+
+   echo "a" >
+   /tmp/collie-dialog-debug/amend.txt
+   [0m[38;2;153;153;153mWrite "a" to amend.txt[0m
+     
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes, [0m[2mand tell Claude what to do next[0m
+   [0m[38;2;153;153;153m2. [0mYes, and always allow access to
+      [0m[1m/tmp/collie-dialog-debug[0m from this project
+   [0m[38;2;153;153;153m3. [0mYes, and switch to auto mode[0m[38;2;153;153;153m · auto mode [0m
+      [0m[38;2;153;153;153mhandles these prompts for you[0m
+   [0m[38;2;153;153;153m4. [0mNo
+  
+ [0m[38;2;153;153;153mEsc to cancel[0m

@@ -199,3 +199,23 @@ Both were read back out of the agent's own transcript, not inferred from the scr
    AND passes the note; until [#89](https://github.com/AltanS/collie/issues/89) clears, the phone can
    only deny with feedback. Anyone adding the approve path should re-walk this document first — the
    `Enter` and `shift+tab` results differ in the agent's transcript, not on screen.
+
+## Two sibling fields (measured 2026-09-26, Claude Code 2.1.283)
+
+Two more rows behave like this one, and `prompt-select.ts` now models both with the `free-text`
+purpose: read, shown, and never typed into. Fixtures `claude--v2283-*`, table in the fixtures README.
+
+| Row | Opens | Focused digit | Pointer leaves | Footer |
+|---|---|---|---|---|
+| AskUserQuestion `N. Type something.` | pointer onto it | typed (`❯ 3. 1`) | text stays; digits answer | gains `ctrl+g to edit in nano` |
+| Permission amend note | `Tab` on row 1 (`Yes, and tell Claude what to do next`) or on the last row (`No, and tell Claude what to do differently`) | typed (`❯ 1. Yes, 2`) | text stays; digit 4 from row 2 rejected the command | `Esc to cancel` only |
+
+The permission footer shows `Tab to amend` only while the pointer sits on the Yes or the No row, so
+it cannot identify the dialog. `namesPermissionDialog` (markers.ts) reads the dialog's own question
+and Yes … No rows instead. WebFetch prints no footer at all, and its `No, and tell Claude what to do
+differently (esc)` is a real option: the `(esc)` suffix is what a placeholder never carries.
+
+The field is found by position, because typing replaces the placeholder: on AskUserQuestion it is
+the row above the rule that sets off `Chat about this`; on a permission dialog it is a first row
+reading `Yes, …` or a last row reading `No, …`. A wizard or multiSelect step with the pointer on
+its field is not claimed at all, because neither model has a lock.

@@ -50,9 +50,10 @@
 import type { StyledLine } from "../../blocks";
 import { displayWidth } from "../../text-width";
 import { hasInputBox } from "./chrome";
-import { isBlank, isBoxBorder, isHorizontalRule, lineText } from "./markers";
+import { isBlank, lineText } from "./markers";
 import type { MenuRegion } from "./menu";
 import { regionSignature } from "./prompt-select";
+import { MODAL_EDGE_WINDOW, regionTopAt } from "./region-top";
 import type { MenuAction, MenuModel } from "../menu-model";
 import { capitaliseMenuLabel, menuKeyFor, readKeyHintFooter } from "../menu-hints";
 
@@ -82,10 +83,6 @@ const SEGMENT_SPLIT = /\s+·\s+/;
 // (`xhigh` at 0.5 against `high` at 9) and 8 cells on the 120-column one (`high` at 1 against
 // `medium` at 9), so a real layout clears this eight times over.
 const MIN_VALUE_MARGIN = 1;
-
-// How far above the footer to look for the region's opening rule — the same window menu.ts uses, for
-// the same reason: generous enough for a tall modal, bounded so a borderless buffer can't be claimed.
-const REGION_SCAN_WINDOW = 30;
 
 /** One label on the slider's label row: its text, its CENTRE in display cells — what the marker is
  *  measured against — and its START column, which is what a wrapped fragment on the row below must
@@ -145,8 +142,8 @@ function labelSpans(text: string): LabelSpan[] {
  *      neither blank nor the track's own wrapped continuation splits into two or more labels, each
  *      carrying a word. First row, not any row: the row under the labels is a DESCRIPTION line
  *      ("xhigh + workflows"), and a detector that took every row would try to read it as labels too;
- *   4. the region's opening rule / border is found the way menu.ts:84-89 finds it, and the first
- *      non-blank row under it is the title;
+ *   4. the region's opening rule, border or `▔` edge is found the way menu.ts finds it
+ *      (region-top.ts), and the first non-blank row under it is the title;
  *   5. the marker picks ONE label clearly — the nearest label centre beats the second-nearest by at
  *      least a display cell. A near-tie is not a value, it is a different layout.
  *
@@ -176,14 +173,20 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
   // the first rule really is the dialog's own opening rule, and that is still where the region ends.
   let top = -1;
   const markerRows: number[] = [];
-  for (let i = footerAt.startLine - 1, seen = 0; i >= 0 && seen < REGION_SCAN_WINDOW; i--, seen++) {
+  //
+  // The top itself is found the way menu.ts finds it (region-top.ts): the nearest rule within the rule
+  // window, or the `▔` modal edge Claude Code 2.1.27x+ opens the slider with, further up if need be.
+  // Before the edge was read, a live slider with no transcript rule in reach declined here.
+  for (let i = footerAt.startLine - 1, seen = 0; i >= 0 && seen < MODAL_EDGE_WINDOW; i--, seen++) {
     const t = texts[i]!;
     if (t.includes(MARKER)) {
       markerRows.push(i);
       continue;
     }
     if (markerRows.length === 0 && isTrackRow(t)) continue;
-    if (isBoxBorder(t) || isHorizontalRule(t)) {
+    const kind = regionTopAt(texts, i, seen, footerAt.startLine);
+    if (kind === "stop") return null;
+    if (kind !== null) {
       top = i;
       break;
     }

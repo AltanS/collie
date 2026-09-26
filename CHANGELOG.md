@@ -32,6 +32,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 - **Codex 0.156 panes take your messages again.** Codex 0.156 paints its status row in a new way, so Collie found no input box on a default Codex pane and showed "Collie cannot read this dialog" over an idle prompt, and a draft with line breaks never read either. Its rewritten folder-trust prompt, its file-edit approval, a command approval with only two options, and approval options that wrap on a narrow pane now show as buttons; each of their keys was tried live on Codex 0.156.1. The update prompt and the /model and /permissions pickers keep the Esc card.
+- **Claude permission dialogs show their buttons in every state.** Collie knew a permission dialog only by its "Tab to amend" hint, which Claude hides once the pointer leaves the Yes and No rows, and the web-fetch dialog has no hint at all. All of these showed "Collie cannot read this dialog". Collie now reads the dialog's own question and options. A note opened with Tab shows as text being written in the terminal, and the other buttons wait while it has the keyboard, because a digit there is typed into the note.
+- **A tapped answer no longer types into the "Type something" field.** With the pointer on a question's "Type something" row, tapping another answer typed its digit into that field, and the Enter after it submitted the wrong answer. Typed text also showed as an answer button. The row is now read as a field: the buttons wait while it has the keyboard, and typed text shows as text. On a multi-select or multi-question step with the pointer on the field, the Esc card shows instead.
+- **A draft with a pasted rule or prompt line no longer blocks sending.** A message with a `────` line or a `❯` line in it, as in pasted terminal output, hid Claude's input box from Collie, so Send stalled with "Message didn't reach the input box" and the pane showed the Esc card.
+- **Claude's slash-command screens show their keys.** Newer Claude opens /mcp, /hooks, /memory, /rewind, /effort, /status, /usage, /export and /login with a new top edge, so they showed the Esc card. They show their own keys again.
+- **Plan approval reads with a custom Claude config folder.** When the plan file lived outside `~/.claude`, the plan approval showed the Esc card.
+- **Questions show in full.** A question that wrapped, or that Claude wrote on two lines, kept only one of its lines and a stray `│`. Permission options that wrap on a narrow pane keep their whole label.
+- **Starting or quitting Claude no longer flashes the Esc card.** For a moment before Claude draws its screen, and after it exits, the shell prompt showed "Collie cannot read this dialog".
 
 ## [1.13.1] - 2026-09-24
 

@@ -564,7 +564,9 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   may read that row as one line, and no mid-flight identity may reach above the question.
   Feedback is sent as a verified sequence, never a keystroke — the ground truth for every state is
   [`PLAN_FEEDBACK_NOTES.md`](./web/src/lib/grammar/PLAN_FEEDBACK_NOTES.md); re-walk it before touching
-  `harness/claude/prompt-select.ts` or `lib/prompt-action.ts`.
+  `harness/claude/prompt-select.ts` or `lib/prompt-action.ts`. AskUserQuestion's "Type something."
+  row and a permission dialog's amend note are the same kind of field, found by position, modelled
+  with the `free-text` purpose, and never typed into (same notes file, 2026-09-26 section).
 - **The phone parses what the phone draws; the bridge parses only what it must act on alone.** Every
   pane grammar is client-side, under `web/src/lib/harness/`. The bridge holds one,
   `extractClaudeSessionName`, and only because the bridge itself consumes it, for a label that must

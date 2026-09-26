@@ -67,6 +67,18 @@ export interface HarnessAdapter {
    */
   cancelKey?: string;
   /**
+   * Positive evidence that one of THIS harness's modals is on screen, asked by the unread-dialog pass
+   * before it offers `cancelKey` (.adr/0053, addendum 2026-09-26). `composerReady` answering `false`
+   * says only that no input box is there, and that is also true of a plain shell: herdr reports the
+   * agent a moment before its first frame paints and a moment after it exits, and the card used to
+   * flash over the shell prompt in both windows.
+   *
+   * OPTIONAL. Absent keeps the four original conditions unchanged for that adapter. Declared, the
+   * card needs it to answer `true` as well; a throw counts as `false`. Read from the harness's own
+   * captures, and pinned by the card's allow-list test.
+   */
+  modalOnScreen?(lines: StyledLine[]): boolean;
+  /**
    * Literal on-screen text from the composer's prompt/draft tail — the region a DESTRUCTIVE write
    * aimed at that composer may be bound to. Null = no composer at the tail (the same screens
    * `composerReady` answers false about).

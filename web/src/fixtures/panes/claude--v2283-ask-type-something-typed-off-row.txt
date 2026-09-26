@@ -1,0 +1,30 @@
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun with Bash as ONE call: echo "a" > /tmp/collie-claude-debug/amend.txt[0m[48;2;55;55;55m                                              [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+[0m[38;2;153;153;153m  ⎿  Interrupted · What should Claude do instead?[0m
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mBaked for 1s · done 9:22 AM[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun with Bash as ONE call: echo "b" > /tmp/collie-claude-debug/amend-b.txt[0m[48;2;55;55;55m                                            [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+[0m[38;2;153;153;153m  ⎿  Interrupted · What should Claude do instead?[0m
+ 
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mCogitated for 1s · done 9:22 AM[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse AskUserQuestion with ONE question "Which fruit?" options Apple, Banana with short descriptions. Nothing else.[0m[48;2;55;55;55m     [0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Fruit [0m
+
+[0m[1m[38;2;255;255;255mWhich fruit?[0m
+
+  [0m[38;2;153;153;153m1. [0mApple
+     [0m[38;2;153;153;153mA crisp, sweet fruit.[0m
+[0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m2.[0m [0m[38;2;177;185;249mBanana[0m
+     [0m[38;2;153;153;153mA soft, yellow fruit.[0m
+  [0m[38;2;153;153;153m3. [0m1
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  4. Chat about this
+  
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

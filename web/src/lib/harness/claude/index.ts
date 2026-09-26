@@ -8,8 +8,9 @@
 // TUI shape, so it has no adapter and keeps the plain raw terminal mirror — running Claude's matchers
 // on it could mis-lift a menu, strip real output as "chrome", or paint a bogus status strip.
 
-import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
+import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
+import { namesAMenuKey } from "../menu-hints";
 import { detectPreviewSelectRegion } from "./preview-select";
 import { detectWizardRegion } from "./wizard";
 import { detectMultiSelectRegion } from "./multi-select";
@@ -155,6 +156,20 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
 
 export { extractStatusLines, extractAgentsFooter, extractInputDraft };
 
+// How many of the screen's last non-blank rows may carry a modal's key hint. A footer wraps onto at
+// most three rows (menu-hints MAX_FOOTER_ROWS), and a hint can sit a row or two above it.
+const MODAL_HINT_ROWS = 6;
+
+/** Whether one of the screen's last non-blank rows names a key the way a Claude modal's footer does. */
+function tailNamesAKey(lines: StyledLine[]): boolean {
+  const rows: string[] = [];
+  for (let i = lines.length - 1; i >= 0 && rows.length < MODAL_HINT_ROWS; i--) {
+    const text = lineText(lines[i]!);
+    if (text.trim() !== "") rows.push(text);
+  }
+  return rows.some(namesAMenuKey);
+}
+
 export const claudeAdapter: HarnessAdapter = {
   agent: "claude",
   buildBlocks: claudeBuildBlocks,
@@ -169,6 +184,10 @@ export const claudeAdapter: HarnessAdapter = {
   // the `/effort` slider all print it, and `claude/markers.ts` treats the phrase as background chrome
   // precisely because it is on so many of them.
   cancelKey: "Escape",
+  // Every Claude modal the card has ever been right about names a key in its last rows: "Esc to
+  // cancel", "Esc to close", "enter to return", "Enter to select" (the allow-list in
+  // unread-dialog.test.ts). The shell prompt under a starting or exiting Claude names none.
+  modalOnScreen: tailNamesAKey,
   // Long sends never appear in the box as themselves — Claude collapses them into `[Pasted text #N
   // +M lines]` — so the reply guard's literal match can't verify them and the send stalls. These two
   // read that token: as send evidence when it's consistent with what we typed (.adr/0010), and as

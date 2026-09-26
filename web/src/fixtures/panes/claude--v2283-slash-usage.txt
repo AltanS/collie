@@ -1,0 +1,34 @@
+
+     [0m[38;2;153;153;153m/context all to expand[0m
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ [0m[38;2;153;153;153m● high · /effort[0m[38;2;177;185;249m ▔[0m
+   [0m[1m[38;2;177;185;249mSettings[0m  Status   Config  [0m[1m[38;2;0;0;0m[48;2;177;185;249m Usage [0m  Stats
+
+   [0m[1mSession[0m
+     
+   [0m[38;2;153;153;153mTotal cost:            $0.0000[0m
+   [0m[38;2;153;153;153mTotal duration (API):  0s[0m
+   [0m[38;2;153;153;153mTotal duration (wall): 1m 41s[0m
+   [0m[38;2;153;153;153mTotal code changes:    0 lines added, 0 lines removed[0m
+   [0m[38;2;153;153;153mUsage:                 0 input, 0 output, 0 cache read, 0 cache write[0m
+          
+   [0m[1mCurrent session[0m   
+   [0m[38;2;177;185;249m[48;2;80;83;112m███████████████                                   [0m 30% used
+   [0m[38;2;153;153;153mResets 1:29pm (Europe/Berlin)[0m               
+                                         
+   [0m[1mCurrent week (all models)[0m
+   [0m[38;2;177;185;249m[48;2;80;83;112m█████                                              [0m10% used
+   [0m[38;2;153;153;153mResets Oct 2, 11:59pm (Europe/Berlin)[0m
+
+   [0m[1mCurrent week (Fable)[0m
+   [0m[38;2;177;185;249m[48;2;80;83;112m                                                  [0m 0% used
+   [0m[38;2;153;153;153mResets Oct 3, 12am (Europe/Berlin)[0m
+
+   [0m[1mWhat's contributing to your limits usage?[0m
+   [0m[38;2;153;153;153mApproximate, based on local sessions on this machine — does not include other devices or claude.ai[0m
+
+   [0m[38;2;153;153;153mScanning local sessions…[0m
+
+   [0m[1mUsage credits[0m
+   [0m[38;2;153;153;153mUsage credits are off · /usage-credits to turn them on[0m
+  
+   [0m[38;2;153;153;153mEsc to cancel[0m

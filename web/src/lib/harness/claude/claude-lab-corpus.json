@@ -78,12 +78,6 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "A wrapped draft whose continuation rows hold an interior rule. Step 1 breaks on the bottom border, then the up-scan stops at that rule because isBoxBorder is true there, and a rule is not a prompt row, so walkFrame returns null. The interior rule aborts the walk, not the prompt-glyph row above it. Widening only the rule does not help: the walk would then anchor on the '❯'-led continuation row and the top-border test would look at the real prompt row and refuse. Closing it needs the two borders' widths compared, which is false on three real labelled-border captures. DECLINED in M34 spec 06.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -98,12 +92,6 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "A wrapped draft whose continuation rows hold an interior rule. Step 1 breaks on the bottom border, then the up-scan stops at that rule because isBoxBorder is true there, and a rule is not a prompt row, so walkFrame returns null. The interior rule aborts the walk, not the prompt-glyph row above it. Widening only the rule does not help: the walk would then anchor on the '❯'-led continuation row and the top-border test would look at the real prompt row and refuse. Closing it needs the two borders' widths compared, which is false on three real labelled-border captures. DECLINED in M34 spec 06.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -118,12 +106,6 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "A wrapped draft whose continuation rows hold an interior rule. Step 1 breaks on the bottom border, then the up-scan stops at that rule because isBoxBorder is true there, and a rule is not a prompt row, so walkFrame returns null. The interior rule aborts the walk, not the prompt-glyph row above it. Widening only the rule does not help: the walk would then anchor on the '❯'-led continuation row and the top-border test would look at the real prompt row and refuse. Closing it needs the two borders' widths compared, which is false on three real labelled-border captures. DECLINED in M34 spec 06.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -604,12 +586,6 @@
           "2",
           "3"
         ]
-      },
-      "knownRaw": "This permission layout has no separate footer row at all; its last option ends '(esc)'. classifyFooter finds nothing and prompt-select's footer anchor misses, so the three options stay raw. Candidate grammar: a permission-dialog variant that anchors on the parenthesised shortcut instead of a footer row. The three sibling permission captures DO lift, so this is one layout away from covered.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -637,6 +613,11 @@
       "rows": 30,
       "state": "plan-approval",
       "notes": "plan approval on a 30-row pane",
+      "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
+      "actualKeys": [
+        "1",
+        "2"
+      ],
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -648,12 +629,6 @@
           "2",
           "3"
         ]
-      },
-      "knownRaw": "The dialog ends on a ~/.claude/plans/... path line. classifyFooter calls that line a plan footer, but prompt-select's other structural gates do not clear on this capture, so the three numbered options stay on the raw mirror. Candidate grammar: widen the existing plan arm to this 2.1.274 layout; the older claude--plan-approval fixtures still lift, so this is a layout change, not a missing idea. Same screen on a 30-row pane.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -662,6 +637,11 @@
       "rows": 49,
       "state": "plan-approval",
       "notes": "plan approval dialog: plan body between ╌ rules, three numbered options, path footer",
+      "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
+      "actualKeys": [
+        "1",
+        "2"
+      ],
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -673,12 +653,6 @@
           "2",
           "3"
         ]
-      },
-      "knownRaw": "The dialog ends on a ~/.claude/plans/... path line. classifyFooter calls that line a plan footer, but prompt-select's other structural gates do not clear on this capture, so the three numbered options stay on the raw mirror. Candidate grammar: widen the existing plan arm to this 2.1.274 layout; the older claude--plan-approval fixtures still lift, so this is a layout change, not a missing idea.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -687,6 +661,11 @@
       "rows": 49,
       "state": "plan-approval-feedback-typed",
       "notes": "plan approval with feedback text typed into option 3",
+      "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
+      "actualKeys": [
+        "1",
+        "2"
+      ],
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -698,12 +677,6 @@
           "2",
           "3"
         ]
-      },
-      "knownRaw": "The dialog ends on a ~/.claude/plans/... path line. classifyFooter calls that line a plan footer, but prompt-select's other structural gates do not clear on this capture, so the three numbered options stay on the raw mirror. Candidate grammar: widen the existing plan arm to this 2.1.274 layout; the older claude--plan-approval fixtures still lift, so this is a layout change, not a missing idea. Same screen with feedback typed into option 3.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {

@@ -92,3 +92,35 @@ grammar is no looser. `@` file mentions stay out: no capture of that popup exist
 
 **What would justify revisiting this:** the same as ADR 0004. With Herdr's `agent_status` or scroll
 geometry in the client, box liveness could be established instead of inferred from shape.
+
+## Addendum — 2026-09-26: an indented row inside the frame is draft text
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum adds one
+rule to step 2.
+
+**A draft that held a rule or a `❯` line hid its own box.** Step 2 walked up from the bottom border
+and stopped on the first box border or prompt row. A pasted rule (`────`) inside the draft stopped
+the walk on a row that is not a prompt, and a pasted shell prompt (`❯ ls -la`) stopped it on a row
+with no top border above. Either way the locator reported no box, `composerReady` read false, the
+phone showed the unread-dialog card, and a send stalled. Pasting terminal output is enough to do
+it. The three `claude-lab--draft-adversarial--*` captures were pinned as a declined `knownStall` for
+exactly this, because comparing the two borders' widths was the only discriminator then on the
+table.
+
+**Claude paints the frame at column 0 and indents the draft.** On every box in the Claude fixture
+corpus and the 2.1.283 captures (84 boxes), the top border, the prompt row and the bottom border
+start in column 0, and every wrapped-draft continuation row is indented by two spaces. So step 2
+now reads: only a row at column 0 can stop the walk up from the bottom border, and the prompt row
+and the top border must both sit at column 0. An indented row is a continuation, whatever it holds.
+
+Step 1 is unchanged and stays indent-blind: a dialog's pointer row and a statusline's own rule are
+often indented, and they must still stop the search for the bottom border. Step 4 is unchanged, so
+the modal checks guard the same screens as before.
+
+**What would reopen this:** a real capture of a Claude input box drawn away from column 0 (a new
+layout, a gutter, a nested frame). The locator would then report no box on that screen, which is
+this module's designed failure mode, a stalled send rather than a typed modal.
+
+Trail: `web/src/lib/harness/claude/chrome.ts` (`atColumnZero`, `walkFrame`) ·
+`web/src/lib/harness/claude/input-box-frame.test.ts` · fixtures `claude--v2283-draft-rule.txt`,
+`claude--v2283-draft-prompt.txt`.

@@ -1,0 +1,10 @@
+
+     Usage: /output-style <style>
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ [0m[38;2;153;153;153m● high · /effort[0m[38;2;177;185;249m ▔[0m
+   [0m[1m[38;2;177;185;249mExport conversation                     [0m                                                           
+   [0m[38;2;153;153;153mSelect export method[0m
+
+   [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mCopy to clipboard[0m  [0m[38;2;153;153;153mCopy the conversation to your system clipboard[0m
+     [0m[38;2;153;153;153m2. [0mSave to file       [0m[38;2;153;153;153mSave the conversation to a file in the current directory[0m
+  
+   [0m[3m[38;2;153;153;153mEsc to cancel[0m

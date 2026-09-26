@@ -348,9 +348,10 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  * Find the input box by ITS OWN FRAME, then account for everything below it. Returns null unless all
  * of this holds, checked in order:
  *
- *     <top border>         (isInputBoxTopBorder: bare, or carrying a session label)
- *     ❯ <draft>            (the prompt line; "!" in shell mode)
- *     <continuation…>      (0..MAX_DRAFT_LINES wrapped-draft lines, no leading "❯")
+ *     <top border>         (isInputBoxTopBorder: bare, or carrying a session label; column 0)
+ *     ❯ <draft>            (the prompt line; "!" in shell mode; column 0)
+ *       <continuation…>    (0..MAX_DRAFT_LINES wrapped-draft lines, INDENTED: any content, even a
+ *                           rule or a "❯" line the user pasted, is draft text — see atColumnZero)
  *     <bottom border>      (bare U+2500 rule)
  *     <tail…>              (0..MAX_TAIL_LINES rows, classified by classifyTail)
  *
@@ -366,7 +367,10 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  *     sits directly on a "❯" row (a second box's top border and prompt).
  *  2. THE FRAME CLOSES: a prompt line above the bottom border and a top border above that, inside
  *     the shared MAX_DRAFT_LINES budget. The prompt line carries "❯", or "!" in shell mode
- *     (isPromptRow). Only this step learned the bang; step 1's marks stay chevron-only.
+ *     (isPromptRow). Only this step learned the bang; step 1's marks stay chevron-only. Both sit at
+ *     column 0, and only a column-0 row stops the walk up from the bottom border: an indented row
+ *     is a wrapped-draft continuation, so a draft holding a pasted rule or shell prompt keeps its box
+ *     (ADR 0048 addendum 2026-09-26).
  *  3. THE TAIL IS ACCOUNTED FOR (classifyTail): a statusline run, a completion popup, or `unknown`.
  *  4. NO MODAL IS ON SCREEN: every specific dialog grammar runs over the WHOLE screen, and none may
  *     claim it; no tail row may carry a dialog footer; no `statusline` or `unknown` tail row may carry
@@ -602,6 +606,20 @@ function walkStatusline(
   return i === bottomBorder ? { statusEnd, agentsStart } : null;
 }
 
+/**
+ * Whether a row starts in the pane's first column. Claude paints its input box's two borders and its
+ * prompt row from column 0, and indents every wrapped-draft continuation row (two spaces, under the
+ * text after "❯ "). So inside the frame an INDENTED row is draft text, whatever it looks like: a
+ * pasted "────" rule or "❯ ls -la" shell prompt is a continuation, never the box's top border or its
+ * prompt row. Measured on every box in the Claude fixture corpus (84 boxes, ADR 0048 addendum
+ * 2026-09-26): each has its borders and prompt row at column 0 and every continuation row indented.
+ * Only the frame walk (walkFrame) asks this; step 1's frame marks stay indent-blind, because a
+ * dialog's pointer row or a statusline's own rule may be indented and must still stop that walk.
+ */
+function atColumnZero(text: string): boolean {
+  return text.length > 0 && !/^\s/.test(text);
+}
+
 /** The frame above a bottom border: the "❯" prompt line and the top border, or null. */
 function walkFrame(texts: string[], bottomBorder: number): { top: number; prompt: number } | null {
   let i = bottomBorder - 1;
@@ -609,22 +627,19 @@ function walkFrame(texts: string[], bottomBorder: number): { top: number; prompt
   // The "❯" prompt line — the FIRST line of the draft. A long draft wraps onto continuation lines
   // (indented, no "❯") between the prompt and the bottom border, so scan up past them to the prompt.
   // Bounded by MAX_DRAFT_LINES (see the comment above — defense-in-depth, not a correctness bound),
-  // and any box border en route aborts the match (we'd have left the box). Blank padding is tolerated
-  // on either side, but it draws from the SAME budget as real continuation lines — a bare
+  // and any box border en route aborts the match (we'd have left the box). Only a row at column 0 can
+  // be the prompt or a border (atColumnZero): an indented row is draft text, so a rule or a "❯" line
+  // the user pasted into the draft is walked past like any other continuation. Blank padding is
+  // tolerated on either side, but it draws from the SAME budget as real continuation lines — a bare
   // `while (isBlank) i--` here used to skip an unlimited run of blank lines for free before this loop
   // even started counting, which let a wall of blanks stand in for the non-blank filler the draft-walk
   // cap is supposed to bound.
   let wrapped = 0;
-  while (
-    i >= 0 &&
-    !isBoxBorder(texts[i]!) &&
-    !isPromptRow(texts[i]!) &&
-    wrapped < MAX_DRAFT_LINES
-  ) {
+  while (i >= 0 && !isFrameRow(texts[i]!) && wrapped < MAX_DRAFT_LINES) {
     wrapped++;
     i--;
   }
-  if (i < 0 || !isPromptRow(texts[i]!)) return null;
+  if (i < 0 || !atColumnZero(texts[i]!) || !isPromptRow(texts[i]!)) return null;
   const prompt = i;
   i--;
   // Blank padding between the prompt and the top border (e.g. a blank first line inside a freshly
@@ -641,6 +656,11 @@ function walkFrame(texts: string[], bottomBorder: number): { top: number; prompt
   // the comment on isInputBoxTopBorder in markers.ts), and by this point the bottom border, the "❯"
   // line, and the draft-walk cap have already pinned the rest of the shape down, so the looser test
   // doesn't reopen the false-positive risk a bare 1-glyph flank would elsewhere.
-  if (i < 0 || !isInputBoxTopBorder(texts[i]!)) return null;
+  if (i < 0 || !atColumnZero(texts[i]!) || !isInputBoxTopBorder(texts[i]!)) return null;
   return { top: i, prompt };
+}
+
+/** A row the frame walk stops on: a box border or a prompt row, painted from column 0. */
+function isFrameRow(text: string): boolean {
+  return atColumnZero(text) && (isBoxBorder(text) || isPromptRow(text));
 }

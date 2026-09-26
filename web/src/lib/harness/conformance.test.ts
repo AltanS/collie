@@ -64,6 +64,18 @@ const NEUTRAL = new Set([
   // unread-dialog post-pass (outside the adapter, harness/index.ts) is what offers Cancel over it,
   // and that card is pinned separately in unread-dialog.test.ts, not by this suite.
   "claude--menu-effort-slider--w40-low.txt",
+  // Claude Code 2.1.283 input boxes whose multi-line draft holds a pasted `────` rule or a pasted
+  // `❯ ls -la` shell prompt. Idle screens with a draft, never a dialog: the indented rows are draft
+  // text (ADR 0048 addendum 2026-09-26).
+  "claude--v2283-draft-prompt.txt",
+  "claude--v2283-draft-rule.txt",
+  // The shell prompt under a Claude that is starting or exiting (herdr already, or still, reports the
+  // agent): no dialog at all, and since the 2026-09-26 addendum to ADR 0053 no unread card either.
+  "claude--v2283-shell-before-first-frame.txt",
+  "claude--v2283-shell-after-exit.txt",
+  // A multiSelect with the pointer on its "Type something" field: a real dialog the adapter declines
+  // on purpose, because every toggle digit would be typed into the field. The unread card covers it.
+  "claude--v2283-multiselect-type-something-focused.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

@@ -122,12 +122,12 @@ the pointer, it was a supersede.
 | [0045](./0045-a-build-below-the-protocol-floor-is-a-red-preflight.md) | A build below the protocol floor is a red preflight, never a silent link | Accepted |
 | [0046](./0046-an-urgent-patch-keeps-the-daily-cadence.md) | An urgent patch keeps the daily cadence | Accepted |
 | [0047](./0047-muse-panes-render-natively.md) | Muse panes render natively: no light-theme inversion (addendum 2026-09-21: the bit's own limit) | Accepted |
-| [0048](./0048-the-input-box-is-found-by-its-own-frame.md) | The input box is found by its own frame; the statusline bound only bounds what is stripped (amends 0004) | Accepted |
+| [0048](./0048-the-input-box-is-found-by-its-own-frame.md) | The input box is found by its own frame; the statusline bound only bounds what is stripped (amends 0004; addendum 2026-09-26: an indented row inside the frame is draft text) | Accepted |
 | [0049](./0049-no-child-inherits-a-relocated-repository.md) | No child of Collie inherits a variable that relocates a git repository | Accepted |
 | [0050](./0050-a-crew-fault-blocks-an-update-only-when-the-update-makes-it-worse.md) | A crew fault blocks an update only when the update would make it worse (distinguishes 0045) | Accepted |
 | [0051](./0051-the-phone-app-runs-react-router-in-library-mode.md) | The phone app runs React Router in library mode; four build seams framework mode would take | Accepted |
 | [0052](./0052-one-build-serves-any-mount.md) | One build serves any mount: `COLLIE_BASE_PATH` is a runtime setting the bridge applies when it serves the shell | Accepted |
-| [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: a footer phrase never silences a grammar, and a raw-only modal gets its adapter's declared cancel key | Accepted |
+| [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: a footer phrase never silences a grammar, and a raw-only modal gets its adapter's declared cancel key (addendum 2026-09-26: positive evidence of a modal) | Accepted |
 | [0054](./0054-a-printed-scale-is-tappable.md) | A printed scale is tappable: when the screen names every value the arrows move along, the card shows them all and a tap sends the delta as repeated arrow presses | Accepted |
 | [0055](./0055-a-pointed-list-is-walked-then-confirmed.md) | A pointed list is walked, then confirmed: an unnumbered list with a `❯` on one row is tapped as the arrow delta plus the commit key the footer named, and never a synthesised digit (applies 0054 to a list) | Accepted |
 | [0056](./0056-a-card-can-be-put-down.md) | A lifted card can be put down: every card carries a Terminal control that shows the rows it replaced, lasting only as long as that dialog | Accepted |

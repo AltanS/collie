@@ -77,6 +77,8 @@ function decorateNativeMirror(
  *  2. nothing lifted — every block is `raw` (a grammar that read the screen owns it);
  *  3. `composerReady` answered a definite `false` (a throw or `undefined` is not a false);
  *  4. the screen is not blank (a cleared buffer is not a dialog).
+ * A fifth for an adapter that declares `modalOnScreen`: it must answer `true` (addendum 2026-09-26),
+ * so a shell prompt showing while the agent starts or exits gets no card.
  *
  * It lives OUTSIDE every adapter on purpose, so no adapter's `buildBlocks` can emit this kind and
  * the cross-adapter fail-closed cohorts stay exactly as strict as they were. It reads no footer and
@@ -113,6 +115,17 @@ export function withUnreadDialog(
   if (ready !== false) return blocks;
   const texts = lines.map(lineText);
   if (!texts.some((t) => t.trim() !== "")) return blocks;
+  // 5. When the adapter declares it, positive evidence that its modal is up: no input box is also
+  //    what a shell prompt looks like while the agent starts or exits.
+  if (adapter.modalOnScreen !== undefined) {
+    let modal = false;
+    try {
+      modal = adapter.modalOnScreen(lines);
+    } catch {
+      modal = false;
+    }
+    if (!modal) return blocks;
+  }
   return [
     {
       kind: "unread-dialog",

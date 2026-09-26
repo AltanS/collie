@@ -132,3 +132,23 @@ files every new or changed screen before the next Collie release.
 
 Credit for finding this belongs to the operator, who hit the `/effort` slider live on 2026-09-21 and
 had no way out of it but the Keys keypad.
+
+## Addendum 2026-09-26: a fifth condition, positive evidence of a modal
+
+The four conditions fired on a pane whose composer was not live but whose screen was not a modal
+either: the shell prompt under a Claude that is starting or exiting. Herdr reports the agent about
+0.3 s before its first frame paints and about 0.5 s after it exits, and the operator saw the card
+flash when starting Claude with a shell function (`claude-danger`). Captures:
+`claude--v2283-shell-before-first-frame.txt` and `claude--v2283-shell-after-exit.txt`.
+
+So an adapter may now also declare `modalOnScreen(lines)`, positive evidence that one of its own
+modals is up. When declared, the card needs it to answer `true`; a throw counts as `false`, the same
+fail-closed reading the pass gives `composerReady`. Claude declares it as "one of the last six
+non-blank rows names a key" (`namesAMenuKey`), which every screen on Claude's allow-list satisfies
+and a shell prompt does not. This is a gate on showing the card, not a footer parse for its key: the
+key is still the declaration. Adapters that declare nothing keep the four conditions unchanged.
+
+The same day, most of the screens that had been showing the card were read instead: the permission
+dialog is now recognised by its own words when its footer drops "Tab to amend", Claude's `▔` modal
+top is a menu region top, and the amend note and AskUserQuestion's "Type something." row are
+modelled as fields. The card stays the answer for what is left.

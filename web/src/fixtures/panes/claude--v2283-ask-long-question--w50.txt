@@ -1,0 +1,30 @@
+
+           [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[38;2;153;153;153mOpus 5.5 with high effort[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mClaude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/collie-claude-debug[0m
+
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse AskUserQuestion now with ONE question whose[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtext is one long sentence of about 25 words [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mabout picking a lunch fruit. Options: Apple, [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mBanana, Orange with short descriptions. Do [0m[48;2;55;55;55m     [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mnothing else.[0m[48;2;55;55;55m                                   [0m
+[0m[38;2;153;153;153m──────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Lunch fruit [0m
+
+[0m[2m│ [0m[1m[38;2;255;255;255mWhich single piece of fresh fruit would you most[0m
+[0m[2m│ [0m[1m[38;2;255;255;255mlike me to pack in your lunch box for a healthy[0m
+[0m[2m│ [0m[1m[38;2;255;255;255mmidday snack at work today?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mApple[0m
+     [0m[38;2;153;153;153mCrisp and sweet, easy to carry.[0m
+  [0m[38;2;153;153;153m2. [0mBanana
+     [0m[38;2;153;153;153mSoft, filling, and quick to peel.[0m
+  [0m[38;2;153;153;153m3. [0mOrange
+     [0m[38;2;153;153;153mJuicy and rich in vitamin C.[0m
+  [0m[38;2;153;153;153m4. Type something.[0m
+[0m[38;2;153;153;153m──────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

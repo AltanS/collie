@@ -1,0 +1,40 @@
+
+[0m[38;2;153;153;153m  ⎿  [0mResume cancelled
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ [0m[38;2;153;153;153m● high · /effort[0m[38;2;177;185;249m ▔[0m
+   [0m[1m[38;2;177;185;249mHooks[0m
+   [0m[38;2;153;153;153m20 hooks configured[0m
+
+   [0m[38;2;153;153;153mThis menu is read-only. To add or change a hook, edit settings.json or ask Claude. Learn more[0m
+
+   [0m[38;2;177;185;249m❯ PreToolUse   [0m[38;2;153;153;153m4 hooks[0m
+     [0m[38;2;153;153;153mBefore tool execution[0m
+     PostToolUse   [0m[38;2;153;153;153m3 hooks[0m
+     [0m[38;2;153;153;153mAfter tool execution[0m
+     PostToolUseFailure   [0m[38;2;153;153;153m2 hooks[0m
+     [0m[38;2;153;153;153mAfter tool execution fails[0m
+     PostToolBatch
+     [0m[38;2;153;153;153mAfter a batch of tool calls resolves[0m
+     PermissionDenied
+     [0m[38;2;153;153;153mAfter auto mode classifier denies a tool call[0m
+     Notification   [0m[38;2;153;153;153m2 hooks[0m
+     [0m[38;2;153;153;153mWhen notifications are sent[0m
+     UserPromptSubmit   [0m[38;2;153;153;153m2 hooks[0m
+     [0m[38;2;153;153;153mWhen the user submits a prompt[0m
+     UserPromptExpansion
+     [0m[38;2;153;153;153mWhen a user-typed slash command expands into a prompt[0m
+     SessionStart   [0m[38;2;153;153;153m3 hooks[0m
+     [0m[38;2;153;153;153mWhen a new session is started[0m
+     Stop   [0m[38;2;153;153;153m2 hooks[0m
+     [0m[38;2;153;153;153mRight before Claude concludes its response[0m
+     StopFailure
+     [0m[38;2;153;153;153mWhen the turn ends due to an API error[0m
+     SubagentStart
+     [0m[38;2;153;153;153mWhen a subagent (Agent tool call) is started[0m
+     SubagentStop
+     [0m[38;2;153;153;153mRight before a subagent (Agent tool call) concludes its response[0m
+     PreCompact
+     [0m[38;2;153;153;153mBefore conversation compaction[0m
+
+     [0m[38;2;153;153;153m↓ 19 more below[0m
+  
+   [0m[3m[38;2;153;153;153mEnter to confirm · Esc to cancel[0m

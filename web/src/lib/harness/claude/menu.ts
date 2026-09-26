@@ -24,15 +24,17 @@
 // model (../menu-model.ts) and the harness-agnostic derivation — footer-hint parsing, the key
 // whitelist, label capitalisation, the arrow-row grammar and key constants (../menu-hints.ts) — are
 // shared, so another adapter implements menus by supplying its OWN conventions only: where its region
-// starts (Claude: the nearest rule/border above the footer), what its tail is, and how it knows an
-// input box is on screen (Claude: ./chrome). See HARNESS_CONTRIBUTING.md → "Menus (generic modals)".
+// starts (Claude: the nearest rule/border above the footer, or the `▔` modal edge newer builds open a
+// modal with, ./region-top.ts), what its tail is, and how it knows an input box is on screen (Claude:
+// ./chrome). See HARNESS_CONTRIBUTING.md → "Menus (generic modals)".
 
 import type { StyledLine } from "../../blocks";
 import { hasInputBox } from "./chrome";
-import { classifyFooter, isBlank, isBoxBorder, isHorizontalRule, lineText } from "./markers";
+import { classifyFooter, isBlank, lineText } from "./markers";
 import { regionSignature } from "./prompt-select";
-import type { MenuModel, MenuNav } from "../menu-model";
-import { MENU_ARROW_ROW, parseKeyHintFooter } from "../menu-hints";
+import { findRegionTop } from "./region-top";
+import type { MenuAction, MenuModel, MenuNav } from "../menu-model";
+import { capitaliseMenuLabel, MENU_ARROW_ROW, menuKeyFor, parseKeyHintFooter, readKeyHintFooter } from "../menu-hints";
 
 /** The detection result buildBlocks needs: the model plus `startLine`, the index of the region's
  *  opening rule. Everything above it stays raw. */
@@ -45,23 +47,41 @@ export interface MenuRegion {
 // meaningful (without a highlight there is nothing to move).
 const POINTER = "❯";
 
-// How far above the footer to look for the region's opening rule. Generous enough for a tall picker,
-// bounded so a borderless buffer can't be claimed unboundedly — no rule within the window, no match.
-const REGION_SCAN_WINDOW = 30;
+// A footer of ONE hint that names Esc: "Esc to cancel", "Esc to close". parseKeyHintFooter refuses a
+// single segment, because one "<key> to <verb>" phrase is too little to call a screen a menu. Claude
+// Code 2.1.283's info panels (`/status`, `/usage`) and its `/export` and `/login` pickers print
+// nothing else, so they fell to the unread-dialog card. The claim is taken only under a `▔` modal
+// edge (region-top.ts), a mark Claude draws for its own modals and nothing else, and only when the
+// hint is the WHOLE footer: the last row of a WRAPPED footer ("↑/↓ to select · Enter to view ·" over
+// "Esc to close", /tasks at 40 columns) is never read as all of it (readKeyHintFooter joins the rows
+// a footer wrapped onto, and a group that starts above the last row is not a lone hint).
+const SINGLE_HINT = /^(.+?)\s+to\s+(.+)$/i;
+const SEGMENT_SPLIT = /\s+·\s+/;
+
+/** The one Cancel action a single-hint "Esc to <verb>" footer names, or null. */
+function escOnlyFooter(footer: string): MenuAction | null {
+  const text = footer.trim();
+  if (text.split(SEGMENT_SPLIT).length !== 1) return null;
+  const m = SINGLE_HINT.exec(text);
+  if (m === null || menuKeyFor(m[1]!) !== "Escape") return null;
+  return { label: capitaliseMenuLabel(m[2]!), keys: ["Escape"], cancel: true };
+}
 
 /**
  * Detect a generic menu at the tail of `lines`. Returns the model + its start line, or null.
  *
  * Ordered bails, cheapest and most decisive first:
- *   1. the last non-blank line must parse as a key-hint footer;
+ *   1. the last non-blank line must parse as a key-hint footer, or be a single "Esc to <verb>" hint
+ *      (escOnlyFooter), which step 4 accepts only under a `▔` modal edge;
  *   2. `classifyFooter` must NOT claim it — the known dialog families keep their own grammars, which
  *      encode verified keystroke recipes this one cannot reproduce. The whole screen goes to that
  *      call, not the footer alone: a claim here means "somebody else owns this", so it has to be
  *      answerable from the dialog, never from one phrase any screen may print (ADR 0053);
  *   3. there must be NO input box at the tail — a normal prompt screen whose statusline happens to
  *      read like hints is not a modal, and claiming it would put fake buttons under a live composer;
- *   4. a full-width rule / box border must sit within REGION_SCAN_WINDOW above the footer, and carry
- *      a non-blank title line under it.
+ *   4. the region's top must be found (region-top.ts): the nearest `─` rule / box border within
+ *      REGION_SCAN_WINDOW above the footer, or a full-width `▔` modal edge within MODAL_EDGE_WINDOW,
+ *      and it must carry a non-blank title line under it.
  *
  * Pure; the caller owns pane access.
  */
@@ -74,20 +94,21 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
 
   const footer = texts[fi]!;
   if (classifyFooter(footer, texts) !== null) return null;
-  const actions = parseKeyHintFooter(footer);
-  if (actions.length === 0) return null;
+  let actions = parseKeyHintFooter(footer);
+  const escOnly = actions.length === 0 ? escOnlyFooter(footer) : null;
+  if (actions.length === 0 && escOnly === null) return null;
   if (hasInputBox(lines)) return null;
 
-  // The region's top: the nearest rule/border above the footer. The picker draws one full-width rule
-  // across the screen where its modal begins, which is the only structural boundary it offers.
-  let top = -1;
-  for (let i = fi - 1, seen = 0; i >= 0 && seen < REGION_SCAN_WINDOW; i--, seen++) {
-    if (isBoxBorder(texts[i]!) || isHorizontalRule(texts[i]!)) {
-      top = i;
-      break;
-    }
+  // The region's top: the nearest rule/border above the footer, or the `▔` edge a newer Claude opens
+  // its modal with. The picker draws one full-width row across the screen where its modal begins,
+  // which is the only structural boundary it offers.
+  const region = findRegionTop(texts, fi);
+  if (region === null) return null;
+  const top = region.line;
+  if (escOnly !== null) {
+    if (!region.edge || (readKeyHintFooter(texts)?.startLine ?? fi) < fi) return null;
+    actions = [escOnly];
   }
-  if (top < 0) return null;
 
   // Title = the first non-blank line under the rule. A rule with nothing but the footer beneath it
   // is not a menu we can name, so bail rather than render an untitled panel.

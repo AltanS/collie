@@ -116,6 +116,12 @@ so an unread modal leaves the operator with the raw mirror and the Keys pad. Tak
 template makes its composer scanner return null on every frame, so `composerReady` would be false
 forever on a healthy pane and the card would paint itself permanently over a live composer.
 
+**Optionally declare `modalOnScreen(lines)` too**: positive evidence that one of your harness's
+modals is up. No input box is also what a shell prompt looks like while your agent starts or exits,
+and Herdr reports the agent in both windows, so without it the card can flash over the shell. When
+declared, the card needs it to answer `true`. Claude's answer is "one of the last six non-blank rows
+names a key"; pin yours against the card's allow-list test (`unread-dialog.test.ts`).
+
 ### The fail-closed contract (non-negotiable)
 
 **A detector MUST return `null` on anything it does not confidently recognise.** A partial lift is a

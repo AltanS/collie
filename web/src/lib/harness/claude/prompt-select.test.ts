@@ -195,16 +195,14 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
     expect(model!.feedback).toBeUndefined();
   });
 
-  it("AskUserQuestion's free-text row is DROPPED but never modelled", () => {
-    // "Type something." is a free-text row too, and it has always been dropped — but nothing about
-    // its focus or typed-in behaviour has been measured, and it carries no static description
-    // sub-line to identify it once typed into. Modelling it would hand the plan flow's copy ("Sends
-    // the plan back…") and its keystroke plan to a dialog where Enter means something else. Only the
-    // plan row's verified marker earns a model.
+  it("AskUserQuestion's free-text row is modelled as a field Collie never types into", () => {
+    // "Type something." is never a button. Measured on Claude Code 2.1.283: with the pointer on it a
+    // digit is typed into the field, so it is modelled with the `free-text` purpose, which locks the
+    // other buttons while focused and never offers the plan flow's editor or keystroke plan.
     const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"))!;
     expect(model.family).toBe("select");
     expect(model.options.map((o) => o.label)).not.toContain("Type something.");
-    expect(model.feedback).toBeUndefined();
+    expect(model.feedback).toEqual({ key: expect.any(String), focused: false, text: "", purpose: "free-text" });
   });
 
   it("coreSignature survives the flow's OWN first keystroke, where signature must not", () => {

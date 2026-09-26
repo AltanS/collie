@@ -16,8 +16,8 @@
 // marked only by a background highlight, not by a distinct glyph.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
-import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
+import { classifyFooter, isBlank, isHorizontalRule, lineText, questionRowText } from "./markers";
+import { checkboxState, freeTextRowIndex, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import {
   WIZARD_BACK_KEYS,
   WIZARD_CANCEL_KEYS,
@@ -191,11 +191,19 @@ function detectQuestionPhase(
   const { stepper, index: stepperIdx } = found;
 
   // The question: every non-blank line between the stepper and the first option, joined (long
-  // questions wrap). There is always at least one.
+  // questions wrap), without the `│` gutter Claude paints down a question of more than one row.
+  // There is always at least one.
   const questionLines: string[] = [];
   for (let i = stepperIdx + 1; i < firstOpt; i++) {
-    if (!isBlank(texts[i]!)) questionLines.push(texts[i]!.trim());
+    if (!isBlank(texts[i]!)) questionLines.push(questionRowText(texts[i]!));
   }
+
+  // The "Type something." text field, found by position (freeTextRowIndex) because typing replaces
+  // its placeholder. While `❯` is on it every digit is typed INTO it (measured on Claude Code
+  // 2.1.283), so no answer button may be offered and the WizardModel has no lock: the screen is not
+  // claimed. Off the field, the row is still an input, never an answer.
+  const field = freeTextRowIndex(texts, menu);
+  if (field >= 0 && /^\s*❯/.test(texts[menu[field]!.index]!)) return null;
   if (questionLines.length === 0) return null;
   const question = questionLines.join(" ");
 
@@ -204,7 +212,7 @@ function detectQuestionPhase(
   const options: WizardOption[] = [];
   for (let r = 0; r < menu.length; r++) {
     const row = menu[r]!;
-    if (isFreeTextLabel(row.label)) continue;
+    if (r === field || isFreeTextLabel(row.label)) continue;
     const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : fi;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {

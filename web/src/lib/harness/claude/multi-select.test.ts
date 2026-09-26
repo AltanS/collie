@@ -350,7 +350,11 @@ describe("detectMultiSelect — the advance row is a place, not a word", () => {
     // pointerAt returns on the FIRST ❯ it sees. If a decoy above the real pointer could claim
     // "advance", the macro would press Enter on whatever row the terminal's ❯ is really on — and on
     // "Chat about this" that aborts the entire tool call.
-    const m = model(pane(["  1. [ ] Garlic knots", "  ❯ Submit", "❯ 2. [ ] Caesar salad"], "Submit"));
+    // The last checkbox row is "Type something", as on every real capture: a pointer ON that field
+    // declines the screen (see the field tests below), so the decoy test keeps it elsewhere.
+    const m = model(
+      pane(["  1. [ ] Garlic knots", "  ❯ Submit", "❯ 2. [ ] Caesar salad", "  3. [ ] Type something"], "Submit"),
+    );
     expect(m).not.toBeNull();
     if (m!.phase !== "checkbox") throw new Error("expected checkbox phase");
     // A decoy still shadows the real ❯ (pointerAt takes the first one), so this reads "other" rather

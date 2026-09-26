@@ -1,0 +1,26 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mOpus 5.5 with high effort · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/collie-dialog-debug[0m
+
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse the AskUserQuestion tool right now with ONE question. Make the question text span two lines with a real line [0m[48;2;55;55;55m     [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mbreak in it: first line "Which fruit do you want?" and second line "Pick the one you like best.". Give 3 options, [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55meach with a description that contains a line break too. Do nothing else.[0m[48;2;55;55;55m                                              [0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Fruit [0m
+
+[0m[2m│ [0m[1m[38;2;255;255;255mWhich fruit do you want?[0m
+[0m[2m│ [0m[1m[38;2;255;255;255mPick the one you like best.[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mApple[0m
+     [0m[38;2;153;153;153mA crisp, sweet fruit.�It is good for snacks.[0m
+  [0m[38;2;153;153;153m2. [0mBanana
+     [0m[38;2;153;153;153mA soft, yellow fruit.�It is easy to peel.[0m
+  [0m[38;2;153;153;153m3. [0mOrange
+     [0m[38;2;153;153;153mA juicy citrus fruit.�It has a lot of vitamin C.[0m
+  [0m[38;2;153;153;153m4. Type something.[0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

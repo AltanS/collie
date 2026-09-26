@@ -1,0 +1,30 @@
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mfruit?" then "Think about taste.", 3 options, descriptions with a newline inside. Question 2: multiSelect true, text [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mon two lines with a newline, "Which colors?" then "Pick all that apply.", 3 options with newline in descriptions. Do [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mnothing else.[0m[48;2;55;55;55m                                                                                                         [0m
+
+[0m[38;2;153;153;153m● [0mUser declined to answer questions
+[0m[38;2;153;153;153m  ⎿  · Which fruit?[0m
+     [0m[38;2;153;153;153mThink about taste. (Apple / Banana / Orange)[0m
+     [0m[38;2;153;153;153m· Which colors?[0m
+     [0m[38;2;153;153;153mPick all that apply. (Red / Green / Blue)[0m
+
+[0m[38;2;153;153;153m✻ Crunched for 3s · done 8:47 AM[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse AskUserQuestion now with ONE question: "What is your favorite fruit?" with options Apple, Banana, Orange (short [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mdescriptions). Do nothing else.[0m[48;2;55;55;55m                                                                                       [0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Fruit [0m
+
+[0m[1m[38;2;255;255;255mWhat is your favorite fruit?[0m
+
+  [0m[38;2;153;153;153m1.[0m Apple
+     [0m[38;2;153;153;153mA crisp, sweet fruit.[0m
+  [0m[38;2;153;153;153m2.[0m Banana
+     [0m[38;2;153;153;153mA soft, yellow fruit.[0m
+  [0m[38;2;153;153;153m3.[0m Orange                                                                                           
+     [0m[38;2;153;153;153mA juicy citrus fruit.[0m
+[0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m4. [0m[2mType something.[0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · ctrl+g to edit in nano · Esc to cancel[0m

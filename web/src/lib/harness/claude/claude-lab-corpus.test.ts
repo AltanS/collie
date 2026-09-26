@@ -260,10 +260,11 @@ describe("the pipeline lifts the kind the screen shows", () => {
   });
 
   it("every knownRaw carries a reason naming a candidate grammar, and pins its reading", () => {
-    // Eight: the seven the register in M34 spec 03 argues, plus the 40-column /tasks panel the
-    // 2026-09-22 capture-lab run added. When a grammar lands, the repair is to delete that entry's
-    // `knownRaw` and its `actualToday`, and to lower this number.
-    expect(RAW_GAPS.length).toBe(8);
+    // Four: the seven the register in M34 spec 03 argues, plus the 40-column /tasks panel the
+    // 2026-09-22 capture-lab run added, less the WebFetch dialog and the three plan-approval
+    // captures the 2026-09-26 grammar work lifted. When a grammar lands, the repair is to delete that
+    // entry's `knownRaw` and its `actualToday`, and to lower this number.
+    expect(RAW_GAPS.length).toBe(4);
     for (const entry of RAW_GAPS) {
       expect(entry.knownRaw!.length, entry.fixture).toBeGreaterThan(40);
       expect(entry.expected.blockKind, entry.fixture).not.toBe("raw");

@@ -1,0 +1,30 @@
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mbreak in it: first line "Which fruit do you want?" and second line "Pick the one you like best.". Give 3 options, [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55meach with a description that contains a line break too. Do nothing else.[0m[48;2;55;55;55m                                              [0m
+
+[0m[38;2;153;153;153m● [0mUser declined to answer questions
+[0m[38;2;153;153;153m  ⎿  · Which fruit do you want?[0m
+     [0m[38;2;153;153;153mPick the one you like best. (Apple / Banana / Orange)[0m
+
+[0m[38;2;153;153;153m✻ Cooked for 3s · done 8:42 AM[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse AskUserQuestion now with TWO questions in one call. Question 1: text on two lines with a real newline, "Which [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mfruit?" then "Think about taste.", 3 options, descriptions with a newline inside. Question 2: multiSelect true, text [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mon two lines with a newline, "Which colors?" then "Pick all that apply.", 3 options with newline in descriptions. Do [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mnothing else.[0m[48;2;55;55;55m                                                                                                         [0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m← [0m[38;2;0;0;0m[48;2;177;185;249m ☐ Fruit  [0m☐ Colors  ✔ Submit  →
+
+[0m[2m│ [0m[1m[38;2;255;255;255mWhich fruit?[0m
+[0m[2m│ [0m[1m[38;2;255;255;255mThink about taste.[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mApple[0m
+     [0m[38;2;153;153;153mA crisp, sweet fruit.�It is good for snacks.[0m
+  [0m[38;2;153;153;153m2. [0mBanana
+     [0m[38;2;153;153;153mA soft, yellow fruit.�It is easy to peel.[0m
+  [0m[38;2;153;153;153m3.[0m Orange
+     [0m[38;2;153;153;153mA juicy citrus fruit.�It has a lot of vitamin C.[0m
+  [0m[38;2;153;153;153m4. Type something.[0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · Tab/Arrow keys to navigate · Esc to cancel[0m

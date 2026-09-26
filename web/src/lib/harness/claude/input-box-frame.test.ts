@@ -7,7 +7,8 @@ import { splitLines, type StyledLine } from "../../blocks";
 import { detectAutocompleteRegion } from "./autocomplete";
 import { namesAMenuKey } from "../menu-hints";
 import { extractInputDraft, extractStatusLines, hasInputBox, inputBoxTail } from "./chrome";
-import { claudeBuildBlocks } from "./index";
+import { draftCarriesSend } from "../../reply-action";
+import { claudeAdapter, claudeBuildBlocks } from "./index";
 import { lineText } from "./markers";
 import { detectMenuRegion } from "./menu";
 import { detectMultiSelectRegion } from "./multi-select";
@@ -76,6 +77,10 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--model-alias.txt",
     "claude--rename-resolved.txt",
     "claude--send-inflight.txt",
+    // Claude Code 2.1.283 drafts holding a pasted rule and a pasted shell prompt: an indented row
+    // inside the frame is draft text (ADR 0048 addendum 2026-09-26).
+    "claude--v2283-draft-prompt.txt",
+    "claude--v2283-draft-rule.txt",
     "claude--working.txt",
   ]);
 
@@ -349,5 +354,59 @@ describe("property: popup mutations never hide the box", () => {
       expect(extractInputDraft(lines), `${name} case ${k}`).toBe(draft);
       expect(inputBoxTail(lines), `${name} case ${k}`).not.toBeNull();
     }
+  });
+});
+
+describe("an indented row inside the frame is draft text (ADR 0048 addendum 2026-09-26)", () => {
+  // Claude paints both borders and the prompt row from column 0 and indents every wrapped-draft
+  // continuation row by two spaces. A draft that holds a pasted rule or a pasted shell prompt used
+  // to stop the frame walk on that row, so the box vanished and a send from the phone stalled.
+  it.each([
+    [
+      "claude--v2283-draft-rule.txt",
+      "see this output: ──────────────────── some text ──────────────────── end",
+      "see this output:\n────────────────────\nsome text\n────────────────────\nend",
+    ],
+    [
+      "claude--v2283-draft-prompt.txt",
+      "my shell said: ❯ ls -la and then nothing",
+      "my shell said:\n❯ ls -la\nand then nothing",
+    ],
+  ])("%s: the box stands and the whole draft is read", (name, draft, sent) => {
+    const lines = load(name);
+    expect(hasInputBox(lines)).toBe(true);
+    expect(claudeAdapter.composerReady?.(lines)).toBe(true);
+    expect(inputBoxTail(lines)).toBe("statusline");
+    expect(extractInputDraft(lines)).toBe(draft);
+    // The send guard compares the draft with what was typed; the full draft must vouch for it.
+    expect(draftCarriesSend(sent, extractInputDraft(lines))).toBe(true);
+    expect(claudeBuildBlocks(lines).map((b) => b.kind)).toEqual(["raw"]);
+  });
+
+  it.each([
+    ["a bare rule", ["  " + "─".repeat(20)]],
+    ["a labelled rule", [`  ${"─".repeat(6)} section ${"─".repeat(6)}`]],
+    ["a chevron prompt", ["  ❯ ls -la"]],
+    ["a bang prompt", ["  ! rm -rf build"]],
+    ["a rule as the last draft row", ["  more", "  " + "─".repeat(20)]],
+    ["a rule and a chevron together", ["  " + "─".repeat(20), "  ❯ 1. Yes", "  " + "─".repeat(20)]],
+  ])("a draft continuation holding %s keeps the box", (_label, continuation) => {
+    const lines = fromTexts(["● earlier turn", RULE, "❯ look at this:", ...continuation, RULE, "  [Opus 5] ~/src"]);
+    expect(hasInputBox(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toBe(["look at this:", ...continuation.map((r) => r.trim())].join(" "));
+  });
+
+  it("the prompt row must sit at column 0: an indented one between two borders is no box", () => {
+    expect(hasInputBox(fromTexts([RULE, "  ❯ draft", RULE]))).toBe(false);
+  });
+
+  it("the top border must sit at column 0: an indented one closes no box", () => {
+    expect(hasInputBox(fromTexts([`  ${RULE}`, "❯ draft", RULE]))).toBe(false);
+  });
+
+  it("an unindented border inside the draft still ends the walk: a stale box stays refused", () => {
+    // The column-0 rule is the frame of an OLDER box; the walk must not reach past it.
+    const lines = fromTexts(["❯ old", RULE, "stray row", RULE]);
+    expect(hasInputBox(lines)).toBe(false);
   });
 });

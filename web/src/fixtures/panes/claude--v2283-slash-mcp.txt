@@ -1,0 +1,14 @@
+
+
+
+
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ [0m[38;2;153;153;153m● high · /effort[0m[38;2;177;185;249m ▔[0m
+   [0m[1m[38;2;177;185;249mManage MCP servers[0m
+   [0m[38;2;153;153;153m2 servers[0m
+                                           
+     [0m[1mclaude.ai[0m
+   [0m[38;2;177;185;249m❯ [0m[38;2;78;186;101m✔ [0m[38;2;177;185;249mclaude.ai Claude Docs   [0m[38;2;153;153;153m8 tools[0m
+     [0m[38;2;255;193;7m⚠ [0mclaude.ai Google Drive   [0m[38;2;153;153;153mneeds authentication[0m
+  
+   [0m[38;2;153;153;153mhttps://code.claude.com/docs/en/mcp for help[0m
+   [0m[3m[38;2;153;153;153m↑/↓ to navigate · Enter to confirm · Esc to cancel[0m

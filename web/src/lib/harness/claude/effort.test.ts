@@ -6,7 +6,7 @@ import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { buildBlocks } from "../index";
 import { menusEqual, menusSameIdentity } from "../menu-model";
-import { detectEffort } from "./effort";
+import { detectEffort, detectEffortRegion } from "./effort";
 import { claudeBuildBlocks } from "./index";
 import { detectMenu } from "./menu";
 
@@ -57,6 +57,11 @@ const LOW_ULTRACODE_LIFTS: Array<{ name: string; label: string }> = [
   // reads that soft wrap as one block, so all three keys and the `←/→` phrase survive the join.
   { name: "claude--menu-effort-slider--w60-ultracode.txt", label: "ultracode" },
 ];
+// Claude Code 2.1.283 opens the slider under a `▔` modal edge that carries a label
+// (`▔▔▔…▔ ● high · /effort ▔`), with no `─` rule anywhere above the title. Before region-top.ts read
+// that edge, the scan found no top and the live screen fell to the unread-dialog card; every older
+// capture above passed because a plain `▔` row or a transcript rule sat inside the window.
+const EDGE_FIXTURE = "claude--v2283-slash-effort.txt";
 // The scale that screen printed, left to right.
 const SCALE = ["low", "medium", "high", "xhigh", "max", "ultracode"];
 // Every capture of this screen in the corpus.
@@ -67,6 +72,7 @@ const EFFORT_FIXTURES = [
   ...WRAPPED_FIXTURES,
   ...LOW_ULTRACODE_LIFTS.map((f) => f.name),
   "claude-lab--menu-effort-slider--w82.txt",
+  EDGE_FIXTURE,
 ];
 
 function lines(text: string): StyledLine[] {
@@ -125,6 +131,21 @@ describe("detectEffort — the /effort slider", () => {
         expect(/\d/.test(key), key).toBe(false);
       }
     }
+  });
+});
+
+describe("detectEffort — the `▔` modal edge of Claude Code 2.1.283", () => {
+  it("lifts the slider whose only region top is a labelled `▔` edge", () => {
+    const region = detectEffortRegion(load(EDGE_FIXTURE));
+    expect(region).not.toBeNull();
+    expect(region!.model.title).toBe("Effort");
+    expect(region!.model.actions).toEqual(EXPECTED_ACTIONS);
+    expect(region!.model.nav).toEqual({
+      upDown: false,
+      leftRight: { verb: "adjust", label: "high", values: SCALE },
+    });
+    expect(textOf(load(EDGE_FIXTURE)[region!.startLine]!).startsWith("▔")).toBe(true);
+    expect(claudeBuildBlocks(load(EDGE_FIXTURE)).map((b) => b.kind)).toEqual(["menu"]);
   });
 });
 
