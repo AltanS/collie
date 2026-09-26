@@ -79,14 +79,26 @@ function envGet(
   name: string,
   platform: NodeJS.Platform,
 ): string | undefined {
-  const direct = env[name];
-  if (direct !== undefined) return direct;
-  if (platform !== "win32") return undefined;
+  return env[envKey(env, name, platform)];
+}
+
+/**
+ * The key `name` is actually spelled under in `env` — `Path` rather than `PATH` on a Windows copy —
+ * or `name` itself when no spelling of it is present. A caller that WRITES the variable back needs
+ * this, not just the value: setting `PATH` beside an existing `Path` leaves the child with two
+ * entries that differ only in case, and which one Windows honours is not ours to pick.
+ */
+export function envKey(
+  env: Record<string, string | undefined>,
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (env[name] !== undefined || platform !== "win32") return name;
   const wanted = name.toLowerCase();
   for (const key of Object.keys(env)) {
-    if (key.toLowerCase() === wanted) return env[key];
+    if (key.toLowerCase() === wanted) return key;
   }
-  return undefined;
+  return name;
 }
 
 /**
