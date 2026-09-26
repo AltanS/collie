@@ -10,8 +10,19 @@ import { panePath } from "@/lib/nav";
 import { useNav } from "@/hooks/use-nav";
 import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
-import type { Scope } from "@/lib/scope";
+import { scopeKey, type Scope } from "@/lib/scope";
 import { useOptionalRootData } from "@/lib/route-data";
+
+/**
+ * The key a tab create in flight is held under in `creatingTab`: the space's machine, its session
+ * and its id. A crew's machines number their spaces from `w1` each (lib/pane-groups.ts), so the bare
+ * id would let the lead's `w1` and a peer's `w1` share one spinner, and a tap on one would be
+ * swallowed while the other is in flight. `scope` is the one the create was sent with; absent is
+ * the lead's primary session, as everywhere.
+ */
+export function tabCreateKey(workspaceId: string, scope: Scope | undefined): string {
+  return `${scopeKey(scope)}\u0000${workspaceId}`;
+}
 
 // Shared "create a tab/space/worktree, then jump into its fresh shell" flow, used by the home space
 // view and the detail Herdr palette. The new pane won't be in the snapshot until the next poll, so
@@ -85,22 +96,31 @@ export function useSpaceActions() {
 
   // ONE create per Space's "+" at a time — the same shape as `launch` below, and for the same
   // reason: a create is a round trip, an impatient second tap on a phone is normal, and every tap
-  // that gets through makes another throwaway tab the operator then has to close. Keyed by
-  // workspaceId, not global, so a different Space's "+" stays live while this one is in flight.
+  // that gets through makes another throwaway tab the operator then has to close. Keyed by the
+  // space's full address (`tabCreateKey`), not global, so a different Space's "+" stays live while
+  // this one is in flight, and so is the same-numbered Space on another machine.
   const [creatingTab, setCreatingTab] = useState<ReadonlySet<string>>(() => new Set());
   const creatingTabRef = useRef<Set<string>>(new Set());
   const newTab = useCallback(
-    async (workspaceId: string) => {
+    // `at` is the scope the space lives on, as `newSpace` takes it, and it addresses the create AND
+    // the step into the new pane. The dashboard's workspace headings pass their own group's
+    // (M40/03): that list holds every machine in a crew, and the ambient scope names only the one
+    // the URL is on, so a peer's heading sent ambiently would open the tab in the LEAD's space of
+    // the same number. Absent means the ambient scope, which is right for the two tab strips: they
+    // draw a space of the addressed machine and session only.
+    async (workspaceId: string, at?: Scope) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
-      if (creatingTabRef.current.has(workspaceId)) return;
-      creatingTabRef.current.add(workspaceId);
+      const scope = at ?? scopeRef.current;
+      const key = tabCreateKey(workspaceId, scope);
+      if (creatingTabRef.current.has(key)) return;
+      creatingTabRef.current.add(key);
       setCreatingTab(new Set(creatingTabRef.current));
       try {
-        open(await api.createTab(workspaceId, {}, scopeRef.current), "tab");
+        open(await api.createTab(workspaceId, {}, scope), "tab", scope);
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       } finally {
-        creatingTabRef.current.delete(workspaceId);
+        creatingTabRef.current.delete(key);
         setCreatingTab(new Set(creatingTabRef.current));
       }
     },
