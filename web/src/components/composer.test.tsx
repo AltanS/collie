@@ -12,7 +12,7 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
-import { CLEAR_UNDO_MS, Composer, TUI_SETTLE_MS } from "./composer";
+import { Composer, TUI_SETTLE_MS } from "./composer";
 import { type ServerSummary } from "@/lib/types";
 
 // A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
@@ -3385,8 +3385,8 @@ describe("Composer — an attachment is a chip (ADR 0060)", () => {
 
 // THE BELT'S X AND ITS UNDO (M40 spec 04, issue #291; Altan, 2026-09-26/27). An icon-only X on the
 // belt's pinned block while the phone's box holds text or chips. One tap empties the text, the chips
-// and the stored draft of this pane and sends nothing to the pane; the slot then shows Undo for
-// CLEAR_UNDO_MS, or until the next keystroke or chip, and Undo puts all three back.
+// and the stored draft of this pane and sends nothing to the pane; the slot then shows Undo until the
+// next act (no timer), and Undo puts all three back.
 describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
   const chip = { n: 1, path: "/tmp/a.png", name: "a.png", kind: "image" as const };
   // SAFETY: the composer's only placeholder-bearing control is its ChatInput, a `<textarea>`, and
@@ -3485,7 +3485,7 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
     expect(loadDraftEntry(undefined, "w1:p1")?.next).toBe(3);
   });
 
-  it("clear: Undo ends after CLEAR_UNDO_MS, and the draft stays gone", async () => {
+  it("clear: Undo has no timer, it stands until the next act", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderComposer();
@@ -3494,9 +3494,20 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
     await user.click(xButton()!);
     expect(undoButton()).toBeInTheDocument();
 
-    await act(() => vi.advanceTimersByTimeAsync(CLEAR_UNDO_MS - 100));
+    // Altan, 2026-09-27: a slot that left on a clock narrowed the pinned block under a tap on its way.
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
     expect(undoButton()).toBeInTheDocument();
-    await act(() => vi.advanceTimersByTimeAsync(200));
+  });
+
+  it("clear: a tap on another belt control ends Undo, and the draft stays gone", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    fireEvent.change(field(), { target: { value: "never mind" } });
+    await user.click(xButton()!);
+    expect(undoButton()).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+
     expect(undoButton()).not.toBeInTheDocument();
     // An empty box after the window: the slot empties, nothing comes back.
     expect(xButton()).not.toBeInTheDocument();

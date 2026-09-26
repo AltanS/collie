@@ -285,13 +285,6 @@ function revokePreview(attachment: ComposerAttachment) {
   URL.revokeObjectURL(attachment.previewUrl);
 }
 
-/**
- * How long Undo stands in the X's slot on the belt after a clear, in ms (M40 spec 04, Altan's
- * number). A keystroke, a new chip, a send, arming Type or leaving the pane ends it sooner. Exported
- * so the tests pin the window against this constant rather than a copy of its value.
- */
-export const CLEAR_UNDO_MS = 10_000;
-
 /** What the belt's X took out of the box, held in memory for its Undo (M40 spec 04). */
 interface ClearedDraft {
   text: string;
@@ -386,13 +379,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const scopeId = scopeKey(scope);
   const draftPaneRef = useRef({ scope, scopeId, paneId });
   // THE BELT'S X AND ITS UNDO (M40 spec 04, issue #291). The X empties this box in one tap
-  // (`clearByHand`); for CLEAR_UNDO_MS after it the same slot is Undo, and this is what Undo puts
-  // back. MEMORY ONLY and for this pane view only: never stored, dropped on a pane switch and on
+  // (`clearByHand`); until the operator's next act the same slot is Undo, and this is what Undo puts
+  // back. NO TIMER (Altan, 2026-09-27): a slot that left on a clock would narrow the pinned block
+  // under a tap on its way, and the pill beside it can be a harness command (DESIGN.md §2). Undo
+  // ends on the next act instead: a keystroke, a chip, a send, arming Type, leaving the pane, or a
+  // tap on any other belt control. A sideways scroll of the belt is looking, not acting, and keeps it. MEMORY ONLY and for this pane view only: never stored, dropped on a pane switch and on
   // unmount, the posture ADR 0005 gives a key queue. State for the render, a ref for the handlers
   // that read it in the tick it changes, as with the chips above.
   const [clearedDraft, setClearedDraft] = useState<ClearedDraft | null>(null);
   const clearedDraftRef = useRef<ClearedDraft | null>(null);
-  const clearedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Set the draft AND persist it. Every write to `input` goes through here — an empty value removes
@@ -722,7 +717,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (keyRevalidateTimer.current) clearTimeout(keyRevalidateTimer.current);
       for (const attachment of attachmentsRef.current) revokePreview(attachment);
       // An open Undo window dies with the view, and so do the previews it was holding.
-      if (clearedTimerRef.current) clearTimeout(clearedTimerRef.current);
       for (const attachment of clearedDraftRef.current?.attachments ?? []) revokePreview(attachment);
     },
     [],
@@ -1278,7 +1272,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     updateInput("");
     clearedDraftRef.current = held;
     setClearedDraft(held);
-    clearedTimerRef.current = setTimeout(endUndoWindow, CLEAR_UNDO_MS);
   }
 
   /** Undo: the text, the chips with their previews, the chip numbering and the stored draft come
@@ -1287,8 +1280,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function undoClear() {
     const held = clearedDraftRef.current;
     if (held === null) return;
-    if (clearedTimerRef.current !== null) clearTimeout(clearedTimerRef.current);
-    clearedTimerRef.current = null;
     clearedDraftRef.current = null;
     setClearedDraft(null);
     attachmentsRef.current = held.attachments;
@@ -1309,8 +1300,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   /** End the Undo window, if one is open: the slot shows the X again when the box holds a draft and
    *  empties when it does not, and the held chips' previews are released. */
   function endUndoWindow() {
-    if (clearedTimerRef.current !== null) clearTimeout(clearedTimerRef.current);
-    clearedTimerRef.current = null;
     const held = clearedDraftRef.current;
     if (held === null) return;
     clearedDraftRef.current = null;
@@ -1330,7 +1319,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    *  read-only device or a gone pane may still empty its box, as Display is not gated either. */
   function clearSlot() {
     if (clearedDraft !== null) {
-      return { mode: "undo" as const, label: translate("composer.controls.undoClear"), onClick: undoClear };
+      return {
+        mode: "undo" as const,
+        label: translate("composer.controls.undoClear"),
+        onClick: undoClear,
+        onOtherPress: endUndoWindow,
+      };
     }
     if (!hasDraft) return undefined;
     return {
@@ -1616,8 +1610,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
           changes={changesPill}
-          // The X on the pinned block while the box holds a draft, then Undo in its place for
-          // CLEAR_UNDO_MS after a tap (M40 spec 04). See `clearSlot` for when it shows.
+          // The X on the pinned block while the box holds a draft, then Undo in its place until
+          // the next act (M40 spec 04). See `clearSlot` for when it shows.
           clear={clearSlot()}
         />
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────

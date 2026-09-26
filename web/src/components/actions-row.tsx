@@ -417,6 +417,11 @@ export interface ActionsRowProps {
     onClick: () => void;
     /** ALREADY TRANSLATED. "Clear message" or "Undo clear". */
     label: string;
+    /** Undo only: a tap on any OTHER control on this belt ends the Undo window (Altan, 2026-09-27).
+     *  Undo has no timer, so it leaves on the operator's next act, and a belt tap is one. The
+     *  press has already landed when this runs, so the pinned block narrowing under it moves
+     *  nothing the finger was aiming at. A sideways scroll fires no click and keeps Undo. */
+    onOtherPress?: () => void;
     /** Inert (`aria-disabled`, dimmed, the tap ignored) while a send is in flight or Type is armed.
      *  Not `disabled`: a disabled button takes no `mousedown`, so a tap on it would blur the field
      *  and drop the keyboard. */
@@ -474,6 +479,16 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
       // through to the style attribute verbatim; `CSSProperties` only declares the known property
       // names, so a `--*` key has no other way to be spelled.
       style={{ "--belt-scale": beltScale } as CSSProperties}
+      // Capture, so the Undo window ends in the same tap as the pill's own act, and only for a
+      // control that is not the Undo button itself (`clear.onOtherPress` above).
+      onClickCapture={
+        clear?.onOtherPress === undefined
+          ? undefined
+          : (e) => {
+              if (e.target instanceof Element && e.target.closest("[data-belt-clear]") !== null) return;
+              clear.onOtherPress?.();
+            }
+      }
       className={cn(
         "relative -mx-3 mb-1 flex items-center border-b border-border bg-foreground/6",
         handle && "touch-pan-x",
@@ -652,6 +667,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle, chan
                 type="button"
                 variant="ghost"
                 size="sm"
+                data-belt-clear=""
                 aria-label={clear.label}
                 aria-disabled={clear.inert === true ? true : undefined}
                 onMouseDown={(e) => e.preventDefault()}

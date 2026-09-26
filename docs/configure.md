@@ -208,9 +208,10 @@ alone, behind a hairline, and carries no word. A drag up, anywhere on the belt, 
 switcher. A sideways drag scrolls the belt instead.
 
 While the text box holds text or an attachment, an X sits at the belt's right end too, left of the
-Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. For 10
-seconds the X becomes Undo, which puts the text and the attachments back. Your next keystroke or
-attachment ends that window sooner.
+Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
+becomes Undo, which puts the text and the attachments back. Undo stays until your next act: a
+keystroke, an attachment, a send, a tap on another belt button, or leaving the pane. Scrolling the
+belt keeps it.
 
 To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
 of the row above the keyboard. Turn that segment off per device in **Settings → Harness shortcuts**;
