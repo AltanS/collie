@@ -1,3 +1,5 @@
+import { useId, type ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
@@ -10,6 +12,20 @@ import { t } from "@/lib/i18n";
 
 interface ChipProps {
   label: string;
+  /**
+   * A leading glyph, before the dot and the label, e.g. a server icon in a machine's tint. Drawn in
+   * EVERY state the chip can take (resting, active, ringed, dimmed), so a state change repaints and
+   * never re-lays-out (DESIGN.md §2). The caller sizes it, tints it and marks it `aria-hidden`; the
+   * chip only gives it the slot.
+   */
+  glyph?: ReactNode;
+  /**
+   * The accessible name, for a chip whose tap does something its label does not say ("Show
+   * devbox's panes"). Keep the visible label inside it (WCAG 2.5.3). The status words then move to
+   * the chip's description, so the dot is still said out loud. Omit and the name is the chip's own
+   * text, exactly as before.
+   */
+  ariaLabel?: string;
   active: boolean;
   /** Subtle ring marking the item focused in the desktop TUI. */
   ring?: boolean;
@@ -43,9 +59,26 @@ interface ChipProps {
 // The dot leads the label rather than riding the corner as a badge: a corner badge needs a ring in
 // the chip's own fill, and the chip has two fills (active/inactive). Inline, it just works, and it
 // matches how the space rows and section headings already read.
-export function Chip({ label, active, ring, status, dimmed, onClick, onLongPress, onTapActive }: ChipProps) {
+export function Chip({
+  label,
+  glyph,
+  ariaLabel,
+  active,
+  ring,
+  status,
+  dimmed,
+  onClick,
+  onLongPress,
+  onTapActive,
+}: ChipProps) {
   useLocale();
   const longPress = useLongPress(onLongPress);
+  const descriptionId = useId();
+  // A chip named by its act keeps its status in words as its DESCRIPTION: `aria-label` replaces
+  // everything the button holds, the sr-only status word and the unseen mark's name included.
+  const named = ariaLabel !== undefined;
+  const statusWords =
+    !named || !status ? null : status === "ready" ? t("home.row.unseen") : statusLabel(TRIAGE_STATUS[status]);
 
   // A long-press already suppresses the ensuing click (via longPress.onClickCapture), so this only
   // ever sees a genuine tap. Tapping the already-active chip opens actions (when wired) rather than a
@@ -64,6 +97,8 @@ export function Chip({ label, active, ring, status, dimmed, onClick, onLongPress
       onClick={handleClick}
       {...longPress}
       aria-current={active ? "true" : undefined}
+      aria-label={ariaLabel}
+      aria-describedby={statusWords === null ? undefined : descriptionId}
       className={cn(
         // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch callout,
         // whose native long-press gesture otherwise fires pointercancel and kills the hold timer.
@@ -91,6 +126,7 @@ export function Chip({ label, active, ring, status, dimmed, onClick, onLongPress
         dimmed && !active && "bg-transparent border-dashed border-border text-muted-foreground/60 line-through",
       )}
     >
+      {glyph}
       {status === "ready" && <UnseenMark size="sm" />}
       {status && status !== "ready" && (
         <>
@@ -101,11 +137,16 @@ export function Chip({ label, active, ring, status, dimmed, onClick, onLongPress
             className="size-2"
           />
           {/* The dot is colour-only; say it in words for screen readers. */}
-          <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>
+          {!named && <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>}
         </>
       )}
       {label}
-      {dimmed && <span className="sr-only">{t("home.workspace.hidden")}</span>}
+      {dimmed && !named && <span className="sr-only">{t("home.workspace.hidden")}</span>}
+      {statusWords !== null && (
+        <span id={descriptionId} className="sr-only">
+          {statusWords}
+        </span>
+      )}
     </button>
   );
 }

@@ -6,6 +6,10 @@ interface SwitchProps {
   disabled?: boolean;
   id?: string;
   "aria-label"?: string;
+  /** Name the switch from text already on screen, e.g. a column caption plus a row's name. */
+  "aria-labelledby"?: string;
+  /** Point at the sentence that says why a disabled switch is disabled. */
+  "aria-describedby"?: string;
 }
 
 // Minimal accessible toggle (no Radix dependency): a button with role="switch". The thumb slides
