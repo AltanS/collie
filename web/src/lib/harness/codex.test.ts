@@ -28,6 +28,9 @@ const allOmpFixtures = readdirSync(PANES_DIR)
 const allGrokFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
   .toSorted();
+const allOpencodeFixtures = readdirSync(PANES_DIR)
+  .filter((f) => f.startsWith("oc--") && f.endsWith(".txt"))
+  .toSorted();
 
 const PINNED = [
   "codex--approval-exec.txt",
@@ -84,7 +87,7 @@ const neutralFixtures = allCodexFixtures.filter((f) => !DIALOG.includes(f));
 
 describeAdapterConformance(codexAdapter, {
   ownFixtures,
-  foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allGrokFixtures],
+  foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allGrokFixtures, ...allOpencodeFixtures],
   neutralFixtures,
   // Astra's starfield repaints the prompt row every frame, so the bridge's literal re-read could
   // never match a region (codex/chrome.ts, composerPrompt).
