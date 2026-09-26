@@ -306,6 +306,8 @@ const COMPOSERS: Composer[] = [
       "codex--v0156-draft-multiline.txt",
       "codex--v0156-headless-idle.txt",
       "codex--v0156-headless-draft.txt",
+      "codex--v0156-busy-streaming.txt",
+      "codex--v0156-busy-draft.txt",
     ],
     band(texts) {
       let status = texts.length - 1;
@@ -574,6 +576,7 @@ const CODEX_READ_BY_PAINT = [
   "codex--v0156-draft-multiline.txt",
   "codex--v0156-headless-idle.txt",
   "codex--v0156-headless-draft.txt",
+  "codex--v0156-busy-streaming.txt",
 ];
 
 /**

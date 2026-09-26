@@ -1,0 +1,27 @@
+[0m[2m╭──────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.156.1)                   │[0m
+[0m[2m│                                              │[0m
+[0m[2m│ model:     [0mGPT-6-Luna low[0m[2m   [0m[38;2;99;168;248m/model[0m[2m to change │[0m
+[0m[2m│ directory: [0m/tmp/collie-canary-project[0m[2m        │[0m
+[0m[2m╰──────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m [0m[3mNew[0m Build faster with Codex.
+
+
+[0m[1m[2m[48;2;66;66;79m› [0m[48;2;66;66;79mWrite a 500-word story about a sheepdog. Use no tools.                                                                [0m
+
+
+[0m[2m• [0mAt dawn, Mara the sheepdog woke before the farm.
+
+  She slipped from the barn and trotted into the field, where mist lay low over the grass. The sheep were still huddled
+  in their pen, warm and sleepy. Mara circled them once, checking each woolly back. Then she heard a faint bleat from
+  beyond the stone wall.
+
+  A lamb stood alone in the bracken.
+ 
+  Mara knew the lamb
+ 
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m›[0m[48;2;57;57;71m [0m[2m[48;2;57;57;71mAsk Codex to do anything[0m[48;2;57;57;71m                                                                                              [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[38;2;246;226;183mGPT-6-Luna low[0m[38;2;135;140;164m · [0m[38;2;171;223;167m/tmp/collie-canary-project[0m[38;2;135;140;164m · [0m[38;2;148;226;213m⠧[0m

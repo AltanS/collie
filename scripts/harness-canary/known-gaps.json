@@ -5,12 +5,6 @@
       "scenario": "start-exit",
       "reason": "Codex declares no modalOnScreen, so the unread card shows on Codex's first frames before its status row is painted and on the shell after /quit. The ADR 0053 addendum of 1.13.2 gave that positive-evidence gate to Claude only; this is the start/exit leftover of the 2026-09-26 sweep.",
       "ref": "ADR 0053 addendum 2026-09-26"
-    },
-    {
-      "agent": "codex",
-      "scenario": "busy",
-      "reason": "While Codex streams a reply, its status row ends in a coloured braille spinner field (e.g. ` \u00b7 \u280b`). `withoutSparkles` (web/src/lib/harness/codex/markers.ts) blanks every coloured braille segment as starfield decoration, the row then ends in a separator, `isStyledStatusRow` refuses it, `locateComposer` finds no composer: the phone shows the unread card and a send to a busy Codex is refused (`blocked`). Same on 1.13.2. Found by the canary 2026-09-26; the card flash in the 1.13.2 tap test.",
-      "ref": "M37/03 canary finding 2026-09-26"
     }
   ]
 }

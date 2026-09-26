@@ -139,6 +139,29 @@ update notice above it is left out. **No scrubbing was needed**: the sandbox fol
 | `codex--v0156-headless-idle.txt` | Empty dim `› Ask Codex to do anything` with no fill, over `  GPT-6-Luna low · /tmp/i294-proj-codex` whose separator carries no paint. `composerReady` must be TRUE, the draft is null, and no unread-dialog card | `idle` |
 | `codex--v0156-headless-draft.txt` | The same pane holding the typed draft `hello from the phone probe`. The draft reads back | `idle` |
 
+## Codex 0.156.1 busy (captured 2026-09-26, herdr 0.9.0, harness canary)
+
+Byte-faithful `format:ansi` captures from the harness canary's own Herdr session (M37/03, the `busy`
+scenario), taken while Codex wrote a 500-word story. Each file is cut to the rows from the header
+box down; the update notice above it is left out. **No scrubbing was needed**: the project folder is
+`/tmp/collie-canary-project`, and no username, hostname or session UUID is on the kept rows.
+
+While the first turn of a thread runs, the status row ends in one more ` · ` and a braille spinner
+frame in a colour of its own. The canary saw `⠋` and `⠧`, two of the ten dots frames in the Codex
+binary, and a different colour in each of three runs. The frame holds the place of the thread's
+title: a few seconds later the same spot reads `Write a sheepdog story`, in the same colour. Before
+this capture the frame was painted over as a starfield sparkle (see *Codex's Astra starfield*
+below), the row then ended in a bare separator, and a busy Codex had no composer: the unread-dialog
+card over the working pane, and a send refused as `blocked`. The spinner is now the row's tail, never
+a field and never a sparkle, and only at the very end of a row that is already a whole status row
+(`isStatusRow` in `lib/harness/codex/markers.ts`). With a draft in the box, Codex swaps the status row
+for its queue hint.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0156-busy-streaming.txt` | The story mid-stream above the empty composer, over `  GPT-6-Luna low · /tmp/collie-canary-project · ⠧`. `composerReady` must be TRUE, the draft is null, no unread-dialog card, and the status strip keeps the spinner | `working` |
+| `codex--v0156-busy-draft.txt` | Later in the same turn: the draft `a draft typed while codex works` in the box, and the status row replaced by `  tab to queue message … 100% context left`. The draft reads back as send evidence, the check the reply guard makes before it presses Enter | `working` |
+
 ## Codex mobile chrome (reconstructed 2026-09-03)
 
 **Not a capture.** This one file is RECONSTRUCTED from the two rows reported in
@@ -171,7 +194,9 @@ segment with its own grey foreground, on the row above the prompt, after the pla
 row under it. Before issue #245 the draft reader took those glyphs for typed text, so this idle
 composer reported a stranded draft. The Codex chrome now paints any single braille glyph with its
 own colour over with a space before it reads the composer; see `withoutSparkles` in
-`lib/harness/codex/markers.ts`.
+`lib/harness/codex/markers.ts`. One glyph is spared: a spinner frame that ends the status row after
+a ` · ` (see *Codex 0.156.1 busy* above). The starfield in this capture draws only on the eight
+single-dot glyphs `⠁⠂⠄⠈⠐⠠⡀⢀`, none of which is a spinner frame.
 
 ## Codex light fills (why the rule is luminance, not a value)
 

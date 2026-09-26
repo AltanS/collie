@@ -1,0 +1,65 @@
+[0m[2m╭──────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.156.1)                   │[0m
+[0m[2m│                                              │[0m
+[0m[2m│ model:     [0mGPT-6-Luna low[0m[2m   [0m[38;2;99;168;248m/model[0m[2m to change │[0m
+[0m[2m│ directory: [0m/tmp/collie-canary-project[0m[2m        │[0m
+[0m[2m╰──────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m [0m[3mNew[0m Build faster with Codex.
+
+
+[0m[1m[2m[48;2;66;66;79m› [0m[48;2;66;66;79mWrite a 500-word story about a sheepdog. Use no tools.                                                                [0m
+
+
+[0m[2m• [0mAt dawn, Mara the sheepdog woke before the farm.
+
+  She slipped from the barn and trotted into the field, where mist lay low over the grass. The sheep were still huddled
+  in their pen, warm and sleepy. Mara circled them once, checking each woolly back. Then she heard a faint bleat from
+  beyond the stone wall.
+
+  A lamb stood alone in the bracken.
+
+  Mara knew the lamb, Pip: the smallest of the flock, with a black patch over one eye and a habit of wandering after
+  butterflies. Pip had slipped through a gap in the fence during the night. Now he was shivering beneath a hawthorn
+  bush.
+
+  Mara approached slowly. Pip pressed himself into the leaves.
+
+  “Easy,” she seemed to say, lowering her head.
+
+  A gust shook the branches. Pip darted away, deeper into the bracken. Mara ran after him, but the ground was uneven and
+  the mist made every path look the same. She stopped, listened, and heard the lamb’s little cry again—this time from
+  somewhere downhill.
+
+  She took the long way around, moving carefully between the rocks. At the bottom of the slope, she found Pip beside a
+  narrow stream. He was trying to cross, though the water rushed fast from the hills.
+
+  Mara barked once. Pip froze.
+
+  Then Mara crossed first. The stones were slick, but she placed each paw firmly. On the far bank, she turned and
+  waited. Pip followed, wobbling from one stone to the next until he reached her side.
+
+  Together they climbed back toward the farm.
+
+  By then, the sun had lifted above the ridge. The shepherd was searching near the wall, calling Pip’s name. When he saw
+  the lamb beside Mara, he dropped to his knees and gathered Pip into his arms.
+
+  “Good girl,” he said, rubbing Mara’s ears.
+
+  Mara’s tail thumped against the grass.
+
+  Back at the pen, the flock crowded around Pip, sniffing his damp fleece. He stayed close to Mara, his black eye
+  blinking up at her. She settled beside the gate while the sheep began their morning grazing.
+
+  All day, Pip followed her.
+
+  He followed when she walked the fence line. He followed when she rested beneath the oak. He even followed when she
+  chased a crow away from the feed trough. By evening, he had grown bolder. He bounced through the grass, leaping at
+  shadows, and Mara watched him with patient eyes.
+ 
+  The next morning, Mara woke before the farm again. Pip was already
+ 
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m›[0m[48;2;57;57;71m a draft typed while codex works                                                                                       [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[1m[38;2;205;214;244mtab[0m[38;2;135;140;164m to queue message[0m                                                                               [0m[38;2;135;140;164m100% context left[0m

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
+import { draftCarriesSend } from "../reply-action";
 import { codexAdapter } from "./codex";
 import { composerPrompt, extractInputDraft, locateComposer, stripChrome } from "./codex/chrome";
 import { isStatusRow, lineText, PLACEHOLDER } from "./codex/markers";
@@ -52,6 +53,8 @@ const PINNED = [
   "codex--v0156-approval-exec-wrapped-50.txt",
   "codex--v0156-approval-exec-wrapped.txt",
   "codex--v0156-approval-patch.txt",
+  "codex--v0156-busy-draft.txt",
+  "codex--v0156-busy-streaming.txt",
   "codex--v0156-draft-blank-line.txt",
   "codex--v0156-draft-multiline.txt",
   "codex--v0156-headless-draft.txt",
@@ -981,6 +984,106 @@ describe("Codex 0.156.1", () => {
     expect(read(NEW_TRUST.with(2, "  1. Trust everything forever"))).toBeNull();
     expect(read(NEW_TRUST.with(2, "› 1. Trust and continue"))).toBeNull();
     expect(read(NEW_TRUST.with(0, "  Something else entirely."))).toBeNull();
+  });
+});
+
+// The canary's busy captures (M37/03, fixtures README → "Codex 0.156.1 busy"). While the first turn
+// of a thread runs, the status row ends in ` · ` and one braille spinner frame, which holds the place
+// of the thread's title. The frame used to be painted over as a starfield sparkle, the row then ended
+// in a bare separator, and a busy Codex had no composer: the unread-dialog card, and a send `blocked`.
+describe("Codex 0.156.1 busy: a spinner ends the status row", () => {
+  const BUSY = "codex--v0156-busy-streaming.txt";
+  const DRAFT = "a draft typed while codex works";
+
+  it("the streaming capture has a composer, no draft and no unread-dialog card", () => {
+    const lines = fixtureLines(BUSY);
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBeNull();
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
+    // The strip keeps the spinner, and it is the captured row itself: nothing was painted over.
+    const status = codexAdapter.extractStatusLines(lines);
+    expect(status).toHaveLength(1);
+    expect(status[0]).toBe(lines[locateComposer(lines)!.statusRow]);
+    expect(lineText(status[0]!).trimEnd()).toBe("  GPT-6-Luna low · /tmp/collie-canary-project · ⠧");
+    // The story stays in the mirror; the composer leaves it.
+    const kept = stripChrome(lines).map(lineText).join("\n");
+    expect(kept).toContain("Mara knew the lamb");
+    expect(kept).not.toContain(PLACEHOLDER);
+    expect(codexAdapter.composerPrompt!(lines)).toBe(`› ${PLACEHOLDER}`);
+  });
+
+  it.each([..."⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"])("reads the same with the spinner frame %s", (frame) => {
+    const text = readFileSync(join(PANES_DIR, BUSY), "utf8");
+    expect(text.match(/[⠀-⣿]/gu)).toEqual(["⠧"]);
+    const lines = splitLines(parseAnsi(text.replace("⠧", frame)));
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
+  });
+
+  // With a draft in the box, Codex swaps the status row for its queue hint, and Enter queues.
+  it("a draft typed while Codex works reads back, and is send evidence", () => {
+    const lines = fixtureLines("codex--v0156-busy-draft.txt");
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    const draft = codexAdapter.extractInputDraft(lines);
+    expect(draft).toBe(DRAFT);
+    // The reply guard's own check, the one the send verifies with before it presses Enter.
+    expect(draftCarriesSend(DRAFT, draft)).toBe(true);
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
+    expect(lineText(codexAdapter.extractStatusLines(lines)[0]!).trimEnd()).toMatch(
+      /^ {2}tab to queue message +100% context left$/,
+    );
+    expect(codexAdapter.composerPrompt!(lines)).toBe(`› ${DRAFT}`);
+  });
+
+  describe("the spinner opens no new way in", () => {
+    const OFF = "\u001b[0m";
+    const FIELD = "\u001b[38;2;246;226;183m";
+    const FIELD2 = "\u001b[38;2;171;223;167m";
+    const MUTED = "\u001b[38;2;135;140;164m";
+    const TEAL = "\u001b[38;2;148;226;213m";
+    const DIM = "\u001b[2m";
+    const BOLD = "\u001b[1m";
+    const BG = "\u001b[48;2;57;57;71m";
+    const SEP = `${MUTED} · ${OFF}`;
+    const SPIN = `${TEAL}⠧${OFF}`;
+    const ROW = `  ${FIELD}model${OFF}${SEP}${FIELD2}/dir${OFF}`;
+
+    /** composerReady over a prompt row, a blank row and `status`: the whole path, sparkle pass included. */
+    const ready = (status: string) =>
+      codexAdapter.composerReady!(splitLines(parseAnsi([`› ${PLACEHOLDER}`, "", status].join("\n"))));
+
+    it("accepts a spinner after a whole status row, in either separator paint", () => {
+      expect(ready(ROW)).toBe(true);
+      expect(ready(`${ROW}${SEP}${SPIN}`)).toBe(true);
+      expect(ready(`  ${FIELD}model${OFF} · ${FIELD2}/dir${OFF} · ${SPIN}`)).toBe(true);
+    });
+
+    it("refuses a spinner after a single field: the spinner is never a field", () => {
+      expect(ready(`  ${FIELD}model${OFF}${SEP}${SPIN}`)).toBe(false);
+    });
+
+    it("refuses a spinner anywhere but the last segment", () => {
+      expect(ready(`${ROW}${SEP}${SPIN}${SEP}${FIELD}main${OFF}`)).toBe(false);
+      expect(ready(`${ROW}${SEP}${SPIN}${SEP}${SPIN}`)).toBe(false);
+    });
+
+    it("refuses a spinner after a separator in another paint", () => {
+      expect(ready(`${ROW}${DIM} · ${OFF}${SPIN}`)).toBe(false);
+    });
+
+    it("refuses a braille glyph outside the ten: a sparkle there is still painted over", () => {
+      expect(ready(`${ROW}${SEP}\u001b[38;2;150;151;155m⠁${OFF}`)).toBe(false);
+    });
+
+    it("refuses a frame that is bold, on a fill, or has no colour of its own", () => {
+      expect(ready(`${ROW}${SEP}${BOLD}${TEAL}⠧${OFF}`)).toBe(false);
+      expect(ready(`${ROW}${SEP}${BG}${TEAL}⠧${OFF}`)).toBe(false);
+      expect(ready(`${ROW}${SEP}⠧`)).toBe(false);
+    });
+
+    it("refuses the same text with no paint at all", () => {
+      expect(ready("  model · /dir · ⠧")).toBe(false);
+    });
   });
 });
 

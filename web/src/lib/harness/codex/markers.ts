@@ -72,6 +72,20 @@ export function rstrip(text: string): string {
 // (codex.test.ts pins both halves). The right-aligned notice still wants every segment painted;
 // no headless capture shows one yet.
 //
+// While the first turn of a thread runs, 0.156.1 ends the row with a spinner: one more ` · ` in the
+// row's separator paint, then ONE braille frame in a colour of its own (`  GPT-6-Luna low ·
+// /tmp/collie-canary-project · ⠧`, codex--v0156-busy-streaming.txt). It holds the place of the
+// thread's title: a few seconds on, the same spot and colour read `Write a sheepdog story`, an
+// ordinary third field. The frame is a single coloured braille glyph, which is also what a starfield
+// sparkle is, so `withoutSparkles` used to paint it over; the row then ended in a bare separator and
+// was refused, and a busy Codex had no composer: the unread-dialog card, and a send refused as
+// `blocked` where Codex would have queued it. The spinner is now the row's TAIL (`isSpinnerFrame`,
+// `trailingSpinnerIndex`): not a field, so it never counts toward the two, and not a sparkle. It is
+// accepted only as the last segment, straight after an ordinary separator in the row's one paint,
+// and only when the row before that separator is already a whole status row on its own, so it adds
+// no way in for a row that was refused without it. A spinner anywhere else is still painted over as
+// a sparkle, exactly as before; no capture shows one there.
+//
 // Why a dialog cannot pass: every 0.156.1 dialog footer (`enter continue · esc quit`, `enter select
 // · esc back`, `Press enter to confirm or esc to cancel`) paints its key names BOLD, and its glue
 // text SGR 2 in the SAME segment as the ` · `, so neither a field nor a separator can be read off
@@ -186,6 +200,22 @@ function isGapSegment(segment: AnsiSegment): boolean {
   return /^ {2,}$/.test(segment.text) && isUnstyled(segment);
 }
 
+// The busy row's spinner frames: the ten of the dots spinner, the only run of them in the 0.156.1
+// binary (beside its status-surface code). The canary's busy captures hold `⠋` and `⠧`. The starfield
+// draws from eight single-dot glyphs instead (`⠁⠂⠄⠈⠐⠠⡀⢀`, every sparkle in
+// codex--v0154-submitted-fill.txt), so no sparkle is a spinner frame. The frame's colour changes
+// from thread to thread (three captures, three colours), so it is never matched by value.
+const SPINNER_FRAME = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/u;
+
+/** One spinner frame as Codex paints it on a busy status row: a single glyph of the ten, in a
+ *  foreground of its own, with no background and no emphasis. */
+function isSpinnerFrame(segment: AnsiSegment): boolean {
+  if (segment.fg === undefined || segment.bg !== undefined) return false;
+  if (segment.bold === true || segment.dim === true) return false;
+  if (segment.italic === true || segment.underline === true) return false;
+  return SPINNER_FRAME.test(segment.text);
+}
+
 // 0.156.1 right-aligns a notice on the status row when it has one — seen as `⚠ 1 warning · f2 to
 // view` (codex--v0156-draft-multiline.txt). Its paint is mixed (a bold key, quiet glue text), so
 // its segments are not read as fields. It is bounded instead: short, every segment painted (a
@@ -224,7 +254,8 @@ function foldTrailingPadding(segments: AnsiSegment[]): AnsiSegment[] | null {
  * The default status row, recognised by its PAINT. All of these must hold, or the row is refused:
  * the styled line must be the same row as `text`; the segments must read as an unstyled two-space
  * indent then `field (sep field)*`, optionally ending with one combined quiet `sep + field` segment
- * after two ordinary fields, or with a gap and a right-aligned notice after two ordinary fields;
+ * after two ordinary fields, or with a gap and a right-aligned notice after two ordinary fields, or
+ * with a separator and a spinner frame after two ordinary fields (a busy row, not a field);
  * every separator must carry ONE quiet paint, which no field may share; and the field count must
  * stay in bounds. Prose that happens to contain ` \u00b7 ` fails on the paint, which is the whole
  * point of the guard.
@@ -265,6 +296,12 @@ function isStyledStatusRow(text: string, line: StyledLine): boolean {
     if (suffix !== null) {
       if (fields < MIN_STATUS_FIELDS || i !== segments.length - 1) return false;
       fields++;
+      break;
+    }
+    // A busy row: this separator, then a spinner frame as the very last segment. The frame is not a
+    // field; every check after the loop sees exactly the row before this separator.
+    if (i === segments.length - 2 && isSpinnerFrame(segments[i + 1]!)) {
+      if (fields < MIN_STATUS_FIELDS) return false;
       break;
     }
     if (i === segments.length - 1) return false;
@@ -340,13 +377,27 @@ export function isSparkle(segment: AnsiSegment): boolean {
   return segment.fg !== undefined && BRAILLE.test(segment.text);
 }
 
+/**
+ * Where a busy status row's spinner sits: the line's last non-blank segment, when it is a spinner
+ * frame straight after a ` · ` segment. -1 when the line ends any other way. It only spares that one
+ * glyph from `withoutSparkles`; whether the row is a status row is still `isStatusRow`'s call.
+ */
+function trailingSpinnerIndex(segments: AnsiSegment[]): number {
+  let end = segments.length - 1;
+  while (end >= 0 && segments[end]!.text.trim() === "") end--;
+  if (end < 1 || !isSpinnerFrame(segments[end]!)) return -1;
+  return segments[end - 1]!.text === STATUS_SEPARATOR ? end : -1;
+}
+
 /** The line with every sparkle painted over by a space. Columns are kept, so the prompt prefix and
- *  the continuation gutter still sit where the grammar looks for them. The SAME reference when the
- *  line has no sparkle. */
+ *  the continuation gutter still sit where the grammar looks for them. A busy status row's trailing
+ *  spinner is not a sparkle, and stays. The SAME reference when nothing is painted over. */
 export function withoutSparkles(line: StyledLine): StyledLine {
-  if (!line.segments.some(isSparkle)) return line;
+  const spinner = trailingSpinnerIndex(line.segments);
+  const paintOver = (s: AnsiSegment, i: number) => i !== spinner && isSparkle(s);
+  if (!line.segments.some(paintOver)) return line;
   return {
     ...line,
-    segments: line.segments.map((s) => (isSparkle(s) ? { ...s, text: " ", fg: undefined } : s)),
+    segments: line.segments.map((s, i) => (paintOver(s, i) ? { ...s, text: " ", fg: undefined } : s)),
   };
 }
