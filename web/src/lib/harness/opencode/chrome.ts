@@ -8,9 +8,10 @@
 // [draft block … status rows] and leaves every row above (the run's live content and the
 // transcript) on the mirror. Its structure, bottom-up:
 //
-//     [ … transcript / interior content … ]   <- kept, always
-//     ┃  <the draft, wrapped>                  } the draft block: the contiguous non-blank bar run
-//     ┃                                        }   directly above (one blank) the model row
+//     [ … transcript … ]                      <- kept, always; its last block ends on a row with no bar
+//     ┃                                        <- the composer's top padding
+//     ┃  <the draft, wrapped>                  } the draft block: the composer's bar run between its
+//     ┃                                        }   top padding and the separator above the model row
 //     ┃  Build · GPT-6 Astra Pro OpenRouter …  <- the model row: the last TEXT row inside the bar
 //     ┃                                        <- a bare bar row, at 50 columns only (see (b))
 //     ╹▀▀▀▀▀▀▀▀▀▀▀▀                            <- the bottom rule
@@ -59,8 +60,8 @@ export interface ComposerTail {
   /** The FIRST row of the draft block — equal to `modelRow` when there is no draft (the strip then
    *  starts at the model row). The placeholder row counts as the draft block for the strip. */
   draftStart: number;
-  /** The draft block's last row (exclusive bound is `modelRow`); equals `modelRow - 1` — the blank
-   *  between the draft and the model row is part of the strip, not of the draft. */
+  /** The draft block's last row (`modelRow - 1` when there is no draft). The separator row between
+   *  the draft and the model row is part of the strip, not of the draft. */
   draftEnd: number;
   /** The model row — the last text row inside the bar, above the rule (and above the bare bar row
    *  a 50-column pane paints between them). */
@@ -84,8 +85,9 @@ function interiorOf(text: string): string {
  *     ╹▀▀▀▀▀▀▀▀                  (a) the rule — the anchor everything else hangs off
  *     ┃                          (b) 0..MAX_RULE_PAD bare bar rows (one at 50 columns)
  *     ┃  Build · GPT-6 …         (b) the model row, directly above those, shape-checked
- *     ┃                          (c) one blank interior row (absent = no draft below)
- *     ┃  <the draft…>            (d) 0..MAX_INTERIOR_ROWS contiguous non-blank bar rows
+ *     ┃                          (c) one bare bar row, the separator (absent = no draft)
+ *     ┃  <the draft…>            (d) the bar run above it, to the top padding (blank lines inside)
+ *     ┃                          (d) the top padding: the run's first row
  */
 export function locateComposer(lines: StyledLine[]): ComposerTail | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
@@ -120,22 +122,28 @@ export function locateComposer(lines: StyledLine[]): ComposerTail | null {
   while (modelRow >= 0 && rule - modelRow <= MAX_RULE_PAD && isBareBar(texts[modelRow]!)) modelRow--;
   if (modelRow < 0 || !isBarRow(texts[modelRow]!) || !isModelRow(texts[modelRow]!)) return null;
 
-  // (c) One blank interior row, then the draft run. The blank is the boundary between the draft and
-  //     whatever else the box carries above it (a working run's tool rows sit across MORE blanks) —
-  //     measured on every draft capture in the corpus. No blank ⇒ no draft; the strip then starts
-  //     at the model row and the draft probe answers null. A bare-bar row (the bar alone, no
-  //     gutter text) is interior padding: its interior is empty.
+  // (c) One bare bar row above the model row: the separator under the draft. No separator ⇒ no
+  //     draft; the strip then starts at the model row and the draft probe answers null.
+  // (d) The draft: the composer's own bar run above the separator, up to its top padding row. The
+  //     run ends where the bars do: the transcript's last block sits across a row with no bar (its
+  //     bottom margin, measured on every 1.18.32 capture). Inside the run, a bare bar row is a
+  //     blank line the operator typed, not the draft's edge (oc--draft-multiline.txt): stopping
+  //     there read only the last paragraph, left the first on the mirror as if it were transcript,
+  //     and "Take over" copied half a draft. Bare-bar rows at either end (the top padding, the empty
+  //     row of an empty composer) are not draft.
   let draftStart = modelRow;
   let draftEnd = modelRow - 1;
   const above = modelRow - 1;
-  if (above >= 0 && isBarRow(texts[above]!) && interiorOf(texts[above]!) === "") {
-    let i = above - 1;
-    while (i >= 0 && modelRow - i <= MAX_INTERIOR_ROWS && isBarRow(texts[i]!) && interiorOf(texts[i]!) !== "") {
-      i--;
-    }
-    if (i + 1 <= above - 1) {
-      draftStart = i + 1;
-      draftEnd = above - 1;
+  if (above >= 0 && isBareBar(texts[above]!)) {
+    let top = above;
+    while (top - 1 >= 0 && modelRow - (top - 1) <= MAX_INTERIOR_ROWS && isBarRow(texts[top - 1]!)) top--;
+    let first = top;
+    let last = above - 1;
+    while (first <= last && interiorOf(texts[first]!) === "") first++;
+    while (last >= first && interiorOf(texts[last]!) === "") last--;
+    if (first <= last) {
+      draftStart = first;
+      draftEnd = last;
     }
   }
 
@@ -189,13 +197,14 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
 /**
  * The user's draft stranded on the interior rows, or null.
  *
- * The draft block is the contiguous non-blank bar run directly above the one blank row under the
- * model row — its position holds whether or not the agent is working (the working state's tool rows
- * and spinner sit across MORE blanks, so a run above the FIRST blank is the draft, never a tool row;
- * the working capture with no draft answers null because that row is blank too).
+ * The draft block is the composer's own bar run between its top padding and the separator above
+ * the model row (`locateComposer` (d)) — its position holds whether or not the agent is working,
+ * because a running tool paints in the transcript, across a row with no bar.
  *
- * Wrapped rows fold with a single space: opencode word-wraps at a break it removed. The placeholder
- * row reads as no draft. `null` also covers "no composer tail".
+ * Wrapped rows fold with a single space: opencode word-wraps at a break it removed. A blank line
+ * inside the draft is dropped from the text; the reply guard's check treats a fold's gap as
+ * unknowable width anyway (`draftCarriesSend`). The placeholder row reads as no draft. `null` also
+ * covers "no composer tail".
  */
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const tail = locateComposer(lines);
@@ -204,7 +213,8 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   if (tail.draftStart > tail.draftEnd) return null; // no draft block — only the model row below
   const parts: string[] = [];
   for (let i = tail.draftStart; i <= tail.draftEnd; i++) {
-    const text = barDraftText(texts[i]!);
+    // A bare bar row inside the block is a blank line of the draft.
+    const text = isBareBar(texts[i]!) ? "" : barDraftText(texts[i]!);
     if (text === null) return null; // a non-gutter row inside the block — not a shape we claim
     parts.push(text.trim());
   }

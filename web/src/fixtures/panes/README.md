@@ -960,6 +960,7 @@ wrap, Tab does nothing, Enter confirms, Escape declines, no digit).
 | `oc--fresh-idle.txt` | Splash logo, empty composer with an `Ask anything… "…"` placeholder, model row, rule, `tab agents  ctrl+p commands`, the cwd/version row at the foot | `idle` |
 | `oc--draft-single.txt` | One draft row on a two-space-gutter interior row | `idle` |
 | `oc--draft-wrapped.txt` | A long draft word-wrapped onto three interior rows | `idle` |
+| `oc--draft-multiline.txt` | A six-line draft typed with hard breaks: a line, a blank line (a bare bar row inside the composer), an indented line, `❯ ls -la`, a `────` rule, a last line. The draft reads whole across the blank line | `done` |
 | `oc--draft-while-working.txt` | A draft typed while `sleep 10 && echo done` ran: the running command and its spinner sit in the transcript above, the status row reads `esc interrupt` | `working` |
 | `oc--working.txt` | The same run with an empty composer | `working` |
 | `oc--done--tool-run.txt` | After the run finished: the command's output in the transcript, the empty composer, the cwd/tokens/cost status row | `done` |

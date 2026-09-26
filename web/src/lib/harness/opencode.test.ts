@@ -17,6 +17,7 @@ import {
 import { detectPermissionDialog } from "./opencode/dialog";
 import { describeAdapterConformance } from "./conformance";
 import { promptsSameIdentity } from "./prompt-model";
+import { draftCarriesSend } from "../reply-action";
 
 // The opencode adapter's CI gate. Tier 1 chrome (composer strip, status/draft probes, the composer
 // gate) plus the Tier-2 permission-dialog lift, gated on the captured corpus:
@@ -245,6 +246,20 @@ describe("opencode composer chrome", () => {
       "draft text at narrow width wrapping over the edge of the box interior to capture the " +
         "composer fold at fifty columns",
     );
+  });
+
+  it("a draft with a blank line reads whole, and the strip takes all of it off the mirror", () => {
+    // Typed: a line, a blank line, an indented line, `❯ ls -la`, a rule, a last line. Stopping at
+    // the blank line read only the last paragraph and left the first on the mirror.
+    const sent = "first line of the draft\n\n    indented third line\n❯ ls -la\n────────────\nlast line here";
+    const lines = loadLines("oc--draft-multiline.txt");
+    expect(hasComposer(lines)).toBe(true);
+    const draft = extractInputDraft(lines);
+    expect(draft).toBe("first line of the draft indented third line ❯ ls -la ──────────── last line here");
+    expect(draftCarriesSend(sent, draft)).toBe(true);
+    const mirror = opencodeAdapter.buildBlocks(lines).flatMap((b) => b.lines).map((l) => lineText(l)).join("\n");
+    expect(mirror).not.toContain("first line of the draft");
+    expect(mirror).not.toContain("last line here");
   });
 
   it("an empty composer answers null — the placeholder is content, not a draft", () => {
