@@ -203,15 +203,57 @@ describe("opencode composer chrome", () => {
   });
 });
 
+describe("opencode composer at 50 columns (1.18.32)", () => {
+  // opencode 1.18.32 at 50 columns paints a bare bar row between the model row and the rule, and
+  // squeezes the model row's dots (`Build ·GPT-6 Astra Pro OpenRouter· medium`). Reading only the
+  // row on the rule found no composer on this healthy idle pane, so every reply was refused.
+  const NARROW = "oc--narrow--fresh-idle.txt";
+
+  it("finds the composer over the bare bar row, and reads the placeholder as no draft", () => {
+    const lines = loadLines(NARROW);
+    expect(hasComposer(lines)).toBe(true);
+    // The placeholder wraps over two rows here; it is still the placeholder.
+    expect(extractInputDraft(lines)).toBeNull();
+    const status = extractStatusLines(lines).map((l) => lineText(l).trim());
+    expect(status[0]).toBe("tab agents  ctrl+p commands");
+    expect(status.at(-1)).toContain("1.18.32");
+  });
+
+  it("binds a region from the model row down to the rule, inside the bridge's tail window", () => {
+    const lines = loadLines(NARROW);
+    const region = composerPrompt(lines)!.split("\n");
+    expect(region[0]).toContain("Build ·GPT-6");
+    expect(region.at(-1)!.trim()).toMatch(/^╹▀+$/);
+    // A fresh session's tip wraps over two rows at this width, so the model row is seventh from
+    // the bottom and outside the bridge's 6-row window; the rule is fifth.
+    const nonBlank = lines.map((l) => lineText(l).replace(/\s+$/, "")).filter((t) => t.length > 0);
+    expect(nonBlank.length - 1 - nonBlank.lastIndexOf(region.at(-1)!)).toBeLessThan(6);
+  });
+
+  it("steps over bare bar rows only, and only two of them", () => {
+    const lines = loadLines(NARROW);
+    const texts = lines.map((l) => lineText(l));
+    const rule = texts.findIndex((t) => /^\s*╹▀+\s*$/.test(t));
+    const bare = lines[rule - 1]!;
+    expect(lineText(bare).trim()).toBe("┃");
+    // A third bare bar row: past the bound, not a composer bottom.
+    const tooTall = [...lines.slice(0, rule), bare, bare, ...lines.slice(rule)];
+    expect(hasComposer(tooTall)).toBe(false);
+    // A text row on the rule is never stepped over: it would have to BE the model row.
+    const draftOnRule = [...lines.slice(0, rule), ...splitLines(parseAnsi("  ┃  stray text")), ...lines.slice(rule)];
+    expect(hasComposer(draftOnRule)).toBe(false);
+  });
+});
+
 describe("opencode composerPrompt binding", () => {
-  it("binds the model row — the row the destructive sweep does not move", () => {
-    const prompt = composerPrompt(loadLines("oc--draft-single.txt"));
-    expect(prompt).toContain("Build ·");
-    // The rule and status rows below keep the region inside the bridge's tail window.
+  it("binds the model row down to the rule — rows the destructive sweep does not move", () => {
     const lines = loadLines("oc--draft-single.txt");
-    const nonBlank = lines.filter((l) => lineText(l).trim().length > 0);
-    const at = nonBlank.map((l) => lineText(l).replace(/\s+$/, "")).lastIndexOf(prompt!.replace(/\s+$/, ""));
-    expect(nonBlank.length - 1 - at).toBeLessThan(6);
+    const region = composerPrompt(lines)!.split("\n");
+    expect(region[0]).toContain("Build ·");
+    expect(region.at(-1)!.trim()).toMatch(/^╹▀+$/);
+    // The status rows below keep the region inside the bridge's tail window.
+    const nonBlank = lines.map((l) => lineText(l).replace(/\s+$/, "")).filter((t) => t.length > 0);
+    expect(nonBlank.length - 1 - nonBlank.lastIndexOf(region.at(-1)!)).toBeLessThan(6);
   });
 
   it("no region on the screens composerReady refuses", () => {

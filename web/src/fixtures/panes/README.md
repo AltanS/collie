@@ -971,6 +971,6 @@ Enter confirms, wrap probed, Tab inert).
 | `oc--permission-bash--wrap.txt` | `Right` past `Reject` wrapped back to `Allow once` — the wrap the keys arithmetic relies on | `blocked` |
 | `oc--permission-edit.txt` | The edit permission dialog: `→ Edit probe.txt` subject + diff rows | `blocked` |
 | `oc--permission-edit--moved.txt` | Chip on `Always allow` | `blocked` |
-| `oc--narrow--fresh-idle.txt` | The empty composer at ≈95 columns: the hint row truncates, no version row | `idle` |
+| `oc--narrow--fresh-idle.txt` | Recaptured 2026-09-26 on opencode 1.18.32 at 50 columns: the placeholder wraps over two rows, the model row squeezes its dots (`Build ·GPT-6 Astra Pro OpenRouter· medium`), a bare bar row sits between it and the rule, and a tip wraps over two rows under the key hints. `composerReady` must be TRUE | `idle` |
 | `oc--narrow--permission-bash.txt` | The dialog at narrow width: the footer wraps — options row + hint row separated by a blank | `blocked` |
 | `oc--narrow--draft-wrapped.txt` | A draft wrapped over the edge at narrow width | `idle` |

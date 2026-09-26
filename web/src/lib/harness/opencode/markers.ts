@@ -49,9 +49,10 @@ export function isBarRow(text: string): boolean {
 }
 
 // The composer's BOTTOM RULE: U+2579 (╹) then a run of U+2580 (▀ upper-half blocks). Across the
-// corpus it appears once per composer frame, always directly under the model row, spanning the
-// composer's own width — no other opencode chrome draws it. The ▀ run is what other rule-like rows
-// lack; ╹ alone would be too thin an anchor to carry the claim.
+// corpus it appears once per composer frame, under the model row (directly under it at full width,
+// one bare bar row lower at 50 columns), spanning the composer's own width — no other opencode
+// chrome draws it. The ▀ run is what other rule-like rows lack; ╹ alone would be too thin an anchor
+// to carry the claim.
 const RULE_ROW = /^\s*╹▀+$/;
 
 /** True when this row is the composer's bottom rule. The anchor every tail walk hangs off. */
@@ -59,13 +60,14 @@ export function isRuleRow(text: string): boolean {
   return RULE_ROW.test(rstrip(text));
 }
 
-// The model row: the LAST interior row, `┃  <agent> · <model>[ · <variant>]`. Two or three
-// dot-separated fields, the separators painted as ` · ` (U+00B7 middle dot with spaces). This is a
-// SHAPE check, not a catalogue: the agent name is open-ended (opencode ships custom agents), so the
-// predicate requires dot-separated non-empty fields and nothing more specific. A draft that itself
-// contains ` · ` cannot be mistaken for it — the model row is only ever read as the row DIRECTLY
-// above the rule, a position a draft row never reaches.
-const MODEL_ROW = /^\s*┃\s{2}\S[\s\S]*? · \S/;
+// The model row: the LAST text row inside the bar, `┃  <agent> · <model>[ · <variant>]`. Two or
+// three dot-separated fields (U+00B7 middle dot). This is a SHAPE check, not a catalogue: the agent
+// name is open-ended (opencode ships custom agents), so the predicate requires a field, a dot and
+// a field, and nothing more specific. The spaces around the dot are NOT required: at 50 columns
+// opencode 1.18.32 squeezes the row to `Build ·GPT-6 Astra Pro OpenRouter· medium` (measured
+// 2026-09-26). A draft that itself contains a dot cannot be mistaken for it — the model row is
+// only ever read at its position above the rule (chrome.ts), a position a draft row never reaches.
+const MODEL_ROW = /^\s*┃\s{2}\S[^·]*·\s?\S/;
 
 /** True when this row could be the model row (the composer's last interior row). Positional checks
  *  elsewhere do the real work; this is the sanity half. */

@@ -12,7 +12,8 @@
 //     [ … transcript / interior content … ]   <- kept, always
 //     ┃  <the draft, wrapped>                  } the draft block: the contiguous non-blank bar run
 //     ┃                                        }   directly above (one blank) the model row
-//     ┃  Build · GLM-5.3-Flash OpenCode Go …   <- the model row: the LAST interior row
+//     ┃  Build · GPT-6 Astra Pro OpenRouter …  <- the model row: the last TEXT row inside the bar
+//     ┃                                        <- a bare bar row, at 50 columns only (see (b))
 //     ╹▀▀▀▀▀▀▀▀▀▀▀▀                            <- the bottom rule
 //     <cwd> … ctrl+p commands                  <- status rows (chrome; re-surfaced by the probe)
 //
@@ -40,9 +41,16 @@ import {
 // cosmetic cost it governs.
 const MAX_INTERIOR_ROWS = 100;
 
-// The status rows painted BELOW the rule: a cwd row, a combined esc-interrupt/tokens row, a version
-// row. Bounded — a run longer than this under the rule is not a composer tail.
-const MAX_STATUS_ROWS = 4;
+// The status rows painted BELOW the rule: the key-hint row, a rotating `● Tip …` on a fresh session,
+// the cwd/version row. At 50 columns the tip wraps (two rows measured on 1.18.32, and a longer tip
+// takes three) and the cwd/tokens row folds onto a second row, so the bound leaves room for that.
+// Bounded — a run longer than this under the rule is not a composer tail.
+const MAX_STATUS_ROWS = 6;
+
+// Bare bar rows between the model row and the rule. None at full width; opencode 1.18.32 paints one
+// at 50 columns (measured 2026-09-26, `oc--narrow--fresh-idle.txt`). Two leaves a row of slack;
+// more than that is not the composer's bottom.
+const MAX_RULE_PAD = 2;
 
 /** The composer tail located at the buffer's end. Every index is into the ORIGINAL `lines` array. */
 export interface ComposerTail {
@@ -52,7 +60,8 @@ export interface ComposerTail {
   /** The draft block's last row (exclusive bound is `modelRow`); equals `modelRow - 1` — the blank
    *  between the draft and the model row is part of the strip, not of the draft. */
   draftEnd: number;
-  /** The model row — the last interior row, directly above the rule. */
+  /** The model row — the last text row inside the bar, above the rule (and above the bare bar row
+   *  a 50-column pane paints between them). */
   modelRow: number;
   /** The ╹▀▀ rule row. */
   rule: number;
@@ -71,7 +80,8 @@ function interiorOf(text: string): string {
  *
  *     <status rows>              (a) 0..MAX_STATUS_ROWS non-bar rows running to the tail
  *     ╹▀▀▀▀▀▀▀▀                  (a) the rule — the anchor everything else hangs off
- *     ┃  Build · GLM …           (b) the model row, DIRECTLY above the rule, shape-checked
+ *     ┃                          (b) 0..MAX_RULE_PAD bare bar rows (one at 50 columns)
+ *     ┃  Build · GPT-6 …         (b) the model row, directly above those, shape-checked
  *     ┃                          (c) one blank interior row (absent = no draft below)
  *     ┃  <the draft…>            (d) 0..MAX_INTERIOR_ROWS contiguous non-blank bar rows
  */
@@ -99,11 +109,14 @@ export function locateComposer(lines: StyledLine[]): ComposerTail | null {
   if (rule < 0) return null;
   const statusEnd = lines.length;
 
-  // (b) The model row: the interior row directly above the rule, shape-checked. It is the row
-  //     opencode always paints last inside the box, whatever the run above is doing.
-  if (rule === 0) return null;
-  const modelRow = rule - 1;
-  if (!isBarRow(texts[modelRow]!) || !isModelRow(texts[modelRow]!)) return null;
+  // (b) The model row: the last text row inside the bar, shape-checked. It is the row opencode
+  //     always paints last inside the box, whatever the run above is doing. At full width it sits
+  //     directly on the rule; at 50 columns 1.18.32 leaves one bare bar row between them, and
+  //     reading only the row on the rule refused every reply on a healthy narrow pane. Bare bar
+  //     rows are stepped over, bounded, and nothing else is: a text row there must BE the model row.
+  let modelRow = rule - 1;
+  while (modelRow >= 0 && rule - modelRow <= MAX_RULE_PAD && isBareBar(texts[modelRow]!)) modelRow--;
+  if (modelRow < 0 || !isBarRow(texts[modelRow]!) || !isModelRow(texts[modelRow]!)) return null;
 
   // (c) One blank interior row, then the draft run. The blank is the boundary between the draft and
   //     whatever else the box carries above it (a working run's tool rows sit across MORE blanks) —
@@ -234,19 +247,22 @@ function paletteOverlayUp(lines: StyledLine[]): boolean {
   return found >= 2;
 }
 
-/** The model row, verbatim as it sits on screen (trailing padding dropped) — the region the reply
- *  path binds its DESTRUCTIVE pre-clear sweep to. It is the right region for that job because the
- *  sweep (`ctrl+k` + Backspaces) erases the draft ABOVE it without moving it: the row is stable
- *  across the very keystrokes the binding protects, and it sits within the bridge's tail window
- *  (the rule + status rows below it are at most 3 non-blank rows). Null when there is no composer
- *  tail — the same screens `composerReady` refuses. */
+/** The model row down to the rule, verbatim as they sit on screen (trailing padding dropped) — the
+ *  region the reply path binds its DESTRUCTIVE pre-clear sweep to. It is the right region for that
+ *  job because the sweep (`ctrl+k` + Backspaces) erases the draft ABOVE it without moving it: the
+ *  rows are stable across the very keystrokes the binding protects. It ENDS at the rule rather
+ *  than at the model row because the bridge accepts a binding only when it ends within the last 6
+ *  non-blank rows: at 50 columns a fresh session paints the bare bar row, the rule, the key-hint
+ *  row, a tip wrapped over two rows and the cwd row, which leaves the model row seventh from the
+ *  bottom and the rule fifth. Null when there is no composer tail — the same screens
+ *  `composerReady` refuses. */
 export function composerPrompt(lines: StyledLine[]): string | null {
   const tail = locateComposer(lines);
   // The same screens `composerReady` refuses bind nothing: a sweep never runs there, and naming a
   // region would hand the conformance leg a binding the pre-flight will not type into.
   if (tail === null || paletteOverlayUp(lines)) return null;
-  const row = rstrip(lineText(lines[tail.modelRow]!));
-  return row.length === 0 ? null : row;
+  const rows = lines.slice(tail.modelRow, tail.rule + 1).map((l) => rstrip(lineText(l)));
+  return rows[0]!.length === 0 ? null : rows.join("\n");
 }
 
 /** Whether the draft text carried by the interior rows is opencode's own opaque token rather than
