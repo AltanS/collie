@@ -62,6 +62,42 @@ test("the last pill stops 16px clear of the pinned block at the scroll end", asy
   expect(edges.lastRight).toBeLessThanOrEqual(edges.blockLeft - 16);
 });
 
+// THE COMPOSER'S X (M40 spec 04) makes the pinned block one pill wider while the box holds a draft.
+// The block grows LEFT over the scroller's end, and the spacer must grow with it, or the last pill
+// scrolls in under the X. The spacer follows the block's measured width, so this asks that of the
+// engine: with the X up, the last pill still stops 16px clear of the block at the scroll end.
+test("with the composer's X on the pinned block, the last pill still stops 16px clear of it", async ({ page }) => {
+  await page.goto("/pane/w1:p1");
+  await expect(page.getByRole("button", { name: en["chat.switcher.aria"] })).toBeVisible();
+  await page.getByRole("textbox", { name: en["composer.placeholder.reply"] }).fill("a draft");
+  const clear = page.getByRole("button", { name: en["composer.controls.clear"], exact: true });
+  await expect(clear).toBeVisible();
+
+  const scroller = page.locator(SCROLLER);
+  // The spacer is measured off the block by a ResizeObserver, one frame behind the X's arrival.
+  await expect
+    .poll(() =>
+      scroller.evaluate((el) => {
+        const block = el.closest('[data-slot="composer-actions"]')!.querySelector(":scope > span")!;
+        return Math.round(el.lastElementChild!.getBoundingClientRect().width - block.getBoundingClientRect().width);
+      }),
+    )
+    .toBe(16);
+  const edges = await scroller.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+    const pills = el.querySelectorAll("button");
+    const last = pills[pills.length - 1];
+    const block = el.closest('[data-slot="composer-actions"]')!.querySelector(":scope > span")!;
+    return {
+      overflows: el.scrollWidth > el.clientWidth + 1,
+      lastRight: last?.getBoundingClientRect().right ?? NaN,
+      blockLeft: block.getBoundingClientRect().left,
+    };
+  });
+  test.skip(!edges.overflows, "every pill fits at this width, nothing scrolls");
+  expect(edges.lastRight).toBeLessThanOrEqual(edges.blockLeft - 16);
+});
+
 // ONE SCALE FOR THE WHOLE BELT (operator, 2026-09-23). The Settings row "Action belt size" stores
 // `beltScale` in the dash prefs; the belt's root carries it as `--belt-scale`, and index.css derives
 // band, pill, icon and word from it. Measured at 375x812, the narrowest phone the Changes case uses,
