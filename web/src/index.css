@@ -950,6 +950,56 @@
   }
 }
 
+/* THE HOLD, SHOWN (hooks/use-long-press.ts, M38/02). Every element that spreads `useLongPress`'s props
+   carries `data-holding` from 150ms after the finger lands until the hold fires or is cancelled: the
+   dashboard rows, the pane pills, the workspace and tab chips. While it does, the element eases toward
+   "pressed" over the time left to the hold's 450ms mark (the hook sets `animation-duration` inline to
+   exactly that), so the press visibly fills toward the moment the sheet opens. Linear, because the fill
+   is a clock the thumb reads, not a flourish.
+   - A TRANSFORM AND A TINT, NOTHING ELSE. `transform` composes with the element's own `active:scale-*`
+     press (that one is the `scale` property), so a pill already at 95% goes on to press in rather than
+     springing back to a keyframe value. The tint is an inset box-shadow in the element's own ink,
+     which paints over its background whatever that is (a muted chip, a primary chip, a bare row) and
+     follows its radius, and never touches the box: no size, no border, no padding (DESIGN.md §2).
+     Its strength is the registered `--hold-tint`, animated as a number: a keyframed box-shadow whose
+     colour is a `color-mix` over `currentColor` flips at the halfway point instead of fading
+     (measured in Chromium), while a registered percentage interpolates in every engine.
+   - IT ENDS AT ONCE. The hook drops the attribute on the fire and on every cancel, and a removed
+     animation has no exit to play.
+   - REDUCED MOTION keeps the tint and drops the scale. */
+@property --hold-tint {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+[data-holding] {
+  box-shadow: inset 0 0 0 100vmax color-mix(in oklab, currentColor var(--hold-tint), transparent);
+  animation: hold-fill 300ms linear both;
+}
+@keyframes hold-fill {
+  from {
+    transform: none;
+    --hold-tint: 0%;
+  }
+  to {
+    transform: scale(0.97);
+    --hold-tint: 12%;
+  }
+}
+@keyframes hold-tint {
+  from {
+    --hold-tint: 0%;
+  }
+  to {
+    --hold-tint: 12%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-holding] {
+    animation-name: hold-tint;
+  }
+}
+
 /* THE CHANGES COUNT LINE (components/change-count.tsx ChangeCountSlot), on each row of the dashboard's
    Changes tab and in the Changes screen's header. The screen's list skeleton (routes/changes.tsx)
    breathes with `.count-skeleton` too, and its first real rows arrive with `.count-arrive`. Until a workspace's

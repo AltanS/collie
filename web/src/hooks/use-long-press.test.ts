@@ -2,7 +2,8 @@ import { act, renderHook } from "@testing-library/react";
 import { stubPart } from "@/test/stub";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 
-import { useLongPress } from "./use-long-press";
+import { __resetHaptics } from "@/lib/haptics";
+import { HOLD_FEEDBACK_DELAY_MS, useLongPress } from "./use-long-press";
 
 // The pointer-based long-press behind the pane-pill actions sheet. Fake timers pin the 450ms hold;
 // the handlers are called directly with minimal synthetic events (only the fields the hook reads).
@@ -214,5 +215,145 @@ describe("useLongPress", () => {
     const e = contextMenuEvent();
     act(() => result.current.onContextMenu(e));
     expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  // THE HOLD, SHOWN (M38/02): the returned props carry `data-holding` (and the fill's duration) from a
+  // short delay after the press until the hold fires or is cancelled, so every surface that spreads
+  // them gets the look. A plain tap lifts before the delay and changes no style at all.
+  describe("the holding state", () => {
+    const holding = (props: ReturnType<typeof useLongPress>) => props["data-holding"];
+
+    it("starts at rest: no attribute and no style", () => {
+      const { result } = renderHook(() => useLongPress(vi.fn()));
+      expect(holding(result.current)).toBeUndefined();
+      expect(result.current.style).toBeUndefined();
+    });
+
+    it("changes no style on a tap shorter than the feedback delay", () => {
+      const { result } = renderHook(() => useLongPress(vi.fn()));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS - 1));
+      expect(holding(result.current)).toBeUndefined();
+      expect(result.current.style).toBeUndefined();
+      act(() => result.current.onPointerUp(pointerEndEvent()));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(holding(result.current)).toBeUndefined();
+      expect(result.current.style).toBeUndefined();
+    });
+
+    it("holds from the feedback delay, filling over exactly the time left to the hold's mark", () => {
+      const { result } = renderHook(() => useLongPress(vi.fn()));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS));
+      expect(holding(result.current)).toBe("");
+      expect(result.current.style).toEqual({ animationDuration: `${DELAY - HOLD_FEEDBACK_DELAY_MS}ms` });
+      // Still holding up to the last millisecond before the fire.
+      act(() => vi.advanceTimersByTime(DELAY - HOLD_FEEDBACK_DELAY_MS - 1));
+      expect(holding(result.current)).toBe("");
+    });
+
+    it("stretches the fill over a longer hold", () => {
+      const { result } = renderHook(() => useLongPress(vi.fn(), { delayMs: 600 }));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS));
+      expect(result.current.style).toEqual({ animationDuration: `${600 - HOLD_FEEDBACK_DELAY_MS}ms` });
+    });
+
+    it("ends the look the moment the hold fires, with the finger still down", () => {
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(onLongPress).toHaveBeenCalledTimes(1);
+      expect(holding(result.current)).toBeUndefined();
+      expect(result.current.style).toBeUndefined();
+    });
+
+    it("drops the look at once when the pointer moves past the tolerance", () => {
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress));
+      act(() => result.current.onPointerDown(down(0, 0)));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS + 50));
+      act(() => result.current.onPointerMove(down(0, 10))); // thumb jitter keeps it
+      expect(holding(result.current)).toBe("");
+      act(() => result.current.onPointerMove(down(0, 24))); // a scroll drops it
+      expect(holding(result.current)).toBeUndefined();
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(onLongPress).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["pointerup", "onPointerUp"],
+      ["pointerleave", "onPointerLeave"],
+      ["pointercancel (a touch scroll the browser claimed)", "onPointerCancel"],
+    ] as const)("drops the look at once on %s", (_label, handler) => {
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress(onLongPress));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS + 50));
+      expect(holding(result.current)).toBe("");
+      act(() => result.current[handler](pointerEndEvent()));
+      expect(holding(result.current)).toBeUndefined();
+      expect(result.current.style).toBeUndefined();
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(holding(result.current)).toBeUndefined();
+      expect(onLongPress).not.toHaveBeenCalled();
+    });
+
+    it("never holds on a secondary button or when the hold is disabled", () => {
+      const enabled = renderHook(() => useLongPress(vi.fn()));
+      act(() => enabled.result.current.onPointerDown(down(0, 0, 2)));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(holding(enabled.result.current)).toBeUndefined();
+
+      const disabled = renderHook(() => useLongPress(undefined));
+      act(() => disabled.result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(holding(disabled.result.current)).toBeUndefined();
+    });
+
+    it("starts over on a fresh press after a cancel", () => {
+      const { result } = renderHook(() => useLongPress(vi.fn()));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS + 10));
+      act(() => result.current.onPointerCancel(pointerEndEvent()));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(HOLD_FEEDBACK_DELAY_MS - 1));
+      expect(holding(result.current)).toBeUndefined();
+      act(() => vi.advanceTimersByTime(1));
+      expect(holding(result.current)).toBe("");
+    });
+  });
+
+  // One short tick when the hold counts, where the platform can buzz (lib/haptics.ts). Never on a tap.
+  describe("the haptic tick", () => {
+    let vibrate: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      __resetHaptics();
+      vibrate = vi.fn();
+      Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true, writable: true });
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, "vibrate");
+    });
+
+    it("buzzes once when the hold fires", () => {
+      const { result } = renderHook(() => useLongPress(vi.fn()));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(vibrate).toHaveBeenCalledOnce();
+      // The contextmenu that follows on Android is the same hold: no second tick.
+      act(() => result.current.onContextMenu(contextMenuEvent()));
+      expect(vibrate).toHaveBeenCalledOnce();
+    });
+
+    it("stays still on a tap", () => {
+      const { result } = renderHook(() => useLongPress(vi.fn()));
+      act(() => result.current.onPointerDown(down()));
+      act(() => vi.advanceTimersByTime(DELAY - 100));
+      act(() => result.current.onPointerUp(pointerEndEvent()));
+      act(() => vi.advanceTimersByTime(DELAY));
+      expect(vibrate).not.toHaveBeenCalled();
+    });
   });
 });

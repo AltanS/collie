@@ -116,6 +116,16 @@ rather than one 4px smear. Outline is the right tool here for the same reasons i
 wrong tool for state: it never reflows, it paints above everything, and it is transient.
 Outside `ring-*` for state is retired.
 
+### A hold shows itself in paint, from one place
+
+A press held toward the 450ms long-press mark carries `data-holding`, set by
+`hooks/use-long-press.ts` 150ms after the finger lands, so a plain tap never flashes. While it is
+set, `index.css` ("THE HOLD, SHOWN") eases the element to a 97% scale and a 12% tint of its own ink,
+over exactly the time left to the mark, and drops both the moment the hold fires or is cancelled.
+Scale is a `transform` and the tint an inset shadow, so nothing around it moves; under reduced
+motion the tint alone. Every surface that spreads the hook's props gets it. Do not give a hold
+surface a look of its own.
+
 ### A run of text whose WORD changes needs a reserved slot, not a reserved number
 
 The transparent-border technique reserves an *edge*. It has nothing to say about a caption whose
@@ -605,7 +615,7 @@ the failure three call sites were shipping.
 
 | Channel | Question it answers | Owner |
 | --- | --- | --- |
-| **Haptic buzz** | "Did the glass register my tap?" | `hooks/use-action-echo.ts` and `hooks/use-hold-repeat.ts` only. On the press, never on the outcome. |
+| **Haptic buzz** | "Did the glass register my tap?" | `hooks/use-action-echo.ts`, `hooks/use-hold-repeat.ts` and `hooks/use-long-press.ts` (the tick when a hold counts) only. On the press, never on the outcome. |
 | **Per-control echo** (✓ / spinner / busy tone) | "Did the bridge accept MY action?" | every fire-and-forget user mutation, at the control it was tapped on |
 | **Floating status** (`lib/status.ts` → Event) | "What happened, and why not?" | failures ALWAYS; success only when the outcome is not visible at the point of action |
 | **Collie orbit round** | "Something happened — look up" | every status the app publishes, one round per burst |

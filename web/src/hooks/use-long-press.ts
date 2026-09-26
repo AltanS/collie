@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+
+import { buzz } from "@/lib/haptics";
 
 // Hold a pill this long before the press counts as a long-press. Long enough that a tap or a scroll
 // fling never trips it, short enough to feel intentional rather than sluggish.
@@ -9,6 +11,10 @@ const LONG_PRESS_MS = 450;
 // Sized for a thumb: finger jitter during a deliberate hold is easily 10–15px, so a stricter bound
 // cancelled real holds on a phone; a scroll still moves well past this before the timer would fire.
 const MOVE_CANCEL_PX = 16;
+// The press starts to SHOW only after this. A plain tap lifts well before it, so a tap never
+// flashes the hold's look; a finger still down past it is a hold in the making, and from here to the
+// hold's own mark the element eases toward "pressed" (`data-holding`, index.css `THE HOLD, SHOWN`).
+export const HOLD_FEEDBACK_DELAY_MS = 150;
 
 interface LongPressOptions {
   delayMs?: number;
@@ -36,6 +42,17 @@ interface LongPressOptions {
  * Deliberately does NOT set `touch-action: none`: the element stays scrollable, and a scroll gesture
  * cancels the timer through the move/cancel path instead. Pass `onLongPress: undefined` to disable
  * (the handlers become inert) so a caller can conditionally opt out without breaking the hook rules.
+ *
+ * THE HOLD, SHOWN (M38/02). A hold had no look until it fired, so a thumb could not tell a hold in
+ * progress from a dead tap, and nothing on screen said a hold was there to find. So the returned
+ * props also carry `data-holding` from {@link HOLD_FEEDBACK_DELAY_MS} after `pointerdown` until the
+ * hold fires or is cancelled, and an `animationDuration` that stretches index.css's fill over exactly
+ * the time left to the hold's mark. Every surface that spreads the props gets it with no work of its
+ * own: dashboard rows, pane pills, workspace and tab chips. The look is a transform and a tint, never
+ * a box change (DESIGN.md §2). It ends AT ONCE, on the fire as on every cancel (movement past the
+ * tolerance, `pointerup`, `pointerleave`, `pointercancel`, which is also how a touch scroll arrives),
+ * because the one `clear` that stops the timer drops it. The fire gives one haptic tick
+ * (`lib/haptics.ts`): the press registered, before the sheet has drawn a pixel.
  */
 export function useLongPress(
   onLongPress: (() => void) | undefined,
@@ -50,13 +67,21 @@ export function useLongPress(
   // A long-press fired on the in-progress gesture → suppress the ensuing click so it doesn't navigate.
   const fired = useRef(false);
   const releaseHandled = useRef(false);
+  // The hold's look (`data-holding`): armed by its own shorter timer, dropped by `clear`.
+  const [holding, setHolding] = useState(false);
+  const feedback = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clear = useCallback(() => {
     if (timer.current !== null) {
       clearTimeout(timer.current);
       timer.current = null;
     }
+    if (feedback.current !== null) {
+      clearTimeout(feedback.current);
+      feedback.current = null;
+    }
     startPos.current = null;
+    setHolding(false);
   }, []);
 
   // Drop a pending timer if the element unmounts mid-hold.
@@ -68,7 +93,9 @@ export function useLongPress(
   const fire = useCallback(() => {
     if (!onLongPress || fired.current) return;
     fired.current = true;
+    // `clear` drops the look too: it ends the moment the hold counts, not when the finger lifts.
     clear();
+    buzz();
     onLongPress();
   }, [onLongPress, clear]);
 
@@ -92,6 +119,9 @@ export function useLongPress(
       startPos.current = { x: e.clientX, y: e.clientY };
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = setTimeout(fire, delayMs);
+      if (feedback.current !== null) clearTimeout(feedback.current);
+      feedback.current =
+        delayMs > HOLD_FEEDBACK_DELAY_MS ? setTimeout(() => setHolding(true), HOLD_FEEDBACK_DELAY_MS) : null;
     },
     [onLongPress, delayMs, fire],
   );
@@ -155,5 +185,9 @@ export function useLongPress(
     onPointerCancel: finishPointerGesture,
     onContextMenu,
     onClickCapture,
+    // Present (as `""`) only while held, so a resting element carries neither attribute nor style.
+    "data-holding": holding ? "" : undefined,
+    // The fill runs over the time LEFT to the hold's mark, so it reaches "pressed" as the hold fires.
+    style: holding ? { animationDuration: `${delayMs - HOLD_FEEDBACK_DELAY_MS}ms` } : undefined,
   };
 }

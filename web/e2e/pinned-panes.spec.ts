@@ -56,6 +56,21 @@ async function withSnapshot(page: Page, edit: (snap: SnapshotResponse) => void) 
   );
 }
 
+/** What the hold cases record in the page: each change of `data-holding`, timed from the press. */
+interface HoldMark {
+  t: number;
+  holding: boolean;
+  transform: string;
+}
+
+declare global {
+  interface Window {
+    holdLog?: HoldMark[];
+    /** `performance.now()` of the press on the row under test. */
+    holdAt?: number;
+  }
+}
+
 async function box(l: Locator) {
   const b = await l.boundingBox();
   expect(b).not.toBeNull();
@@ -187,6 +202,77 @@ test("hold: a hold on a row pins it, the row lands in view with focus, and Unpin
   await expect(mainRow(page, "codex")).toHaveCount(1);
   await expect(mainRow(page, "codex")).toBeFocused();
   await expect(mainRow(page, "codex")).toBeInViewport();
+});
+
+test("hold: a held row shows the hold filling, moves nothing, and drops the look the moment it counts", async ({ page }) => {
+  await page.goto("/");
+  const codex = mainRow(page, "codex");
+  const claude = mainRow(page, "claude");
+  // Every change of the hold's mark, with the time since the press and the row's transform then. The
+  // listener sits on the row itself, so it runs before React's handler (at the root) starts the timers.
+  await codex.evaluate((el) => {
+    window.holdLog = [];
+    window.holdAt = 0;
+    el.addEventListener("pointerdown", () => {
+      window.holdAt = performance.now();
+    });
+    new MutationObserver(() =>
+      window.holdLog?.push({
+        t: performance.now() - (window.holdAt ?? 0),
+        holding: el.hasAttribute("data-holding"),
+        transform: getComputedStyle(el).transform,
+      }),
+    ).observe(el, { attributes: true, attributeFilter: ["data-holding"] });
+  });
+  const layout = () =>
+    codex.evaluate((el: HTMLElement) => ({
+      box: [el.offsetLeft, el.offsetTop, el.offsetWidth, el.offsetHeight],
+      holding: el.hasAttribute("data-holding"),
+      transform: getComputedStyle(el).transform,
+      shadow: getComputedStyle(el).boxShadow,
+    }));
+  const rest = await layout();
+  expect(rest).toMatchObject({ holding: false, transform: "none", shadow: "none" });
+  const above = await box(claude);
+  const target = await box(codex);
+
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2);
+  await page.mouse.down();
+  // Inside the fill: past the 150ms delay, short of the 450ms mark. One read, so nothing races it.
+  await page.waitForTimeout(280);
+  const held = await layout();
+  expect(held.holding).toBe(true);
+  // Pressed in and tinted, by a transform and a shadow only: the row's own box and the row above stay.
+  expect(held.transform).not.toBe("none");
+  expect(held.shadow).not.toBe("none");
+  expect(held.box).toEqual(rest.box);
+  expect(await box(claude)).toEqual(above);
+
+  // The hold counts with the finger still down: the sheet opens, and the look has already gone.
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(await layout()).toMatchObject({ holding: false, transform: "none", shadow: "none" });
+  await page.mouse.up();
+
+  const log = (await page.evaluate(() => window.holdLog)) ?? [];
+  expect(log.map((e) => e.holding)).toEqual([true, false]);
+  // A tap shorter than the delay would never see the mark, and it ends as the hold counts, at once.
+  expect(log[0]!.t).toBeGreaterThanOrEqual(140);
+  expect(log[1]!.t).toBeGreaterThanOrEqual(440);
+  expect(log[1]!.transform).toBe("none");
+});
+
+test("hold: a tap on a row opens its pane and never shows the hold", async ({ page }) => {
+  await page.goto("/");
+  const codex = mainRow(page, "codex");
+  await codex.evaluate((el) => {
+    window.holdLog = [];
+    new MutationObserver(() =>
+      window.holdLog?.push({ t: 0, holding: el.hasAttribute("data-holding"), transform: "" }),
+    ).observe(el, { attributes: true, attributeFilter: ["data-holding", "style"] });
+  });
+  await codex.click();
+  await expect(page).toHaveURL(new RegExp(`/pane/${encodeURIComponent("w2:p1")}$`, "u"));
+  expect(await page.evaluate(() => window.holdLog)).toEqual([]);
 });
 
 test("hold: unpinning an idle pane on Focus takes it off the list and hands focus to the summary line", async ({ page }) => {
