@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ThreadSidebar } from "./agent-sidebar";
 import { paneRowKey } from "@/lib/hosts";
+import { currentPins, setPinned } from "@/lib/pins";
 import { fixtureAgents, fixtureCrewAgents, fixtureServers } from "@/test/handlers";
 import type { AgentView, Launcher } from "@/lib/types";
 
@@ -493,5 +494,102 @@ describe("ThreadSidebar: Launch section", () => {
     const row = screen.getByText("Runs & quota").closest("button");
     expect(row).toBeDisabled();
     expect(row).toHaveAttribute("title", "laptop hasn't answered in a while");
+  });
+});
+
+// PINNED LEADS THE SWITCHER (ADR 0070): a Pinned section under the summary line, in the dashboard's
+// place order, and each pinned pane leaves its workspace section or Shells, so it is listed once.
+describe("ThreadSidebar — pinned panes", () => {
+  const shell: AgentView = {
+    paneId: "w2:p9",
+    workspaceId: "w2",
+    workspaceLabel: "collie",
+    workspaceNumber: 2,
+    tabId: "w2:t1",
+    agent: "shell",
+    status: "unknown",
+    cwd: "/home/you/collie",
+    focused: false,
+    kind: "shell",
+  };
+  const agents = [...fixtureAgents, idleAgent];
+  const herd = [...agents, shell];
+  const pin = (...panes: AgentView[]) => {
+    let now = 0;
+    for (const p of panes) setPinned(p, true, herd, ++now);
+    return currentPins();
+  };
+  const region = () => screen.getByRole("region", { name: "Pinned" });
+  const rowIds = (c: HTMLElement) => [...c.querySelectorAll("button")].map((b) => b.textContent);
+
+  it("renders as before with nothing pinned", () => {
+    const { container, rerender } = render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} />,
+    );
+    const before = container.innerHTML;
+    rerender(<ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} pins={[]} />);
+    expect(container.innerHTML).toBe(before);
+    expect(screen.queryByRole("heading", { name: "Pinned" })).toBeNull();
+  });
+
+  it("leads with a Pinned section, under the summary line, in place order", () => {
+    // Pinned last-first; the section still runs webapp (w1), collie (w2, the agent then its shell),
+    // sandbox (w3).
+    const pins = pin(idleAgent, shell, fixtureAgents[0]!, fixtureAgents[1]!);
+    render(<ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} pins={pins} />);
+    const headingsInOrder = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headingsInOrder[0]).toBe("Pinned");
+    const rows = within(region()).getAllByRole("button");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("webapp"),
+      expect.stringMatching(/codex.*collie/u),
+      expect.stringContaining("shell"),
+      expect.stringContaining("sandbox"),
+    ]);
+    const summary = screen.getByRole("button", { name: /needs you/i });
+    expect(summary.compareDocumentPosition(region()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("lists each pane once: a pinned pane leaves its workspace section, and a pinned shell leaves Shells", () => {
+    const pins = pin(fixtureAgents[1]!, shell);
+    const { container } = render(
+      <ThreadSidebar agents={agents} shellPanes={[shell]} currentPaneKey="" onSelect={vi.fn()} pins={pins} />,
+    );
+    // collie's one agent is pinned, so its section is gone; Shells had one shell, pinned, so it is gone too.
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.firstChild?.textContent ?? h.textContent)).toEqual([
+      "Pinned",
+      "webapp",
+      "sandbox",
+    ]);
+    // Every pane of the herd is a row exactly once.
+    expect(rowIds(container).filter((t) => t?.includes("codex"))).toHaveLength(1);
+    expect(container.querySelectorAll("button")).toHaveLength(1 + herd.length);
+  });
+
+  it("jumps to the first urgent row in display order, which is in Pinned when a pinned pane needs you", async () => {
+    const user = userEvent.setup();
+    Element.prototype.scrollIntoView = vi.fn();
+    const blockedLast = { ...idleAgent, status: "blocked" as const };
+    const list = [{ ...fixtureAgents[0]!, status: "blocked" as const }, fixtureAgents[1]!, blockedLast];
+    let now = 0;
+    setPinned(blockedLast, true, list, ++now);
+    render(<ThreadSidebar agents={list} currentPaneKey="" onSelect={vi.fn()} pins={currentPins()} />);
+    await user.click(screen.getByRole("button", { name: /2 needs you/i }));
+    expect(within(region()).getByRole("button")).toHaveFocus();
+  });
+
+  it("keeps the current pane marked inside Pinned", () => {
+    const pins = pin(fixtureAgents[1]!);
+    render(
+      <ThreadSidebar agents={agents} currentPaneKey={paneRowKey(fixtureAgents[1]!)} onSelect={vi.fn()} pins={pins} />,
+    );
+    expect(within(region()).getByRole("button", { current: "page" })).toHaveTextContent("codex");
+  });
+
+  it("does not fold the Pinned section", () => {
+    const pins = pin(fixtureAgents[1]!);
+    render(<ThreadSidebar agents={agents} currentPaneKey="" onSelect={vi.fn()} pins={pins} />);
+    const heading = screen.getByRole("heading", { level: 3, name: "Pinned" });
+    expect(within(heading).queryByRole("button")).toBeNull();
   });
 });

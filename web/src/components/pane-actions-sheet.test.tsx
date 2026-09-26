@@ -1,9 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
-import { clearStatus } from "@/lib/status";
+import { clearStatus, useStatus } from "@/lib/status";
+import { currentPins, pinMatcher, setPinned } from "@/lib/pins";
 import type { AgentView, ServerSummary } from "@/lib/types";
 import { CrewProvider } from "./crew-provider";
 import { PaneActionsSheet } from "./pane-actions-sheet";
@@ -394,5 +395,111 @@ describe("PaneActionsSheet — title row names the machine", () => {
       "aria-labelledby",
       document.querySelector('[data-slot="sheet-title"]')!.id,
     );
+  });
+});
+
+// PIN TO TOP / UNPIN (ADR 0070): the last of the read rows, so it leads the two doors that pass no
+// reads (a dashboard row's hold, the pane pill's hold) and trails find/history/settings/zen on the ⋮.
+// A pin changes this device and types into no terminal, so it sits outside both write gates.
+describe("PaneActionsSheet — pin", () => {
+  const pinned = () => pinMatcher(currentPins())(agent);
+
+  it("leads the list on a door with no read rows, above Rename", () => {
+    renderSheet();
+    const pin = screen.getByRole("button", { name: "Pin to top" });
+    const rename = screen.getByRole("button", { name: "Rename" });
+    expect(pin.compareDocumentPosition(rename) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pin).toHaveClass("min-h-11");
+  });
+
+  it("trails the read rows on the ⋮, so no row the operator knows moves", () => {
+    renderSheet({ onFind: vi.fn(), onHistory: vi.fn(), onSettings: vi.fn(), onZen: vi.fn() });
+    const zen = screen.getByRole("button", { name: "Zen mode" });
+    const pin = screen.getByRole("button", { name: "Pin to top" });
+    const rename = screen.getByRole("button", { name: "Rename" });
+    expect(zen.compareDocumentPosition(pin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pin.compareDocumentPosition(rename) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("pins, closes the sheet first, and hands the caller the new state", async () => {
+    const user = userEvent.setup();
+    const onPinChange = vi.fn();
+    const props = renderSheet({ onPinChange, herd: [agent] });
+    await user.click(screen.getByRole("button", { name: "Pin to top" }));
+    expect(pinned()).toBe(true);
+    expect(onPinChange).toHaveBeenCalledExactlyOnceWith(agent, true);
+    expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(
+      onPinChange.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("reads Unpin on a pinned pane, and unpins it", async () => {
+    const user = userEvent.setup();
+    setPinned(agent, true, [agent]);
+    const onPinChange = vi.fn();
+    renderSheet({ onPinChange });
+    await user.click(screen.getByRole("button", { name: "Unpin" }));
+    expect(pinned()).toBe(false);
+    expect(onPinChange).toHaveBeenCalledExactlyOnceWith(agent, false);
+  });
+
+  it("says it in a toast when the caller shows no row (the pane view's two doors)", async () => {
+    const user = userEvent.setup();
+    const status = renderHook(() => useStatus());
+    renderSheet();
+    await user.click(screen.getByRole("button", { name: "Pin to top" }));
+    expect(status.result.current).toMatchObject({ text: "Pinned to the top", tone: "success" });
+    await user.click(screen.getByRole("button", { name: "Unpin" }));
+    expect(status.result.current).toMatchObject({ text: "Unpinned", tone: "success" });
+  });
+
+  it("survives read-only: a device that may not write can still pin", async () => {
+    const user = userEvent.setup();
+    renderSheet({ readOnly: true });
+    expect(screen.getByText(/read-only/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Pin to top" }));
+    expect(pinned()).toBe(true);
+  });
+
+  it("survives an unreachable machine: a pane on a quiet peer can still be pinned", async () => {
+    const user = userEvent.setup();
+    const roster: ServerSummary[] = [
+      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
+      { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
+    ];
+    const quiet = { ...agent, host: "workshop" };
+    render(<PaneActionsSheet {...renderProps({ pane: quiet })} />, {
+      wrapper: ({ children }) => (
+        <CrewProvider servers={roster} ts={20_000} pollMs={1500}>
+          {children}
+        </CrewProvider>
+      ),
+    });
+    expect(screen.getByText(/workshop is unreachable/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Pin to top" }));
+    expect(pinMatcher(currentPins())(quiet)).toBe(true);
+  });
+
+  it("drops the pin when Close succeeds", async () => {
+    const user = userEvent.setup();
+    setPinned(agent, true, [agent]);
+    const props = renderSheet();
+    await user.click(screen.getByRole("button", { name: "Close pane" }));
+    await user.click(screen.getByRole("button", { name: "Tap again to close" }));
+    await waitFor(() => expect(props.onClosed).toHaveBeenCalledOnce());
+    expect(pinned()).toBe(false);
+  });
+
+  it("keeps the pin when Close fails: the pane is still there", async () => {
+    const user = userEvent.setup();
+    server.use(http.post(/\/api\/pane\/[^/]+\/close$/, () => HttpResponse.json({ ok: false, error: "nope" }, { status: 500 })));
+    setPinned(agent, true, [agent]);
+    const props = renderSheet();
+    await user.click(screen.getByRole("button", { name: "Close pane" }));
+    await user.click(screen.getByRole("button", { name: "Tap again to close" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Close pane" })).toBeEnabled());
+    expect(props.onClosed).not.toHaveBeenCalled();
+    expect(pinned()).toBe(true);
   });
 });

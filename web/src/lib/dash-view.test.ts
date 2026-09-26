@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { coerceDashView, shownGroups } from "./dash-view";
+import { coerceDashView, pinnedRows, shownGroups } from "./dash-view";
 import { groupPanesByWorkspace } from "./pane-groups";
+import { currentPins, pinMatcher, setPinned } from "./pins";
 import type { AgentView } from "./types";
 
 // Issue 270's filter, as the "Focus" tab draws it (ADR 0066, renamed by ADR 0068): it removes rows
@@ -70,6 +71,69 @@ describe("shownGroups", () => {
     const shell = pane("p9", 1, "unknown", { kind: "shell", agent: "shell" });
     const withShell = groupPanesByWorkspace([pane("p2", 1, "blocked")], [shell], { order: "fixed" });
     expect(shownGroups(withShell, true)[0]!.rows.map((r) => r.paneId)).toEqual(["w1:p2"]);
+  });
+});
+
+// Pinned panes (ADR 0070): a pinned pane leads in a Pinned group, in place order, and leaves its
+// workspace group, so it is listed once. The group itself still rides along whole.
+describe("pinned rows", () => {
+  /** Pin these panes, in THIS order (the time of the pin), and return the list's test. */
+  function pin(...ids: string[]) {
+    let now = 0;
+    for (const id of ids) setPinned(agents.find((a) => a.paneId === id)!, true, agents, ++now);
+    return pinMatcher(currentPins());
+  }
+
+  it("lists the pinned panes in place order, whatever order they were pinned in", () => {
+    // Pinned last-first: ws3 before ws1, and within ws1 the third pane before the first.
+    const isPinned = pin("w3:p2", "w1:p3", "w1:p1");
+    expect(pinnedRows(groups, isPinned).map((p) => p.paneId)).toEqual(["w1:p1", "w1:p3", "w3:p2"]);
+  });
+
+  it("never reads status: a state change moves no pinned row", () => {
+    const isPinned = pin("w1:p1", "w3:p2");
+    const flipped = groupPanesByWorkspace(
+      agents.map((a) => ({ ...a, status: a.status === "blocked" ? ("idle" as const) : ("blocked" as const) })),
+      [],
+      { order: "fixed" },
+    );
+    expect(pinnedRows(flipped, isPinned).map((p) => p.paneId)).toEqual(
+      pinnedRows(groups, isPinned).map((p) => p.paneId),
+    );
+  });
+
+  it("takes pinned rows out of their groups on Panes, and drops a group left empty", () => {
+    const isPinned = pin("w2:p1", "w2:p2", "w1:p2");
+    const shown = shownGroups(groups, false, isPinned);
+    // ws2 had two panes, both pinned: the group is gone. ws1 lost its middle row, in place.
+    expect(shown.map((s) => s.group.label)).toEqual(["ws1", "ws3"]);
+    expect(shown[0]!.rows.map((r) => r.paneId)).toEqual(["w1:p1", "w1:p3"]);
+    // The heading still counts every pane of its workspace, pinned or not.
+    expect(shown[0]!.group).toBe(groups[0]);
+    expect(shown[0]!.group.panes).toHaveLength(3);
+  });
+
+  it("does the same under Focus: a group whose urgent rows are all pinned is dropped", () => {
+    // ws1's one urgent pane is pinned; ws3 keeps its unpinned urgent pane.
+    const isPinned = pin("w1:p2", "w3:p1");
+    const shown = shownGroups(groups, true, isPinned);
+    expect(shown.map((s) => s.group.label)).toEqual(["ws3"]);
+    expect(shown[0]!.rows.map((r) => r.paneId)).toEqual(["w3:p2"]);
+  });
+
+  it("lists each pane once: the pinned rows and the group rows never overlap, and cover the herd", () => {
+    const isPinned = pin("w1:p2", "w2:p1", "w3:p1");
+    const pinnedIds = pinnedRows(groups, isPinned).map((p) => p.paneId);
+    const groupIds = shownGroups(groups, false, isPinned).flatMap((s) => s.rows.map((r) => r.paneId));
+    expect(pinnedIds.filter((id) => groupIds.includes(id))).toEqual([]);
+    expect([...pinnedIds, ...groupIds].toSorted()).toEqual(agents.map((a) => a.paneId).toSorted());
+  });
+
+  it("changes nothing with nothing pinned", () => {
+    const isPinned = pinMatcher(currentPins());
+    expect(pinnedRows(groups, isPinned)).toEqual([]);
+    expect(shownGroups(groups, false, isPinned)).toEqual(shownGroups(groups, false));
+    expect(shownGroups(groups, true, isPinned)).toEqual(shownGroups(groups, true));
   });
 });
 

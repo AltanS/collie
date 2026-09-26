@@ -27,6 +27,8 @@ interface PaneStripProps {
   onRenamed?: () => void;
   /** Navigate/refresh after a close (Home if it's the open pane). Enables long-press with onRenamed. */
   onClosed?: (paneId: string) => void;
+  /** Every pane of the herd, for the sheet's Pin to top row (lib/pins.ts reads it on a pin). */
+  herd?: readonly AgentView[];
 }
 
 // The panes within the current tab, as a horizontal switcher one level below the tab bar
@@ -46,7 +48,8 @@ interface PaneStripProps {
 // Mobile deliberately doesn't replicate the desktop's pane tiling — a tab can
 // hold several panes, and this is just a quick way to flip between them. Rendered only when the tab
 // actually holds more than one pane (a lone pane needs no switcher), so it's an optional extra row.
-// A long-press on a pill opens its actions sheet (rename / close) when the parent wires the actions.
+// A long-press on a pill opens its actions sheet (pin / rename / close) when the parent wires the
+// actions.
 export function PaneStrip({
   panes,
   currentPaneId,
@@ -55,6 +58,7 @@ export function PaneStrip({
   readOnly,
   onRenamed,
   onClosed,
+  herd,
 }: PaneStripProps) {
   useLocale();
   const [sheetPane, setSheetPane] = useState<AgentView | null>(null);
@@ -145,6 +149,7 @@ export function PaneStrip({
           readOnly={readOnly}
           onRenamed={onRenamed}
           onClosed={onClosed}
+          herd={herd}
         />
       )}
     </>

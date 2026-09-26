@@ -60,6 +60,28 @@ test("switching tabs moves neither the footer nor the summary line", async ({ pa
   }
 });
 
+// A pinned pane (ADR 0070) leads every tab in a Pinned group, and that group sits UNDER the summary
+// line, so the line and the footer still hold still across a switch with a pin set.
+test("with a pane pinned, switching tabs still moves neither the footer nor the summary line", async ({ page }) => {
+  await routeChanges(page);
+  await page.goto("/");
+  // Pin the collie codex pane through its own menu: the row's right-click is the hold's twin.
+  await page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).click({ button: "right" });
+  await page.getByRole("dialog").getByRole("button", { name: en["paneActions.pin.label"] }).click();
+  const pinned = page.getByRole("region", { name: en["home.pinned.title"] });
+  await expect(pinned).toBeVisible();
+  const f0 = await box(footer(page));
+  const s0 = await box(summary(page));
+
+  for (const name of [FOCUS, CHANGES, PANES]) {
+    await tab(page, name).click();
+    await expect(tab(page, name)).toHaveAttribute("aria-current", "page");
+    await expect(pinned).toBeVisible();
+    expect(await box(footer(page))).toEqual(f0);
+    expect(await box(summary(page))).toEqual(s0);
+  }
+});
+
 test("Focus shows only the panes that need you, and survives a reload", async ({ page }) => {
   await page.goto("/");
   // Both workspaces under Panes.

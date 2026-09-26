@@ -1,11 +1,13 @@
 import { CircleDot, GitCompare, Rows3 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
+import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { LaunchStrip } from "@/components/launch-strip";
 import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet, type WorktreeRepo } from "@/components/new-space-sheet";
@@ -24,7 +26,7 @@ import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { ambientHost, ambientPanes, paneScope, sessionsOnHost } from "@/lib/hosts";
+import { ambientHost, ambientPanes, paneRowKey, paneScope, sessionsOnHost } from "@/lib/hosts";
 import type { ChangesLookup } from "@/lib/api";
 import type { DashView } from "@/lib/dash-view";
 import { t, tn } from "@/lib/i18n";
@@ -33,7 +35,9 @@ import { spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { countBlocked, hasReady } from "@/lib/triage";
-import type { ServerSummary, SessionSummary } from "@/lib/types";
+import { usePairing } from "@/lib/pairing";
+import { usePins } from "@/lib/pins";
+import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 
 /**
@@ -151,6 +155,18 @@ export function HomeRoute() {
     [data.agents, data.shellPanes, data.scope, data.servers, data.sessions],
   );
 
+  // THE ROW HOLD (ADR 0070): a hold on a dashboard row opens that pane's own actions sheet, Pin to
+  // top / Unpin first, then the writes. The sheet writes with the PANE's scope, for the reason a tap
+  // opens with it (`paneScope`). A pin or unpin moves the row right here, so the answer is the row
+  // itself, scrolled into view and focused in its new place (`reveal`), not a toast.
+  const pins = usePins();
+  const [held, setHeld] = useState<AgentView | null>(null);
+  const [reveal, setReveal] = useState<{ rowKey: string } | null>(null);
+  const revalidator = useRevalidator();
+  const { refused: notPaired } = usePairing();
+  const readOnly = isReadOnly(data.device) || notPaired;
+  const herd = useMemo(() => [...data.agents, ...data.shellPanes], [data.agents, data.shellPanes]);
+
   // ScreenTransition remounts this whole route on every dashboard<->pane move (both directions), so
   // the scroller below is a fresh DOM node with scrollTop 0 each time — the document itself never
   // scrolls, so nothing else restores this. Keyed on the scope (host + session), so two herdr
@@ -206,6 +222,9 @@ export function HomeRoute() {
             hidden={prefs.hiddenSpaces}
             onIsolate={setIsolatedSpace}
             onToggleHidden={toggleHiddenSpace}
+            pins={pins}
+            onHold={setHeld}
+            reveal={reveal}
             needsYouOnly={view === "focus"}
             renderBody={
               view === "changes"
@@ -285,6 +304,21 @@ export function HomeRoute() {
       <ToastViewport className="bottom-[calc(3.5rem+1px)]">
         <StatusArea />
       </ToastViewport>
+
+      {/* The pane menu a row's hold opens: the pane pill's sheet, with no read rows, so Pin to top
+          leads. Mounted at the route's root, a sibling of the other sheets, for the stacking reason
+          agent-chat.tsx gives for its own. */}
+      <PaneActionsSheet
+        open={held !== null}
+        onClose={() => setHeld(null)}
+        pane={held}
+        scope={held === null ? data.scope : paneScope(data.scope, held, data.servers, data.sessions)}
+        readOnly={readOnly}
+        onRenamed={() => revalidator.revalidate()}
+        onClosed={() => revalidator.revalidate()}
+        herd={herd}
+        onPinChange={(pane) => setReveal({ rowKey: paneRowKey(pane) })}
+      />
 
       <NewSpaceSheet
         open={newSpaceOpen}

@@ -33,6 +33,8 @@ interface SectionHeaderProps {
   trailing?: ReactNode;
   /** Heading level. 2 on a page; 3 inside the pane-switcher sheet, whose own title is the h2. */
   level?: 2 | 3;
+  /** The heading element's id, for a `<section aria-labelledby>` that takes its name from it. */
+  id?: string;
   /**
    * "muted" (default) is the small uppercase caption every section has always worn. "strong" is the
    * dashboard trial's louder workspace heading: foreground ink, 13px, the name in its own case, for a
@@ -58,6 +60,7 @@ export function SectionHeader({
   controls,
   trailing,
   level = 2,
+  id,
   tone: toneName = "muted",
   className,
 }: SectionHeaderProps) {
@@ -99,7 +102,7 @@ export function SectionHeader({
     // No horizontal inset of its own: R2 — a section label begins on the page gutter, on the same
     // x as the group it labels. It used to sit 4px further in than its own dividers.
     <div className={cn("flex items-center gap-2", className)}>
-      <Heading className="flex min-w-0 flex-1">
+      <Heading id={id} className="flex min-w-0 flex-1">
         {foldable ? (
           <button
             type="button"

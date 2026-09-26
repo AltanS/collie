@@ -2,9 +2,11 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
-import { groupPanesByWorkspace } from "@/lib/pane-groups";
+import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { workspacePrefKey } from "./agent-list";
+import { paneRowKey } from "@/lib/hosts";
+import { currentPins, setPinned } from "@/lib/pins";
 import type { AgentStatus, AgentView } from "@/lib/types";
 
 function agent(
@@ -535,5 +537,174 @@ describe("AgentList — the Spaces filter strip", () => {
     // A status change marks the row (a tint, a dot) — it never reorders it. Pane id is the only
     // tiebreak `order: "fixed"` uses (lib/pane-groups.ts).
     expect(order()).toEqual(["first", "second"]);
+  });
+});
+
+// PINNED PANES (ADR 0070): a Pinned group under the summary line on every tab, drawn from every
+// workspace before isolate and hide, deaf to the Focus filter, and each pinned pane listed once.
+describe("AgentList — pinned panes", () => {
+  const herd = [
+    agent("a1", "idle", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", sessionName: "orchestrator" }),
+    agent("a2", "blocked", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", sessionName: "stuck" }),
+    agent("b1", "working", { workspaceId: "w2", workspaceLabel: "two", workspaceNumber: 2, tabId: "w2:t1", sessionName: "builder" }),
+    agent("b2", "idle", { workspaceId: "w2", workspaceLabel: "two", workspaceNumber: 2, tabId: "w2:t1", sessionName: "quiet" }),
+  ];
+  const byName = (name: string) => herd.find((a) => a.sessionName === name)!;
+  /** Pin these panes, in this order, and hand back the pins as the list's prop. */
+  const pinned = (...names: string[]) => {
+    let now = 0;
+    for (const n of names) setPinned(byName(n), true, herd, ++now);
+    return currentPins();
+  };
+  const pinnedRegion = () => screen.getByRole("region", { name: "Pinned" });
+  const rowNames = (el: HTMLElement) =>
+    within(el)
+      .getAllByRole("button")
+      .map((b) => herd.find((a) => within(b).queryByText(a.sessionName!))?.sessionName);
+
+  it("draws no Pinned heading and no extra DOM when nothing is pinned", () => {
+    const { container, rerender } = render(<AgentList agents={herd} onOpen={vi.fn()} />);
+    const before = container.innerHTML;
+    expect(screen.queryByRole("heading", { name: "Pinned" })).toBeNull();
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} pins={[]} />);
+    expect(container.innerHTML).toBe(before);
+  });
+
+  it("draws Pinned under the summary line, as the first group, in place order", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("builder", "orchestrator")} />);
+    expect(headings()).toEqual(["pinned", "one", "two"]);
+    // Place order, not pin order: workspace one before two.
+    expect(rowNames(pinnedRegion())).toEqual(["orchestrator", "builder"]);
+    // The summary line sits above the group.
+    const summary = screen.getByRole("button", { name: /^\d+ needs you/ });
+    expect(summary.compareDocumentPosition(pinnedRegion()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The heading is the muted section voice, an h2 with no dot and no count.
+    const heading = within(pinnedRegion()).getByRole("heading", { level: 2, name: "Pinned" });
+    expect(heading.textContent).toBe("Pinned");
+  });
+
+  it("takes a pinned row out of its workspace group, and the heading still counts every pane", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("stuck")} />);
+    const one = groupSection("one");
+    expect(rowNames(one)).toEqual(["orchestrator"]);
+    // The pinned pane is blocked, and workspace one's heading still says so.
+    expect(within(one).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(rowNames(pinnedRegion())).toEqual(["stuck"]);
+  });
+
+  it("drops a workspace group left with no rows, and keeps its chip in the strip", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("builder", "quiet")} />);
+    expect(headings()).toEqual(["pinned", "one"]);
+    expect(within(screen.getByRole("navigation", { name: /spaces/i })).getByRole("button", { name: /two/ })).toBeInTheDocument();
+  });
+
+  it("puts the place on line 2 of a pinned row, because no workspace heading says it", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("builder")} />);
+    const row = within(pinnedRegion()).getByRole("button");
+    expect(row.querySelector('[data-slot="agent-row-detail"]')).toHaveTextContent(/^two/);
+  });
+
+  it("ignores isolate: a pin on another workspace still leads", () => {
+    const pins = pinned("builder");
+    const isolateOne = workspacePrefKey(groupPanesByWorkspace([herd[0]!])[0]!);
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pins} isolated={isolateOne} />);
+    expect(headings()).toEqual(["pinned", "one"]);
+    expect(rowNames(pinnedRegion())).toEqual(["builder"]);
+  });
+
+  it("ignores hide: a pin in a hidden workspace still leads", () => {
+    const pins = pinned("builder");
+    const hideTwo = workspacePrefKey(groupPanesByWorkspace([herd[2]!])[0]!);
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pins} hidden={[hideTwo]} />);
+    expect(headings()).toEqual(["pinned", "one"]);
+    expect(rowNames(pinnedRegion())).toEqual(["builder"]);
+  });
+
+  it("isolating a workspace whose panes are all pinned shows the Pinned group alone", () => {
+    const pins = pinned("builder", "quiet");
+    const isolateTwo = workspacePrefKey(groupPanesByWorkspace([herd[2]!])[0]!);
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pins} isolated={isolateTwo} />);
+    expect(headings()).toEqual(["pinned"]);
+  });
+
+  it("ignores the Focus filter: an idle pinned pane leads, and the groups keep only what needs you", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("orchestrator")} needsYouOnly />);
+    expect(rowNames(pinnedRegion())).toEqual(["orchestrator"]);
+    expect(headings()).toEqual(["pinned", "one"]);
+    expect(rowNames(groupSection("one"))).toEqual(["stuck"]);
+  });
+
+  it("shows only the Pinned group under an all-clear Focus when every urgent pane is pinned", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("stuck")} needsYouOnly />);
+    expect(headings()).toEqual(["pinned"]);
+  });
+
+  it("leads Changes too, and hands the Changes body every shown workspace unchanged (A2)", () => {
+    const renderBody = vi.fn((_shown: readonly WorkspaceGroup[]) => <p>changes body</p>);
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("builder", "quiet")} renderBody={renderBody} />);
+    expect(rowNames(pinnedRegion())).toEqual(["builder", "quiet"]);
+    // Workspace two's panes are all pinned, and it still gets its change row, with every pane.
+    const shown = renderBody.mock.calls[0]![0];
+    expect(shown.map((g) => g.label)).toEqual(["one", "two"]);
+    expect(shown[1]!.panes).toHaveLength(2);
+    expect(pinnedRegion().compareDocumentPosition(screen.getByText("changes body")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("opens a pinned row's own pane, exactly as its workspace row would", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    render(<AgentList agents={herd} onOpen={onOpen} pins={pinned("builder")} />);
+    await user.click(within(pinnedRegion()).getByRole("button"));
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(byName("builder"), expect.any(HTMLElement));
+  });
+
+  it("jumps the summary line to Pinned when a pinned pane needs you", async () => {
+    const user = userEvent.setup();
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("stuck")} />);
+    await user.click(screen.getByRole("button", { name: /^\d+ needs you/ }));
+    expect(scroll.mock.contexts[0]).toBe(pinnedRegion());
+    scroll.mockRestore();
+  });
+
+  it("opens the pane's sheet on a hold, and not the pane", () => {
+    const onOpen = vi.fn();
+    const onHold = vi.fn();
+    render(<AgentList agents={herd} onOpen={onOpen} onHold={onHold} />);
+    const row = within(groupSection("two")).getAllByRole("button")[0]!;
+    fireEvent.contextMenu(row);
+    expect(onHold).toHaveBeenCalledExactlyOnceWith(byName("builder"));
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("focuses the moved row in its new place after a pin, and the summary line when the row left", () => {
+    const pins = pinned("orchestrator");
+    const { rerender } = render(
+      <AgentList agents={herd} onOpen={vi.fn()} pins={pins} reveal={{ rowKey: paneRowKey(byName("orchestrator")) }} />,
+    );
+    expect(within(pinnedRegion()).getByRole("button")).toHaveFocus();
+    // Unpinned on Focus: an idle pane leaves the list, and focus goes to the summary line.
+    setPinned(byName("orchestrator"), false, herd);
+    rerender(
+      <AgentList
+        agents={herd}
+        onOpen={vi.fn()}
+        pins={currentPins()}
+        needsYouOnly
+        reveal={{ rowKey: paneRowKey(byName("orchestrator")) }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /^\d+ needs you/ })).toHaveFocus();
+  });
+
+  it("lets the all-clear summary line hold focus once pins are in play", () => {
+    const calm = herd.filter((a) => a.status !== "blocked");
+    const { rerender } = render(<AgentList agents={calm} onOpen={vi.fn()} />);
+    // With nothing pinned, the line is the disabled button it always was.
+    expect(screen.getByRole("button", { name: /nothing needs you/i })).toBeDisabled();
+    rerender(<AgentList agents={calm} onOpen={vi.fn()} needsYouOnly reveal={{ rowKey: paneRowKey(calm[0]!) }} />);
+    const line = screen.getByRole("button", { name: /nothing needs you/i });
+    expect(line).toHaveAttribute("aria-disabled", "true");
+    expect(line).toHaveFocus();
   });
 });

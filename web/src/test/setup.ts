@@ -7,6 +7,7 @@ import { handlers, resetTypedDraft } from "./handlers";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { __resetPairing } from "@/lib/pairing";
 import { __resetDraftPrune } from "@/lib/drafts";
+import { __resetPins } from "@/lib/pins";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`.
 export const server = setupServer(...handlers);
@@ -32,6 +33,9 @@ beforeEach(() => {
     // ignore
   }
   __resetDraftPrune();
+  // The pins store keeps its list in module scope (lib/pins.ts), which the storage clear above
+  // cannot reach: one case's pin would otherwise lead the next case's dashboard.
+  __resetPins();
 });
 afterEach(() => {
   cleanup();

@@ -11,6 +11,7 @@ import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-n
 import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
+import { useLongPress } from "@/hooks/use-long-press";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -24,6 +25,14 @@ interface AgentCardProps {
   glideKey?: string;
   /** The finger landed on the row: the moment to start the pane's read (lib/pane-prefetch.ts). */
   onPress?: () => void;
+  /**
+   * A hold on the row (450ms, or `contextmenu`: a right-click, the Menu key, Android's own long
+   * press) opens the pane's actions sheet instead of the pane (ADR 0070). The click that ends the hold
+   * is swallowed, so a hold never also opens the pane. Omit and the row has no hold at all.
+   */
+  onHold?: () => void;
+  /** The row button's DOM id, so a list can find the row again after a pin moved it. */
+  id?: string;
   /**
    * Where the row is being shown. "herd" (default) is a flat list across every space, so line 2
    * carries the place. "tab" is a list already grouped under its space and tab, so line 2 is the
@@ -104,6 +113,8 @@ export function AgentCard({
   onClick,
   glideKey,
   onPress,
+  onHold,
+  id,
   scope = "herd",
   statusStyle = "badge",
   density = "card",
@@ -111,6 +122,9 @@ export function AgentCard({
   tint = false,
 }: AgentCardProps) {
   useLocale();
+  // Inert when `onHold` is undefined: every handler returns at once, the native context menu stays,
+  // and no click is swallowed, so a row with no hold behaves exactly as it did.
+  const hold = useLongPress(onHold);
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
@@ -184,13 +198,23 @@ export function AgentCard({
 
   return (
     <button
+      id={id}
       type="button"
       onClick={(e) => onClick(e.currentTarget)}
-      onPointerDown={onPress}
+      {...hold}
+      // Both halves of a press: the pane's read starts on the finger landing, and the hold's timer
+      // arms on the same event.
+      onPointerDown={(e) => {
+        onPress?.();
+        hold.onPointerDown(e);
+      }}
       data-glide-origin={glideKey === undefined ? undefined : "pane"}
       data-glide-key={glideKey}
       className={cn(
         "w-full text-left transition-transform active:scale-[0.99]",
+        // A held row must not start iOS's selection loupe or touch callout: both end in a
+        // `pointercancel` that kills the hold timer (hooks/use-long-press.ts).
+        onHold && "select-none [-webkit-touch-callout:none]",
         // No radius on a flat row, in ANY state. These sit in a `divide-y` list, and a rounded fill
         // under a full-width straight hairline reads as a rendering fault — the corners pull away
         // from a line that doesn't follow them. Corners belong to where the row sits, never to what

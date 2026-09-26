@@ -4,6 +4,9 @@
 // until ADR 0068 renamed it and swapped its icon.
 //
 // Focus is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves nothing.
+//
+// Pinned panes lead all three under the summary line (ADR 0070), in place order, and leave their
+// workspace group on Panes and Focus so each pane is listed once.
 import type { JsonValue } from "./json";
 import type { WorkspaceGroup } from "./pane-groups";
 import { needsYou } from "./triage";
@@ -29,18 +32,39 @@ export interface ShownGroup {
   rows: readonly AgentView[];
 }
 
+const NOT_PINNED: (pane: AgentView) => boolean = () => false;
+
 /**
  * The rows a view shows under each workspace. `needsOnly` keeps a group's panes whose bucket is in
- * `ATTENTION` and drops a group left with none. Order is untouched: the groups keep theirs, and the
- * rows inside keep theirs. The group itself is passed through whole, so a heading still counts every
- * pane in its workspace, and the filter can never understate the herd.
+ * `ATTENTION`; `pinned` takes out the panes the Pinned group already lists (ADR 0070), so each pane
+ * is listed once. A group left with no rows is dropped. Order is untouched: the groups keep theirs,
+ * and the rows inside keep theirs. The group itself is passed through whole, so a heading still
+ * counts every pane in its workspace, pinned or not, and neither filter can understate the herd.
  */
-export function shownGroups(groups: readonly WorkspaceGroup[], needsOnly: boolean): ShownGroup[] {
-  if (!needsOnly) return groups.map((group) => ({ group, rows: group.panes }));
+export function shownGroups(
+  groups: readonly WorkspaceGroup[],
+  needsOnly: boolean,
+  pinned: (pane: AgentView) => boolean = NOT_PINNED,
+): ShownGroup[] {
+  if (!needsOnly && pinned === NOT_PINNED) return groups.map((group) => ({ group, rows: group.panes }));
   const out: ShownGroup[] = [];
   for (const group of groups) {
-    const rows = group.panes.filter(needsYou);
+    const rows = group.panes.filter((p) => !pinned(p) && (!needsOnly || needsYou(p)));
     if (rows.length > 0) out.push({ group, rows });
   }
   return out;
+}
+
+/**
+ * The Pinned group's rows (ADR 0070), in PLACE ORDER: the groups flattened as they run (machine,
+ * workspace number, tab number, position in the tab), keeping the pinned panes. Hand it every group,
+ * BEFORE isolate and hide apply, because a pin means "always show me this one". It never reads
+ * status, so no state change moves a pinned row, and the dashboard and the switcher agree by
+ * construction. The time of the pin is not an order: the screen never shows it.
+ */
+export function pinnedRows(
+  groups: readonly WorkspaceGroup[],
+  pinned: (pane: AgentView) => boolean,
+): AgentView[] {
+  return groups.flatMap((g) => g.panes).filter(pinned);
 }
