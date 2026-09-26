@@ -51,6 +51,7 @@ import type { StyledLine } from "../../blocks";
 import { displayWidth } from "../../text-width";
 import { hasInputBox } from "./chrome";
 import { isBlank, lineText } from "./markers";
+import { SEGMENT_SPLIT } from "../menu-hints";
 import type { MenuRegion } from "./menu";
 import { regionSignature } from "./prompt-select";
 import { MODAL_EDGE_WINDOW, regionTopAt } from "./region-top";
@@ -71,11 +72,6 @@ const FOOTER_ARROWS = /←\/→\s+to\s+(\w+)/;
 // screen writes instead of "<key> to <verb phrase>". Read here rather than widening the shared
 // grammar for one screen's wording.
 const FOR_SEGMENT = /^(\S+)\s+for\s+(.+)$/;
-
-// The footer's segment separator, the same middle-dot-with-spaces menu-hints.ts splits on. Kept local
-// rather than exported from there: this file reads ONE segment shape that the shared parser
-// deliberately refuses, so it does not share that parser's grammar.
-const SEGMENT_SPLIT = /\s+·\s+/;
 
 // How far the nearest label centre must beat the second-nearest by, in display cells, before the
 // value is reported at all. One cell: the read is a position, and a position that cannot pick a side

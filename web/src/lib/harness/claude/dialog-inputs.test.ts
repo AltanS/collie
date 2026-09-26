@@ -203,3 +203,40 @@ describe("the shell under a starting or exiting Claude gets no unread-dialog car
     },
   );
 });
+
+describe("review fixes: a wrapped reject row, a footerless claim, and the card's evidence", () => {
+  const plain = (rows: string[]) => splitLines(parseAnsi(rows.join("\n")));
+  const webfetch = (pointer: boolean) =>
+    plain([
+      "─".repeat(50),
+      " Fetch",
+      "   url: https://example.com/",
+      "",
+      " Do you want to allow Claude to fetch this content?",
+      ` ${pointer ? "❯" : " "} 1. Yes`,
+      "   2. Yes, and don't ask again for example.com",
+      "   3. No, and tell Claude what to do differently",
+      "      (esc)",
+    ]);
+
+  it("a reject row whose '(esc)' wrapped onto its own row stays a button, not an amend note", () => {
+    const model = detectPromptSelect(webfetch(true))!;
+    expect(model.family).toBe("permission");
+    expect(model.feedback).toBeUndefined();
+    expect(model.options.at(-1)).toEqual({
+      label: "No, and tell Claude what to do differently (esc)",
+      description: undefined,
+      keys: ["3"],
+    });
+  });
+
+  it("with no footer, the same words without a live pointer claim nothing", () => {
+    expect(detectPromptSelect(webfetch(false))).toBeNull();
+  });
+
+  it("a missed select's pointer, or a 'Press Enter' prompt, still counts as a modal for the card", () => {
+    expect(claudeAdapter.modalOnScreen!(plain(["Pick one", "❯ 1. Alpha", "  2. Beta"]))).toBe(true);
+    expect(claudeAdapter.modalOnScreen!(plain(["Setup finished.", "Press Enter to continue…"]))).toBe(true);
+    expect(claudeAdapter.modalOnScreen!(plain(["user in host in ~/src", "❯ claude"]))).toBe(false);
+  });
+});

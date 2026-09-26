@@ -26,7 +26,7 @@ import type { MenuAction } from "./menu-model";
 // The footer's segment separator: a middle dot with space on both sides. Anchored on the spaces so a
 // dot inside a value ("Haiku 4.5 · Fastest") in a BODY row can't be mistaken for a footer — only the
 // footer line is ever split, and its hints are always spaced.
-const SEGMENT_SPLIT = /\s+·\s+/;
+export const SEGMENT_SPLIT = /\s+·\s+/;
 
 // One hint segment: "<key token> to <verb phrase>". Non-greedy on the key so "Enter to set as
 // default" yields "Enter" / "set as default" rather than swallowing the first "to".
@@ -228,4 +228,29 @@ function softWrappedAt0(prev: string, cont: string, width: number): boolean {
 /** A row's left indent, in characters. Compared only between rows of one candidate footer group. */
 function indentOf(text: string): number {
   return /^\s*/.exec(text)![0].length;
+}
+
+/**
+ * A footer that is ONE "<key> to <verb>" hint, as its Herdr key token and the verb: `Esc to cancel`
+ * → { key: "Escape", verb: "cancel" }. Null when the footer has more than one segment, is not a hint,
+ * or names no sendable key. parseKeyHintFooter refuses a single segment on purpose; this is for a
+ * caller that has other evidence the screen is a modal (claude/menu.ts, under a `▔` edge).
+ */
+export function parseSingleHint(footer: string): { key: string; verb: string } | null {
+  const text = footer.trim();
+  if (text.split(SEGMENT_SPLIT).length !== 1) return null;
+  const m = HINT.exec(text);
+  if (m === null) return null;
+  const key = menuKeyFor(m[1]!);
+  return key === null ? null : { key, verb: m[2]! };
+}
+
+/** The keystroke plan for the row at `target` when the pointer sits on `pointed`: the arrow walk the
+ *  highlight implies, then Enter. Sent as ONE batch (lib/prompt-action.ts hands the whole array to
+ *  `pane.send_keys`), so no half-walked pointer can be left behind. Shared by every pointed list
+ *  (Claude's folder-trust prompt, ADR 0055, and Codex 0.156.1's). */
+export function pointerWalk(pointed: number, target: number): string[] {
+  const steps = target - pointed;
+  const arrow = steps > 0 ? "Down" : "Up";
+  return [...Array<string>(Math.abs(steps)).fill(arrow), "Enter"];
 }

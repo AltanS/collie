@@ -34,7 +34,7 @@ import { classifyFooter, isBlank, lineText } from "./markers";
 import { regionSignature } from "./prompt-select";
 import { findRegionTop } from "./region-top";
 import type { MenuAction, MenuModel, MenuNav } from "../menu-model";
-import { capitaliseMenuLabel, MENU_ARROW_ROW, menuKeyFor, parseKeyHintFooter, readKeyHintFooter } from "../menu-hints";
+import { capitaliseMenuLabel, MENU_ARROW_ROW, parseKeyHintFooter, parseSingleHint, readKeyHintFooter } from "../menu-hints";
 
 /** The detection result buildBlocks needs: the model plus `startLine`, the index of the region's
  *  opening rule. Everything above it stays raw. */
@@ -55,16 +55,11 @@ const POINTER = "❯";
 // hint is the WHOLE footer: the last row of a WRAPPED footer ("↑/↓ to select · Enter to view ·" over
 // "Esc to close", /tasks at 40 columns) is never read as all of it (readKeyHintFooter joins the rows
 // a footer wrapped onto, and a group that starts above the last row is not a lone hint).
-const SINGLE_HINT = /^(.+?)\s+to\s+(.+)$/i;
-const SEGMENT_SPLIT = /\s+·\s+/;
-
 /** The one Cancel action a single-hint "Esc to <verb>" footer names, or null. */
 function escOnlyFooter(footer: string): MenuAction | null {
-  const text = footer.trim();
-  if (text.split(SEGMENT_SPLIT).length !== 1) return null;
-  const m = SINGLE_HINT.exec(text);
-  if (m === null || menuKeyFor(m[1]!) !== "Escape") return null;
-  return { label: capitaliseMenuLabel(m[2]!), keys: ["Escape"], cancel: true };
+  const hint = parseSingleHint(footer);
+  if (hint === null || hint.key !== "Escape") return null;
+  return { label: capitaliseMenuLabel(hint.verb), keys: ["Escape"], cancel: true };
 }
 
 /**

@@ -156,18 +156,24 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
 
 export { extractStatusLines, extractAgentsFooter, extractInputDraft };
 
-// How many of the screen's last non-blank rows may carry a modal's key hint. A footer wraps onto at
-// most three rows (menu-hints MAX_FOOTER_ROWS), and a hint can sit a row or two above it.
+// How many of the screen's last non-blank rows may carry a modal's mark. A footer wraps onto at most
+// three rows (menu-hints MAX_FOOTER_ROWS), and a hint can sit a row or two above it.
 const MODAL_HINT_ROWS = 6;
 
-/** Whether one of the screen's last non-blank rows names a key the way a Claude modal's footer does. */
+// A select's live pointer on a numbered row ("❯ 1. Yes"), and a bare "Press Enter to continue" style
+// prompt, whose key token `namesAMenuKey` does not take. Either is a modal a shell prompt never is.
+const POINTED_OPTION_ROW = /^\s*❯\s*\d+\.\s+\S/;
+const PRESS_KEY_PROMPT = /\bpress\s+(?:enter|esc|escape|any key)\b/i;
+
+/** Whether the screen's last non-blank rows show a Claude modal: a row naming a key the way a modal's
+ *  footer does, a pointed numbered option, or a "Press Enter" prompt. */
 function tailNamesAKey(lines: StyledLine[]): boolean {
   const rows: string[] = [];
   for (let i = lines.length - 1; i >= 0 && rows.length < MODAL_HINT_ROWS; i--) {
     const text = lineText(lines[i]!);
     if (text.trim() !== "") rows.push(text);
   }
-  return rows.some(namesAMenuKey);
+  return rows.some((t) => namesAMenuKey(t) || POINTED_OPTION_ROW.test(t) || PRESS_KEY_PROMPT.test(t));
 }
 
 export const claudeAdapter: HarnessAdapter = {
@@ -186,7 +192,8 @@ export const claudeAdapter: HarnessAdapter = {
   cancelKey: "Escape",
   // Every Claude modal the card has ever been right about names a key in its last rows: "Esc to
   // cancel", "Esc to close", "enter to return", "Enter to select" (the allow-list in
-  // unread-dialog.test.ts). The shell prompt under a starting or exiting Claude names none.
+  // unread-dialog.test.ts), and a missed select still shows its `❯ N.` pointer. The shell prompt
+  // under a starting or exiting Claude shows none of these.
   modalOnScreen: tailNamesAKey,
   // Long sends never appear in the box as themselves — Claude collapses them into `[Pasted text #N
   // +M lines]` — so the reply guard's literal match can't verify them and the send stalls. These two
