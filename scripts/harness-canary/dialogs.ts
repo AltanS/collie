@@ -9,11 +9,11 @@
 //
 // Keys are pressed only where the recipe was measured live on 2026-09-26: a permission dialog's "No"
 // digit (declines), Escape out of the Tab amend note (declines), an AskUserQuestion option's digit
-// (answers), Codex's approval decline. Every decline is checked in the project folder too: the file
-// the prompt asked for must not exist. Plan approval is read, never answered: its keys were not
-// probed on 2.1.283.
+// (answers), Codex's approval decline, and OpenCode's pointer walk (Right, then Enter) and Escape.
+// Every decline is checked in the project folder too: the file the prompt asked for must not exist.
+// Plan approval is read, never answered: its keys were not probed on 2.1.283.
 
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchLine } from "./agents/profile";
 import { Driver, POLL_MS, answeredBelow, wordsOnScreen, type AgentContext, type Screen } from "./scenarios";
@@ -321,10 +321,95 @@ async function codexDialogs(ctx: AgentContext): Promise<CaseResult[]> {
   return cases;
 }
 
-/** The dialogs scenario for one agent. Only Claude and Codex have dialog readers to test. */
+/** Poll stable screens until `test` holds, or the time runs out. The last screen either way. */
+async function waitScreen(d: Driver, test: (s: Screen) => boolean, timeoutMs = 10_000): Promise<Screen> {
+  const deadline = Date.now() + timeoutMs;
+  let s = await stable(d);
+  while (!test(s) && Date.now() < deadline) {
+    await Bun.sleep(POLL_MS * 2);
+    s = await stable(d);
+  }
+  return s;
+}
+
+const onScreen = (words: string) => (s: Screen) => s.texts.some((t) => t.includes(words));
+
+/**
+ * The scratch config OpenCode is started with for this scenario: ask before bash and before an
+ * edit. A file in the run's own capture folder, passed by `OPENCODE_CONFIG` for this one process,
+ * which OpenCode merges over its usual config; nothing in `~/.config/opencode` is written.
+ */
+const OPENCODE_ASK = { $schema: "https://opencode.ai/config.json", permission: { bash: "ask", edit: "ask" } };
+
+/**
+ * OpenCode, started so that it asks: the permission dialog, its "Always allow" step, then two
+ * declines, Reject by the walk the button sends and Escape, the adapter's declared cancel key.
+ * Confirm on the "Always allow" step is never pressed: it would allow the pattern until OpenCode
+ * restarts.
+ */
+async function opencodeDialogs(ctx: AgentContext): Promise<CaseResult[]> {
+  const cases: CaseResult[] = [];
+  const config = join(ctx.dir, "opencode-ask.json");
+  writeFileSync(config, `${JSON.stringify(OPENCODE_ASK, null, 2)}\n`);
+  const d = await Driver.open(ctx, "canary-opencode-dialogs", ctx.options.cols, "dialogs");
+  const labels = ["Allow once", "Allow always", "Reject"];
+  try {
+    if ((await d.launch([], launchLine(ctx.options.cols, `OPENCODE_CONFIG=${config} opencode`))) === null) {
+      return unreached(["dialogs"], "OpenCode never came up idle");
+    }
+
+    // The bash dialog, then "Allow always", which opens a second step with Confirm and Cancel.
+    // Cancel goes back to the first step, and Reject declines it.
+    await prompt(d, "Use the bash tool to run exactly this command and nothing else: touch canary-perm.txt");
+    let s = await waitBlocked(d);
+    const ids = ["permission", "permission-always", "permission-always-cancel", "permission-reject"];
+    if (s === null) cases.push(...unreached(ids, "no permission dialog came"));
+    else {
+      cases.push(judgePrompt(d, s, "permission", { family: "permission", labels }));
+      const always = promptOf(s)?.options.find((o) => o.label === "Allow always");
+      if (always === undefined) cases.push(failCase("permission-always", "no Allow always option to press"));
+      else {
+        d.keys(always.keys);
+        s = await waitScreen(d, onScreen("△ Always allow"));
+        cases.push(judgePrompt(d, s, "permission-always", { family: "permission", labels: ["Confirm", "Cancel"] }));
+        const cancel = promptOf(s)?.options.find((o) => o.label === "Cancel");
+        if (cancel === undefined) cases.push(failCase("permission-always-cancel", "no Cancel option to press"));
+        else {
+          d.keys(cancel.keys);
+          s = await waitScreen(d, onScreen("△ Permission required"));
+          cases.push(judgePrompt(d, s, "permission-always-cancel", { family: "permission", labels }));
+        }
+      }
+      cases.push(await decline(d, "permission-reject", s, /^Reject$/, "canary-perm.txt"));
+    }
+
+    // An edit, declined with Escape: the one key the unread-dialog card would offer.
+    await prompt(d, "Create a file named canary-edit.txt that contains the word hi. Use your file write tool, not the shell.");
+    s = await waitBlocked(d);
+    if (s === null) cases.push(...unreached(["edit-permission", "edit-escape"], "no edit permission dialog came"));
+    else {
+      cases.push(judgePrompt(d, s, "edit-permission", { family: "permission", labels }));
+      d.keys(["Escape"]);
+      const after = await waitSettled(d);
+      if (after === null) cases.push(failCase("edit-escape", "Escape left the agent unsettled"));
+      else {
+        d.save("dialogs-edit-escape", after);
+        if (existsSync(join(ctx.project, "canary-edit.txt"))) cases.push(failCase("edit-escape", "canary-edit.txt was written"));
+        else if (promptOf(after) !== null) cases.push(failCase("edit-escape", "Escape; a choice card is still up"));
+        else cases.push(passCase("edit-escape", "Escape declined"));
+      }
+    }
+  } finally {
+    d.close();
+  }
+  return cases;
+}
+
+/** The dialogs scenario for one agent. Claude, Codex and OpenCode have dialog readers to test. */
 export async function runDialogs(ctx: AgentContext): Promise<CaseResult[]> {
   if (ctx.profile.agent === "claude") return claudeDialogs(ctx);
   if (ctx.profile.agent === "codex") return codexDialogs(ctx);
+  if (ctx.profile.agent === "opencode") return opencodeDialogs(ctx);
   return [notReachedCase("dialogs", "Collie has no dialog reader for this agent")];
 }
 

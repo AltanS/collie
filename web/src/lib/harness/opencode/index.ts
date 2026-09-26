@@ -14,7 +14,7 @@
 //     two are what turn "reply" from type-and-pray into type-then-verify for opencode panes.
 //
 // The measurement record (fixture corpus, probed choreography, and the decisions above) lives in
-// web/src/fixtures/panes/README.md's opencode section and GRAMMAR_NOTES.md beside this file.
+// web/src/fixtures/panes/README.md's opencode section and PERMISSION_NOTES.md beside this file.
 
 import type { Block, StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";

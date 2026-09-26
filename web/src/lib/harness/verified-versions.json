@@ -1,5 +1,5 @@
 {
-  "$comment": "M37 spec 01 — one entry per Herdr agent name: the version Collie's reader was last verified against, when, how, whether it has a block-grammar adapter (registry.ts), and the evidence that version is real. `scripts/harness-drift.ts` reads this file; `verified-versions.test.ts` pins every key the adapter registry maps, plus opencode and pi (no adapter — raw mirror, one-shot send). `how` is one of canary | live sweep | capture | unverified.",
+  "$comment": "M37 spec 01 — one entry per Herdr agent name: the version Collie's reader was last verified against, when, how, whether it has a block-grammar adapter (registry.ts), and the evidence that version is real. `scripts/harness-drift.ts` reads this file; `verified-versions.test.ts` pins every key the adapter registry maps, plus pi (no adapter — raw mirror, one-shot send), and that `adapter` matches the registry. `how` is one of canary | live sweep | capture | unverified.",
   "agents": {
     "claude": {
       "version": "2.1.283",
@@ -53,9 +53,9 @@
     "opencode": {
       "version": "1.18.32",
       "verified": "2026-09-26",
-      "how": "unverified",
-      "adapter": false,
-      "evidence": "installed 2026-09-26, first canary run pending (M37 spec 02)"
+      "how": "capture",
+      "adapter": true,
+      "evidence": "web/src/fixtures/panes/README.md § \"opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)\"; web/src/lib/harness/opencode/PERMISSION_NOTES.md"
     },
     "pi": {
       "version": "0.87.1",

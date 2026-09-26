@@ -1,5 +1,7 @@
-// OpenCode in the canary, with its default model. Collie has no adapter for it: the phone shows the
-// raw mirror and sends in one step (text + submit), and that is what the canary checks.
+// OpenCode in the canary, with its default model. Collie reads it with its adapter
+// (web/src/lib/harness/opencode/), the way it reads claude and codex: the composer must be ready,
+// a typed draft must read back, and a send goes through type-then-verify. The dialogs scenario
+// starts its own OpenCode with a scratch config that asks for permission (dialogs.ts).
 
 import { backspaceSweep, launchLine, type AgentProfile } from "./profile";
 

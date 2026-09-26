@@ -31,22 +31,25 @@ Five scenarios per agent. Only scenario 3 makes model turns: three per agent.
 | `start-exit` | samples every 150 ms while starting and after exiting  | no unread card                                         |
 
 The message kinds live in `messages.ts`: the 14 hand kinds of 2026-09-26, plus `15-rule`, a
-pasted `────` line. opencode and pi have no adapter. For them a draft passes when its words show on
-the raw mirror, and a send goes through the one-step path the phone uses.
+pasted `────` line. claude, codex and opencode are read with their adapters. pi has no adapter. For
+it a draft passes when its words show on the raw mirror, and a send goes through the one-step path
+the phone uses.
 
 ### Dialogs and busy (`--dialogs`, spec M37/03)
 
 Two more scenarios, off by default because they make more model turns: about 8 for Claude, 4 for
-Codex, 2 per agent for `busy`. Each opens its own panes.
+Codex, 2 for OpenCode, 2 per agent for `busy`. Each opens its own panes.
 
 | id        | what the canary does                                          | what must hold                                           |
 | --------- | ------------------------------------------------------------- | -------------------------------------------------------- |
-| `dialogs` | asks Claude for a Bash command, a WebFetch, an AskUserQuestion and (in a plan-mode pane) a plan; asks Codex (`-a on-request -s read-only`) for a command and a file edit | a choice card with the right family and labels, no card; the pointer on rows 1 to 3, the Tab amend note and "Type something" lock or unlock the buttons as the reader says; the declining key closes the dialog and the file is not written; Apple's key answers |
+| `dialogs` | asks Claude for a Bash command, a WebFetch, an AskUserQuestion and (in a plan-mode pane) a plan; asks Codex (`-a on-request -s read-only`) for a command and a file edit; asks OpenCode (a scratch config that asks for bash and edit) for a command, opens its "Always allow" step and cancels it, then asks for a file edit | a choice card with the right family and labels, no card; the pointer on rows 1 to 3, the Tab amend note and "Type something" lock or unlock the buttons as the reader says; the declining key closes the dialog and the file is not written; Apple's key answers |
 | `busy`    | starts a 500-word story, then sends "Queued note: reply with only OK." while Herdr says `working` | outcome `sent`, the note answered below it, and no unread card on any sample while the agent works |
 
 Keys are pressed only where the recipe was measured live: a permission dialog's "No" digit,
-Escape out of the amend note, an AskUserQuestion option's digit, Codex's decline. Plan approval is
-read and never answered. A dialog the model does not open (it answers in words instead) is
+Escape out of the amend note, an AskUserQuestion option's digit, Codex's decline, and on OpenCode
+the buttons' own walk (`Right`, then `Enter`) for "Allow always", "Cancel" and "Reject", and Escape,
+its declared cancel key, on the edit. "Confirm" is never pressed: it would allow the pattern until
+OpenCode restarts. Plan approval is read and never answered. A dialog the model does not open (it answers in words instead) is
 `not-reached`. The dialog screens are saved as `dialogs-<case>.ansi`.
 
 ## Verdicts
@@ -148,6 +151,12 @@ and `HERDR_*` variables before it starts the server.
 **Models.** claude runs Haiku (`--model haiku`), codex its default model at low effort
 (`-c model_reasoning_effort="low"`), pi its default model with `--thinking off` and
 `--no-session`, and opencode its default model. All are flags, none touches the operator's config.
+
+**OpenCode's permission dialogs need a config.** OpenCode 1.18.32 asks before a tool only when its
+config says `ask`. The dialogs scenario writes `opencode-ask.json` into the run's capture folder
+(`permission` set to `ask` for `bash` and `edit`) and starts that one OpenCode with
+`OPENCODE_CONFIG` pointing at it. OpenCode merges that file over its usual config for this one
+process; nothing in `~/.config/opencode` is written.
 
 ## Traps kept from the hand runs
 

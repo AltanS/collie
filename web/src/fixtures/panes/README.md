@@ -952,7 +952,7 @@ contributor's captures of 2026-09-20, whose version string matched no opencode r
 The composer is a LEFT VERTICAL BAR run (`┃`, U+2503) with a `╹▀▀▀` rule under it and the status
 rows below the rule. The transcript draws the same bar: each user message and each tool run is a
 `┃` block of its own above the composer. Permission dialogs paint inside the composer's run. See
-`web/src/lib/grammar/OPENCODE_PERMISSION_NOTES.md` for the probed recipe (Right and Left move and
+`web/src/lib/harness/opencode/PERMISSION_NOTES.md` for the probed recipe (Right and Left move and
 wrap, Tab does nothing, Enter confirms, Escape declines, no digit).
 
 | Fixture | State / what's in it | Herdr status |

@@ -1,32 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { agyAdapter, antigravityAdapter } from "./agy";
-import { claudeAdapter } from "./claude";
-import { codexAdapter } from "./codex";
-import { grokAdapter } from "./grok";
-import { museAdapter } from "./muse";
-import { ompAdapter } from "./omp";
+import { hasBlockGrammar, registeredAgents } from "./registry";
 import ledgerJson from "./verified-versions.json";
 
-// M37 spec 01 — the invariant is "every key of the ADAPTER REGISTRY has a ledger entry; so do
-// opencode and pi (adapter: false)". `registry.ts` deliberately exports only `adapterFor` /
-// `hasBlockGrammar`, never its private `ADAPTERS` map, so this reads the registered agent names
-// straight off the same adapter modules `registry.ts` itself imports — the registry's own source
-// list, not a second hand-copied one. A removed or renamed adapter fails here exactly as it would
-// fail `registry.test.ts`'s `hasBlockGrammar` pins.
-const REGISTERED_AGENTS = [
-  claudeAdapter,
-  codexAdapter,
-  grokAdapter,
-  ompAdapter,
-  agyAdapter,
-  antigravityAdapter,
-  museAdapter,
-].map((a) => a.agent);
+// M37 spec 01 — the invariant is "every key of the ADAPTER REGISTRY has a ledger entry, and every
+// entry says whether the registry has an adapter for it". The agent list is read from the registry
+// itself (`registeredAgents`), not from a second hand-copied list: a hand copy here once left out
+// opencode's new adapter while claiming to be the registry's own list.
+const REGISTERED_AGENTS = registeredAgents();
 
-// opencode and pi have no adapter at all — raw mirror, one-shot send — but the ledger still owes
-// them an entry (Ground Truth: both are installed and their version drifts too).
-const UNADAPTED_AGENTS = ["opencode", "pi"];
+// pi has no adapter at all — raw mirror, one-shot send — but the ledger still owes it an entry
+// (Ground Truth: it is installed and its version drifts too).
+const UNADAPTED_AGENTS = ["pi"];
 
 const ALLOWED_HOW = new Set(["canary", "live sweep", "capture", "unverified"]);
 
@@ -43,7 +28,7 @@ interface Ledger {
 }
 
 // SAFETY: `verified-versions.json` is a checked-in, hand-authored file; this test IS the shape
-// check (every registered adapter plus opencode/pi, `how` in the allowed set, plain `x.y.z`
+// check (every registered adapter plus pi, `how` in the allowed set, plain `x.y.z`
 // versions, ISO dates) — asserting the type here, once, is what the rest of the file verifies.
 const ledger = ledgerJson as Ledger;
 
@@ -58,7 +43,7 @@ describe("verified-versions ledger", () => {
     }
   });
 
-  it("has an entry for opencode and pi, with adapter: false", () => {
+  it("has an entry for pi, with adapter: false", () => {
     for (const agent of UNADAPTED_AGENTS) {
       const entry = entryFor(agent);
       expect(entry, `missing ledger entry for "${agent}"`).toBeDefined();
@@ -67,8 +52,15 @@ describe("verified-versions ledger", () => {
   });
 
   it("marks every registered adapter's entry adapter: true", () => {
+    expect(REGISTERED_AGENTS).toContain("opencode");
     for (const agent of REGISTERED_AGENTS) {
       expect(entryFor(agent)?.adapter, agent).toBe(true);
+    }
+  });
+
+  it("says adapter: true exactly where the registry has an adapter", () => {
+    for (const [agent, entry] of Object.entries(ledger.agents)) {
+      expect(entry.adapter, agent).toBe(hasBlockGrammar(agent));
     }
   });
 

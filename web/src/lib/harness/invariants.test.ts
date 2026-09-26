@@ -39,6 +39,7 @@ import { codexAdapter } from "./codex";
 import { grokAdapter } from "./grok";
 import { museAdapter } from "./muse";
 import { ompAdapter } from "./omp";
+import { opencodeAdapter } from "./opencode";
 import type { HarnessAdapter } from "./types";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
@@ -390,6 +391,48 @@ const COMPOSERS: Composer[] = [
       return { top: found.prompt - 1, prompt: found.prompt, draftEnd: found.closer, width: 0 };
     },
     // No capture shows how Antigravity paints a wrapped or multi-line draft: paint invariance only.
+  },
+  {
+    name: "opencode",
+    adapter: opencodeAdapter,
+    frames: [
+      "oc--fresh-idle.txt",
+      "oc--draft-single.txt",
+      "oc--draft-wrapped.txt",
+      "oc--draft-multiline.txt",
+      "oc--draft-while-working.txt",
+      "oc--working.txt",
+      "oc--done--tool-run.txt",
+      "oc--composer-plan.txt",
+      "oc--narrow--fresh-idle.txt",
+      "oc--narrow--draft-wrapped.txt",
+      "oc--narrow--done.txt",
+    ],
+    band(texts) {
+      // The `╹▀▀` rule, the model row over any bare bar rows (one at 50 columns), the separator
+      // above it, and the composer's bar run up to its top padding row.
+      let rule = texts.length - 1;
+      while (rule >= 0 && !/^\s*╹▀+\s*$/.test(texts[rule]!)) rule--;
+      if (rule < 1) return null;
+      let model = rule - 1;
+      while (model > 0 && /^\s*┃\s*$/.test(texts[model]!)) model--;
+      let top = model - 1;
+      while (top > 0 && /^\s*┃/.test(texts[top - 1]!)) top--;
+      // The interior: the rule's width less the bar, the two-cell gutter and the right padding.
+      const ruleRow = texts[rule]!.trimEnd();
+      const width = displayWidth(ruleRow) - ruleRow.indexOf("╹") - 5;
+      return { top, prompt: top + 1, draftEnd: model - 1, width };
+    },
+    // oc--draft-wrapped.txt and oc--draft-multiline.txt: every draft row, first or continuation,
+    // is `┃  text` at the composer's indent, and a blank line is the bar alone.
+    draft: {
+      omit: {},
+      rows(wrapped, band, texts) {
+        const topRow = texts[band.top]!;
+        const indent = topRow.slice(0, topRow.indexOf("┃"));
+        return wrapped.map(({ text }) => plainRow(text === "" ? `${indent}┃` : `${indent}┃  ${text}`));
+      },
+    },
   },
   {
     name: "omp (box composer)",

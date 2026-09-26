@@ -21,9 +21,9 @@
 // BACKGROUND-COLOUR chip on exactly one of them (theme values — read RELATIVE to the background the
 // dialog paints its own hints on, never by colour name), and the footer names its own recipe:
 // `⇆ select  enter confirm`. Measured live against opencode 1.18.32 (2026-09-26, the probes in
-// lib/grammar/OPENCODE_PERMISSION_NOTES.md): Right moves the pointer and wraps past the last chip, Left wraps the other
-// way, Tab does nothing, Enter confirms. Escape leaves the second step for the first, and closes
-// the first (the request is rejected).
+// PERMISSION_NOTES.md beside this file): Right moves the pointer and wraps past the last chip, Left
+// wraps the other way, Tab does nothing, Enter confirms. Escape leaves the second step for the
+// first, and closes the first (the request is rejected).
 //
 // The lifted model carries `keys` computed from the pointer the screen currently shows: the option
 // at the pointer is `["Enter"]`, one at offset d is `["Right" × d, "Enter"]` — d ≤ options-1, so

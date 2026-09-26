@@ -49,6 +49,13 @@ export function adapterFor(agent: string | undefined): HarnessAdapter | undefine
   return agent !== undefined && Object.hasOwn(ADAPTERS, agent) ? ADAPTERS[agent] : undefined;
 }
 
+/** Every agent string the registry maps, in registration order. For the checks that must cover
+ *  every adapter (the version ledger, `verified-versions.test.ts`) without keeping a second,
+ *  hand-written list that drifts from this one. */
+export function registeredAgents(): string[] {
+  return Object.keys(ADAPTERS);
+}
+
 /** Whether `agent` has block grammars (an adapter). The gate agent-chat's status strip shares with
  *  the render pipeline, so the two can't diverge. */
 export function hasBlockGrammar(agent: string | undefined): boolean {
