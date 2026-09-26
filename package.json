@@ -18,7 +18,8 @@
     "test:ctl": "bash scripts/collie-ctl.test.sh",
     "test:crew": "bun test ./bridge/crew/harness.test.ts",
     "typecheck": "bunx tsc --noEmit",
-    "harness:drift": "bun scripts/harness-drift.ts"
+    "harness:drift": "bun scripts/harness-drift.ts",
+    "canary": "bun scripts/harness-canary/run.ts"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.78.0",

@@ -31,7 +31,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ## [Unreleased]
 
 ### Added
-- **A ledger records which agent version each reader was last verified on.** `verified-versions.json` carries claude, codex, grok, omp, agy, antigravity and muse's last-verified version and date, plus opencode and pi's installed one (no reader yet, so `how: "unverified"`). `bun run harness:drift` (`scripts/harness-drift.ts`) compares the ledger against what's actually installed and prints `same`, `NEWER, run the canary`, `older` or `not installed` per agent — read-only, it only runs `<agent> --version`.
+- **A ledger records which agent version each reader was last verified on.** `verified-versions.json` carries claude, codex, grok, omp, agy, antigravity and muse's last-verified version and date, plus opencode and pi's installed one (no reader yet, so `how: "unverified"`). `bun run harness:drift` (`scripts/harness-drift.ts`) compares the ledger against what's actually installed and prints `same`, `NEWER, run the canary`, `older` or `not installed` per agent. It is read-only: it only runs `<agent> --version`.
+- **A canary drives real agents and checks what the phone would read.** `bun run canary` starts claude, codex, opencode and pi in a Herdr session of its own (`collie-canary`), types 15 kinds of draft and three real sends, and judges each screen with Collie's own readers and each send with the client's reply guard over the bridge's reply handler, in process. It never touches another session's panes, a port or a paired device, and it tears everything down. `--readers` points it at an older checkout, `--record` writes a clean agent into the ledger. See `scripts/harness-canary/README.md`.
 
 ## [1.13.2] - 2026-09-26
 

@@ -1,0 +1,10 @@
+{
+  "gaps": [
+    {
+      "agent": "codex",
+      "scenario": "start-exit",
+      "reason": "Codex declares no modalOnScreen, so the unread card shows on Codex's first frames before its status row is painted and on the shell after /quit. The ADR 0053 addendum of 1.13.2 gave that positive-evidence gate to Claude only; this is the start/exit leftover of the 2026-09-26 sweep.",
+      "ref": "ADR 0053 addendum 2026-09-26"
+    }
+  ]
+}
