@@ -16,7 +16,7 @@ import type { Adapter, Block, Line, Readers } from "./readers";
 import type { Transport } from "./transport";
 import { failCase, notReachedCase, passCase, scenarioResult, type CaseResult, type ScenarioId, type ScenarioResult } from "./verdict";
 
-const POLL_MS = 150;
+export const POLL_MS = 150;
 const START_TIMEOUT_MS = 45_000;
 const DRAFT_TIMEOUT_MS = 4_000;
 const CLEAR_TIMEOUT_MS = 4_000;
@@ -147,7 +147,7 @@ function probes(text: string): string[] {
 }
 
 /** Whether the typed words, or the paste placeholder an agent swaps them for, are on these rows. */
-function wordsOnScreen(texts: readonly string[], text: string): boolean {
+export function wordsOnScreen(texts: readonly string[], text: string): boolean {
   const flat = texts.join("").replace(/\s+/g, "");
   if (/\[Pasted (text|Content)/i.test(texts.join(" "))) return true;
   return probes(text).some((p) => flat.includes(p));
@@ -157,7 +157,7 @@ function wordsOnScreen(texts: readonly string[], text: string): boolean {
 const OK_ROW = /^\s*(?:[⏺•●▣>*-]\s*)?OK[.。!]?\s*$/u;
 
 /** Whether an "OK" row stands below the last row that carries `text`'s last line. */
-function answeredBelow(texts: readonly string[], text: string): boolean {
+export function answeredBelow(texts: readonly string[], text: string): boolean {
   const last = probes(text).at(-1);
   if (last === undefined) return false;
   let at = -1;
@@ -167,11 +167,11 @@ function answeredBelow(texts: readonly string[], text: string): boolean {
   return at >= 0 && texts.slice(at + 1).some((t) => OK_ROW.test(t));
 }
 
-class Driver {
+export class Driver {
   private constructor(
-    private readonly ctx: AgentContext,
+    readonly ctx: AgentContext,
     private readonly workspaceId: string,
-    private readonly paneId: string,
+    readonly paneId: string,
     private readonly cols: number | null,
     private readonly tag: string,
   ) {}
@@ -184,11 +184,11 @@ class Driver {
     return d;
   }
 
-  private get agent(): string {
+  get agent(): string {
     return this.ctx.profile.agent;
   }
 
-  private get adapter(): Adapter | undefined {
+  get adapter(): Adapter | undefined {
     return this.ctx.readers.adapterFor(this.agent);
   }
 
@@ -219,13 +219,13 @@ class Driver {
     };
   }
 
-  private save(name: string, s: Screen): string {
+  save(name: string, s: Screen): string {
     const file = join(this.ctx.dir, `${name}.ansi`);
     writeFileSync(file, s.text);
     return file;
   }
 
-  private keys(keys: readonly string[]): void {
+  keys(keys: readonly string[]): void {
     for (let i = 0; i < keys.length; i += KEY_BATCH) this.ctx.session.sendKeys(this.paneId, keys.slice(i, i + KEY_BATCH));
   }
 
@@ -243,7 +243,7 @@ class Driver {
   }
 
   /** Herdr sees the agent in the pane and calls it ready for input. */
-  private herdrIdle(): boolean {
+  herdrIdle(): boolean {
     const info = this.ctx.session.paneInfo(this.paneId);
     return info.agent === this.agent && (info.status === "idle" || info.status === "done");
   }
@@ -254,9 +254,9 @@ class Driver {
    * knows (folder trust) are answered and end the window: from there on the screen is the agent's.
    * Returns the idle screen, or null when the agent never came up.
    */
-  async launch(startExit: CaseResult[]): Promise<Screen | null> {
+  async launch(startExit: CaseResult[], command?: string): Promise<Screen | null> {
     const label = `start-${this.tag}`;
-    this.ctx.session.sendText(this.paneId, this.ctx.profile.launch(this.cols));
+    this.ctx.session.sendText(this.paneId, command ?? this.ctx.profile.launch(this.cols));
     await Bun.sleep(200);
     this.ctx.session.sendKeys(this.paneId, ["Enter"]);
     let window = true;
@@ -360,7 +360,7 @@ class Driver {
   }
 
   /** Empty the input box. True once the words are gone and the adapter reads no draft. */
-  private async clearDraft(text: string): Promise<boolean> {
+  async clearDraft(text: string): Promise<boolean> {
     const attempts: (readonly string[])[] = [this.ctx.profile.clearKeys(text), this.ctx.profile.clearKeys(text)];
     if (this.ctx.profile.clearFallback !== null) attempts.push(this.ctx.profile.clearFallback);
     for (const keys of attempts) {

@@ -2,10 +2,12 @@
 
 `bun run canary` starts claude, codex, opencode and pi in a Herdr session of its own, types drafts
 and a few real sends, and checks with Collie's own code what the phone would read and whether each
-send lands. Spec: M37/02 in the workspace tracker.
+send lands. With `--dialogs` it also opens real dialogs and sends to a busy agent. Specs: M37/02
+and M37/03 in the workspace tracker.
 
 ```sh
-bun run canary                          # all four agents, all five scenarios
+bun run canary                          # all four agents, the five screen and send scenarios
+bun run canary --dialogs                # plus dialogs and busy (more model turns)
 bun run canary --agent claude,codex     # some agents
 bun run canary --scenario idle,drafts   # some scenarios, no model turns
 bun run canary --keep                   # leave the session up for a look
@@ -31,6 +33,21 @@ Five scenarios per agent. Only scenario 3 makes model turns: three per agent.
 The message kinds live in `messages.ts`: the 14 hand kinds of 2026-09-26, plus `15-rule`, a
 pasted `────` line. opencode and pi have no adapter. For them a draft passes when its words show on
 the raw mirror, and a send goes through the one-step path the phone uses.
+
+### Dialogs and busy (`--dialogs`, spec M37/03)
+
+Two more scenarios, off by default because they make more model turns: about 8 for Claude, 4 for
+Codex, 2 per agent for `busy`. Each opens its own panes.
+
+| id        | what the canary does                                          | what must hold                                           |
+| --------- | ------------------------------------------------------------- | -------------------------------------------------------- |
+| `dialogs` | asks Claude for a Bash command, a WebFetch, an AskUserQuestion and (in a plan-mode pane) a plan; asks Codex (`-a on-request -s read-only`) for a command and a file edit | a choice card with the right family and labels, no card; the pointer on rows 1 to 3, the Tab amend note and "Type something" lock or unlock the buttons as the reader says; the declining key closes the dialog and the file is not written; Apple's key answers |
+| `busy`    | starts a 500-word story, then sends "Queued note: reply with only OK." while Herdr says `working` | outcome `sent`, the note answered below it, and no unread card on any sample while the agent works |
+
+Keys are pressed only where the recipe was measured live: a permission dialog's "No" digit,
+Escape out of the amend note, an AskUserQuestion option's digit, Codex's decline. Plan approval is
+read and never answered. A dialog the model does not open (it answers in words instead) is
+`not-reached`. The dialog screens are saved as `dialogs-<case>.ansi`.
 
 ## Verdicts
 

@@ -30,6 +30,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+- **The canary opens real dialogs and sends to a busy agent.** `bun run canary --dialogs` asks Claude for a Bash command, a WebFetch, an AskUserQuestion and a plan, and Codex for a command and a file edit, then checks the card, the labels and the free-text lock with Collie's readers, presses the declining key where it was measured live and checks the file was not written. It also sends to each agent while Herdr says it is working. Run against the 1.13.1 readers, it fails on the Claude permission pointer on row 2, the amend note, WebFetch and the Codex patch approval.
+
 ## [1.13.3] - 2026-09-26
 
 ### Fixed

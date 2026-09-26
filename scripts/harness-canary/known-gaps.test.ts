@@ -14,7 +14,7 @@ describe("known-gaps.json", () => {
   });
 
   test("an unknown scenario is refused", () => {
-    expect(() => parseKnownGaps('{"gaps":[{"agent":"codex","scenario":"dialogs","reason":"r","ref":"M37/03"}]}')).toThrow(/scenario/);
+    expect(() => parseKnownGaps('{"gaps":[{"agent":"codex","scenario":"plan","reason":"r","ref":"M37/03"}]}')).toThrow(/scenario/);
   });
 
   test("a scenario listed twice for one agent is refused", () => {

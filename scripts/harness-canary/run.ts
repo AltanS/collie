@@ -16,6 +16,7 @@ import { CANARY_SESSION, CanarySession, listSessions } from "./herdr";
 import { loadKnownGaps } from "./known-gaps";
 import { LEDGER_FILE, recordVerified } from "./ledger";
 import { loadReaders } from "./readers";
+import { runBusy, runDialogs } from "./dialogs";
 import { runAgent } from "./scenarios";
 import { installTransport } from "./transport";
 import { applyKnownGaps, exitCode, notReachedCase, recordable, renderTable, scenarioResult, type ScenarioResult } from "./verdict";
@@ -113,7 +114,7 @@ async function main(options: CanaryOptions): Promise<number> {
         for (const s of options.scenarios) results.push(scenarioResult(agent, s, [notReachedCase(agent, "not installed")]));
         continue;
       }
-      const own = await runAgent({
+      const ctx = {
         profile,
         version,
         session,
@@ -123,7 +124,11 @@ async function main(options: CanaryOptions): Promise<number> {
         project,
         dir: join(runDir, `${agent}-${version}`),
         log,
-      });
+      };
+      const own = await runAgent(ctx);
+      // Spec M37/03, after the screens and sends: each opens panes of its own.
+      if (options.scenarios.includes("dialogs")) own.push(scenarioResult(agent, "dialogs", await runDialogs(ctx)));
+      if (options.scenarios.includes("busy")) own.push(scenarioResult(agent, "busy", await runBusy(ctx)));
       for (const r of own) {
         const judged = applyKnownGaps(r, gaps);
         results.push(judged);

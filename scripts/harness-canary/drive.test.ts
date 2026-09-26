@@ -8,18 +8,19 @@ import { CANARY_AGENTS, parseArgs } from "./args";
 import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
 import { MESSAGES, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
-import { SCENARIOS } from "./verdict";
+import { lastPointedRow } from "./dialogs";
+import { DEFAULT_SCENARIOS } from "./verdict";
 
 const ESC = String.fromCodePoint(0x1b);
 const BEL = String.fromCodePoint(0x07);
 
 describe("parseArgs", () => {
-  test("defaults run every agent and scenario at the pane's own width", () => {
+  test("defaults run every agent and the five M37/02 scenarios at the pane's own width", () => {
     const o = parseArgs([], "/repo");
     expect(o).not.toBe("help");
     if (o === "help") return;
     expect(o.agents).toEqual([...CANARY_AGENTS]);
-    expect(o.scenarios).toEqual([...SCENARIOS]);
+    expect(o.scenarios).toEqual([...DEFAULT_SCENARIOS]);
     expect(o.cols).toBeNull();
     expect(o.readers).toBe("/repo");
     expect(o.record).toBe(false);
@@ -36,10 +37,22 @@ describe("parseArgs", () => {
 
   test("refuses what it does not know", () => {
     expect(() => parseArgs(["--agent", "grok"], "/repo")).toThrow(/unknown agent/);
-    expect(() => parseArgs(["--scenario", "dialogs"], "/repo")).toThrow(/unknown scenario/);
+    expect(() => parseArgs(["--scenario", "plan"], "/repo")).toThrow(/unknown scenario/);
     expect(() => parseArgs(["--cols", "200"], "/repo")).toThrow(/--cols/);
     expect(() => parseArgs(["--readers"], "/repo")).toThrow(/needs a value/);
     expect(() => parseArgs(["--bogus"], "/repo")).toThrow(/unknown option/);
+  });
+
+  test("--dialogs adds dialogs and busy once, after whatever --scenario chose", () => {
+    const all = parseArgs(["--dialogs"], "/repo");
+    if (all === "help") throw new Error("unexpected help");
+    expect(all.scenarios).toEqual(["idle", "drafts", "sends", "narrow", "start-exit", "dialogs", "busy"]);
+    const some = parseArgs(["--scenario", "idle,busy", "--dialogs"], "/repo");
+    if (some === "help") throw new Error("unexpected help");
+    expect(some.scenarios).toEqual(["idle", "busy", "dialogs"]);
+    const named = parseArgs(["--scenario", "dialogs"], "/repo");
+    if (named === "help") throw new Error("unexpected help");
+    expect(named.scenarios).toEqual(["dialogs"]);
   });
 
   test("--help", () => {
@@ -117,4 +130,12 @@ test("cleanEnv drops the operator's Herdr and Claude Code markers and points at 
     "/cfg.toml",
   );
   expect(env).toEqual({ PATH: "/bin", HERDR_SOCKET_PATH: "/canary.sock", HERDR_CONFIG_PATH: "/cfg.toml" });
+});
+
+describe("lastPointedRow", () => {
+  test("takes the dialog's pointer, not an echoed prompt above it", () => {
+    const texts = ["❯ Use the AskUserQuestion tool to ask me", "Which fruit?", "  1. Apple", "❯ 2. Banana", "  3. Type something."];
+    expect(lastPointedRow(texts, "❯")).toBe("2. Banana");
+    expect(lastPointedRow(["no pointer here"], "❯")).toBeNull();
+  });
 });

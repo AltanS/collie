@@ -1,7 +1,7 @@
 // Command-line options of `bun run canary`. Pure, so the parse is unit-tested.
 
 import { resolve } from "node:path";
-import { SCENARIOS, isScenarioId, type ScenarioId } from "./verdict";
+import { DEFAULT_SCENARIOS, DIALOG_SCENARIOS, SCENARIOS, isScenarioId, type ScenarioId } from "./verdict";
 
 export const CANARY_AGENTS = ["claude", "codex", "opencode", "pi"] as const;
 export type CanaryAgent = (typeof CANARY_AGENTS)[number];
@@ -40,7 +40,8 @@ Drives claude, codex, opencode and pi in a Herdr session of its own (collie-cana
 screen and send with Collie's own readers. See scripts/harness-canary/README.md.
 
   --agent a,b        agents to run (default: ${CANARY_AGENTS.join(",")})
-  --scenario a,b     scenarios to run (default: ${SCENARIOS.join(",")})
+  --scenario a,b     scenarios to run (default: ${DEFAULT_SCENARIOS.join(",")}; known: ${SCENARIOS.join(",")})
+  --dialogs          also run ${DIALOG_SCENARIOS.join(" and ")}: real dialogs and a send to a busy agent (more model turns)
   --cols N           terminal width for the wide scenarios, 40 to ${MAX_COLS} (default: the pane's own)
   --keep             leave the collie-canary session and the project up after the run
   --record           after a run with no fail, write each agent's version into the ledger
@@ -52,7 +53,8 @@ screen and send with Collie's own readers. See scripts/harness-canary/README.md.
 /** Parse argv (without the runtime and script). Throws a one-line message on anything unknown. */
 export function parseArgs(argv: readonly string[], repoRoot: string): CanaryOptions | "help" {
   let agents: CanaryAgent[] = [...CANARY_AGENTS];
-  let scenarios: ScenarioId[] = [...SCENARIOS];
+  let scenarios: ScenarioId[] = [...DEFAULT_SCENARIOS];
+  let dialogs = false;
   let cols: number | null = null;
   let keep = false;
   let record = false;
@@ -91,6 +93,9 @@ export function parseArgs(argv: readonly string[], repoRoot: string): CanaryOpti
         i++;
         break;
       }
+      case "--dialogs":
+        dialogs = true;
+        break;
       case "--keep":
         keep = true;
         break;
@@ -114,5 +119,6 @@ export function parseArgs(argv: readonly string[], repoRoot: string): CanaryOpti
     }
   }
   if (agents.length === 0) throw new Error("--agent names no agent");
+  if (dialogs) for (const s of DIALOG_SCENARIOS) if (!scenarios.includes(s)) scenarios.push(s);
   return { agents, scenarios, cols, keep, record, readers, out, ledger };
 }

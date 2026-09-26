@@ -10,9 +10,19 @@ import type { KnownGap } from "./known-gaps";
 export type CaseVerdict = "pass" | "fail" | "not-reached";
 export type Verdict = CaseVerdict | "known-gap";
 
-/** The five scenarios of spec M37/02, by the ids the table, the captures and known-gaps.json use. */
-export const SCENARIOS = ["idle", "drafts", "sends", "narrow", "start-exit"] as const;
+/**
+ * Every scenario, by the ids the table, the captures and known-gaps.json use: the five of spec
+ * M37/02, then the two of M37/03 (`dialogs`, `busy`), which make more model turns and run only when
+ * asked for (`--dialogs` or `--scenario`).
+ */
+export const SCENARIOS = ["idle", "drafts", "sends", "narrow", "start-exit", "dialogs", "busy"] as const;
 export type ScenarioId = (typeof SCENARIOS)[number];
+
+/** What a run without `--scenario` does: the five screens and sends of spec M37/02. */
+export const DEFAULT_SCENARIOS: readonly ScenarioId[] = ["idle", "drafts", "sends", "narrow", "start-exit"];
+
+/** What `--dialogs` adds: real dialogs and a send to a busy agent (spec M37/03). */
+export const DIALOG_SCENARIOS: readonly ScenarioId[] = ["dialogs", "busy"];
 
 export function isScenarioId(value: string): value is ScenarioId {
   return SCENARIOS.some((s) => s === value);
