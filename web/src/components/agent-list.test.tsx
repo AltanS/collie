@@ -1,14 +1,22 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 
-import { AgentList } from "./agent-list";
+import { server } from "@/test/setup";
+import { CrewProvider } from "./crew-provider";
+import { AgentList, type HeadingNewTab } from "./agent-list";
+import { HEADING_ADD_REACH } from "./workspace-new-tab";
+import { tabCreateKey } from "@/hooks/use-spaces";
+import { __resetOperatorCommands } from "@/lib/operator-config";
+import { useStatus, clearStatus } from "@/lib/status";
+import type { Scope } from "@/lib/scope";
 import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { workspacePrefKey } from "./agent-list";
 import { paneRowKey } from "@/lib/hosts";
 import { currentPins, setPinned } from "@/lib/pins";
 import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
-import type { AgentStatus, AgentView, ServerSummary } from "@/lib/types";
+import type { AgentStatus, AgentView, MuxConfig, ServerSummary } from "@/lib/types";
 
 function agent(
   paneId: string,
@@ -870,5 +878,182 @@ describe("AgentList — hiding a machine", () => {
     expect(strip().queryByRole("button", { name: /^Show workshop/ })).toBeNull();
     // The machine's first workspace chip took the stand-in's place, and focus with it.
     expect(strip().getByRole("button", { name: /moonward/ })).toHaveFocus();
+  });
+});
+
+// A NEW TAB FROM THE WORKSPACE HEADING (M40/03, issue 290). Each strong heading ends in a "+" that
+// asks its OWN machine whether it can open a tab, sends the create to that machine and session, and
+// refuses on the tap when that machine is not taking writes. Every strong heading reserves the
+// "+"'s 28px, drawn or not.
+describe("AgentList — the heading's new tab (M40/03)", () => {
+  afterEach(() => {
+    __resetOperatorCommands();
+    clearStatus();
+  });
+
+  const LEAD = "bluefin";
+  const PEER = "workshop";
+  const servers: ServerSummary[] = [
+    { id: LEAD, name: LEAD, isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1_000 },
+    { id: PEER, name: PEER, isLead: false, reachable: true, protocol: "ok", lastSeenAt: 990 },
+  ];
+  /** Two machines, and each calls its first space `w1`: the collision the address exists for. */
+  const crew = [
+    agent("w1:p1", "blocked", { workspaceId: "w1", workspaceLabel: "webapp", workspaceNumber: 1, tabId: "w1:t1", host: LEAD }),
+    agent("w2:p1", "working", { workspaceId: "w2", workspaceLabel: "collie", workspaceNumber: 2, tabId: "w2:t1", host: LEAD }),
+    agent("w1:p1", "idle", { workspaceId: "w1", workspaceLabel: "moonward", workspaceNumber: 1, tabId: "w1:t1", host: PEER }),
+  ];
+  const plus = (name: string) => screen.queryByRole("button", { name: `New tab in ${name}` });
+  /** The heading row of a workspace: the `SectionHeader` div holding the <h2> and the trailing slot. */
+  const headingRow = (label: string) => screen.getByRole("heading", { name: label }).parentElement!;
+
+  function wiring(over: Partial<HeadingNewTab> = {}): HeadingNewTab {
+    return { scope: {}, creating: new Set(), onNewTab: vi.fn(), ...over };
+  }
+
+  /** Serve `/api/config` per machine: the lead's block, and the peer's own when `peer` is given. */
+  function declaresCreateTab(lead: boolean, peer?: boolean): void {
+    const block = (createTab: boolean): MuxConfig => ({
+      name: "reference",
+      capabilities: { createTab },
+      unsupportedKeys: [],
+      notes: { createTab: "no tabs here." },
+    });
+    server.use(
+      http.get("/api/config", ({ request }) => {
+        const host = new URL(request.url).searchParams.get("host");
+        const mux = host === PEER && peer !== undefined ? block(peer) : block(lead);
+        return HttpResponse.json({ push: false, vapidPublicKey: "", mux });
+      }),
+    );
+  }
+
+  it("new tab: puts a '+' on every workspace heading, named for its workspace, and none on Pinned", async () => {
+    const herd = crew.filter((a) => a.host === LEAD);
+    setPinned(herd[1]!, true, herd);
+    render(<AgentList agents={herd} onOpen={vi.fn()} servers={servers} pins={currentPins()} newTab={wiring()} />);
+    expect(await screen.findByRole("button", { name: "New tab in webapp" })).toBeInTheDocument();
+    // `collie`'s one pane is pinned, so its group, heading and "+" are gone (ADR 0070); the space view
+    // keeps its own "+". Pinned carries none: it holds panes, not a workspace.
+    expect(plus("collie")).toBeNull();
+    const pinnedRegion = screen.getByRole("region", { name: "Pinned" });
+    expect(within(pinnedRegion).queryByRole("button", { name: /^New tab in / })).toBeNull();
+  });
+
+  it("new tab: draws none without the route's wiring, and every strong heading reserves its 28px either way", () => {
+    const herd = crew.filter((a) => a.host === LEAD);
+    const { rerender } = render(<AgentList agents={herd} onOpen={vi.fn()} servers={servers} />);
+    expect(screen.queryByRole("button", { name: /^New tab in / })).toBeNull();
+    for (const label of ["webapp", "collie"]) expect(headingRow(label)).toHaveClass("min-h-7");
+    rerender(<AgentList agents={herd} onOpen={vi.fn()} servers={servers} newTab={wiring()} />);
+    for (const label of ["webapp", "collie"]) expect(headingRow(label)).toHaveClass("min-h-7");
+  });
+
+  it("new tab: asks each heading's own machine, and hides the '+' where that machine cannot open a tab", async () => {
+    declaresCreateTab(true, false);
+    render(<AgentList agents={crew} onOpen={vi.fn()} servers={servers} newTab={wiring()} />);
+    expect(await screen.findByRole("button", { name: "New tab in webapp" })).toBeInTheDocument();
+    await waitFor(() => expect(plus("moonward")).toBeNull());
+    expect(plus("collie")).not.toBeNull();
+    // Hidden, not explained: no note, and the heading keeps its height.
+    expect(screen.queryByText("no tabs here.")).toBeNull();
+    expect(headingRow("moonward")).toHaveClass("min-h-7");
+  });
+
+  it("new tab: a lead that cannot open a tab hides every lead heading's '+'", async () => {
+    declaresCreateTab(false);
+    render(<AgentList agents={crew.filter((a) => a.host === LEAD)} onOpen={vi.fn()} servers={servers} newTab={wiring()} />);
+    await waitFor(() => expect(plus("webapp")).toBeNull());
+    expect(plus("collie")).toBeNull();
+  });
+
+  it("new tab: sends the heading's own machine and session, never the ambient ones", async () => {
+    const onNewTab = vi.fn<(workspaceId: string, at: Scope) => void>();
+    const user = userEvent.setup();
+    // The URL is on the PEER: the lead's heading must still go to the lead.
+    render(
+      <AgentList agents={crew} onOpen={vi.fn()} servers={servers} newTab={wiring({ scope: { host: PEER }, onNewTab })} />,
+    );
+    await user.click(await screen.findByRole("button", { name: "New tab in moonward" }));
+    await user.click(screen.getByRole("button", { name: "New tab in webapp" }));
+    expect(onNewTab).toHaveBeenCalledTimes(2);
+    expect(onNewTab.mock.calls[0]).toEqual(["w1", { host: PEER }]);
+    // The lead normalises to no host at all: absent means the lead (lib/scope.ts).
+    const [, leadAt] = onNewTab.mock.calls[1]!;
+    expect(onNewTab.mock.calls[1]![0]).toBe("w1");
+    expect(leadAt.host).toBeUndefined();
+  });
+
+  it("new tab: a widened list's heading carries its own session", async () => {
+    const onNewTab = vi.fn<(workspaceId: string, at: Scope) => void>();
+    const widened = [
+      agent("w1:p1", "idle", { workspaceId: "w1", workspaceLabel: "notes", workspaceNumber: 1, session: "work" }),
+    ];
+    render(
+      <AgentList
+        agents={widened}
+        onOpen={vi.fn()}
+        newTab={wiring({
+          onNewTab,
+          sessions: [
+            { name: "default", isPrimary: true, reachable: true, agents: 0, working: 0, blocked: 0 },
+            { name: "work", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0 },
+          ],
+        })}
+      />,
+    );
+    await userEvent.setup().click(await screen.findByRole("button", { name: "New tab in notes" }));
+    expect(onNewTab).toHaveBeenCalledWith("w1", expect.objectContaining({ session: "work" }));
+  });
+
+  it("new tab: refuses on a machine not taking writes, with its reason, and sends nothing", async () => {
+    const onNewTab = vi.fn();
+    const quiet = servers.map((s) => (s.id === PEER ? { ...s, reachable: false, lastSeenAt: 1_000 } : s));
+    function StatusText() {
+      return <output aria-label="status">{useStatus()?.text ?? ""}</output>;
+    }
+    const { container } = render(
+      <CrewProvider servers={quiet} sessions={[]} ts={60_000} pollMs={1500}>
+        <AgentList agents={crew} onOpen={vi.fn()} servers={quiet} newTab={wiring({ onNewTab })} />
+        <StatusText />
+      </CrewProvider>,
+    );
+    const peerPlus = await within(container).findByRole("button", { name: "New tab in moonward" });
+    // Still drawn and still live: a control that vanished with the machine's state would move the row.
+    expect(peerPlus).toBeEnabled();
+    await userEvent.setup().click(peerPlus);
+    expect(onNewTab).not.toHaveBeenCalled();
+    expect(within(container).getByRole("status", { name: "status" })).toHaveTextContent(/workshop/);
+    // The lead is taking writes: its heading still sends.
+    await userEvent.setup().click(within(container).getByRole("button", { name: "New tab in webapp" }));
+    expect(onNewTab).toHaveBeenCalledTimes(1);
+  });
+
+  it("new tab: shows busy only on the heading whose create is in flight, never on the other machine's w1", async () => {
+    render(
+      <AgentList
+        agents={crew}
+        onOpen={vi.fn()}
+        servers={servers}
+        newTab={wiring({ creating: new Set([tabCreateKey("w1", { host: PEER })]) })}
+      />,
+    );
+    const peerPlus = await screen.findByRole("button", { name: "New tab in moonward" });
+    expect(peerPlus).toBeDisabled();
+    expect(peerPlus).toHaveAttribute("aria-busy", "true");
+    const leadPlus = screen.getByRole("button", { name: "New tab in webapp" });
+    expect(leadPlus).toBeEnabled();
+    expect(leadPlus).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("new tab: a 28px face with the heading's 44px reach, inside a row that is at least as tall", async () => {
+    render(<AgentList agents={crew} onOpen={vi.fn()} servers={servers} newTab={wiring()} />);
+    const button = await screen.findByRole("button", { name: "New tab in webapp" });
+    expect(button).toHaveClass("size-7", ...HEADING_ADD_REACH.split(" "));
+    // -9px from the padding box, 1px inside the dashed border: 26 + 18 = 44 across and down, 8px past
+    // the circle on each side, which is exactly the 8px gap down to the first row (agent-list.tsx).
+    expect(HEADING_ADD_REACH).toContain("before:-inset-[9px]");
+    expect(button.closest("section")).toHaveClass("gap-2");
+    expect(headingRow("webapp")).toHaveClass("min-h-7");
   });
 });

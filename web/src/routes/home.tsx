@@ -94,7 +94,7 @@ function ChangesTabBody({
 export function HomeRoute() {
   const data = useRootData();
   const nav = useNav();
-  const { newSpace, newWorktree, showWorktree, creatingSpace } = useSpaceActions();
+  const { newSpace, newWorktree, showWorktree, creatingSpace, newTab, creatingTab } = useSpaceActions();
 
   // Which repos a worktree could be branched from: one entry per repo, taken from the space that
   // shows the repo ITSELF (a worktree's own space would branch from the same repo, so listing both
@@ -224,6 +224,14 @@ export function HomeRoute() {
             lastSeenAt={data.lastSeenAt}
             tabs={data.tabs}
             servers={data.servers}
+            // Each workspace heading's "+" (M40/03): the list resolves each heading's own machine and
+            // session from these, the way a row's tap does, and sends the create there.
+            newTab={{
+              scope: data.scope,
+              sessions: data.sessions,
+              creating: creatingTab,
+              onNewTab: (workspaceId, at) => void newTab(workspaceId, at),
+            }}
             isolated={prefs.isolatedSpace}
             hidden={prefs.hiddenSpaces}
             onIsolate={setIsolatedSpace}

@@ -413,6 +413,7 @@ export const ja: Dictionary = {
   "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "シェル",
   "home.pinned.title": "Pinned",
+  "home.group.newTab": "New tab in {name}",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
   "home.row.tabPosition": "タブ {n}",
   "home.row.unseen": "未読",

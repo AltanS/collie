@@ -411,6 +411,7 @@ export const ko: Dictionary = {
   "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "셸",
   "home.pinned.title": "Pinned",
+  "home.group.newTab": "New tab in {name}",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
   "home.row.tabPosition": "탭 {n}",
   "home.row.unseen": "읽지 않음",

@@ -435,6 +435,7 @@ export const en = {
   "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Pinned",
+  "home.group.newTab": "New tab in {name}",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
   "home.row.tabPosition": "tab {n}",
   "home.row.unseen": "unseen",

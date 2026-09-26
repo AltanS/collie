@@ -396,6 +396,7 @@ export const zhTW: Dictionary = {
   "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "終端機執行個體",
   "home.pinned.title": "Pinned",
+  "home.group.newTab": "New tab in {name}",
   "home.sidebar.paneActionsTitle": "查看窗格操作選項",
   "home.row.tabPosition": "分頁 {n}",
   "home.row.unseen": "未讀",

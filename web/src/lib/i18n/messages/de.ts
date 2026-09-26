@@ -418,6 +418,7 @@ export const de: Dictionary = {
   "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "Shells",
   "home.pinned.title": "Pinned",
+  "home.group.newTab": "New tab in {name}",
   "home.sidebar.paneActionsTitle": "Pane-Aktionen anzeigen",
   "home.row.tabPosition": "Tab {n}",
   "home.row.unseen": "ungesehen",

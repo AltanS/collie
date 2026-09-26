@@ -9,6 +9,7 @@ import {
   fixtureCommitDiff,
   fixtureCrewSnapshot,
   fixtureCrewStatus,
+  fixtureNewTab,
   fixtureSnapshot,
   fixtureTranscript,
   paneTextWithDraft,
@@ -103,6 +104,10 @@ async function answer(route: Route, path: string): Promise<void> {
       revision: 1,
     });
   }
+
+  // A new tab (the tab strip's "+", a workspace heading's "+"): the fresh shell pane, whichever
+  // machine the `?host=` names. A case that cares where the create went reads the request itself.
+  if (path === "/api/tab" && method === "POST") return fulfillJson(route, fixtureNewTab);
 
   // The DEFAULT world is solo, so the census refuses exactly as a non-lead bridge does. A case that
   // wants a crew overrides this route with `fixtureCrewStatus`.

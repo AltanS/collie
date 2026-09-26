@@ -11,11 +11,14 @@ import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { ATTENTION, bucketOf, triage, worstTriage } from "@/lib/triage";
 import { groupHost, pinnedRows, shownGroups, stripEntries } from "@/lib/dash-view";
-import type { AgentView, BridgeStatus, ServerSummary, TabView } from "@/lib/types";
-import { HOST_TEXT_CLASSES, hostName, hostSlot, paneRowKey } from "@/lib/hosts";
+import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView } from "@/lib/types";
+import { HOST_TEXT_CLASSES, hostName, hostSlot, paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
+import type { Scope } from "@/lib/scope";
+import { tabCreateKey } from "@/hooks/use-spaces";
 import { AgentCard } from "./agent-card";
+import { WorkspaceNewTab } from "./workspace-new-tab";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
@@ -52,6 +55,12 @@ interface AgentListProps {
   tabs?: readonly TabView[];
   /** The snapshot's machine list, for the order machines run in: the lead first (lib/pane-groups.ts). */
   servers?: readonly ServerSummary[] | undefined;
+  /**
+   * The workspace heading's "+" (M40/03, issue 290): a new tab in that workspace, on the heading's
+   * own machine and session. Omit and no heading carries one; every strong heading still reserves
+   * the "+"'s height, so its presence never moves a row.
+   */
+  newTab?: HeadingNewTab;
   /**
    * The workspace filter the strip on top drives, per device (hooks/use-dash-prefs.ts). `isolated`
    * shows one workspace alone; `hidden` drops workspaces from the list while their chips stay in
@@ -101,6 +110,17 @@ interface AgentListProps {
    * the summary line instead, never to `body`.
    */
   reveal?: { rowKey: string } | null;
+}
+
+/** What a workspace heading's "+" needs from the route (AgentListProps.newTab). */
+export interface HeadingNewTab {
+  /** The ambient scope: the address a pane that names no machine or session falls back to. */
+  scope: Scope;
+  /** The session registry, so a widened list's pane resolves its own session (lib/hosts.ts). */
+  sessions?: readonly SessionSummary[] | undefined;
+  /** The tab creates in flight, keyed by `tabCreateKey` (hooks/use-spaces.ts). */
+  creating: ReadonlySet<string>;
+  onNewTab: (workspaceId: string, at: Scope) => void;
 }
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
@@ -189,6 +209,7 @@ export function AgentList({
   lastSeenAt,
   tabs,
   servers,
+  newTab,
   isolated = null,
   hidden = NO_KEYS,
   onIsolate,
@@ -322,6 +343,27 @@ export function AgentList({
         ? () => jumpTo(firstUrgent)
         : undefined;
 
+  // A workspace heading's "+", addressed to the heading's OWN machine and session, never the ambient
+  // ones: this list holds every machine in a crew, and a crew's machines number their spaces from
+  // `w1` each, so the ambient scope would open a peer's tab in the lead's `w1`. Every pane of a group
+  // shares one workspace, machine and session, so its first pane addresses the whole workspace, as
+  // the Changes tab's rows do (routes/home.tsx). A group is never empty; the guard is for the type.
+  const headingNewTab = (g: WorkspaceGroup) => {
+    const first = g.panes[0];
+    if (newTab === undefined || first === undefined) return null;
+    const at = paneScope(newTab.scope, first, servers, newTab.sessions);
+    return (
+      <WorkspaceNewTab
+        workspaceId={first.workspaceId}
+        label={g.label}
+        at={at}
+        host={first.host}
+        busy={newTab.creating.has(tabCreateKey(first.workspaceId, at))}
+        onNewTab={newTab.onNewTab}
+      />
+    );
+  };
+
   // The FULL row identity, not the pane id — see `paneRowKey`. A pane id is unique only within one
   // session on one machine, so a merged or widened list holds several rows that answer to `w1:p1`;
   // keyed by the id alone React recycles one row's element for another's between polls, and the
@@ -450,15 +492,24 @@ export function AgentList({
           dot and a count when a pane inside needs you. Flat rows in ONE bordered group. Under Needs
           you with nothing urgent, no group is left, and the summary line's all-clear above is the
           whole answer (with the Pinned group under it, when pins exist): no empty list, no second
-          message. */}
+          message.
+          The heading ends in a "+" that opens a new tab in that workspace (M40/03). `min-h-7` is the
+          "+"'s 28px, reserved on EVERY strong heading, drawn or not, so no heading's height depends
+          on a machine's capability or on a state (DESIGN.md §2). A workspace with no heading here (all
+          its panes pinned, hidden or filtered out, or nothing of it urgent under Focus) has no "+";
+          the space view keeps its own. */}
       {!renderBody && drawn.map(({ group: g, rows }) => (
         <section key={g.key} id={groupDomId(g.key)} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
             label={g.label}
             tone="strong"
             dot={urgentDot(g)}
+            className="min-h-7"
             trailing={
-              <StatusCounts panes={g.panes} className="shrink-0 text-[11px] text-muted-foreground" />
+              <>
+                <StatusCounts panes={g.panes} className="shrink-0 text-[11px] text-muted-foreground" />
+                {headingNewTab(g)}
+              </>
             }
           />
           <ListGroup>{rows.map((a) => row(a))}</ListGroup>

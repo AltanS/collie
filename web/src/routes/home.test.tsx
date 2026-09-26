@@ -85,6 +85,11 @@ const settled = () => screen.findByRole("navigation", { name: /spaces/i });
  *  now carry the same workspace name a heading does (agent-list.tsx). */
 const groupSection = (label: string) => screen.getByRole("heading", { name: label }).closest("section")!;
 
+/** A workspace group's pane rows: the buttons in its list, never the "+" at the end of its heading
+ *  (M40/03), which is a button of the same section. */
+const rowsOf = (section: HTMLElement) =>
+  within(section.querySelector<HTMLElement>('[data-slot="list-group"]')!).getAllByRole("button");
+
 const url = (router: ReturnType<typeof renderHome>) =>
   router.state.location.pathname + router.state.location.search;
 
@@ -116,7 +121,7 @@ describe("the dashboard on ONE machine is untouched", () => {
     await settled();
     // The row's own text is just its name and its tab now — "webapp" only names the workspace
     // heading (and its Spaces chip), so the row is found through its group instead.
-    const [row] = within(groupSection("webapp")).getAllByRole("button");
+    const [row] = rowsOf(groupSection("webapp"));
     await userEvent.click(row!);
     await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap1"));
   });
@@ -153,7 +158,7 @@ describe("the dashboard across machines", () => {
     // the merged list shows both. Tapping the peer's must not open the lead's identically-named pane.
     const router = renderHome(packed());
     await settled();
-    const [peerRow] = within(groupSection("moonward")).getAllByRole("button");
+    const [peerRow] = rowsOf(groupSection("moonward"));
     await userEvent.click(peerRow!);
     await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap1?h=workshop"));
   });
@@ -161,7 +166,7 @@ describe("the dashboard across machines", () => {
   it("opens the LEAD's row with no host param — absent still means the lead", async () => {
     const router = renderHome(packed());
     await settled();
-    const [leadRow] = within(groupSection("webapp")).getAllByRole("button");
+    const [leadRow] = rowsOf(groupSection("webapp"));
     await userEvent.click(leadRow!);
     await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap1"));
   });
@@ -231,7 +236,7 @@ describe("a machine going quiet does not hide what is on it", () => {
     // The peer's blocked row is present in its own workspace group, still carries its host label,
     // and the group heading still lights up for it — never silently demoted.
     const section = groupSection("moonward");
-    const rows = within(section).getAllByRole("button");
+    const rows = rowsOf(section);
     expect(rows.length).toBeGreaterThan(0);
     expect(within(rows[0]!).getByLabelText(/Host: workshop \(unreachable\)/i)).toBeInTheDocument();
     // The heading's own count, not the row's sr-only status word (which reads the same "needs you").
@@ -305,7 +310,7 @@ describe("the dashboard across sessions", () => {
    *  `webapp`, because this test is about how many TERMINALS are listed, not how many spaces. */
   const rows = () => {
     const sections = screen.getAllByRole("heading", { name: "webapp" }).map((h) => h.closest("section")!);
-    return sections.flatMap((s) => within(s).getAllByRole("button"));
+    return sections.flatMap((s) => rowsOf(s));
   };
 
   it("renders BOTH colliding rows, not one recycled row", async () => {

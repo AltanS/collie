@@ -5,6 +5,7 @@ import type {
   CacheRuleWire,
   ChangeCommitDiffResponse,
   ChangeCommitResponse,
+  CreateResponse,
   CrewStatusResponse,
   PaneChangeDiffResponse,
   PaneChangesResponse,
@@ -256,6 +257,22 @@ export const fixtureCrewStatus: CrewStatusResponse = {
     },
   ],
   ts: 400_000,
+};
+
+/**
+ * What `POST /api/tab` answers: the fresh shell pane of a new tab in `collie` (w2). Shared by the
+ * unit layer's handler below and the browser tier's stub (e2e/fixtures/api.ts), so the two never
+ * describe a created tab two ways.
+ */
+export const fixtureNewTab: Extract<CreateResponse, { ok: true }> = {
+  ok: true,
+  pane: {
+    paneId: "w2:p9",
+    workspaceId: "w2",
+    workspaceLabel: "collie",
+    tabId: "w2:t9",
+    cwd: "/home/you/collie",
+  },
 };
 
 /** A minimal two-turn transcript: a human ask and the agent's tool-call-plus-answer reply. */
@@ -559,18 +576,7 @@ export const handlers = [
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/rename$/, () => HttpResponse.json({ ok: true })),
-  http.post("/api/tab", () =>
-    HttpResponse.json({
-      ok: true,
-      pane: {
-        paneId: "w2:p9",
-        workspaceId: "w2",
-        workspaceLabel: "collie",
-        tabId: "w2:t9",
-        cwd: "/home/you/collie",
-      },
-    }),
-  ),
+  http.post("/api/tab", () => HttpResponse.json(fixtureNewTab)),
   http.post("/api/workspace", () =>
     HttpResponse.json({
       ok: true,

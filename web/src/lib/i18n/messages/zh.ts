@@ -400,6 +400,7 @@ export const zh: Dictionary = {
   "home.machineHidden.show": "Show {name}'s panes",
   "home.sidebar.shells": "终端实例",
   "home.pinned.title": "Pinned",
+  "home.group.newTab": "New tab in {name}",
   "home.sidebar.paneActionsTitle": "查看窗格操作选项",
   "home.row.tabPosition": "标签页 {n}",
   "home.row.unseen": "未读",

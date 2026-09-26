@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { MemoryRouter } from "react-router";
 
-import { AgentList } from "@/components/agent-list";
+import { AgentList, type HeadingNewTab } from "@/components/agent-list";
 import { BuildStamp } from "@/components/build-stamp";
 import { CrewFooterLink } from "@/components/crew-footer-link";
 import { ListGroup } from "@/components/ui/list-group";
@@ -59,6 +59,10 @@ export const DEF: SectionDef = {
     "The home screen: the herd in triage order, the strips that say a write will be refused, the two update notices, and the footer's meta zone.",
 };
 
+/** Each workspace heading's "+" (M40/03), wired to nothing: the card shows where it sits, as the
+ *  dashboard draws it, and a tap goes nowhere. */
+const HEADING_NEW_TAB: HeadingNewTab = { scope: {}, creating: new Set(), onNewTab: () => {} };
+
 export function DashboardSection() {
   return (
     <Section def={DEF}>
@@ -75,7 +79,7 @@ export function DashboardSection() {
           span={2}
         >
           <PhoneFrameCard>
-            <AgentList agents={herd} bridge="connected" onOpen={() => {}} />
+            <AgentList agents={herd} bridge="connected" onOpen={() => {}} newTab={HEADING_NEW_TAB} />
           </PhoneFrameCard>
         </Card>
 
