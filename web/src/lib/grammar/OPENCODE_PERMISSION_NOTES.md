@@ -69,9 +69,12 @@ rule's position, so the scanner's status-walk hits a bar row before the rule and
 destructive pre-clear sweep and every reply therefore refuse to type while the dialog is up, and
 the dialog's buttons carry the keys instead.
 
-The ctrl+p command palette floats over the box's middle while the composer's tail stays intact —
-the tail alone answers `true` on a screen the palette owns. Its header stack ("Commands" with the
-"esc" hint, "Search", "Suggested" as exact rows) is the predicate that refuses it.
+A picker (the ctrl+p command palette, `/agents`, `/models`, …) floats over the screen while the
+composer's tail stays intact — the tail alone answers `true` on a screen the picker owns. Every
+picker shares one frame: a title followed by the `esc` hint, and one or two rows below it a `Search`
+row whose word starts in the title's column (`pickerOverlayUp` in `chrome.ts`). That shape is the
+predicate that refuses it; no picker title is named. Once a filter is typed, `Search` is replaced
+by the filter and the check misses the picker (a known gap; the submit key stays withheld).
 
 ## The spinner
 

@@ -5,7 +5,14 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../ansi";
 import { lineText, splitLines } from "../blocks";
 import { opencodeAdapter } from "./opencode";
-import { composerPrompt, extractInputDraft, extractStatusLines, hasComposer } from "./opencode/chrome";
+import {
+  composerPrompt,
+  extractInputDraft,
+  extractStatusLines,
+  hasComposer,
+  locateComposer,
+  pickerOverlayUp,
+} from "./opencode/chrome";
 import { detectPermissionDialog } from "./opencode/dialog";
 import { describeAdapterConformance } from "./conformance";
 
@@ -35,6 +42,9 @@ const otherFixtures = readdirSync(PANES_DIR)
   .toSorted();
 
 const ownFixtures = allOcFixtures.filter((f) => f.includes("permission"));
+
+/** The pickers in the corpus: every capture of one with its `Search` placeholder showing. */
+const PICKERS = ["oc--agents-picker.txt", "oc--command-palette.txt"];
 
 describeAdapterConformance(opencodeAdapter, {
   ownFixtures,
@@ -142,9 +152,6 @@ describe("opencode composer chrome", () => {
   });
 
   it("composerReady is false when a modal owns the screen", () => {
-    // The ctrl+p command palette floats over the box, leaving the composer tail intact — the
-    // overlay predicate is what refuses it.
-    expect(hasComposer(loadLines("oc--command-palette.txt"))).toBe(false);
     for (const name of ownFixtures) {
       expect(hasComposer(loadLines(name)), name).toBe(false);
     }
@@ -260,6 +267,38 @@ describe("opencode composerPrompt binding", () => {
     for (const name of ownFixtures) {
       expect(composerPrompt(loadLines(name)), name).toBeNull();
     }
-    expect(composerPrompt(loadLines("oc--command-palette.txt"))).toBeNull();
+    for (const name of PICKERS) expect(composerPrompt(loadLines(name)), name).toBeNull();
+  });
+});
+
+describe("opencode pickers", () => {
+  // Every opencode picker shares one frame: a title row whose title is followed by `esc`, over a
+  // `Search` row in the title's column. It floats over the screen and can leave the composer's tail
+  // intact, so the tail alone would say the composer holds the keyboard.
+  it("composerReady is false while a picker is up", () => {
+    for (const name of PICKERS) {
+      expect(pickerOverlayUp(loadLines(name)), name).toBe(true);
+      expect(hasComposer(loadLines(name)), name).toBe(false);
+    }
+  });
+
+  it("the /agents picker leaves the composer tail intact, and still refuses", () => {
+    // 1.18.32's `/agents` picker: `Select agent … esc` over `Search`. Before the shape check only
+    // the ctrl+p palette's own words were known, and this screen answered true.
+    const lines = loadLines("oc--agents-picker.txt");
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(hasComposer(lines)).toBe(false);
+  });
+
+  it("no capture without a picker shows the picker shape, in any agent's corpus", () => {
+    const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt") && !PICKERS.includes(f));
+    for (const name of all) expect(pickerOverlayUp(loadLines(name)), name).toBe(false);
+  });
+
+  // Known gap: a typed filter replaces the `Search` placeholder, so the shape is gone while the
+  // picker still holds the keyboard. The reply guard still withholds Enter there (the words never
+  // show in the composer). Flip to `it` when the check learns the typed state.
+  it.fails("the ctrl+p palette with a typed filter refuses too (known gap)", () => {
+    expect(hasComposer(loadLines("oc--command-palette-query.txt"))).toBe(false);
   });
 });

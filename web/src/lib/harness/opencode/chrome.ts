@@ -31,6 +31,7 @@ import {
   lineText,
   rstrip,
 } from "./markers";
+import { displayWidth } from "../../text-width";
 
 // How much composer a torn or scrolled frame may claim. The tail walk is bounded so a foreign or
 // torn buffer can't reach an arbitrarily distant rule. The tallest composer run observed in the
@@ -216,35 +217,61 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
  * Whether opencode's free-text composer is on screen and holds the keyboard — the reply pre-flight's
  * gate. `false` must be DEFINITE on every screen where typing would not reach the composer: a
  * permission dialog painted inside the bar run (its footer is a bar row, so the tail walk never
- * reaches the rule), the ctrl+p command palette floating over the box, and a foreign/torn buffer.
+ * reaches the rule), a picker floating over the screen, and a foreign/torn buffer.
  *
- * The palette overlay paints OVER the middle of the box, leaving the composer's own tail intact — so
- * the tail shape alone would answer `true` on a screen whose keyboard the palette owns. Its header
- * stack ("Commands", "Search", "Suggested" as exact whole rows) is the predicate that says so;
- * requiring all three makes a false `true` implausible while ordinary transcript text (which could
- * carry one of the words) never trips it.
+ * A picker paints OVER the middle of the screen and can leave the composer's own tail intact — so
+ * the tail shape alone would answer `true` on a screen whose keyboard the picker owns.
+ * `pickerOverlayUp` is the predicate that says so.
  */
 export function hasComposer(lines: StyledLine[]): boolean {
   if (locateComposer(lines) === null) return false;
-  return !paletteOverlayUp(lines);
+  return !pickerOverlayUp(lines);
 }
 
-/** The last N rows scanned for the overlay's header stack. */
-const PALETTE_SCAN = 30;
-function paletteOverlayUp(lines: StyledLine[]): boolean {
-  const seen = { Commands: false, Search: false, Suggested: false };
-  let found = 0;
-  for (let i = Math.max(0, lines.length - PALETTE_SCAN); i < lines.length && found < 2; i++) {
-    // The overlay paints INSIDE the box's column space — its rows can carry the composer's own
-    // leading bar at the left edge (measured), so the bar comes off before the exact match.
-    const text = rstrip(lineText(lines[i]!)).replace(/^\s*┃/, "").trim();
-    // The header row carries the overlay's own "esc" dismiss hint on its right end — so "Commands"
-    // is matched by its leading text, while the two list headers below it are exact whole rows.
-    if (text.startsWith("Commands") && !seen.Commands) { seen.Commands = true; found++; }
-    else if (text === "Search" && !seen.Search) { seen.Search = true; found++; }
-    else if (text === "Suggested" && !seen.Suggested) { seen.Suggested = true; found++; }
+/** A row cut into its 2+-space-separated tokens, each with the display column it starts at. */
+function columnTokens(text: string): { text: string; col: number }[] {
+  const out: { text: string; col: number }[] = [];
+  const token = /\S+(?: \S+)*/g;
+  let m: RegExpExecArray | null;
+  while ((m = token.exec(text)) !== null) out.push({ text: m[0], col: displayWidth(text.slice(0, m.index)) });
+  return out;
+}
+
+/** How far below the title row the search field may sit. Two on every picker measured (a blank row
+ *  between them); one leaves room for a denser layout. */
+const MAX_TITLE_TO_SEARCH = 2;
+
+/**
+ * Whether one of opencode's pickers is up: the ctrl+p command palette, `/agents`, `/models` and the
+ * rest. They share one frame, measured on 1.18.32 (2026-09-26) and in the contributor's palette
+ * capture: a TITLE row whose title is followed by the `esc` dismiss hint (`Select agent … esc`,
+ * `Commands … esc`), and one or two rows under it the search field, a `Search` row whose word starts
+ * in the title's own column. The shape is shared; the titles are not, so no title is named here.
+ *
+ * Keyed on columns rather than on whole rows because a picker paints only its own box: the screen
+ * under it shows through on both sides. A transcript row can sit at its left (`┃  create a file…`)
+ * and, when it is long, at its right, and the row between the title and the search field can carry
+ * transcript text too. The whole buffer is scanned, because a picker sits in the middle of a tall
+ * pane, far from the tail.
+ *
+ * Known gap: once the operator types a filter, the field shows the filter instead of `Search`, and
+ * this answers false (`oc--command-palette-query.txt`, pinned as `it.fails` in opencode.test.ts). A
+ * reply typed then lands in the filter; the submit key stays withheld, because the reply guard never
+ * sees the words in the composer.
+ */
+export function pickerOverlayUp(lines: StyledLine[]): boolean {
+  const rows = lines.map((l) => columnTokens(rstrip(lineText(l))));
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    for (let k = 0; k + 1 < row.length; k++) {
+      if (row[k + 1]!.text !== "esc" || row[k]!.text === "esc") continue;
+      const col = row[k]!.col;
+      for (let j = i + 1; j < rows.length && j - i <= MAX_TITLE_TO_SEARCH; j++) {
+        if (rows[j]!.some((t) => t.text === "Search" && t.col === col)) return true;
+      }
+    }
   }
-  return found >= 2;
+  return false;
 }
 
 /** The model row down to the rule, verbatim as they sit on screen (trailing padding dropped) — the
@@ -260,7 +287,7 @@ export function composerPrompt(lines: StyledLine[]): string | null {
   const tail = locateComposer(lines);
   // The same screens `composerReady` refuses bind nothing: a sweep never runs there, and naming a
   // region would hand the conformance leg a binding the pre-flight will not type into.
-  if (tail === null || paletteOverlayUp(lines)) return null;
+  if (tail === null || pickerOverlayUp(lines)) return null;
   const rows = lines.slice(tail.modelRow, tail.rule + 1).map((l) => rstrip(lineText(l)));
   return rows[0]!.length === 0 ? null : rows.join("\n");
 }

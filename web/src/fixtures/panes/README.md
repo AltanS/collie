@@ -965,6 +965,8 @@ Enter confirms, wrap probed, Tab inert).
 | `oc--composer-plan.txt` | The agent cycled to `Plan` (`shift+tab`): the model row reads `Plan · …` | `idle` |
 | `oc--slash-palette.txt` | The `/` palette painted INSIDE the box above the input row (rows carry a right bar too) | `idle` |
 | `oc--command-palette.txt` | The ctrl+p palette floating OVER the box's middle; the composer's tail stays intact underneath, which is why the overlay predicate exists | `working` |
+| `oc--agents-picker.txt` | Captured 2026-09-26 on opencode 1.18.32: the `/agents` picker, `Select agent … esc` over `Search`, floating over the splash while the composer's tail stays intact underneath. The picker-shape check refuses it | `idle` |
+| `oc--command-palette-query.txt` | Captured 2026-09-26 on opencode 1.18.32: the ctrl+p palette with the filter `mod` typed, which stands where `Search` was. A known gap, pinned as `it.fails`: `composerReady` answers true here | `done` |
 | `oc--permission-bash.txt` | The bash permission dialog, pointer on `Allow once` (the accent chip) | `blocked` |
 | `oc--permission-bash--moved.txt` | After one `Right`: chip on `Always allow`; the dialog's subject row swaps for the always-allow warning + pattern list | `blocked` |
 | `oc--permission-bash--reject.txt` | Chip on `Reject` | `blocked` |
