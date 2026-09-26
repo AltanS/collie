@@ -26,6 +26,14 @@ describe("ImageCard — one journal picture, framed", () => {
     expect(container.firstElementChild?.tagName).toBe("SPAN");
   });
 
+  it("takes the dark-space frame inside the mirror, and the app's tokens on the page", () => {
+    const inMirror = render(<ImageCard src={SRC} alt="a" caption="c" />).container.firstElementChild;
+    expect(inMirror).toHaveClass("bg-black/20");
+    const onPage = render(<ImageCard src={SRC} alt="a" caption="c" surface="page" />).container.firstElementChild;
+    expect(onPage).toHaveClass("bg-muted/30");
+    expect(onPage).not.toHaveClass("bg-black/20");
+  });
+
   it("reports a failed load to the caller, who decides what stands in", () => {
     const onError = vi.fn();
     const { container } = render(<ImageCard src={SRC} alt="a" caption="c" onError={onError} />);

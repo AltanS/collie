@@ -676,6 +676,7 @@ export const ja: Dictionary = {
   "mirror.imageAlt": "ターミナルグラフィックス",
   "mirror.imageBadge": "[画像]",
   "mirror.imageMatchedByOrder": "順序で対応付け。確認は履歴から",
+  "mirror.turnImageCaption": "the agent's newest picture, from its log",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "たった今",

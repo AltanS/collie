@@ -710,6 +710,7 @@ export const en = {
   "mirror.imageAlt": "Terminal graphics",
   "mirror.imageBadge": "[Image]",
   "mirror.imageMatchedByOrder": "matched by order, open History to check",
+  "mirror.turnImageCaption": "the agent's newest picture, from its log",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "just now",

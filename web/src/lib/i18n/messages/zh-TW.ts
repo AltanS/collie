@@ -659,6 +659,7 @@ export const zhTW: Dictionary = {
   "mirror.imageAlt": "終端機圖形",
   "mirror.imageBadge": "[圖片]",
   "mirror.imageMatchedByOrder": "依順序比對，開啟歷史記錄確認",
+  "mirror.turnImageCaption": "the agent's newest picture, from its log",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "剛剛",

@@ -683,6 +683,7 @@ export const es: Dictionary = {
   "mirror.imageAlt": "Gráfico de terminal",
   "mirror.imageBadge": "[Imagen]",
   "mirror.imageMatchedByOrder": "emparejada por orden, abre el Historial para comprobarlo",
+  "mirror.turnImageCaption": "the agent's newest picture, from its log",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "ahora mismo",

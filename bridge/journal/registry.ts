@@ -91,6 +91,23 @@ export const AGENT_ALIASES = { omp: "pi" } as const;
 export const REPORTS_SESSION_ON_FIRST_PROMPT: readonly string[] = ["codex"];
 
 /**
+ * Agents that draw a picture the live mirror cannot see, and whose journal records it (#292).
+ *
+ * pi-tui 0.87.1 draws an image only by direct Kitty placement (`a=T`, no `U=1`). A direct placement
+ * leaves nothing on the grid `pane.read` returns: no placeholder cell, only the blank rows pi keeps
+ * for it. So the mirror's placeholder path never sees the picture, and the only copy the phone can
+ * reach is the journal, where pi's adapter yields it as a tool result's `imageUrl` (or an `image`
+ * part). Oh My Pi draws the same way unless `PI_KITTY_PLACEHOLDERS=1` is set, and writes pi's log.
+ *
+ * The phone reads the newest turn's picture out of the journal after each finished turn, for these
+ * agents only. The list is what bounds that cost: every other agent draws no picture at all, so a
+ * read per finished turn would buy nothing there. It keys a read, never a grammar or a pane's
+ * identity. `web/src/lib/journal-agents.ts` mirrors it by hand (registry.test.ts fails when the
+ * two drift).
+ */
+export const DRAWS_IMAGES_OFF_GRID: readonly string[] = ["omp", "pi"];
+
+/**
  * The same pairs as a Map, which is how {@link adapterFor} asks.
  *
  * A Map rather than a property read because the key is an agent name that ORIGINATES in an agent's

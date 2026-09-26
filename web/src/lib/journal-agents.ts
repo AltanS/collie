@@ -10,8 +10,13 @@
 // and silence there reads as a bug in Collie.
 //
 // So the frontend needs the name list, and it is a NAME LIST, never a detector: nothing may key a
-// grammar, a fetch or a pane's identity off a match here — the same rule `KNOWN_HARNESS_NAMES`
-// carries bridge-side. It decides one muted sentence and nothing else.
+// grammar, a fetch or a pane's identity off a match against `JOURNAL_AGENTS` — the same rule
+// `KNOWN_HARNESS_NAMES` carries bridge-side. It decides one muted sentence and nothing else.
+//
+// The two smaller sets below are declared per-agent FACTS, each mirrored from its own constant in
+// `bridge/journal/registry.ts` with the reason there. `FIRST_PROMPT_AGENTS` words a note.
+// `OFF_GRID_IMAGE_AGENTS` bounds one read: the newest turn's picture after a finished turn (#292).
+// It decides whether that read is worth making, never what a screen means.
 //
 // This is NOT `lib/harness/registry.ts`, and the two must not be folded together — that one owns
 // block grammars for the LIVE MIRROR (claude, codex, grok, omp, agy), this one owns reading an
@@ -40,6 +45,19 @@ const JOURNAL_AGENTS: ReadonlySet<string> = new Set([
  *  Codex fires the hook Herdr's integration listens on only when its first prompt is submitted.
  *  Must come after `JOURNAL_AGENTS` in this file: registry.test.ts reads the first set as that one. */
 const FIRST_PROMPT_AGENTS: ReadonlySet<string> = new Set(["codex"]);
+
+/** The agents that draw a picture the mirror cannot see, because a direct Kitty placement leaves
+ *  nothing on the grid, and whose journal records it. Mirrors `DRAWS_IMAGES_OFF_GRID` in
+ *  `bridge/journal/registry.ts`, which holds the reason (#292). */
+const OFF_GRID_IMAGE_AGENTS: ReadonlySet<string> = new Set(["omp", "pi"]);
+
+/**
+ * Whether `agent` draws pictures the mirror cannot see, so its newest turn's picture is worth one
+ * journal read after each finished turn. Every other agent draws none and pays no such read.
+ */
+export function drawsImagesOffGrid(agent: string | undefined): boolean {
+  return agent !== undefined && OFF_GRID_IMAGE_AGENTS.has(agent);
+}
 
 /**
  * Whether `agent` reports its session only once its first prompt is submitted. A pane of such an

@@ -114,19 +114,67 @@ export function alignImagesFromEnd(
 }
 
 /**
- * Every image reference in a page of journal turns, oldest-first, in the order they were written.
+ * The image references in one turn, in the order they were written.
  *
  * Both places an image can sit are read: an `image` part (an attachment, or a picture the agent
- * spoke) and a `tool` part's `result.imageUrl` (a screenshot a tool returned). Duplicates are kept,
- * because two identical screenshots ARE two images on the screen.
+ * spoke) and a `tool` part's `result.imageUrl` (a screenshot a tool returned).
  */
-export function transcriptImages(entries: readonly TranscriptEntry[]): string[] {
+function entryImages(entry: TranscriptEntry): string[] {
   const urls: string[] = [];
-  for (const entry of entries) {
-    for (const part of entry.parts) {
-      if (part.kind === "image") urls.push(part.url);
-      else if (part.kind === "tool" && part.result?.imageUrl) urls.push(part.result.imageUrl);
-    }
+  for (const part of entry.parts) {
+    if (part.kind === "image") urls.push(part.url);
+    else if (part.kind === "tool" && part.result?.imageUrl) urls.push(part.result.imageUrl);
   }
   return urls;
+}
+
+/**
+ * Every image reference in a page of journal turns, oldest-first, in the order they were written.
+ *
+ * Duplicates are kept, because two identical screenshots ARE two images on the screen.
+ */
+export function transcriptImages(entries: readonly TranscriptEntry[]): string[] {
+  return entries.flatMap(entryImages);
+}
+
+// ── THE PICTURE A DIRECT PLACEMENT LEAVES NO TRACE OF ──────────────────────────
+// Everything above works from placeholder cells. An agent can also draw an image by DIRECT
+// placement (pi-tui 0.87.1 does, and only that: `a=T`, no `U=1`), and a direct placement leaves
+// nothing on the grid at all: no cell, no row, so no cluster to align to (#292). The agent's journal
+// still records the picture, so for that case the mirror shows the newest one from there, as a card
+// with the reply it belongs to rather than at a row, because there is no row to put it at.
+
+/**
+ * The newest picture of the newest turn, or null when that turn shows none.
+ *
+ * "Turn" is what the agent did since the operator's last prompt: the scan walks back from the end
+ * and stops at the first `user` entry. It takes the AGENT's pictures only. A picture in the user
+ * entry is the operator's own attachment, which no agent drew on the screen. One picture per turn,
+ * the newest: older ones, and older turns, stay in History.
+ */
+export function newestTurnImage(entries: readonly TranscriptEntry[]): string | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i]!;
+    if (entry.role === "user") return null;
+    const urls = entryImages(entry);
+    if (urls.length > 0) return urls[urls.length - 1]!;
+  }
+  return null;
+}
+
+/**
+ * The newest turn's picture as the card shows it, or null when a placeholder cluster already does.
+ *
+ * `images` is the list the clusters take their pictures from, and they take it FROM THE END
+ * ({@link alignImagesFromEnd}). So when the screen shows placeholders, the newest picture is the one
+ * the last cluster holds, and a card beside it would show the same picture twice. With no cluster
+ * on screen nothing holds it, which is the direct-placement case this card exists for.
+ */
+export function turnImageCard(
+  turnImage: string | null,
+  clusterCount: number,
+  images: readonly string[],
+): string | null {
+  if (turnImage === null) return null;
+  return alignImagesFromEnd(clusterCount, images).includes(turnImage) ? null : turnImage;
 }

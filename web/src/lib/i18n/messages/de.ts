@@ -684,6 +684,7 @@ export const de: Dictionary = {
   "mirror.imageAlt": "Terminal-Grafik",
   "mirror.imageBadge": "[Bild]",
   "mirror.imageMatchedByOrder": "nach Reihenfolge zugeordnet, zum Prüfen den Verlauf öffnen",
+  "mirror.turnImageCaption": "the agent's newest picture, from its log",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "gerade eben",

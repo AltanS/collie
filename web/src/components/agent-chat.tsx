@@ -19,7 +19,7 @@ import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useLatestReply } from "@/hooks/use-latest-reply";
-import { useMirrorImages } from "@/hooks/use-mirror-images";
+import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
@@ -32,6 +32,7 @@ import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
+import { ImageCard } from "@/components/ui/image-card";
 import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AnsiOutput } from "@/components/ansi-output";
@@ -833,15 +834,21 @@ export function AgentChat({
   );
 
   // Terminal graphics: the mirror tells us how many image placeholders it is showing, and only a
-  // count that GREW costs a journal read. The pane read carries no image field and the bridge does
-  // no journal work on the poll path — see hooks/use-mirror-images.ts for the whole cadence.
+  // count that GREW costs a journal read. An agent that draws pictures with no placeholder (pi,
+  // #292) costs one read per finished turn instead, for its newest turn's picture. The pane read
+  // carries no image field and the bridge does no journal work on the poll path — see
+  // hooks/use-mirror-images.ts for the whole cadence.
   const [imageClusterCount, setImageClusterCount] = useState(0);
   const mirrorImages = useMirrorImages({
     paneId,
     scope,
-    enabled: historyAvailable && imageClusterCount > 0,
+    enabled: historyAvailable,
     clusterCount: imageClusterCount,
+    finishedTurn: finishedTurnKey(agent),
   });
+  // A picture whose load failed stands down rather than show a broken-image glyph.
+  const [failedTurnImage, setFailedTurnImage] = useState<string | null>(null);
+  const turnImage = mirrorImages.turnImage !== failedTurnImage ? mirrorImages.turnImage : null;
   // Find searches the mirror, so while it is open the mirror is WHOLE and the card stands down —
   // otherwise a hit inside the reply would be unfindable in the one surface find can highlight.
   const clippedReply = placement?.fit === "clipped" && !findOpen ? latestReply : null;
@@ -2006,9 +2013,28 @@ export function AgentChat({
                     nativeMirror={mirrorOverride}
                     blocks={blocks}
                     hideLeadingLines={hiddenMirrorLines}
-                    images={mirrorImages}
+                    images={mirrorImages.images}
                     onImageClusterCount={setImageClusterCount}
                   />
+                  {/* THE NEWEST TURN'S PICTURE, RIGHT AFTER THE MIRROR (M39, #292). pi draws a
+                      picture by direct placement, which leaves only blank rows on the grid, so
+                      there is no row to put it at; it comes from the journal instead. Placement
+                      was decided between three (2026-09-26, after a live pi run): A, the full-reply
+                      card's slot above the mirror, is the top of pi's scrollback (pi renders
+                      inline), so the card sat out of sight; C, at the reply's own rows, needs a
+                      text probe too fragile for a two-letter reply; B, here, is what the
+                      bottom-pinned view shows a few rows under the reply. A direct child of the
+                      scroller, so ChatMessageList re-pins when it appears or its picture loads,
+                      and only while the operator is following the tail. */}
+                  {turnImage && (
+                    <ImageCard
+                      src={turnImage}
+                      alt={t("mirror.imageAlt")}
+                      caption={t("mirror.turnImageCaption")}
+                      surface="page"
+                      onError={() => setFailedTurnImage(turnImage)}
+                    />
+                  )}
                 </>
               ) : (
                 <div className="py-16 text-center text-sm text-muted-foreground">

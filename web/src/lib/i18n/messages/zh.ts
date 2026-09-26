@@ -663,6 +663,7 @@ export const zh: Dictionary = {
   "mirror.imageAlt": "终端图像",
   "mirror.imageBadge": "[图片]",
   "mirror.imageMatchedByOrder": "按顺序匹配，打开历史记录核对",
+  "mirror.turnImageCaption": "the agent's newest picture, from its log",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "刚刚",

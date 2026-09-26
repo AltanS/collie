@@ -146,3 +146,67 @@ export async function stubBlob(page: Page, answer: BlobAnswer): Promise<void> {
     });
   });
 }
+
+// ── #292: a pi pane, which draws its picture with no placeholder at all ──────────────────────────
+//
+// pi 0.87.1 draws by direct Kitty placement, which leaves only the blank rows it keeps for the
+// picture (read live on 2026-09-26: 32 blank rows between `read ./dot.png` and the reply). pi runs
+// inline, so a real read also carries the conversation above it; the scrollback here is what makes
+// the bottom pin matter, because the card has to be found at the tail, not at the top.
+
+/** The pi screen: scrollback, the tool row, the rows pi kept for the picture, the reply, pi's box. */
+export const PI_SCREEN = [
+  ...Array.from({ length: 80 }, (_, i) => `earlier output, line ${i + 1}`),
+  " read ./dot.png",
+  ...Array.from({ length: 20 }, () => ""),
+  " Here is the screen.",
+  "",
+  "─".repeat(40),
+  "",
+  "─".repeat(40),
+  "/home/you/webapp",
+].join("\n");
+
+/** The epoch ms the pi pane's last status transition carries. Any value: it is the turn's key. */
+const PI_TURN_AT = 1_758_900_000_000;
+
+/**
+ * Point the snapshot, the pane and the journal at a pi pane whose finished turn holds a picture.
+ *
+ * `fixtureAgents[0]` with the fields that make it a pi pane patched: `agent`, `hasSession`,
+ * `status` and `lastActiveAt`. The journal is `fixtureTranscriptWithImage`, whose newest turn ends
+ * with the picture. Call AFTER `installApiStub`.
+ */
+export async function installPiPictureWorld(
+  page: Page,
+  { status }: { status: "done" | "working" },
+): Promise<void> {
+  const snapshot: SnapshotResponse = {
+    ...fixtureSnapshot,
+    agents: fixtureSnapshot.agents.map((agent) =>
+      agent.paneId === MIRROR_PANE_ID
+        ? Object.assign({}, agent, { agent: "pi", hasSession: true, status, lastActiveAt: PI_TURN_AT })
+        : agent,
+    ),
+  };
+  await page.route(
+    (url) => url.pathname === "/api/snapshot",
+    (route) => fulfillJson(route, snapshot),
+  );
+  await page.route(
+    (url) => /^\/api\/pane\/[^/]+$/.test(url.pathname),
+    (route) => fulfillJson(route, { paneId: MIRROR_PANE_ID, text: PI_SCREEN, truncated: false, revision: 1 }),
+  );
+  await page.route(
+    (url) => /^\/api\/pane\/[^/]+\/history$/.test(url.pathname),
+    (route) =>
+      fulfillJson(route, {
+        paneId: MIRROR_PANE_ID,
+        available: true,
+        entries: fixtureTranscriptWithImage,
+        hasMore: false,
+        total: fixtureTranscriptWithImage.length,
+        fileTruncated: false,
+      }),
+  );
+}

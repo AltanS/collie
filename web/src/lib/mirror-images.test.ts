@@ -7,7 +7,9 @@ import {
   imageClusters,
   IMAGE_PLACEHOLDER,
   isPlaceholderOnlyLine,
+  newestTurnImage,
   transcriptImages,
+  turnImageCard,
 } from "./mirror-images";
 import type { StyledLine } from "./blocks";
 import type { TranscriptEntry } from "./types";
@@ -111,5 +113,73 @@ describe("reading the images out of a page of turns", () => {
 
   it("answers empty for turns with no image anywhere", () => {
     expect(transcriptImages([turn([{ kind: "text", text: "hello" }])])).toEqual([]);
+  });
+});
+
+// #292: pi draws by direct placement, which leaves no placeholder on the grid, so the mirror shows
+// the newest turn's picture from the journal instead. These pin which picture that is, and that it
+// never doubles a picture a placeholder cluster already shows.
+describe("the newest turn's picture", () => {
+  const entry = (uuid: string, role: TranscriptEntry["role"], parts: TranscriptEntry["parts"]): TranscriptEntry => ({
+    uuid,
+    ts: "",
+    role,
+    parts,
+  });
+  const prompt = (uuid: string) => entry(uuid, "user", [{ kind: "text", text: "Read ./dot.png and reply OK" }]);
+  // The shape pi 0.87.1 writes, read live on 2026-09-26: the picture is the read tool's result, in
+  // the entry BEFORE the reply, not in the reply itself.
+  const read = (uuid: string, url: string) =>
+    entry(uuid, "assistant", [
+      { kind: "tool", name: "read", summary: "./dot.png", result: { text: "Read image file [image/png]", imageUrl: url } },
+    ]);
+  const reply = (uuid: string) => entry(uuid, "assistant", [{ kind: "text", text: "OK" }]);
+
+  it("takes the picture a tool returned earlier in the turn, behind the reply", () => {
+    expect(newestTurnImage([prompt("u1"), read("a1", "/api/blobs/a"), reply("a2")])).toBe("/api/blobs/a");
+  });
+
+  it("takes the NEWEST picture when the turn holds several", () => {
+    const entries = [
+      prompt("u1"),
+      read("a1", "/api/blobs/a"),
+      entry("a2", "assistant", [
+        { kind: "image", url: "/api/blobs/b" },
+        { kind: "image", url: "/api/blobs/c" },
+      ]),
+      reply("a3"),
+    ];
+    expect(newestTurnImage(entries)).toBe("/api/blobs/c");
+  });
+
+  it("stops at the operator's last prompt: an older turn's picture stays in History", () => {
+    expect(newestTurnImage([prompt("u1"), read("a1", "/api/blobs/a"), reply("a2"), prompt("u2"), reply("a3")])).toBeNull();
+  });
+
+  it("does not take the operator's own attachment, which no agent drew", () => {
+    const attached = entry("u1", "user", [{ kind: "image", url: "/api/blobs/a" }]);
+    expect(newestTurnImage([attached, reply("a1")])).toBeNull();
+  });
+
+  it("answers null for a page with no picture, and for no page at all", () => {
+    expect(newestTurnImage([prompt("u1"), reply("a1")])).toBeNull();
+    expect(newestTurnImage([])).toBeNull();
+  });
+
+  it("shows the card when no placeholder cluster is on screen", () => {
+    expect(turnImageCard("/api/blobs/a", 0, ["/api/blobs/a"])).toBe("/api/blobs/a");
+  });
+
+  it("stands down when a placeholder cluster already shows the same picture", () => {
+    // Clusters take the newest pictures from the end, so the last cluster holds this one.
+    expect(turnImageCard("/api/blobs/b", 1, ["/api/blobs/a", "/api/blobs/b"])).toBeNull();
+  });
+
+  it("still shows when the clusters on screen hold other pictures", () => {
+    expect(turnImageCard("/api/blobs/c", 1, ["/api/blobs/a", "/api/blobs/b"])).toBe("/api/blobs/c");
+  });
+
+  it("answers null when the turn has no picture", () => {
+    expect(turnImageCard(null, 0, [])).toBeNull();
   });
 });
