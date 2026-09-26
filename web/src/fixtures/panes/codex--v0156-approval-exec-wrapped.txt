@@ -1,0 +1,22 @@
+ 
+[0m[1m[38;2;62;64;82m•[0m [0m[1mRunning[0m [0m[38;2;137;180;250mecho[0m[38;2;205;214;244m [0m[38;2;166;227;161m"this is a very long line of text that should be long enough to wrap across the terminal width when codex[0m
+[0m[2m  │ [0m[38;2;166;227;161mprints the dollar-sign command preview row in the approval dialog box"[0m[38;2;205;214;244m [0m[38;2;148;226;213m>[0m[38;2;205;214;244m longline.txt[0m
+ 
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  [0m[1m[48;2;57;57;71mWould you like to run the following command?[0m[48;2;57;57;71m                                                                          [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  Environment: [0m[1m[48;2;57;57;71mlocal[0m[48;2;57;57;71m                                                                                                    [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  Reason: [0m[3m[48;2;57;57;71mMay I run the full echo command to create `longline.txt`?[0m[48;2;57;57;71m                                                     [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  $ [0m[38;2;137;180;250m[48;2;57;57;71mecho[0m[38;2;205;214;244m[48;2;57;57;71m [0m[38;2;166;227;161m[48;2;57;57;71m"this is a very long line of text that should be long enough to wrap across the terminal width when codex[0m[48;2;57;57;71m      [0m
+[0m[48;2;57;57;71m  [0m[38;2;166;227;161m[48;2;57;57;71mprints the dollar-sign command preview row in the approval dialog box"[0m[38;2;205;214;244m[48;2;57;57;71m [0m[38;2;148;226;213m[48;2;57;57;71m>[0m[38;2;205;214;244m[48;2;57;57;71m longline.txt[0m[48;2;57;57;71m                                 [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[38;2;0;0;46m[48;2;99;168;248m› 1. Yes, proceed ([0m[1m[38;2;57;59;67m[48;2;99;168;248my[0m[1m[38;2;0;0;46m[48;2;99;168;248m)                                                                                                   [0m
+[0m[48;2;57;57;71m  2. Yes, and don't ask again for commands that start with `echo "this is a very long line of text that should be long  [0m
+[0m[48;2;57;57;71m     enough to wrap across the terminal width when codex prints the dollar-sign command preview row in the approval     [0m
+[0m[48;2;57;57;71m     dialog box" > longline.txt` ([0m[1m[38;2;205;214;244m[48;2;57;57;71mp[0m[48;2;57;57;71m)                                                                                    [0m
+[0m[48;2;57;57;71m  3. No, and tell Codex what to do differently ([0m[1m[38;2;205;214;244m[48;2;57;57;71mesc[0m[48;2;57;57;71m)                                                                    [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[2mPress [0m[1m[38;2;205;214;244menter[0m[2m to confirm or [0m[1m[38;2;205;214;244mesc[0m[2m to cancel                                                                               [0m

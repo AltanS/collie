@@ -1,0 +1,12 @@
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m  Folder access[0m[48;2;57;57;71m                                                                                                         [0m
+[0m[48;2;57;57;71m  [0m[2m[48;2;57;57;71m/tmp/collie-codex-debug                                                                                             [0m[48;2;57;57;71m  [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  Trust this folder? Codex can read, edit, and run files here, subject to your permission settings. Folder settings     [0m
+[0m[48;2;57;57;71m  can run code automatically, even without a model request. Continue only if you trust these files. Your trust          [0m
+[0m[48;2;57;57;71m  decision will be saved.                                                                                               [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[38;2;0;0;46m[48;2;99;168;248m› 1. Trust and continue                                                                                                 [0m
+[0m[48;2;57;57;71m  2. Quit                                                                                                               [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  [0m[1m[38;2;205;214;244m[48;2;57;57;71menter[0m[2m[48;2;57;57;71m continue · [0m[1m[38;2;205;214;244m[48;2;57;57;71mesc[0m[2m[48;2;57;57;71m quit[0m[48;2;57;57;71m                                                                                             [0m

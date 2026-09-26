@@ -1,0 +1,9 @@
+[0m[38;5;1m■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the[0m
+[0m[38;5;1missue.[0m
+ 
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m›[0m[48;2;57;57;71m first line of the draft                                                                                               [0m
+[0m[48;2;57;57;71m  second line of the draft                                                                                              [0m
+[0m[48;2;57;57;71m  third line of the draft                                                                                               [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[38;2;246;226;183mGPT-6-Luna medium[0m[38;2;135;140;164m · [0m[38;2;171;223;167m/tmp/collie-codex-debug[0m[38;2;135;140;164m · [0m[38;2;245;224;220mAsk one question[0m                               [0m[38;2;135;140;164m⚠ [0m[38;2;196;167;103m1 warning[0m[38;2;135;140;164m · [0m[1m[38;2;205;214;244mf2[0m[38;2;135;140;164m to view[0m

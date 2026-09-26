@@ -1,0 +1,10 @@
+[0m[2m│ model:     [0mGPT-6-Luna medium[0m[2m   [0m[38;2;99;168;248m/model[0m[2m to change │[0m
+[0m[2m│ directory: [0m/tmp/collie-codex-debug[0m[2m              │[0m
+[0m[2m╰─────────────────────────────────────────────────╯[0m
+
+  [0m[1mTip:[0m Use [0m[1m/title[0m to choose what appears in your terminal’s title.
+ 
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m›[0m[48;2;57;57;71m [0m[2m[48;2;57;57;71mAsk Codex to do anything[0m[48;2;57;57;71m                                                                                              [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[38;2;246;226;183mGPT-6-Luna medium[0m[38;2;135;140;164m · [0m[38;2;171;223;167m/tmp/collie-codex-debug[0m

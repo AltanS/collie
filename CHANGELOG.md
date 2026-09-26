@@ -30,6 +30,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+- **Codex 0.156 panes take your messages again.** Codex 0.156 paints its status row in a new way, so Collie found no input box on a default Codex pane and showed "Collie cannot read this dialog" over an idle prompt, and a draft with line breaks never read either. Its rewritten folder-trust prompt, its file-edit approval, a command approval with only two options, and approval options that wrap on a narrow pane now show as buttons; each of their keys was tried live on Codex 0.156.1. The update prompt and the /model and /permissions pickers keep the Esc card.
+
 ## [1.13.1] - 2026-09-24
 
 ### Fixed

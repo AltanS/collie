@@ -1,0 +1,26 @@
+[0m[2m• [0mI’ll run the exact command; the workspace is
+  mounted read only, so this needs your approval
+  to write the file.
+ 
+[0m[1m[38;2;62;64;82m•[0m [0m[1mRunning[0m [0m[38;2;137;180;250mtouch[0m[38;2;205;214;244m narrow-approval-test.txt[0m
+ 
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  [0m[1m[48;2;57;57;71mWould you like to run the following command?[0m[48;2;57;57;71m                                                                          [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  Environment: [0m[1m[48;2;57;57;71mlocal[0m[48;2;57;57;71m                                                                                                    [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  Reason: [0m[3m[48;2;57;57;71mMay I run `touch[0m[48;2;57;57;71m                                                                                              [0m
+[0m[48;2;57;57;71m  [0m[3m[48;2;57;57;71mnarrow-approval-test.txt` to create the[0m[48;2;57;57;71m                                                                               [0m
+[0m[48;2;57;57;71m  [0m[3m[48;2;57;57;71mrequested file?[0m[48;2;57;57;71m                                                                                                       [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m  $ [0m[38;2;137;180;250m[48;2;57;57;71mtouch[0m[38;2;205;214;244m[48;2;57;57;71m narrow-approval-test.txt[0m[48;2;57;57;71m                                                                                      [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[38;2;0;0;46m[48;2;99;168;248m› 1. Yes, proceed ([0m[1m[38;2;57;59;67m[48;2;99;168;248my[0m[1m[38;2;0;0;46m[48;2;99;168;248m)                             [0m
+[0m[48;2;57;57;71m  2. Yes, and don't ask again for commands that                                                                         [0m
+[0m[48;2;57;57;71m     start with `touch narrow-approval-test.txt`                                                                        [0m
+[0m[48;2;57;57;71m     ([0m[1m[38;2;205;214;244m[48;2;57;57;71mp[0m[48;2;57;57;71m)                                                                                                                [0m
+[0m[48;2;57;57;71m  3. No, and tell Codex what to do differently                                                                          [0m
+[0m[48;2;57;57;71m     ([0m[1m[38;2;205;214;244m[48;2;57;57;71mesc[0m[48;2;57;57;71m)                                                                                                              [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[2mPress [0m[1m[38;2;205;214;244menter[0m[2m to confirm or [0m[1m[38;2;205;214;244mesc[0m[2m to cancel         [0m
