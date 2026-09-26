@@ -2,28 +2,40 @@
 // dialog, painted INSIDE the composer's bar run:
 //
 //     ┃  △ Permission required
+//     ┃    # Shell command                        <- a heading: `# Shell command`, `→ Edit <file>`,
+//     ┃                                           <-   `% WebFetch <url>`
+//     ┃  $ echo fixture-corpus-probe              <- the body (an edit dialog paints its diff here)
 //     ┃
-//     ┃  $ echo fixture-corpus-probe              <- the subject: `$ <command>` / `→ Edit <file>`
-//     ┃                                           <- (an edit dialog paints its diff rows here)
-//     ┃   Allow once   Always allow   Reject  ctrl+f fullscreen  ⇆ select  enter confirm
-//     <cwd>                                       <- the status row, below
+//     ┃   Allow once   Allow always   Reject  ctrl+f fullscreen  ⇆ select  enter confirm
+//     ┃                                           <- a bare bar row, then the buffer's end
+//
+// "Allow always" + Enter does not allow yet. It replaces the dialog with a second step, lifted
+// here by the same rules:
+//
+//     ┃  △ Always allow
+//     ┃  This will allow the following patterns until OpenCode is restarted
+//     ┃  - echo *
+//     ┃   Confirm   Cancel                        ⇆ select  enter confirm
 //
 // The options are not numbered rows. They are CHIPS on the footer row, the pointer is a
-// BACKGROUND-COLOUR chip on exactly one of them (theme values — parsed by RELATIVE style, never by
-// colour name), and the footer names its own recipe: `⇆ select  enter confirm`. Measured live
-// against opencode 2.0.8 (sandbox pane, 2026-09-20): Left/Right move the pointer, Tab does NOT
-// (probed — it was observed to leave the chip where it was; the ⇆ hint means the arrow pair), Enter
-// confirms, and Right at the last option wraps to the first (probed on the bash dialog).
+// BACKGROUND-COLOUR chip on exactly one of them (theme values — read RELATIVE to the background the
+// dialog paints its own hints on, never by colour name), and the footer names its own recipe:
+// `⇆ select  enter confirm`. Measured live against opencode 1.18.32 (2026-09-26, the probes in
+// lib/grammar/OPENCODE_PERMISSION_NOTES.md): Right moves the pointer and wraps past the last chip, Left wraps the other
+// way, Tab does nothing, Enter confirms. Escape leaves the second step for the first, and closes
+// the first (the request is rejected).
 //
 // The lifted model carries `keys` computed from the pointer the screen currently shows: the option
 // at the pointer is `["Enter"]`, one at offset d is `["Right" × d, "Enter"]` — d ≤ options-1, so
-// every key is a single herdr-sendable step and no digit is ever synthesised (.adr/0009). A
-// derivation that cannot see exactly one pointer chip answers null and the dialog stays on the raw
-// mirror — the fail-closed contract.
+// every key is a single herdr-sendable step and no digit is ever synthesised (.adr/0009). The
+// pointed row's badge is therefore ⏎ and every other row's is →, as ADR 0055 draws a pointed list.
+// A derivation that cannot see exactly one pointer chip answers null and the dialog stays on the
+// raw mirror — the fail-closed contract.
 
 import type { StyledLine } from "../../blocks";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import {
+  SELECT_HINT,
   barDraftText,
   hasFooterHints,
   isBlank,
@@ -92,10 +104,15 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   // 2. The option row: at wide widths the hints share the chip row (the footer row itself); at
   //    narrow widths the chips sit on the bar row above the hint row, one blank between. Try the
   //    footer first, then the bounded rows above it.
+  // The background the dialog paints its own hints on is the base every chip but the pointer
+  //    sits on. Read off the footer row, so it serves the wide shape (chips on that row) and the
+  //    narrow one (chips on a row of their own) alike.
+  const base = hintBackground(lines[footer]!);
+  if (base === null) return null;
   let optionRow = -1;
   let options: PromptOption[] | null = null;
   for (let i = footer; i >= 0 && footer - i <= 3; i--) {
-    const parsed = parseOptionChips(lines[i]!);
+    const parsed = parseOptionChips(lines[i]!, base);
     if (parsed !== null) {
       options = parsed;
       optionRow = i;
@@ -104,8 +121,9 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   }
   if (options === null || optionRow < 0) return null;
 
-  // 4. The title row — the nearest `△ Permission required` above the options, within the gap bound.
-  //    The lift refuses without it: it is the row that says this is opencode's permission dialog.
+  // 3. The title row — the nearest `△ Permission required` or `△ Always allow` above the options,
+  //    within the gap bound. The lift refuses without it: it is the row that says this is one of
+  //    opencode's permission steps.
   let titleRow = -1;
   for (let i = optionRow - 1; i >= 0 && optionRow - i <= MAX_TITLE_GAP; i--) {
     if (isPermissionTitle(texts[i]!)) {
@@ -142,12 +160,35 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   return { model, startLine: optionRow };
 }
 
+/** The background of the first cell carrying `text` on `line`, or undefined when unpainted. */
+function backgroundOf(line: StyledLine, start: number, end: number): string | undefined {
+  let at = 0;
+  for (const seg of line.segments) {
+    const from = Math.max(at, start);
+    const to = Math.min(at + seg.text.length, end);
+    if (to > from && seg.text.slice(from - at, to - at).trim().length > 0) return seg.bg;
+    at += seg.text.length;
+    if (at >= end) break;
+  }
+  return undefined;
+}
+
+/** The background the footer's `⇆ select` hint is painted on, as a comparable key ("" when the
+ *  hint carries no background), or null when the row carries no such hint. */
+function hintBackground(line: StyledLine): string | null {
+  const text = lineText(line);
+  const at = text.indexOf(SELECT_HINT);
+  if (at < 0) return null;
+  return backgroundOf(line, at, at + SELECT_HINT.length) ?? "";
+}
+
 /**
  * Parse the option chips off a styled footer row, computing each option's keystroke plan from the
- * pointer the screen currently shows. Returns null unless exactly one pointer chip is found among
- * at least one non-hint option token — the fail-closed contract.
+ * pointer the screen currently shows. `base` is the background the dialog paints its hints on.
+ * Returns null unless there are at least two option tokens and exactly one of them sits on another
+ * background — the fail-closed contract.
  */
-function parseOptionChips(line: StyledLine): PromptOption[] | null {
+function parseOptionChips(line: StyledLine, base: string): PromptOption[] | null {
   // 1. Tokenize the row's flat text by 2+ spaces, remembering each token's [start, end) span.
   const full = rstrip(lineText(line));
   const tokens: { text: string; start: number; end: number }[] = [];
@@ -176,49 +217,17 @@ function parseOptionChips(line: StyledLine): PromptOption[] | null {
     }
   }
   const optionTokens = tokens.slice(0, hintStart).filter((t) => t.text.length > 0);
-  if (optionTokens.length === 0) return null;
+  if (optionTokens.length < 2) return null;
 
-  // 3. The pointer: the one option token whose background differs from the PLURALITY of the chips.
-  //    The chips are painted uniformly otherwise, so a pointer on any option — the first included —
-  //    is the single token off the base. Two differing tokens mean we cannot tell the pointer —
-  //    refuse the dialog rather than guess which row a tap would confirm.
-  type SegmentStyle = { fg: string | undefined; bg: string | undefined };
-  const styleAt = (start: number, end: number): SegmentStyle => {
-    let at = 0;
-    let fg: string | undefined;
-    let bg: string | undefined;
-    for (const seg of line.segments) {
-      const from = Math.max(at, start);
-      const to = Math.min(at + seg.text.length, end);
-      if (to > from && seg.text.trim().length > 0) {
-        fg ??= seg.fg;
-        bg ??= seg.bg;
-      }
-      at += seg.text.length;
-      if (at >= end) break;
-    }
-    return { fg, bg };
-  };
-
-  const bgOf = optionTokens.map((t) => styleAt(t.start, t.end).bg);
-  const counts = new Map<string, number>();
-  for (const bg of bgOf) counts.set(bg ?? "", (counts.get(bg ?? "") ?? 0) + 1);
-  let baseBg: string | undefined;
-  let max = 0;
-  let tie = false;
-  for (const [bg, count] of counts) {
-    if (count > max) {
-      max = count;
-      baseBg = bg === "" ? undefined : bg;
-      tie = false;
-    } else if (count === max) {
-      tie = true;
-    }
-  }
-  if (max < 1 || tie || optionTokens.length < 2) return null;
+  // 3. The pointer: the ONE option token whose background differs from the hints'. Every other
+  //    chip sits on the dialog's own background, so a pointer on any option — the first included,
+  //    and on a two-chip step, where no plurality exists — is the single token off it. None, or
+  //    two, means we cannot tell the pointer: refuse the dialog rather than guess which row a tap
+  //    would confirm.
   let pointer = -1;
   for (let i = 0; i < optionTokens.length; i++) {
-    if (bgOf[i] !== baseBg) {
+    const t = optionTokens[i]!;
+    if ((backgroundOf(line, t.start, t.end) ?? "") !== base) {
       if (pointer >= 0) return null;
       pointer = i;
     }

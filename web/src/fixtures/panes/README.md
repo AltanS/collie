@@ -973,6 +973,10 @@ Enter confirms, wrap probed, Tab inert).
 | `oc--permission-bash--wrap.txt` | `Right` past `Reject` wrapped back to `Allow once` — the wrap the keys arithmetic relies on | `blocked` |
 | `oc--permission-edit.txt` | The edit permission dialog: `→ Edit probe.txt` subject + diff rows | `blocked` |
 | `oc--permission-edit--moved.txt` | Chip on `Always allow` | `blocked` |
+| `oc--permission-always-bash.txt` | Captured 2026-09-26 on opencode 1.18.32: `Allow always` + Enter opened the second step, `△ Always allow`, its body naming the pattern (`- echo *`), chips `Confirm` / `Cancel`, pointer on `Confirm` | `blocked` |
+| `oc--permission-always-bash--cancel.txt` | The same step after one `Right`: pointer on `Cancel`, on two chips where no plurality of backgrounds exists | `blocked` |
+| `oc--permission-always-edit.txt` | The second step for an edit: `This will allow edit until OpenCode is restarted.`, no pattern list | `blocked` |
+| `oc--narrow--permission-always-bash.txt` | The second step at 50 columns: the body wraps over two rows, the chips and the hints sit on rows of their own | `blocked` |
 | `oc--narrow--fresh-idle.txt` | Recaptured 2026-09-26 on opencode 1.18.32 at 50 columns: the placeholder wraps over two rows, the model row squeezes its dots (`Build ·GPT-6 Astra Pro OpenRouter· medium`), a bare bar row sits between it and the rule, and a tip wraps over two rows under the key hints. `composerReady` must be TRUE | `idle` |
 | `oc--narrow--permission-bash.txt` | The dialog at narrow width: the footer wraps — options row + hint row separated by a blank | `blocked` |
 | `oc--narrow--draft-wrapped.txt` | A draft wrapped over the edge at narrow width | `idle` |

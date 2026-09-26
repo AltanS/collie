@@ -29,31 +29,51 @@ Two footer shapes, both ending at the buffer tail:
 
 ## The recipe (probed)
 
+Probed one key at a time on **opencode 1.18.32**, 2026-09-26, in private Herdr sessions with a
+scratch config (`OPENCODE_CONFIG` pointing at a file that asks for `bash`, `edit` and `webfetch`).
+
 | Act | Keys | Evidence |
 | --- | --- | --- |
-| Choose the option the pointer is on | `Enter` alone | the chip rides the pointer |
-| Move the pointer right one | `Right` | probed: the chip moved to the next option |
-| Move the pointer left | `Left` | never probed — the recipe never needs it (see below) |
-| Cycle past the last option | `Right` at `Reject` wrapped to `Allow once` | probed; the wrap is why keys are computed as a forward offset |
-| `Tab` | does NOTHING to the pointer | probed; the chip stayed on `Allow once`. The `⇆` hint means the arrow pair, not Tab |
+| Choose the option the pointer is on | `Enter` alone | the chip rides the pointer. `Enter` on `Reject` rejects in one step: the file was not written, the turn ended |
+| Move the pointer right one | `Right` | the chip moved to the next option |
+| Cycle past the last option | `Right` at `Reject` wraps to `Allow once` | the wrap is why keys are computed as a forward offset |
+| Move the pointer left one | `Left` | moves, and wraps from `Allow once` to `Reject`. The adapter never sends it: forward-with-wrap reaches every option |
+| `Tab` | does NOTHING to the pointer | the chip stayed put. The `⇆` hint means the arrow pair, not Tab |
+| A digit | never sent | the dialog prints none (.adr/0009) |
+| `Allow always` + `Enter` | opens a second step, `△ Always allow`, with `Confirm` / `Cancel`, pointer on `Confirm` | the body names the patterns (`- echo *`) for bash, and only the permission for edit |
+| Second step: `Right` | moves to `Cancel`, and wraps back to `Confirm` | same chips, same arithmetic, so the same lift |
+| Second step: `Confirm` + `Enter` | allows the pattern until opencode restarts; the command ran | `echo always-probe` printed its output |
+| Second step: `Cancel` + `Enter` | back to the first step, pointer on `Allow once` | nothing was allowed |
+| `Escape` on the second step | back to the first step, pointer on `Allow once` | |
+| `Escape` on the first step | closes the dialog and rejects the request; the turn ends | bash and webfetch, nothing ran |
 
 Every option's `keys` are computed from the pointer the screen currently shows: offset `d` forward
 (with wrap) then `Enter` — the option AT the pointer is `["Enter"]`, one at `d` is
 `["Right" × d, "Enter"]`. Two reasons, one per field: no digit is ever synthesised (.adr/0009), and
 a derivation always matches the screen the user is looking at, so a tap against a stale render
-fails the identity comparison (the keys are part of it) and re-derives instead of mis-typing.
+fails the identity comparison (the keys are part of it) and re-derives instead of mis-typing. The
+pointed row's badge is therefore `⏎` and every other row's is `→`, the way ADR 0055 draws a
+pointed list.
 
-Left was never probed. The adapter never emits it: forward-with-wrap reaches every option from
-every pointer state, so nothing in the recipe needs it.
+The second step is lifted as its own dialog: its title differs, so its signature and identity
+differ, and a tap on one step never fires on the other. Its buttons walk and confirm exactly as the
+first step's do.
+
+`Escape` is the adapter's declared `cancelKey`: on a screen no grammar reads (a picker), the
+unread-dialog card offers it and nothing else (.adr/0053). `modalOnScreen` asks for a picker or a
+dialog footer at the tail first, so the card never stands over the shell while opencode starts or
+exits.
 
 ## What the pointer looks like
 
 A BACKGROUND-COLOUR chip on exactly one option: the active chip paints its label in the row's dark
-text colour ON the accent background, the other options sit on the dialog's base background. The
-detector requires the PLURALITY background among the option tokens, then exactly ONE option off it —
-two odd chips mean the pointer is not derivable and the dialog refuses to lift (fail-closed). No
-colour name anywhere; the rule is relative, so a different theme keeps working as long as the
-active chip differs from the base.
+text colour ON the accent background, the other options sit on the dialog's base background — the
+same background the footer paints its `⇆ select` hint on. The detector reads that hint's background
+as the base and requires exactly ONE option off it. A plurality of chips cannot serve as the base:
+the second step has two chips, and one of them is always the pointer. None off the base, or two,
+means the pointer is not derivable and the dialog refuses to lift (fail-closed). No colour name
+anywhere; the rule is relative, so a different theme keeps working as long as the active chip
+differs from the hints' background.
 
 The active chip also pads itself (` Allow once ` with the flanking spaces INSIDE its background) —
 the tokens are split on the row's 2+-space runs, so the chip's label reads as one token whose style
@@ -97,9 +117,7 @@ normalising — the exclusion is positional.
 - Only `bash` and `edit` dialogs are captured. Other permission types (webfetch, …) presumably
   share the shape — the lift keys on the title row and the footer hints, not on the tool name —
   but no fixture proves it yet. A mis-detected shape falls to raw, not to a keystroke.
-- The subject row under the title CHANGES with the pointer state (hovering `Always allow` swaps the
-  command row for "This will always allow the following patterns…" + the pattern list). The lifted
-  question is therefore per-pointer-state; the identity comparison keys on the whole region, which
-  is exactly what makes a stale tap refuse.
+- On 1.18.32 the body does not change with the pointer; the patterns show on the second step. The
+  identity comparison keys on the whole region either way, which is what makes a stale tap refuse.
 - A user draft that literally begins with opencode's placeholder text ("Ask anything…") reads as an
   empty box to the draft probe. Cost: a stalled send, never a wrong Enter.

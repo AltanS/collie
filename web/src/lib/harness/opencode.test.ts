@@ -11,10 +11,12 @@ import {
   extractStatusLines,
   hasComposer,
   locateComposer,
+  modalOnScreen,
   pickerOverlayUp,
 } from "./opencode/chrome";
 import { detectPermissionDialog } from "./opencode/dialog";
 import { describeAdapterConformance } from "./conformance";
+import { promptsSameIdentity } from "./prompt-model";
 
 // The opencode adapter's CI gate. Tier 1 chrome (composer strip, status/draft probes, the composer
 // gate) plus the Tier-2 permission-dialog lift, gated on the captured corpus:
@@ -129,6 +131,74 @@ describe("opencode permission dialog lift", () => {
     // The pointer chip is a relative-style rule; a foreign capture must not satisfy it.
     const codex = detectPermissionDialog(loadLines("codex--trust-prompt.txt"));
     expect(codex).toBeNull();
+  });
+});
+
+describe("opencode Always allow step", () => {
+  // "Allow always" + Enter does not allow yet: opencode replaces the dialog with a second step,
+  // `△ Always allow`, with Confirm and Cancel (measured on 1.18.32, 2026-09-26). Same lift, same
+  // identity and key rules as the first step: a forward walk from the pointer, then Enter.
+  it("lifts Confirm and Cancel, with the keys walking from the pointer", () => {
+    const region = detectPermissionDialog(loadLines("oc--permission-always-bash.txt"));
+    expect(region?.model.family).toBe("permission");
+    expect(region?.model.question).toContain("This will allow the following patterns");
+    expect(region?.model.options.map((o) => o.label)).toEqual(["Confirm", "Cancel"]);
+    // Pointer on Confirm: Enter alone, so the badge is ⏎ (ADR 0055); Cancel walks one Right.
+    expect(region?.model.options.map((o) => o.keys)).toEqual([["Enter"], ["Right", "Enter"]]);
+    expect(region?.model.signature.startsWith("  ┃  △ Always allow")).toBe(true);
+    expect(region?.model.signature.endsWith("enter confirm")).toBe(true);
+  });
+
+  it("a pointer on Cancel moves the ⏎ with it, on two chips where no plurality exists", () => {
+    const region = detectPermissionDialog(loadLines("oc--permission-always-bash--cancel.txt"));
+    expect(region?.model.options.map((o) => o.keys)).toEqual([["Right", "Enter"], ["Enter"]]);
+  });
+
+  it("the edit step has no pattern list, and lifts the same way", () => {
+    const region = detectPermissionDialog(loadLines("oc--permission-always-edit.txt"));
+    expect(region?.model.question).toBe("This will allow edit until OpenCode is restarted.");
+    expect(region?.model.options.map((o) => o.label)).toEqual(["Confirm", "Cancel"]);
+  });
+
+  it("lifts at 50 columns, where the hints sit on a row of their own", () => {
+    const region = detectPermissionDialog(loadLines("oc--narrow--permission-always-bash.txt"));
+    expect(region?.model.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Confirm", ["Enter"]],
+      ["Cancel", ["Right", "Enter"]],
+    ]);
+  });
+
+  it("is a different dialog from the first step, so a tap on one never fires on the other", () => {
+    const first = detectPermissionDialog(loadLines("oc--permission-bash.txt"))!.model;
+    const second = detectPermissionDialog(loadLines("oc--permission-always-bash.txt"))!.model;
+    expect(promptsSameIdentity(first, second)).toBe(false);
+  });
+
+  it("the composer is not ready on either step", () => {
+    expect(hasComposer(loadLines("oc--permission-always-bash.txt"))).toBe(false);
+    expect(hasComposer(loadLines("oc--narrow--permission-always-bash.txt"))).toBe(false);
+  });
+});
+
+describe("opencode unread-dialog declarations", () => {
+  it("declares Escape as its way out", () => {
+    expect(opencodeAdapter.cancelKey).toBe("Escape");
+  });
+
+  it("modalOnScreen sees the dialogs and the pickers", () => {
+    for (const name of [...ownFixtures, ...PICKERS]) {
+      expect(modalOnScreen(loadLines(name)), name).toBe(true);
+    }
+  });
+
+  it("modalOnScreen is false on the composer screens and on a plain shell", () => {
+    const composerScreens = allOcFixtures.filter((f) => hasComposer(loadLines(f)));
+    expect(composerScreens.length).toBeGreaterThan(5);
+    for (const name of composerScreens) expect(modalOnScreen(loadLines(name)), name).toBe(false);
+    // The shell a moment before an agent's first frame and just after it exits: no card there.
+    for (const name of ["claude--v2283-shell-before-first-frame.txt", "claude--v2283-shell-after-exit.txt"]) {
+      expect(modalOnScreen(loadLines(name)), name).toBe(false);
+    }
   });
 });
 

@@ -24,6 +24,7 @@ import {
   extractInputDraft,
   extractStatusLines,
   hasComposer,
+  modalOnScreen,
   stripChrome,
 } from "./chrome";
 import { detectPermissionDialog } from "./dialog";
@@ -52,6 +53,14 @@ export const opencodeAdapter: HarnessAdapter = {
   extractStatusLines,
   extractInputDraft,
   composerReady: hasComposer,
+  // The unread-dialog card's one key (.adr/0053), read from opencode's own screens and probed live
+  // on 1.18.32 (2026-09-26): every picker prints it as its `esc` hint (oc--agents-picker.txt,
+  // oc--command-palette.txt) and Escape closes it; on the permission dialog Escape declines (the
+  // "Always allow" step goes back to the first step, the first step closes and the request is
+  // rejected). Declared only now that composerReady finds the composer at 50 columns, so the card
+  // cannot stand over a healthy narrow pane.
+  cancelKey: "Escape",
+  modalOnScreen,
   composerPrompt,
   replyChunks: opencodeReplyChunks,
   draftIsOpaque,

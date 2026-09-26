@@ -24,6 +24,7 @@
 import type { StyledLine } from "../../blocks";
 import {
   barDraftText,
+  hasFooterHints,
   isBarRow,
   isBlank,
   isModelRow,
@@ -270,6 +271,30 @@ export function pickerOverlayUp(lines: StyledLine[]): boolean {
         if (rows[j]!.some((t) => t.text === "Search" && t.col === col)) return true;
       }
     }
+  }
+  return false;
+}
+
+/** How many non-blank rows from the tail a dialog footer may sit: the permission steps paint one
+ *  bare bar row under it. The same window the dialog lift allows (dialog.ts). */
+const MODAL_FOOTER_WINDOW = 3;
+
+/**
+ * Positive evidence that one of opencode's own modals is up — the fifth condition of the
+ * unread-dialog card (.adr/0053, addendum 2026-09-26). `composerReady` answering false says only
+ * that no composer is there, which is also what the shell looks like while opencode starts and
+ * after it exits; the card must not offer Escape there. Two shapes count, both measured on 1.18.32:
+ * a picker (`pickerOverlayUp`), and a dialog painted in the bar run, whose footer — a bar row
+ * carrying `⇆ select` and `enter confirm` — sits at the tail.
+ */
+export function modalOnScreen(lines: StyledLine[]): boolean {
+  if (pickerOverlayUp(lines)) return true;
+  let seen = 0;
+  for (let i = lines.length - 1; i >= 0 && seen < MODAL_FOOTER_WINDOW; i--) {
+    const text = rstrip(lineText(lines[i]!));
+    if (isBlank(text)) continue;
+    seen++;
+    if (isBarRow(text) && hasFooterHints(text)) return true;
   }
   return false;
 }

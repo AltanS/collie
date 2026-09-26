@@ -98,10 +98,12 @@ export function isPlaceholder(text: string): boolean {
   return text.trimStart().startsWith(PLACEHOLDER_PREFIX);
 }
 
-/** The dialog's title glyph — U+25B3 (△) — opens the permission dialog's title row. */
-const TITLE_ROW = /^\s*┃\s{2}△ Permission required$/;
+/** The dialog's title glyph — U+25B3 (△) — opens the title row of both permission steps: the
+ *  permission dialog itself, and the "Always allow" confirmation that "Allow always" + Enter opens
+ *  in its place (measured on 1.18.32, 2026-09-26). */
+const TITLE_ROW = /^\s*┃\s{2}△ (?:Permission required|Always allow)$/;
 
-/** True when this row is the permission dialog's title row. Content-anchored on purpose: it is the
+/** True when this row is the title row of a permission step. Content-anchored on purpose: it is the
  *  one row the dialog always paints, and the lift refuses without it. */
 export function isPermissionTitle(text: string): boolean {
   return TITLE_ROW.test(rstrip(text));
