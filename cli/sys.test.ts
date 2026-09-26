@@ -125,18 +125,18 @@ describe("the PATH a resolved tool's child gets", () => {
   // shells out to `bunx tsc`, and `bunx` is found by NAME or not at all. A lab run died exactly
   // there — `bunx: command not found`, exit 127, checkout already advanced.
   test("the resolved tool's directory goes to the FRONT, so it outranks anything else", () => {
-    expect(withPathPrefix({ PATH: "/usr/bin:/bin" }, "/home/pat/.bun/bin").PATH).toBe(
+    expect(withPathPrefix({ PATH: "/usr/bin:/bin" }, "/home/pat/.bun/bin", "linux").PATH).toBe(
       "/home/pat/.bun/bin:/usr/bin:/bin",
     );
   });
 
   test("an empty or absent PATH becomes the directory alone, never a stray colon", () => {
-    expect(withPathPrefix({}, "/opt/bun/bin").PATH).toBe("/opt/bun/bin");
-    expect(withPathPrefix({ PATH: "" }, "/opt/bun/bin").PATH).toBe("/opt/bun/bin");
+    expect(withPathPrefix({}, "/opt/bun/bin", "linux").PATH).toBe("/opt/bun/bin");
+    expect(withPathPrefix({ PATH: "" }, "/opt/bun/bin", "linux").PATH).toBe("/opt/bun/bin");
   });
 
   test("a directory already on the PATH is left where it is, as the shim leaves it", () => {
-    expect(withPathPrefix({ PATH: "/usr/bin:/opt/bun/bin" }, "/opt/bun/bin").PATH).toBe(
+    expect(withPathPrefix({ PATH: "/usr/bin:/opt/bun/bin" }, "/opt/bun/bin", "linux").PATH).toBe(
       "/usr/bin:/opt/bun/bin",
     );
   });
@@ -145,6 +145,32 @@ describe("the PATH a resolved tool's child gets", () => {
     const env = { PATH: "/usr/bin" };
     expect(withPathPrefix(env, undefined)).toBe(env);
     expect(withPathPrefix(env, "")).toBe(env);
+  });
+
+  // A copied Windows environment keys the variable `Path` and separates it with `;`. Reading
+  // `env.PATH` there made the child's PATH the prefix alone, so an update's build found Bun and
+  // nothing else: `error: bash not found — cannot the version gate`.
+  test("Windows: the prefix joins the existing `Path` with `;`, under the key it was read from", () => {
+    const bun = "C:\\Users\\pat\\.bun\\bin";
+    const out = withPathPrefix({ Path: "C:\\Windows\\system32;C:\\Program Files\\Git\\bin" }, bun, "win32");
+    expect(out.Path).toBe(`${bun};C:\\Windows\\system32;C:\\Program Files\\Git\\bin`);
+    expect(out.PATH).toBeUndefined();
+  });
+
+  test("Windows: a directory already on the `Path` is left where it is", () => {
+    const env = { Path: "C:\\Windows\\system32;C:\\bun\\bin" };
+    expect(withPathPrefix(env, "C:\\bun\\bin", "win32")).toBe(env);
+  });
+
+  test("Windows: an uppercase `PATH` is still honoured, and an absent one becomes the directory", () => {
+    expect(withPathPrefix({ PATH: "C:\\Windows" }, "C:\\bun\\bin", "win32").PATH).toBe("C:\\bun\\bin;C:\\Windows");
+    expect(withPathPrefix({}, "C:\\bun\\bin", "win32").PATH).toBe("C:\\bun\\bin");
+  });
+
+  test("off Windows, a `Path` key is just another variable, never the search path", () => {
+    const out = withPathPrefix({ Path: "/elsewhere", PATH: "/usr/bin" }, "/opt/bun/bin", "linux");
+    expect(out.PATH).toBe("/opt/bun/bin:/usr/bin");
+    expect(out.Path).toBe("/elsewhere");
   });
 });
 

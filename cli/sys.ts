@@ -23,7 +23,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { connect } from "node:net";
 
 import type { Environment } from "./context.ts";
-import { findTool } from "./tools.ts";
+import { envKey, findTool } from "./tools.ts";
 
 // The two seams every lifecycle verb reaches the outside world through: running a system tool, and
 // touching the filesystem. Both are interfaces so `bun test` can drive `start`/`stop`/`status`
@@ -368,14 +368,26 @@ export function realNet(credential: GithubCredential | null = null): Net {
  * Mirrors the shim's `case ":${PATH}:" in *":${BUN_DIR}:"*) ;;` — a directory already on the PATH is
  * left where it is rather than duplicated onto the front.
  *
+ * Windows is the same rule in its own spelling: the variable is usually keyed `Path` in a copied
+ * environment and is `;`-separated. Reading `env.PATH` there finds nothing, so the child's PATH was
+ * the directory ALONE — the resolved tool still ran, and every other name it shelled out to (`bash`
+ * for the version gate first) was "not found". The value is written back under the key it was read
+ * from, so the child never carries both `Path` and `PATH`.
+ *
  * Exported for `cli/sys.test.ts` only. A `runIn` runs its child with inherited stdio, so the env it
  * built is not observable from the outside, and this is the half worth pinning.
  */
-export function withPathPrefix(env: Environment, dir: string | undefined): Environment {
+export function withPathPrefix(
+  env: Environment,
+  dir: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): Environment {
   if (dir === undefined || dir === "") return env;
-  const path = env.PATH ?? "";
-  if (path.split(":").includes(dir)) return env;
-  return { ...env, PATH: path === "" ? dir : `${dir}:${path}` };
+  const key = envKey(env, "PATH", platform);
+  const sep = platform === "win32" ? ";" : ":";
+  const path = env[key] ?? "";
+  if (path.split(sep).includes(dir)) return env;
+  return { ...env, [key]: path === "" ? dir : `${dir}${sep}${path}` };
 }
 
 /**

@@ -6,6 +6,7 @@
 //
 // Nothing about the CLI's use of it moved: every existing caller keeps importing it from here.
 export {
+  envKey,
   fallbackDirs,
   findIn,
   findTool,
