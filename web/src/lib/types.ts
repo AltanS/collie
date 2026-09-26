@@ -1212,6 +1212,20 @@ export interface LaunchersResponse {
   home: string;
 }
 
+/**
+ * GET /api/folders, and the answer to POST /api/folders/star — ONE host's folder list for the
+ * new-space sheet (#289), read off that machine's own `folders.json`. `recent` is newest first (at
+ * most eight, only folders a space was created in), `favourites` in starred order (at most twelve),
+ * and the two never overlap. `home` is that host's home dir, never an entry, for shortening a folder
+ * to `~/…` without the client knowing which machine answered. A host on an older version answers
+ * 404, which the sheet reads as "no list" and never as an error.
+ */
+export interface FoldersResponse {
+  recent: string[];
+  favourites: string[];
+  home: string;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;

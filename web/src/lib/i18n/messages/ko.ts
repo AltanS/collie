@@ -860,6 +860,11 @@ export const ko: Dictionary = {
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "저장소",
   "space.new.host.label": "호스트",
+  "space.new.folders.favourites": "Favourites",
+  "space.new.folders.recent": "Recent",
+  "space.new.folders.use": "Use {path}",
+  "space.new.folders.star": "Add {folder} to favourites",
+  "space.new.folders.unstar": "Remove {folder} from favourites",
   "worktree.orOpenExisting": "기존 worktree 열기",
   // --- apiError.update (POST /api/update refusals, M15/05) ---
   "apiError.update.confirm_required": "업데이트 확인이 필요하여 작업을 시작하지 않았습니다.",

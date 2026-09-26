@@ -245,7 +245,7 @@ finds its pairings and its settings again:
 | What | Herdr plugin | Standalone |
 | --- | --- | --- |
 | Config, holding `.env` | `~/.config/herdr/plugins/config/herdr.collie/` | `~/.config/collie/`, or the Herdr path on a host that runs Herdr |
-| State: paired devices, crew files, `stt.json` | `~/.local/state/collie/` (or `$COLLIE_STATE_DIR`) | the same |
+| State: paired devices, crew files, `stt.json`, `folders.json` | `~/.local/state/collie/` (or `$COLLIE_STATE_DIR`) | the same |
 
 To pause without removing anything, `stop` is enough:
 

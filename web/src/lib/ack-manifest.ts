@@ -124,6 +124,10 @@ export const ACK_MANIFEST = {
     channel: "status",
     why: "A launcher creates a Space (dashboard) or a tab beside the pane you launched it from (switcher), and the app navigates straight into its pane either way, so the button that asked is already off screen; hooks/use-spaces.ts names what was created on arrival, exactly as createWorkspace does. A refusal (an unlisted row, an unknown pane, a failed send) has no control left to sit in either.",
   },
+  starFolder: {
+    channel: "silent",
+    why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both in the sheet the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",
+  },
   createWorktree: {
     channel: "status",
     why: "A worktree arrives as a whole new space and the app navigates into its pane, so the eye has already left the button that asked for it; hooks/use-spaces.ts names what was created on arrival, exactly as createWorkspace does.",

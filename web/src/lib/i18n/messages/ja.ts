@@ -868,6 +868,11 @@ export const ja: Dictionary = {
   "space.new.tab.worktree": "ワークツリー",
   "space.new.repo.label": "リポジトリ",
   "space.new.host.label": "ホスト",
+  "space.new.folders.favourites": "Favourites",
+  "space.new.folders.recent": "Recent",
+  "space.new.folders.use": "Use {path}",
+  "space.new.folders.star": "Add {folder} to favourites",
+  "space.new.folders.unstar": "Remove {folder} from favourites",
   "worktree.orOpenExisting": "または既存のものを開く",
   // --- apiError.update (POST /api/update refusals, M15/05) ---
   "apiError.update.confirm_required": "更新の確認が必要なため、処理は開始されませんでした。",

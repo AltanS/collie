@@ -905,6 +905,11 @@ export const en = {
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repository",
   "space.new.host.label": "Host",
+  "space.new.folders.favourites": "Favourites",
+  "space.new.folders.recent": "Recent",
+  "space.new.folders.use": "Use {path}",
+  "space.new.folders.star": "Add {folder} to favourites",
+  "space.new.folders.unstar": "Remove {folder} from favourites",
   "worktree.orOpenExisting": "Or open one that already exists",
   // --- apiError.update (POST /api/update refusals, M15/05) ---
   "apiError.update.confirm_required": "That update needed a confirm, so nothing was started.",

@@ -877,6 +877,11 @@ export const es: Dictionary = {
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repositorio",
   "space.new.host.label": "Host",
+  "space.new.folders.favourites": "Favourites",
+  "space.new.folders.recent": "Recent",
+  "space.new.folders.use": "Use {path}",
+  "space.new.folders.star": "Add {folder} to favourites",
+  "space.new.folders.unstar": "Remove {folder} from favourites",
   "worktree.orOpenExisting": "Abrir worktree existente",
   // --- apiError.update (POST /api/update refusals, M15/05) ---
   "apiError.update.confirm_required": "La actualización requería confirmación; no se inició nada.",

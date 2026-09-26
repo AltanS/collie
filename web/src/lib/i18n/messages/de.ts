@@ -881,6 +881,11 @@ export const de: Dictionary = {
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repository",
   "space.new.host.label": "Host",
+  "space.new.folders.favourites": "Favourites",
+  "space.new.folders.recent": "Recent",
+  "space.new.folders.use": "Use {path}",
+  "space.new.folders.star": "Add {folder} to favourites",
+  "space.new.folders.unstar": "Remove {folder} from favourites",
   "worktree.orOpenExisting": "Oder bestehenden öffnen",
   // --- apiError.update (POST /api/update refusals, M15/05) ---
   "apiError.update.confirm_required": "Das Update erfordert eine Bestätigung. Es wurde nichts gestartet.",

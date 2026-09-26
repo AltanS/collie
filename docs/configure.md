@@ -502,6 +502,28 @@ that enforces them. The lead refuses an oversize body before forwarding it, to s
 it refuses it against its own number. Set the same values on every member, or a peer will refuse
 what its lead let through.
 
+## Favourite and recent folders
+
+The new-space sheet lists the folders you opened spaces in before, so you tap one instead of typing
+a path.
+
+Under the Directory field sit two lists for the machine the space goes to. **Recent** holds the last
+8 folders a space was created in, newest first. It counts only creates that worked and named a
+folder, and it never lists your home dir, because a blank field already means home.
+
+A tap on a row fills the Directory field and creates nothing, so you can still add a label. The star
+beside a row moves it to **Favourites**, up to 12, in the order you starred them. A second tap on the
+star moves it back to the top of Recent.
+
+The list belongs to the machine, not to the phone. Each machine keeps its own in `folders.json` in
+its state directory, `~/.local/state/collie/folders.json` unless `COLLIE_STATE_DIR` moves it. Every
+device you use sees the same list, and the file appears only after the first space created in a
+folder or the first star.
+
+In a [crew](crew.md), each machine keeps the folders that exist on it, and the sheet shows the list
+of the machine you picked. A machine that runs an older Collie has no list, and the sheet then shows
+none for it.
+
 ## Multi-session
 
 By default, one Collie instance serves every Herdr session it finds.

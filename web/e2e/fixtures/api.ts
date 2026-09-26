@@ -9,6 +9,7 @@ import {
   fixtureCommitDiff,
   fixtureCrewSnapshot,
   fixtureCrewStatus,
+  fixtureNewSpace,
   fixtureNewTab,
   fixtureSnapshot,
   fixtureTranscript,
@@ -48,12 +49,65 @@ interface ReplyBody {
   readonly submit?: boolean;
 }
 
+/** `POST /api/workspace`'s body, as `lib/api.ts`'s `createWorkspace` posts it. */
+interface CreateSpaceBody {
+  readonly label?: string;
+  readonly cwd?: string;
+}
+
+/** `POST /api/folders/star`'s body, as `lib/api.ts`'s `starFolder` posts it. */
+interface StarFolderBody {
+  readonly folder: string;
+  readonly starred: boolean;
+}
+
+/** The home the stub's multiplexer opens a blank create in — the fixture new space's own folder. */
+const STUB_HOME = fixtureNewSpace.pane.cwd;
+
+/**
+ * The folder list the stub keeps, standing in for the bridge's `folders.json` (#289,
+ * `bridge/folders.ts`). ONE PER PAGE, built by {@link installApiStub}, so no case inherits another's
+ * Recent. It keeps the bridge's rules in small: a create that named a folder records it at the top
+ * of Recent, never home and never a favourite; a star moves a Recent folder to Favourites, an unstar
+ * moves it back; a star on a folder in neither list is the bridge's 409. The bounds are the bridge's
+ * business and are pinned there, not re-typed here.
+ */
+class FolderWorld {
+  private recent: string[] = [];
+  private favourites: string[] = [];
+
+  body() {
+    return { recent: [...this.recent], favourites: [...this.favourites], home: STUB_HOME };
+  }
+
+  /** A create that worked: the folder the multiplexer reported, when the operator named one. */
+  record(typed: string, reported: string): void {
+    if (typed.trim() === "" || reported === STUB_HOME || this.favourites.includes(reported)) return;
+    this.recent = [reported, ...this.recent.filter((f) => f !== reported)];
+  }
+
+  /** `true` when the star was taken (or changed nothing), `false` for the bridge's `folders.unknown`. */
+  star(folder: string, starred: boolean): boolean {
+    if (starred) {
+      if (this.favourites.includes(folder)) return true;
+      if (!this.recent.includes(folder)) return false;
+      this.recent = this.recent.filter((f) => f !== folder);
+      this.favourites = [...this.favourites, folder];
+      return true;
+    }
+    if (!this.favourites.includes(folder)) return true;
+    this.favourites = this.favourites.filter((f) => f !== folder);
+    this.recent = [folder, ...this.recent];
+    return true;
+  }
+}
+
 /**
  * Answer the one request. Split out of the route so the dispatch reads as a table and so an
  * unmatched path is a loud 501 rather than a silent fall-through to the static server, which would
  * hand the app `index.html` for a JSON fetch and fail somewhere far away from the cause.
  */
-async function answer(route: Route, path: string): Promise<void> {
+async function answer(route: Route, path: string, folders: FolderWorld): Promise<void> {
   const method = route.request().method();
 
   if (path === "/api/snapshot") return fulfillJson(route, fixtureSnapshot);
@@ -108,6 +162,35 @@ async function answer(route: Route, path: string): Promise<void> {
   // A new tab (the tab strip's "+", a workspace heading's "+"): the fresh shell pane, whichever
   // machine the `?host=` names. A case that cares where the create went reads the request itself.
   if (path === "/api/tab" && method === "POST") return fulfillJson(route, fixtureNewTab);
+
+  // A new space: the fixture's fresh shell pane, opened where the create asked — a blank field is
+  // home — and reported back the way a multiplexer reports it. A create that named a folder then
+  // lands at the top of Recent, exactly as the bridge records it.
+  if (path === "/api/workspace" && method === "POST") {
+    // SAFETY: the body is the app's own — `lib/api.ts`'s `createWorkspace` is the only caller and it
+    // posts `{ label?, cwd? }`. Both fields are optional there, so a body with neither is a create in
+    // home, which is what the bridge reads it as too.
+    const body = route.request().postDataJSON() as CreateSpaceBody;
+    const typed = body.cwd ?? "";
+    const reported = typed.trim() === "" ? STUB_HOME : typed.trim();
+    folders.record(typed, reported);
+    return fulfillJson(route, { ...fixtureNewSpace, pane: { ...fixtureNewSpace.pane, cwd: reported } });
+  }
+
+  // The new-space sheet's folder list (#289), from the page's own FolderWorld.
+  if (path === "/api/folders" && method === "GET") return fulfillJson(route, folders.body());
+  if (path === "/api/folders/star" && method === "POST") {
+    // SAFETY: as above — `lib/api.ts`'s `starFolder` is the only caller and posts `{ folder, starred }`.
+    const body = route.request().postDataJSON() as StarFolderBody;
+    if (!folders.star(body.folder, body.starred)) {
+      return fulfillJson(
+        route,
+        { error: `${body.folder} is not in Recent, so it cannot be starred`, code: "folders.unknown", detail: { folder: body.folder } },
+        409,
+      );
+    }
+    return fulfillJson(route, folders.body());
+  }
 
   // The DEFAULT world is solo, so the census refuses exactly as a non-lead bridge does. A case that
   // wants a crew overrides this route with `fixtureCrewStatus`.
@@ -170,8 +253,9 @@ export interface ApiStubOptions {
  */
 export async function installApiStub(page: Page, options: ApiStubOptions = {}): Promise<void> {
   if (options.tour !== "fresh") await seedTourSeen(page);
+  const folders = new FolderWorld();
   await page.route("**/api/**", async (route) => {
-    await answer(route, new URL(route.request().url()).pathname);
+    await answer(route, new URL(route.request().url()).pathname, folders);
   });
 }
 

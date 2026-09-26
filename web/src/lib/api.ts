@@ -19,6 +19,7 @@ import type {
   CacheRulesResponse,
   CacheWatchListResponse,
   CacheWatchState,
+  FoldersResponse,
   LaunchersResponse,
   NotifyPrefs,
   ChangeCommitDiffResponse,
@@ -724,6 +725,35 @@ export function launch(command: string, besidePaneId?: string, scope?: Scope): P
  */
 export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
   return req<LaunchersResponse>(withScope("/api/launchers", scope));
+}
+
+/**
+ * GET /api/folders — THIS scope's own host's folder list for the new-space sheet (#289), off that
+ * machine's `folders.json`. Session-scoped only so `?host=` reaches the machine whose folders they
+ * are; the list itself is one per machine. Read when the sheet opens and when its chosen machine
+ * changes (lib/folders.ts), never polled and never part of the snapshot.
+ */
+export function fetchFolders(scope?: Scope): Promise<FoldersResponse> {
+  return req<FoldersResponse>(withScope("/api/folders", scope));
+}
+
+/** POST /api/folders/star body — a named contract so `starFolder` infers against it. */
+interface StarFolderBody {
+  folder: string;
+  starred: boolean;
+}
+
+/**
+ * POST /api/folders/star — star (`true`) or unstar (`false`) one folder on THIS scope's host. The
+ * bridge refuses a folder that is not already in its lists, so the sheet only ever sends one it read.
+ * Answers the whole new list, so the sheet redraws from the bridge's word rather than guessing.
+ */
+export function starFolder(folder: string, starred: boolean, scope?: Scope): Promise<FoldersResponse> {
+  const body: StarFolderBody = { folder, starred };
+  return req<FoldersResponse>(withScope("/api/folders/star", scope), {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /**

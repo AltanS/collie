@@ -842,6 +842,11 @@ export const zhTW: Dictionary = {
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "儲存庫",
   "space.new.host.label": "主機",
+  "space.new.folders.favourites": "Favourites",
+  "space.new.folders.recent": "Recent",
+  "space.new.folders.use": "Use {path}",
+  "space.new.folders.star": "Add {folder} to favourites",
+  "space.new.folders.unstar": "Remove {folder} from favourites",
   "worktree.orOpenExisting": "或開啟現有 Worktree",
   // --- apiError.update (POST /api/update refusals, M15/05) ---
   "apiError.update.confirm_required": "此次更新需要確認，未啟動任何操作。",
