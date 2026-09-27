@@ -159,11 +159,20 @@ function preClass(
     native ? MUSE_MIRROR : MIRROR_SPACE,
     native ? null : MIRROR_INVERT,
     wrap
-      ? // `text-pretty`: a 133-column agent row rewraps at phone width, and plain greedy breaking
-        // strands one word on a paragraph's last line ("form." alone under a bullet). Pretty
-        // rebalances the last lines instead. Line-breaking only: bytes, find offsets, link hrefs
-        // and selection text are untouched. (`hyphens-none` was tried for "multi-" / "session"
-        // splits and removed: Chrome keeps breaking after a literal hyphen with it set.)
+      ? // `text-pretty` (#302): a 133-column agent row rewraps at phone width, and greedy breaking
+        // strands one word on its last line ("form." alone under a bullet). Pretty pulls a word
+        // down instead. Line breaking only: the text nodes, find offsets, link hrefs and copied
+        // text are untouched, and no capture screen gained or lost a line, so the mirror's height
+        // and the tail-follow hold.
+        //
+        // WHERE IT ACTS, measured on 2026-09-27 at 390px over the 212 Claude, Codex, Muse and Grok
+        // screens in `fixtures/panes`: Chromium changes the breaks on 35, WebKit 26.5 on 12, and
+        // the stranded words drop from 220 to 141 and to 217. WebKit drops `pretty` for the whole
+        // <pre> once any row in it cannot break to fit (a rule wider than the phone, a status line
+        // padded with spaces, a table run), and nearly every screen holds one. Safari before 26
+        // ignores the value and breaks greedily. `web/e2e/issue-302.spec.ts` pins the prose case in
+        // both engines. Don't add `hyphens-none` for "multi-" / "session": `hyphens` governs soft
+        // and automatic hyphenation, never the break a printed hyphen allows.
         "whitespace-pre-wrap break-words text-pretty"
       : // Horizontal pan for wide TUI tables. `overflow-x-auto` forces `overflow-y` to compute to
         // `auto` (CSS overflow quirk), and a flex item with non-visible overflow may shrink below its
