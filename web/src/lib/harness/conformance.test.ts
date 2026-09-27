@@ -76,6 +76,22 @@ const NEUTRAL = new Set([
   // A multiSelect with the pointer on its "Type something" field: a real dialog the adapter declines
   // on purpose, because every toggle digit would be typed into the field. The unread card covers it.
   "claude--v2283-multiselect-type-something-focused.txt",
+  // Claude Code 2.1.283 after the `/plugin` Marketplaces tab applied an update: the menu is closed
+  // and "✔ Updated 1 marketplace" sits in the chat above an ordinary box. Idle, never a dialog.
+  "claude--v2283-plugin-marketplaces-updated--w40.txt",
+  "claude--v2283-plugin-marketplaces-updated--w82.txt",
+  "claude--v2283-plugin-marketplaces-updated--w120.txt",
+  "claude--v2283-fullscreen-plugin-marketplaces-updated--w40.txt",
+  "claude--v2283-fullscreen-plugin-marketplaces-updated--w82.txt",
+  "claude--v2283-fullscreen-plugin-marketplaces-updated--w120.txt",
+  // A marketplace's detail screen in the full-screen renderer, taller than the 40-row pane: Claude
+  // clips it at the bottom, so its footer is not on screen and it names no key. A real dialog that
+  // no grammar may read (ADR 0009), and with no key-hint row in its tail, no unread card either.
+  "claude--v2283-fullscreen-plugin-marketplace-detail--w40.txt",
+  "claude--v2283-fullscreen-plugin-marketplace-detail--w82.txt",
+  // The `/plugin` "Add Marketplace" source field: a text field no grammar reads. The unread card
+  // covers it (unread-dialog.test.ts).
+  "claude--v2283-plugin-marketplaces-add-form--w82.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

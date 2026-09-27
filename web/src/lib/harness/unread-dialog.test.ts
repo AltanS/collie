@@ -198,6 +198,10 @@ const CARD_FIXTURES = {
       // the marker would sit leftmost (Claude marks `low` by colour only), so the Effort grammar and
       // the generic menu both decline and the card is the honest answer.
       "claude--menu-effort-slider--w40-low.txt",
+      // README: the `/plugin` "Add Marketplace" source field, opened from the Marketplaces tab. A text
+      // field no grammar reads; the Marketplaces grammar does not claim it (no `Manage marketplaces`
+      // title), so the card and its Escape are the way back to the tab.
+      "claude--v2283-plugin-marketplaces-add-form--w82.txt",
     ],
     notModals: [
       // corpus, DELIBERATE: a statusline printing numbered rows is refused by ADR 0048 step 4

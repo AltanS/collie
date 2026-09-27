@@ -17,6 +17,7 @@ import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectEffortRegion } from "./effort";
 import { detectResumePickerRegion } from "./resume";
+import { detectMarketplacesRegion } from "./marketplaces";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
 import {
@@ -111,8 +112,21 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
     return blocks;
   }
 
+  // The `/plugin` Marketplaces tab and a marketplace's detail screen (marketplaces.ts). Their footers
+  // say "Enter to select", which files them as a question the question grammars cannot read, so the
+  // generic menu below stands aside. Recognised by their own words, they lift as a menu of the keys
+  // the footer printed, minus remove, whose confirm the phone cannot read.
+  const marketplacesRegion = detectMarketplacesRegion(lines);
+  if (marketplacesRegion) {
+    const before = trimTrailingBlank(lines.slice(0, marketplacesRegion.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "menu", menu: marketplacesRegion.model, lines: lines.slice(marketplacesRegion.startLine) });
+    return blocks;
+  }
+
   // LAST RESORT: a modal screen none of the specific grammars claimed, driven by the keys its own
-  // footer names (menu.ts). It runs after all six deliberately — every grammar above encodes a
+  // footer names (menu.ts). It runs after all seven deliberately — every grammar above encodes a
   // VERIFIED keystroke recipe for a dialog it recognises, and this one only knows what the screen
   // printed. It must never pre-empt them; it exists to catch what they decline (the `/model` picker),
   // where the alternative is no buttons at all and a composer send typed into the picker.

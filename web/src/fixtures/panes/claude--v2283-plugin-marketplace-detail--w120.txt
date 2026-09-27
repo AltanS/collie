@@ -1,0 +1,47 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mHaiku 4.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/plugins-lab/project[0m
+
+  Get to finished work sooner with Opus 5.5. Switch anytime with [0m[38;2;177;185;249m/model[0m.
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/plugin[0m[48;2;55;55;55m                                                                                                               [0m
+[0m[38;2;153;153;153m  ⎿  [0m✔ Updated 1 marketplace
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/reload-plugins[0m[48;2;55;55;55m                                                                                                       [0m
+[0m[38;2;153;153;153m  ⎿  [0mReloaded: 6 plugins · 6 skills · 6 agents · 0 hooks · 0 plugin MCP servers · 0 plugin LSP servers
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;153;153;153m[48;2;55;55;55m/plugins[0m[48;2;55;55;55m                                                                                                              [0m
+
+[0m[38;2;177;185;249m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mPlugins[0m  Discover   Installed  [0m[1m[7m Marketplaces [0m  Errors   Stats
+
+  [0m[1mlab-market[0m
+  [0m[38;2;153;153;153m/tmp/plugins-lab/lab-market[0m
+    
+  6 available plugins
+    
+  [0m[1mInstalled plugins (6):[0m
+   ● alpha-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps over several rows at every pane width, so [0m
+     [0m[38;2;153;153;153mthe detail screen grows as tall as a real one and its header scrolls away[0m
+   ● bravo-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps over several rows at every pane width, so [0m
+     [0m[38;2;153;153;153mthe detail screen grows as tall as a real one and its header scrolls away[0m
+   ● charlie-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps over several rows at every pane width, so [0m
+     [0m[38;2;153;153;153mthe detail screen grows as tall as a real one and its header scrolls away[0m
+   ● delta-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps over several rows at every pane width, so [0m
+     [0m[38;2;153;153;153mthe detail screen grows as tall as a real one and its header scrolls away[0m
+   ● echo-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps over several rows at every pane width, so [0m
+     [0m[38;2;153;153;153mthe detail screen grows as tall as a real one and its header scrolls away[0m
+   ● foxtrot-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps over several rows at every pane width, so[0m
+     [0m[38;2;153;153;153mthe detail screen grows as tall as a real one and its header scrolls away[0m
+
+  [0m[38;2;177;185;249m❯ Browse plugins (6)[0m
+    Update marketplace[0m[38;2;153;153;153m (last updated 9/27/2026)[0m
+    Remove marketplace
+
+  [0m[3m[38;2;153;153;153mEnter to select · Esc to go back[0m

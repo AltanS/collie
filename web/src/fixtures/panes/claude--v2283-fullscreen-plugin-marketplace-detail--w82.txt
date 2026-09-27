@@ -1,0 +1,40 @@
+[0m[38;2;153;153;153m  ⎿  [0mReloaded: 6 plugins · 6 skills · 6 agents · 0 hooks · 0 plugin MCP servers ·
+     0 plugin LSP servers
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[0m
+   [0m[1m[38;2;177;185;249mPlugins [0m Discover   Installed  [0m[1m[7m Marketplaces   [0mErrors   Stats
+
+   [0m[1mlab-market[0m
+   [0m[38;2;153;153;153m/tmp/plugins-lab/lab-market[0m
+
+   6 available plugins
+
+   [0m[1mInstalled plugins (6):[0m
+    ● alpha-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps [0m
+      [0m[38;2;153;153;153mover several rows at every pane width, so the detail screen grows as tall[0m
+      [0m[38;2;153;153;153mas a real one and its header scrolls away[0m
+    ● bravo-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps [0m
+      [0m[38;2;153;153;153mover several rows at every pane width, so the detail screen grows as tall[0m
+      [0m[38;2;153;153;153mas a real one and its header scrolls away[0m
+    ● charlie-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps [0m
+      [0m[38;2;153;153;153mover several rows at every pane width, so the detail screen grows as tall[0m
+      [0m[38;2;153;153;153mas a real one and its header scrolls away[0m
+    ● delta-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps [0m
+      [0m[38;2;153;153;153mover several rows at every pane width, so the detail screen grows as tall[0m
+      [0m[38;2;153;153;153mas a real one and its header scrolls away[0m
+    ● echo-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps [0m
+      [0m[38;2;153;153;153mover several rows at every pane width, so the detail screen grows as tall[0m
+      [0m[38;2;153;153;153mas a real one and its header scrolls away[0m
+    ● foxtrot-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture lab with a long description that wraps [0m
+      [0m[38;2;153;153;153mover several rows at every pane width, so the detail screen grows as tall[0m
+      [0m[38;2;153;153;153mas a real one and its header scrolls away[0m
+    
+   [0m[38;2;177;185;249m❯[0m [0m[38;2;177;185;249mBrowse plugins (6)[0m
+     Update marketplace[0m[38;2;153;153;153m (last updated 9/27/2026)[0m
+     Remove marketplace
+   

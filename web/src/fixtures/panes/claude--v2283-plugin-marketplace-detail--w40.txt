@@ -1,0 +1,119 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mHaiku 4.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/plugins-lab/project[0m
+
+  Get to finished work sooner with Opus
+  5.5. Switch anytime with [0m[38;2;177;185;249m/model[0m.
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;153;153;153m[48;2;55;55;55m/plugins[0m[48;2;55;55;55m                              [0m
+
+[0m[38;2;177;185;249m────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mPlug[0m [0m[1m[7m Disc[0m  Insta  Marketp  Err  Sta
+  [0m[1m[38;2;177;185;249mins  [0m[1m[7mover  [0mlled   laces    ors  ts
+
+  [0m[1mDiscover plugins[0m[38;2;153;153;153m (1/315)[0m
+  [0m[2m╭──────────────────────────────────╮[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mHaiku 4.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/plugins-lab/project[0m
+
+  Get to finished work sooner with Opus
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mHaiku 4.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/plugins-lab/project[0m
+
+  Get to finished work sooner with Opus
+  5.5. Switch anytime with [0m[38;2;177;185;249m/model[0m.
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/plugin[0m[48;2;55;55;55m                               [0m
+[0m[38;2;153;153;153m  ⎿  [0m✔ Updated 1 marketplace
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/reload-plugins[0m[48;2;55;55;55m                       [0m
+[0m[38;2;153;153;153m  ⎿ [0mReloaded: 6 plugins · 6 skills · 6
+[0m[38;2;153;153;153m  [0m  agents · 0 hooks · 0 plugin MCP
+    servers · 0 plugin LSP servers
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;153;153;153m[48;2;55;55;55m/plugins[0m[48;2;55;55;55m                              [0m
+
+[0m[38;2;177;185;249m────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mPlug[0m [0m[1m[7m Disc[0m  Insta  Marketp  Err  Sta
+  [0m[1m[38;2;177;185;249mins  [0m[1m[7mover  [0mlled   laces    ors  ts
+
+  [0m[1mDiscover plugins[0m[38;2;153;153;153m (1/315)[0m
+  [0m[2m╭──────────────────────────────────╮[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mHaiku 4.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/plugins-lab/project[0m
+
+  Get to finished work sooner with Opus
+  5.5. Switch anytime with [0m[38;2;177;185;249m/model[0m.
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/plugin[0m[48;2;55;55;55m                               [0m
+[0m[38;2;153;153;153m  ⎿  [0m✔ Updated 1 marketplace
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/reload-plugins[0m[48;2;55;55;55m                       [0m
+[0m[38;2;153;153;153m  ⎿ [0mReloaded: 6 plugins · 6 skills · 6
+[0m[38;2;153;153;153m    [0magents · 0 hooks · 0 plugin MCP
+    servers · 0 plugin LSP servers
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;153;153;153m[48;2;55;55;55m/plugins[0m[48;2;55;55;55m                              [0m
+
+[0m[38;2;177;185;249m────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mPlug  [0mDisc  Insta [0m[1m[7m Marketp  [0mErr  Sta
+  [0m[1m[38;2;177;185;249mins  [0mover  lled   [0m[1m[7mlaces    [0mors  ts
+
+  [0m[1mlab-market[0m
+  [0m[38;2;153;153;153m/tmp/plugins-lab/lab-market[0m
+    
+  6 available plugins
+    
+  [0m[1mInstalled plugins (6):[0m
+   ● alpha-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture [0m
+     [0m[38;2;153;153;153mlab with a long description that [0m
+     [0m[38;2;153;153;153mwraps over several rows at every [0m
+     [0m[38;2;153;153;153mpane width, so the detail screen [0m
+     [0m[38;2;153;153;153mgrows as tall as a real one and [0m
+     [0m[38;2;153;153;153mits header scrolls away[0m
+   ● bravo-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture [0m
+     [0m[38;2;153;153;153mlab with a long description that [0m
+     [0m[38;2;153;153;153mwraps over several rows at every [0m
+     [0m[38;2;153;153;153mpane width, so the detail screen [0m
+     [0m[38;2;153;153;153mgrows as tall as a real one and [0m
+     [0m[38;2;153;153;153mits header scrolls away[0m
+   ● charlie-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture [0m
+     [0m[38;2;153;153;153mlab with a long description that [0m
+     [0m[38;2;153;153;153mwraps over several rows at every [0m
+     [0m[38;2;153;153;153mpane width, so the detail screen [0m
+     [0m[38;2;153;153;153mgrows as tall as a real one and [0m
+     [0m[38;2;153;153;153mits header scrolls away[0m
+   ● delta-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture[0m
+     [0m[38;2;153;153;153mlab with a long description that[0m
+     [0m[38;2;153;153;153mwraps over several rows at every[0m
+     [0m[38;2;153;153;153mpane width, so the detail screen[0m
+     [0m[38;2;153;153;153mgrows as tall as a real one and[0m
+     [0m[38;2;153;153;153mits header scrolls away[0m
+   ● echo-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture[0m
+     [0m[38;2;153;153;153mlab with a long description that[0m
+     [0m[38;2;153;153;153mwraps over several rows at every[0m
+     [0m[38;2;153;153;153mpane width, so the detail screen[0m
+     [0m[38;2;153;153;153mgrows as tall as a real one and[0m
+     [0m[38;2;153;153;153mits header scrolls away[0m
+   ● foxtrot-kit
+     [0m[38;2;153;153;153mScratch toolkit for the capture[0m
+     [0m[38;2;153;153;153mlab with a long description that[0m
+     [0m[38;2;153;153;153mwraps over several rows at every[0m
+     [0m[38;2;153;153;153mpane width, so the detail screen[0m
+     [0m[38;2;153;153;153mgrows as tall as a real one and[0m
+     [0m[38;2;153;153;153mits header scrolls away[0m
+
+  [0m[38;2;177;185;249m❯ Browse plugins (6)[0m
+    Update marketplace[0m[38;2;153;153;153m (last updated[0m
+    [0m[38;2;153;153;153m9/27/2026)[0m
+    Remove marketplace
+
+  [0m[3m[38;2;153;153;153mEnter to select · Esc to go back[0m

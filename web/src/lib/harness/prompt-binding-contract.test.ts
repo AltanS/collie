@@ -10,6 +10,7 @@ import { detectPromptSelect } from "./claude/prompt-select";
 import { detectWizard } from "./claude/wizard";
 import { detectMenu } from "./claude/menu";
 import { detectResumePicker } from "./claude/resume";
+import { detectMarketplaces } from "./claude/marketplaces";
 
 // The client half of the prompt-binding contract. See the sibling test in
 // bridge/prompt-binding.test.ts for the full reasoning; in short:
@@ -62,7 +63,11 @@ function detectRegion(lines: StyledLine[]): { detector: string; region: string }
   // before the generic menu, which would otherwise claim the same screen.
   const resume = detectResumePicker(lines);
   if (resume) return { detector: "prompt-select", region: resume.signature };
-  // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all five declined.
+  // The `/plugin` Marketplaces tab and detail screen lift as a menu, and claudeBuildBlocks tries them
+  // just before the generic menu too.
+  const marketplaces = detectMarketplaces(lines);
+  if (marketplaces) return { detector: "menu", region: marketplaces.signature };
+  // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all six declined.
   const menu = detectMenu(lines);
   if (menu) return { detector: "menu", region: menu.signature };
   return null;

@@ -573,6 +573,39 @@ so it is not a plain rule.
 | `claude--v2283-slash-export.txt` | `/export` picker: two numbered rows and a lone `Esc to cancel` footer. Lifts `menu` with one Cancel action and Up/Down, never a digit |
 | `claude--v2283-slash-usage.txt` | `/usage` info panel under the edge, tab bar as its first row, lone `Esc to cancel` footer. Lifts `menu` with one Cancel action |
 
+## Plugin marketplaces corpus (captured 2026-09-27, Claude Code 2.1.283, herdr 0.9.0, private Herdr session)
+
+The Marketplaces tab of `/plugin` and the page one marketplace opens. Both footers say `Enter to
+select`, so the generic menu stood aside and the phone showed only the unread-dialog card; the
+`harness/claude/marketplaces.ts` grammar reads them now. Captured in a private Herdr session with a
+copied `CLAUDE_CONFIG_DIR` (deleted after the run), in `/tmp/plugins-lab/project`, with two scratch
+local marketplaces, `lab-market` (six installed plugins with long made-up descriptions, so its page
+grows as tall as a real one) and `demo-market` (one plugin, none installed). The public
+`claude-plugins-official` marketplace appears in every list because Claude adds it on its own. Each
+file is a byte-faithful `herdr pane read --source recent --lines 300 --format ansi`, the call the
+bridge's `/api/pane` route makes. No sanitising was needed: a scan for user and host names, home
+paths and e-mail addresses finds none.
+
+Every state was captured in both renderers, `"tui": "default"` (classic, no infix) and `"tui":
+"fullscreen"` (`fullscreen-` infix), at 40, 82 and 120 columns (`--w<cols>`, 40 rows). The keys were
+sent with `herdr pane send-keys`, the call the phone's buttons make: `u` marked the row, Enter applied
+it, and Claude answered `✔ Updated 1 marketplace`.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2283-[fullscreen-]plugin-marketplaces-add--w{40,82,120}.txt` | The tab, `❯` on `+ Add Marketplace`. Footer `Enter to select · u to update · d to remove · Esc to go back`, wrapped onto two rows at 40 columns. Lifts `menu` `Manage marketplaces`: Select, Update (`u`), Go back, Up/Down. No `d` |
+| `claude--v2283-[fullscreen-]plugin-marketplaces-pointed--w{40,82,120}.txt` | The same tab, `❯` on `lab-market`. Same reading |
+| `claude--v2283-[fullscreen-]plugin-marketplaces-pending--w{40,82,120}.txt` | After `u`: `lab-market [UPDATE]`, `Pending changes: Enter to apply`, footer `Enter to apply changes · Esc to cancel` (two rows at 40 columns). Lifts `menu` `Manage marketplaces`: Apply changes, Cancel, Up/Down |
+| `claude--v2283-[fullscreen-]plugin-marketplaces-updated--w{40,82,120}.txt` | After Enter: the menu is closed and the chat shows `✔ Updated 1 marketplace` above an ordinary box. Idle, raw |
+| `claude--v2283-plugin-marketplace-detail--w{40,82,120}.txt` | `lab-market`'s page, `❯` on `Browse plugins (6)`, footer `Enter to select · Esc to go back`. The name row sits 29 to 54 rows above the footer, past the generic region scan. Lifts `menu` titled `lab-market`: Select, Go back, Up/Down |
+| `claude--v2283-fullscreen-plugin-marketplace-detail--w120.txt` | The same page, full screen, 120 columns: it fits, so it reads as above |
+| `claude--v2283-fullscreen-plugin-marketplace-detail--w{40,82}.txt` | **Clipped.** The same page, full screen: taller than the 40-row pane, so Claude clips it at the bottom and the footer is not on screen (at 40 columns the action rows are gone too). The screen names no key, so no grammar reads it and no unread card shows; typing stays refused. Moving the `❯` to the last row does not bring the footer back |
+| `claude--v2283-fullscreen-plugin-marketplace-detail-short--w{40,82,120}.txt` | `demo-market`'s page, full screen: short enough to keep its footer. Lifts `menu` titled `demo-market`: Select, Go back, Up/Down |
+| `claude--v2283-plugin-marketplace-detail-remove--w82.txt` | `demo-market`'s page with the `❯` on `Remove marketplace`. Lifts `menu` with Go back and Up/Down only: Enter here opens the remove confirm, which the phone cannot read |
+| `claude--v2283-plugin-marketplace-detail-updated--w82.txt` | `lab-market`'s page after Enter on `Update marketplace`: `✔ Updated 1 marketplace` above the action rows, `❯` on the Update row. Same reading as the page |
+| `claude--v2283-fullscreen-plugin-marketplaces-changed--w{40,82}.txt` | Esc from that page, full screen: back on the tab, whose `▔` edge now carries `Plugins changed. Run /reload-plugins to activate.` At 40 columns the label crowds out the edge's left run (` Plugins changed. Run /reload-plugins… ▔`), which `region-top.ts`'s edge shape does not take, so the marketplaces grammar accepts that crowded edge itself. Same reading as the tab |
+| `claude--v2283-plugin-marketplaces-add-form--w82.txt` | Enter on `+ Add Marketplace`: a boxed text field, `Enter to add · Esc to cancel`. Not claimed by the marketplaces grammar; the unread card offers Escape |
+
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 
 | Fixture | State / what's in it |

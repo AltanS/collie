@@ -1,0 +1,40 @@
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/plugin[0m[48;2;55;55;55m                               [0m
+[0m[38;2;153;153;153m  ⎿  [0m✔ Updated 1 marketplace
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/reload-plugins[0m[48;2;55;55;55m                       [0m
+[0m[38;2;153;153;153m  ⎿ [0mReloaded: 6 plugins · 6 skills · 6
+[0m[38;2;153;153;153m    [0magents · 0 hooks · 0 plugin MCP
+    servers · 0 plugin LSP servers
+ [0m[38;2;177;185;249mPlugins changed. Run /reload-plugins… ▔[0m
+   [0m[1m[38;2;177;185;249mPlug  [0mDisc  Inst [0m[1m[7m Market  [0mErr  Sta
+   [0m[1m[38;2;177;185;249mins[0m  over  alled [0m[1m[7mplaces  [0mors  ts
+
+
+   [0m[1mManage marketplaces[0m
+
+     + [0m[1mAdd Marketplace[0m
+
+     ● [0m[1m[38;2;215;119;87m✻ [0m[1mclaude-plugins-official[0m[1m[38;2;215;119;87m ✻[0m
+       [0m[38;2;153;153;153manthropics/claude-plugins-offi[0m
+       [0m[38;2;153;153;153mcial[0m
+       [0m[38;2;153;153;153m314 available • Updated [0m
+       [0m[38;2;153;153;153m9/27/2026[0m
+
+     ● [0m[1mdemo-market[0m
+       [0m[38;2;153;153;153m/tmp/plugins-lab/demo-market[0m
+       [0m[38;2;153;153;153m1 available • Updated [0m
+       [0m[38;2;153;153;153m9/27/2026[0m
+
+   [0m[38;2;177;185;249m❯ ●[0m [0m[1mlab-market[0m
+       [0m[38;2;153;153;153m/tmp/plugins-lab/lab-market[0m
+       [0m[38;2;153;153;153m6 available • 6 installed • [0m
+       [0m[38;2;153;153;153mUpdated 9/27/2026[0m
+
+       [0m[38;2;153;153;153m(no CLI name) · listed as [0m
+       [0m[38;2;153;153;153m"Anthropic Directory" · browse[0m
+       [0m[38;2;153;153;153mon claude.ai[0m
+   
+
+   [0m[3m[38;2;153;153;153mEnter to select · u to update · d [0m
+   [0m[3m[38;2;153;153;153mto remove · Esc to go back[0m     

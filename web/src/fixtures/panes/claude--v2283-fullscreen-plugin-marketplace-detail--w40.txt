@@ -1,0 +1,40 @@
+[0m[38;2;153;153;153m    [0magents · 0 hooks · 0 plugin MCP
+    servers · 0 plugin LSP servers
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[0m
+   [0m[1m[38;2;177;185;249mPlug  [0mDisc  Inst [0m[1m[7m Market  [0mErr  Sta
+   [0m[1m[38;2;177;185;249mins[0m  over  alled [0m[1m[7mplaces [0m ors  ts
+
+
+   [0m[1mlab-market[0m
+   [0m[38;2;153;153;153m/tmp/plugins-lab/lab-market[0m
+   
+   6 available plugins
+
+   [0m[1mInstalled plugins (6):[0m
+    ● alpha-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture[0m
+      [0m[38;2;153;153;153mlab with a long description [0m
+      [0m[38;2;153;153;153mthat wraps over several rows at[0m
+      [0m[38;2;153;153;153mevery pane width, so the [0m
+      [0m[38;2;153;153;153mdetail screen grows as tall as [0m
+      [0m[38;2;153;153;153ma real one and its header [0m
+      [0m[38;2;153;153;153mscrolls away[0m
+    ● bravo-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture[0m
+      [0m[38;2;153;153;153mlab with a long description [0m
+      [0m[38;2;153;153;153mthat wraps over several rows at[0m
+      [0m[38;2;153;153;153mevery pane width, so the [0m
+      [0m[38;2;153;153;153mdetail screen grows as tall as [0m
+      [0m[38;2;153;153;153ma real one and its header [0m
+      [0m[38;2;153;153;153mscrolls away[0m
+    ● charlie-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture[0m
+      [0m[38;2;153;153;153mlab with a long description [0m
+      [0m[38;2;153;153;153mthat wraps over several rows at[0m
+      [0m[38;2;153;153;153mevery pane width, so the [0m
+      [0m[38;2;153;153;153mdetail screen grows as tall as [0m
+      [0m[38;2;153;153;153ma real one and its header [0m
+      [0m[38;2;153;153;153mscrolls away[0m
+    ● delta-kit
+      [0m[38;2;153;153;153mScratch toolkit for the capture[0m
+      [0m[38;2;153;153;153mlab with a long description [0m

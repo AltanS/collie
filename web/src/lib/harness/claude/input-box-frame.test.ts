@@ -10,6 +10,7 @@ import { extractInputDraft, extractStatusLines, hasInputBox, inputBoxTail } from
 import { draftCarriesSend } from "../../reply-action";
 import { claudeAdapter, claudeBuildBlocks } from "./index";
 import { lineText } from "./markers";
+import { detectMarketplacesRegion } from "./marketplaces";
 import { detectMenuRegion } from "./menu";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPreviewSelectRegion } from "./preview-select";
@@ -51,6 +52,7 @@ function claimedByADialog(lines: StyledLine[]): boolean {
     detectWizardRegion(lines) !== null ||
     detectMultiSelectRegion(lines) !== null ||
     detectPromptSelectRegion(lines) !== null ||
+    detectMarketplacesRegion(lines) !== null ||
     detectMenuRegion(lines) !== null
   );
 }
@@ -81,6 +83,14 @@ describe("parity with the old walk on the real corpus", () => {
     // inside the frame is draft text (ADR 0048 addendum 2026-09-26).
     "claude--v2283-draft-prompt.txt",
     "claude--v2283-draft-rule.txt",
+    // Claude Code 2.1.283 after the `/plugin` Marketplaces tab applied an update: the menu closed and
+    // the chat holds "✔ Updated 1 marketplace" above an ordinary box, in both renderers.
+    "claude--v2283-fullscreen-plugin-marketplaces-updated--w120.txt",
+    "claude--v2283-fullscreen-plugin-marketplaces-updated--w40.txt",
+    "claude--v2283-fullscreen-plugin-marketplaces-updated--w82.txt",
+    "claude--v2283-plugin-marketplaces-updated--w120.txt",
+    "claude--v2283-plugin-marketplaces-updated--w40.txt",
+    "claude--v2283-plugin-marketplaces-updated--w82.txt",
     "claude--working.txt",
   ]);
 

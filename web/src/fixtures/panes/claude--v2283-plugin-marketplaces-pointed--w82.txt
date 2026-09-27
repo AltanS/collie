@@ -1,0 +1,31 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mHaiku 4.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/plugins-lab/project[0m
+
+  Get to finished work sooner with Opus 5.5. Switch anytime with [0m[38;2;177;185;249m/model[0m.
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;153;153;153m[48;2;55;55;55m/plugins[0m[48;2;55;55;55m                                                                        [0m
+
+[0m[38;2;177;185;249m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mPlugins[0m  Discover   Installed  [0m[1m[7m Marketplaces [0m  Errors   Stats
+
+  [0m[1mManage marketplaces[0m
+
+    + [0m[1mAdd Marketplace[0m
+
+    ● [0m[1m[38;2;215;119;87m✻ [0m[1mclaude-plugins-official[0m[1m[38;2;215;119;87m ✻[0m
+      [0m[38;2;153;153;153manthropics/claude-plugins-official[0m
+      [0m[38;2;153;153;153m314 available • Updated 9/27/2026[0m
+
+    ● [0m[1mdemo-market[0m
+      [0m[38;2;153;153;153m/tmp/plugins-lab/demo-market[0m
+      [0m[38;2;153;153;153m1 available • Updated 9/27/2026[0m
+
+  [0m[38;2;177;185;249m❯ ● [0m[1mlab-market[0m
+      [0m[38;2;153;153;153m/tmp/plugins-lab/lab-market[0m
+      [0m[38;2;153;153;153m6 available • 6 installed • Updated 9/27/2026[0m
+
+      [0m[38;2;153;153;153m(no CLI name) · listed as "Anthropic Directory" · browse on claude.ai[0m
+
+
+  [0m[3m[38;2;153;153;153mEnter to select · u to update · d to remove · Esc to go back[0m
