@@ -10,9 +10,8 @@ import { fill, installApiStub } from "./fixtures/api";
 // offers each folder as a row that FILLS the Directory field, and stars one into Favourites. What a
 // real engine has to show: the create request is exactly today's, the folder is under Recent the
 // next time the sheet opens, a star moves it, a tap fills the field and sends no create, and the
-// rows keep the 44px floor with the star a 44px square beside the text. Open now, the third section,
-// lists the folders the snapshot's panes sit in, fills on a tap and stars through the same route.
-// 390x844, the phone, in Chromium and in WebKit.
+// rows keep the 44px floor with the star a 44px square beside the text. 390x844, the phone, in
+// Chromium and in WebKit.
 //
 // The stub (e2e/fixtures/api.ts) stands in for the bridge with one FolderWorld per page, so the list
 // starts empty in every case.
@@ -31,8 +30,6 @@ const SHOWN = "~/src/collie";
 const sheet = (page: Page) => page.getByRole("dialog");
 const recent = (page: Page) => sheet(page).getByRole("list", { name: en["space.new.folders.recent"] });
 const favourites = (page: Page) => sheet(page).getByRole("list", { name: en["space.new.folders.favourites"] });
-const openNow = (page: Page) => sheet(page).getByRole("list", { name: en["space.new.folders.open"] });
-const use = (shown: string) => fill(en["space.new.folders.use"], { path: shown });
 const dirField = (page: Page) => sheet(page).getByPlaceholder(en["space.new.dir.placeholder"]);
 const createButton = (page: Page) => sheet(page).getByRole("button", { name: en["space.new.create"] });
 
@@ -116,35 +113,4 @@ test("a create in home records nothing", async ({ page }) => {
   await openSheet(page);
   expect(await (await read).json()).toEqual({ recent: [], favourites: [], home: fixtureNewSpace.pane.cwd });
   await expect(recent(page)).toHaveCount(0);
-});
-
-test("Open now offers the folders the panes sit in: a tap fills, a star makes a favourite", async ({ page }) => {
-  const sent: Request[] = [];
-  page.on("request", (r) => {
-    const path = new URL(r.url()).pathname;
-    if (r.method() === "POST" && (path === "/api/workspace" || path === "/api/folders/star")) sent.push(r);
-  });
-
-  await page.goto("/");
-  await openSheet(page);
-  // The stub snapshot's panes: `webapp` in workspace 1, then `collie` in workspace 2 (an agent and a
-  // shell, one row). Place order, each folder once, and no request of its own.
-  await expect(openNow(page).getByRole("listitem")).toHaveCount(2);
-  await expect(openNow(page).getByRole("button", { name: /^Use / })).toHaveText(["webapp~/webapp", "collie~/collie"]);
-
-  // A tap fills the field with the full path, moves to Create, and creates nothing.
-  await openNow(page).getByRole("button", { name: use("~/collie") }).click();
-  await expect(dirField(page)).toHaveValue("/home/you/collie");
-  await expect(createButton(page)).toBeFocused();
-
-  // A star is the same route, naming the pane's folder; the folder then sits under Favourites.
-  await openNow(page).getByRole("button", { name: fill(en["space.new.folders.star"], { folder: "~/webapp" }) }).click();
-  const unstar = favourites(page).getByRole("button", {
-    name: fill(en["space.new.folders.unstar"], { folder: "~/webapp" }),
-  });
-  await expect(unstar).toHaveAttribute("aria-pressed", "true");
-  await expect(openNow(page).getByRole("listitem")).toHaveCount(1);
-  expect(sent.map((r) => [new URL(r.url()).pathname, r.postData()])).toEqual([
-    ["/api/folders/star", JSON.stringify({ folder: "/home/you/webapp", starred: true })],
-  ]);
 });

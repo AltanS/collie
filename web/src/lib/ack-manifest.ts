@@ -126,7 +126,7 @@ export const ACK_MANIFEST = {
   },
   starFolder: {
     channel: "silent",
-    why: "The row moves between Favourites and Recent, or from Open now into Favourites, and its star fills or empties under the thumb, both in the sheet the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",
+    why: "The row moves between Favourites and Recent and its star fills or empties under the thumb, both in the sheet the operator is looking at, once the bridge answers with the new list; a refusal publishes an error status through lib/mutate.ts and the list is read again (lib/folders.ts).",
   },
   createWorktree: {
     channel: "status",

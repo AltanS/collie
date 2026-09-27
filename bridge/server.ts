@@ -967,18 +967,6 @@ export function startServer(opts: {
   };
 
   /**
-   * The folders this machine's panes, agents and shells, sit in right now, every local session's, as
-   * the multiplexer reported them: what a star from the sheet's "Open now" section may name (#289).
-   * Only this collie's OWN panes: a peer's folders are starred on that peer, through the forward.
-   * Read at the moment of the star, never kept, and never opened as a path (bridge/folders.ts).
-   */
-  const foldersInUse = (): string[] =>
-    registry.all().flatMap((rt) => {
-      const { agents, shellPanes } = rt.engine.current();
-      return [...agents, ...shellPanes].map((pane) => pane.cwd);
-    });
-
-  /**
    * This collie's own `(session)` resolution: the identical `registry.get` call the bridge made
    * before crews existed, plus the 404 it always answered. Named once so that BOTH the browser's host
    * gate and the peer's crew dispatch reach a local runtime through the same expression — two
@@ -1070,7 +1058,7 @@ export function startServer(opts: {
     // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
     // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
     // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
-    const folderAnswer = await serveFolderRoute(req, pathname, caller, folders, foldersInUse);
+    const folderAnswer = await serveFolderRoute(req, pathname, caller, folders);
     if (folderAnswer !== null) return folderAnswer;
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
@@ -3548,9 +3536,8 @@ export function foldersBody(folders: FolderSurface): FoldersResponse {
 /**
  * Validate an untrusted `POST /api/folders/star` body: `{ folder, starred }`, a non-empty folder
  * string no longer than {@link MAX_FOLDER_CHARS} and a boolean. Anything else is `null` → 400. The
- * folder is only a string to compare: the store refuses one that is not already in its lists or in
- * a pane on this machine right now, so a phone can star what a multiplexer reported and nothing else
- * (bridge/folders.ts).
+ * folder is only a string to compare: the store refuses one that is not already in its lists, so a
+ * phone can star what a multiplexer reported and nothing else (bridge/folders.ts).
  */
 export function parseStarFolderRequest(v: JsonValue | undefined): { folder: string; starred: boolean } | null {
   const o = asJsonRecord(v);
@@ -3559,17 +3546,12 @@ export function parseStarFolderRequest(v: JsonValue | undefined): { folder: stri
   return { folder: o.folder, starred: o.starred };
 }
 
-/**
- * The folder routes, or `null` when `pathname` is neither. `folders` absent answers both with 404.
- * `inUse` names the folders this machine's panes sit in right now; a star may name one of them
- * (the sheet's "Open now" rows). It is asked only for a star that this machine answers itself.
- */
+/** The folder routes, or `null` when `pathname` is neither. `folders` absent answers both with 404. */
 export async function serveFolderRoute(
   req: Request,
   pathname: string,
   caller: FolderRouteCaller,
   folders: FolderSurface | undefined,
-  inUse: () => readonly string[] = () => [],
 ): Promise<Response | null> {
   const ae = req.headers.get("accept-encoding");
   if (pathname === "/api/folders" && req.method === "GET") {
@@ -3598,7 +3580,7 @@ export async function serveFolderRoute(
     if (parsed === null) return text("bad body", 400);
     let outcome: Awaited<ReturnType<FolderSurface["star"]>>;
     try {
-      outcome = await folders.star(parsed.folder, parsed.starred, parsed.starred ? inUse() : []);
+      outcome = await folders.star(parsed.folder, parsed.starred);
     } catch (err) {
       console.warn(`[folders] star not saved: ${errorText(err)}`);
       return text("the folder list could not be saved", 500);

@@ -10,11 +10,10 @@ import { shortenHome } from "@/lib/shorten-home";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
 
-// The new-space sheet's Favourites, Recent and Open now sections (#289, M40/02), directly under its
-// Directory field, for the machine the host picker chose. A row FILLS the field and creates nothing,
-// so the operator can still set a label, and a folder that has since gone is one more tap from being
-// noticed rather than a surprise create. The star beside it moves the folder between the two lists;
-// on an Open now row, the folder a pane sits in right now, it makes the folder a favourite.
+// The new-space sheet's Favourites and Recent sections (#289, M40/02), directly under its Directory
+// field, for the machine the host picker chose. A row FILLS the field and creates nothing, so the
+// operator can still set a label, and a folder that has since gone is one more tap from being
+// noticed rather than a surprise create. The star beside it moves the folder between the two lists.
 //
 // Both lines of a row are mono: a folder is a machine-authored identifier (DESIGN.md §5). The name is
 // the last segment; the path under it, shortened against THAT machine's home, tells two `web` folders
@@ -27,20 +26,17 @@ import { useLocale } from "@/hooks/use-locale";
 
 interface FolderSectionsProps {
   folders: FolderList;
-  /** The folders the machine's panes sit in, less the two lists and home (lib/folders.ts `openNowRows`). */
-  openNow: readonly string[];
   /** Fill the Directory field with this folder. Never a create. */
   onUse: (folder: string) => void;
   /** Star (`true`) or unstar (`false`) one folder of this machine. */
   onStar: (folder: string, starred: boolean) => void;
 }
 
-export function FolderSections({ folders, openNow, onUse, onStar }: FolderSectionsProps) {
+export function FolderSections({ folders, onUse, onStar }: FolderSectionsProps) {
   useLocale();
-  const any = hasFolders(folders) || openNow.length > 0;
   return (
-    <Collapse open={any}>
-      {any ? (
+    <Collapse open={hasFolders(folders)}>
+      {hasFolders(folders) ? (
         <div className="flex flex-col gap-3">
           <Section
             title={t("space.new.folders.favourites")}
@@ -53,14 +49,6 @@ export function FolderSections({ folders, openNow, onUse, onStar }: FolderSectio
           <Section
             title={t("space.new.folders.recent")}
             rows={folders.recent}
-            starred={false}
-            home={folders.home}
-            onUse={onUse}
-            onStar={onStar}
-          />
-          <Section
-            title={t("space.new.folders.open")}
-            rows={openNow}
             starred={false}
             home={folders.home}
             onUse={onUse}

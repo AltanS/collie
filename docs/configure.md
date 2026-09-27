@@ -515,9 +515,6 @@ A tap on a row fills the Directory field and creates nothing, so you can still a
 beside a row moves it to **Favourites**, up to 12, in the order you starred them. A second tap on the
 star moves it back to the top of Recent.
 
-Under Recent, **Open now** lists up to 8 folders that the machine's panes use right now, in dashboard
-order, so a star makes one a favourite before you ever open a space there.
-
 The list belongs to the machine, not to the phone. Each machine keeps its own in `folders.json` in
 its state directory, `~/.local/state/collie/folders.json` unless `COLLIE_STATE_DIR` moves it. Every
 device you use sees the same list, and the file appears only after the first space created in a

@@ -128,22 +128,6 @@ describe("withStar — star and unstar", () => {
     expect(withStar(lists, "/etc", true)).toEqual({ ok: false, code: "folders.unknown" });
   });
 
-  test("a folder a pane uses right now can be starred, and joins the end of Favourites", () => {
-    const out = withStar(lists, "/srv/open/", true, ["/srv/other", "/srv/open"]);
-    expect(out).toEqual({
-      ok: true,
-      changed: true,
-      lists: { recent: ["/srv/a", "/srv/b", "/srv/c"], favourites: ["/srv/f", "/srv/open"] },
-    });
-    // Open somewhere else is not open here: the list names the folder exactly or not at all.
-    expect(withStar(lists, "/srv/ope", true, ["/srv/open"])).toEqual({ ok: false, code: "folders.unknown" });
-  });
-
-  test("an open folder is still bound by the twelve", () => {
-    const full: FolderLists = { recent: [], favourites: folders(MAX_FAVOURITES, "f") };
-    expect(withStar(full, "/srv/open", true, ["/srv/open"])).toEqual({ ok: false, code: "folders.favourites_full" });
-  });
-
   test("a thirteenth favourite is refused, never dropping one the operator chose", () => {
     const full: FolderLists = { recent: ["/srv/a"], favourites: folders(MAX_FAVOURITES, "f") };
     expect(withStar(full, "/srv/a", true)).toEqual({ ok: false, code: "folders.favourites_full" });
@@ -273,20 +257,6 @@ describe("FolderStore — the file", () => {
       expect(warnings).toHaveLength(1);
       // Kept in memory, so the next write that succeeds carries it.
       expect(store.current().recent).toEqual(["/srv/a"]);
-    });
-  });
-
-  test("a star may name a folder a pane uses now; never home, an empty report or another folder", async () => {
-    await withStateDir(async (dir) => {
-      const store = new FolderStore({ stateDir: dir }, HOME);
-      const openNow = ["", HOME, `${HOME}/`, "/srv/open/"];
-      expect(await store.star(HOME, true, openNow)).toEqual({ ok: false, code: "folders.unknown" });
-      expect(await store.star(`${HOME}/`, true, openNow)).toEqual({ ok: false, code: "folders.unknown" });
-      expect(await store.star("/srv/elsewhere", true, openNow)).toEqual({ ok: false, code: "folders.unknown" });
-      expect(await readdir(dir)).toEqual([]);
-      // Either spelling of the open folder reaches the one entry, stored without its slash.
-      expect(await store.star("/srv/open", true, openNow)).toMatchObject({ ok: true, changed: true });
-      expect(await Bun.file(join(dir, "folders.json")).json()).toEqual({ recent: [], favourites: ["/srv/open"] });
     });
   });
 

@@ -3038,65 +3038,6 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
     }
   });
 
-  test("star: a folder a pane on this machine uses right now is taken, and becomes a favourite", async () => {
-    const { store, dir } = await storeWith(["/srv/a"]);
-    try {
-      const { c, asked } = caller();
-      let looked = 0;
-      const inUse = () => {
-        looked += 1;
-        return ["/srv/a", "/srv/open/", ""];
-      };
-      const body = JSON.stringify({ folder: "/srv/open", starred: true });
-      const starred = await read(await serveFolderRoute(star(body), "/api/folders/star", c, store, inUse));
-      expect(starred).toEqual({ recent: ["/srv/a"], favourites: ["/srv/open"], home: HOME });
-      expect(asked).toEqual(["gate:write", "resolve"]);
-      expect(looked).toBe(1);
-      expect(await Bun.file(join(dir, "folders.json")).json()).toEqual({ recent: ["/srv/a"], favourites: ["/srv/open"] });
-      // An unstar never asks the panes: it is the same unstar as before.
-      const unstar = JSON.stringify({ folder: "/srv/open", starred: false });
-      await read(await serveFolderRoute(star(unstar), "/api/folders/star", c, store, inUse));
-      expect(looked).toBe(1);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("refused: home, even while a pane sits in it, and a folder no pane uses", async () => {
-    const { store, dir } = await storeWith(["/srv/a"]);
-    try {
-      const { c } = caller();
-      const inUse = () => [HOME, `${HOME}/`, "/srv/open"];
-      for (const folder of [HOME, `${HOME}/`, "/srv/closed"]) {
-        const res = await serveFolderRoute(star(JSON.stringify({ folder, starred: true })), "/api/folders/star", c, store, inUse);
-        expect(res!.status).toBe(409);
-        expect(await res!.json()).toMatchObject({ code: "folders.unknown", detail: { folder } });
-      }
-      expect(store.current()).toEqual({ recent: ["/srv/a"], favourites: [] });
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("refused: a read-only device cannot star an open folder, and the panes are never asked", async () => {
-    const { store, dir } = await storeWith(["/srv/a"]);
-    try {
-      const { c, asked } = caller({ denyAt: "write" });
-      let looked = 0;
-      const inUse = () => {
-        looked += 1;
-        return ["/srv/open"];
-      };
-      const res = await serveFolderRoute(star(JSON.stringify({ folder: "/srv/open", starred: true })), "/api/folders/star", c, store, inUse);
-      expect(res!.status).toBe(403);
-      expect(asked).toEqual(["gate:write"]);
-      expect(looked).toBe(0);
-      expect(store.current().favourites).toEqual([]);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
   test("refused: a thirteenth favourite, as a coded 409 naming the bound", async () => {
     const recent = Array.from({ length: MAX_FAVOURITES + 1 }, (_, i) => `/srv/p${i}`);
     const dir = await mkdtemp(join(tmpdir(), "collie-folder-route-"));
@@ -3151,11 +3092,7 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
       expect(await serveFolderRoute(get(), "/api/folders", c, store)).toBe(peerAnswer);
       const peerStar = new Response("{}");
       const { c: c2 } = caller({ resolve: peerStar });
-      // The lead's own panes are never asked for a peer's star: the peer checks its own.
-      const leadPanes = () => {
-        throw new Error("a forwarded star read the lead's panes");
-      };
-      expect(await serveFolderRoute(star(JSON.stringify({ folder: "/srv/lead-only", starred: true })), "/api/folders/star", c2, store, leadPanes)).toBe(peerStar);
+      expect(await serveFolderRoute(star(JSON.stringify({ folder: "/srv/lead-only", starred: true })), "/api/folders/star", c2, store)).toBe(peerStar);
       expect(store.current()).toEqual({ recent: ["/srv/lead-only"], favourites: [] });
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -3188,9 +3125,7 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
   test("the session dispatch reaches the folder routes through this one function", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // Wired once, inside serveSessionRoute, so a crew peer's dispatch reaches it too (§5).
-    expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders, foldersInUse\)/g)]).toHaveLength(1);
-    // A star checks this machine's OWN panes, every local session's, and nothing a peer reported.
-    expect(src).toContain("registry.all().flatMap((rt) => {");
+    expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders\)/g)]).toHaveLength(1);
     // And the create is handed the same store, so a peer records into its OWN list.
     expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);");
   });

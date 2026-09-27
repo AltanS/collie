@@ -24,9 +24,8 @@ import type { JsonObject, JsonValue } from "./json.ts";
 // it, the phone gets it back, and the only operations on it are string equality and one trailing
 // slash dropped. A folder that no longer exists stays until newer ones push it out; a create there
 // fails with the multiplexer's own words and records nothing. So CLAUDE.md's rule about client
-// values becoming paths gains no third place: a starred string must already be in Recent, or be the
-// folder one of this machine's panes reports right now ("Open now"), and both only ever hold what a
-// multiplexer said.
+// values becoming paths gains no third place: a starred string must already be in Recent, and
+// Recent only ever holds what a multiplexer said.
 
 /** Recent keeps the newest eight folders a space was created in. */
 export const MAX_RECENT = 8;
@@ -61,12 +60,8 @@ export interface FolderSurface {
   current(): FolderLists;
   /** Record a folder a space was just created in. Never throws: a failed write costs a Recent entry, not the create. */
   recordRecent(folder: string): Promise<void>;
-  /**
-   * Star (`true`) or unstar (`false`) one folder, and persist when that changed anything. `openNow` is
-   * the folders this machine's panes report right now, as its multiplexer spelled them: a star may
-   * name one of those as well as a Recent folder. Home and an empty report are never entries.
-   */
-  star(folder: string, starred: boolean, openNow?: readonly string[]): Promise<StarOutcome>;
+  /** Star (`true`) or unstar (`false`) one folder, and persist when that changed anything. */
+  star(folder: string, starred: boolean): Promise<StarOutcome>;
 }
 
 /** One trailing slash dropped (never the root's), so `/srv/app/` and `/srv/app` are one entry. */
@@ -88,13 +83,9 @@ export function usableFolder(raw: JsonValue | undefined, home: string): string |
 
 /** The strings of one array field, usable and first-seen only. A non-array is an empty list. */
 function entriesOf(raw: JsonValue | undefined, home: string): string[] {
-  return Array.isArray(raw) ? distinctEntries(raw, home) : [];
-}
-
-/** `items` as entries: usable ones only, first-seen only, in the order given. */
-function distinctEntries(items: readonly JsonValue[], home: string): string[] {
+  if (!Array.isArray(raw)) return [];
   const out: string[] = [];
-  for (const item of items) {
+  for (const item of raw) {
     const folder = usableFolder(item, home);
     if (folder !== null && !out.includes(folder)) out.push(folder);
   }
@@ -134,29 +125,21 @@ export function withRecent(lists: FolderLists, raw: string, home: string): Folde
 /**
  * The lists after a star or an unstar.
  *
- * - **Star** a folder in Recent: it leaves Recent and joins the end of Favourites. A folder in
- *   `open`, the entries this machine's panes use right now, joins the end of Favourites the same
- *   way. Any other folder is refused (`folders.unknown`): only a folder a space already opened in,
- *   or one a pane sits in now, can be starred, which is #289's "by success only" applied to
- *   favourites. A thirteenth is refused too (`folders.favourites_full`) rather than dropping one the
- *   operator chose.
- * - **Unstar** a favourite: it goes to the top of Recent, so a mis-tapped star is one more tap to
- *   undo rather than a folder lost. That holds for a folder starred from Open now too: it was a
- *   folder a multiplexer reported, and Recent is where the sheet can reach it again.
+ * - **Star** a folder in Recent: it leaves Recent and joins the end of Favourites. A folder that is
+ *   in neither list is refused (`folders.unknown`): only a folder a space already opened in can be
+ *   starred, which is #289's "by success only" applied to favourites. A thirteenth is refused too
+ *   (`folders.favourites_full`) rather than dropping one the operator chose.
+ * - **Unstar** a favourite: it goes back to the top of Recent, so a mis-tapped star is one more tap
+ *   to undo rather than a folder lost.
  * - Starring a favourite, or unstarring a folder that is not one, changes nothing and is not an
  *   error: the list already says what the tap asked for (a second device may have got there first).
  */
-export function withStar(
-  lists: FolderLists,
-  raw: string,
-  starred: boolean,
-  open: readonly string[] = [],
-): StarOutcome {
+export function withStar(lists: FolderLists, raw: string, starred: boolean): StarOutcome {
   const folder = trimSlash(raw);
   const isFavourite = lists.favourites.includes(folder);
   if (starred) {
     if (isFavourite) return { ok: true, lists, changed: false };
-    if (!lists.recent.includes(folder) && !open.includes(folder)) return { ok: false, code: "folders.unknown" };
+    if (!lists.recent.includes(folder)) return { ok: false, code: "folders.unknown" };
     if (lists.favourites.length >= MAX_FAVOURITES) return { ok: false, code: "folders.favourites_full" };
     return {
       ok: true,
@@ -220,9 +203,8 @@ export class FolderStore implements FolderSurface {
     }
   }
 
-  async star(folder: string, starred: boolean, openNow: readonly string[] = []): Promise<StarOutcome> {
-    // Held to the same rules as a stored entry, so home and an empty report can never be starred.
-    const outcome = withStar(this.lists, folder, starred, distinctEntries(openNow, this.home));
+  async star(folder: string, starred: boolean): Promise<StarOutcome> {
+    const outcome = withStar(this.lists, folder, starred);
     if (!outcome.ok || !outcome.changed) return outcome;
     const before = this.lists;
     this.lists = outcome.lists;
