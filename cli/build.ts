@@ -89,6 +89,10 @@ export function compiledPath(outfile: string, platform: string = process.platfor
  * file AWAY, so the live binary steps aside to `<live>.old` first and the new one takes its place.
  * The old file can only be deleted once nothing runs it, so that is tried and a failure is left for
  * the next build, which clears it before stepping aside again.
+ *
+ * The live binary is the one working copy, so it never steps aside for a staged file that is not
+ * there (the rename then fails exactly as it always did, with the live binary untouched), and it
+ * goes back into place if the staged file cannot take its place.
  */
 export function swapBinary(
   files: Files,
@@ -96,14 +100,19 @@ export function swapBinary(
   live: string,
   platform: string = process.platform,
 ): void {
-  if (platform !== "win32" || !files.exists(live)) {
+  if (platform !== "win32" || !files.exists(live) || !files.exists(staged)) {
     files.rename(staged, live);
     return;
   }
   const aside = `${live}.old`;
   tryRemove(files, aside);
   files.rename(live, aside);
-  files.rename(staged, live);
+  try {
+    files.rename(staged, live);
+  } catch (err) {
+    files.rename(aside, live);
+    throw err;
+  }
   tryRemove(files, aside);
 }
 

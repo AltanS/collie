@@ -22,6 +22,7 @@ import {
   compileCli,
   collieBinaryStaging,
   compiledPath,
+  swapBinary,
   ensureBuild,
   webDist,
   webStaging,
@@ -360,18 +361,6 @@ describe("build: the ordered steps", () => {
     ]);
   });
 
-  test("Windows: a live collie.exe steps aside first, because Windows will not rename onto a running exe", () => {
-    // During `collie update` the running executable IS bin/collie.exe, the updater, and a rename onto
-    // it fails with EPERM. Renaming it away is allowed, so it moves to `.old` and the new one lands.
-    const h = harness({ files: { [`${BINARY}.exe`]: "OLD EXE", [`${STAGING}/index.html`]: "<!doctype html>NEW" } });
-    h.deps.platform = "win32";
-    expect(cmdBuild(h.deps)).toBe(EXIT.OK);
-    const moves = h.files.ops.filter((op) => op.startsWith("mv ") && op.includes("/bin/"));
-    expect(moves).toEqual([`mv ${BINARY}.exe ${BINARY}.exe.old`, `mv ${BINARY_NEW}.exe ${BINARY}.exe`]);
-    // Nothing runs the old file in this fake, so it is cleared at once.
-    expect(h.files.exists(`${BINARY}.exe.old`)).toBe(false);
-  });
-
   test("off Windows the swap stays one rename over the live binary", () => {
     const h = harness();
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
@@ -410,6 +399,38 @@ describe("build: the ordered steps", () => {
     expect(h.io.stderr.join("\n")).toContain("bun not found");
     expect(h.exec.calls).toEqual([]);
     expect(h.files.ops).toEqual([]);
+  });
+});
+
+// During `collie update` the running executable IS bin/collie.exe, the updater, and Windows refuses a
+// rename onto a running exe (EPERM). Renaming it AWAY is allowed, so the live binary steps aside.
+describe("swapBinary on Windows", () => {
+  const LIVE = `${BINARY}.exe`;
+  const STAGED = `${BINARY_NEW}.exe`;
+  const moves = (files: FakeFiles): string[] => files.ops.filter((op) => op.startsWith("mv "));
+
+  test("the live collie.exe steps aside, the new one lands, and the old one is cleared", () => {
+    const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
+    swapBinary(files, STAGED, LIVE, "win32");
+    expect(moves(files)).toEqual([`mv ${LIVE} ${LIVE}.old`, `mv ${STAGED} ${LIVE}`]);
+    expect(files.read(LIVE)).toBe("NEW");
+    // Nothing runs the old file in this fake, so it is cleared at once.
+    expect(files.exists(`${LIVE}.old`)).toBe(false);
+  });
+
+  test("a staged file that is not there never moves the one working binary", () => {
+    const files = fakeFiles({ [LIVE]: "OLD" });
+    swapBinary(files, STAGED, LIVE, "win32");
+    expect(moves(files)).toEqual([`mv ${STAGED} ${LIVE}`]);
+    expect(files.read(LIVE)).toBe("OLD");
+  });
+
+  test("a staged file that cannot take its place puts the old binary back, and the failure rises", () => {
+    const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
+    files.unrenamable.add(STAGED);
+    expect(() => swapBinary(files, STAGED, LIVE, "win32")).toThrow();
+    expect(moves(files).at(-1)).toBe(`mv ${LIVE}.old ${LIVE}`);
+    expect(files.read(LIVE)).toBe("OLD");
   });
 });
 
