@@ -1,12 +1,84 @@
-# Run Claude Code from your phone
+# Run Claude Code in tmux or Herdr, and control it from your phone
 
-This guide covers one setup end to end: Claude Code runs on your machine, and your phone controls it
-through Collie. The same steps work for Codex, OpenCode, and any other terminal agent. Only the
-command in the pane changes.
+An SSH connection drops, and Claude Code terminates with it. A phone terminal keyboard lacks Esc
+and Ctrl keys. You return an hour later, and Claude Code has sat idle the entire time on a prompt
+waiting for approval.
 
-Read [Security](security.md) first. Collie gives remote shell access to your machine by design.
+This guide fixes all three issues. Run Claude Code in tmux or Herdr so it outlives dropped
+connections. Then add Collie to prioritize waiting sessions on your phone and provide the missing
+keys.
 
-## What you end up with
+## Keep Claude Code running in tmux
+
+Start Claude Code inside a tmux session. It continues running on the host when your connection
+drops.
+
+```bash
+tmux new -s claude       # start a session named claude
+claude                   # run Claude Code inside it
+```
+
+Detach with `Ctrl+b`, then `d`. Log in later from any machine and reattach:
+
+```bash
+tmux attach -t claude
+```
+
+The tmux server owns the session rather than your SSH login, so a dropped connection does not stop
+Claude Code. Run `tmux ls` to list sessions on the host.
+
+### Herdr
+
+Herdr is a terminal workspace manager built for coding agents. It operates the same way.
+
+```bash
+curl -fsSL https://herdr.dev/install.sh | sh    # or: brew install herdr
+herdr                                           # start Herdr, or reattach to it
+claude                                          # in the pane Herdr opens
+```
+
+Detach with `Ctrl+b`, then `q`, or close the terminal. The Herdr server keeps your panes and
+Claude Code running. Run `herdr` again to reattach.
+
+### zellij
+
+Run `zellij -s claude`, start `claude`, detach with `Ctrl o` then `d`, and reattach with
+`zellij attach claude`. Collie mirrors only one zellij session. See
+[zellij notes](multiplexers.md#zellij-notes).
+
+## Run several Claude Code sessions at once
+
+Give each session its own window and checkout so two agents do not edit the same files.
+
+```bash
+# a second checkout, on its own branch
+git worktree add ~/src/app-review -b review
+tmux new-window -t claude -n review -c ~/src/app-review
+claude                                     # in the new window
+```
+
+Inside tmux, press `Ctrl+b` then `c` to open a window, and `Ctrl+b` then `w` to list them. Press
+`Ctrl+b` then `%` to split a pane left and right, and `Ctrl+b` then `"` to split top and bottom.
+
+On Herdr, give each agent its own workspace while Herdr runs:
+
+```bash
+herdr workspace create --label review --cwd ~/src/app-review
+```
+
+Running multiple sessions creates multiple waiting prompts. Collie places panes requiring input at
+the top of the dashboard, with remaining panes grouped by workspace. Hold a row to pin that pane to
+the top. On tmux and zellij, this sorting requires the beacon hooks from
+[step 3](#3-run-claude-code-in-a-pane).
+
+## Drive it from your phone with Collie
+
+Collie runs on your host and mirrors your Herdr, tmux, or zellij panes to your phone browser. The
+same steps work for Codex, OpenCode, and any other terminal agent. Only the command in the pane
+changes.
+
+> **Note.** Collie provides remote shell access to your machine by design. Read
+> [Security](security.md) before installing it.
 
 - Claude Code runs on your host in a Herdr, tmux, or zellij pane. No agent code runs on the phone.
 - Your phone opens Collie in a browser over your tailnet. The dashboard lists panes and puts waiting
@@ -54,6 +126,9 @@ collie hooks install claude    # once per host, Linux only
 tmux new-window -n claude      # or: zellij action new-tab --name claude
 claude
 ```
+
+Collie mirrors the default tmux server unless you set `COLLIE_MUX_ENDPOINT_TMUX`. The `claude`
+session from above appears automatically.
 
 Running Claude Code instances do not reload settings automatically. Restart Claude Code after you
 install hooks. See [Collie writes hooks into Claude's own

@@ -120,7 +120,7 @@ requirements table, and what the initial run writes to the host.
 | | |
 | --- | --- |
 | [**Install**](./docs/install.md) | Install, update and uninstall, each spelled for a Herdr plugin and for a standalone install; requirements, packages, first run, and opening it on your phone |
-| [**Claude Code on your phone**](./docs/claude-code-on-your-phone.md) | One path end to end: install, start, run Claude Code in a Herdr, tmux or zellij pane, and answer it from an iPhone or Android phone |
+| [**Claude Code in tmux or Herdr, on your phone**](./docs/claude-code-on-your-phone.md) | Keep Claude Code running in tmux or Herdr when SSH drops. Manage sessions, approve prompts, and send Esc or Ctrl from your phone with push alerts. |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device as the write credential |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
