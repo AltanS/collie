@@ -281,6 +281,19 @@ leaves no popup behind. A lingering finished row clears on its own after a
 few minutes. The strip cuts the popup with the chrome; the transcript's own
 `Backgrounded` / `Finished` rows keep the operator informed.
 
+The bridge's tail window limits what lifts over the popup (added at merge,
+2026-09-27). A tap's first write is bound to the dialog's region, and the
+bridge accepts the binding only when the region ends within the last 6
+non-blank rows (`bridge/prompt-binding.ts`). The popup adds a header and one
+row per task under the rule. An approval over one or two tasks still fits.
+An approval over three or more, or a question or checkbox dialog over any
+popup, would refuse every tap. `museBuildBlocks` declines those lifts
+(`regionReachesTail`), so those screens keep the unread-dialog card and its
+Escape, as they did before the popup was read. On an approval that Escape
+aborts the command; the Keys pad still reaches the digits. No capture shows
+the popup under a question or checkbox dialog, or with three tasks: the
+tests build those screens from the captured rows.
+
 ## Decisions the adapter rests on
 
 - **The guarded reply path.** Registering the adapter moves Muse panes off one-shot sends onto

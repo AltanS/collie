@@ -200,6 +200,36 @@ export function composerReady(lines: StyledLine[]): boolean {
 // binding only verifies when its match ends within this many non-blank rows of the fresh read.
 const BRIDGE_PROMPT_TAIL_LINES = 6;
 
+/** Text as the bridge compares it (`normalizePromptRegion`): trailing pad off, blank rows dropped. */
+function bridgeRows(text: string): string[] {
+  return text
+    .split("\n")
+    .map(rstrip)
+    .filter((row) => row.length > 0);
+}
+
+/**
+ * Whether the bridge can bind a write to `region` on this screen. `verifyExpectedPrompt`
+ * (bridge/prompt-binding.ts) drops trailing pad and blank rows, takes the LAST match, and accepts
+ * it only when that match ends within the last {@link BRIDGE_PROMPT_TAIL_LINES} rows.
+ *
+ * A lifted dialog's first write binds its region, so a region that ends higher refuses every tap
+ * on a screen that never moved. The tasks popup (DIALOG_NOTES.md §5) is what pushes one there: it
+ * adds a header and one row per task under the bottom rule, so an approval over three tasks, or a
+ * question over any, ends outside the window. buildBlocks declines such a lift.
+ */
+export function regionReachesTail(lines: StyledLine[], region: string): boolean {
+  const fresh = bridgeRows(lines.map((l) => lineText(l)).join("\n"));
+  const expected = bridgeRows(region);
+  if (expected.length === 0) return false;
+  for (let start = fresh.length - expected.length; start >= 0; start--) {
+    if (expected.every((row, k) => fresh[start + k] === row)) {
+      return start + expected.length - 1 >= fresh.length - BRIDGE_PROMPT_TAIL_LINES;
+    }
+  }
+  return false;
+}
+
 /**
  * The composer's prompt row, verbatim (trailing pad dropped), bound as `expected_prompt` for the
  * pre-clear sweep. Null when there is no composer, when a dialog owns the keyboard (same screens

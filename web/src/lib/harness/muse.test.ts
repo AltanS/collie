@@ -415,3 +415,63 @@ describe("muse: a lift shows its subject and needs a live dialog", () => {
   });
 });
 
+// ── The tasks popup under a dialog (#304, maintainer changes at merge) ─────────────────────────
+//
+// A lifted dialog's first write binds its region, and the bridge accepts that binding only when it
+// ends within the last 6 non-blank rows (bridge/prompt-binding.ts). The popup adds a header and one
+// row per task under the bottom rule, so it can push a region out of that window, and then every tap
+// is refused. Such a screen is not lifted: it keeps the unread-dialog card and its Escape, the answer
+// it had before the popup was read. The screens below are built from the captures: the popup rows
+// are the captured ones, and a task row added to them is plain text in the captured shape.
+
+describe("muse: a dialog over the tasks popup lifts only where the bridge can bind it", () => {
+  const load = (name: string): StyledLine[] =>
+    splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+  const row = (text: string): StyledLine => splitLines(parseAnsi(text))[0]!;
+  const text = (lines: StyledLine[]) => lines.map((l) => lineText(l).trimEnd());
+  const EXTRA_TASK = "├ ◆ Run another sleep command  running      12s";
+
+  /** `lines` with `extra` task rows added at the top of its popup (above the captured `└` row). */
+  const moreTasks = (lines: StyledLine[], extra: number): StyledLine[] => {
+    const last = text(lines).findLastIndex((t) => t.startsWith("└ "));
+    if (last < 0) throw new Error("no task row");
+    return [...lines.slice(0, last), ...Array.from({ length: extra }, () => row(EXTRA_TASK)), ...lines.slice(last)];
+  };
+
+  /** `lines` with the captured popup (header + one task) put between its bottom rule and statusline. */
+  const withPopup = (lines: StyledLine[]): StyledLine[] => {
+    const popup = load("muse--tasks-popup.txt");
+    const header = text(popup).findLastIndex((t) => t.startsWith("main"));
+    const texts = text(lines);
+    const status = texts.findLastIndex((t) => t.startsWith("  muse-spark-1.3"));
+    if (header < 0 || status < 0 || !/^─{8,}$/.test(texts[status - 1]!)) throw new Error("unexpected tail");
+    return [...lines.slice(0, status), popup[header]!, popup[header + 1]!, ...lines.slice(status)];
+  };
+
+  const kinds = (lines: StyledLine[]) => buildBlocks(lines, { agent: "muse" }).map((b) => b.kind);
+
+  it("an approval over one or two tasks lifts; over three it keeps the card", () => {
+    const captured = load("muse--tasks-popup-approval.txt");
+    expect(kinds(captured)).toEqual(["raw", "prompt-select"]);
+    expect(kinds(moreTasks(captured, 1))).toEqual(["raw", "prompt-select"]);
+
+    const three = moreTasks(captured, 2);
+    expect(museAdapter.buildBlocks(three).every((b) => b.kind === "raw")).toBe(true);
+    expect(museAdapter.composerReady!(three)).toBe(false);
+    const card = buildBlocks(three, { agent: "muse" });
+    expect(card.map((b) => b.kind)).toEqual(["unread-dialog"]);
+    expect(card[0]!.kind === "unread-dialog" && card[0]!.cancel.key).toBe("Escape");
+  });
+
+  it.each(["muse--ask-color.txt", "muse--ask-toppings.txt", "muse--ask-toppings-review.txt"])(
+    "%s over the popup keeps the card, its region would sit 6 rows up",
+    (name) => {
+      const plain = load(name);
+      expect(kinds(plain)).not.toContain("unread-dialog"); // non-vacuous: it lifts without the popup
+      const popped = withPopup(plain);
+      expect(museAdapter.composerReady!(popped)).toBe(false);
+      expect(kinds(popped)).toEqual(["unread-dialog"]);
+    },
+  );
+});
+

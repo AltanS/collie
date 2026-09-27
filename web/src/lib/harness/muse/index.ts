@@ -61,6 +61,7 @@ import {
   composerReady,
   extractInputDraft,
   extractStatusLines,
+  regionReachesTail,
   stripChrome,
 } from "./chrome";
 import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, rstrip } from "./markers";
@@ -89,7 +90,7 @@ import { detectTrustRegion } from "./trust";
 export function museBuildBlocks(lines: StyledLine[]): Block[] {
   const approval = detectApprovalRegion(lines);
   if (approval !== null) {
-    return lift(lines, approval.startLine, {
+    return lift(lines, approval.startLine, approval.model.signature, {
       kind: "prompt-select",
       prompt: approval.model,
       lines: lines.slice(approval.startLine),
@@ -98,7 +99,7 @@ export function museBuildBlocks(lines: StyledLine[]): Block[] {
   const question = detectQuestionRegion(lines);
   if (question !== null) {
     if (!boxHoldsNoDraft(lines)) return unlifted(lines);
-    return lift(lines, question.startLine, {
+    return lift(lines, question.startLine, question.model.signature, {
       kind: "prompt-select",
       prompt: question.model,
       lines: lines.slice(question.startLine),
@@ -111,7 +112,7 @@ export function museBuildBlocks(lines: StyledLine[]): Block[] {
       boxHoldsNoDraft(lines) &&
       (checkbox.model.phase !== "review" || askHeaderDirectlyAbove(texts, checkbox.startLine));
     if (!live) return unlifted(lines);
-    return lift(lines, checkbox.startLine, {
+    return lift(lines, checkbox.startLine, checkbox.model.regionSignature, {
       kind: "multi-select",
       multi: checkbox.model,
       lines: lines.slice(checkbox.startLine),
@@ -119,7 +120,11 @@ export function museBuildBlocks(lines: StyledLine[]): Block[] {
   }
   const trust = detectTrustRegion(lines);
   if (trust !== null) {
-    return lift(lines, trust.startLine, { kind: "prompt-select", prompt: trust.model, lines: lines.slice(trust.startLine) });
+    return lift(lines, trust.startLine, trust.model.signature, {
+      kind: "prompt-select",
+      prompt: trust.model,
+      lines: lines.slice(trust.startLine),
+    });
   }
   return unlifted(lines);
 }
@@ -135,8 +140,13 @@ const FRAME_SCAN_ROWS = 12;
 
 /** The rows above `startLine` as a raw block, then the lifted dialog. The Voice rule an approval
  *  draws above its question is the composer's frame, not the dialog's subject, so the last one in
- *  reach is dropped from that block. */
-function lift(lines: StyledLine[], startLine: number, dialog: Block): Block[] {
+ *  reach is dropped from that block.
+ *
+ *  A dialog whose bound `region` the bridge cannot find in its tail window is not lifted at all
+ *  ({@link regionReachesTail}): every tap on it would be refused, so the screen stays raw and keeps
+ *  the unread-dialog card and its Escape, the answer it had before the tasks popup was read. */
+function lift(lines: StyledLine[], startLine: number, region: string, dialog: Block): Block[] {
+  if (!regionReachesTail(lines, region)) return unlifted(lines);
   let before = lines.slice(0, startLine);
   for (let i = before.length - 1; i >= 0 && before.length - 1 - i < FRAME_SCAN_ROWS; i--) {
     if (isVoiceRule(rstrip(lineText(before[i]!)))) {
