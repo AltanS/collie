@@ -360,6 +360,26 @@ describe("build: the ordered steps", () => {
     ]);
   });
 
+  test("Windows: a live collie.exe steps aside first, because Windows will not rename onto a running exe", () => {
+    // During `collie update` the running executable IS bin/collie.exe, the updater, and a rename onto
+    // it fails with EPERM. Renaming it away is allowed, so it moves to `.old` and the new one lands.
+    const h = harness({ files: { [`${BINARY}.exe`]: "OLD EXE", [`${STAGING}/index.html`]: "<!doctype html>NEW" } });
+    h.deps.platform = "win32";
+    expect(cmdBuild(h.deps)).toBe(EXIT.OK);
+    const moves = h.files.ops.filter((op) => op.startsWith("mv ") && op.includes("/bin/"));
+    expect(moves).toEqual([`mv ${BINARY}.exe ${BINARY}.exe.old`, `mv ${BINARY_NEW}.exe ${BINARY}.exe`]);
+    // Nothing runs the old file in this fake, so it is cleared at once.
+    expect(h.files.exists(`${BINARY}.exe.old`)).toBe(false);
+  });
+
+  test("off Windows the swap stays one rename over the live binary", () => {
+    const h = harness();
+    expect(cmdBuild(h.deps)).toBe(EXIT.OK);
+    expect(h.files.ops.filter((op) => op.startsWith("mv ") && op.includes("/bin/"))).toEqual([
+      `mv ${BINARY_NEW} ${BINARY}`,
+    ]);
+  });
+
   test("SKIP_VERSION_CHECK=1 and SKIP_TYPECHECK=1 drop exactly their own step", () => {
     const h = harness({ env: { SKIP_VERSION_CHECK: "1", SKIP_TYPECHECK: "1" } });
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
