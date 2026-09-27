@@ -20,9 +20,11 @@
 //   plus bookkeeping rows we ignore (mode, permission-mode, ai-title, file-history-*, queue-operation…).
 // Human turns carry a STRING content; a `user` row whose content is a LIST is usually tool-result
 // traffic, not something the user typed — we fold those into the tool call that produced them rather
-// than rendering fake "user" turns. `isMeta` marks injected skill and harness context and is always
-// dropped; `isSidechain` marks subagent traffic (dropped by default); `isCompactSummary` marks the
-// summary Claude writes when a session is compacted.
+// than rendering fake "user" turns. `isMeta` marks a row the operator did not write. Most are
+// addressed to the model (a skill body, an attached image's source path, the local-command caveat)
+// and are dropped; a prompt Claude sent on its own (`promptSource: "system"`) becomes a note.
+// `isSidechain` marks subagent traffic (dropped by default); `isCompactSummary` marks the summary
+// Claude writes when a session is compacted.
 
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -167,7 +169,12 @@ export function parseClaudeTranscript(
     // no row shape at all — skip it exactly as an unparseable line is skipped.
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
     const row: RawRow = parsed;
-    if (row.isMeta === true) continue;
+    // `isMeta`: the operator did not write this row. Measured on Claude Code 2.1.146 to 2.1.283, a
+    // meta row that also carries `promptSource: "system"` is a prompt Claude sent on its own: another
+    // session's message, a scheduled or /loop wake-up, the continuation after a usage limit. The
+    // turn after it answers it, so it stays, as a note and never as "You". Every other meta row is
+    // addressed to the model (a skill body, an image's source path, a caveat) and is dropped.
+    if (row.isMeta === true && row.promptSource !== "system") continue;
     const type = row.type;
     if (type !== "user" && type !== "assistant") continue;
     if (row.isSidechain === true && !opts.includeSidechains) continue;
@@ -178,8 +185,9 @@ export function parseClaudeTranscript(
     const uuid = typeof row.uuid === "string" ? row.uuid : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
     const parts: TranscriptPart[] = [];
-    // Set by a `user` row whose string content turns out to be injected plumbing rather than speech.
-    let roleOverride: "note" | undefined;
+    // Set by a `user` row that is not the operator's speech: a prompt Claude sent on its own (the
+    // only meta row left here), or string content that turns out to be injected plumbing.
+    let roleOverride: "note" | undefined = row.isMeta === true ? "note" : undefined;
 
     if (typeof content === "string") {
       // A string content is the HUMAN-turn carrier — but Claude Code also routes injected plumbing
