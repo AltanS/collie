@@ -618,6 +618,34 @@ describe("sendGuardedReply", () => {
     expect(out.status).toBe("error");
     expect(out).toMatchObject({ textDelivered: true });
   });
+
+  // The partial-echo stall (live audit trail, 2026-09-27): the first verify read after typing
+  // caught the echo one character short ("…why" without the "?"), the substring matcher accepted
+  // the prefix, and the submit bound that partial row — which the bridge's exact binding check
+  // then refused as not_found. Three taps, three stalls, while the text sat delivered in the box.
+  // The guard must wait for the echo's tail before it binds, exactly as the per-chunk loop does.
+  it("waits for the complete echo on a single-chunk send instead of binding a prefix", async () => {
+    const idle = fixtureText("muse--done.txt");
+    const TIP = "Start a message with ! to run a shell command yourself";
+    expect(idle).toContain(TIP);
+    const screen = (draft: string) => idle.replace(TIP, draft);
+    const reads = [idle, screen("actually this works... why"), screen("actually this works... why?")];
+    let n = 0;
+    const calls = harness(() => reads[Math.min(n++, reads.length - 1)]!);
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "actually this works... why?",
+      agent: "muse",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "actually this works... why?", submit: false },
+      { text: "", submit: true, expected_prompt: "❯ actually this works... why?" },
+    ]);
+  });
 });
 
 // The destructive pre-type work — composer.tsx's `ctrl+k` + N×Backspace sweep of a stranded input
