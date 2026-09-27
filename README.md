@@ -12,10 +12,11 @@
   <sub>A real Collie build running in the page against faked data.</sub>
 </p>
 
-A mobile web interface for terminal-based AI agents, served over Tailscale. Collie connects to one
-multiplexer per instance: [Herdr](https://herdr.dev), [tmux](https://github.com/tmux/tmux), or
-[zellij](https://zellij.dev). Open the URL on your phone to check which agent needs input and
-respond directly from the mobile keyboard.
+Collie is an open-source (MIT), self-hosted mobile web app for driving terminal AI agents such as
+Claude Code, Codex and OpenCode from your phone. Each instance connects to one multiplexer:
+[Herdr](https://herdr.dev), [tmux](https://github.com/tmux/tmux), or [zellij](https://zellij.dev).
+It is served over Tailscale by default. Open the URL on an iPhone or Android phone to see which
+agent needs input and respond directly from your mobile keyboard.
 
 The input box uses a standard text field compatible with system voice dictation. Collie also
 includes built-in [voice input](./docs/voice-and-push.md#voice-input-optional) that remains disabled
