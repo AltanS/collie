@@ -964,11 +964,16 @@ signature.
 | `muse--ask-toppings-notes-open.txt` | The same `Note (optional)` row on a checkbox dialog — declines the lift the same way | `blocked` |
 | `muse--ask-toppings-review.txt` | Review phase: `Review answers before submit · Enter to edit or submit · …` lead, `Toppings: Pepperoni` summary, unnumbered `> Submit answers` / `Interrupt turn` rows. Digit `1` live-probed: swallowed; `Enter` on Submit submits | `blocked` |
 | `muse--ask-drinks.txt` | The 2-option geometry (options + None + Submit are rows 1–4): nothing may key on a fixed option count or Submit digit. `None of the above` live-probed as a plain checkbox (`[x]`, counted) | `blocked` |
+| `muse--tasks-popup.txt` | Background-tasks popup between the bottom rule and the statusline: `main · ↓ to select` header + one `└ ◆ … running … 24s` task row, bare `❯` above. The box stays live under it (probed: typing lands in the box), so the tail walk steps over the popup and no card draws. Captured 2026-09-26 on Muse Code 1.4.0; the same shape confirmed on 1.3.0-R3401.1 | `idle` |
+| `muse--tasks-popup-draft.txt` | Same popup with `qq` in the box: the header drops its hint (bare `main`). The draft reads verbatim above the popup | `idle` |
+| `muse--tasks-popup-approval.txt` | An `ls -la /tmp` approval with the popup under it: the approval still lifts (digit-alone keys), and the ticking elapsed stays out of the signature | `blocked` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
 dir; every question was answered with the sandbox's own test data. The dialogs
-left open at the end were dismissed with `Escape`.
+left open at the end were dismissed with `Escape`. A second session
+(2026-09-26, tasks popup, same throwaway sandbox) approved `sleep 120/100/110/150`
+(backgrounded, no output) and `ls -la /tmp` (listing verified).
 
 
 ## opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)

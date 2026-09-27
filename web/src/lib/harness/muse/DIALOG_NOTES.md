@@ -4,7 +4,7 @@ Verified keystroke recipes for the four dialogs `harness/muse/` lifts, probed
 keystroke-by-keystroke against Muse Code 1.3.0 (1.3.0-R3401.1) in a scratch
 Herdr pane (`/tmp/collie-muse-sandbox`, `--approval-mode untrusted
 --approval-judge off`) on 2026-09-18. Fixtures:
-`web/src/fixtures/panes/muse--*.txt` (18 files, all CRLF, one
+`web/src/fixtures/panes/muse--*.txt` (31 files, all CRLF, one
 length-preserving email sanitization).
 
 Every probe below names the key sent and the screen observed after it. Nothing
@@ -19,6 +19,8 @@ While any dialog below is up, the composer tail stays on screen (except trust,
 which is pre-session): the `── Voice input (⌥ + v to start) ──` rule, the `❯`
 row (bare — no placeholder while a dialog owns the keyboard), the full-width
 `─` bottom rule, and the `muse-spark-1.3 · <plan> · <cwd> · <mode>` statusline.
+While background tasks exist, the tasks popup (§5) sits between the rule and
+the statusline — chrome, tolerated by the tail walk, never lifted.
 So `composerReady` can never be "the box is there" alone: it is "the box is
 there AND no dialog detector claims the screen" (the grok plan-menu pattern).
 
@@ -225,6 +227,60 @@ rather than keys.
 Probed recipe — digit alone (family `trust`): `1` submitted immediately
 (session started, no Enter). `keys: ["1"]` / `["2"]`.
 
+## 5. The background-tasks popup — tolerated, never lifted (added 2026-09-26)
+
+Fixtures: `muse--tasks-popup.txt` (one task running, bare box),
+`muse--tasks-popup-draft.txt` (same, `qq` in the box, header bare),
+`muse--tasks-popup-approval.txt` (an `ls` approval with the popup under it).
+Probed keystroke-by-keystroke against Muse Code 1.4.0 (1.4.0-R4302.1) in a
+scratch Herdr pane (`/tmp/collie-muse-tasks`, `--approval-mode untrusted
+--approval-judge off --trust-workspace`). The same shape was confirmed on
+1.3.0-R3401.1 (a live screen + scrollback bytes, not a probe session).
+
+While background tasks exist, Muse paints this run between the bottom rule
+and the statusline:
+
+```
+──────────────────────────────────────────────────  (bottom rule)
+main · ↓ to select                                  (header + hint)
+└ ◆ Run sleep delay command  running          24s   (one row per task)
+  muse-spark-1.3 · max · <cwd> · <mode>              (statusline)
+```
+
+Two tasks branch `├` / `└`. The header hint tracks state: `↓ to select`
+with an empty box, `Enter to view` over a finished task,
+`Enter to view · x to stop` while the popup holds focus, bare `main` while
+the box holds a draft. A finished task reads `ran 12s, exit 0` with a frozen
+elapsed; a running one's elapsed ticks every second. The spinner glyph
+cycles (◆ ◈ ◇ and a braille frame measured) and the timer is right-aligned,
+so NOTHING past the branch glyph carries identity — the header above and the
+statusline below do. `main` is the only group name measured; any other name
+fails closed to the unread-dialog card.
+
+It is tolerated as chrome rather than lifted because the composer stays
+LIVE under it — every line below is a sent key and the screen after it:
+
+- Typing `hello` with the popup up: the draft lands in the `❯` box and the
+  header drops its hint (bare `main`). Clearing the draft brings the hint
+  back. Typing with the popup FOCUSED also lands in the box and unfocuses
+  the popup. The box always owns the keyboard.
+- `Down` with an empty box moves focus onto the popup (header gains
+  `Enter to view · x to stop`); the selected row is marked by COLOUR alone
+  (red name, brighter glyph — no pointer glyph, no text change), so no
+  shape grammar can see it. `Down`/`Enter` on a single task are no-ops.
+- `Escape` dismisses the popup (tail back to rule-over-statusline).
+- The popup coexists with the approval dialog (approval replaces the box;
+  rule + popup + statusline persist), so the tail walk must step over it
+  for the approval lift too — otherwise the approval loses its buttons to
+  the unread card, whose Esc would abort the command.
+
+Visibility dynamics (observed, not fully isolated): the popup shows while
+at least one task runs; a task finishing while it is up transitions to
+`ran …, exit …` in place, while one finishing mid-turn (popup absent)
+leaves no popup behind. A lingering finished row clears on its own after a
+few minutes. The strip cuts the popup with the chrome; the transcript's own
+`Backgrounded` / `Finished` rows keep the operator informed.
+
 ## Decisions the adapter rests on
 
 - **The guarded reply path.** Registering the adapter moves Muse panes off one-shot sends onto
@@ -284,7 +340,9 @@ Probed recipe — digit alone (family `trust`): `1` submitted immediately
 ## What was deliberately NOT lifted
 
 - The command palette, `/resume` picker, `/tasks` drawer and `/workflows`
-  control room: out of this file's scope, no captures, no detectors.
+  control room: out of this file's scope, no captures, no detectors. (The
+  drawer's INLINE sibling, the background-tasks popup, graduated to §5 —
+  tolerated as chrome, never lifted, because the composer stays live under it.)
 - File/peer approval variants: no capture showed them; they ride along only
   if a future capture shows the approval shape above. (Network graduated to §1b on its capture.)
 - Plan approval: Muse 1.3.0 showed no plan-approval dialog shape to lift.
