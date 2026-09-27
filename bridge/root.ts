@@ -66,6 +66,20 @@ export function resolvePluginRoot(deps: RootDeps): string {
   return candidates[candidates.length - 1]!;
 }
 
+/**
+ * Where the compiled binary lives in a checkout — the one place that layout is written down, shared
+ * by the bridge (which spawns it for an update) and `cli/unit.ts`.
+ *
+ * On Windows the file is `bin/collie.exe`: Bun's compiler appends the extension, and an existence
+ * check on the bare name is never true there. The bridge gated its whole update action on that check,
+ * so on Windows no preflight ever ran and the phone's Update button stayed disabled. Spawning the bare
+ * name still resolves, so the callers that only launch it never noticed. `platform` defaults to the
+ * host's and is injected in tests, so the Windows spelling is pinned on Linux CI.
+ */
+export function collieBinaryIn(root: string, platform: string = process.platform): string {
+  return join(root, "bin", platform === "win32" ? "collie.exe" : "collie");
+}
+
 let cached: string | null = null;
 
 /** The Collie checkout root, resolved once per process. */

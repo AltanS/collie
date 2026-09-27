@@ -133,7 +133,7 @@ import {
 } from "./crew/trust-store.ts";
 import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush } from "./crew/warrant.ts";
 import { Push } from "./push.ts";
-import { pluginRoot } from "./root.ts";
+import { collieBinaryIn, pluginRoot } from "./root.ts";
 import { buildId, startServer } from "./server.ts";
 import {
   herdTagFor,
@@ -777,7 +777,7 @@ const updateMonitor = new UpdateMonitor({
 // fallback matters for the source-mode bridge (`bun bridge/index.ts`), where `execPath` is Bun
 // itself: there, with no compiled binary present, there is nothing honest to spawn, and the route
 // answers 503 rather than shelling out to something that is not Collie.
-const collieBinary = join(rootDir, "bin", "collie");
+const collieBinary = collieBinaryIn(rootDir);
 const canRunUpdate = existsSync(collieBinary);
 // How long `collie update --check --json` may take before the bridge stops waiting. It asks git for
 // the remote's tags over the network, so it is not instant; past this, "no report" is the answer,
