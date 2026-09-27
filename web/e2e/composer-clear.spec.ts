@@ -17,6 +17,16 @@ import { installApiStub } from "./fixtures/api";
 //
 // Runs under every `app-*` project, so Chromium and WebKit answer the same questions.
 
+// NO SERVICE WORKER, for the reason `e2e/issue-180.spec.ts` states at length: `page.route` cannot
+// see a request the worker makes on the page's behalf, so a worker that claims the page part way
+// through a case takes `/api/*` away from the fixture. Measured here on 2026-09-27 under WebKit, 20
+// of 20 runs with 8 workers: the second poll went past the fixture to the preview server's proxy
+// (`playwright.config.ts` says where that led), the pane read came back `pane_not_found`, and the app
+// left `/pane/w1:p1` for the dashboard in the middle of the case. One worker at a time, 10 of 10
+// passed: a case that ends before the worker's claim never sees it, which is why it read as a flake.
+// The worker has its own case, in `e2e/smoke.spec.ts`.
+test.use({ serviceWorkers: "block" });
+
 test.beforeEach(async ({ page }) => {
   await installApiStub(page);
 });
