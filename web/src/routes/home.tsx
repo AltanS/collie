@@ -343,6 +343,7 @@ export function HomeRoute() {
         onCreate={newSpace}
         repos={worktreeRepos}
         scope={data.scope}
+        panes={data}
         onOpenWorktree={(workspaceId, path) => void showWorktree(workspaceId, path)}
         onCreateWorktree={(workspaceId, branch) => void newWorktree(workspaceId, branch)}
       />

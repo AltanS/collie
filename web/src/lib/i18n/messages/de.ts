@@ -886,6 +886,7 @@ export const de: Dictionary = {
   "space.new.host.label": "Host",
   "space.new.folders.favourites": "Favourites",
   "space.new.folders.recent": "Recent",
+  "space.new.folders.open": "Open now",
   "space.new.folders.use": "Use {path}",
   "space.new.folders.star": "Add {folder} to favourites",
   "space.new.folders.unstar": "Remove {folder} from favourites",

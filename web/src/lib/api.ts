@@ -745,7 +745,8 @@ interface StarFolderBody {
 
 /**
  * POST /api/folders/star — star (`true`) or unstar (`false`) one folder on THIS scope's host. The
- * bridge refuses a folder that is not already in its lists, so the sheet only ever sends one it read.
+ * bridge refuses a folder that is not already in its lists or open in one of its panes right now, so
+ * the sheet only ever sends one it read.
  * Answers the whole new list, so the sheet redraws from the bridge's word rather than guessing.
  */
 export function starFolder(folder: string, starred: boolean, scope?: Scope): Promise<FoldersResponse> {

@@ -13,7 +13,7 @@ import type { ServerSummary, WorktreeView } from "@/lib/types";
 import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { FolderSections } from "@/components/new-space-folders";
-import { useFolders } from "@/lib/folders";
+import { foldersInUse, useFolders, type OpenPanes } from "@/lib/folders";
 import { useHoldReload } from "@/lib/reload-guard";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -87,6 +87,11 @@ interface NewSpaceSheetProps {
   onOpenWorktree?: (workspaceId: string, path: string) => void;
   /** Session scope for the listing read. */
   scope?: Scope;
+  /**
+   * The snapshot's panes, for the Open now section: the folders the chosen machine's panes sit in
+   * right now. Absent means no such section, which is what a caller with nothing running passes.
+   */
+  panes?: OpenPanes;
 }
 
 // Create a new space (workspace). Both fields are optional and dictation-friendly: leave the
@@ -100,6 +105,7 @@ export function NewSpaceSheet({
   onCreateWorktree,
   onOpenWorktree,
   scope,
+  panes,
 }: NewSpaceSheetProps) {
   useLocale();
   const [label, setLabel] = useState("");
@@ -131,14 +137,19 @@ export function NewSpaceSheet({
     ? { ...scope, host: chosen === leadHost(servers) ? undefined : chosen }
     : scope;
   // That machine's own folder list (#289): read when the sheet opens and when the picker moves, never
-  // polled. A machine on an older version has none, and the sheet then renders as it always did.
-  const { folders, star } = useFolders(target, open);
+  // polled. A machine on an older version has none, and the sheet then renders as it always did. Its
+  // Open now rows come from the snapshot this sheet was handed, taken when that list is read.
+  const { folders, openNow, star } = useFolders(target, open, () =>
+    panes === undefined ? [] : foldersInUse(panes, target, servers),
+  );
   // What the list holds NOW, for a tap that lands on a row the Collapse is still fading out after the
   // picker moved: a folder from the previous machine must never reach this machine's field.
-  const shownFolders = useRef(folders);
-  shownFolders.current = folders;
+  const shownFolders = useRef({ folders, openNow });
+  shownFolders.current = { folders, openNow };
   const isShown = (folder: string): boolean =>
-    shownFolders.current.recent.includes(folder) || shownFolders.current.favourites.includes(folder);
+    shownFolders.current.folders.recent.includes(folder) ||
+    shownFolders.current.folders.favourites.includes(folder) ||
+    shownFolders.current.openNow.includes(folder);
   const createButton = useRef<HTMLButtonElement>(null);
   /**
    * Worktrees of the chosen repo that NOTHING is showing.
@@ -387,7 +398,7 @@ export function NewSpaceSheet({
             className="h-11 rounded-lg border border-border bg-background px-3 font-mono text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
         </label>
-        <FolderSections folders={folders} onUse={fillFolder} onStar={toggleStar} />
+        <FolderSections folders={folders} openNow={openNow} onUse={fillFolder} onStar={toggleStar} />
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">{t("space.new.label.label")}</span>
           <input

@@ -171,7 +171,7 @@ export function SpaceRoute() {
         <StatusArea />
       </ToastViewport>
 
-      <NewSpaceSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} onCreate={newSpace} />
+      <NewSpaceSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} onCreate={newSpace} panes={data} />
     </div>
   );
 }

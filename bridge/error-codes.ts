@@ -90,11 +90,12 @@ export const ERROR_CODES = {
 
   // ── The new-space folder list: POST /api/folders/star (#289, M40/02) ───────────────
   /**
-   * The folder is in neither list. Only a folder a space already opened in can be starred, so this
-   * is a RACE GUARD: the sheet offers a star only on a row it read, and this is the tap that landed
-   * after that row aged out of Recent on another device's create. Nothing was stored.
+   * The folder is in neither list, and no pane on this machine sits in it now. Only a folder a space
+   * already opened in, or one a pane uses right now, can be starred, so this is a RACE GUARD: the
+   * sheet offers a star only on a row it read, and this is the tap that landed after that row aged
+   * out of Recent on another device's create, or after its pane closed. Nothing was stored.
    */
-  "folders.unknown": "{folder} is not in Recent, so it cannot be starred",
+  "folders.unknown": "{folder} is not in Recent or open in a pane, so it cannot be starred",
   /** Twelve favourites already. A star never drops one the operator chose, so nothing was stored. */
   "folders.favourites_full": "favourites are full ({max}); remove one first",
 

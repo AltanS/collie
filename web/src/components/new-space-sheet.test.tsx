@@ -8,8 +8,9 @@ import { fixtureServers } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { en } from "@/lib/i18n/messages/en";
 import { clearStatus, useStatus } from "@/lib/status";
+import type { OpenPanes } from "@/lib/folders";
 import type { Scope } from "@/lib/scope";
-import type { ServerSummary } from "@/lib/types";
+import type { AgentView, ServerSummary } from "@/lib/types";
 
 // The host picker in the new-space sheet. Two claims, and the first is the important one:
 //
@@ -334,5 +335,152 @@ describe("NewSpaceSheet — folders", () => {
     expect(document.querySelector('[data-probe="status"]')).toBeNull();
     // And the create still works on that machine, exactly as before.
     expect(screen.getByRole("button", { name: /create space/i })).toBeEnabled();
+  });
+});
+
+// ── Open now (#289, option B2) ───────────────────────────────────────────────────────────────────
+// The third section: the folders the chosen machine's panes sit in right now, off the snapshot the
+// sheet was handed, in the dashboard's place order. No request of its own; the star is the same
+// route, which the bridge now lets name a folder a pane sits in.
+
+/** A pane of the snapshot, with only what Open now reads varying. */
+function openPane(paneId: string, cwd: string, over: Partial<AgentView> = {}): AgentView {
+  const workspaceId = paneId.split(":")[0]!;
+  return {
+    paneId,
+    workspaceId,
+    workspaceLabel: workspaceId,
+    workspaceNumber: Number(workspaceId.slice(1)),
+    tabId: `${workspaceId}:t1`,
+    agent: "claude",
+    status: "idle",
+    cwd,
+    focused: false,
+    ...over,
+  };
+}
+
+function mountWithPanes(servers: ServerSummary[] | undefined, panes: OpenPanes, onCreate = vi.fn()) {
+  const view = (p: OpenPanes) => (
+    <CrewProvider servers={servers} ts={1_000} pollMs={3_000}>
+      <NewSpaceSheet open onClose={() => {}} onCreate={onCreate} panes={p} />
+    </CrewProvider>
+  );
+  const r = render(view(panes));
+  return { rerenderWith: (p: OpenPanes) => r.rerender(view(p)), onCreate };
+}
+
+const openList = () => list(en["space.new.folders.open"]);
+const openRows = async () => within(await screen.findByRole("list", { name: en["space.new.folders.open"] })).getAllByRole("listitem");
+
+describe("NewSpaceSheet — Open now", () => {
+  beforeEach(() => clearStatus());
+
+  it("open now: lists the machine's pane folders after Recent, in place order, without home or a listed folder", async () => {
+    serveFolders({ "": foldersOf(["/home/you/recent"], ["/home/you/fav"]) });
+    mountWithPanes(solo, {
+      agents: [
+        openPane("w2:p1", "/home/you/two"),
+        openPane("w1:p1", "/home/you/one"),
+        openPane("w3:p1", "/home/you/fav/"),
+        openPane("w4:p1", "/home/you"),
+      ],
+      shellPanes: [openPane("w1:p2", "/home/you/one", { kind: "shell", tabPosition: 1 }), openPane("w5:p1", "/home/you/recent", { kind: "shell" })],
+    });
+    const rows = await openRows();
+    expect(rows.map((r) => r.textContent)).toEqual(["one~/one", "two~/two"]);
+    const recent = list(en["space.new.folders.recent"])!;
+    expect(recent.compareDocumentPosition(openList()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use ~" })).toBeNull();
+  });
+
+  it("open now: at most eight rows", async () => {
+    serveFolders({ "": foldersOf([]) });
+    mountWithPanes(solo, {
+      agents: Array.from({ length: 10 }, (_, i) => openPane(`w${i + 1}:p1`, `/srv/p${i}`)),
+      shellPanes: [],
+    });
+    const rows = await openRows();
+    expect(rows).toHaveLength(8);
+    expect(rows[0]).toHaveTextContent("/srv/p0");
+    expect(rows[7]).toHaveTextContent("/srv/p7");
+  });
+
+  it("open now: none for a machine whose panes report no folder, and the sheet is as before", async () => {
+    const reads = serveFolders({ "": foldersOf([]) });
+    mountWithPanes(solo, { agents: [openPane("w1:p1", "")], shellPanes: [openPane("w1:p2", "", { kind: "shell" })] });
+    await waitFor(() => expect(reads).toEqual([""]));
+    expect(screen.queryByRole("list")).toBeNull();
+  });
+
+  it("open now: none when the machine's list could not be read", async () => {
+    const reads = serveFolders({ "": 404 });
+    mountWithPanes(solo, { agents: [openPane("w1:p1", "/srv/open")], shellPanes: [] });
+    await waitFor(() => expect(reads).toEqual([""]));
+    expect(screen.queryByRole("list")).toBeNull();
+  });
+
+  it("open now: on a crew, only the chosen machine's panes", async () => {
+    const user = userEvent.setup();
+    serveFolders({ "": foldersOf([]), workshop: foldersOf([], [], "/home/w") });
+    mountWithPanes(fixtureServers, {
+      agents: [
+        openPane("w1:p1", "/home/you/lead-a", { host: "bluefin" }),
+        openPane("w1:p1", "/home/w/peer-a", { host: "workshop" }),
+        openPane("w2:p1", "/home/you/lead-b", { host: "bluefin" }),
+      ],
+      shellPanes: [],
+    });
+    expect((await openRows()).map((r) => r.textContent)).toEqual(["lead-a~/lead-a", "lead-b~/lead-b"]);
+    await user.click(chip(/workshop/));
+    expect(await screen.findByRole("button", { name: "Use ~/peer-a" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Use ~/lead-a" })).toBeNull());
+    expect((await openRows()).map((r) => r.textContent)).toEqual(["peer-a~/peer-a"]);
+  });
+
+  it("open now: a tap fills the field and creates nothing", async () => {
+    const user = userEvent.setup();
+    serveFolders({ "": foldersOf([]) });
+    const { onCreate } = mountWithPanes(solo, { agents: [openPane("w1:p1", "/home/you/src/web")], shellPanes: [] });
+    await user.click(await screen.findByRole("button", { name: "Use ~/src/web" }));
+    expect(dirField()).toHaveValue("/home/you/src/web");
+    expect(screen.getByRole("button", { name: /create space/i })).toHaveFocus();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("open now: a star calls the route, and the folder moves to Favourites", async () => {
+    const user = userEvent.setup();
+    serveFolders({ "": foldersOf([]) });
+    const sent: unknown[] = [];
+    server.use(
+      http.post("/api/folders/star", async ({ request }) => {
+        // SAFETY: the only caller of this route is `lib/api.ts`'s `starFolder`, which posts exactly
+        // `{ folder, starred }`; the assertion below reads both fields back.
+        const body = (await request.json()) as { folder: string; starred: boolean };
+        sent.push(body);
+        return HttpResponse.json(foldersOf([], [body.folder]));
+      }),
+    );
+    mountWithPanes(solo, {
+      agents: [openPane("w1:p1", "/home/you/src/web"), openPane("w2:p1", "/home/you/src/api")],
+      shellPanes: [],
+    });
+    const star = await screen.findByRole("button", { name: "Add ~/src/web to favourites" });
+    expect(star).toHaveAttribute("aria-pressed", "false");
+    await user.click(star);
+    expect(sent).toEqual([{ folder: "/home/you/src/web", starred: true }]);
+    const favourites = await screen.findByRole("list", { name: en["space.new.folders.favourites"] });
+    expect(within(favourites).getByRole("button", { name: "Remove ~/src/web from favourites" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(within(openList()!).getAllByRole("listitem")).toHaveLength(1));
+    expect(within(openList()!).getByRole("button", { name: "Use ~/src/api" })).toBeInTheDocument();
+  });
+
+  it("open now: a poll while the sheet is up moves no row", async () => {
+    serveFolders({ "": foldersOf([]) });
+    const { rerenderWith } = mountWithPanes(solo, { agents: [openPane("w1:p1", "/srv/one")], shellPanes: [] });
+    expect((await openRows()).map((r) => r.textContent)).toEqual(["one/srv/one"]);
+    // A pane opened and the first one closed since the list was read: the section keeps what it drew.
+    rerenderWith({ agents: [openPane("w2:p1", "/srv/two")], shellPanes: [] });
+    expect((await openRows()).map((r) => r.textContent)).toEqual(["one/srv/one"]);
   });
 });

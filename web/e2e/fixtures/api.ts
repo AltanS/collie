@@ -64,13 +64,20 @@ interface StarFolderBody {
 /** The home the stub's multiplexer opens a blank create in — the fixture new space's own folder. */
 const STUB_HOME = fixtureNewSpace.pane.cwd;
 
+/** The folders the stub snapshot's panes sit in: what a star from the sheet's Open now may name. */
+const STUB_IN_USE: ReadonlySet<string> = new Set(
+  [...fixtureSnapshot.agents, ...fixtureSnapshot.shellPanes]
+    .map((p) => p.cwd)
+    .filter((cwd) => cwd !== "" && cwd !== STUB_HOME),
+);
+
 /**
  * The folder list the stub keeps, standing in for the bridge's `folders.json` (#289,
  * `bridge/folders.ts`). ONE PER PAGE, built by {@link installApiStub}, so no case inherits another's
  * Recent. It keeps the bridge's rules in small: a create that named a folder records it at the top
- * of Recent, never home and never a favourite; a star moves a Recent folder to Favourites, an unstar
- * moves it back; a star on a folder in neither list is the bridge's 409. The bounds are the bridge's
- * business and are pinned there, not re-typed here.
+ * of Recent, never home and never a favourite; a star moves a Recent folder, or a folder a snapshot
+ * pane sits in, to Favourites, an unstar moves it to Recent; a star on any other folder is the
+ * bridge's 409. The bounds are the bridge's business and are pinned there, not re-typed here.
  */
 class FolderWorld {
   private recent: string[] = [];
@@ -90,7 +97,7 @@ class FolderWorld {
   star(folder: string, starred: boolean): boolean {
     if (starred) {
       if (this.favourites.includes(folder)) return true;
-      if (!this.recent.includes(folder)) return false;
+      if (!this.recent.includes(folder) && !STUB_IN_USE.has(folder)) return false;
       this.recent = this.recent.filter((f) => f !== folder);
       this.favourites = [...this.favourites, folder];
       return true;
@@ -185,7 +192,7 @@ async function answer(route: Route, path: string, folders: FolderWorld): Promise
     if (!folders.star(body.folder, body.starred)) {
       return fulfillJson(
         route,
-        { error: `${body.folder} is not in Recent, so it cannot be starred`, code: "folders.unknown", detail: { folder: body.folder } },
+        { error: `${body.folder} is not in Recent or open in a pane, so it cannot be starred`, code: "folders.unknown", detail: { folder: body.folder } },
         409,
       );
     }
