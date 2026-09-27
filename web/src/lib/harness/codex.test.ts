@@ -43,6 +43,7 @@ const PINNED = [
   "codex--draft.txt",
   "codex--fresh-idle.txt",
   "codex--queue-context-inline.txt",
+  "codex--reporter-294-busy-agents-hint.txt",
   "codex--submitted-fill-labelled-rule.txt",
   "codex--trust-prompt.txt",
   "codex--v0150-custom-status.txt",
@@ -66,6 +67,10 @@ const PINNED = [
   "codex--v0156-idle.txt",
   "codex--v0156-paste-placeholder.txt",
   "codex--v0156-trust.txt",
+  "codex--v0157-busy-streaming.txt",
+  "codex--v0157-draft-notice.txt",
+  "codex--v0157-idle-50.txt",
+  "codex--v0157-idle.txt",
   "codex--working.txt",
 ];
 
@@ -1086,6 +1091,92 @@ describe("Codex 0.156.1 busy: a spinner ends the status row", () => {
 
     it("refuses the same text with no paint at all", () => {
       expect(ready("  model · /dir · ⠧")).toBe(false);
+    });
+  });
+});
+
+// #294, Codex 0.157.0 and later: `tui.fullscreen_transcript` is on by default, and in that layout the
+// status line has a row of its own with ONE key-hint row under it (fixtures README, "Codex 0.157.1
+// fullscreen"). Every such pane had no composer until the reader learned that row: the
+// unread-dialog card over the live input box, and every send refused.
+describe("Codex 0.157.1 fullscreen: one key-hint row under the status row", () => {
+  const READY = [
+    ["codex--v0157-idle.txt", null, "  ? for shortcuts"],
+    ["codex--v0157-idle-50.txt", null, "  ? for shortcuts"],
+    ["codex--v0157-busy-streaming.txt", null, "  ? for shortcuts"],
+    ["codex--v0157-draft-notice.txt", "Reply with only OK. Second line of the message.", "  "],
+    ["codex--reporter-294-busy-agents-hint.txt", null, "  ← for agents · ? for shortcuts"],
+  ] as const;
+
+  it.each(READY)("%s: the composer is found above the hint row, with no card", (name, draft, hint) => {
+    const lines = fixtureLines(name);
+    const texts = lines.map((l) => lineText(l).trimEnd());
+    const last = texts.findLastIndex((t) => t.trim() !== "");
+    expect(texts[last]!.startsWith(hint)).toBe(true);
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    const box = locateComposer(lines)!;
+    // The status row is the row straight above the hint row, and it is what the strip shows.
+    expect(box.statusRow).toBe(last - 1);
+    expect(codexAdapter.extractStatusLines(lines)[0]).toBe(lines[box.statusRow]);
+    expect(codexAdapter.extractInputDraft(lines)).toBe(draft);
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
+    // The hint row leaves the mirror with the rest of the composer.
+    const kept = stripChrome(lines).map(lineText).join("\n");
+    expect(kept).not.toContain("for shortcuts");
+    expect(kept).not.toContain("f2 to view");
+  });
+
+  it("a busy 0.157.1 pane: the spinner still ends the status row, above the hint row", () => {
+    const lines = fixtureLines("codex--v0157-busy-streaming.txt");
+    const status = lineText(codexAdapter.extractStatusLines(lines)[0]!).trimEnd();
+    expect(status).toBe("  GPT-6-Luna low · /tmp/collie-canary-project · ⠋");
+    expect(stripChrome(lines).map(lineText).join("\n")).toContain("Bramble was a sheepdog");
+  });
+
+  it("the reporter's busy pane: the echo above is not the composer, and Working stays in the mirror", () => {
+    const lines = fixtureLines("codex--reporter-294-busy-agents-hint.txt");
+    const box = locateComposer(lines)!;
+    expect(lineText(lines[box.promptRow]!).trimEnd()).toBe(`› ${PLACEHOLDER}`);
+    expect(codexAdapter.composerPrompt!(lines)).toBe(`› ${PLACEHOLDER}`);
+    const kept = stripChrome(lines).map(lineText).join("\n");
+    expect(kept).toContain("› herdr pane read <pane-id>");
+    expect(kept).toContain("• Working (6s • esc to interrupt)");
+  });
+
+  describe("the hint row opens no new way in", () => {
+    const OFF = "\u001b[0m";
+    const FIELD = "\u001b[38;2;246;226;183m";
+    const FIELD2 = "\u001b[38;2;171;223;167m";
+    const MUTED = "\u001b[38;2;135;140;164m";
+    const BOLD = "\u001b[1m";
+    const STATUS = `  ${FIELD}GPT-6-Luna low${OFF}${MUTED} · ${OFF}${FIELD2}/tmp/project${OFF}`;
+    const HINT = `  ${BOLD}?${OFF}${MUTED} for shortcuts${OFF}`;
+
+    const ready = (...tail: string[]) =>
+      codexAdapter.composerReady!(splitLines(parseAnsi([`› ${PLACEHOLDER}`, "", ...tail].join("\n"))));
+
+    it("accepts the hint row straight under a status row, painted or not", () => {
+      expect(ready(STATUS, HINT)).toBe(true);
+      expect(ready(STATUS, "  ? for shortcuts")).toBe(true);
+      expect(ready(STATUS, `${" ".repeat(60)}⚠ 1 warning · f2 to view`)).toBe(true);
+    });
+
+    it("refuses a hint row with a blank row between it and the status row", () => {
+      expect(ready(STATUS, "", HINT)).toBe(false);
+    });
+
+    it("refuses a last row that starts at column 0", () => {
+      expect(ready(STATUS, "• Working (6s • esc to interrupt)")).toBe(false);
+      expect(ready(STATUS, `› ${PLACEHOLDER}`)).toBe(false);
+    });
+
+    it("refuses two rows under the status row", () => {
+      expect(ready(STATUS, HINT, HINT)).toBe(false);
+    });
+
+    it("refuses a hint row under a row that is not a status row", () => {
+      expect(ready("  GPT-6-Luna low · /tmp/project", HINT)).toBe(false);
+      expect(ready(HINT, HINT)).toBe(false);
     });
   });
 });

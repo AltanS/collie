@@ -9,11 +9,11 @@
       "evidence": "collie commit 71b28a1e (live sweep of Claude Code 2.1.283 in sandbox panes, shipped 1.13.2)"
     },
     "codex": {
-      "version": "0.156.1",
-      "verified": "2026-09-26",
-      "how": "live sweep",
+      "version": "0.157.1",
+      "verified": "2026-09-27",
+      "how": "canary",
       "adapter": true,
-      "evidence": "collie commit 100bf7e3 (live sweep of Codex 0.156.1 in sandbox panes, shipped 1.13.2)"
+      "evidence": "canary run 20260927T064528Z (Codex 0.157.1 from a scratch npm prefix, #294): idle, drafts, sends, narrow, dialogs, busy pass; start-exit known gap (ADR 0053 addendum)"
     },
     "grok": {
       "version": "1.0.5",

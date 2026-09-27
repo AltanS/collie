@@ -4,9 +4,10 @@
 // locating the composer is also the composer-vs-modal discriminator. Pure; no pane access.
 //
 // THE COMPOSER IS FOUND BY ITS OWN MARKS, NOT BY COUNTING THE ROWS BETWEEN THEM (the rule ADR 0048
-// set for Claude's box, applied here). The two marks are the status row as the last non-blank row,
-// and the LOWEST column-0 `› ` row above it. A status row at the tail already proves a live
-// composer, because every dialog replaces it. A submitted message echoes into the transcript with
+// set for Claude's box, applied here). The two marks are the status row as the last non-blank row
+// (or straight above the one key-hint row Codex 0.157.0 draws under it, `isHintRow`), and the LOWEST
+// column-0 `› ` row above it. A status row at the tail already proves a live composer, because
+// every dialog replaces it. A submitted message echoes into the transcript with
 // the same `› ` prefix, but an echo always sits ABOVE the live prompt, so the lowest one is the
 // prompt. The walk used to refuse on the first blank or non-continuation row between the marks, and
 // Astra's starfield (issue #245) paints exactly such rows: a refused composer refuses every send
@@ -19,6 +20,7 @@
 import { trimTrailingBlank, type StyledLine } from "../../blocks";
 import {
   isBlank,
+  isHintRow,
   isStatusRow,
   lastNonBlankIndex,
   lineText,
@@ -34,7 +36,8 @@ export interface ComposerBox {
   top: number;
   /** The `› ` prompt row. */
   promptRow: number;
-  /** The status row under it (last non-blank row of the frame). */
+  /** The status row under it: the last non-blank row of the frame, or the row above 0.157.0's
+   *  key-hint row. */
   statusRow: number;
 }
 
@@ -86,8 +89,8 @@ function isEmptyPlaceholder(line: StyledLine): boolean {
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const clean = lines.map(withoutSparkles);
   const texts = clean.map((l) => rstrip(lineText(l)));
-  const statusRow = lastNonBlankIndex(texts);
-  if (statusRow < 0 || !isStatusRow(texts[statusRow]!, clean[statusRow])) return null;
+  const statusRow = locateStatusRow(texts, clean);
+  if (statusRow < 0) return null;
 
   for (let i = statusRow - 1; i >= 0 && statusRow - 1 - i <= MAX_DRAFT_ROWS; i--) {
     const t = texts[i]!;
@@ -96,6 +99,17 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
     if (/^\S/.test(t) || isStatusRow(t, clean[i])) return null;
   }
   return null;
+}
+
+/** The status row: the last non-blank row, or the row straight above it when that last row is the
+ *  0.157.0 key-hint row (`isHintRow`). No blank row may sit between the two. -1 when neither. */
+function locateStatusRow(texts: string[], clean: StyledLine[]): number {
+  const last = lastNonBlankIndex(texts);
+  if (last < 0) return -1;
+  if (isStatusRow(texts[last]!, clean[last])) return last;
+  const above = last - 1;
+  if (above < 0 || !isHintRow(texts[last]!, clean[last])) return -1;
+  return isStatusRow(texts[above]!, clean[above]) ? above : -1;
 }
 
 /** The starfield rows directly above the prompt belong to the composer band, and leave the mirror

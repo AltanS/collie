@@ -91,7 +91,8 @@ export function rstrip(text: string): string {
 // text SGR 2 in the SAME segment as the ` · `, so neither a field nor a separator can be read off
 // it. The update prompt's heading row sits on a background fill. codex.test.ts pins composerReady
 // false on every 0.156.1 dialog capture, and the tail shape still has to hold on top: this row
-// last, a column-0 `› ` row above, and nothing at column 0 in between.
+// last (or straight above the one 0.157.0 hint row, `isHintRow`), a column-0 `› ` row above, and
+// nothing at column 0 in between.
 //
 // Still unsupported: a DISABLED status line (`tui.status_line = null`). There is then no row
 // under the prompt to anchor on, and the rows that remain are transcript. Anchoring the composer
@@ -319,6 +320,30 @@ export function isStatusRow(text: string, line?: StyledLine): boolean {
   const row = rstrip(text);
   if (STATUS_ROW.test(row) || INLINE_QUEUE_CONTEXT_ROW.test(row)) return true;
   return line !== undefined && isStyledStatusRow(text, line);
+}
+
+// Codex 0.157.0 turned `tui.fullscreen_transcript` on by default. In that layout the status line
+// gets a row of its own and ONE more row sits under it: the key hints (`? for shortcuts`, `tab to
+// queue message`, and `← for agents · ? for shortcuts` when the TUI is attached to a local Codex
+// daemon), plus a right-aligned notice (`⚠ 1 warning · f2 to view`). With a draft and no notice
+// the row is blank. When it was not blank, the status row was no longer the last row, and every
+// such pane had no composer: the unread-dialog card, and every send refused (#294, the reporter's
+// pane and codex--v0157-idle.txt). This row is recognised by its SHAPE only. The status row
+// straight above it is the evidence. The hint row's muted colour is theme paint that a client-less
+// Codex does not get, and invariants.test.ts repaints the whole band, this row included.
+const HINT_ROW = /^ {2,}\S/;
+
+/**
+ * True when the row could be the key-hint row under a 0.157.0 status row: indented (column 0 is
+ * blank, which no transcript bullet and no prompt row is), bounded, no control bytes, and not a
+ * status row itself. Never decisive alone: locateComposer accepts it only as the last non-blank row
+ * and only straight under a status row.
+ */
+export function isHintRow(text: string, line?: StyledLine): boolean {
+  const row = rstrip(text);
+  if (!HINT_ROW.test(row) || hasControlChar(row)) return false;
+  if (codePointCount(row) > MAX_STATUS_ROW_CHARS) return false;
+  return !isStatusRow(text, line);
 }
 
 // The `› ` prompt row. Column 0 — but transcript ECHOES of submitted messages paint the same

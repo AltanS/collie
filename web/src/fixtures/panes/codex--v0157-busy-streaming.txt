@@ -1,0 +1,40 @@
+[0m[2m╭──────────────────────────────────────────────╮[0m
+[0m[2m│ >_ [0m[1mOpenAI Codex[0m[2m (v0.157.1)                   │[0m
+[0m[2m│                                              │[0m
+[0m[2m│ model:     [0mGPT-6-Luna low[0m[2m   [0m[38;2;99;168;248m/model[0m[2m to change │[0m
+[0m[2m│ directory: [0m/tmp/collie-canary-project[0m[2m        │[0m
+[0m[2m╰──────────────────────────────────────────────╯[0m
+ 
+[0m[48;2;66;66;79m                                                                                                                        [0m
+[0m[1m[2m[48;2;66;66;79m› [0m[48;2;66;66;79mWrite a 500-word story about a sheepdog. Use no tools.                                                                [0m
+[0m[48;2;66;66;79m                                                                                                                        [0m
+
+[0m[2m• [0mAt the edge of a wide green valley stood a farm with a red barn, a crooked apple tree, and more sheep than anyone
+  could count without losing their place. The sheep belonged to Mara, who knew each one by the sound of its bleat. The
+  dog who helped her was called Bramble.
+  Bramble was a sheepdog with a shaggy black coat and one white paw. He was quick, clever, and proud of his work. Every
+  morning, when Mara opened the gate, he guided the flock toward the hillside. He circled wide, watched
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m›[0m[48;2;57;57;71m [0m[2m[48;2;57;57;71mAsk Codex to do anything[0m[48;2;57;57;71m                                                                                              [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[38;2;246;226;183mGPT-6-Luna low[0m[38;2;135;140;164m · [0m[38;2;171;223;167m/tmp/collie-canary-project[0m[38;2;135;140;164m · [0m[38;2;243;139;168m⠋[0m
+  [0m[1m[38;2;205;214;244m?[0m[38;2;135;140;164m for shortcuts                                                                              ⚠ [0m[38;2;196;167;103m1 warning[0m[38;2;135;140;164m · [0m[1m[38;2;205;214;244mf2[0m[38;2;135;140;164m to view[0m

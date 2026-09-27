@@ -162,6 +162,45 @@ for its queue hint.
 | `codex--v0156-busy-streaming.txt` | The story mid-stream above the empty composer, over `  GPT-6-Luna low · /tmp/collie-canary-project · ⠧`. `composerReady` must be TRUE, the draft is null, no unread-dialog card, and the status strip keeps the spinner | `working` |
 | `codex--v0156-busy-draft.txt` | Later in the same turn: the draft `a draft typed while codex works` in the box, and the status row replaced by `  tab to queue message … 100% context left`. The draft reads back as send evidence, the check the reply guard makes before it presses Enter | `working` |
 
+## Codex 0.157.1 fullscreen (captured 2026-09-27, herdr 0.9.0, harness canary, #294)
+
+Byte-faithful `format:ansi` captures from the harness canary's own Herdr session, running Codex
+0.157.1 from a scratch npm prefix with a temporary `CODEX_HOME`. Each file is the whole screen the
+canary saved, from the header box down. **No scrubbing was needed**: the project folder is
+`/tmp/collie-canary-project`, and no username, hostname or session UUID is on the kept rows.
+
+**The headline: 0.157.0 turned `tui.fullscreen_transcript` on by default.** In that layout the
+status line gets a row of its own, and ONE key-hint row sits straight under it: `? for shortcuts`
+with an empty box, `tab to queue message` with a draft while a turn runs, and a right-aligned
+`⚠ 1 warning · f2 to view` notice when Codex has one. With a draft and no notice the hint row is
+blank. When it was not blank, the status row was no longer the last row, so no default 0.157 pane
+had a composer: the unread-dialog card over a live input box, and every send refused. The canary
+failed every scenario (idle, drafts, sends, narrow) before the fix. The reader now takes one
+indented row straight under the status row as the hint row (`isHintRow` in
+`lib/harness/codex/markers.ts`). The dialogs keep the 0.156.1 shape: no status row, footer last.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0157-idle.txt` | Empty composer, the status row `  GPT-6-Luna low · /tmp/collie-canary-project`, and under it `  ? for shortcuts` plus the right-aligned notice. `composerReady` must be TRUE, no card | `idle` |
+| `codex--v0157-idle-50.txt` | The same at 50 columns: the notice shortens to `⚠ 1 · f2` | `idle` |
+| `codex--v0157-draft-notice.txt` | The two-line draft `Reply with only OK.` / `Second line of the message.`. The hint row holds only the notice, after a run of spaces. The draft reads back | `idle` |
+| `codex--v0157-busy-streaming.txt` | The first turn of a thread mid-stream: the status row ends in the spinner frame `⠋`, the hint row under it | `working` |
+
+## Codex reporter capture (#294, 2026-09-27, macOS, Herdr 0.9.1, SCRUBBED)
+
+The reporter's `herdr pane read <pane-id> --source recent --lines 200 --format ansi`, taken by
+Codex from inside its own pane while it worked, so the screen is mid-turn. The Codex version is not
+on the screen. It is the fullscreen layout above, and the hint row reads `← for agents · ? for
+shortcuts`: Codex adds `← for agents` when the TUI is attached to a local Codex daemon (the
+app-server socket under `CODEX_HOME`). **Scrubbed**: the chat between the first message and the
+Working row is cut (it held a home path and a project name), and the project folder in the status
+row now reads `~/Code/project`. The first message's echo band, the Working row, the composer band,
+the status row and the hint row are byte-faithful, with the reporter's theme colours.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--reporter-294-busy-agents-hint.txt` | An echo `› herdr pane read …` band, `• Working (6s • esc to interrupt)`, the empty composer, `  GPT-6-Luna medium · ~/Code/project · Read recent pane output`, and `  ← for agents · ? for shortcuts` as the last row. `composerReady` must be TRUE, the lowest `›` row is the composer, no card | `working` |
+
 ## Codex mobile chrome (reconstructed 2026-09-03)
 
 **Not a capture.** This one file is RECONSTRUCTED from the two rows reported in

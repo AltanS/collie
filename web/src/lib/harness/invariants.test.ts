@@ -309,10 +309,18 @@ const COMPOSERS: Composer[] = [
       "codex--v0156-headless-draft.txt",
       "codex--v0156-busy-streaming.txt",
       "codex--v0156-busy-draft.txt",
+      "codex--v0157-idle.txt",
+      "codex--v0157-idle-50.txt",
+      "codex--v0157-draft-notice.txt",
+      "codex--v0157-busy-streaming.txt",
+      "codex--reporter-294-busy-agents-hint.txt",
     ],
     band(texts) {
       let status = texts.length - 1;
       while (status >= 0 && isBlank(texts[status]!)) status--;
+      // 0.157.0 draws one key-hint row straight under the status row (codex--v0157-idle.txt). In
+      // every older frame a blank row sits above the status row.
+      if (status > 0 && !isBlank(texts[status - 1]!)) status--;
       let prompt = status - 1;
       while (prompt >= 0 && !texts[prompt]!.startsWith("› ")) prompt--;
       if (prompt < 0) return null;
@@ -629,6 +637,11 @@ const CODEX_READ_BY_PAINT = [
   "codex--v0156-headless-idle.txt",
   "codex--v0156-headless-draft.txt",
   "codex--v0156-busy-streaming.txt",
+  "codex--v0157-idle.txt",
+  "codex--v0157-idle-50.txt",
+  "codex--v0157-draft-notice.txt",
+  "codex--v0157-busy-streaming.txt",
+  "codex--reporter-294-busy-agents-hint.txt",
 ];
 
 /**
