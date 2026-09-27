@@ -18,10 +18,11 @@
 //   {"type":"user",      "message":{"role":"user","content":"..." | [ {type:"tool_result",...} ]}, ...}
 //   {"type":"assistant", "message":{"role":"assistant","content":[ {type:"text"|"thinking"|"tool_use"} ]}}
 //   plus bookkeeping rows we ignore (mode, permission-mode, ai-title, file-history-*, queue-operation…).
-// Human turns carry a STRING content; a `user` row whose content is a LIST is tool-result traffic,
-// not something the user typed — we fold those into the tool call that produced them rather than
-// rendering 705 fake "user" turns. `isSidechain` marks subagent traffic (dropped by default);
-// `isCompactSummary` marks the summary Claude writes when a session is compacted.
+// Human turns carry a STRING content; a `user` row whose content is a LIST is usually tool-result
+// traffic, not something the user typed — we fold those into the tool call that produced them rather
+// than rendering fake "user" turns. `isMeta` marks injected skill and harness context and is always
+// dropped; `isSidechain` marks subagent traffic (dropped by default); `isCompactSummary` marks the
+// summary Claude writes when a session is compacted.
 
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -166,6 +167,7 @@ export function parseClaudeTranscript(
     // no row shape at all — skip it exactly as an unparseable line is skipped.
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
     const row: RawRow = parsed;
+    if (row.isMeta === true) continue;
     const type = row.type;
     if (type !== "user" && type !== "assistant") continue;
     if (row.isSidechain === true && !opts.includeSidechains) continue;
