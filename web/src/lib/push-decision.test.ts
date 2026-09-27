@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { decidePush, hostSlot, notificationPath, tagFor } from "@/lib/push-decision";
+import { decidePush, hostSlot, localisedTitle, notificationPath, tagFor } from "@/lib/push-decision";
 import { scopeSearch } from "@/lib/scope";
 
 describe("decidePush", () => {
@@ -117,6 +117,41 @@ describe("decidePush", () => {
     expect(decision).toMatchObject({ kind: "show", paneId: "p1" });
     // SAFETY: as above — the absence of `target` is what the case pins, so it must be read.
     expect((decision as { target?: string }).target).toBeUndefined();
+  });
+});
+
+describe("localisedTitle — the headline in this device's language (ADR 0071)", () => {
+  const korean = { "agent.blocked": "{agent} 입력 대기", "herd.done": "에이전트 {count}개 작업 완료" };
+
+  test("a known code with a stored template is filled from the push's own detail", () => {
+    const push = { title: "claude needs you", titleCode: "agent.blocked", titleDetail: { agent: "claude" } };
+    expect(localisedTitle(push, korean)).toBe("claude 입력 대기");
+    expect(decidePush(push, false, korean)).toMatchObject({ kind: "show", title: "claude 입력 대기" });
+  });
+
+  test("a number fills its slot as written", () => {
+    const push = { title: "3 agents done", titleCode: "herd.done", titleDetail: { count: 3 } };
+    expect(decidePush(push, false, korean)).toMatchObject({ title: "에이전트 3개 작업 완료" });
+  });
+
+  test("every miss falls through to the bridge's English, never to a key or a blank", () => {
+    // No code: an older bridge, or a title the operator typed with `collie push-test`.
+    expect(decidePush({ title: "hello" }, false, korean)).toMatchObject({ title: "hello" });
+    // A code a newer bridge invented, which this build cannot know.
+    const newer = { title: "claude is thinking", titleCode: "agent.thinking", titleDetail: { agent: "claude" } };
+    expect(decidePush(newer, false, korean)).toMatchObject({ title: "claude is thinking" });
+    // A known code the stored table has no template for (the page has not run since install).
+    const unstored = { title: "claude is done", titleCode: "agent.done", titleDetail: { agent: "claude" } };
+    expect(decidePush(unstored, false, korean)).toMatchObject({ title: "claude is done" });
+    // No table at all: the call every existing caller makes.
+    expect(decidePush(unstored, false)).toMatchObject({ title: "claude is done" });
+  });
+
+  test("a retraction is untouched by a table", () => {
+    expect(decidePush({ type: "clear", tag: "collie:herd" }, false, korean)).toEqual({
+      kind: "clear",
+      tag: "collie:herd",
+    });
   });
 });
 

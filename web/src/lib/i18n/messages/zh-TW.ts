@@ -1302,4 +1302,13 @@ export const zhTW: Dictionary = {
   "settings.changes.depth.hint": "窗格資料夾下方的資料夾層級數。",
   "settings.changes.depth.levels.one": "{count} 層",
   "settings.changes.depth.levels.other": "{count} 層",
+
+  // --- pushTitle ---
+  "pushTitle.agent.blocked": "{agent} 待處理",
+  "pushTitle.agent.done": "{agent} 已完成",
+  "pushTitle.herd.blocked": "{count} 個 Agent 待處理",
+  "pushTitle.herd.done": "{count} 個 Agent 已完成",
+  "pushTitle.herd.mixed": "{count} 個 Agent 需要關注",
+  "pushTitle.update.available": "Collie 有可用更新",
+  "pushTitle.cache.cold_soon": "快取約 {minutes} 分鐘後冷卻",
 };

@@ -1339,4 +1339,13 @@ export const es: Dictionary = {
   "settings.changes.depth.hint": "Niveles de carpetas debajo de la carpeta del panel.",
   "settings.changes.depth.levels.one": "{count} nivel",
   "settings.changes.depth.levels.other": "{count} niveles",
+
+  // --- pushTitle ---
+  "pushTitle.agent.blocked": "{agent} requiere atención",
+  "pushTitle.agent.done": "{agent} ha terminado",
+  "pushTitle.herd.blocked": "{count} agentes requieren atención",
+  "pushTitle.herd.done": "{count} agentes han terminado",
+  "pushTitle.herd.mixed": "{count} agentes necesitan atención",
+  "pushTitle.update.available": "Actualización de Collie disponible",
+  "pushTitle.cache.cold_soon": "La caché se enfría en unos {minutes} min",
 };

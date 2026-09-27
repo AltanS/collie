@@ -62,6 +62,9 @@ describe("cacheWarnings", () => {
     expect(out.messages).toHaveLength(1);
     expect(out.messages[0]).toMatchObject({
       title: "Cache goes cold in about 5 min",
+      // The code and the minutes it was built from, so the phone can say it in its own language.
+      titleCode: "cache.cold_soon",
+      titleDetail: { minutes: 5 },
       body: "collie · claude. One warning per cycle.",
       paneId: "w1:p1",
       renotify: true,

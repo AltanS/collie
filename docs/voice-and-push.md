@@ -226,6 +226,9 @@ Four kinds, each with its own switch under **Settings → Notify when**.
 | App updates | a newer Collie release is available | on |
 | Cache about to go cold | a pane's prompt cache expires in about five minutes | off |
 
+Each device shows an alert's title in its own [language](configure.md#language), and English on a
+device that has not opened Collie since it was updated. The body stays as the bridge wrote it.
+
 Every switch is bridge-wide. A push fans out to every subscribed device, so there is nothing
 per-device to set.
 

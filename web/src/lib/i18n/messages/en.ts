@@ -1438,6 +1438,20 @@ export const en = {
   "settings.changes.depth.hint": "Folder levels below the pane's folder.",
   "settings.changes.depth.levels.one": "{count} level",
   "settings.changes.depth.levels.other": "{count} levels",
+
+  // --- pushTitle (a notification's headline, keyed by the code on the push) ---
+  //
+  // ONE KEY PER CODE in `lib/push-title-codes.ts`, spelled `pushTitle.<code>`. The bridge sends the
+  // English beside the code (bridge/push-titles.ts); the service worker shows THIS translation
+  // instead when the device has one (ADR 0071). `{agent}` is the agent's kind ("claude"), never
+  // translated. `{count}` in a `herd.*` title is always 2 or more, so these are not plural pairs.
+  "pushTitle.agent.blocked": "{agent} needs you",
+  "pushTitle.agent.done": "{agent} is done",
+  "pushTitle.herd.blocked": "{count} agents need you",
+  "pushTitle.herd.done": "{count} agents done",
+  "pushTitle.herd.mixed": "{count} agents need attention",
+  "pushTitle.update.available": "Collie update available",
+  "pushTitle.cache.cold_soon": "Cache goes cold in about {minutes} min",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

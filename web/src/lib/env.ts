@@ -31,6 +31,14 @@ export function hasDocument(): boolean {
   return globalThis.document !== undefined;
 }
 
+/**
+ * Cache Storage, or `null` where there is none: an insecure context (plain-HTTP serve mode), and
+ * jsdom. Where it is missing there is no service worker and no push either.
+ */
+export function cacheStorage(): CacheStorage | null {
+  return globalThis.caches ?? null;
+}
+
 /** True where element resizes can be observed. jsdom has no `ResizeObserver`. */
 export function hasResizeObserver(): boolean {
   return globalThis.ResizeObserver !== undefined;

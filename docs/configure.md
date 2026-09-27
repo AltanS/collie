@@ -630,6 +630,11 @@ The selection is saved locally in the browser per device. The terminal mirror re
 it displays the raw output from the agent, while quick replies, menu labels, and key caps match the
 underlying screen or keyboard names.
 
+A notification's title follows the same choice: "claude needs you" arrives as "claude 입력 대기" on a
+device set to Korean. The device picks up a new choice the next time Collie is open on it, and until
+then its titles stay in the language it had. The body under the title is the pane's own name and
+place, and is never translated ([Web Push](voice-and-push.md#web-push-optional)).
+
 
 ---
 

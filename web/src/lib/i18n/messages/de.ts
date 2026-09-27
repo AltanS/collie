@@ -1343,4 +1343,13 @@ export const de: Dictionary = {
   "settings.changes.depth.hint": "Ordnerebenen unterhalb des Bereichsordners.",
   "settings.changes.depth.levels.one": "{count} Ebene",
   "settings.changes.depth.levels.other": "{count} Ebenen",
+
+  // --- pushTitle ---
+  "pushTitle.agent.blocked": "{agent} wartet auf Eingabe",
+  "pushTitle.agent.done": "{agent} ist fertig",
+  "pushTitle.herd.blocked": "{count} Agenten warten auf Eingabe",
+  "pushTitle.herd.done": "{count} Agenten fertig",
+  "pushTitle.herd.mixed": "{count} Agenten brauchen Aufmerksamkeit",
+  "pushTitle.update.available": "Collie-Update verfügbar",
+  "pushTitle.cache.cold_soon": "Cache wird in etwa {minutes} Min. inaktiv",
 };

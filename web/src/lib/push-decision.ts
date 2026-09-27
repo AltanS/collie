@@ -5,6 +5,9 @@
 // show vs clear, tag derivation, title/renotify defaults, and the URL a tap opens — is plain data
 // in, plain data out.
 
+import { interpolate } from "./i18n/template";
+import { isPushTitleCode, type PushTitleDetail } from "./push-title-codes";
+import type { PushTitleTemplates } from "./push-title-store";
 import { scopeSearch } from "./scope";
 
 // Payload shape is whatever bridge/push.ts sends: a render → { title, body, tag, renotify,
@@ -12,6 +15,14 @@ import { scopeSearch } from "./scope";
 export interface PushPayload {
   type?: "clear";
   title?: string;
+  /**
+   * The catalogue code `title` was rendered from, and the values it was filled with
+   * (bridge/push-titles.ts). Kept loose (`string`, not the code union) because it is read off the
+   * wire: a code a newer bridge invented is a value this build must recognise as unknown, not a type
+   * error — `localisedTitle` narrows it.
+   */
+  titleCode?: string;
+  titleDetail?: PushTitleDetail;
   body?: string;
   /** Notification slot. The bridge sends one shared "collie:herd" tag so the herd coalesces. */
   tag?: string;
@@ -94,11 +105,30 @@ export const tagFor = (paneId?: string, host?: string): string => {
 };
 
 /**
+ * The title in this device's language, or `undefined` when there is none to give: no code on the push
+ * (an older bridge, or a title the operator typed), a code this build does not know (a newer bridge),
+ * or no template stored for it (the page has not run since the worker was installed, or storage was
+ * refused). Every `undefined` falls through to the bridge's own English title.
+ */
+export function localisedTitle(payload: PushPayload, templates: PushTitleTemplates): string | undefined {
+  const code = payload.titleCode;
+  if (!isPushTitleCode(code)) return undefined;
+  const template = templates[code];
+  if (template === undefined) return undefined;
+  return interpolate(template, payload.titleDetail);
+}
+
+/**
  * Decide what the SW should do with a push. `hasVisibleClient` = a Collie tab is open and visible
  * (the in-app status already surfaces the alert, so the redundant system notification is suppressed
- * — but a clear still runs, since a retraction must close regardless).
+ * — but a clear still runs, since a retraction must close regardless). `templates` is the device's
+ * push title table (lib/push-title-store.ts); an empty one shows every title in the bridge's English.
  */
-export function decidePush(payload: PushPayload, hasVisibleClient: boolean): PushDecision {
+export function decidePush(
+  payload: PushPayload,
+  hasVisibleClient: boolean,
+  templates: PushTitleTemplates = {},
+): PushDecision {
   const paneId = payload.data?.paneId;
   const session = payload.data?.session;
   const host = payload.data?.host;
@@ -111,7 +141,7 @@ export function decidePush(payload: PushPayload, hasVisibleClient: boolean): Pus
   if (hasVisibleClient) return { kind: "suppress" };
   return {
     kind: "show",
-    title: payload.title ?? "Collie",
+    title: localisedTitle(payload, templates) ?? payload.title ?? "Collie",
     body: payload.body ?? "",
     tag,
     paneId,

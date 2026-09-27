@@ -1,4 +1,5 @@
 import { paneName, panePlace } from "./pane-name.ts";
+import { pushTitle, type PushTitleCode, type PushTitleDetail } from "./push-titles.ts";
 import type { PushMessage } from "./push.ts";
 import type { AgentStatus, AgentView } from "./types.ts";
 
@@ -29,6 +30,10 @@ export interface NotifyClock<H> {
 export interface HerdSummary {
   /** Headline: "claude needs you" for one, or "3 agents need you" for several. */
   title: string;
+  /** The catalogue code `title` was rendered from, so the phone can say it in its own language. */
+  titleCode: PushTitleCode;
+  /** The values `title` was filled with — the agent's name, or the digest's count. */
+  titleDetail?: PushTitleDetail;
   /** Sub-line: the pane's PLACE ("collie › UI work") for one outstanding alert, or the panes' names
    *  for a digest — each one `name · place` where two of them read the same. */
   body: string;
@@ -91,7 +96,15 @@ export function makeNotifySink(
     render: (s) => {
       if (mute.isMuted()) return;
       const body = host === undefined ? s.body : `${host} · ${s.body}`;
-      const msg: PushMessage = { title: s.title, body, tag: herdTag, paneId: s.paneId, renotify: s.renotify };
+      const msg: PushMessage = {
+        title: s.title,
+        titleCode: s.titleCode,
+        body,
+        tag: herdTag,
+        paneId: s.paneId,
+        renotify: s.renotify,
+      };
+      if (s.titleDetail !== undefined) msg.titleDetail = s.titleDetail;
       if (sessionName !== undefined) msg.session = sessionName;
       if (host !== undefined) msg.host = host;
       void push.send(msg);
@@ -225,10 +238,9 @@ export class NotificationCoordinator<H = unknown> {
     const entries = [...this.outstanding.entries()];
     if (entries.length === 1) {
       const [paneId, a] = entries[0]!;
-      const verb = a.status === "blocked" ? "needs you" : "is done";
       // One outstanding agent → deep-link straight to its pane on tap.
       return {
-        title: `${a.agent} ${verb}`,
+        ...pushTitle(a.status === "blocked" ? "agent.blocked" : "agent.done", { agent: a.agent }),
         // The PLACE, and nothing else. A push says the same two things the screens say — what it is
         // called (the title, above) and where it sits — so the notification and the dashboard row it
         // deep-links to read alike. The cwd is deliberately gone: a full absolute path on a lock
@@ -243,12 +255,8 @@ export class NotificationCoordinator<H = unknown> {
     const n = alerts.length;
     const allBlocked = alerts.every((a) => a.status === "blocked");
     const allDone = alerts.every((a) => a.status === "done");
-    const title = allBlocked
-      ? `${n} agents need you`
-      : allDone
-        ? `${n} agents done`
-        : `${n} agents need attention`;
-    return { title, body: digestLabels(alerts).join(", "), renotify };
+    const code = allBlocked ? "herd.blocked" : allDone ? "herd.done" : "herd.mixed";
+    return { ...pushTitle(code, { count: n }), body: digestLabels(alerts).join(", "), renotify };
   }
 
   private cancelPending(id: string): void {

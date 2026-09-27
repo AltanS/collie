@@ -1330,4 +1330,13 @@ export const ja: Dictionary = {
   "settings.changes.depth.hint": "ペインのフォルダーより下のフォルダー階層数。",
   "settings.changes.depth.levels.one": "{count} 階層",
   "settings.changes.depth.levels.other": "{count} 階層",
+
+  // --- pushTitle ---
+  "pushTitle.agent.blocked": "{agent} が対応待ちです",
+  "pushTitle.agent.done": "{agent} が完了しました",
+  "pushTitle.herd.blocked": "{count}件のエージェントが対応待ちです",
+  "pushTitle.herd.done": "{count}件のエージェントが完了しました",
+  "pushTitle.herd.mixed": "{count}件のエージェントに確認が必要です",
+  "pushTitle.update.available": "Collie のアップデートがあります",
+  "pushTitle.cache.cold_soon": "約{minutes}分後にキャッシュが失効します",
 };

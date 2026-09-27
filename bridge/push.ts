@@ -2,6 +2,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import type { PushTitleCode, PushTitleDetail } from "./push-titles.ts";
 
 // Optional Web Push (VAPID). Zero hard dependency: if `web-push` isn't installed or VAPID keys
 // aren't configured, push is silently disabled and the rest of the bridge works unchanged.
@@ -179,6 +180,14 @@ export type PushSender = (
 export interface PushMessage {
   type?: "clear" | "update";
   title?: string;
+  /**
+   * The stable code `title` was rendered from, and the values it was filled with (`push-titles.ts`).
+   * The service worker shows its own translation of the code when it has one and `title` otherwise,
+   * so an older cached SW — which ignores both — keeps showing exactly what it did. A title the
+   * operator typed (`collie push-test "…"`) is not Collie's to translate and carries no code.
+   */
+  titleCode?: PushTitleCode;
+  titleDetail?: PushTitleDetail;
   body?: string;
   /** Notification slot. Same tag replaces (rather than stacks) the previous notification. */
   tag?: string;

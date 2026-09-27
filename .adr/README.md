@@ -104,7 +104,7 @@ the pointer, it was a supersede.
 | [0027](./0027-the-deputy-is-named-ahead-of-time.md) | The deputy is named ahead of time, and takes over on the operator's word | Accepted |
 | [0028](./0028-the-standby-door-is-a-second-listener.md) | The standby door is a second listener that arms on silence (amends 0013) | Accepted |
 | [0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md) | Speech-to-text is a provider seam Collie owns; Codex auth rides the operator's own binary | Accepted |
-| [0030](./0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md) | The UI is translated by a typed dictionary, not an i18n library | Accepted |
+| [0030](./0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md) | The UI is translated by a typed dictionary, not an i18n library | Amended in scope by 0071 |
 | [0031](./0031-freshness-is-a-declared-promise.md) | Freshness, focus and shape are contract promises, not adapter folklore | Accepted |
 | [0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md) | A worktree is opened by the multiplexer, not by Git | Accepted |
 | [0033](./0033-the-app-face-is-a-device-preference.md) | The app's face is a device preference; an operator's fonts add to the list (differs from 0018) | Accepted |
@@ -145,6 +145,7 @@ the pointer, it was a supersede.
 | [0068](./0068-the-second-tab-is-focus-not-attention.md) | The dashboard's second tab is Focus, not Attention: renamed for the same reason "Needs you" was, and `CircleDot` replaces `BellRing`, which read as a notification even in the quiet state (amends 0066 in scope) | Accepted |
 | [0069](./0069-a-row-glides-into-its-header.md) | A row glides into its header: one engine, hand-started same-document view transitions, forward on the tap and reverse only on the in-app back arrow, a crossfade when the landing isn't real, and no frozen screen because a network wait is paid before the transition starts, not during it | Accepted |
 | [0070](./0070-a-pin-is-a-place-the-operator-chose.md) | A pin is a place the operator chose: pinned panes lead Panes, Focus, Changes and the switcher under the summary line, in place order, each listed once, keyed by the row and the workspace name in their own per-device store, pruned only by the operator's acts (amends 0063 and 0066 in scope) | Accepted |
+| [0071](./0071-a-push-title-is-a-code-the-phone-translates.md) | A push title is a code the phone translates: the bridge sends a catalogue code beside its English title, the page leaves the active language's templates in Cache Storage, and the service worker fills them, falling back to the English on any miss (amends 0030 in scope) | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on

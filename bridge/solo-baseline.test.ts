@@ -1091,10 +1091,25 @@ describe("solo zero-tax — notifications", () => {
     const { makeNotifySink } = await import("./notifications.ts");
     const sent: PushMessage[] = [];
     const sink = makeNotifySink({ send: (m: PushMessage) => sent.push(m) }, { isMuted: () => false }, "collie:herd");
-    sink.render({ title: "claude needs you", body: "demo · /home/you", paneId: "p1", renotify: true });
+    sink.render({
+      title: "claude needs you",
+      titleCode: "agent.blocked",
+      titleDetail: { agent: "claude" },
+      body: "demo · /home/you",
+      paneId: "p1",
+      renotify: true,
+    });
     sink.clear();
     expect(sent).toEqual([
-      { title: "claude needs you", body: "demo · /home/you", tag: "collie:herd", paneId: "p1", renotify: true },
+      {
+        title: "claude needs you",
+        titleCode: "agent.blocked",
+        titleDetail: { agent: "claude" },
+        body: "demo · /home/you",
+        tag: "collie:herd",
+        paneId: "p1",
+        renotify: true,
+      },
       { type: "clear", tag: "collie:herd" },
     ]);
     expect(sent.every((m) => !("host" in m))).toBe(true);

@@ -21,9 +21,11 @@
 // (`web/src/sw.ts` § showNotification). One live warning per watched pane is what is wanted; a stack of
 // stale deadlines is not.
 //
-// Push strings are NOT translated (ADR 0030, restated in CLAUDE.md), so the two sentences are written
-// in English here exactly as `"Collie update available"` is at its own send site.
+// The TITLE is a catalogue code (`bridge/push-titles.ts`, ADR 0071), so the phone says it in its own
+// language. The body's closing rule stays English, as every push body does: a body is the pane's own
+// name and place, and this one sentence is the only Collie prose in any of them.
 
+import { pushTitle } from "../push-titles.ts";
 import type { PushMessage } from "../push.ts";
 import { sentMarkOf, watchIdOf, type CacheWarnPane } from "./watch-key.ts";
 
@@ -94,7 +96,7 @@ function warnMessage(pane: CacheWarnPane, warnSeconds: number): PushMessage {
   const msg: PushMessage = {
     // The opaque id rather than the key: a key holds a NUL and, for pi, an absolute path.
     tag: `collie:cache:${watchIdOf(pane.key)}`,
-    title: `Cache goes cold in about ${warnMinutes(warnSeconds)} min`,
+    ...pushTitle("cache.cold_soon", { minutes: warnMinutes(warnSeconds) }),
     // The rule is IN the notification rather than only in the docs, because the docs are not what a
     // phone shows at 300 seconds, and nobody should sit waiting for a second nudge at one minute.
     body: `${body}. One warning per cycle.`,
