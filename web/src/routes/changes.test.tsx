@@ -159,7 +159,8 @@ describe("ChangesRoute — the list", () => {
     const api = await screen.findByRole("region", { name: "api" });
     expect(within(api).getByText(en["changes.thisPane"])).toBeTruthy();
     expect(within(screen.getByRole("region", { name: "webapp" })).queryByText(en["changes.thisPane"])).toBeNull();
-    expect(scroll).toHaveBeenCalledTimes(1);
+    // The scroll is a passive effect, so it can run just after the region the finder resolved on.
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
     expect(scroll.mock.contexts[0]).toBe(api);
     // A re-read keeps the mark and moves nothing.
     await userEvent.click(screen.getByRole("button", { name: en["changes.refreshAria"] }));
