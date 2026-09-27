@@ -55,6 +55,9 @@ const PINNED = [
   "muse--palette-exact.txt",
   "muse--palette-partial.txt",
   "muse--quoted-dialogs-bare.txt",
+  "muse--tasks-popup-approval.txt",
+  "muse--tasks-popup-draft.txt",
+  "muse--tasks-popup.txt",
   "muse--tip-loop.txt",
   "muse--tip-paste.txt",
   "muse--trust-prompt.txt",
@@ -75,6 +78,7 @@ const LIFTED = [
   "muse--ask-toppings-checked.txt",
   "muse--ask-toppings-review.txt",
   "muse--ask-toppings.txt",
+  "muse--tasks-popup-approval.txt",
   "muse--trust-prompt.txt",
 ];
 
@@ -146,6 +150,26 @@ describe("museBuildBlocks", () => {
       ]);
       expect(prompt.prompt.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
     }
+  });
+
+  it("lifts the ls approval from under the tasks popup, signature above the rule", () => {
+    const lines = splitLines(
+      parseAnsi(readFileSync(join(PANES_DIR, "muse--tasks-popup-approval.txt"), "utf8")),
+    );
+    const prompt = museAdapter.buildBlocks(lines).find((b) => b.kind === "prompt-select");
+    expect(prompt?.kind).toBe("prompt-select");
+    if (prompt?.kind !== "prompt-select") return;
+    expect(prompt.prompt.family).toBe("permission");
+    expect(prompt.prompt.question).toBe("Would you like to run the following command?");
+    expect(prompt.prompt.options.map((o) => o.label)).toEqual([
+      "Allow this stage once (y)",
+      "Always allow in this workspace: ls ... (p)",
+      "Abort the entire command (esc)",
+    ]);
+    expect(prompt.prompt.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    // The popup's ticking elapsed must not enter the signature, or every tap races the clock.
+    expect(prompt.prompt.signature).not.toContain("to select");
+    expect(prompt.prompt.signature).not.toContain("muse-spark-1.3");
   });
 
   it("lifts the network approval (both pointer positions) with digit-alone keys", () => {

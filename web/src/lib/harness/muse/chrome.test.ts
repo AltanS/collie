@@ -62,6 +62,12 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     );
   });
 
+  it("reads the draft above the tasks popup, null under its approval", () => {
+    expect(extractInputDraft(lines("muse--tasks-popup-draft.txt"))).toBe("qq");
+    expect(extractInputDraft(lines("muse--tasks-popup.txt"))).toBeNull();
+    expect(extractInputDraft(lines("muse--tasks-popup-approval.txt"))).toBeNull();
+  });
+
   it("returns null for an empty box, the placeholder tip, and dialogs", () => {
     expect(extractInputDraft(lines("muse--fresh-idle.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--working.txt"))).toBeNull();
@@ -99,7 +105,12 @@ describe("the tail walk over blank rows stays inside the box (#274)", () => {
 
 describe("extractStatusLines — the resurfaced statusline", () => {
   it("returns the styled status row on chrome screens, nothing on trust", () => {
-    for (const name of ["muse--fresh-idle.txt", "muse--done.txt", "muse--approval-ls.txt"]) {
+    for (const name of [
+      "muse--fresh-idle.txt",
+      "muse--done.txt",
+      "muse--approval-ls.txt",
+      "muse--tasks-popup.txt",
+    ]) {
       const rows = extractStatusLines(lines(name));
       expect(rows.length, name).toBe(1);
       expect(lineText(rows[0]!).trim().startsWith("muse-spark-1.3"), name).toBe(true);
@@ -123,12 +134,29 @@ describe("stripChrome — the composer tail off the mirror", () => {
     const trust = lines("muse--trust-prompt.txt");
     expect(stripChrome(trust)).toBe(trust);
   });
+
+  it("cuts the tasks popup with the tail chrome, keeps its transcript rows", () => {
+    for (const name of ["muse--tasks-popup.txt", "muse--tasks-popup-draft.txt"]) {
+      const before = lines(name);
+      const after = stripChrome(before);
+      expect(after.length, name).toBeLessThan(before.length);
+      const text = after.map((l) => lineText(l)).join("\n");
+      expect(text, name).not.toContain("↓ to select");
+      expect(text, name).not.toContain("muse-spark-1.3");
+      // The popup goes; the transcript's own Backgrounded/Finished rows stay, so the
+      // operator still sees the tasks lived.
+      expect(text, name).toContain("Run sleep delay command");
+      expect(text, name).toContain("Started.");
+    }
+  });
 });
 
 describe("composerPrompt — the sweep's binding region", () => {
   it("names the ❯ row verbatim when the composer is ready", () => {
     expect(composerPrompt(lines("muse--draft-single.txt"))).toBe("❯ hello muse draft");
     expect(composerPrompt(lines("muse--fresh-idle.txt"))).toBe("❯");
+    expect(composerPrompt(lines("muse--tasks-popup.txt"))).toBe("❯");
+    expect(composerPrompt(lines("muse--tasks-popup-draft.txt"))).toBe("❯ qq");
   });
 
   it("is null exactly where composerReady is false", () => {
@@ -140,6 +168,7 @@ describe("composerPrompt — the sweep's binding region", () => {
       "muse--ask-toppings-review.txt",
       "muse--trust-prompt.txt",
       "muse--ask-color-notes-open.txt",
+      "muse--tasks-popup-approval.txt",
     ]) {
       expect(composerReady(lines(name)), name).toBe(false);
       expect(composerPrompt(lines(name)), name).toBeNull();

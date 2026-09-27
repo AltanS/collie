@@ -9,6 +9,8 @@
 //     ❯ <draft…>                       (bare while a dialog owns the keyboard)
 //       <continuations…>
 //     ─────────────────                 (full-width bottom rule)
+//     main · … / ├/└ <task>             (background-tasks popup, §5 — tolerated
+//                                        chrome while tasks exist, never lifted)
 //       muse-spark-1.3 · …              (opaque statusline)
 //
 //   - Approval REPLACES the box (no ❯ row): command (`Would you like to run the following
@@ -39,7 +41,10 @@
 //   2. The `/resume` picker, `/tasks` drawer and `/workflows` room are unmeasured (outside
 //      the dialog notes' scope): if one leaves a live ❯ below it, the pre-flight types into it and type-then-verify
 //      withholds the submit key (a stall, not a misfire — the backstop holds where the pre-flight
-//      cannot see). See composerReady. The slash palette is measured narrowly (#276): one
+//      cannot see). See composerReady. (The drawer's INLINE sibling, the background-tasks popup
+//      between the bottom rule and the statusline, IS measured — DIALOG_NOTES.md §5 — and is
+//      tolerated as chrome rather than lifted, because the composer stays live under it.) The
+//      slash palette is measured narrowly (#276): one
 //      suggestion row naming the exact slash-led prompt reads as the prompt alone (Enter submits
 //      the exact match); partial or multi-row palettes keep the stalling read, because Enter
 //      there accepts the suggestion rather than submitting the typed text.

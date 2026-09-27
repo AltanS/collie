@@ -28,6 +28,7 @@ describe("detector disjointness — each dialog lifts under exactly one grammar"
     ["muse--ask-toppings-review.txt", "checkbox"],
     ["muse--ask-drinks.txt", "checkbox"],
     ["muse--trust-prompt.txt", "trust"],
+    ["muse--tasks-popup-approval.txt", "approval"],
   ];
   it.each(cases)("%s lifts only as %s", (name, kind) => {
     const ls = lines(name);
@@ -48,6 +49,8 @@ describe("detector disjointness — each dialog lifts under exactly one grammar"
       "muse--ask-color-notes-open.txt",
       "muse--ask-color-notes-typed.txt",
       "muse--ask-toppings-notes-open.txt",
+      "muse--tasks-popup.txt",
+      "muse--tasks-popup-draft.txt",
     ]) {
       const ls = lines(name);
       expect(detectApproval(ls), `${name}/approval`).toBeNull();
