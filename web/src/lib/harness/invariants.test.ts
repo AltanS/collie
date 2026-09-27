@@ -326,7 +326,16 @@ const COMPOSERS: Composer[] = [
   {
     name: "muse",
     adapter: museAdapter,
-    frames: ["muse--fresh-idle.txt", "muse--draft-single.txt", "muse--draft-wrapped.txt", "muse--done.txt"],
+    frames: [
+      "muse--fresh-idle.txt",
+      "muse--draft-single.txt",
+      "muse--draft-wrapped.txt",
+      "muse--done.txt",
+      // The background-tasks popup between the bottom rule and the statusline (#304): the box stays
+      // live over it, so a draft reads back and a repaint keeps it ready here too.
+      "muse--tasks-popup.txt",
+      "muse--tasks-popup-draft.txt",
+    ],
     band(texts) {
       const found = promptAboveCloser(texts, "❯", isBareRule);
       if (found === null) return null;
