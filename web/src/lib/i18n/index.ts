@@ -1,6 +1,7 @@
 import { hasDocument } from "../env";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "./locale";
 import { en, type Dictionary, type MessageKey } from "./messages/en";
+import { interpolate, type TemplateVars } from "./template";
 
 // The translation runtime: one module-scoped store, one lookup function, one plural function.
 //
@@ -25,11 +26,7 @@ export type { Locale } from "./locale";
 export { LOCALES, DEFAULT_LOCALE, isLocale, type LocaleOption } from "./locale";
 export type { MessageKey, Messages, Dictionary } from "./messages/en";
 
-/** Values for a message's `{slot}`s. An interface (not `Record<string, …>`) so the index signature
- *  has a named owner — see ADR 0019, `no-known-value-widening`. */
-export interface TemplateVars {
-  readonly [slot: string]: string | number;
-}
+export type { TemplateVars } from "./template";
 
 /** The bases of the `.one`/`.other` pairs in English — the only keys `tn()` accepts. Extracting
  *  them from `MessageKey` means adding a plural pair to `en.ts` is all it takes to make it
@@ -143,21 +140,6 @@ function activeLocale(): Locale {
   return loaded.has(state.locale) ? state.locale : DEFAULT_LOCALE;
 }
 
-/**
- * Fill a message's `{slot}`s.
- *
- * split/join, NOT `String.replaceAll` — the replacement half of `replaceAll` interprets `$&`, `$'`
- * and `$1`, so a value containing a dollar sign would be mangled into a capture reference. Nor is a
- * `RegExp` built from the slot name, which would let a key's punctuation become syntax.
- */
-function interpolate(template: string, vars: TemplateVars | undefined): string {
-  if (vars === undefined) return template;
-  let out = template;
-  for (const [slot, value] of Object.entries(vars)) {
-    out = out.split(`{${slot}}`).join(String(value));
-  }
-  return out;
-}
 
 /** Translate one key into the active language, filling any `{slot}`s. */
 export function t(key: MessageKey, vars?: TemplateVars): string {

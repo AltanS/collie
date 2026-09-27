@@ -1344,4 +1344,13 @@ export const ko: Dictionary = {
   "settings.changes.depth.hint": "창 폴더 아래의 폴더 단계입니다.",
   "settings.changes.depth.levels.one": "{count}단계",
   "settings.changes.depth.levels.other": "{count}단계",
+
+  // --- pushTitle ---
+  "pushTitle.agent.blocked": "{agent} 입력 대기",
+  "pushTitle.agent.done": "{agent} 작업 완료",
+  "pushTitle.herd.blocked": "에이전트 {count}개 입력 대기",
+  "pushTitle.herd.done": "에이전트 {count}개 작업 완료",
+  "pushTitle.herd.mixed": "에이전트 {count}개 확인 필요",
+  "pushTitle.update.available": "Collie 업데이트 가능",
+  "pushTitle.cache.cold_soon": "약 {minutes}분 후 캐시 만료",
 };

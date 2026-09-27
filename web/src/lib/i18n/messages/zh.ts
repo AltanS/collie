@@ -1330,4 +1330,13 @@ export const zh: Dictionary = {
   "settings.changes.depth.hint": "窗格文件夹之下的文件夹层级数。",
   "settings.changes.depth.levels.one": "{count} 层",
   "settings.changes.depth.levels.other": "{count} 层",
+
+  // --- pushTitle ---
+  "pushTitle.agent.blocked": "{agent} 待处理",
+  "pushTitle.agent.done": "{agent} 已完成",
+  "pushTitle.herd.blocked": "{count} 个 Agent 待处理",
+  "pushTitle.herd.done": "{count} 个 Agent 已完成",
+  "pushTitle.herd.mixed": "{count} 个 Agent 需要关注",
+  "pushTitle.update.available": "Collie 有可用更新",
+  "pushTitle.cache.cold_soon": "缓存约 {minutes} 分钟后失效",
 };

@@ -5,6 +5,7 @@ import { clientsClaim } from "workbox-core";
 
 import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
 import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
+import { readPushTitles } from "./lib/push-title-store";
 import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
 
 // Where this worker is mounted (ADR 0052): the directory it was fetched from, which is the mount
@@ -176,7 +177,12 @@ async function handlePush(event: PushEvent): Promise<void> {
     payload = { body: event.data?.text() };
   }
 
-  const decision = decidePush(payload, await anyVisibleClient());
+  // The title in this device's language, from the table the page left (lib/push-titles.ts, ADR 0071).
+  // Read only for a push that names a code: a retraction or an operator-typed test has nothing to
+  // translate, and must not wait on storage.
+  const templates =
+    payload.titleCode === undefined ? {} : await readPushTitles(self.caches, self.location.origin, MOUNT);
+  const decision = decidePush(payload, await anyVisibleClient(), templates);
   if (decision.kind === "suppress") return; // a visible Collie tab already surfaces it in-app
   if (decision.kind === "clear") {
     // Retraction: close the slot and show nothing. Chrome's silent-push budget tolerates this.

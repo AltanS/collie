@@ -48,6 +48,7 @@ import { TMUX_BINARY_OPTION } from "./mux/tmux/adapter.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import { ZELLIJ_BINARY_OPTION } from "./mux/zellij/adapter.ts";
 import { NotificationCoordinator, makeNotifySink, type NotifyClock } from "./notifications.ts";
+import { pushTitle } from "./push-titles.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
 import { filePairingIo, PairingStore } from "./pairing.ts";
@@ -760,7 +761,7 @@ const updateMonitor = new UpdateMonitor({
       // release page carry the location-independent Herdr actions. Keeps this off the cwd-dependent path.
       // The TITLE never moves, not even for an urgent release (ADR 0046): the notification is the same
       // kind of thing it always was, and what makes it urgent is the first sentence of the body.
-      title: "Collie update available",
+      ...pushTitle("update.available"),
       body: updateDigestBody(currentVersion, versions, linkChange, urgent),
       target: "settings",
     }),

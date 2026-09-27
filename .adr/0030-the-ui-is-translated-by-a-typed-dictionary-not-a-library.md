@@ -2,6 +2,11 @@
 
 Status: **Accepted** (2026-08-24)
 
+Amended in scope by: [ADR 0071](./0071-a-push-title-is-a-code-the-phone-translates.md): a push
+notification's title is now translated, through a code the bridge sends beside its English and a
+template table the page leaves for the service worker; push bodies and the service worker's own
+strings stay untranslated, and everything else below stands.
+
 Related: [ADR 0019](./0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md) (the `tsc` gate this
 decision rides) · [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) (why the
 terminal's own text is out of scope for translation) · [ADR 0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md)
