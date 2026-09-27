@@ -152,6 +152,15 @@ export default defineConfig({
       // (`vite.config.ts` sets `devOptions: { enabled: false }`), so a dev server would test a
       // different app. `bun run e2e` runs `vite build` before this starts.
       command: `bunx vite preview --host 127.0.0.1 --port ${APP_PORT} --strictPort`,
+      // THE PROXY POINTS NOWHERE. `vite preview` inherits `server.proxy` (Vite resolves
+      // `preview.proxy ?? server.proxy`), so an `/api/*` request the fixture never sees goes to
+      // `COLLIE_DEV_TARGET`, 127.0.0.1:8787 by default: on the workspace host that is the LIVE
+      // release lane. The fixture misses a request when a service worker has claimed the page (see
+      // `e2e/issue-180.spec.ts`) and, under WebKit, when a poll is still in flight as the page
+      // closes. On 2026-09-27 the first kind read the release lane's real snapshot and pane list in
+      // `e2e/composer-clear.spec.ts`. Port 9 has no listener, so a missed request gets Vite's own
+      // 502 here, the same answer CI gives, and never reaches a bridge.
+      env: { COLLIE_DEV_TARGET: "http://127.0.0.1:9" },
       url: APP_BASE_URL,
       reuseExistingServer: !process.env.CI,
       stdout: "ignore",
