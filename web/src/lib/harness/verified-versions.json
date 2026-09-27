@@ -16,11 +16,11 @@
       "evidence": "canary run 20260927T064528Z (Codex 0.157.1 from a scratch npm prefix, #294): idle, drafts, sends, narrow, dialogs, busy pass; start-exit known gap (ADR 0053 addendum)"
     },
     "grok": {
-      "version": "1.0.5",
-      "verified": "2026-08-23",
+      "version": "1.0.41",
+      "verified": "2026-09-27",
       "how": "capture",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md § \"Grok corpus (live panes 2026-08-21-23)\"; web/src/lib/harness/grok/PERMISSION_NOTES.md, ASK_NOTES.md, PLAN_NOTES.md name Grok Build 1.0.5"
+      "evidence": "web/src/fixtures/panes/grok--reporter-294-draft-newline-hint.txt (a reporter's Grok Build 1.0.41 capture, issue #294): the draft screen only; the dialog grammars were last seen on 1.0.5 (README § \"Grok corpus (live panes 2026-08-21-23)\")"
     },
     "omp": {
       "version": "18.1.19",

@@ -27,6 +27,7 @@ const COMPOSER_FIXTURES = [
   "grok--draft-single.txt",
   "grok--draft-wrapped.txt",
   "grok--fresh-idle.txt",
+  "grok--reporter-294-draft-newline-hint.txt",
   "grok--working.txt",
 ];
 
@@ -37,6 +38,7 @@ describe("locateComposer — the real corpus", () => {
     { fixture: "grok--draft-wrapped.txt", top: 2, bottom: 5 },
     { fixture: "grok--working.txt", top: 3, bottom: 5 },
     { fixture: "grok--done.txt", top: 8, bottom: 10 },
+    { fixture: "grok--reporter-294-draft-newline-hint.txt", top: 44, bottom: 46 },
   ];
 
   it.each(PINNED)("$fixture locates the box", ({ fixture, top, bottom }) => {
@@ -106,6 +108,12 @@ describe("extractStatusLines / extractInputDraft", () => {
 
   it("recovers a one-line stranded draft", () => {
     expect(extractInputDraft(fixtureLines("grok--draft-single.txt"))).toBe("testing stuff");
+  });
+
+  it("reads the draft under Grok 1.0.41's newline hint (#294)", () => {
+    expect(extractInputDraft(fixtureLines("grok--reporter-294-draft-newline-hint.txt"))).toBe(
+      "Please reply with exactly: issue294-grok-ok",
+    );
   });
 
   it("folds a wrapped draft back into one line", () => {

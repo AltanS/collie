@@ -115,9 +115,14 @@ export function opensBox(text: string): boolean {
 // refused on the same reasoning, but a live capture proved it real chrome, not a torn frame
 // — see isStatusChipRow below.
 //
-// Longer tokens first so `Tab/Space` is not read as `Tab` and `Enter` is not read as `E`.
-const HINT_SEGMENT =
-  /^(?:(?:Shift|Ctrl)\+(?:Tab|Space|Esc|Enter|Up|Down|[A-Za-z.])|Tab\/Space|Tab|Space|Esc|Enter|Up|Down|[A-Za-z]):\S/;
+// Grok 1.0.41 (issue #294, a reporter's capture on macOS) adds `Shift+Enter/Opt+Enter:newline` to
+// the draft's bar: two chords for one act, joined by `/`. A chord list is read the way `Tab/Space`
+// always was. `Alt` is not captured; it is the Linux name for the key macOS calls `Opt`, allowed so
+// a Linux Grok does not lose its box the same way.
+//
+// Longer tokens first so `Enter` is not read as `E`.
+const HINT_CHORD = String.raw`(?:(?:Shift|Ctrl|Opt|Alt)\+(?:Tab|Space|Esc|Enter|Up|Down|[A-Za-z.])|Tab|Space|Esc|Enter|Up|Down)`;
+const HINT_SEGMENT = new RegExp(String.raw`^(?:${HINT_CHORD}(?:\/${HINT_CHORD})*|[A-Za-z]):\S`);
 
 /**
  * True when the row is Grok's key-hint bar. Used to refuse a composer whose "hint run" is

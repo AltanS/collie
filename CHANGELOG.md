@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **Grok 1.0.41 panes send from the phone again.** Grok 1.0.41 adds `Shift+Enter/Opt+Enter:newline` to the key-hint row under its input box while a draft is in it. Collie did not know a hint with two keys joined by `/`, so it lost the input box as soon as the phone typed the message: the send stopped with "Message didn't reach the input box", and the unread-dialog card covered the pane. Collie now reads that hint, and the `Alt` spelling a Linux Grok may print. Every other saved pane reads as before. Thanks @CorrectRoadH for the pane capture (#294).
+
 ## [1.14.0] - 2026-09-27
 
 ### Added

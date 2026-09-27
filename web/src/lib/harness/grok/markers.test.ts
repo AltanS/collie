@@ -24,6 +24,12 @@ describe("isComposerHint", () => {
       isComposerHint("  Ctrl+e:expand thinking  │  Space:prompt  │  Esc:cancel  │  Ctrl+b:send to bg  │  Ctrl+.:shortcuts"),
     ).toBe(true);
     expect(isComposerHint("  a:approve  │  Tab:plan  │  Esc:back")).toBe(true);
+    // Grok 1.0.41's draft bar (#294): one act, two chords joined by `/`.
+    expect(
+      isComposerHint("  Enter:send  │  Shift+Enter/Opt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+.:shortcuts"),
+    ).toBe(true);
+    // Not captured: the Linux name for the same key.
+    expect(isComposerHint("  Enter:send  │  Shift+Enter/Alt+Enter:newline")).toBe(true);
   });
 
   it("rejects ordinary transcript, chips, and colon-shaped noise", () => {
@@ -31,6 +37,9 @@ describe("isComposerHint", () => {
     expect(isComposerHint("error: failed to start")).toBe(false);
     expect(isComposerHint("error:this looks like a colon")).toBe(false);
     expect(isComposerHint("foo:bar")).toBe(false);
+    expect(isComposerHint("a/b:c")).toBe(false);
+    expect(isComposerHint("Shift+Enter/:newline")).toBe(false);
+    expect(isComposerHint("Shift+Enter/foo:bar")).toBe(false);
     expect(isComposerHint("[stable]")).toBe(false);
     expect(isComposerHint("  [stable]  ")).toBe(false);
   });
