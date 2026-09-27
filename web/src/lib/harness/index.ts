@@ -6,6 +6,7 @@
 // (and any future agent's) run; every non-adapter agent keeps the pure raw mirror.
 
 import { lineText, type Block, type StyledLine } from "../blocks";
+import { reflowRawLines } from "../reflow";
 import { adapterFor, hasBlockGrammar } from "./registry";
 import { unreadDialogSignature } from "./unread-dialog-model";
 import type { HarnessAdapter } from "./types";
@@ -42,7 +43,23 @@ export function buildBlocks(
   // un-marked mirror — the card renders the region itself, and a native-mirror agent's region has to
   // arrive the way the mirror would have drawn it. With `grammars: false` there is no adapter, so the
   // raw-terminal pref still switches the card off for free.
-  return withUnreadDialog(adapter, lines, decorateNativeMirror(blocks, ctx));
+  const withCard = withUnreadDialog(adapter, lines, decorateNativeMirror(blocks, ctx));
+  // Prose reflow runs absolutely last, over raw blocks only: detection saw physical rows, the
+  // card's region and signature stay physical, and find/links/copy derive from the same reflowed
+  // lines the mirror draws. Skipped with `grammars: false` — the raw-terminal pref is the
+  // byte-faithful escape hatch, and reflow rewrites newlines by design.
+  if (ctx?.grammars === false || !rendersNativeMirror(ctx?.agent, ctx?.nativeMirror)) {
+    return withCard;
+  }
+  let changed = false;
+  const reflowed = withCard.map((block) => {
+    if (block.kind !== "raw") return block;
+    const next = reflowRawLines(block.lines);
+    if (next === block.lines) return block;
+    changed = true;
+    return { ...block, lines: next };
+  });
+  return changed ? reflowed : withCard;
 }
 
 /** The native display passes (.adr/0047), unchanged: bright-foreground marks for the light native
