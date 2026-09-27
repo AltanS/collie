@@ -30,6 +30,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Docs
+
+- **A walkthrough for running Claude Code from your phone.** `docs/claude-code-on-your-phone.md`
+  takes one path end to end, from install to answering an agent from the Keys tray, and
+  `collie docs claude-code-on-your-phone` prints it.
+
 ## [1.14.1] - 2026-09-27
 
 ### Fixed

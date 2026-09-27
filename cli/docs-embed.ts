@@ -17,6 +17,7 @@
 // lands in `docs/` without a line below. The root contributor specifications are deliberately not
 // here: the largest of them is 194 KB on its own, and an agent that needs them has the checkout.
 
+import claudeCodeOnYourPhone from "../docs/claude-code-on-your-phone.md" with { type: "text" };
 import commands from "../docs/commands.md" with { type: "text" };
 import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
@@ -44,7 +45,7 @@ export interface DocPage {
 }
 
 /**
- * The ten pages in an OPERATOR'S READING ORDER — install first, troubleshooting last — and never
+ * The eleven pages in an OPERATOR'S READING ORDER — install first, troubleshooting last — and never
  * alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
@@ -52,6 +53,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "install",
     purpose: "Requirements, the two routes in, first run, and opening it on your phone",
     text: install,
+  },
+  {
+    name: "claude-code-on-your-phone",
+    purpose: "One path end to end: Claude Code in a pane, answered from your phone",
+    text: claudeCodeOnYourPhone,
   },
   {
     name: "configure",
