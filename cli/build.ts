@@ -66,7 +66,7 @@ export const webStaging = (root: string): string => join(root, "web", "dist-stag
  * Writing into the live path instead can corrupt a running process mid-read: a Bun single-file
  * executable carries its payload INSIDE the file.
  */
-export const collieBinaryStaging = (root: string): string => `${collieBinary(root)}.new`;
+export const collieBinaryStaging = (root: string): string => join(root, "bin", "collie.new");
 
 /**
  * The file `bun build --compile --outfile <path>` actually writes. On Windows Bun appends `.exe` to
@@ -233,7 +233,7 @@ export function compileCli(deps: CliCompileDeps, options: CliCompileOptions = {}
 
   const bun = options.bun ?? "bun";
   const target = options.target ?? "bun";
-  const output = resolve(options.outfile ?? collieBinary(paths.root));
+  const output = resolve(options.outfile ?? collieBinary(paths.root, deps.platform));
   let compiled = false;
   try {
     compiled = step(
@@ -281,7 +281,7 @@ export function compileCliToLive(
   }
 
   try {
-    const live = compiledPath(collieBinary(paths.root), deps.platform);
+    const live = collieBinary(paths.root, deps.platform);
     deps.files.rename(compiledPath(output, deps.platform), live);
   } catch (err) {
     deps.io.err(`error: could not publish the compiled collie binary (${String(err)})`);
@@ -375,7 +375,7 @@ export function cmdBuild(deps: BuildDeps): number {
   }
 
   // 6. The swaps, last. The binary first because it is the smaller window, then the served bundle.
-  deps.files.rename(binaryWritten, compiledPath(collieBinary(root), deps.platform));
+  deps.files.rename(binaryWritten, collieBinary(root, deps.platform));
   deps.files.removeTree(webDist(root));
   deps.files.rename(staging, webDist(root));
   return EXIT.OK;

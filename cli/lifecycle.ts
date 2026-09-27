@@ -228,6 +228,74 @@ export function stopPidfileProcess(deps: LifecycleDeps): void {
   deps.files.remove(pidFile);
 }
 
+// ── Windows: the community supervisor's bridge ───────────────────────────────
+
+/**
+ * The record `contrib/windows/collie-ctl.ps1` keeps for the bridge it supervises from Task
+ * Scheduler: `<launcher pid>|<bridge pid>`, with `0` for the bridge while its loop is between two
+ * launches. Nothing in `cli/` writes it; it is read here only so a restart can find that bridge.
+ */
+export const windowsProcessRecordPath = (configDir: string): string =>
+  join(configDir, "collie-processes");
+
+/** Windows paths compare without regard to case or separator, as the OS resolves them. */
+const windowsPathKey = (s: string): string => s.replaceAll("\\", "/").toLowerCase();
+
+/**
+ * Restart the bridge `contrib/windows/collie-ctl.ps1` supervises, by stopping the bridge process
+ * ALONE. That script's loop relaunches a bridge that exits non-zero, from this checkout, so the
+ * restart needs nothing else. Stopping the `herdr.collie` task instead could take the processes it
+ * started with it, and the phone's Update button runs `collie update` as a detached child of the
+ * bridge: the update would end half way through its own restart, the failure #213 fixed on macOS.
+ *
+ * The kill is justified the way the script's own `Stop-RecordedCollieProcesses` justifies it: the
+ * recorded pid must still be a process running this checkout's `bridge/index.ts`, because pids are
+ * recycled and the record outlives its process.
+ *
+ * Returns `null` off Windows, or when there is no record — the caller keeps the path it had, so a
+ * host without the community lifecycle behaves exactly as before.
+ */
+export async function restartWindowsSupervised(deps: LifecycleDeps): Promise<number | null> {
+  if (deps.platform !== "win32") return null;
+  const raw = deps.files.read(windowsProcessRecordPath(deps.ctx.configDir));
+  if (raw === null) return null;
+
+  const record = /^(\d+)\|(\d+)$/.exec(raw.trim());
+  if (record === null) {
+    deps.io.err(`error: unreadable bridge record in ${windowsProcessRecordPath(deps.ctx.configDir)}: ${raw.trim()}`);
+    deps.io.err("       restart it with contrib\\windows\\collie-ctl.ps1 restart");
+    return EXIT.FAIL;
+  }
+
+  const bridgePid = Number(record[2]);
+  if (bridgePid > 1) {
+    const command = deps.exec.processCommand(bridgePid);
+    const script = join(deps.ctx.root, "bridge", "index.ts");
+    if (command === null || !windowsPathKey(command).includes(windowsPathKey(script))) {
+      deps.io.err(`error: the recorded bridge (pid ${bridgePid}) is not this checkout's bridge — not stopping it`);
+      deps.io.err("       restart it with contrib\\windows\\collie-ctl.ps1 restart");
+      return EXIT.FAIL;
+    }
+    deps.exec.kill(bridgePid);
+    deps.io.out(`bridge stopped (pid ${bridgePid}); the Task Scheduler supervisor relaunches it`);
+  } else {
+    // `0` is the loop between two launches: the next one already reads this checkout.
+    deps.io.out("the Task Scheduler supervisor is already relaunching the bridge");
+  }
+
+  // The loop waits a few seconds before it relaunches, and the bridge then has to come up. Say
+  // whether it did, rather than printing a banner over a bridge that is still starting.
+  for (let attempt = 0; attempt < WINDOWS_RELAUNCH_WAIT_S; attempt++) {
+    if (await deps.ready(deps.ctx.port, dialableBridgeHost(deps.ctx.env))) break;
+    await deps.sleep(1000);
+  }
+  await printStatusBanner(deps);
+  return EXIT.OK;
+}
+
+/** How long a Windows restart waits for the relaunched bridge before reporting what it sees. */
+const WINDOWS_RELAUNCH_WAIT_S = 30;
+
 // ── Writing the service definition ───────────────────────────────────────────
 
 /**
@@ -236,7 +304,7 @@ export function stopPidfileProcess(deps: LifecycleDeps): void {
  * contract: say so, and exit non-zero, rather than installing a unit that can never start.
  */
 function requireBinary(deps: LifecycleDeps): boolean {
-  const binary = collieBinary(deps.ctx.root);
+  const binary = collieBinary(deps.ctx.root, deps.platform);
   if (deps.files.exists(binary)) return true;
   deps.io.err(`error: no collie binary at ${binary} — build one with \`bun run build:cli\``);
   return false;
@@ -483,6 +551,12 @@ export async function cmdRestart(deps: LifecycleDeps): Promise<number> {
   // who cannot answer it right now is left with no bridge at all, on a verb whose name promises one.
   const chosen = await ensureMuxChosen(deps);
   if (chosen !== EXIT.OK) return chosen;
+
+  // Windows has no tier here: its supervisor is `contrib/windows/collie-ctl.ps1`, and `stop`/`start`
+  // on the unsupervised tier would neither find its bridge nor leave it alone — they would start a
+  // second one beside it. When that supervisor's record is present, restart its bridge instead.
+  const windows = await restartWindowsSupervised(deps);
+  if (windows !== null) return windows;
 
   const stopped = cmdStop(deps);
   if (stopped !== EXIT.OK) return stopped;

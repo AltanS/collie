@@ -57,9 +57,17 @@ export interface ServiceSpec {
   tailscaleHosts: string;
 }
 
-/** Where the compiled binary lives relative to its checkout — the one place that layout is written down. */
-export function collieBinary(root: string): string {
-  return join(root, "bin", "collie");
+/**
+ * Where the compiled binary lives relative to its checkout — the one place that layout is written down.
+ *
+ * On Windows the file is `bin/collie.exe`: Bun's compiler appends the extension, and an existence
+ * check on the bare name is never true there, which failed `requireBinary()` on every restart and
+ * made `installIsIntact()` rebuild on every update. Spawning the bare name still resolves, so the
+ * callers that only launch it never noticed. `platform` defaults to the host's and is injected in
+ * tests, so the Windows spelling is pinned on Linux CI.
+ */
+export function collieBinary(root: string, platform: string = process.platform): string {
+  return join(root, "bin", platform === "win32" ? "collie.exe" : "collie");
 }
 
 export function serviceSpec(ctx: CliContext, tailscaleHosts = ""): ServiceSpec {

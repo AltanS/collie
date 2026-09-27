@@ -160,7 +160,7 @@ export interface Exec {
     command: readonly string[],
     opts: { cwd: string; env: Record<string, string>; logPath: string },
   ): number | null;
-  /** `ps -p <pid> -o command=` — the process's command line, or null if there is no such process. */
+  /** `ps -p <pid> -o command=` (`Win32_Process` on Windows) — the process's command line, or null if there is no such process. */
   processCommand(pid: number): string | null;
   kill(pid: number): void;
 }
@@ -537,6 +537,7 @@ export function realExec(rawEnv: Environment, home: string): Exec {
       }
     },
     processCommand(pid) {
+      if (process.platform === "win32") return windowsProcessCommand(resolve("powershell"), pid, env);
       const bin = resolve("ps");
       if (bin === null) return null;
       const r = Bun.spawnSync([bin, "-p", String(pid), "-o", "command="], {
@@ -555,6 +556,26 @@ export function realExec(rawEnv: Environment, home: string): Exec {
     },
   };
 }
+
+/**
+ * {@link Exec.processCommand} on Windows, where there is no `ps` that takes `-o` (Git's MSYS `ps`
+ * does not), so the answer was always null and no recorded pid could ever be recognised. Asked the
+ * way `contrib/windows/collie-ctl.ps1` asks it, through `Win32_Process`. The bound is generous
+ * because Windows PowerShell can take tens of seconds to start under Task Scheduler.
+ */
+function windowsProcessCommand(powershell: string | null, pid: number, env: Environment): string | null {
+  if (powershell === null || !Number.isInteger(pid) || pid <= 0) return null;
+  const query = `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`;
+  const r = Bun.spawnSync([powershell, "-NoProfile", "-NonInteractive", "-Command", query], {
+    env,
+    timeout: WINDOWS_PROCESS_QUERY_TIMEOUT_MS,
+  });
+  if (r.exitCode !== 0) return null;
+  const out = r.stdout.toString().trim();
+  return out === "" ? null : out;
+}
+
+const WINDOWS_PROCESS_QUERY_TIMEOUT_MS = 60_000;
 
 export const realFiles: Files = {
   exists: (p) => existsSync(p),

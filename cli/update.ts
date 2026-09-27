@@ -844,7 +844,7 @@ const releaseCore = (v: string): string => (v.split("+")[0] ?? v).replace(/-(?:d
  */
 function installIsIntact(deps: UpdateDeps): boolean {
   const root = deps.ctx.root;
-  if (!deps.files.exists(collieBinary(root))) return false;
+  if (!deps.files.exists(collieBinary(root, deps.platform))) return false;
   const manifest = manifestVersionFrom(deps.files.read(join(root, "herdr-plugin.toml")));
   const built = readBuildInfo(deps.files.read(join(root, "web", "dist", "build-info.json")));
   if (manifest === null || built === null) return false;
