@@ -35,6 +35,7 @@ import {
   parsePaletteRow,
   promptRowText,
   rstrip,
+  tasksPopupNamesStopKey,
 } from "./markers";
 
 // How far above the composer to scan for an open note row. The dialog sits directly above the box
@@ -180,7 +181,8 @@ export function hasComposer(lines: StyledLine[]): boolean {
  * dialogs leave the box strictly bare, so a detector match above a bare box refuses; the same
  * shapes above a placeholder or draft box are quoted transcript and stay sendable (#260).
  * Approval replaces the box and trust is pre-session, so both fail on the geometry alone — and
- * are still consulted, so a future chrome change cannot silently re-open them.
+ * are still consulted, so a future chrome change cannot silently re-open them. A tasks popup that
+ * holds focus and names `x to stop` refuses too ({@link tasksPopupHoldsStopKey}).
  *
  * Known limitation, documented rather than guessed at: the command palette, `/resume` picker,
  * `/tasks` drawer and `/workflows` room are unmeasured (outside DIALOG_NOTES.md's scope). If one of them leaves a live
@@ -193,7 +195,21 @@ export function composerReady(lines: StyledLine[]): boolean {
   if (detectTrustRegion(lines) !== null) return false;
   if (hasOpenNote(lines)) return false;
   if (boxIsBare(lines) && liveDialogOwnsKeyboard(lines)) return false;
+  if (tasksPopupHoldsStopKey(lines)) return false;
   return hasComposer(lines);
+}
+
+/**
+ * True when the tasks popup under the box holds focus on a running task: its header then reads
+ * `main · Enter to view · x to stop` (DIALOG_NOTES.md §5). The box takes typed text in that state,
+ * but the header says `x` stops the task, so a message that starts with `x` could stop it instead.
+ * The composer refuses, and the unread-dialog card's Escape (probed: it dismisses the popup) is the
+ * way back. Unfocused, the header names no key the popup answers, and the box is ready as before.
+ */
+function tasksPopupHoldsStopKey(lines: StyledLine[]): boolean {
+  const tail = locateTail(lines);
+  if (tail === null || tail.popup === null) return false;
+  return tasksPopupNamesStopKey(lineText(lines[tail.popup]!));
 }
 
 // Mirror of the bridge's tail window (bridge/prompt-binding.ts DEFAULT_PROMPT_TAIL_LINES): the

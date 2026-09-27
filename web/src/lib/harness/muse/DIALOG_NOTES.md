@@ -294,6 +294,15 @@ aborts the command; the Keys pad still reaches the digits. No capture shows
 the popup under a question or checkbox dialog, or with three tasks: the
 tests build those screens from the captured rows.
 
+A focused popup refuses the composer (added at merge, 2026-09-27). While the
+header names `x to stop`, `composerReady` answers false. Typed text did land
+in the box with the popup focused, but the header says `x` stops the task,
+and the probe above does not record an `x` typed in that state. So the phone
+does not type there. It shows the unread-dialog card, whose Escape dismisses
+the popup. `Enter to view` alone names no key a message could start with, so
+that header stays ready. No capture holds the focused header; the tests
+rewrite the captured header row.
+
 ## Decisions the adapter rests on
 
 - **The guarded reply path.** Registering the adapter moves Muse panes off one-shot sends onto

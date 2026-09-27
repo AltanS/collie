@@ -74,6 +74,17 @@ export function isTasksPopupRow(text: string): boolean {
   return TASKS_POPUP_ROW.test(rstrip(text));
 }
 
+// While the popup holds focus its header names the keys it answers: `main · Enter to view · x to
+// stop` (DIALOG_NOTES.md §5). `x` stops the selected task, and a typed message is keys, so while
+// the header names `x` the box does not own every key. The one hint matched on its words, because
+// focus itself is drawn in colour alone, and the match only ever refuses.
+const TASKS_POPUP_STOP_HINT = / · x to stop$/;
+
+/** True when a popup header names `x to stop`: the popup holds focus on a running task. */
+export function tasksPopupNamesStopKey(text: string): boolean {
+  return isTasksPopupHeader(text) && TASKS_POPUP_STOP_HINT.test(rstrip(text));
+}
+
 // The statusline (`  muse-spark-1.3 · max · <cwd> · <mode>`): opaque fields the
 // adapter never parses, joined by ` · ` separators that ARE structural. The
 // leading two spaces are the gutter. Required below the bottom rule so a
@@ -128,6 +139,8 @@ export interface MuseTail {
   prompt: number | null;
   /** The Voice rule directly above the prompt, or null when absent. */
   voice: number | null;
+  /** The background-tasks popup's header row, or null when no popup sits under the rule. */
+  popup: number | null;
 }
 
 /**
@@ -158,10 +171,12 @@ export function locateTail(lines: StyledLine[]): MuseTail | null {
   // header naming an unmeasured group: the screen keeps today's card rather than
   // misreading its tail.
   let rule = status - 1;
+  let popup: number | null = null;
   if (isTasksPopupRow(texts[rule]!)) {
     let top = rule;
     while (top - 1 >= 0 && isTasksPopupRow(texts[top - 1]!)) top--;
     if (top - 1 < 0 || !isTasksPopupHeader(texts[top - 1]!)) return null;
+    popup = top - 1;
     rule = top - 2;
     if (rule < 0) return null;
   }
@@ -190,7 +205,7 @@ export function locateTail(lines: StyledLine[]): MuseTail | null {
   const above = prompt ?? rule;
   const voice = above > 0 && isVoiceRule(texts[above - 1]!) ? above - 1 : null;
 
-  return { rule, status, prompt, voice };
+  return { rule, status, prompt, voice, popup };
 }
 
 // Either pointer glyph Muse paints: `›` on approval/question/checkbox rows,

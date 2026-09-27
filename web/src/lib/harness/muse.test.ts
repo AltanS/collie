@@ -475,3 +475,36 @@ describe("muse: a dialog over the tasks popup lifts only where the bridge can bi
   );
 });
 
+// While the popup holds focus on a running task its header names `x to stop` (DIALOG_NOTES.md §5).
+// A typed message is keys, so the composer refuses there and the card's Escape dismisses the popup.
+// No capture holds the focused header; these screens rewrite the captured header row's text.
+describe("muse: a focused tasks popup that names x to stop refuses the composer", () => {
+  const load = (name: string): StyledLine[] =>
+    splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+  const row = (text: string): StyledLine => splitLines(parseAnsi(text))[0]!;
+  const withHeader = (name: string, header: string): StyledLine[] => {
+    const lines = load(name);
+    const i = lines.findLastIndex((l) => /^main\b/.test(lineText(l)));
+    if (i < 0) throw new Error("no popup header");
+    return [...lines.slice(0, i), row(header), ...lines.slice(i + 1)];
+  };
+
+  it("refuses the send and shows the card with Escape", () => {
+    const focused = withHeader("muse--tasks-popup.txt", "main · Enter to view · x to stop");
+    expect(museAdapter.composerReady!(focused)).toBe(false);
+    expect(museAdapter.composerPrompt!(focused)).toBeNull();
+    const blocks = buildBlocks(focused, { agent: "muse" });
+    expect(blocks.map((b) => b.kind)).toEqual(["unread-dialog"]);
+    expect(blocks[0]!.kind === "unread-dialog" && blocks[0]!.cancel.key).toBe("Escape");
+  });
+
+  it.each(["main · ↓ to select", "main", "main · Enter to view"])(
+    "stays ready under a header reading %j, which names no key a message could hit",
+    (header) => {
+      const lines = withHeader("muse--tasks-popup.txt", header);
+      expect(museAdapter.composerReady!(lines)).toBe(true);
+      expect(buildBlocks(lines, { agent: "muse" }).map((b) => b.kind)).toEqual(["raw"]);
+    },
+  );
+});
+
