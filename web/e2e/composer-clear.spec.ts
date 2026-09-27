@@ -10,7 +10,8 @@ import { installApiStub } from "./fixtures/api";
 // tap on Undo puts the draft back. Three promises here are ones jsdom cannot keep for us:
 //
 //  * The keyboard stays up. The field keeps focus through both taps, because the button refuses its
-//    own `pointerdown`. That is an engine's focus rule, so it is asked of Chromium and WebKit.
+//    own `mousedown` (not `pointerdown`, which costs WebKit the click: actions-row.tsx says why).
+//    That is an engine's focus rule, so it is asked of Chromium and WebKit.
 //  * Nothing moves. The X arrives over the scroller's end and the scrolling pills stay where they
 //    were; the pinned pills are anchored right and stay too; the X and Undo share one box.
 //  * The pane hears nothing. Not a key, not a reply: the clear is the phone's own business.
