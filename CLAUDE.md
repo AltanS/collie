@@ -48,6 +48,12 @@ answers where one exists (`Thanks @handle (#147).`), and with **no commit hash**
 exist yet, and the release commit adds it. The lead is what the GitHub Release page prints, so
 write it as the sentence an operator reads there. Do not touch the three version files.
 
+**A release needs something to ship.** Before you cut one, read `git log --oneline <last tag>..HEAD`.
+If the range holds only docs, tests and chores, do not release: the docs go out with the next real
+release, and the site's docs sync follows it. A docs-only release makes every self-updating lane
+and crew member update for nothing. Never offer a release as "put the docs live"; name it as a
+release. 1.14.2 was cut this way on 2026-09-28.
+
 **Cutting a release is one `chore(release): x.y.z` commit** that does all of this and nothing else:
 
 1. **Pick the axis** from the *sum* of the Unreleased entries — what the operator has to do, not how
