@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <a href="https://colliepwa.dev/demo"><b>Try it in your browser — no install</b></a> ·
-  <a href="https://colliepwa.dev">colliepwa.dev</a><br>
+  <a href="https://colliepwa.dev/demo?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=collie&amp;utm_content=hero"><b>Try it in your browser — no install</b></a> ·
+  <a href="https://colliepwa.dev/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=collie&amp;utm_content=hero">colliepwa.dev</a><br>
   <sub>A real Collie build running in the page against faked data.</sub>
 </p>
 
@@ -45,7 +45,7 @@ reflect names set via `/rename`. Hold a dashboard row or a pane pill, or right-c
 to pin that pane to the top of the dashboard and the switcher. Tap to answer an `AskUserQuestion`
 prompt, switch between herds, and receive push notifications when an agent blocks on input.
 
-The [interactive demo](https://colliepwa.dev/demo) runs the web client in your browser against mock
+The [interactive demo](https://colliepwa.dev/demo?utm_source=github&utm_medium=readme&utm_campaign=collie&utm_content=demo-section) runs the web client in your browser against mock
 data without installation.
 
 <table>
@@ -112,14 +112,14 @@ The script downloads the latest release for your platform, verifies the sha256 c
 the files, and puts `collie` on your PATH. It then prints the remaining manual steps: seed a config,
 then run `collie start`. You do not need to specify a multiplexer ahead of time. On its first run,
 `collie start` detects Herdr, tmux, and zellij, then prompts for your choice. If you prefer to build
-from source, **[`docs/install.md`](./docs/install.md)** covers the manual build, Herdr routes, the
-requirements table, and what the initial run writes to the host.
+from source, **[`docs/install.md`](./docs/install.md)** covers manual builds, each system and
+package, Herdr routes, and adding Collie to the home screen of an iPhone or Android phone.
 
 ## Documentation
 
 | | |
 | --- | --- |
-| [**Install**](./docs/install.md) | Install, update and uninstall, each spelled for a Herdr plugin and for a standalone install; requirements, packages, first run, and opening it on your phone |
+| [**Install**](./docs/install.md) | The front door you need, then the install for your system: Linux, Arch and Omarchy, Nix, macOS, Windows, or as a Herdr plugin. Covers first run, setup on an iPhone or Android phone, updates, and uninstallation |
 | [**Claude Code in tmux or Herdr, on your phone**](./docs/claude-code-on-your-phone.md) | Keep Claude Code running in tmux or Herdr when SSH drops. Manage sessions, approve prompts, and send Esc or Ctrl from your phone with push alerts. |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device as the write credential |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |

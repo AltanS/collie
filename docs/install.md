@@ -1,7 +1,28 @@
 # Install Collie
 
-How to install, update and remove Collie, then the first run. Read [Security](security.md) first:
-Collie exposes remote shell access to your machine by design.
+Install Collie on your system, start it, and put it on your phone. Read
+[Security](security.md) first: Collie exposes remote shell access to your machine by design.
+
+## Before you start
+
+Collie needs a front door: something that serves it over HTTPS and restricts access to you.
+
+The default front door is [Tailscale](https://tailscale.com). `collie start` runs
+`tailscale serve` for you, and your phone reaches Collie over your tailnet, your private Tailscale
+network. The rest of this page assumes Tailscale. For an identity-aware proxy, a reverse proxy,
+Cloudflare Tunnel or NetBird instead, see
+[Front doors, one product at a time](deployment.md#front-doors-one-product-at-a-time).
+
+With Tailscale, prepare three things:
+
+1. Put the host on your tailnet by installing Tailscale there and running `tailscale up`.
+2. Enable HTTPS certificates for the tailnet by opening the
+   [admin console](https://login.tailscale.com/admin/dns) and selecting **Enable HTTPS**.
+3. Put the phone on the same tailnet by installing the Tailscale app and signing in to the same
+   account.
+
+`collie start` exits with an error if HTTPS is off. The phone also requires HTTPS to install
+Collie to the home screen and receive Web Push.
 
 ## Two ways to run it
 
@@ -30,12 +51,8 @@ a Herdr plugin can mirror tmux.
 
 ## Requirements
 
-Supported hosts: Linux and macOS. Windows is experimental; see
-[Windows](../README.md#windows-experimental).
-
-The published Mac binary is Apple Silicon only, and it needs **macOS 13 or newer**, which is the
-minimum its Bun build was linked against. An Intel Mac builds from source; `collie update` says so
-rather than handing you a binary that cannot run.
+Collie runs on Linux and macOS. Windows runs only the bridge and is community-supported; see
+[Windows](#windows).
 
 | Tool | Needed for | Purpose |
 | --- | --- | --- |
@@ -44,14 +61,14 @@ rather than handing you a binary that cannot run.
 | git | Source builds and Herdr routes | Clone and update the repository. |
 | Multiplexer: Herdr, [tmux](https://github.com/tmux/tmux), or [zellij](https://zellij.dev) | All installs | Mirrored backend set via `COLLIE_MUX`. tmux and zellij are experimental in 1.0; see [Pointing Collie at a multiplexer](multiplexers.md#pointing-collie-at-a-multiplexer) and [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
 | [Herdr](https://herdr.dev) ≥ 0.7.0 | Herdr backend only | Required when `COLLIE_MUX=herdr`. Check with `herdr --version`. |
-| [Tailscale](https://tailscale.com) | Default access | `tailscale serve` proxies Collie to your tailnet. Optional if using [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale). |
+| [Tailscale](https://tailscale.com) | The default front door | `tailscale serve` proxies Collie to your tailnet. Not needed behind [another front door](deployment.md#front-doors-one-product-at-a-time). |
 
-> **Note.** No minimum tmux or zellij version is enforced. The adapters were tested against tmux
-> 3.4, tmux 3.6b and zellij 0.44.2. One tmux edge case is handled: on a server using
-> `window-size manual`, tmux below 3.7 crashes when creating a window, so Collie blocks the request
+> **Note.** Collie enforces no minimum tmux or zellij version. The adapters were tested against tmux
+> 3.4, tmux 3.6b, and zellij 0.44.2. One tmux edge case is handled: on a server using
+> `window-size manual`, tmux below 3.7 crashes when creating a window. Collie blocks the request
 > and tells you to run `tmux set -g window-size latest`.
 
-Soft dependencies, needed only for the features next to them:
+Soft dependencies, needed only for these features:
 
 | Tool | Needed for |
 | --- | --- |
@@ -61,41 +78,109 @@ Soft dependencies, needed only for the features next to them:
 
 ## Install
 
-### Herdr plugin
+Find your system below, run its commands, then go on to [Start it](#start-it).
 
-Start the Herdr server first (`herdr` or `herdr server &`).
+| System | Recommended route |
+| --- | --- |
+| Linux | [The install script](#linux) |
+| Arch Linux, Omarchy | [`collie-bin` package](#arch-linux-and-omarchy) |
+| NixOS, or Nix on any system | [Flake package](#nixos-and-nix) |
+| macOS on Apple Silicon | [The install script](#macos) |
+| macOS on Intel | [Build from source](#the-same-result-from-source) |
+| Windows | [Community-supported, bridge only](#windows) |
+| Any of these, inside Herdr | [Herdr plugin](#herdr-plugin) |
 
-**From GitHub:**
-
-```bash
-herdr plugin install AltanS/collie
-herdr plugin action invoke start --plugin herdr.collie
-```
-
-**From local source:**
-
-```bash
-git clone https://github.com/AltanS/collie.git && cd collie
-herdr plugin link "$(pwd)"
-herdr plugin action invoke start --plugin herdr.collie
-```
-
-For a prerelease, install the tag with `herdr plugin install AltanS/collie --ref <tag> --yes`,
-which is the whole opt-in ([Prereleases](upgrading.md#prereleases)).
-
-### Standalone
-
-The install script downloads the latest release into `~/.local/share/collie` (`COLLIE_DIR`) and links
-the binary to `~/.local/bin/collie`:
+### Linux
 
 ```bash
 curl -fsSL https://colliepwa.dev/install.sh | sh
 collie start
 ```
 
-It takes the newest stable release and refuses to touch an install that is already there — that is
-what `collie update` is for. The canonical source is `scripts/install.sh` in the repository: one page
-of POSIX `sh`, and it never asks for `sudo`.
+The script installs a prebuilt binary for x86_64 or arm64. [Standalone](#standalone) explains what
+it does and how to pin a version.
+
+`collie start` runs the bridge as a `systemd --user` service. It stops when you log out. On a
+server reached over SSH, keep it running after logout and reboots:
+
+```bash
+loginctl enable-linger $USER
+```
+
+See [Surviving reboots](upgrading.md#surviving-reboots) for details.
+
+### Arch Linux and Omarchy
+
+```bash
+git clone https://github.com/AltanS/collie.git && cd collie/packaging/aur
+makepkg -si
+collie start
+```
+
+`collie-bin` is not on the AUR or in Omarchy's repository yet. Build it from this repository's
+`PKGBUILD` for now. It downloads the prebuilt binary without compiling. Once published,
+`sudo pacman -S collie-bin` (Omarchy) or `paru -S collie-bin` (AUR) replaces the clone.
+
+Omarchy includes tmux and Herdr. You must name the one to mirror on the first start, for
+example `COLLIE_MUX=herdr collie start`. [Arch](#arch) and [Omarchy](#omarchy) under Package
+details cover layout, updates, and removal.
+
+### NixOS and Nix
+
+```bash
+nix profile install github:AltanS/collie#collie
+collie start
+```
+
+This works on NixOS and any system with Nix on `x86_64-linux`, `aarch64-linux`, and
+`aarch64-darwin`. There is no NixOS module yet. [Nix](#nix) under Package details has the rest.
+
+### macOS
+
+```bash
+curl -fsSL https://colliepwa.dev/install.sh | sh
+collie start
+```
+
+The published Mac binary requires Apple Silicon and **macOS 13 or newer**, the minimum its Bun
+build links against. An Intel Mac builds from source
+([The same result, from source](#the-same-result-from-source)). `collie update` states this
+rather than downloading an unusable binary.
+
+`collie start` registers a launchd agent in `~/Library/LaunchAgents`. It starts Collie at login and
+restarts it on failure. It also runs `tailscale serve`, so the `tailscale` command must be on your
+PATH. The Tailscale app for Mac can install that command from its settings.
+
+> **Note.** A Mac reached only over SSH has no login session for launchd. `collie start` reports
+> this and runs the bridge in the background without supervision: no restart on failure, nothing
+> at login.
+
+macOS has no package yet. [mise](#mise) works on a Mac, as does the `aarch64-darwin`
+[Nix](#nix) output.
+
+### Windows
+
+> **Experimental.** Windows is community-supported. Fixes are best effort.
+
+The bridge runs on Windows against the Herdr Windows beta. `collie start` and the rest of the
+launcher do not. Run the bridge with Bun, and supply your own front door because `tailscale serve`
+integration is unavailable there. [Windows](../README.md#windows-experimental) in the README has
+the steps. [`contrib/windows/`](../contrib/windows/README.md) has an unsupported Task Scheduler
+setup.
+
+### Standalone
+
+The install script downloads the latest release into `~/.local/share/collie` (`COLLIE_DIR`) and
+links the binary to `~/.local/bin/collie`:
+
+```bash
+curl -fsSL https://colliepwa.dev/install.sh | sh
+collie start
+```
+
+It fetches the newest stable release and leaves an existing install untouched. To update one, use
+`collie update`. The canonical source is `scripts/install.sh` in the repository: one page of
+POSIX `sh` that never calls `sudo`. Read it before running it:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.sh | less
@@ -108,20 +193,19 @@ If `~/.local/bin` is not on your PATH, run the binary directly:
 ~/.local/share/collie/current/bin/collie version
 ```
 
-To pin a version or rescue an existing install (see
+To pin a version or fix an existing install (see
 [When collie will not run](upgrading.md#when-collie-will-not-run)):
 
 ```bash
 curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.0.0 sh
 ```
 
-The script asks GitHub's API for the release list, which is rate-limited per network address. If
-that answers `HTTP 403`, pin the version as above, or set `GH_TOKEN` to a GitHub token with no
-scopes for the run. See
+The script queries the GitHub API for releases, which rate-limits per IP address. If it returns
+`HTTP 403`, pin the version as shown above, or set `GH_TOKEN` to a token with no scopes. See
 [If GitHub rate-limits the release check](upgrading.md#if-github-rate-limits-the-release-check).
 
-For prereleases, pass `--beta`: it takes the newest prerelease, and the install then tracks that
-major's prereleases until the final release ships
+For prereleases, pass `--beta`. It selects the newest prerelease, and the install then tracks
+prereleases for that major version until the final release ships
 ([Prereleases](upgrading.md#prereleases)).
 
 #### The same result, from source
@@ -142,48 +226,233 @@ bin/collie version
 bin/collie link
 ```
 
-Then start it. `start` creates `~/.config/collie/` and writes your multiplexer choice into its
-`.env`, so there is nothing to seed by hand first:
+A source build requires Bun and git. Start it with `bin/collie start`, or `collie start` after
+linking.
+
+### Herdr plugin
 
 ```bash
-bin/collie start
+herdr plugin install AltanS/collie
+herdr plugin action invoke start --plugin herdr.collie
 ```
+
+Start the Herdr server first (`herdr` or `herdr server &`). This works on Linux and macOS.
+
+To install from a local clone instead:
+
+```bash
+git clone https://github.com/AltanS/collie.git && cd collie
+herdr plugin link "$(pwd)"
+herdr plugin action invoke start --plugin herdr.collie
+```
+
+For a prerelease, install the tag with `herdr plugin install AltanS/collie --ref <tag> --yes`.
+That is the whole opt-in ([Prereleases](upgrading.md#prereleases)).
 
 ### From a package
 
-Where Collie is packaged for your system, install it the way you install anything else. A package
-is a standalone install that your package manager owns: it installs, it updates, it removes.
+A package is a standalone install managed by your package manager: it installs, updates, and
+removes. Commands for each manager appear above and under [Package details](#package-details),
+along with [mise](#mise) for Linux and macOS.
 
-```bash
-sudo pacman -S collie-bin                       # Omarchy
-paru -S collie-bin                              # Arch, once it is on the AUR; see below
-nix profile install github:AltanS/collie#collie # Nix
-mise use -g github:AltanS/collie@1.5.6          # mise
-collie start
-```
-
-Each manager has its own notes, under [Package details](#package-details): where the tree lands,
-what the AUR status is, and why mise needs `--bump`.
-
-A package is not a Herdr plugin. To get Collie's buttons inside Herdr, link the installed tree once:
+A package is not a Herdr plugin. To show Collie's buttons in Herdr, link the installed tree once:
 
 ```bash
 herdr plugin link /opt/collie
 ```
 
-Herdr does not scan `/opt`, so it never finds the package on its own. The plugin's `update` and
-`update-major` actions then refuse and name your package manager instead. That is correct, not a
-fault: this tree is your package manager's to update.
+Herdr does not scan `/opt`, so it never detects the package automatically. The plugin's `update`
+and `update-major` actions refuse to run and refer you to your package manager. That is intentional:
+your package manager manages this tree.
+
+## Name your multiplexer
+
+Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `tmux`, or `zellij`.
+
+You do not need to set it before the first start. `start` looks for a live Herdr socket, a running
+tmux server and zellij sessions, prints what it found, and writes your choice to the config `.env`,
+creating the file if needed.
+
+Without a terminal prompt, `start` picks the single backend it found and reports it. If it finds
+none, or finds several, it refuses to start and tells you to set `COLLIE_MUX`.
+
+To choose in advance, seed the config before your first start:
+
+```bash
+mkdir -p ~/.config/collie
+cp ~/.local/share/collie/current/.env.example ~/.config/collie/.env
+```
+
+That path is for the install script; a source checkout has `.env.example` at its root. On a Herdr
+plugin, the file lives where `herdr plugin config-dir herdr.collie` points. Then set the backend and
+its endpoint:
+
+```bash
+COLLIE_MUX=tmux                                           # or: zellij
+# zellij instead: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
+COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock
+```
+
+> **Caution.** Do not run that `cp` after a start: it overwrites the `COLLIE_MUX` value that
+> `start` just wrote.
+
+Edit the file later as your setup changes. See
+[Pointing Collie at a multiplexer](multiplexers.md#pointing-collie-at-a-multiplexer).
+
+## Start it
+
+```bash
+herdr plugin action invoke start --plugin herdr.collie   # Herdr plugin
+collie start                                             # standalone
+```
+
+`start` will:
+1. Build `web/dist` if missing.
+2. Launch the bridge under `systemd --user` (or launchd/`nohup`).
+3. Run `tailscale serve --bg 8787` (HTTPS :443 → 127.0.0.1:8787).
+4. Print the connection banner.
+
+### First run: what you'll see
+
+Output from `collie start` (Herdr runs return JSON; view logs with
+`herdr plugin log list --plugin herdr.collie`):
+
+```console
+$ collie start
+building web UI (first run)…                    # linked clone only; a GitHub install already built
+…bun install · typecheck · vite build output…
+bridge started (systemd --user: collie)
+tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
+
+  ✓ Collie is running  ·  v1.0.0+b158755
+    service   systemd --user (collie) · active
+    local     http://127.0.0.1:8787
+    tailnet   https://myhost.tail1234.ts.net
+```
+
+If the health check fails (`⚠ Collie isn't answering on :8787 yet`), see
+[Troubleshooting](troubleshooting.md#troubleshooting).
+
+The bridge runs as a `systemd --user` service or macOS launchd agent. It starts at login and
+restarts on failure ([`ARCHITECTURE.md`](../ARCHITECTURE.md) §3). On Linux,
+`loginctl enable-linger $USER` keeps it running across reboots
+([Surviving reboots](upgrading.md#surviving-reboots)).
+
+Configure user access in [Configure](configure.md#configure) and device access via
+[pairing](security.md#pair-a-device--the-write-credential) (`collie pair`).
+
+### Is it actually working?
+
+Verify status and logs:
+
+```console
+$ collie status
+
+  ✓ Collie is running  ·  v1.0.0+b158755
+    service   systemd --user (collie) · active
+    local     http://127.0.0.1:8787
+    tailnet   https://myhost.tail1234.ts.net
+
+  serve config:
+    https://myhost.tail1234.ts.net (tailnet only)
+    |-- / proxy http://127.0.0.1:8787
+```
+
+```console
+$ collie logs        # journal timestamps trimmed here
+[push] disabled (no VAPID keys configured)
+[bridge] listening on http://127.0.0.1:8787  (poll 1500ms)
+[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).
+```
+
+To restrict access, set `COLLIE_TRUSTED_USER=you@example.com` in `.env` and run `collie restart`
+([Configure](configure.md#configure)). For missing dashboard content, see
+[Troubleshooting](troubleshooting.md#troubleshooting).
+
+## Put it on your phone
+
+Open Collie on the phone, pair the phone, and add Collie to the home screen.
+
+1. Confirm that the phone's Tailscale app shares a tailnet with the host.
+2. Run `collie qr` on the host and scan its code, or open the URL that `collie url` prints.
+3. Run `collie pair` on the host and scan that QR code.
+
+The QR code from `collie pair` opens Settings → Paired devices with the code entered. You can also
+open Settings → Paired devices and enter it manually. Pairing gives this phone write access to your
+panes ([Pair a device](security.md#pair-a-device--the-write-credential)).
+
+Collie is a web app. The browser adds it to your home screen without an app store, giving it a
+standalone icon and full-screen view.
+
+### iPhone and iPad
+
+1. Open the Collie URL in Safari.
+2. Tap **Share**, then tap **Add to Home Screen**.
+3. Tap **Add**.
+
+On iOS 16.4 and newer, Chrome, Edge and Firefox also offer **Add to Home Screen** in their share
+menus. If you see **Open as Web App**, keep it selected.
+
+![The Install card on iOS or iPadOS: installing goes through the share sheet.](images/updates/settings-install-ios-hint.png)
+
+Safari does not provide an install button. Collie's Settings shows an Install card with these steps
+instead until you complete them.
+
+> **Note.** On iPhone or iPad, Web Push requires iOS 16.4 or newer and works only from the home
+> screen icon. Open Collie from that icon, then enable notifications in Settings.
+
+### Android
+
+1. Open the Collie URL in Chrome.
+2. Go to Collie's Settings and tap **Install** on the top card.
+
+This card appears once Chrome offers the install. If it does not appear, open Chrome's menu (⋮)
+and tap **Add to home screen**, then **Install**. Some Chrome builds label this **Install app**.
+Firefox and Samsung Internet use **Add to Home screen** in their main menus.
+
+![The Install card at the top of Settings, with the button Chrome and Edge offer.](images/updates/settings-install-offered.png)
+
+Android supports Web Push inside standard browser tabs. Installing only adds the home icon and
+full-screen mode.
+
+### Desktop
+
+Chrome and Edge show an install icon in the address bar, plus the **Install** card in Settings.
+On macOS, Safari 17 and newer uses **File → Add to Dock**.
+
+### Notes for every device
+
+- Installing requires HTTPS. Under `COLLIE_SERVE_MODE=http`, browsers disable service workers,
+  limiting Collie to a standard browser tab.
+- Dev builds (checkouts off a release tag) install as **Collie (dev)** with an orange icon to avoid
+  confusing them with release versions.
+- Pairing binds to a single device. Pair every phone, tablet, or browser you plan to type from.
+- Push notifications require host keys:
+  [Web Push](voice-and-push.md#web-push-optional).
+
+### First launch
+
+When Collie first opens on a device and loads the dashboard, an intro screen outlines your setup.
+It lists the active multiplexer, mirrored host, running panes, panes needing input, crew machine
+count, and your write access.
+
+Below that, it suggests up to two actions: pairing the device, starting something, enabling
+alerts, or saving Collie to your home screen. It ends with six core tasks you can run.
+
+The app marks this screen seen on load, so closing the tab will not show it again. You can view it
+later by tapping **Show the first screen again** in Settings.
 
 ## Update
 
-One command takes the newest release of your current major. It stages the new version beside the
-old one, flips, restarts the bridge, and rolls back if the new version does not answer.
+One command takes the newest release of your current major.
 
 ```bash
 herdr plugin action invoke update --plugin herdr.collie   # Herdr plugin
 collie update                                             # standalone
 ```
+
+It stages the new version beside the old one, flips, restarts the bridge, and rolls back if the new
+version does not answer.
 
 A packaged install updates with its package manager, and then needs a restart, because the package
 manager swaps the files and restarts nothing:
@@ -233,7 +502,8 @@ rm -rf ~/.local/share/collie             # standalone: the install script's tree
 
 sudo pacman -Rns collie-bin              # package: Arch and Omarchy
 nix profile remove collie                # package: Nix
-mise uninstall github:AltanS/collie@1.5.6 && mise unuse github:AltanS/collie   # package: mise
+mise uninstall github:AltanS/collie@1.14.2  # package: mise, the version
+mise unuse github:AltanS/collie             # package: mise, the config line
 ```
 
 A linked clone is your own checkout. `unlink` drops Herdr's registration and leaves the directory
@@ -253,146 +523,6 @@ To pause without removing anything, `stop` is enough:
 herdr plugin action invoke stop --plugin herdr.collie   # Herdr plugin
 collie stop                                             # standalone
 ```
-
-## Name your multiplexer
-
-```bash
-mkdir -p ~/.config/collie
-cp .env.example ~/.config/collie/.env
-```
-
-Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `tmux`, or `zellij`. Seeding the file
-above **before the first start** lets you decide up front; it is `~/.config/collie/.env` standalone,
-or the path `herdr plugin config-dir herdr.collie` prints. Then set the backend and its endpoint:
-
-```bash
-COLLIE_MUX=tmux                                           # or: zellij
-# zellij instead: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
-COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock
-```
-
-> **Note.** You do not have to set it up first. The first `start` looks for a live Herdr socket, a
-> running tmux server and zellij sessions, prints what it found, and writes your answer to the
-> config `.env`, creating it. With no terminal to ask at, it takes the only backend it found and
-> says which; with none, or with several, it refuses to start and names `COLLIE_MUX`.
-
-> **Caution.** Do not run that `cp` after a start: it lands `.env.example` on top of the
-> `COLLIE_MUX` the start just wrote.
-
-Afterwards, edit the file. See
-[Pointing Collie at a multiplexer](multiplexers.md#pointing-collie-at-a-multiplexer).
-
-## Start it
-
-```bash
-herdr plugin action invoke start --plugin herdr.collie   # Herdr plugin
-collie start                                             # standalone
-```
-
-`start` will:
-1. Build `web/dist` if missing.
-2. Launch the bridge under `systemd --user` (or launchd/`nohup`).
-3. Run `tailscale serve --bg 8787` (HTTPS :443 → 127.0.0.1:8787). Your tailnet needs HTTPS
-   enabled for this ([admin console](https://login.tailscale.com/admin/dns) → "Enable HTTPS");
-   Collie says so and stops if it isn't.
-4. Print the connection banner.
-
-## First run — what you'll see
-
-Output from `collie start` (Herdr runs return JSON; view logs with
-`herdr plugin log list --plugin herdr.collie`):
-
-```console
-$ collie start
-building web UI (first run)…                    # linked clone only; a GitHub install already built
-…bun install · typecheck · vite build output…
-bridge started (systemd --user: collie)
-tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
-
-  ✓ Collie is running  ·  v1.0.0+b158755
-    service   systemd --user (collie) · active
-    local     http://127.0.0.1:8787
-    tailnet   https://myhost.tail1234.ts.net
-```
-
-If the health check fails (`⚠ Collie isn't answering on :8787 yet`), see
-[Troubleshooting](troubleshooting.md#troubleshooting).
-
-The bridge runs as a `systemd --user` service, a launchd agent on macOS, that starts at login and
-restarts on failure ([`ARCHITECTURE.md`](../ARCHITECTURE.md) §3); on Linux
-`loginctl enable-linger $USER` makes it survive a reboot
-([Surviving reboots](upgrading.md#surviving-reboots)).
-
-Configure user access in [Configure](configure.md#configure) and device access via
-[pairing](security.md#pair-a-device--the-write-credential) (`collie pair`).
-
-### Open it on your phone
-
-Open the `tailnet` URL from the banner (retrieve anytime with `collie url` or generate a QR code
-with `collie qr`). Your client must be on the same tailnet.
-
-1. **Pair the device**: Run `collie pair` on the host. Scan the printed QR code to open
-   Settings → Paired devices on the client with the code filled in, or open Settings → Paired
-   devices on the client and type the code
-   ([Pair a device](security.md#pair-a-device--the-write-credential)).
-2. **Install the app**: Tap **Install** in Settings if the browser offers it, or use the share
-   sheet on iOS/iPadOS.
-
-> **Note.** **On Android or desktop:** Chrome and Edge offer an install button the moment they
-> decide the app is installable, and Collie surfaces that offer as an **Install** card at the top
-> of Settings.
-
-![The Install card at the top of Settings, with the button Chrome and Edge offer.](images/updates/settings-install-offered.png)
-
-> **Note.** **On iPhone or iPad:** Safari never makes that offer — installing there always goes
-> through the share sheet — so the same card shows those steps instead, exactly while they apply.
-
-![The same card on iOS or iPadOS: installing goes through the share sheet instead.](images/updates/settings-install-ios-hint.png)
-
-Installing the PWA requires HTTPS; `COLLIE_SERVE_MODE=http` disables service workers, so the phone
-can only use the browser tab in that mode. A dev build (any checkout not sitting on its release
-tag) installs as **Collie (dev)** with an orange icon, so it never sits on your home screen next to
-a release install looking the same.
-
-**First launch.** The first time Collie opens on a device and the dashboard loads, one screen says
-what Collie does and what this install looks like: the multiplexer and the machine it mirrors, how
-many panes are running and how many need you, how many machines are in your crew, and whether this
-device may type.
-
-Under that it offers at most two things to do, and only where they apply: pair this phone, start
-something, turn notifications on, or keep Collie on your home screen. It closes with the six things
-you can do in the app.
-
-The screen is marked seen as soon as it opens, so a tab lost halfway down does not bring it back.
-Settings has a **Show the first screen again** row that shows it on demand.
-
-### Is it actually working?
-
-Verify status and logs:
-
-```console
-$ collie status
-
-  ✓ Collie is running  ·  v1.0.0+b158755
-    service   systemd --user (collie) · active
-    local     http://127.0.0.1:8787
-    tailnet   https://myhost.tail1234.ts.net
-
-  serve config:
-    https://myhost.tail1234.ts.net (tailnet only)
-    |-- / proxy http://127.0.0.1:8787
-```
-
-```console
-$ collie logs        # journal timestamps trimmed here
-[push] disabled (no VAPID keys configured)
-[bridge] listening on http://127.0.0.1:8787  (poll 1500ms)
-[bridge] WARNING: COLLIE_TRUSTED_USER is empty — any tailnet device/user that reaches the bridge gets full write access. Set it to your tailnet login (see README → Variant A).
-```
-
-To restrict access, set `COLLIE_TRUSTED_USER=you@example.com` in `.env` and run `collie restart`
-([Configure](configure.md#configure)). For missing dashboard content, see
-[Troubleshooting](troubleshooting.md#troubleshooting).
 
 ## Package details
 
@@ -452,7 +582,7 @@ COLLIE_MUX=herdr collie start
 ```
 
 Omarchy ships tmux and Herdr both, and Collie mirrors one multiplexer per install, so the first
-start has to name the one to drive — it refuses to guess between two it can see. `start` writes
+start has to name the one to drive: it refuses to guess between two it can see. `start` writes
 that name into Collie's `.env`, which on a host with Herdr is
 `~/.config/herdr/plugins/config/herdr.collie/.env`, and later starts are `collie start`.
 
@@ -460,7 +590,7 @@ That works once `collie-bin` is in Omarchy's own package repository, and the pul
 is not merged yet. Until it is, build the same package from `packaging/aur` with `makepkg -si`, as
 on any Arch host above.
 
-Updates then come with `sudo pacman -Syu`, the command you already run to update the machine — an
+Updates then come with `sudo pacman -Syu`, the command you already run to update the machine. An
 AUR helper is not involved, because `pkgs.omarchy.org` is a real pacman repository. It is the same
 `PKGBUILD` and the same `/opt/collie` layout either way.
 
@@ -515,7 +645,7 @@ That drops the store path from your profile and nothing else. Your own files sta
 #### mise
 
 ```bash
-mise use -g github:AltanS/collie@1.5.6
+mise use -g github:AltanS/collie@1.14.2
 collie start
 ```
 
@@ -532,7 +662,7 @@ mise upgrade --bump github:AltanS/collie
 collie restart
 ```
 
-`--bump` is the flag that matters. A pinned `1.5.6` is a range of one, so a plain `mise upgrade`
+`--bump` is the flag that matters. A pinned `1.14.2` is a range of one, so a plain `mise upgrade`
 reports the tool as up to date and moves nothing.
 
 The restart is not optional. Every version gets its own directory, and `collie start` bakes the
@@ -553,7 +683,7 @@ on both.
 Remove it with `collie uninstall` first, then:
 
 ```bash
-mise uninstall github:AltanS/collie@1.5.6
+mise uninstall github:AltanS/collie@1.14.2
 mise unuse github:AltanS/collie
 ```
 

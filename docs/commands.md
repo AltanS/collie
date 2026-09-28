@@ -36,7 +36,7 @@ The CLI also includes `build`, `serve`, `unserve`, `doctor`, and `crew …` for 
 
 Both `start` and `status` output the **Collie is running** banner: a health mark and the version,
 then a `service`, a `local` and a `tailnet` line.
-[First run](install.md#first-run--what-youll-see) shows it in full, including what a failed health
+[First run](install.md#first-run-what-youll-see) shows it in full, including what a failed health
 check prints instead. The reported version reads from the served bundle stamp, reflecting the active
 build.
 
