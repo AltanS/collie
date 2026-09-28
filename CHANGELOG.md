@@ -30,11 +30,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-09-28
+
 ### Docs
 
 - **A walkthrough for running Claude Code from your phone.** `docs/claude-code-on-your-phone.md`
-  takes one path end to end, from install to answering an agent from the Keys tray, and
-  `collie docs claude-code-on-your-phone` prints it.
+  first keeps Claude Code alive in tmux, Herdr or zellij when SSH drops, and shows how to run
+  several sessions at once. Then it takes one path end to end, from install to answering an agent
+  from the Keys tray. `collie docs claude-code-on-your-phone` prints it. ([2bec9cbd](https://github.com/AltanS/collie/commit/2bec9cbd))
 
 ## [1.14.1] - 2026-09-27
 
