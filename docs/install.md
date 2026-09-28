@@ -512,6 +512,42 @@ nix profile remove collie
 That drops the store path from your profile and nothing else. Your own files stay, as listed under
 [Uninstall](#uninstall).
 
+##### Home Manager agents on macOS
+
+```bash
+collie status
+launchctl print "user/$(id -u)/herdr.collie"
+```
+
+`collie status` discovers the instance's label in both `gui/<uid>` and `user/<uid>` and
+reports its domain and process state. If both domains contain the label, it reports both;
+a stopped GUI agent does not hide a running background agent. No environment override is needed.
+
+For an existing Home Manager-managed Collie agent, these settings select the background domain
+(Home Manager 26.11 or later):
+
+```nix
+launchd.agents.collie = {
+  domain = "user";
+  config.Label = "herdr.collie";
+};
+```
+
+This is an addition to your agent definition, not a complete service module. Keep its command,
+environment, and log paths configured in Home Manager. Run the bridge with `collie _exec-bridge`,
+not `collie start`, so launchd supervises the bridge without Collie rewriting the managed plist.
+Keep credentials and pairing state outside the Nix store. Configure the front door separately
+with `collie serve`, or use the [external-proxy setup](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
+
+For a named instance, use the label `herdr.collie-<name>` and the same `COLLIE_INSTANCE`,
+`COLLIE_PORT`, and configuration directory in the agent and your CLI environment
+([multiple instances](deployment.md#multiple-collie-instances-on-one-host)).
+
+> **Note.** Home Manager owns the service lifecycle. Update or remove its declaration and
+> activate Home Manager rather than running `collie start`, `stop`, `restart`, or `uninstall`.
+> Those commands still manage Collie's GUI-domain agent; status discovery does not transfer
+> ownership. Continue using `collie pair`, `devices`, `url`, and `logs` normally.
+
 #### mise
 
 ```bash

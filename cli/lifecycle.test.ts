@@ -597,12 +597,12 @@ describe("the status banner", () => {
 
     expect(
       serviceDescription(
-        darwin([["launchctl print", { stdout: "\tstate = running\n\tpid = 4242\n" }]]),
+        darwin([["launchctl print gui/501/herdr.collie", { stdout: "\tstate = running\n\tpid = 4242\n" }]]),
       ),
-    ).toBe("launchd (herdr.collie) · active (pid 4242)");
+    ).toBe("launchd (gui/501/herdr.collie) · active (pid 4242)");
     expect(
-      serviceDescription(darwin([["launchctl print", { stdout: "\tstate = waiting\n" }]])),
-    ).toBe("launchd (herdr.collie) · loaded, not running");
+      serviceDescription(darwin([["launchctl print gui/501/herdr.collie", { stdout: "\tstate = waiting\n" }]])),
+    ).toBe("launchd (gui/501/herdr.collie) · loaded, not running");
     expect(serviceDescription(darwin([["launchctl print", { code: 1 }]]))).toBe(
       "launchd (herdr.collie) · not loaded",
     );
@@ -613,6 +613,77 @@ describe("the status banner", () => {
         darwin([["launchctl print", { code: 1 }]], { [`${CONFIG}/collie.pid`]: "4242\n" }),
       ),
     ).toBe("pid 4242 (unsupervised — launchd bootstrap refused)");
+  });
+
+  test.each([
+    ["active (pid 4242)", "\tstate = running\n\tpid = 4242\n"],
+    ["loaded, not running", "\tstate = waiting\n"],
+  ])("discovers background user agents: %s", (state, stdout) => {
+    const h = harness({
+      platform: "darwin",
+      answers: [
+        ...NO_SYSTEMD,
+        ["launchctl print gui/501/herdr.collie", { code: 1 }],
+        ["launchctl print user/501/herdr.collie", { stdout }],
+      ],
+      // An old fallback pidfile must not hide the now-supervised agent.
+      files: { [`${CONFIG}/collie.pid`]: "9999\n" },
+    });
+    expect(serviceDescription(h.deps)).toBe(`launchd (user/501/herdr.collie) · ${state}`);
+  });
+
+  test("reports both domains instead of hiding a running user agent behind a stopped GUI agent", () => {
+    const h = harness({
+      platform: "darwin",
+      answers: [
+        ...NO_SYSTEMD,
+        ["launchctl print gui/501/herdr.collie", { stdout: "\tstate = waiting\n" }],
+        ["launchctl print user/501/herdr.collie", { stdout: "\tpid = 4242\n" }],
+      ],
+    });
+    expect(serviceDescription(h.deps)).toBe(
+      "launchd (gui/501/herdr.collie) · loaded, not running; " +
+      "launchd (user/501/herdr.collie) · active (pid 4242)",
+    );
+  });
+
+  test("does not treat failed launchctl output as a loaded service", () => {
+    const h = harness({
+      platform: "darwin",
+      answers: [
+        ...NO_SYSTEMD,
+        ["launchctl print gui/501/herdr.collie", { code: 1, stdout: "\tpid = 9999\n" }],
+        ["launchctl print user/501/herdr.collie", { stdout: "\tpid = 4242\n" }],
+      ],
+    });
+    expect(serviceDescription(h.deps)).toBe("launchd (user/501/herdr.collie) · active (pid 4242)");
+  });
+
+  test("status of a Home Manager agent is read-only and targets only the selected instance", async () => {
+    const plist = `${HOME}/Library/LaunchAgents/herdr.collie-next.plist`;
+    const h = harness({
+      instance: "next",
+      platform: "darwin",
+      env: { COLLIE_SKIP_SERVE: "1" },
+      answers: [
+        ...NO_SYSTEMD,
+        ["launchctl print gui/501/herdr.collie-next", { code: 1 }],
+        ["launchctl print user/501/herdr.collie-next", { stdout: "\tpid = 4242\n" }],
+      ],
+      files: { [plist]: "Home Manager owns this agent" },
+    });
+    h.files.readOnly.add(plist);
+    const before = new Map(h.files.entries);
+    expect(await cmdStatus(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("launchd (user/501/herdr.collie-next) · active (pid 4242)");
+    expect(h.exec.calls.filter((call) => call.startsWith("launchctl "))).toEqual([
+      "launchctl print gui/501/herdr.collie-next",
+      "launchctl print user/501/herdr.collie-next",
+    ]);
+    expect(h.files.entries).toEqual(before);
+    expect(h.files.ops).toEqual([]);
+    expect(h.exec.killed).toEqual([]);
+    expect(h.exec.spawned).toEqual([]);
   });
 
   test("prints the tailnet URL, or the proxy line under COLLIE_SKIP_SERVE", async () => {
