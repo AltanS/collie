@@ -30,6 +30,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- **Claude Code 2.1.284 is verified.** The canary ran all five scenarios against it, idle, drafts,
+  sends, narrow and start-exit, and every one passed. The reader ledger now names 2.1.284 instead
+  of 2.1.283.
+
 ## [1.14.2] - 2026-09-28
 
 ### Docs

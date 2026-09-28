@@ -2,11 +2,11 @@
   "$comment": "M37 spec 01 — one entry per Herdr agent name: the version Collie's reader was last verified against, when, how, whether it has a block-grammar adapter (registry.ts), and the evidence that version is real. `scripts/harness-drift.ts` reads this file; `verified-versions.test.ts` pins every key the adapter registry maps, plus pi (no adapter — raw mirror, one-shot send), and that `adapter` matches the registry. `how` is one of canary | live sweep | capture | unverified.",
   "agents": {
     "claude": {
-      "version": "2.1.283",
-      "verified": "2026-09-26",
-      "how": "live sweep",
+      "version": "2.1.284",
+      "verified": "2026-09-28",
+      "how": "canary",
       "adapter": true,
-      "evidence": "collie commit 71b28a1e (live sweep of Claude Code 2.1.283 in sandbox panes, shipped 1.13.2)"
+      "evidence": "canary run 20260928T220202Z: idle, drafts, sends, narrow, start-exit pass"
     },
     "codex": {
       "version": "0.157.1",
