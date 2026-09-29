@@ -8,7 +8,8 @@ import { imageSrc } from "@/lib/api";
 import { splitHighlight } from "@/lib/transcript-search";
 import type { Scope } from "@/lib/scope";
 import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
-import { getLocaleSnapshot, t } from "@/lib/i18n";
+import { getLocaleSnapshot, t, tn } from "@/lib/i18n";
+import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 
 // Renders an agent transcript — the conversation history a Claude pane's terminal structurally
@@ -245,6 +246,81 @@ function Turn({
   );
 }
 
+/**
+ * A turn with its tool parts taken out, plus how many were taken.
+ *
+ * The parts are DROPPED rather than hidden with CSS, so nothing off-screen is built: a measured
+ * session runs 892 assistant turns, most of them a tool call, and rendering all of them invisibly
+ * costs the same as rendering them.
+ */
+function withoutTools(entry: TranscriptEntry): { entry: TranscriptEntry; hidden: number } {
+  const parts = entry.parts.filter((p) => p.kind !== "tool");
+  const hidden = entry.parts.length - parts.length;
+  return hidden === 0 ? { entry, hidden } : { entry: { ...entry, parts }, hidden };
+}
+
+/**
+ * One muted line standing in for the steps a turn took, with a tap that brings them back.
+ *
+ * A silent gap would be worse than the wall it replaced: a reader who cannot see that the agent ran
+ * anything cannot tell a quiet turn from a busy one, and would have no way to find the command they
+ * came looking for. The line is per TURN, not per call — one line where forty cards were.
+ */
+function HiddenTools({ count, onShow }: { count: number; onShow: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onShow}
+      // 44px tap floor (DESIGN.md §6), drawn as a row rather than a button so it reads as a gap in
+      // the transcript and not as an action the turn is offering.
+      className="flex min-h-11 w-full items-center gap-2 text-left text-xs text-muted-foreground transition-colors active:bg-muted/60"
+    >
+      <Wrench aria-hidden className="size-3.5 shrink-0" />
+      {tn("transcript.tools.hidden", count)}
+    </button>
+  );
+}
+
+/**
+ * One turn, with its steps drawn or stood in for.
+ *
+ * Split out of the map so the hiding lives in one place: `Turn` keeps its whole job, which is
+ * drawing whatever parts it is handed, and knows nothing about the setting.
+ */
+function TurnBody({
+  entry,
+  agent,
+  showHeader,
+  query,
+  scope,
+  drawTools,
+  onShowTools,
+}: {
+  entry: TranscriptEntry;
+  agent?: string;
+  showHeader: boolean;
+  query: string;
+  scope?: Scope;
+  drawTools: boolean;
+  onShowTools: () => void;
+}) {
+  if (drawTools) {
+    return <Turn entry={entry} agent={agent} showHeader={showHeader} query={query} scope={scope} />;
+  }
+  const { entry: trimmed, hidden } = withoutTools(entry);
+  // A turn that was NOTHING but tool calls has no header worth keeping either — drawing the speaker
+  // and the time above a single "3 steps" line puts more chrome on screen than the thing it hides.
+  if (trimmed.parts.length === 0) {
+    return hidden === 0 ? null : <HiddenTools count={hidden} onShow={onShowTools} />;
+  }
+  return (
+    <>
+      <Turn entry={trimmed} agent={agent} showHeader={showHeader} query={query} scope={scope} />
+      {hidden > 0 && <HiddenTools count={hidden} onShow={onShowTools} />}
+    </>
+  );
+}
+
 export function TranscriptView({
   entries,
   agent,
@@ -264,6 +340,14 @@ export function TranscriptView({
   scope?: Scope;
 }) {
   useLocale();
+  const { prefs } = useDashPrefs();
+  // Turns whose steps the reader asked to see again, by uuid. Per view and never persisted: the
+  // setting is the standing answer, this is "show me this one".
+  const [shown, setShown] = useState<Record<string, true>>({});
+  // A FIND ALWAYS WINS. Tool output is where a command lives, so a search that matched inside one
+  // and then drew nothing would be a silent wrong answer — the worst kind. While a query is on
+  // screen every part is drawn, whatever the setting says.
+  const drawTools = prefs.showToolCalls || query !== "";
   // Consecutive turns from the same speaker are GROUPED — only the first of a run carries the
   // role/time header. A real thread is overwhelmingly long runs of assistant turns (892 of 914 in a
   // measured session), so repeating "CLAUDE 06:43 PM" above every tool call would roughly double the
@@ -301,7 +385,15 @@ export function TranscriptView({
                 <div className="h-px flex-1 bg-border" />
               </div>
             )}
-            <Turn entry={entry} agent={agent} showHeader={showHeader} query={query} scope={scope} />
+            <TurnBody
+              entry={entry}
+              agent={agent}
+              showHeader={showHeader}
+              query={query}
+              scope={scope}
+              drawTools={drawTools || shown[entry.uuid] === true}
+              onShowTools={() => setShown((s) => ({ ...s, [entry.uuid]: true }))}
+            />
           </div>
         );
       })}

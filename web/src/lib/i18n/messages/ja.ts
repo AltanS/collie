@@ -8,6 +8,10 @@ export const ja: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "設定",
+  "transcript.tools.hidden.one": "{count} 件の操作を非表示。タップで表示",
+  "transcript.tools.hidden.other": "{count} 件の操作を非表示。タップで表示",
+  "settings.tools.title": "ツール呼び出し",
+  "settings.tools.description": "エージェントが実行した読み取り、検索、コマンド、編集を表示します。オフにすると発言だけが残ります。",
   // --- settings sections ---
   "settings.section.appearance.title": "外観",
   "settings.section.appearance.blurb": "テーマ、言語、フォント",

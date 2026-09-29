@@ -9,6 +9,10 @@ export const de: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "Einstellungen",
+  "transcript.tools.hidden.one": "{count} Schritt ausgeblendet, zum Anzeigen tippen",
+  "transcript.tools.hidden.other": "{count} Schritte ausgeblendet, zum Anzeigen tippen",
+  "settings.tools.title": "Werkzeugaufrufe",
+  "settings.tools.description": "Zeigt die Lesevorgänge, Suchen, Befehle und Änderungen eines Agenten. Aus bleibt der Verlauf beim Gesagten.",
   // --- settings sections ---
   "settings.section.appearance.title": "Darstellung",
   "settings.section.appearance.blurb": "Design, Sprache, Schriften",

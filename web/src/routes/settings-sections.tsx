@@ -15,6 +15,7 @@ import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
+import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { UpdatesSettingsCard } from "@/components/updates-settings-card";
@@ -69,6 +70,11 @@ export function SettingsAppearanceRoute() {
           band, pills, icons and words (components/actions-row.tsx, `--belt-scale`). */}
       <HarnessBarControl />
       <BeltSizeControl />
+      {/* Last, and it is the odd one here: every card above changes how a surface LOOKS, and this
+          one changes what a surface CONTAINS. It earns the place anyway, because the question it
+          answers is the same question — what do I want on screen — and filing it under Device would
+          put a rendering choice beside haptics. */}
+      <ToolCallsControl />
     </SettingsPage>
   );
 }

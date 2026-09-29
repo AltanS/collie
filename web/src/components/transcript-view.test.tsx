@@ -9,6 +9,15 @@ import type { TranscriptEntry } from "@/lib/types";
 // behaviours: tool output stays collapsed so prose isn't buried, every string renders as TEXT (the
 // same XSS boundary as the mirror), and a compaction summary is visibly not a human turn.
 
+// Tool calls are OFF by default (Settings → Appearance), so a case about how a tool call DRAWS has
+// to turn them on first. The cases about the hiding itself live at the bottom of this file and set
+// nothing, which is what makes the default the thing they test.
+function showToolCalls() {
+  localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ showToolCalls: true }));
+}
+
+beforeEach(() => localStorage.clear());
+
 const turn = (over: Partial<TranscriptEntry> = {}): TranscriptEntry => ({
   uuid: "u1",
   ts: "2026-07-25T06:22:21.253Z",
@@ -39,6 +48,7 @@ describe("TranscriptView", () => {
   });
 
   it("shows a tool call's summary but keeps its output collapsed until tapped", async () => {
+    showToolCalls();
     render(
       <TranscriptView
         entries={[
@@ -67,6 +77,7 @@ describe("TranscriptView", () => {
   });
 
   it("a tool call with no result isn't expandable (nothing to reveal)", () => {
+    showToolCalls();
     render(
       <TranscriptView
         entries={[
@@ -81,6 +92,7 @@ describe("TranscriptView", () => {
   });
 
   it("flags truncated output rather than silently dropping the tail", async () => {
+    showToolCalls();
     render(
       <TranscriptView
         entries={[
@@ -166,6 +178,7 @@ describe("TranscriptView", () => {
   });
 
   it("tool output is NOT markdown-parsed — it's command output, kept verbatim", async () => {
+    showToolCalls();
     render(
       <TranscriptView
         entries={[
@@ -319,6 +332,7 @@ describe("TranscriptView — images", () => {
   });
 
   it("renders a tool result's image under its own alt text, once the call is expanded", async () => {
+    showToolCalls();
     const user = userEvent.setup();
     render(
       <TranscriptView
@@ -343,5 +357,79 @@ describe("TranscriptView — images", () => {
       />,
     );
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+});
+
+// ── TOOL CALLS ARE OFF BY DEFAULT ───────────────────────────────────────────────────────────────
+//
+// A working session is mostly tool calls: one turn can be forty reads and a grep. Drawing them all
+// buries the one paragraph the reader came for, so the default hides them and leaves one line per
+// turn saying how many went. These cases set no preference — the default IS what they test.
+describe("TranscriptView — tool calls off by default", () => {
+  const busy = (): TranscriptEntry => ({
+    uuid: "a1",
+    ts: "2026-07-25T06:22:21.253Z",
+    role: "assistant",
+    parts: [
+      { kind: "text", text: "Looking now." },
+      { kind: "tool", name: "Read", summary: "src/a.ts" },
+      { kind: "tool", name: "Bash", summary: "bun test" },
+    ],
+  });
+
+  it("draws the prose and stands the steps in with one line", () => {
+    render(<TranscriptView agent="claude" entries={[busy()]} />);
+    expect(screen.getByText("Looking now.")).toBeInTheDocument();
+    // Neither call is on screen, and they are DROPPED rather than hidden with CSS.
+    expect(screen.queryByText("src/a.ts")).toBeNull();
+    expect(screen.queryByText("bun test")).toBeNull();
+    expect(screen.getByRole("button", { name: /2 steps hidden/ })).toBeInTheDocument();
+  });
+
+  it("brings that turn's steps back on a tap, and leaves the setting alone", async () => {
+    render(<TranscriptView agent="claude" entries={[busy()]} />);
+    await userEvent.click(screen.getByRole("button", { name: /2 steps hidden/ }));
+    expect(screen.getByText("src/a.ts")).toBeInTheDocument();
+    // Per view, never persisted: "show me this one" is not the same answer as the standing choice.
+    expect(localStorage.getItem("collie:dash-prefs:v1")).toBeNull();
+  });
+
+  it("a find always wins, because a match inside tool output must be visible", () => {
+    // The worst failure this could have: a search that matched and then drew nothing.
+    render(<TranscriptView agent="claude" entries={[busy()]} query="bun" />);
+    // The matched summary is split across spans by the highlighter, so the assertion is on the
+    // OTHER call: both are drawn, or neither is.
+    expect(screen.getByText("src/a.ts")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /steps hidden/ })).toBeNull();
+  });
+
+  it("a turn that was nothing but steps keeps no header above its one line", () => {
+    render(
+      <TranscriptView
+        agent="claude"
+        entries={[
+          {
+            uuid: "a2",
+            ts: "2026-07-25T06:22:21.253Z",
+            role: "assistant",
+            parts: [{ kind: "tool", name: "Read", summary: "src/b.ts" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /1 step hidden/ })).toBeInTheDocument();
+    // Drawing the speaker and the time above a single line is more chrome than the thing it hides.
+    expect(screen.queryByText(/CLAUDE/i)).toBeNull();
+  });
+
+  it("leaves a turn with no steps untouched — no line, no gap", () => {
+    render(
+      <TranscriptView
+        agent="claude"
+        entries={[turn({ uuid: "u9", role: "user", parts: [{ kind: "text", text: "hello" }] })]}
+      />,
+    );
+    expect(screen.getByText("hello")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /hidden/ })).toBeNull();
   });
 });

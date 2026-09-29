@@ -32,6 +32,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **Tool calls are off in a session view, and that is the new default.** A working session is
+  mostly tool calls: one turn can be forty reads and a grep, which buried the paragraph you opened
+  the page for. The History page now draws what the agent SAID, with one muted line per turn saying
+  how many steps it took and a tap to bring them back. A find always overrides it, so a search that
+  matches inside a command's output still shows what it matched. Turn them back on for good under
+  Settings → Appearance → Tool calls.
+
 - **Settings is four sections instead of one long column.** The page was seventeen cards deep on a
   phone with no headings to skim by, so finding one switch meant reading every card above it. It is
   an index now: Appearance, Device, Alerts and System, each short enough to take in at once. No

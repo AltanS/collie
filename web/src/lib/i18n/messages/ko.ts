@@ -9,6 +9,10 @@ export const ko: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "설정",
+  "transcript.tools.hidden.one": "{count}개 단계 숨김, 탭하여 표시",
+  "transcript.tools.hidden.other": "{count}개 단계 숨김, 탭하여 표시",
+  "settings.tools.title": "도구 호출",
+  "settings.tools.description": "에이전트가 실행한 읽기, 검색, 명령, 편집을 표시합니다. 끄면 말한 내용만 남습니다.",
   // --- settings sections ---
   "settings.section.appearance.title": "화면",
   "settings.section.appearance.blurb": "테마, 언어, 글꼴",

@@ -18,6 +18,12 @@ export const en = {
 
   // --- settings (page chrome) ---
   "settings.title": "Settings",
+  // The stand-in for the steps a turn took, when tool calls are off (Settings → Appearance). Per
+  // TURN, not per call: one line where forty cards were.
+  "transcript.tools.hidden.one": "{count} step hidden — tap to show",
+  "transcript.tools.hidden.other": "{count} steps hidden — tap to show",
+  "settings.tools.title": "Tool calls",
+  "settings.tools.description": "Draw the reads, searches, commands and edits an agent ran. Off keeps the thread to what it said.",
   // --- settings sections (the index's four rows) ---
   // The blurb names the three or four cards a person is most likely to be hunting for, so the row
   // answers "is it in here?" without being opened. Keep it short: it truncates on a narrow phone.
