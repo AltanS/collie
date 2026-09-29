@@ -165,7 +165,7 @@ optional dependency during the build:
 ```bash
 collie push-keys     # 1. generate + write the VAPID keys
 collie restart       # 2. Collie reads them at start
-#                      3. on your phone: Settings → notifications
+#                      3. on your phone: Settings → Alerts
 ```
 
 The `push-keys` command generates the keypair and writes `COLLIE_VAPID_PUBLIC` and
@@ -217,7 +217,7 @@ message in the body. Selecting the notification navigates directly to that agent
 
 ### Which alerts Collie sends
 
-Four kinds, each with its own switch under **Settings → Notify when**.
+Four kinds, each with its own switch under **Settings → Alerts → Notify when**.
 
 | Alert | Fires when | Default |
 | --- | --- | --- |

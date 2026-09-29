@@ -540,7 +540,7 @@ Stated so nobody reads this document as a description of a clean tree.
    | --- | --- |
    | `host-stale-banner.tsx:92` | inset `rounded-sm border … px-4 py-2 text-xs` — the pre-conversion read-only string, verbatim. Mounts and unmounts with no `Collapse`, so it pops. |
    | `no-echo-notice.tsx:43` | `rounded-md bg-muted/40 px-2.5 py-1.5` and **no border at all**; `terminal-draft-preview.tsx:32` is the same string a second time (gap 3 below) |
-   | `routes/settings.tsx:158,163` | two `<p>` rows on `border-t border-border px-4 py-2.5`, popping into the card unanimated |
+   | `components/push-control.tsx:63,68` | two `<p>` rows on `border-t border-border px-4 py-2.5`, popping into the card unanimated (they were `routes/settings.tsx:158,163` until Settings became an index of four sections) |
    | `alpha-bar.tsx:50-51` | full-bleed `border-b border-status-info/40 bg-status-info/15 px-3 py-0.5 text-[11px]`. Deliberately last, and possibly never: it is a static build fact that never appears or disappears, so it cannot shift anything, and it is the family's visual precedent rather than a violation of it. |
 
    **Closed:** `status-area.tsx` used to carry its own fixed wrapper per route. All three now mount

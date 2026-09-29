@@ -412,7 +412,7 @@ collie crew update --all
 ```
 
 That is the terminal path, for a peer the phone cannot level. From the phone, update the whole crew
-with one tap and one confirmation: open **Settings → Updates** on the lead and select
+with one tap and one confirmation: open **Settings → System → Updates** on the lead and select
 **Update crew to `<version>`**. The preflight above the button covers every member, not just the
 lead. If a check is red anywhere, the button is disabled and names the failing machine and the
 reason.

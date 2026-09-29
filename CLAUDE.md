@@ -451,7 +451,8 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls
   followed by `revalidator.revalidate()`. There is **no TanStack Query** — don't reintroduce it.
-- Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings`, `/pane/:paneId`,
+- Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings` (an INDEX of four sections:
+  `/settings/appearance`, `/settings/device`, `/settings/alerts`, `/settings/system`), `/pane/:paneId`,
   `/pane/:paneId/history`, `/pane/:paneId/changes` and `/space/:spaceId/changes` (both matched as
   `changes/*`, so the commit view `…/changes/commit` shares the list's component). The router
   instance is module-scoped so it keeps its location.

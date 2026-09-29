@@ -86,7 +86,7 @@ moment Collie recognises a password prompt it drops the stored draft too
 causes, in the order the command distinguishes them:
 push says it's disabled (the keys never reached the bridge — run `push-keys` and restart, see
 [Web Push](voice-and-push.md#web-push-optional)); it says there are no subscribed devices (this phone never enabled
-them in Settings → notifications); or it reports a send and nothing arrives (the phone is on a
+them in Settings → Alerts); or it reports a send and nothing arrives (the phone is on a
 plain-HTTP origin, which is not a secure context — Settings flags it `insecure`).
 
 **Collie is gone after a reboot.** On Linux this is almost always lingering, so run

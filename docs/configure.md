@@ -214,7 +214,7 @@ keystroke, an attachment, a send, a tap on another belt button, or leaving the p
 belt keeps it.
 
 To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
-of the row above the keyboard. Turn that segment off per device in **Settings → Harness shortcuts**;
+of the row above the keyboard. Turn that segment off per device in **Settings → Appearance → Harness shortcuts**;
 Collie's own controls stay.
 
 ## Your own key presets
@@ -323,7 +323,7 @@ To verify, reload the dashboard and look under the herd. If a row fails to load,
 
 ## Your own typefaces
 
-The interface font is a per-device setting. Under **Settings → Typeface**, you can choose between
+The interface font is a per-device setting. Under **Settings → Appearance → Typeface**, you can choose between
 System, Space Grotesk (the default), and Aldrich. You can add custom fonts in `theme.toml`, the
 fourth configuration file:
 
@@ -537,7 +537,7 @@ sessions. [Security](security.md) lists this behavior as a sharp edge.
 
 > **Note.** Collie follows your phone's appearance by default.
 
-To pin it, open **Settings → Appearance** and pick **System**, **Light** or **Dark**. The setting is
+To pin it, open **Settings → Appearance → Theme** and pick **System**, **Light** or **Dark**. The setting is
 stored **per device** in the browser rather than on the bridge. Your phone can remain on Dark while
 a laptop tracks the OS. The preference persists across reloads and PWA reinstalls on the same
 device.
@@ -568,7 +568,7 @@ This implementation has two practical consequences:
 
 > **Note.** Zen mode is off by default.
 
-Enable it in **Settings → Zen mode** (stored per device in the browser). This adds a **Zen mode**
+Enable it in **Settings → Device → Zen mode** (stored per device in the browser). This adds a **Zen mode**
 option to the pane menu, under the ⋮ beside Find and History. Tapping it hides all Collie UI
 elements: the header, tab and pane strips, agent statusline, and composer docks. Only the terminal
 mirror remains visible. A floating button in the top-right corner or the Escape key restores the
@@ -607,7 +607,7 @@ The header names the workspace and its folder. Collie picks that folder in this 
 | Look for repos inside this folder | on | Also lists repos in folders below the workspace folder, even ones the parent repo ignores |
 | How deep to look | 2 | How many folder levels below the workspace folder the search goes, 1 to 4 |
 
-Both live in **Settings → Changes** and are stored per device.
+Both live in **Settings → Device → Changes** and are stored per device.
 
 > **Note.** Changes only reads. It never stages, commits or edits, and a repo's own hooks, filters
 > and diff programs never run while Collie reads it
@@ -617,7 +617,7 @@ zellij panes have no Changes row, because zellij does not report a pane's folder
 
 ## Language
 
-Collie's interface is available in six languages. Configure this under **Settings → Language**.
+Collie's interface is available in six languages. Configure this under **Settings → Appearance → Language**.
 
 - English
 - Deutsch

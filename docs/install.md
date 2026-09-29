@@ -377,8 +377,8 @@ Open Collie on the phone, pair the phone, and add Collie to the home screen.
 2. Run `collie qr` on the host and scan its code, or open the URL that `collie url` prints.
 3. Run `collie pair` on the host and scan that QR code.
 
-The QR code from `collie pair` opens Settings → Paired devices with the code entered. You can also
-open Settings → Paired devices and enter it manually. Pairing gives this phone write access to your
+The QR code from `collie pair` opens Settings → System → Paired devices with the code entered. You can also
+open Settings → System → Paired devices and enter it manually. Pairing gives this phone write access to your
 panes ([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 Collie is a web app. The browser adds it to your home screen without an app store, giving it a
@@ -474,7 +474,7 @@ herdr plugin action invoke update-major --plugin herdr.collie   # Herdr plugin
 collie update --major                                           # standalone
 ```
 
-The phone can do the routine update too: Settings → Updates, one tap, and on a crew lead one tap
+The phone can do the routine update too: Settings → System → Updates, one tap, and on a crew lead one tap
 levels every member. For the phone path, the preflight, rollback, crews, and what to do when an
 update sticks, see **[Manage & update](upgrading.md)**.
 
