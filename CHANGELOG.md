@@ -36,6 +36,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   sends, narrow and start-exit, and every one passed. The reader ledger now names 2.1.284 instead
   of 2.1.283.
 
+### Docs
+
+- **The docs have a Guides section, and it opens with an install in five minutes.** Install was
+  the only way in, and it answers every system and every front door at once, so a first-time reader
+  had to find their own path through it. The new guide walks one path: Tailscale, Herdr and the
+  install script on the computer, then the home screen and `collie pair` on the phone. The README's
+  documentation table splits into Guides and Reference, and `collie docs five-minute-install` prints
+  the guide from the binary.
+
 ## [1.14.2] - 2026-09-28
 
 ### Docs
