@@ -34,6 +34,8 @@ import {
   statFile,
 } from "./files.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { parseUnifiedDiff } from "./diff.ts";
+import { classifyToolCall, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -125,7 +127,25 @@ function extractImageUrl(content: JsonValue | undefined): string | undefined {
 type PiRow = JsonObject;
 
 /** A `tool` part's answered result — {@link Clamped} plus the error flag and optional image URL. */
-type ToolResult = Clamped & { isError?: boolean; imageUrl?: string };
+type ToolResult = Clamped & { isError?: boolean; imageUrl?: string; denied?: boolean };
+
+/**
+ * An error result that is a REFUSAL, not a failure — pi's OWN wording, and only pi's.
+ *
+ * pi core has no permission dialog of its own: a gate is an extension returning `{block, reason}`
+ * from `onBeforeToolCall`, and pi then writes `reason || "Tool execution was blocked"` as the error
+ * result (read out of pi-coding-agent's own bundle, 2026-09-29). The fallback is therefore the one
+ * phrasing pi itself is on the hook for, so it is the only one matched here. An extension's own
+ * `reason` is arbitrary prose — including the `Denied at the desk` / `Blocked by …` lines the
+ * session-stream prototype's extension writes, which are that extension's words and not pi's — so it
+ * degrades to plain `isError`, which is the behaviour this adapter had before.
+ *
+ * NOT treated as a refusal: `Operation aborted`, `Command aborted` and `Command timed out after N
+ * seconds`, pi's three interrupt/timeout results. An interrupt is the operator stopping a call in
+ * flight, not the operator saying no to it, and a view that draws the two alike misreports the
+ * session — the same reason `denied` is separate from `isError` at all.
+ */
+const PI_BLOCKED = /^Tool execution was blocked/;
 
 /** One row's `toolResult` payload, folded onto the call it answers. */
 function toolResult(text: string, isError: boolean, imageUrl?: string): ToolResult {
@@ -133,7 +153,75 @@ function toolResult(text: string, isError: boolean, imageUrl?: string): ToolResu
   // Assigned, never conditionally spread: `isError` is ABSENT when false, not `false`.
   if (isError) result.isError = true;
   if (imageUrl) result.imageUrl = imageUrl;
+  if (isError && PI_BLOCKED.test(text)) result.denied = true;
   return result;
+}
+
+/**
+ * How pi ends a failed `bash` result — the status line it appends after the output.
+ *
+ * Verified in pi's own bundle: a non-zero exit throws `<output>\n\nCommand exited with code <n>`,
+ * or that line alone when the command printed nothing, and a zero exit returns the output with no
+ * status line at all. So the ABSENCE of this line on a non-error result is what says "exited 0";
+ * `Command aborted` and `Command timed out after N seconds` take the same slot and carry no code,
+ * which is why the number is required to match.
+ */
+const PI_EXIT_STATUS = /(?:^|\n)Command exited with code (\d+)\s*$/;
+
+/** A line inside a hunk body carries its own marker — context, added, removed, or the no-eol note. */
+
+/**
+ * Enrich a classified call from the result row that answered it — what the call DID, rather than
+ * what it was asked to do. MUTATES `call`, the same in-place fold the result text uses.
+ *
+ * pi splits that knowledge across two places, unlike Claude's single `toolUseResult`, so both are
+ * passed: `raw` is the row's `details` object, `text` its flattened result text.
+ *
+ * WHAT IS VERIFIED against real on-disk sessions (44 logs, 973 result rows, 2026-09-29):
+ *  - `details.patch` on an `edit` is a real unified diff string (33 rows). It is OPTIONAL — 157
+ *    `edit` results carried `details.diff` and no `patch`, and that `diff` is a LINE-NUMBERED display
+ *    string (`+172   text`), not a unified diff, so it is deliberately not read here: parsing it
+ *    would invent hunk headers pi never wrote.
+ *  - `details.answer` on the collie extension's `ask_user` (6 rows), beside `question`, `options`
+ *    and `by`.
+ *  - the `Command exited with code N` tail on a failed `bash` (18 distinct occurrences), confirmed
+ *    against pi's own bundle as well.
+ * WHAT IS TAKEN ON THE PROTOTYPE'S WORD (experiments/session-stream/adapters/pi.ts): nothing that
+ * reaches an output field. The prototype named `details.patch` and `details.answer` first, and both
+ * were then read off real rows before being used here.
+ *
+ * NOT filled, on purpose: `created` on an edit. pi's `write` results carry no details at all and say
+ * only `Successfully wrote N bytes to <path>`, so "the file was new" is not knowable here, and
+ * guessing it would claim a creation that may have been an overwrite.
+ */
+function enrichCall(call: ToolCall, raw: JsonValue | undefined, text: string, isError: boolean): void {
+  const details: JsonObject | undefined =
+    raw !== null && raw !== undefined && typeof raw === "object" && !Array.isArray(raw) ? raw : undefined;
+  if (call.kind === "edit") {
+    const patch = details?.patch;
+    if (typeof patch === "string" && patch !== "") {
+      const parsed = parseUnifiedDiff(patch);
+      if (parsed.hunks.length > 0) {
+        call.diff = parsed.hunks;
+        call.added = parsed.added;
+        call.removed = parsed.removed;
+      }
+    }
+    return;
+  }
+  if (call.kind === "execute") {
+    const status = PI_EXIT_STATUS.exec(text);
+    if (status !== null) call.exitCode = Number(status[1]);
+    else if (!isError) call.exitCode = 0;
+    return;
+  }
+  if (call.kind === "other") {
+    // The one thing an unrecognised pi tool records that a view can draw: the answer a question got.
+    // It joins the STRUCTURED summary only — the part's own `summary` is the call's one-line form and
+    // stays exactly what `summarizeToolInput` made of the input.
+    const answer = details?.answer;
+    if (typeof answer === "string" && answer.trim() !== "") call.summary = `${call.summary} → ${answer}`;
+  }
 }
 
 /**
@@ -180,6 +268,9 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
         // without reordering anything.
         pendingTools.delete(id);
         target.result = toolResult(resultText, isError, imageUrl);
+        // `details` rides on the RESULT ROW, not on a content block — it is pi's own record of what
+        // the call did, and the only place a patch or an answer ever appears.
+        if (target.call) enrichCall(target.call, m.details, resultText, isError);
       } else if (resultText.trim() !== "" || imageUrl) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -222,13 +313,19 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
           parts.push(part);
         }
       } else if (b.type === "toolCall") {
+        const name = typeof b.name === "string" ? b.name : "tool";
+        // pi passes `arguments` as a real object (Codex passes a JSON string) — no parse needed.
+        const summary = summarizeToolInput(b.arguments);
         const part: Extract<TranscriptPart, { kind: "tool" }> = {
           kind: "tool",
-          name: typeof b.name === "string" ? b.name : "tool",
-          // pi passes `arguments` as a real object (Codex passes a JSON string) — no parse needed.
-          summary: summarizeToolInput(b.arguments),
+          name,
+          summary,
+          call: classifyToolCall(name, b.arguments, summary),
         };
-        if (typeof b.id === "string") pendingTools.set(b.id, part);
+        if (typeof b.id === "string") {
+          part.id = b.id;
+          pendingTools.set(b.id, part);
+        }
         parts.push(part);
       }
     }

@@ -11,6 +11,8 @@ import {
   resolveBlobPath,
   resolveImageUrl,
 } from "./pi.ts";
+import type { ToolCall } from "./tool-call.ts";
+import type { TranscriptPart } from "./types.ts";
 
 /**
  * Any JSON document — what a row of an agent's on-disk log actually is, before the adapter parses
@@ -220,6 +222,215 @@ describe("parsePiTranscript", () => {
 
   test("a clipped or partial line is skipped, not thrown on", () => {
     expect(parsePiTranscript(['{"type":"mess', speech("a", "user", "hi")].join("\n"))).toHaveLength(1);
+  });
+});
+
+// The STRUCTURED call (tool-call.ts) beside `name`/`summary`. Rows are hand-written against the
+// shapes read off 44 real pi sessions on 2026-09-29 — pi's `details.patch` unified diff, its
+// `details.answer`, and the `Command exited with code N` tail it appends to a failed `bash`.
+describe("parsePiTranscript — the structured call", () => {
+  /** An assistant row holding one `toolCall` block. */
+  const call = (id: string, name: string, args: Record<string, JsonValue>) =>
+    row("a", { role: "assistant", content: [{ type: "toolCall", id, name, arguments: args }] });
+
+  /** The `toolResult` row that answers it. */
+  /** pi's `toolResult` message. A type alias rather than an interface, so it still satisfies the
+   *  `row` builder's index signature, and the two optional keys stay ABSENT when not passed: a key
+   *  holding `undefined` survives a deep compare. */
+  type ResultRow = {
+    role: "toolResult";
+    toolCallId: string;
+    toolName: string;
+    content: { type: string; text: string }[];
+    details?: JsonValue;
+    isError?: boolean;
+  };
+
+  const result = (
+    id: string,
+    name: string,
+    text: string,
+    extra: { details?: JsonValue; isError?: boolean } = {},
+  ) =>
+    {
+      // A key holding `undefined` survives a deep compare, so an absent option is an ABSENT key.
+      const body: ResultRow = {
+        role: "toolResult",
+        toolCallId: id,
+        toolName: name,
+        content: [{ type: "text", text }],
+      };
+      if (extra.details !== undefined) body.details = extra.details;
+      if (extra.isError !== undefined) body.isError = extra.isError;
+      return row("b", body);
+    };
+
+  const partOf = (...lines: string[]) => {
+    const entries = parsePiTranscript(lines.join("\n"));
+    // SAFETY: every caller below passes a `call(...)` row first, and pi's parser emits that row as
+    // one entry whose first part is the tool part. A shape change here fails the assertions that
+    // follow, not silently.
+    return entries[0]!.parts[0] as Extract<TranscriptPart, { kind: "tool" }>;
+  };
+
+  test("a toolCall carries pi's own call id and its classified call", () => {
+    const part = partOf(call("call_1", "read", { path: "/repo/x.ts", offset: 10, limit: 20 }));
+    expect(part.id).toBe("call_1");
+    expect(part.call).toEqual({ kind: "read", path: "/repo/x.ts", range: [10, 30] });
+  });
+
+  test("`name` and `summary` are untouched by the classified call", () => {
+    const part = partOf(call("call_1", "read", { path: "/repo/SKILL.md" }));
+    expect(part.name).toBe("read");
+    expect(part.summary).toBe("/repo/SKILL.md");
+  });
+
+  test("an unrecognised tool degrades to `other` and keeps the row's own summary", () => {
+    const part = partOf(call("call_1", "get_search_content", { responseId: "r1", urlIndex: 0 }));
+    expect(part.call).toEqual({ kind: "other", name: "get_search_content", summary: part.summary });
+  });
+
+  test("an edit's `details.patch` becomes hunks plus added/removed counts", () => {
+    const patch = [
+      "--- /repo/x.ts",
+      "+++ /repo/x.ts",
+      "@@ -1,3 +1,4 @@",
+      " const a = 1;",
+      "-const b = 2;",
+      "+const b = 3;",
+      "+const c = 4;",
+      "",
+    ].join("\n");
+    const part = partOf(
+      call("call_1", "edit", { path: "/repo/x.ts", oldText: "b = 2", newText: "b = 3" }),
+      result("call_1", "edit", "Successfully replaced text in /repo/x.ts.", {
+        details: { patch, diff: "- 2 const b = 2;", firstChangedLine: 2 },
+      }),
+    );
+    expect(part.call).toEqual({
+      kind: "edit",
+      path: "/repo/x.ts",
+      added: 2,
+      removed: 1,
+      diff: [
+        {
+          header: "@@ -1,3 +1,4 @@",
+          lines: [" const a = 1;", "-const b = 2;", "+const b = 3;", "+const c = 4;"],
+        },
+      ],
+    });
+  });
+
+  test("a patch with several hunks keeps each one, headers as pi wrote them", () => {
+    const patch = [
+      "--- /repo/x.md",
+      "+++ /repo/x.md",
+      "@@ -1,2 +1,2 @@",
+      "-a",
+      "+A",
+      " b",
+      "@@ -10,2 +10,2 @@ section",
+      " c",
+      "-d",
+      "+D",
+      "",
+    ].join("\n");
+    const part = partOf(
+      call("call_1", "edit", { path: "/repo/x.md", edits: [] }),
+      result("call_1", "edit", "Successfully replaced 2 block(s) in /repo/x.md.", { details: { patch } }),
+    );
+    // SAFETY: the call above is pi's `edit` tool, which `classifyToolCall` keys to `kind: "edit"`;
+    // the very next assertion reads `.diff` and would fail on any other branch.
+    const call1 = part.call as Extract<ToolCall, { kind: "edit" }>;
+    expect(call1.diff?.map((h) => h.header)).toEqual(["@@ -1,2 +1,2 @@", "@@ -10,2 +10,2 @@ section"]);
+    expect([call1.added, call1.removed]).toEqual([2, 2]);
+  });
+
+  test("an edit result carrying only pi's line-numbered `details.diff` fills no hunks", () => {
+    // 157 of 190 real edit results looked like this. That string is a DISPLAY diff, not a unified
+    // one, so reading it would invent hunk headers pi never wrote.
+    const part = partOf(
+      call("call_1", "edit", { path: "/repo/x.ts", oldText: "a", newText: "b" }),
+      result("call_1", "edit", "Successfully replaced text in /repo/x.ts.", {
+        details: { diff: "- 1 a\n+ 1 b", firstChangedLine: 1 },
+      }),
+    );
+    expect(part.call).toEqual({ kind: "edit", path: "/repo/x.ts", added: 0, removed: 0 });
+  });
+
+  test("a failed bash takes its exit code off the status line pi appends", () => {
+    const part = partOf(
+      call("call_1", "bash", { command: "bun test" }),
+      result("call_1", "bash", "1 fail\n\nCommand exited with code 1", { isError: true }),
+    );
+    expect(part.call).toEqual({ kind: "execute", command: "bun test", exitCode: 1 });
+  });
+
+  test("a bash that printed nothing still yields its code", () => {
+    const part = partOf(
+      call("call_1", "bash", { command: "false" }),
+      result("call_1", "bash", "Command exited with code 7", { isError: true }),
+    );
+    expect(part.call).toMatchObject({ exitCode: 7 });
+  });
+
+  test("a bash with no status line and no error exited 0", () => {
+    const part = partOf(
+      call("call_1", "bash", { command: "echo hi" }),
+      result("call_1", "bash", "hi"),
+    );
+    expect(part.call).toEqual({ kind: "execute", command: "echo hi", exitCode: 0 });
+  });
+
+  test.each([
+    ["an abort", "Command aborted"],
+    ["a timeout", "Command timed out after 180 seconds"],
+  ])("%s carries no exit code — pi records none", (_label, text) => {
+    const part = partOf(
+      call("call_1", "bash", { command: "sleep 999" }),
+      result("call_1", "bash", text, { isError: true }),
+    );
+    expect(part.call).toEqual({ kind: "execute", command: "sleep 999" });
+  });
+
+  test("an unanswered call is classified but never enriched", () => {
+    const part = partOf(call("call_1", "bash", { command: "echo hi" }));
+    expect(part.call).toEqual({ kind: "execute", command: "echo hi" });
+  });
+
+  test("`details.answer` joins the structured summary and leaves the part's own alone", () => {
+    const part = partOf(
+      call("call_1", "ask_user", { question: "Which color do you prefer?", options: ["Red", "Blue"] }),
+      result("call_1", "ask_user", "The user picked: Blue", {
+        details: { question: "Which color do you prefer?", options: ["Red", "Blue"], answer: "Blue", by: "phone" },
+      }),
+    );
+    expect(part.summary).toBe("Which color do you prefer?");
+    expect(part.call).toEqual({
+      kind: "other",
+      name: "ask_user",
+      summary: "Which color do you prefer? → Blue",
+    });
+  });
+
+  test("pi's own block wording marks the result denied, not merely failed", () => {
+    const part = partOf(
+      call("call_1", "bash", { command: "rm -rf /" }),
+      result("call_1", "bash", "Tool execution was blocked", { isError: true }),
+    );
+    expect(part.result).toEqual({ text: "Tool execution was blocked", isError: true, denied: true });
+  });
+
+  test.each([
+    ["an interrupt", "Operation aborted"],
+    ["an extension's own wording", "Denied at the desk"],
+    ["an ordinary failure", "ENOENT: no such file"],
+  ])("%s is not a refusal — `denied` stays absent", (_label, text) => {
+    const part = partOf(
+      call("call_1", "read", { path: "/x" }),
+      result("call_1", "read", text, { isError: true }),
+    );
+    expect(part.result).toEqual({ text, isError: true });
   });
 });
 

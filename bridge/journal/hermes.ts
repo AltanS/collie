@@ -11,6 +11,7 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { classifyToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -93,7 +94,18 @@ function toolCallPart(raw: JsonValue, fallbackName: string | null): TranscriptPa
     if (fn === null || typeof fn !== "object" || Array.isArray(fn)) continue;
     const name = typeof fn.name === "string" ? fn.name : fallbackName ?? "tool";
     const args = typeof fn.arguments === "string" ? parseJson(fn.arguments) : fn.arguments;
-    return { kind: "tool", name, summary: summarizeToolInput(args) };
+    const summary = summarizeToolInput(args);
+    const part: Extract<TranscriptPart, { kind: "tool" }> = {
+      kind: "tool",
+      name,
+      summary,
+      call: classifyToolCall(name, args, summary),
+    };
+    // The call's OWN id, not the message row's: the `tool` row answering this call repeats it in
+    // `tool_call_id`, so this is the only field that pairs the two rows. `uuid` already carries the
+    // row id. Assigned, never set to `undefined` — an absent id has to be absent.
+    if (typeof call.id === "string" && call.id !== "") part.id = call.id;
+    return part;
   }
   return null;
 }
@@ -133,11 +145,27 @@ function rowEntry(row: MessageRow): TranscriptEntry | null {
     const toolResult = result.kind === "text" && result.truncated
       ? { text: result.text, truncated: true }
       : { text: result.kind === "text" ? result.text : "" };
+    // No `call` here, and no `enrichCall` anywhere in this adapter. A `tool` row in Hermes' SessionDB
+    // holds `content`, `tool_call_id`, `tool_name`, `timestamp`, `active`, `compacted` and
+    // `display_kind` and NOTHING about what the call did — no exit code, no patch, no success flag,
+    // no status. The input that would name a path or a command sits on the assistant row's
+    // `tool_calls`, which is where this adapter classifies (see `toolCallPart`); classifying again
+    // from a name alone would emit an empty path or an empty command, which reads as a fact and is
+    // not one. For the same reason a refusal cannot be told from an error: the store has no error
+    // flag at all, so `isError` stays absent rather than guessed, and `denied` with it.
+    const part: Extract<TranscriptPart, { kind: "tool" }> = {
+      kind: "tool",
+      name: row.tool_name ?? "tool",
+      summary: "",
+      result: toolResult,
+    };
+    // The id the assistant row's call carried, so a view can pair this result with it.
+    if (typeof row.tool_call_id === "string" && row.tool_call_id !== "") part.id = row.tool_call_id;
     return {
       uuid: String(row.id),
       ts: isoTimestamp(row.timestamp),
       role: "note",
-      parts: [{ kind: "tool", name: row.tool_name ?? "tool", summary: "", result: toolResult }],
+      parts: [part],
     };
   }
   if (row.role !== "user" && row.role !== "assistant") return null;

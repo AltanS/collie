@@ -172,6 +172,107 @@ describe("parseCodexTranscript", () => {
     });
   });
 
+  // The structured `call`, which sits BESIDE `name`/`summary` and never replaces either. `arguments`
+  // is a JSON string, so the classifier gets it parsed while the summary keeps its own reading.
+  test("a shell call carries a structured execute call and its call_id", () => {
+    const entries = parseCodexTranscript(
+      item({
+        type: "function_call",
+        name: "shell",
+        arguments: JSON.stringify({ command: ["bash", "-lc", "ls -la"], workdir: "/repo" }),
+        call_id: "call_1",
+      }),
+    );
+    expect(entries[0]!.parts[0]).toEqual({
+      kind: "tool",
+      name: "shell",
+      summary: "bash -lc ls -la",
+      id: "call_1",
+      call: { kind: "execute", command: "bash -lc ls -la" },
+    });
+  });
+
+  test("a tool outside the nine kinds degrades to `other`, keeping its own line", () => {
+    const entries = parseCodexTranscript(
+      item({ type: "function_call", name: "update_plan", arguments: JSON.stringify({ plan: [] }), call_id: "c" }),
+    );
+    expect(entries[0]!.parts[0]).toMatchObject({
+      kind: "tool",
+      name: "update_plan",
+      call: { kind: "other", name: "update_plan" },
+    });
+  });
+
+  // Malformed arguments lose the structure and keep the sentence — the classifier reads an empty
+  // input rather than being handed the raw string.
+  test("malformed arguments still classify, on an empty input", () => {
+    const entries = parseCodexTranscript(
+      item({ type: "function_call", name: "shell", arguments: '{"command": ["bash"', call_id: "c" }),
+    );
+    expect(entries[0]!.parts[0]).toMatchObject({ call: { kind: "execute", command: "" } });
+  });
+
+  // `metadata.exit_code` is the ONE structured fact the output row holds (153 of the 296 rows on a
+  // real machine), and it rides in the raw `output` string that `codexToolOutput` unwraps away.
+  test("the output's metadata.exit_code folds onto the execute call", () => {
+    const entries = parseCodexTranscript(
+      [
+        item({ type: "function_call", name: "shell", arguments: '{"command":["bash","-lc","false"]}', call_id: "c" }),
+        item({
+          type: "function_call_output",
+          call_id: "c",
+          output: JSON.stringify({ output: "", metadata: { exit_code: 2, duration_seconds: 0.4 } }),
+        }),
+      ].join("\n"),
+    );
+    expect(entries[0]!.parts[0]).toMatchObject({ call: { kind: "execute", exitCode: 2 } });
+  });
+
+  test.each([
+    ["no metadata at all", JSON.stringify({ output: "total 0\n", metadata: {} })],
+    ["a bare non-JSON output", "Plan updated"],
+  ])("%s leaves the exit code absent rather than guessing one", (_label, output) => {
+    const entries = parseCodexTranscript(
+      [
+        item({ type: "function_call", name: "shell", arguments: '{"command":["bash"]}', call_id: "c" }),
+        item({ type: "function_call_output", call_id: "c", output }),
+      ].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    // Absent, not `undefined`: a key holding `undefined` would survive this compare.
+    expect(part.kind === "tool" ? part.call : null).toEqual({ kind: "execute", command: "bash" });
+  });
+
+  // Codex records no error flag on an output row, so a failure and a success are the same shape and
+  // `isError` is never set. A refusal is different: Codex names it in the text.
+  test.each([
+    ["a rejected exec", "exec command rejected by user"],
+    ["a rejected patch", "patch rejected by user"],
+    ["an interrupted command", "aborted by user after 30.6s"],
+    ["a refusal by the operator's own rule", "writing outside of the project; rejected by user approval settings"],
+  ])("%s marks the result denied", (_label, output) => {
+    const entries = parseCodexTranscript(
+      [
+        item({ type: "function_call", name: "shell", arguments: '{"command":["bash"]}', call_id: "c" }),
+        item({ type: "function_call_output", call_id: "c", output }),
+      ].join("\n"),
+    );
+    expect(entries[0]!.parts[0]).toMatchObject({ result: { text: output, denied: true } });
+  });
+
+  // A sandbox block is an ordinary error: nobody was asked and nobody refused.
+  test("a sandbox block is not a refusal", () => {
+    const output = "failed in sandbox LinuxSeccomp with execution error: sandbox denied exec error, exit code: 2";
+    const entries = parseCodexTranscript(
+      [
+        item({ type: "function_call", name: "shell", arguments: '{"command":["bash"]}', call_id: "c" }),
+        item({ type: "function_call_output", call_id: "c", output }),
+      ].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    expect(part.kind === "tool" ? part.result : null).toEqual({ text: output });
+  });
+
   test("an orphan output is kept unattached so the window never drops output", () => {
     const entries = parseCodexTranscript(
       item({ type: "function_call_output", call_id: "gone", output: '{"output":"stranded"}' }),

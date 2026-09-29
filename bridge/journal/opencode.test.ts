@@ -198,6 +198,8 @@ describe("parseOpencodeTranscript", () => {
       kind: "tool",
       name: "read",
       summary: "/repo/sample.ts",
+      id: "call_1",
+      call: { kind: "read", path: "/repo/sample.ts" },
       result: { text: "export const x = 1\n" },
     });
   });
@@ -212,6 +214,8 @@ describe("parseOpencodeTranscript", () => {
       kind: "tool",
       name: "bash",
       summary: "false",
+      id: "call_1",
+      call: { kind: "execute", command: "false" },
       result: { text: "exit status 1", isError: true },
     });
   });
@@ -222,7 +226,13 @@ describe("parseOpencodeTranscript", () => {
         toolPart("bash", { status: "pending", input: { command: "sleep 5" } }),
       ]),
     );
-    expect(entries[0]!.parts[0]).toEqual({ kind: "tool", name: "bash", summary: "sleep 5" });
+    expect(entries[0]!.parts[0]).toEqual({
+      kind: "tool",
+      name: "bash",
+      summary: "sleep 5",
+      id: "call_1",
+      call: { kind: "execute", command: "sleep 5" },
+    });
   });
 
   // V2 tool parts spell the name `name` (V1 spells it `tool`) and hold the result as a `content`
@@ -250,6 +260,9 @@ describe("parseOpencodeTranscript", () => {
       kind: "tool",
       name: "skill",
       summary: "opencode",
+      id: "call_00_Ag99YRR4kyERibbscesO5674",
+      // `skill` is outside the nine kinds, so it is `other` — and still reads exactly as before.
+      call: { kind: "other", name: "skill", summary: "opencode" },
       result: { text: "skill loaded\nsecond line" },
     });
   });
@@ -273,6 +286,8 @@ describe("parseOpencodeTranscript", () => {
       kind: "tool",
       name: "bash",
       summary: "false",
+      id: "call_1",
+      call: { kind: "execute", command: "false" },
       result: { text: "exit status 1", isError: true },
     });
   });
@@ -298,6 +313,8 @@ describe("parseOpencodeTranscript", () => {
       kind: "tool",
       name: "bash",
       summary: "false",
+      id: "call_1",
+      call: { kind: "execute", command: "false" },
       result: { text: "command exited 1", isError: true },
     });
   });
@@ -313,7 +330,13 @@ describe("parseOpencodeTranscript", () => {
         },
       ]),
     );
-    expect(entries[0]!.parts[0]).toEqual({ kind: "tool", name: "bash", summary: "sleep 5" });
+    expect(entries[0]!.parts[0]).toEqual({
+      kind: "tool",
+      name: "bash",
+      summary: "sleep 5",
+      id: "call_1",
+      call: { kind: "execute", command: "sleep 5" },
+    });
   });
 
   // The error branch's precedence is old behavior the V2 refactor must not disturb: a `state.error`
@@ -329,6 +352,8 @@ describe("parseOpencodeTranscript", () => {
       kind: "tool",
       name: "bash",
       summary: "false",
+      id: "call_1",
+      call: { kind: "execute", command: "false" },
       result: { text: "", isError: true },
     });
   });
@@ -1150,5 +1175,407 @@ describe("opencodeResetsV2", () => {
     await rm(base, { recursive: true, force: true });
     expect(probe?.lastRequestAt).toBe(100);
     expect(probe?.cacheReadTokens).toBe(700);
+  });
+});
+
+// OpenCode records what a call actually DID in its `state`, and the two generations disagree about
+// where: V1 (1.18.9) keeps one unified-diff string in `state.metadata.diff`, V2 (2.0.12) keeps a
+// FileDiff list in `state.metadata.files` with its own counts. Both are on disk today, so both are
+// pinned. The V1 shapes below are the ones a real store holds, read read-only on 2026-09-29.
+describe("parseOpencodeTranscript: the structured tool call", () => {
+  const firstTool = (text: string) => {
+    const parts = parseOpencodeTranscript(text).flatMap((e) => e.parts);
+    const part = parts.find((p) => p.kind === "tool");
+    // SAFETY: `find` on the `kind === "tool"` predicate returns that branch or nothing; the throw
+    // rules out nothing, so the narrowing below is what the predicate already proved.
+    if (part === undefined || part.kind !== "tool") throw new Error("no tool part in the log");
+    return part;
+  };
+
+  const one = (part: JsonValue) => line("msg_b", assistantData(), [part]);
+
+  test("a V1 edit takes its diff from metadata.diff, past the Index/--- preamble", () => {
+    // The `---`/`+++` marker lines start with `-` and `+` and sit ABOVE the first `@@`, so a parser
+    // that read them as diff lines would count two changes that never happened.
+    const diff = [
+      "Index: /repo/a.css",
+      "===================================================================",
+      "--- /repo/a.css",
+      "+++ /repo/a.css",
+      "@@ -1,2 +1,2 @@",
+      " .a {",
+      "-  gap: 2rem;",
+      "+  gap: 3.5rem;",
+    ].join("\n");
+    expect(
+      firstTool(
+        one(
+          toolPart("edit", {
+            status: "completed",
+            input: { filePath: "/repo/a.css", oldString: "2rem", newString: "3.5rem" },
+            output: "done",
+            metadata: { diff },
+          }),
+        ),
+      ).call,
+    ).toEqual({
+      kind: "edit",
+      path: "/repo/a.css",
+      added: 1,
+      removed: 1,
+      diff: [{ header: "@@ -1,2 +1,2 @@", lines: [" .a {", "-  gap: 2rem;", "+  gap: 3.5rem;"] }],
+    });
+  });
+
+  test("a V1 apply_patch reads its file list, names each file's first hunk and counts the lines", () => {
+    // V1's rows carry no `additions`/`deletions`, so the patch itself is the count. `files` outranks
+    // the `diff` beside it, which is only the first file's patch.
+    expect(
+      firstTool(
+        one(
+          toolPart("apply_patch", {
+            status: "completed",
+            input: { patch: "…" },
+            output: "done",
+            metadata: {
+              diff: "@@ -1,1 +0,0 @@\n-gone\n",
+              files: [
+                {
+                  filePath: "/repo/a.ts",
+                  relativePath: "a.ts",
+                  type: "delete",
+                  patch: "--- /repo/a.ts\n+++ /repo/a.ts\n@@ -1,1 +0,0 @@\n-gone\n",
+                },
+                {
+                  filePath: "/repo/b.ts",
+                  relativePath: "b.ts",
+                  type: "add",
+                  patch: "@@ -0,0 +1,2 @@\n+new\n+lines\n",
+                },
+              ],
+            },
+          }),
+        ),
+      ).call,
+    ).toEqual({
+      kind: "edit",
+      path: "",
+      added: 2,
+      removed: 1,
+      diff: [
+        { header: "a.ts @@ -1,1 +0,0 @@", lines: ["-gone"] },
+        { header: "b.ts @@ -0,0 +1,2 @@", lines: ["+new", "+lines"] },
+      ],
+    });
+  });
+
+  test("a V1 write against nothing is marked created, which the input alone cannot say", () => {
+    expect(
+      firstTool(
+        one(
+          toolPart("write", {
+            status: "completed",
+            input: { filePath: "/repo/new.ts", content: "x" },
+            output: "done",
+            metadata: { exists: false, filepath: "/repo/new.ts" },
+          }),
+        ),
+      ).call,
+    ).toEqual({ kind: "edit", path: "/repo/new.ts", added: 0, removed: 0, created: true });
+  });
+
+  test("a write over an existing file is not created, and still counts nothing", () => {
+    // OpenCode keeps no copy of what was there before a write, so there is no diff to fold and
+    // `added`/`removed` stay 0 rather than being invented from the input's `content`.
+    expect(
+      firstTool(
+        one(
+          toolPart("write", {
+            status: "completed",
+            input: { filePath: "/repo/a.ts", content: "x\ny\n" },
+            output: "done",
+            metadata: { exists: true, filepath: "/repo/a.ts" },
+          }),
+        ),
+      ).call,
+    ).toEqual({ kind: "edit", path: "/repo/a.ts", added: 0, removed: 0 });
+  });
+
+  test("a command keeps its exit code, on a failure as well as a success", () => {
+    expect(
+      firstTool(
+        one(
+          toolPart("bash", {
+            status: "error",
+            input: { command: "false", description: "check" },
+            error: "exit status 1",
+            metadata: { exit: 1, output: "", truncated: false },
+          }),
+        ),
+      ).call,
+    ).toEqual({ kind: "execute", command: "false", description: "check", exitCode: 1 });
+  });
+
+  test("a grep keeps its match count and a glob its path count", () => {
+    expect(
+      firstTool(
+        one(
+          toolPart("grep", {
+            status: "completed",
+            input: { pattern: "TODO", path: "/repo" },
+            output: "…",
+            metadata: { matches: 7 },
+          }),
+        ),
+      ).call,
+    ).toEqual({ kind: "search", query: "TODO", where: "/repo", hits: 7 });
+
+    expect(
+      firstTool(
+        one(
+          toolPart("glob", {
+            status: "completed",
+            input: { pattern: "**/*.ts" },
+            output: "…",
+            metadata: { count: 12 },
+          }),
+        ),
+      ).call,
+    ).toEqual({ kind: "search", query: "**/*.ts", hits: 12 });
+  });
+
+  test("a V1 refusal is `denied`, and a real failure is not", () => {
+    // Both wear `status: "error"`, so the status alone would tell the reader their command crashed
+    // when in fact they said no to it themselves. These two sentences are from a real store.
+    expect(
+      firstTool(
+        one(
+          toolPart("bash", {
+            status: "error",
+            input: { command: "git push" },
+            error: "The user rejected permission to use this specific tool call.",
+          }),
+        ),
+      ).result,
+    ).toEqual({
+      text: "The user rejected permission to use this specific tool call.",
+      isError: true,
+      denied: true,
+    });
+
+    expect(
+      firstTool(
+        one(
+          toolPart("edit", {
+            status: "error",
+            input: { filePath: "/repo/a.ts" },
+            error: "Could not find oldString in the file. It must match exactly, including whitespace.",
+          }),
+        ),
+      ).result,
+    ).toEqual({
+      text: "Could not find oldString in the file. It must match exactly, including whitespace.",
+      isError: true,
+    });
+  });
+
+  test("a V1 call interrupted by the operator is `denied` on the metadata flag alone", () => {
+    expect(
+      firstTool(
+        one(
+          toolPart("bash", {
+            status: "error",
+            input: { command: "sleep 500" },
+            error: "stopped",
+            metadata: { interrupted: true },
+          }),
+        ),
+      ).result,
+    ).toEqual({ text: "stopped", isError: true, denied: true });
+  });
+
+  test("a V2 edit reads the FileDiff list, taking the counts it is given", () => {
+    // V2 states its own `additions`/`deletions`, so they are believed over the parsed lines: the
+    // harness counted against the file it wrote.
+    expect(
+      firstTool(
+        one({
+          type: "tool",
+          id: "call_9",
+          name: "edit",
+          state: {
+            status: "completed",
+            input: { path: "/repo/a.ts", oldString: "a", newString: "b" },
+            content: [{ type: "text", text: "done" }],
+            metadata: {
+              files: [
+                {
+                  file: "/repo/a.ts",
+                  status: "modified",
+                  additions: 1,
+                  deletions: 1,
+                  patch: "@@ -1,1 +1,1 @@\n-const a = 1\n+const b = 1\n",
+                },
+              ],
+            },
+          },
+        }),
+      ).call,
+    ).toEqual({
+      kind: "edit",
+      path: "/repo/a.ts",
+      added: 1,
+      removed: 1,
+      diff: [{ header: "@@ -1,1 +1,1 @@", lines: ["-const a = 1", "+const b = 1"] }],
+    });
+  });
+
+  test("a V2 FileDiff with status `added` marks the call created", () => {
+    expect(
+      firstTool(
+        one({
+          type: "tool",
+          id: "call_9",
+          name: "write",
+          state: {
+            status: "completed",
+            input: { path: "/repo/new.ts", content: "x" },
+            content: [{ type: "text", text: "done" }],
+            metadata: {
+              files: [{ file: "/repo/new.ts", status: "added", additions: 1, deletions: 0, patch: "@@ -0,0 +1,1 @@\n+x\n" }],
+            },
+          },
+        }),
+      ).call,
+    ).toEqual({
+      kind: "edit",
+      path: "/repo/new.ts",
+      added: 1,
+      removed: 0,
+      diff: [{ header: "@@ -0,0 +1,1 @@", lines: ["+x"] }],
+      created: true,
+    });
+  });
+
+  test("a V2 error record naming a permission is `denied`; one naming the tool is not", () => {
+    // V2's `error` is `{type, message}` and the type is an enum, so it is matched rather than the
+    // prose. `tool.execution` is an ordinary failure and must stay one.
+    const v2Error = (error: JsonValue) =>
+      one({
+        type: "tool",
+        id: "call_9",
+        name: "shell",
+        state: { status: "error", input: { command: "git push" }, error },
+      });
+
+    expect(firstTool(v2Error({ type: "permission.rejected", message: "no" })).result).toEqual({
+      text: "no",
+      isError: true,
+      denied: true,
+    });
+    expect(firstTool(v2Error({ type: "tool.execution", message: "command exited 1" })).result).toEqual({
+      text: "command exited 1",
+      isError: true,
+    });
+  });
+
+  test("a running call already carries its structured form and its call id", () => {
+    // The tail window opens mid-turn all the time. A call whose result has not arrived is not a call
+    // the page can refuse to draw.
+    const part = firstTool(one(toolPart("read", { status: "running", input: { filePath: "/repo/a.ts" } })));
+    expect(part.call).toEqual({ kind: "read", path: "/repo/a.ts" });
+    expect(part.id).toBe("call_1");
+    expect(part.result).toBeUndefined();
+  });
+
+  test("a tool outside the nine kinds is `other` and reads exactly as its row did", () => {
+    const part = firstTool(one(toolPart("todowrite", { status: "completed", input: { todos: [] }, output: "ok" })));
+    expect(part.call).toEqual({ kind: "other", name: "todowrite", summary: part.summary });
+  });
+});
+
+// A patch tool names no file in its input, so the classified path arrives empty and the result is
+// the only place a path exists. Verified against a real 1.18.9 store: every `apply_patch` call there
+// classifies to an empty path.
+describe("parseOpencodeTranscript: a single-file patch takes its path from the result", () => {
+  const firstCall = (text: string) => {
+    const part = parseOpencodeTranscript(text).flatMap((e) => e.parts).find((p) => p.kind === "tool");
+    // SAFETY: `find` on the `kind === "tool"` predicate returns that branch or nothing; the throw
+    // rules out nothing, so the narrowing below is what the predicate already proved.
+    if (part === undefined || part.kind !== "tool") throw new Error("no tool part in the log");
+    return part.call;
+  };
+
+  test("one file in the list names the call", () => {
+    expect(
+      firstCall(
+        line("msg_b", assistantData(), [
+          toolPart("apply_patch", {
+            status: "completed",
+            input: { patch: "…" },
+            output: "done",
+            metadata: {
+              files: [{ filePath: "/repo/a.ts", relativePath: "a.ts", type: "update", patch: "@@ -1,1 +1,1 @@\n-a\n+b\n" }],
+            },
+          }),
+        ]),
+      ),
+    ).toEqual({
+      kind: "edit",
+      path: "/repo/a.ts",
+      added: 1,
+      removed: 1,
+      diff: [{ header: "@@ -1,1 +1,1 @@", lines: ["-a", "+b"] }],
+    });
+  });
+
+  test("several files keep the empty path, and their names ride on the hunk headers", () => {
+    expect(
+      firstCall(
+        line("msg_b", assistantData(), [
+          toolPart("apply_patch", {
+            status: "completed",
+            input: { patch: "…" },
+            output: "done",
+            metadata: {
+              files: [
+                { filePath: "/repo/a.ts", relativePath: "a.ts", type: "update", patch: "@@ -1,1 +1,1 @@\n-a\n+b\n" },
+                { filePath: "/repo/b.ts", relativePath: "b.ts", type: "update", patch: "@@ -2,1 +2,1 @@\n-c\n+d\n" },
+              ],
+            },
+          }),
+        ]),
+      ),
+    ).toEqual({
+      kind: "edit",
+      path: "",
+      added: 2,
+      removed: 2,
+      diff: [
+        { header: "a.ts @@ -1,1 +1,1 @@", lines: ["-a", "+b"] },
+        { header: "b.ts @@ -2,1 +2,1 @@", lines: ["-c", "+d"] },
+      ],
+    });
+  });
+
+  test("a path the input DID name is never overwritten by the result", () => {
+    expect(
+      firstCall(
+        line("msg_b", assistantData(), [
+          toolPart("edit", {
+            status: "completed",
+            input: { filePath: "/repo/asked.ts" },
+            output: "done",
+            metadata: { files: [{ file: "/repo/other.ts", status: "modified", additions: 1, deletions: 0, patch: "@@ -0,0 +1,1 @@\n+x\n" }] },
+          }),
+        ]),
+      ),
+    ).toEqual({
+      kind: "edit",
+      path: "/repo/asked.ts",
+      added: 1,
+      removed: 0,
+      diff: [{ header: "@@ -0,0 +1,1 @@", lines: ["+x"] }],
+    });
   });
 });

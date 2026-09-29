@@ -28,6 +28,7 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { classifyToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -164,12 +165,21 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
         for (const call of row.tool_calls) {
           if (call === null || typeof call !== "object" || Array.isArray(call)) continue;
           const c: JsonObject = call;
+          const name = typeof c.name === "string" ? c.name : "tool";
+          const input = parseArgs(c.arguments);
+          const summary = summarizeToolInput(input);
           const part: Extract<TranscriptPart, { kind: "tool" }> = {
             kind: "tool",
-            name: typeof c.name === "string" ? c.name : "tool",
-            summary: summarizeToolInput(parseArgs(c.arguments)),
+            name,
+            summary,
+            // Classified from the input alone, which is ALL grok's log allows — see the note at
+            // `tool_result` below for what it does not carry.
+            call: classifyToolCall(name, input, summary),
           };
-          if (typeof c.id === "string") pendingTools.set(c.id, part);
+          if (typeof c.id === "string") {
+            part.id = c.id;
+            pendingTools.set(c.id, part);
+          }
           parts.push(part);
         }
       }
@@ -182,10 +192,12 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
       const kind = row.kind;
       let name = "tool";
       let summary = "";
+      let action: JsonValue | undefined;
       if (kind !== null && kind !== undefined && typeof kind === "object" && !Array.isArray(kind)) {
         const k: JsonObject = kind;
         if (typeof k.tool_type === "string") name = k.tool_type;
         if (k.action !== null && typeof k.action === "object") {
+          action = k.action;
           summary = summarizeToolInput(k.action);
         }
       }
@@ -193,12 +205,21 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
         uuid,
         ts: "",
         role: "assistant",
-        parts: [{ kind: "tool", name, summary }],
+        // The action object IS the input here — a server-side tool's arguments arrive already
+        // parsed, so the same classifier reads it. A backend row carries no call id, so there is
+        // nothing to put in `id` and no result row ever addresses it.
+        parts: [{ kind: "tool", name, summary, call: classifyToolCall(name, action, summary) }],
       });
       continue;
     }
 
     if (type === "tool_result") {
+      // NO `enrichCall` HERE, and that is the honest answer rather than a gap. A grok result row is
+      // `{type,tool_call_id,content}` and nothing else (the header's row inventory, verified on
+      // disk): no exit code, no patch or diff, no hit count, and no error or refusal flag — which is
+      // also why `result` below carries neither `isError` nor `denied`. So the call stays exactly as
+      // the input classified it, which still names the kind, the path and the command. Fold
+      // something in the day grok's log records what a call DID.
       const id = typeof row.tool_call_id === "string" ? row.tool_call_id : "";
       const resultText = stripAnsi(contentText(row.content));
       const target = pendingTools.get(id);

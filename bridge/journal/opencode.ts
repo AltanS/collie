@@ -74,6 +74,8 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord, asText, tokenCount } from "./cache-probe.ts";
 import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { parseUnifiedDiff } from "./diff.ts";
+import { classifyToolCall, type Hunk, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -413,6 +415,133 @@ function toolErrorText(state: JsonObject): string {
   return toolOutputText(state);
 }
 
+/**
+ * An errored call that is a REFUSAL, not a failure.
+ *
+ * OpenCode marks both with `status: "error"`, so the status alone cannot tell "the command exited 1"
+ * from "the person said no" — the same problem Claude's `is_error` has, and the text is again the
+ * only answer. The first two phrasings are the ones a real store holds (opencode 1.18.9, 398
+ * completed and 23 errored tool parts, read 2026-09-29); the rest are the ones the session-stream
+ * prototype met on 1.18.32 and 2.0.12. A phrasing this misses degrades to `isError`, the old
+ * behaviour, which is why the list may be short without being wrong.
+ */
+const REFUSED_TEXT =
+  /rejected permission|dismissed this question|specified a rule which prevents|execution aborted|permission denied|user declined/i;
+
+/**
+ * V2's `error.type` is an enum, not prose (`ToolStateError`, 2.0.12), so a substring match on it is
+ * safe where the same match on a message would claim "connection aborted" as somebody's refusal.
+ */
+const REFUSED_TYPE = /permission|abort|interrupt|declin|reject|dismiss/i;
+
+/** True when an errored call was stopped by a person rather than by the tool. */
+function isRefusal(state: JsonObject): boolean {
+  const metadata = asRecord(state.metadata);
+  if (metadata !== null && metadata.interrupted === true) return true;
+  // V1 writes the error as a STRING, so prose is all there is to read.
+  if (typeof state.error === "string") return REFUSED_TEXT.test(state.error);
+  // V2 writes `{type, message}`, and the type is the stronger signal of the two.
+  const error = asRecord(state.error);
+  if (error === null) return false;
+  if (typeof error.type === "string" && REFUSED_TYPE.test(error.type)) return true;
+  return typeof error.message === "string" && REFUSED_TEXT.test(error.message);
+}
+
+
+/**
+ * Fold a file-changing call's patch out of `state.metadata`, where the two generations DISAGREE.
+ *
+ * V1 (1.18.9) writes ONE unified-diff string in `diff` for an `edit`, and for an `apply_patch`
+ * writes that same string PLUS a `files` list of `{filePath, relativePath, type, patch}` with no
+ * counts of its own. V2 (2.0.12) writes a FileDiff list in `files` instead —
+ * `{file, patch, additions, deletions, status}` — so there the counts are given.
+ *
+ * `files` therefore outranks `diff`: it is the multi-file truth in both generations, while V1's
+ * `diff` beside it is only the first file's patch.
+ */
+function enrichEdit(call: Extract<ToolCall, { kind: "edit" }>, metadata: JsonObject): void {
+  const hunks: Hunk[] = [];
+  let added = 0;
+  let removed = 0;
+  let created = false;
+  const files = Array.isArray(metadata.files) ? metadata.files : null;
+  if (files !== null) {
+    for (const entry of files) {
+      const file = asRecord(entry);
+      if (file === null) continue;
+      const parsed = parseUnifiedDiff(typeof file.patch === "string" ? file.patch : "");
+      // With more than one file in one call the hunk headers no longer say which file they belong
+      // to, so the first hunk of each carries its name. V2 spells it `file`, V1 `relativePath`.
+      const name =
+        typeof file.file === "string"
+          ? file.file
+          : typeof file.relativePath === "string"
+            ? file.relativePath
+            : "";
+      const first = parsed.hunks[0];
+      if (files.length > 1 && first !== undefined && name !== "") first.header = `${name} ${first.header}`.trim();
+      hunks.push(...parsed.hunks);
+      added += typeof file.additions === "number" ? file.additions : parsed.added;
+      removed += typeof file.deletions === "number" ? file.deletions : parsed.removed;
+    }
+    // V2 spells a new file `status: "added"`, V1's apply_patch rows `type: "add"`. Only a single-file
+    // call can say it: a batch that created one file among five did not create the call's subject.
+    const only = files.length === 1 ? asRecord(files[0]) : null;
+    if (only !== null && (only.status === "added" || only.type === "add")) created = true;
+    // A patch tool names no file in its INPUT — verified on a real store, an `apply_patch` call's
+    // classified path is empty — so a single-file patch takes its path from the result. A patch over
+    // several files keeps the empty path and is named by its hunk headers instead, because the one
+    // sentence that would cover them is a phrase, and the bridge composes no user-facing prose.
+    if (call.path === "" && only !== null) {
+      const path = typeof only.file === "string" ? only.file : typeof only.filePath === "string" ? only.filePath : "";
+      if (path !== "") call.path = path;
+    }
+  } else if (typeof metadata.diff === "string") {
+    const parsed = parseUnifiedDiff(metadata.diff);
+    hunks.push(...parsed.hunks);
+    added = parsed.added;
+    removed = parsed.removed;
+  }
+  // A write against nothing is a NEW file, and V1 says so on the write itself (`exists: false`).
+  if (metadata.exists === false) created = true;
+  if (hunks.length > 0) call.diff = hunks;
+  if (hunks.length > 0 || added > 0 || removed > 0) {
+    call.added = added;
+    call.removed = removed;
+  }
+  if (created) call.created = true;
+  // NOT filled: the diff of a `write`, which OpenCode records nowhere — it keeps the new content in
+  // the INPUT and no copy of what was there before. Computing one from the input would be this
+  // module inventing a result rather than reading one, and `added`/`removed` staying 0 says honestly
+  // that the harness counted nothing.
+}
+
+/**
+ * Enrich a classified call from its `state`, which is where OpenCode records what the call actually
+ * DID rather than what it was asked to do.
+ *
+ * MUTATES `call`, the same in-place fold `claude.ts` does and for the same reason: the part it sits
+ * on is already built. Only the metadata keys verified on a real store are read — `exit`, `diff`,
+ * `files`, `exists`, `matches`, `count` — and both generations keep all but the patch in one place.
+ */
+function enrichCall(call: ToolCall, state: JsonObject): void {
+  const metadata = asRecord(state.metadata);
+  if (metadata === null) return;
+  if (call.kind === "edit") {
+    enrichEdit(call, metadata);
+  } else if (call.kind === "execute") {
+    const exit = metadata.exit;
+    if (typeof exit === "number" && Number.isFinite(exit)) call.exitCode = exit;
+  } else if (call.kind === "search") {
+    // `matches` is grep's count of matching lines; `count` is glob's count of paths.
+    const hits = typeof metadata.matches === "number" ? metadata.matches : metadata.count;
+    if (typeof hits === "number" && Number.isFinite(hits)) call.hits = hits;
+  }
+  // NOT filled: a read's range. V1's `metadata.display` names the lines the tool actually returned,
+  // which can be narrower than the ones asked for, and `classifyToolCall` has already set `range`
+  // from the input. Two answers to one field is worse than one answer, so the input's wins.
+}
+
 /** Map one part's `data` json onto a renderable part. Null for anything we don't model. */
 export function opencodePart(data: JsonValue | undefined): TranscriptPart | null {
   if (data === null || data === undefined || typeof data !== "object" || Array.isArray(data)) return null;
@@ -434,19 +563,29 @@ export function opencodePart(data: JsonValue | undefined): TranscriptPart | null
       rawState !== null && rawState !== undefined && typeof rawState === "object" && !Array.isArray(rawState)
         ? rawState
         : {};
-    const part: Extract<TranscriptPart, { kind: "tool" }> = {
-      kind: "tool",
-      // V1 spells the tool `tool`; V2 spells it `name` (verified on 2.0.12).
-      name: typeof d.tool === "string" ? d.tool : typeof d.name === "string" ? d.name : "tool",
-      summary: summarizeToolInput(state.input),
-    };
+    // V1 spells the tool `tool`; V2 spells it `name` (verified on 2.0.12).
+    const name = typeof d.tool === "string" ? d.tool : typeof d.name === "string" ? d.name : "tool";
+    const summary = summarizeToolInput(state.input);
+    const call = classifyToolCall(name, state.input, summary);
+    const part: Extract<TranscriptPart, { kind: "tool" }> = { kind: "tool", name, summary, call };
+    // The CALL's own id, which is what a permission dialog names — V1 carries it as `callID` on the
+    // part (every tool part in a real 1.18.9 store has one), V2 as the content block's `id`. The
+    // part's own row id is deliberately not a fallback: it addresses the part, not the call.
+    const id = typeof d.callID === "string" ? d.callID : typeof d.id === "string" ? d.id : "";
+    if (id !== "") part.id = id;
     if (state.status === "completed") {
       const out = stripAnsi(toolOutputText(state));
       if (out !== "") part.result = clamp(out, MAX_RESULT_CHARS);
+      enrichCall(call, state);
     } else if (state.status === "error") {
       // The error text lives in `error`, falling back to whatever output also made it.
       const err = stripAnsi(toolErrorText(state));
       part.result = { ...clamp(err, MAX_RESULT_CHARS), isError: true };
+      // A refusal is not a failure. `isError` stays, so a view that only knows it reads as before,
+      // and `denied` is what tells the two apart.
+      if (isRefusal(state)) part.result.denied = true;
+      // An errored call still records what it got as far as doing: a non-zero exit, a partial patch.
+      enrichCall(call, state);
     }
     // pending/running: the call is on screen, its result simply hasn't happened yet.
     return part;

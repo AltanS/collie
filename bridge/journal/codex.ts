@@ -31,6 +31,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
+import { classifyToolCall, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -126,6 +127,76 @@ function codexToolSummary(args: JsonValue | undefined): string {
 }
 
 /**
+ * The same `arguments`, PARSED, for {@link classifyToolCall} — which wants the input as a
+ * `JsonValue` and not as the one-line summary above.
+ *
+ * Malformed arguments yield `undefined`, which the classifier reads as an empty input: a partial
+ * write loses the structure, while `codexToolSummary` still falls back to the raw line, so the row
+ * keeps its sentence either way.
+ */
+function codexToolInput(args: JsonValue | undefined): JsonValue | undefined {
+  if (typeof args !== "string") return args;
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    return JSON.parse(args) as JsonValue;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A `tool` part's answered output — {@link clamp}'s pair, plus the flags the output earns. */
+type ToolResult = NonNullable<Extract<TranscriptPart, { kind: "tool" }>["result"]>;
+
+/**
+ * An output that is a REFUSAL, not a failure.
+ *
+ * These are Codex's own literals (read off the 0.156.1 binary, and `aborted by user after …` seen
+ * in real rollouts): `exec command rejected by user`, `patch rejected by user`, `aborted by user
+ * after <n>s`, and `…; rejected by user approval settings`, where the no came from the rule the
+ * operator set rather than from a tap. All four say somebody said no; none of them says a command
+ * failed. A sandbox block (`sandbox denied exec error, exit code: 2`, also in real rollouts) is
+ * deliberately NOT here: nothing was asked and nobody refused — the command ran and was stopped,
+ * which is an ordinary error.
+ */
+const REFUSED = /rejected by user|aborted by user/i;
+
+/**
+ * Enrich a classified call from its `function_call_output` row, which is where Codex records what
+ * the call actually DID rather than what it was asked to do.
+ *
+ * WHAT THE ROLLOUT ACTUALLY HOLDS, counted over the 296 `function_call_output` rows on this machine
+ * (codex 0.32.0 through 0.156.1): `output` is a JSON string wrapping
+ * `{"output":"…","metadata":{"exit_code":0,"duration_seconds":0.0}}` for a `shell` call (153 rows),
+ * and a bare non-JSON string for everything else (131 rows) — an error message, `Plan updated`, an
+ * approval refusal. `metadata` never carried a key beyond those two, so `exit_code` is the one
+ * structured fact on this row and the only one folded in.
+ *
+ * NOT FILLED, on purpose. There is no diff to read: Codex applies a patch by running `apply_patch`
+ * through the shell, so an edit's `added`/`removed` stay 0 and `diff` stays absent, because the
+ * rollout records the patch nowhere. And code mode's `exec_command` writes its own `exit_code`
+ * inside a list of `input_text` blocks instead of in `output` (1 row); `codexToolOutput` does not
+ * read that shape either, so neither does this — a guess there would be a second grammar for one
+ * row.
+ */
+function enrichCall(call: ToolCall, raw: JsonValue | undefined): void {
+  if (call.kind !== "execute" || typeof raw !== "string") return;
+  let parsed: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps the reads below
+    // checked property accesses.
+    parsed = JSON.parse(raw) as JsonValue;
+  } catch {
+    return; // a bare string output — it carries no metadata, so it carries no exit code
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
+  const metadata = parsed.metadata;
+  if (metadata === null || metadata === undefined || typeof metadata !== "object" || Array.isArray(metadata)) return;
+  const code = metadata.exit_code;
+  // Assigned, never set to `undefined`: a key holding `undefined` survives a deep compare.
+  if (typeof code === "number" && Number.isFinite(code)) call.exitCode = code;
+}
+
+/**
  * Injected context Codex sends as a user turn. Rendering it as "You" would be actively wrong — the
  * operator never typed it — so it is dropped exactly like Claude's `system-reminder`.
  */
@@ -208,12 +279,18 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
     }
 
     if (p.type === "function_call") {
+      const name = typeof p.name === "string" ? p.name : "tool";
+      const summary = codexToolSummary(p.arguments);
       const part: Extract<TranscriptPart, { kind: "tool" }> = {
         kind: "tool",
-        name: typeof p.name === "string" ? p.name : "tool",
-        summary: codexToolSummary(p.arguments),
+        name,
+        summary,
+        call: classifyToolCall(name, codexToolInput(p.arguments), summary),
       };
-      if (typeof p.call_id === "string") pendingTools.set(p.call_id, part);
+      if (typeof p.call_id === "string") {
+        part.id = p.call_id;
+        pendingTools.set(p.call_id, part);
+      }
       entries.push({ uuid, ts, role: "assistant", parts: [part] });
       continue;
     }
@@ -222,11 +299,19 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
       const id = typeof p.call_id === "string" ? p.call_id : "";
       const target = pendingTools.get(id);
       const outputText = stripAnsi(codexToolOutput(p.output));
+      const result: ToolResult = clamp(outputText, MAX_RESULT_CHARS);
+      // Codex writes NO error flag on this row — a command that failed and one that worked are the
+      // same shape, and the exit code sits in `metadata` rather than on the part. So `isError` stays
+      // absent here, and only a refusal is marked (see REFUSED), because that one the text names.
+      if (REFUSED.test(outputText)) result.denied = true;
       if (target) {
         // Mutated in place — the part already sits in an emitted entry, which is exactly why results
         // attach without reordering anything.
         pendingTools.delete(id);
-        target.result = clamp(outputText, MAX_RESULT_CHARS);
+        target.result = result;
+        // The RAW field, not the unwrapped text: the exit code rides in `output`'s `metadata`, which
+        // `codexToolOutput` throws away by design.
+        if (target.call) enrichCall(target.call, p.output);
       } else if (outputText.trim() !== "") {
         // Orphan output (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -235,7 +320,7 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
           ts,
           role: "assistant",
           parts: [
-            { kind: "tool", name: "result", summary: "", result: clamp(outputText, MAX_RESULT_CHARS) },
+            { kind: "tool", name: "result", summary: "", result },
           ],
         });
       }

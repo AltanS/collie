@@ -32,6 +32,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **Every harness now records what a tool call DID, not just that one ran.** Claude already did;
+  Codex, opencode, pi, grok and hermes now do too. A command carries its exit code, an edit carries
+  its hunks and its added and removed counts, a search carries its hit count, and a call the
+  operator refused is marked as refused rather than as an error. Nothing is guessed: each harness
+  fills only what its own record actually holds, and the three that write no exit code and no patch
+  say so rather than inventing one. This is what a session card will draw, and it is read from one
+  place for all six.
+
 - **The boot splash shows the Collie mark, not the old galloping dog.** The sprite was retired when
   the new mark landed and every screen moved to it, but the first-paint splash in `index.html` kept
   its own hand-written copy, so a cold open still flashed a galloping dog and then swapped it for a

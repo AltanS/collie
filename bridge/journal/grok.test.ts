@@ -105,6 +105,66 @@ describe("parseGrokTranscript", () => {
     expect(parseGrokTranscript(log)).toHaveLength(1);
   });
 
+  test("a tool call carries grok's own call id and a structured call", () => {
+    const log = JSON.stringify({
+      type: "assistant",
+      content: "",
+      tool_calls: [
+        { id: "call-1", name: "bash", arguments: '{"command":"bun test","description":"the suite"}' },
+      ],
+    });
+    const [entry] = parseGrokTranscript(log);
+    expect(entry!.parts[0]).toEqual({
+      kind: "tool",
+      name: "bash",
+      summary: "bun test",
+      id: "call-1",
+      call: { kind: "execute", command: "bun test", description: "the suite" },
+    });
+  });
+
+  test("a result folds the output text alone — no exit code, no refusal flag", () => {
+    const log = [
+      JSON.stringify({
+        type: "assistant",
+        content: "",
+        tool_calls: [{ id: "c1", name: "bash", arguments: '{"command":"false"}' }],
+      }),
+      JSON.stringify({ type: "tool_result", tool_call_id: "c1", content: "exit status 1" }),
+    ].join("\n");
+    const [entry] = parseGrokTranscript(log);
+    // The whole part, not a subset: `toEqual` is what pins the ABSENCE of an `exitCode` on the call
+    // and of `isError`/`denied` on the result. Grok's row carries none of the three.
+    expect(entry!.parts[0]).toEqual({
+      kind: "tool",
+      name: "bash",
+      summary: "false",
+      id: "c1",
+      call: { kind: "execute", command: "false" },
+      result: { text: "exit status 1" },
+    });
+  });
+
+  test("a read is classified, and a tool nobody knows degrades to `other`", () => {
+    const log = [
+      JSON.stringify({
+        type: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "r1", name: "read_file", arguments: '{"path":"bridge/journal/grok.ts"}' },
+          { id: "x1", name: "todo_write", arguments: '{"merge":false,"todos":"write the note"}' },
+        ],
+      }),
+    ].join("\n");
+    const [entry] = parseGrokTranscript(log);
+    expect(entry!.parts[0]).toMatchObject({
+      call: { kind: "read", path: "bridge/journal/grok.ts" },
+    });
+    expect(entry!.parts[1]).toMatchObject({
+      call: { kind: "other", name: "todo_write", summary: "write the note" },
+    });
+  });
+
   test("backend_tool_call becomes a tool part named by tool_type", () => {
     const log = JSON.stringify({
       type: "backend_tool_call",
@@ -114,6 +174,14 @@ describe("parseGrokTranscript", () => {
     const part = entry!.parts[0]!;
     expect(part).toMatchObject({ kind: "tool", name: "web_search" });
     expect(part.kind === "tool" ? part.summary : "").toContain("pi coding harness");
+    // A backend tool's `action` IS its input, so the same classifier reads it — and the row has no
+    // call id, so the part carries none.
+    expect(part).toEqual({
+      kind: "tool",
+      name: "web_search",
+      summary: "pi coding harness",
+      call: { kind: "search", query: "pi coding harness", where: "web" },
+    });
   });
 });
 
