@@ -32,6 +32,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **The boot splash shows the Collie mark, not the old galloping dog.** The sprite was retired when
+  the new mark landed and every screen moved to it, but the first-paint splash in `index.html` kept
+  its own hand-written copy, so a cold open still flashed a galloping dog and then swapped it for a
+  different animal. It is the brand's own header-weight mark now, in a light and a dark file, so the
+  hand-off to React changes nothing but the mark's own motion.
+
 - **A pane that becomes an agent pane says so.** You are watching a bare shell on your phone, you
   type `opencode` at your desk, and the Collie mark flies out of the header, blooms over the mirror
   and hands the pane to the agent's own mark. It marks a fact the poll has already found, so it

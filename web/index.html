@@ -59,12 +59,11 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <!-- First-paint splash: the galloping Collie shown the instant the PWA opens, bridging the OS
+    <!-- First-paint splash: the Collie mark shown the instant the PWA opens, bridging the OS
          launch splash and React mount (createRoot replaces #root, so it clears itself). Critical CSS
          is inlined here so it paints and animates before the app bundle/index.css load — pure CSS,
-         no JS. It mirrors routes/root.tsx's BootSplash (same sprite, 4rem, copy) so the hand-off is
-         seamless. Sprite math matches .dog-gallop in index.css: dog-gallop.png is a 768×128 strip of
-         six 128px frames, stepped with steps(6). -->
+         no JS. It mirrors routes/root.tsx's BootSplash: the same mark at the same 4rem and the same
+         caption, so the hand-off changes nothing but the mark's own motion. -->
     <style>
       /* index.css has not loaded at this point, so the splash declares `color-scheme` itself —
          otherwise light-dark() below has nothing to resolve against and every value falls to its
@@ -161,24 +160,57 @@
           "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
           -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
-      .boot-splash__dog {
-        --dog-size: 4rem;
-        --dog-frames: 6;
-        width: var(--dog-size);
-        height: var(--dog-size);
-        background: url("/dog-gallop.png") no-repeat 0 0;
-        background-size: calc(var(--dog-frames) * var(--dog-size))
-          var(--dog-size);
-        animation: boot-dog-gallop 0.6s steps(6) infinite;
+      /* THE MARK, AND IT IS THE SAME ANIMAL EVERY OTHER SCREEN SHOWS. This used to be the gallop
+         sprite, and it was the last place in the app still drawing it: <DogGallop/> was retired when
+         the new mark landed, routes/root.tsx's BootSplash moved to <CollieMark loading/>, and this
+         copy never followed. So every cold open showed a galloping dog for a beat and then swapped
+         it for a different animal.
+
+         It cannot be <CollieMark/> itself — that is React, and the whole point of this splash is
+         that it paints before any bundle. It is the brand's own header-weight mark, copied from
+         collie-brand/assets/collie-mark-header-{light,dark}.svg, which is the same drawing at the
+         same viewBox (152.5 84.0 881.9 881.9) that <CollieMark weight="header"/> renders. Re-copy
+         from collie-brand rather than editing these files.
+
+         TWO FILES AND NOT ONE, because the ink is baked into each: a background-image cannot read
+         `currentColor` or `light-dark()`. The media query covers the unpinned case and the two
+         `:root` rules cover the pinned one, exactly as the `color-scheme` block above does.
+
+         IT DOES NOT TRY TO BE THE ORBIT. The live mark's animation is 33KB of generated keyframes
+         and belongs to the component; this is the mark at rest, breathing, and React's own splash
+         takes over with the real thing a moment later. Static to animated is a far smaller step
+         than dog to mark. */
+      .boot-splash__mark {
+        width: 4rem;
+        height: 4rem;
+        background: url("/collie-mark-header-light.svg") no-repeat center / contain;
+        animation: boot-mark-breathe 2.4s ease-in-out infinite;
       }
-      @keyframes boot-dog-gallop {
-        to {
-          background-position: calc(-1 * var(--dog-frames) * var(--dog-size)) 0;
+      @media (prefers-color-scheme: dark) {
+        .boot-splash__mark {
+          background-image: url("/collie-mark-header-dark.svg");
+        }
+      }
+      :root.light .boot-splash__mark {
+        background-image: url("/collie-mark-header-light.svg");
+      }
+      :root.dark .boot-splash__mark {
+        background-image: url("/collie-mark-header-dark.svg");
+      }
+      /* Opacity only, so the box never changes size and the caption under it cannot move. */
+      @keyframes boot-mark-breathe {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .boot-splash__dog {
+        .boot-splash__mark {
           animation: none;
+          opacity: 1;
         }
       }
     </style>
@@ -186,7 +218,7 @@
   <body>
     <div id="root">
       <div class="boot-splash" role="status" aria-label="Loading Collie">
-        <span class="boot-splash__dog" aria-hidden="true"></span>
+        <span class="boot-splash__mark" aria-hidden="true"></span>
         <span>Connecting to the herd…</span>
       </div>
     </div>
