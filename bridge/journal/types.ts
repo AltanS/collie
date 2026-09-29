@@ -9,6 +9,7 @@
 // rather than a fork of the reader.
 
 import type { CacheProbe } from "../cache/engine.ts";
+import type { ToolCall } from "./tool-call.ts";
 
 /**
  * How an agent named its session, straight off Herdr's `agent_session` record.
@@ -42,7 +43,29 @@ export type TranscriptPart =
       name: string;
       /** One-line gist of the call's input (the file read, the command run) — never the whole input. */
       summary: string;
-      result?: { text: string; truncated?: boolean; isError?: boolean; imageUrl?: string };
+      /**
+       * The harness's own id for this call, where it has one (Claude's `tool_use_id`, pi's call id).
+       * Kept so a view can match a call to a permission dialog about it, and so a result arriving
+       * later addresses one call rather than the newest one.
+       */
+      id?: string;
+      /**
+       * The same call, structured (see tool-call.ts). ADDITIVE and OPTIONAL: `name` and `summary`
+       * stay authoritative for anything that already reads them, and an adapter not yet taught to
+       * fill this leaves it absent.
+       */
+      call?: ToolCall;
+      result?: {
+        text: string;
+        truncated?: boolean;
+        isError?: boolean;
+        imageUrl?: string;
+        /**
+         * The person refused the call. NOT the same as `isError`: nothing went wrong, somebody said
+         * no, and a view that draws the two alike tells the reader a lie about their own session.
+         */
+        denied?: boolean;
+      };
     };
 
 /**

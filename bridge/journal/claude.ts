@@ -36,6 +36,7 @@ import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
 import { claudeResets, lastTwoTurns } from "./claude-resets.ts";
 import { containedRealpath, exists, head, loadTail, rootList, statFile, tailBytes } from "./files.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { classifyToolCall, type Hunk, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -121,14 +122,65 @@ function toolResultText(content: JsonValue | undefined): string {
 }
 
 /** A `tool` part's answered result — {@link Clamped} plus the error flag the result row carried. */
-type ToolResult = Clamped & { isError?: boolean };
+type ToolResult = Clamped & { isError?: boolean; denied?: boolean };
+
+/**
+ * An error result that is a REFUSAL, not a failure.
+ *
+ * Claude marks both with `is_error: true`, so the flag alone cannot tell "the command exited 1" from
+ * "the person said no". Only the text can, and these are the phrasings observed in real logs (Claude
+ * Code 2.1.146 to 2.1.284). A phrasing this misses degrades to `isError`, which is the old behaviour.
+ */
+const REFUSED =
+  /The user doesn't want to proceed|Request interrupted by user for tool use|user rejected|was rejected|dismissed the question/i;
 
 /** One row's `tool_result` payload, folded onto the call it answers. */
 function toolResult(text: string, isError: boolean): ToolResult {
   const result: ToolResult = clamp(text, MAX_RESULT_CHARS);
   // Assigned, never conditionally spread: `isError` is ABSENT when false, not `false`.
   if (isError) result.isError = true;
+  if (isError && REFUSED.test(text)) result.denied = true;
   return result;
+}
+
+/**
+ * Enrich a classified call from the row's `toolUseResult`, which is where Claude records what the
+ * call actually DID rather than what it was asked to do.
+ *
+ * Only an edit and a command carry anything worth reading there: `structuredPatch` is the diff Claude
+ * computed against the file it wrote, and it is strictly better than anything reconstructable from
+ * the input. The function MUTATES `call`, which already sits in an emitted entry — the same
+ * in-place fold the result text uses, and for the same reason.
+ */
+function enrichCall(call: ToolCall, raw: JsonValue | undefined): void {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return;
+  if (call.kind === "edit") {
+    const patch = raw.structuredPatch;
+    if (Array.isArray(patch) && patch.length > 0) {
+      const hunks: Hunk[] = [];
+      for (const h of patch) {
+        if (h === null || typeof h !== "object" || Array.isArray(h)) continue;
+        const lines = Array.isArray(h.lines) ? h.lines.filter((l): l is string => typeof l === "string") : [];
+        if (lines.length === 0) continue;
+        hunks.push({
+          header: `@@ -${String(h.oldStart ?? 0)},${String(h.oldLines ?? 0)} +${String(h.newStart ?? 0)},${String(h.newLines ?? 0)} @@`,
+          lines,
+        });
+      }
+      if (hunks.length > 0) {
+        const all = hunks.flatMap((h) => h.lines);
+        call.diff = hunks;
+        call.added = all.filter((l) => l.startsWith("+")).length;
+        call.removed = all.filter((l) => l.startsWith("-")).length;
+      }
+    }
+    // A Write against nothing is a NEW file. `originalFile` absent or empty says so, and it is the
+    // only signal here: the input looks identical either way.
+    if (typeof raw.originalFile !== "string" || raw.originalFile === "") call.created = true;
+  } else if (call.kind === "execute") {
+    const code = raw.exitCode ?? raw.exit_code ?? raw.returnCode;
+    if (typeof code === "number" && Number.isFinite(code)) call.exitCode = code;
+  }
 }
 
 /** A log line, once JSON.parse has admitted it is an object at all. */
@@ -206,12 +258,18 @@ export function parseClaudeTranscript(
           if (b.thinking.trim() !== "")
             parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
         } else if (b.type === "tool_use") {
+          const name = typeof b.name === "string" ? b.name : "tool";
+          const summary = summarizeToolInput(b.input);
           const part: Extract<TranscriptPart, { kind: "tool" }> = {
             kind: "tool",
-            name: typeof b.name === "string" ? b.name : "tool",
-            summary: summarizeToolInput(b.input),
+            name,
+            summary,
+            call: classifyToolCall(name, b.input, summary),
           };
-          if (typeof b.id === "string") pendingTools.set(b.id, part);
+          if (typeof b.id === "string") {
+            part.id = b.id;
+            pendingTools.set(b.id, part);
+          }
           parts.push(part);
         } else if (b.type === "tool_result") {
           // Fold onto the call that produced it. The awaited part is MUTATED in place — it already
@@ -224,6 +282,9 @@ export function parseClaudeTranscript(
           if (target) {
             pendingTools.delete(id);
             target.result = toolResult(resultText, b.is_error === true);
+            // `toolUseResult` rides on the ROW, not on the content block: it is Claude's own record of
+            // what the call did, and it is the only place a diff or an exit code ever appears.
+            if (target.call) enrichCall(target.call, row.toolUseResult);
           } else if (resultText.trim() !== "") {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.

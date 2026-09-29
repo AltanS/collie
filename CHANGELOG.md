@@ -30,6 +30,16 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **The journal now says what a tool call did, not only what it was asked to do.** Every tool part
+  carries a structured `call` beside its one-line summary: an edit knows its path, its diff hunks
+  and how many lines moved, a command knows its exit code, a read knows its range. A refused call is
+  marked `denied` rather than lumped in with a real failure, because "you said no" and "it crashed"
+  are not the same thing to read. The shape is additive, so every existing view keeps working, and
+  the name table is shared, so `Bash`, `bash`, `shell` and `exec_command` are one kind of thing.
+  Claude Code fills it first; the other five adapters follow.
+
 ### Changed
 
 - **Claude Code 2.1.284 is verified.** The canary ran all five scenarios against it, idle, drafts,
