@@ -115,6 +115,9 @@ then run `collie start`. You do not need to specify a multiplexer ahead of time.
 from source, **[`docs/install.md`](./docs/install.md)** covers manual builds, each system and
 package, Herdr routes, and adding Collie to the home screen of an iPhone or Android phone.
 
+ColliePWA is not in the App Store or Google Play. You add it to your home screen from the browser,
+and that is the only way to install it on a phone.
+
 ## Documentation
 
 | | |
@@ -310,4 +313,5 @@ integration is documented in [`HERDR_API.md`](./HERDR_API.md).
 - Verified Herdr socket API: [`HERDR_API.md`](./HERDR_API.md)
 - Operations, versioning, and project conventions: [`CLAUDE.md`](./CLAUDE.md)
 - Contribution guidelines: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- Names, logo and forks: [`TRADEMARKS.md`](./TRADEMARKS.md)
 - Release history: [`CHANGELOG.md`](./CHANGELOG.md)
