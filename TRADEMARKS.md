@@ -17,6 +17,9 @@ them.
 - Say what is true: "a fork of ColliePWA", "based on ColliePWA", "works with ColliePWA".
 - Write about ColliePWA, teach it, review it, and link to it, by name.
 - Run an official release or a build from this repository, unchanged, and call it ColliePWA.
+- Name a tool that works with ColliePWA after it, for example `collie-dashboard`. Its README must
+  say near the top that it is not an official ColliePWA project. This is for a separate tool, not
+  for a fork: a fork follows the rule below.
 
 ## What needs a new name
 
