@@ -18,6 +18,9 @@ export const en = {
 
   // --- settings (page chrome) ---
   "settings.title": "Settings",
+  // The handoff when a bare shell pane becomes an agent pane (components/agent-start.tsx).
+  // `{agent}` is the harness's own name and is never translated.
+  "pane.agentStart.handed": "Handed to {agent}",
   // The stand-in for the steps a turn took, when tool calls are off (Settings → Appearance). Per
   // TURN, not per call: one line where forty cards were.
   "transcript.tools.hidden.one": "{count} step hidden — tap to show",

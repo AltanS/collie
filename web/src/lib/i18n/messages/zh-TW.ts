@@ -9,6 +9,7 @@ export const zhTW: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "設定",
+  "pane.agentStart.handed": "已交給 {agent}",
   "transcript.tools.hidden.one": "已隱藏 {count} 個步驟，點按顯示",
   "transcript.tools.hidden.other": "已隱藏 {count} 個步驟，點按顯示",
   "settings.tools.title": "工具呼叫",

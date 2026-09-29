@@ -32,6 +32,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **A pane that becomes an agent pane says so.** You are watching a bare shell on your phone, you
+  type `opencode` at your desk, and the Collie mark flies out of the header, blooms over the mirror
+  and hands the pane to the agent's own mark. It marks a fact the poll has already found, so it
+  never reads as progress, it holds no space and moves nothing, a tap ends it, and under reduced
+  motion it is a still picture instead. Opening a pane that was already running an agent announces
+  nothing: it is the change that is drawn, never the state.
+
 - **Tool calls are off in a session view, and that is the new default.** A working session is
   mostly tool calls: one turn can be forty reads and a grep, which buried the paragraph you opened
   the page for. The History page now draws what the agent SAID, with one muted line per turn saying

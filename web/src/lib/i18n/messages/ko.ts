@@ -9,6 +9,7 @@ export const ko: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "설정",
+  "pane.agentStart.handed": "{agent}에 넘겼습니다",
   "transcript.tools.hidden.one": "{count}개 단계 숨김, 탭하여 표시",
   "transcript.tools.hidden.other": "{count}개 단계 숨김, 탭하여 표시",
   "settings.tools.title": "도구 호출",

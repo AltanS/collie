@@ -334,7 +334,11 @@ export function CollieHome({ onHome, trouble, lost = false, className }: CollieH
       {/* The ramp's scope, and the reason this wrapper carries a ref at all: `getAnimations` is
           collected from HERE and not from the button, so the button's own `transition-opacity` — and
           anything a caller's `className` animates — is never handed a playback rate. */}
-      <span ref={mark} className="grid size-11 shrink-0 place-items-center">
+      {/* `data-slot` is a HANDLE FOR MEASUREMENT, and it is here rather than on the mark because
+          collie-mark.tsx is generated upstream and copied in whole (a sha256 in its own first line
+          guards it against exactly that edit). The agent-start handoff flies a second mark out of
+          this one, so it needs this box on screen; it reads the `<svg>` inside for the true size. */}
+      <span ref={mark} data-slot="collie-mark" className="grid size-11 shrink-0 place-items-center">
         <CollieMark
           size={40}
           weight="header"

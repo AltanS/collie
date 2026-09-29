@@ -8,6 +8,7 @@ export const ja: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "設定",
+  "pane.agentStart.handed": "{agent} に引き継ぎました",
   "transcript.tools.hidden.one": "{count} 件の操作を非表示。タップで表示",
   "transcript.tools.hidden.other": "{count} 件の操作を非表示。タップで表示",
   "settings.tools.title": "ツール呼び出し",

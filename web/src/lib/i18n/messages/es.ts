@@ -8,6 +8,7 @@ export const es: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "Ajustes",
+  "pane.agentStart.handed": "Entregado a {agent}",
   "transcript.tools.hidden.one": "{count} paso oculto, toca para mostrarlo",
   "transcript.tools.hidden.other": "{count} pasos ocultos, toca para mostrarlos",
   "settings.tools.title": "Llamadas a herramientas",
