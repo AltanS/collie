@@ -115,7 +115,9 @@ test("the redirect leaves no history entry, so Back does not return to /pack", a
 // Replaces the hand check "open Settings on a lead and find the two crew rows", run by hand
 // 2026-09-09.
 test("Settings offers a way into the crew and into the updates", async ({ page }) => {
-  await page.goto("/settings");
+  // Both rows moved to the System section when Settings became an index of four pages. The check
+  // is the same one: a lead's Settings must offer a way to the crew and to the updates.
+  await page.goto("/settings/system");
 
   // Both rows are gated on the roster having more than one machine, so their presence is also the
   // proof that a solo install still sees byte-identical chrome without them.

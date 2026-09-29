@@ -18,10 +18,21 @@ export const en = {
 
   // --- settings (page chrome) ---
   "settings.title": "Settings",
+  // --- settings sections (the index's four rows) ---
+  // The blurb names the three or four cards a person is most likely to be hunting for, so the row
+  // answers "is it in here?" without being opened. Keep it short: it truncates on a narrow phone.
+  "settings.section.appearance.title": "Appearance",
+  "settings.section.appearance.blurb": "Theme, language, fonts",
+  "settings.section.device.title": "Device",
+  "settings.section.device.blurb": "Haptics, voice, zen mode",
+  "settings.section.alerts.title": "Alerts",
+  "settings.section.alerts.blurb": "Notifications, quiet hours",
+  "settings.section.system.title": "System",
+  "settings.section.system.blurb": "Updates, devices, crew",
   "settings.nav.back": "Back",
 
   // --- settings.theme ---
-  "settings.theme.title": "Appearance",
+  "settings.theme.title": "Theme",
   "settings.theme.description": "Follow your phone, or pin one.",
   "settings.theme.option.system": "System",
   "settings.theme.option.light": "Light",

@@ -8,10 +8,19 @@ export const ja: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "設定",
+  // --- settings sections ---
+  "settings.section.appearance.title": "外観",
+  "settings.section.appearance.blurb": "テーマ、言語、フォント",
+  "settings.section.device.title": "デバイス",
+  "settings.section.device.blurb": "触覚、音声、ゼンモード",
+  "settings.section.alerts.title": "通知",
+  "settings.section.alerts.blurb": "通知、サイレント時間",
+  "settings.section.system.title": "システム",
+  "settings.section.system.blurb": "更新、デバイス、クルー",
   "settings.nav.back": "戻る",
 
   // --- settings.theme ---
-  "settings.theme.title": "外観",
+  "settings.theme.title": "テーマ",
   "settings.theme.description": "システム設定に同期するか、明示的に指定します。",
   "settings.theme.option.system": "システム",
   "settings.theme.option.light": "ライト",

@@ -9,10 +9,19 @@ export const de: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "Einstellungen",
+  // --- settings sections ---
+  "settings.section.appearance.title": "Darstellung",
+  "settings.section.appearance.blurb": "Design, Sprache, Schriften",
+  "settings.section.device.title": "Gerät",
+  "settings.section.device.blurb": "Haptik, Sprache, Zen-Modus",
+  "settings.section.alerts.title": "Hinweise",
+  "settings.section.alerts.blurb": "Mitteilungen, Ruhezeiten",
+  "settings.section.system.title": "System",
+  "settings.section.system.blurb": "Updates, Geräte, Crew",
   "settings.nav.back": "Zurück",
 
   // --- settings.theme ---
-  "settings.theme.title": "Erscheinungsbild",
+  "settings.theme.title": "Design",
   "settings.theme.description": "Systemeinstellung übernehmen oder festlegen.",
   "settings.theme.option.system": "System",
   "settings.theme.option.light": "Hell",

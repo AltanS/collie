@@ -177,7 +177,7 @@ describe("ChangesRoute — the list", () => {
     const router = renderAt("/pane/w1%3Ap1/changes");
     expect(await screen.findByText(/Stopped at 2 levels, with repos further down\./)).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: en["changes.bound.settings"] }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/device"));
     expect(router.state.location.hash).toBe("#changes");
   });
 

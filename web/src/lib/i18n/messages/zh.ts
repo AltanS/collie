@@ -9,10 +9,19 @@ export const zh: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "设置",
+  // --- settings sections ---
+  "settings.section.appearance.title": "外观",
+  "settings.section.appearance.blurb": "主题、语言、字体",
+  "settings.section.device.title": "设备",
+  "settings.section.device.blurb": "触感、语音、禅模式",
+  "settings.section.alerts.title": "提醒",
+  "settings.section.alerts.blurb": "通知、免打扰时段",
+  "settings.section.system.title": "系统",
+  "settings.section.system.blurb": "更新、设备、crew",
   "settings.nav.back": "返回",
 
   // --- settings.theme ---
-  "settings.theme.title": "主题外观",
+  "settings.theme.title": "主题",
   "settings.theme.description": "跟随系统或指定固定外观。",
   "settings.theme.option.system": "跟随系统",
   "settings.theme.option.light": "浅色",

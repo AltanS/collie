@@ -8,6 +8,15 @@ export const es: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "Ajustes",
+  // --- settings sections ---
+  "settings.section.appearance.title": "Apariencia",
+  "settings.section.appearance.blurb": "Tema, idioma, fuentes",
+  "settings.section.device.title": "Dispositivo",
+  "settings.section.device.blurb": "Vibración, voz, modo zen",
+  "settings.section.alerts.title": "Avisos",
+  "settings.section.alerts.blurb": "Notificaciones, horas de silencio",
+  "settings.section.system.title": "Sistema",
+  "settings.section.system.blurb": "Actualizaciones, dispositivos, crew",
   "settings.nav.back": "Atrás",
 
   // --- settings.theme ---

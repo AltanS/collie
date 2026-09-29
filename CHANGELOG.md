@@ -32,6 +32,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **Settings is four sections instead of one long column.** The page was seventeen cards deep on a
+  phone with no headings to skim by, so finding one switch meant reading every card above it. It is
+  an index now: Appearance, Device, Alerts and System, each short enough to take in at once. No
+  setting is removed and none changes what it does. Back from a section returns to the index.
+
 - **The journal now says what a tool call did, not only what it was asked to do.** Every tool part
   carries a structured `call` beside its one-line summary: an edit knows its path, its diff hunks
   and how many lines moved, a command knows its exit code, a read knows its range. A refused call is
@@ -41,6 +46,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Claude Code fills it first; the other five adapters follow.
 
 ### Changed
+
+- **The theme card is called Theme.** It was called Appearance, which is now the name of the
+  section it sits in, and a page that says Appearance twice tells you nothing the second time.
 
 - **Claude Code 2.1.284 is verified.** The canary ran all five scenarios against it, idle, drafts,
   sends, narrow and start-exit, and every one passed. The reader ledger now names 2.1.284 instead

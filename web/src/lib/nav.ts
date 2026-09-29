@@ -85,6 +85,20 @@ export function settingsPath(scope?: Scope): string {
 }
 
 /**
+ * The four Settings sections. Settings is an index of these, not a column of every card it has
+ * (routes/settings-sections.tsx says why, and which card went where).
+ *
+ * A union rather than a bare string, so a row naming a section nobody built is a compile error
+ * instead of a page that renders nothing.
+ */
+export type SettingsSection = "appearance" | "device" | "alerts" | "system";
+
+/** One Settings section — a CHILD of the index, carrying the scope like every other path helper. */
+export function settingsSectionPath(section: SettingsSection, scope?: Scope): string {
+  return `/settings/${section}${scopeSearch(scope)}`;
+}
+
+/**
  * The crew overview — the read-only census of every machine in the crew. Carries the scope like the
  * others so "back" returns you to the machine you were looking at, not to the lead.
  */
@@ -111,14 +125,19 @@ export const PAIRED_DEVICES_HASH = "paired-devices";
 /** The fragment naming the Changes card inside Settings, which `changes-control.tsx` answers to. */
 export const CHANGES_SETTINGS_HASH = "changes";
 
-/** Settings, scrolled to the Changes card: the Changes list's "look deeper" link (ADR 0065). */
+/**
+ * Settings → Device, scrolled to the Changes card: the Changes list's "look deeper" link (ADR 0065).
+ *
+ * The fragment survived the split; the page under it did not. Both deep links name a SECTION now,
+ * and they must, because a hash pointing at a card the index no longer mounts scrolls to nothing.
+ */
 export function changesSettingsPath(scope?: Scope): string {
-  return `${settingsPath(scope)}#${CHANGES_SETTINGS_HASH}`;
+  return `${settingsSectionPath("device", scope)}#${CHANGES_SETTINGS_HASH}`;
 }
 
-/** Settings, scrolled to the card that pairs this phone — the read-only strip's remedy. */
+/** Settings → System, scrolled to the card that pairs this phone — the read-only strip's remedy. */
 export function pairedDevicesPath(scope?: Scope): string {
-  return `${settingsPath(scope)}#${PAIRED_DEVICES_HASH}`;
+  return `${settingsSectionPath("system", scope)}#${PAIRED_DEVICES_HASH}`;
 }
 
 // ── Back goes up one level (ADR 0067) ────────────────────────────────────────────────────────────
@@ -172,7 +191,7 @@ const ANY_SPACE = "/space/*";
  *
  *   L0 `/`
  *   L1 `/space/:id`, `/settings`, `/crew`
- *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/updates`
+ *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/:section`, `/settings/updates`
  *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`
  *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`)
@@ -198,8 +217,14 @@ export function ancestorsOf(pathname: string): string[] {
     return [`/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "settings" && seg.length === 1) return ["/"];
-  if (head === "settings" && seg.length === 2 && id === "updates") return ["/settings", "/"];
-  if (head === "crew" && seg.length === 1) return ["/settings", "/"];
+  // Updates and the crew census are opened from the System section, so that is their nearest
+  // legitimate parent. `/settings` stays in the list behind it: both were reachable straight from
+  // the index before the split, and a stored `from` pointing there is still a step UP, not a push.
+  if (head === "settings" && seg.length === 2 && id === "updates") {
+    return ["/settings/system", "/settings", "/"];
+  }
+  if (head === "settings" && seg.length === 2) return ["/settings", "/"];
+  if (head === "crew" && seg.length === 1) return ["/settings/system", "/settings", "/"];
   return [];
 }
 
@@ -293,7 +318,10 @@ export function parentChain(pathname: string, search: string): string[] {
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }
   if (head === "settings" && seg.length === 1) return [home];
-  if (head === "settings" && seg.length === 2 && id === "updates") return [home, `/settings${q}`];
-  if (head === "crew" && seg.length === 1) return [home];
+  if (head === "settings" && seg.length === 2 && id === "updates") {
+    return [home, `/settings${q}`, `/settings/system${q}`];
+  }
+  if (head === "settings" && seg.length === 2) return [home, `/settings${q}`];
+  if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/system${q}`];
   return [];
 }

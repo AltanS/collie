@@ -12,6 +12,12 @@ import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { ChangesRoute } from "@/routes/changes";
 import { SettingsRoute } from "@/routes/settings";
+import {
+  SettingsAlertsRoute,
+  SettingsAppearanceRoute,
+  SettingsDeviceRoute,
+  SettingsSystemRoute,
+} from "@/routes/settings-sections";
 import { CrewRoute } from "@/routes/crew";
 import { UpdatesRoute } from "@/routes/updates";
 import {
@@ -70,9 +76,16 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomeRoute /> },
       { path: "space/:spaceId", element: <SpaceRoute /> },
-      // Settings carries the paired-device registry, so it gets its own loader — a revoke or a pair
-      // is then the app's standard mutation shape (api call → revalidate), with no second data path.
-      { path: "settings", loader: devicesLoader, element: <SettingsRoute /> },
+      // Settings is an INDEX of four sections (routes/settings.tsx). It carries no loader any more:
+      // the paired-device registry belongs to the one page that renders it.
+      { path: "settings", element: <SettingsRoute /> },
+      { path: "settings/appearance", element: <SettingsAppearanceRoute /> },
+      { path: "settings/device", element: <SettingsDeviceRoute /> },
+      { path: "settings/alerts", element: <SettingsAlertsRoute /> },
+      // The System section carries the paired-device registry, so it gets the loader Settings used
+      // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
+      // revalidate), with no second data path.
+      { path: "settings/system", loader: devicesLoader, element: <SettingsSystemRoute /> },
       // The Updates page, a sibling of settings and crew. No loader of its own: everything on it is
       // either the snapshot (root loader) or the card's own read of /api/update/check. It is
       // deliberately ON the poll loop for `crew`'s stated reason — a run in progress and a member

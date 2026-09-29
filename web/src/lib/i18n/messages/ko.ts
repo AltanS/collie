@@ -9,6 +9,15 @@ export const ko: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "설정",
+  // --- settings sections ---
+  "settings.section.appearance.title": "화면",
+  "settings.section.appearance.blurb": "테마, 언어, 글꼴",
+  "settings.section.device.title": "기기",
+  "settings.section.device.blurb": "햅틱, 음성, 젠 모드",
+  "settings.section.alerts.title": "알림",
+  "settings.section.alerts.blurb": "알림, 방해 금지 시간",
+  "settings.section.system.title": "시스템",
+  "settings.section.system.blurb": "업데이트, 기기, 크루",
   "settings.nav.back": "뒤로",
 
   // --- settings.theme ---

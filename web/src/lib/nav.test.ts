@@ -214,8 +214,11 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ],
     ["/space/w1/changes/commit", "?repo=.&path=a.ts", ["/", "/space/w1", "/space/w1/changes", "/space/w1/changes/commit?repo=."]],
     ["/settings", "", ["/"]],
-    ["/settings/updates", "", ["/", "/settings"]],
-    ["/crew", "", ["/"]],
+    // Both are opened from the System section now, so a cold deep link gets the index AND that
+    // section behind it — two taps back to home, matching the two pushes that would have got here.
+    ["/settings/updates", "", ["/", "/settings", "/settings/system"]],
+    ["/settings/device", "", ["/", "/settings"]],
+    ["/crew", "", ["/", "/settings", "/settings/system"]],
     ["/nowhere", "", []],
   ])("%s%s → %j", (pathname, search, expected) => {
     expect(parentChain(pathname, search)).toEqual(expected);

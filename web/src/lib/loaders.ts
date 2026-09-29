@@ -556,6 +556,12 @@ export interface DevicesData {
   error: boolean;
 }
 
+/**
+ * What a route renders when the loader did not run or threw. Exported because two callers need the
+ * same fallback: the Settings System page's `useLoaderData()` default, and its tests.
+ */
+export const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: [], error: false };
+
 export async function devicesLoader({ request }: { request?: Request } = {}): Promise<DevicesData> {
   try {
     const res = await fetchDevices(request?.signal);

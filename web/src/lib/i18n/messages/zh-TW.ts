@@ -9,10 +9,19 @@ export const zhTW: Dictionary = {
 
   // --- settings (page chrome) ---
   "settings.title": "設定",
+  // --- settings sections ---
+  "settings.section.appearance.title": "外觀",
+  "settings.section.appearance.blurb": "主題、語言、字型",
+  "settings.section.device.title": "裝置",
+  "settings.section.device.blurb": "觸覺回饋、語音、禪模式",
+  "settings.section.alerts.title": "提醒",
+  "settings.section.alerts.blurb": "通知、勿擾時段",
+  "settings.section.system.title": "系統",
+  "settings.section.system.blurb": "更新、裝置、crew",
   "settings.nav.back": "返回",
 
   // --- settings.theme ---
-  "settings.theme.title": "主題外觀",
+  "settings.theme.title": "主題",
   "settings.theme.description": "跟隨系統或指定固定外觀。",
   "settings.theme.option.system": "跟隨系統",
   "settings.theme.option.light": "淺色",
