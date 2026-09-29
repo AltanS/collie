@@ -77,6 +77,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Docs
 
+- **Every Settings path in the docs names its section.** The settings page became an index of four
+  sections, so fifteen instructions across seven pages pointed at a card that had moved. Paired
+  devices and Updates are under System, the harness shortcuts, the typeface and the language are
+  under Appearance, and zen and Changes are under Device. Two were wrong twice over: one told you
+  to open Appearance and pick a theme, which is now the Theme card inside that section, and two
+  named a "notifications" section that never existed and is called Alerts.
+
 - **The docs have a Guides section, and it opens with an install in five minutes.** Install was
   the only way in, and it answers every system and every front door at once, so a first-time reader
   had to find their own path through it. The new guide walks one path: Tailscale, Herdr and the
