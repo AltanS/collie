@@ -140,6 +140,21 @@ export function pairedDevicesPath(scope?: Scope): string {
   return `${settingsSectionPath("system", scope)}#${PAIRED_DEVICES_HASH}`;
 }
 
+/**
+ * Where a `/settings` request with `?pair=` belongs: Settings → System, the query string intact, or
+ * `null` when there is no code to carry.
+ *
+ * `collie pair` prints a QR for `/settings?pair=<code>`, and that URL outlives the page it named.
+ * The Paired-devices card left the index for the System section, so a scan that stopped at the index
+ * found no form and dropped the code. The URL stays as printed, because a phone still holding an
+ * older cached shell only knows `/settings`; the index forwards instead. The whole query rides
+ * along, so the scope (`?h=`) still names the machine the code was minted on.
+ */
+export function pairLandingPath(search: string): string | null {
+  if (!new URLSearchParams(search).has("pair")) return null;
+  return `/settings/system${search}`;
+}
+
 // ── Back goes up one level (ADR 0067) ────────────────────────────────────────────────────────────
 // On a phone the edge swipe IS browser history back, so the history stack has to be the level tree.
 // Three kinds of move, and each writes history one way:

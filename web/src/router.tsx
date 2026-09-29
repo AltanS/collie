@@ -1,6 +1,7 @@
 import { createBrowserRouter, replace } from "react-router";
 
 import { basePath } from "@/lib/base-path";
+import { pairLandingPath } from "@/lib/nav";
 import { listenForInAppOpen, markBooted, openPendingTarget, probeStandalone, seedColdEntry, type OpenGate } from "@/lib/nav-entry";
 import { isReloadInFlight } from "@/lib/pwa";
 import { UPDATE_MODE_HOLD, isReloadHeldBy, subscribeReloadHeld } from "@/lib/reload-guard";
@@ -76,9 +77,18 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomeRoute /> },
       { path: "space/:spaceId", element: <SpaceRoute /> },
-      // Settings is an INDEX of four sections (routes/settings.tsx). It carries no loader any more:
-      // the paired-device registry belongs to the one page that renders it.
-      { path: "settings", element: <SettingsRoute /> },
+      // Settings is an INDEX of four sections (routes/settings.tsx). Its only loader is the pairing
+      // forward: the QR `collie pair` prints still names `/settings?pair=<code>`, and the form now
+      // lives on System. `replace`, as for `/pack` below, so Back does not land on the index and
+      // bounce forward again. No `pair`, no redirect, and the registry stays on System's loader.
+      {
+        path: "settings",
+        loader: ({ request }) => {
+          const target = pairLandingPath(new URL(request.url).search);
+          return target === null ? null : replace(target);
+        },
+        element: <SettingsRoute />,
+      },
       { path: "settings/appearance", element: <SettingsAppearanceRoute /> },
       { path: "settings/device", element: <SettingsDeviceRoute /> },
       { path: "settings/alerts", element: <SettingsAlertsRoute /> },

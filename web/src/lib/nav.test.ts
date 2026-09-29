@@ -3,6 +3,7 @@ import {
   changesCommitPath,
   homePath,
   isAncestor,
+  pairLandingPath,
   panePath,
   parentChain,
   readFrom,
@@ -85,6 +86,20 @@ describe("updatesPath", () => {
     // It is a path, not a fragment: PAIRED_DEVICES_HASH's shape would not have given it a route.
     expect(updatesPath()).not.toContain("#");
     expect(settingsPath()).toBe("/settings");
+  });
+});
+
+describe("pairLandingPath", () => {
+  // The QR `collie pair` prints names `/settings?pair=<code>`. The form is on System now, so the
+  // index forwards a code there with the whole query, scope included.
+  it("sends a pairing code to Settings → System with the query intact", () => {
+    expect(pairLandingPath("?pair=ABCD2345")).toBe("/settings/system?pair=ABCD2345");
+    expect(pairLandingPath("?h=badger&pair=ABCD2345")).toBe("/settings/system?h=badger&pair=ABCD2345");
+  });
+
+  it("leaves the index alone when there is no code", () => {
+    expect(pairLandingPath("")).toBeNull();
+    expect(pairLandingPath("?h=badger")).toBeNull();
   });
 });
 

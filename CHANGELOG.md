@@ -49,7 +49,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **Settings is four sections instead of one long column.** The page was seventeen cards deep on a
   phone with no headings to skim by, so finding one switch meant reading every card above it. It is
   an index now: Appearance, Device, Alerts and System, each short enough to take in at once. No
-  setting is removed and none changes what it does. Back from a section returns to the index.
+  setting is removed and none changes what it does. Back from a section returns to the index. The
+  QR `collie pair` prints still opens the pairing form, which now lives under System.
 
 - **The journal now says what a tool call did, not only what it was asked to do.** Every tool part
   carries a structured `call` beside its one-line summary: an edit knows its path, its diff hunks
