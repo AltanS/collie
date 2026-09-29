@@ -26,7 +26,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Pair** | `collie pair` | Print an 8-character code and a QR code, good for 10 minutes; scan the QR code to open Settings → Paired devices with the code filled in, or enter the code manually to get it [paired](security.md#pair-a-device--the-write-credential) |
 | **Devices** | `collie devices list` · `collie devices revoke <label>` | List / revoke paired devices |
 | **Link** | `collie link` · `collie unlink` | Put `collie` on your PATH ([below](#put-collie-on-your-path)) |
-| **Logs** | `collie logs` | Tail the journal / log file |
+| **Logs** | `collie logs` | Tail the service log |
 | **Config** | `collie config show` · `collie config check` · `collie config init` | Print every setting with its source, validate the file, or write a commented `config.toml` ([the config file](configure.md#the-config-file)) |
 | **Voice** | `collie stt setup` · `stt test` · `stt status` · `stt off` | Configure / check / disable [voice input](voice-and-push.md#voice-input-optional) |
 | **Push keys** | `collie push-keys` | Generate the VAPID keypair into your `.env` |
