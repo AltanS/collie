@@ -262,6 +262,52 @@ describe("opencode composer chrome", () => {
     expect(mirror).not.toContain("last line here");
   });
 
+  it("a panel border over the composer reads as no draft, never a phantom", () => {
+    // opencode's Models sidebar paints its └─┘ border over the composer's bar run, and the
+    // tail walk above cannot tell overlay chrome from typed text — so the border alone
+    // surfaced as a "Draft in terminal" card holding just a line, with Take over copying
+    // border junk into the composer. A border-only row is never a draft.
+    const lines = splitLines(
+      parseAnsi(
+        [
+          "some transcript above",
+          "  ┃            └───────────────────────────────────┘",
+          "  ┃",
+          "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen",
+          "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+          "   /tmp/probe   1.18.32",
+        ].join("\n"),
+      ),
+    );
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(extractInputDraft(lines)).toBeNull();
+  });
+
+  it("a typed message under a panel border reads clean, border excluded", () => {
+    // Same overlay, box holding a real message: the walk must end at the border row the
+    // way it ends at a bar-less row, so the draft is exactly the typed words. Before the
+    // walk-stop the join carried the border ("└───┘ test test") and the reply guard's
+    // draftCarriesSend never matched the sent text — the send stalled with the message
+    // sitting in the box, which is the "Send does nothing" half of the report.
+    const lines = splitLines(
+      parseAnsi(
+        [
+          "some transcript above",
+          "  ┃            └───────────────────────────────────┘",
+          "  ┃  test test",
+          "  ┃",
+          "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen",
+          "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+          "   /tmp/probe   1.18.32",
+        ].join("\n"),
+      ),
+    );
+    expect(locateComposer(lines)).not.toBeNull();
+    const draft = extractInputDraft(lines);
+    expect(draft).toBe("test test");
+    expect(draftCarriesSend("test test", draft)).toBe(true);
+  });
+
   it("an empty composer answers null — the placeholder is content, not a draft", () => {
     expect(extractInputDraft(loadLines("oc--fresh-idle.txt"))).toBeNull();
     expect(extractInputDraft(loadLines("oc--working.txt"))).toBeNull();

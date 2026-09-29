@@ -55,6 +55,18 @@ const MAX_STATUS_ROWS = 6;
 // more than that is not the composer's bottom.
 const MAX_RULE_PAD = 2;
 
+// A panel overlay's box border where it crosses the composer's bar run: corner and
+// junction glyphs a typed message never carries at this position. The draft walk below
+// ends its run here the way it ends at a bar-less row. Plain rules (────) and pipes
+// are NOT in this set on purpose — oc--draft-multiline.txt types a rule into its own
+// draft and it must keep reading whole.
+const OVERLAY_BORDER = /[┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝]/;
+
+/** True when this row carries a foreign panel's box border over the bar run. */
+function hasOverlayBorder(text: string): boolean {
+  return OVERLAY_BORDER.test(text);
+}
+
 /** The composer tail located at the buffer's end. Every index is into the ORIGINAL `lines` array. */
 export interface ComposerTail {
   /** The FIRST row of the draft block — equal to `modelRow` when there is no draft (the strip then
@@ -126,17 +138,25 @@ export function locateComposer(lines: StyledLine[]): ComposerTail | null {
   //     draft; the strip then starts at the model row and the draft probe answers null.
   // (d) The draft: the composer's own bar run above the separator, up to its top padding row. The
   //     run ends where the bars do: the transcript's last block sits across a row with no bar (its
-  //     bottom margin, measured on every 1.18.32 capture). Inside the run, a bare bar row is a
-  //     blank line the operator typed, not the draft's edge (oc--draft-multiline.txt): stopping
-  //     there read only the last paragraph, left the first on the mirror as if it were transcript,
-  //     and "Take over" copied half a draft. Bare-bar rows at either end (the top padding, the empty
-  //     row of an empty composer) are not draft.
+  //     bottom margin, measured on every 1.18.32 capture) — and, since the Models-sidebar overlay,
+  //     at a row carrying a foreign box border (hasOverlayBorder): claiming that row joined overlay
+  //     chrome into the draft, which broke the reply guard's verification of real messages. Inside
+  //     the run, a bare bar row is a blank line the operator typed, not the draft's edge
+  //     (oc--draft-multiline.txt): stopping there read only the last paragraph, left the first on
+  //     the mirror as if it were transcript, and "Take over" copied half a draft. Bare-bar rows at
+  //     either end (the top padding, the empty row of an empty composer) are not draft.
   let draftStart = modelRow;
   let draftEnd = modelRow - 1;
   const above = modelRow - 1;
   if (above >= 0 && isBareBar(texts[above]!)) {
     let top = above;
-    while (top - 1 >= 0 && modelRow - (top - 1) <= MAX_INTERIOR_ROWS && isBarRow(texts[top - 1]!)) top--;
+    while (
+      top - 1 >= 0 &&
+      modelRow - (top - 1) <= MAX_INTERIOR_ROWS &&
+      isBarRow(texts[top - 1]!) &&
+      !hasOverlayBorder(texts[top - 1]!)
+    )
+      top--;
     let first = top;
     let last = above - 1;
     while (first <= last && interiorOf(texts[first]!) === "") first++;
@@ -221,6 +241,13 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   const draft = parts.filter((p) => p.length > 0).join(" ");
   if (draft.length === 0) return null;
   if (draft.trimStart().startsWith("Ask anything")) return null; // the empty box's placeholder
+  // A panel overlay (opencode's Models sidebar is the observed one) paints its own borders
+  // over the composer's bar run, and the walk above cannot tell overlay chrome from typed
+  // text — so a border-only row (└───┘) surfaced as a phantom "Draft in terminal" card
+  // holding just a line. Overlay chrome is never words: refuse a join of nothing but
+  // border glyphs. A typed rule inside a real message keeps its words, so it still reads
+  // (oc--draft-multiline.txt). Same border-only rule omp's chrome uses.
+  if (/^[\s─━│┃┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝╹▀]*$/u.test(draft)) return null;
   return draft;
 }
 
