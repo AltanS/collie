@@ -85,13 +85,24 @@ function Counts({ file }: { file: ChangedFile }) {
   );
 }
 
-/** The path, the folder dimmed and the file name emphasised. The folder truncates first. */
+/**
+ * The path, the folder dimmed and the file name emphasised. The folder truncates first, and gives
+ * up everything before the name does: on a narrow row the folder is context and the name is the
+ * answer.
+ *
+ * Once the folder has nothing left, the NAME gives up its middle rather than its end
+ * ({@link MiddleTruncate}). It kept its head alone before, which reads fine on a short name and
+ * loses the extension on a long one, so a row of siblings differing only in their suffix all ended
+ * the same way.
+ */
 export function ChangePath({ path, className }: { path: string; className?: string }) {
   const { dir, name } = splitPath(path);
   return (
     <span className={cn("flex min-w-0 font-mono text-[13px]", className)}>
       {dir && <span className="min-w-0 truncate text-muted-foreground">{dir}</span>}
-      <span className="max-w-full shrink-0 truncate font-medium text-foreground">{name}</span>
+      {/* `max-w-full shrink-0` keeps the old priority: the name is capped by the row and truncates
+          inside that cap, but it never shrinks to make room for the folder beside it. */}
+      <MiddleTruncate text={name} className="max-w-full shrink-0 font-medium text-foreground" />
     </span>
   );
 }
@@ -208,14 +219,49 @@ function indent(depth: number) {
 }
 
 /**
- * A name that truncates from the LEFT, so the end of a deep path (the part that tells two rows
- * apart) stays readable. The outer box runs right to left only to put the ellipsis on the left;
- * the text inside is isolated left to right, so `src/lib` never reads `lib/src`.
+ * How many characters of the END a name never gives up. Sized to hold a longest-case extension plus
+ * one word of the stem (`_compose.md`, `-expert/`), because the extension alone tells you almost
+ * nothing when every row in a folder shares it.
  */
-function LeftTruncate({ text, className }: { text: string; className?: string }) {
+const TAIL_CHARS = 14;
+
+/** Below this there is nothing to gain by splitting, so the name is one span that may truncate. */
+const SPLIT_MIN = TAIL_CHARS * 2;
+
+/**
+ * A name that keeps BOTH ends and drops the MIDDLE.
+ *
+ * This used to truncate from the left alone, on the reasoning that the end of a deep path is what
+ * tells two rows apart. That reasoning does not survive contact with the tree, and it made the view
+ * unreadable on a phone:
+ *
+ *  - A FILE row is a bare basename (`nameOf(file.path)`, lib/changes-tree.ts), never a path. There
+ *    is no leading folder to spend, so left truncation eats the name itself. A memory directory
+ *    rendered as `…m_breaks_under_podman_compose.md` beside `…ake_retry_never_reuses_a_scan.md`,
+ *    with the ordinal prefix that orders them cut off every time.
+ *  - A FOLDER row is a COMPACTED CHAIN (`label` grows by `${label}/${only[0]}`), so its head is the
+ *    part that says which tree you are in. Two repos holding the same deep chain rendered as
+ *    `…cript-typescript-expert/` and `…ypescript-typescript-expert/`, which differ by one letter of
+ *    a word neither row needed.
+ *
+ * Keeping both ends fixes both cases, and it is what a file manager does for the same reason.
+ *
+ * PURE CSS, no measurement. The head is an ordinary truncating box, so the browser places the
+ * ellipsis at its right edge; the tail refuses to shrink and sits against it. Nothing reads the
+ * element's width, so there is no layout pass and no resize listener, and the split point is the
+ * same on every device rather than a function of the font that happened to load.
+ */
+function MiddleTruncate({ text, className }: { text: string; className?: string }) {
+  if (text.length <= SPLIT_MIN) {
+    return <span className={cn("min-w-0 truncate", className)}>{text}</span>;
+  }
+  const cut = text.length - TAIL_CHARS;
   return (
-    <span dir="rtl" className={cn("min-w-0 truncate text-left", className)}>
-      <bdi dir="ltr">{text}</bdi>
+    // `whitespace-pre` on the tail: a name may end in a space-bearing word, and a collapsed space
+    // would move the two halves together by a character the name does not have.
+    <span className={cn("flex min-w-0", className)}>
+      <span className="truncate">{text.slice(0, cut)}</span>
+      <span className="shrink-0 whitespace-pre">{text.slice(cut)}</span>
     </span>
   );
 }
@@ -266,7 +312,7 @@ function TreeRows({
                   aria-hidden
                   className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
                 />
-                <LeftTruncate text={`${node.label}/`} className="font-mono text-[13px] text-muted-foreground" />
+                <MiddleTruncate text={`${node.label}/`} className="font-mono text-[13px] text-muted-foreground" />
                 <span aria-hidden className="shrink-0 text-xs tabular-nums text-muted-foreground">
                   {node.fileCount}
                 </span>
@@ -286,7 +332,7 @@ function TreeRows({
               className="flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted"
             >
               <StatusLetter status={node.file.status} />
-              <LeftTruncate text={node.name} className="flex-1 font-mono text-[13px] font-medium text-foreground" />
+              <MiddleTruncate text={node.name} className="flex-1 font-mono text-[13px] font-medium text-foreground" />
               <Counts file={node.file} />
             </button>
           </li>

@@ -74,6 +74,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the name table is shared, so `Bash`, `bash`, `shell` and `exec_command` are one kind of thing.
   Claude Code fills it first; the other five adapters follow.
 
+### Fixed
+
+- **A long file name in Changes keeps both ends instead of losing its start.** The tree truncated a
+  name from the left, which is correct for a path and wrong for a bare file name, so a folder of
+  long names drew every row as `…m_breaks_under_podman_compose.md` with the very prefix that orders
+  them cut off. A name now gives up its MIDDLE: the start and the extension both stay, the way a
+  file manager does it. Compacted folder rows keep both ends too, so two repos holding the same deep
+  folder chain no longer read as the same row.
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

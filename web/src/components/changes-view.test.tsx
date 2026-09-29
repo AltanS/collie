@@ -1,7 +1,7 @@
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { diffRowKeys, DiffView } from "@/components/changes-view";
+import { ChangePath, diffRowKeys, DiffView } from "@/components/changes-view";
 import { parseUnifiedDiff } from "@/lib/unified-diff";
 
 const DIFF = [
@@ -71,5 +71,44 @@ describe("diffRowKeys", () => {
     const twice = "@@ -1,2 +1,2 @@\n x\n x\n";
     const keys = diffRowKeys(parseUnifiedDiff(twice).rows);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("a long file name keeps both ends", () => {
+  // The bug this pins: the tree truncated a name from the LEFT, which is right for a path and wrong
+  // for a basename. A memory folder rendered every row as `…m_breaks_under_podman_compose.md`, with
+  // the ordinal prefix that ORDERS them cut off each time.
+  const LONG = "0007_docker_daemon_breaks_under_podman_compose.md";
+
+  it("splits a long name so the head and the tail both survive", () => {
+    const { container } = render(<ChangePath path={`notes/${LONG}`} />);
+    const spans = [...container.querySelectorAll("span")].map((el) => el.textContent ?? "");
+
+    // Two halves, and they rejoin to the whole name: nothing is dropped from the DOM, the middle is
+    // only hidden by the head's own overflow.
+    const head = spans.find((t) => t !== "" && LONG.startsWith(t) && t !== LONG);
+    const tail = spans.find((t) => t !== "" && LONG.endsWith(t) && t !== LONG);
+    expect(head).toBeTruthy();
+    expect(tail).toBeTruthy();
+    expect(`${head ?? ""}${tail ?? ""}`).toBe(LONG);
+
+    // The two things a reader needs: the ordinal that orders the row, and the extension.
+    expect(head?.startsWith("0007_")).toBe(true);
+    expect(tail?.endsWith(".md")).toBe(true);
+  });
+
+  it("only the head may be clipped, and the tail never shrinks", () => {
+    const { container } = render(<ChangePath path={`notes/${LONG}`} />);
+    const head = [...container.querySelectorAll("span")].find(
+      (el) => (el.textContent ?? "") !== "" && LONG.startsWith(el.textContent ?? "") && el.textContent !== LONG,
+    );
+    expect(head?.className).toContain("truncate");
+    expect(head?.nextElementSibling?.className).toContain("shrink-0");
+  });
+
+  it("leaves a short name in one piece, with no split to read around", () => {
+    const { container } = render(<ChangePath path="src/a.ts" />);
+    const exact = [...container.querySelectorAll("span")].filter((el) => el.textContent === "a.ts");
+    expect(exact).toHaveLength(1);
   });
 });
