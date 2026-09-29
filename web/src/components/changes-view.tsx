@@ -647,8 +647,13 @@ const TOKEN_TONE = new Map<SyntaxToken["type"], string>([
   ["comment", "text-syntax-comment"],
 ]);
 
-/** A line's tokens as spans, neighbours of the same ink merged into one. Text nodes only. */
-function TokenLine({ tokens }: { tokens: readonly SyntaxToken[] }) {
+/**
+ * A line's tokens as spans, neighbours of the same ink merged into one. Text nodes only.
+ *
+ * Exported so a view outside this file colours its lines with THIS ink map rather than a copy of it
+ * (the Chat card's unnumbered diff does). One token kind, one colour, wherever a diff is drawn.
+ */
+export function TokenLine({ tokens }: { tokens: readonly SyntaxToken[] }) {
   const runs: { tone: string | undefined; text: string }[] = [];
   for (const token of tokens) {
     const tone = TOKEN_TONE.get(token.type);
@@ -669,8 +674,12 @@ function TokenLine({ tokens }: { tokens: readonly SyntaxToken[] }) {
  * takes colour when the highlighter arrives. After that the colour is computed in the same render as
  * the rows, so a diff that changes under the open view (the 5 s re-read) never flashes plain: its
  * unchanged lines come out with the same tokens, and React leaves their spans alone.
+ *
+ * Exported with {@link TokenLine}. `rows` only has to carry `kind` and `text`: the engine never
+ * reads a line number, so a diff that arrives with no gutters (a before/after pair an agent diffed
+ * itself) is coloured by passing synthetic rows.
  */
-function useSyntaxTokens(rows: readonly DiffRow[], path: string | undefined) {
+export function useSyntaxTokens(rows: readonly DiffRow[], path: string | undefined) {
   const lang = path === undefined ? null : languageForPath(path);
   const lines = useMemo(() => rows.filter((r) => r.kind !== "hunk" && r.kind !== "note").length, [rows]);
   const colourable = lang !== null && lines <= HIGHLIGHT_MAX_LINES;
