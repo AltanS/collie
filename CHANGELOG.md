@@ -121,6 +121,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   your thumb, and it stays hidden where there is no output or no clipboard to write to, which is
   every plain-HTTP deploy. Thanks @jyothyswaroop (#287).
 
+- **A push notification arrives in the language you picked.** The bridge writes a notification title,
+  and the bridge has no idea which language your phone is set to, so a German device still read an
+  English line on its lock screen. The bridge now sends a short catalogue code beside the English
+  title. The page leaves the active language's templates in Cache Storage, and the service worker
+  fills them in there, which is the only place that runs when the app is closed. Any miss falls back
+  to the English title, so a phone that has not opened the app since you changed language still gets
+  a readable notice instead of a code. Thanks @jaehyun2yo (#310).
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the
@@ -164,6 +172,16 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   pi's message rows, so a compacted conversation read as though nothing had happened, an extension's
   own note never appeared, and a `!command` you ran at the desk looked like a message you had typed.
   Each now reads as what it is, set apart from anything the agent said.
+
+- **A panel drawn over opencode's composer no longer reads as a draft.** When another panel's box
+  border crosses the composer bar, the draft walk could land on that border row and hand it back as
+  the draft, so the phone showed a Draft in terminal card holding one line of box glyphs, and Take
+  over would have typed that junk into the composer. A border row is excluded now, and it takes two
+  conditions to be one: a corner or a junction on the row's interior, AND nothing but chrome on the
+  row. Either condition on its own gets a real draft wrong. People type a bare rule inside a message,
+  and a pasted `tree` carries a junction on every line, which read four typed lines back as the last
+  one. The reader also held two glyph sets that disagreed about whether `─` and `│` were border
+  glyphs, and there is one set now. Thanks @AndiWandHerd (#319).
 
 ### Docs
 
