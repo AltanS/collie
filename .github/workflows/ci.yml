@@ -46,6 +46,23 @@ jobs:
       - name: Test (web)
         run: cd web && bun run test
 
+  # The two-instance crew drill (integration/crew-harness.test.ts). ITS OWN JOB, and no `needs`, for
+  # the same two reasons the browser tier has one. It is slow for a reason nothing can trim: it boots
+  # twenty real child processes over real pinned TLS, because a certificate cannot be re-pinned on a
+  # reload. Measured 2026-09-30, it was 58.3s of the 67.0s `check` spent on the backend, paid by every
+  # developer on every push. Out here it costs wall clock nobody waits on, and a failure still lands
+  # in the same run as a lint failure rather than behind it.
+  crew:
+    name: crew drill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+      - name: Crew drill
+        run: bun run test:crew
+
   # The browser tier (M26 spec 01). NO `needs`: a lint failure and a browser failure both have to
   # report in one run, so this job starts beside `check` rather than behind it. It installs only
   # `web/`, because Playwright is a devDependency of `web/` and of nothing else — the root tree

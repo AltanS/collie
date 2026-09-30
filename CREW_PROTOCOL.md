@@ -1450,7 +1450,7 @@ bound port count**, **the absence of a second timer / peer sweep at runtime**, a
 payload** for a primary-session alert. Those four are the integration harness's charter; everything
 else in the table is covered by the unit baseline today.
 
-> **Status 2026-08-07 — the harness landed (`bridge/crew/harness.test.ts`); three of the four rows
+> **Status 2026-08-07 — the harness landed (`integration/crew-harness.test.ts`, moved there 2026-10-01); three of the four rows
 > are now measured.**
 >
 > - **Status codes per route** — measured on a live solo instance: `/api/snapshot`, `/api/config` and

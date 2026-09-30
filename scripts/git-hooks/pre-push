@@ -47,6 +47,11 @@ fi
 if [ "${SKIP_TESTS:-}" = "1" ]; then
   echo "pre-push: SKIP_TESTS=1 — skipping test suite" >&2
 else
+  # `./bridge` and NOT `./integration`: the two-instance crew drill lives there on purpose and CI
+  # gives it a job of its own. It boots twenty child processes over real pinned TLS and measured
+  # 58.3s of a 67.0s backend run on 2026-09-30, which is a minute every developer paid on every push
+  # for a lane that cannot be made fast. Run it by hand with `bun run test:crew` when you touch the
+  # crew transport. Do not put it back here.
   echo "pre-push: running backend test suite (bun test ./bridge)…" >&2
   if ! (cd "$ROOT" && bun test ./bridge); then
     cat >&2 <<'EOF'

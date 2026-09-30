@@ -2143,81 +2143,21 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
 // verdict for a send and for an update; and structurally, on the source, because behaviour agreeing
 // today is exactly what two copies do right up until one of them is edited.
 describe("the update write gate — POST api/update rides the pane path's own gate", () => {
-  const HDR = "x-device-id";
-  const gateOf = (tokens: Record<string, string>) => ({
-    enforced: () => Object.keys(tokens).length > 0,
-    resolve: (token: string | null) =>
-      token !== null && tokens[token] !== undefined ? { label: tokens[token]! } : null,
-  });
-
-  /** Every posture the two routes must answer identically. */
-  const CASES: { name: string; cfg: Config; pairing?: ReturnType<typeof gateOf>; headers: Record<string, string> }[] = [
-    {
-      name: "a plain same-origin write on an ungated bridge",
-      cfg: cfg(),
-      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
-    },
-    {
-      name: "a cross-origin write",
-      cfg: cfg(),
-      headers: { host: "collie.ts.net", origin: "https://evil.example" },
-    },
-    {
-      name: "a write with no Origin from a non-loopback host",
-      cfg: cfg(),
-      headers: { host: "collie.ts.net" },
-    },
-    {
-      name: "a host the allowlist does not know",
-      cfg: cfg({ allowAnyHost: false, publicHosts: ["collie.ts.net"] }),
-      headers: { host: "rebound.example", origin: "https://rebound.example" },
-    },
-    {
-      name: "the device header is configured and absent",
-      cfg: cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] }),
-      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
-    },
-    {
-      name: "the device header carries an unlisted device",
-      cfg: cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] }),
-      headers: { host: "collie.ts.net", origin: "https://collie.ts.net", [HDR]: "intruder" },
-    },
-    {
-      name: "the device header carries an allowlisted device",
-      cfg: cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] }),
-      headers: { host: "collie.ts.net", origin: "https://collie.ts.net", [HDR]: "phone" },
-    },
-    {
-      name: "pairing is enforced and this device holds no token",
-      cfg: cfg(),
-      pairing: gateOf({ "tok-phone": "phone" }),
-      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
-    },
-    {
-      name: "pairing is enforced and this device holds one",
-      cfg: cfg(),
-      pairing: gateOf({ "tok-phone": "phone" }),
-      headers: { host: "collie.ts.net", origin: "https://collie.ts.net", authorization: "Bearer tok-phone" },
-    },
-    {
-      name: "the identity header is required and missing",
-      cfg: cfg({ trustedUser: "operator@example.com" }),
-      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
-    },
-  ];
-
-  for (const c of CASES) {
-    test(`same device auth as pane input: ${c.name}`, () => {
-      // The pane's reply route asks exactly this, through `RouteCaller.gate`. The update route asks
-      // the same closure with the same level, so the two verdicts are the same value by
-      // construction — this pins that they are also the same ANSWER, case by case.
-      const paneVerdict = guard(req(c.headers), c.cfg, "write", c.pairing);
-      const updateVerdict = guard(req(c.headers), c.cfg, "write", c.pairing);
-      expect(updateVerdict === null).toBe(paneVerdict === null);
-      expect(updateVerdict?.status).toBe(paneVerdict?.status);
-    });
-  }
-
+  // The route starts a real update, so its gate is the one thing about it that must not be its own.
+  // It is the pane path's gate — literally, the same `browserGate` closure, passed to both call
+  // sites — and the test below asserts that ON THE SOURCE.
+  //
+  // ── WHAT USED TO BE HERE, AND WHY IT IS NOT ─────────────────────────────────
+  // A ten-case matrix ran `guard(req(h), cfg, "write", pairing)` twice with character-identical
+  // arguments and compared the two results to each other. Its own comment said the two were "the
+  // same value by construction", which is the whole objection: it asserted that a pure function is
+  // deterministic, not that the two routes agree. Every one of its ten postures is already covered
+  // against the REAL routes above (`:188` and `:875`), where a wrong answer is a wrong answer rather
+  // than a mirror. Removed 2026-10-01; 74 lines, no coverage lost.
+  //
+  // The source test below is the one that can fail. If someone re-spells either call site as its own
+  // `guard(req, cfg, …)`, the two checks drift and this catches it, which is the thing a behavioural
+  // matrix over one closure never could.
   test("same device auth as pane input: one gate expression, two call sites, no second guard() call", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // Defined once…

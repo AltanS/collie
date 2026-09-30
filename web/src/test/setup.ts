@@ -1,9 +1,8 @@
 import "@testing-library/jest-dom/vitest";
-import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
-import { setupServer } from "msw/node";
 
-import { handlers, resetTypedDraft } from "./handlers";
+import { server } from "./msw";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { __resetPairing } from "@/lib/pairing";
 import { __resetDraftPrune } from "@/lib/drafts";
@@ -11,10 +10,12 @@ import { __resetPins } from "@/lib/pins";
 import { __resetPinHint } from "@/lib/pin-hint";
 import { __resetHiddenMachines } from "@/lib/hidden-machines";
 
-// One MSW server for all tests; tests add per-case overrides with `server.use(...)`.
-export const server = setupServer(...handlers);
+// One MSW server for all tests; tests add per-case overrides with `server.use(...)`. It LIVES in
+// `./msw.ts`, which touches no document, so the pure-logic project can load it without this file
+// (see that file's header). Re-exported here because 300-odd tests already import it from this path
+// and the split is not about them.
+export { server };
 
-beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));
 // The connection-health store is module-scoped and initialises its anchor to module-load time. Pin it
 // to "now" before every test so a component rendered minutes after the file loaded never reads a stale
 // anchor as an escalated outage. Fake-timer escalation suites re-pin AFTER vi.useFakeTimers() so the
@@ -45,12 +46,9 @@ beforeEach(() => {
   // leave the next case's crew dashboard short a machine.
   __resetHiddenMachines();
 });
-afterEach(() => {
-  cleanup();
-  server.resetHandlers();
-  resetTypedDraft(); // the fake pane's input line, so a draft can't leak into the next test
-});
-afterAll(() => server.close());
+// `server.resetHandlers()` and the typed-draft reset went with the server to `./msw.ts`, so both
+// projects get them. This one keeps the half that needs a document.
+afterEach(() => cleanup());
 
 // jsdom gaps that the terminal mirror / sheets touch.
 if (!Element.prototype.scrollIntoView) {

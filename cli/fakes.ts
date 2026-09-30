@@ -388,3 +388,83 @@ export function context(
     ...over,
   };
 }
+
+// ── THE LEG-1 PROBE'S OWN FIELD LIST ────────────────────────────────────────
+//
+// `cli/testdata/leg1-probe.sh` is the golden script a real member runs, and it emits one
+// `collie-probe:<field>=<value>` line per fact. Three suites build a fake probe payload from a
+// `PROBE_DEFAULTS` table of their own, and on 2026-10-01 those tables held 21, 20 and 15 of the 21
+// fields. Two of them were therefore testing their consumers against a payload NO REAL MEMBER
+// SENDS, which is the one thing a fake must never do.
+//
+// So the field list lives here, once, and `cli/probe-contract.test.ts` holds it against the golden
+// script: add a `say` line there and that test fails until this table learns the field. A suite
+// still chooses its own VALUES — a deputy mid-update and a fresh member disagree about almost every
+// one — but it can no longer be short a field, because it spreads this first.
+
+/** Every fact leg 1 reports, in the order the golden script says them. `probe` is the terminator. */
+export const PROBE_FIELDS = [
+  "home",
+  "git",
+  "bun",
+  "herdr",
+  "curl",
+  "tar",
+  "sha256",
+  "configdir",
+  "envhost",
+  "envport",
+  "envmux",
+  "checkout",
+  "checkoutgit",
+  "installroot",
+  "commit",
+  "branch",
+  "dirty",
+  "dirtyfiles",
+  "version",
+  "address",
+  "port",
+] as const;
+
+export type ProbeField = (typeof PROBE_FIELDS)[number];
+
+/**
+ * A complete payload for a member that has been started once and is otherwise untouched.
+ *
+ * `envmux: "herdr"` and not empty, because `collie start` writes `COLLIE_MUX` into the config-dir
+ * `.env` and a solo collie leaves `COLLIE_HOST` unset (`cli/mux.ts`, F23). So the default member has
+ * already chosen, and a case that means to ask its machine seeds `envmux: ""` itself.
+ */
+export function probeDefaults() {
+  return {
+    home: HOME,
+    git: "/usr/bin/git",
+    bun: `${HOME}/.bun/bin/bun`,
+    herdr: "/usr/local/bin/herdr",
+    curl: "/usr/bin/curl",
+    tar: "/usr/bin/tar",
+    sha256: "/usr/bin/sha256sum",
+    configdir: `${HOME}/.config/herdr/plugins/config/herdr.collie`,
+    envhost: "",
+    envport: "",
+    envmux: "herdr",
+    checkout: "",
+    checkoutgit: "",
+    installroot: "",
+    commit: "",
+    branch: "",
+    dirty: "",
+    dirtyfiles: "",
+    version: "",
+    address: "100.64.0.9",
+    port: "free",
+  } satisfies Record<ProbeField, string>;
+}
+
+/** The payload as leg 1 prints it: one line per field, then the terminator. */
+export function probeOutput(over: Partial<Record<ProbeField, string>> = {}): string {
+  const all = { ...probeDefaults(), ...over };
+  const lines = PROBE_FIELDS.map((field) => `collie-probe:${field}=${all[field]}`);
+  return [...lines, "collie-probe:probe=ok", ""].join("\n");
+}

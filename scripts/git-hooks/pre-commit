@@ -44,16 +44,21 @@ else
   # (1) consistency
   "$ROOT/scripts/check-version.sh" >/dev/null
 
-  # Two kinds of file ship nothing, so neither is functional and neither is dropped from the
-  # CHANGELOG for lack of care:
-  #   - a test (`*.test.ts`, `*.test.tsx`, `*.test.sh`) — not in the binary, not in `web/dist`;
-  #     the three suffixes are the whole convention, every test in the tree is named one of them
+  # Four kinds of file ship nothing, so none is functional and none is dropped from the CHANGELOG
+  # for lack of care:
+  #   - a test (`*.test.ts`, `*.test.tsx`, `*.test.sh`) — not in the binary, not in `web/dist`
   #   - the git hooks themselves (`scripts/git-hooks/`) — they run on a developer's machine at
   #     commit time and are not in the release tarball at all
-  # Neither is visible to an operator, so there is nothing for them to read a line about. A commit
-  # that touches one of these AND the code under it still records: the source file survives this
-  # filter, and the line is about the source.
-  functional="$(echo "$staged" | grep -vE '(\.test\.(ts|tsx|sh)$|^scripts/git-hooks/)' || true)"
+  #   - the harness the tests are WRITTEN AGAINST: `web/src/test/` (the vitest setup and the MSW
+  #     handlers) and `cli/fakes.ts` (whose own header says TEST-ONLY, nothing that ships imports
+  #     it). The three suffixes above used to be described here as "the whole convention", and that
+  #     was never quite true: these files are as test-only as the files that import them, and asking
+  #     for a release line about a mock is asking for a line no operator can read. Added 2026-10-01,
+  #     when splitting the vitest run into two projects moved the MSW server into a file of its own.
+  # None is visible to an operator, so there is nothing for them to read a line about. A commit that
+  # touches one of these AND the code under it still records: the source file survives this filter,
+  # and the line is about the source.
+  functional="$(echo "$staged" | grep -vE '(\.test\.(ts|tsx|sh)$|^scripts/git-hooks/|^web/src/test/|^cli/fakes\.ts$)' || true)"
 
   # Bullets under `## [Unreleased]` in the CHANGELOG on stdin. The section runs from that heading
   # to the next `## ` heading. A `### Added` line starts with `#`, never `- `, so a group heading

@@ -1,14 +1,24 @@
+// A REAL SEND, driven over captures — which is why it is not in `src/lib/harness/`.
+//
+// The adapter tests next door are pure: text in, blocks out, no clock and no network. These two put
+// a screen through `sendGuardedReply`, which fetches, so they need an origin and a document and they
+// run in the `dom` project (see `vitest.config.ts`). Leaving them under `src/lib/harness/` meant that
+// folder needed a two-file exception list to run in the fast project, and an exception list is what
+// silently dropped both files from BOTH projects on the first attempt. One path, no exceptions.
+//
+// The captures they read are still the omp adapter's own (`src/fixtures/omp-pi-shape/`).
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "@/test/setup";
-import { sendGuardedReply } from "../../reply-action";
-import { parseAnsi } from "../../ansi";
-import { splitLines } from "../../blocks";
-import { composerPrompt, extractInputDraft, extractStatusLines, hasComposer, stripChrome } from "./index";
+import { server } from "@/test/msw";
+import { sendGuardedReply } from "../reply-action";
+import { parseAnsi } from "../ansi";
+import { splitLines } from "../blocks";
+import { composerPrompt, extractInputDraft, extractStatusLines, hasComposer, stripChrome } from "../harness/omp/index";
 
-const dir = join(import.meta.dirname, "../../../fixtures/omp-pi-shape");
+const dir = join(import.meta.dirname, "../../fixtures/omp-pi-shape");
 const idle = readFileSync(join(dir, "idle.txt"), "utf8");
 const parse = (text: string) => splitLines(parseAnsi(text));
 const withDraft = (draft: string) => idle.split("\n").map((row, i) => i === 1 ? ` ${draft}` : row).join("\n");

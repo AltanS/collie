@@ -15,7 +15,7 @@ import {
   STANDBY_HEALTH_PATH,
   strandedByRotation,
 } from "./deposed.ts";
-import { mintWarrant } from "./warrant.ts";
+import { mintWarrant, warrantExpired, warrantExpiresAt } from "./warrant.ts";
 
 // The deposed state and the self-heal (§18.12). Everything here is a pure function of a store, a
 // warrant and a clock — no socket, no disk — so what is pinned below is the shipping rule.
@@ -79,7 +79,15 @@ describe("what counts as learning (§18.12)", () => {
     // Refusing to believe an expired proof would leave this machine leading a crew that has already
     // moved on — the split brain the whole section exists to close. Fail-open here is fail-closed
     // where it counts, and it is the one clause `isDepositionProof` deliberately does not carry.
+    //
+    // This test did not test its own name until 2026-10-01: its body was a copy of the first case in
+    // this block and nothing in it ever expired. The warrant below is genuinely dead — signed at T0,
+    // read a day past its own TTL — and `isDepositionProof` takes no clock at all, which is the
+    // point. `warrantExpired` is asserted first so a change to the TTL cannot quietly turn this back
+    // into a test of a live warrant.
     const { data, warrant } = deposedLead();
+    const wellAfter = warrantExpiresAt(warrant) + 24 * 60 * 60 * 1000;
+    expect(warrantExpired(warrant, wellAfter)).toBe(true);
     expect(isDepositionProof(data, warrant)).toBe(true);
   });
 });

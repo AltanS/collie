@@ -294,8 +294,21 @@ page to be skimmed.
   opens a browser, the browser tier is separate, see "Browser tests" below.
   A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
   every push — override once with `SKIP_TESTS=1 git push` (see *Linting* → escape hatches). The bits that genuinely need `Bun.serve` /
-  `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
-  so keep new backend logic pure/injectable enough for `bun test`, or exercise it through `web/`.
+  `Bun.connect` (HTTP handlers, the socket client) stay out of the VITEST tier — Vitest-on-Node can't
+  run them — so keep new backend logic pure/injectable enough for `bun test`, or exercise it through
+  `web/`. Bun's own runner *can* run them, and the drill below is where that happens.
+- **The integration lane, `integration/`.** One file today,
+  `integration/crew-harness.test.ts`: two real bridges as child processes, over real pinned mutual
+  TLS, through the real enrollment path. It is **not** in `bun run test` and **not** on the push
+  path. `bun run test:crew` runs it, and CI gives it a job of its own. The reason is measured, not
+  aesthetic: it was `bridge/crew/harness.test.ts` until 2026-10-01 and cost 58.3s of a 67.0s backend
+  run, because it boots twenty child processes and a certificate cannot be re-pinned on a reload.
+  Run it by hand when you touch the crew transport. Do not move it back under `bridge/`.
+- **The frontend suite is two Vitest projects** (`web/vitest.config.ts`). `logic` is
+  `src/lib/harness/**` under `environment: "node"` with no DOM setup: 44 files, 9,474 tests, ~6s.
+  `dom` is everything else under jsdom. The boundary is ONE path with no exception list, because the
+  first cut had two exceptions and a wrong `exclude` glob dropped both files from both projects and
+  the run went green 18 tests short. `cd web && bunx vitest --project logic` is the fast inner loop.
 - **`flake.nix` is the build environment, and `nix develop` is the reference.** It pins the five
   tools this tree is built and checked with — Bun, Node, git, tmux, zellij — at one nixpkgs
   revision, and `release.yml` builds every published payload inside it. Build and check through the

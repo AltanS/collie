@@ -1,13 +1,13 @@
-import { emptyConfigLayer } from "../config-source.ts";
+import { emptyConfigLayer } from "../bridge/config-source.ts";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { JsonValue } from "../json.ts";
-import { EXIT } from "../../cli/io.ts";
-import { cmdDevicesRevoke } from "../../cli/pairing.ts";
+import type { JsonValue } from "../bridge/json.ts";
+import { EXIT } from "../cli/io.ts";
+import { cmdDevicesRevoke } from "../cli/pairing.ts";
 import {
   cmdJoin,
   cmdLeave,
@@ -18,20 +18,20 @@ import {
   cmdPromote,
   cmdReconnect,
   type CrewDeps,
-} from "../../cli/crew.ts";
-import { DEFAULT_SERVE_PORT, type CliContext } from "../../cli/context.ts";
-import type { Exec, ExecResult } from "../../cli/sys.ts";
-import { realFiles } from "../../cli/sys.ts";
-import { CrewOpsStore } from "./ops-store.ts";
-import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
-import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
-import { mintIdentity, randomToken } from "./identity.ts";
-import { CREW_HELLO_PATH, CREW_LEAVE_PATH, CREW_PREFIX, CREW_SNAPSHOT_PATH } from "./router.ts";
-import { parseStandbyDevices } from "./standby-devices.ts";
-import { TAKEOVER_RESTART_EXIT } from "./takeover.ts";
-import { parseMarker, crewRuntimePath } from "./staleness.ts";
-import { memberWarrantLines, peerWarrantLines } from "../../cli/crew-status-deputy.ts";
-import { sha256Hex } from "../pairing.ts";
+} from "../cli/crew.ts";
+import { DEFAULT_SERVE_PORT, type CliContext } from "../cli/context.ts";
+import type { Exec, ExecResult } from "../cli/sys.ts";
+import { realFiles } from "../cli/sys.ts";
+import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
+import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { startFakeHerdr, type FakeHerdr } from "../bridge/crew/fake-herdr.ts";
+import { mintIdentity, randomToken } from "../bridge/crew/identity.ts";
+import { CREW_HELLO_PATH, CREW_LEAVE_PATH, CREW_PREFIX, CREW_SNAPSHOT_PATH } from "../bridge/crew/router.ts";
+import { parseStandbyDevices } from "../bridge/crew/standby-devices.ts";
+import { TAKEOVER_RESTART_EXIT } from "../bridge/crew/takeover.ts";
+import { parseMarker, crewRuntimePath } from "../bridge/crew/staleness.ts";
+import { memberWarrantLines, peerWarrantLines } from "../cli/crew-status-deputy.ts";
+import { sha256Hex } from "../bridge/pairing.ts";
 import {
   bodyDigest,
   canonicalRequest,
@@ -41,22 +41,35 @@ import {
   DIAL_HEADER,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
-} from "./signing.ts";
-import { canonicalWarrant, mintWarrant, parseWarrantActiveReport, parseWarrantReport } from "./warrant.ts";
-import { PeerClient, type CrewLink } from "./peer-client.ts";
-import { dialTls, peerListenerTls, type CrewRequestInit, type CrewTlsOptions } from "./transport.ts";
+} from "../bridge/crew/signing.ts";
+import { canonicalWarrant, mintWarrant, parseWarrantActiveReport, parseWarrantReport } from "../bridge/crew/warrant.ts";
+import { PeerClient, type CrewLink } from "../bridge/crew/peer-client.ts";
+import { dialTls, peerListenerTls, type CrewRequestInit, type CrewTlsOptions } from "../bridge/crew/transport.ts";
 import {
   parseTrustStore,
   serializeTrustStore,
   TrustStore,
   TRUST_STORE_FILENAME,
   type TrustStoreData,
-} from "./trust-store.ts";
-import { collieVersionBare } from "../version.ts";
-import type { CrewStatusResponse } from "../types.ts";
+} from "../bridge/crew/trust-store.ts";
+import { collieVersionBare } from "../bridge/version.ts";
+import type { CrewStatusResponse } from "../bridge/types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE TWO-INSTANCE INTEGRATION HARNESS (spec M4/08).
+//
+// ── WHY THIS LIVES IN `integration/` AND NOT IN `bridge/crew/` ───────────────
+// It was `bridge/crew/harness.test.ts` until 2026-09-30, and `bun run test` therefore paid for it on
+// every push: 58.3s of a 67.0s backend run, measured, while every other file in `bridge/` is under
+// five seconds. The time is INHERENT and not waste. This file boots twenty real child processes,
+// because `server.reload({tls})` cannot re-pin a certificate (the canary below proves it), so every
+// membership change needs a real restart; and its arming thresholds are already at the floor the
+// race note downstream explains.
+//
+// So it moved lanes rather than being trimmed. `bun test ./bridge` no longer finds it, `bun run
+// test:crew` runs it by name, and CI gives it a job of its own beside the browser tier. The
+// directory is also the honest filing: the imports below reach into `bridge/` AND `cli/` in equal
+// measure, which is already proof it was never a unit test of either.
 //
 // Two REAL Collie bridges, as child processes, on loopback, enrolled through the REAL enrollment
 // path, talking over REAL pinned mutual TLS with certificates this build minted. Nothing about the
@@ -191,8 +204,8 @@ class Instance {
 
   async start(): Promise<void> {
     if (this.port === 0) this.port = await freePort();
-    this.proc = Bun.spawn(["bun", "run", join(import.meta.dir, "..", "index.ts")], {
-      cwd: join(import.meta.dir, "..", ".."),
+    this.proc = Bun.spawn(["bun", "run", join(import.meta.dir, "..", "bridge", "index.ts")], {
+      cwd: join(import.meta.dir, ".."),
       env: {
         PATH: process.env.PATH ?? "",
         HOME: this.home,
@@ -312,7 +325,7 @@ interface Captured {
 
 function depsFor(instance: Instance, captured: Captured): CrewDeps {
   const ctx: CliContext = {
-    root: join(import.meta.dir, "..", ".."),
+    root: join(import.meta.dir, ".."),
     instance: null,
     configDir: join(instance.home, "config"),
     home: instance.home,
@@ -543,7 +556,7 @@ describe("the TLS factor is enforced at the handshake", () => {
     // would print here — one machine, one string.
     expect(await ok.json()).toMatchObject({
       protocol: CREW_PROTOCOL_VERSION,
-      version: collieVersionBare(join(import.meta.dir, "..", "..")),
+      version: collieVersionBare(join(import.meta.dir, "..")),
     });
 
     const refused = await dialAsLead(CREW_HELLO_PATH, {}, "not-the-secret");
@@ -592,7 +605,7 @@ describe("the lead speaks for the crew", () => {
     // The lead FIRST, then the peer — the order `servers[]` has, from the same `self` value (§9.2).
     expect(body.members.map((m) => m.id)).toEqual([leadId, peerId]);
     expect(body.members[0]!.isLead).toBe(true);
-    expect(body.members[0]!.version).toBe(collieVersionBare(join(import.meta.dir, "..", "..")));
+    expect(body.members[0]!.version).toBe(collieVersionBare(join(import.meta.dir, "..")));
     // A lead is not in its own roster, so it has neither of the two roster-only fields.
     expect(Object.keys(body.members[0]!)).not.toContain("address");
     expect(Object.keys(body.members[0]!)).not.toContain("enrolledAt");
@@ -1457,11 +1470,18 @@ async function portOpen(port: number): Promise<boolean> {
   }
 }
 
-/** Poll `predicate` until it holds or the budget runs out. Every wait in this file goes through it. */
+/**
+ * Poll `predicate` until it holds or the budget runs out. Every wait in this file goes through it.
+ *
+ * `message` is ALWAYS a thunk, never `string | thunk`. It was both until 2026-10-01, narrowed with a
+ * `typeof`, which the repo's lint forbids outside an I/O boundary — and it was right to: a union of
+ * a value and a function that produces it is two shapes for one idea, and the reason below applies
+ * to every caller anyway. A caller with a fixed sentence writes `() => "…"`.
+ */
 async function waitFor(
   predicate: () => Promise<boolean>,
   budgetMs: number,
-  message: string | (() => Promise<string>),
+  message: () => string | Promise<string>,
 ): Promise<void> {
   const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {
@@ -1470,7 +1490,7 @@ async function waitFor(
   }
   // The message is LAZY by option: a diagnostic that fetches state must fetch it at the moment of
   // failure, not at the moment the wait was set up — an eagerly-built one describes t=0 and lies.
-  const detail = typeof message === "string" ? message : await message();
+  const detail = await message();
   throw new Error(`timed out after ${budgetMs}ms: ${detail}`);
 }
 

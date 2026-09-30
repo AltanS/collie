@@ -1,12 +1,22 @@
+// A REAL SEND, driven over captures — which is why it is not in `src/lib/harness/`.
+//
+// The adapter tests next door are pure: text in, blocks out, no clock and no network. These two put
+// a screen through `sendGuardedReply`, which fetches, so they need an origin and a document and they
+// run in the `dom` project (see `vitest.config.ts`). Leaving them under `src/lib/harness/` meant that
+// folder needed a two-file exception list to run in the fast project, and an exception list is what
+// silently dropped both files from BOTH projects on the first attempt. One path, no exceptions.
+//
+// The captures they read are still the omp adapter's own (`src/fixtures/omp-pi-shape/`).
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "@/test/setup";
-import { sendGuardedReply } from "../../reply-action";
-import { ompOpaqueDraft, ompReplyChunks } from "./reply-chunks";
+import { server } from "@/test/msw";
+import { sendGuardedReply } from "../reply-action";
+import { ompOpaqueDraft, ompReplyChunks } from "../harness/omp/reply-chunks";
 
-const idle = readFileSync(join(import.meta.dirname, "../../../fixtures/omp-pi-shape/idle.txt"), "utf8");
+const idle = readFileSync(join(import.meta.dirname, "../../fixtures/omp-pi-shape/idle.txt"), "utf8");
 const screen = (draft: string) => idle.split("\n").map((row, i) => i === 1 ? ` ${draft.replaceAll("\n", "\n ")}` : row).join("\n");
 const text = Array.from({ length: 30 }, (_, i) => `한글 테스트 ${i} 👨‍💻`).join("\n");
 

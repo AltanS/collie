@@ -391,12 +391,38 @@ mkdir -p "$L_HOME" "$L_CONFIG" "$L_BIN"
 : > "$L_CALLS"
 
 port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+# Asks whether a port is free and hands it back for something else to bind LATER, which is a
+# time-of-check/time-of-use race. Several candidates narrow that window and do not close it. It is
+# still the right tool where the port is handed to the CLI to bind, or where the point is a port
+# with nothing on it (`DEAD_PORT`), because in neither case does this script own the listener.
+#
+# Where this script DOES own the listener, do not use it: `serve_free_port` below has the listener
+# pick its own port and report it back, so the port is bound before anyone knows its number.
 pick_port() {
   local p
   for p in "$@"; do
     if port_free "$p"; then echo "$p"; return 0; fi
   done
   fail "no free port among: $*"
+}
+
+# Start a background Bun listener on a kernel-chosen port and echo the port it got.
+#
+#   $1  a file to write the port into      $2  the label used in a failure message
+#   $3  the script body, as a Bun `-e` expression taking `serve(fetch)` already bound
+#
+# THE BUDGET IS TWENTY SECONDS, and that is the second half of this fix. The v1 listener waited
+# 40 x 0.1s and the suite's documented flake was "the v1 readiness listener never came up on 48790".
+# 48790 was free; what did not fit in four seconds was a COLD `bun -e` start on a loaded machine.
+# Twenty seconds is far longer than that start and still bounded, so a genuinely dead listener still
+# fails rather than hanging the suite.
+wait_for_port_file() {
+  local file="$1" label="$2" i
+  for i in $(seq 1 200); do
+    [ -s "$file" ] && return 0
+    sleep 0.1
+  done
+  fail "the ${label} never reported a port within 20s"
 }
 PORT="$(pick_port 48787 48887 48987)"
 DEAD_PORT="$(pick_port 48788 48888 48988)"
@@ -936,14 +962,15 @@ assert_contains "$STDERR" "Refusing to fall back to another instance's config"
 assert_contains "$STDERR" "herdr.collie-v1/.env"
 
 # A second readiness listener, so v1's banner does not pay the probe's full budget (as for $PORT).
-V1_PORT="$(pick_port 48790 48890 48990)"
-bun -e "Bun.serve({ port: ${V1_PORT}, hostname: '127.0.0.1', fetch: () => new Response('ok') })" \
+# It BINDS FIRST and reports the port it got, so nothing here checks a port and binds it later.
+V1_PORT_FILE="${TMP_ROOT}/v1-port"
+bun -e "const s = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok') }); require('node:fs').writeFileSync('${V1_PORT_FILE}', String(s.port));" \
   >/dev/null 2>&1 &
 V1_LISTENER_PID=$!
 cleanup_instances() { kill "$V1_LISTENER_PID" 2>/dev/null || true; }
 trap 'cleanup_instances; cleanup_lifecycle; cleanup' EXIT
-for _ in $(seq 1 40); do port_free "$V1_PORT" || break; sleep 0.1; done
-port_free "$V1_PORT" && fail "the v1 readiness listener never came up on ${V1_PORT}"
+wait_for_port_file "$V1_PORT_FILE" "v1 readiness listener"
+V1_PORT="$(cat "$V1_PORT_FILE")"
 
 cli_v1() {
   : > "$L_CALLS"
@@ -1429,13 +1456,14 @@ chmod +x "${U_BIN}/herdr" "${U_BIN}/systemctl" "${U_BIN}/systemd-run" "${U_BIN}/
 # what the machine claims to be running; an empty file is "down".
 U_STATE="${UPDATE_HOME}/.local/state/collie"
 U_HEALTH="${TMP_ROOT}/update-health-version"
-U_PORT="$(pick_port 48791 48891 48991)"
+U_PORT_FILE="${TMP_ROOT}/update-health-port"
 printf '9.10.0\n' > "$U_HEALTH"
 cat > "${TMP_ROOT}/update-health.ts" <<EOF
-import { readFileSync } from "node:fs";
-Bun.serve({
+import { readFileSync, writeFileSync } from "node:fs";
+// Port 0 and then report it: this script owns the listener, so it binds first and asks second.
+const server = Bun.serve({
   hostname: "127.0.0.1",
-  port: ${U_PORT},
+  port: 0,
   fetch(req) {
     if (new URL(req.url).pathname !== "/api/health") return new Response("no", { status: 404 });
     const version = readFileSync("${U_HEALTH}", "utf8").trim();
@@ -1443,16 +1471,15 @@ Bun.serve({
     return Response.json({ ok: true, version, deposed: false, mode: "solo" });
   },
 });
+writeFileSync("${U_PORT_FILE}", String(server.port));
 EOF
 # `>/dev/null 2>&1` is load-bearing, not tidiness: a background child inheriting this script's
 # stdout holds the pipe open, and a caller reading the suite through `| tail` would then wait for
 # the health stand-in rather than for the suite.
 bun "${TMP_ROOT}/update-health.ts" >/dev/null 2>&1 &
 U_HEALTH_PID=$!
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  curl -fsS "http://127.0.0.1:${U_PORT}/api/health" >/dev/null 2>&1 && break
-  sleep 0.2
-done
+wait_for_port_file "$U_PORT_FILE" "update health stand-in"
+U_PORT="$(cat "$U_PORT_FILE")"
 
 # What the health stand-in claims this machine is running.
 health_says() { printf '%s\n' "$1" > "$U_HEALTH"; }
