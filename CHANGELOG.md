@@ -32,14 +32,6 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
-- **Every harness now records what a tool call DID, not just that one ran.** Claude already did;
-  Codex, opencode, pi, grok and hermes now do too. A command carries its exit code, an edit carries
-  its hunks and its added and removed counts, a search carries its hit count, and a call the
-  operator refused is marked as refused rather than as an error. Nothing is guessed: each harness
-  fills only what its own record actually holds, and the three that write no exit code and no patch
-  say so rather than inventing one. This is what a session card will draw, and it is read from one
-  place for all six.
-
 - **The boot splash shows the Collie mark, not the old galloping dog.** The sprite was retired when
   the new mark landed and every screen moved to it, but the first-paint splash in `index.html` kept
   its own hand-written copy, so a cold open still flashed a galloping dog and then swapped it for a
@@ -72,7 +64,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   marked `denied` rather than lumped in with a real failure, because "you said no" and "it crashed"
   are not the same thing to read. The shape is additive, so every existing view keeps working, and
   the name table is shared, so `Bash`, `bash`, `shell` and `exec_command` are one kind of thing.
-  Claude Code fills it first; the other five adapters follow.
+
+- **Every harness now records what a tool call DID, not just that one ran.** Claude already did;
+  Codex, opencode, pi, grok and hermes now do too. A command carries its exit code, an edit carries
+  its hunks and its added and removed counts, a search carries its hit count, and a call the
+  operator refused is marked as refused rather than as an error. Nothing is guessed: each harness
+  fills only what its own record actually holds, and the three that write no exit code and no patch
+  say so rather than inventing one. This is what a session card will draw, and it is read from one
+  place for all six.
 
 - **The pane switcher can run by activity instead of by place.** The sheet you open with the layers
   mark keeps every pane in its space and tab, which is the right answer when you know where you are
@@ -88,7 +87,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   which turns it added. That second half is the point: a tool result lands rows after the call it
   belongs to, so attaching it edits a turn that is already on screen. A live session that gains one
   row can now cost one row of work instead of re-reading and re-parsing the last 32 MB of a log that
-  can be 190 MB long. Nothing you can see changes yet, and the whole-file reading is the same reading
+  can be 187 MB long. Nothing you can see changes yet, and the whole-file reading is the same reading
   it always was, proved for all six harnesses against the same bytes arriving in torn random chunks.
 
 - **Asking a session what is new now costs only what is new.** Every harness can answer that
@@ -146,7 +145,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   off the side. The mirror only ever panned a box whose divider crossed a rule, `┼`, and a two-pane box
   never draws one, so it was refused and then clipped rather than wrapped. It now pans like any other
   wide table, which also gives back the model names in omp's `/model` picker and the Tips beside omp's
-  welcome logo. Thanks @cryptiklemur (#301).
+  welcome logo. Thanks @cryptiklemur (discussion #301).
 
 - **A long file name in Changes keeps both ends instead of losing its start.** The tree truncated a
   name from the left, which is correct for a path and wrong for a bare file name, so a folder of
@@ -177,8 +176,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   border crosses the composer bar, the draft walk could land on that border row and hand it back as
   the draft, so the phone showed a Draft in terminal card holding one line of box glyphs, and Take
   over would have typed that junk into the composer. A border row is excluded now, and it takes two
-  conditions to be one: a corner or a junction on the row's interior, AND nothing but chrome on the
-  row. Either condition on its own gets a real draft wrong. People type a bare rule inside a message,
+  conditions to be one: a corner or a junction on the row's interior, AND nothing but chrome inside
+  it. Either condition on its own gets a real draft wrong. People type a bare rule inside a message,
   and a pasted `tree` carries a junction on every line, which read four typed lines back as the last
   one. The reader also held two glyph sets that disagreed about whether `─` and `│` were border
   glyphs, and there is one set now. Thanks @AndiWandHerd (#319).
@@ -200,6 +199,20 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   "completado". Every other push title matches its chip, so these two were the exception. Both carry
   the chip's word now, with an object, because German "ist abgeschlossen" is wrong for an actor and a
   bare "hat abgeschlossen" can be read as having locked up.
+
+- **A send on a Muse pane could type your message and then never submit it.** With block grammars
+  on, tapping Send typed the text into the composer and stalled, three taps in a row, while the
+  words sat in the box. The verify read after typing can catch the terminal's echo one character
+  short, and the matcher accepted that prefix, so the phone bound a partial row and the bridge's own
+  exact check then refused to submit it. A single-chunk send now waits for the echo's tail before it
+  binds, which is what the multi-chunk loop already did. Thanks @jpcarranza94 (#312).
+
+- **`collie status` sees a launchd agent that Home Manager put in the user domain.** Collie probed
+  only `gui/<uid>`, so an agent declared with `domain = "user"`, which is what a background service
+  without a graphical login needs, read as not loaded while it was running. Both domains are probed
+  now, the status line names the full target, and both registrations are reported when both exist,
+  so a running background agent is not hidden behind a stopped GUI one. The pidfile fallback is
+  unchanged. Thanks @mavam (#314).
 
 ### Docs
 
