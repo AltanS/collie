@@ -36,6 +36,40 @@ function Hit({ text }: { text: string }) {
   );
 }
 
+/**
+ * How long a chip or a link may be and still refuse to break at all.
+ *
+ * ── WHY THIS IS A NUMBER AND NOT A CSS PROPERTY ──────────────────────────────
+ * A hyphen and a slash are ORDINARY wrap opportunities. No `overflow-wrap` setting changes that,
+ * and `word-break: keep-all` does not either (measured in Chromium, 2026-09-30: it suppresses
+ * nothing in Latin text). So `--force` broke as `--` / `force` and `readme-herdr-client` broke
+ * after either hyphen, whenever one happened to land near the right edge. The only property that
+ * forbids those breaks is `white-space: nowrap`, and that one forbids the break we DO want: a 78
+ * character path under it ran 312px past the column, off the side of a phone.
+ *
+ * So the renderer decides, because it is the one thing here that can see the text. Short enough to
+ * fit a line of its own: never break it. Longer than that: break anywhere, since it has to break
+ * somewhere.
+ *
+ * ── AND WHY 24 ───────────────────────────────────────────────────────────────
+ * Measured against the built stylesheet at this face and size: the first chip to overrun a column
+ * is 36 characters at 280px, 42 at 320px and 44 at 340px. 280px is about as narrow as this prose
+ * ever gets (a 320px phone, less the stream's padding and a list's indent), so 24 keeps a third of
+ * that narrowest measure in hand for a device whose OS font scale is turned up. It covers what
+ * agents actually write in backticks: a flag, a short sha, a file name, a branch, `origin/main`.
+ */
+const NO_BREAK_MAX = 24;
+
+/** How a chip or a link is allowed to break, given the text it holds. See {@link NO_BREAK_MAX}. */
+function breakClass(text: string): string {
+  return text.length <= NO_BREAK_MAX ? "whitespace-nowrap" : "wrap-anywhere";
+}
+
+/** What a run of spans reads as, flattened — for length, never for rendering. */
+function flatten(spans: MdSpan[]): string {
+  return spans.map((s) => (s.kind === "text" || s.kind === "code" ? s.text : flatten(s.spans))).join("");
+}
+
 // Emphasis and links hold child spans (agents nest them — ``**`sha`**`` is routine), so this recurses
 // through <Spans>. `code` is the leaf.
 function Span({ span }: { span: MdSpan }) {
@@ -70,19 +104,25 @@ function Span({ span }: { span: MdSpan }) {
       // wrapped lines touched. At 1px the box is 19px and the rhythm holds. The horizontal padding
       // is untouched; that one is only ever about the glyphs.
       return (
-        <code className="rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] text-status-info wrap-anywhere">
+        <code
+          className={`rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] text-status-info ${breakClass(span.text)}`}
+        >
           <Hit text={span.text} />
         </code>
       );
     case "link":
       // `href` was scheme-checked in the parser. noreferrer/noopener because these URLs come from
       // agent output, and target=_blank keeps the PWA shell alive behind the tap.
+      //
+      // Same break rule as a chip, and for the same reason: `http://bluefin:8788` is full of slashes
+      // and colons, every one of them a wrap opportunity, and an address split across two lines is
+      // one you have to reassemble in your head before you trust the tap.
       return (
         <a
           href={span.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary underline underline-offset-2 wrap-anywhere"
+          className={`text-primary underline underline-offset-2 ${breakClass(flatten(span.spans))}`}
         >
           <Spans spans={span.spans} />
         </a>

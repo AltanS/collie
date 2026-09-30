@@ -210,6 +210,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
   glance rather than a read.
 
+- **A flag or a branch name in backticks is no longer cut in half at the line end.** A hyphen, a
+  slash and a colon are ordinary places for a line to break, so `--force` could come out as `--`
+  then `force`, and an address like `http://bluefin:8788` could be split across two lines. Anything
+  short enough to fit a column of its own now stays in one piece, and only something genuinely too
+  long to fit, a full path, breaks where it must.
+
 - **A bulleted list now reads at the same pace as a paragraph.** A list took the base line height
   and a paragraph took the relaxed one, so the same prose was set two different ways depending on
   whether it had a bullet in front of it. A list was also the one place a code chip did not fit its
