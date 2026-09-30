@@ -11,7 +11,6 @@ import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
-import { t } from "./i18n";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -517,7 +516,8 @@ const CHAT_ETAG_MAX = 8;
  *  - `unchanged` — a 304. Nothing moved. Neither an error nor a change.
  *  - `stale` — a 404. **This machine's Collie predates the route**, which is a version fact and never
  *    "this pane has nothing to show". The route is additive-optional over a crew link, so it is the
- *    ordinary skew a crew is in while it levels, and the message says the remedy.
+ *    ordinary skew a crew is in while it levels. The remedy is `chat.stale.member`, which the VIEW
+ *    resolves; this module names no sentence.
  *
  * Anything else still throws, exactly as every other call here does.
  */
@@ -562,9 +562,11 @@ export async function fetchChat(
     // its 404. The pane route answers `available:false` for every reason a pane itself has nothing,
     // which is why this status can only mean the version skew.
     //
-    // The sentence is resolved here rather than stored as a key, so what the outcome carries is what
-    // a screen prints. A language changed after the fact is corrected by the next poll.
-    return { outcome: "stale", message: t("chat.stale.member") };
+    // It carries no sentence. This module is transport: an api error here carries a CODE and
+    // `lib/api-error-message.ts` is what turns one into words. Resolving a sentence in the fetch
+    // would put wording in the layer that has no business choosing it, and would freeze the
+    // language at the moment of the answer. The view calls `t("chat.stale.member")`.
+    return { outcome: "stale" };
   }
   if (!res.ok) {
     const detail = await errorDetail(res);

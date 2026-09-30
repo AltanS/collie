@@ -5,7 +5,6 @@ import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
 import { __resetConnectionHealth, isLostLatched, lastHealthyAt } from "./connection-health";
 import { isConnecting } from "./connection";
 import { resetBasePathForTests } from "./base-path";
-import { en } from "@/lib/i18n/messages/en";
 import {
   checkForUpdates,
   createTab,
@@ -695,7 +694,6 @@ describe("fetchChat", () => {
     );
     await expect(fetchChat("chat-404")).resolves.toEqual({
       outcome: "stale",
-      message: en["chat.stale.member"],
     });
   });
 

@@ -157,7 +157,7 @@ describe("mergeChat — the two empty answers are different facts", () => {
     outcome: "body",
     body: { paneId: "w1:p1", available: false, reason: "no-session" },
   };
-  const stale: ChatAnswer = { outcome: "stale", message: "update this machine" };
+  const stale: ChatAnswer = { outcome: "stale" };
 
   it("reads `available: false` as a pane with nothing to show", () => {
     expect(mergeChat(EMPTY_CHAT_WINDOW, unavailable).status).toEqual({
@@ -166,11 +166,10 @@ describe("mergeChat — the two empty answers are different facts", () => {
     });
   });
 
-  it("reads a 404 as a machine a release behind, carrying its own sentence", () => {
-    expect(mergeChat(EMPTY_CHAT_WINDOW, stale).status).toEqual({
-      kind: "stale",
-      message: "update this machine",
-    });
+  // No sentence rides on the status. `api.ts` is transport and does not choose wording; the view
+  // resolves `chat.stale.member`, which is where every other user-facing string is resolved.
+  it("reads a 404 as a machine a release behind, and carries no sentence", () => {
+    expect(mergeChat(EMPTY_CHAT_WINDOW, stale).status).toEqual({ kind: "stale" });
   });
 
   it("never gives the two the same status", () => {

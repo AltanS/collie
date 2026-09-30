@@ -37,8 +37,8 @@ type ChatUnavailableReason = Extract<PaneChatResponse, { available: false }>["re
 /**
  * What the last answer said this pane's session is.
  *
- * `stale` carries the sentence rather than a code, because there is nothing to branch on: a
- * machine that predates the route has one remedy and it is the same one every time.
+ * Every kind here is a FACT, never a sentence. Wording is the view's, resolved through `t()`, the way
+ * every other user-facing string in this app is.
  */
 export type ChatStatus =
   /** Nothing has been asked yet. */
@@ -47,8 +47,15 @@ export type ChatStatus =
   | { kind: "live" }
   /** An ordinary empty answer: a shell pane, an agent with no session, a log that cannot be read. */
   | { kind: "unavailable"; reason: ChatUnavailableReason }
-  /** A 404. This machine's Collie predates the route — NOT an empty session. */
-  | { kind: "stale"; message: string };
+  /**
+   * A 404. This machine's Collie predates the route — NOT an empty session.
+   *
+   * It carries no sentence. `api.ts` is transport and does not decide wording: an api error there
+   * carries a CODE and `lib/api-error-message.ts` turns it into words. A message resolved in the
+   * fetch would also freeze the language at the moment of the answer. The view calls
+   * `t("chat.stale.member")`, which is where every other user-facing sentence is resolved.
+   */
+  | { kind: "stale" };
 
 /**
  * One session as the client holds it.
@@ -81,10 +88,13 @@ export interface ChatWindow {
 export type ChatAnswer =
   | { outcome: "body"; body: PaneChatResponse }
   | { outcome: "unchanged" }
-  | { outcome: "stale"; message: string };
+  | { outcome: "stale" };
 
 /** The 304 answer, shared so an unchanged poll allocates nothing. */
 export const CHAT_UNCHANGED: ChatAnswer = { outcome: "unchanged" };
+
+/** One shared value, for the same reason {@link LIVE} is one: a stale status never varies. */
+const STALE: ChatStatus = { kind: "stale" };
 
 /** One shared value, so an unchanged status keeps its identity across polls. */
 const LIVE: ChatStatus = { kind: "live" };
@@ -112,7 +122,7 @@ export function mergeChat(held: ChatWindow, answer: ChatAnswer): ChatWindow {
   if (answer.outcome === "unchanged") return held;
   // A 404 restates the status and keeps the turns. They were true when they arrived, and a version
   // skew does not unsay them.
-  if (answer.outcome === "stale") return restate(held, { kind: "stale", message: answer.message });
+  if (answer.outcome === "stale") return restate(held, STALE);
   const body = answer.body;
   if (!body.available) return restate(held, { kind: "unavailable", reason: body.reason });
   return body.page === "older" ? mergeOlder(held, body) : mergeLive(held, body);
@@ -125,7 +135,6 @@ function restate(held: ChatWindow, status: ChatStatus): ChatWindow {
 
 function sameStatus(held: ChatStatus, next: ChatStatus): boolean {
   if (held.kind === "unavailable" && next.kind === "unavailable") return held.reason === next.reason;
-  if (held.kind === "stale" && next.kind === "stale") return held.message === next.message;
   return held.kind === next.kind;
 }
 
