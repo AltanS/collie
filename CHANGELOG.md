@@ -146,6 +146,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   machine still running an older Collie has no such read at all, and it now says so and names the
   remedy instead of looking like a pane with nothing to show. No screen uses this yet.
 
+- **Collie now holds the blocks a session reads as.** A turn from an agent's own record becomes what
+  you would expect to see: your own turn, the reply, thinking behind a fold, and a card per step. A
+  command carries its output, an edit carries its diff in the same colours the Changes view uses, and
+  a run of steps folds to one line you can open. They were drawn and lived with in the session-stream
+  prototype first and moved here whole, tests included, so there is one definition of a card and not
+  two. No screen mounts them yet.
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

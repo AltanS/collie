@@ -1,0 +1,288 @@
+import type { ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import {
+  CardWaitingCtx,
+  Disclosure,
+  ItemView,
+  ToolCard,
+  ToolGroup,
+  groupRuns,
+  harnessLabel,
+  shortPath,
+  stepLine,
+  type CardWaiting,
+} from "./chat-cards";
+import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
+
+// The blocks of a session stream. The load-bearing behaviours: a finished run folds to one line and
+// a live one does not, a refusal is not drawn like a fault, every string renders as TEXT (the same
+// XSS boundary as the mirror), and the host's waiting slot is the ONLY way a dialog reaches a card —
+// collie itself has nothing to put there.
+
+const tool = (t: ChatToolCall, over: Partial<Extract<ChatItem, { kind: "tool" }>> = {}): ChatItem => ({
+  id: "t1",
+  kind: "tool",
+  tool: t,
+  status: "done",
+  ...over,
+});
+
+/** Render with a host's waiting slots in place, the way the one host that has any does it. */
+function withWaiting(node: ReactNode, waiting: Record<string, CardWaiting>) {
+  return render(<CardWaitingCtx.Provider value={waiting}>{node}</CardWaitingCtx.Provider>);
+}
+
+describe("groupRuns", () => {
+  const t = (id: string): ChatItem => tool({ kind: "read", path: "/a.ts" }, { id });
+  const said = (id: string): ChatItem => ({ id, kind: "reply", text: "hi" });
+
+  it("gathers three or more consecutive steps into one run", () => {
+    expect(groupRuns([t("a"), t("b"), t("c")]).map((g) => g.length)).toEqual([3]);
+  });
+
+  it("leaves a shorter run as single blocks", () => {
+    expect(groupRuns([t("a"), t("b")]).map((g) => g.length)).toEqual([1, 1]);
+  });
+
+  it("breaks a run on anything that is not a step", () => {
+    expect(groupRuns([t("a"), t("b"), t("c"), said("s"), t("d")]).map((g) => g.length)).toEqual([3, 1, 1]);
+  });
+
+  it("counts thinking as a step, so reasoning folds with the work around it", () => {
+    const items: ChatItem[] = [t("a"), { id: "k", kind: "thinking", text: "hmm" }, t("b")];
+    expect(groupRuns(items).map((g) => g.length)).toEqual([3]);
+  });
+
+  it("folds a lone step at minRun 1, which is how tool calls off is drawn", () => {
+    expect(groupRuns([t("a")], 1).map((g) => g.length)).toEqual([1]);
+    expect(groupRuns([t("a"), said("s")], 1).map((g) => g.length)).toEqual([1, 1]);
+  });
+});
+
+describe("stepLine", () => {
+  it("names the act and the thing it acted on, and says which face the subject wears", () => {
+    expect(stepLine({ kind: "edit", path: "/home/me/a.ts", added: 1, removed: 0 })).toEqual({
+      verb: "Edited",
+      subject: "~/a.ts",
+      mono: true,
+    });
+    expect(stepLine({ kind: "edit", path: "/a.ts", added: 1, removed: 0, created: true }).verb).toBe("Created");
+    expect(stepLine({ kind: "read", path: "/a.ts" }).verb).toBe("Read");
+    expect(stepLine({ kind: "search", query: "todo" })).toEqual({ verb: "Searched", subject: "todo", mono: true });
+    expect(stepLine({ kind: "fetch", url: "https://x.test" }).verb).toBe("Fetched");
+    expect(stepLine({ kind: "delete", path: "/a.ts" }).verb).toBe("Deleted");
+    expect(stepLine({ kind: "move", path: "/a.ts", to: "/b.ts" }).verb).toBe("Moved");
+  });
+
+  it("prefers a command's own description, and falls back to its first line in mono", () => {
+    expect(stepLine({ kind: "execute", command: "ls -la", description: "List files" })).toEqual({
+      verb: "",
+      subject: "List files",
+      mono: false,
+    });
+    expect(stepLine({ kind: "execute", command: "ls -la\necho hi" })).toEqual({
+      verb: "$",
+      subject: "ls -la",
+      mono: true,
+    });
+  });
+
+  it("draws an agent's own words as prose, never as a path", () => {
+    expect(stepLine({ kind: "task", agent: "explore", summary: "Read the corpus" })).toEqual({
+      verb: "explore:",
+      subject: "Read the corpus",
+      mono: false,
+    });
+    expect(stepLine({ kind: "other", name: "Weird", summary: "line one\nline two" }).subject).toBe("line one");
+  });
+});
+
+describe("shortPath", () => {
+  it("shortens a home directory under either root, and leaves anything else alone", () => {
+    expect(shortPath("/var/home/altan/x/a.ts")).toBe("~/x/a.ts");
+    expect(shortPath("/home/altan/x/a.ts")).toBe("~/x/a.ts");
+    expect(shortPath("/etc/hosts")).toBe("/etc/hosts");
+  });
+});
+
+describe("harnessLabel", () => {
+  it("gives a harness its own name, and hands back anything it has not been taught", () => {
+    expect(harnessLabel("claude")).toBe("Claude Code");
+    expect(harnessLabel("grok")).toBe("grok");
+  });
+});
+
+describe("ToolCard", () => {
+  it("draws an edit with its path and the lines that moved", () => {
+    render(<ToolCard tool={{ kind: "edit", path: "/home/me/src/a.ts", added: 4, removed: 2 }} status="done" />);
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+    expect(screen.getByText("a.ts")).toBeInTheDocument();
+    expect(screen.getByText("+4")).toBeInTheDocument();
+    expect(screen.getByText("−2")).toBeInTheDocument();
+  });
+
+  it("says Create for a new file", () => {
+    render(<ToolCard tool={{ kind: "edit", path: "/a.ts", added: 9, removed: 0, created: true }} status="done" />);
+    expect(screen.getByText("Create")).toBeInTheDocument();
+  });
+
+  it("draws a command and opens its output on a tap", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <ToolCard tool={{ kind: "execute", command: "ls -la", output: "one\ntwo" }} status="done" />,
+    );
+    expect(screen.getByText("ls -la")).toBeInTheDocument();
+    const fold = screen.getByRole("button", { expanded: false });
+    expect(fold).toHaveTextContent("2");
+    expect(container.querySelector("pre")).toBeNull();
+    await user.click(fold);
+    expect(container.querySelector("pre")).toHaveTextContent("one two");
+  });
+
+  it("draws a read as one line with its range", () => {
+    render(<ToolCard tool={{ kind: "read", path: "/a.ts", range: [10, 20] }} status="done" />);
+    expect(screen.getByText("Read")).toBeInTheDocument();
+    expect(screen.getByText("lines 10–20")).toBeInTheDocument();
+  });
+
+  // Every state a card can show lives in ONE reserved grid cell (`ui/one-of.tsx`), so all of them
+  // are in the DOM at once and only the active layer is marked. Asking "which is shown" therefore
+  // means asking the slot, not asking whether a word exists.
+  it("tells a refusal apart from a fault", () => {
+    const denied = render(<ToolCard tool={{ kind: "read", path: "/a.ts" }} status="denied" />);
+    expect(denied.container.querySelector("[data-active]")).toHaveTextContent("denied");
+    denied.unmount();
+    const failed = render(<ToolCard tool={{ kind: "read", path: "/a.ts" }} status="failed" />);
+    expect(failed.container.querySelector("[data-active]")).toHaveTextContent("failed");
+  });
+
+  it("names a non-zero exit code, and says nothing about a zero one", () => {
+    const bad = render(<ToolCard tool={{ kind: "execute", command: "false", exitCode: 1 }} status="done" />);
+    expect(bad.container.querySelector("[data-active]")).toHaveTextContent("exit 1");
+    bad.unmount();
+    const good = render(<ToolCard tool={{ kind: "execute", command: "true", exitCode: 0 }} status="done" />);
+    expect(good.container.querySelector("[data-active]")).toBeNull();
+  });
+
+  it("renders agent text as text, never as markup", () => {
+    render(<ToolCard tool={{ kind: "other", name: "Weird", summary: "<img src=x onerror=alert(1)>" }} status="done" />);
+    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
+    expect(document.querySelector("img")).toBeNull();
+  });
+});
+
+describe("the host's waiting slot", () => {
+  const card = <ToolCard tool={{ kind: "execute", command: "rm -rf /tmp/x" }} status="running" />;
+
+  it("draws nothing of its own when no host supplied anything", () => {
+    const { container } = render(card);
+    expect(container.querySelector("[data-waiting]")).toBeNull();
+  });
+
+  it("anchors the card and draws what the host gave it", () => {
+    const { container } = render(
+      <ToolCard
+        tool={{ kind: "execute", command: "rm -rf /tmp/x" }}
+        status="running"
+        waiting={{ id: "ask-7", body: <p>Allow this?</p> }}
+      />,
+    );
+    expect(container.querySelector('[data-waiting="ask-7"]')).not.toBeNull();
+    expect(screen.getByText("Allow this?")).toBeInTheDocument();
+  });
+
+  it("draws the host's note in the body's place once the body is gone", () => {
+    render(
+      <ToolCard
+        tool={{ kind: "execute", command: "rm -rf /tmp/x" }}
+        status="running"
+        waiting={{ note: "The dialog moved to the terminal." }}
+      />,
+    );
+    expect(screen.getByText("The dialog moved to the terminal.")).toBeInTheDocument();
+  });
+
+  it("reaches a card inside a run through the context, keyed by the item's own id", () => {
+    const items: ChatItem[] = [
+      tool({ kind: "read", path: "/a.ts" }, { id: "a" }),
+      tool({ kind: "read", path: "/b.ts" }, { id: "b" }),
+      tool({ kind: "execute", command: "rm -rf /tmp/x" }, { id: "c", status: "running" }),
+    ];
+    const { container } = withWaiting(<ToolGroup items={items} />, { c: { id: "ask-9", body: <p>Allow this?</p> } });
+    expect(screen.getByText("Allow this?")).toBeInTheDocument();
+    expect(container.querySelector('[data-waiting="ask-9"]')).not.toBeNull();
+  });
+});
+
+describe("ToolGroup", () => {
+  const finished: ChatItem[] = [
+    tool({ kind: "execute", command: "ls" }, { id: "a" }),
+    tool({ kind: "edit", path: "/a.ts", added: 1, removed: 1 }, { id: "b" }),
+    tool({ kind: "read", path: "/b.ts" }, { id: "c" }),
+  ];
+
+  it("folds a finished run to one summary line, and opens it on a tap", async () => {
+    const user = userEvent.setup();
+    render(<ToolGroup items={finished} />);
+    const fold = screen.getByRole("button", { expanded: false });
+    expect(fold).toHaveTextContent("1 command, 1 edit, 1 read");
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+    await user.click(fold);
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+  });
+
+  it("counts the faults in a run on its folded row", () => {
+    const items = finished.map((i, k) => (k === 0 ? { ...i, status: "failed" as const } : i));
+    render(<ToolGroup items={items} />);
+    expect(screen.getByText("1 failed")).toBeInTheDocument();
+  });
+
+  it("stays open while a step is still running, so nothing hides work in flight", () => {
+    const items = finished.map((i, k) => (k === 2 ? { ...i, status: "running" as const } : i));
+    render(<ToolGroup items={items} />);
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+  });
+
+  it("stays open while a host has something waiting on a step, because hiding it hides the question", () => {
+    withWaiting(<ToolGroup items={finished} />, { b: { id: "ask-1", body: <p>Allow this?</p> } });
+    expect(screen.getByText("Allow this?")).toBeInTheDocument();
+  });
+});
+
+describe("ItemView", () => {
+  it("draws the reader's own turn with a You caption", () => {
+    render(<ItemView item={{ id: "u", kind: "user", text: "please continue" }} />);
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByText("please continue")).toBeInTheDocument();
+  });
+
+  it("keeps thinking behind a fold", async () => {
+    const user = userEvent.setup();
+    render(<ItemView item={{ id: "k", kind: "thinking", text: "weighing it up" }} />);
+    expect(screen.queryByText("weighing it up")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Thinking/ }));
+    expect(screen.getByText("weighing it up")).toBeInTheDocument();
+  });
+
+  it("sets a notice apart from speech", () => {
+    render(<ItemView item={{ id: "n", kind: "notice", text: "Image: /api/image/7" }} />);
+    expect(screen.getByText("Image: /api/image/7")).toBeInTheDocument();
+  });
+});
+
+describe("Disclosure", () => {
+  it("keeps its body out of the DOM until it is opened", async () => {
+    const user = userEvent.setup();
+    render(
+      <Disclosure label="Details" icon={ChevronRight}>
+        {() => <p>the body</p>}
+      </Disclosure>,
+    );
+    expect(screen.queryByText("the body")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByText("the body")).toBeInTheDocument();
+  });
+});
