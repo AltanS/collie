@@ -323,6 +323,7 @@ export const ja: Dictionary = {
     "{agent} のセッションが Herdr に報告されていません。Herdr 連携をインストールまたは更新し、このペインでエージェントを再起動してください。",
   "chat.scrollback.noSessionYet":
     "{agent}は最初のメッセージの送信後にのみセッションをHerdrに報告するため、履歴はまだありません。{agent}が返信した後もこのメッセージが表示され続ける場合は、{agent}で/hooksを実行してフックを確認するか、Herdr連携を更新してエージェントを再起動してください。",
+  "chat.stale.member": "このマシンでは古い Collie が動作しています。更新すると、ここで会話を追えます。",
   "chat.fullReply.title": "返答の全文",
   "chat.fullReply.fromTranscript": "ログより",
   "chat.fullReply.showingTerminal": "ターミナルを表示中",

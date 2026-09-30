@@ -328,6 +328,7 @@ export const de: Dictionary = {
     "{agent} hat keine Sitzung an Herdr gemeldet. Herdr-Integration installieren oder aktualisieren und den Agenten in diesem Pane neu starten.",
   "chat.scrollback.noSessionYet":
     "{agent} meldet seine Sitzung erst nach seiner ersten Nachricht an Herdr, daher gibt es noch keinen Verlauf. Wenn dieser Hinweis bestehen bleibt, nachdem {agent} geantwortet hat, überprüfen Sie die Hooks mit /hooks in {agent} oder aktualisieren Sie die Herdr-Integration und starten Sie den Agenten neu.",
+  "chat.stale.member": "Dieser Rechner verwendet eine ältere Collie-Version. Aktualisieren Sie ihn, um den Verlauf hier zu verfolgen.",
   "chat.fullReply.title": "Vollständige Antwort",
   "chat.fullReply.fromTranscript": "aus dem Protokoll",
   "chat.fullReply.showingTerminal": "Terminal wird gezeigt",

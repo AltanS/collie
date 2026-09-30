@@ -353,6 +353,10 @@ export const en = {
     "{agent} has not reported a session to Herdr. Install or update the Herdr integration for it, then restart the agent in this pane.",
   "chat.scrollback.noSessionYet":
     "{agent} reports its session to Herdr only after its first message, so there is no history yet. If this note stays after {agent} has replied, review its hooks with /hooks in {agent}, or update the Herdr integration and restart the agent.",
+  // A 404 on the live-session route, and it is NOT "this pane has nothing to show" (ADR 0073 point
+  // 7). The route is additive-optional over a crew link, so a machine one release behind has no
+  // route at all. Say the remedy, because there is exactly one and waiting is not it.
+  "chat.stale.member": "This machine runs an older Collie. Update it to follow the conversation here.",
   "chat.fullReply.title": "Full reply",
   "chat.fullReply.fromTranscript": "from transcript",
   "chat.fullReply.showingTerminal": "showing the terminal",

@@ -310,6 +310,7 @@ export const zh: Dictionary = {
     "{agent} 尚未向 Herdr 上报会话。请安装或更新对应的 Herdr 集成，并在当前窗格重启该 Agent。",
   "chat.scrollback.noSessionYet":
     "{agent} 仅在发送第一条消息后才向 Herdr 报告其会话，因此目前尚无历史记录。如果 {agent} 回复后此提示仍未消失，请在 {agent} 中使用 /hooks 检查其 hook，或更新 Herdr 集成并重启该 agent。",
+  "chat.stale.member": "此主机运行的 Collie 版本较旧。更新后即可在这里跟随对话。",
   "chat.fullReply.title": "完整回复",
   "chat.fullReply.fromTranscript": "来自日志",
   "chat.fullReply.showingTerminal": "正在显示终端",

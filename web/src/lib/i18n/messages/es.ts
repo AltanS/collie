@@ -326,6 +326,7 @@ export const es: Dictionary = {
     "{agent} no ha registrado ninguna sesión en Herdr. Instala o actualiza la integración de Herdr correspondiente y reinicia el agente en este panel.",
   "chat.scrollback.noSessionYet":
     "{agent} informa de su sesión a Herdr solo después de su primer mensaje, por lo que todavía no hay historial. Si esta nota continúa después de que {agent} haya respondido, revise sus enlaces con /hooks en {agent}, o actualice la integración de Herdr y reinicie el agente.",
+  "chat.stale.member": "Esta máquina ejecuta una versión antigua de Collie. Actualízala para seguir aquí la conversación.",
   "chat.fullReply.title": "Respuesta completa",
   "chat.fullReply.fromTranscript": "desde el registro",
   "chat.fullReply.showingTerminal": "mostrando la terminal",

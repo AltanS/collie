@@ -821,6 +821,33 @@ export interface PaneReadResponse {
 }
 
 /**
+ * One hunk of a unified diff, exactly as the harness that wrote the file reported it. Each line
+ * already carries its own marker — `" "`, `"+"` or `"-"`. Mirrors `bridge/journal/tool-call.ts`.
+ */
+export interface Hunk {
+  header: string;
+  lines: string[];
+}
+
+/**
+ * What a tool call did, in the shape the thing it did suggests. Mirrors
+ * `bridge/journal/tool-call.ts`, where the reasoning for the nine kinds lives.
+ *
+ * Every branch's FIRST field is the one a person would name the call by, so a row can be drawn from
+ * `kind` plus one field. A tool outside the nine is not an error, it is `other`, which still carries
+ * a name and a summary.
+ */
+export type ToolCall =
+  | { kind: "edit"; path: string; added: number; removed: number; diff?: Hunk[]; created?: boolean }
+  | { kind: "execute"; command: string; description?: string; exitCode?: number }
+  | { kind: "read"; path: string; range?: [number, number] }
+  | { kind: "search"; query: string; where?: string; hits?: number }
+  | { kind: "fetch"; url: string }
+  | { kind: "delete" | "move"; path: string; to?: string }
+  | { kind: "task"; agent: string; summary: string }
+  | { kind: "other"; name: string; summary: string };
+
+/**
  * One renderable piece of a transcript turn. Mirrors `bridge/transcript.ts` (wire types are
  * hand-mirrored across the two sides, as with every other response here).
  */
@@ -832,7 +859,29 @@ export type TranscriptPart =
       kind: "tool";
       name: string;
       summary: string;
-      result?: { text: string; truncated?: boolean; isError?: boolean; imageUrl?: string };
+      /**
+       * The harness's own id for this call, where it has one (Claude's `tool_use_id`). Kept so a
+       * later result addresses one call rather than the newest one, and so a view can key a card on
+       * it.
+       */
+      id?: string;
+      /**
+       * The same call, structured. ADDITIVE and OPTIONAL: `name` and `summary` stay authoritative
+       * for anything that already reads them, and an adapter not yet taught to fill this leaves it
+       * absent.
+       */
+      call?: ToolCall;
+      result?: {
+        text: string;
+        truncated?: boolean;
+        isError?: boolean;
+        imageUrl?: string;
+        /**
+         * The person refused the call. NOT the same as `isError`: nothing went wrong, somebody said
+         * no, and a view that draws the two alike tells the reader a lie about their own session.
+         */
+        denied?: boolean;
+      };
     };
 
 /**
@@ -982,6 +1031,80 @@ export type PaneHistoryResponse =
       total: number;
       fileTruncated: boolean;
     };
+
+/**
+ * One turn of a live window, plus WHERE it sits. Mirrors `ChatEntry` in bridge/journal/live.ts.
+ *
+ * `seq` is assigned once by the bridge and never reassigned, which is what lets a client hold one
+ * list and merge an answer into it by `uuid` without asking where a changed turn moved to. It starts
+ * at 1,000,000, not at zero: a thread grows at both ends and a `?before=` page numbers DOWN.
+ */
+export interface ChatEntry extends TranscriptEntry {
+  seq: number;
+}
+
+/**
+ * What one live window answers (ADR 0073). Three positions, each doing one job:
+ *
+ *  - `gen` — WHICH NUMBERING. A different one from the one held means replace, never merge.
+ *  - `rev` — WHEN. Send it back as `?after=<gen>:<rev>` and the next answer is what moved since.
+ *  - `seq` — WHERE, on each entry. A turn that changed in place keeps it.
+ *
+ * Mirrors `ChatWindowBody` in bridge/journal/live.ts.
+ */
+export interface ChatWindowBody {
+  page: "live";
+  gen: number;
+  rev: number;
+  /** The newest `seq` the window holds. Below `oldest` when the window is empty. */
+  head: number;
+  /** The oldest `seq` the LIVE window holds. Older turns come off disk, through `?before=`. */
+  oldest: number;
+  /** Turns exist before `oldest`. What drives "load older". */
+  hasOlder: boolean;
+  /** Added and changed turns together, oldest first, keyed by `uuid` and positioned by `seq`. */
+  upserts: ChatEntry[];
+}
+
+/**
+ * A `?before=` page: older turns off disk, numbered into the same `gen` the live window uses. It
+ * cannot say where the live tail got to, so it does not pretend to — no `rev`, no `head`, no
+ * `oldest`. Mirrors `ChatOlderBody` in bridge/journal/live.ts.
+ */
+export interface ChatOlderBody {
+  page: "older";
+  gen: number;
+  upserts: ChatEntry[];
+  /** Turns exist before `upserts[0]` too. */
+  hasOlder: boolean;
+}
+
+/** Either answer, discriminated by `page`. Mirrors `ChatBody` in bridge/journal/live.ts. */
+export type ChatBody = ChatWindowBody | ChatOlderBody;
+
+/** `?after=<gen>:<rev>` — the revision the client holds, in the numbering it holds it in. */
+export interface ChatAfter {
+  gen: number;
+  rev: number;
+}
+
+/** `?before=<seq>:<uuid>` — the oldest turn the client holds, by both of its names. */
+export interface ChatBefore {
+  seq: number;
+  uuid: string;
+}
+
+/**
+ * GET /api/pane/:id/chat — what moved in this pane's session since the cursor sent (ADR 0073).
+ *
+ * `available: false` is an ordinary answer for a pane with nothing to show: a shell, an agent that
+ * named no session, a log that cannot be read. **A 404 is a different fact and must never be drawn
+ * like one:** the route is additive-optional over the crew link, so a member one release behind has
+ * no route at all, and the honest reading there is "update this machine". Mirrors bridge/types.ts.
+ */
+export type PaneChatResponse =
+  | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
+  | ({ paneId: string; available: true } & ChatBody);
 
 /**
  * `error` is the bridge's English sentence and stays what a client displays when it has nothing

@@ -140,6 +140,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   version beside the screen reader's and `bun run harness:drift` prints a row per reader, because
   the two drift apart: a vendor can change what it paints without changing what it writes.
 
+- **The phone can now read a working session and hold it correctly.** It asks a pane's session what
+  moved and merges the answer by turn, so a turn that changed is written over where it already sits
+  and never drawn a second time lower down. An unchanged poll costs nothing and changes nothing. A
+  machine still running an older Collie has no such read at all, and it now says so and names the
+  remedy instead of looking like a pane with nothing to show. No screen uses this yet.
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

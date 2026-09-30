@@ -5,9 +5,11 @@ import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
 import { __resetConnectionHealth, isLostLatched, lastHealthyAt } from "./connection-health";
 import { isConnecting } from "./connection";
 import { resetBasePathForTests } from "./base-path";
+import { en } from "@/lib/i18n/messages/en";
 import {
   checkForUpdates,
   createTab,
+  fetchChat,
   fetchConfig,
   fetchPane,
   fetchSnapshot,
@@ -588,5 +590,119 @@ describe("api client under a mount", () => {
     );
     await fetchSnapshot();
     expect(asked).toEqual(["/collie/api/snapshot"]);
+  });
+});
+
+// ── THE LIVE SESSION READ (ADR 0073) ────────────────────────────────────────────────────────────
+// The transport half of spec 09: which query it builds, and the three outcomes a caller must tell
+// apart. The merge itself is `lib/chat-window.test.ts` and has no fetch in it at all.
+describe("fetchChat", () => {
+  const liveBody = (paneId: string) => ({
+    paneId,
+    available: true,
+    page: "live",
+    gen: 7,
+    rev: 3,
+    head: 1_000_002,
+    oldest: 1_000_000,
+    hasOlder: false,
+    upserts: [],
+  });
+
+  function captureChat(paneId: string, etag?: string) {
+    const asked: string[] = [];
+    const seen: Headers[] = [];
+    server.use(
+      http.get(`/api/pane/${paneId}/chat`, ({ request }) => {
+        const url = new URL(request.url);
+        asked.push(url.search);
+        seen.push(request.headers);
+        return HttpResponse.json(liveBody(paneId), etag ? { headers: { etag } } : undefined);
+      }),
+    );
+    return { asked, seen };
+  }
+
+  it("asks with no query at all when the caller holds nothing", async () => {
+    const { asked } = captureChat("chat-plain");
+    await fetchChat("chat-plain");
+    expect(asked).toEqual([""]);
+  });
+
+  it("spells the two cursors the way the bridge parses them", async () => {
+    const after = captureChat("chat-after");
+    await fetchChat("chat-after", { limit: 40, after: { gen: 7, rev: 3 } });
+    expect(after.asked).toEqual(["?limit=40&after=7%3A3"]);
+
+    const before = captureChat("chat-before");
+    await fetchChat("chat-before", { before: { seq: 1_000_000, uuid: "u-1" } });
+    expect(before.asked).toEqual(["?before=1000000%3Au-1"]);
+  });
+
+  it("marks the pane seen — watching a session is looking at the pane", async () => {
+    const { seen } = captureChat("chat-seen");
+    await fetchChat("chat-seen");
+    expect(seen[0]?.get("x-collie-seen")).toBe("1");
+  });
+
+  it("returns the bridge's own body on a 200", async () => {
+    captureChat("chat-body");
+    await expect(fetchChat("chat-body")).resolves.toEqual({
+      outcome: "body",
+      body: liveBody("chat-body"),
+    });
+  });
+
+  it("returns `available: false` as a body — a pane with no session is not a failure", async () => {
+    server.use(
+      http.get("/api/pane/chat-none/chat", () =>
+        HttpResponse.json({ paneId: "chat-none", available: false, reason: "no-session" }),
+      ),
+    );
+    await expect(fetchChat("chat-none")).resolves.toEqual({
+      outcome: "body",
+      body: { paneId: "chat-none", available: false, reason: "no-session" },
+    });
+  });
+
+  it("validates the LIVE page with the ETag it was given, and reads the 304 as no change", async () => {
+    let asks = 0;
+    server.use(
+      http.get("/api/pane/chat-etag/chat", ({ request }) => {
+        asks += 1;
+        if (request.headers.get("if-none-match") === 'W/"c1"') {
+          return new HttpResponse(null, { status: 304, headers: { etag: 'W/"c1"' } });
+        }
+        return HttpResponse.json(liveBody("chat-etag"), { headers: { etag: 'W/"c1"' } });
+      }),
+    );
+    await expect(fetchChat("chat-etag")).resolves.toMatchObject({ outcome: "body" });
+    await expect(fetchChat("chat-etag")).resolves.toEqual({ outcome: "unchanged" });
+    expect(asks).toBe(2);
+  });
+
+  it("does not validate a `?before=` page — a one-shot tap has no repeat fetch to save", async () => {
+    const { seen } = captureChat("chat-older", 'W/"c2"');
+    await fetchChat("chat-older");
+    await fetchChat("chat-older", { before: { seq: 1_000_000, uuid: "u-1" } });
+    expect(seen[0]?.get("if-none-match")).toBeNull();
+    expect(seen[1]?.get("if-none-match")).toBeNull();
+  });
+
+  it("reads a 404 as a machine a release behind, never as an empty session", async () => {
+    server.use(
+      http.get("/api/pane/chat-404/chat", () => new HttpResponse("not found", { status: 404 })),
+    );
+    await expect(fetchChat("chat-404")).resolves.toEqual({
+      outcome: "stale",
+      message: en["chat.stale.member"],
+    });
+  });
+
+  it("still throws on anything else — a stale member is not a refusal", async () => {
+    server.use(
+      http.get("/api/pane/chat-502/chat", () => new HttpResponse("herdr down", { status: 502 })),
+    );
+    await expect(fetchChat("chat-502")).rejects.toThrow(/502/);
   });
 });

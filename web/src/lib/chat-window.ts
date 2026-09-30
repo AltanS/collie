@@ -1,0 +1,202 @@
+// What the phone HOLDS of one live session, and the single pure function that moves it.
+//
+// ── WHY A REDUCER, AND WHY IT IS NOT A HOOK ──────────────────────────────────
+// The hard part of reading `GET /api/pane/:id/chat` is not the fetch. It is the merge: an answer is
+// a delta over a numbering, and getting it wrong draws one turn twice or moves a turn that never
+// moved. A merge with no DOM, no fetch and no clock can be tested a hundred ways, so this module is
+// exactly that, and the cadence stays where it already lives (hooks/use-polling.ts). Nothing here
+// imports React and nothing here reads a clock — that is a rule, not an accident.
+//
+// ── THE THREE RULES, AND THEY ARE THE WHOLE MODULE (ADR 0073) ────────────────
+//  1. A `gen` different from the one held REPLACES everything. Two numberings cannot be merged, and
+//     pretending otherwise is how a thread ends up showing one turn twice.
+//  2. An upsert whose `uuid` is held overwrites IN PLACE and keeps the `seq` it already had, never
+//     the `seq` in the answer. A turn that changed did not move. This is not a nicety: opencode
+//     re-emits a whole streaming reply under a `uuid` already held, and a `?before=` page and a live
+//     page can both carry the same turn.
+//  3. An upsert whose `uuid` is new goes in AT ITS OWN `seq`. `?before=` numbers DOWNWARD, and an
+//     incremental answer can carry a turn that sits below what the client holds (a tool result edits
+//     a turn that went out long ago), so insertion may never assume append.
+//
+// ── AND THE TWO EMPTY ANSWERS ARE DIFFERENT FACTS ────────────────────────────
+// `available: false` is "this pane has no session to show". A 404 is "this machine is a release
+// behind" — the route is additive-optional over a crew link (ADR 0073 point 7). A client that draws
+// them alike tells an operator to wait for something that will never arrive, so they are two kinds
+// of {@link ChatStatus} and never one.
+
+import type {
+  ChatEntry,
+  ChatOlderBody,
+  ChatWindowBody,
+  PaneChatResponse,
+} from "./types";
+
+/** Why the bridge had nothing to show. Taken off the wire type so the two can never drift. */
+type ChatUnavailableReason = Extract<PaneChatResponse, { available: false }>["reason"];
+
+/**
+ * What the last answer said this pane's session is.
+ *
+ * `stale` carries the sentence rather than a code, because there is nothing to branch on: a
+ * machine that predates the route has one remedy and it is the same one every time.
+ */
+export type ChatStatus =
+  /** Nothing has been asked yet. */
+  | { kind: "empty" }
+  /** The window answered. `entries` are its turns. */
+  | { kind: "live" }
+  /** An ordinary empty answer: a shell pane, an agent with no session, a log that cannot be read. */
+  | { kind: "unavailable"; reason: ChatUnavailableReason }
+  /** A 404. This machine's Collie predates the route — NOT an empty session. */
+  | { kind: "stale"; message: string };
+
+/**
+ * One session as the client holds it.
+ *
+ * `hasOlder` and `oldest` are fields rather than something a view works out, because the load-older
+ * tap is drawn from them and two places computing the same thing is two places to get it wrong.
+ */
+export interface ChatWindow {
+  readonly status: ChatStatus;
+  /** Which numbering {@link entries} are in. Zero until an answer lands; a real `gen` is clock-seeded. */
+  readonly gen: number;
+  /** The revision held. Sent back as `?after=<gen>:<rev>`. */
+  readonly rev: number;
+  /** The newest `seq` the live window reported. */
+  readonly head: number;
+  /** The oldest `seq` HELD — the `seq` half of the next `?before=`; its uuid is `entries[0].uuid`. */
+  readonly oldest: number;
+  /** Turns exist before {@link oldest}, so "load older" has something to fetch. */
+  readonly hasOlder: boolean;
+  /** Ascending by `seq`, ready to render top-down. */
+  readonly entries: readonly ChatEntry[];
+}
+
+/**
+ * One answer, as {@link mergeChat} reads it.
+ *
+ * Three outcomes and not two: a 304 says "nothing moved", a 404 says "this machine cannot answer at
+ * all", and neither is a body. A transport failure is not here — that still throws.
+ */
+export type ChatAnswer =
+  | { outcome: "body"; body: PaneChatResponse }
+  | { outcome: "unchanged" }
+  | { outcome: "stale"; message: string };
+
+/** The 304 answer, shared so an unchanged poll allocates nothing. */
+export const CHAT_UNCHANGED: ChatAnswer = { outcome: "unchanged" };
+
+/** One shared value, so an unchanged status keeps its identity across polls. */
+const LIVE: ChatStatus = { kind: "live" };
+
+/** What a client holds before it has asked anything. */
+export const EMPTY_CHAT_WINDOW: ChatWindow = {
+  status: { kind: "empty" },
+  gen: 0,
+  rev: 0,
+  head: 0,
+  oldest: 0,
+  hasOlder: false,
+  entries: [],
+};
+
+/**
+ * What the client now holds, given what it held and one answer.
+ *
+ * Pure, total, and never throws: every answer the route can give has a reading here, and an answer
+ * that cannot be placed leaves the held value alone rather than guessing.
+ */
+export function mergeChat(held: ChatWindow, answer: ChatAnswer): ChatWindow {
+  // A 304 is neither an error nor a change. Returned by IDENTITY on purpose: a poll that found
+  // nothing must not hand a view a new object and make it re-render over it.
+  if (answer.outcome === "unchanged") return held;
+  // A 404 restates the status and keeps the turns. They were true when they arrived, and a version
+  // skew does not unsay them.
+  if (answer.outcome === "stale") return restate(held, { kind: "stale", message: answer.message });
+  const body = answer.body;
+  if (!body.available) return restate(held, { kind: "unavailable", reason: body.reason });
+  return body.page === "older" ? mergeOlder(held, body) : mergeLive(held, body);
+}
+
+/** A new status over the same turns — and the same object when the status did not actually move. */
+function restate(held: ChatWindow, status: ChatStatus): ChatWindow {
+  return sameStatus(held.status, status) ? held : { ...held, status };
+}
+
+function sameStatus(held: ChatStatus, next: ChatStatus): boolean {
+  if (held.kind === "unavailable" && next.kind === "unavailable") return held.reason === next.reason;
+  if (held.kind === "stale" && next.kind === "stale") return held.message === next.message;
+  return held.kind === next.kind;
+}
+
+function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
+  // Rule 1. A numbering we do not hold replaces what we hold; there is no merging two of them.
+  const known = body.gen === held.gen;
+  const entries = upsert(known ? held.entries : [], body.upserts);
+  const oldest = entries[0]?.seq ?? body.oldest;
+  return {
+    status: LIVE,
+    gen: body.gen,
+    rev: body.rev,
+    head: body.head,
+    oldest,
+    hasOlder: olderExists(oldest, body, known ? held.hasOlder : body.hasOlder),
+    entries,
+  };
+}
+
+/**
+ * Whether anything sits before the oldest turn HELD — which is not the question the window answers.
+ *
+ * `ChatWindowBody.hasOlder` is about the WINDOW's own front, and a first paint is a screenful
+ * (`DEFAULT_CHAT_LIMIT`, 40) out of a window that may hold two thousand turns. Passing it straight
+ * through would hide sixty turns the window is holding right now. So where the client's own front
+ * sits is what decides which answer is the honest one.
+ */
+function olderExists(oldest: number, body: ChatWindowBody, previous: boolean): boolean {
+  // Above the window's front: the window itself is holding turns we never asked for.
+  if (oldest > body.oldest) return true;
+  // Exactly the window's front: the window's own answer is about us.
+  if (oldest === body.oldest) return body.hasOlder;
+  // Behind it — a `?before=` page walked us past the window, and only that page can say what is
+  // left. The window's `hasOlder` is about a position we are already below.
+  return previous;
+}
+
+function mergeOlder(held: ChatWindow, body: ChatOlderBody): ChatWindow {
+  // A page computed against a numbering we no longer hold cannot be placed, so it is thrown away
+  // whole rather than merged into the wrong thread (ADR 0073 § `older`).
+  if (body.gen !== held.gen) return held;
+  const entries = upsert(held.entries, body.upserts);
+  return { ...held, entries, oldest: entries[0]?.seq ?? held.oldest, hasOlder: body.hasOlder };
+}
+
+const bySeq = (a: ChatEntry, b: ChatEntry): number => a.seq - b.seq;
+
+/**
+ * Rules 2 and 3, and nothing else: held `uuid`s are written over at the `seq` they already have,
+ * new ones go in at the `seq` the answer gave them.
+ *
+ * The sort runs only when something was actually inserted, and only then: an answer that changed
+ * turns in place cannot have moved any of them, so re-ordering would be work with no effect.
+ */
+function upsert(held: readonly ChatEntry[], upserts: readonly ChatEntry[]): readonly ChatEntry[] {
+  if (upserts.length === 0) return held;
+  const next = held.slice();
+  const at = new Map<string, number>();
+  for (const [index, entry] of next.entries()) at.set(entry.uuid, index);
+  let inserted = false;
+  for (const entry of upserts) {
+    const index = at.get(entry.uuid);
+    if (index === undefined) {
+      at.set(entry.uuid, next.length);
+      next.push(entry);
+      inserted = true;
+      continue;
+    }
+    // Rule 2 — the `seq` it already had, never the one in the answer.
+    next[index] = { ...entry, seq: next[index].seq };
+  }
+  // Rule 3 — a new turn is placed by its own `seq`, which a `?before=` page numbers downward.
+  return inserted ? next.toSorted(bySeq) : next;
+}

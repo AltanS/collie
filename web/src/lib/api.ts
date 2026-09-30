@@ -10,9 +10,14 @@ import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pa
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { mounted } from "./base-path";
+import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
+import { t } from "./i18n";
 import type {
   ActionResponse,
   BridgeConfig,
+  ChatAfter,
+  ChatBefore,
+  PaneChatResponse,
   CreateResponse,
   DismissScope,
   DevicesResponse,
@@ -474,6 +479,113 @@ export function fetchHistory(
     signal,
     headers: { "x-collie-seen": "1" },
   });
+}
+
+/**
+ * One page request for {@link fetchChat} — `limit`, and AT MOST ONE of the two cursors.
+ *
+ * The bridge honours `before` and does not even read `after` when both arrive
+ * (bridge/journal/live.ts § `chatParams`), so a caller that sent both would be handed a page it did
+ * not ask for and have nothing on screen to explain it. The `never` pair makes that a compile error
+ * here instead of a puzzle there. The runtime order below matches the bridge exactly anyway, for
+ * the one caller a type cannot reach.
+ */
+export type ChatRequest =
+  | { limit?: number; after?: ChatAfter; before?: never }
+  | { limit?: number; after?: never; before: ChatBefore };
+
+// The last ETag per (host, session, pane), for the LIVE page only. Same key as the pane cache, and
+// for the same reason: a pane id is unique only inside one session on one machine.
+//
+// Only the live page is validated, because only the live page repeats — the poll asks it on the
+// cadence `hooks/use-polling.ts` already owns, and an unchanged session answers 304 (ADR 0073 point
+// 6). A `?before=` page is a one-shot tap like fetchHistory's, so there is no repeat fetch for a
+// validator to save. The body alone is NOT cached beside the tag: a 304 here means "you already
+// hold this", and what the client holds is the merged window (lib/chat-window.ts), not this answer.
+const chatEtags = new Map<string, string>();
+// One Chat screen is open at a time and a second device makes two; eight covers any plausible
+// come-and-go across a session, and matches MAX_WINDOWS on the bridge side.
+const CHAT_ETAG_MAX = 8;
+
+/**
+ * Ask a pane's session what moved (ADR 0073). The answer is merged by `lib/chat-window.ts`.
+ *
+ * Three outcomes, and the caller must tell them apart:
+ *
+ *  - `body` — a 200. Either a live window or a `?before=` page; `available: false` lives in here too,
+ *    because "this pane has no session" is an ordinary answer and not a failure.
+ *  - `unchanged` — a 304. Nothing moved. Neither an error nor a change.
+ *  - `stale` — a 404. **This machine's Collie predates the route**, which is a version fact and never
+ *    "this pane has nothing to show". The route is additive-optional over a crew link, so it is the
+ *    ordinary skew a crew is in while it levels, and the message says the remedy.
+ *
+ * Anything else still throws, exactly as every other call here does.
+ */
+export async function fetchChat(
+  paneId: string,
+  opts: ChatRequest = {},
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<ChatAnswer> {
+  const q = new URLSearchParams();
+  if (opts.limit) q.set("limit", String(opts.limit));
+  // The bridge's own precedence, restated rather than assumed: `before` wins and `after` is not read.
+  if (opts.before) q.set("before", `${opts.before.seq}:${opts.before.uuid}`);
+  else if (opts.after) q.set("after", `${opts.after.gen}:${opts.after.rev}`);
+  const qs = q.toString();
+  const url = withScope(
+    `/api/pane/${encodeURIComponent(paneId)}/chat${qs ? `?${qs}` : ""}`,
+    scope,
+  );
+  const cacheKey = opts.before ? null : paneScopeKey(scope, paneId);
+  const cached = cacheKey === null ? undefined : chatEtags.get(cacheKey);
+
+  const headers = new Headers({
+    [XHR_HEADER]: XHR_HEADER_VALUE,
+    // Watching a session IS looking at the pane, the same reading history takes (bridge/server.ts →
+    // marksPaneSeen), so a Chat screen left open keeps the pane's unseen mark clear.
+    "x-collie-seen": "1",
+    ...authHeader(),
+  });
+  if (cached !== undefined) headers.set("if-none-match", cached);
+
+  const res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  captureBuild(res);
+
+  if (res.status === 304) {
+    // An unchanged poll is still a live poll — stamp the connection-health anchor, as fetchPane does.
+    markLive();
+    return CHAT_UNCHANGED;
+  }
+  if (res.status === 404) {
+    // An older bridge's route table has no `chat` segment at all, so the request falls through to
+    // its 404. The pane route answers `available:false` for every reason a pane itself has nothing,
+    // which is why this status can only mean the version skew.
+    //
+    // The sentence is resolved here rather than stored as a key, so what the outcome carries is what
+    // a screen prints. A language changed after the fact is corrected by the next poll.
+    return { outcome: "stale", message: t("chat.stale.member") };
+  }
+  if (!res.ok) {
+    const detail = await errorDetail(res);
+    throw new ApiError(`${url} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
+  }
+
+  // SAFETY: a 200 on `/api/pane/:id/chat` is the bridge's own `PaneChatResponse` by contract — the
+  // same endpoint contract every other call in this module rests on. Non-ok answers returned above.
+  const body = (await res.json()) as PaneChatResponse;
+  // Recorded only AFTER the body parsed, so a truncated read can never leave a tag behind that
+  // 304s the next poll into a window nothing ever filled.
+  const etag = res.headers.get("etag");
+  if (cacheKey !== null && etag) {
+    chatEtags.set(cacheKey, etag);
+    if (chatEtags.size > CHAT_ETAG_MAX) {
+      const oldest = chatEtags.keys().next().value;
+      if (oldest !== undefined) chatEtags.delete(oldest);
+    }
+  }
+  markLive();
+  return { outcome: "body", body };
 }
 
 /** How far the Changes view looks for repos below the workspace folder (Settings → Changes). */
