@@ -1,4 +1,5 @@
-// The omp adapter (oh-my-pi's `omp` CLI, v17.2.12 through v18.1.10) — the second registered harness.
+// The omp adapter (oh-my-pi's `omp` CLI, v17.2.12 through v18.1.19; the v18.4.4 captures cover only
+// the empty-editor key hint) — the second registered harness.
 // Its boxed-composer scanner (chrome.ts), rule-composer scanner (rule.ts) and shared lexing primitives
 // (markers.ts) live alongside this file; this module composes them into the HarnessAdapter block and
 // chrome re-surfacing surfaces.
@@ -45,11 +46,11 @@
 //   - STRUCTURAL, for every screen omp can draw: `ompBuildBlocks` returns one `raw` block
 //     unconditionally. There is no detector to mis-fire, so no screen — captured or not — can be
 //     up-levelled. That covers the tool-approval dialog by construction.
-//   - TESTED, for the 28 screens in this corpus: 14 composer states, six picker screens
-//     (`/model`, `/settings`, `/resume`, each with a moved-selection twin), five Ask-tool screens and
-//     three tool-approval screens. harness/omp.test.ts asserts raw-only over all 28 and
-//     `composerReady === false` over the fourteen modals, so the declining is a test result rather
-//     than an accident. Each is declined because it is out of scope above, or a widget whose
+//   - TESTED, for the 32 screens in this corpus: 17 composer states, six picker screens
+//     (`/model`, `/settings`, `/resume`, each with a moved-selection twin), the `/tree` picker, five
+//     Ask-tool screens and three tool-approval screens. harness/omp.test.ts asserts raw-only over
+//     all 32 and `composerReady === false` over the fifteen modals, so the declining is a test
+//     result rather than an accident. Each is declined because it is out of scope above, or a widget whose
 //     `handleInput` we have not read, or one whose options include a free-text row that would strand
 //     a phone user — the fail-closed contract says a detector returns null on anything it does not
 //     confidently recognise.
