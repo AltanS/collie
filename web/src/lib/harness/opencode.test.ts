@@ -262,6 +262,12 @@ describe("opencode composer chrome", () => {
     expect(mirror).not.toContain("last line here");
   });
 
+  // THESE TWO CASES ARE HAND-TYPED, against `HARNESS_CONTRIBUTING.md`'s fixtures-first rule, and that
+  // is a known debt rather than an oversight. The overlay could not be captured here: opencode
+  // 1.18.32's Models sidebar draws its panel with a BACKGROUND and no box glyphs at all (checked
+  // 2026-09-30 on a live pane at 226 and at 112 columns, with `/models` open), so the `└───┘` in the
+  // report comes from a panel this build does not paint. The fixture is owed by the reporter, who has
+  // the screen. What IS captured is the regression these rows risk: `oc--draft-tree-glyphs.txt`.
   it("a panel border over the composer reads as no draft, never a phantom", () => {
     // opencode's Models sidebar paints its └─┘ border over the composer's bar run, and the
     // tail walk above cannot tell overlay chrome from typed text — so the border alone
@@ -306,6 +312,25 @@ describe("opencode composer chrome", () => {
     const draft = extractInputDraft(lines);
     expect(draft).toBe("test test");
     expect(draftCarriesSend("test test", draft)).toBe(true);
+  });
+
+  // THE REGRESSION THE FIRST SHAPE OF THAT RULE CAUSED, on a real capture rather than a hand-typed
+  // string. A junction ANYWHERE on a row read as a panel border, so a pasted `tree` stopped the walk
+  // at its first branch: these four typed lines read back as "and that is all" alone, and "Take over"
+  // would have copied a quarter of the message while the reply guard failed to verify the send. A
+  // border is never words; a tree is words.
+  it("a pasted tree inside a draft reads whole — a junction alone is not a border", () => {
+    const lines = loadLines("oc--draft-tree-glyphs.txt");
+    expect(extractInputDraft(lines)).toBe("here is the tree ├── src └── web and that is all");
+  });
+
+  // The other half of the same rule, from the corpus: a row that is nothing but a typed RULE has no
+  // junction, so the walk reads through it and the draft above it survives. This is why the anchor
+  // cannot simply be "chrome and no words".
+  it("a typed rule inside a draft is still not a border", () => {
+    expect(extractInputDraft(loadLines("oc--draft-multiline.txt"))).toBe(
+      "first line of the draft indented third line ❯ ls -la ──────────── last line here",
+    );
   });
 
   it("an empty composer answers null — the placeholder is content, not a draft", () => {

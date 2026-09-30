@@ -55,16 +55,32 @@ const MAX_STATUS_ROWS = 6;
 // more than that is not the composer's bottom.
 const MAX_RULE_PAD = 2;
 
-// A panel overlay's box border where it crosses the composer's bar run: corner and
-// junction glyphs a typed message never carries at this position. The draft walk below
-// ends its run here the way it ends at a bar-less row. Plain rules (────) and pipes
-// are NOT in this set on purpose — oc--draft-multiline.txt types a rule into its own
-// draft and it must keep reading whole.
-const OVERLAY_BORDER = /[┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝]/;
+// A foreign panel's box border where it crosses the composer's bar run. TWO conditions, and it takes
+// both, because either one alone gets a real draft wrong:
+//
+//   the ANCHOR — a corner or a junction. A plain rule (────) is not one, because people type those:
+//   oc--draft-multiline.txt has a row that is nothing but a rule INSIDE a real draft, and the run has
+//   to read through it.
+//
+//   and NOTHING BUT CHROME on the row. A junction ANYWHERE was the first shape of this rule, and it
+//   truncated a draft: `├── src` carries a junction and words, a pasted `tree` is the ordinary way
+//   that happens, and the walk stopped at the first branch. Measured on
+//   oc--draft-tree-glyphs.txt — four typed lines read back as the last one.
+//
+// A panel's border is never words. That is the whole distinction, and it is the same one
+// {@link isPanelBorder}'s use in `extractInputDraft` rests on, so the two cannot drift.
+const PANEL_JUNCTION = /[┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬]/u;
+const CHROME_ONLY = /^[\s─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*$/u;
 
-/** True when this row carries a foreign panel's box border over the bar run. */
-function hasOverlayBorder(text: string): boolean {
-  return OVERLAY_BORDER.test(text);
+/**
+ * True when this row's interior is a foreign panel's border and nothing else.
+ *
+ * The INTERIOR, not the whole row: the composer's own `┃` is chrome by definition and says nothing
+ * about what was typed inside it.
+ */
+function isPanelBorder(text: string): boolean {
+  const inside = interiorOf(text);
+  return PANEL_JUNCTION.test(inside) && CHROME_ONLY.test(inside);
 }
 
 /** The composer tail located at the buffer's end. Every index is into the ORIGINAL `lines` array. */
@@ -139,8 +155,10 @@ export function locateComposer(lines: StyledLine[]): ComposerTail | null {
   // (d) The draft: the composer's own bar run above the separator, up to its top padding row. The
   //     run ends where the bars do: the transcript's last block sits across a row with no bar (its
   //     bottom margin, measured on every 1.18.32 capture) — and, since the Models-sidebar overlay,
-  //     at a row carrying a foreign box border (hasOverlayBorder): claiming that row joined overlay
-  //     chrome into the draft, which broke the reply guard's verification of real messages. Inside
+  //     at a row that is a foreign box border and nothing else (isPanelBorder): claiming that row
+  //     joined overlay chrome into the draft, which broke the reply guard's verification of real
+  //     messages. "And nothing else" is load-bearing, not caution: a row holding a junction AND words
+  //     is a pasted tree, and stopping there loses most of a real draft. Inside
   //     the run, a bare bar row is a blank line the operator typed, not the draft's edge
   //     (oc--draft-multiline.txt): stopping there read only the last paragraph, left the first on
   //     the mirror as if it were transcript, and "Take over" copied half a draft. Bare-bar rows at
@@ -154,7 +172,7 @@ export function locateComposer(lines: StyledLine[]): ComposerTail | null {
       top - 1 >= 0 &&
       modelRow - (top - 1) <= MAX_INTERIOR_ROWS &&
       isBarRow(texts[top - 1]!) &&
-      !hasOverlayBorder(texts[top - 1]!)
+      !isPanelBorder(texts[top - 1]!)
     )
       top--;
     let first = top;
@@ -241,13 +259,16 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   const draft = parts.filter((p) => p.length > 0).join(" ");
   if (draft.length === 0) return null;
   if (draft.trimStart().startsWith("Ask anything")) return null; // the empty box's placeholder
-  // A panel overlay (opencode's Models sidebar is the observed one) paints its own borders
-  // over the composer's bar run, and the walk above cannot tell overlay chrome from typed
-  // text — so a border-only row (└───┘) surfaced as a phantom "Draft in terminal" card
-  // holding just a line. Overlay chrome is never words: refuse a join of nothing but
-  // border glyphs. A typed rule inside a real message keeps its words, so it still reads
-  // (oc--draft-multiline.txt). Same border-only rule omp's chrome uses.
-  if (/^[\s─━│┃┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝╹▀]*$/u.test(draft)) return null;
+  // The walk above cannot always exclude a panel's border — it can land on the separator row, which
+  // the walk never climbs past — so a border-only join surfaced as a phantom "Draft in terminal"
+  // card holding just a line, and "Take over" would have typed border junk into the composer.
+  //
+  // ONE predicate with the walk, deliberately: a first cut of this rule used a second, WIDER glyph
+  // set here, which said `─` and `│` were border glyphs while the walk's own comment said they were
+  // not. Two sets that disagree about the same question are two answers waiting to drift. So a join
+  // is refused on exactly the terms a row is: a junction, and no words. A draft of nothing but a
+  // typed rule is therefore a draft, which is what the operator typed.
+  if (isPanelBorder(`┃ ${draft}`)) return null;
   return draft;
 }
 
