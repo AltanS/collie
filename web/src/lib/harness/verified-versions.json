@@ -2,16 +2,16 @@
   "$comment": "M37 spec 01, extended by M41 spec 05 — one entry per Herdr agent name. The TOP LEVEL is the SCREEN reader's line: the version Collie's pane grammar was last verified against, when, how, whether it has a block-grammar adapter (web/src/lib/harness/registry.ts), and the evidence that version is real. The optional `journal` block is the JOURNAL reader's own line (bridge/journal/), the source Chat draws from, with the same facts minus `adapter`: the block is present exactly where this build can read that agent's session log, so its presence IS the adapter fact. The two readers drift apart on one agent version — a vendor can change what it paints without changing what it writes — so one date cannot speak for both. `scripts/harness-drift.ts` prints a row per reader; `verified-versions.test.ts` pins every key the two registries map, plus pi and hermes (no block grammar), and that each `adapter` matches its registry. `how` is one of canary | live sweep | capture | unverified, on both halves.",
   "agents": {
     "claude": {
-      "version": "2.1.284",
-      "verified": "2026-09-28",
+      "version": "2.1.285",
+      "verified": "2026-09-30",
       "how": "canary",
       "adapter": true,
-      "evidence": "canary run 20260928T220202Z: idle, drafts, sends, narrow, start-exit pass",
+      "evidence": "canary run 20260930T135314Z: idle, drafts, sends, journal, narrow, start-exit pass",
       "journal": {
         "version": "2.1.285",
         "verified": "2026-09-30",
-        "how": "live sweep",
-        "evidence": "bridge/journal/claude.ts § CLAUDE_KNOWN: the row and content-block type inventory was swept over the 500 newest local Claude sessions (84,525 message rows) on 2026-09-30, M41/05. The canary's `journal` scenario has not run against a live agent yet."
+        "how": "canary",
+        "evidence": "canary run 20260930T135314Z: journal kinds asserted, nothing unrecognised"
       }
     },
     "codex": {
@@ -75,29 +75,29 @@
       "evidence": "web/src/fixtures/panes/README.md: muse--tasks-popup, muse--tasks-popup-draft and muse--tasks-popup-approval, captured 2026-09-26 on Muse Code 1.4.0 (#304/#305); the rest of the Muse corpus is from 1.3.0 (2026-09-18)"
     },
     "opencode": {
-      "version": "1.18.32",
-      "verified": "2026-09-26",
+      "version": "1.18.33",
+      "verified": "2026-09-30",
       "how": "canary",
       "adapter": true,
-      "evidence": "canary run 20260926T221657Z: idle, drafts, sends, narrow, start-exit pass",
+      "evidence": "canary run 20260930T135314Z: idle, drafts, sends, journal, narrow, start-exit pass",
       "journal": {
         "version": "1.18.33",
         "verified": "2026-09-30",
-        "how": "live sweep",
-        "evidence": "bridge/journal/opencode.ts § OPENCODE_KNOWN: swept over the local opencode.db (456 messages, 1,588 parts) on 2026-09-30, M41/05; `patch`, `file` and `compaction` are recognised and deliberately not rendered. The canary's `journal` scenario has not run against a live agent yet."
+        "how": "canary",
+        "evidence": "canary run 20260930T135314Z: journal kinds asserted, nothing unrecognised"
       }
     },
     "pi": {
       "version": "0.87.1",
-      "verified": "2026-09-26",
-      "how": "unverified",
+      "verified": "2026-09-30",
+      "how": "canary",
       "adapter": false,
-      "evidence": "installed 2026-09-26, first canary run pending (M37 spec 02)",
+      "evidence": "canary run 20260930T135314Z: idle, drafts, sends, journal, narrow, start-exit pass",
       "journal": {
         "version": "0.87.1",
         "verified": "2026-09-30",
-        "how": "live sweep",
-        "evidence": "bridge/journal/pi.ts § PI_KNOWN: swept over 44 local sessions across both pi roots (1,989 message rows) on 2026-09-30, M41/05. The canary's `journal` scenario has not run against a live agent yet."
+        "how": "canary",
+        "evidence": "canary run 20260930T135314Z: journal kinds asserted, nothing unrecognised"
       }
     },
     "hermes": {

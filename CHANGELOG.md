@@ -149,6 +149,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   sends, narrow and start-exit, and every one passed. The reader ledger now names 2.1.284 instead
   of 2.1.283.
 
+- **Claude Code 2.1.285, opencode 1.18.33 and pi 0.87.1 are verified, for both readers.** The canary
+  ran all six scenarios against each of them, idle, drafts, sends, journal, narrow and start-exit,
+  and every one passed. `journal` is the new scenario: it parses the canary's own session with the
+  same adapter Chat uses, and asserts the kinds it finds. The ledger now carries two lines per
+  agent, the screen reader's and the journal reader's, so `bun run harness:drift` covers Chat as
+  well as the mirror. Codex 0.159.2 passed every screen scenario and is not recorded: it answered
+  the journal prompt in words without calling a tool, so that scenario reached no verdict.
+
 - **The canary runs pi the way an operator runs it.** pi was launched with `--no-session`, so it
   wrote no session file, so the journal check spec 05 added could never see pi at all. The flag is
   gone. pi was also the only agent exempt: Claude, Codex and opencode already write to their own
