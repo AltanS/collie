@@ -112,6 +112,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   does, and a member one release behind simply reports no such read instead of an empty session.
   Nothing you can see changes yet.
 
+- **The pane menu can copy a pane's output.** There was no way to get the terminal text off a
+  phone at all: an installed iOS PWA suppresses long-press selection app-wide unless an element asks
+  for it back, and the mirror never did. Two ways in now. The mirror opts back into selection, so
+  long-press and Copy works. And a Copy output row joins Find and History in the pane menu, which
+  copies the whole buffer in one tap, unwrapped, so a paste reads as real lines rather than as the
+  phone's own hard wraps. The row copies the screen you are looking at, not a poll that landed under
+  your thumb, and it stays hidden where there is no output or no clipboard to write to, which is
+  every plain-HTTP deploy. Thanks @jyothyswaroop (#287).
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the
