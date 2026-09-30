@@ -280,7 +280,7 @@ peers (§4).
 answering build:
 
 ```json
-{ "protocol": 1,
+{ "protocol": 2,
   "member": "peer-7f3a2c",
   "version": "1.0.0-alpha.11",
   "warrantGeneration": 3,
