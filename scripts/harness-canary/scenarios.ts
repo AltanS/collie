@@ -1,16 +1,23 @@
-// The five scenarios, driven against one agent in panes the canary created.
+// The six scenarios, driven against one agent in panes the canary created.
 //
 // Two kinds of evidence, kept apart on purpose. WHETHER a screen was reached is judged without
 // Collie: Herdr's own agent state and the screen's plain text (did the typed words appear at all).
 // WHAT the phone makes of that screen is judged with Collie's readers only. So a reader that has
 // gone blind reads as `fail`, and a screen that never came reads as `not-reached`, never the other
 // way round. Nothing here compares bytes: every check is a reader's answer or a phrase on screen.
+//
+// `journal` (spec M41/05) is the one scenario that reads something other than a screen, and it keeps
+// the same line: the reader's answer about the agent's own log can fail, and every way of having
+// nothing to read is `not-reached`. Its judging lives in ./journal.ts.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { NARROW_COLS, type CanaryOptions } from "./args";
 import type { AgentProfile } from "./agents/profile";
+import { adapterFor } from "../../bridge/journal/registry";
+import type { JournalAdapter } from "../../bridge/journal/types";
 import type { CanarySession } from "./herdr";
+import { judgeJournal, loadOwnSession } from "./journal";
 import { MESSAGES, NARROW_DRAFT_IDS, SEND_IDS, messageById, type CanaryMessage } from "./messages";
 import type { Adapter, Block, Line, Readers } from "./readers";
 import type { Transport } from "./transport";
@@ -51,6 +58,8 @@ export interface AgentContext {
   readonly session: CanarySession;
   readonly transport: Transport;
   readonly readers: Readers;
+  /** The bridge's journal adapters, built from this host's own roots (journal.ts). */
+  readonly journals: Record<string, JournalAdapter>;
   readonly options: CanaryOptions;
   /** The fresh git project every pane starts in. */
   readonly project: string;
@@ -67,7 +76,7 @@ export async function runAgent(ctx: AgentContext): Promise<ScenarioResult[]> {
   const results: ScenarioResult[] = [];
   const startExit: CaseResult[] = [];
 
-  if (want("idle") || want("drafts") || want("sends") || want("start-exit")) {
+  if (want("idle") || want("drafts") || want("sends") || want("journal") || want("start-exit")) {
     const d = await Driver.open(ctx, `canary-${agent}`, ctx.options.cols, "wide");
     try {
       const ready = await d.launch(startExit);
@@ -86,6 +95,11 @@ export async function runAgent(ctx: AgentContext): Promise<ScenarioResult[]> {
         }
         results.push(scenarioResult(agent, "drafts", cases));
       }
+      // What the sends actually put in front of the agent, so the journal scenario below asserts the
+      // turns this run made rather than whatever else the agent's log happens to hold. `submitted`
+      // and not the verdict: a send can fail with the message already in the agent's hands.
+      const sent: string[] = [];
+      let answered = false;
       if (want("sends")) {
         const cases: CaseResult[] = [];
         let live = clean;
@@ -94,12 +108,18 @@ export async function runAgent(ctx: AgentContext): Promise<ScenarioResult[]> {
             cases.push(notReachedCase(id, ready ? "the pane was not back at an empty composer" : "the agent never showed its composer"));
             continue;
           }
-          const r = await d.send(messageById(id));
+          const m = messageById(id);
+          const r = await d.send(m);
           cases.push(r.result);
           live = r.idleAfter;
+          if (r.submitted) sent.push(m.text);
+          if (r.answered) answered = true;
         }
         results.push(scenarioResult(agent, "sends", cases));
       }
+      // Spec M41/05: the same pane, read through the agent's OWN log instead of its screen. No model
+      // turn of its own, and nothing is written anywhere (journal.ts says why).
+      if (want("journal")) results.push(scenarioResult(agent, "journal", await d.judgeOwnJournal(sent, answered)));
       if (ready) startExit.push(await d.exit());
     } finally {
       d.close();
@@ -386,8 +406,13 @@ export class Driver {
    * Scenario 3: one real send through the client's `sendGuardedReply` and the bridge's `replyPane`.
    * `sent` is the client's verdict; the message must then show in the transcript (out of the input
    * box) and the agent must answer. `idleAfter` says whether the next send may go.
+   *
+   * `submitted` and `answered` are what the `journal` scenario needs and the verdict cannot give it:
+   * a fail can mean the client refused to send AND it can mean the message went and stayed in the
+   * box, and only the first means the agent never saw those words. `answered` is the screen's own
+   * word on whether a reply came, which is what tells a blind journal reader from an unfinished turn.
    */
-  async send(m: CanaryMessage): Promise<{ result: CaseResult; idleAfter: boolean }> {
+  async send(m: CanaryMessage): Promise<{ result: CaseResult; idleAfter: boolean; submitted: boolean; answered: boolean }> {
     const outcome = await Promise.race([
       this.ctx.readers.sendGuardedReply(this.paneId, m.text, this.agent),
       Bun.sleep(SEND_TIMEOUT_MS).then(() => ({ status: "error" as const, error: "sendGuardedReply did not return in 60 s" })),
@@ -396,7 +421,7 @@ export class Driver {
       const s = await this.screen();
       this.save(`sends-${m.id}`, s);
       const cleared = await this.clearDraft(m.text);
-      return { result: failCase(m.id, `outcome ${outcome.status}: ${outcome.error}`), idleAfter: cleared };
+      return { result: failCase(m.id, `outcome ${outcome.status}: ${outcome.error}`), idleAfter: cleared, submitted: false, answered: false };
     }
     let s = await this.screen();
     let settledPolls = 0;
@@ -412,14 +437,43 @@ export class Driver {
       if (shown && answeredBelow(s.texts, m.text) && settledPolls >= 2) {
         await Bun.sleep(800);
         this.save(`sends-${m.id}`, await this.screen());
-        return { result: passCase(m.id, "sent, shown, answered"), idleAfter: true };
+        return { result: passCase(m.id, "sent, shown, answered"), idleAfter: true, submitted: true, answered: true };
       }
       await Bun.sleep(POLL_MS * 2);
     }
     this.save(`sends-${m.id}`, s);
     const inBox = s.draft !== null && this.ctx.readers.draftCarriesSend(m.text, s.draft);
-    if (inBox) return { result: failCase(m.id, "outcome sent, but the message is still in the input box"), idleAfter: false };
-    return { result: notReachedCase(m.id, `outcome sent; the turn did not finish in ${TURN_TIMEOUT_MS / 1000} s`), idleAfter: false };
+    if (inBox) {
+      return { result: failCase(m.id, "outcome sent, but the message is still in the input box"), idleAfter: false, submitted: true, answered: false };
+    }
+    return {
+      result: notReachedCase(m.id, `outcome sent; the turn did not finish in ${TURN_TIMEOUT_MS / 1000} s`),
+      idleAfter: false,
+      submitted: true,
+      answered: false,
+    };
+  }
+
+  /**
+   * The journal half (M41/05): what the phone's Chat mode would read out of THIS agent's own log,
+   * for the turns this run just made.
+   *
+   * The session ref comes off the pane record, exactly as the bridge's history route takes it — the
+   * canary never guesses at the newest file in a root, which would be reading somebody else's
+   * session. Every way of having nothing to read is `not-reached`: no adapter for this agent, no ref
+   * reported (Codex reports on its first prompt, and every agent needs its Herdr hook), or a ref that
+   * resolves to no readable log. Only a reader that read the wrong thing fails.
+   */
+  async judgeOwnJournal(sent: readonly string[], answered: boolean): Promise<CaseResult[]> {
+    const adapter = adapterFor(this.ctx.journals, this.agent);
+    if (adapter === undefined) {
+      return [notReachedCase("session", `this build has no journal adapter for ${this.agent}`)];
+    }
+    const ref = this.ctx.session.paneInfo(this.paneId).session;
+    if (ref === null) {
+      return [notReachedCase("session", "the pane reported no agent session (check `herdr integration install`)")];
+    }
+    return judgeJournal(await loadOwnSession(adapter, ref), sent, answered);
   }
 
   /**

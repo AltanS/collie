@@ -10,7 +10,7 @@
 // and silence there reads as a bug in Collie.
 //
 // So the frontend needs the name list, and it is a NAME LIST, never a detector: nothing may key a
-// grammar, a fetch or a pane's identity off a match against `JOURNAL_AGENTS` — the same rule
+// grammar, a fetch or a pane's identity off a match against `JOURNAL_AGENT_NAMES` — the same rule
 // `KNOWN_HARNESS_NAMES` carries bridge-side. It decides one muted sentence and nothing else.
 //
 // The two smaller sets below are declared per-agent FACTS, each mirrored from its own constant in
@@ -29,8 +29,12 @@
 
 /** The Herdr `agent` strings this build can read a session log for. Mirrors `journalAgents()` plus
  *  every alias in the bridge's `AGENT_ALIASES` — `omp` is Oh My Pi, which writes pi's log in pi's
- *  format, so it is a second NAME for the pi adapter and not a seventh adapter. */
-const JOURNAL_AGENTS: ReadonlySet<string> = new Set([
+ *  format, so it is a second NAME for the pi adapter and not a seventh adapter.
+ *
+ *  Exported for the version ledger's test (M41/05), which owes a `journal` line to every agent on
+ *  this list and cannot ask for one without the list. Still a NAME LIST and still never a detector:
+ *  read it to enumerate, ask {@link hasJournalAdapter} to decide. */
+export const JOURNAL_AGENT_NAMES: ReadonlySet<string> = new Set([
   "claude",
   "codex",
   "grok",
@@ -43,7 +47,8 @@ const JOURNAL_AGENTS: ReadonlySet<string> = new Set([
 /** The agents that report their session to Herdr on the FIRST PROMPT, not at start. Mirrors
  *  `REPORTS_SESSION_ON_FIRST_PROMPT` in `bridge/journal/registry.ts`, which holds the reason (#294):
  *  Codex fires the hook Herdr's integration listens on only when its first prompt is submitted.
- *  Must come after `JOURNAL_AGENTS` in this file: registry.test.ts reads the first set as that one. */
+ *  Must come after `JOURNAL_AGENT_NAMES` in this file: registry.test.ts reads the first set as that
+ *  one. */
 const FIRST_PROMPT_AGENTS: ReadonlySet<string> = new Set(["codex"]);
 
 /** The agents that draw a picture the mirror cannot see, because a direct Kitty placement leaves
@@ -76,5 +81,5 @@ export function reportsSessionOnFirstPrompt(agent: string | undefined): boolean 
  * promising that pane a fix it cannot apply would be worse than saying nothing.
  */
 export function hasJournalAdapter(agent: string | undefined): boolean {
-  return agent !== undefined && JOURNAL_AGENTS.has(agent);
+  return agent !== undefined && JOURNAL_AGENT_NAMES.has(agent);
 }

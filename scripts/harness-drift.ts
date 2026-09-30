@@ -6,7 +6,13 @@
 // updated, and every test stayed green because they run on frozen captures only. This is the
 // mechanical half of the fix — the ledger says what was verified, this prints what has moved.
 //
-//   bun scripts/harness-drift.ts               table, one row per ledger agent, exit 0 always
+// ONE ROW PER READER, not per agent (M41 spec 05). An agent has up to two readers of two different
+// things: the SCREEN grammar under `web/src/lib/harness/`, and the JOURNAL grammar under
+// `bridge/journal/` that Chat draws from. A vendor can change what it paints without changing what it
+// writes, or the other way about, so the two are verified apart and drift apart — one row could only
+// have reported one of them, and a `same` on the screen reader says nothing about Chat.
+//
+//   bun scripts/harness-drift.ts               table, one row per ledger reader, exit 0 always
 //   bun scripts/harness-drift.ts --json         the same rows as JSON
 //   bun scripts/harness-drift.ts --strict       exit 1 when any installed agent reads NEWER
 //   bun scripts/harness-drift.ts --agent a,b    only these ledger agents
@@ -21,12 +27,18 @@ import { fileURLToPath } from "node:url";
 
 type How = "canary" | "live sweep" | "capture" | "unverified";
 
-interface LedgerEntry {
+/** One reader's line: the same three facts about a different grammar. */
+interface ReaderLine {
   version: string;
   verified: string;
   how: How;
-  adapter: boolean;
   evidence: string;
+}
+
+interface LedgerEntry extends ReaderLine {
+  adapter: boolean;
+  /** The journal reader's line, present exactly where this build can read that agent's log. */
+  journal?: ReaderLine;
 }
 
 interface Ledger {
@@ -35,8 +47,12 @@ interface Ledger {
 
 export type DriftState = "same" | "NEWER, run the canary" | "older" | "not installed";
 
+/** Which grammar a row is about: the pane mirror, or the agent's own session log. */
+export type Reader = "screen" | "journal";
+
 export interface DriftRow {
   agent: string;
+  reader: Reader;
   installed: string | null;
   verified: string;
   state: DriftState;
@@ -59,8 +75,9 @@ const LEDGER_PATH = join(
 export function loadLedger(path: string = LEDGER_PATH): Ledger {
   const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
   // SAFETY: `verified-versions.json` is a checked-in, hand-authored file whose shape is pinned by
-  // `verified-versions.test.ts` (every registered adapter plus opencode/pi, `how` in the allowed
-  // set, plain `x.y.z` versions, ISO dates) — this script does not itself validate the shape.
+  // `verified-versions.test.ts` (every registered adapter plus pi and hermes, a `journal` block for
+  // every journal adapter, `how` in the allowed set, plain `x.y.z` versions, ISO dates) — this
+  // script does not itself validate the shape.
   return parsed as Ledger;
 }
 
@@ -104,13 +121,28 @@ export function driftState(installed: string | null, verified: string): DriftSta
   return cmp > 0 ? "NEWER, run the canary" : "older";
 }
 
-export function driftRow(
+/**
+ * The rows for one ledger entry: the screen reader's, then the journal reader's where it has one.
+ *
+ * The `--version` probe runs ONCE per agent however many readers it has — it starts a process, and
+ * two rows about one binary must not disagree about what is installed.
+ */
+export function driftRows(
   agent: string,
   entry: LedgerEntry,
   probe: (agent: string) => string | null = installedVersion,
-): DriftRow {
+): DriftRow[] {
   const installed = probe(agent);
-  return { agent, installed, verified: entry.version, state: driftState(installed, entry.version) };
+  const row = (reader: Reader, line: ReaderLine): DriftRow => ({
+    agent,
+    reader,
+    installed,
+    verified: line.version,
+    state: driftState(installed, line.version),
+  });
+  const rows = [row("screen", entry)];
+  if (entry.journal !== undefined) rows.push(row("journal", entry.journal));
+  return rows;
 }
 
 interface Args {
@@ -135,12 +167,15 @@ export function parseArgs(argv: readonly string[]): Args {
 
 function printTable(rows: readonly DriftRow[]): void {
   const agentWidth = Math.max(5, ...rows.map((r) => r.agent.length));
+  const readerWidth = Math.max(6, ...rows.map((r) => r.reader.length));
   const installedWidth = Math.max(9, ...rows.map((r) => (r.installed ?? "—").length));
   const verifiedWidth = Math.max(8, ...rows.map((r) => r.verified.length));
-  console.log(`${"agent".padEnd(agentWidth)}  ${"installed".padEnd(installedWidth)}  ${"verified".padEnd(verifiedWidth)}  state`);
+  console.log(
+    `${"agent".padEnd(agentWidth)}  ${"reader".padEnd(readerWidth)}  ${"installed".padEnd(installedWidth)}  ${"verified".padEnd(verifiedWidth)}  state`,
+  );
   for (const row of rows) {
     console.log(
-      `${row.agent.padEnd(agentWidth)}  ${(row.installed ?? "—").padEnd(installedWidth)}  ${row.verified.padEnd(verifiedWidth)}  ${row.state}`,
+      `${row.agent.padEnd(agentWidth)}  ${row.reader.padEnd(readerWidth)}  ${(row.installed ?? "—").padEnd(installedWidth)}  ${row.verified.padEnd(verifiedWidth)}  ${row.state}`,
     );
   }
 }
@@ -154,7 +189,7 @@ export function selectRows(ledger: Ledger, agents: string[] | null): DriftRow[] 
       console.error(`harness-drift: "${agent}" is not in the ledger (web/src/lib/harness/verified-versions.json)`);
       process.exit(1);
     }
-    rows.push(driftRow(agent, entry));
+    for (const row of driftRows(agent, entry)) rows.push(row);
   }
   return rows;
 }

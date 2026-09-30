@@ -128,6 +128,18 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   to the English title, so a phone that has not opened the app since you changed language still gets
   a readable notice instead of a code. Thanks @jaehyun2yo (#310).
 
+- **A canary run now checks what Chat reads, not only what the screen shows.** Each of the six
+  journal readers counts the row kinds and content kinds it has no branch for, and `bun run canary`
+  reads the session each agent wrote in its own pane: a user item for the prompt the canary sent, a
+  tool item for the file read it asked for, a reply below it, and nothing unrecognised. Above zero
+  the run fails and NAMES the type, which is a gate against a vendor format change nobody has
+  written a test for. Claude Code and Codex both broke reading on the day they shipped, while
+  every test stayed green. No session file is saved anywhere, not even under `/tmp`: an
+  agent's log carries file contents from every read and environment from every command, so only
+  counts and item kinds are kept. `verified-versions.json` records the journal reader's verified
+  version beside the screen reader's and `bun run harness:drift` prints a row per reader, because
+  the two drift apart: a vendor can change what it paints without changing what it writes.
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

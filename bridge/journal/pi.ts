@@ -35,13 +35,17 @@ import {
   statFile,
 } from "./files.ts";
 import {
+  createUnknownCounter,
+  type KnownTypes,
   NO_CHANGE,
+  noteBlockTypes,
   parseWith,
   reduction,
   rememberPending,
   type PendingTool,
   type Reduction,
   type RowReducer,
+  type UnknownCounter,
 } from "./reduce.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
@@ -338,10 +342,45 @@ function bashExecutionParts(m: JsonObject): TranscriptPart[] {
   return [part];
 }
 
+/**
+ * Every type, role and content-block type this adapter has MET, rendered or dropped (`reduce.ts` §
+ * "what a reducer reports about what it could not read"). Anything else is counted and named.
+ *
+ * Measured on 2026-09-30 over 44 local sessions across both roots (`~/.pi/agent/sessions` and Oh My
+ * Pi's `~/.omp/agent/sessions`), which is the whole inventory they carry; `compaction`,
+ * `branch_summary`, `usage` and `label` are added from the grammar below, which names all four.
+ *
+ * `custom` and `custom_message` are two different rows and both are here. `custom_message` is an
+ * extension putting something on the operator's screen (`display: true`) and is rendered; `custom`
+ * carries `customType` and `data`, names no `display` at all, and is an extension's own bookkeeping
+ * (4 rows in those 44 sessions).
+ *
+ * `image` is in `parts` and IS rendered — pi is the one harness whose pictures reach the phone
+ * (#292) — even though those 44 sessions carry none.
+ */
+const PI_KNOWN: KnownTypes = {
+  rows: [
+    "message",
+    "compaction",
+    "branch_summary",
+    "custom_message",
+    "session",
+    "model_change",
+    "thinking_level_change",
+    "usage",
+    "label",
+    "custom",
+  ],
+  roles: ["user", "assistant", "toolResult", "bashExecution", "system"],
+  parts: ["text", "thinking", "image", "toolCall"],
+};
+
 export function createPiReducer(): RowReducer {
   // toolCall id → the part awaiting its result and the turn it went out in, so a later `toolResult`
   // row lands on its own call and can name where that call is drawn.
   const pendingTools = new Map<string, PendingTool>();
+  // What this reducer met and had no branch for, asked for once per session by the canary.
+  const unknown = createUnknownCounter(PI_KNOWN);
 
   // ── THE BRANCH CHAIN ────────────────────────────────────────────────────────
   // pi keeps every branch in ONE append-only log. Every row names its parent, and the session's
@@ -395,8 +434,11 @@ export function createPiReducer(): RowReducer {
    * edited; the branch bookkeeping is {@link link}'s and runs after this, so every row is a link
    * whether or not it draws anything.
    */
-  function draw(row: PiRow, uuid: string, ts: string, entries: TranscriptEntry[], changed: Set<string>): void {
+  function draw(row: PiRow, uuid: string, ts: string, entries: TranscriptEntry[], changed: Set<string>, note: UnknownCounter): void {
     const type = row.type;
+    // At the READ, not in the branch that declined (`reduce.ts` § `createUnknownCounter`). Every
+    // row-kind test below is against a name in `PI_KNOWN.rows`, so a name nobody listed lands here.
+    note.row(type);
 
     // pi's own history rows. Both carry a `summary` the MODEL wrote about the conversation, which is
     // what `role: "summary"` means here and in claude.ts and opencode.ts. A compaction deliberately
@@ -426,6 +468,10 @@ export function createPiReducer(): RowReducer {
     const message = row.message;
     if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return;
     const m: JsonObject = message;
+    // The second discriminator: five roles are read below, and the `user` fallback at the bottom
+    // would otherwise swallow a sixth silently.
+    note.role(m.role);
+    noteBlockTypes(note, m.content);
 
     if (m.role === "toolResult") {
       const id = typeof m.toolCallId === "string" ? m.toolCallId : "";
@@ -553,7 +599,7 @@ export function createPiReducer(): RowReducer {
 
     const uuid = typeof row.id === "string" ? row.id : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
-    draw(row, uuid, ts, entries, changed);
+    draw(row, uuid, ts, entries, changed, unknown);
     // Unconditional, and after `draw`: a row that renders nothing is still somebody's parent, so the
     // chain has to hold it or the next rewind would walk past a hole and abandon the live branch.
     link(uuid, typeof row.parentId === "string" ? row.parentId : null, entries, changed);
@@ -563,7 +609,7 @@ export function createPiReducer(): RowReducer {
     return reduction(entries, changed);
   }
 
-  return { push };
+  return { push, unknowns: unknown.tally };
 }
 
 /**

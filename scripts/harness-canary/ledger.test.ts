@@ -9,7 +9,14 @@ const LEDGER = JSON.stringify(
     $comment: "kept",
     agents: {
       claude: { version: "2.1.278", verified: "2026-09-22", how: "capture", adapter: true, evidence: "old" },
-      pi: { version: "0.87.0", verified: "2026-09-20", how: "live sweep", adapter: false, evidence: "old" },
+      pi: {
+        version: "0.87.0",
+        verified: "2026-09-20",
+        how: "live sweep",
+        adapter: false,
+        evidence: "old",
+        journal: { version: "0.87.0", verified: "2026-09-20", how: "live sweep", evidence: "old journal" },
+      },
     },
   },
   null,
@@ -38,6 +45,26 @@ describe("withRecord", () => {
     const next = JSON.parse(withRecord(LEDGER, { ...rec, agent: "opencode", version: "1.18.32" }));
     expect(next.agents.opencode.adapter).toBe(false);
     expect(next.agents.opencode.how).toBe("canary");
+  });
+
+  test("writes the journal reader's line beside the screen reader's", () => {
+    const journal = { version: "0.87.1", verified: "2026-09-30", evidence: "canary run Y: journal kinds asserted" };
+    const next = JSON.parse(withRecord(LEDGER, { ...rec, agent: "pi", version: "0.87.1", journal }));
+    expect(next.agents.pi.journal).toEqual({ ...journal, how: "canary" });
+    // The screen half moved too, and neither half took the other's evidence.
+    expect(next.agents.pi.evidence).toBe("canary run X");
+  });
+
+  test("leaves an entry with no journal block alone: a block is added by hand, never by a run", () => {
+    const journal = { version: "2.1.283", verified: "2026-09-26", evidence: "canary run Y" };
+    const next = JSON.parse(withRecord(LEDGER, { ...rec, journal }));
+    expect(next.agents.claude.journal).toBeUndefined();
+  });
+
+  test("a journal line with an unplain version or date is refused like the screen half", () => {
+    const journal = { version: "0.87", verified: "2026-09-30", evidence: "e" };
+    expect(() => withRecord(LEDGER, { ...rec, agent: "pi", journal })).toThrow(/x\.y\.z/);
+    expect(() => withRecord(LEDGER, { ...rec, agent: "pi", journal: { ...journal, version: "0.87.1", verified: "30.09.2026" } })).toThrow(/ISO/);
   });
 
   test("refuses a version or date that is not plain", () => {

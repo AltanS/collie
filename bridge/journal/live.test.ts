@@ -17,7 +17,7 @@ import {
   WINDOW_IDLE_MS,
   MAX_WINDOWS,
 } from "./live.ts";
-import { NO_CHANGE, parseWith, type PendingTool, rememberPending, type RowReducer } from "./reduce.ts";
+import { NO_CHANGE, noUnknowns, parseWith, type PendingTool, rememberPending, type RowReducer } from "./reduce.ts";
 import { TranscriptStore } from "./store.ts";
 import type {
   AgentSessionRef,
@@ -76,6 +76,9 @@ function fakeReducer(): RowReducer {
       }
       return NO_CHANGE;
     },
+    // This fake has no grammar and so no inventory of types to miss: the window never asks, and the
+    // reducers' own tallies are gated in `unknowns.test.ts` and by the canary (M41/05).
+    unknowns: noUnknowns,
   };
 }
 

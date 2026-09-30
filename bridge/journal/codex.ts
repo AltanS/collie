@@ -29,7 +29,10 @@ import { join } from "node:path";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
+  createUnknownCounter,
+  type KnownTypes,
   NO_CHANGE,
+  noteBlockTypes,
   parseWith,
   reduction,
   rememberPending,
@@ -227,6 +230,48 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
 }
 
 /**
+ * Every type this adapter has MET, rendered or dropped (`reduce.ts` § "what a reducer reports about
+ * what it could not read"). Anything else is counted and named.
+ *
+ * Measured on 2026-09-30 over 48 local rollout logs (Codex 0.156.1), which is the whole inventory
+ * they carry. TWO LEVELS land in `rows`, because Codex needs two to say what a row IS: the envelope's
+ * own `type`, and the `payload.type` inside a `response_item`, which is the field that says whether
+ * the item is speech, reasoning or a call. Content blocks land in `parts`: a message's `content`
+ * (`input_text` / `output_text`, 596 of them) and reasoning's `summary` (`summary_text`, 202). Both
+ * are read by FIELD here — `blockText` takes any block's `.text` — so a new block type would be
+ * dropped in silence, which is exactly what this counts.
+ *
+ * `custom_tool_call` and `custom_tool_call_output` ARE DROPPED, and they are listed anyway: 50 and 49
+ * of them in those 48 logs, so Codex's custom tools (`apply_patch` among them) are invisible in a
+ * Codex transcript today. That is a gap with a name, not drift, and it belongs in a comment rather
+ * than in a counter that means "nobody has looked at this yet".
+ *
+ * `developer` is the one role that matters here: Codex writes three of those rows, carrying injected
+ * system prompts, before the first real turn, and rendering one as speech would put words in the
+ * operator's mouth (see the `message` branch).
+ */
+const CODEX_KNOWN: KnownTypes = {
+  rows: [
+    // The envelope.
+    "response_item",
+    "event_msg",
+    "token_usage_record",
+    "turn_context",
+    "session_meta",
+    "world_state",
+    // What a `response_item` carries.
+    "message",
+    "reasoning",
+    "function_call",
+    "function_call_output",
+    "custom_tool_call",
+    "custom_tool_call_output",
+  ],
+  roles: ["user", "assistant", "developer"],
+  parts: ["input_text", "output_text", "text", "summary_text"],
+};
+
+/**
  * The same reading, one row at a time (see `reduce.ts`).
  *
  * The loop this replaces was already a reducer wearing a `for`: both maps below were carried across
@@ -248,6 +293,8 @@ export function createCodexReducer(): RowReducer {
   // call_id → the part awaiting its output and the turn it went out in, so a `function_call_output`
   // lands on its own call and can name where that call is drawn.
   const pendingTools = new Map<string, PendingTool>();
+  // What this reducer met and had no branch for, asked for once per session by the canary.
+  const unknown = createUnknownCounter(CODEX_KNOWN);
 
   // A nested `function` rather than a method on the returned object: the body below is the old loop
   // body at the indentation it always had, so this refactor is readable as the move it is.
@@ -267,11 +314,18 @@ export function createCodexReducer(): RowReducer {
     // no row shape — skip it exactly as an unparseable line is skipped.
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: CodexRow = parsed;
+    // At the READ, not in the branch that declined (`reduce.ts` § `createUnknownCounter`).
+    unknown.row(row.type);
     // The double-booking guard: everything the UI stream carries is already in `response_item`.
     if (row.type !== "response_item") return NO_CHANGE;
     const payload = row.payload;
     if (payload === null || payload === undefined || typeof payload !== "object" || Array.isArray(payload)) return NO_CHANGE;
     const p: JsonObject = payload;
+    // The second level of "what is this row": four branches below read it, and a fifth kind of item
+    // is what this call catches. `summary` is reasoning's own block list, `content` is a message's.
+    unknown.row(p.type);
+    noteBlockTypes(unknown, p.content);
+    noteBlockTypes(unknown, p.summary);
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
     const uuid = codexCursor(line, seen);
 
@@ -280,6 +334,7 @@ export function createCodexReducer(): RowReducer {
       // rows carrying the injected system prompts (permissions, multi-agent instructions) — three of
       // them before the first real turn — and treating an unknown role as speech would render those
       // as things the operator said. Anything that isn't user or assistant is plumbing: drop it.
+      unknown.role(p.role);
       if (p.role !== "user" && p.role !== "assistant") return NO_CHANGE;
       const role = p.role;
       const body = stripAnsi(blockText(p.content));
@@ -373,7 +428,7 @@ export function createCodexReducer(): RowReducer {
     return reduction(entries, changed);
   }
 
-  return { push };
+  return { push, unknowns: unknown.tally };
 }
 
 /**

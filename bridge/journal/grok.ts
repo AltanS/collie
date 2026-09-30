@@ -27,7 +27,10 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
+  createUnknownCounter,
+  type KnownTypes,
   NO_CHANGE,
+  noteBlockTypes,
   parseWith,
   reduction,
   rememberPending,
@@ -107,6 +110,24 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
 }
 
 /**
+ * Every type this adapter has MET, rendered or dropped (`reduce.ts` § "what a reducer reports about
+ * what it could not read"). Anything else is counted and named.
+ *
+ * The rows are this file's own header inventory, verified on disk on 2026-08-21; there are no local
+ * Grok logs on the canary host, so unlike the other five this list has NOT been re-swept since.
+ *
+ * `parts` covers the two block lists: a row's `content` (`text`) and a `reasoning` row's `summary`
+ * (`summary_text`). Both are read by FIELD — `contentText` takes any block's `.text` — so a block
+ * type Grok adds would be dropped in silence, which is what this counts. There is no role list:
+ * Grok's row `type` IS its role.
+ */
+const GROK_KNOWN: KnownTypes = {
+  rows: ["system", "user", "reasoning", "assistant", "backend_tool_call", "tool_result"],
+  roles: [],
+  parts: ["text", "summary_text"],
+};
+
+/**
  * The same reading, one row at a time (see `reduce.ts`).
  *
  * The loop this replaces was already a reducer wearing a `for`: it carried `pendingTools`, `seen`
@@ -126,6 +147,8 @@ export function createGrokReducer(): RowReducer {
   const seen = new Map<string, number>();
   // A `reasoning` row's summary, held for the assistant turn that follows it.
   let heldThinking: string | null = null;
+  // What this reducer met and had no branch for, asked for once per session by the canary.
+  const unknown = createUnknownCounter(GROK_KNOWN);
 
   const flushThinking = (parts: TranscriptPart[]) => {
     if (heldThinking !== null && heldThinking.trim() !== "") {
@@ -153,6 +176,11 @@ export function createGrokReducer(): RowReducer {
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: GrokRow = parsed;
     const type = row.type;
+    // At the READ, not in the branch that declined (`reduce.ts` § `createUnknownCounter`). Both
+    // block lists are counted here too, for every row, so no branch can forget one.
+    unknown.row(type);
+    noteBlockTypes(unknown, row.content);
+    noteBlockTypes(unknown, row.summary);
     const uuid =
       typeof row.id === "string" && row.id !== "" ? row.id : grokCursor(line, seen);
 
@@ -294,7 +322,7 @@ export function createGrokReducer(): RowReducer {
     return reduction(entries, changed);
   }
 
-  return { push };
+  return { push, unknowns: unknown.tally };
 }
 
 /**

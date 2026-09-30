@@ -7,7 +7,7 @@ import { backspaceSweep, launchLine } from "./agents/profile";
 import { CANARY_AGENTS, parseArgs } from "./args";
 import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
-import { MESSAGES, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
+import { JOURNAL_MESSAGE, MESSAGES, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
 import { lastPointedRow } from "./dialogs";
 import { DEFAULT_SCENARIOS } from "./verdict";
 
@@ -15,7 +15,7 @@ const ESC = String.fromCodePoint(0x1b);
 const BEL = String.fromCodePoint(0x07);
 
 describe("parseArgs", () => {
-  test("defaults run every agent and the five M37/02 scenarios at the pane's own width", () => {
+  test("defaults run every agent and the six default scenarios at the pane's own width", () => {
     const o = parseArgs([], "/repo");
     expect(o).not.toBe("help");
     if (o === "help") return;
@@ -46,7 +46,7 @@ describe("parseArgs", () => {
   test("--dialogs adds dialogs and busy once, after whatever --scenario chose", () => {
     const all = parseArgs(["--dialogs"], "/repo");
     if (all === "help") throw new Error("unexpected help");
-    expect(all.scenarios).toEqual(["idle", "drafts", "sends", "narrow", "start-exit", "dialogs", "busy"]);
+    expect(all.scenarios).toEqual(["idle", "drafts", "sends", "journal", "narrow", "start-exit", "dialogs", "busy"]);
     const some = parseArgs(["--scenario", "idle,busy", "--dialogs"], "/repo");
     if (some === "help") throw new Error("unexpected help");
     expect(some.scenarios).toEqual(["idle", "busy", "dialogs"]);
@@ -95,15 +95,25 @@ describe("drafts and messages", () => {
     expect(launchLine(50, "claude")).toBe("clear; stty cols 50; claude");
   });
 
-  test("fifteen message kinds, including the pasted rule", () => {
+  // A deliberate inventory. `16-read` is NOT in it: the drafts sweep types every kind of message and
+  // that one is an ordinary single line, so it belongs to the sends and not to this list (M41/05).
+  test("fifteen draft kinds, including the pasted rule", () => {
     expect(MESSAGES).toHaveLength(15);
     expect(new Set(MESSAGES.map((m) => m.id)).size).toBe(15);
     expect(messageById("15-rule").text).toContain("────");
   });
 
-  test("three sends: plain, the rule and Chinese; each asks for only OK", () => {
-    expect(SEND_IDS).toEqual(["01-plain", "15-rule", "09-cjk"]);
+  test("four sends: plain, the rule, Chinese and the read; each asks for only OK", () => {
+    expect(SEND_IDS).toEqual(["01-plain", "15-rule", "09-cjk", "16-read"]);
     for (const id of [...SEND_IDS, ...NARROW_DRAFT_IDS]) expect(messageById(id).text).toMatch(/only OK|只回复 OK/);
+  });
+
+  // The `journal` scenario needs a tool item in the agent's own log, and a Bash command would park
+  // Claude on a permission dialog nobody is there to answer (messages.ts says so at the constant).
+  test("the journal send asks for a file READ, never a shell command", () => {
+    expect(JOURNAL_MESSAGE.id).toBe("16-read");
+    expect(JOURNAL_MESSAGE.text).toContain("Read the file README.md");
+    expect(JOURNAL_MESSAGE.text).not.toMatch(/\brun\b|`|echo/i);
   });
 });
 

@@ -43,14 +43,30 @@ export const MESSAGES: readonly CanaryMessage[] = [
   { id: "15-rule", text: `Reply with only OK.\n${RULE}\nsome text\n${RULE}\nend` },
 ];
 
-/** The three real sends of scenario 3: plain, multi-line with a `────` line, and Chinese. */
-export const SEND_IDS: readonly string[] = ["01-plain", "15-rule", "09-cjk"];
+/**
+ * The send that makes the agent USE A TOOL, so its own log holds a tool item for the `journal`
+ * scenario to assert (spec M41/05). Not in {@link MESSAGES}: the drafts sweep types every kind of
+ * message and this one is an ordinary single line, so it would add a draft case that tests nothing.
+ *
+ * A READ and not a shell command, deliberately. Claude Code asks before Bash in its default mode, so
+ * "run `echo`" would park the pane on a permission dialog with nobody to answer it — the dialogs
+ * scenario opens those on purpose, in panes of its own, and this one must not. A file read is
+ * pre-approved on Claude, runs inside Codex's default sandbox, and needs no config on OpenCode. The
+ * file is the one `freshProject()` commits, so it exists in every canary pane.
+ */
+export const JOURNAL_MESSAGE: CanaryMessage = {
+  id: "16-read",
+  text: "Read the file README.md in this folder, then reply with only OK.",
+};
+
+/** The four real sends of scenario 3: plain, multi-line with a `────` line, Chinese, and the read. */
+export const SEND_IDS: readonly string[] = ["01-plain", "15-rule", "09-cjk", "16-read"];
 
 /** The two drafts scenario 4 types at 50 columns: one that wraps, and the pasted rule. */
 export const NARROW_DRAFT_IDS: readonly string[] = ["02-long", "15-rule"];
 
 export function messageById(id: string): CanaryMessage {
-  const found = MESSAGES.find((m) => m.id === id);
+  const found = [...MESSAGES, JOURNAL_MESSAGE].find((m) => m.id === id);
   if (found === undefined) throw new Error(`no canary message ${id}`);
   return found;
 }

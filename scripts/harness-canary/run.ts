@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // `bun run canary`: drive claude, codex, opencode and pi in a Herdr session of the canary's own and
-// judge what the phone would read and whether a send lands, with Collie's own code. Spec M37/02;
-// the how and the traps are in ./README.md.
+// judge what the phone would read and whether a send lands, with Collie's own code, off the screen
+// AND off the session each agent wrote. Specs M37/02 and M41/05; the how and the traps are in
+// ./README.md.
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,8 +14,9 @@ import { opencode } from "./agents/opencode";
 import { pi } from "./agents/pi";
 import type { AgentProfile } from "./agents/profile";
 import { CANARY_SESSION, CanarySession, listSessions } from "./herdr";
+import { canaryJournals } from "./journal";
 import { loadKnownGaps } from "./known-gaps";
-import { LEDGER_FILE, recordVerified } from "./ledger";
+import { LEDGER_FILE, recordVerified, type LedgerRecord } from "./ledger";
 import { loadReaders } from "./readers";
 import { runBusy, runDialogs } from "./dialogs";
 import { runAgent } from "./scenarios";
@@ -104,6 +106,10 @@ async function main(options: CanaryOptions): Promise<number> {
     const transport = installTransport(session, join(project, ".collie-home-unused"));
     audit = transport.audit;
     const readers = await loadReaders(options.readers);
+    // The journal adapters are THIS checkout's, never `--readers`': that flag swaps the web/src
+    // screen readers so an older checkout can be shown missing what it missed, and the bridge side
+    // of the canary has always been this checkout's (README § "Proof against 1.13.1").
+    const journals = canaryJournals();
     adapters = new Map(options.agents.map((a) => [a, readers.adapterFor(a) !== undefined]));
     for (const agent of options.agents) {
       const profile = PROFILES[agent];
@@ -120,6 +126,7 @@ async function main(options: CanaryOptions): Promise<number> {
         session,
         transport,
         readers,
+        journals,
         options,
         project,
         dir: join(runDir, `${agent}-${version}`),
@@ -184,16 +191,22 @@ function record(
       continue;
     }
     const passed = results.filter((r) => r.agent === agent && r.verdict === "pass").map((r) => r.scenario);
-    recordVerified(
-      {
-        agent,
-        version: versions.get(agent)!,
-        verified: id.slice(0, 4) + "-" + id.slice(4, 6) + "-" + id.slice(6, 8),
-        adapter: adapters.get(agent) ?? false,
-        evidence: `canary run ${id}: ${passed.join(", ")} pass`,
-      },
-      ledger,
-    );
+    const verified = id.slice(0, 4) + "-" + id.slice(4, 6) + "-" + id.slice(6, 8);
+    const rec: LedgerRecord = {
+      agent,
+      version: versions.get(agent)!,
+      verified,
+      adapter: adapters.get(agent) ?? false,
+      evidence: `canary run ${id}: ${passed.join(", ")} pass`,
+    };
+    // The JOURNAL reader's own line, beside the screen reader's, and only when this run judged it:
+    // the two readers drift apart on the same agent version (M41/05), so one date cannot speak for
+    // both. `withRecord` writes it only where the ledger already has a journal block, which is the
+    // agents this build has a journal adapter for.
+    if (passed.includes("journal")) {
+      rec.journal = { version: rec.version, verified, evidence: `canary run ${id}: journal kinds asserted, nothing unrecognised` };
+    }
+    recordVerified(rec, ledger);
     log(`--record: ${agent} ${versions.get(agent)} written to ${ledger}`);
   }
 }

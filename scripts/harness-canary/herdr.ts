@@ -10,8 +10,9 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { attachClient, type CanaryClient } from "./client";
+import type { AgentSessionRef } from "../../bridge/journal/types";
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../../web/src/lib/json";
+import { attachClient, type CanaryClient } from "./client";
 
 export const CANARY_SESSION = "collie-canary";
 
@@ -91,6 +92,23 @@ export interface PaneInfo {
   readonly agent: string | null;
   /** idle | working | blocked | done | unknown. */
   readonly status: string;
+  /**
+   * The session the agent in this pane reported to Herdr, or null when it reported none.
+   *
+   * The same record `bridge/mux/herdr/client.ts` reads off a pane, and the one input the journal
+   * scenario has: it is how the canary finds the log the agent in ITS pane wrote, rather than
+   * guessing at the newest file in a root. A null is ordinary rather than a fault — Codex reports
+   * only once its first prompt is submitted, and every agent needs its Herdr integration hook.
+   */
+  readonly session: AgentSessionRef | null;
+}
+
+/** The pane record's `agent_session`, accepted only as one of the two kinds `types.ts` names. */
+function paneSession(raw: JsonObject | undefined): AgentSessionRef | null {
+  const kind = asJsonString(raw?.kind);
+  const value = asJsonString(raw?.value);
+  if (value === undefined || value === "") return null;
+  return kind === "id" || kind === "path" ? { kind, value } : null;
 }
 
 export class CanarySession {
@@ -226,7 +244,11 @@ export class CanarySession {
 
   paneInfo(paneId: string): PaneInfo {
     const pane = asJsonObject(this.cli(["pane", "get", this.owned(paneId)]).pane);
-    return { agent: asJsonString(pane?.agent) ?? null, status: asJsonString(pane?.agent_status) ?? "unknown" };
+    return {
+      agent: asJsonString(pane?.agent) ?? null,
+      status: asJsonString(pane?.agent_status) ?? "unknown",
+      session: paneSession(asJsonObject(pane?.agent_session)),
+    };
   }
 
   /**

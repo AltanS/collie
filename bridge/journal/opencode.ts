@@ -71,7 +71,15 @@ import { join } from "node:path";
 import type { ResetEvent } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
-import { NO_CHANGE, parseWith, type Reduction, type RowReducer } from "./reduce.ts";
+import {
+  createUnknownCounter,
+  type KnownTypes,
+  NO_CHANGE,
+  notePartType,
+  parseWith,
+  type Reduction,
+  type RowReducer,
+} from "./reduce.ts";
 import { asRecord, asText, tokenCount } from "./cache-probe.ts";
 import {
   type Cursor,
@@ -764,6 +772,26 @@ export function opencodePart(data: JsonValue | undefined): TranscriptPart | null
 }
 
 /**
+ * Every role and part type this adapter has MET, rendered or dropped (`reduce.ts` § "what a reducer
+ * reports about what it could not read"). Anything else is counted and named.
+ *
+ * Measured on 2026-09-30 over the local `opencode.db` (456 messages, 1,588 parts), which is the whole
+ * inventory it carries. `rows` is empty BY FORMAT: a composed line is `{id, ts, data, parts}` and has
+ * no row-kind field, so `data.role` is the only thing that says what a row is.
+ *
+ * `patch`, `file` and `compaction` ARE DROPPED, and they are listed anyway: 34, 5 and 1 of them in
+ * that store, so a patch OpenCode wrote and a file it attached are invisible in a transcript today.
+ * That is a gap with a name, not drift (`reduce.ts`, "known means met and decided about").
+ *
+ * `step-start` and `step-finish` are the turn bookkeeping `opencodePart` declines by name.
+ */
+const OPENCODE_KNOWN: KnownTypes = {
+  rows: [],
+  roles: ["user", "assistant", "summary"],
+  parts: ["text", "reasoning", "tool", "step-start", "step-finish", "patch", "file", "compaction"],
+};
+
+/**
  * Parse composed OpenCode JSONL into oldest-first turns. PURE — no fs, no clock.
  *
  * `uuid` is the MESSAGE ID: OpenCode gives every message a stable primary key, so unlike Codex there
@@ -796,6 +824,9 @@ export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
  * job here is to state it truthfully so the design above it is built on the truth.
  */
 export function createOpencodeReducer(): RowReducer {
+  // The one piece of state this reducer keeps: what it met and had no branch for.
+  const unknown = createUnknownCounter(OPENCODE_KNOWN);
+
   // A nested `function` rather than a method on the returned object: the body below is the old loop
   // body at the indentation it always had, so this refactor is readable as the move it is.
   function push(line: string): Reduction {
@@ -822,6 +853,8 @@ export function createOpencodeReducer(): RowReducer {
     // codex.ts's `developer` guard: an unmodelled role is plumbing, and rendering it as speech would
     // put words in the operator's mouth. `summary` is V2's compaction role (composeLinesV2), which the
     // transcript vocabulary renders set apart from speech.
+    // At the READ, not in the branch that declined (`reduce.ts` § `createUnknownCounter`).
+    unknown.role(data.role);
     if (data.role !== "user" && data.role !== "assistant" && data.role !== "summary") return NO_CHANGE;
     const role = data.role;
 
@@ -830,6 +863,10 @@ export function createOpencodeReducer(): RowReducer {
       for (const p of row.parts) {
         // A `continue` over the BLOCK, not the row: the message's other parts still count.
         if (p === null || typeof p !== "object" || Array.isArray(p)) continue;
+        // Counted for EVERY part, before `opencodePart`'s answer: a null there means either a part
+        // type it declines by name or an empty one of a type it renders, and the known list is what
+        // tells those from a type nobody has looked at.
+        notePartType(unknown, p.data);
         const part = opencodePart(p.data);
         if (part !== null) parts.push(part);
       }
@@ -851,7 +888,7 @@ export function createOpencodeReducer(): RowReducer {
     return { added: entries, changed: NO_CHANGE.changed };
   }
 
-  return { push };
+  return { push, unknowns: unknown.tally };
 }
 
 /** ISO timestamp from `data.time.created`, falling back to the message row's `time_created`. */

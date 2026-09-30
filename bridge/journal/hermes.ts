@@ -9,7 +9,14 @@ import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { NO_CHANGE, parseWith, type Reduction, type RowReducer } from "./reduce.ts";
+import {
+  createUnknownCounter,
+  type KnownTypes,
+  NO_CHANGE,
+  parseWith,
+  type Reduction,
+  type RowReducer,
+} from "./reduce.ts";
 import {
   type Cursor,
   decodeCursor,
@@ -272,6 +279,22 @@ export function parseHermesTranscript(text: string): TranscriptEntry[] {
 }
 
 /**
+ * Every role this adapter has MET, rendered or dropped (`reduce.ts` § "what a reducer reports about
+ * what it could not read"). Anything else is counted and named.
+ *
+ * `role` IS the whole of it: a `messages` row has no `type` column, so there is no second row-kind
+ * field to read, and `parts` is EMPTY BY FORMAT rather than by omission. Content is one column,
+ * reasoning is another, and a tool call is a JSON array of `{id, function:{name, arguments}}` with no
+ * type on it anywhere — there is no content discriminator Hermes could add a value to. So this
+ * reducer's part tally is always empty, and that is the format speaking.
+ *
+ * Not swept: no Hermes SessionDB exists on the canary host. The three roles are the ones `rowEntry`
+ * reads and the ones the test corpus carries, and this list is what the first real Hermes will be
+ * measured against.
+ */
+const HERMES_KNOWN: KnownTypes = { rows: [], roles: ["user", "assistant", "tool"], parts: [] };
+
+/**
  * The same reading, one row at a time (see `reduce.ts`).
  *
  * STATELESS BY FORMAT, so `changed` is always empty and there is no map to carry. One `messages` row
@@ -296,6 +319,9 @@ export function parseHermesTranscript(text: string): TranscriptEntry[] {
  * truth.
  */
 export function createHermesReducer(): RowReducer {
+  // The one piece of state this reducer keeps: what it met and had no branch for.
+  const unknown = createUnknownCounter(HERMES_KNOWN);
+
   // A nested `function` rather than a method on the returned object: the body below is the old loop
   // body at the indentation it always had, so this refactor is readable as the move it is.
   function push(line: string): Reduction {
@@ -309,6 +335,9 @@ export function createHermesReducer(): RowReducer {
       return NO_CHANGE; // a torn row, or the head line a byte cap clipped mid-object
     }
     if (!isMessageRow(raw)) return NO_CHANGE;
+    // At the READ, not in the branch that declined (`reduce.ts` § `createUnknownCounter`): `rowEntry`
+    // turns an unmodelled role into `null`, which is indistinguishable from a hidden row.
+    unknown.role(raw.role);
     const entry = rowEntry(raw);
     // `rowEntry` declines a row that renders nothing — inactive, hidden, an unmodelled role, a `tool`
     // row with no output. With nothing folded anywhere either, such a row did nothing at all.
@@ -320,7 +349,7 @@ export function createHermesReducer(): RowReducer {
     return { added: entries, changed: NO_CHANGE.changed };
   }
 
-  return { push };
+  return { push, unknowns: unknown.tally };
 }
 
 type SessionMeta = { size: number; mtimeMs: number };

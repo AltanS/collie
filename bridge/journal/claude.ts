@@ -33,7 +33,10 @@ import { observedClaim, type Sourced } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
+  createUnknownCounter,
+  type KnownTypes,
   NO_CHANGE,
+  noteBlockTypes,
   parseWith,
   reduction,
   rememberPending,
@@ -225,6 +228,54 @@ export function parseClaudeTranscript(
 }
 
 /**
+ * Every row type and content-block type this adapter has MET, rendered or dropped (`reduce.ts` §
+ * "what a reducer reports about what it could not read"). Anything else is counted and named.
+ *
+ * Measured on 2026-09-30 over the 500 newest session files in `~/.claude/projects`, which is the
+ * whole inventory those files carry; `continued-in` and `summary` are added from the grammar above,
+ * which reads both and which older logs carry.
+ *
+ * `image` IS DROPPED, and it is listed anyway: five of them across those 500 files, and a known list
+ * says "we have looked at this". A pasted picture in a Claude turn therefore never reaches the phone
+ * even though `TranscriptPart` has a place for it (pi's adapter fills it). That is a gap with a name,
+ * and a gap with a name is not drift — it does not belong in a counter that means "nobody has looked
+ * at this yet".
+ *
+ * There is no role list: Claude decides a row's kind with the row's own `type`, and `message.role`
+ * merely repeats it (measured: `user` and `assistant`, nothing else, in 84,525 rows). Nothing here
+ * dispatches on it, so there is nothing it could fail to recognise.
+ */
+const CLAUDE_KNOWN: KnownTypes = {
+  rows: [
+    // Speech, and the two rows the grammar above reads for something other than speech.
+    "user",
+    "assistant",
+    "continued-in",
+    "summary",
+    // Bookkeeping, in the order the 2026-09-30 sweep counted it.
+    "attachment",
+    "queue-operation",
+    "last-prompt",
+    "atis-latch",
+    "system",
+    "mode",
+    "permission-mode",
+    "custom-title",
+    "agent-name",
+    "ai-title",
+    "file-history-snapshot",
+    "file-history-delta",
+    "cost-state",
+    "fork-context-ref",
+    "started",
+    "result",
+    "launched",
+  ],
+  roles: [],
+  parts: ["text", "thinking", "tool_use", "tool_result", "image"],
+};
+
+/**
  * The same reading, one row at a time (see `reduce.ts`).
  *
  * The loop this replaces was already a reducer wearing a `for`: `pendingTools` was carried across
@@ -236,6 +287,8 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
   // tool_use id → the part awaiting its result and the turn it went out in, so a `tool_result` row
   // lands on the call that made it and can name where that call is drawn.
   const pendingTools = new Map<string, PendingTool>();
+  // What this reducer met and had no branch for, asked for once per session by the canary.
+  const unknown = createUnknownCounter(CLAUDE_KNOWN);
 
   // A nested `function` rather than a method on the returned object: the body below is the old loop
   // body at the indentation it always had, so this refactor is readable as the move it is.
@@ -262,11 +315,15 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     // addressed to the model (a skill body, an image's source path, a caveat) and is dropped.
     if (row.isMeta === true && row.promptSource !== "system") return NO_CHANGE;
     const type = row.type;
+    // At the READ, not in the branch that declined: `CLAUDE_KNOWN.rows` holds every name below and
+    // the counter drops those, so a type nobody has listed is the one thing that lands in the tally.
+    unknown.row(type);
     // EVERYTHING ELSE IS BOOKKEEPING, and it is a long list. Measured over 462 real session files on
     // 2026-09-30: `attachment`, `last-prompt`, `atis-latch`, `file-history-snapshot`, `mode`,
     // `permission-mode`, `ai-title`, `cost-state`, `queue-operation`, and `system` with subtypes
     // `turn_duration` and `stop_hook_summary`. None of it is conversation and all of it would be
-    // noise on a phone.
+    // noise on a phone. That list is a sample of the kinds; the COMPLETE inventory, including the
+    // rows the 2026-09-30 sweep found and this sentence predates, is `CLAUDE_KNOWN` above.
     //
     // The one row anybody has argued for is `system` / `subtype: "compact_boundary"`, 281 of them
     // across those files, which is where Claude's own UI draws its compaction divider. It stays
@@ -281,6 +338,8 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     const message = row.message;
     if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return NO_CHANGE;
     const content = message.content;
+    // The block walk below is an `else if` chain over four types; this is where a fifth is counted.
+    noteBlockTypes(unknown, content);
     const uuid = typeof row.uuid === "string" ? row.uuid : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
     const parts: TranscriptPart[] = [];
@@ -367,7 +426,7 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     return reduction(entries, changed);
   }
 
-  return { push };
+  return { push, unknowns: unknown.tally };
 }
 
 /**

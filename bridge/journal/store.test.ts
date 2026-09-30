@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { NO_CHANGE } from "./reduce.ts";
+import { NO_CHANGE, noUnknowns } from "./reduce.ts";
 import { pageEntries, TranscriptStore } from "./store.ts";
 import type { JournalAdapter, TranscriptEntry, TranscriptSource } from "./types.ts";
 
@@ -54,6 +54,9 @@ function fakeAdapter(lines: string[], opts: { complete?: boolean } = {}) {
     reducer: () => ({
       push: (line) =>
         line === "" ? NO_CHANGE : { added: [entry(line)], changed: NO_CHANGE.changed },
+      // This fake's grammar is "every non-empty line is a turn", so there is no type it could fail
+      // to recognise. The six real tallies are gated in `unknowns.test.ts`.
+      unknowns: noUnknowns,
     }),
   };
   return {
