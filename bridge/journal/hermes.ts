@@ -9,6 +9,7 @@ import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
+import { NO_CHANGE, parseWith, type Reduction, type RowReducer } from "./reduce.ts";
 import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -194,21 +195,59 @@ function clipLines(lines: string[]) {
 }
 
 export function parseHermesTranscript(text: string): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+  return parseWith(createHermesReducer(), text);
+}
+
+/**
+ * The same reading, one row at a time (see `reduce.ts`).
+ *
+ * STATELESS BY FORMAT, so `changed` is always empty and there is no map to carry. One `messages` row
+ * is one turn: `rowEntry` reads that row and nothing else, and Hermes writes a tool RESULT as its own
+ * row, which this adapter renders as its own `note` entry rather than folding onto the assistant turn
+ * that made the call (`rowEntry`, the `role === "tool"` branch). The two are paired by the id the
+ * result repeats in `tool_call_id`, carried on the part for a VIEW to match up; the adapter never
+ * reaches back. So no row can alter a turn `push` already handed over, and it can never need to
+ * report a `changed` uuid. Claude and pi both need one; this format gives them nothing to attach to.
+ *
+ * WHAT MOVES INSTEAD — the fact a live window has to be designed against. Within ONE composition each
+ * id appears exactly once: `messages.id` is an INTEGER PRIMARY KEY, so even the lineage walk in
+ * `composeLines`, which pulls a parent session's rows in as well, brings rows with ids of their own.
+ * But a row is not frozen once written. `active`, `compacted` and `display_kind` are mutable per-row
+ * state, and both the query (`active = 1 or compacted = 1`) and `rowEntry` read them — so the NEXT
+ * composition of the same session may carry the same id again, may carry it rendering differently, or
+ * may not carry it at all. A reducer fed those successive compositions emits such a line twice, BOTH
+ * TIMES AS `added`, because it keeps no memory of what it has seen. A caller holding the first copy
+ * must replace by `uuid` rather than append, and a turn a later read stops producing is something the
+ * `Reduction` shape has no word for at all. Solving either is the cursor's and the live window's job,
+ * not this module's; the job here is to state it truthfully so the design above it is built on the
+ * truth.
+ */
+export function createHermesReducer(): RowReducer {
+  // A nested `function` rather than a method on the returned object: the body below is the old loop
+  // body at the indentation it always had, so this refactor is readable as the move it is.
+  function push(line: string): Reduction {
+    const entries: TranscriptEntry[] = [];
+    if (line.trim() === "") return NO_CHANGE;
     let raw: JsonValue;
     try {
       // SAFETY: JSON.parse returns only JSON primitives, arrays, and objects; JsonValue names that exact boundary.
       raw = JSON.parse(line) as JsonValue;
     } catch {
-      continue;
+      return NO_CHANGE; // a torn row, or the head line a byte cap clipped mid-object
     }
-    if (!isMessageRow(raw)) continue;
+    if (!isMessageRow(raw)) return NO_CHANGE;
     const entry = rowEntry(raw);
-    if (entry !== null) entries.push(entry);
+    // `rowEntry` declines a row that renders nothing — inactive, hidden, an unmodelled role, a `tool`
+    // row with no output. With nothing folded anywhere either, such a row did nothing at all.
+    if (entry === null) return NO_CHANGE;
+    entries.push(entry);
+    // Built directly rather than through `reduction()`: with `changed` always empty, both of that
+    // helper's rules — drop `""`, drop a uuid `added` already carries — have nothing to do, and
+    // `NO_CHANGE.changed` is the same frozen empty list every skip above hands back.
+    return { added: entries, changed: NO_CHANGE.changed };
   }
-  return entries;
+
+  return { push };
 }
 
 type SessionMeta = { size: number; mtimeMs: number };

@@ -33,6 +33,15 @@ import {
   rootList,
   statFile,
 } from "./files.ts";
+import {
+  NO_CHANGE,
+  parseWith,
+  reduction,
+  rememberPending,
+  type PendingTool,
+  type Reduction,
+  type RowReducer,
+} from "./reduce.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { classifyToolCall, type ToolCall } from "./tool-call.ts";
@@ -231,28 +240,48 @@ function enrichCall(call: ToolCall, raw: JsonValue | undefined, text: string, is
  * write, and a tail-read window starts mid-line by construction.
  */
 export function parsePiTranscript(text: string): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  // toolCall id → the part awaiting its result, so a later `toolResult` row lands on its own call.
-  const pendingTools = new Map<string, Extract<TranscriptPart, { kind: "tool" }>>();
+  return parseWith(createPiReducer(), text);
+}
 
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+/**
+ * The same reading, one row at a time (see `reduce.ts`).
+ *
+ * The loop this replaces was already a reducer wearing a `for`: `pendingTools` was the ONLY state it
+ * carried across rows, and a `toolResult` row MUTATED a part inside a turn the loop had already
+ * pushed. So the state a reducer needs is the state the loop always kept, and the only genuinely new
+ * thing here is that the mutation gets REPORTED — under a tail that turn is on somebody's screen.
+ *
+ * pi folds a result from a row of its OWN (`role: "toolResult"`), never from a block inside a user
+ * turn the way Claude does, so one row never both adds a turn and changes it: here `added` and
+ * `changed` are disjoint by the shape of the format, not by a rule this function applies.
+ */
+export function createPiReducer(): RowReducer {
+  // toolCall id → the part awaiting its result and the turn it went out in, so a later `toolResult`
+  // row lands on its own call and can name where that call is drawn.
+  const pendingTools = new Map<string, PendingTool>();
+
+  // A nested `function` rather than a method on the returned object: the body below is the old loop
+  // body at the indentation it always had, so this refactor is readable as the move it is.
+  function push(line: string): Reduction {
+    const entries: TranscriptEntry[] = [];
+    const changed = new Set<string>();
+    if (line.trim() === "") return NO_CHANGE;
     let parsed: JsonValue;
     try {
       // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
       // read below a checked property access.
       parsed = JSON.parse(line) as JsonValue;
     } catch {
-      continue;
+      return NO_CHANGE; // partial trailing write, or the clipped first line of a tail read
     }
     // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
     // no row shape — skip it exactly as an unparseable line is skipped.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: PiRow = parsed;
     // `session`, `model_change`, `thinking_level_change` are bookkeeping — nothing to render.
-    if (row.type !== "message") continue;
+    if (row.type !== "message") return NO_CHANGE;
     const message = row.message;
-    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) continue;
+    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return NO_CHANGE;
     const m: JsonObject = message;
     const uuid = typeof row.id === "string" ? row.id : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
@@ -267,10 +296,12 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
         pendingTools.delete(id);
-        target.result = toolResult(resultText, isError, imageUrl);
+        target.part.result = toolResult(resultText, isError, imageUrl);
         // `details` rides on the RESULT ROW, not on a content block — it is pi's own record of what
         // the call did, and the only place a patch or an answer ever appears.
-        if (target.call) enrichCall(target.call, m.details, resultText, isError);
+        if (target.part.call) enrichCall(target.part.call, m.details, resultText, isError);
+        // Both mutations above landed in a turn that went out rows ago. Name it.
+        changed.add(target.uuid);
       } else if (resultText.trim() !== "" || imageUrl) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -288,13 +319,19 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
           ],
         });
       }
-      continue;
+      // THE EARLY RETURN THAT MAY NOT BE `NO_CHANGE`. A `toolResult` row whose result folded onto an
+      // earlier call has no turn of its own to show, and it HAS changed one; `NO_CHANGE` here would
+      // drop that report on the floor and leave the folded result invisible to a tail, which is the
+      // one fault this spec exists to fix. The orphan branch above takes the same exit the other way
+      // round — a turn of its own in `entries`, nothing changed.
+      return reduction(entries, changed);
     }
 
     const role: TranscriptEntry["role"] = m.role === "assistant" ? "assistant" : "user";
     const parts: TranscriptPart[] = [];
     const content = Array.isArray(m.content) ? m.content : [];
     for (const b of content) {
+      // A `continue` over the BLOCK, not the row: the other blocks of this turn still count.
       if (b === null || typeof b !== "object" || Array.isArray(b)) continue;
       if (b.type === "text" && typeof b.text === "string") {
         if (b.text.trim() !== "")
@@ -324,17 +361,24 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
         };
         if (typeof b.id === "string") {
           part.id = b.id;
-          pendingTools.set(b.id, part);
+          // The turn is named here, before it exists, because `uuid` is read off the row above and
+          // the part is already the object the turn will carry. `rememberPending` is what keeps an
+          // orphan call from growing this map for the life of a session.
+          rememberPending(pendingTools, b.id, { part, uuid });
         }
         parts.push(part);
       }
     }
 
-    if (parts.length === 0) continue; // a row with nothing renderable
+    // A row with nothing renderable. `reduction` rather than `NO_CHANGE`: it is the same value here,
+    // because the only mutating branch in this reducer returned already, and spelling it this way
+    // means a later mutation above cannot silently lose its report.
+    if (parts.length === 0) return reduction(entries, changed);
     entries.push({ uuid, ts, role, parts });
+    return reduction(entries, changed);
   }
 
-  return entries;
+  return { push };
 }
 
 /**

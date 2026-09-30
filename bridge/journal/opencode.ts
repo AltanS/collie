@@ -71,6 +71,7 @@ import { join } from "node:path";
 import type { ResetEvent } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
+import { NO_CHANGE, parseWith, type Reduction, type RowReducer } from "./reduce.ts";
 import { asRecord, asText, tokenCount } from "./cache-probe.ts";
 import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
@@ -604,21 +605,47 @@ export function opencodePart(data: JsonValue | undefined): TranscriptPart | null
  * adapter skips them — the byte cap clips the head line mid-object by construction.
  */
 export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
+  return parseWith(createOpencodeReducer(), text);
+}
 
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+/**
+ * The same reading, one row at a time (see `reduce.ts`).
+ *
+ * STATELESS BY FORMAT, so `changed` is always empty and there is no map to carry. A composed line
+ * holds a WHOLE message: V1 joins that message's `part` rows onto it (`composeLinesV1`), V2 has its
+ * parts inline in `data.content`, and a tool's RESULT sits on the call's own part — `state.output` in
+ * V1, `state.content` in V2 — never in a row of its own. So no row can fold anything into a turn this
+ * reducer already handed over, and `push` can never need to report a `changed` uuid. Claude and pi
+ * both need one; this format gives them nothing to attach to.
+ *
+ * WHAT MOVES INSTEAD — the fact a live window has to be designed against. OpenCode MUTATES a part row
+ * in place while a reply streams (`part.time_updated` / `session_message.time_updated` climb, see
+ * `sessionMeta`), and `composeLines` groups parts by message id. Within ONE composition each message
+ * id therefore appears exactly once — `message.id` and `session_message.id` are primary keys — but the
+ * NEXT composition of the same live session carries that same id again with more parts on it. A
+ * reducer fed those successive compositions emits the line twice, BOTH TIMES AS `added`, because it
+ * keeps no memory of what it has seen and could not tell the two apart if it did. A caller holding the
+ * first copy is holding a shorter version of a turn it is about to be handed again: it must replace by
+ * `uuid`, never append. Solving that is the cursor's and the live window's job, not this module's; the
+ * job here is to state it truthfully so the design above it is built on the truth.
+ */
+export function createOpencodeReducer(): RowReducer {
+  // A nested `function` rather than a method on the returned object: the body below is the old loop
+  // body at the indentation it always had, so this refactor is readable as the move it is.
+  function push(line: string): Reduction {
+    const entries: TranscriptEntry[] = [];
+    if (line.trim() === "") return NO_CHANGE;
     let parsed: JsonValue;
     try {
       // SAFETY: `JSON.parse` output IS a JsonValue by construction — and this line was composed by
       // `composeLines` above, so it is our own JSON.stringify round-tripping.
       parsed = JSON.parse(line) as JsonValue;
     } catch {
-      continue;
+      return NO_CHANGE; // a torn row, or the head line a byte cap clipped mid-object
     }
     // A line that parses to a scalar (or a bare `null`, which used to reach `.data` and THROW) has
     // no row shape — skip it exactly as an unparseable line is skipped.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: OpencodeLine = parsed;
     const rawData = row.data;
     const data: JsonObject =
@@ -629,19 +656,22 @@ export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
     // codex.ts's `developer` guard: an unmodelled role is plumbing, and rendering it as speech would
     // put words in the operator's mouth. `summary` is V2's compaction role (composeLinesV2), which the
     // transcript vocabulary renders set apart from speech.
-    if (data.role !== "user" && data.role !== "assistant" && data.role !== "summary") continue;
+    if (data.role !== "user" && data.role !== "assistant" && data.role !== "summary") return NO_CHANGE;
     const role = data.role;
 
     const parts: TranscriptPart[] = [];
     if (Array.isArray(row.parts)) {
       for (const p of row.parts) {
+        // A `continue` over the BLOCK, not the row: the message's other parts still count.
         if (p === null || typeof p !== "object" || Array.isArray(p)) continue;
         const part = opencodePart(p.data);
         if (part !== null) parts.push(part);
       }
     }
-    // Every part was bookkeeping (a lone step-start/step-finish message) — nothing to render.
-    if (parts.length === 0) continue;
+    // Every part was bookkeeping (a lone step-start/step-finish message) — nothing to render. Here
+    // that is `NO_CHANGE` outright, where Claude's reducer must still answer with its `changed` set:
+    // this format folds nothing, so a row with nothing to show did nothing at all.
+    if (parts.length === 0) return NO_CHANGE;
 
     entries.push({
       uuid: typeof row.id === "string" ? row.id : "",
@@ -649,9 +679,13 @@ export function parseOpencodeTranscript(text: string): TranscriptEntry[] {
       role,
       parts,
     });
+    // Built directly rather than through `reduction()`: with `changed` always empty, both of that
+    // helper's rules — drop `""`, drop a uuid `added` already carries — have nothing to do, and
+    // `NO_CHANGE.changed` is the same frozen empty list every skip above hands back.
+    return { added: entries, changed: NO_CHANGE.changed };
   }
 
-  return entries;
+  return { push };
 }
 
 /** ISO timestamp from `data.time.created`, falling back to the message row's `time_created`. */

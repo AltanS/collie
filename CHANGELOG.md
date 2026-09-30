@@ -83,6 +83,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   clock once, when the sheet opens, so a pane that finishes a turn while you are reaching for a row
   repaints where it stands and never moves under your thumb.
 
+- **The journal reads a session one row at a time.** Every harness adapter now folds its log row by
+  row instead of only parsing a whole file, and says which earlier turns a row changed as well as
+  which turns it added. That second half is the point: a tool result lands rows after the call it
+  belongs to, so attaching it edits a turn that is already on screen. A live session that gains one
+  row can now cost one row of work instead of re-reading and re-parsing the last 32 MB of a log that
+  can be 190 MB long. Nothing you can see changes yet, and the whole-file reading is the same reading
+  it always was, proved for all six harnesses against the same bytes arriving in torn random chunks.
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

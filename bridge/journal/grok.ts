@@ -26,6 +26,15 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
+import {
+  NO_CHANGE,
+  parseWith,
+  reduction,
+  rememberPending,
+  type PendingTool,
+  type Reduction,
+  type RowReducer,
+} from "./reduce.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -94,9 +103,28 @@ type GrokRow = JsonObject;
  * Unparseable lines are skipped (live append, tail-read window).
  */
 export function parseGrokTranscript(text: string): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  const pendingTools = new Map<string, Extract<TranscriptPart, { kind: "tool" }>>();
+  return parseWith(createGrokReducer(), text);
+}
+
+/**
+ * The same reading, one row at a time (see `reduce.ts`).
+ *
+ * The loop this replaces was already a reducer wearing a `for`: it carried `pendingTools`, `seen`
+ * and `heldThinking` across rows, and a `tool_result` row MUTATED a part inside a turn the loop had
+ * already pushed. So the state below is the state the loop always kept, and the only genuinely new
+ * thing is that the mutation gets REPORTED — under a tail that turn is on somebody's screen.
+ */
+export function createGrokReducer(): RowReducer {
+  // `tool_calls[].id` → the part awaiting its result and the turn it went out in, so a `tool_result`
+  // row lands on the call that made it and can name where that call is drawn.
+  const pendingTools = new Map<string, PendingTool>();
+  // Row hash → how many times that exact row has been seen, which is what gives two IDENTICAL rows
+  // two different uuids (`grokCursor`). DELIBERATELY UNBOUNDED, and not the same kind of growth as
+  // `pendingTools`: evicting an entry resets a count to 0, so a later identical row would reuse an
+  // earlier row's uuid, and a duplicate identity is worse than the memory. Its size is bounded by
+  // the window a reader feeds the reducer — one clamped tail read — not by the session.
   const seen = new Map<string, number>();
+  // A `reasoning` row's summary, held for the assistant turn that follows it.
   let heldThinking: string | null = null;
 
   const flushThinking = (parts: TranscriptPart[]) => {
@@ -106,19 +134,23 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
     heldThinking = null;
   };
 
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+  // A nested `function` rather than a method on the returned object: the body below is the old loop
+  // body at the indentation it always had, so this refactor is readable as the move it is.
+  function push(line: string): Reduction {
+    const entries: TranscriptEntry[] = [];
+    const changed = new Set<string>();
+    if (line.trim() === "") return NO_CHANGE;
     let parsed: JsonValue;
     try {
       // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
       // read below a checked property access.
       parsed = JSON.parse(line) as JsonValue;
     } catch {
-      continue;
+      return NO_CHANGE;
     }
     // A line that parses to a scalar (or a bare `null`, which would THROW on `.type`) has no row
     // shape — skip it exactly as an unparseable line is skipped.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: GrokRow = parsed;
     const type = row.type;
     const uuid =
@@ -138,22 +170,24 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
           .join("\n");
       }
       if (textOut.trim() !== "") heldThinking = stripAnsi(textOut);
-      continue;
+      // The assignment above is CARRIED state, not a turn: nothing has been emitted yet, so there is
+      // nothing a caller holds and nothing to name. `NO_CHANGE` is the whole truth of this row.
+      return NO_CHANGE;
     }
 
     if (type === "user") {
-      if (typeof row.synthetic_reason === "string") continue;
+      if (typeof row.synthetic_reason === "string") return NO_CHANGE;
       const raw = stripAnsi(contentText(row.content));
       const query = extractUserQuery(raw);
       const spoken = query ?? (typeof row.prompt_index === "number" ? raw.trim() : null);
-      if (spoken === null || spoken === "") continue;
+      if (spoken === null || spoken === "") return NO_CHANGE;
       entries.push({
         uuid,
         ts: "",
         role: "user",
         parts: [{ kind: "text", ...clamp(spoken, MAX_TEXT_CHARS) }],
       });
-      continue;
+      return reduction(entries, changed);
     }
 
     if (type === "assistant") {
@@ -163,6 +197,7 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
       if (body.trim() !== "") parts.push({ kind: "text", ...clamp(body, MAX_TEXT_CHARS) });
       if (Array.isArray(row.tool_calls)) {
         for (const call of row.tool_calls) {
+          // A `continue` over the BLOCK, not the row: the other calls of this turn still count.
           if (call === null || typeof call !== "object" || Array.isArray(call)) continue;
           const c: JsonObject = call;
           const name = typeof c.name === "string" ? c.name : "tool";
@@ -178,14 +213,21 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
           };
           if (typeof c.id === "string") {
             part.id = c.id;
-            pendingTools.set(c.id, part);
+            // The turn is named here, before it exists, because `uuid` is read off the row above and
+            // the part is already the object the turn will carry. `rememberPending` is what keeps an
+            // orphan call from growing this map for the life of a session.
+            rememberPending(pendingTools, c.id, { part, uuid });
           }
           parts.push(part);
         }
       }
-      if (parts.length === 0) continue;
+      // A row with nothing to SHOW, which is not the same as a row that did nothing — so the answer
+      // is built rather than assumed. `reduction` here cannot lose a report: an assistant row folds
+      // no result, so `changed` is still empty. In grok the fold sits in the `tool_result` branch,
+      // which builds no `parts` and leaves through the bottom of `push` instead of this guard.
+      if (parts.length === 0) return reduction(entries, changed);
       entries.push({ uuid, ts: "", role: "assistant", parts });
-      continue;
+      return reduction(entries, changed);
     }
 
     if (type === "backend_tool_call") {
@@ -210,7 +252,7 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
         // nothing to put in `id` and no result row ever addresses it.
         parts: [{ kind: "tool", name, summary, call: classifyToolCall(name, action, summary) }],
       });
-      continue;
+      return reduction(entries, changed);
     }
 
     if (type === "tool_result") {
@@ -225,7 +267,11 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
       const target = pendingTools.get(id);
       if (target) {
         pendingTools.delete(id);
-        target.result = { ...clamp(resultText, MAX_RESULT_CHARS) };
+        target.part.result = { ...clamp(resultText, MAX_RESULT_CHARS) };
+        // The mutation above landed in a turn that went out rows ago. Name it. The uuid is the one
+        // the assistant row was emitted with — grok's assistant rows carry no `id`, so in practice
+        // it is that row's `grokCursor` hash, which is never empty.
+        changed.add(target.uuid);
       } else if (resultText.trim() !== "") {
         entries.push({
           uuid,
@@ -242,9 +288,13 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
         });
       }
     }
+
+    // The `tool_result` branch and an unknown row type both leave here: one may have folded a result
+    // into an earlier turn, the other did nothing at all, and `reduction` tells those two apart.
+    return reduction(entries, changed);
   }
 
-  return entries;
+  return { push };
 }
 
 /**

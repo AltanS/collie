@@ -32,6 +32,15 @@ import { dirname, join } from "node:path";
 import { observedClaim, type Sourced } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
+import {
+  NO_CHANGE,
+  parseWith,
+  reduction,
+  rememberPending,
+  type PendingTool,
+  type Reduction,
+  type RowReducer,
+} from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
 import { claudeResets, lastTwoTurns } from "./claude-resets.ts";
 import { containedRealpath, exists, head, loadTail, rootList, statFile, tailBytes } from "./files.ts";
@@ -203,36 +212,52 @@ export function parseClaudeTranscript(
   text: string,
   opts: { includeSidechains?: boolean } = {},
 ): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  // tool_use id → the part awaiting its result, so a `tool_result` row lands on the call that made it.
-  const pendingTools = new Map<string, Extract<TranscriptPart, { kind: "tool" }>>();
+  return parseWith(createClaudeReducer(opts), text);
+}
 
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+/**
+ * The same reading, one row at a time (see `reduce.ts`).
+ *
+ * The loop this replaces was already a reducer wearing a `for`: `pendingTools` was carried across
+ * rows, and a `tool_result` MUTATED a part inside a turn the loop had already pushed. So the state a
+ * reducer needs is the state the loop always kept, and the only genuinely new thing here is that the
+ * mutation gets REPORTED — under a tail that turn is on somebody's screen.
+ */
+export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}): RowReducer {
+  // tool_use id → the part awaiting its result and the turn it went out in, so a `tool_result` row
+  // lands on the call that made it and can name where that call is drawn.
+  const pendingTools = new Map<string, PendingTool>();
+
+  // A nested `function` rather than a method on the returned object: the body below is the old loop
+  // body at the indentation it always had, so this refactor is readable as the move it is.
+  function push(line: string): Reduction {
+    const entries: TranscriptEntry[] = [];
+    const changed = new Set<string>();
+    if (line.trim() === "") return NO_CHANGE;
     let parsed: JsonValue;
     try {
       // SAFETY: `JSON.parse` output IS a JsonValue by construction — string/number/boolean/null or
       // an array/object of those. Naming it here is what keeps every field read below checked.
       parsed = JSON.parse(line) as JsonValue;
     } catch {
-      continue; // partial trailing write, or the clipped first line of a tail read
+      return NO_CHANGE; // partial trailing write, or the clipped first line of a tail read
     }
     // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
     // no row shape at all — skip it exactly as an unparseable line is skipped.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: RawRow = parsed;
     // `isMeta`: the operator did not write this row. Measured on Claude Code 2.1.146 to 2.1.283, a
     // meta row that also carries `promptSource: "system"` is a prompt Claude sent on its own: another
     // session's message, a scheduled or /loop wake-up, the continuation after a usage limit. The
     // turn after it answers it, so it stays, as a note and never as "You". Every other meta row is
     // addressed to the model (a skill body, an image's source path, a caveat) and is dropped.
-    if (row.isMeta === true && row.promptSource !== "system") continue;
+    if (row.isMeta === true && row.promptSource !== "system") return NO_CHANGE;
     const type = row.type;
-    if (type !== "user" && type !== "assistant") continue;
-    if (row.isSidechain === true && !opts.includeSidechains) continue;
+    if (type !== "user" && type !== "assistant") return NO_CHANGE;
+    if (row.isSidechain === true && !opts.includeSidechains) return NO_CHANGE;
 
     const message = row.message;
-    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) continue;
+    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return NO_CHANGE;
     const content = message.content;
     const uuid = typeof row.uuid === "string" ? row.uuid : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
@@ -245,11 +270,12 @@ export function parseClaudeTranscript(
       // A string content is the HUMAN-turn carrier — but Claude Code also routes injected plumbing
       // through it, so classify before believing it (see classifyUserText).
       const classified = classifyUserText(content);
-      if (classified === null) continue;
+      if (classified === null) return NO_CHANGE;
       if (classified.role === "note") roleOverride = "note";
       parts.push({ kind: "text", ...clamp(classified.text, MAX_TEXT_CHARS) });
     } else if (Array.isArray(content)) {
       for (const b of content) {
+        // A `continue` over the BLOCK, not the row: the other blocks of this turn still count.
         if (b === null || typeof b !== "object" || Array.isArray(b)) continue;
         if (b.type === "text" && typeof b.text === "string") {
           if (b.text.trim() !== "")
@@ -268,7 +294,10 @@ export function parseClaudeTranscript(
           };
           if (typeof b.id === "string") {
             part.id = b.id;
-            pendingTools.set(b.id, part);
+            // The turn is named here, before it exists, because `uuid` is read off the row above and
+            // the part is already the object the turn will carry. `rememberPending` is what keeps an
+            // orphan call from growing this map for the life of a session.
+            rememberPending(pendingTools, b.id, { part, uuid });
           }
           parts.push(part);
         } else if (b.type === "tool_result") {
@@ -281,10 +310,12 @@ export function parseClaudeTranscript(
           const resultText = stripAnsi(toolResultText(b.content));
           if (target) {
             pendingTools.delete(id);
-            target.result = toolResult(resultText, b.is_error === true);
+            target.part.result = toolResult(resultText, b.is_error === true);
             // `toolUseResult` rides on the ROW, not on the content block: it is Claude's own record of
             // what the call did, and it is the only place a diff or an exit code ever appears.
-            if (target.call) enrichCall(target.call, row.toolUseResult);
+            if (target.part.call) enrichCall(target.part.call, row.toolUseResult);
+            // The mutation above landed in a turn that went out rows ago. Name it.
+            changed.add(target.uuid);
           } else if (resultText.trim() !== "") {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.
@@ -299,7 +330,11 @@ export function parseClaudeTranscript(
       }
     }
 
-    if (parts.length === 0) continue; // bookkeeping row with nothing to show
+    // A row with nothing to SHOW, which is not the same as a row that did nothing: the common case
+    // here is a `tool_result` row whose result folded onto a call in an earlier turn, so it adds no
+    // turn of its own and has still changed one. `NO_CHANGE` here would drop that report on the floor
+    // and leave the folded result invisible to a tail, which is the one fault this spec exists to fix.
+    if (parts.length === 0) return reduction(entries, changed);
     const role: TranscriptEntry["role"] =
       row.isCompactSummary === true
         ? "summary"
@@ -307,9 +342,10 @@ export function parseClaudeTranscript(
           ? "assistant"
           : (roleOverride ?? "user");
     entries.push({ uuid, ts, role, parts });
+    return reduction(entries, changed);
   }
 
-  return entries;
+  return { push };
 }
 
 /**

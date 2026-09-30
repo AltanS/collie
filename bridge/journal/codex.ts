@@ -28,6 +28,15 @@ import { join } from "node:path";
 
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
+import {
+  NO_CHANGE,
+  parseWith,
+  reduction,
+  rememberPending,
+  type PendingTool,
+  type Reduction,
+  type RowReducer,
+} from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
@@ -214,29 +223,54 @@ type CodexRow = JsonObject;
  * write, and a tail-read window starts mid-line by construction.
  */
 export function parseCodexTranscript(text: string): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  const seen = new Map<string, number>();
-  // call_id → the part awaiting its output, so a `function_call_output` lands on its own call.
-  const pendingTools = new Map<string, Extract<TranscriptPart, { kind: "tool" }>>();
+  return parseWith(createCodexReducer(), text);
+}
 
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+/**
+ * The same reading, one row at a time (see `reduce.ts`).
+ *
+ * The loop this replaces was already a reducer wearing a `for`: both maps below were carried across
+ * rows, and a `function_call_output` MUTATED a part inside a turn the loop had already pushed. So the
+ * state a reducer needs is the state the loop always kept, and the only genuinely new thing here is
+ * that the mutation gets REPORTED — under a tail that turn is on somebody's screen.
+ *
+ * Every row-level `continue` of that loop is a `return` here, and there is no other kind: Codex
+ * flattens a row's content in {@link blockText} and in one inline `.map`, so the body never held an
+ * inner loop to `continue` over.
+ */
+export function createCodexReducer(): RowReducer {
+  // Row hash → how many times it has been seen, which is what gives two byte-identical rows distinct
+  // cursors (see codexCursor). DELIBERATELY UNBOUNDED, unlike `pendingTools` below: evicting an entry
+  // would make a later identical row reuse an earlier row's uuid, and a cursor pointing at the wrong
+  // turn is worse than the memory. Its size is bounded by the window a reader feeds the reducer, not
+  // by the length of the session.
+  const seen = new Map<string, number>();
+  // call_id → the part awaiting its output and the turn it went out in, so a `function_call_output`
+  // lands on its own call and can name where that call is drawn.
+  const pendingTools = new Map<string, PendingTool>();
+
+  // A nested `function` rather than a method on the returned object: the body below is the old loop
+  // body at the indentation it always had, so this refactor is readable as the move it is.
+  function push(line: string): Reduction {
+    const entries: TranscriptEntry[] = [];
+    const changed = new Set<string>();
+    if (line.trim() === "") return NO_CHANGE;
     let parsed: JsonValue;
     try {
       // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
       // read below a checked property access.
       parsed = JSON.parse(line) as JsonValue;
     } catch {
-      continue;
+      return NO_CHANGE;
     }
     // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
     // no row shape — skip it exactly as an unparseable line is skipped.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: CodexRow = parsed;
     // The double-booking guard: everything the UI stream carries is already in `response_item`.
-    if (row.type !== "response_item") continue;
+    if (row.type !== "response_item") return NO_CHANGE;
     const payload = row.payload;
-    if (payload === null || payload === undefined || typeof payload !== "object" || Array.isArray(payload)) continue;
+    if (payload === null || payload === undefined || typeof payload !== "object" || Array.isArray(payload)) return NO_CHANGE;
     const p: JsonObject = payload;
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
     const uuid = codexCursor(line, seen);
@@ -246,13 +280,13 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
       // rows carrying the injected system prompts (permissions, multi-agent instructions) — three of
       // them before the first real turn — and treating an unknown role as speech would render those
       // as things the operator said. Anything that isn't user or assistant is plumbing: drop it.
-      if (p.role !== "user" && p.role !== "assistant") continue;
+      if (p.role !== "user" && p.role !== "assistant") return NO_CHANGE;
       const role = p.role;
       const body = stripAnsi(blockText(p.content));
-      if (body.trim() === "") continue;
-      if (role === "user" && isInjectedContext(body)) continue;
+      if (body.trim() === "") return NO_CHANGE;
+      if (role === "user" && isInjectedContext(body)) return NO_CHANGE;
       entries.push({ uuid, ts, role, parts: [{ kind: "text", ...clamp(body, MAX_TEXT_CHARS) }] });
-      continue;
+      return reduction(entries, changed);
     }
 
     if (p.type === "reasoning") {
@@ -268,14 +302,14 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
             .filter(Boolean)
             .join("\n\n")
         : "";
-      if (summary.trim() === "") continue; // encrypted-only reasoning row — nothing to show
+      if (summary.trim() === "") return NO_CHANGE; // encrypted-only reasoning row — nothing to show
       entries.push({
         uuid,
         ts,
         role: "assistant",
         parts: [{ kind: "thinking", ...clamp(stripAnsi(summary), MAX_TEXT_CHARS) }],
       });
-      continue;
+      return reduction(entries, changed);
     }
 
     if (p.type === "function_call") {
@@ -289,10 +323,13 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
       };
       if (typeof p.call_id === "string") {
         part.id = p.call_id;
-        pendingTools.set(p.call_id, part);
+        // The turn is named here, before it exists, because `uuid` is the row's own cursor above and
+        // the part is already the object the turn will carry. `rememberPending` is what keeps an
+        // orphan call from growing this map for the life of a session.
+        rememberPending(pendingTools, p.call_id, { part, uuid });
       }
       entries.push({ uuid, ts, role: "assistant", parts: [part] });
-      continue;
+      return reduction(entries, changed);
     }
 
     if (p.type === "function_call_output") {
@@ -308,10 +345,12 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
         // Mutated in place — the part already sits in an emitted entry, which is exactly why results
         // attach without reordering anything.
         pendingTools.delete(id);
-        target.result = result;
+        target.part.result = result;
         // The RAW field, not the unwrapped text: the exit code rides in `output`'s `metadata`, which
         // `codexToolOutput` throws away by design.
-        if (target.call) enrichCall(target.call, p.output);
+        if (target.part.call) enrichCall(target.part.call, p.output);
+        // The mutation above landed in a turn that went out rows ago. Name it.
+        changed.add(target.uuid);
       } else if (outputText.trim() !== "") {
         // Orphan output (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -325,9 +364,16 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
         });
       }
     }
+
+    // The row added no turn, which is not the same as a row that did nothing: the common case here is
+    // a `function_call_output` whose result folded onto a call in an earlier turn, so it adds nothing
+    // of its own and has still changed something. `NO_CHANGE` here would drop that report on the floor
+    // and leave the folded result invisible to a tail, which is the one fault this exercise exists to
+    // fix. It is also the answer for a `response_item` of a type this parser ignores.
+    return reduction(entries, changed);
   }
 
-  return entries;
+  return { push };
 }
 
 /**
