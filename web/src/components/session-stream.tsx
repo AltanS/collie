@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, type CSSProperties, type RefObject } 
 import { ArrowUpToLine, Loader2 } from "lucide-react";
 
 import { ItemView, ToolGroup, groupRuns } from "@/components/chat-cards";
+import { StatusDot } from "@/components/status-badge";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
@@ -45,6 +46,28 @@ import { cn } from "@/lib/utils";
  * Lifted verbatim from the prototype this screen came out of (experiments/session-stream).
  */
 const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-intrinsic-size:auto_64px] -m-3 p-3";
+
+/**
+ * THE TAIL ROW: a turn is in flight and nothing has landed yet.
+ *
+ * THE MIRROR NEVER NEEDED THIS AND THIS BODY DOES, which is the whole reason it exists. On the
+ * terminal the agent's own spinner is right there in the output — "Compacting conversation…" with a
+ * progress bar under it — so a busy pane looks busy. This body draws the agent's RECORD, and a record
+ * gains nothing while a turn is being thought about. A compaction writes no row for minutes and then
+ * writes one summary, so in Chat a compacting session looked exactly like a finished one. The only
+ * live sign was an 8px dot badged on the tile in the header, which is chrome saying "this pane is
+ * busy" and not the body saying "your turn is still going".
+ *
+ * IT IS NOT A SECOND MARK FOR THE SAME FACT (the rule that keeps `compact_boundary` out of the
+ * reader, and ADR 0063 point 3). The dot is about the PANE, in the chrome, at the top. This is about
+ * the THREAD, at the end of the thread, where the next turn will appear.
+ *
+ * AND IT DOES NOT CLAIM TO KNOW WHAT the agent is doing. The percentage and the words "Compacting
+ * conversation…" live on the screen, and reading them would mean a per-harness screen parser feeding
+ * the body that is meant to be screen-independent (ADR 0073). `working` is the one fact both bodies
+ * already share. So the row says a turn is running and nothing more, because that is all it knows.
+ */
+const LIVE_ROW = "mt-1 flex items-center gap-2 py-2 text-xs font-medium text-muted-foreground";
 
 /** The top affordance, the same shape and the same words the mirror's own scrollback row uses. */
 const EDGE_ROW =
@@ -103,6 +126,7 @@ function textTokens(size: number): CSSProperties {
 export function SessionStream({
   feed,
   address,
+  working,
   showToolCalls,
   fontSize,
   listRef,
@@ -111,6 +135,11 @@ export function SessionStream({
   feed: ChatFeed;
   /** This pane's full address (host + session + id) — the key its scroll position is kept under. */
   address: string;
+  /**
+   * The agent is mid-turn, from the pane record's own status. See the note at {@link LIVE_ROW} for
+   * why this body needs telling and the mirror does not.
+   */
+  working: boolean;
   /** Settings → Appearance. Off folds every run, including a lone step, to one summary line. */
   showToolCalls: boolean;
   /** The stream's own text size in px, from the belt's Display dock (`chatFontSize`). */
@@ -247,6 +276,19 @@ export function SessionStream({
           )}
         </div>
       ))}
+
+      {/* A turn is running. Last of the thread, because that is where its answer will arrive. Drawn
+          only where the window is actually being read: a pane whose journal cannot be read is busy
+          in the chrome, and saying so HERE would promise a turn this body will never show. */}
+      {working && window.status.kind === "live" && (
+        <div data-slot="stream-live" className={LIVE_ROW}>
+          {/* The same mark a running step wears inside a card (`chat-cards.tsx` § StepStatus), so
+              "still going" looks the same wherever the stream says it. UNNAMED: it leads the word,
+              and a name here is the state announced twice (status-badge.tsx § label). */}
+          <StatusDot status="working" live className="size-2" />
+          <span>{t("chat.stream.working")}</span>
+        </div>
+      )}
 
       {/* The reading, when there is one, and only where there is nothing to read under it. A stale
           member keeps its turns — they were true when they arrived, and a version skew does not

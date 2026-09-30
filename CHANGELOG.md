@@ -30,6 +30,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **Chat says when a turn is still running, so a compaction is not an empty screen.** The terminal
+  mirror shows the agent's own spinner, but Chat draws the agent's record, and a record gains nothing
+  while a session compacts. So a pane that had been busy for minutes looked exactly like a finished
+  one. The thread now ends with a working mark until the next turn lands.
+
 ### Added
 
 - **Chat shows the work a codex pane did, not only the words it said.** Codex runs nearly everything

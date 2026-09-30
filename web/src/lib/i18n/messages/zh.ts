@@ -351,6 +351,7 @@ export const zh: Dictionary = {
   "chat.mode.terminal": "终端视图",
   "chat.mode.noChat": "{reason} 这里保持终端视图。",
   "chat.stream.empty": "此会话还没有任何对话。",
+  "chat.stream.working": "仍在处理…",
   "chat.stream.loadOlderFailed": "无法加载更早的对话",
   "chat.card.create": "新建",
   "chat.card.edit": "编辑",

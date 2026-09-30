@@ -1992,6 +1992,12 @@ export function AgentChat({
               <SessionStream
                 feed={chatFeed}
                 address={paneScopeKey(scope, paneId)}
+                // The pane record's own status, the one live fact both bodies share. The mirror gets
+                // this for free — the agent's spinner is in the output it draws — so only this body
+                // has to be told (session-stream.tsx § LIVE_ROW). `connecting` withholds it for the
+                // same reason the status dot dims: a frozen reading must not animate as if it were
+                // arriving.
+                working={agent?.status === "working" && !connecting}
                 showToolCalls={dash.prefs.showToolCalls}
                 fontSize={prefs.chatFontSize}
                 listRef={listRef}

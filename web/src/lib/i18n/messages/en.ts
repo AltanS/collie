@@ -415,6 +415,7 @@ export const en = {
 
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Nothing has been said in this session yet.",
+  "chat.stream.working": "Still working…",
   "chat.stream.loadOlderFailed": "Couldn't load older turns",
   // --- chat.card (the blocks of the stream: turns, steps, notices) ---
   // A card's LABEL is the kind of step, a chrome word. What the step acted on — a path, a command,

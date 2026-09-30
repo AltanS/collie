@@ -350,6 +350,7 @@ export const zhTW: Dictionary = {
   "chat.mode.terminal": "終端機檢視",
   "chat.mode.noChat": "{reason} 這裡維持終端機檢視。",
   "chat.stream.empty": "這個工作階段還沒有任何對話。",
+  "chat.stream.working": "仍在處理…",
   "chat.stream.loadOlderFailed": "無法載入較早的對話",
   "chat.card.create": "新增",
   "chat.card.edit": "編輯",

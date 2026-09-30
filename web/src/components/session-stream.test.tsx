@@ -42,12 +42,13 @@ function feedOf(window: Partial<ChatWindow>, over: Partial<ChatFeed> = {}): Chat
   };
 }
 
-function renderStream(feed: ChatFeed, showToolCalls = true) {
+function renderStream(feed: ChatFeed, showToolCalls = true, working = false) {
   const listRef = createRef<ChatMessageListHandle>();
   return render(
     <SessionStream
       feed={feed}
       address="w1:p1"
+      working={working}
       showToolCalls={showToolCalls}
       fontSize={14}
       listRef={listRef}
@@ -131,6 +132,7 @@ describe("SessionStream", () => {
           { loadOlder, loadingOlder: true },
         )}
         address="w1:p1"
+        working={false}
         showToolCalls
         fontSize={14}
         listRef={listRef}
@@ -150,6 +152,7 @@ describe("SessionStream", () => {
       <SessionStream
         feed={feedOf({ status: { kind: "live" }, entries, hasOlder }, { loadOlder })}
         address="w1:p1"
+        working={false}
         showToolCalls
         fontSize={14}
         listRef={listRef}
@@ -190,6 +193,7 @@ describe("SessionStream", () => {
           { loadOlder, loadingOlder },
         )}
         address="w1:p1"
+        working={false}
         showToolCalls
         fontSize={14}
         listRef={listRef}
@@ -285,5 +289,37 @@ describe("SessionStream", () => {
       true,
     );
     expect(screen.getByText("Read")).toBeInTheDocument();
+  });
+  // ── the tail row: a turn in flight ────────────────────────────────────────
+  // The mirror shows the agent's own spinner; this body draws the record, and a record gains nothing
+  // while a compaction runs. Without this row a compacting session looked exactly like a finished one.
+  it("says a turn is still running while the agent is working", () => {
+    renderStream(feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "hi")] }), true, true);
+    expect(screen.getByText("Still working…")).toBeInTheDocument();
+  });
+
+  it("says nothing while the agent is idle", () => {
+    renderStream(feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "hi")] }), true, false);
+    expect(screen.queryByText("Still working…")).not.toBeInTheDocument();
+  });
+
+  it("says nothing over a journal it cannot read, busy or not", () => {
+    // Busy in the chrome is true; promising a turn this body will never draw is not.
+    renderStream(
+      feedOf({ status: { kind: "unavailable", reason: "no-session" }, entries: [] }),
+      true,
+      true,
+    );
+    expect(screen.queryByText("Still working…")).not.toBeInTheDocument();
+  });
+
+  it("stands at the END of the thread, where the answer will arrive", () => {
+    const { container } = renderStream(
+      feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "hi")] }),
+      true,
+      true,
+    );
+    const blocks = [...container.querySelectorAll("[data-block], [data-slot='stream-live']")];
+    expect(blocks.at(-1)?.getAttribute("data-slot")).toBe("stream-live");
   });
 });
