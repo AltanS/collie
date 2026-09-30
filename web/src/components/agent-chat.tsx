@@ -254,7 +254,7 @@ export function AgentChat({
 
   const { launchers, home: launchersHome } = useLaunchers(scope);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
+  const { prefs, setWrap, stepFontSize, stepChatFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
     useDisplayPrefs();
   // The chosen terminal font (Settings → Terminal font), applied by re-pointing `--font-mono` on
   // the two mirror surfaces below and NOWHERE else — see mirrorFont() for how, and why it is not a
@@ -1992,6 +1992,7 @@ export function AgentChat({
                 feed={chatFeed}
                 address={paneScopeKey(scope, paneId)}
                 showToolCalls={dash.prefs.showToolCalls}
+                fontSize={prefs.chatFontSize}
                 listRef={listRef}
               />
             ) : (
@@ -2360,6 +2361,24 @@ export function AgentChat({
                   mirrorNative={mirrorNative}
                   setMirrorNative={setMirrorNative}
                   setExpandClippedReply={setExpandClippedReply}
+                  // THE BODY SWITCH, second door. The ⋮ menu writes the same value; this is the one
+                  // an operator opens to change how a pane LOOKS, which is the question it answers.
+                  // `chosen` and `showing` are both passed because they differ on a pane with no
+                  // journal, and the dock draws rows for what is on screen, not for what was picked.
+                  paneView={
+                    chatOffered
+                      ? {
+                          chosen: dash.prefs.paneView,
+                          showing: chatBody ? "chat" : "terminal",
+                          onChange: dash.setPaneView,
+                          note: chatNote,
+                          showToolCalls: dash.prefs.showToolCalls,
+                          setShowToolCalls: dash.setShowToolCalls,
+                          chatFontSize: prefs.chatFontSize,
+                          stepChatFontSize,
+                        }
+                      : undefined
+                  }
                   onSent={onSent}
                   // The switcher mark, for the actions belt's top rule — see the condition at
                   // `pullHandle` above, and actions-row.tsx for what it draws.

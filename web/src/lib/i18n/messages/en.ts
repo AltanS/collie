@@ -397,6 +397,9 @@ export const en = {
   // The row names WHERE IT TAKES YOU, the way "Find in output" and "Conversation history" beside it
   // do. Deliberately not "Show as terminal": "Focus in the terminal" is already a row in this sheet
   // and moves the operator's own screen, which this never does.
+  "chat.mode.view.label": "View",
+  "chat.mode.option.terminal": "Terminal",
+  "chat.mode.option.chat": "Chat",
   "chat.mode.chat": "Chat view",
   "chat.mode.terminal": "Terminal view",
   // The row EXPLAINS rather than hides (M41/11): a control that disappears on some panes is how an

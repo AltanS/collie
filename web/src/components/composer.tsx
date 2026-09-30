@@ -21,7 +21,7 @@ import { NavTray } from "@/components/nav-tray";
 import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
-import { DisplayPrefsContent } from "@/components/display-prefs";
+import { DisplayPrefsContent, type PaneViewControl } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -137,6 +137,14 @@ interface ComposerProps {
   mirrorNative: boolean;
   setMirrorNative: (native: boolean) => void;
   setExpandClippedReply: (expandClippedReply: boolean) => void;
+  /**
+   * The Display dock's Chat half: the body switch and the rows that answer for the stream. Threaded
+   * straight through to {@link DisplayPrefsContent}; this file decides nothing about it.
+   *
+   * Absent, rather than flagged off: while the Chat experiment is off there is no second body, so
+   * the dock draws exactly the rows it drew before Chat existed.
+   */
+  paneView?: PaneViewControl;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
 
@@ -297,7 +305,7 @@ interface ClearedDraft {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle, draftNoticeSlot, changesPill },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, paneView, onSent, pullHandle, draftNoticeSlot, changesPill },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1468,6 +1476,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               setRawTerminal={setRawTerminal}
               setTapToFocus={setTapToFocus}
               setExpandClippedReply={setExpandClippedReply}
+              paneView={paneView}
             />
           </ComposerDock>
         )}

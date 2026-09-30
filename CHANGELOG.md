@@ -210,6 +210,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
   glance rather than a read.
 
+- **The belt's Display settings answer for the body you are looking at.** Over a Chat stream you got
+  the terminal mirror's six rows, of which one did anything, with no way to tell which. The dock now
+  carries the Terminal / Chat switch at the top, the same choice the pane's ⋮ menu writes, and below
+  it the rows that apply: text size and tool calls for Chat, the mirror's five for the terminal.
+  Text size comes first in both instead of last under five switches, and Chat's size is its own
+  number, so a stream you can read does not mean a terminal you cannot.
+
 - **A flag or a branch name in backticks is no longer cut in half at the line end.** A hyphen, a
   slash and a colon are ordinary places for a line to break, so `--force` could come out as `--`
   then `force`, and an address like `http://bluefin:8788` could be split across two lines. Anything

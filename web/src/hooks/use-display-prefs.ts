@@ -34,6 +34,19 @@ export interface DisplayPrefs {
    * a stored preference, and the clamp at the call site is what the browser sees.
    */
   draftFontSize: number;
+  /**
+   * Font size in px for the CHAT stream's prose (default: 14, range: 12-20).
+   *
+   * A third number and not the mirror's, for the same reason the draft has its own: the mirror is a
+   * grid of monospace cells you scan, and 10px is right for it; the stream is a page of prose you
+   * READ, and 10px prose is not text, it is a rumour. Sharing one knob would make every choice a
+   * compromise between a terminal and a paragraph.
+   *
+   * 14 is `text-sm`, exactly what the stream rendered before this setting existed, so an install
+   * that never opens it sees no change. The range runs UP further than the mirror's, because the
+   * reason to touch this one is eyesight rather than density.
+   */
+  chatFontSize: number;
   /** Terminal mirror font family, as a key into FONT_STACKS (default: "system" — the app's own
    *  `--font-mono`, i.e. exactly what every install rendered before this setting existed). */
   fontFamily: FontFamily;
@@ -182,10 +195,14 @@ export const FONT_MAX = 16;
  *  than the mirror's at both ends. */
 export const DRAFT_FONT_MIN = 13;
 export const DRAFT_FONT_MAX = 16;
+/** The chat stream's own range — see `chatFontSize` on {@link DisplayPrefs} for why it is its own. */
+export const CHAT_FONT_MIN = 12;
+export const CHAT_FONT_MAX = 20;
 const DEFAULTS: DisplayPrefs = {
   wrap: true,
   fontSize: 10,
   draftFontSize: 14,
+  chatFontSize: 14,
   fontFamily: "system",
   rawTerminal: false,
   tapToFocus: true,
@@ -194,6 +211,10 @@ const DEFAULTS: DisplayPrefs = {
 
 function readFontFamily(value: string | undefined): FontFamily {
   return value !== undefined && isFontFamily(value) ? value : DEFAULTS.fontFamily;
+}
+
+function clampChatFont(n: number): number {
+  return Math.max(CHAT_FONT_MIN, Math.min(CHAT_FONT_MAX, Math.round(n)));
 }
 
 function clampFont(n: number): number {
@@ -266,6 +287,7 @@ function loadPrefs(): DisplayPrefs {
     if (!p) return DEFAULTS;
     const fontSize = asJsonNumber(p.fontSize);
     const draftFontSize = asJsonNumber(p.draftFontSize);
+    const chatFontSize = asJsonNumber(p.chatFontSize);
     return {
       wrap: asJsonBoolean(p.wrap) ?? DEFAULTS.wrap,
       fontSize: fontSize === undefined ? DEFAULTS.fontSize : clampFont(fontSize),
@@ -273,6 +295,9 @@ function loadPrefs(): DisplayPrefs {
       // had its own size reads 14, which is the change this shipped. Nobody's mirror size moves.
       draftFontSize:
         draftFontSize === undefined ? DEFAULTS.draftFontSize : clampDraftFont(draftFontSize),
+      // And the same rule again: a payload written before Chat existed reads 14, which is the size
+      // the stream already had.
+      chatFontSize: chatFontSize === undefined ? DEFAULTS.chatFontSize : clampChatFont(chatFontSize),
       // Same independent-default rule as the fields above it, so a payload written before the
       // family existed reads "system" — an existing install sees no change at all.
       fontFamily: readFontFamily(asJsonString(p.fontFamily)),
@@ -307,6 +332,8 @@ export interface UseDisplayPrefsReturn {
   stepFontSize: (delta: number) => void;
   /** Step the draft field's size by delta (positive = larger), clamped to 13–16. */
   stepDraftFontSize: (delta: number) => void;
+  /** Step the chat stream's size by delta (positive = larger), clamped to 12–20. */
+  stepChatFontSize: (delta: number) => void;
   /** Toggle or explicitly set the raw-terminal escape hatch. */
   setRawTerminal: (raw: boolean) => void;
   /** Toggle or explicitly set whether a mirror tap focuses the composer. */
@@ -358,6 +385,14 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
+  const stepChatFontSize = useCallback((delta: number) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, chatFontSize: clampChatFont(p.chatFontSize + delta) };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
   const setRawTerminal = useCallback((rawTerminal: boolean) => {
     setPrefs((p) => {
       const next: DisplayPrefs = { ...p, rawTerminal };
@@ -389,6 +424,7 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     setFontFamily,
     stepFontSize,
     stepDraftFontSize,
+    stepChatFontSize,
     setRawTerminal,
     setTapToFocus,
     setExpandClippedReply,

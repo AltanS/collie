@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, type CSSProperties, type RefObject } from "react";
 import { ArrowUpToLine, Loader2 } from "lucide-react";
 
 import { ItemView, ToolGroup, groupRuns } from "@/components/chat-cards";
@@ -73,10 +73,38 @@ export function chatStatusKey(status: ChatStatus): MessageKey | null {
   }
 }
 
+/**
+ * The reader's own text size, as three token overrides rather than one `font-size`.
+ *
+ * Tailwind compiles `text-sm` to `font-size: var(--text-sm)`, and a custom property CASCADES, so
+ * re-declaring the token on the scroller resizes every `text-sm` inside it — the blocks, the cards,
+ * the Markdown renderer — with no prop threaded into any of them and no class to keep in step. A
+ * plain `font-size` here would have moved nothing, because `text-sm` is a rem and does not listen
+ * to its parent.
+ *
+ * The other two ride the same ratio they have in the theme (12/14 and 16/14), so a heading stays a
+ * step above the body and a caption a step below it at every size. Their own line heights are
+ * unitless ratios in the theme, so they follow on their own.
+ *
+ * `text-[11px]` chrome inside the stream is deliberately NOT in here. A caption is chrome and the
+ * words are content (DESIGN.md §5), and this control is about the words.
+ */
+function textTokens(size: number): CSSProperties {
+  // SAFETY: `CSSProperties` has no index signature for custom properties, and React has accepted
+  // them on `style` since 18. Every value here is a string this function built, so the assertion
+  // widens the key names and asserts nothing about the values.
+  return {
+    "--text-xs": `${((size * 12) / 14).toFixed(2)}px`,
+    "--text-sm": `${size}px`,
+    "--text-base": `${((size * 16) / 14).toFixed(2)}px`,
+  } as CSSProperties;
+}
+
 export function SessionStream({
   feed,
   address,
   showToolCalls,
+  fontSize,
   listRef,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
@@ -85,6 +113,8 @@ export function SessionStream({
   address: string;
   /** Settings → Appearance. Off folds every run, including a lone step, to one summary line. */
   showToolCalls: boolean;
+  /** The stream's own text size in px, from the belt's Display dock (`chatFontSize`). */
+  fontSize: number;
   /** The pane view's one list handle: a send snaps the body it is looking at back to the tail. */
   listRef: RefObject<ChatMessageListHandle | null>;
 }) {
@@ -187,6 +217,7 @@ export function SessionStream({
       // scrolling back through a conversation would stop a permission dialog appearing. Reading
       // older turns is an ordinary act in this body and a rare one in that one.
       className="px-3 pt-0 pb-3"
+      style={textTokens(fontSize)}
     >
       {/* Top of the window. Older turns come off `hasOlder` and nothing else: what the live window
           has trimmed is the History read's job, reached through `?before=`, and the bridge holds

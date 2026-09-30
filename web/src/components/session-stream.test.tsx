@@ -45,7 +45,13 @@ function feedOf(window: Partial<ChatWindow>, over: Partial<ChatFeed> = {}): Chat
 function renderStream(feed: ChatFeed, showToolCalls = true) {
   const listRef = createRef<ChatMessageListHandle>();
   return render(
-    <SessionStream feed={feed} address="w1:p1" showToolCalls={showToolCalls} listRef={listRef} />,
+    <SessionStream
+      feed={feed}
+      address="w1:p1"
+      showToolCalls={showToolCalls}
+      fontSize={14}
+      listRef={listRef}
+    />,
   );
 }
 
@@ -126,6 +132,7 @@ describe("SessionStream", () => {
         )}
         address="w1:p1"
         showToolCalls
+        fontSize={14}
         listRef={listRef}
       />,
     );
@@ -144,6 +151,7 @@ describe("SessionStream", () => {
         feed={feedOf({ status: { kind: "live" }, entries, hasOlder }, { loadOlder })}
         address="w1:p1"
         showToolCalls
+        fontSize={14}
         listRef={listRef}
       />
     );
@@ -183,6 +191,7 @@ describe("SessionStream", () => {
         )}
         address="w1:p1"
         showToolCalls
+        fontSize={14}
         listRef={listRef}
       />
     );
