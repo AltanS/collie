@@ -40,6 +40,7 @@ describe("coerceDashPrefs", () => {
       beltScale: 1.15,
       dashView: "panes",
       showToolCalls: false,
+      paneOrder: "place",
     });
   });
 
@@ -58,6 +59,7 @@ describe("coerceDashPrefs", () => {
         beltScale: 1.5,
         dashView: "changes",
         showToolCalls: true,
+        paneOrder: "activity",
       }),
     ).toEqual({
       spacesOpen: false,
@@ -72,6 +74,7 @@ describe("coerceDashPrefs", () => {
       beltScale: 1.5,
       dashView: "changes",
       showToolCalls: true,
+      paneOrder: "activity",
     });
   });
 
@@ -130,6 +133,7 @@ describe("coerceDashPrefs", () => {
       beltScale: 1.15,
       dashView: "panes",
       showToolCalls: false,
+      paneOrder: "place",
     });
   });
 });
@@ -152,6 +156,7 @@ describe("useDashPrefs", () => {
       beltScale: 1.15,
       dashView: "panes",
       showToolCalls: false,
+      paneOrder: "place",
     });
   });
 
@@ -171,6 +176,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setBeltScale(1.3));
     act(() => first.result.current.setDashView("focus"));
     act(() => first.result.current.setShowToolCalls(true));
+    act(() => first.result.current.setPaneOrder("activity"));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -186,6 +192,7 @@ describe("useDashPrefs", () => {
       beltScale: 1.3,
       dashView: "focus",
       showToolCalls: true,
+      paneOrder: "activity",
     });
   });
 

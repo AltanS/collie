@@ -3,7 +3,11 @@
 - **Status:** Accepted
 - **Amended in scope by:** [ADR 0070](./0070-a-pin-is-a-place-the-operator-chose.md): a pane gains
   one more place, the Pinned group the operator pins it to, in place order; no list is ordered by
-  status, and everything else below stands.
+  status, and everything else below stands. And by
+  [ADR 0071](./0071-the-operator-may-ask-for-activity-order.md), which takes up the Revisit clause
+  at the foot of this record: the pane switcher may run by ACTIVITY on the operator's own request,
+  with the reading frozen while the list is on screen, so nothing moves on a poll in either order.
+  No list is ordered by status, and everything else below stands.
 - **Date:** 2026-09-23
 - **Shipped in:** pending
 - **Trail:** `bridge/state-engine.ts` (`byPlace`) · `bridge/crew/merge.ts` (`placeSorted`, which

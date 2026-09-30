@@ -11,6 +11,7 @@ import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { LanguageControl } from "@/components/language-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
+import { PaneOrderControl } from "@/components/pane-order-control";
 import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { SnoozeControl } from "@/components/snooze-control";
@@ -70,6 +71,10 @@ export function SettingsAppearanceRoute() {
           band, pills, icons and words (components/actions-row.tsx, `--belt-scale`). */}
       <HarnessBarControl />
       <BeltSizeControl />
+      {/* Which way a pane list runs (ADR 0071). Here rather than in Device because it decides how a
+          surface is ARRANGED, which is the same question every card above answers. The pane
+          switcher's own toggle writes the same value; this is where you go to find it. */}
+      <PaneOrderControl />
       {/* Last, and it is the odd one here: every card above changes how a surface LOOKS, and this
           one changes what a surface CONTAINS. It earns the place anyway, because the question it
           answers is the same question — what do I want on screen — and filing it under Device would

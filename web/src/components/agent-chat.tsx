@@ -2362,6 +2362,11 @@ export function AgentChat({
             launchRefusal={hostBlock}
             launchOpen={openForCount(dash.prefs.launchOpen, launchers.length)}
             onLaunchOpenChange={dash.setLaunchOpen}
+            // Place or activity (ADR 0071), the operator's own standing choice, stored per device
+            // beside the two folds above. The sheet's toggle and the Settings row write this same
+            // value, so a person who taps it here finds it there.
+            order={dash.prefs.paneOrder}
+            onOrderChange={dash.setPaneOrder}
             className="px-0 py-1"
           />
         </BottomSheet>

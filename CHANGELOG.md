@@ -74,6 +74,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the name table is shared, so `Bash`, `bash`, `shell` and `exec_command` are one kind of thing.
   Claude Code fills it first; the other five adapters follow.
 
+- **The pane switcher can run by activity instead of by place.** The sheet you open with the layers
+  mark keeps every pane in its space and tab, which is the right answer when you know where you are
+  going and the wrong one when you just want the pane you were last in. A Place / Activity toggle now
+  sits at the top of it, and Activity folds the space headings and the Shells fold into one list,
+  newest first, counting both the agent's own last turn and the last time you were in the pane. The
+  choice is a standing one and also a row under Settings → Appearance → Pane order. It reads the
+  clock once, when the sheet opens, so a pane that finishes a turn while you are reaching for a row
+  repaints where it stands and never moves under your thumb.
+
 ### Fixed
 
 - **A long file name in Changes keeps both ends instead of losing its start.** The tree truncated a

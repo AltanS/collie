@@ -358,6 +358,12 @@ export const en = {
   "chat.switcher.ariaNeedsYou": "Switch pane, another pane needs you",
   "chat.switcher.title": "Switch pane",
   "chat.switcher.launch.here": "here",
+  // --- pane order (the switcher's toggle and the Settings row write one value, ADR 0071) ---
+  "paneOrder.aria": "Pane order",
+  "paneOrder.place": "Place",
+  "paneOrder.activity": "Activity",
+  "paneOrder.recent": "Newest first",
+  "settings.paneOrder.description": "Activity puts the pane where something last happened at the top of the switcher. Place keeps the order your terminal has.",
   "chat.status.feedbackSent": "Feedback sent",
   "chat.status.sent": "Sent",
   "chat.status.menuChanged": "Menu changed — refreshing",
