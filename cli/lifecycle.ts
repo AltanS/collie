@@ -121,7 +121,7 @@ export function systemdUserReachable(exec: Exec, env: Environment = {}): boolean
 /**
  * Which supervisor runs the bridge. {@link systemdUserReachable} is the gate, because a container
  * or a machine with no user instance has the binary and no bus (the pre-shim collie-ctl.sh).
- * launchd is gated on Darwin too: the `gui/<uid>` domain is Darwin-only.
+ * launchd is gated on Darwin too: its GUI and background user domains are Darwin-only.
  *
  * `COLLIE_SUPERVISOR` pins the answer. The shell had no such knob because its tests could redefine
  * `have_launchd` in a heredoc; a compiled binary cannot be monkey-patched, so without this the
@@ -562,6 +562,24 @@ export async function cmdExecBridge(deps: LifecycleDeps): Promise<number> {
 
 // ── The banner ───────────────────────────────────────────────────────────────
 
+/** Discover both domains without adopting an agent another service manager owns. */
+function launchdServiceDescriptions(deps: LifecycleDeps): string[] {
+  const uid = deps.uid();
+  const label = agentLabel(deps.ctx.instance);
+  const descriptions: string[] = [];
+  for (const domain of ["gui", "user"]) {
+    const target = `${domain}/${uid}/${label}`;
+    const result = deps.exec.capture("launchctl", ["print", target]);
+    if (!result.found || result.code !== 0 || result.stdout.trim() === "") continue;
+    // A loaded-but-stopped agent has no pid line. Report both registrations if both exist,
+    // rather than hiding a background service behind a stopped GUI agent after a migration.
+    const pid = /^[ \t]*pid = (\d+)/m.exec(result.stdout)?.[1];
+    const state = pid === undefined ? "loaded, not running" : `active (pid ${pid})`;
+    descriptions.push(`launchd (${target}) · ${state}`);
+  }
+  return descriptions;
+}
+
 /** How the bridge is supervised right now, as the banner's `service` line says it. */
 export function serviceDescription(deps: LifecycleDeps): string {
   const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
@@ -573,21 +591,11 @@ export function serviceDescription(deps: LifecycleDeps): string {
   }
   const pid = deps.files.read(pidFilePath(deps.ctx.configDir, deps.ctx.instance))?.trim();
   if (tier === "launchd") {
-    // `launchctl print` fails when the label isn't loaded; a loaded-but-stopped job has no pid line.
-    const label = agentLabel(deps.ctx.instance);
-    const r = deps.exec.capture("launchctl", ["print", launchdTarget(deps.uid(), deps.ctx.instance)]);
-    const out = r.found && r.code === 0 ? r.stdout : "";
-    if (out.trim() === "") {
-      // No agent — but this Mac may be on the unsupervised fallback (bootstrap refused, e.g. no
-      // console login), where a bridge really is running and only supervision is missing. Reporting
-      // a bare "not loaded" there would read as "nothing is up" while the phone is being served.
-      if (pid !== undefined) return `pid ${pid} (unsupervised — launchd bootstrap refused)`;
-      return `launchd (${label}) · not loaded`;
-    }
-    const running = /^[ \t]*pid = (\d+)/m.exec(out)?.[1];
-    return running !== undefined
-      ? `launchd (${label}) · active (pid ${running})`
-      : `launchd (${label}) · loaded, not running`;
+    const descriptions = launchdServiceDescriptions(deps);
+    if (descriptions.length > 0) return descriptions.join("; ");
+    // Neither domain has the agent, but the unsupervised fallback may still be serving.
+    if (pid !== undefined) return `pid ${pid} (unsupervised — launchd bootstrap refused)`;
+    return `launchd (${agentLabel(deps.ctx.instance)}) · not loaded`;
   }
   return pid !== undefined ? `pid ${pid} (unsupervised)` : "not supervised";
 }
