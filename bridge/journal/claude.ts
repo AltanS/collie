@@ -43,7 +43,16 @@ import {
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
 import { claudeResets, lastTwoTurns } from "./claude-resets.ts";
-import { containedRealpath, exists, head, loadTail, rootList, statFile, tailBytes } from "./files.ts";
+import {
+  containedRealpath,
+  exists,
+  head,
+  loadTail,
+  readSinceFile,
+  rootList,
+  statFile,
+  tailBytes,
+} from "./files.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall, type Hunk, type ToolCall } from "./tool-call.ts";
 import type {
@@ -635,6 +644,17 @@ export class ClaudeTranscriptSource implements TranscriptSource {
   stat = statFile;
 
   load = loadTail;
+
+  /**
+   * The live read, and the hand-over comes free with it.
+   *
+   * `resolve` already follows `continued-in` to the log the conversation moved to, so a hand-over
+   * shows up here as the KEY changing under a cursor taken on the old one. The cursor carries a hash
+   * of the key it was taken on, so it stops matching, and the read resets — which is the truth: the
+   * new log is a new file with its own byte offsets, and the turns in it are not an append to the
+   * turns in the old one. No hand-over code lives in this method, and none should.
+   */
+  readSince = readSinceFile;
 }
 
 /**

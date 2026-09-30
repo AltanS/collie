@@ -73,7 +73,20 @@ import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { NO_CHANGE, parseWith, type Reduction, type RowReducer } from "./reduce.ts";
 import { asRecord, asText, tokenCount } from "./cache-probe.ts";
-import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
+import {
+  type Cursor,
+  decodeCursor,
+  encodeCursor,
+  NO_CURSOR,
+  type ReadSince,
+} from "./cursor.ts";
+import {
+  containedRealpath,
+  FIRST_TAIL_BYTES,
+  FIRST_TAIL_ROWS,
+  MAX_TRANSCRIPT_BYTES,
+  rootList,
+} from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { classifyToolCall, type Hunk, type ToolCall } from "./tool-call.ts";
@@ -241,12 +254,20 @@ function parseData(raw: string | null): JsonValue {
 interface MessageRow {
   id: string;
   time_created: number;
+  /**
+   * The clock the live cursor counts. Selected by every query here and composed into no line: this
+   * column is how a read says "since", and it is not something `parse()` has any business seeing.
+   * Nullable in the schema, so every comparison goes through `coalesce`.
+   */
+  time_updated: number | null;
   data: string | null;
 }
 
 interface PartRow {
   id: string;
   message_id: string;
+  /** A part's own clock, which is the one that moves while a reply streams. See {@link MessageRow}. */
+  time_updated: number | null;
   data: string | null;
 }
 
@@ -270,21 +291,18 @@ function composeLines(db: Database, sessionId: string, store: OpencodeStore): st
   return store === "v2" ? composeLinesV2(db, sessionId) : composeLinesV1(db, sessionId);
 }
 
-/** V1: one `message` row per turn, its `part` rows joined by message id. */
-function composeLinesV1(db: Database, sessionId: string): string[] {
-  const messages = db
-    .query<MessageRow, [string]>(
-      "select id, time_created, data from message where session_id = ? order by time_created, id",
-    )
-    .all(sessionId);
-  // Ids are time-ordered (verified lexicographically monotone), so ordering by id keeps a message's
-  // parts in the order the agent emitted them without trusting a nullable timestamp.
-  const parts = db
-    .query<PartRow, [string]>(
-      "select id, message_id, data from part where session_id = ? order by id",
-    )
-    .all(sessionId);
+/**
+ * The columns every read of this store selects, whole-session or live.
+ *
+ * ONE list rather than one per query, because the composed line must not depend on which read
+ * produced it: a live read and a History read of the same turn have to be the same text, or the two
+ * paths disagree about a conversation for no reason a reader could ever find.
+ */
+const V1_MESSAGE_COLUMNS = "id, time_created, time_updated, data";
+const V1_PART_COLUMNS = "id, message_id, time_updated, data";
 
+/** V1's rows as composed lines: one per message, its parts nested. */
+function linesV1(messages: readonly MessageRow[], parts: readonly PartRow[]): string[] {
   const byMessage = new Map<string, PartRow[]>();
   for (const p of parts) {
     const list = byMessage.get(p.message_id);
@@ -300,6 +318,24 @@ function composeLinesV1(db: Database, sessionId: string): string[] {
       parts: (byMessage.get(m.id) ?? []).map((p) => ({ id: p.id, data: parseData(p.data) })),
     }),
   );
+}
+
+/** V1: one `message` row per turn, its `part` rows joined by message id. */
+function composeLinesV1(db: Database, sessionId: string): string[] {
+  const messages = db
+    .query<MessageRow, [string]>(
+      `select ${V1_MESSAGE_COLUMNS} from message where session_id = ? order by time_created, id`,
+    )
+    .all(sessionId);
+  // Ids are time-ordered (verified lexicographically monotone), so ordering by id keeps a message's
+  // parts in the order the agent emitted them without trusting a nullable timestamp.
+  const parts = db
+    .query<PartRow, [string]>(
+      `select ${V1_PART_COLUMNS} from part where session_id = ? order by id`,
+    )
+    .all(sessionId);
+
+  return linesV1(messages, parts);
 }
 
 /** The role a V2 row's `type` column stands for, or null for a row that is plumbing, not speech. */
@@ -335,6 +371,9 @@ function v2ErrorText(record: JsonObject): string {
   return error !== null && typeof error.message === "string" ? error.message : "";
 }
 
+/** See {@link V1_MESSAGE_COLUMNS} for why there is one list and not one per query. */
+const V2_COLUMNS = "id, type, time_created, time_updated, data";
+
 /**
  * V2: one `session_message` row per turn, its parts inline.
  *
@@ -349,24 +388,24 @@ function composeLinesV2(db: Database, sessionId: string): string[] {
     .query<MessageRowV2, [string]>(
       // `seq` is V2's per-session order (unique index `session_message_session_seq_idx`), so it
       // orders the turns; unlike `time_created` two rows can never share it.
-      "select id, type, time_created, data from session_message where session_id = ? order by seq",
+      `select ${V2_COLUMNS} from session_message where session_id = ? order by seq`,
     )
     .all(sessionId);
-  const lines: string[] = [];
-  for (const row of rows) {
-    const role = v2Role(row.type);
-    if (role === null) continue;
-    const record = asRecord(parseData(row.data)) ?? {};
-    lines.push(
-      JSON.stringify({
-        id: row.id,
-        ts: row.time_created,
-        data: { role, time: record.time },
-        parts: v2Parts(record).map((part, index) => ({ id: `prt_${row.id}_${index}`, data: part })),
-      }),
-    );
-  }
-  return lines;
+  return rows.map(lineV2).filter((line): line is string => line !== null);
+}
+
+
+/** One V2 row as a composed line, or null for a row that is plumbing rather than speech. */
+function lineV2(row: MessageRowV2): string | null {
+  const role = v2Role(row.type);
+  if (role === null) return null;
+  const record = asRecord(parseData(row.data)) ?? {};
+  return JSON.stringify({
+    id: row.id,
+    ts: row.time_created,
+    data: { role, time: record.time },
+    parts: v2Parts(record).map((part, index) => ({ id: `prt_${row.id}_${index}`, data: part })),
+  });
 }
 
 /**
@@ -376,16 +415,132 @@ function composeLinesV2(db: Database, sessionId: string): string[] {
 type ClippedText = { text: string; complete: boolean };
 
 function clipToCap(lines: string[]): ClippedText {
-  let bytes = 0;
-  let start = 0;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    bytes += Buffer.byteLength(lines[i]!) + 1; // +1 for the joining newline
-    if (bytes > MAX_TRANSCRIPT_BYTES) {
-      start = i + 1;
-      break;
-    }
-  }
+  const start = clipStart(lines, MAX_TRANSCRIPT_BYTES);
   return { text: lines.slice(start).join("\n"), complete: start === 0 };
+}
+
+/**
+ * Index of the oldest line that still fits under `bytes`, counting from the newest back.
+ *
+ * Split out of {@link clipToCap} for the live read, which needs the same "keep the tail" policy at
+ * its own smaller bound and needs the LINES rather than one joined text.
+ */
+function clipStart(lines: readonly string[], bytes: number): number {
+  let total = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    total += Buffer.byteLength(lines[i]!) + 1; // +1 for the joining newline
+    if (total > bytes) return i + 1;
+  }
+  return 0;
+}
+
+// ── The live read ────────────────────────────────────────────────────────────
+//
+// WHAT THE CURSOR COUNTS HERE, AND WHY IT IS NOT A ROW ID. OpenCode MUTATES a row while a reply
+// streams — `part.time_updated` in V1, `session_message.time_updated` in V2, measured at +497 ms
+// over five streaming seconds on 2026-09-22 — so "what is new" is not "which rows were added". It is
+// "which rows were TOUCHED", and the only column that answers that is the clock. A row id cursor
+// would report a streaming reply once, at its first word, and never again.
+//
+// SO A LIVE READ RE-EMITS, BY DESIGN. The comparison is `>=`, not `>`: two rows can share a
+// millisecond, and `>` would drop a row written in the same millisecond as the cursor for good,
+// since nothing later would ever bring it back. `>=` re-emits the newest row instead, which costs
+// one row and is what the caller must handle anyway — it is holding a half-streamed reply under the
+// same id. The idle cost is nothing, because `stat` is the pre-check: a session whose count and
+// newest touch did not move is never read at all.
+
+/** What one live read got out of the database. */
+interface SinceRows {
+  lines: string[];
+  /** The newest `time_updated` among the rows READ, including any the role filter dropped. */
+  position: number;
+}
+
+/** The newest touch across some rows, or `fallback` when none of them carried one. */
+function newestTouch(rows: readonly { time_updated: number | null }[], fallback: number): number {
+  let newest = fallback;
+  for (const row of rows) if ((row.time_updated ?? 0) > newest) newest = row.time_updated ?? 0;
+  return newest;
+}
+
+/** V1's live read: the messages a cursor has not seen, or the newest `limit` when it holds none. */
+function composeSinceV1(db: Database, sessionId: string, at: number | null, limit: number): SinceRows {
+  const messages =
+    at === null
+      ? db
+          .query<MessageRow, [string, number]>(
+            `select ${V1_MESSAGE_COLUMNS} from message where session_id = ? order by time_created desc, id desc limit ?`,
+          )
+          .all(sessionId, limit)
+          .toReversed()
+      : db
+          .query<MessageRow, [string, number, string, number, number]>(
+            // EITHER end of a message may have moved: the message row's own clock, or one of its
+            // parts', which is the one that ticks while the reply streams. The whole message is
+            // re-composed with all its parts either way, because a caller replacing a turn by uuid
+            // needs the whole turn, not the piece that changed.
+            `select ${V1_MESSAGE_COLUMNS} from message where session_id = ?
+               and (coalesce(time_updated, 0) >= ?
+                    or id in (select message_id from part where session_id = ? and coalesce(time_updated, 0) >= ?))
+             order by time_created, id limit ?`,
+          )
+          .all(sessionId, at, sessionId, at, limit);
+
+  // The parts of exactly the messages selected above. A placeholder per id rather than a second copy
+  // of the selection: the ids are already in hand, the list is bounded by `limit`, and repeating the
+  // predicate is how the two halves of one read start disagreeing.
+  const ids = messages.map((m) => m.id);
+  const parts =
+    ids.length === 0
+      ? []
+      : db
+          .query<PartRow, string[]>(
+            `select ${V1_PART_COLUMNS} from part where session_id = ? and message_id in (${ids.map(() => "?").join(",")}) order by id`,
+          )
+          .all(sessionId, ...ids);
+
+  return {
+    lines: linesV1(messages, parts),
+    position: newestTouch(parts, newestTouch(messages, at ?? 0)),
+  };
+}
+
+/** V2's live read. Its parts are inline, so one row's own clock is the whole answer. */
+function composeSinceV2(db: Database, sessionId: string, at: number | null, limit: number): SinceRows {
+  const rows =
+    at === null
+      ? db
+          .query<MessageRowV2, [string, number]>(
+            `select ${V2_COLUMNS} from session_message where session_id = ? order by seq desc limit ?`,
+          )
+          .all(sessionId, limit)
+          .toReversed()
+      : db
+          .query<MessageRowV2, [string, number, number]>(
+            `select ${V2_COLUMNS} from session_message where session_id = ? and coalesce(time_updated, 0) >= ? order by seq limit ?`,
+          )
+          .all(sessionId, at, limit);
+
+  return {
+    lines: rows.map(lineV2).filter((line): line is string => line !== null),
+    // Over ALL rows read, not only the ones that composed a line. A `system` or `idle` row is read
+    // and deliberately not shown; leaving its clock out of the cursor would make every later read
+    // fetch it again for ever.
+    position: newestTouch(rows, at ?? 0),
+  };
+}
+
+/** Both generations' live read, behind the one store decision the rest of this module makes once. */
+function composeSince(
+  db: Database,
+  sessionId: string,
+  store: OpencodeStore,
+  at: number | null,
+  limit: number,
+): SinceRows {
+  return store === "v2"
+    ? composeSinceV2(db, sessionId, at, limit)
+    : composeSinceV1(db, sessionId, at, limit);
 }
 
 /**
@@ -758,6 +913,40 @@ export class OpencodeTranscriptSource implements TranscriptSource {
         const { text, complete } = clipToCap(composeLines(db, parts.sessionId, store));
         return { text, complete, size, mtimeMs };
       }) ?? empty
+    );
+  }
+
+  /**
+   * What is new in this session since `cursor` (see "the live read" above for what it counts).
+   *
+   * A read that cannot be resumed answers with the newest {@link FIRST_TAIL_ROWS} turns, clipped to
+   * {@link FIRST_TAIL_BYTES}, and `reset: true`. Two bounds rather than one because the query has to
+   * be bounded as well as its answer: composing ten thousand turns to throw nine thousand away is
+   * the cost this method exists to remove.
+   *
+   * An unreadable database or a session that vanished between resolve and read HOLDS the caller's
+   * cursor and reports nothing new, exactly as a file whose `stat` lost a race does. Blanking a
+   * screen over a locked database would be a worse answer than an unchanged one.
+   */
+  async readSince(key: string, cursor: Cursor): Promise<ReadSince> {
+    const held: ReadSince = { lines: [], cursor, reset: false };
+    const parts = splitOpencodeKey(key);
+    if (parts === null) return { lines: [], cursor: NO_CURSOR, reset: false };
+    const at = decodeCursor(cursor, "updated", key);
+    return (
+      withDb(parts.dbPath, (db) => {
+        // ONE store decision per read, like `load`: the rows and the position must come from the
+        // same generation.
+        const store = sessionStore(db, parts.sessionId);
+        if (store === null) return held;
+        const { lines, position } = composeSince(db, parts.sessionId, store, at, FIRST_TAIL_ROWS);
+        const next = encodeCursor("updated", key, position);
+        // The clip only ever applies to a reset. Clipping an INCREMENTAL read would drop rows off the
+        // head of the delta while the cursor moved past them, which loses a turn for good; the
+        // incremental read is bounded by `limit` instead, and what does not fit arrives next tick.
+        if (at !== null) return { lines, cursor: next, reset: false };
+        return { lines: lines.slice(clipStart(lines, FIRST_TAIL_BYTES)), cursor: next, reset: true };
+      }) ?? held
     );
   }
 }

@@ -10,7 +10,20 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { NO_CHANGE, parseWith, type Reduction, type RowReducer } from "./reduce.ts";
-import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
+import {
+  type Cursor,
+  decodeCursor,
+  encodeCursor,
+  NO_CURSOR,
+  type ReadSince,
+} from "./cursor.ts";
+import {
+  containedRealpath,
+  FIRST_TAIL_BYTES,
+  FIRST_TAIL_ROWS,
+  MAX_TRANSCRIPT_BYTES,
+  rootList,
+} from "./files.ts";
 import { clamp, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
 import type {
@@ -174,24 +187,84 @@ function rowEntry(row: MessageRow): TranscriptEntry | null {
   return { uuid: String(row.id), ts: isoTimestamp(row.timestamp), role: row.role, parts };
 }
 
+// ── The one query, in three pieces ───────────────────────────────────────────
+//
+// The whole-session read and the live read must select the SAME columns in the SAME order, because
+// the composed line here is literally `JSON.stringify(row)` — a column list that drifted between the
+// two would make a History read and a live read of one turn two different texts. So the query is
+// assembled from pieces rather than written twice.
+
+/** The session and every ancestor it was forked from, oldest ancestor at the greatest depth. */
+const LINEAGE_CTE =
+  "with recursive lineage(id, depth) as (select ? as id, 0 union all select s.parent_session_id, lineage.depth + 1 from sessions s join lineage on s.id = lineage.id where s.parent_session_id is not null and lineage.depth < 32)";
+
+/** Exactly the columns `MessageRow` names, in its order. The composed line is this row, verbatim. */
+const MESSAGE_COLUMNS =
+  "m.id, m.role, m.content, m.tool_call_id, m.tool_calls, m.tool_name, m.timestamp, m.reasoning, m.reasoning_content, m.active, m.compacted, m.display_kind";
+
+/**
+ * The rows a read may see: this session's lineage, and only rows still live or kept by a compaction.
+ *
+ * THE PARENTHESES ARE LOAD-BEARING. `and` binds tighter than `or` in SQL, so a live read appending
+ * `and m.id > ?` to an unbracketed `active = 1 or compacted = 1` would silently mean
+ * `active = 1 or (compacted = 1 and id > ?)` — every active row in the session, on every read.
+ */
+const FROM_LINEAGE =
+  "from messages m join lineage on lineage.id = m.session_id where (m.active = 1 or m.compacted = 1)";
+
 function composeLines(db: Database, sessionId: string): string[] {
   const rows = db.query<MessageRow, [string]>(
-    "with recursive lineage(id, depth) as (select ? as id, 0 union all select s.parent_session_id, lineage.depth + 1 from sessions s join lineage on s.id = lineage.id where s.parent_session_id is not null and lineage.depth < 32) select m.id, m.role, m.content, m.tool_call_id, m.tool_calls, m.tool_name, m.timestamp, m.reasoning, m.reasoning_content, m.active, m.compacted, m.display_kind from messages m join lineage on lineage.id = m.session_id where m.active = 1 or m.compacted = 1 order by lineage.depth desc, m.id",
+    `${LINEAGE_CTE} select ${MESSAGE_COLUMNS} ${FROM_LINEAGE} order by lineage.depth desc, m.id`,
   ).all(sessionId);
   return rows.map((row: MessageRow) => JSON.stringify(row));
 }
 
+// ── The live read ────────────────────────────────────────────────────────────
+//
+// WHAT THE CURSOR COUNTS HERE. `messages.id` is an INTEGER PRIMARY KEY, so a row's id is unique and
+// never reused, and `max(id)` is the whole cursor. The comparison is `>`, unlike opencode's `>=`: two
+// hermes rows cannot share an id, so there is no same-value row to lose.
+//
+// WHAT THIS CURSOR CANNOT SEE, stated rather than papered over. A hermes row is NOT frozen once
+// written: `active`, `compacted` and `display_kind` are mutable per-row state, and both the query
+// above and `rowEntry` read them. So a turn can change, or stop being composed at all, WITHOUT its id
+// moving — and an id cursor is blind to both. `Reduction` has no `removed` and should not grow one: a
+// reader going forward cannot know a row vanished. That is the live window's business, and its verb
+// for it is a reset. This method's duty is to be honest about the hole, not to invent a fix for it
+// one layer too low.
+//
+// ORDER, AND ITS ONE KNOWN LIMIT. A live read orders by `m.id` alone, where the whole-session read
+// orders by `lineage.depth desc, m.id`. Inside a window bounded by id the two agree, because an
+// ancestor's rows were all written before the child session existed and therefore carry lower ids.
+// The exception is an ancestor that gains a row AFTER the fork: its low id is already behind the
+// cursor, so a live read never sees it. It arrives on the next reset. A fork whose parent is still
+// being written to is not a session shape hermes produces today.
+
+/** The newest id among some rows, or `fallback` when there were none. */
+function newestId(rows: readonly MessageRow[], fallback: number): number {
+  let newest = fallback;
+  for (const row of rows) if (row.id > newest) newest = row.id;
+  return newest;
+}
+
 function clipLines(lines: string[]) {
-  let bytes = 0;
-  let start = 0;
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    bytes += Buffer.byteLength(lines[i]!) + 1;
-    if (bytes > MAX_TRANSCRIPT_BYTES) {
-      start = i + 1;
-      break;
-    }
-  }
+  const start = clipStart(lines, MAX_TRANSCRIPT_BYTES);
   return { text: lines.slice(start).join("\n"), complete: start === 0 };
+}
+
+/**
+ * Index of the oldest line that still fits under `bytes`, counting from the newest back.
+ *
+ * Split out of {@link clipLines} for the live read, which keeps the same "keep the tail" policy at
+ * its own smaller bound and needs the LINES rather than one joined text.
+ */
+function clipStart(lines: readonly string[], bytes: number): number {
+  let total = 0;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    total += Buffer.byteLength(lines[i]!) + 1;
+    if (total > bytes) return i + 1;
+  }
+  return 0;
 }
 
 export function parseHermesTranscript(text: string): TranscriptEntry[] {
@@ -294,6 +367,45 @@ export class HermesTranscriptSource implements TranscriptSource {
       const clipped = clipLines(composeLines(db, parts.sessionId));
       return { ...clipped, ...meta };
     }) ?? empty;
+  }
+
+  /**
+   * What is new in this session since `cursor` (see "the live read" above for what it counts, and
+   * for the mutable row state it cannot).
+   *
+   * A read that cannot be resumed answers with the newest {@link FIRST_TAIL_ROWS} turns, clipped to
+   * {@link FIRST_TAIL_BYTES}, and `reset: true`. An unreadable database holds the caller's cursor and
+   * reports nothing new, exactly as a file whose `stat` lost a race does.
+   */
+  async readSince(key: string, cursor: Cursor): Promise<ReadSince> {
+    const held: ReadSince = { lines: [], cursor, reset: false };
+    const parts = splitHermesKey(key);
+    if (parts === null) return { lines: [], cursor: NO_CURSOR, reset: false };
+    const at = decodeCursor(cursor, "rowid", key);
+    return (
+      withDb(parts.dbPath, (db) => {
+        const rows =
+          at === null
+            ? db
+                .query<MessageRow, [string, number]>(
+                  `${LINEAGE_CTE} select ${MESSAGE_COLUMNS} ${FROM_LINEAGE} order by m.id desc limit ?`,
+                )
+                .all(parts.sessionId, FIRST_TAIL_ROWS)
+                .toReversed()
+            : db
+                .query<MessageRow, [string, number, number]>(
+                  `${LINEAGE_CTE} select ${MESSAGE_COLUMNS} ${FROM_LINEAGE} and m.id > ? order by m.id limit ?`,
+                )
+                .all(parts.sessionId, at, FIRST_TAIL_ROWS);
+        const lines = rows.map((row: MessageRow) => JSON.stringify(row));
+        const next = encodeCursor("rowid", key, newestId(rows, at ?? 0));
+        // The clip only ever applies to a reset. Clipping an INCREMENTAL read would drop rows off the
+        // head of the delta while the cursor moved past them, which loses a turn for good; the
+        // incremental read is bounded by its `limit` instead, and the rest arrives on the next tick.
+        if (at !== null) return { lines, cursor: next, reset: false };
+        return { lines: lines.slice(clipStart(lines, FIRST_TAIL_BYTES)), cursor: next, reset: true };
+      }) ?? held
+    );
   }
 }
 

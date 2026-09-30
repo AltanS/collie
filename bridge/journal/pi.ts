@@ -30,6 +30,7 @@ import {
   containedRealpathIn,
   exists,
   loadTail,
+  readSinceFile,
   rootList,
   statFile,
 } from "./files.ts";
@@ -453,6 +454,14 @@ export class PiTranscriptSource implements TranscriptSource {
   stat = statFile;
 
   load = loadTail;
+
+  /**
+   * The live read. A `path`-kind ref changes nothing about it: `resolve` confines the path to a
+   * configured root and returns the REAL path, and the cursor is taken on whatever `resolve`
+   * answered — so a ref that starts naming a different log resets rather than resuming at a byte
+   * offset that means nothing in it.
+   */
+  readSince = readSinceFile;
 }
 
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */

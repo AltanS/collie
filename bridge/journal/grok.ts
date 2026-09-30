@@ -35,7 +35,7 @@ import {
   type Reduction,
   type RowReducer,
 } from "./reduce.ts";
-import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
+import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
 import type {
@@ -354,6 +354,9 @@ export class GrokTranscriptSource implements TranscriptSource {
 
   stat = statFile;
   load = loadTail;
+
+  /** The live read, byte-counted like every harness that writes a JSONL file. */
+  readSince = readSinceFile;
 }
 
 export function grokJournal(roots: string | readonly string[]): JournalAdapter {

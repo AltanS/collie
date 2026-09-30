@@ -9,6 +9,7 @@
 // rather than a fork of the reader.
 
 import type { CacheProbe } from "../cache/engine.ts";
+import type { Cursor, ReadSince } from "./cursor.ts";
 import type { ToolCall } from "./tool-call.ts";
 
 /**
@@ -121,6 +122,26 @@ export interface TranscriptSource {
   stat(path: string): Promise<{ size: number; mtimeMs: number } | null>;
   /** Tail-read a log. `complete` is false when the byte cap clipped the head. */
   load(path: string): Promise<{ text: string; complete: boolean; size: number; mtimeMs: number }>;
+  /**
+   * What is new since `cursor` — the LIVE read, beside `load`'s whole-window one.
+   *
+   * The two are not alternatives. `load` answers "show me this conversation", pays a bounded
+   * whole-window read, and is what a History tap drives. `readSince` answers "what changed since I
+   * last looked", and a session that gained one row must cost one row: the reason this method
+   * exists at all is that `load` + `parse` on every mtime move costs a 32 MB read and a full
+   * re-parse per new turn.
+   *
+   * EACH SOURCE ANSWERS IN ITS OWN LANGUAGE. A file harness counts bytes; opencode counts
+   * `max(time_updated)`, because it mutates a row in place while a reply streams; hermes counts
+   * `max(id)`. The {@link Cursor} that carries the number is OPAQUE above this seam — nothing over
+   * it may read a byte offset, or know there is one — so a harness can change how it counts without
+   * a caller changing at all.
+   *
+   * `lines` are complete rows, never a fragment, and `reset` says the answer REPLACES what the
+   * caller holds rather than extending it (see {@link ReadSince}). `stat` stays the cheap
+   * pre-check: a tick where size and mtime did not move needs no call here at all.
+   */
+  readSince(key: string, cursor: Cursor): Promise<ReadSince>;
 }
 
 /**

@@ -91,6 +91,18 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   can be 190 MB long. Nothing you can see changes yet, and the whole-file reading is the same reading
   it always was, proved for all six harnesses against the same bytes arriving in torn random chunks.
 
+- **Asking a session what is new now costs only what is new.** Every harness can answer that
+  question in the language its own storage speaks: the four that write a log file count bytes, and
+  the two that keep a SQLite database count a row's own clock or its row id. The reader above them
+  learns none of that, so a harness can change how it counts without anything else changing. Three
+  things follow. A first read takes a bounded tail instead of a whole session, which starts to matter
+  once a log runs to hundreds of megabytes, as a long Claude session does. A row the agent is halfway
+  through writing is held back
+  until the newline arrives, so it is never shown half and never dropped. And a read that cannot
+  simply continue, because a log was truncated or because Claude handed the conversation over to a
+  new file, says so in one word and hands back the truth instead of a guess. Nothing you can see
+  changes yet.
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

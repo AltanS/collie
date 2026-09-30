@@ -8,7 +8,13 @@
 //    from a process we don't control — so it is confined to the harness's own root the same way;
 //  - EVERY resolved path is re-checked for containment AFTER symlink resolution, so a log or project
 //    directory symlinked out of the root cannot become a way to read arbitrary files;
-//  - reads are byte-capped, so a pathological log can't balloon the bridge's memory.
+//  - reads are byte-capped, so a pathological log can't balloon the bridge's memory — twice over
+//    since the live read landed: `MAX_TRANSCRIPT_BYTES` bounds a History page, and the smaller
+//    `FIRST_TAIL_BYTES` bounds the live window's opening read and every catch-up after a gap.
+//
+// The live read (`readSinceFile`, at the foot of this file) adds no filesystem surface: it takes
+// the path `resolve` already validated, and a cursor whose only power is to name a byte offset
+// inside THAT file. A cursor this module refuses costs a reset, never a different file.
 //
 // A harness may have MORE THAN ONE root (Claude Code's `CLAUDE_CONFIG_DIR` gives a profile its own
 // projects tree — see config.ts), which changes nothing about the rule, only how often it is applied:
@@ -41,6 +47,8 @@
 
 import { realpath, stat } from "node:fs/promises";
 import { sep } from "node:path";
+
+import { type Cursor, decodeCursor, encodeCursor, type ReadSince } from "./cursor.ts";
 
 /** Most bytes we will ever pull off one log. Beyond this we keep the TAIL (newest turns). */
 export const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024; // 32 MB
@@ -161,4 +169,88 @@ export async function tailBytes(
   const file = Bun.file(path);
   const text = complete ? await file.text() : await file.slice(size - bytes).text();
   return { text, complete, size, mtimeMs: st.mtimeMs };
+}
+
+// ── The live read ────────────────────────────────────────────────────────────
+
+/**
+ * How much of a log a FIRST live read takes, when the caller holds no cursor.
+ *
+ * NOT {@link MAX_TRANSCRIPT_BYTES}. That 32 MB is the History page's cap, paid once when somebody
+ * taps History. This is the live window's opening read, and the sessions measured on 2026-09-29 were
+ * 186.8 MB, 89.8 MB and 64.9 MB — so a first read is a tail by design rather than by luck. The
+ * turns before it are not lost: they are the History path's job (`store.ts`), which still reads its
+ * own larger window on demand.
+ */
+export const FIRST_TAIL_BYTES = 2 * 1024 * 1024; // 2 MB
+
+/**
+ * The same bound for the two harnesses that answer in ROWS rather than bytes.
+ *
+ * opencode and hermes are SQLite, so their first read is a `limit`, not a byte offset — and the
+ * query has to be bounded as well as its answer, or a 10,000-turn session is composed in full to
+ * throw most of it away. 400 is deliberately past the 200 turns a History page defaults to
+ * (`server.ts` `DEFAULT_HISTORY_LIMIT`), so the live window opens with more than the first page
+ * shows.
+ */
+export const FIRST_TAIL_ROWS = 400;
+
+/**
+ * What is new in a log since `cursor` — the live read, beside {@link loadTail}'s whole-window one.
+ *
+ * Shared by every harness that writes a FILE (claude, codex, pi, grok), which is why it lives here:
+ * the byte counting, the bound and the torn-line rule are properties of reading a log, not of any
+ * one grammar. The two SQLite harnesses answer the same question in their own language and share
+ * nothing with this but the {@link Cursor} codec.
+ *
+ * THE OFFSET ONLY EVER ADVANCES TO A ROW BOUNDARY. That one rule is what holds a torn final line
+ * back without keeping any state outside the cursor: the fragment's bytes are simply read again on
+ * the next call, and the row is parsed once, when its newline exists. The prototype's `tailJsonl`
+ * carried that fragment in a `rest` variable instead, which works for one file watched by one
+ * closure and does not survive a source shared by every pane in the herd.
+ *
+ * `reset` is returned for five things, and they are one thing: this answer replaces what you hold
+ * rather than extending it. No cursor at all, a cursor taken on another path (Claude handed the
+ * conversation over to a new log), a cursor past the end (the log was truncated or rewritten), a
+ * cursor left so far behind that catching up would mean holding the gap in memory, and a token that
+ * cannot be read.
+ */
+export async function readSinceFile(
+  path: string,
+  cursor: Cursor,
+  firstBytes = FIRST_TAIL_BYTES,
+): Promise<ReadSince> {
+  const st = await statFile(path);
+  // Gone between resolve and read. NOT a reset: blanking a screen because one stat lost a race is a
+  // worse answer than showing the turns the caller already has. A log that really went away and came
+  // back smaller resets on the next call anyway, through the shrink test below.
+  if (st === null) return { lines: [], cursor, reset: false };
+
+  const at = decodeCursor(cursor, "bytes", path);
+  // A resume that fell more than one window behind cannot be an append: reading the gap would put
+  // tens of megabytes in memory to catch up, which is the one thing a bounded window exists to
+  // prevent. It becomes a reset, and the caller replaces its window instead of extending it.
+  const behind = at !== null && st.size - at > firstBytes;
+  const reset = at === null || at > st.size || behind;
+  const from = reset ? Math.max(0, st.size - firstBytes) : at;
+  if (from >= st.size) return { lines: [], cursor: encodeCursor("bytes", path, st.size), reset };
+
+  const text = await Bun.file(path).slice(from, st.size).text();
+  const end = text.lastIndexOf("\n");
+  if (end === -1) {
+    // No row boundary in the window at all, which means two different things:
+    //  - resuming: we are inside a row the agent is still writing. Hold the position. Its newline
+    //    arrives with the next write, and the row is neither parsed nor dropped.
+    //  - resetting: the window is the TAIL of one row whose head the bound cut off, so that row can
+    //    never be completed from here. Step past it, exactly as `loadTail` drops its clipped head.
+    return { lines: [], cursor: encodeCursor("bytes", path, reset ? st.size : from), reset };
+  }
+
+  // Everything before the last newline is whole rows; everything after it is the fragment.
+  const rows = text.slice(0, end).split("\n");
+  // A reset that did not start at byte 0 begins mid-object, because the bound cut the window out of
+  // the middle of a row. Every parser skips an unparseable line, but handing one over would put a
+  // fragment in the `lines` this function promises never carries one.
+  if (reset && from > 0) rows.shift();
+  return { lines: rows, cursor: encodeCursor("bytes", path, from + end + 1), reset };
 }

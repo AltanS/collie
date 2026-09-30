@@ -38,7 +38,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
-import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
+import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall, type ToolCall } from "./tool-call.ts";
 import type {
@@ -446,6 +446,20 @@ export class CodexTranscriptSource implements TranscriptSource {
   stat = statFile;
 
   load = loadTail;
+
+  /**
+   * The live read, with one contract on its caller that no other harness imposes.
+   *
+   * A RESET MUST BE PAIRED WITH A FRESH REDUCER HERE. {@link codexCursor} numbers byte-identical
+   * rows by occurrence, and that numbering is a property of the parsed window — which is stated as
+   * an invariant where it is synthesised. A reset moves the window, so the numbering restarts, and a
+   * reducer kept across one would carry `seen` counts for rows the caller has thrown away. Under an
+   * append nothing renumbers, because the window only grows at the end.
+   *
+   * That is not a defect of the cursor, it is what `reset` means: the answer replaces what you hold,
+   * uuids included.
+   */
+  readSince = readSinceFile;
 }
 
 /** Directory entries, newest-name first. Empty when the directory doesn't exist. */

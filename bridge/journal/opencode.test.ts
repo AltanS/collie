@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { NO_CURSOR } from "./cursor.ts";
+import { FIRST_TAIL_ROWS } from "./files.ts";
 import {
   isOpencodeSessionId,
   OpencodeTranscriptSource,
@@ -1577,5 +1579,216 @@ describe("parseOpencodeTranscript: a single-file patch takes its path from the r
       removed: 0,
       diff: [{ header: "@@ -0,0 +1,1 @@", lines: ["+x"] }],
     });
+  });
+});
+
+
+// The live read. OpenCode is the harness whose rows MOVE, so this is where the two facts that follow
+// from it are pinned: the cursor counts `time_updated` rather than a row id, and a read therefore
+// re-emits the turn it is standing on rather than dropping a row that shares a millisecond with it.
+describe("OpencodeTranscriptSource — readSince, V1", () => {
+  async function lab() {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-since-")));
+    const root = join(base, "data");
+    await mkdir(root, { recursive: true });
+    const db = openDb(join(root, "opencode.db"), V1_SCHEMA);
+    db.run("insert into session values (?, null, 'root session', 1, 100)", [SID]);
+    return {
+      base,
+      root,
+      db,
+      /** One message row and the one text part that makes it render. */
+      turn: (id: string, created: number, updated: number, text: string) => {
+        db.run("insert into message values (?, ?, ?, ?, ?)", [id, SID, created, updated, JSON.stringify(userData(created))]);
+        db.run("insert into part values (?, ?, ?, ?, ?, ?)", [
+          `prt_${id}`,
+          id,
+          SID,
+          created,
+          updated,
+          JSON.stringify(textPart(text)),
+        ]);
+      },
+      clean: async () => {
+        db.close();
+        await rm(base, { recursive: true, force: true });
+      },
+    };
+  }
+
+  const ids = (lines: readonly string[]) => lines.flatMap((row) => parseOpencodeTranscript(row).map((e) => e.uuid));
+
+  async function opened(root: string) {
+    const src = new OpencodeTranscriptSource(root);
+    const key = await src.resolve({ kind: "id", value: SID });
+    expect(key).not.toBeNull();
+    return { src, key: key! };
+  }
+
+  test("a first read takes the turns and says the answer replaces nothing", async () => {
+    const f = await lab();
+    f.turn("msg_a", 10, 10, "hello");
+    f.turn("msg_b", 20, 30, "and again");
+    const { src, key } = await opened(f.root);
+
+    const first = await src.readSince(key, NO_CURSOR);
+    expect(ids(first.lines)).toEqual(["msg_a", "msg_b"]);
+    expect(first.reset).toBe(true);
+
+    await f.clean();
+  });
+
+  // `msg_a` comes back with it, and that is the `>=` comparison being honest rather than a bug: the
+  // cursor stands ON the newest row it saw, because a row sharing that millisecond would otherwise be
+  // lost for good. One row of overlap per read, and the caller replaces by uuid.
+  test("a resume carries the turn that arrived since, and the one it was standing on", async () => {
+    const f = await lab();
+    f.turn("msg_a", 10, 10, "hello");
+    const { src, key } = await opened(f.root);
+    const first = await src.readSince(key, NO_CURSOR);
+
+    f.turn("msg_b", 20, 30, "and again");
+    const next = await src.readSince(key, first.cursor);
+    expect(ids(next.lines)).toEqual(["msg_a", "msg_b"]);
+    expect(next.reset).toBe(false);
+
+    await f.clean();
+  });
+
+  // Not a defect, and the reason `stat` stays the pre-check: two rows can share a millisecond, so the
+  // comparison has to be `>=`, and `>=` stands still on the row it last saw. The caller replaces that
+  // turn by uuid, which it must do anyway for a reply that is still streaming.
+  test("a read with nothing new re-emits the newest turn and nothing older", async () => {
+    const f = await lab();
+    f.turn("msg_a", 10, 10, "hello");
+    f.turn("msg_b", 20, 30, "and again");
+    const { src, key } = await opened(f.root);
+    const first = await src.readSince(key, NO_CURSOR);
+
+    const again = await src.readSince(key, first.cursor);
+    expect(ids(again.lines)).toEqual(["msg_b"]);
+    expect(again.reset).toBe(false);
+
+    await f.clean();
+  });
+
+  // The clock that moves while a reply streams is the PART's, and the message row above it may not
+  // move at all. A cursor that watched only the message row would freeze a streaming turn.
+  test("a part touched while streaming brings its whole message back", async () => {
+    const f = await lab();
+    f.turn("msg_a", 10, 10, "hello");
+    f.turn("msg_b", 20, 30, "and again");
+    const { src, key } = await opened(f.root);
+    const first = await src.readSince(key, NO_CURSOR);
+
+    f.db.run("update part set time_updated = 50 where id = 'prt_msg_a'");
+    const next = await src.readSince(key, first.cursor);
+    expect(ids(next.lines)).toEqual(["msg_a", "msg_b"]);
+
+    await f.clean();
+  });
+
+  test("a first read is bounded by rows, so a long session is not composed to be thrown away", async () => {
+    const f = await lab();
+    for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) f.turn(`msg_${String(n).padStart(4, "0")}`, n, n, `turn ${n}`);
+    const { src, key } = await opened(f.root);
+
+    const first = await src.readSince(key, NO_CURSOR);
+    expect(first.lines).toHaveLength(FIRST_TAIL_ROWS);
+    expect(ids(first.lines).at(0)).toBe("msg_0006");
+    expect(ids(first.lines).at(-1)).toBe(`msg_${String(FIRST_TAIL_ROWS + 5).padStart(4, "0")}`);
+
+    await f.clean();
+  });
+
+  test("a key it cannot split reports nothing new", async () => {
+    expect(await new OpencodeTranscriptSource("/nope").readSince("/not-a-key", NO_CURSOR)).toEqual({
+      lines: [],
+      cursor: NO_CURSOR,
+      reset: false,
+    });
+  });
+});
+
+describe("OpencodeTranscriptSource — readSince, V2", () => {
+  const V2_SID = "ses_f34fa06cfffepZ7TTIJqHH4SiU";
+
+  async function lab() {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-since-v2-")));
+    const root = join(base, "data");
+    await mkdir(root, { recursive: true });
+    const db = openDb(join(root, "opencode.db"), V2_SCHEMA);
+    db.run("insert into session_v2 values (?, null, 'session', 1, 100)", [V2_SID]);
+    return {
+      base,
+      root,
+      db,
+      row: (id: string, type: string, seq: number, updated: number, data: JsonValue) =>
+        db.run("insert into session_message values (?, ?, ?, ?, ?, ?, ?)", [
+          id,
+          V2_SID,
+          type,
+          seq,
+          seq,
+          updated,
+          JSON.stringify(data),
+        ]),
+      clean: async () => {
+        db.close();
+        await rm(base, { recursive: true, force: true });
+      },
+    };
+  }
+
+  const ids = (lines: readonly string[]) => lines.flatMap((row) => parseOpencodeTranscript(row).map((e) => e.uuid));
+
+  test("a first read takes the turns, and a resume carries the new one", async () => {
+    const f = await lab();
+    f.row("msg_a", "user", 1, 10, v2UserData("hi", 10));
+    const src = new OpencodeTranscriptSource(f.root);
+    const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+
+    const first = await src.readSince(key, NO_CURSOR);
+    expect(ids(first.lines)).toEqual(["msg_a"]);
+    expect(first.reset).toBe(true);
+
+    f.row("msg_b", "assistant", 2, 40, v2AssistantData(20));
+    // With the row the cursor stands on, exactly as in V1.
+    expect(ids((await src.readSince(key, first.cursor)).lines)).toEqual(["msg_a", "msg_b"]);
+
+    await f.clean();
+  });
+
+  // A `system` row is read and deliberately not shown. Its clock still has to count, or every later
+  // read fetches it again — and drags the composed rows around it along too.
+  test("a row that shows nothing still moves the cursor past itself", async () => {
+    const f = await lab();
+    f.row("msg_a", "user", 1, 10, v2UserData("hi", 10));
+    f.row("msg_sys", "system", 2, 40, v2UserData("plumbing", 20));
+    const src = new OpencodeTranscriptSource(f.root);
+    const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+
+    const first = await src.readSince(key, NO_CURSOR);
+    expect(ids(first.lines)).toEqual(["msg_a"]);
+
+    // Nothing was written in between, so the only row at or past the cursor is the invisible one.
+    expect((await src.readSince(key, first.cursor)).lines).toEqual([]);
+
+    await f.clean();
+  });
+
+  test("a first read is bounded by rows in this store too", async () => {
+    const f = await lab();
+    for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) {
+      f.row(`msg_${String(n).padStart(4, "0")}`, "user", n, n, v2UserData(`turn ${n}`, n));
+    }
+    const src = new OpencodeTranscriptSource(f.root);
+    const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
+
+    const first = await src.readSince(key, NO_CURSOR);
+    expect(first.lines).toHaveLength(FIRST_TAIL_ROWS);
+    expect(ids(first.lines).at(0)).toBe("msg_0006");
+
+    await f.clean();
   });
 });
