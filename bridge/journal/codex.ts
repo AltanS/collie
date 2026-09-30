@@ -156,6 +156,69 @@ function codexToolInput(args: JsonValue | undefined): JsonValue | undefined {
   }
 }
 
+/**
+ * A `custom_tool_call.input`, which is NOT the JSON object `function_call.arguments` is.
+ *
+ * Measured over 53 `custom_tool_call` rows on this host: `name` is `exec` every time and `input` is
+ * the shell script ITSELF, a bare string that never parses as JSON. {@link classifyToolCall} reads an
+ * object, so a raw script handed to it straight would classify as an empty execute — the call would
+ * render with no command in it. Wrapping it under `script`, one of the three keys that branch already
+ * reads, is what makes the command show.
+ *
+ * A JSON OBJECT is still taken as itself, for the tool codex has not written yet. A parse that yields
+ * anything else (a script that happens to read as a bare number) is treated as the script it is.
+ */
+function codexCustomInput(raw: JsonValue | undefined): JsonValue | undefined {
+  if (typeof raw !== "string") return raw;
+  const parsed = codexToolInput(raw);
+  if (parsed !== null && parsed !== undefined && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+  return { script: raw };
+}
+
+/**
+ * Codex's own preamble on an `exec` result, and the trailer under it.
+ *
+ * Both are codex literals, read off 52 `custom_tool_call_output` rows here, and they are matched
+ * rather than assumed: a version that stops writing them leaves the text whole instead of losing a
+ * line of it. `Script running with cell ID <n>` is the same header for a call still going.
+ *
+ * The trailer is the exit code, in the two dialects seen (`exit_code=0` and a bare `1`). It is read
+ * ONLY as the third or later block under a matched preamble, because in a two-block output the
+ * second block is the output itself — `echo 42` would otherwise report exit 42 and show nothing.
+ */
+/** What an `exec` result row says: the output, and the exit code codex buried in a block of its own. */
+interface ExecOutput {
+  readonly body: string;
+  readonly exitCode?: number;
+}
+
+const EXEC_PREAMBLE = /^Script (?:completed|running[^\n]*)\nWall time [^\n]*\nOutput:\n?$/;
+const EXEC_TRAILER = /^(?:exit_code=)?(\d{1,3})$/;
+
+/**
+ * Split a `custom_tool_call_output.output` into the output and the exit code codex buried in it.
+ *
+ * THE SHAPE IS TWO SHAPES, which is the part a naive read of the `function_call_output` path gets
+ * wrong. Counted here: `output` is a LIST of `input_text` blocks 32 times and a bare STRING 20 times
+ * (`aborted by user after 8.5s` among them, which {@link REFUSED} then marks as a refusal). The list
+ * runs preamble, output, and sometimes the code:
+ *
+ *   [ "Script completed\nWall time 0.1 seconds\nOutput:\n", "line 1\nline 2\n", "exit_code=0" ]
+ *
+ * The preamble is dropped when anything follows it, because three lines of "Wall time" ahead of every
+ * exec result is three lines of a phone screen (DESIGN.md §2). It is KEPT when nothing follows, since
+ * "this script is still running" is then the only thing the row says.
+ */
+function codexExecOutput(raw: JsonValue | undefined): ExecOutput {
+  if (!Array.isArray(raw)) return { body: blockText(raw) };
+  const texts = raw.map((b) => blockText([b]));
+  if (texts.length < 2 || !EXEC_PREAMBLE.test(texts[0] ?? "")) return { body: blockText(raw) };
+  const trailer = texts.length >= 3 ? EXEC_TRAILER.exec(texts.at(-1) ?? "") : null;
+  const body = texts.slice(1, trailer === null ? undefined : -1).filter(Boolean).join("\n");
+  if (body.trim() === "" && trailer === null) return { body: blockText(raw) };
+  return trailer === null ? { body } : { body, exitCode: Number(trailer[1]) };
+}
+
 /** A `tool` part's answered output — {@link clamp}'s pair, plus the flags the output earns. */
 type ToolResult = NonNullable<Extract<TranscriptPart, { kind: "tool" }>["result"]>;
 
@@ -191,7 +254,15 @@ const REFUSED = /rejected by user|aborted by user/i;
  * row.
  */
 function enrichCall(call: ToolCall, raw: JsonValue | undefined): void {
-  if (call.kind !== "execute" || typeof raw !== "string") return;
+  if (call.kind !== "execute") return;
+  // A `custom_tool_call_output` writes the code as a block of its own instead of in `metadata`, so the
+  // list shape is enriched from {@link codexExecOutput}'s reading rather than from a second grammar.
+  if (Array.isArray(raw)) {
+    const code = codexExecOutput(raw).exitCode;
+    if (code !== undefined) call.exitCode = code;
+    return;
+  }
+  if (typeof raw !== "string") return;
   let parsed: JsonValue;
   try {
     // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps the reads below
@@ -241,10 +312,9 @@ export function parseCodexTranscript(text: string): TranscriptEntry[] {
  * are read by FIELD here — `blockText` takes any block's `.text` — so a new block type would be
  * dropped in silence, which is exactly what this counts.
  *
- * `custom_tool_call` and `custom_tool_call_output` ARE DROPPED, and they are listed anyway: 50 and 49
- * of them in those 48 logs, so Codex's custom tools (`apply_patch` among them) are invisible in a
- * Codex transcript today. That is a gap with a name, not drift, and it belongs in a comment rather
- * than in a counter that means "nobody has looked at this yet".
+ * `custom_tool_call` and `custom_tool_call_output` are READ, on the same branch as `function_call`,
+ * and they are the shape codex reaches for most: 53 of them against 6 `function_call` on this host.
+ * They were listed here while they were dropped, which is why the tally never counted them.
  *
  * `developer` is the one role that matters here: Codex writes three of those rows, carrying injected
  * system prompts, before the first real turn, and rendering one as speech would put words in the
@@ -367,14 +437,23 @@ export function createCodexReducer(): RowReducer {
       return reduction(entries, changed);
     }
 
-    if (p.type === "function_call") {
+    // ONE branch for both call shapes. `custom_tool_call` carries the same three facts — a name, an
+    // input and a `call_id` its output is paired by — so it folds onto the structured-call path rather
+    // than beside it. The only difference is WHERE the input is and what it is: `arguments` is a JSON
+    // string, `input` is the script itself (see codexCustomInput).
+    if (p.type === "function_call" || p.type === "custom_tool_call") {
       const name = typeof p.name === "string" ? p.name : "tool";
-      const summary = codexToolSummary(p.arguments);
+      const raw = p.type === "custom_tool_call" ? p.input : p.arguments;
+      const summary = codexToolSummary(raw);
       const part: Extract<TranscriptPart, { kind: "tool" }> = {
         kind: "tool",
         name,
         summary,
-        call: classifyToolCall(name, codexToolInput(p.arguments), summary),
+        call: classifyToolCall(
+          name,
+          p.type === "custom_tool_call" ? codexCustomInput(raw) : codexToolInput(raw),
+          summary,
+        ),
       };
       if (typeof p.call_id === "string") {
         part.id = p.call_id;
@@ -387,10 +466,12 @@ export function createCodexReducer(): RowReducer {
       return reduction(entries, changed);
     }
 
-    if (p.type === "function_call_output") {
+    if (p.type === "function_call_output" || p.type === "custom_tool_call_output") {
       const id = typeof p.call_id === "string" ? p.call_id : "";
       const target = pendingTools.get(id);
-      const outputText = stripAnsi(codexToolOutput(p.output));
+      const outputText = stripAnsi(
+        p.type === "custom_tool_call_output" ? codexExecOutput(p.output).body : codexToolOutput(p.output),
+      );
       const result: ToolResult = clamp(outputText, MAX_RESULT_CHARS);
       // Codex writes NO error flag on this row — a command that failed and one that worked are the
       // same shape, and the exit code sits in `metadata` rather than on the part. So `isError` stays

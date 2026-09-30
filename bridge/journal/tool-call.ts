@@ -76,6 +76,9 @@ const NAMES = {
   bash: "execute",
   shell: "execute",
   execute: "execute",
+  // Codex's `custom_tool_call` names its shell tool `exec`, and it is the one it uses for everything
+  // — a read, an `apply_patch`, a command. Without this the common codex call reads as `other`.
+  exec: "execute",
   run: "execute",
   bashoutput: "execute",
   exec_command: "execute",

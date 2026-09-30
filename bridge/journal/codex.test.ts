@@ -387,3 +387,114 @@ describe("CodexTranscriptSource — several sessions roots", () => {
     await rm(base, { recursive: true, force: true });
   });
 });
+
+// ── custom_tool_call: the shape codex reaches for most (spec M41/12) ─────────
+//
+// Rows built here from the grammar measured on 2026-10-01 over 53 `custom_tool_call` and 52
+// `custom_tool_call_output` rows on one host. No recorded rollout is used as a fixture, ever: a real
+// one carries the contents of every file the agent read.
+const customCall = (callId: string, script: string) =>
+  item({ type: "custom_tool_call", id: "ct_1", status: "completed", call_id: callId, name: "exec", input: script });
+
+const customOut = (callId: string, output: JsonValue) =>
+  item({ type: "custom_tool_call_output", id: "cto_1", call_id: callId, output });
+
+const PREAMBLE = "Script completed\nWall time 0.1 seconds\nOutput:\n";
+
+describe("parseCodexTranscript — custom_tool_call", () => {
+  test("a custom call and its list output read as one structured execute", () => {
+    const entries = parseCodexTranscript(
+      [meta(), customCall("c1", "cat README.md"), customOut("c1", [
+        { type: "input_text", text: PREAMBLE },
+        { type: "input_text", text: "# canary\n" },
+        { type: "input_text", text: "exit_code=0" },
+      ])].join("\n"),
+    );
+    expect(entries).toHaveLength(1);
+    const part = entries[0]!.parts[0]!;
+    expect(part.kind).toBe("tool");
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.name).toBe("exec");
+    expect(part.summary).toBe("cat README.md");
+    // `exec` is not `execute`: without the name in tool-call.ts's table this classified as `other`,
+    // and the command never showed.
+    expect(part.call).toEqual({ kind: "execute", command: "cat README.md", exitCode: 0 });
+    // The preamble is dropped and the trailer is read, so the result is the output and nothing else.
+    expect(part.result?.text).toBe("# canary\n");
+  });
+
+  test("a non-zero trailer is the exit code", () => {
+    const entries = parseCodexTranscript(
+      [meta(), customCall("c1", "touch /x"), customOut("c1", [
+        { type: "input_text", text: PREAMBLE },
+        { type: "input_text", text: "touch: cannot touch '/x': Read-only file system\n" },
+        { type: "input_text", text: "1" },
+      ])].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.call).toEqual({ kind: "execute", command: "touch /x", exitCode: 1 });
+    expect(part.result?.text).toBe("touch: cannot touch '/x': Read-only file system\n");
+  });
+
+  test("a two-block output is all output — a number there is not an exit code", () => {
+    const entries = parseCodexTranscript(
+      [meta(), customCall("c1", "echo 42"), customOut("c1", [
+        { type: "input_text", text: PREAMBLE },
+        { type: "input_text", text: "42" },
+      ])].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.result?.text).toBe("42");
+    expect(part.call).toEqual({ kind: "execute", command: "echo 42" });
+  });
+
+  test("a bare string output still reads, and a refusal is a refusal", () => {
+    const entries = parseCodexTranscript(
+      [meta(), customCall("c1", "rm -rf /"), customOut("c1", "aborted by user after 8.5s")].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.result?.text).toBe("aborted by user after 8.5s");
+    expect(part.result?.denied).toBe(true);
+  });
+
+  test("a preamble with nothing under it is kept — the script is still running", () => {
+    const entries = parseCodexTranscript(
+      [meta(), customCall("c1", "sleep 60"), customOut("c1", [
+        { type: "input_text", text: "Script running with cell ID 4\nWall time 31.0 seconds\nOutput:\n" },
+        { type: "input_text", text: "" },
+      ])].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.result?.text).toContain("Script running with cell ID 4");
+  });
+
+  test("an unrecognised preamble leaves the text whole rather than losing a line of it", () => {
+    const entries = parseCodexTranscript(
+      [meta(), customCall("c1", "ls"), customOut("c1", [
+        { type: "input_text", text: "Some future header\n" },
+        { type: "input_text", text: "a.ts\n" },
+      ])].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.result?.text).toBe("Some future header\n\na.ts\n");
+  });
+
+  test("a JSON-object input is still taken as itself", () => {
+    const entries = parseCodexTranscript(
+      [meta(), item({
+        type: "custom_tool_call",
+        call_id: "c1",
+        name: "read",
+        input: JSON.stringify({ path: "/repo/a.ts" }),
+      })].join("\n"),
+    );
+    const part = entries[0]!.parts[0]!;
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.call).toEqual({ kind: "read", path: "/repo/a.ts" });
+  });
+});

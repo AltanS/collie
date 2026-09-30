@@ -9,6 +9,11 @@ export interface CanaryMessage {
   /** Stable id, also the capture file name. */
   readonly id: string;
   readonly text: string;
+  /**
+   * This send asks the agent to USE A TOOL, so its turn is a different kind of work from "only OK"
+   * and gets a budget to match (`scenarios.ts` § TOOL_TURN_TIMEOUT_MS).
+   */
+  readonly usesTool?: true;
 }
 
 const RULE = "────────────────────";
@@ -62,6 +67,7 @@ export const JOURNAL_MESSAGE: CanaryMessage = {
   // ONLY in the file cannot be short-circuited. `run.ts` § freshProject writes the token.
   // The reply is still one word, so the cost rule above is kept.
   text: "Read the file README.md in this folder, then reply with only the token it names.",
+  usesTool: true,
 };
 
 /** The four real sends of scenario 3: plain, multi-line with a `────` line, Chinese, and the read. */

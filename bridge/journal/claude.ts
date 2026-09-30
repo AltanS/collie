@@ -46,6 +46,11 @@ import {
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
 import { claudeResets, lastTwoTurns } from "./claude-resets.ts";
+// The shared guard on what an image block may become. It lives in pi's adapter because it also
+// resolves pi's `blob:sha256:` refs against pi's own store, and `bridge/server.ts` reaches for it
+// from there for the same reason. The rule it enforces is not pi's, though: a journal is an AGENT's
+// output, so an `http://` value in a block never becomes a fetch the phone makes.
+import { resolveImageUrl } from "./pi.ts";
 import {
   containedRealpath,
   exists,
@@ -235,11 +240,8 @@ export function parseClaudeTranscript(
  * whole inventory those files carry; `continued-in` and `summary` are added from the grammar above,
  * which reads both and which older logs carry.
  *
- * `image` IS DROPPED, and it is listed anyway: five of them across those 500 files, and a known list
- * says "we have looked at this". A pasted picture in a Claude turn therefore never reaches the phone
- * even though `TranscriptPart` has a place for it (pi's adapter fills it). That is a gap with a name,
- * and a gap with a name is not drift — it does not belong in a counter that means "nobody has looked
- * at this yet".
+ * `image` is READ, into the same `TranscriptPart` place pi's adapter fills, so a pasted picture now
+ * reaches the phone. It was listed here while it was dropped, which is why the tally never counted it.
  *
  * There is no role list: Claude decides a row's kind with the row's own `type`, and `message.role`
  * merely repeats it (measured: `user` and `assistant`, nothing else, in 84,525 rows). Nothing here
@@ -364,6 +366,22 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
         } else if (b.type === "thinking" && typeof b.thinking === "string") {
           if (b.thinking.trim() !== "")
             parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
+        } else if (b.type === "image") {
+          // Claude's own image shape, measured over 17 blocks in the 500 newest sessions here:
+          // `{ type: "image", source: { type: "base64", media_type, data } }`, png or jpeg. It is
+          // NOT pi's `{ data, mimeType }`, which is why the shared resolver is fed the two fields
+          // rather than the block. A `source.type` of `url` is refused for pi's reason: a reference
+          // this build will not load contributes no part, rather than a broken <img>.
+          const source = b.source;
+          const src = source !== null && typeof source === "object" && !Array.isArray(source) ? source : {};
+          const mimeType = typeof src.media_type === "string" ? src.media_type : undefined;
+          const url = src.type === "base64" && typeof src.data === "string" ? resolveImageUrl(src.data, mimeType) : null;
+          if (url !== null) {
+            // Assigned, never conditionally spread: an unnamed mime type leaves the key OFF.
+            const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+            if (mimeType !== undefined) part.mimeType = mimeType;
+            parts.push(part);
+          }
         } else if (b.type === "tool_use") {
           const name = typeof b.name === "string" ? b.name : "tool";
           const summary = summarizeToolInput(b.input);

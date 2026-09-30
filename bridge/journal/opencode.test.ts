@@ -1820,3 +1820,85 @@ describe("OpencodeTranscriptSource — readSince, V2", () => {
     await f.clean();
   });
 });
+
+// ── patch, file and the V1 compaction role (spec M41/12) ────────────────────
+//
+// Shapes measured 2026-10-01 against the local store, READ-ONLY: 34 `patch` parts of
+// `{ hash, files }`, 5 `file` parts of `{ mime, filename, url, source }` with a `data:` url, and one
+// `compaction` part that is a marker with no prose at all. Rows are built here; no store is a fixture.
+const patchPart = (files: string[]) => ({ type: "patch", hash: "29d778d84269551f32b6739a38f8124f", files });
+const filePart = (mime: string, url: string) => ({ type: "file", mime, filename: "shot.png", url, source: undefined });
+
+describe("parseOpencodeTranscript — patch and file parts", () => {
+  test("a patch reads as one edit naming every file it touched", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_a", assistantData(), [patchPart(["/repo/.tracker/00-INDEX.md", "/repo/src/a.ts"])]),
+    );
+    expect(entries).toHaveLength(1);
+    const part = entries[0]!.parts[0]!;
+    if (part.kind !== "tool") throw new Error("not a tool part");
+    expect(part.name).toBe("patch");
+    // The basenames, because a phone column cannot hold two absolute paths.
+    expect(part.summary).toBe("00-INDEX.md, a.ts");
+    // No hunks in the row, so no counts are invented.
+    expect(part.call).toEqual({ kind: "edit", path: "/repo/.tracker/00-INDEX.md", added: 0, removed: 0 });
+  });
+
+  test("a patch with no files renders nothing", () => {
+    const entries = parseOpencodeTranscript(line("msg_a", assistantData(), [patchPart([])]));
+    expect(entries).toHaveLength(0);
+  });
+
+  test("an attached image becomes an image part", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_a", userData(), [filePart("image/png", "data:image/png;base64,AAAA")]),
+    );
+    expect(entries[0]!.parts).toEqual([
+      { kind: "image", url: "data:image/png;base64,AAAA", mimeType: "image/png" },
+    ]);
+  });
+
+  test("an http url on the agent's word never becomes a fetch the phone makes", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_a", userData(), [filePart("image/png", "http://evil.example/x.png"), textPart("look")]),
+    );
+    expect(entries[0]!.parts).toEqual([{ kind: "text", text: "look" }]);
+  });
+
+  test("a non-image attachment contributes no part", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_a", userData(), [filePart("application/pdf", "data:application/pdf;base64,AAAA"), textPart("read it")]),
+    );
+    expect(entries[0]!.parts).toEqual([{ kind: "text", text: "read it" }]);
+  });
+});
+
+describe("parseOpencodeTranscript — V1 compaction is a summary, not speech", () => {
+  test("mode compaction reads as the summary role", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_a", { ...assistantData(), mode: "compaction", agent: "compaction", summary: true }, [
+        textPart("## Objective\nThe work so far."),
+      ]),
+    );
+    expect(entries[0]!.role).toBe("summary");
+  });
+
+  test("the older summary flag reads the same way", () => {
+    const entries = parseOpencodeTranscript(
+      line("msg_a", { ...assistantData(), summary: true }, [textPart("earlier history")]),
+    );
+    expect(entries[0]!.role).toBe("summary");
+  });
+
+  test("a user turn's summary OBJECT is not a compaction", () => {
+    // V1 writes `summary: { diffs: [] }` on an ordinary user message. Reading that as a compaction
+    // would set every human turn apart from speech.
+    const entries = parseOpencodeTranscript(line("msg_a", userData(), [textPart("hi")]));
+    expect(entries[0]!.role).toBe("user");
+  });
+
+  test("an ordinary assistant turn stays speech", () => {
+    const entries = parseOpencodeTranscript(line("msg_a", assistantData(), [textPart("on it")]));
+    expect(entries[0]!.role).toBe("assistant");
+  });
+});

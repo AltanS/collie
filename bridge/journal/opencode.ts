@@ -66,7 +66,7 @@
 // in `v2Role`, exactly as V1's `step-start`/`step-finish` parts are: neither is speech.
 
 import { Database } from "bun:sqlite";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import type { ResetEvent } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
@@ -95,8 +95,10 @@ import {
   MAX_TRANSCRIPT_BYTES,
   rootList,
 } from "./files.ts";
-import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
+// The shared guard on what an image block may become — see the note at claude.ts's own import.
+import { resolveImageUrl } from "./pi.ts";
 import { classifyToolCall, type Hunk, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
@@ -732,6 +734,39 @@ export function opencodePart(data: JsonValue | undefined): TranscriptPart | null
     return text.trim() === "" ? null : { kind: "thinking", ...clamp(text, MAX_TEXT_CHARS) };
   }
 
+  if (d.type === "patch") {
+    // What OpenCode records about an edit it made OUTSIDE a tool call: `{ hash, files }`, with
+    // ABSOLUTE paths and no diff at all (34 rows in the local store, every one of that shape). So it
+    // becomes an `edit` call with no counts, which is the same thing `classifyToolCall` produces for
+    // every harness's edit before its result row arrives. `added`/`removed` stay 0 because the row
+    // carries no hunks to count, and `hash` is not a diff — it is a snapshot id.
+    //
+    // ONE PART PER PATCH, not one per file, and the summary names them all. A patch is one action the
+    // agent took; splitting it into five rows would read as five edits.
+    const files = Array.isArray(d.files) ? d.files.filter((f): f is string => typeof f === "string") : [];
+    if (files.length === 0) return null;
+    const summary = oneLine(files.map((f) => basename(f)).join(", "));
+    const call: ToolCall = { kind: "edit", path: files[0] ?? "", added: 0, removed: 0 };
+    return { kind: "tool", name: "patch", summary, call };
+  }
+
+  if (d.type === "file") {
+    // An attachment: `{ mime, filename, url, source }`, and `url` is a `data:` payload (5 rows here,
+    // all png). The shared guard decides whether it may be drawn — an `http://` url on an agent's
+    // word never becomes a fetch the phone makes (journal/pi.ts § resolveImageUrl).
+    //
+    // A NON-IMAGE mime contributes nothing, and that is deliberate rather than pending: no such row
+    // exists in the store, and `TranscriptPart` has no attachment kind to put one in, so a rendering
+    // for it would be invented rather than read.
+    const mime = typeof d.mime === "string" ? d.mime : undefined;
+    const url = typeof d.url === "string" ? resolveImageUrl(d.url, mime) : null;
+    if (url === null) return null;
+    // Assigned, never conditionally spread: an unnamed mime type leaves the key OFF.
+    const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+    if (mime !== undefined) part.mimeType = mime;
+    return part;
+  }
+
   if (d.type === "tool") {
     const rawState = d.state;
     const state: JsonObject =
@@ -779,9 +814,15 @@ export function opencodePart(data: JsonValue | undefined): TranscriptPart | null
  * inventory it carries. `rows` is empty BY FORMAT: a composed line is `{id, ts, data, parts}` and has
  * no row-kind field, so `data.role` is the only thing that says what a row is.
  *
- * `patch`, `file` and `compaction` ARE DROPPED, and they are listed anyway: 34, 5 and 1 of them in
- * that store, so a patch OpenCode wrote and a file it attached are invisible in a transcript today.
- * That is a gap with a name, not drift (`reduce.ts`, "known means met and decided about").
+ * `patch` and `file` are READ: a patch becomes an `edit` call naming the files it touched, and a file
+ * becomes an `image` part when its `url` survives the shared guard. Both were listed here while they
+ * were dropped, which is why the tally never counted them.
+ *
+ * `compaction` IS STILL DROPPED, on a reading rather than for want of work. Re-measured 2026-10-01:
+ * the one row in that store is `{ auto, tail_start_id }` — a MARKER with no prose, whose message is
+ * not in the store at all — so there is nothing in it to render. The compaction's actual summary is a
+ * different row, and it now reads as one: see the `isCompaction` line in the reducer. A divider drawn
+ * from this marker would be a shape `TranscriptPart` does not have, invented rather than read.
  *
  * `step-start` and `step-finish` are the turn bookkeeping `opencodePart` declines by name.
  */
@@ -856,7 +897,12 @@ export function createOpencodeReducer(): RowReducer {
     // At the READ, not in the branch that declined (`reduce.ts` § `createUnknownCounter`).
     unknown.role(data.role);
     if (data.role !== "user" && data.role !== "assistant" && data.role !== "summary") return NO_CHANGE;
-    const role = data.role;
+    // V1 HAS NO `summary` ROLE. It writes the compaction's own summary as an ASSISTANT message wearing
+    // `mode: "compaction"` (or the older `summary: true`), and its prose sits in an ordinary `text`
+    // part — so it already rendered, but as speech. V2 writes `type: "compaction"` and `v2Role`
+    // already reads that as `summary`. This is the same reading for the older store, so a compaction
+    // is set apart from speech on both (types.ts § TranscriptEntry).
+    const role = data.role === "assistant" && isCompaction(data) ? "summary" : data.role;
 
     const parts: TranscriptPart[] = [];
     if (Array.isArray(row.parts)) {

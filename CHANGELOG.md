@@ -32,6 +32,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **Chat shows the work a codex pane did, not only the words it said.** Codex runs nearly everything
+  through one custom tool, and the journal reader dropped that shape, so every file it read and every
+  patch it wrote was missing from Chat. It reads now, with the command, the output and the exit code.
+  Claude's pasted images reach the phone too, and an OpenCode patch or attachment shows as itself.
+
 - **The boot splash shows the Collie mark, not the old galloping dog.** The sprite was retired when
   the new mark landed and every screen moved to it, but the first-paint splash in `index.html` kept
   its own hand-written copy, so a cold open still flashed a galloping dog and then swapped it for a

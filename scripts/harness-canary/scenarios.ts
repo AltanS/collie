@@ -27,7 +27,18 @@ export const POLL_MS = 150;
 const START_TIMEOUT_MS = 45_000;
 const DRAFT_TIMEOUT_MS = 4_000;
 const CLEAR_TIMEOUT_MS = 4_000;
+/**
+ * How long an "only OK" turn may take. Three of the four sends ask for exactly that and finish in
+ * about a second, so this is generous already.
+ */
 const TURN_TIMEOUT_MS = 120_000;
+/**
+ * How long a turn that must USE A TOOL may take, which is a different kind of work: the agent has to
+ * think, ask for a read, get its result and then answer. One budget for both was the fault — on
+ * 2026-09-30 codex 0.156.1 went past 120 s on the journal send, so `sends` reached no verdict and the
+ * `journal` scenario had nothing of its own to read either.
+ */
+const TOOL_TURN_TIMEOUT_MS = 300_000;
 const SEND_TIMEOUT_MS = 60_000;
 const EXIT_TIMEOUT_MS = 12_000;
 /** How long the exit window keeps sampling once the shell is back. */
@@ -425,7 +436,8 @@ export class Driver {
     }
     let s = await this.screen();
     let settledPolls = 0;
-    const deadline = Date.now() + TURN_TIMEOUT_MS;
+    const budget = m.usesTool === true ? TOOL_TURN_TIMEOUT_MS : TURN_TIMEOUT_MS;
+    const deadline = Date.now() + budget;
     while (Date.now() < deadline) {
       const info = this.ctx.session.paneInfo(this.paneId);
       s = await this.screen();
@@ -447,7 +459,7 @@ export class Driver {
       return { result: failCase(m.id, "outcome sent, but the message is still in the input box"), idleAfter: false, submitted: true, answered: false };
     }
     return {
-      result: notReachedCase(m.id, `outcome sent; the turn did not finish in ${TURN_TIMEOUT_MS / 1000} s`),
+      result: notReachedCase(m.id, `outcome sent; the turn did not finish in ${budget / 1000} s`),
       idleAfter: false,
       submitted: true,
       answered: false,
