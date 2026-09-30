@@ -85,13 +85,17 @@ export function settingsPath(scope?: Scope): string {
 }
 
 /**
- * The four Settings sections. Settings is an index of these, not a column of every card it has
+ * The Settings sections. Settings is an index of these, not a column of every card it has
  * (routes/settings-sections.tsx says why, and which card went where).
  *
  * A union rather than a bare string, so a row naming a section nobody built is a compile error
  * instead of a page that renders nothing.
+ *
+ * The fifth is the only one that can be absent from the index: Experiments renders while
+ * `lib/experiments.ts` holds something. Its path needs nothing here — the two ladders below already
+ * read every `/settings/<x>` as a child of the index.
  */
-export type SettingsSection = "appearance" | "device" | "alerts" | "system";
+export type SettingsSection = "appearance" | "device" | "alerts" | "system" | "experiments";
 
 /** One Settings section — a CHILD of the index, carrying the scope like every other path helper. */
 export function settingsSectionPath(section: SettingsSection, scope?: Scope): string {

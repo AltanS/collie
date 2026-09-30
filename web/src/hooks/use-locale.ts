@@ -16,10 +16,20 @@ import { getLocaleSnapshot, setLocale, subscribeLocale, type Locale } from "@/li
 
 export interface UseLocaleReturn {
   locale: Locale;
+  /**
+   * Bumped on every change that alters rendered text, INCLUDING a lazy dictionary arriving.
+   *
+   * A component that only calls `t()` never needs this — re-rendering is enough. A component that
+   * MEMOISES a derived string does: `locale` alone is the wrong dependency, because choosing German
+   * changes it once, paints English (the bundle has not landed), and never changes again when the
+   * bundle does. The revision moves on both events, so it is the only honest key for a memo whose
+   * value came out of `t()`.
+   */
+  revision: number;
   setLocale: (locale: Locale) => void;
 }
 
 export function useLocale(): UseLocaleReturn {
   const snapshot = useSyncExternalStore(subscribeLocale, getLocaleSnapshot, getLocaleSnapshot);
-  return { locale: snapshot.locale, setLocale };
+  return { locale: snapshot.locale, revision: snapshot.revision, setLocale };
 }

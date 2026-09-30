@@ -292,6 +292,11 @@ export const fixtureNewSpace: Extract<CreateResponse, { ok: true }> = {
 };
 
 /** A minimal two-turn transcript: a human ask and the agent's tool-call-plus-answer reply. */
+/** The window's numbering, and where its turns sit. Both mirror the bridge: a `gen` is clock-seeded
+ *  and `seq` starts at 1,000,000 so a `?before=` page can number DOWN without signs. */
+export const FIXTURE_CHAT_GEN = 1_759_000_000_000;
+export const FIXTURE_SEQ_BASE = 1_000_000;
+
 export const fixtureTranscript: TranscriptEntry[] = [
   {
     uuid: "t1",
@@ -583,6 +588,23 @@ export const handlers = [
       hasMore: false,
       total: fixtureTranscript.length,
       fileTruncated: false,
+    }),
+  ),
+  // The live session window (ADR 0073). The same two turns the transcript fixture has, numbered
+  // into one generation, with nothing older behind them — so a Chat body drawn over this fixture
+  // shows the same conversation the History page does, which is the point of one store under both.
+  http.get(/\/api\/pane\/[^/]+\/chat/, () =>
+    HttpResponse.json({
+      paneId: "w1:p1",
+      available: true,
+      page: "live",
+      gen: FIXTURE_CHAT_GEN,
+      rev: 1,
+      head: FIXTURE_SEQ_BASE + fixtureTranscript.length - 1,
+      oldest: FIXTURE_SEQ_BASE,
+      hasOlder: false,
+      // `Object.assign` onto a fresh object rather than a spread — `no-map-spread`.
+      upserts: fixtureTranscript.map((e, i) => Object.assign({}, e, { seq: FIXTURE_SEQ_BASE + i })),
     }),
   ),
   http.post<never, { text?: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {

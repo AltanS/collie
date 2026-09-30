@@ -13,14 +13,23 @@ import { useLocale } from "@/hooks/use-locale";
 // blank clears, the blast-radius wording). A label rendered here is user text going only into an
 // <input> value / text node — never markup — so it stays within the pane-output XSS boundary.
 
-/** A plain (non-destructive) action row: leading icon + label. Used for "Rename". */
+/**
+ * A plain (non-destructive) action row: leading icon + label, and an optional second line.
+ *
+ * The hint is for a row that must EXPLAIN rather than hide. A control that disappears on some panes
+ * and not others is how an operator concludes the app is broken, so where a row is still the right
+ * row but cannot do its whole job here, it stays and says why. Absent on every other row, which is
+ * byte-identical to before.
+ */
 export function ActionRow({
   icon,
   label,
+  hint,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
+  hint?: string;
   onClick: () => void;
 }) {
   return (
@@ -30,11 +39,18 @@ export function ActionRow({
       // `min-h-11` — a REAL 44px hit box, stated (DESIGN.md §6). `px-3 py-2.5` around a 20px
       // `text-sm` line drew 40px, five under the floor, on rows a thumb reaches for in a sheet that
       // has just slid up under it. A floor rather than a fixed height, so a row whose label wraps on
-      // a narrow phone still grows instead of clipping.
+      // a narrow phone still grows instead of clipping — and so a row carrying a hint grows too.
       className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted"
     >
       {icon}
-      {label}
+      {hint === undefined ? (
+        label
+      ) : (
+        <span className="min-w-0">
+          <span className="block">{label}</span>
+          <span className="block text-xs font-normal leading-snug text-muted-foreground">{hint}</span>
+        </span>
+      )}
     </button>
   );
 }

@@ -19,6 +19,7 @@ import { useAgentStart } from "@/hooks/use-agent-start";
 import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
+import { useChatWindow } from "@/hooks/use-chat-window";
 import { useLatestReply } from "@/hooks/use-latest-reply";
 import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
@@ -57,6 +58,7 @@ import { StripsSummary } from "@/components/strips-summary";
 import { PaneMeta } from "@/components/pane-meta";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
+import { SessionStream } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -82,6 +84,7 @@ import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { paneRowKey, paneScope } from "@/lib/hosts";
+import { paneScopeKey } from "@/lib/scope";
 import { usePins } from "@/lib/pins";
 import { changesPath, historyPath, panePath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
@@ -824,6 +827,44 @@ export function AgentChat({
   const noSessionKey = reportsSessionOnFirstPrompt(agent?.agent)
     ? "chat.scrollback.noSessionYet"
     : "chat.scrollback.noSessionReported";
+  // ── THE PANE'S SECOND BODY: CHAT (M41/11) ───────────────────────────────────
+  //
+  // Chat is a MODE, not a route: `nav.ts`'s two leaf lists are untouched, and nothing below this
+  // line moves the header, the strips, the card dock, the belt or the composer. What swaps is the
+  // box between the mirror's own top rule and the chrome block, and only that.
+  //
+  // TWO VALUES DECIDE IT, and they are different questions (lib/pane-view.ts). `chatExperiment` is
+  // whether this device has opted in at all — off by default, written from Settings → Experiments,
+  // and while it is off the pane menu shows no switch and this whole block is inert. `paneView` is
+  // which body, once opted in, and the pane's ⋮ menu is the one place it is written.
+  //
+  // `historyAvailable` is the third gate and it is about the PANE rather than the device: the chat
+  // route reads the same journal the History page does, so a pane that has no transcript to open
+  // has no session to stream either. A pane like that falls back to the terminal and the ⋮ row
+  // carries the reason — it never hides, because a control that disappears on some panes is how an
+  // operator concludes the app is broken.
+  const chatOffered = dash.prefs.chatExperiment;
+  const chatChosen = chatOffered && dash.prefs.paneView === "chat";
+  const chatBody = chatChosen && historyAvailable;
+  // The live window, moved by the poll that already exists (ADR 0073). Disabled is free: no fetch,
+  // no timer, the empty window.
+  const chatFeed = useChatWindow({ paneId, scope, enabled: chatBody });
+  // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
+  // question this side can answer. There are two layers and the split is deliberate: a pane with no
+  // journal at all never asks the bridge, so the reason belongs on the ⋮ row here, while a pane
+  // that DOES ask and is told `available: false` or handed a 404 is drawing the chat body, and the
+  // stream says so in its own words there. Saying both would put "this pane keeps the terminal" on
+  // a menu row above a chat stream.
+  //
+  // The multiplexer's own words come first where it has any, because a multiplexer that keeps no
+  // agent session log at all is not Collie's fault and Collie does not say it is.
+  const chatReason = historyAvailable
+    ? null
+    : sessionLog.capable
+      ? t("history.unavailable.noSession")
+      : sessionLog.note || t("history.unavailable.noLog");
+  const chatNote = chatReason === null ? undefined : t("chat.mode.noChat", { reason: chatReason });
+
   // Scrollback has its own capability, and it is a genuinely different one: a multiplexer can keep
   // screen history while knowing nothing about agents. Hidden rather than explained when absent —
   // "there is nothing older to load" is not a fact anyone comes looking for.
@@ -1942,6 +1983,18 @@ export function AgentChat({
             style={mirrorFace.style}
             onClick={focusFromMirror}
           >
+            {/* THE TWO BODIES. One box, one top rule, one face, one list handle — a send snaps
+                whichever body is on screen back to its tail without knowing which one it is. The
+                draft-notice slot below is outside the swap on purpose: the composer portals into it
+                and the notice floats over both bodies alike (ADR 0061). */}
+            {chatBody ? (
+              <SessionStream
+                feed={chatFeed}
+                address={paneScopeKey(scope, paneId)}
+                showToolCalls={dash.prefs.showToolCalls}
+                listRef={listRef}
+              />
+            ) : (
             <ChatMessageList
               ref={listRef}
               dep={display}
@@ -2078,6 +2131,7 @@ export function AgentChat({
                 </div>
               )}
             </ChatMessageList>
+            )}
             {/* THE TERMINAL-DRAFT NOTICE FLOATS HERE (ADR 0061). The composer portals the notice
                 into this box, pinned to the mirror's bottom edge: above the card dock when a card
                 is docked, else above the chrome block and its belt. Absolute, so it covers the
@@ -2421,7 +2475,10 @@ export function AgentChat({
           readOnly={readOnly}
           onRenamed={() => revalidator.revalidate()}
           onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
-          onFind={display ? openFind : undefined}
+          // Find searches the MIRROR, and highlights its hits there. In chat mode the mirror is
+          // not on screen, so the row would open a bar over a surface with nothing to show —
+          // withheld, the way the sheet withholds every row it was given nothing for.
+          onFind={display && !chatBody ? openFind : undefined}
           onHistory={historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
           // Copy the buffered output — gated on there being output AND a clipboard to write to (absent
           // over plain HTTP), so the row hides where it could only fail, the way find hides with no
@@ -2443,6 +2500,12 @@ export function AgentChat({
           // already spent. It hands over to the sheet below in one React event, so the actions sheet
           // unmounts in the same commit the settings sheet mounts.
           onSettings={() => setDrawer("paneSettings")}
+          // THE BODY SWITCH. `undefined` while Settings → Experiments has Chat off, which is what
+          // keeps the row off the sheet entirely; `chatNote` is why this pane keeps the terminal
+          // when it does. One standing per-device value, written here and nowhere else.
+          paneView={chatOffered ? dash.prefs.paneView : undefined}
+          onPaneViewChange={chatOffered ? dash.setPaneView : undefined}
+          paneViewNote={chatOffered ? chatNote : undefined}
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.
           herd={herd}

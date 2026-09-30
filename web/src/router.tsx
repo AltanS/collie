@@ -16,6 +16,7 @@ import { SettingsRoute } from "@/routes/settings";
 import {
   SettingsAlertsRoute,
   SettingsAppearanceRoute,
+  SettingsExperimentsRoute,
   SettingsDeviceRoute,
   SettingsSystemRoute,
 } from "@/routes/settings-sections";
@@ -92,6 +93,11 @@ export const router = createBrowserRouter([
       { path: "settings/appearance", element: <SettingsAppearanceRoute /> },
       { path: "settings/device", element: <SettingsDeviceRoute /> },
       { path: "settings/alerts", element: <SettingsAlertsRoute /> },
+      // The fifth section. It is routable whether or not the index offers a row for it — a page
+      // reachable only by URL is the ordinary case for a section that comes and goes, and it is
+      // what an operator who bookmarked it gets after the last experiment graduates: an empty page
+      // rather than a 404.
+      { path: "settings/experiments", element: <SettingsExperimentsRoute /> },
       // The System section carries the paired-device registry, so it gets the loader Settings used
       // to hold — a revoke or a pair is then the app's standard mutation shape (api call →
       // revalidate), with no second data path.

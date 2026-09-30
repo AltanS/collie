@@ -3012,3 +3012,80 @@ describe("AgentChat — copy the pane's output", () => {
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/copied output/i));
   });
 });
+
+// ── CHAT IS A MODE YOU CHOOSE (M41/11) ──────────────────────────────────────────────────────────
+//
+// The mode is not a route: the pane view swaps the box between the mirror's top rule and the chrome
+// block, and nothing else. So these cases assert the two things that make it a mode — the chrome
+// around it does not move, and the switch is a row in the ⋮ menu rather than a second screen.
+describe("AgentChat — the chat body", () => {
+  /** Opt this device in and pick a body, the way Settings → Experiments and the ⋮ row do. */
+  function chooseChat(paneView: "chat" | "terminal") {
+    localStorage.setItem(
+      "collie:dash-prefs:v1",
+      JSON.stringify({ chatExperiment: true, paneView, showToolCalls: true }),
+    );
+  }
+
+  const journalAgent = () => ({ ...fixtureAgents[0]!, hasSession: true });
+
+  it("draws the terminal and offers no switch until the device has opted in", async () => {
+    const user = userEvent.setup();
+    renderChat({ agent: journalAgent() });
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: /view$/ })).toBeNull();
+  });
+
+  it("draws the session instead of the mirror once Chat is the standing body", async () => {
+    chooseChat("chat");
+    renderChat({ agent: journalAgent() });
+    // The transcript fixture's own two turns, off the live window (test/handlers.ts).
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.getByText("One commit: abc1234.")).toBeInTheDocument();
+    expect(screen.queryByText(/recent pane output/)).toBeNull();
+  });
+
+  it("keeps the composer, the belt and the header in the chat body", async () => {
+    chooseChat("chat");
+    renderChat({ agent: journalAgent() });
+    await screen.findByText("what changed today?");
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pane actions" })).toBeInTheDocument();
+  });
+
+  it("withholds find in the chat body, because find highlights in a mirror nobody can see", async () => {
+    chooseChat("chat");
+    const user = userEvent.setup();
+    renderChat({ agent: journalAgent() });
+    await screen.findByText("what changed today?");
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Conversation history" })).toBeInTheDocument();
+  });
+
+  it("switches back to the mirror from the ⋮ row, without leaving the pane", async () => {
+    chooseChat("chat");
+    const user = userEvent.setup();
+    renderChat({ agent: journalAgent() });
+    await screen.findByText("what changed today?");
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Terminal view" }));
+    await waitFor(() => expect(screen.getByText(/recent pane output/)).toBeInTheDocument());
+    expect(screen.queryByText("what changed today?")).toBeNull();
+  });
+
+  // A pane with no journal SHOWS the switch and explains itself; it never hides.
+  it("falls back to the terminal on a pane with no session, and the row carries the reason", async () => {
+    chooseChat("chat");
+    const user = userEvent.setup();
+    renderChat({ agent: { ...fixtureAgents[0]!, hasSession: false } });
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    await openPaneMenu(user);
+    expect(screen.getByRole("button", { name: /Terminal view/ })).toBeInTheDocument();
+    expect(
+      screen.getByText(/This pane has no agent session.*The terminal stays here\./),
+    ).toBeInTheDocument();
+  });
+});

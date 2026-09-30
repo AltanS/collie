@@ -153,6 +153,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   prototype first and moved here whole, tests included, so there is one definition of a card and not
   two. No screen mounts them yet.
 
+- **A pane can be read as a chat instead of a terminal.** Turn Chat on under Settings →
+  Experiments, and a pane draws the agent's own conversation: your turns, its replies, thinking
+  behind a fold and a card per step, with the composer, the belt and the pane menu exactly where
+  they were, so you still take the work over by typing. The switch is a row in the pane's ⋮ menu and
+  the choice is one standing setting for the whole device. Older turns load on a tap. A pane with no
+  session keeps the terminal and the row says why, and a crew member a release behind says to update
+  it rather than pretending there is nothing to show. Terminal stays the default; the default flips
+  in 2.0 (#316).
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

@@ -523,3 +523,48 @@ describe("PaneActionsSheet — pin", () => {
     expect(pinned()).toBe(true);
   });
 });
+
+// ── THE BODY SWITCH (M41/11) ────────────────────────────────────────────────────────────────────
+//
+// The row is a ROW IN THIS SHEET, not the header and not the belt (ADR 0009: a generic menu is
+// where a pane's actions live, and Find and History are already here). It is gated by absence, the
+// way every read row here is, and it EXPLAINS rather than hides when the pane cannot honour it.
+describe("PaneActionsSheet — which body the pane draws", () => {
+  it("shows no switch at all until the device has opted in", () => {
+    renderSheet();
+    expect(screen.queryByRole("button", { name: /view$/ })).toBeNull();
+  });
+
+  it("offers the chat while the standing body is the terminal", () => {
+    renderSheet({ paneView: "terminal", onPaneViewChange: vi.fn() });
+    expect(screen.getByRole("button", { name: "Chat view" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Terminal view" })).toBeNull();
+  });
+
+  it("offers the terminal while the standing body is the chat", () => {
+    renderSheet({ paneView: "chat", onPaneViewChange: vi.fn() });
+    expect(screen.getByRole("button", { name: "Terminal view" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chat view" })).toBeNull();
+  });
+
+  it("writes the other body and closes, so the pane is the only thing on screen when it lands", async () => {
+    const user = userEvent.setup();
+    const onPaneViewChange = vi.fn();
+    const props = renderSheet({ paneView: "terminal", onPaneViewChange });
+    await user.click(screen.getByRole("button", { name: "Chat view" }));
+    expect(onPaneViewChange).toHaveBeenCalledWith("chat");
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  // A control that disappears on some panes and not others is how an operator concludes the app is
+  // broken, and it would be worst for exactly the person whose standing mode is Chat.
+  it("keeps the row and carries the reason on a pane that cannot draw a chat", () => {
+    renderSheet({
+      paneView: "chat",
+      onPaneViewChange: vi.fn(),
+      paneViewNote: "This pane keeps the terminal: no session.",
+    });
+    expect(screen.getByRole("button", { name: /Terminal view/ })).toBeInTheDocument();
+    expect(screen.getByText("This pane keeps the terminal: no session.")).toBeInTheDocument();
+  });
+});

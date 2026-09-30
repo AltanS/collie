@@ -14,10 +14,17 @@
 // and no `Answer`: a seam with no caller is a guess (ADR 0073 point 8), and the first real dialog
 // channel deserves to shape its own types rather than inherit a prototype's.
 //
-// ── NOT TRANSLATED YET, AND ON PURPOSE ──────────────────────────────────────
-// The copy here is English literals. Nothing renders these yet — M41/10 lands the components and
-// M41/11 owns the screen — so no operator can read a word of it. The screen that mounts them is what
-// owes every string a `t()` key and all seven catalogues an entry.
+// ── TRANSLATED, SINCE THE SCREEN THAT MOUNTS THEM LANDED ────────────────────
+// M41/10 left the copy here as English literals on purpose: nothing rendered these, so no operator
+// could read a word of them. M41/11 mounts them (`components/session-stream.tsx`) and pays the debt
+// it named — every string below is a `t()` key with an entry in all seven catalogues.
+//
+// EVERY COMPONENT HERE THAT CALLS `t()` ALSO CALLS `useLocale()`. That is the repo rule (CLAUDE.md
+// → Frontend data layer) and it is load bearing twice over: `t()` reads a module store at call
+// time, so a component needs a reason to render again when the answer changes — and two of these
+// are `memo`, so a parent re-rendering is not that reason. What a card DRAWS is still never
+// translated: a path, a command, a query, a URL, a sub-agent's name, a tool's own name and a
+// harness's own name are the agent's words or the machine's, and they go through as they arrived.
 
 import { createContext, memo, useContext, useMemo, useState, type ReactNode } from "react";
 import {
@@ -44,8 +51,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
+import { useLocale } from "@/hooks/use-locale";
 import type { ChatItem, ChatToolCall, ChatToolStatus } from "@/lib/chat-items";
 import { clockTime } from "@/lib/format";
+import { t, tn, type PluralKey } from "@/lib/i18n";
 import type { Hunk } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
@@ -139,6 +148,7 @@ const FOLD_ROW =
 
 export const ToolGroup = memo(
   function ToolGroup({ items }: { items: ChatItem[] }) {
+    useLocale();
     const waiting = useContext(CardWaitingCtx);
     const live = items.some((i) => (i.kind === "tool" && i.status === "running") || waiting[i.id]);
     const [open, setOpen] = useState(false);
@@ -149,20 +159,23 @@ export const ToolGroup = memo(
     const [held, setHeld] = useState(false);
     if (live && !held) setHeld(true);
     const tools = items.filter((i): i is Extract<ChatItem, { kind: "tool" }> => i.kind === "tool");
-    const count = (k: string) => tools.filter((t) => t.tool.kind === k).length;
-    const parts = [
-      [count("execute"), "command", "commands"],
-      [count("edit"), "edit", "edits"],
-      [count("read"), "read", "reads"],
-      [count("search") + count("fetch"), "search", "searches"],
-      [count("task"), "agent", "agents"],
-      [count("other") + count("delete") + count("move"), "other step", "other steps"],
-    ] as const;
+    // `step`, not `t` — `t` is the translator in this file now.
+    const count = (k: string) => tools.filter((step) => step.tool.kind === k).length;
+    // Each kind is counted on its own and read through `tn()`, so every part of the summary is a
+    // whole noun phrase in its own language rather than a number glued to a word.
+    const parts: readonly (readonly [number, PluralKey])[] = [
+      [count("execute"), "chat.run.commands"],
+      [count("edit"), "chat.run.edits"],
+      [count("read"), "chat.run.reads"],
+      [count("search") + count("fetch"), "chat.run.searches"],
+      [count("task"), "chat.run.agents"],
+      [count("other") + count("delete") + count("move"), "chat.run.others"],
+    ];
     const summary = parts
       .filter(([n]) => n > 0)
-      .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`)
+      .map(([n, key]) => tn(key, n))
       .join(", ");
-    const failed = tools.filter((t) => t.status === "failed" || t.status === "denied").length;
+    const failed = tools.filter((step) => step.status === "failed" || step.status === "denied").length;
     if (open || live || held) {
       const firstWaiting = items.findIndex((i) => waiting[i.id]);
       const start = open
@@ -189,9 +202,9 @@ export const ToolGroup = memo(
                 onClick={() => setOpen(true)}
               >
                 <ChevronRight className="size-3.5 shrink-0" />
-                <span className="min-w-0 truncate">
-                  <span className="tabular-nums">{start}</span> earlier {start === 1 ? "step" : "steps"} · {summary}
-                </span>
+                {/* `tabular-nums` on the whole run rather than on one span: the sentence is one
+                    message now, and every number in it (the count and the summary's own) steps. */}
+                <span className="min-w-0 truncate tabular-nums">{tn("chat.run.earlier", start, { summary })}</span>
               </button>
             )
           )}
@@ -213,7 +226,7 @@ export const ToolGroup = memo(
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <ChevronRight className="size-3.5 shrink-0" />
           <span className="min-w-0 truncate">{summary}</span>
-          {failed > 0 && <BadBadge>{`${failed} failed`}</BadBadge>}
+          {failed > 0 && <BadBadge>{tn("chat.run.failed", failed)}</BadBadge>}
         </span>
         {step && (
           <span className="flex min-w-0 items-baseline gap-1.5 pl-5 text-xs text-muted-foreground">
@@ -244,32 +257,34 @@ export interface StepLine {
 }
 
 /** One step, in a few words, for a folded run and for a host's own chrome. */
-export function stepLine(t: ChatToolCall): StepLine {
-  switch (t.kind) {
+export function stepLine(call: ChatToolCall): StepLine {
+  switch (call.kind) {
     case "edit":
-      return { verb: t.created ? "Created" : "Edited", subject: shortPath(t.path), mono: true };
+      return { verb: t(call.created ? "chat.step.created" : "chat.step.edited"), subject: shortPath(call.path), mono: true };
     case "execute":
-      return t.description
-        ? { verb: "", subject: t.description, mono: false }
-        : { verb: "$", subject: t.command.split("\n")[0]!, mono: true };
+      return call.description
+        ? { verb: "", subject: call.description, mono: false }
+        : { verb: "$", subject: call.command.split("\n")[0]!, mono: true };
     case "read":
-      return { verb: "Read", subject: shortPath(t.path), mono: true };
+      return { verb: t("chat.step.read"), subject: shortPath(call.path), mono: true };
     case "search":
-      return { verb: "Searched", subject: t.query, mono: true };
+      return { verb: t("chat.step.searched"), subject: call.query, mono: true };
     case "fetch":
-      return { verb: "Fetched", subject: t.url, mono: true };
+      return { verb: t("chat.step.fetched"), subject: call.url, mono: true };
+    // A sub-agent's name and a tool's own name are the harness's vocabulary, never a dictionary's.
     case "task":
-      return { verb: `${t.agent}:`, subject: t.summary, mono: false };
+      return { verb: `${call.agent}:`, subject: call.summary, mono: false };
     case "other":
-      return { verb: `${t.name}:`, subject: t.summary.split("\n")[0] ?? "", mono: false };
+      return { verb: `${call.name}:`, subject: call.summary.split("\n")[0] ?? "", mono: false };
     case "delete":
-      return { verb: "Deleted", subject: shortPath(t.path), mono: true };
+      return { verb: t("chat.step.deleted"), subject: shortPath(call.path), mono: true };
     case "move":
-      return { verb: "Moved", subject: shortPath(t.path), mono: true };
+      return { verb: t("chat.step.moved"), subject: shortPath(call.path), mono: true };
   }
 }
 
 export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
+  useLocale();
   const waiting = useContext(CardWaitingCtx)[item.id];
   switch (item.kind) {
     case "user":
@@ -279,7 +294,7 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
       return <MarkdownText text={item.text} />;
     case "thinking":
       return (
-        <Disclosure label="Thinking" icon={ChevronRight}>
+        <Disclosure label={t("chat.card.thinking")} icon={ChevronRight}>
           {() => <MarkdownText text={item.text} className="px-5 pb-1 italic text-muted-foreground" />}
         </Disclosure>
       );
@@ -300,7 +315,8 @@ function UserTurn({ text, ts }: { text: string; ts?: string }) {
     <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <User className="size-3.5" />
-        You
+        {/* The transcript's own word for the reader, so History and Chat never disagree. */}
+        {t("transcript.youLabel")}
         {time && <span className="font-normal tabular-nums">{time}</span>}
       </div>
       <p className="font-content whitespace-pre-wrap break-words text-sm">{text}</p>
@@ -355,7 +371,7 @@ function BadBadge({ children }: { children: string }) {
  * from running to done repaints and never moves its path (DESIGN.md §2, "a reserved slot").
  */
 function StatusSlot({ status, exitCode }: { status: ChatToolStatus; exitCode?: number }) {
-  const exit = exitCode != null && exitCode !== 0 ? `exit ${exitCode}` : null;
+  const exit = exitCode != null && exitCode !== 0 ? t("chat.card.status.exit", { code: exitCode }) : null;
   const active =
     status === "running" ? "running" : status === "failed" || status === "denied" ? status : exit ? "exit" : null;
   return (
@@ -363,9 +379,12 @@ function StatusSlot({ status, exitCode }: { status: ChatToolStatus; exitCode?: n
       active={active}
       className="shrink-0 items-center justify-items-end"
       options={[
-        { key: "running", node: <StatusDot status="working" live label="running" className="size-2" /> },
-        { key: "failed", node: <BadBadge>failed</BadBadge> },
-        { key: "denied", node: <BadBadge>denied</BadBadge> },
+        {
+          key: "running",
+          node: <StatusDot status="working" live label={t("chat.card.status.running")} className="size-2" />,
+        },
+        { key: "failed", node: <BadBadge>{t("chat.card.status.failed")}</BadBadge> },
+        { key: "denied", node: <BadBadge>{t("chat.card.status.denied")}</BadBadge> },
         ...(exit ? [{ key: "exit", node: <BadBadge>{exit}</BadBadge> }] : []),
       ]}
     />
@@ -464,6 +483,7 @@ export function ToolCard({
   waiting?: CardWaiting;
   preview?: boolean;
 }) {
+  useLocale();
   // `data-waiting` lets a host find the card of the thing it is waiting on (scroll to it, see if it
   // is on screen).
   const anchor = waiting?.id;
@@ -476,7 +496,7 @@ export function ToolCard({
         <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
           <ToolHead
             icon={tool.created ? FilePlusCorner : Pencil}
-            label={tool.created ? "Create" : "Edit"}
+            label={t(tool.created ? "chat.card.create" : "chat.card.edit")}
             status={status}
             trailing={
               <span className="shrink-0 font-mono text-xs tabular-nums">
@@ -496,7 +516,7 @@ export function ToolCard({
     case "execute":
       return (
         <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
-          <ToolHead icon={SquareTerminal} label="Run" status={status} exitCode={tool.exitCode}>
+          <ToolHead icon={SquareTerminal} label={t("chat.card.run")} status={status} exitCode={tool.exitCode}>
             {tool.description && (
               <span className="font-content min-w-0 truncate text-muted-foreground">{tool.description}</span>
             )}
@@ -507,11 +527,11 @@ export function ToolCard({
       );
     case "read":
       return (
-        <LineTool anchor={anchor} icon={FileText} label="Read" status={status} waiting={waiting}>
+        <LineTool anchor={anchor} icon={FileText} label={t("chat.card.read")} status={status} waiting={waiting}>
           <PathLabel path={tool.path} />
           {tool.range && (
             <span className="shrink-0 pl-1.5 text-muted-foreground tabular-nums">
-              lines {tool.range[0]}–{tool.range[1]}
+              {t("chat.card.lines", { from: tool.range[0], to: tool.range[1] })}
             </span>
           )}
         </LineTool>
@@ -522,18 +542,20 @@ export function ToolCard({
     case "other":
     case "delete":
     case "move": {
+      // `tool.name` is the tool's own name, reported by the harness — the one label here that is
+      // not Collie's word and therefore not a key.
       const label =
         tool.kind === "search"
-          ? "Search"
+          ? t("chat.card.search")
           : tool.kind === "fetch"
-            ? "Fetch"
+            ? t("chat.card.fetch")
             : tool.kind === "task"
-              ? `Agent · ${tool.agent}`
+              ? t("chat.card.agent", { agent: tool.agent })
               : tool.kind === "other"
                 ? tool.name
                 : tool.kind === "delete"
-                  ? "Delete"
-                  : "Move";
+                  ? t("chat.card.delete")
+                  : t("chat.card.move");
       const output = "output" in tool ? tool.output : undefined;
       // What an agent or a machine wrote: a query, a URL or a path is mono; a summary is prose, so
       // it wears the content face (DESIGN.md §5).
@@ -544,7 +566,7 @@ export function ToolCard({
             <span className="max-w-[70%] shrink-0 truncate font-mono text-[11px]">{tool.query}</span>
             {tool.where && (
               <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
-                in {shortPath(tool.where)}
+                {t("chat.card.searchIn", { where: shortPath(tool.where) })}
               </span>
             )}
           </span>
@@ -668,25 +690,24 @@ function CommandBlock({ command, output, preview }: { command: string; output?: 
           its fold row in through Collapse; a card drawn with its output already has it at once. */}
       <Collapse open={lines.length > 0}>
         <div className="flex border-t border-border">
-          <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={cn(FOLD_ROW, "flex-1")}>
+          {/* `tabular-nums` rides the whole row: the line count is one message now, so there is no
+              span to hang it on, and the count steps as output arrives (DESIGN.md §5). */}
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className={cn(FOLD_ROW, "flex-1 tabular-nums")}
+          >
             <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
-            {open ? (
-              "Hide output"
-            ) : (
-              <span>
-                Output · <span className="tabular-nums">{lines.length}</span> {lines.length === 1 ? "line" : "lines"}
-              </span>
-            )}
+            {open ? t("chat.card.output.hide") : tn("chat.card.output.show", lines.length)}
           </button>
           {open && lines.length > TAIL && (
-            <button type="button" onClick={() => setAll(!all)} className={cn(FOLD_ROW, "flex-1 border-l border-border")}>
-              {all ? (
-                `Show the last ${TAIL}`
-              ) : (
-                <span>
-                  Show all <span className="tabular-nums">{lines.length}</span> lines
-                </span>
-              )}
+            <button
+              type="button"
+              onClick={() => setAll(!all)}
+              className={cn(FOLD_ROW, "flex-1 border-l border-border tabular-nums")}
+            >
+              {all ? t("chat.card.output.showLast", { count: TAIL }) : tn("chat.card.output.showAll", lines.length)}
             </button>
           )}
         </div>
@@ -729,15 +750,15 @@ function HunkDiff({ hunks, path, limit }: { hunks: Hunk[]; path: string; limit: 
   return (
     <div className="border-t border-border">
       {text !== null ? <DiffView diff={text} path={path} /> : <PlainDiff hunks={hunks} path={path} limit={max} />}
+      {/* The same sentence a command's output fold says, so one message serves both. */}
       {total > limit && (
-        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={cn(FOLD_ROW, "border-t border-border")}>
-          {open ? (
-            "Show less"
-          ) : (
-            <span>
-              Show all <span className="tabular-nums">{total}</span> lines
-            </span>
-          )}
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className={cn(FOLD_ROW, "border-t border-border tabular-nums")}
+        >
+          {open ? t("chat.card.diff.less") : tn("chat.card.output.showAll", total)}
         </button>
       )}
     </div>

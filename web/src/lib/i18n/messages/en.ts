@@ -27,6 +27,12 @@ export const en = {
   "transcript.tools.hidden.other": "{count} steps hidden — tap to show",
   "settings.tools.title": "Tool calls",
   "settings.tools.description": "Draw the reads, searches, commands and edits an agent ran. Off keeps the thread to what it said.",
+  // --- settings.experiments (the fifth section) ---
+  // The contract is the SECTION'S, said once at the top rather than repeated on every card.
+  "settings.experiments.contract": "Anything here may change, lose settings, or be withdrawn in a patch release.",
+  "settings.experiments.chat.title": "Chat",
+  "settings.experiments.chat.description": "Read a pane as the agent's own conversation instead of its terminal. Switch back from a pane's ⋮ menu.",
+  "settings.experiments.chat.caveat": "Codex panes do not draw their steps yet, and a compacted turn can stay on screen until the session is re-read.",
   // --- settings sections (the index's four rows) ---
   // The blurb names the three or four cards a person is most likely to be hunting for, so the row
   // answers "is it in here?" without being opened. Keep it short: it truncates on a narrow phone.
@@ -38,6 +44,10 @@ export const en = {
   "settings.section.alerts.blurb": "Notifications, quiet hours",
   "settings.section.system.title": "System",
   "settings.section.system.blurb": "Updates, devices, crew",
+  // The fifth section, and the only one that can be absent: it renders while `lib/experiments.ts`
+  // holds something and disappears when the last experiment graduates (that file says why).
+  "settings.section.experiments.title": "Experiments",
+  "settings.section.experiments.blurb": "Chat",
   "settings.nav.back": "Back",
 
   // --- settings.theme ---
@@ -382,6 +392,84 @@ export const en = {
   "chat.status.selectionChanged": "Selection changed — refreshing",
   "chat.status.screenChanged": "The screen changed — refreshing",
   "chat.status.readOnly": "Read-only — device not authorised",
+
+  // --- chat.mode (the pane menu's body switch, ADR 0071's shape) ---
+  // The row names WHERE IT TAKES YOU, the way "Find in output" and "Conversation history" beside it
+  // do. Deliberately not "Show as terminal": "Focus in the terminal" is already a row in this sheet
+  // and moves the operator's own screen, which this never does.
+  "chat.mode.chat": "Chat view",
+  "chat.mode.terminal": "Terminal view",
+  // The row EXPLAINS rather than hides (M41/11): a control that disappears on some panes is how an
+  // operator concludes the app is broken, and it would be worst for the person whose standing mode
+  // is Chat. So the row stays and carries the reason this pane keeps the terminal. The FACT comes
+  // first and the consequence after, the shape `paneActions.hostBlockSuffix` already uses, because
+  // `{reason}` is a whole sentence of its own and leading with a clause would read as one sentence
+  // interrupted by another.
+  "chat.mode.noChat": "{reason} The terminal stays here.",
+
+  // --- chat.stream (the chat body itself) ---
+  "chat.stream.empty": "Nothing has been said in this session yet.",
+  "chat.stream.loadOlderFailed": "Couldn't load older turns",
+  // --- chat.card (the blocks of the stream: turns, steps, notices) ---
+  // A card's LABEL is the kind of step, a chrome word. What the step acted on — a path, a command,
+  // a query, an agent's own name — is the agent's or the machine's and never goes through here.
+  "chat.card.create": "Create",
+  "chat.card.edit": "Edit",
+  "chat.card.run": "Run",
+  "chat.card.read": "Read",
+  "chat.card.search": "Search",
+  "chat.card.fetch": "Fetch",
+  "chat.card.delete": "Delete",
+  "chat.card.move": "Move",
+  // `{agent}` is the sub-agent's own name, so it is not translated.
+  "chat.card.agent": "Agent · {agent}",
+  "chat.card.thinking": "Thinking",
+  "chat.card.lines": "lines {from}–{to}",
+  // Where a search ran, after the query it ran for. `{where}` is a folder, shown verbatim.
+  "chat.card.searchIn": "in {where}",
+  // The state at the end of a card's head row. `running` is a dot's accessible name, the other
+  // three are drawn as words in a chip.
+  "chat.card.status.running": "running",
+  "chat.card.status.failed": "failed",
+  "chat.card.status.denied": "denied",
+  "chat.card.status.exit": "exit {code}",
+  "chat.card.output.hide": "Hide output",
+  "chat.card.output.show.one": "Output · {count} line",
+  "chat.card.output.show.other": "Output · {count} lines",
+  "chat.card.output.showLast": "Show the last {count}",
+  "chat.card.output.showAll.one": "Show all {count} line",
+  "chat.card.output.showAll.other": "Show all {count} lines",
+  "chat.card.diff.less": "Show less",
+  // One journal part that is a picture, drawn as a notice because there is no image block in the
+  // stream. `{url}` is the journal's own reference and is shown as it stands.
+  "chat.card.image": "Image: {url}",
+  // --- chat.run (a fold over several steps) ---
+  // Each pair is counted on its own and the parts are joined with a comma, so each one has to read
+  // as a standalone noun phrase.
+  "chat.run.commands.one": "{count} command",
+  "chat.run.commands.other": "{count} commands",
+  "chat.run.edits.one": "{count} edit",
+  "chat.run.edits.other": "{count} edits",
+  "chat.run.reads.one": "{count} read",
+  "chat.run.reads.other": "{count} reads",
+  "chat.run.searches.one": "{count} search",
+  "chat.run.searches.other": "{count} searches",
+  "chat.run.agents.one": "{count} agent",
+  "chat.run.agents.other": "{count} agents",
+  "chat.run.others.one": "{count} other step",
+  "chat.run.others.other": "{count} other steps",
+  "chat.run.earlier.one": "{count} earlier step · {summary}",
+  "chat.run.earlier.other": "{count} earlier steps · {summary}",
+  "chat.run.failed.one": "{count} failed",
+  "chat.run.failed.other": "{count} failed",
+  // --- chat.step (one step in a few words, on a folded run) ---
+  "chat.step.created": "Created",
+  "chat.step.edited": "Edited",
+  "chat.step.read": "Read",
+  "chat.step.searched": "Searched",
+  "chat.step.fetched": "Fetched",
+  "chat.step.deleted": "Deleted",
+  "chat.step.moved": "Moved",
 
   // --- prompt (the native prompt-select / plan-feedback block) ---
   "prompt.family.select": "Choose an option",

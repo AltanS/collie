@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, ChevronRight, Palette, Server, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Bell, ChevronRight, FlaskConical, Palette, Server, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BuildStamp } from "@/components/build-stamp";
 import { Card } from "@/components/ui/card";
 import { InstallControl } from "@/components/install-control";
+import { hasExperiments } from "@/lib/experiments";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -14,7 +15,8 @@ import { useScope } from "@/lib/session";
 
 // ── THE SETTINGS INDEX ──────────────────────────────────────────────────────────────────────────
 //
-// Four rows, each opening a section (routes/settings-sections.tsx, which explains the split).
+// Four rows, each opening a section (routes/settings-sections.tsx, which explains the split), plus
+// a fifth while Experiments holds anything.
 //
 // This page used to BE the settings: seventeen cards in one column, over a thousand pixels of
 // scroll on a phone, with no headings to skim by — the file argued for that, on the grounds that
@@ -42,6 +44,12 @@ interface Row {
 
 // The order is the order of how standing a choice is. Appearance is changed most and changed first;
 // System is the page you open when something is wrong, which is rarely and deliberately.
+//
+// Experiments trails all four, and it is the only row that can be absent: it renders while
+// `lib/experiments.ts` holds something, because a row that opens an empty page is noise. It is last
+// rather than beside Appearance because its members are not a subject, they are a CONTRACT — read
+// `routes/settings-sections.tsx` for the whole argument, including why Chat's switch is not a card
+// on Appearance.
 const ROWS: Row[] = [
   {
     section: "appearance",
@@ -57,6 +65,16 @@ const ROWS: Row[] = [
   },
   { section: "alerts", icon: Bell, title: "settings.section.alerts.title", blurb: "settings.section.alerts.blurb" },
   { section: "system", icon: Server, title: "settings.section.system.title", blurb: "settings.section.system.blurb" },
+  ...(hasExperiments()
+    ? [
+        {
+          section: "experiments",
+          icon: FlaskConical,
+          title: "settings.section.experiments.title",
+          blurb: "settings.section.experiments.blurb",
+        } satisfies Row,
+      ]
+    : []),
 ];
 
 export function SettingsRoute() {

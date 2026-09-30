@@ -41,6 +41,8 @@ describe("coerceDashPrefs", () => {
       dashView: "panes",
       showToolCalls: false,
       paneOrder: "place",
+      chatExperiment: false,
+      paneView: "chat",
     });
   });
 
@@ -60,6 +62,8 @@ describe("coerceDashPrefs", () => {
         dashView: "changes",
         showToolCalls: true,
         paneOrder: "activity",
+        chatExperiment: true,
+        paneView: "terminal",
       }),
     ).toEqual({
       spacesOpen: false,
@@ -75,6 +79,8 @@ describe("coerceDashPrefs", () => {
       dashView: "changes",
       showToolCalls: true,
       paneOrder: "activity",
+      chatExperiment: true,
+      paneView: "terminal",
     });
   });
 
@@ -134,6 +140,8 @@ describe("coerceDashPrefs", () => {
       dashView: "panes",
       showToolCalls: false,
       paneOrder: "place",
+      chatExperiment: false,
+      paneView: "chat",
     });
   });
 });
@@ -157,6 +165,8 @@ describe("useDashPrefs", () => {
       dashView: "panes",
       showToolCalls: false,
       paneOrder: "place",
+      chatExperiment: false,
+      paneView: "chat",
     });
   });
 
@@ -177,6 +187,8 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setDashView("focus"));
     act(() => first.result.current.setShowToolCalls(true));
     act(() => first.result.current.setPaneOrder("activity"));
+    act(() => first.result.current.setChatExperiment(true));
+    act(() => first.result.current.setPaneView("terminal"));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -193,6 +205,8 @@ describe("useDashPrefs", () => {
       dashView: "focus",
       showToolCalls: true,
       paneOrder: "activity",
+      chatExperiment: true,
+      paneView: "terminal",
     });
   });
 

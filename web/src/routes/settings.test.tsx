@@ -100,6 +100,21 @@ describe("SettingsRoute — the index", () => {
     expect(screen.getByTestId("section")).toBeInTheDocument();
   });
 
+  // The fifth row, and the only one that can be absent: it renders while `lib/experiments.ts` holds
+  // something, because a row that opens an empty page is noise (M41/11).
+  it("trails the four with Experiments while anything is filed under it", async () => {
+    renderSettings();
+    const row = await screen.findByRole("button", { name: /Experiments/ });
+    const rows = screen.getAllByRole("button").filter((b) => /Appearance|Device|Alerts|System|Experiments/.test(b.textContent ?? ""));
+    expect(rows[rows.length - 1]).toBe(row);
+  });
+
+  it("opens Experiments on its own section, like every other row", async () => {
+    const router = renderSettings();
+    await userEvent.click(await screen.findByRole("button", { name: /Experiments/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/experiments"));
+  });
+
   it("renders no setting of its own: every switch moved behind a row", async () => {
     // The regression this guards is a card being added back to the index out of habit. The index
     // has exactly one interactive element per section and nothing else with a switch role.

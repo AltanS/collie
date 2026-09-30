@@ -1,0 +1,204 @@
+import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { ArrowUpToLine, Loader2 } from "lucide-react";
+
+import { ItemView, ToolGroup, groupRuns } from "@/components/chat-cards";
+import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import { useLocale } from "@/hooks/use-locale";
+import type { ChatFeed } from "@/hooks/use-chat-window";
+import { itemsOf } from "@/lib/chat-items";
+import type { ChatStatus } from "@/lib/chat-window";
+import { t, type MessageKey } from "@/lib/i18n";
+import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
+import { cn } from "@/lib/utils";
+
+// THE PANE VIEW'S SECOND BODY: the session as the agent's own record has it.
+//
+// The pane view has two bodies and one set of chrome. The header, the strips, the card dock, the
+// belt and the composer are `agent-chat.tsx`'s and do not move; this swaps with the terminal mirror
+// inside the same box, on the same rule, under the same face. It is NOT a route and it is not a
+// sibling of History: Chat is a MODE, and a mode is a thing whose default can flip (it flips in
+// 2.0). Its name says what it draws rather than which mode it is, because `AgentChat` — the whole
+// pane view, mirror and composer and belt — already has the other name.
+//
+// ── WHY THE COMPOSER STAYS ───────────────────────────────────────────────────
+// Taking work over from Collie at the computer must not be lost, and you take it over by typing. A
+// mode that hid the composer would be a reader, not a mode.
+//
+// ── WHAT IT DOES NOT DO ──────────────────────────────────────────────────────
+// No timer, no merge, no cursor arithmetic. `hooks/use-chat-window.ts` rides the existing poll and
+// `lib/chat-window.ts` merges; both are handed here as one {@link ChatFeed}. `hasOlder` and
+// `oldest` arrive as fields for the same reason: two places computing where the thread starts is
+// two places to get it wrong.
+//
+// ── AND THE TWO EMPTY ANSWERS IT MUST NOT DRAW ALIKE ─────────────────────────
+// `available: false` is "this pane has nothing to show" — a shell, an agent with no session, a log
+// that cannot be read. A 404 is "this machine runs an older Collie", because the chat route is
+// additive-optional over a crew link (ADR 0073 point 7). Drawing them alike tells an operator to
+// wait for something that will never arrive, so each has its own sentence.
+
+/**
+ * One block of the stream.
+ *
+ * `content-visibility: auto` skips layout and paint for a block off screen, and the intrinsic size
+ * remembers the last real height so the scrollbar does not lie. The 12px padding with a matching
+ * negative margin keeps a card's shadow and focus outline inside the paint clip containment adds.
+ * Lifted verbatim from the prototype this screen came out of (experiments/session-stream).
+ */
+const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-intrinsic-size:auto_64px] -m-3 p-3";
+
+/** The top affordance, the same shape and the same words the mirror's own scrollback row uses. */
+const EDGE_ROW =
+  "mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
+
+/**
+ * Why there is nothing to read, in the operator's terms — or `null` while there is.
+ *
+ * The three `available: false` reasons take the History page's own sentences, because they are the
+ * same three facts about the same journal and two wordings for one fact is how they drift. `stale`
+ * does not: it is a version skew with a remedy, and it is the one reading here that is not about
+ * this pane at all.
+ */
+export function chatStatusKey(status: ChatStatus): MessageKey | null {
+  if (status.kind === "stale") return "chat.stale.member";
+  // `empty` is "nothing has been asked yet" and `live` is "the window answered". Neither is a
+  // sentence, and neither is an absence a screen may announce.
+  if (status.kind !== "unavailable") return null;
+  switch (status.reason) {
+    case "disabled":
+      return "history.unavailable.disabled";
+    case "no-session":
+      return "history.unavailable.noSession";
+    case "no-log":
+      return "history.unavailable.noLog";
+  }
+}
+
+export function SessionStream({
+  feed,
+  address,
+  showToolCalls,
+  listRef,
+}: {
+  /** The held window plus its one control, from `useChatWindow`. */
+  feed: ChatFeed;
+  /** This pane's full address (host + session + id) — the key its scroll position is kept under. */
+  address: string;
+  /** Settings → Appearance. Off folds every run, including a lone step, to one summary line. */
+  showToolCalls: boolean;
+  /** The pane view's one list handle: a send snaps the body it is looking at back to the tail. */
+  listRef: RefObject<ChatMessageListHandle | null>;
+}) {
+  // The subscription every `t()` caller owes, plus the counter the memo below needs.
+  const { revision } = useLocale();
+  const { window, loadOlder, loadingOlder } = feed;
+
+  const blocks = useMemo(() => {
+    // READ, not merely listed as a dependency, which is what makes it an honest one: `itemsOf`
+    // resolves one sentence through `t()` (a journal picture becomes a notice naming it), so these
+    // blocks are in whatever language the dictionary held when this ran. `locale` alone would be
+    // the wrong key — it moves once when a language is chosen and not again when that language's
+    // bundle lands, so the memo would keep the English it was built with. The counter moves on both.
+    void revision;
+    // A turn the agent REWOUND PAST is not part of this conversation, so it is not part of this
+    // view. The journal KEEPS it — a `?before=` cursor still has to resolve its uuid — so hiding it
+    // is the reader's job, exactly as it is on the History page (ADR 0073's addendum).
+    const entries = window.entries.filter((e) => e.abandoned !== true);
+    // Tool calls off folds EVERY run, a lone step included, which is the same treatment the History
+    // page gives a turn's steps. One idea, one look, two surfaces.
+    return groupRuns(entries.flatMap(itemsOf), showToolCalls ? 3 : 1);
+  }, [window.entries, showToolCalls, revision]);
+
+  // A PANE KEEPS ITS PLACE (ADR 0063). Switching modes unmounts this body and switching panes
+  // remounts it, so neither the DOM nor the scroller remembers where the reader was — the same gap
+  // `lib/scroll-memory.ts` exists to close on the dashboard, and the same module closes it here.
+  //
+  // Restored ONCE, on the first render that has blocks in it: on mount the list is empty and its
+  // scroll height is zero, so a restore then would be a no-op that spends the only chance. It runs
+  // after `ChatMessageList`'s own pin-to-bottom, because a child's layout effects run before its
+  // parent's — so a reader who was at the tail stays at the tail and one who was not goes back to
+  // where they were.
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    const el = listRef.current?.getScrollElement();
+    if (el === null || el === undefined) return;
+    if (!restored.current && blocks.length > 0) {
+      restored.current = true;
+      const top = recallScroll(address);
+      if (top !== undefined && top > 0) el.scrollTop = top;
+    }
+    const onScroll = () => rememberScroll(address, el.scrollTop);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      // One last write, in case the unmount races the next scroll event.
+      rememberScroll(address, el.scrollTop);
+    };
+  }, [address, blocks.length, listRef]);
+
+  const explain = chatStatusKey(window.status);
+  const empty = blocks.length === 0;
+
+  return (
+    <ChatMessageList
+      ref={listRef}
+      data-slot="session-stream"
+      // `rev` moves once per tick that produced anything, so a reply still streaming re-pins the
+      // tail. A `?before=` page leaves it alone, which is right: paging older must not jump down.
+      dep={window.rev}
+      // `following` is DELIBERATELY not published from here. On the mirror it means "the operator is
+      // watching the tail", and it also freezes the mirror text the card dock is built from — so
+      // scrolling back through a conversation would stop a permission dialog appearing. Reading
+      // older turns is an ordinary act in this body and a rare one in that one.
+      className="px-3 pt-0 pb-3"
+    >
+      {/* Top of the window. Older turns come off `hasOlder` and nothing else: what the live window
+          has trimmed is the History read's job, reached through `?before=`, and the bridge holds
+          none of it in memory. Where there is nothing older, the thread says where it starts — the
+          History page's own line, because it is the same fact about the same session. */}
+      {window.hasOlder ? (
+        <button type="button" onClick={loadOlder} disabled={loadingOlder} className={EDGE_ROW}>
+          {loadingOlder ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUpToLine className="size-3.5" />}
+          {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
+        </button>
+      ) : (
+        !empty && (
+          <div className="mb-3 text-center text-[11px] text-muted-foreground">
+            {t("history.startOfConversation")}
+          </div>
+        )
+      )}
+
+      {blocks.map((group) => (
+        <div key={group[0]!.id} data-block data-n={group.length} className={STREAM_BLOCK}>
+          {/* A group of one is an ordinary block, EXCEPT a lone tool call while tool calls are off:
+              that one folds too, or "off" would leave every single-step turn drawn in full. */}
+          {group.length === 1 && (showToolCalls || group[0]!.kind !== "tool") ? (
+            <ItemView item={group[0]!} />
+          ) : (
+            <ToolGroup items={group} />
+          )}
+        </div>
+      ))}
+
+      {/* The reading, when there is one, and only where there is nothing to read under it. A stale
+          member keeps its turns — they were true when they arrived, and a version skew does not
+          unsay them — so this sits at the end rather than in their place. */}
+      {explain !== null && (
+        <p
+          className={cn(
+            "px-2 text-center text-sm leading-relaxed text-muted-foreground",
+            empty ? "py-16" : "py-4",
+          )}
+        >
+          {t(explain)}
+        </p>
+      )}
+      {/* Nothing wrong, nothing said. `empty` alone is not this state: before the first answer lands
+          the window is `empty` in the other sense — nobody has asked yet — and a screen that
+          announces an absence it has not checked is a screen that was wrong for one frame. */}
+      {empty && explain === null && window.status.kind === "live" && (
+        <div className="py-16 text-center text-sm text-muted-foreground">{t("chat.stream.empty")}</div>
+      )}
+    </ChatMessageList>
+  );
+}

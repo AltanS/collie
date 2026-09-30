@@ -4,6 +4,7 @@ import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib
 import type { ChangesLayout } from "@/lib/changes-tree";
 import { coerceDashView, type DashView } from "@/lib/dash-view";
 import { coercePaneOrder, type PaneOrder } from "@/lib/pane-order";
+import { coercePaneView, type PaneView } from "@/lib/pane-view";
 import type { RecentDir } from "@/lib/triage";
 
 // Dashboard layout preferences, persisted in localStorage. Deliberately separate from
@@ -77,6 +78,25 @@ export interface DashPrefs {
    * Read by the pane switcher today (components/agent-sidebar.tsx).
    */
   paneOrder: PaneOrder;
+  /**
+   * Whether this device has opted into Chat at all (Settings → Experiments).
+   *
+   * OFF by default, and that is the whole gate: while it is off no pane draws the chat stream and
+   * the pane's ⋮ menu shows no switch, so a device that never opens that row behaves exactly as it
+   * did. 1.15.0 ships Chat's reader for six harnesses and its screen on the first pass, with two
+   * known holes on the day it ships (codex tool calls, and a hermes turn that can vanish with no
+   * reducer able to tell — ADR 0073's Consequences). Default-on would make those the first
+   * impression of the release; default-off with a named switch makes them the cost of opting in.
+   */
+  chatExperiment: boolean;
+  /**
+   * Which body a pane draws ONCE {@link chatExperiment} is on: the terminal mirror or the chat
+   * stream. One standing value for the whole device, written from the pane's ⋮ menu alone.
+   *
+   * See lib/pane-view.ts for why its default is `chat` while the app's default view is still the
+   * terminal — the two are different questions, and the gate above is what answers the second.
+   */
+  paneView: PaneView;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
@@ -105,6 +125,8 @@ const DEFAULTS: DashPrefs = {
   dashView: "panes",
   showToolCalls: false,
   paneOrder: "place",
+  chatExperiment: false,
+  paneView: "chat",
 };
 
 function coerceDepth(raw: JsonValue | undefined): number {
@@ -155,6 +177,8 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     dashView: coerceDashView(p.dashView),
     showToolCalls: asJsonBoolean(p.showToolCalls) ?? DEFAULTS.showToolCalls,
     paneOrder: coercePaneOrder(p.paneOrder),
+    chatExperiment: asJsonBoolean(p.chatExperiment) ?? DEFAULTS.chatExperiment,
+    paneView: coercePaneView(p.paneView),
   };
 }
 
@@ -193,6 +217,8 @@ export interface UseDashPrefsReturn {
   setDashView: (view: DashView) => void;
   setShowToolCalls: (show: boolean) => void;
   setPaneOrder: (order: PaneOrder) => void;
+  setChatExperiment: (on: boolean) => void;
+  setPaneView: (view: PaneView) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -220,6 +246,8 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setChangesLayout = useCallback((changesLayout: ChangesLayout) => update({ changesLayout }), [update]);
   const setShowToolCalls = useCallback((showToolCalls: boolean) => update({ showToolCalls }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
+  const setChatExperiment = useCallback((chatExperiment: boolean) => update({ chatExperiment }), [update]);
+  const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
 
   const setBeltScale = useCallback(
     (scale: number) => update({ beltScale: coerceBeltScale(scale) }),
@@ -255,5 +283,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setDashView,
     setShowToolCalls,
     setPaneOrder,
+    setChatExperiment,
+    setPaneView,
   };
 }
