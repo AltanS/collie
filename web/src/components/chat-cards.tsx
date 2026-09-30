@@ -311,17 +311,19 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
  *
  * ── AND IT IS THE ONE THING ON THE PAGE WITH A COLOUR ──
  * A `bg-muted/50` well was a grey box in a column of grey boxes: a reader scrolling back for "what
- * did I actually ask" had to READ each block to find their own. The wash is `status-info`, the one
- * blue this palette owns, so the reader's own turns are findable at a glance and at arm's length.
- * The wash is lighter than the inline code chip's and the caption carries the full ink, so a chip
- * that lands inside one of these (History draws Markdown in a user turn; Chat draws plain text) is
- * still a step above its ground, and its own edge does the rest.
+ * did I actually ask" had to READ each block to find their own. The wash is `status-working`, the
+ * brand's orange, so the reader's own turns are findable at a glance and at arm's length.
+ *
+ * ORANGE AND NOT THE INFO BLUE, which was the first cut. Inline code wears that blue now
+ * (markdown-text.tsx), and History draws Markdown inside a user turn, so a chip would have landed
+ * on a ground of its own hue and had only its edge left to separate it. Two colours, two jobs: the
+ * blue is "this is literal", the orange is "this is yours".
  */
 function UserTurn({ text, ts }: { text: string; ts?: string }) {
   const time = ts ? clockTimeOf(ts) : "";
   return (
-    <div className="rounded-md border border-status-info/25 bg-status-info/8 px-3 py-2">
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-status-info">
+    <div className="rounded-md border border-status-working/25 bg-status-working/8 px-3 py-2">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-status-working">
         <User className="size-3.5" />
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}

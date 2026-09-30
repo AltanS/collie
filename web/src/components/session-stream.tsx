@@ -135,6 +135,43 @@ export function SessionStream({
     };
   }, [address, blocks.length, listRef]);
 
+  // ── PREPENDING MUST NOT MOVE WHAT THE READER IS ON ──────────────────────────
+  // "Load older" inserts forty turns ABOVE the viewport. The browser holds `scrollTop` where it was,
+  // so everything the reader was looking at slides down by the height of what arrived and the screen
+  // fills with the oldest page — the tap read as a jump to the top. Measure the scroll height before
+  // the tap and give the difference back after the new blocks paint, which is the same anchoring the
+  // History page's own "load older" and the mirror's scrollback both use (routes/history.tsx).
+  //
+  // The anchor holds the FIRST BLOCK'S ID as well as the two numbers, because the only render that
+  // may spend it is one where something actually went in at the front. The poll keeps running while
+  // a `?before=` is in flight, so a reply landing at the TAIL also grows the scroll height, and
+  // spending the anchor on that would shove the reader down by a height that arrived below them.
+  // A page that never comes (the fetch threw, or the merge refused a page from another `gen`) drops
+  // the anchor when the spinner goes off, so a stale delta cannot be spent on some later render.
+  //
+  // Where the reader was FOLLOWING the tail, `useAutoScroll` re-pins after this, and that is the
+  // right answer: they were at the bottom and they stay there.
+  const anchor = useRef<{ height: number; top: number; firstId: string } | null>(null);
+  const onLoadOlder = () => {
+    const el = listRef.current?.getScrollElement();
+    const firstId = blocks[0]?.[0]?.id;
+    anchor.current =
+      el && firstId !== undefined ? { height: el.scrollHeight, top: el.scrollTop, firstId } : null;
+    loadOlder();
+  };
+  useLayoutEffect(() => {
+    const held = anchor.current;
+    if (held === null) return;
+    if (blocks[0]?.[0]?.id === held.firstId) {
+      if (!loadingOlder) anchor.current = null;
+      return;
+    }
+    anchor.current = null;
+    const el = listRef.current?.getScrollElement();
+    if (el === null || el === undefined) return;
+    el.scrollTop = held.top + (el.scrollHeight - held.height);
+  }, [blocks, loadingOlder, listRef]);
+
   const explain = chatStatusKey(window.status);
   const empty = blocks.length === 0;
 
@@ -156,7 +193,7 @@ export function SessionStream({
           none of it in memory. Where there is nothing older, the thread says where it starts — the
           History page's own line, because it is the same fact about the same session. */}
       {window.hasOlder ? (
-        <button type="button" onClick={loadOlder} disabled={loadingOlder} className={EDGE_ROW}>
+        <button type="button" onClick={onLoadOlder} disabled={loadingOlder} className={EDGE_ROW}>
           {loadingOlder ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUpToLine className="size-3.5" />}
           {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
         </button>

@@ -222,19 +222,20 @@ function Turn({
   }
 
   const isUser = entry.role === "user";
-  // The reader's own turn wears the one blue this palette owns, so it is findable by colour in a
-  // column of grey. Chat's stream draws the same well for the same reason (chat-cards.tsx
-  // § UserTurn) — one treatment, two surfaces.
+  // The reader's own turn wears the brand's orange, so it is findable by colour in a column of
+  // grey. Chat's stream draws the same well for the same reason (chat-cards.tsx § UserTurn) — one
+  // treatment, two surfaces. Orange and not the info blue: inline code owns that blue, and a code
+  // chip inside a user turn would otherwise sit on a ground of its own hue.
   return (
-    <div className={isUser ? "rounded-lg border border-status-info/25 bg-status-info/8 px-3 py-2" : "px-1"}>
+    <div className={isUser ? "rounded-lg border border-status-working/25 bg-status-working/8 px-3 py-2" : "px-1"}>
       {showHeader && (
         <div className="mb-1 flex items-center gap-1.5">
           {isUser ? (
-            <User className="size-3.5 text-status-info" />
+            <User className="size-3.5 text-status-working" />
           ) : (
             <AgentIcon agent={agent ?? "claude"} className="size-4" />
           )}
-          <span className={`text-[11px] font-semibold tracking-wide uppercase ${isUser ? "text-status-info" : "text-muted-foreground"}`}>
+          <span className={`text-[11px] font-semibold tracking-wide uppercase ${isUser ? "text-status-working" : "text-muted-foreground"}`}>
             {isUser ? t("transcript.youLabel") : (agent ?? t("transcript.agentFallback"))}
           </span>
           {time && <span className="text-[11px] text-muted-foreground">{time}</span>}

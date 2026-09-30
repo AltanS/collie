@@ -207,8 +207,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the same blue chip `colliepwa.dev` draws around a command, so one command looks like one thing
   wherever you read it. A short hash also stopped splitting mid-word across two lines, `6c` on one
   and `70894d` on the next, and a long token now breaks only when it cannot fit a line of its own.
-  Your own turns carry the same blue as a wash, so scrolling back for what you asked is a glance
-  rather than a read.
+  Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
+  glance rather than a read.
+
+- **Loading older turns in Chat keeps your place instead of throwing you to the top.** The tap puts
+  forty turns in above what you are reading, and the scroller held its offset, so the block you were
+  on slid down by the whole height of the new page. It gives that height back once the page paints,
+  the way History's own scrollback and the terminal mirror's already did.
 
 - **A two-pane box pans on a phone instead of losing its right half.** Claude Code's dynamic-workflow
   view draws the phases in a left pane and the running agents in a right one, and on a phone every row

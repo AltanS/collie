@@ -132,6 +132,88 @@ describe("SessionStream", () => {
     expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
   });
 
+  // jsdom has no layout, so the scroller's two numbers are faked. What is under test is the
+  // ARITHMETIC: the reader gets back exactly the height that went in above them.
+  it("a page of older turns leaves the reader where they were, not at the top", async () => {
+    const user = userEvent.setup();
+    const loadOlder = vi.fn();
+    const newer = [entry("b", BASE + 1, "newer")];
+    const listRef = createRef<ChatMessageListHandle>();
+    const draw = (entries: ChatEntry[], hasOlder: boolean) => (
+      <SessionStream
+        feed={feedOf({ status: { kind: "live" }, entries, hasOlder }, { loadOlder })}
+        address="w1:p1"
+        showToolCalls
+        listRef={listRef}
+      />
+    );
+    const { rerender } = render(draw(newer, true));
+
+    const el = listRef.current!.getScrollElement()!;
+    let height = 1000;
+    let top = 0;
+    Object.defineProperty(el, "scrollHeight", { get: () => height, configurable: true });
+    Object.defineProperty(el, "scrollTop", {
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+      },
+      configurable: true,
+    });
+    top = 400;
+
+    await user.click(screen.getByRole("button", { name: "Load older" }));
+    expect(loadOlder).toHaveBeenCalledOnce();
+
+    // The page lands: 600px of older turns went in ABOVE the viewport.
+    height = 1600;
+    rerender(draw([entry("a", BASE, "older"), ...newer], false));
+    expect(el.scrollTop).toBe(1000);
+  });
+
+  it("a turn arriving at the TAIL while a page is in flight does not spend the anchor", async () => {
+    const user = userEvent.setup();
+    const loadOlder = vi.fn();
+    const listRef = createRef<ChatMessageListHandle>();
+    const draw = (entries: ChatEntry[], loadingOlder: boolean) => (
+      <SessionStream
+        feed={feedOf(
+          { status: { kind: "live" }, entries, hasOlder: true },
+          { loadOlder, loadingOlder },
+        )}
+        address="w1:p1"
+        showToolCalls
+        listRef={listRef}
+      />
+    );
+    const first = entry("a", BASE, "first");
+    const { rerender } = render(draw([first], false));
+
+    const el = listRef.current!.getScrollElement()!;
+    let height = 1000;
+    let top = 0;
+    Object.defineProperty(el, "scrollHeight", { get: () => height, configurable: true });
+    Object.defineProperty(el, "scrollTop", {
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+      },
+      configurable: true,
+    });
+    top = 400;
+
+    await user.click(screen.getByRole("button", { name: "Load older" }));
+    height = 1400;
+    rerender(draw([first, entry("z", BASE + 9, "a reply landed")], true));
+    expect(el.scrollTop).toBe(400);
+
+    // And the real page still gets its anchor when it arrives. The delta is measured from the tap,
+    // so the 400px the tail grew by is in it: a hair low rather than a screen out.
+    height = 2000;
+    rerender(draw([entry("older", BASE - 1, "older"), first], false));
+    expect(el.scrollTop).toBe(1400);
+  });
+
   // The journal KEEPS a rewound turn so a `?before=` cursor can still resolve its uuid; hiding it is
   // the reader's job, here as on the History page (ADR 0073's addendum).
   it("hides a turn the agent rewound past", () => {
