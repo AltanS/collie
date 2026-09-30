@@ -155,6 +155,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   stores on every canary run, because the canary isolates Herdr and deliberately leaves an agent's
   own configuration alone. `--thinking off` stays, because that one only makes a run cheaper.
 
+- **A canary ledger entry is judged per agent, not per run.** One agent failing used to block the
+  ledger for every agent in the run. The run on 2026-09-30 showed the cost: a Codex three versions
+  behind painted its update picker over the composer and failed one scenario, which blocked the
+  entries for Claude 2.1.285 and opencode 1.18.33, both of which had passed all six of their own
+  scenarios and were the two versions the drift check was asking about. Another vendor's startup
+  prompt is not evidence about our Claude reader. A run with any failure is still a failed run.
+
 ### Fixed
 
 - **A two-pane box pans on a phone instead of losing its right half.** Claude Code's dynamic-workflow
