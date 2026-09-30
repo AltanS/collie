@@ -67,6 +67,18 @@ export function safeHref(raw: string): string | null {
   return SAFE_SCHEME.test(href) ? href : null;
 }
 
+// A URL AN AGENT WROTE AS ITSELF, with no brackets around it. Agents do this constantly — a server
+// they started, a PR they opened — and until 2026-09-30 every one of them rendered as dead text a
+// reader had to select by hand on a phone. It is the LAST alternative on purpose: `[text](url)`
+// starts at its `[`, a code span at its backtick, and both sit left of the `h`, so the leftmost-match
+// rule hands those to their own branch and a URL inside them never reaches this one.
+//
+// The lookbehind keeps it to a URL that STARTS somewhere: no `xhttp://`, and no second match inside
+// a URL this alternative already took. The tail class is what stops "see http://x." from swallowing
+// the full stop, and "(http://x)" from swallowing the bracket — a URL may not END on sentence
+// punctuation, though it may contain it.
+const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"']*[^\\s<>`\"'.,:;!?)\\]}])";
+
 // Ordered so the greedier delimiters win: ``code`` before **bold** before *italic*.
 // Emphasis bodies forbid a leading/trailing space (see the glob note above) and can't span a newline.
 const INLINE_RE = new RegExp(
@@ -75,6 +87,7 @@ const INLINE_RE = new RegExp(
     "\\*\\*(\\S(?:[^\\n]*?\\S)?)\\*\\*", // 3    bold
     "\\*(\\S(?:[^\\n*]*?\\S)?)\\*", // 4    italic
     "\\[([^\\]\\n]*)\\]\\(([^)\\s]+)\\)", // 5,6  link
+    BARE_URL, // 7    a bare URL
   ].join("|"),
   "g",
 );
@@ -84,8 +97,14 @@ const INLINE_RE = new RegExp(
 // remaining text is simply left as text.
 const MAX_INLINE_DEPTH = 6;
 
-/** Parse one line/paragraph of inline Markdown. Pure, and recursive through emphasis/link bodies. */
-export function parseInline(text: string, depth = 0): MdSpan[] {
+/**
+ * Parse one line/paragraph of inline Markdown. Pure, and recursive through emphasis/link bodies.
+ *
+ * `inLink` is off everywhere but inside a link's own body, where it turns the bare-URL branch back
+ * into plain text. `[the docs](https://a)` recurses into its label, and a label that is itself a URL
+ * (or holds one) would otherwise nest an anchor inside an anchor, which is not a thing the DOM has.
+ */
+export function parseInline(text: string, depth = 0, inLink = false): MdSpan[] {
   const spans: MdSpan[] = [];
   const push = (span: MdSpan) => {
     if (span.kind === "text" && span.text === "") return;
@@ -105,13 +124,19 @@ export function parseInline(text: string, depth = 0): MdSpan[] {
   while ((m = re.exec(text)) !== null) {
     push({ kind: "text", text: text.slice(last, m.index) });
     if (m[2] !== undefined) push({ kind: "code", text: m[2] }); // leaf: content is verbatim
-    else if (m[3] !== undefined) push({ kind: "bold", spans: parseInline(m[3], depth + 1) });
-    else if (m[4] !== undefined) push({ kind: "italic", spans: parseInline(m[4], depth + 1) });
+    else if (m[3] !== undefined) push({ kind: "bold", spans: parseInline(m[3], depth + 1, inLink) });
+    else if (m[4] !== undefined) push({ kind: "italic", spans: parseInline(m[4], depth + 1, inLink) });
     else if (m[5] !== undefined && m[6] !== undefined) {
       const href = safeHref(m[6]);
       // An unsafe target keeps its literal Markdown, so nothing silently disappears from the text.
-      if (href) push({ kind: "link", href, spans: parseInline(m[5] || href, depth + 1) });
+      if (href) push({ kind: "link", href, spans: parseInline(m[5] || href, depth + 1, true) });
       else push({ kind: "text", text: m[0] });
+    } else if (m[7] !== undefined) {
+      // Its own text is its label, so the reader sees the address they would tap. Through `safeHref`
+      // like every other link, even though the pattern already limited the scheme: one gate.
+      const href = inLink ? null : safeHref(m[7]);
+      if (href) push({ kind: "link", href, spans: [{ kind: "text", text: m[7] }] });
+      else push({ kind: "text", text: m[7] });
     }
     last = m.index + m[0].length;
   }

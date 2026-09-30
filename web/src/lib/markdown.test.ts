@@ -119,6 +119,42 @@ describe("parseInline", () => {
     expect(spans.map((s) => ("text" in s ? s.text : "")).join("")).toContain("click");
   });
 
+  it("links a bare URL an agent wrote as itself", () => {
+    expect(parseInline("live on http://bluefin:8788 now")).toEqual([
+      { kind: "text", text: "live on " },
+      { kind: "link", href: "http://bluefin:8788", spans: [{ kind: "text", text: "http://bluefin:8788" }] },
+      { kind: "text", text: " now" },
+    ]);
+  });
+
+  it("a bare URL gives back the sentence punctuation it ended on", () => {
+    const spans = parseInline("see https://example.com/a?x=1.");
+    expect(spans[1]).toEqual({
+      kind: "link",
+      href: "https://example.com/a?x=1",
+      spans: [{ kind: "text", text: "https://example.com/a?x=1" }],
+    });
+    expect(spans[2]).toEqual({ kind: "text", text: "." });
+  });
+
+  it("a URL inside a code span stays code", () => {
+    expect(parseInline("`http://in-code:1`")).toEqual([{ kind: "code", text: "http://in-code:1" }]);
+  });
+
+  it("a URL used as a link's own label does not nest a second link", () => {
+    expect(parseInline("[https://a.example](https://b.example)")).toEqual([
+      {
+        kind: "link",
+        href: "https://b.example",
+        spans: [{ kind: "text", text: "https://a.example" }],
+      },
+    ]);
+  });
+
+  it("a scheme glued to a word is not a URL", () => {
+    expect(parseInline("xhttp://nope.example")).toEqual([{ kind: "text", text: "xhttp://nope.example" }]);
+  });
+
   it("leaves HTML-looking text as text — there is no markup path at all", () => {
     const src = '<img src=x onerror="alert(1)">';
     expect(parseInline(src)).toEqual([{ kind: "text", text: src }]);

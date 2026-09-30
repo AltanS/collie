@@ -53,8 +53,18 @@ function Span({ span }: { span: MdSpan }) {
         </em>
       );
     case "code":
+      // THE SAME CHIP THE DOCS SITE DRAWS (`collie-website/src/components/prose.tsx`): one blue at
+      // 10% fill, 20% edge and full ink. A flat `bg-muted` chip was grey ink on a grey wash inside
+      // grey prose, so a reader scanning a paragraph for "which bit of this is a literal" had no
+      // colour to search for. Same token on both sides, so a command looks like one thing wherever
+      // it is read.
+      //
+      // `wrap-anywhere` AND NOT `break-all`. `break-all` breaks at whatever character the line ends
+      // on, so a short sha split as `6c` / `70894d` across two lines with room to spare on the next
+      // one. `anywhere` breaks only a token that cannot fit a line of its own, which is the case the
+      // rule was there for.
       return (
-        <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em] break-all">
+        <code className="rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-0.5 font-mono text-[0.9em] text-status-info wrap-anywhere">
           <Hit text={span.text} />
         </code>
       );
@@ -66,7 +76,7 @@ function Span({ span }: { span: MdSpan }) {
           href={span.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary underline underline-offset-2 break-all"
+          className="text-primary underline underline-offset-2 wrap-anywhere"
         >
           <Spans spans={span.spans} />
         </a>
@@ -111,7 +121,7 @@ function Block({ block }: { block: MdBlock }) {
     }
     case "code":
       return (
-        <pre className="overflow-x-auto rounded-md border bg-muted/50 px-2 py-1.5 font-mono text-[11px] leading-snug">
+        <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug">
           <Hit text={block.text} />
         </pre>
       );

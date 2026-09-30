@@ -196,6 +196,20 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
+- **A URL an agent typed as itself is now a link you can tap.** Agents write a bare address
+  constantly, a server they started or a pull request they opened, and only a `[text](url)` link ever
+  became an anchor. A bare `http://`, `https://` or `mailto:` is now one too, in History and in Chat.
+  It keeps the sentence punctuation it ended on, so a URL at the end of a sentence does not swallow
+  the full stop, and a URL inside backticks stays code.
+
+- **Prose reads better: code wears the docs site's blue chip, and your own turns are findable.**
+  Inline code was grey ink on a grey wash inside grey prose, with nothing to scan for. It now wears
+  the same blue chip `colliepwa.dev` draws around a command, so one command looks like one thing
+  wherever you read it. A short hash also stopped splitting mid-word across two lines, `6c` on one
+  and `70894d` on the next, and a long token now breaks only when it cannot fit a line of its own.
+  Your own turns carry the same blue as a wash, so scrolling back for what you asked is a glance
+  rather than a read.
+
 - **A two-pane box pans on a phone instead of losing its right half.** Claude Code's dynamic-workflow
   view draws the phases in a left pane and the running agents in a right one, and on a phone every row
   of it was cut off at the screen edge: the report showed a band of stacked rules with `· 74…` hanging

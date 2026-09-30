@@ -308,16 +308,24 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
 /**
  * The reader's own turn, as collie's transcript draws one (transcript-view.tsx): a bordered well
  * with a "You" caption. The caption is chrome; the words are content (`font-content`, §5).
+ *
+ * ── AND IT IS THE ONE THING ON THE PAGE WITH A COLOUR ──
+ * A `bg-muted/50` well was a grey box in a column of grey boxes: a reader scrolling back for "what
+ * did I actually ask" had to READ each block to find their own. The wash is `status-info`, the one
+ * blue this palette owns, so the reader's own turns are findable at a glance and at arm's length.
+ * The wash is lighter than the inline code chip's and the caption carries the full ink, so a chip
+ * that lands inside one of these (History draws Markdown in a user turn; Chat draws plain text) is
+ * still a step above its ground, and its own edge does the rest.
  */
 function UserTurn({ text, ts }: { text: string; ts?: string }) {
   const time = ts ? clockTimeOf(ts) : "";
   return (
-    <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="rounded-md border border-status-info/25 bg-status-info/8 px-3 py-2">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-status-info">
         <User className="size-3.5" />
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}
-        {time && <span className="font-normal tabular-nums">{time}</span>}
+        {time && <span className="font-normal tabular-nums opacity-80">{time}</span>}
       </div>
       <p className="font-content whitespace-pre-wrap break-words text-sm">{text}</p>
     </div>
