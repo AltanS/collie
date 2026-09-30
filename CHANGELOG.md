@@ -147,6 +147,24 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   file manager does it. Compacted folder rows keep both ends too, so two repos holding the same deep
   folder chain no longer read as the same row.
 
+- **A pi turn that failed now says so, instead of vanishing.** When a provider call errors, pi
+  writes the turn with no content at all, so the failure was not merely unexplained, the turn was
+  simply missing from the history. The message pi recorded now shows as a note under the turn, set
+  apart from anything the agent said, and an interrupted turn says so too while keeping whatever the
+  model got out first. Measured over 44 real sessions before the fix: 37 errored turns, every one of
+  them empty, and 15 interrupted ones.
+
+- **A pi session you rewound shows the path you are on, not both paths.** pi keeps every branch in
+  one file, and Collie was reading all of it, so History showed the turns you had abandoned mixed in
+  with the live ones and nothing said which was which. It now follows the branch you are actually on,
+  and rewinding back onto a path you left brings it back. Eight of forty-four real sessions had
+  forked, so this was the common case rather than the corner.
+
+- **pi's compaction, its branch summaries and a desk command all show up now.** Collie read only
+  pi's message rows, so a compacted conversation read as though nothing had happened, an extension's
+  own note never appeared, and a `!command` you ran at the desk looked like a message you had typed.
+  Each now reads as what it is, set apart from anything the agent said.
+
 ### Docs
 
 - **Every Settings path in the docs names its section.** The settings page became an index of four

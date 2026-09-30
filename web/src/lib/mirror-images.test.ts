@@ -161,6 +161,19 @@ describe("the newest turn's picture", () => {
     expect(newestTurnImage([attached, reply("a1")])).toBeNull();
   });
 
+  it("walks past a rewound turn, and a rewound PROMPT does not stop the walk", () => {
+    // pi keeps every branch in one log, and it is the harness this function exists for (#292). So the
+    // newest rows can belong to a path the agent left. An abandoned prompt must not end the walk
+    // either, or the picture of the turn that IS current would be missed.
+    const entries = [
+      prompt("u1"),
+      read("a1", "/api/blobs/a"),
+      { ...prompt("u2"), abandoned: true as const },
+      { ...read("a2", "/api/blobs/b"), abandoned: true as const },
+    ];
+    expect(newestTurnImage(entries)).toBe("/api/blobs/a");
+  });
+
   it("answers null for a page with no picture, and for no page at all", () => {
     expect(newestTurnImage([prompt("u1"), reply("a1")])).toBeNull();
     expect(newestTurnImage([])).toBeNull();

@@ -65,10 +65,14 @@ export interface PendingTool {
  *
  * The bound is the requirement, and the number is deliberately far past anything real: a call and
  * its result are adjacent rows in every format here, so a map this size means thousands of calls in
- * a row went unanswered. Over a whole session with no bound at all the map is the one thing in a
+ * a row went unanswered. Over a whole session with no bound at all the map is one of the things in a
  * reducer that grows for ever, which is the fault this closes. Eviction is oldest-first, since a
  * `Map` keeps insertion order and the oldest waiting call is the one least likely to still be
  * answered.
+ *
+ * It is no longer the ONLY such map. pi's reducer keeps a second one, the branch chain
+ * (`journal/pi.ts` § `BRANCH_MAX`), and it is bounded here's way and for here's reason. Any state a
+ * reducer keeps per row needs a bound and a sentence saying what falls off it.
  */
 export const PENDING_MAX = 4096;
 

@@ -35,7 +35,7 @@ function emptyHistory(): HistoryData {
   return { paneId: "p1", scope: {}, entries: [], hasMore: false, total: 0, fileTruncated: false };
 }
 
-function makeRouter() {
+function makeRouter(history: () => HistoryData = emptyHistory) {
   return createMemoryRouter(
     [
       {
@@ -47,7 +47,7 @@ function makeRouter() {
           { index: true, element: <div /> },
           {
             path: "pane/:paneId/history",
-            loader: () => emptyHistory(),
+            loader: history,
             element: <HistoryRoute />,
           },
         ],
@@ -56,6 +56,13 @@ function makeRouter() {
     { initialEntries: ["/pane/p1/history"] },
   );
 }
+
+const said = (uuid: string, role: "user" | "assistant", text: string) => ({
+  uuid,
+  ts: "",
+  role,
+  parts: [{ kind: "text" as const, text }],
+});
 
 // The route mirrors the terminal — same font source, same idiom (components/agent-chat.tsx) — as
 // the live pane view, applied to the div wrapping ChatMessageList. Reached via the scroll
@@ -89,5 +96,40 @@ describe("HistoryRoute — terminal font", () => {
     expect(wrapper.getAttribute("style")).toMatch(/Courier/);
     // The layout classes stay put — the font is added, not swapped in for them.
     expect(wrapper.className).toMatch(/(?:^|\s)flex-1(?=\s|$)/);
+  });
+});
+
+// pi keeps every branch in ONE append-only log, so a rewound session's log holds the path the agent
+// left as well as the one it is on. Its reader marks the turns that left rather than dropping them,
+// because a `?before=` cursor still has to resolve their uuid on the bridge, so HIDING them is this
+// side's job (bridge/journal/types.ts § `abandoned`, ADR 0073's addendum).
+describe("HistoryRoute — a rewound branch", () => {
+  afterEach(() => localStorage.clear());
+
+  it("draws the turns on the branch and not the turns that left it", async () => {
+    const withBranch = (): HistoryData => ({
+      ...emptyHistory(),
+      total: 3,
+      entries: [
+        said("m1", "user", "on the branch"),
+        { ...said("m2", "assistant", "from the path it left"), abandoned: true },
+        said("m3", "user", "still on the branch"),
+      ],
+    });
+    render(<RouterProvider router={makeRouter(withBranch)} />);
+    expect(await screen.findByText("on the branch")).toBeInTheDocument();
+    expect(screen.getByText("still on the branch")).toBeInTheDocument();
+    expect(screen.queryByText("from the path it left")).not.toBeInTheDocument();
+  });
+
+  it("leaves a session that never forked exactly as it was", async () => {
+    const plain = (): HistoryData => ({
+      ...emptyHistory(),
+      total: 2,
+      entries: [said("m1", "user", "a question"), said("m2", "assistant", "an answer")],
+    });
+    render(<RouterProvider router={makeRouter(plain)} />);
+    expect(await screen.findByText("a question")).toBeInTheDocument();
+    expect(screen.getByText("an answer")).toBeInTheDocument();
   });
 });

@@ -91,6 +91,24 @@ export interface TranscriptEntry {
   ts: string;
   role: "user" | "assistant" | "summary" | "note";
   parts: TranscriptPart[];
+  /**
+   * The agent rewound past this turn: it is not on the session's current branch. Views hide it.
+   *
+   * ABSENT when false, never `false`, which is this module's convention everywhere.
+   *
+   * One harness needs it. pi keeps every branch in ONE append-only log and every row names its
+   * parent, so a rewind is ANNOUNCED by the row that arrives rather than hidden in a flag that flips
+   * on disk. That is what makes it expressible here at all, and it is the distinction ADR 0073's
+   * addendum turns on: `Reduction` still has no `removed`, because nothing is removed. A turn that
+   * left the branch is a turn that CHANGED, reported through `changed` like any other in-place edit,
+   * and a rewind back onto it clears the mark the same way.
+   *
+   * It is a flag and not a filter on purpose. `?before=` pages come off the store and `pageEntries`
+   * resolves the client's cursor by finding its uuid, so a hidden turn's uuid must still resolve;
+   * dropping it in `parse` would break that and make the live path and the History path disagree
+   * about one session. Both paths carry the flag, and the VIEWS hide it.
+   */
+  abandoned?: true;
 }
 
 /** What the history endpoint answers with, minus the pane id the route adds. */

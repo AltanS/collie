@@ -132,3 +132,34 @@ one job.**
 - If a harness appears whose rows can be DELETED as an ordinary event rather than as a compaction.
   Then `Reduction` would need a `removed`, and the argument in the consequence above is the one to
   reopen.
+
+## Addendum — 2026-09-30: a turn that leaves the branch is a turn that changed
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum answers the
+last Revisit bullet without reopening the `removed` argument.
+
+pi keeps every branch in ONE append-only log and each row names its parent, so a rewind is
+**announced by the row that arrives**, not hidden in a flag that flips on disk. That is the
+distinction the consequence above turns on: in hermes a row vanishes and no row says so, which is why
+a forward reader genuinely cannot know. `Reduction` still has no `removed`, because in pi nothing is
+removed.
+
+A turn that left the current branch is marked `abandoned` in place on the `TranscriptEntry` and
+reported through `changed`, exactly like a tool result folding onto an earlier call. The window sends
+it as an upsert at the `seq` it already had, and a view hides it. **A rewind BACK onto a marked turn
+clears the mark the same way**, which a remove verb could never have done, and which real sessions do:
+8 of 44 measured on 2026-09-30 fork, and one of them returns to a branch it had left.
+
+It is a flag rather than a filter because `?before=` pages come off the store and `pageEntries`
+resolves the client's cursor by finding its uuid. A hidden turn's uuid must still resolve there, so
+dropping it in `parse` would break paging and make the live path and the History path disagree about
+one session. Both paths carry the flag; the views hide it.
+
+The hermes hole is unchanged, and so is its answer: a reset. A flipped uuid the window has already
+trimmed is dropped, the same bound a late tool result meets.
+
+**One thing this audit also found in the window itself, and fixed:** a source may hand the same turn
+back WHOLE as `added` rather than mutating it in place, which opencode does on every read of a
+streaming reply and hermes does by re-composing. The window was taking that as a new turn, putting one
+turn at a second `seq` and leaving the client's merge to move a turn that never moved. An `added`
+whose uuid is already held is now a change in place, keeping its `seq`.

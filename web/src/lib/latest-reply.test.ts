@@ -96,6 +96,14 @@ describe("newestReply", () => {
   it("returns null when the agent has not spoken", () => {
     expect(newestReply([turn("user", "hello")])).toBeNull();
   });
+
+  it("walks PAST a turn the agent rewound away from", () => {
+    // pi keeps every branch in one log, so the newest turn in the array is not always the newest turn
+    // in the conversation. Skipping rather than stopping is the point: the reply that IS current sits
+    // further back.
+    const rewound: TranscriptEntry = { ...turn("assistant", "from the abandoned path"), abandoned: true };
+    expect(replyProse(newestReply([...entries, rewound])!)).toBe("second thought");
+  });
 });
 
 describe("locateReply", () => {

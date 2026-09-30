@@ -255,7 +255,11 @@ interface LiveRow {
   rev: number;
   /** Bytes of JSON, re-measured when the row changes — the bound's own arithmetic. */
   weight: number;
-  readonly entry: TranscriptEntry;
+  /**
+   * The turn. NOT readonly: a source may hand the same turn back whole rather than mutate it in
+   * place, and then the row keeps its `seq` and takes the newer object (see {@link LiveWindow.fold}).
+   */
+  entry: TranscriptEntry;
 }
 
 /** What a row costs. The length of its JSON: what it weighs on the wire, and near what it weighs here. */
@@ -382,6 +386,24 @@ class LiveWindow {
     for (const line of lines) {
       const reduction = reducer.push(line);
       for (const entry of reduction.added) {
+        // A uuid we ALREADY HOLD is a re-emit, not a new turn, and it must keep its place.
+        //
+        // Two sources do this by design. opencode mutates a row while a reply streams and its cursor
+        // compares `>=`, so every read of a live reply hands the same `uuid` back; hermes re-composes
+        // a turn rather than editing one. Taking either as new would put one turn at a second `seq`,
+        // send both, and leave the client's merge-by-uuid MOVING a turn that never moved, against
+        // this file's own rule that a `seq` is assigned once. It would also leak the old row's weight
+        // until a trim caught it. So a re-emit is a change in place, exactly like a folded result.
+        const held = this.byUuid.get(entry.uuid);
+        if (held !== undefined) {
+          held.entry = entry;
+          const after = weigh(entry);
+          this.weight += after - held.weight;
+          held.weight = after;
+          held.rev = rev;
+          moved = true;
+          continue;
+        }
         const row: LiveRow = { seq: this.nextSeq++, rev, weight: weigh(entry), entry };
         this.rows.push(row);
         this.byUuid.set(entry.uuid, row);

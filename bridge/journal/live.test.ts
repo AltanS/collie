@@ -304,6 +304,34 @@ describe("what a poll costs", () => {
     expect(two?.head).toBe(one!.head);
   });
 
+  test("a turn handed back WHOLE keeps its seq, rather than arriving twice", async () => {
+    // opencode mutates a row while a reply streams and its cursor compares `>=`, so every read hands
+    // the same uuid back as `added`; hermes re-composes a turn rather than editing one. Taking either
+    // as new would put one turn at two `seq`s, send both, and leave the client's merge-by-uuid moving
+    // a turn that never moved. The fake's grammar re-says a turn with `id`, which is that case.
+    const fx = fakeJournal([say("u1", "first")]);
+    const live = windows(fx);
+    const one = await live.window(fx.adapter, ref(), { limit: 10 });
+    expect(one?.upserts.map((e) => [e.uuid, e.seq])).toEqual([["u1", SEQ_BASE]]);
+
+    fx.append(say("u1", "second"));
+    fx.settle();
+    const two = await live.window(fx.adapter, ref(), {
+      limit: 10,
+      after: { gen: one!.gen, rev: one!.rev },
+    });
+    expect(two?.upserts).toHaveLength(1);
+    expect(two?.upserts[0]?.seq).toBe(SEQ_BASE);
+    expect(two?.upserts[0]?.parts[0]).toMatchObject({ kind: "tool", name: "second" });
+    // The head did not move: one turn came back, it did not become two.
+    expect(two?.head).toBe(one!.head);
+
+    // And a fresh reader sees ONE turn, not a stale row beside its replacement.
+    fx.settle();
+    const fresh = await live.window(fx.adapter, ref(), { limit: 10 });
+    expect(fresh?.upserts.map((e) => e.uuid)).toEqual(["u1"]);
+  });
+
   test("one tick is one revision, however many rows it folded", async () => {
     const fx = fakeJournal([say("u1")]);
     const live = windows(fx);

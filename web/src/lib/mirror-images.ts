@@ -155,6 +155,9 @@ export function transcriptImages(entries: readonly TranscriptEntry[]): string[] 
 export function newestTurnImage(entries: readonly TranscriptEntry[]): string | null {
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i]!;
+    // A rewound turn is not the newest turn. Skipped BEFORE the user test below, so an abandoned
+    // prompt ends nothing: the walk has to keep going back to the turn that is really current.
+    if (entry.abandoned === true) continue;
     if (entry.role === "user") return null;
     const urls = entryImages(entry);
     if (urls.length > 0) return urls[urls.length - 1]!;

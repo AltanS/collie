@@ -262,6 +262,19 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     // addressed to the model (a skill body, an image's source path, a caveat) and is dropped.
     if (row.isMeta === true && row.promptSource !== "system") return NO_CHANGE;
     const type = row.type;
+    // EVERYTHING ELSE IS BOOKKEEPING, and it is a long list. Measured over 462 real session files on
+    // 2026-09-30: `attachment`, `last-prompt`, `atis-latch`, `file-history-snapshot`, `mode`,
+    // `permission-mode`, `ai-title`, `cost-state`, `queue-operation`, and `system` with subtypes
+    // `turn_duration` and `stop_hook_summary`. None of it is conversation and all of it would be
+    // noise on a phone.
+    //
+    // The one row anybody has argued for is `system` / `subtype: "compact_boundary"`, 281 of them
+    // across those files, which is where Claude's own UI draws its compaction divider. It stays
+    // dropped, and the reason is the pairing: those 281 boundaries come with exactly 281 `user` rows
+    // carrying `isCompactSummary`, which this reducer keeps and gives `role: "summary"`. So a
+    // compaction is already visible and already set apart from speech; the boundary row would add a
+    // second mark for the same event, and widening this gate to admit it means admitting a subtype
+    // test into the one line that keeps 1,060 `attachment` rows off the screen.
     if (type !== "user" && type !== "assistant") return NO_CHANGE;
     if (row.isSidechain === true && !opts.includeSidechains) return NO_CHANGE;
 

@@ -845,6 +845,15 @@ export interface TranscriptEntry {
   ts: string;
   role: "user" | "assistant" | "summary" | "note";
   parts: TranscriptPart[];
+  /**
+   * The agent rewound past this turn, so it is not on the session's current branch. HIDE IT.
+   *
+   * Only pi sets it: pi keeps every branch in one log and each row names its parent, so the reader
+   * can tell. Absent on every other harness and absent when false. The reader keeps the turn rather
+   * than dropping it, because a page cursor still has to resolve its uuid, so hiding is this side's
+   * job (`bridge/journal/types.ts` carries the long reasoning).
+   */
+  abandoned?: true;
 }
 
 /** A file's state against HEAD, staged and unstaged together (ADR 0065). `?` = untracked. */

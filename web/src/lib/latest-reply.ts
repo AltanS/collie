@@ -78,6 +78,10 @@ function proseTruncated(entry: TranscriptEntry): boolean {
 export function newestReply(entries: TranscriptEntry[]): TranscriptEntry | null {
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
+    // A turn the agent rewound past is not the reply on screen, and the identity check downstream
+    // would reject it anyway; skipping it here means the walk keeps looking instead of stopping on a
+    // turn that can never pass.
+    if (entry?.abandoned === true) continue;
     if (entry && entry.role === "assistant" && replyProse(entry) !== "") return entry;
   }
   return null;

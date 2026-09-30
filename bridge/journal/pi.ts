@@ -256,36 +256,176 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
  * turn the way Claude does, so one row never both adds a turn and changes it: here `added` and
  * `changed` are disjoint by the shape of the format, not by a rule this function applies.
  */
+/**
+ * A turn that ENDED BADLY, as a note of its own.
+ *
+ * MEASURED over 44 real sessions (1,989 rows, pi-tui 0.87.1) on 2026-09-30, because this row was
+ * being dropped in silence and its shape decides the fix:
+ *  - `stopReason: "error"` — 37 rows, EVERY ONE with zero content blocks. So the turn had nothing to
+ *    render, `parts` came out empty, and the whole failure was invisible. That is the fault.
+ *  - `stopReason: "aborted"` — 15 rows, 10 of them with zero blocks and 5 carrying text, thinking or
+ *    a call the model got out before the operator stopped it.
+ *  - every one of the 52 carries `errorMessage`, from 17 to 4,031 characters.
+ *
+ * `note` and not a text part on the turn itself: the harness wrote this, the model did not say it, and
+ * a view that draws the two alike tells the reader the agent announced its own failure. `note` is the
+ * role that already means machine-injected content which still belongs on screen.
+ *
+ * The message is passed through as pi wrote it, with no "Error:" prefix added. pi's own wording is
+ * already a sentence ("Operation aborted", a provider's error line), the `note` role is what marks it
+ * as not-speech, and a prefix would be this reader editorialising over a harness's own words.
+ *
+ * The OTHER stop reasons are deliberately silent: `toolUse` (794 rows) and `stop` (53) are how a
+ * normal turn ends, and a note on either would put a line under almost every turn in the session.
+ */
+const PI_STOPPED_BADLY = new Set(["error", "aborted"]);
+
+function stopNote(m: JsonObject): TranscriptPart | null {
+  const reason = m.stopReason;
+  if (typeof reason !== "string" || !PI_STOPPED_BADLY.has(reason)) return null;
+  const message = m.errorMessage;
+  if (typeof message !== "string" || message.trim() === "") return null;
+  return { kind: "text", ...clamp(stripAnsi(message), MAX_TEXT_CHARS) };
+}
+
+/**
+ * How many rows of the branch chain a reducer remembers.
+ *
+ * The SECOND bounded map in a reducer, beside {@link PENDING_MAX}, and it needs a bound for the same
+ * reason: without one it is the thing that grows for the life of a session. 8192 links against a live
+ * window of 2000 entries means the chain outlives everything the window can still show.
+ *
+ * Eviction is oldest-first, and it is sound because the log is append-only: every ancestor of a row
+ * is older than that row, so the ids that fall off are the ones whose turns the window has already
+ * trimmed. The cost of an evicted link is that its turn can no longer be marked or unmarked, which is
+ * the same bound the window's own trim already puts on a late tool result.
+ */
+const BRANCH_MAX = 8192;
+
+/** One row of the chain: what it hangs off, and the turns it put on screen. */
+interface BranchLink {
+  parentId: string | null;
+  entries: TranscriptEntry[];
+}
+
+/** The text of a `custom_message`, whose `content` pi writes as a string or as blocks. */
+function customText(content: JsonValue | undefined): string {
+  if (typeof content === "string") return stripAnsi(content);
+  return stripAnsi(textBlocks(content));
+}
+
+/**
+ * A desk `!command`, which pi records as a message role rather than as a tool call.
+ *
+ * `note` and not `assistant`: nobody said this, the operator ran it, and `types.ts` names "a local
+ * command's output" as the example of a note. The fields sit on the MESSAGE and not in content
+ * blocks (`command`, `output`, `exitCode`, `cancelled`, `truncated`), verified against pi 0.87.1's
+ * own `SessionManager` writing one.
+ */
+function bashExecutionParts(m: JsonObject): TranscriptPart[] {
+  const command = typeof m.command === "string" ? m.command : "";
+  if (command.trim() === "") return [];
+  const summary = summarizeToolInput({ command });
+  const call = classifyToolCall("bash", { command }, summary);
+  const exitCode = typeof m.exitCode === "number" && Number.isFinite(m.exitCode) ? m.exitCode : undefined;
+  if (call.kind === "execute" && exitCode !== undefined) call.exitCode = exitCode;
+  const part: Extract<TranscriptPart, { kind: "tool" }> = { kind: "tool", name: "bash", summary, call };
+  const output = typeof m.output === "string" ? m.output : "";
+  // Cancelled OR a non-zero exit is a failure to read; a cancelled command is not a REFUSAL, so
+  // `denied` stays off (the same line `PI_BLOCKED` draws for a tool result).
+  const failed = m.cancelled === true || (exitCode !== undefined && exitCode !== 0);
+  if (output.trim() !== "" || failed) part.result = toolResult(stripAnsi(output), failed);
+  return [part];
+}
+
 export function createPiReducer(): RowReducer {
   // toolCall id → the part awaiting its result and the turn it went out in, so a later `toolResult`
   // row lands on its own call and can name where that call is drawn.
   const pendingTools = new Map<string, PendingTool>();
 
-  // A nested `function` rather than a method on the returned object: the body below is the old loop
-  // body at the indentation it always had, so this refactor is readable as the move it is.
-  function push(line: string): Reduction {
-    const entries: TranscriptEntry[] = [];
-    const changed = new Set<string>();
-    if (line.trim() === "") return NO_CHANGE;
-    let parsed: JsonValue;
-    try {
-      // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
-      // read below a checked property access.
-      parsed = JSON.parse(line) as JsonValue;
-    } catch {
-      return NO_CHANGE; // partial trailing write, or the clipped first line of a tail read
+  // ── THE BRANCH CHAIN ────────────────────────────────────────────────────────
+  // pi keeps every branch in ONE append-only log. Every row names its parent, and the session's
+  // CURRENT branch is the path from the newest row back to a root. A row whose parent is not the row
+  // before it is a rewind, and everything that hung off the old leaf has left the conversation.
+  //
+  // Measured over 44 real sessions on 2026-09-30: 8 of them fork. This is not an edge case.
+  //
+  // A rewind is ANNOUNCED by the row that arrives, which is what makes it expressible in a
+  // forward-only reducer at all: the turns that left are marked `abandoned` in place and named in
+  // `changed`, exactly like a tool result folding onto an earlier call. `Reduction` grows no
+  // `removed` (ADR 0073 and its addendum). A rewind BACK onto a marked turn clears the mark the same
+  // way, which a remove verb could never have done.
+  const chain = new Map<string, BranchLink>();
+  let leaf: string | null = null;
+
+  /** Remember this row, and if it rewound, flip the flags the rewind changed. */
+  function link(rowId: string, parentId: string | null, entries: TranscriptEntry[], changed: Set<string>): void {
+    if (rowId === "") return; // no identity, so nothing can hang off it and nothing can be walked
+    if (parentId !== leaf) {
+      // The path from the new parent back to a root. A parent the chain does not hold (including
+      // `null`, pi's own new-root case) yields an empty path, so everything held has left.
+      const keep = new Set<string>();
+      for (let at = parentId; at !== null && !keep.has(at); at = chain.get(at)?.parentId ?? null) {
+        if (!chain.has(at)) break;
+        keep.add(at);
+      }
+      for (const [id, held] of chain) {
+        const off = !keep.has(id);
+        for (const entry of held.entries) {
+          if (off && entry.abandoned !== true) {
+            entry.abandoned = true;
+            changed.add(entry.uuid);
+          } else if (!off && entry.abandoned === true) {
+            delete entry.abandoned;
+            changed.add(entry.uuid);
+          }
+        }
+      }
     }
-    // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
-    // no row shape — skip it exactly as an unparseable line is skipped.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
-    const row: PiRow = parsed;
-    // `session`, `model_change`, `thinking_level_change` are bookkeeping — nothing to render.
-    if (row.type !== "message") return NO_CHANGE;
+    chain.set(rowId, { parentId, entries });
+    leaf = rowId;
+    if (chain.size > BRANCH_MAX) {
+      const oldest = chain.keys().next().value;
+      if (oldest !== undefined) chain.delete(oldest);
+    }
+  }
+
+  /**
+   * What one row puts on screen. Pushes into `entries` and names in `changed` any EARLIER turn it
+   * edited; the branch bookkeeping is {@link link}'s and runs after this, so every row is a link
+   * whether or not it draws anything.
+   */
+  function draw(row: PiRow, uuid: string, ts: string, entries: TranscriptEntry[], changed: Set<string>): void {
+    const type = row.type;
+
+    // pi's own history rows. Both carry a `summary` the MODEL wrote about the conversation, which is
+    // what `role: "summary"` means here and in claude.ts and opencode.ts. A compaction deliberately
+    // does NOT mark the turns before `firstKeptEntryId` abandoned: they are still on the branch, and
+    // the other two harnesses keep them on screen too.
+    if (type === "compaction" || type === "branch_summary") {
+      const summary = typeof row.summary === "string" ? stripAnsi(row.summary) : "";
+      if (summary.trim() !== "")
+        entries.push({ uuid, ts, role: "summary", parts: [{ kind: "text", ...clamp(summary, MAX_TEXT_CHARS) }] });
+      return;
+    }
+
+    // An extension put this on the operator's screen. `display: false` is the extension talking to
+    // the model, which is the same distinction Claude's `isMeta` draws, so it is dropped.
+    if (type === "custom_message") {
+      if (row.display !== true) return;
+      const text = customText(row.content);
+      if (text.trim() !== "")
+        entries.push({ uuid, ts, role: "note", parts: [{ kind: "text", ...clamp(text, MAX_TEXT_CHARS) }] });
+      return;
+    }
+
+    // `model_change`, `thinking_level_change`, `usage`, `label` and anything later: bookkeeping that
+    // draws nothing and is still a LINK in the chain, which is why this returns rather than bailing
+    // out of `push`.
+    if (type !== "message") return;
     const message = row.message;
-    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return NO_CHANGE;
+    if (message === null || message === undefined || typeof message !== "object" || Array.isArray(message)) return;
     const m: JsonObject = message;
-    const uuid = typeof row.id === "string" ? row.id : "";
-    const ts = typeof row.timestamp === "string" ? row.timestamp : "";
 
     if (m.role === "toolResult") {
       const id = typeof m.toolCallId === "string" ? m.toolCallId : "";
@@ -320,13 +460,20 @@ export function createPiReducer(): RowReducer {
           ],
         });
       }
-      // THE EARLY RETURN THAT MAY NOT BE `NO_CHANGE`. A `toolResult` row whose result folded onto an
-      // earlier call has no turn of its own to show, and it HAS changed one; `NO_CHANGE` here would
-      // drop that report on the floor and leave the folded result invisible to a tail, which is the
-      // one fault this spec exists to fix. The orphan branch above takes the same exit the other way
-      // round — a turn of its own in `entries`, nothing changed.
-      return reduction(entries, changed);
+      return;
     }
+
+    // A desk `!command`. Its own role, its own shape, and a note rather than speech.
+    if (m.role === "bashExecution") {
+      const parts = bashExecutionParts(m);
+      if (parts.length > 0) entries.push({ uuid, ts, role: "note", parts });
+      return;
+    }
+
+    // pi's context injection: `content` is a STRING here, plus `sections` and `toolsAdded`, so the
+    // block walk below would find nothing anyway. Refused by name rather than by accident, and NOT
+    // collapsed into `user`, which is what it used to fall through to.
+    if (m.role === "system") return;
 
     const role: TranscriptEntry["role"] = m.role === "assistant" ? "assistant" : "user";
     const parts: TranscriptPart[] = [];
@@ -371,11 +518,48 @@ export function createPiReducer(): RowReducer {
       }
     }
 
-    // A row with nothing renderable. `reduction` rather than `NO_CHANGE`: it is the same value here,
-    // because the only mutating branch in this reducer returned already, and spelling it this way
-    // means a later mutation above cannot silently lose its report.
-    if (parts.length === 0) return reduction(entries, changed);
-    entries.push({ uuid, ts, role, parts });
+    // A row with nothing renderable contributes no turn, which is not the same as contributing
+    // nothing: the stop note below may still be owed.
+    if (parts.length > 0) entries.push({ uuid, ts, role, parts });
+    // AFTER the turn it belongs to, and under a uuid of its own so both can be held at once. A
+    // derived uuid is safe: a uuid is only ever an identity here, matched by `?before=` against turns
+    // already parsed and by the live window's own index, and `<row>:stop` collides with nothing pi
+    // writes. 47 of the 52 measured rows carry no turn at all, so usually this IS the row's only
+    // entry; the five that carry both are why it is not simply the row's own id.
+    const stopped = stopNote(m);
+    if (stopped !== null) entries.push({ uuid: `${uuid}:stop`, ts, role: "note", parts: [stopped] });
+  }
+
+  function push(line: string): Reduction {
+    const entries: TranscriptEntry[] = [];
+    const changed = new Set<string>();
+    if (line.trim() === "") return NO_CHANGE;
+    let parsed: JsonValue;
+    try {
+      // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
+      // read below a checked property access.
+      parsed = JSON.parse(line) as JsonValue;
+    } catch {
+      return NO_CHANGE; // partial trailing write, or the clipped first line of a tail read
+    }
+    // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
+    // no row shape — skip it exactly as an unparseable line is skipped.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
+    const row: PiRow = parsed;
+    // THE HEADER IS NOT A LINK. Its `id` is the SESSION's uuid, and the first message's `parentId` is
+    // `null` rather than that id, so feeding it to the chain would make every first row look like a
+    // rewind.
+    if (row.type === "session") return NO_CHANGE;
+
+    const uuid = typeof row.id === "string" ? row.id : "";
+    const ts = typeof row.timestamp === "string" ? row.timestamp : "";
+    draw(row, uuid, ts, entries, changed);
+    // Unconditional, and after `draw`: a row that renders nothing is still somebody's parent, so the
+    // chain has to hold it or the next rewind would walk past a hole and abandon the live branch.
+    link(uuid, typeof row.parentId === "string" ? row.parentId : null, entries, changed);
+    // `reduction` rather than `NO_CHANGE` at the exit, because the mutating branches above may have
+    // named a turn without adding one, and spelling it this way means a later mutation cannot
+    // silently lose its report.
     return reduction(entries, changed);
   }
 
