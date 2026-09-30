@@ -75,7 +75,9 @@ Each has burned this codebase before on some other axis:
    position fails here — and nothing above the adapter can repair a moving id.
 3. **Are the semantics the contract's?** `styling:"strip"` really strips; a read echoes the pane it
    was asked for; `revision` moves when the pane's content does; a two-key batch arrives as two keys
-   in order; a call aimed at a pane that has gone away answers **`gone`**, not `unreachable`.
+   in order; a call aimed at a pane that has gone away answers **`gone`**, not `unreachable`. A
+   pane's agent name is `shell` or a Collie harness name ([`agents.ts`](./bridge/mux/agents.ts)),
+   never your multiplexer's own id for the harness: `claude-code` reaches no screen reader.
 4. **Does it degrade rather than lie?** A constant `revision` silently disables the race guard. A key
    listed in `unsupportedKeys` that gets sent anyway is worse than no list. `agentDetection`
    declared over a world of bare shells proves nothing.

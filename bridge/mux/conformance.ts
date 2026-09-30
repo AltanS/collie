@@ -37,6 +37,7 @@
 // structure change nobody announced).
 // Adding tmux (M10/04) or zellij (M10/05) is that fixture plus a registry entry — never a test file.
 
+import { isMuxAgentName } from "./agents.ts";
 import { MUX_CAPABILITIES, type MuxCapability } from "./capabilities.ts";
 import { checkIdentitySet, idsLostBetween, isValidMuxId } from "./identity.ts";
 import { canonicalMuxKey, MUX_NAMED_KEYS } from "./keys.ts";
@@ -534,16 +535,34 @@ const snapshotIsWellFormed: MuxReadCheck = {
     for (const pane of snapshot.panes) {
       if (!spaceIds.has(pane.spaceId)) problems.push(`pane "${pane.paneId}" names space "${pane.spaceId}", which is not in the snapshot`);
       if (!tabIds.has(pane.tabId)) problems.push(`pane "${pane.paneId}" names tab "${pane.tabId}", which is not in the snapshot`);
-      // The agent name keys the harness and journal registries. An empty or upper-cased one misses
-      // both lookups silently, so it is a contract violation rather than a cosmetic slip.
-      if (pane.agent.length === 0) problems.push(`pane "${pane.paneId}" reports an empty agent name`);
-      else if (pane.agent !== pane.agent.toLowerCase()) {
-        problems.push(`pane "${pane.paneId}" reports agent "${pane.agent}", which is not lower-cased`);
-      }
     }
+    problems.push(...agentNameProblems(snapshot.panes));
     return problems;
   },
 };
+
+/**
+ * The agent-name rule over one snapshot's panes (agents.ts). Exported so the rule is tested on its
+ * own, with a name no registered adapter reports.
+ *
+ * The agent name keys the harness and journal registries, and both look it up exactly. An empty or
+ * upper-cased name misses both, and so does a multiplexer's own id for a harness (`claude-code`),
+ * so each is a contract violation rather than a cosmetic slip.
+ */
+export function agentNameProblems(panes: readonly MuxPane[]): string[] {
+  const problems: string[] = [];
+  for (const pane of panes) {
+    if (pane.agent.length === 0) problems.push(`pane "${pane.paneId}" reports an empty agent name`);
+    else if (pane.agent !== pane.agent.toLowerCase()) {
+      problems.push(`pane "${pane.paneId}" reports agent "${pane.agent}", which is not lower-cased`);
+    } else if (!isMuxAgentName(pane.agent)) {
+      problems.push(
+        `pane "${pane.paneId}" reports agent "${pane.agent}", which is not a Collie harness name, so no screen reader or journal reader finds it (agents.ts)`,
+      );
+    }
+  }
+  return problems;
+}
 
 const idsDoNotChurn: MuxReadCheck = {
   name: "pane ids are the same across two consecutive reads",
