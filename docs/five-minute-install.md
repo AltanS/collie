@@ -92,7 +92,7 @@ collie qr
    - **Android:** in Chrome, open Collie **Settings** and tap **Install** on the top card.
 3. Open Collie from the new icon.
 4. Run `collie pair` on the host to print an 8-character code, valid for 10 minutes.
-5. In Collie, open **Settings** and find **Paired devices**.
+5. In Collie, open **Settings → System → Paired devices**.
 6. Enter the code and a name, for example `my phone`, and tap **Pair this device**.
 
 Pair inside the home screen app, not in the browser tab. On an iPhone, the home screen app keeps
