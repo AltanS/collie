@@ -32,6 +32,7 @@ import { herdrConformanceFixture } from "./herdr/fixture.ts";
 import { tmuxMuxFactory } from "./tmux/adapter.ts";
 import { FakeTmux, FAKE_TMUX_SOCKET, tmuxConformanceFixture, tmuxWorld } from "./tmux/fixture.ts";
 import { tmuxBeaconMatcher } from "./tmux/markers.ts";
+import { tuiosConformanceFixture } from "./tuios/fixture.ts";
 import { zellijMuxFactory } from "./zellij/adapter.ts";
 import { FakeZellij, SESSION, zellijConformanceFixture, zellijWorld } from "./zellij/fixture.ts";
 import { zellijBeaconMatcher } from "./zellij/markers.ts";
@@ -132,6 +133,7 @@ export const MUX_CONFORMANCE_FIXTURES: readonly MuxConformanceFixture[] = [
   herdrConformanceFixture,
   tmuxConformanceFixture,
   zellijConformanceFixture,
+  tuiosConformanceFixture,
   { mux: tmuxMuxFactory.mux, variant: "beacons, hooks installed", create: () => tmuxDecoratedWorld(true) },
   { mux: tmuxMuxFactory.mux, variant: "beacons, hooks absent", create: () => tmuxDecoratedWorld(false) },
   { mux: zellijMuxFactory.mux, variant: "beacons, hooks installed", create: () => zellijDecoratedWorld(true) },

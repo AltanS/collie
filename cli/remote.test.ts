@@ -1217,7 +1217,7 @@ describe("the mux decision", () => {
     expect(h.calls).toHaveLength(0);
     expect(h.restarts).toBe(0);
     expect(text(h.io)).toContain("--mux screen is not a multiplexer this build drives");
-    expect(text(h.io)).toContain("herdr, tmux, zellij");
+    expect(text(h.io)).toContain("herdr, tmux, tuios, zellij");
   });
 
   test("--mux writes the name, over one the member already carries, without reading its machine", async () => {
