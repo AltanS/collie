@@ -19,7 +19,7 @@ vi.mock("@/lib/wizard-action", () => ({
 }));
 
 import { server } from "@/test/setup";
-import { clearStatus, setStatus } from "@/lib/status";
+import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { __resetOperatorCommands } from "@/lib/operator-config";
@@ -2856,5 +2856,159 @@ describe("AgentChat — the belt's Changes pill", () => {
   it("is hidden when the pane reports no folder", () => {
     renderChat({ agent: { ...fixtureAgents[0]!, cwd: "" } });
     expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
+  });
+});
+
+
+// ── Copy output ──────────────────────────────────────────────────────────────
+//
+// The SHEET's half of this is covered in pane-actions-sheet.test.tsx: which row shows, and that the
+// sheet closes before the copy fires. What is covered here is the handler the sheet is given, which
+// is where the decisions live: WHAT gets written, WHEN the row is offered at all, and what the
+// operator is told when the write fails. `navigator.clipboard` is absent in jsdom exactly as it is
+// over plain HTTP, so every case that wants the row has to stand one up, which is the gate itself
+// under test.
+describe("AgentChat — copy the pane's output", () => {
+  /** The status singleton is module-scoped; this is how the other suites read it (composer.test). */
+  function StatusSentinel() {
+    const status = useStatus();
+    return <div data-testid="status">{status?.text ?? ""}</div>;
+  }
+
+  /** Stand up a clipboard for one case, and take it away again. */
+  function withClipboard(writeText: (text: string) => Promise<void>) {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn(writeText) },
+      configurable: true,
+    });
+    return vi.mocked(navigator.clipboard.writeText);
+  }
+  afterEach(() => {
+    // `configurable: true` above is what lets this undo itself. Left in place, a stubbed clipboard
+    // would make every later case in this file render a row it never asked for.
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  const OUTPUT = paneTextWithDraft("copy me please");
+
+  /** AgentChat plus the status sentinel, with externally-advanceable pane props. */
+  function renderWithPane(initial: { text: string; logicalText?: string }) {
+    const agent = fixtureAgents[0]!;
+    let advance: (pane: { text: string; logicalText?: string }) => void = () => {
+      throw new Error("harness not mounted");
+    };
+    function Harness() {
+      const [pane, setPane] = useState(initial);
+      advance = setPane;
+      return (
+        <>
+          <AgentChat
+            paneId={agent.paneId}
+            agent={agent}
+            agents={fixtureAgents}
+            shellPanes={[]}
+            tabs={[]}
+            text={pane.text}
+            logicalText={pane.logicalText}
+            revision={1}
+            onBack={vi.fn()}
+            onSelect={vi.fn()}
+          />
+          <StatusSentinel />
+        </>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    render(<RouterProvider router={router} />);
+    return (pane: { text: string; logicalText?: string }) => advance(pane);
+  }
+
+  async function copyOutput(user: User) {
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Copy output" }));
+  }
+
+  // THE GATE, and it is not a nicety: `navigator.clipboard` is undefined in an insecure context, and
+  // plain HTTP is a supported deploy (docs/deployment.md Variant E). A row offered there could only
+  // ever fail, so it is absent, the same rule find and history follow.
+  it("offers no row where there is no clipboard to write to", async () => {
+    // `userEvent.setup()` INSTALLS a clipboard of its own, so the absence has to be staged after it
+    // and before the render that reads it. That is also why every other case in this file now sees
+    // the row at all: the harness supplies what an insecure context does not.
+    const user = userEvent.setup();
+    Reflect.deleteProperty(navigator, "clipboard");
+    expect(navigator.clipboard).toBeUndefined();
+    renderWithPane({ text: OUTPUT });
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: "Copy output" })).toBeNull();
+    // The control it sits beside IS there, so this is the clipboard's absence and not a closed sheet.
+    expect(screen.getByRole("button", { name: "Find in output" })).toBeInTheDocument();
+  });
+
+  it("offers no row when there is nothing on screen to copy", async () => {
+    const user = userEvent.setup();
+    withClipboard(async () => {});
+    renderWithPane({ text: "" });
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: "Copy output" })).toBeNull();
+  });
+
+  // The unwrapped form is the whole point of preferring it: the mirror's own text carries the hard
+  // wraps the phone's width put in, so a paste of it reads as broken lines.
+  it("copies the UNWRAPPED text when the multiplexer reports one", async () => {
+    const user = userEvent.setup();
+    const writeText = withClipboard(async () => {});
+    renderWithPane({ text: OUTPUT, logicalText: "one whole line that was never wrapped" });
+    await copyOutput(user);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith("one whole line that was never wrapped");
+  });
+
+  it("falls back to the text on screen when no unwrapped form exists", async () => {
+    const user = userEvent.setup();
+    const writeText = withClipboard(async () => {});
+    renderWithPane({ text: OUTPUT });
+    await copyOutput(user);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith(OUTPUT);
+  });
+
+  // The case the handler's own comment claims, and the reason it reads `shown` rather than the live
+  // props: a poll lands between the operator reading a screen and tapping the row. What gets copied
+  // must be what they were looking at.
+  it("copies the FROZEN buffer, not a poll that landed under the tap", async () => {
+    const user = userEvent.setup();
+    const writeText = withClipboard(async () => {});
+    const advance = renderWithPane({ text: OUTPUT, logicalText: "the screen they read" });
+
+    // Freeze the mirror, then put the find bar away again. Opening find pins the tail, which is the
+    // same `following=false` state a scroll-up freeze produces (the frozen-pair suite above freezes
+    // the same way), and closing it deliberately does NOT re-follow — so this leaves a frozen mirror
+    // with the ⋮ reachable, which a scroll-up freeze would too and jsdom cannot drive.
+    await openFind(user);
+    await user.click(screen.getByRole("button", { name: "Close find" }));
+    act(() => advance({ text: `${OUTPUT}\nlater output\n`, logicalText: "a screen they never saw" }));
+
+    await copyOutput(user);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith("the screen they read");
+  });
+
+  // A refusal has to READ as one. Reporting success for a write that never happened is worse than
+  // the failure, because the operator walks away believing they have the output.
+  it("says it could not copy when the clipboard refuses", async () => {
+    const user = userEvent.setup();
+    withClipboard(() => Promise.reject(new Error("denied")));
+    renderWithPane({ text: OUTPUT });
+    await copyOutput(user);
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/couldn't copy/i));
+  });
+
+  it("says it copied when the write goes through", async () => {
+    const user = userEvent.setup();
+    withClipboard(async () => {});
+    renderWithPane({ text: OUTPUT });
+    await copyOutput(user);
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/copied output/i));
   });
 });
