@@ -60,10 +60,13 @@ const DECLINED = new Set([
   "omp--draft-ghost-suggestion-busy.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
+  "omp--fresh-effort-hint.txt",
   "omp--fresh-idle.txt",
   "omp--menu-dismissed.txt",
+  "omp--v18-pi-effort-hint.txt",
   "omp--v18-rule-draft.txt",
   "omp--v18-rule-idle.txt",
+  "omp--v18-rule-effort-hint.txt",
   "omp--v18-rule-wrapped.txt",
   "omp--working.txt",
   // — The slash palette is composer chrome too, and it is drawn BELOW the box, so it is stripped along
@@ -111,7 +114,7 @@ const DECLINED = new Set([
 
 // Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
 // each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
-// raw-only on all 29 omp captures and every foreign harness capture.
+// raw-only on all 32 omp captures and every foreign harness capture.
 const ownFixtures: string[] = [];
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
@@ -135,6 +138,7 @@ describe("the omp corpus", () => {
     "omp--draft-ghost-suggestion.txt",
     "omp--draft-single.txt",
     "omp--draft-wrapped.txt",
+    "omp--fresh-effort-hint.txt",
     "omp--fresh-idle.txt",
     "omp--menu-dismissed.txt",
     "omp--menu-model-moved.txt",
@@ -151,17 +155,19 @@ describe("the omp corpus", () => {
     "omp--slash-palette--filtered.txt",
     "omp--slash-palette.txt",
     "omp--tree.txt",
+    "omp--v18-pi-effort-hint.txt",
     "omp--v18-rule-draft.txt",
+    "omp--v18-rule-effort-hint.txt",
     "omp--v18-rule-idle.txt",
     "omp--v18-rule-wrapped.txt",
     "omp--working.txt",
   ];
 
-  it("is exactly the 29 captures this adapter was developed against", () => {
+  it("is exactly the 32 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all twenty-nine — nothing is up-levelled", () => {
+  it("declines all thirty-two — nothing is up-levelled", () => {
     expect(neutralFixtures).toEqual(PINNED);
     expect(ownFixtures).toEqual([]);
   });
@@ -210,11 +216,14 @@ const COMPOSER_FIXTURES = [
   "omp--draft-ghost-suggestion-busy.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
+  "omp--fresh-effort-hint.txt",
   "omp--fresh-idle.txt",
   "omp--menu-dismissed.txt",
   "omp--slash-palette--filtered.txt",
   "omp--slash-palette.txt",
   "omp--working.txt",
+  "omp--v18-pi-effort-hint.txt",
+  "omp--v18-rule-effort-hint.txt",
   "omp--v18-rule-draft.txt",
   "omp--v18-rule-idle.txt",
   "omp--v18-rule-wrapped.txt",
@@ -231,6 +240,20 @@ describe("composerReady — the gate the reply path pre-flights on", () => {
   it.each(COMPOSER_FIXTURES)("%s: the composer is on screen ⇒ true", (name) => {
     expect(ompAdapter.composerReady!(fixtureLines(name))).toBe(true);
   });
+});
+
+// omp 18.4 paints a right-aligned key hint (`⇧⇥ to change thinking effort`) into an EMPTY editor,
+// in every composer shape. It is not in the input buffer; reading it as a draft put "Draft in
+// terminal" on every fresh session and made the pre-clear sweep erase an empty line.
+describe("the empty-editor key hint is not a draft", () => {
+  it.each(["omp--fresh-effort-hint.txt", "omp--v18-rule-effort-hint.txt", "omp--v18-pi-effort-hint.txt"])(
+    "%s: composer on screen, no draft",
+    (name) => {
+      const lines = fixtureLines(name);
+      expect(ompAdapter.composerReady!(lines)).toBe(true);
+      expect(ompAdapter.extractInputDraft(lines)).toBeNull();
+    },
+  );
 });
 
 describe("OMP 18 rule composer", () => {

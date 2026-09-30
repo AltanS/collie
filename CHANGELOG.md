@@ -53,6 +53,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   was not accepted". A certificate that is not the pinned one now reads "something other than the
   pinned member answered at this address", which is what a wrong port looks like. A name mismatch
   and an expired or not yet valid certificate each get their own sentence.
+- **A fresh omp session no longer shows a draft in the terminal.** omp 18.4 paints a key hint,
+  Shift+Tab to change thinking effort, into an empty editor. The omp reader took the hint's key
+  glyphs for a typed draft, so every new session showed "Draft in terminal" with Take over. The
+  reader now knows the hint's shape in all three composer layouts and reads the editor as empty.
 
 ## [1.15.2] - 2026-10-02
 

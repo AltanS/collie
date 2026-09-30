@@ -23,6 +23,7 @@ import {
   composerBottomText,
   composerContText,
   composerGhost,
+  composerPlaceholder,
   isBlank,
   isComposerTop,
   isOpenComposerBottom,
@@ -336,9 +337,10 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
  * contributes the tail. Fragments are joined with a single space — omp soft-wraps at word boundaries,
  * so the break it removed was one.
  *
- * There is NO placeholder allow-list, and one must not be invented: omp paints nothing at all in an
- * empty composer (verified across every idle capture in the corpus), so an empty box yields `""` and
- * this returns null. `null` also covers "no box at the tail".
+ * omp 17/18.1 painted nothing at all in an empty composer, so an empty box yields `""` and this
+ * returns null. omp 18.4 paints a right-aligned key hint there instead (`⇧⇥ to change thinking
+ * effort`); `composerPlaceholder` (markers.ts) recognises it by the renderer's shape, not by an
+ * allow-list of labels, and it reads as null too. `null` also covers "no box at the tail".
  *
  * Load-bearing beyond the preview: reply-action.ts runs omp panes through type-then-verify, and THIS
  * is the verify half — a wrong answer stalls every free-text send with "Message didn't reach the
@@ -352,6 +354,7 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   if (box === null) return null;
   const texts = lines.map((l) => rstrip(lineText(l)));
 
+  if (box.firstDraftRow === box.bottom && composerPlaceholder(lines[box.bottom]!)) return null;
   const parts: string[] = [];
   for (let i = box.firstDraftRow; i < box.bottom; i++) {
     parts.push(composerContText(texts[i]!)!.trim());

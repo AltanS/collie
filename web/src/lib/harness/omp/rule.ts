@@ -12,7 +12,7 @@
 // tail. Content below the status or a box/modal in place of that tail makes the whole match fail.
 
 import type { StyledLine } from "../../blocks";
-import { draftGhost, isBlank, lineText, rstrip } from "./markers";
+import { draftGhost, draftPlaceholder, isBlank, lineText, rstrip } from "./markers";
 
 const RULE_TOP = /^─(?:[\s\S]*─)?$/;
 const RULE_PROMPT = /^❯(?: ([\s\S]*))?$/;
@@ -84,6 +84,7 @@ export function extractRuleInputDraft(
 
   const last = parts.length - 1;
   const tail = parts[last]!;
+  if (last === 0 && draftPlaceholder(lines[composer.promptEnd]!, 2, 2 + tail.length)) return null;
   const ghost = draftGhost(lines[composer.promptEnd]!, 2, 2 + tail.length);
   if (ghost.length > 0 && tail.endsWith(ghost)) parts[last] = tail.slice(0, -ghost.length);
 

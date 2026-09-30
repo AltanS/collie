@@ -905,6 +905,27 @@ cwd. The session had no provider signed in, so there is no vendor account state 
 
 `/tree` was dismissed with `Escape`; nothing in the tree was ever switched to.
 
+## OMP empty-editor key hint (captured 2026-09-30, oh-my-pi `omp` v18.4.4, herdr 0.9.2, throwaway Herdr panes)
+
+Three byte-faithful `pane.read format:ansi` captures, taken with `scripts/capture-fixture.sh` from
+fresh omp sessions in `/tmp`, one per composer shape. The rule and pi shapes ran under a
+`--config` overlay that set only `composer.shape`. omp 18.4 paints a key hint into an EMPTY editor:
+the Shift+Tab key glyphs in the accent colour, one space, then `to change thinking effort` in dim
+italic, right-aligned in the draft row. The hint is not in the input buffer and goes away with the
+first typed character. Read as text, the row was a draft of the two key glyphs, so every fresh
+session showed "Draft in terminal". `draftPlaceholder` (`harness/omp/markers.ts`) now recognises
+the hint by the renderer's shape.
+
+The operator's statusline template shows only the model and the context meter, so no cwd, branch,
+host or account appears. **No sanitization pass was needed.** All three are CRLF with no trailing
+newline; their `wc -l` counts are 2, 4 and 4.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--fresh-effort-hint.txt` | Boxed composer on a fresh session: the hint right-aligned in the `╰─ … ─╯` bottom border | `idle` |
+| `omp--v18-rule-effort-hint.txt` | `rule` composer: the hint right-aligned on the empty `❯` row, then the blank gap and the status row | `idle` |
+| `omp--v18-pi-effort-hint.txt` | `pi` composer: the hint right-aligned on the single draft row between the two rules, status row below | `idle` |
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

@@ -6,6 +6,7 @@
 // *between* glyphs, so a regex over the raw buffer would miss (omp paints a border's corner and the
 // statusline inside it as separate styled segments). Pure functions, no I/O, no React.
 
+import type { AnsiSegment } from "../../ansi";
 import { isBlank, lineText, type StyledLine } from "../../blocks";
 
 // `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
@@ -82,6 +83,23 @@ export function isOpenComposerBottom(text: string): boolean {
   return parseComposerBottom(text)?.openEnded === true;
 }
 
+/** The row's segments clipped to `[start, end)`, trailing default-style padding dropped. */
+function spanParts(line: StyledLine, start: number, end: number): AnsiSegment[] {
+  const parts: AnsiSegment[] = [];
+  let at = 0;
+  for (const seg of line.segments) {
+    const from = Math.max(at, start);
+    const to = Math.min(at + seg.text.length, end);
+    if (to > from) parts.push({ ...seg, text: seg.text.slice(from - at, to - at) });
+    at += seg.text.length;
+    if (at >= end) break;
+  }
+  // OMP pads the row out to the terminal's width in the default style, so that padding is neither
+  // draft nor suggestion — drop it before looking for the trailing run.
+  while (parts.length > 0 && parts[parts.length - 1]!.text.trim() === "") parts.pop();
+  return parts;
+}
+
 // omp paints an INLINE COMPLETION SUGGESTION — a "ghost" — into the composer, after the operator's
 // own text: unaccepted, absent from the input buffer, and deleted by no Backspace. Live capture
 // (sandbox omp pane, 2026-08-23, omp 17) of the bottom border after typing `leftover draft here`:
@@ -132,23 +150,8 @@ export function isOpenComposerBottom(text: string): boolean {
 export function draftGhost(line: StyledLine, start: number, end: number): string {
   if (end <= start) return "";
 
-  // The row's segments clipped to the draft span, so surrounding chrome cannot be mistaken for a
-  // suggestion.
-  const parts: { text: string; fg: string | undefined }[] = [];
-  let at = 0;
-  for (const seg of line.segments) {
-    const from = Math.max(at, start);
-    const to = Math.min(at + seg.text.length, end);
-    if (to > from) {
-      parts.push({ text: seg.text.slice(from - at, to - at), fg: seg.fg });
-    }
-    at += seg.text.length;
-    if (at >= end) break;
-  }
-
-  // OMP pads the row out to the terminal's width in the default style, so that padding is neither
-  // draft nor suggestion — drop it before looking for the trailing run.
-  while (parts.length > 0 && parts[parts.length - 1]!.text.trim() === "") parts.pop();
+  // Clipped to the draft span, so surrounding chrome cannot be mistaken for a suggestion.
+  const parts = spanParts(line, start, end);
   if (parts.length === 0) return "";
 
   const ghostFg = parts[parts.length - 1]!.fg;
@@ -165,12 +168,60 @@ export function draftGhost(line: StyledLine, start: number, end: number): string
   );
 }
 
+// omp 18.4 paints a KEY HINT into an EMPTY editor, e.g. `⇧⇥ to change thinking effort` on a fresh
+// session or `← to see 2 running agents` while subagents run. The editor renders its placeholder
+// right-aligned — `" ".repeat(width - hintWidth) + hint`, and only when at least two cells of
+// padding fit — and composer-hints.ts builds the hint as `fg("accent", key) + " " +
+// fg("dim", italic(label))`. Live capture (herdr pane, 2026-09-30, omp 18.4.4, boxed composer):
+//
+//   ╰─ ESC[38;2;242;244;248m<padding>ESC[38;2;51;177;255m<shift> <tab>ESC[0mESC[38;2;242;244;248m ESC[0m
+//      ESC[3mESC[38;2;111;115;119mto change thinking effortESC[0m … ─╯
+//
+// `<shift> <tab>` are two Nerd Font glyphs. Read as text, that row is a draft of those two glyphs
+// (draftGhost claims the label, not the key), so every fresh session showed "Draft in terminal".
+// The hint is not in the input buffer and vanishes with the first typed character. The predicate
+// below names no colour and no label text, only the renderer's shape: two or more leading blank
+// cells, then a non-italic key run, then a trailing italic run with a foreground. Typed text never
+// arrives italic, and a draft only starts with two spaces when the operator typed them, so a false
+// claim needs both at once. The callers also only ask on a SINGLE-row draft, because omp paints no
+// hint once the buffer holds anything.
+const PLACEHOLDER_MIN_PAD = 2;
+
+/** Whether the draft span holds omp's empty-editor key hint rather than typed text. */
+export function draftPlaceholder(line: StyledLine, start: number, end: number): boolean {
+  if (end - start <= PLACEHOLDER_MIN_PAD) return false;
+  const parts = spanParts(line, start, end);
+  const text = parts.map((part) => part.text).join("");
+  if (!text.startsWith(" ".repeat(PLACEHOLDER_MIN_PAD))) return false;
+
+  let cut = parts.length;
+  while (cut > 0 && (parts[cut - 1]!.italic === true || parts[cut - 1]!.text.trim() === "")) cut--;
+  const label = parts.slice(cut).filter((part) => part.text.trim() !== "");
+  if (label.length === 0 || label.some((part) => part.italic !== true || part.fg === undefined)) {
+    return false;
+  }
+  const key = parts.slice(0, cut).filter((part) => part.text.trim() !== "");
+  return key.length > 0 && key.every((part) => part.italic !== true);
+}
+
+/** The boxed composer's draft span inside its bottom-border row, or null when the row is not one. */
+function composerSpan(line: StyledLine): { start: number; end: number } | null {
+  const inner = parseComposerBottom(lineText(line))?.draft;
+  if (inner === undefined || inner.length === 0) return null;
+  const start = BOTTOM_OPEN.length;
+  return { start, end: start + inner.length };
+}
+
 /** The boxed composer's specialization: locate its draft span, then apply the shared ghost rule. */
 export function composerGhost(line: StyledLine): string {
-  const inner = parseComposerBottom(lineText(line))?.draft;
-  if (inner === undefined || inner.length === 0) return "";
-  const start = BOTTOM_OPEN.length;
-  return draftGhost(line, start, start + inner.length);
+  const span = composerSpan(line);
+  return span === null ? "" : draftGhost(line, span.start, span.end);
+}
+
+/** The boxed composer's specialization of `draftPlaceholder`. */
+export function composerPlaceholder(line: StyledLine): boolean {
+  const span = composerSpan(line);
+  return span !== null && draftPlaceholder(line, span.start, span.end);
 }
 
 // A wrapped draft's CONTINUATION row: the box's vertical sides with a two-space gutter inside each.
