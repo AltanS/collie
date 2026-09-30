@@ -106,7 +106,7 @@ A fixture is a `MuxConformanceFixture`: `create()` hands back a **world** — yo
 | `renameOutOfBand()` | someone renames a pane in the multiplexer's own UI, not through Collie |
 | `changePane()` | the pane paints something new |
 | `endPane()` | the pane's process ends and the multiplexer forgets it |
-| `pokeTopologyOutOfBand()` | the herd's shape changes and **nothing announces it** — rename a tab in your fake world, emit no event. This is what proves `refresh()` |
+| `pokeTopologyOutOfBand()` | the herd's shape changes and **nothing announces it**. Rename a tab in your fake world and emit no event. If your multiplexer's tabs have no names, open a pane instead: the change must be one your multiplexer can make. This is what proves `refresh()` |
 | `pokeTopology()` / `pokePane()` | announce a change on the event channel — **required if** you declare `pushTopologyEvents` / `pushPaneEvents` |
 | `close()` | tear it down; idempotent |
 

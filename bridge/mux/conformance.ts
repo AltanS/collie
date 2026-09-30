@@ -121,7 +121,7 @@ export interface MuxConformanceWorld {
    */
   focusOutOfBand(paneId: string): Promise<void>;
   /**
-   * The herd's SHAPE changes and nothing announces it — the operator renamed a tab with their own
+   * The herd's SHAPE changes and nothing announces it — the operator changed it with their own
    * keyboard.
    *
    * The sibling of {@link pokeTopology} and its opposite: that one announces a change on a channel,
@@ -129,9 +129,11 @@ export interface MuxConformanceWorld {
    * change that was announced would have reached the watch by itself and proved nothing about
    * looking on demand.
    *
-   * A tab rename rather than a new pane, and deliberately: every multiplexer Collie drives has tabs
-   * with labels, so the perturbation is one every fixture can simulate honestly (this file asks for
-   * exactly that of a shared world knob).
+   * WHICH change is the fixture's to pick, as long as its multiplexer can really make it and
+   * {@link topologySignature} can see it: a renamed tab, a renamed space, or a pane opened or closed.
+   * A tab rename is the usual one. It is not required, because a multiplexer whose tabs have no
+   * names (an adapter that declines `renameTab`) cannot rename one, and a fixture that did would be
+   * simulating something its multiplexer never does. The check does not name the change it expects.
    */
   pokeTopologyOutOfBand(): Promise<void>;
   /**
@@ -753,7 +755,11 @@ async function inWorld(
   }
 }
 
-/** A snapshot's shape as one string — enough that any structural change is a different string. */
+/**
+ * A snapshot's shape as one string — enough that any structural change is a different string: a
+ * space or tab renamed, added or removed, and a pane added or removed. Tab labels are in it, and so
+ * is everything else, so a fixture whose multiplexer cannot rename a tab has other changes to make.
+ */
 function topologySignature(snapshot: MuxSnapshot): string {
   const spaces = snapshot.spaces.map((space) => `${space.spaceId}=${space.label}`).join("|");
   const tabs = snapshot.tabs.map((tab) => `${tab.tabId}=${tab.label}`).join("|");
@@ -773,12 +779,14 @@ const refreshSeesASilentChange: MuxWorldCheck = {
       await world.pokeTopologyOutOfBand();
       await adapter.refresh();
       const after = topologySignature(await adapter.snapshot());
-      return after === before
-        ? [
-            "the herd changed with nothing announcing it, refresh() resolved, and the next snapshot " +
-              "still showed the old shape — the contract's promise is that the very next read is current",
-          ]
-        : [];
+      if (after !== before) return [];
+      return [
+        "the herd changed with nothing announcing it, refresh() resolved, and the next snapshot " +
+          "still showed the old shape — the contract's promise is that the very next read is current" +
+          (declares(adapter, "renameTab")
+            ? ""
+            : ". This adapter declines renameTab, so its fixture must change the shape another way (open a pane)"),
+      ];
     });
   },
 };
