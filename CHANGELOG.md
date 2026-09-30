@@ -153,6 +153,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   well as the mirror. Codex 0.159.2 passed every screen scenario and is not recorded: it answered
   the journal prompt in words without calling a tool, so that scenario reached no verdict.
 
+- **The canary's journal prompt cannot be answered without opening the file.** It used to say "read
+  README.md, then reply with only OK", and "OK" needs nothing from the file, so an agent was free to
+  skip the very tool call the scenario exists to watch. Codex did exactly that, on two versions. The
+  canary's own README now carries a token, and the prompt asks for the token it names, which no
+  agent can answer without reading. The reply is still one word.
+
 - **The canary runs pi the way an operator runs it.** pi was launched with `--no-session`, so it
   wrote no session file, so the journal check spec 05 added could never see pi at all. The flag is
   gone. pi was also the only agent exempt: Claude, Codex and opencode already write to their own

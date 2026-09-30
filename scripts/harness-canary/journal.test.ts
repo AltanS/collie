@@ -14,7 +14,7 @@ import type { CaseResult } from "./verdict";
 // Roots are irrelevant here: `readRows` never touches the source, and that is the point of it.
 const claude = claudeJournal([]);
 
-const PROMPT = "Read the file README.md in this folder, then reply with only OK.";
+const PROMPT = "Read the file README.md in this folder, then reply with only the token it names.";
 
 /** Any JSON document — the same local type the journal tests declare, for the same reason. */
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue | undefined };

@@ -56,7 +56,12 @@ export const MESSAGES: readonly CanaryMessage[] = [
  */
 export const JOURNAL_MESSAGE: CanaryMessage = {
   id: "16-read",
-  text: "Read the file README.md in this folder, then reply with only OK.",
+  // It asks for the TOKEN, not for "OK". "Reply with only OK" can be answered without opening
+  // anything, and on 2026-09-30 codex 0.156.1 and 0.159.2 both did exactly that: they answered in
+  // words, made no tool call, and the scenario reached no verdict. A prompt whose answer lives
+  // ONLY in the file cannot be short-circuited. `run.ts` § freshProject writes the token.
+  // The reply is still one word, so the cost rule above is kept.
+  text: "Read the file README.md in this folder, then reply with only the token it names.",
 };
 
 /** The four real sends of scenario 3: plain, multi-line with a `────` line, Chinese, and the read. */

@@ -103,9 +103,19 @@ describe("drafts and messages", () => {
     expect(messageById("15-rule").text).toContain("────");
   });
 
-  test("four sends: plain, the rule, Chinese and the read; each asks for only OK", () => {
+  // The rule is a SHORT reply, so a send that lands costs one short model turn. "only OK" was its
+  // wording, not its point: 16-read asks for the README token instead, because a prompt answerable
+  // without opening the file lets an agent skip the tool call the journal scenario exists to see.
+  test("four sends: plain, the rule, Chinese and the read; each asks for a one-word reply", () => {
     expect(SEND_IDS).toEqual(["01-plain", "15-rule", "09-cjk", "16-read"]);
-    for (const id of [...SEND_IDS, ...NARROW_DRAFT_IDS]) expect(messageById(id).text).toMatch(/only OK|只回复 OK/);
+    for (const id of [...SEND_IDS, ...NARROW_DRAFT_IDS]) {
+      expect(messageById(id).text).toMatch(/only OK|只回复 OK|only the token it names/);
+    }
+  });
+
+  test("the journal send cannot be answered without opening the file", () => {
+    expect(JOURNAL_MESSAGE.text).not.toMatch(/only OK/);
+    expect(JOURNAL_MESSAGE.text).toContain("token");
   });
 
   // The `journal` scenario needs a tool item in the agent's own log, and a Bash command would park

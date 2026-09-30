@@ -56,7 +56,10 @@ function freshProject(): string {
   const dir = join(tmpdir(), "collie-canary-project");
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir);
-  writeFileSync(join(dir, "README.md"), "# canary\n\nA scratch project the Collie canary starts agents in.\n");
+  // The token is why this file has one. The journal send asks for it, and an agent cannot answer
+  // without opening the file, which is the whole point of that scenario. `# canary` alone was
+  // guessable from the folder name, and on 2026-09-30 codex answered the read prompt in words.
+  writeFileSync(join(dir, "README.md"), "# canary\n\nA scratch project the Collie canary starts agents in.\n\ntoken: quartz-heron-7741\n");
   const git = (...args: string[]) =>
     Bun.spawnSync(["git", "-c", "user.name=collie-canary", "-c", "user.email=canary@invalid", ...args], { cwd: dir, stdout: "ignore", stderr: "ignore" });
   git("init", "-q");
