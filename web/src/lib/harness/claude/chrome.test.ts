@@ -955,6 +955,10 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "wizard-q2", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-submit", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-submit-unanswered", statusRows: 0, draft: null, stripped: 3 },
+    // The dynamic-workflow view (discussion #301, ADR 0072). A full-screen TUI: no statusline, no
+    // input box and nothing to strip, because the view replaces the whole screen rather than sitting
+    // under it. All three zeros are the honest reading, not a gap.
+    { fixture: "workflow-view", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "working", statusRows: 2, draft: null, stripped: 6 },
   ];
 

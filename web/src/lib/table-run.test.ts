@@ -106,10 +106,12 @@ describe("tableRuns — box drawing", () => {
     expect(runs(text)).toEqual([]);
   });
 
-  it("refuses a two-pane chrome box, whose ┬ and ┴ are border joins and not a table", () => {
-    // The shape that made omp's splash screen and its whole /model picker pan: a divider between two
-    // panes meets the lid at ┬ and the floor at ┴, and neither is a cross. 18 of the 121 committed
-    // pane fixtures were claimed this way. Only a ┼ anchors a run.
+  it("claims a two-pane box, whose ┬ and ┴ are a column boundary meeting a border", () => {
+    // REVERSED by ADR 0072, and this case is the reversal. A tee used to refuse the run on the
+    // reasoning that only a table draws a `┼`. True, and the wrong test: a two-pane box draws its
+    // divider meeting a border instead, so the rule refused every two-pane box there is. Refusing it
+    // does not leave the box wrapping. `FRAME_ROW` in blocks.ts clips a `│ … │` row, so the second
+    // pane was simply unreachable on a phone.
     const text = [
       "╭───────────────┬──────────────╮",
       "│ omp 18.1.2    │ opus-5       │",
@@ -117,7 +119,19 @@ describe("tableRuns — box drawing", () => {
       "╰───────────────┴──────────────╯",
     ].join("\n");
 
-    expect(runs(text)).toEqual([]);
+    expect(runs(text)).toEqual([{ start: 0, end: 3 }]);
+  });
+
+  it("still refuses a lone tee with no box under it", () => {
+    // The anchor alphabet widened; the three rules that keep it honest did not. A run of one row is
+    // discarded, so a frame row carrying a tee claims nothing on its own.
+    expect(runs(["╭───────┬───────╮", "", "some prose"].join("\n"))).toEqual([]);
+  });
+
+  it("still refuses a sentence that happens to contain a tee", () => {
+    // The anchor row must be a PURE frame row. This is the rule the old glyph test was leaning on a
+    // rare character to do for it.
+    expect(runs(["the ┬ glyph is a tee", "and this is prose too"].join("\n"))).toEqual([]);
   });
 
   it("keeps a titled lid in the run, though its letters stop it being a pure frame row", () => {
@@ -234,10 +248,13 @@ describe("tableRuns — the empty result", () => {
 
 // The corpus gate. Every other grammar in this repo is developed against the byte-faithful captures
 // in fixtures/panes (harness/claude/prompt-select.test.ts, harness/conformance.ts), and this one
-// needs it more than most: an earlier anchor alphabet that accepted a `┬` claimed omp's welcome
-// splash and the WHOLE of its /model picker across 18 of these files, and every hand-written test
-// above still passed. Globbing rather than listing means a newly captured screen is covered the day
-// it lands.
+// needs it more than most: the anchor alphabet is one character class, and widening it by one glyph
+// silently changes what every screen in the corpus does. Globbing rather than listing means a newly
+// captured screen is covered the day it lands.
+//
+// The list below is EXHAUSTIVE on purpose, not a count. It is the whole answer to "what pans", and a
+// screen joining it is a diff a person has to read. ADR 0072 was taken by running this gate before
+// the change and reading exactly which screens moved.
 describe("tableRuns — the whole pane corpus", () => {
   const DIR = join(import.meta.dirname, "..", "fixtures", "panes");
 
@@ -252,13 +269,58 @@ describe("tableRuns — the whole pane corpus", () => {
       }
     }
 
-    // The one real table in the corpus: the Bluefin motd's `Command │ Description` two-column list,
-    // sitting in the scrollback above Claude's trust prompt — 200 columns wide in the 2026-07-04
-    // capture, 120 in the 2026-09-22 one. Everything else here is chrome — splashes, pickers,
-    // permission dialogs, wizards — and must keep wrapping.
+    // THE ONE REAL TABLE. The Bluefin motd's `Command │ Description` two-column list, sitting in the
+    // scrollback above Claude's trust prompt — 200 columns wide in the 2026-07-04 capture, 120 in the
+    // 2026-09-22 one. It anchors on a cross, as it always did.
+    //
+    // EVERYTHING ELSE HERE IS A TWO-PANE BOX, claimed since ADR 0072, and each one is a screen whose
+    // right-hand pane a phone could not reach before. `FRAME_ROW` in blocks.ts clips a `│ … │` row
+    // rather than wrapping it, so refusing these did not make them wrap, it made half of each one
+    // invisible. They pan now.
     expect(claimed).toEqual([
       "claude--trust-prompt-unnumbered.txt 5..10",
       "claude--trust-prompt.txt 5..10",
+      // THE SCREEN ADR 0072 WAS TAKEN FOR (discussion #301). Claude's dynamic-workflow view: the
+      // phase list on the left, the running agents on the right, 226 columns wide. The reporter saw
+      // it on a phone as a band of stacked rules with `· 74…` cut off the right edge, which is what
+      // clipping every `│ … │` row looks like when the box is wider than the screen. Its lid is
+      // TITLED (`╭ Phases ───┬ Read the corpus · 1 agent ───╮`) so the letters in it stop it being a
+      // pure frame row and it cannot be the anchor; the floor `╰───┴───╯` anchors instead and the run
+      // grows up through the whole box.
+      "claude--workflow-view.txt 8..59",
+      // omp's welcome splash: the logo on the left, Tips / LSP servers / Recent sessions on the right.
+      // It sits in the scrollback of most omp captures, which is why it appears 23 times and always
+      // at the same rows. The menus and dialogs BELOW it are not claimed, and that is the point: the
+      // run stops where the box does.
+      "omp--approval-bash.txt 2..20",
+      "omp--approval-write--deny.txt 2..20",
+      "omp--approval-write.txt 2..20",
+      "omp--done--tool-result.txt 2..20",
+      "omp--done.txt 2..20",
+      "omp--draft-ghost-suggestion-busy.txt 2..20",
+      "omp--draft-ghost-suggestion.txt 2..20",
+      "omp--draft-single.txt 2..20",
+      "omp--draft-wrapped.txt 2..20",
+      "omp--fresh-idle.txt 2..20",
+      "omp--menu-dismissed.txt 2..20",
+      // omp's `/model` picker, in its alphabetical place because this list runs in the directory's
+      // order: the vendor list on the left, the model names on the right, the whole box from lid to
+      // floor. The one screen here that is also a MENU the operator drives, so panning it right can
+      // carry its `❯` off-screen until they pan back. That is the cost ADR 0072 accepts.
+      "omp--menu-model-moved.txt 0..54",
+      "omp--menu-model.txt 0..54",
+      "omp--select-menu-moved.txt 2..20",
+      "omp--select-menu.txt 2..20",
+      "omp--select-multi-checked.txt 2..20",
+      "omp--select-multi-review.txt 2..20",
+      "omp--select-multi.txt 2..20",
+      "omp--slash-palette--filtered.txt 2..20",
+      "omp--slash-palette.txt 2..20",
+      "omp--tree.txt 2..20",
+      "omp--v18-rule-draft.txt 2..20",
+      "omp--v18-rule-idle.txt 2..20",
+      "omp--v18-rule-wrapped.txt 2..20",
+      "omp--working.txt 2..20",
     ]);
   });
 });

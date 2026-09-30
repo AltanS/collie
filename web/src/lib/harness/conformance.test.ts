@@ -47,6 +47,12 @@ const NEUTRAL = new Set([
   // negative control for the generic menu grammar — its statusline is `·`-separated like a key-hint
   // footer, and the input-box gate is the only thing that keeps it raw.
   "claude--menu-model-picker-dismissed.txt",
+  // The dynamic-workflow view (ADR 0072). A read-only SCREEN, not a dialog: its footer is a row of
+  // key hints (`↑↓ select · p resume · f filter · esc back · s save`), which is the shape the generic
+  // menu grammar keys on, and it must still decline. There is nothing here to answer. `p` pauses a
+  // run, and offering that from the phone is a feature with its own decision to take, not something
+  // to fall out of a footer that happens to look like a menu.
+  "claude--workflow-view.txt",
   // GHOST TEXT: an input box holding the generated "suggested next prompt" Claude paints when the box
   // is empty, and the same box after typing over it. Both are ordinary idle screens — composer chrome,
   // never a dialog. They exist to pin how the suggestion is PAINTED (faint, SGR 2), which is the only

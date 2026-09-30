@@ -102,6 +102,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
+- **A two-pane box pans on a phone instead of losing its right half.** Claude Code's dynamic-workflow
+  view draws the phases in a left pane and the running agents in a right one, and on a phone every row
+  of it was cut off at the screen edge: the report showed a band of stacked rules with `· 74…` hanging
+  off the side. The mirror only ever panned a box whose divider crossed a rule, `┼`, and a two-pane box
+  never draws one, so it was refused and then clipped rather than wrapped. It now pans like any other
+  wide table, which also gives back the model names in omp's `/model` picker and the Tips beside omp's
+  welcome logo. Thanks @cryptiklemur (#301).
+
 - **A long file name in Changes keeps both ends instead of losing its start.** The tree truncated a
   name from the left, which is correct for a path and wrong for a bare file name, so a folder of
   long names drew every row as `…m_breaks_under_podman_compose.md` with the very prefix that orders

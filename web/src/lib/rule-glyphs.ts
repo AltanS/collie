@@ -64,19 +64,17 @@ export const FRAME_EDGE_GLYPH_CLASS = "│┌└├┏┗┣╔╚╠╟╞┐�
 // table's rows satisfy FRAME_ROW as well, and the renderer lets the table run win, because clipping
 // each row on its own would leave the run with nothing to pan (components/ansi-output.tsx).
 
-/** Box-drawing CROSSES: single, heavy, and double. A cross is one column boundary crossing a row
- *  boundary, which only a table draws — it is the anchor table-run.ts is allowed to trust.
+/** Every junction that carries a COLUMN boundary: the crosses (`┼ ╋ ╪ ╬`) and the vertical tees
+ *  (`┬ ┳ ╤ ╦`, `┴ ┻ ╧ ╩`). It reads a frame row's column offsets off the anchor, recognises one on a
+ *  member row, and since ADR 0072 it also decides that a run exists at all. `├ ┤ ╞ ╡` stay out — they
+ *  end a frame row without dividing it, so a single-column chrome box has no column boundary anywhere.
  *
- *  The T-pieces below are deliberately absent, and this is the line that matters. A `┬` sits
- *  wherever ANY two-pane box's divider meets its top border and a `┴` where it meets the bottom, so
- *  anchoring on those claimed omp's splash screen and the whole of its `/model` picker — 18 of the
- *  121 committed pane fixtures — which is the class of screen ADR 0009 exists to keep hands off. */
-export const BOX_CROSS_GLYPH_CLASS = "┼-╋╪-╬";
-
-/** Every junction that carries a COLUMN boundary: the crosses above plus the T-pieces. Only ever
- *  used to READ a frame row's column offsets off the anchor, or to recognise one on a member row;
- *  never to decide that a run exists. `├ ┤ ╞ ╡` stay out — they end a frame row without dividing
- *  it, so a single-column chrome box has no column boundary anywhere. */
+ *  A CROSS-ONLY class stood here until 2026-09-30, and what it was really excluding is worth keeping.
+ *  A `┬` sits wherever any two-pane box's divider meets its lid and a `┴` where it meets its floor, so
+ *  a tee anchor claims every two-pane box there is, chrome included. That was read as a fault and it
+ *  is the feature: `FRAME_ROW` in blocks.ts CLIPS a `│ … │` row rather than wrapping it, so refusing
+ *  the tee did not make those boxes wrap, it made their second pane unreachable on a phone. ADR 0072
+ *  has the measurement and the trade. */
 export const BOX_COLUMN_JUNCTION_GLYPH_CLASS = "┬-╋╤-╬";
 
 /** Vertical strokes that can stand at a column boundary on a content row: solid, heavy, both
