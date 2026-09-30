@@ -69,13 +69,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     terminalDraft: null,
     rawTerminalDraft: null,
     prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
-    setWrap: vi.fn(),
-    stepFontSize: vi.fn(),
-    setRawTerminal: vi.fn(),
-    setTapToFocus: vi.fn(),
-    mirrorNative: false,
-    setMirrorNative: vi.fn(),
-    setExpandClippedReply: vi.fn(),
+    display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
     ...overrides,
   };
@@ -123,13 +117,7 @@ function renderComposerWithStatus(
     terminalDraft: null,
     rawTerminalDraft: null,
     prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
-    setWrap: vi.fn(),
-    stepFontSize: vi.fn(),
-    setRawTerminal: vi.fn(),
-    setTapToFocus: vi.fn(),
-    mirrorNative: false,
-    setMirrorNative: vi.fn(),
-    setExpandClippedReply: vi.fn(),
+    display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
     ...overrides,
   };
@@ -567,13 +555,7 @@ describe("Composer — send", () => {
               terminalDraft={null}
               rawTerminalDraft="leftover"
               prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
-              setWrap={vi.fn()}
-              stepFontSize={vi.fn()}
-              setRawTerminal={vi.fn()}
-              setTapToFocus={vi.fn()}
-              mirrorNative={false}
-              setMirrorNative={vi.fn()}
-              setExpandClippedReply={vi.fn()}
+              display={{ open: false, onToggle: vi.fn() }}
               onSent={vi.fn()}
             />
           </>
@@ -663,13 +645,7 @@ describe("Composer — send", () => {
       terminalDraft: null,
       rawTerminalDraft: null,
       prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
-      setWrap: vi.fn(),
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-    mirrorNative: false,
-    setMirrorNative: vi.fn(),
-      setExpandClippedReply: vi.fn(),
+      display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
     };
     const router = createMemoryRouter([
@@ -762,13 +738,7 @@ describe("Composer — typing into the terminal", () => {
             terminalDraft={null}
             rawTerminalDraft={null}
             prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
-            setWrap={vi.fn()}
-            stepFontSize={vi.fn()}
-            setRawTerminal={vi.fn()}
-            setTapToFocus={vi.fn()}
-              mirrorNative={false}
-              setMirrorNative={vi.fn()}
-            setExpandClippedReply={vi.fn()}
+            display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
           />
         </>
@@ -897,13 +867,7 @@ describe("Composer — typing into the terminal", () => {
             terminalDraft={null}
             rawTerminalDraft={null}
             prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
-            setWrap={vi.fn()}
-            stepFontSize={vi.fn()}
-            setRawTerminal={vi.fn()}
-            setTapToFocus={vi.fn()}
-              mirrorNative={false}
-              setMirrorNative={vi.fn()}
-            setExpandClippedReply={vi.fn()}
+            display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
           />
         </>
@@ -1091,13 +1055,7 @@ describe("Composer — typing into the terminal", () => {
             terminalDraft={null}
             rawTerminalDraft={null}
             prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
-            setWrap={vi.fn()}
-            stepFontSize={vi.fn()}
-            setRawTerminal={vi.fn()}
-            setTapToFocus={vi.fn()}
-              mirrorNative={false}
-              setMirrorNative={vi.fn()}
-            setExpandClippedReply={vi.fn()}
+            display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
           />
         </>
@@ -1613,13 +1571,7 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       dialogPresent: false,
       text: "pane output",
       prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
-      setWrap: vi.fn(),
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-    mirrorNative: false,
-    setMirrorNative: vi.fn(),
-      setExpandClippedReply: vi.fn(),
+      display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
       ...rest,
       terminalDraft: stable,
@@ -1950,13 +1902,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       terminalDraft: draft,
       rawTerminalDraft: draft,
       prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
-      setWrap: vi.fn(),
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-    mirrorNative: false,
-    setMirrorNative: vi.fn(),
-      setExpandClippedReply: vi.fn(),
+      display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
     };
     return (
@@ -2442,42 +2388,52 @@ describe("Composer — quick dock (in-flow, matches the keys dock)", () => {
   });
 });
 
-describe("Composer — display prefs behind the gear", () => {
-  it("the View row is gone; wrap/raw/font live behind the Display gear as labelled controls", async () => {
-    const user = userEvent.setup();
+// The gear is the composer's; the PANEL it opens is not any more. It became a BottomSheet on
+// 2026-09-30 and a sheet cannot be mounted inside the composer's animated, sticky ancestry, so
+// AgentChat owns it and this file owns only the button. What the rows themselves draw is pinned in
+// display-prefs.test.tsx.
+describe("Composer — the Display gear", () => {
+  it("nothing display-related sits on the permanent rows", () => {
     renderComposer();
-
-    // Nothing display-related is on the permanent rows any more.
     expect(screen.queryByRole("button", { name: "Decrease font size" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Display settings" }));
-
-    // Named controls, not bare glyphs — the whole point of the move.
-    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Decrease font size" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Wrap lines" })).not.toBeInTheDocument();
   });
 
-  it("the Display dock shares the single drawer slot with Keys", async () => {
+  it("the gear asks its owner to toggle the sheet", async () => {
     const user = userEvent.setup();
-    renderComposer();
+    const onToggle = vi.fn();
+    renderComposer({ display: { open: false, onToggle } });
 
-    await user.click(screen.getByRole("button", { name: "Display settings" }));
-    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
+    const gear = screen.getByRole("button", { name: "Display settings" });
+    expect(gear).toHaveAttribute("aria-expanded", "false");
+    await user.click(gear);
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
+
+  it("an open sheet is reported on the gear, and closes the Keys tray under it", async () => {
+    const user = userEvent.setup();
+    const onToggle = vi.fn();
+    renderComposer({ display: { open: true, onToggle } });
+    expect(screen.getByRole("button", { name: "Display settings" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
 
     await user.click(screen.getByRole("button", { name: "Keys" }));
-    expect(screen.queryByRole("switch", { name: "Wrap lines" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+    expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
   });
 
-  it("display prefs stay reachable on a read-only device", async () => {
+  it("the gear stays reachable on a read-only device", async () => {
     const user = userEvent.setup();
-    renderComposer({ readOnly: true });
+    const onToggle = vi.fn();
+    renderComposer({ readOnly: true, display: { open: false, onToggle } });
 
     // Keys/Quick are write affordances and lock; the gear is local view state and must not.
     expect(screen.getByRole("button", { name: "Keys" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Display settings" }));
-    expect(screen.getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
+    expect(onToggle).toHaveBeenCalledOnce();
   });
 });
 
@@ -2615,13 +2571,7 @@ describe("Composer — draft persistence", () => {
       terminalDraft: null,
       rawTerminalDraft: null,
       prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
-      setWrap: vi.fn(),
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-    mirrorNative: false,
-    setMirrorNative: vi.fn(),
-      setExpandClippedReply: vi.fn(),
+      display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
       ...overrides,
     };
@@ -3564,13 +3514,7 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
           terminalDraft={null}
           rawTerminalDraft={null}
           prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
-          setWrap={vi.fn()}
-          stepFontSize={vi.fn()}
-          setRawTerminal={vi.fn()}
-          setTapToFocus={vi.fn()}
-          mirrorNative={false}
-          setMirrorNative={vi.fn()}
-          setExpandClippedReply={vi.fn()}
+          display={{ open: false, onToggle: vi.fn() }}
           onSent={vi.fn()}
         />
       );

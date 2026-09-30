@@ -210,6 +210,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
   glance rather than a read.
 
+- **The belt's Display settings open as a sheet, so nothing under them moves.** They rode an in-flow
+  panel that took its height out of the pane body, so opening the settings pushed the very thing you
+  opened them to look at, and the terminal and Chat lists are different lengths, so switching bodies
+  pushed it again. It is the pane switcher's own sheet now: it covers, and nothing above it shifts.
+
 - **The belt's Display settings answer for the body you are looking at.** Over a Chat stream you got
   the terminal mirror's six rows, of which one did anything, with no way to tell which. The dock now
   carries the Terminal / Chat switch at the top, the same choice the pane's ⋮ menu writes, and below

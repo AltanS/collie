@@ -33,6 +33,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
+import { DisplayPrefsContent } from "@/components/display-prefs";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { ImageCard } from "@/components/ui/image-card";
 import { RouteHeader } from "@/components/app-header";
@@ -154,7 +155,7 @@ function foldLabelKey(tabCount: number, paneCount: number): MessageKey {
 
 // At most one drawer/sheet is open at a time; null = none. (The composer's own Keys/Quick/Agent
 // sheets are separate and live inside <Composer>.)
-type Drawer = "switcher" | "paneMenu" | "paneSettings" | null;
+type Drawer = "switcher" | "paneMenu" | "paneSettings" | "display" | null;
 
 /**
  * Is the caret in the MESSAGE COMPOSER's field, as opposed to any other input on the screen?
@@ -2354,31 +2355,12 @@ export function AgentChat({
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}
                   prefs={prefs}
-                  setWrap={setWrap}
-                  stepFontSize={stepFontSize}
-                  setRawTerminal={setRawTerminal}
-                  setTapToFocus={setTapToFocus}
-                  mirrorNative={mirrorNative}
-                  setMirrorNative={setMirrorNative}
-                  setExpandClippedReply={setExpandClippedReply}
-                  // THE BODY SWITCH, second door. The ⋮ menu writes the same value; this is the one
-                  // an operator opens to change how a pane LOOKS, which is the question it answers.
-                  // `chosen` and `showing` are both passed because they differ on a pane with no
-                  // journal, and the dock draws rows for what is on screen, not for what was picked.
-                  paneView={
-                    chatOffered
-                      ? {
-                          chosen: dash.prefs.paneView,
-                          showing: chatBody ? "chat" : "terminal",
-                          onChange: dash.setPaneView,
-                          note: chatNote,
-                          showToolCalls: dash.prefs.showToolCalls,
-                          setShowToolCalls: dash.setShowToolCalls,
-                          chatFontSize: prefs.chatFontSize,
-                          stepChatFontSize,
-                        }
-                      : undefined
-                  }
+                  // The belt's ⚙: the button is the composer's, the sheet it opens is mounted below
+                  // beside the switcher's, for the stacking-context reason the pane-menu note gives.
+                  display={{
+                    open: drawer === "display",
+                    onToggle: () => setDrawer(drawer === "display" ? null : "display"),
+                  }}
                   onSent={onSent}
                   // The switcher mark, for the actions belt's top rule — see the condition at
                   // `pullHandle` above, and actions-row.tsx for what it draws.
@@ -2458,6 +2440,49 @@ export function AgentChat({
             order={dash.prefs.paneOrder}
             onOrderChange={dash.setPaneOrder}
             className="px-0 py-1"
+          />
+        </BottomSheet>
+
+        {/* The belt's ⚙ — how this pane is DRAWN, which body and how that body reads.
+            A sheet and no longer the in-flow ComposerDock it rode until 2026-09-30. The dock took
+            its height out of the mirror, so opening the settings moved the thing you had opened them
+            to look at, and the two row lists are different lengths, so switching bodies moved it
+            again. This covers instead of pushing, and nothing above it shifts by a pixel.
+            Mounted HERE and not in the composer, for the reason the pane-menu sheet below states:
+            a BottomSheet is a plain `fixed inset-0` element with no portal, so it is positioned by
+            the nearest transformed ancestor, and the composer sits inside an animating Collapse. */}
+        <BottomSheet
+          open={drawer === "display"}
+          onClose={closeDrawer}
+          title={t("composer.controls.display")}
+        >
+          <DisplayPrefsContent
+            prefs={prefs}
+            mirrorNative={mirrorNative}
+            setMirrorNative={setMirrorNative}
+            setWrap={setWrap}
+            stepFontSize={stepFontSize}
+            setRawTerminal={setRawTerminal}
+            setTapToFocus={setTapToFocus}
+            setExpandClippedReply={setExpandClippedReply}
+            // THE BODY SWITCH, second door. The ⋮ menu writes the same value; this is the one an
+            // operator opens to change how a pane LOOKS, which is the question it answers. `chosen`
+            // and `showing` are both passed because they differ on a pane with no journal, and the
+            // sheet draws rows for what is on screen, not for what was picked.
+            paneView={
+              chatOffered
+                ? {
+                    chosen: dash.prefs.paneView,
+                    showing: chatBody ? "chat" : "terminal",
+                    onChange: dash.setPaneView,
+                    note: chatNote,
+                    showToolCalls: dash.prefs.showToolCalls,
+                    setShowToolCalls: dash.setShowToolCalls,
+                    chatFontSize: prefs.chatFontSize,
+                    stepChatFontSize,
+                  }
+                : undefined
+            }
           />
         </BottomSheet>
 

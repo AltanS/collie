@@ -1984,6 +1984,25 @@ describe("AgentChat — zen mode", () => {
     expect(screen.queryByRole("button", { name: "Zen mode" })).not.toBeInTheDocument();
   });
 
+  // The gear opens a SHEET, not the in-flow dock it opened until 2026-09-30. A dock takes its height
+  // out of the mirror, so opening the settings moved the thing you opened them to look at, and the
+  // terminal and chat row lists are different lengths, so switching bodies moved it again. `dialog`
+  // is the structural fact that makes it cover instead of push; the panel is `fixed inset-0`.
+  it("the Display gear opens a sheet over the pane rather than a dock inside it", async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+
+    const sheet = screen.getByRole("dialog");
+    expect(sheet).toHaveAttribute("aria-modal", "true");
+    expect(within(sheet).getByRole("switch", { name: "Wrap lines" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   // "Transient by design" is what justifies never persisting zen, and the mechanism lives entirely
   // in DetailRoute's key={paneId} — nothing inside AgentChat implements it. Pinned here, or removing
   // that key would silently leak a chrome-free view into the next pane with the suite still green.

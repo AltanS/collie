@@ -10,7 +10,7 @@ import { t } from "@/lib/i18n";
 import type { PaneView } from "@/lib/pane-view";
 import { cn } from "@/lib/utils";
 
-// The pane body's display prefs, as LABELLED rows behind the composer's ⚙ toggle.
+// The pane body's display prefs, as LABELLED rows in the ⚙ sheet on the belt.
 //
 // These used to be a permanent icon-only "View" row above the Controls row — five 28px glyphs that
 // cost a whole row of a phone viewport for settings you touch once and then never again. Worse, the
@@ -18,8 +18,13 @@ import { cn } from "@/lib/utils";
 // ever shows; nobody could tell what it did. Behind the ⚙ each pref gets a real name and, where it
 // isn't self-evident, a sentence.
 //
-// It rides the same in-flow ComposerDock as Keys/Quick rather than a covering sheet, deliberately:
-// every control here changes how the pane LOOKS, so you have to be able to see it while you flip it.
+// ── AND IT IS A SHEET, WHICH IT DID NOT USED TO BE ──────────────────────────
+// It rode the in-flow ComposerDock beside Keys and Quick, on the argument that a control changing
+// how the pane LOOKS must leave the pane visible while you flip it. That argument lost to the one
+// below it: an in-flow dock takes its height out of the body above, so opening it MOVED the thing
+// you were reading, and the two lists here are different lengths, so switching bodies moved it
+// again. It is the switcher's own BottomSheet now (operator, 2026-09-30), which covers rather than
+// pushes. Nothing above it moves by a pixel.
 //
 // ── IT ANSWERS FOR THE BODY YOU ARE LOOKING AT (M41) ────────────────────────
 // A pane has two bodies now, and five of the six rows below are about the terminal mirror alone: a
@@ -210,7 +215,7 @@ export function DisplayPrefsContent({
   // terminal, and the rows must answer for the terminal it is actually drawing.
   const chat = paneView?.showing === "chat";
   return (
-    <div className="divide-y divide-border border-t border-rule bg-muted/30 px-3 py-1">
+    <div className="divide-y divide-border">
       {paneView && <ViewRow view={paneView} />}
       {chat && paneView ? (
         <>

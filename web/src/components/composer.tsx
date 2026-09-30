@@ -21,7 +21,6 @@ import { NavTray } from "@/components/nav-tray";
 import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
-import { DisplayPrefsContent, type PaneViewControl } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -126,25 +125,19 @@ interface ComposerProps {
    * text tracks this live so host typing streams into it; it also drives the send()-time pre-clear (the
    * actual current "❯" line) and unmounts the preview when it goes null. Never written into the input. */
   rawTerminalDraft: string | null;
-  /** Mirror display prefs — the View row lives here, but the mirror (in AgentChat) reads the same
-   * single instance, so they're threaded through rather than each calling useDisplayPrefs. */
+  /** Mirror display prefs — the mirror (in AgentChat) reads the same single instance, so they're
+   * threaded through rather than each calling useDisplayPrefs. Only the DRAFT field's own size and
+   * the terminal face are read here; the rows that write any of this moved to AgentChat's ⚙ sheet. */
   prefs: DisplayPrefs;
-  setWrap: (wrap: boolean) => void;
-  stepFontSize: (delta: number) => void;
-  setRawTerminal: (raw: boolean) => void;
-  setTapToFocus: (tapToFocus: boolean) => void;
-  /** This pane's mirror-inversion override, resolved and owned by AgentChat. */
-  mirrorNative: boolean;
-  setMirrorNative: (native: boolean) => void;
-  setExpandClippedReply: (expandClippedReply: boolean) => void;
   /**
-   * The Display dock's Chat half: the body switch and the rows that answer for the stream. Threaded
-   * straight through to {@link DisplayPrefsContent}; this file decides nothing about it.
+   * The ⚙ on the belt, whose sheet AgentChat owns and mounts.
    *
-   * Absent, rather than flagged off: while the Chat experiment is off there is no second body, so
-   * the dock draws exactly the rows it drew before Chat existed.
+   * The button stays here because it is one of four on one row and the row is this file's. The
+   * PANEL moved out: a sheet is a `fixed inset-0` element with no portal, so it must not be mounted
+   * inside the composer's animated, sticky ancestry (see the note beside the pane-menu sheet in
+   * agent-chat.tsx).
    */
-  paneView?: PaneViewControl;
+  display: { open: boolean; onToggle: () => void };
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
 
@@ -191,7 +184,7 @@ interface ComposerProps {
 // decode. They now live behind the ⚙ on the actions row, as labelled rows in the same
 // in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
-type ComposerDrawer = "quick" | "cmd" | "keys" | "display" | null;
+type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
 
 // Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text. Exported
@@ -305,7 +298,7 @@ interface ClearedDraft {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, paneView, onSent, pullHandle, draftNoticeSlot, changesPill },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1465,21 +1458,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </ComposerDock>
         )}
-        {drawer === "display" && (
-          <ComposerDock title={translate("composer.controls.display")} onClose={closeDrawer}>
-            <DisplayPrefsContent
-              prefs={prefs}
-              mirrorNative={mirrorNative}
-              setMirrorNative={setMirrorNative}
-              setWrap={setWrap}
-              stepFontSize={stepFontSize}
-              setRawTerminal={setRawTerminal}
-              setTapToFocus={setTapToFocus}
-              setExpandClippedReply={setExpandClippedReply}
-              paneView={paneView}
-            />
-          </ComposerDock>
-        )}
         {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
             commands). Display prefs used to sit on a second, permanent icon-only "View" row above
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
@@ -1605,9 +1583,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 icon: Settings2,
                 label: translate("composer.controls.displayAria"),
                 word: translate("composer.controls.display"),
-                on: drawer === "display",
-                expanded: drawer === "display",
-                onSelect: () => requestDrawer(drawer === "display" ? null : "display"),
+                on: display.open,
+                expanded: display.open,
+                // Close whatever dock is open first. The sheet covers the composer, so leaving a
+                // Keys tray open under it would only be discovered on dismissal.
+                onSelect: () => {
+                  requestDrawer(null);
+                  display.onToggle();
+                },
               },
           ]}
           agent={agent}
