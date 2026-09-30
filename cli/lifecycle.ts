@@ -6,7 +6,7 @@ import { EXIT, type Io } from "./io.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
-import type { Exec, Files } from "./sys.ts";
+import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import {
   bridgeUrl,
   configuredPublicUrl,
@@ -269,7 +269,7 @@ export async function restartWindowsSupervised(deps: LifecycleDeps): Promise<num
 
   const bridgePid = Number(record[2]);
   if (bridgePid > 1) {
-    const command = deps.exec.processCommand(bridgePid);
+    const command = deps.exec.processCommand(bridgePid, PROCESS_QUERY_SLOW_START_MS);
     const script = join(deps.ctx.root, "bridge", "index.ts");
     if (command === null || !windowsPathKey(command).includes(windowsPathKey(script))) {
       deps.io.err(`error: the recorded bridge (pid ${bridgePid}) is not this checkout's bridge — not stopping it`);

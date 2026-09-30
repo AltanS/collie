@@ -17,6 +17,7 @@ import {
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
+import { PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 
 /** The `Io` a nested `serve` was handed — `null` until it has been called. */
 interface SeenIo {
@@ -262,6 +263,8 @@ describe("the pidfile guard", () => {
     stopPidfileProcess(h.deps);
     expect(h.exec.killed).toEqual([4242]);
     expect(h.files.exists(`${CONFIG}/collie.pid`)).toBe(false);
+    // A plain liveness question keeps the short default bound (#309 review).
+    expect(h.exec.probed).toEqual([{ pid: 4242 }]);
   });
 
   test("never signals a pid the OS recycled to something else", () => {
@@ -500,6 +503,8 @@ describe("restart, under the Windows community supervisor", () => {
     expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
     // The bridge only: the launcher (7100) is the loop that brings it back.
     expect(h.exec.killed).toEqual([7200]);
+    // The restart can wait out a slow PowerShell start; the liveness probes keep the short default.
+    expect(h.exec.probed).toEqual([{ pid: 7200, timeoutMs: PROCESS_QUERY_SLOW_START_MS }]);
     // No second bridge beside the supervised one, and no service manager asked.
     expect(h.exec.spawned).toHaveLength(0);
     expect(h.exec.calls.some((c) => c.startsWith("systemctl --user enable"))).toBe(false);

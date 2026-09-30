@@ -30,6 +30,8 @@ export interface FakeExec extends Exec {
    */
   calls: string[];
   killed: number[];
+  /** Every {@link Exec.processCommand} probe, with the bound it asked for (absent = the default). */
+  probed: { pid: number; timeoutMs?: number }[];
   spawned: { command: string[]; env: Record<string, string>; logPath: string }[];
   /**
    * Every {@link Exec.runLogged} call — the command, its log path and the bound it was given. The
@@ -84,6 +86,7 @@ export interface Scripted {
 export function fakeExec(scripted: Scripted = {}): FakeExec {
   const calls: string[] = [];
   const killed: number[] = [];
+  const probed: { pid: number; timeoutMs?: number }[] = [];
   const timeouts: { call: string; ms: number }[] = [];
   const spawned: { command: string[]; env: Record<string, string>; logPath: string }[] = [];
   const ran: {
@@ -124,6 +127,7 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
   return {
     calls,
     killed,
+    probed,
     spawned,
     ran,
     timeouts,
@@ -161,7 +165,10 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
       spawned.push({ command: [...command], env: opts.env, logPath: opts.logPath });
       return scripted.spawnPid === undefined ? 4242 : scripted.spawnPid;
     },
-    processCommand: (pid) => scripted.ps?.[pid] ?? null,
+    processCommand: (pid, timeoutMs) => {
+      probed.push(timeoutMs === undefined ? { pid } : { pid, timeoutMs });
+      return scripted.ps?.[pid] ?? null;
+    },
     kill: (pid) => void killed.push(pid),
   };
 }
