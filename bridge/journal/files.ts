@@ -214,6 +214,10 @@ export const FIRST_TAIL_ROWS = 400;
  * conversation over to a new log), a cursor past the end (the log was truncated or rewritten), a
  * cursor left so far behind that catching up would mean holding the gap in memory, and a token that
  * cannot be read.
+ *
+ * `fromStart` is the one thing only this side can say: the window began at byte 0, so there is no
+ * earlier turn in this log. A caller cannot work it out, because a bounded tail and a whole small
+ * file arrive looking the same.
  */
 export async function readSinceFile(
   path: string,
@@ -224,7 +228,7 @@ export async function readSinceFile(
   // Gone between resolve and read. NOT a reset: blanking a screen because one stat lost a race is a
   // worse answer than showing the turns the caller already has. A log that really went away and came
   // back smaller resets on the next call anyway, through the shrink test below.
-  if (st === null) return { lines: [], cursor, reset: false };
+  if (st === null) return { lines: [], cursor, reset: false, fromStart: false };
 
   const at = decodeCursor(cursor, "bytes", path);
   // A resume that fell more than one window behind cannot be an append: reading the gap would put
@@ -233,7 +237,10 @@ export async function readSinceFile(
   const behind = at !== null && st.size - at > firstBytes;
   const reset = at === null || at > st.size || behind;
   const from = reset ? Math.max(0, st.size - firstBytes) : at;
-  if (from >= st.size) return { lines: [], cursor: encodeCursor("bytes", path, st.size), reset };
+  // Only a reset can claim the start, and only one that the bound did not move off byte 0.
+  const fromStart = reset && from === 0;
+  if (from >= st.size)
+    return { lines: [], cursor: encodeCursor("bytes", path, st.size), reset, fromStart };
 
   const text = await Bun.file(path).slice(from, st.size).text();
   const end = text.lastIndexOf("\n");
@@ -243,7 +250,12 @@ export async function readSinceFile(
     //    arrives with the next write, and the row is neither parsed nor dropped.
     //  - resetting: the window is the TAIL of one row whose head the bound cut off, so that row can
     //    never be completed from here. Step past it, exactly as `loadTail` drops its clipped head.
-    return { lines: [], cursor: encodeCursor("bytes", path, reset ? st.size : from), reset };
+    return {
+      lines: [],
+      cursor: encodeCursor("bytes", path, reset ? st.size : from),
+      reset,
+      fromStart,
+    };
   }
 
   // Everything before the last newline is whole rows; everything after it is the fragment.
@@ -252,5 +264,5 @@ export async function readSinceFile(
   // the middle of a row. Every parser skips an unparseable line, but handing one over would put a
   // fragment in the `lines` this function promises never carries one.
   if (reset && from > 0) rows.shift();
-  return { lines: rows, cursor: encodeCursor("bytes", path, from + end + 1), reset };
+  return { lines: rows, cursor: encodeCursor("bytes", path, from + end + 1), reset, fromStart };
 }

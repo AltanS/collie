@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { NO_CHANGE } from "./reduce.ts";
 import { pageEntries, TranscriptStore } from "./store.ts";
 import type { JournalAdapter, TranscriptEntry, TranscriptSource } from "./types.ts";
 
@@ -37,7 +38,7 @@ function fakeAdapter(lines: string[], opts: { complete?: boolean } = {}) {
     // below pins that it never does.
     async readSince(_key, cursor) {
       calls.readSince++;
-      return { lines: text.split("\n"), cursor, reset: true };
+      return { lines: text.split("\n"), cursor, reset: true, fromStart: true };
     },
   };
   const adapter: JournalAdapter = {
@@ -47,6 +48,13 @@ function fakeAdapter(lines: string[], opts: { complete?: boolean } = {}) {
       calls.parse++;
       return t.split("\n").filter(Boolean).map(entry);
     },
+    // The same grammar a row at a time, so the fake is honest about the one property the real
+    // adapters have: `parse` and `reducer` read a row the same way. The store never calls it — it
+    // answers a History page and pages through `parse` — and `calls` proves that above.
+    reducer: () => ({
+      push: (line) =>
+        line === "" ? NO_CHANGE : { added: [entry(line)], changed: NO_CHANGE.changed },
+    }),
   };
   return {
     adapter,

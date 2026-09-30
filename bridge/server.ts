@@ -50,6 +50,7 @@ import {
 } from "./update-action.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
+import { chatParams, LiveWindows } from "./journal/live.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
@@ -103,6 +104,7 @@ import type {
   WorkspaceChangeCommitResponse,
   WorkspaceChangeDiffResponse,
   WorkspaceChangesResponse,
+  PaneChatResponse,
   PaneHistoryResponse,
   PaneReadResponse,
   PaneWire,
@@ -199,7 +201,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
 }
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|changes|focus))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|focus))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -294,12 +296,13 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
 }
 
 /**
- * The action segments that only READ: `history` reads the agent's log, `changes` runs read-only git
- * over the pane's folder (ADR 0065). Every other segment types into or restructures a terminal.
- * `bridge/crew/forward.ts` decides a forwarded route's kind the same way.
+ * The action segments that only READ: `history` reads the agent's log, `chat` reads what is new in
+ * that same log (journal/live.ts), `changes` runs read-only git over the pane's folder (ADR 0065).
+ * Every other segment types into or restructures a terminal. `bridge/crew/forward.ts` decides a
+ * forwarded route's kind the same way.
  */
 export function isPaneReadAction(action: string | undefined): boolean {
-  return action === "history" || action === "changes";
+  return action === "history" || action === "chat" || action === "changes";
 }
 
 /**
@@ -818,6 +821,10 @@ export function startServer(opts: {
   // adapters (and therefore the same memoised path caches) the history route reads.
   const journals = cfg.transcript ? (opts.journals ?? buildJournalRegistry(cfg.journalRoots)) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
+  // The live half of the same reading, over the same store: a `?before=` page IS a History page with
+  // the live window's numbering put back on it, so the two must share one cache or a "load older" tap
+  // would re-read a 32 MB log the History view already holds.
+  const live = transcripts === null ? null : new LiveWindows(transcripts);
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
 
@@ -1178,6 +1185,8 @@ export function startServer(opts: {
       if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
       if (action === "history" && req.method === "GET")
         return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
+      if (action === "chat" && req.method === "GET")
+        return paneChat(cfg, journals, live, rt.engine, paneId, url, req);
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req);
       if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit_, device, session);
       if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit_, device, session);
@@ -2448,6 +2457,71 @@ async function paneHistory(
     const page = await transcripts.page(adapter, pane.agentSession, historyParams(url));
     if (page === null) return unavailable("no-log");
     return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
+  } catch (err) {
+    return text(`transcript read failed: ${errorText(err)}`, 502);
+  }
+}
+
+/**
+ * GET /api/pane/:id/chat — what is new in the pane's session since the client last looked.
+ *
+ * The same log `history` reads and the same safety story: the session ref is resolved HERE from the
+ * live snapshot, keyed by pane id, so the only client-controlled inputs are that pane id (a `Map`
+ * lookup), two position tokens of digits (journal/live.ts), and a turn's `uuid`, which only ever
+ * reaches an in-memory `findIndex`. No path, no cursor with a path inside it.
+ *
+ * `?before=` is the one branch that reads the disk widely, and it reads it through the SAME
+ * `TranscriptStore` the History route uses — so a "load older" tap after a History visit is a cache
+ * hit, not a second 32 MB read.
+ *
+ * ── THE ETAG IS HASHED OVER THE BODY, NOT COMPOSED FROM ITS FIELDS ───────────
+ * Spec 08 sketched a tag over `(gen, head, lastChangedSeq)`. A hash of the serialised body is
+ * strictly better and costs the same: it cannot drift from what was actually sent, and it varies with
+ * the REQUEST as well as the window — two clients at different revisions ask for different answers,
+ * and a field-composed tag would hand them the same validator. An unchanged poll re-serialises to the
+ * same bytes (an empty `upserts` and three unmoved positions), so it is a 304 either way, which is
+ * the requirement.
+ */
+async function paneChat(
+  cfg: Config,
+  journals: Record<string, JournalAdapter> | null,
+  live: LiveWindows | null,
+  engine: StateEngine,
+  paneId: string,
+  url: URL,
+  req: Request,
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  const unavailable = (reason: "disabled" | "no-session" | "no-log") =>
+    json({ paneId, available: false, reason } satisfies PaneChatResponse, accept);
+
+  if (!cfg.transcript || live === null || journals === null) return unavailable("disabled");
+
+  const { agents, shellPanes } = engine.current();
+  const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
+  // Identical to the history route's reading, and deliberately the same words: a pane with no session
+  // and a harness with no adapter are both "nothing to show", never an error. `journalAgentOf` rather
+  // than `pane.agent`, so a pane whose agent EXITED still reads the journal that agent wrote.
+  if (!pane?.agentSession) return unavailable("no-session");
+  const adapter = adapterFor(journals, journalAgentOf(pane));
+  if (adapter === undefined) return unavailable("no-session");
+
+  const params = chatParams(url);
+  try {
+    const body =
+      params.before === undefined
+        ? await live.window(adapter, pane.agentSession, params)
+        : await live.older(adapter, pane.agentSession, params.before, params.limit);
+    if (body === null) return unavailable("no-log");
+    const data = { paneId, available: true, ...body } satisfies PaneChatResponse;
+    const etag = computeEtag(JSON.stringify(data));
+    if (notModified(req.headers.get("if-none-match"), etag)) {
+      // RFC 7232 §4.1: 304 MUST echo the ETag; body MUST be empty.
+      return secure(
+        new Response(null, { status: 304, headers: { etag, "cache-control": "no-store" } }),
+      );
+    }
+    return secure(gzipJsonResponse(data, accept, { etag }));
   } catch (err) {
     return text(`transcript read failed: ${errorText(err)}`, 502);
   }

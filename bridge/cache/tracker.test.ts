@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { NO_CURSOR } from "../journal/cursor.ts";
+import { NO_CHANGE } from "../journal/reduce.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptSource } from "../journal/types.ts";
 import type { AgentView } from "../types.ts";
 import type { CacheProbe, CacheOverride } from "./engine.ts";
@@ -43,12 +44,14 @@ function fakeAdapter(agent: string, over: { probeTier?: "subscription" } = {}) {
     // The cache tracker reads a TAIL through the adapter's own probe, never the live read. Present
     // because the seam requires it, and deliberately empty: a call here would be a caller that has
     // wandered off the probe path, and the assertions above count reads for exactly that reason.
-    readSince: async () => ({ lines: [], cursor: NO_CURSOR, reset: false }),
+    readSince: async () => ({ lines: [], cursor: NO_CURSOR, reset: false, fromStart: false }),
   };
   const adapter: JournalAdapter = {
     agent,
     source,
     parse: () => [],
+    // Same reasoning as `readSince` above: the seam requires it, the probe path never reaches it.
+    reducer: () => ({ push: () => NO_CHANGE }),
     cacheProbe: async (_ref: AgentSessionRef) => {
       calls.probe++;
       if (state.probeThrows) throw new Error("unreadable");
@@ -68,9 +71,10 @@ function probelessAdapter(agent: string): JournalAdapter {
       resolve: async () => "/logs/x.jsonl",
       stat: async () => ({ size: 1, mtimeMs: 1 }),
       load: async () => ({ text: "", complete: true, size: 0, mtimeMs: 0 }),
-      readSince: async () => ({ lines: [], cursor: NO_CURSOR, reset: false }),
+      readSince: async () => ({ lines: [], cursor: NO_CURSOR, reset: false, fromStart: false }),
     },
     parse: () => [],
+    reducer: () => ({ push: () => NO_CHANGE }),
   };
 }
 

@@ -213,6 +213,32 @@ describe("HermesTranscriptSource — readSince", () => {
     await f.clean();
   });
 
+  // `fromStart` needs BOTH bounds to have stood down: the row limit did not bite, and the byte clip
+  // dropped nothing. It is what the live window turns into "load older" (journal/live.ts § hasOlder),
+  // so a wrong reading either offers turns that do not exist or hides turns that do.
+  test("a short session's first read claims the start; a long one's does not", async () => {
+    const short = await lab();
+    short.say(1, "only turn");
+    const one = new HermesTranscriptSource(short.root);
+    const shortKey = await one.resolve({ kind: "id", value: SID });
+    const shortRead = await one.readSince(shortKey!, NO_CURSOR);
+    expect(shortRead.reset).toBe(true);
+    expect(shortRead.fromStart).toBe(true);
+    // And a resume after it never claims the start, whatever it carries.
+    short.say(2, "another");
+    expect((await one.readSince(shortKey!, shortRead.cursor)).fromStart).toBe(false);
+    await short.clean();
+
+    const long = await lab();
+    for (let id = 1; id <= FIRST_TAIL_ROWS + 5; id++) long.say(id, `turn ${id}`);
+    const two = new HermesTranscriptSource(long.root);
+    const longKey = await two.resolve({ kind: "id", value: SID });
+    const longRead = await two.readSince(longKey!, NO_CURSOR);
+    expect(longRead.reset).toBe(true);
+    expect(longRead.fromStart).toBe(false);
+    await long.clean();
+  });
+
   test("a first read carries the ancestors a fork inherited", async () => {
     const f = await lab("20260101_000000_parent");
     f.session("20260101_000000_parent", null);
@@ -231,6 +257,7 @@ describe("HermesTranscriptSource — readSince", () => {
       lines: [],
       cursor: NO_CURSOR,
       reset: false,
+      fromStart: false,
     });
   });
 });

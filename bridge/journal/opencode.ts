@@ -454,6 +454,15 @@ interface SinceRows {
   lines: string[];
   /** The newest `time_updated` among the rows READ, including any the role filter dropped. */
   position: number;
+  /**
+   * How many rows the query returned, shown or not — the LIMIT's own verdict.
+   *
+   * It answers `fromStart` and nothing else: a reset that came back under its limit has reached the
+   * session's first message, so there is nothing older to offer. Rows rather than lines, because V2
+   * drops bookkeeping rows on the way to a line and a short line list would then claim a start the
+   * session does not have.
+   */
+  read: number;
 }
 
 /** The newest touch across some rows, or `fallback` when none of them carried one. */
@@ -502,6 +511,7 @@ function composeSinceV1(db: Database, sessionId: string, at: number | null, limi
   return {
     lines: linesV1(messages, parts),
     position: newestTouch(parts, newestTouch(messages, at ?? 0)),
+    read: messages.length,
   };
 }
 
@@ -527,6 +537,7 @@ function composeSinceV2(db: Database, sessionId: string, at: number | null, limi
     // and deliberately not shown; leaving its clock out of the cursor would make every later read
     // fetch it again for ever.
     position: newestTouch(rows, at ?? 0),
+    read: rows.length,
   };
 }
 
@@ -929,9 +940,9 @@ export class OpencodeTranscriptSource implements TranscriptSource {
    * screen over a locked database would be a worse answer than an unchanged one.
    */
   async readSince(key: string, cursor: Cursor): Promise<ReadSince> {
-    const held: ReadSince = { lines: [], cursor, reset: false };
+    const held: ReadSince = { lines: [], cursor, reset: false, fromStart: false };
     const parts = splitOpencodeKey(key);
-    if (parts === null) return { lines: [], cursor: NO_CURSOR, reset: false };
+    if (parts === null) return { lines: [], cursor: NO_CURSOR, reset: false, fromStart: false };
     const at = decodeCursor(cursor, "updated", key);
     return (
       withDb(parts.dbPath, (db) => {
@@ -939,13 +950,27 @@ export class OpencodeTranscriptSource implements TranscriptSource {
         // same generation.
         const store = sessionStore(db, parts.sessionId);
         if (store === null) return held;
-        const { lines, position } = composeSince(db, parts.sessionId, store, at, FIRST_TAIL_ROWS);
+        const { lines, position, read } = composeSince(
+          db,
+          parts.sessionId,
+          store,
+          at,
+          FIRST_TAIL_ROWS,
+        );
         const next = encodeCursor("updated", key, position);
         // The clip only ever applies to a reset. Clipping an INCREMENTAL read would drop rows off the
         // head of the delta while the cursor moved past them, which loses a turn for good; the
         // incremental read is bounded by `limit` instead, and what does not fit arrives next tick.
-        if (at !== null) return { lines, cursor: next, reset: false };
-        return { lines: lines.slice(clipStart(lines, FIRST_TAIL_BYTES)), cursor: next, reset: true };
+        if (at !== null) return { lines, cursor: next, reset: false, fromStart: false };
+        const start = clipStart(lines, FIRST_TAIL_BYTES);
+        // BOTH bounds have to have stood down for this to be the session's start: the row limit did
+        // not bite, and the byte clip dropped nothing. Either one biting means an older turn exists.
+        return {
+          lines: lines.slice(start),
+          cursor: next,
+          reset: true,
+          fromStart: start === 0 && read < FIRST_TAIL_ROWS,
+        };
       }) ?? held
     );
   }
@@ -958,6 +983,7 @@ export function opencodeJournal(roots: string | readonly string[]): JournalAdapt
     agent: "opencode",
     source,
     parse: parseOpencodeTranscript,
+    reducer: createOpencodeReducer,
     cacheProbe: (ref) => opencodeCacheProbe(source, ref),
   };
 }

@@ -10,6 +10,7 @@
 
 import type { CacheProbe } from "../cache/engine.ts";
 import type { Cursor, ReadSince } from "./cursor.ts";
+import type { RowReducer } from "./reduce.ts";
 import type { ToolCall } from "./tool-call.ts";
 
 /**
@@ -157,6 +158,23 @@ export interface JournalAdapter {
   readonly agent: string;
   readonly source: TranscriptSource;
   parse(text: string): TranscriptEntry[];
+  /**
+   * A fresh folder for ONE session, fed a row at a time (journal/reduce.ts).
+   *
+   * `parse` and this are the same grammar seen from two ends, not two implementations: every adapter
+   * builds a reducer and `parse` is `parseWith(reducer, text)` over it, so a row cannot be read one
+   * way by a History page and another way by a live window.
+   *
+   * REQUIRED, not optional, and that is the point. Spec 02 built the six reducers and deliberately
+   * left this seam out, because a seam with no caller is a guess at what a caller needs; the live
+   * window (journal/live.ts) is the caller, and it needs exactly this. Optional would have meant
+   * every call site writing `adapter.reducer?.()` with a fallback nothing can reach.
+   *
+   * A reducer is STATEFUL and single-use: it remembers the tool calls it is still waiting on. One per
+   * window, never shared, and never reused after a reset — a reset means the rows before it are not
+   * this window's any more, and a call waiting from before them will never be answered.
+   */
+  reducer(): RowReducer;
   /**
    * The prompt-cache reading for one session, off the same log `parse` reads — or null when there is
    * nothing to read yet.

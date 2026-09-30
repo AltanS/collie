@@ -103,6 +103,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   new file, says so in one word and hands back the truth instead of a guess. Nothing you can see
   changes yet.
 
+- **A watching screen asks what is new and is told only that.** A new read answers a pane's session
+  the way a poll wants it answered: the turns you have not seen, the turns that changed since you
+  last looked, and nothing else. A poll that finds nothing new sends no body at all. The bridge holds
+  a bounded tail per session, about two megabytes of it, so a session of any length costs the same
+  memory, and older turns come off the disk only when somebody asks for them. It rides the poll
+  Collie already has rather than a new socket, so it crosses a crew link exactly as the history read
+  does, and a member one release behind simply reports no such read instead of an empty session.
+  Nothing you can see changes yet.
+
 ### Changed
 
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the

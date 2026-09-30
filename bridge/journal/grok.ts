@@ -364,5 +364,6 @@ export function grokJournal(roots: string | readonly string[]): JournalAdapter {
     agent: "grok",
     source: new GrokTranscriptSource(roots),
     parse: parseGrokTranscript,
+    reducer: createGrokReducer,
   };
 }

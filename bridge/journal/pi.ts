@@ -471,6 +471,7 @@ export function piJournal(roots: string | readonly string[]): JournalAdapter {
     agent: "pi",
     source,
     parse: parsePiTranscript,
+    reducer: createPiReducer,
     cacheProbe: (ref) => piCacheProbe(source, ref),
   };
 }

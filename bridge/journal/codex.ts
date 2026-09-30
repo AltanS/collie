@@ -478,6 +478,7 @@ export function codexJournal(roots: string | readonly string[]): JournalAdapter 
     agent: "codex",
     source,
     parse: parseCodexTranscript,
+    reducer: createCodexReducer,
     cacheProbe: (ref) => codexCacheProbe(source, ref),
   };
 }

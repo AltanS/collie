@@ -51,6 +51,18 @@ export interface ReadSince {
    * database, a cursor left too far behind to catch up on, and Claude's hand-over to a new log.
    */
   readonly reset: boolean;
+  /**
+   * `lines[0]` is the source's OWN first row: there is nothing before this answer.
+   *
+   * Only a {@link reset} can say it, and it is the one fact a caller cannot work out for itself. A
+   * reset answer is a bounded tail, and "a tail" and "the whole thing" look identical from above —
+   * so a window that guessed would either offer to load turns that do not exist, or hide turns that
+   * do. The source knows, because it is the side that applied the bound: a file read that started
+   * at byte 0, or a query whose row count came in under its limit.
+   *
+   * False on an append, always. A row arriving after a row cannot be the first one.
+   */
+  readonly fromStart: boolean;
 }
 
 /** Position field: digits only. See "the three ways a cursor is wrong" in this file's header. */

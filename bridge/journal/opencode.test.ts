@@ -1701,11 +1701,39 @@ describe("OpencodeTranscriptSource — readSince, V1", () => {
     await f.clean();
   });
 
+  // `fromStart` needs BOTH bounds to have stood down: the row limit did not bite, and the byte clip
+  // dropped nothing. The live window turns it into "load older" (journal/live.ts § hasOlder), so a
+  // wrong reading either offers turns that do not exist or hides turns that do. Counted over ROWS
+  // READ and not lines composed, which is what a bookkeeping row the reader drops would break.
+  test("a short session's first read claims the start; a long one's does not", async () => {
+    const short = await lab();
+    short.turn("msg_0001", 1, 1, "only turn");
+    const one = await opened(short.root);
+    const shortRead = await one.src.readSince(one.key, NO_CURSOR);
+    expect(shortRead.reset).toBe(true);
+    expect(shortRead.fromStart).toBe(true);
+    // A resume never claims the start, whatever it carries — and this source always re-emits the row
+    // it stands on, so the answer is non-empty and the reading still has to be false.
+    const next = await one.src.readSince(one.key, shortRead.cursor);
+    expect(next.lines.length).toBeGreaterThan(0);
+    expect(next.fromStart).toBe(false);
+    await short.clean();
+
+    const long = await lab();
+    for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) long.turn(`msg_${String(n).padStart(4, "0")}`, n, n, `turn ${n}`);
+    const two = await opened(long.root);
+    const longRead = await two.src.readSince(two.key, NO_CURSOR);
+    expect(longRead.reset).toBe(true);
+    expect(longRead.fromStart).toBe(false);
+    await long.clean();
+  });
+
   test("a key it cannot split reports nothing new", async () => {
     expect(await new OpencodeTranscriptSource("/nope").readSince("/not-a-key", NO_CURSOR)).toEqual({
       lines: [],
       cursor: NO_CURSOR,
       reset: false,
+      fromStart: false,
     });
   });
 });

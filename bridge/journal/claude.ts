@@ -669,6 +669,7 @@ export function claudeJournal(roots: string | readonly string[]): JournalAdapter
     agent: "claude",
     source,
     parse: (text) => parseClaudeTranscript(text),
+    reducer: () => createClaudeReducer(),
     cacheProbe: (ref) => claudeCacheProbe(source, ref),
   };
 }

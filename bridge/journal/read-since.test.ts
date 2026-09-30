@@ -152,7 +152,7 @@ describe("readSinceFile", () => {
 
     await rm(f.path);
     const gone = await readSinceFile(f.path, first.cursor);
-    expect(gone).toEqual({ lines: [], cursor: first.cursor, reset: false });
+    expect(gone).toEqual({ lines: [], cursor: first.cursor, reset: false, fromStart: false });
 
     await f.clean();
   });
@@ -209,6 +209,51 @@ describe("readSinceFile", () => {
     await f.clean();
   });
 
+  // `fromStart` is the one thing a caller cannot work out for itself: a bounded tail and a whole small
+  // file arrive looking the same. It is what makes the live window's "load older" exact rather than a
+  // guess (journal/live.ts § hasOlder), so it is pinned in all three of its states.
+  test("a first read that began at byte 0 says so; a bounded one does not", async () => {
+    const f = await lab();
+    await f.write(`${row(1)}\n${row(2)}\n`);
+    expect((await readSinceFile(f.path, NO_CURSOR)).fromStart).toBe(true);
+
+    // The same file, read under a bound too small to reach its head.
+    const bounded = await readSinceFile(f.path, NO_CURSOR, 12);
+    expect(bounded.reset).toBe(true);
+    expect(bounded.fromStart).toBe(false);
+
+    await f.clean();
+  });
+
+  test("an append never claims the start, whatever it carries", async () => {
+    const f = await lab();
+    await f.write(`${row(1)}\n`);
+    const first = await readSinceFile(f.path, NO_CURSOR);
+    expect(first.fromStart).toBe(true);
+
+    await f.append(`${row(2)}\n`);
+    const next = await readSinceFile(f.path, first.cursor);
+    expect(next.reset).toBe(false);
+    expect(next.fromStart).toBe(false);
+
+    await f.clean();
+  });
+
+  test("a truncated log resets AND claims the start, because it now is the start", async () => {
+    const f = await lab();
+    await f.write(`${row(1)}\n${row(2)}\n`);
+    const first = await readSinceFile(f.path, NO_CURSOR);
+
+    await truncate(f.path, 0);
+    await f.write(`${row(9)}\n`);
+    const after = await readSinceFile(f.path, first.cursor);
+    expect(after.reset).toBe(true);
+    expect(after.fromStart).toBe(true);
+    expect(after.lines).toEqual([row(9)]);
+
+    await f.clean();
+  });
+
   test("the default bound is the live window's, not the History page's", () => {
     expect(FIRST_TAIL_BYTES).toBe(2 * 1024 * 1024);
   });
@@ -237,6 +282,6 @@ describe("every harness answers a live read", () => {
     const adapter = registry[agent];
     expect(adapter).toBeDefined();
     const answer = await adapter?.source.readSince("/nope/not-a-key", NO_CURSOR);
-    expect(answer).toEqual({ lines: [], cursor: NO_CURSOR, reset: false });
+    expect(answer).toEqual({ lines: [], cursor: NO_CURSOR, reset: false, fromStart: false });
   });
 });

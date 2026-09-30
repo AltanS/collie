@@ -378,9 +378,9 @@ export class HermesTranscriptSource implements TranscriptSource {
    * reports nothing new, exactly as a file whose `stat` lost a race does.
    */
   async readSince(key: string, cursor: Cursor): Promise<ReadSince> {
-    const held: ReadSince = { lines: [], cursor, reset: false };
+    const held: ReadSince = { lines: [], cursor, reset: false, fromStart: false };
     const parts = splitHermesKey(key);
-    if (parts === null) return { lines: [], cursor: NO_CURSOR, reset: false };
+    if (parts === null) return { lines: [], cursor: NO_CURSOR, reset: false, fromStart: false };
     const at = decodeCursor(cursor, "rowid", key);
     return (
       withDb(parts.dbPath, (db) => {
@@ -402,13 +402,27 @@ export class HermesTranscriptSource implements TranscriptSource {
         // The clip only ever applies to a reset. Clipping an INCREMENTAL read would drop rows off the
         // head of the delta while the cursor moved past them, which loses a turn for good; the
         // incremental read is bounded by its `limit` instead, and the rest arrives on the next tick.
-        if (at !== null) return { lines, cursor: next, reset: false };
-        return { lines: lines.slice(clipStart(lines, FIRST_TAIL_BYTES)), cursor: next, reset: true };
+        if (at !== null) return { lines, cursor: next, reset: false, fromStart: false };
+        const start = clipStart(lines, FIRST_TAIL_BYTES);
+        // BOTH bounds have to have stood down for this to be the lineage's start: the row limit did
+        // not bite, and the byte clip dropped nothing. Either one biting means an older turn exists.
+        // Rows rather than lines is safe here, because hermes composes one line per row.
+        return {
+          lines: lines.slice(start),
+          cursor: next,
+          reset: true,
+          fromStart: start === 0 && rows.length < FIRST_TAIL_ROWS,
+        };
       }) ?? held
     );
   }
 }
 
 export function hermesJournal(roots: string | readonly string[]): JournalAdapter {
-  return { agent: "hermes", source: new HermesTranscriptSource(roots), parse: parseHermesTranscript };
+  return {
+    agent: "hermes",
+    source: new HermesTranscriptSource(roots),
+    parse: parseHermesTranscript,
+    reducer: createHermesReducer,
+  };
 }

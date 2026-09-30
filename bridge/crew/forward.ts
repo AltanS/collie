@@ -52,7 +52,7 @@ export function crewRouteFor(pathname: string): string | null {
  * but not across a link (or, worse, the reverse).
  */
 const FORWARDABLE: readonly RegExp[] = [
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|changes|focus))?$/,
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|focus))?$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
   /^workspace$/,
@@ -114,7 +114,11 @@ export function forwardKind(route: string): ForwardKind {
   if (!route.startsWith("pane/")) return "write";
   const action = route.split("/")[2];
   // `changes` is read-only git over the owning member's folder (ADR 0065): a read, like history.
-  return action === undefined || action === "history" || action === "changes" ? "read" : "write";
+  // `chat` is the same log `history` reads, asked for its newest end (journal/live.ts): a read too,
+  // and the one on the poll path — so it must never be refused before it is tried (§10.3).
+  return action === undefined || action === "history" || action === "chat" || action === "changes"
+    ? "read"
+    : "write";
 }
 
 /** The pane id a route addresses, for the lead's own audit line. `undefined` for tab/workspace. */
@@ -148,7 +152,9 @@ export function forwardAuditAction(route: string): string | null {
   if (isWorkspaceChanges(route)) return null; // a read
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
   const action = route.split("/")[2];
-  if (action === undefined || action === "history" || action === "changes") return null;
+  if (action === undefined || action === "history" || action === "chat" || action === "changes") {
+    return null; // reads, and a read is audited on neither side
+  }
   if (action === "close" || action === "rename") return `pane.${action}`;
   return action; // reply | keys | upload
 }
