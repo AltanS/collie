@@ -2,6 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-30
+- **Amended:** 2026-10-01 (M41/12) — the live body gained `queued`. Additive, and the reasoning is a
+  blockquote under point 4 rather than a new ADR, because it does not change a decision here; it
+  answers a question this one did not ask.
 - **Changes:** adds `GET /api/pane/:id/chat` and `bridge/journal/live.ts`. It closes off two options
   people will reasonably propose again: a WebSocket, and a `seq`-cursored delta.
   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) is untouched — this reads the agent's
@@ -65,6 +68,22 @@ one job.**
    the same write, so a second list would have nothing to say. A `?before=` page carries `upserts`
    too, for that reason.
 
+   > **Amended (2026-10-01, M41/12).** The live body also carries `queued`: what the operator typed
+   > that the agent has not started on. It is a FIELD and not entries in `upserts`, and the absence of
+   > a replace verb above is exactly why. A queued message appears and then is gone. Carried as turns
+   > it could only be un-drawn by bumping `gen`, which throws away the client's whole thread and its
+   > scroll position to retract one line. So the rule stands unchanged and the queue sits beside it:
+   > `upserts` is the thread and it only grows, `queued` is state and arrives WHOLE on every answer.
+   >
+   > It needs no `rev` of its own, and that is point 6 paying off rather than a gap. A
+   > `queue-operation` row adds no turn, so `rev` does not move for it, and a reader watching `rev`
+   > alone would never be told. The ETag is hashed over the serialised body, so a queue that changed
+   > is a different body and a queue that did not is the same one.
+   >
+   > One harness fills it. Claude Code records the queue in its log; the other five record none and
+   > answer `[]`. A member one release behind sends no field at all, and a client reads that as
+   > nothing waiting, which is point 7's rule applied to one field instead of the whole route.
+
 5. **A tick happens because somebody asked.** There is no timer in `live.ts`. `stat` is the pre-check,
    so a quiet session costs one `stat`; `TICK_FLOOR_MS` (250 ms) makes several readers of one session
    share one read; a window nobody has asked about for `WINDOW_IDLE_MS` is dropped whole. That is the
@@ -102,6 +121,17 @@ one job.**
 - **A `?before=` page goes through the same `TranscriptStore` the History route uses**, so a "load
   older" tap after a History visit is a cache hit rather than a second 32 MB read. It also means the
   live path and the History path can never disagree about a turn's content.
+- **`RowReducer` grew a second snapshot method, and both are required.** `unknowns()` answers what a
+  reducer could not read; `queued()` answers what the operator is waiting on. Both are per-session
+  rather than per-row for the same two reasons: the question has one answer per session, and
+  `Reduction` is the hot path that hands back one frozen object from forty early returns. Required,
+  not optional, because the fallback a caller would write for an absent method reads "nothing queued",
+  and a wrong default is worse than a compile error in six files.
+- **The queue reading is deliberately allowed to be SHORT, never long.** A tail read can begin between
+  an enqueue and its dequeue, so the reducer can be told to take an item off a list that never had it.
+  It then takes the wrong one, and the answer is missing a message. Every message it DOES report came
+  off a row the reducer read. A queue short on screen says less than it could; a queue long on screen
+  says something untrue.
 - **hermes can lose a turn and no reducer can tell.** Its query filters on `active` and `compacted`,
   which are mutable per row, so a turn can DISAPPEAR between reads. `Reduction` has no `removed` and
   must not grow one: a reducer reads forward and cannot know a row vanished. The window's answer to

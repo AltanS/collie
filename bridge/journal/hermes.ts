@@ -10,10 +10,11 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
+  parseWith,
   createUnknownCounter,
   type KnownTypes,
   NO_CHANGE,
-  parseWith,
+  noQueue,
   type Reduction,
   type RowReducer,
 } from "./reduce.ts";
@@ -349,7 +350,8 @@ export function createHermesReducer(): RowReducer {
     return { added: entries, changed: NO_CHANGE.changed };
   }
 
-  return { push, unknowns: unknown.tally };
+  // No queue in this format's log: see `RowReducer.queued`.
+  return { push, unknowns: unknown.tally, queued: noQueue };
 }
 
 type SessionMeta = { size: number; mtimeMs: number };

@@ -39,6 +39,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **Chat says a turn is still running, and shows what you queued behind it.** A compaction writes no
+  row for minutes, so a compacting pane in Chat looked exactly like a finished one, and a message
+  typed while the agent was busy appeared nowhere at all. The thread now ends with a working mark, and
+  the queue sits under it in your own colour until the agent takes it.
+
 - **Chat shows the work a codex pane did, not only the words it said.** Codex runs nearly everything
   through one custom tool, and the journal reader dropped that shape, so every file it read and every
   patch it wrote was missing from Chat. It reads now, with the command, the output and the exit code.

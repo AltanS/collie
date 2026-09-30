@@ -27,15 +27,16 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
+  parseWith,
   createUnknownCounter,
   type KnownTypes,
   NO_CHANGE,
+  noQueue,
   noteBlockTypes,
-  parseWith,
-  reduction,
-  rememberPending,
   type PendingTool,
+  reduction,
   type Reduction,
+  rememberPending,
   type RowReducer,
 } from "./reduce.ts";
 import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
@@ -322,7 +323,8 @@ export function createGrokReducer(): RowReducer {
     return reduction(entries, changed);
   }
 
-  return { push, unknowns: unknown.tally };
+  // No queue in this format's log: see `RowReducer.queued`.
+  return { push, unknowns: unknown.tally, queued: noQueue };
 }
 
 /**

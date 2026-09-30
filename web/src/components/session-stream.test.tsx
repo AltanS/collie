@@ -323,3 +323,79 @@ describe("SessionStream", () => {
     expect(blocks.at(-1)?.getAttribute("data-slot")).toBe("stream-live");
   });
 });
+
+// ── what you typed that has not started yet (M41/12) ─────────────────────────
+//
+// The other half of the same blindness: a compaction runs, you queue a message, and nothing on the
+// phone says the message exists. It is state and not a turn, so it is a row of its own.
+describe("SessionStream — the queue", () => {
+  it("shows what you typed that has not been started", () => {
+    renderStream(
+      feedOf({
+        status: { kind: "live" },
+        entries: [entry("a", BASE, "hi")],
+        queued: ["and the tests too"],
+      }),
+      true,
+      true,
+    );
+    expect(screen.getByText("Waiting to send")).toBeInTheDocument();
+    expect(screen.getByText("and the tests too")).toBeInTheDocument();
+  });
+
+  it("shows every waiting message, oldest first", () => {
+    const { container } = renderStream(
+      feedOf({ status: { kind: "live" }, entries: [], queued: ["first", "second"] }),
+      true,
+      true,
+    );
+    const texts = [...container.querySelectorAll("[data-slot='stream-queued'] p")].map((p) => p.textContent);
+    expect(texts).toEqual(["Waiting to send", "first", "second"]);
+  });
+
+  it("draws it even when the pane does not read as working", () => {
+    // The reported gap is exactly the moment those two disagree. A queued message is a fact on its own.
+    renderStream(feedOf({ status: { kind: "live" }, entries: [], queued: ["mine"] }), true, false);
+    expect(screen.getByText("mine")).toBeInTheDocument();
+  });
+
+  it("says nothing when nothing is waiting", () => {
+    const { container } = renderStream(
+      feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "hi")], queued: [] }),
+      true,
+      true,
+    );
+    expect(container.querySelector("[data-slot='stream-queued']")).toBeNull();
+  });
+
+  it("says nothing over a journal it cannot read", () => {
+    const { container } = renderStream(
+      feedOf({ status: { kind: "unavailable", reason: "no-session" }, queued: ["mine"] }),
+      true,
+      true,
+    );
+    expect(container.querySelector("[data-slot='stream-queued']")).toBeNull();
+  });
+
+  it("stands under the working mark, at the end of the thread", () => {
+    const { container } = renderStream(
+      feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "hi")], queued: ["mine"] }),
+      true,
+      true,
+    );
+    const rows = [
+      ...container.querySelectorAll("[data-block], [data-slot='stream-live'], [data-slot='stream-queued']"),
+    ].map((el) => el.getAttribute("data-slot"));
+    expect(rows.slice(-2)).toEqual(["stream-live", "stream-queued"]);
+  });
+
+  it("shows two identical queued messages as two", () => {
+    const { container } = renderStream(
+      feedOf({ status: { kind: "live" }, entries: [], queued: ["same", "same"] }),
+      true,
+      true,
+    );
+    const texts = [...container.querySelectorAll("[data-slot='stream-queued'] p")].map((p) => p.textContent);
+    expect(texts).toEqual(["Waiting to send", "same", "same"]);
+  });
+});

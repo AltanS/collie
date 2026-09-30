@@ -69,6 +69,22 @@ const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-i
  */
 const LIVE_ROW = "mt-1 flex items-center gap-2 py-2 text-xs font-medium text-muted-foreground";
 
+/**
+ * THE QUEUE: what the operator typed while the agent was busy.
+ *
+ * The operator's own colour, because it is the operator's own words — the same `status-working` well
+ * `UserTurn` wears (`chat-cards.tsx`), at a lighter weight, so it reads as "mine, and not sent yet"
+ * rather than as a turn the agent ignored. A uniform border with a soft shadow and no left accent,
+ * per the house rule for a rounded box.
+ *
+ * Dashed, and that is the one thing carrying "not yet". A solid well would be indistinguishable from
+ * a turn that has landed, which is the single mistake this row must not make.
+ */
+const QUEUED_BLOCK =
+  "mt-1 flex min-w-0 flex-col gap-1 rounded-md border border-dashed border-status-working/40 bg-status-working/5 px-3 py-2";
+const QUEUED_LABEL = "text-xs font-medium text-status-working";
+const QUEUED_TEXT = "wrap-anywhere text-sm whitespace-pre-wrap text-foreground/80";
+
 /** The top affordance, the same shape and the same words the mirror's own scrollback row uses. */
 const EDGE_ROW =
   "mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
@@ -287,6 +303,27 @@ export function SessionStream({
               and a name here is the state announced twice (status-badge.tsx § label). */}
           <StatusDot status="working" live className="size-2" />
           <span>{t("chat.stream.working")}</span>
+        </div>
+      )}
+
+      {/* WHAT YOU TYPED THAT HAS NOT STARTED YET, under the working mark and before the tail.
+          It is drawn WHETHER OR NOT the pane reads as working, because the gap the operator reported
+          is exactly the moment those two disagree: a compaction is running, the queue is filling, and
+          a poll can land with the pane between two states. A queued message is a fact on its own.
+          Not turns, because it is state — it appears, then it is gone (`chat-window.ts` § queued). It
+          therefore wears the operator's OWN colour (the same well `UserTurn` uses) so the eye reads
+          "mine, not yet sent" rather than "a turn nobody answered". */}
+      {window.queued.length > 0 && window.status.kind === "live" && (
+        <div data-slot="stream-queued" className={QUEUED_BLOCK}>
+          <p className={QUEUED_LABEL}>{t("chat.stream.queued")}</p>
+          {window.queued.map((text, i) => (
+            // The index is the key, and here that is right rather than lazy: the list has no identity
+            // on the wire, two identical queued messages ARE two messages, and the whole list is
+            // replaced on every answer so a key never has to survive one.
+            <p key={i} className={QUEUED_TEXT}>
+              {text}
+            </p>
+          ))}
         </div>
       )}
 

@@ -77,6 +77,17 @@ export interface ChatWindow {
   readonly hasOlder: boolean;
   /** Ascending by `seq`, ready to render top-down. */
   readonly entries: readonly ChatEntry[];
+  /**
+   * What the operator typed that the agent has not started on yet, oldest first.
+   *
+   * NOT merged, REPLACED, and that is the fourth rule beside the three above. A queue is state: the
+   * whole list arrives on every answer and the one in hand is simply the older reading. Merging it
+   * would keep an item the bridge has already stopped reporting, which is exactly the lie this field
+   * exists to avoid.
+   *
+   * A `?before=` page leaves it alone. An older page cannot see the tail, so it says nothing about it.
+   */
+  readonly queued: readonly string[];
 }
 
 /**
@@ -99,6 +110,9 @@ const STALE: ChatStatus = { kind: "stale" };
 /** One shared value, so an unchanged status keeps its identity across polls. */
 const LIVE: ChatStatus = { kind: "live" };
 
+/** One shared empty queue, so the common answer — nothing waiting — allocates nothing. */
+const EMPTY_QUEUE: readonly string[] = Object.freeze<string[]>([]);
+
 /** What a client holds before it has asked anything. */
 export const EMPTY_CHAT_WINDOW: ChatWindow = {
   status: { kind: "empty" },
@@ -108,6 +122,7 @@ export const EMPTY_CHAT_WINDOW: ChatWindow = {
   oldest: 0,
   hasOlder: false,
   entries: [],
+  queued: EMPTY_QUEUE,
 };
 
 /**
@@ -151,7 +166,23 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
     oldest,
     hasOlder: olderExists(oldest, body, known ? held.hasOlder : body.hasOlder),
     entries,
+    // Replaced, never merged (see `ChatWindow.queued`), and the held list is reused when it says the
+    // same thing, so a poll that changed nothing hands the view the same array it already has.
+    // `?? EMPTY_QUEUE`: a member one release behind sends no `queued` at all, and "nothing waiting"
+    // is the honest reading of a bridge that does not know the question.
+    queued: nextQueue(held.queued, body.queued ?? EMPTY_QUEUE),
   };
+}
+
+/**
+ * The held list when it already says what the answer says, else the answer's.
+ *
+ * Identity matters here: the queue is empty on almost every poll, and handing a view a fresh `[]`
+ * each time would re-render a row that did not change. Short lists, so the compare is cheap.
+ */
+function nextQueue(held: readonly string[], next: readonly string[]): readonly string[] {
+  const same = held.length === next.length && held.every((text, i) => text === next[i]);
+  return same ? held : next;
 }
 
 /**

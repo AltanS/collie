@@ -1064,6 +1064,16 @@ export interface ChatWindowBody {
   hasOlder: boolean;
   /** Added and changed turns together, oldest first, keyed by `uuid` and positioned by `seq`. */
   upserts: ChatEntry[];
+  /**
+   * What the operator typed that the agent has not started on yet, oldest first. STATE, not turns:
+   * the WHOLE list arrives every answer, and a client replaces rather than merges it. Empty for every
+   * harness but Claude Code, which is the only one that records a queue.
+   *
+   * Optional here and required on the bridge, on purpose: a member one release behind answers a body
+   * without it, and that reads as "nothing waiting" rather than as a broken answer (ADR 0073 point 7,
+   * the route is additive-optional over a crew link).
+   */
+  queued?: string[];
 }
 
 /**

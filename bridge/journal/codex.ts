@@ -29,15 +29,16 @@ import { join } from "node:path";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
+  parseWith,
   createUnknownCounter,
   type KnownTypes,
   NO_CHANGE,
+  noQueue,
   noteBlockTypes,
-  parseWith,
-  reduction,
-  rememberPending,
   type PendingTool,
+  reduction,
   type Reduction,
+  rememberPending,
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
@@ -509,7 +510,8 @@ export function createCodexReducer(): RowReducer {
     return reduction(entries, changed);
   }
 
-  return { push, unknowns: unknown.tally };
+  // No queue in this format's log: see `RowReducer.queued`.
+  return { push, unknowns: unknown.tally, queued: noQueue };
 }
 
 /**

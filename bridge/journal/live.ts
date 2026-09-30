@@ -133,6 +133,24 @@ export interface ChatWindowBody {
    * two cases are the same write.
    */
   upserts: ChatEntry[];
+  /**
+   * What the operator typed that the agent has not started on yet, oldest first.
+   *
+   * STATE, NOT TURNS, and that is the whole reason it is a field of its own beside `upserts` rather
+   * than entries in it. A queued message appears and then is gone. `upserts` can only add or replace
+   * a turn by `uuid` — there is no removal on the wire, on purpose — so a queue carried as turns could
+   * only be un-drawn by bumping `gen`, which throws away the client's whole thread and its scroll
+   * position to retract one line.
+   *
+   * WHOLE, EVERY ANSWER, never a delta. It is short (a bound of `QUEUE_MAX`, and 367 of 400 measured
+   * sessions never had one at all), and a delta over a list with no identity would need a removal verb
+   * this wire does not have. The 304 still works: the ETag is over these bytes, so a queue that
+   * changed is a different body and a queue that did not is the same one.
+   *
+   * ONE harness fills it. Claude Code records its queue in the log; the other five do not record one,
+   * and answer `[]` (`journal/reduce.ts` § `RowReducer.queued`).
+   */
+  queued: string[];
 }
 
 /**
@@ -467,6 +485,9 @@ class LiveWindow {
       oldest: this.rows[0]?.seq ?? this.nextSeq,
       hasOlder: this.trimmed || !this.fromStart,
       upserts: rows.map((row) => chatEntry(row.entry, row.seq)),
+      // The reducer's own reading, not a stored copy: it is a snapshot method for that reason. A
+      // generation with no reducer yet has read no rows, so it has met no queue either.
+      queued: [...(this.reducer?.queued() ?? [])],
     };
   }
 

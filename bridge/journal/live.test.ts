@@ -37,7 +37,7 @@ import type {
 // That second row is the whole reason `upserts` exists, and the reason a position watermark cannot
 // answer "what is new" (see live.ts's header).
 
-type FakeRow = { id?: string; say?: string; for?: string; out?: string };
+type FakeRow = { id?: string; say?: string; for?: string; out?: string; queue?: string[] };
 
 function readRow(line: string): FakeRow | null {
   if (line === "") return null;
@@ -53,10 +53,17 @@ function readRow(line: string): FakeRow | null {
 
 function fakeReducer(): RowReducer {
   const pending = new Map<string, PendingTool>();
+  // A `queue` row sets what is waiting and adds no turn, which is how the real thing behaves: a
+  // `queue-operation` row moves state the thread never sees (`journal/claude.ts` § createQueueTracker).
+  let queue: readonly string[] = [];
   return {
     push(line: string) {
       const row = readRow(line);
       if (row === null) return NO_CHANGE;
+      if (Array.isArray(row.queue)) {
+        queue = [...row.queue];
+        return NO_CHANGE;
+      }
       if (typeof row.id === "string") {
         const part: Extract<TranscriptPart, { kind: "tool" }> = {
           kind: "tool",
@@ -79,6 +86,7 @@ function fakeReducer(): RowReducer {
     // This fake has no grammar and so no inventory of types to miss: the window never asks, and the
     // reducers' own tallies are gated in `unknowns.test.ts` and by the canary (M41/05).
     unknowns: noUnknowns,
+    queued: () => queue,
   };
 }
 
@@ -160,6 +168,8 @@ function fakeJournal(lines: string[] = []) {
 
 const say = (id: string, what = "ls") => JSON.stringify({ id, say: what });
 const answer = (id: string, out = "ok") => JSON.stringify({ for: id, out });
+/** A row that moves the message queue and adds no turn, the way a `queue-operation` row does. */
+const queue = (...waiting: string[]) => JSON.stringify({ queue: waiting });
 
 function windows(fx: ReturnType<typeof fakeJournal>): LiveWindows {
   return new LiveWindows(new TranscriptStore(), fx.clock);
@@ -628,5 +638,78 @@ describe("the window's own boundaries", () => {
     expect([...seen.values()].toSorted((a, b) => a - b)).toEqual(
       Array.from({ length: 100 }, (_, i) => SEQ_BASE + i),
     );
+  });
+});
+
+// ── the message queue rides the same body (M41/12) ───────────────────────────
+
+describe("what is queued", () => {
+  test("a fresh window answers an empty queue", async () => {
+    const fx = fakeJournal([say("u1")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
+    expect(body!.queued).toEqual([]);
+  });
+
+  test("the body carries what the reducer is holding", async () => {
+    const fx = fakeJournal([say("u1"), queue("and the tests too")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
+    expect(body!.queued).toEqual(["and the tests too"]);
+  });
+
+  test("a queue that changed reaches a reader whose rev did not move", async () => {
+    // THE WHOLE POINT, and the reason `queued` is a field rather than turns: a `queue-operation` row
+    // adds no turn, so `rev` stays where it was and a rev-only reader would never be told. The route's
+    // 304 is an ETag over these BYTES (`bridge/server.ts` § paneChat), so a changed queue is a
+    // different body on its own.
+    const fx = fakeJournal([say("u1")]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 10 });
+    fx.append(queue("waiting"));
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), {
+      limit: 10,
+      after: { gen: first!.gen, rev: first!.rev },
+    });
+    expect(next!.upserts).toEqual([]);
+    expect(next!.rev).toBe(first!.rev);
+    expect(next!.queued).toEqual(["waiting"]);
+  });
+
+  test("it empties again when the agent takes the message", async () => {
+    const fx = fakeJournal([say("u1"), queue("waiting")]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 10 });
+    expect(first!.queued).toEqual(["waiting"]);
+    fx.append(queue());
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), {
+      limit: 10,
+      after: { gen: first!.gen, rev: first!.rev },
+    });
+    expect(next!.queued).toEqual([]);
+  });
+
+  test("a `?before=` page says nothing about it — it cannot see the tail", async () => {
+    const fx = fakeJournal([say("u1"), say("u2"), queue("waiting")]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 1 });
+    const older = await live.older(fx.adapter, ref(), { seq: first!.oldest, uuid: "u2" }, 10);
+    expect(older).not.toBeNull();
+    expect("queued" in older!).toBe(false);
+  });
+
+  test("a reset drops the queue with the generation it belonged to", async () => {
+    const fx = fakeJournal([say("u1"), queue("waiting")]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 10 });
+    expect(first!.queued).toEqual(["waiting"]);
+    // A rewrite the source reports as a reset, the way the fixture's other reset cases do it.
+    fx.state.lines = [say("v1")];
+    fx.state.rewound = true;
+    fx.append();
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), { limit: 10 });
+    expect(next!.gen).not.toBe(first!.gen);
+    expect(next!.queued).toEqual([]);
   });
 });

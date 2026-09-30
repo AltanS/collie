@@ -365,6 +365,7 @@ export const ja: Dictionary = {
   "chat.mode.noChat": "{reason} ここではターミナルのままです。",
   "chat.stream.empty": "このセッションにはまだ発言がありません。",
   "chat.stream.working": "処理中…",
+  "chat.stream.queued": "送信待ち",
   "chat.stream.loadOlderFailed": "過去のやり取りを読み込めませんでした",
   "chat.card.create": "作成",
   "chat.card.edit": "編集",

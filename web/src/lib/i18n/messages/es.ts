@@ -368,6 +368,7 @@ export const es: Dictionary = {
   "chat.mode.noChat": "{reason} Aquí se queda el terminal.",
   "chat.stream.empty": "Todavía no se ha dicho nada en esta sesión.",
   "chat.stream.working": "Sigue trabajando…",
+  "chat.stream.queued": "En espera de envío",
   "chat.stream.loadOlderFailed": "No se pudieron cargar los turnos anteriores",
   "chat.card.create": "Crear",
   "chat.card.edit": "Editar",

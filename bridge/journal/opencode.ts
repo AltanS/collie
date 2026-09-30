@@ -72,11 +72,12 @@ import type { ResetEvent } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
+  parseWith,
   createUnknownCounter,
   type KnownTypes,
   NO_CHANGE,
+  noQueue,
   notePartType,
-  parseWith,
   type Reduction,
   type RowReducer,
 } from "./reduce.ts";
@@ -934,7 +935,8 @@ export function createOpencodeReducer(): RowReducer {
     return { added: entries, changed: NO_CHANGE.changed };
   }
 
-  return { push, unknowns: unknown.tally };
+  // No queue in this format's log: see `RowReducer.queued`.
+  return { push, unknowns: unknown.tally, queued: noQueue };
 }
 
 /** ISO timestamp from `data.time.created`, falling back to the message row's `time_created`. */

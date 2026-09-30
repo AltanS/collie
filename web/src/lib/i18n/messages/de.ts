@@ -370,6 +370,7 @@ export const de: Dictionary = {
   "chat.mode.noChat": "{reason} Das Terminal bleibt hier.",
   "chat.stream.empty": "In dieser Sitzung wurde noch nichts gesagt.",
   "chat.stream.working": "Arbeitet noch…",
+  "chat.stream.queued": "Wartet auf Senden",
   "chat.stream.loadOlderFailed": "Ältere Beiträge konnten nicht geladen werden",
   "chat.card.create": "Anlegen",
   "chat.card.edit": "Ändern",

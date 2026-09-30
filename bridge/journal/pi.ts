@@ -35,15 +35,16 @@ import {
   statFile,
 } from "./files.ts";
 import {
+  parseWith,
   createUnknownCounter,
   type KnownTypes,
   NO_CHANGE,
+  noQueue,
   noteBlockTypes,
-  parseWith,
-  reduction,
-  rememberPending,
   type PendingTool,
+  reduction,
   type Reduction,
+  rememberPending,
   type RowReducer,
   type UnknownCounter,
 } from "./reduce.ts";
@@ -609,7 +610,8 @@ export function createPiReducer(): RowReducer {
     return reduction(entries, changed);
   }
 
-  return { push, unknowns: unknown.tally };
+  // No queue in this format's log: see `RowReducer.queued`.
+  return { push, unknowns: unknown.tally, queued: noQueue };
 }
 
 /**

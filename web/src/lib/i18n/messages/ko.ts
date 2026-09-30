@@ -363,6 +363,7 @@ export const ko: Dictionary = {
   "chat.mode.noChat": "{reason} 여기서는 터미널이 유지됩니다.",
   "chat.stream.empty": "이 세션에는 아직 대화가 없습니다.",
   "chat.stream.working": "계속 작업 중…",
+  "chat.stream.queued": "전송 대기 중",
   "chat.stream.loadOlderFailed": "이전 대화를 불러오지 못했습니다",
   "chat.card.create": "생성",
   "chat.card.edit": "편집",

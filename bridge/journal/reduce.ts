@@ -233,6 +233,25 @@ export interface RowReducer {
    * later `push`. A reducer with no grammar of its own answers {@link noUnknowns}.
    */
   unknowns(): UnknownTally;
+  /**
+   * What the operator has typed that the agent has NOT started on yet, oldest first.
+   *
+   * A METHOD and a SNAPSHOT for `unknowns()`'s reasons, and one more that is its own: a queued message
+   * is live STATE, not a turn. It appears, then it is gone. `Reduction` has `added` and `changed` and
+   * no removal, on purpose (see this file's header), so a queue drawn as turns could never be undrawn
+   * without throwing the whole window away.
+   *
+   * ONE harness writes this. Claude Code records the queue in `queue-operation` rows; the other five
+   * formats have no queue in their log at all and answer {@link noQueue}. That is a statement about
+   * the format, the same way an empty {@link KnownTypes} list is.
+   *
+   * UNDER-REPORTING IS THE SAFE DIRECTION and this deliberately takes it. A tail read can begin after
+   * an enqueue and before its dequeue, so the reducer can be asked to take an item off a list that
+   * never had it. It then takes the wrong one off, or none, and the answer is short. A queued message
+   * missing from the screen is a screen that says less than it could. A queued message that is NOT
+   * waiting any more, still on screen, is a screen that lies.
+   */
+  queued(): readonly string[];
 }
 
 /** The answer for a row that did nothing. Frozen, because it is handed to every caller. */
@@ -275,6 +294,25 @@ export function rememberPending<V>(map: Map<string, V>, key: string, value: V): 
   if (map.size <= PENDING_MAX) return;
   const oldest = map.keys().next().value;
   if (oldest !== undefined) map.delete(oldest);
+}
+
+/**
+ * The most queued messages a reducer reports.
+ *
+ * A bound for {@link PENDING_MAX}'s reason: the list is filled from a file a process we do not control
+ * writes, so without one it grows for as long as that file does. The number is far past anything real
+ * — measured over 400 sessions on one host, 367 of them never had a queue at all and the deepest
+ * reached six. What falls off is the OLDEST, which is the opposite of that map's rule and is right
+ * here: the newest queued message is the one the operator just typed and is looking for.
+ */
+export const QUEUE_MAX = 16;
+
+/** The answer for a format with no queue in its log. Frozen, because it is handed to every caller. */
+const NO_QUEUE: readonly string[] = Object.freeze<string[]>([]);
+
+/** What a reducer answers when its format records no message queue. */
+export function noQueue(): readonly string[] {
+  return NO_QUEUE;
 }
 
 /**

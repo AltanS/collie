@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { NO_CURSOR } from "../journal/cursor.ts";
-import { NO_CHANGE, noUnknowns } from "../journal/reduce.ts";
+import { NO_CHANGE, noQueue, noUnknowns } from "../journal/reduce.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptSource } from "../journal/types.ts";
 import type { AgentView } from "../types.ts";
 import type { CacheProbe, CacheOverride } from "./engine.ts";
@@ -51,7 +51,7 @@ function fakeAdapter(agent: string, over: { probeTier?: "subscription" } = {}) {
     source,
     parse: () => [],
     // Same reasoning as `readSince` above: the seam requires it, the probe path never reaches it.
-    reducer: () => ({ push: () => NO_CHANGE, unknowns: noUnknowns }),
+    reducer: () => ({ push: () => NO_CHANGE, unknowns: noUnknowns, queued: noQueue }),
     cacheProbe: async (_ref: AgentSessionRef) => {
       calls.probe++;
       if (state.probeThrows) throw new Error("unreadable");
@@ -74,7 +74,7 @@ function probelessAdapter(agent: string): JournalAdapter {
       readSince: async () => ({ lines: [], cursor: NO_CURSOR, reset: false, fromStart: false }),
     },
     parse: () => [],
-    reducer: () => ({ push: () => NO_CHANGE, unknowns: noUnknowns }),
+    reducer: () => ({ push: () => NO_CHANGE, unknowns: noUnknowns, queued: noQueue }),
   };
 }
 

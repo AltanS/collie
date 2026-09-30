@@ -237,3 +237,64 @@ describe("mergeChat — an older page in a numbering we no longer hold", () => {
     expect(window).toBe(before);
   });
 });
+
+// ── the queue: the fourth rule, and it is not a merge (M41/12) ───────────────
+
+describe("what is queued", () => {
+  it("starts empty", () => {
+    expect(EMPTY_CHAT_WINDOW.queued).toEqual([]);
+  });
+
+  it("takes what the answer says", () => {
+    const window = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["and the tests too"] }));
+    expect(window.queued).toEqual(["and the tests too"]);
+  });
+
+  it("REPLACES rather than merges, so an item the bridge stopped reporting is gone", () => {
+    // The whole reason this is a field and not turns. A merge would keep "first" on screen after the
+    // agent took it, which is the one lie this row must not tell.
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["first", "second"] }));
+    const two = mergeChat(one, live({ rev: 3, upserts: [], queued: ["second"] }));
+    expect(two.queued).toEqual(["second"]);
+  });
+
+  it("empties when the answer says nothing is waiting", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
+    expect(mergeChat(one, live({ rev: 3, upserts: [], queued: [] })).queued).toEqual([]);
+  });
+
+  it("keeps the same array when the reading did not move, so a view does not re-render over it", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
+    const two = mergeChat(one, live({ rev: 3, upserts: [], queued: ["waiting"] }));
+    expect(two.queued).toBe(one.queued);
+  });
+
+  it("reads a body with no `queued` at all as nothing waiting", () => {
+    // A member one release behind answers without the field. That is "this bridge does not know the
+    // question", and the honest reading of it is an empty queue, not a broken answer.
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
+    expect(mergeChat(one, live({ rev: 3, upserts: [] })).queued).toEqual([]);
+  });
+
+  it("survives a `?before=` page, which cannot see the tail", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
+    const two = mergeChat(one, older({ upserts: [entry("z", BASE - 1)] }));
+    expect(two.queued).toEqual(["waiting"]);
+  });
+
+  it("is replaced whole when the generation changes", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["old gen"] }));
+    const two = mergeChat(one, live({ gen: GEN + 1, rev: 1, upserts: [entry("n", BASE)], queued: [] }));
+    expect(two.queued).toEqual([]);
+  });
+
+  it("is untouched by a 304", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
+    expect(mergeChat(one, CHAT_UNCHANGED)).toBe(one);
+  });
+
+  it("is kept by a 404, because a version skew does not unsay it", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["waiting"] }));
+    expect(mergeChat(one, { outcome: "stale" }).queued).toEqual(["waiting"]);
+  });
+});

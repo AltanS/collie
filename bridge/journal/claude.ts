@@ -35,6 +35,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import {
   createUnknownCounter,
   type KnownTypes,
+  QUEUE_MAX,
   NO_CHANGE,
   noteBlockTypes,
   parseWith,
@@ -233,6 +234,123 @@ export function parseClaudeTranscript(
 }
 
 /**
+ * A machine envelope the operator never typed, matched even when it carries attributes.
+ *
+ * {@link isEnvelope} is an exact `<tag>` test, which is all a `user` row's content needed: the four
+ * envelopes that reach THAT branch carry none. The QUEUE carries two that do —
+ * `<cross-session-message from="uds:/run/…">` and `<agent-message from="…">` — so it needs the wider
+ * test. Both are plumbing Claude Code enqueues on its own behalf.
+ */
+function opensEnvelope(tag: string, text: string): boolean {
+  const open = text.trimStart();
+  return open.startsWith(`<${tag}>`) || open.startsWith(`<${tag} `);
+}
+
+/**
+ * Envelopes that may sit in the queue and are NOT the operator's words.
+ *
+ * Counted over the 400 newest sessions on one host, 2026-10-01: of 5,738 `enqueue` rows,
+ * `<task-notification>` is 4,906, `<cross-session-message …>` 513 and `<agent-message …>` about 16.
+ * **286 are plain text** — the human's own. So 95 in 100 queued messages are Claude Code talking to
+ * itself, and a queue drawn without this list is a screen of plumbing.
+ *
+ * A DENY list rather than an allow list, deliberately. An allow list of "what a human types" has no
+ * end. If Claude Code adds a seventh envelope, one plumbing line appears in the queue row, which is
+ * visible and fixable; an allow list would instead hide the operator's own message, which is not.
+ */
+const QUEUE_ENVELOPES = [
+  "task-notification",
+  "cross-session-message",
+  "agent-message",
+  "system-reminder",
+  "local-command-caveat",
+  "local-command-stdout",
+  "command-name",
+] as const;
+
+/**
+ * The operator's own queued words, or null for anything else.
+ *
+ * `classifyUserText` is not reused here and the reason is worth stating: it MAPS plumbing onto
+ * something showable — a `task-notification` becomes a `note` carrying its summary, which is right
+ * for a turn that already happened and wrong for a queue. Nothing in the queue is a turn yet. The
+ * only question is "did the operator type this", and the answer is yes or it is nothing.
+ */
+function queuedText(content: JsonValue | undefined): string | null {
+  if (typeof content !== "string") return null;
+  const text = stripAnsi(content).trim();
+  if (text === "") return null;
+  if (QUEUE_ENVELOPES.some((tag) => opensEnvelope(tag, text))) return null;
+  return clamp(text, MAX_QUEUED_CHARS).text;
+}
+
+/**
+ * How much of one queued message the wire carries.
+ *
+ * Short on purpose, and shorter than {@link MAX_TEXT_CHARS}: this is a reminder of what is waiting,
+ * drawn on one row under a working mark, not the message itself. The message arrives as a real turn
+ * the moment the agent starts on it, and that turn carries the whole thing.
+ */
+const MAX_QUEUED_CHARS = 200;
+
+/**
+ * THE MESSAGE QUEUE, as Claude Code records it. `RowReducer.queued`'s one real implementation.
+ *
+ * FOUR OPERATIONS, and the row shapes are measured over 11,181 `queue-operation` rows in the 400
+ * newest sessions here (2026-10-01):
+ *
+ *   `enqueue` (5,602)  `content` — the message. Every row carries one.
+ *   `dequeue` (2,931)  NO `content` at all. It says one came off, never which.
+ *   `remove`  (2,647)  `content` and a `reason`: `absorbed_mid_turn` (2,546) or
+ *                      `delivered_to_agent` (200). Both mean it left the queue.
+ *   `popAll`  (1)      the whole queue is gone.
+ *
+ * `dequeue` carrying nothing is what makes this a FIFO and not a set: the front is the only item a
+ * contentless "one came off" can mean. Replayed over those 400 files, a `dequeue` never once arrived
+ * on an empty queue, so the front really is the answer. A `remove` asked for something not on the
+ * list 107 times, which is the tail-read window starting after an enqueue, so a miss is ordinary and
+ * costs nothing.
+ *
+ * WHAT THIS GETS WRONG, AND IN WHICH DIRECTION. A window that opened between an enqueue and its
+ * dequeue pops the wrong front, so the answer can be short. It can never be long: every item on it
+ * came off an `enqueue` row this reducer actually read. See `RowReducer.queued` for why short is the
+ * side to be wrong on.
+ */
+interface QueueTracker {
+  /** Fold one `queue-operation` row in. Anything unrecognised leaves the queue alone. */
+  readonly apply: (row: JsonObject) => void;
+  /** A SNAPSHOT, so a later `push` cannot change what a caller is holding. */
+  readonly queued: () => readonly string[];
+}
+
+function createQueueTracker(): QueueTracker {
+  let queue: string[] = [];
+  return {
+    apply(row) {
+      const op = row.operation;
+      if (op === "enqueue") {
+        const text = queuedText(row.content);
+        if (text === null) return;
+        queue.push(text);
+        // Oldest off, unlike `rememberPending`: the newest queued message is the one the operator
+        // just typed and is looking for (see QUEUE_MAX).
+        if (queue.length > QUEUE_MAX) queue.shift();
+      } else if (op === "dequeue") {
+        queue.shift();
+      } else if (op === "remove") {
+        const text = queuedText(row.content);
+        // `indexOf`, so a message queued twice loses ONE copy. A filter would drop both.
+        const at = text === null ? -1 : queue.indexOf(text);
+        if (at !== -1) queue.splice(at, 1);
+      } else if (op === "popAll") {
+        queue = [];
+      }
+    },
+    queued: () => [...queue],
+  };
+}
+
+/**
  * Every row type and content-block type this adapter has MET, rendered or dropped (`reduce.ts` §
  * "what a reducer reports about what it could not read"). Anything else is counted and named.
  *
@@ -291,6 +409,9 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
   const pendingTools = new Map<string, PendingTool>();
   // What this reducer met and had no branch for, asked for once per session by the canary.
   const unknown = createUnknownCounter(CLAUDE_KNOWN);
+  // The message queue, which is state and not a turn — one per generation, thrown away with the
+  // reducer when a window resets (`journal/live.ts` § rebuild).
+  const queue = createQueueTracker();
 
   // A nested `function` rather than a method on the returned object: the body below is the old loop
   // body at the indentation it always had, so this refactor is readable as the move it is.
@@ -320,9 +441,15 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     // At the READ, not in the branch that declined: `CLAUDE_KNOWN.rows` holds every name below and
     // the counter drops those, so a type nobody has listed is the one thing that lands in the tally.
     unknown.row(type);
+    // The one bookkeeping row that is READ rather than merely counted, and it makes no turn: what the
+    // operator has typed and the agent has not started on. See {@link createQueueTracker}.
+    if (type === "queue-operation") {
+      queue.apply(row);
+      return NO_CHANGE;
+    }
     // EVERYTHING ELSE IS BOOKKEEPING, and it is a long list. Measured over 462 real session files on
     // 2026-09-30: `attachment`, `last-prompt`, `atis-latch`, `file-history-snapshot`, `mode`,
-    // `permission-mode`, `ai-title`, `cost-state`, `queue-operation`, and `system` with subtypes
+    // `permission-mode`, `ai-title`, `cost-state`, and `system` with subtypes
     // `turn_duration` and `stop_hook_summary`. None of it is conversation and all of it would be
     // noise on a phone. That list is a sample of the kinds; the COMPLETE inventory, including the
     // rows the 2026-09-30 sweep found and this sentence predates, is `CLAUDE_KNOWN` above.
@@ -444,7 +571,7 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     return reduction(entries, changed);
   }
 
-  return { push, unknowns: unknown.tally };
+  return { push, unknowns: unknown.tally, queued: queue.queued };
 }
 
 /**
