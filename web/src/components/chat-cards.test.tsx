@@ -240,15 +240,47 @@ describe("ToolGroup", () => {
     expect(screen.getByText("1 failed")).toBeInTheDocument();
   });
 
+  /** The same run with its last step still in flight, built once — three cases below need it. */
+  const running: ChatItem[] = finished.map((i, k) =>
+    k === 2 ? Object.assign({}, i, { status: "running" as const }) : i,
+  );
+
   it("stays open while a step is still running, so nothing hides work in flight", () => {
-    const items = finished.map((i, k) => (k === 2 ? { ...i, status: "running" as const } : i));
-    render(<ToolGroup items={items} />);
+    render(<ToolGroup items={running} />);
     expect(screen.getByText("Edit")).toBeInTheDocument();
   });
 
   it("stays open while a host has something waiting on a step, because hiding it hides the question", () => {
     withWaiting(<ToolGroup items={finished} />, { b: { id: "ask-1", body: <p>Allow this?</p> } });
     expect(screen.getByText("Allow this?")).toBeInTheDocument();
+  });
+
+  // Tool calls OFF is the reader's standing answer to "do I want to see the steps", and a step that
+  // starts running is not a reason to overrule it. Until 2026-09-30 it was: `groupRuns(items, 1)`
+  // grouped every run, and then a running step opened the group anyway and `held` latched it there,
+  // so a live session drew full cards with the setting off.
+  it("a running step does not open the run once the reader has turned tool calls off", () => {
+    render(<ToolGroup items={running} liveOpens={false} />);
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { expanded: false })).toHaveTextContent(
+      "1 command, 1 edit, 1 read",
+    );
+  });
+
+  it("a reader's own tap still opens it, because a tap is not a tool asking for itself", async () => {
+    const user = userEvent.setup();
+    render(<ToolGroup items={running} liveOpens={false} />);
+    await user.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+  });
+
+  // The memo comparator answers for `items` alone, so the prop had to be added to it. Without that,
+  // a run that mounted while tool calls were on would keep drawing open after they were turned off.
+  it("folds a run that latched open when the reader turns tool calls off", () => {
+    const { rerender } = render(<ToolGroup items={running} liveOpens />);
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+    rerender(<ToolGroup items={running} liveOpens={false} />);
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
   });
 });
 

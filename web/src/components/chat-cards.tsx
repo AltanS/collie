@@ -147,10 +147,20 @@ const FOLD_ROW =
   "flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 export const ToolGroup = memo(
-  function ToolGroup({ items }: { items: ChatItem[] }) {
+  function ToolGroup({ items, liveOpens = true }: { items: ChatItem[]; liveOpens?: boolean }) {
     useLocale();
     const waiting = useContext(CardWaitingCtx);
-    const live = items.some((i) => (i.kind === "tool" && i.status === "running") || waiting[i.id]);
+    // A RUNNING STEP OPENS ITS OWN RUN, UNLESS THE READER SAID NOT TO.
+    //
+    // `liveOpens` is Settings → Appearance's "Tool calls", threaded down. Off, it was honoured only
+    // by `groupRuns(items, 1)` — which decides GROUPING, not whether a group draws open — so a run
+    // with a step still running opened itself anyway, and `held` below then latched it open for
+    // good. In a live session almost every run is running at some point, so "off" folded nothing:
+    // reported 2026-09-30 against a thread of full Run cards with the setting off.
+    //
+    // A tap still opens any run. The reader asking for one is a different act from a tool asking
+    // for itself, and only the second one is refused here.
+    const live = liveOpens && items.some((i) => (i.kind === "tool" && i.status === "running") || waiting[i.id]);
     const [open, setOpen] = useState(false);
     // A run that was live on screen keeps its live layout once it finishes. Folding it the moment
     // its last step is done (the step the reader just allowed, say) would pull the card out from
@@ -176,7 +186,10 @@ export const ToolGroup = memo(
       .map(([n, key]) => tn(key, n))
       .join(", ");
     const failed = tools.filter((step) => step.status === "failed" || step.status === "denied").length;
-    if (open || live || held) {
+    // `held` is READ through `liveOpens` rather than cleared by it: turning tool calls off must fold
+    // a run that latched open while they were on, and a stale `true` behind a false gate says that
+    // without a second state write during render.
+    if (open || live || (held && liveOpens)) {
       const firstWaiting = items.findIndex((i) => waiting[i.id]);
       const start = open
         ? 0
@@ -240,8 +253,12 @@ export const ToolGroup = memo(
     );
   },
   // The waiting slot arrives through a context, and a context change re-renders its consumers
-  // whatever this says, so the comparator only has to answer for the items.
-  (a, b) => a.items.length === b.items.length && a.items.every((x, k) => x === b.items[k]),
+  // whatever this says, so the comparator only has to answer for the items — and for `liveOpens`,
+  // which is a prop, and which a comparator that ignored it would pin to whatever it was on mount.
+  (a, b) =>
+    a.liveOpens === b.liveOpens &&
+    a.items.length === b.items.length &&
+    a.items.every((x, k) => x === b.items[k]),
 );
 
 /**

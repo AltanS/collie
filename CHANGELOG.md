@@ -210,6 +210,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
   glance rather than a read.
 
+- **Tool calls off now actually hides them in a live session.** The setting folded a run of steps to
+  one line, and then a step that was still running opened the run again and kept it open for good.
+  In a live session almost every run is running at some point, so the setting looked like it did
+  nothing. A running step no longer overrules the choice. Your own tap still opens any run.
+
 - **The belt's Display settings open as a sheet, so nothing under them moves.** They rode an in-flow
   panel that took its height out of the pane body, so opening the settings pushed the very thing you
   opened them to look at, and the terminal and Chat lists are different lengths, so switching bodies

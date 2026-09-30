@@ -243,7 +243,7 @@ export function SessionStream({
           {group.length === 1 && (showToolCalls || group[0]!.kind !== "tool") ? (
             <ItemView item={group[0]!} />
           ) : (
-            <ToolGroup items={group} />
+            <ToolGroup items={group} liveOpens={showToolCalls} />
           )}
         </div>
       ))}
