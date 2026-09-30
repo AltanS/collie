@@ -149,6 +149,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   sends, narrow and start-exit, and every one passed. The reader ledger now names 2.1.284 instead
   of 2.1.283.
 
+- **The canary runs pi the way an operator runs it.** pi was launched with `--no-session`, so it
+  wrote no session file, so the journal check spec 05 added could never see pi at all. The flag is
+  gone. pi was also the only agent exempt: Claude, Codex and opencode already write to their own
+  stores on every canary run, because the canary isolates Herdr and deliberately leaves an agent's
+  own configuration alone. `--thinking off` stays, because that one only makes a run cheaper.
+
 ### Fixed
 
 - **A two-pane box pans on a phone instead of losing its right half.** Claude Code's dynamic-workflow
