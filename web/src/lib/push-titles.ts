@@ -1,4 +1,4 @@
-// ── THE PAGE'S HALF OF A TRANSLATED PUSH TITLE (ADR 0071) ───────────────────────────────────────────
+// ── THE PAGE'S HALF OF A TRANSLATED PUSH TITLE (ADR 0074) ───────────────────────────────────────────
 //
 // Keeps the service worker's title table (`lib/push-title-store.ts`) in the language this device
 // shows. Written at boot and again on every change to the locale store, which notifies both when the

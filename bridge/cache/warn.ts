@@ -21,7 +21,7 @@
 // (`web/src/sw.ts` § showNotification). One live warning per watched pane is what is wanted; a stack of
 // stale deadlines is not.
 //
-// The TITLE is a catalogue code (`bridge/push-titles.ts`, ADR 0071), so the phone says it in its own
+// The TITLE is a catalogue code (`bridge/push-titles.ts`, ADR 0074), so the phone says it in its own
 // language. The body's closing rule stays English, as every push body does: a body is the pane's own
 // name and place, and this one sentence is the only Collie prose in any of them.
 

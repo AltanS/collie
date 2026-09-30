@@ -11,7 +11,7 @@ import { zhTW } from "@/lib/i18n/messages/zh-TW";
 import { PUSH_TITLE_CODES } from "@/lib/push-title-codes";
 import { pushTitleTemplates } from "@/lib/push-titles";
 
-// The page's half of a translated push title (ADR 0071). The worker fills a template's `{slot}`s from
+// The page's half of a translated push title (ADR 0074). The worker fills a template's `{slot}`s from
 // the values the bridge sent, so a translation that renamed or dropped a slot would put a hole — or a
 // literal `{agent}` — on a lock screen. Nothing else checks that, because no screen renders these.
 

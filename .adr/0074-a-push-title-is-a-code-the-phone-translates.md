@@ -1,4 +1,4 @@
-# 0071 — A push title is a code the phone translates
+# 0074 — A push title is a code the phone translates
 
 - **Status:** Accepted
 - **Date:** 2026-09-27

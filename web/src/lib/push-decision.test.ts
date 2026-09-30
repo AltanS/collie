@@ -120,7 +120,7 @@ describe("decidePush", () => {
   });
 });
 
-describe("localisedTitle — the headline in this device's language (ADR 0071)", () => {
+describe("localisedTitle — the headline in this device's language (ADR 0074)", () => {
   const korean = { "agent.blocked": "{agent} 입력 대기", "herd.done": "에이전트 {count}개 작업 완료" };
 
   test("a known code with a stored template is filled from the push's own detail", () => {

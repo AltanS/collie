@@ -23,7 +23,7 @@ initDesign();
 // device set to one paints in it from the first frame instead of swapping when /api/config lands.
 initOperatorFonts();
 // Leaves this device's push titles, in its own language, where the service worker can read them —
-// a worker woken by a push cannot see the language setting itself (lib/push-titles.ts, ADR 0071).
+// a worker woken by a push cannot see the language setting itself (lib/push-titles.ts, ADR 0074).
 startPushTitleSync();
 
 const root = document.getElementById("root");

@@ -14,7 +14,7 @@
 //
 // THE CLIENT MIRROR is `web/src/lib/push-title-codes.ts`. The two trees are type-checked separately,
 // so the code list is restated there rather than imported; `bridge/push-titles.test.ts` reads both
-// files off disk and fails when they disagree (ADR 0071).
+// files off disk and fails when they disagree (ADR 0074).
 
 import { renderTemplate, type TemplateDetail } from "./template.ts";
 

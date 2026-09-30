@@ -177,7 +177,7 @@ async function handlePush(event: PushEvent): Promise<void> {
     payload = { body: event.data?.text() };
   }
 
-  // The title in this device's language, from the table the page left (lib/push-titles.ts, ADR 0071).
+  // The title in this device's language, from the table the page left (lib/push-titles.ts, ADR 0074).
   // Read only for a push that names a code: a retraction or an operator-typed test has nothing to
   // translate, and must not wait on storage.
   const templates =

@@ -1338,5 +1338,5 @@ export const zh: Dictionary = {
   "pushTitle.herd.done": "{count} 个 Agent 已完成",
   "pushTitle.herd.mixed": "{count} 个 Agent 需要关注",
   "pushTitle.update.available": "Collie 有可用更新",
-  "pushTitle.cache.cold_soon": "缓存约 {minutes} 分钟后失效",
+  "pushTitle.cache.cold_soon": "缓存约 {minutes} 分钟后变冷",
 };

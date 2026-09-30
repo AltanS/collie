@@ -1332,5 +1332,5 @@ export const zhTW: Dictionary = {
   "pushTitle.herd.done": "{count} 個 Agent 已完成",
   "pushTitle.herd.mixed": "{count} 個 Agent 需要關注",
   "pushTitle.update.available": "Collie 有可用更新",
-  "pushTitle.cache.cold_soon": "快取約 {minutes} 分鐘後冷卻",
+  "pushTitle.cache.cold_soon": "快取約 {minutes} 分鐘後變冷",
 };

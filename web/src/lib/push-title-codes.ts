@@ -6,7 +6,7 @@
 // `bridge/push-titles.test.ts` reads both files off disk and fails when they disagree.
 //
 // Imported by the SERVICE WORKER as well as the page, so it holds no state and imports nothing with a
-// side effect: a push wakes a worker that has no DOM, no `localStorage`, and no i18n store (ADR 0071).
+// side effect: a push wakes a worker that has no DOM, no `localStorage`, and no i18n store (ADR 0074).
 
 /** Every code a push title can carry, in the bridge's own order. */
 export const PUSH_TITLE_CODES = [

@@ -1,7 +1,7 @@
 // How a message's `{slot}`s are filled — the one filler `t()`/`tn()` and the service worker share.
 //
 // Its own module because the service worker needs it and cannot import `./index`: that module reads
-// `localStorage` and stamps `<html lang>` at load, and a worker woken by a push has neither (ADR 0071).
+// `localStorage` and stamps `<html lang>` at load, and a worker woken by a push has neither (ADR 0074).
 // This file holds no state and imports nothing.
 
 /** Values for a message's `{slot}`s. An interface (not `Record<string, …>`) so the index signature

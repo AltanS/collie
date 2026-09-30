@@ -1472,7 +1472,7 @@ export const en = {
   //
   // ONE KEY PER CODE in `lib/push-title-codes.ts`, spelled `pushTitle.<code>`. The bridge sends the
   // English beside the code (bridge/push-titles.ts); the service worker shows THIS translation
-  // instead when the device has one (ADR 0071). `{agent}` is the agent's kind ("claude"), never
+  // instead when the device has one (ADR 0074). `{agent}` is the agent's kind ("claude"), never
   // translated. `{count}` in a `herd.*` title is always 2 or more, so these are not plural pairs.
   "pushTitle.agent.blocked": "{agent} needs you",
   "pushTitle.agent.done": "{agent} is done",

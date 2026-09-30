@@ -10,7 +10,7 @@ import {
   type PushTitleCaches,
 } from "@/lib/push-title-store";
 
-// The table the page leaves for the service worker (ADR 0071). What is pinned here is what fails
+// The table the page leaves for the service worker (ADR 0074). What is pinned here is what fails
 // SILENTLY on a phone: a read that throws instead of falling back to English, a stored value from
 // another build that leaks through, and two mounts on one origin reading each other's language.
 

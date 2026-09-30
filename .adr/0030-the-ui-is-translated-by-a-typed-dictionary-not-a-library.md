@@ -2,7 +2,7 @@
 
 Status: **Accepted** (2026-08-24)
 
-Amended in scope by: [ADR 0071](./0071-a-push-title-is-a-code-the-phone-translates.md): a push
+Amended in scope by: [ADR 0074](./0074-a-push-title-is-a-code-the-phone-translates.md): a push
 notification's title is now translated, through a code the bridge sends beside its English and a
 template table the page leaves for the service worker; push bodies and the service worker's own
 strings stay untranslated, and everything else below stands.

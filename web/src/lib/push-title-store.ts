@@ -1,4 +1,4 @@
-// ── WHERE THE PAGE LEAVES ITS PUSH TITLES FOR THE SERVICE WORKER (ADR 0071) ────────────────────────
+// ── WHERE THE PAGE LEAVES ITS PUSH TITLES FOR THE SERVICE WORKER (ADR 0074) ────────────────────────
 //
 // A push wakes the service worker, and the worker is what decides the words on the lock screen. It
 // cannot read the language the operator chose — that lives in `localStorage`, which a worker has no
