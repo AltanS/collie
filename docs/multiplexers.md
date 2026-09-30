@@ -1,7 +1,7 @@
 # Multiplexers
 
-Collie drives one multiplexer per install: Herdr, tmux or zellij. Herdr is the default. This page
-covers pointing Collie at any of the three, what each backend can answer, and the beacons Collie
+Collie drives one multiplexer per install: Herdr, tmux, zellij or tuios. Herdr is the default. This
+page covers pointing Collie at any of the four, what each backend can answer, and the beacons Collie
 uses to detect an agent in a pane.
 
 ## Pointing Collie at a multiplexer
@@ -19,6 +19,7 @@ Name the multiplexer on the command line:
 COLLIE_MUX=herdr collie start
 COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
+COLLIE_MUX=tuios collie start
 ```
 
 Set the endpoint when the default target is not the one you want:
@@ -37,12 +38,14 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 
 | variable | value | what it means |
 | --- | --- | --- |
-| `COLLIE_MUX` | `herdr`, `tmux` or `zellij` | which backend this install drives |
+| `COLLIE_MUX` | `herdr`, `tmux`, `zellij` or `tuios` | which backend this install drives |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `/run/user/1000/collie-tmux.sock` | a socket PATH (`tmux -S`), because it has a `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `work` | a socket NAME (`tmux -L work`), no `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | empty | tmux's own default server |
 | `COLLIE_MUX_ENDPOINT_ZELLIJ` | `collie-zellij` | a session NAME, not a path |
 | `COLLIE_MUX_ENDPOINT_ZELLIJ` | empty | the single running session |
+| `COLLIE_MUX_ENDPOINT_TUIOS` | `/run/user/1000/tuios/tuios.sock` | the tuios daemon's socket PATH |
+| `COLLIE_MUX_ENDPOINT_TUIOS` | empty | `$XDG_RUNTIME_DIR/tuios/tuios.sock`, else `/tmp/tuios-<uid>/tuios.sock` |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
 
@@ -126,6 +129,39 @@ Zellij sessions persist independently of their initial terminal. Create a sessio
 zellij 0.44.2).
 
 > **Note.** Collie manages active sessions, but it does not create or restart them.
+
+### tuios notes
+
+tuios reports agents itself, so it needs no beacon hooks:
+
+```bash
+COLLIE_MUX=tuios collie start
+tuios integration install claude-code   # once, so tuios hears the agent's hooks
+```
+
+Collie reads the agent, its state and its conversation from the tuios daemon. A pane that waits
+for you shows as blocked, and a pane's history opens when the agent reported its conversation. An
+agent that Collie has no harness for shows as a shell.
+
+Collie shows each tuios session as a space, each workspace as a tab, and each window as a pane. A
+workspace shows as a tab while it holds a pane. A pane that runs on another machine is not shown.
+Point a Collie on that machine at its own tuios.
+
+The endpoint is the daemon's socket. Leave it empty to use the socket that `tuios` itself uses.
+Collie reads `XDG_RUNTIME_DIR` to find it, so make sure the service has that variable. Inside a
+tuios pane, `echo $TUIOS_SOCKET` prints the path.
+
+Collie needs a tuios build from October 2026 or later. With an older daemon, Collie shows the
+bridge as disconnected and the log says what to update.
+
+Some things work differently on tuios:
+
+- A new tab opens on the lowest empty workspace. A session has nine workspaces by default, so
+  Collie refuses a tenth tab.
+- Show in terminal moves every terminal that shows the pane's session, a tuios-web tab included.
+  tuios cannot move a terminal to another session. If no terminal shows the pane's session, Collie
+  refuses and names the session the terminal shows.
+- The worktree section is not shown.
 
 ### Did it work?
 
