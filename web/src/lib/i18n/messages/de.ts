@@ -347,7 +347,10 @@ export const de: Dictionary = {
   "paneOrder.place": "Ort",
   "paneOrder.activity": "Aktivität",
   "paneOrder.recent": "Neueste zuerst",
-  "settings.paneOrder.description": "Aktivität stellt das Pane, in dem zuletzt etwas passiert ist, oben in die Umschaltliste. Ort behält die Reihenfolge deines Terminals.",
+  "paneOrder.cache": "Cache",
+  "paneOrder.coldest": "Zuerst, was kalt wird",
+  "settings.paneOrder.description":
+    "Aktivität stellt das Pane mit dem letzten Ereignis an den Anfang des Umschalters. Cache stellt das Pane dorthin, dessen Prompt-Cache zuerst kalt wird. Ort behält die Reihenfolge deines Terminals.",
   "chat.status.feedbackSent": "Feedback gesendet",
   "chat.status.sent": "Gesendet",
   "chat.status.menuChanged": "Menü geändert, Aktualisierung läuft",

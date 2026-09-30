@@ -342,7 +342,10 @@ export const ja: Dictionary = {
   "paneOrder.place": "場所",
   "paneOrder.activity": "アクティビティ",
   "paneOrder.recent": "新しい順",
-  "settings.paneOrder.description": "アクティビティは、最後に動きがあったペインを切り替えリストの先頭に置きます。場所は、ターミナルの並び順をそのまま保ちます。",
+  "paneOrder.cache": "キャッシュ",
+  "paneOrder.coldest": "冷める順",
+  "settings.paneOrder.description":
+    "アクティビティは最後に何かが起きたペインを切り替え画面の先頭に置きます。キャッシュはプロンプトキャッシュが最も早く切れるペインを先頭に置きます。場所はターミナルの並び順のままにします。",
   "chat.status.feedbackSent": "フィードバックを送信しました",
   "chat.status.sent": "送信完了",
   "chat.status.menuChanged": "メニューが変更されました。更新中",

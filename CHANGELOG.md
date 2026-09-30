@@ -194,6 +194,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   scenarios and were the two versions the drift check was asking about. Another vendor's startup
   prompt is not evidence about our Claude reader. A run with any failure is still a failed run.
 
+### Added
+
+- **The pane switcher can sort by which prompt cache dies first.** A third order beside Place and
+  Activity, and the one with a deadline in it: the pane you should go to next is often neither the
+  one you just left nor the one asking for you, it is the one whose cache you are about to pay to
+  rebuild. A pane with no cache left to lose sinks to the bottom in its usual order. Like Activity,
+  the order is read once when you open the sheet and held there, so a window ticking down never
+  pulls a row out from under your thumb.
+
 ### Fixed
 
 - **A URL an agent typed as itself is now a link you can tap.** Agents write a bare address
@@ -209,6 +218,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   and `70894d` on the next, and a long token now breaks only when it cannot fit a line of its own.
   Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
   glance rather than a read.
+
+- **The pane switcher gives two rows back to the panes.** The alarm line and the order control each
+  took a full row of a phone sheet, above a heading, before the first pane. They now share one row,
+  with the order as glyphs. The heading below still names the order in words, so nothing is lost.
 
 - **Tool calls off now actually hides them in a live session.** The setting folded a run of steps to
   one line, and then a step that was still running opened the run again and kept it open for good.

@@ -20,11 +20,18 @@
 // setting on it. Urgency asks "does a human have to act", and it stays a MARK on every surface.
 // Activity asks "when did anything last happen here", which is the question you have when you want
 // the pane you were just in.
+//
+// Cache is a third question again, and the one with a DEADLINE in it: "which of these am I about to
+// pay to rebuild". A prompt cache expires on its own clock whether or not anyone is looking, so the
+// pane you should go to next is often neither the one you just left nor the one shouting. Both rules
+// above hold for it unchanged: place is still the default, and the reading is still frozen while the
+// list is on screen, so a window ticking down cannot pull a row out from under a thumb.
+import { COLD_GRACE_MS } from "./cache-view";
 import { paneRowKey } from "./hosts";
 import type { JsonValue } from "./json";
 import type { AgentView } from "./types";
 
-export const PANE_ORDERS = ["place", "activity"] as const;
+export const PANE_ORDERS = ["place", "activity", "cache"] as const;
 export type PaneOrder = (typeof PANE_ORDERS)[number];
 
 /** A stored value as an order; anything unknown is the default, place. */
@@ -49,6 +56,38 @@ export function coercePaneOrder(raw: JsonValue | undefined): PaneOrder {
  */
 export function activityAt(pane: AgentView): number {
   return Math.max(pane.lastActiveAt ?? 0, pane.lastSeenAt ?? 0);
+}
+
+/**
+ * When this pane's prompt cache goes cold, as a number to sort ASCENDING: soonest first.
+ *
+ * `Number.MAX_SAFE_INTEGER` for a pane there is nothing left to lose on, and there are four of those:
+ * no reading at all, an `unknown` one, a reading the bridge already calls cold, and one with no
+ * expiry. A pane whose expiry is more than {@link COLD_GRACE_MS} past is counted with them, because
+ * that is the same edge the chip reads (`lib/cache-view.ts`) and two places answering "is this cold"
+ * differently is how a row and its own chip come to disagree.
+ *
+ * They then rank LAST as a block in place order, which is the same way `activityAt`'s zero degrades:
+ * "soonest cold first" is a question about a cache you still have, so a list of panes with none reads
+ * as place order rather than as noise.
+ *
+ * The sentinel is a real integer and not `Infinity` on purpose: the comparator below subtracts, and
+ * `Infinity - Infinity` is `NaN`, which `toSorted` reads as "these are equal" only by accident.
+ */
+export function coldAt(pane: AgentView, now: number): number {
+  const cache = pane.cache;
+  if (cache === undefined || cache.state === "unknown" || cache.state === "cold") return Number.MAX_SAFE_INTEGER;
+  if (cache.expiresAt === undefined) return Number.MAX_SAFE_INTEGER;
+  return cache.expiresAt - now <= -COLD_GRACE_MS ? Number.MAX_SAFE_INTEGER : cache.expiresAt;
+}
+
+/**
+ * ONE READING of the herd by how soon each cache dies, as ranks. Same freeze rule as
+ * {@link activityRanks}: taken when the operator opens the list or taps, and not again.
+ */
+export function cacheRanks(panes: readonly AgentView[], now: number): Map<string, number> {
+  const ranked = panes.toSorted((a, b) => coldAt(a, now) - coldAt(b, now));
+  return new Map(ranked.map((p, i) => [paneRowKey(p), i]));
 }
 
 /**

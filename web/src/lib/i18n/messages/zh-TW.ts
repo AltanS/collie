@@ -328,7 +328,10 @@ export const zhTW: Dictionary = {
   "paneOrder.place": "位置",
   "paneOrder.activity": "活動",
   "paneOrder.recent": "最新優先",
-  "settings.paneOrder.description": "「活動」把最近有動靜的窗格放在切換清單的最上面。「位置」保持終端機本身的順序。",
+  "paneOrder.cache": "快取",
+  "paneOrder.coldest": "最快變冷優先",
+  "settings.paneOrder.description":
+    "活動會把最近發生過事情的窗格放在切換器頂部。快取會把提示快取最快失效的窗格放在頂部。位置則保持終端機本身的順序。",
   "chat.status.feedbackSent": "回饋已傳送",
   "chat.status.sent": "已傳送",
   "chat.status.menuChanged": "選單已變動，正在重新整理",

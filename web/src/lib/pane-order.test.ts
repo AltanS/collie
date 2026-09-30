@@ -1,4 +1,4 @@
-import { activityAt, activityRanks, coercePaneOrder, inRankOrder } from "./pane-order";
+import { activityAt, activityRanks, cacheRanks, coercePaneOrder, coldAt, inRankOrder } from "./pane-order";
 import { paneRowKey } from "./hosts";
 import type { AgentView } from "./types";
 
@@ -25,9 +25,10 @@ function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
 const keys = (panes: readonly AgentView[]): string[] => panes.map((p) => p.paneId);
 
 describe("coercePaneOrder", () => {
-  it("takes the two it knows and reads anything else as place", () => {
+  it("takes the three it knows and reads anything else as place", () => {
     expect(coercePaneOrder("activity")).toBe("activity");
     expect(coercePaneOrder("place")).toBe("place");
+    expect(coercePaneOrder("cache")).toBe("cache");
     // A stored value from a build that spelled it differently, a typo, and nothing at all: all place,
     // so an install that was never told otherwise behaves as it did.
     expect(coercePaneOrder("recent")).toBe("place");
@@ -118,5 +119,65 @@ describe("activityRanks and inRankOrder", () => {
     const panes = [pane("old", { lastActiveAt: 1 }), pane("new", { lastActiveAt: 900 })];
     inRankOrder(panes, activityRanks(panes));
     expect(keys(panes)).toEqual(["old", "new"]);
+  });
+});
+
+// The third order (2026-09-30). Same two rules as activity: place stays the default, and the reading
+// is taken once. What differs is the question — "which of these am I about to pay to rebuild" — and
+// therefore what "nothing to say" means: a cache you have already lost is not one that is going.
+describe("coldAt", () => {
+  const NOW = 1_700_000_000_000;
+  const warm = (over: Partial<AgentView["cache"] & object>): AgentView =>
+    pane("p", { cache: { state: "warm", ttlSeconds: 300, ruleId: "r", confidence: "documented", ...over } });
+
+  it("is the expiry itself while there is still a cache to lose", () => {
+    expect(coldAt(warm({ expiresAt: NOW + 60_000 }), NOW)).toBe(NOW + 60_000);
+  });
+
+  it("ranks last every pane there is nothing left to lose on", () => {
+    const last = Number.MAX_SAFE_INTEGER;
+    expect(coldAt(pane("p"), NOW)).toBe(last);
+    expect(coldAt(warm({ state: "unknown", expiresAt: NOW + 60_000 }), NOW)).toBe(last);
+    expect(coldAt(warm({ state: "cold", expiresAt: NOW + 60_000 }), NOW)).toBe(last);
+    expect(coldAt(warm({}), NOW)).toBe(last);
+  });
+
+  // The same edge the chip reads, so a row and its own hourglass cannot disagree about one pane.
+  it("holds a just-expired reading through the grace, and drops it after", () => {
+    expect(coldAt(warm({ expiresAt: NOW - 9_000 }), NOW)).toBe(NOW - 9_000);
+    expect(coldAt(warm({ expiresAt: NOW - 11_000 }), NOW)).toBe(Number.MAX_SAFE_INTEGER);
+  });
+});
+
+describe("cacheRanks", () => {
+  const NOW = 1_700_000_000_000;
+  const withCache = (id: string, msLeft: number | null): AgentView =>
+    pane(id, {
+      cache:
+        msLeft === null
+          ? undefined
+          : { state: "warm", ttlSeconds: 300, ruleId: "r", confidence: "documented", expiresAt: NOW + msLeft },
+    });
+
+  it("puts the cache that dies soonest first", () => {
+    const panes = [withCache("late", 600_000), withCache("soon", 60_000), withCache("mid", 300_000)];
+    const ranks = cacheRanks(panes, NOW);
+    expect(keys(inRankOrder(panes, ranks))).toEqual(["soon", "mid", "late"]);
+  });
+
+  it("sinks the panes with no cache to the bottom as a block, in place order", () => {
+    const panes = [withCache("none-a", null), withCache("soon", 60_000), withCache("none-b", null)];
+    const ranks = cacheRanks(panes, NOW);
+    expect(keys(inRankOrder(panes, ranks))).toEqual(["soon", "none-a", "none-b"]);
+  });
+
+  // The whole point of a rank map rather than a live sort: a window ticking down must not move a row
+  // under a thumb. The reading is the sheet's, and it is taken once.
+  it("is a reading, so a minute passing does not move anything", () => {
+    const panes = [withCache("late", 600_000), withCache("soon", 60_000)];
+    const ranks = cacheRanks(panes, NOW);
+    expect(keys(inRankOrder(panes, ranks))).toEqual(["soon", "late"]);
+    // `soon` is now cold and `late` is not, and the list still draws what the reader was handed.
+    expect(keys(inRankOrder(panes, ranks))).toEqual(["soon", "late"]);
   });
 });

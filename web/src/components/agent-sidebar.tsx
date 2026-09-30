@@ -10,7 +10,7 @@ import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { pinnedRows, shownGroups } from "@/lib/dash-view";
 import { paneRowKey } from "@/lib/hosts";
 import { groupPanesByWorkspace } from "@/lib/pane-groups";
-import { activityRanks, inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import { activityRanks, cacheRanks, inRankOrder, type PaneOrder } from "@/lib/pane-order";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { shortenHome } from "@/lib/shorten-home";
@@ -95,14 +95,15 @@ interface ThreadSidebarProps {
 // needs you and jumps to the first of it.
 //
 // THE ORDER IS THE OPERATOR'S, AND IT STILL DOES NOT MOVE (ADR 0071). Place order is the default and
-// is unchanged. Activity order is the one alternative ADR 0063's closing clause allows, "a toggle the
-// operator taps and watches": it reads the clock once, when the sheet opens, and holds that reading
-// until the operator taps again. So the sentence above survives the new setting rather than being
-// weakened by it. A pane that finishes a turn while the sheet is up still repaints where it stands.
+// is unchanged. Activity and Cache are the alternatives ADR 0063's closing clause allows, "a toggle
+// the operator taps and watches": each reads the clock once, when the sheet opens, and holds that
+// reading until the operator taps again. So the sentence above survives the new settings rather than
+// being weakened by them. A pane that finishes a turn while the sheet is up still repaints where it
+// stands, and so does one whose cache window ticks down under the reader's thumb.
 //
 // The two long tails still fold: 30-odd bare shells, and the Launch rows, using the dashboard's own
-// header primitive and remembering it. In activity order the sections and the Shells fold give way to
-// one list, for the reason at `activityRows`.
+// header primitive and remembering it. In either ranked order the sections and the Shells fold give
+// way to one list, for the reason at `rankedRows`.
 //
 // This device's pinned panes lead the sheet in a Pinned section (ADR 0070), in the dashboard's place
 // order, each listed once. The sheet stays switch-only: pinning lives in the pane menu.
@@ -127,7 +128,12 @@ interface FrozenOrder {
 }
 
 function readOrder(order: PaneOrder, agents: readonly AgentView[], shells: readonly AgentView[]): FrozenOrder {
-  return { order, ranks: order === "activity" ? activityRanks([...agents, ...shells]) : NO_RANKS };
+  if (order === "place") return { order, ranks: NO_RANKS };
+  const panes = [...agents, ...shells];
+  // `Date.now()` and not the cache clock's tick: this is the FREEZE, taken once when the operator
+  // opens the list or taps. Subscribing to a clock that moves every second is the exact fault
+  // ADR 0063 closes.
+  return { order, ranks: order === "activity" ? activityRanks(panes) : cacheRanks(panes, Date.now()) };
 }
 
 /** A DOM id for a pane row, so the summary line can scroll to it and focus it. */
@@ -206,15 +212,19 @@ export function ThreadSidebar({
   // used a minute ago has to be able to outrank an agent you have not opened all day. The fold goes
   // with the sections and is not missed: the long tail it protected against is precisely what sinks
   // to the bottom once the newest rows lead.
-  const activityRows =
-    order === "activity" ? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], frozen.ranks) : NO_PANES;
+  // Place keeps its workspace sections; BOTH ranked orders collapse to one list, for the same reason:
+  // a rank crosses every workspace, and a heading cannot answer a question asked across all of them.
+  const ranked = order !== "place";
+  const rankedRows = ranked
+    ? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], frozen.ranks)
+    : NO_PANES;
 
   const urgent = agents.filter((a) => URGENT.has(bucketOf(a)));
   // The first urgent row in DISPLAY order, not in the order the list arrived in: in Pinned when a
   // pinned pane needs you, and in whichever order the rows below it are running in.
   const firstUrgent = [
     ...pinnedShown,
-    ...(order === "activity" ? activityRows : sections.flatMap((g) => g.rows)),
+    ...(ranked ? rankedRows : sections.flatMap((g) => g.rows)),
   ].find((a) => URGENT.has(bucketOf(a)));
   const jumpTo = (pane: AgentView) => {
     const row = document.getElementById(rowDomId(pane));
@@ -228,23 +238,31 @@ export function ThreadSidebar({
         <p className="px-2 py-2 text-sm text-muted-foreground">{t("home.empty.noAgents")}</p>
       )}
 
-      {agents.length > 0 && (
-        // ONE slot, always drawn while there are agents, so the groups below never shift when the
-        // first pane needs you or the last one is answered. The dashboard's own line, over the urgent
-        // panes alone: "Nothing needs you", or the counts with their words.
-        <StatusSummaryLine
-          panes={urgent}
-          allClear={firstUrgent === undefined}
-          onJump={firstUrgent === undefined ? undefined : () => jumpTo(firstUrgent)}
-          className="px-2"
-        />
-      )}
+      {/* ONE CHROME ROW, not two. The summary line is the alarm and keeps the left, where ADR 0063
+          point 3 puts urgency; the order control takes the right as glyphs. Stacked, these cost two
+          full rows plus a heading before the first pane, which on a phone was most of what the sheet
+          had to give (reported 2026-09-30). The heading below still names the order in words, so
+          dropping the labels here loses nothing a reader needs.
 
-      {/* PLACE OR ACTIVITY (ADR 0071), directly under the summary line and above every row it
-          reorders. Under, not over: the summary line is the alarm, and ADR 0063 point 3 gives urgency
-          one place to go, at the top. The toggle is chrome about the list below it. */}
-      {onOrderChange && !noPanes && (
-        <PaneOrderToggle order={order} onChange={onOrderChange} className="px-2" />
+          The row is drawn while EITHER half has something, and the summary line keeps a slot of its
+          own while there are agents, so the rows below never shift when the first pane needs you or
+          the last one is answered. */}
+      {(agents.length > 0 || (onOrderChange && !noPanes)) && (
+        <div className="flex items-center justify-between gap-2 px-2">
+          {agents.length > 0 ? (
+            <StatusSummaryLine
+              panes={urgent}
+              allClear={firstUrgent === undefined}
+              onJump={firstUrgent === undefined ? undefined : () => jumpTo(firstUrgent)}
+              className="min-w-0 flex-1"
+            />
+          ) : (
+            <span className="flex-1" />
+          )}
+          {onOrderChange && !noPanes && (
+            <PaneOrderToggle order={order} onChange={onOrderChange} compact />
+          )}
+        </div>
       )}
 
       {/* The Pinned section, in the section voice Shells and Launch wear, with no dot and no count,
@@ -263,19 +281,21 @@ export function ThreadSidebar({
         </Section>
       )}
 
-      {order === "activity" ? (
+      {ranked ? (
         // The one flat list. It keeps the workspace sections' own row ink and marks — a row still
         // wears its alarm edge and the place under its name — so only the ORDER differs from place
         // order, never what a row says about itself. No dot on the heading: the summary line above
         // already counts what needs you, and a heading over every pane would always carry one.
-        activityRows.length > 0 && (
+        //
+        // The heading NAMES THE ORDER, which is what pays for the compact glyphs in the row above.
+        rankedRows.length > 0 && (
           <Section
             id="switch-activity"
-            label={t("paneOrder.recent")}
-            count={activityRows.length}
+            label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+            count={rankedRows.length}
             tone="strong"
           >
-            {activityRows.map((a) => (
+            {rankedRows.map((a) => (
               <PaneRow
                 key={paneRowKey(a)}
                 id={rowDomId(a)}

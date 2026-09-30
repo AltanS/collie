@@ -380,7 +380,10 @@ export const en = {
   "paneOrder.place": "Place",
   "paneOrder.activity": "Activity",
   "paneOrder.recent": "Newest first",
-  "settings.paneOrder.description": "Activity puts the pane where something last happened at the top of the switcher. Place keeps the order your terminal has.",
+  "paneOrder.cache": "Cache",
+  "paneOrder.coldest": "Going cold first",
+  "settings.paneOrder.description":
+    "Activity puts the pane where something last happened at the top of the switcher. Cache puts the one whose prompt cache dies soonest there. Place keeps the order your terminal has.",
   "chat.status.feedbackSent": "Feedback sent",
   "chat.status.sent": "Sent",
   "chat.status.menuChanged": "Menu changed — refreshing",

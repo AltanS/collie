@@ -612,11 +612,54 @@ describe("ThreadSidebar: the order toggle", () => {
     expect(screen.queryByRole("radiogroup", { name: "Pane order" })).toBeNull();
   });
 
-  it("offers Place and Activity, with Place selected by default", () => {
+  it("offers Place, Activity and Cache, with Place selected by default", () => {
     render(<ThreadSidebar agents={herd} currentPaneKey="" onSelect={vi.fn()} onOrderChange={vi.fn()} />);
     const group = screen.getByRole("radiogroup", { name: "Pane order" });
     expect(within(group).getByRole("radio", { name: "Place" })).toBeChecked();
     expect(within(group).getByRole("radio", { name: "Activity" })).not.toBeChecked();
+    // Glyphs only on this surface, so the NAME has to come off the aria-label. Hiding a word from
+    // the eye must not hide it from a screen reader.
+    expect(within(group).getByRole("radio", { name: "Cache" })).not.toBeChecked();
+  });
+
+  // The sheet is a phone screen. The summary line and the order control shared two full rows plus a
+  // heading before the first pane, which was most of what the sheet had to give (2026-09-30).
+  it("keeps the alarm and the order control on one row", () => {
+    render(<ThreadSidebar agents={herd} currentPaneKey="" onSelect={vi.fn()} onOrderChange={vi.fn()} />);
+    const group = screen.getByRole("radiogroup", { name: "Pane order" });
+    const row = group.parentElement!;
+    // The alarm is the one button on that row that is not a segment of the control.
+    const summary = [...row.querySelectorAll("button")].find((b) => b.getAttribute("role") !== "radio");
+    expect(summary).toBeDefined();
+    expect(summary!.textContent).toMatch(/needs you/i);
+  });
+
+  it("puts the cache that dies soonest first, and names the order in the heading", () => {
+    const now = Date.now();
+    const cached = (pane: AgentView, msLeft: number | null): AgentView => ({
+      ...pane,
+      cache:
+        msLeft === null
+          ? undefined
+          : { state: "warm", ttlSeconds: 300, ruleId: "r", confidence: "documented", expiresAt: now + msLeft },
+    });
+    render(
+      <ThreadSidebar
+        agents={[cached(herd[0]!, 600_000), cached(herd[1]!, null), cached(herd[2]!, 60_000)]}
+        currentPaneKey=""
+        onSelect={vi.fn()}
+        order="cache"
+        onOrderChange={vi.fn()}
+      />,
+    );
+    // The heading is what the compact glyphs buy back: it says which order is on screen, in words.
+    expect(headings()).toEqual([expect.stringContaining("Going cold first")]);
+    expect(names()).toEqual([
+      expect.stringContaining("sandbox"),
+      expect.stringContaining("webapp"),
+      // No reading at all, so it ranks last rather than first.
+      expect.stringContaining("collie"),
+    ]);
   });
 
   it("reports a tap and changes nothing itself", async () => {
