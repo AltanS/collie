@@ -367,7 +367,13 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
     }
-    if (draftCarriesSend(args.text, draft) && (chunks.length === 1 || (draft !== previousDraft && carriesReplyTail(args.text, draft)))) return submitOnly(args, verifiedPrompt);
+    // The tail check applies to single-chunk sends too, not just multi-chunk: the substring
+    // matcher above accepts a prefix of the echo, and binding that partial row makes the bridge's
+    // exact check refuse the submit (promptBinding not_found) while the text sits delivered in the
+    // box — three stalls in the 2026-09-27 audit trail. A complete echo is the final state, so once
+    // the tail is on screen the bound region is stable; token-collapsed sends still route to the
+    // adapter's second look below, which is its purpose.
+    if (draftCarriesSend(args.text, draft) && carriesReplyTail(args.text, draft) && (chunks.length === 1 || draft !== previousDraft)) return submitOnly(args, verifiedPrompt);
     // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
     // paint a token of its own instead (Claude collapses anything past its paste threshold into
     // `[Pasted text #N +M lines]`), so the box never holds our words and the match above structurally
