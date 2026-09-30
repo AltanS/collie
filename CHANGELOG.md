@@ -183,6 +183,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   one. The reader also held two glyph sets that disagreed about whether `─` and `│` were border
   glyphs, and there is one set now. Thanks @AndiWandHerd (#319).
 
+- **Two Chinese catalogues said a cache had expired when it had only gone cold.** A cold cache still
+  works, it only costs more, so the word carries a fact. The Simplified Chinese notification setting
+  read 缓存即将失效, which claims the cache became invalid, while the two strings next to it already
+  said 变冷. Traditional Chinese said 冷卻 where its own neighbours say 變冷, which was consistency
+  rather than fact. Both now use the wording their catalogue already uses everywhere else.
+
 ### Docs
 
 - **Every Settings path in the docs names its section.** The settings page became an index of four
