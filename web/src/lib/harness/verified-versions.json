@@ -41,11 +41,11 @@
       }
     },
     "omp": {
-      "version": "18.1.19",
-      "verified": "2026-09-13",
+      "version": "18.4.4",
+      "verified": "2026-09-30",
       "how": "capture",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md § \"OMP `/tree` capture (2026-09-13, oh-my-pi `omp` v18.1.19, throwaway Herdr pane)\" — the newest of the omp corpus sections",
+      "evidence": "web/src/fixtures/panes/README.md § \"OMP empty-editor key hint (captured 2026-09-30, oh-my-pi `omp` v18.4.4, herdr 0.9.2, throwaway Herdr panes)\" — the empty-editor hint in the boxed, rule and pi composers only; the modal grammars were last seen on 18.1.19 (§ \"OMP `/tree` capture\")",
       "journal": {
         "version": "18.1.19",
         "verified": "2026-09-30",
