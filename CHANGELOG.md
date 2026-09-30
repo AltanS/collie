@@ -145,10 +145,6 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The theme card is called Theme.** It was called Appearance, which is now the name of the
   section it sits in, and a page that says Appearance twice tells you nothing the second time.
 
-- **Claude Code 2.1.284 is verified.** The canary ran all five scenarios against it, idle, drafts,
-  sends, narrow and start-exit, and every one passed. The reader ledger now names 2.1.284 instead
-  of 2.1.283.
-
 - **Claude Code 2.1.285, opencode 1.18.33 and pi 0.87.1 are verified, for both readers.** The canary
   ran all six scenarios against each of them, idle, drafts, sends, journal, narrow and start-exit,
   and every one passed. `journal` is the new scenario: it parses the canary's own session with the
