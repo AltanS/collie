@@ -36,6 +36,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   started with `/`, so every Windows folder was refused. It now reads a path the way the host does, and
   the install check, the link check and the update smoke test find `collie.exe` instead of a bare
   `collie`. Nothing changes on Linux or macOS.
+- **A fresh omp session no longer shows a draft in the terminal.** omp 18.4 paints a key hint,
+  Shift+Tab to change thinking effort, into an empty editor. The omp reader took the hint's key
+  glyphs for a typed draft, so every new session showed "Draft in terminal" with Take over. The
+  reader now knows the hint's shape in all three composer layouts and reads the editor as empty.
 
 ## [1.15.2] - 2026-10-02
 

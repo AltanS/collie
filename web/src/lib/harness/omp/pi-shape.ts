@@ -1,5 +1,5 @@
 import type { StyledLine } from "../../blocks";
-import { draftGhost, lineText, opensBox, rstrip } from "./markers";
+import { draftGhost, draftPlaceholder, lineText, opensBox, rstrip } from "./markers";
 
 export interface PiComposer {
   top: number;
@@ -44,6 +44,10 @@ export function locatePiComposer(lines: StyledLine[]): PiComposer | null {
 }
 
 export function piDraft(lines: StyledLine[], box: PiComposer): string | null {
+  if (box.bottom - box.firstDraftRow === 1) {
+    const row = lines[box.firstDraftRow]!;
+    if (draftPlaceholder(row, 1, rstrip(lineText(row)).length)) return null;
+  }
   const draft = lines.slice(box.firstDraftRow, box.bottom)
     .map((line, i) => {
       const text = rstrip(lineText(line));
