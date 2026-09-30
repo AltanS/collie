@@ -210,6 +210,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
   glance rather than a read.
 
+- **A bulleted list now reads at the same pace as a paragraph.** A list took the base line height
+  and a paragraph took the relaxed one, so the same prose was set two different ways depending on
+  whether it had a bullet in front of it. A list was also the one place a code chip did not fit its
+  line: two chips on consecutive wrapped lines touched. Lists and block quotes take the paragraph's
+  own leading now, and the chip is a millimetre shorter so it sits inside the line rather than
+  pushing it apart.
+
 - **Loading older turns in Chat keeps your place instead of throwing you to the top.** The tap puts
   forty turns in above what you are reading, and the scroller held its offset, so the block you were
   on slid down by the whole height of the new page. It gives that height back once the page paints,

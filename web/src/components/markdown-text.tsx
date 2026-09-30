@@ -63,8 +63,14 @@ function Span({ span }: { span: MdSpan }) {
       // on, so a short sha split as `6c` / `70894d` across two lines with room to spare on the next
       // one. `anywhere` breaks only a token that cannot fit a line of its own, which is the case the
       // rule was there for.
+      //
+      // THE VERTICAL PADDING IS 1px AND THAT IS A MEASUREMENT, not a taste. A chip is a box around a
+      // MONO glyph inside a PROPORTIONAL line: the mono content area is 17px at this size, so `py-0.5`
+      // plus the 1px edge made the box 23px tall inside a 22.75px line, and two chips on consecutive
+      // wrapped lines touched. At 1px the box is 19px and the rhythm holds. The horizontal padding
+      // is untouched; that one is only ever about the glyphs.
       return (
-        <code className="rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-0.5 font-mono text-[0.9em] text-status-info wrap-anywhere">
+        <code className="rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] text-status-info wrap-anywhere">
           <Hit text={span.text} />
         </code>
       );
@@ -127,9 +133,12 @@ function Block({ block }: { block: MdBlock }) {
       );
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";
+      // `leading-relaxed`, the same as a paragraph. Without it a list took `text-sm`'s own 20px line
+      // and a paragraph took 22.75px, so the SAME prose read at two different paces depending on
+      // whether it had a bullet in front of it, and a list was the one place a code chip did not fit.
       return (
         <Tag
-          className={`ml-4 space-y-0.5 ${block.ordered ? "list-decimal" : "list-disc"} marker:text-muted-foreground`}
+          className={`ml-4 space-y-0.5 leading-relaxed ${block.ordered ? "list-decimal" : "list-disc"} marker:text-muted-foreground`}
         >
           {block.items.map((item, i) => (
             <li key={i} className="pl-0.5">
@@ -141,7 +150,7 @@ function Block({ block }: { block: MdBlock }) {
     }
     case "quote":
       return (
-        <blockquote className="border-l-2 pl-2.5 text-muted-foreground italic">
+        <blockquote className="border-l-2 pl-2.5 leading-relaxed text-muted-foreground italic">
           <Spans spans={block.spans} />
         </blockquote>
       );
