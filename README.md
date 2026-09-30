@@ -12,11 +12,15 @@
   <sub>A real Collie build running in the page against faked data.</sub>
 </p>
 
-Collie is an open-source (MIT), self-hosted mobile web app for driving terminal AI agents such as
-Claude Code, Codex and OpenCode from your phone. Each instance connects to one multiplexer:
-[Herdr](https://herdr.dev), [tmux](https://github.com/tmux/tmux), or [zellij](https://zellij.dev).
-It is served over Tailscale by default. Open the URL on an iPhone or Android phone to see which
-agent needs input and respond directly from your mobile keyboard.
+ColliePWA is an open-source (MIT) mobile client for [Herdr](https://herdr.dev), with experimental
+support for [tmux](https://github.com/tmux/tmux) and [zellij](https://zellij.dev). It is a
+self-hosted web app (PWA) for driving terminal AI agents such as Claude Code, Codex and OpenCode
+from your phone. Each instance connects to one multiplexer. It is served over Tailscale by default.
+Open the URL on an iPhone or Android phone to see which agent needs input and respond directly from
+your mobile keyboard.
+
+Using Herdr? Read about the
+[Herdr mobile client](https://colliepwa.dev/herdr-mobile-client?utm_source=github&utm_medium=readme&utm_campaign=collie&utm_content=herdr).
 
 The input box uses a standard text field compatible with system voice dictation. Collie also
 includes built-in [voice input](./docs/voice-and-push.md#voice-input-optional) that remains disabled
