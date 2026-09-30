@@ -189,6 +189,18 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   said 变冷. Traditional Chinese said 冷卻 where its own neighbours say 變冷, which was consistency
   rather than fact. Both now use the wording their catalogue already uses everywhere else.
 
+- **German, Japanese and Korean said a cache had expired, and German said it was idle.** The same
+  wrong fact sat in three strings in each of those catalogues. German is the worst of the three:
+  "inaktiv" is German's own word for an IDLE pane, so one word named two different states. Each
+  catalogue now uses the word its own cache chip already uses, "kalt" in German, コールド in Japanese
+  and 콜드 in Korean. Nothing was newly translated; the word was already in the file.
+
+- **A notification about a finished agent now uses the same word as the app.** German said "ist
+  fertig" and Spanish "ha terminado", while the status chip in the app says "abgeschlossen" and
+  "completado". Every other push title matches its chip, so these two were the exception. Both carry
+  the chip's word now, with an object, because German "ist abgeschlossen" is wrong for an actor and a
+  bare "hat abgeschlossen" can be read as having locked up.
+
 ### Docs
 
 - **Every Settings path in the docs names its section.** The settings page became an index of four

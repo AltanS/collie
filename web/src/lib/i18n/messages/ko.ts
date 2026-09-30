@@ -88,7 +88,7 @@ export const ko: Dictionary = {
   "settings.notify.done.hint": "에이전트 작업이 끝났을 때",
   "settings.notify.updates.label": "앱 업데이트",
   "settings.notify.updates.hint": "새로운 Collie 버전이 릴리스되었을 때",
-  "settings.notify.cache.label": "캐시 만료 임박",
+  "settings.notify.cache.label": "캐시 콜드 임박",
   "settings.notify.cache.hint":
     "창의 프롬프트 캐시가 몇 분 내에 만료됩니다. 개별적으로 주시한 창도 포함됩니다.",
   "settings.notify.watched.title": "주시 중인 창",
@@ -371,7 +371,7 @@ export const ko: Dictionary = {
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "창 설정",
-  "paneSettings.cacheWatch.label": "이 창의 캐시가 만료되기 전에 알림을 받습니다",
+  "paneSettings.cacheWatch.label": "이 창의 캐시가 콜드 상태가 되기 전에 알림을 받습니다",
   "paneSettings.cacheWatch.hint": "만료되기 약 {minutes}분 전",
   "paneSettings.cacheWatch.pushOff": "먼저 설정에서 이 기기의 알림을 켜십시오.",
   "paneSettings.cacheWatch.globalOn": "설정에서 모든 창에 대해 경고하므로 이 창도 포함됩니다.",
@@ -1352,5 +1352,5 @@ export const ko: Dictionary = {
   "pushTitle.herd.done": "에이전트 {count}개 작업 완료",
   "pushTitle.herd.mixed": "에이전트 {count}개 확인 필요",
   "pushTitle.update.available": "Collie 업데이트 가능",
-  "pushTitle.cache.cold_soon": "약 {minutes}분 후 캐시 만료",
+  "pushTitle.cache.cold_soon": "약 {minutes}분 후 캐시 콜드",
 };

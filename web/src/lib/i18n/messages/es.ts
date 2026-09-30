@@ -1364,9 +1364,9 @@ export const es: Dictionary = {
 
   // --- pushTitle ---
   "pushTitle.agent.blocked": "{agent} requiere atención",
-  "pushTitle.agent.done": "{agent} ha terminado",
+  "pushTitle.agent.done": "{agent} ha completado su trabajo",
   "pushTitle.herd.blocked": "{count} agentes requieren atención",
-  "pushTitle.herd.done": "{count} agentes han terminado",
+  "pushTitle.herd.done": "{count} agentes han completado su trabajo",
   "pushTitle.herd.mixed": "{count} agentes necesitan atención",
   "pushTitle.update.available": "Actualización de Collie disponible",
   "pushTitle.cache.cold_soon": "La caché se enfría en unos {minutes} min",

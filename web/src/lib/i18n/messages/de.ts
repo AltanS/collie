@@ -90,7 +90,7 @@ export const de: Dictionary = {
   "settings.notify.done.hint": "ein Agent schließt seine Aufgabe ab",
   "settings.notify.updates.label": "App-Updates",
   "settings.notify.updates.hint": "eine neue Collie-Version ist verfügbar",
-  "settings.notify.cache.label": "Cache wird bald inaktiv",
+  "settings.notify.cache.label": "Cache wird bald kalt",
   "settings.notify.cache.hint":
     "Der Prompt-Cache eines Panes läuft in wenigen Minuten ab; deckt auch Panes ab, die Sie einzeln beobachten",
   "settings.notify.watched.title": "Beobachtete Panes",
@@ -378,7 +378,7 @@ export const de: Dictionary = {
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane-Einstellungen",
-  "paneSettings.cacheWatch.label": "Warnen, bevor der Cache dieses Panes inaktiv wird",
+  "paneSettings.cacheWatch.label": "Warnen, bevor der Cache dieses Panes kalt wird",
   "paneSettings.cacheWatch.hint": "etwa {minutes} Minuten vor dem Ablauf",
   "paneSettings.cacheWatch.pushOff": "Aktivieren Sie zuerst Benachrichtigungen für dieses Gerät in den Einstellungen.",
   "paneSettings.cacheWatch.globalOn": "Die Einstellungen warnen vor jedem Pane, dieses ist also abgedeckt.",
@@ -1368,10 +1368,10 @@ export const de: Dictionary = {
 
   // --- pushTitle ---
   "pushTitle.agent.blocked": "{agent} wartet auf Eingabe",
-  "pushTitle.agent.done": "{agent} ist fertig",
+  "pushTitle.agent.done": "{agent} hat die Arbeit abgeschlossen",
   "pushTitle.herd.blocked": "{count} Agenten warten auf Eingabe",
-  "pushTitle.herd.done": "{count} Agenten fertig",
+  "pushTitle.herd.done": "{count} Agenten haben die Arbeit abgeschlossen",
   "pushTitle.herd.mixed": "{count} Agenten brauchen Aufmerksamkeit",
   "pushTitle.update.available": "Collie-Update verfügbar",
-  "pushTitle.cache.cold_soon": "Cache wird in etwa {minutes} Min. inaktiv",
+  "pushTitle.cache.cold_soon": "Cache wird in etwa {minutes} Min. kalt",
 };

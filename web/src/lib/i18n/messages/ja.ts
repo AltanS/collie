@@ -87,7 +87,7 @@ export const ja: Dictionary = {
   "settings.notify.done.hint": "エージェントがタスクを完了したとき",
   "settings.notify.updates.label": "アップデート",
   "settings.notify.updates.hint": "新しい Collie のリリースが存在するとき",
-  "settings.notify.cache.label": "キャッシュがまもなく失効します",
+  "settings.notify.cache.label": "キャッシュがまもなくコールドになります",
   "settings.notify.cache.hint":
     "ペインのプロンプトキャッシュが数分で期限切れになります。個別に監視しているペインも対象です。",
   "settings.notify.watched.title": "監視中のペイン",
@@ -373,7 +373,7 @@ export const ja: Dictionary = {
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "ペイン設定",
-  "paneSettings.cacheWatch.label": "このペインのキャッシュが失効する前に警告する",
+  "paneSettings.cacheWatch.label": "このペインのキャッシュがコールドになる前に警告する",
   "paneSettings.cacheWatch.hint": "有効期限が切れる約 {minutes} 分前",
   "paneSettings.cacheWatch.pushOff": "先に設定でこのデバイスの通知を有効にしてください。",
   "paneSettings.cacheWatch.globalOn": "設定によりすべてのペインについて警告されるため、このペインも対象に含まれます。",
@@ -1360,5 +1360,5 @@ export const ja: Dictionary = {
   "pushTitle.herd.done": "{count}件のエージェントが完了しました",
   "pushTitle.herd.mixed": "{count}件のエージェントに確認が必要です",
   "pushTitle.update.available": "Collie のアップデートがあります",
-  "pushTitle.cache.cold_soon": "約{minutes}分後にキャッシュが失効します",
+  "pushTitle.cache.cold_soon": "約{minutes}分後にキャッシュがコールドになります",
 };
