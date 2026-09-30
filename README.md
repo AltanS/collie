@@ -1,4 +1,4 @@
-# Collie
+# ColliePWA
 
 <p align="center">
   <!-- Baked by collie-brand's logo-ship.ts (collie-social-card-dark.png) and copied in whole, the
