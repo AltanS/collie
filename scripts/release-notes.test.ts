@@ -328,6 +328,66 @@ describe("credits", () => {
 	});
 });
 
+// ── Wrapped bullets ─────────────────────────────────────────────────────────────────────────────
+// A bullet may wrap at ~100 columns onto two-space continuation lines (1.15.0 does). The credit and
+// the end of the bold lead can sit on a later line, and a blank line or a heading ends the bullet.
+
+const WRAPPED = `# Changelog
+
+## [4.0.0] - 2026-12-01
+
+### Added
+
+- **A wrapped bullet keeps its credit.** The detail runs past the column limit and
+  wraps onto a second line, then a third. Thanks @gina (#1, #2).
+- **A lead that wraps across
+  two lines is read whole.** Detail. Reported by @hank (#3).
+- **A single line.** Detail. Thanks @ivy (#4).
+
+### Fixed
+
+- **A bullet before a blank line and a heading.** It has no credit of its own.
+
+### Docs
+
+- **The heading was not swallowed.** Detail
+  continues here. Thanks @jo.
+`;
+
+describe("wrapped bullets", () => {
+	const section = parseSection(WRAPPED, "4.0.0");
+	const group = (name: string) => section.groups.find((g) => g.name === name);
+
+	test("a credit on a continuation line is read", () => {
+		expect(group("Added")?.credits[0]).toEqual([{ phrase: "Thanks", handles: ["gina"] }]);
+	});
+
+	test("a bold lead that wraps across two lines is read whole", () => {
+		expect(group("Added")?.leads[1]).toBe("A lead that wraps across two lines is read whole.");
+		expect(group("Added")?.credits[1]).toEqual([{ phrase: "Reported by", handles: ["hank"] }]);
+	});
+
+	test("a single-line bullet beside wrapped ones reads as before", () => {
+		expect(group("Added")?.leads).toHaveLength(3);
+		expect(group("Added")?.leads[2]).toBe("A single line.");
+		expect(group("Added")?.credits[2]).toEqual([{ phrase: "Thanks", handles: ["ivy"] }]);
+	});
+
+	test("a bullet followed by a blank line and a heading does not swallow the heading", () => {
+		expect(group("Fixed")?.leads).toEqual(["A bullet before a blank line and a heading."]);
+		expect(group("Fixed")?.credits).toEqual([[]]);
+		expect(section.groups.map((g) => g.name)).toEqual(["Added", "Fixed", "Docs"]);
+		expect(group("Docs")?.credits[0]).toEqual([{ phrase: "Thanks", handles: ["jo"] }]);
+	});
+
+	test("the page line carries the credit from the continuation line", () => {
+		const body = renderBody(WRAPPED, "4.0.0", REPO, "v4.0.0");
+		expect(body).toContain("- A wrapped bullet keeps its credit. Thanks @gina.\n");
+		expect(body).toContain("- A lead that wraps across two lines is read whole. Reported by @hank.\n");
+		expect(creditedHandles(section)).toEqual(["gina", "hank", "ivy", "jo"]);
+	});
+});
+
 // ── The urgent line (ADR 0046) ──────────────────────────────────────────────────────────────────
 
 const URGENT = `# Changelog
@@ -433,6 +493,25 @@ describe("the repository's CHANGELOG.md", () => {
 		const section = parseSection(changelog, newest ?? "");
 		expect(section.groups.length).toBeGreaterThan(0);
 		for (const group of section.groups) expect(group.leads.length).toBeGreaterThan(0);
+	});
+
+	test("1.15.0 credits every contributor its wrapped bullets name", () => {
+		const handles = creditedHandles(parseSection(changelog, "1.15.0"));
+		expect(handles.map((h) => h.toLowerCase()).toSorted()).toEqual(
+			[
+				"AndiWandHerd",
+				"CorrectRoadH",
+				"cryptiklemur",
+				"dmstjd1024",
+				"Gaurav-Gosain",
+				"jaehyun2yo",
+				"jpcarranza94",
+				"jyothyswaroop",
+				"mavam",
+			]
+				.map((h) => h.toLowerCase())
+				.toSorted(),
+		);
 	});
 
 	test("1.12.1 credits the contributor its changelog names", () => {

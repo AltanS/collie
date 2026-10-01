@@ -17,7 +17,8 @@
 // A lead keeps its credit. When the bullet's detail credits someone ("Thanks @x (#12).",
 // "Reported by @y (#34)."), the page line ends with that credit, so a reader sees who did what,
 // and the @mention is what makes GitHub draw the release's Contributors avatars. See
-// `creditsOf` for which @ counts.
+// `creditsOf` for which @ counts. A bullet may wrap onto indented continuation lines; they are
+// folded into the bullet before the lead and the credits are read (see `foldBullets`).
 //
 // The order on the page is the reader's, not the file's. A phone arrives here from the in-app
 // update banner to copy one command, so the update block is FIRST and is never folded into a
@@ -203,6 +204,33 @@ export function creditedHandles(section: Section): string[] {
 }
 
 /**
+ * Joins each bullet's continuation lines into the bullet. A bullet that wraps at ~100 columns
+ * keeps its bold lead, and its credit ("Thanks @x (#12)."), on a later line, and `leadOf` and
+ * `creditsOf` read one string. A continuation is a line that starts with whitespace and has text
+ * on it, directly after a `- ` line or another continuation; a blank line, the next `- ` bullet
+ * or a `#` heading ends the bullet. The pieces are joined by single spaces. A single-line bullet
+ * passes through untouched.
+ */
+function foldBullets(lines: string[]): string[] {
+	const folded: string[] = [];
+	let inBullet = false;
+	for (const line of lines) {
+		if (line.startsWith("- ")) {
+			inBullet = true;
+			folded.push(line);
+			continue;
+		}
+		if (inBullet && /^\s+\S/.test(line)) {
+			folded[folded.length - 1] += ` ${line.trim()}`;
+			continue;
+		}
+		inBullet = false;
+		folded.push(line);
+	}
+	return folded;
+}
+
+/**
  * Reads a section's lines into its groups. Throws with the reason when the shape is wrong.
  * `where` names the section in the message, so a failure says which one it read.
  */
@@ -210,7 +238,7 @@ function groupsOf(lines: string[], where: string): Group[] {
 	const groups: Group[] = [];
 	let current: Group | null = null;
 
-	for (const line of lines) {
+	for (const line of foldBullets(lines)) {
 		if (line.startsWith("### ")) {
 			const name = line.slice(4).trim();
 			if (!isGroupName(name)) {
