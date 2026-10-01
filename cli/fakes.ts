@@ -30,6 +30,35 @@ export function posixKey(p: string, platform: NodeJS.Platform = process.platform
   return platform === "win32" ? p.replace(/^[A-Za-z]:/, "").replaceAll("\\", "/") : p;
 }
 
+/** A map that folds its keys with {@link posixKey}, so a test may name a path in either spelling. */
+class PathMap<V> extends Map<string, V> {
+  override get(key: string): V | undefined {
+    return super.get(posixKey(key));
+  }
+  override set(key: string, value: V): this {
+    return super.set(posixKey(key), value);
+  }
+  override has(key: string): boolean {
+    return super.has(posixKey(key));
+  }
+  override delete(key: string): boolean {
+    return super.delete(posixKey(key));
+  }
+}
+
+/** A set of paths that folds its members the same way. */
+class PathSet extends Set<string> {
+  override add(value: string): this {
+    return super.add(posixKey(value));
+  }
+  override has(value: string): boolean {
+    return super.has(posixKey(value));
+  }
+  override delete(value: string): boolean {
+    return super.delete(posixKey(value));
+  }
+}
+
 export interface FakeExec extends Exec {
   /**
    * `<tool> <args…>` for every call, in order. A {@link Exec.runIn} call is recorded with its
@@ -222,18 +251,18 @@ export interface FakeFiles extends Files {
 }
 
 export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
-  const entries = new Map<string, { text: string; mode?: number }>();
+  const entries = new PathMap<{ text: string; mode?: number }>();
   for (const [p, text] of Object.entries(seed)) entries.set(p, { text });
-  const undeletable = new Set<string>();
-  const rootOwned = new Set<string>();
-  const readOnly = new Set<string>();
-  const notExecutable = new Set<string>();
-  const stats = new Map<string, { inode: number; mtimeMs: number }>();
-  const links = new Map<string, string>();
-  const entryTypes = new Map<string, "directory" | "symlink" | "other">();
-  const realPaths = new Map<string, string>();
-  const unlistable = new Set<string>();
-  const unrenamable = new Set<string>();
+  const undeletable = new PathSet();
+  const rootOwned = new PathSet();
+  const readOnly = new PathSet();
+  const notExecutable = new PathSet();
+  const stats = new PathMap<{ inode: number; mtimeMs: number }>();
+  const links = new PathMap<string>();
+  const entryTypes = new PathMap<"directory" | "symlink" | "other">();
+  const realPaths = new PathMap<string>();
+  const unlistable = new PathSet();
+  const unrenamable = new PathSet();
   const ops: string[] = [];
   let tempDirs = 0;
   // Paths are a flat set, so a "directory" is whatever entries sit under it — enough to model the
