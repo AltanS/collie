@@ -99,3 +99,68 @@ describe("classifyToolCall", () => {
     expect(classifyToolCall("Read", [1, 2, 3], "").kind).toBe("read");
   });
 });
+
+describe("classifyToolCall: a question is recognised by its input", () => {
+  const input = {
+    questions: [{ question: "Which fruit?", header: "Fruit", options: [{ label: "Apple", description: "A round fruit" }, { label: "Banana" }] }],
+  };
+
+  test("the shape decides, whatever the tool is called", () => {
+    for (const name of ["question", "AskUserQuestion", "some_other_tool"])
+      expect(classifyToolCall(name, input, "").kind).toBe("question");
+  });
+
+  test("the summary is the first question and the call carries every field it was given", () => {
+    expect(classifyToolCall("question", input, "ignored")).toEqual({
+      kind: "question",
+      name: "question",
+      summary: "Which fruit?",
+      questions: [
+        {
+          header: "Fruit",
+          question: "Which fruit?",
+          multiple: false,
+          options: [{ label: "Apple", description: "A round fruit" }, { label: "Banana" }],
+        },
+      ],
+    });
+  });
+
+  test("Claude's `multiSelect` and opencode's `multiple` both mean multiple", () => {
+    const ask = (flag: Record<string, boolean>) => {
+      const call = classifyToolCall("q", { questions: [{ question: "Q?", options: ["a"], ...flag }] }, "");
+      return call.kind === "question" ? call.questions[0]?.multiple : undefined;
+    };
+    expect(ask({ multiSelect: true })).toBe(true);
+    expect(ask({ multiple: true })).toBe(true);
+    expect(ask({})).toBe(false);
+  });
+
+  test("an option may be a bare string", () => {
+    const call = classifyToolCall("q", { questions: [{ question: "Q?", options: ["a", "b"] }] }, "");
+    expect(call.kind === "question" && call.questions[0]?.options).toEqual([{ label: "a" }, { label: "b" }]);
+  });
+
+  test("a malformed entry is dropped, and nothing valid left falls through to `other`", () => {
+    const mixed = classifyToolCall(
+      "q",
+      { questions: [null, "x", { question: "no options" }, { question: 3, options: [] }, { question: "Good?", options: [{ label: "y" }, { nolabel: 1 }, 7] }] },
+      "s",
+    );
+    expect(mixed.kind === "question" && mixed.questions).toEqual([{ question: "Good?", multiple: false, options: [{ label: "y" }] }]);
+    expect(classifyToolCall("q", { questions: [null, { question: "no options" }] }, "s")).toEqual({ kind: "other", name: "q", summary: "s" });
+    expect(classifyToolCall("q", { questions: [] }, "s").kind).toBe("other");
+    expect(classifyToolCall("q", { questions: "nope" }, "s").kind).toBe("other");
+  });
+
+  test("a runaway input is capped", () => {
+    const options = Array.from({ length: 50 }, (_, i) => ({ label: `o${String(i)}` }));
+    const questions = Array.from({ length: 30 }, () => ({ question: "q".repeat(2000), options }));
+    const call = classifyToolCall("q", { questions }, "");
+    if (call.kind !== "question") throw new Error("not a question");
+    expect(call.questions).toHaveLength(9);
+    expect(call.questions[0]?.options).toHaveLength(20);
+    expect(call.questions[0]?.question).toHaveLength(500);
+  });
+});
+

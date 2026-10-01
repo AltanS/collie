@@ -18,6 +18,7 @@
 // to fill `call` simply leaves it absent.
 
 import type { JsonObject, JsonValue } from "../json.ts";
+import { clamp, oneLine } from "./text.ts";
 
 /**
  * One hunk of a unified diff.
@@ -29,6 +30,17 @@ import type { JsonObject, JsonValue } from "../json.ts";
 export interface Hunk {
   header: string;
   lines: string[];
+}
+
+/**
+ * One question an agent put to the operator. Field names follow opencode's `question` tool, which
+ * Claude Code's AskUserQuestion matches apart from the spelling of `multiple` (`multiSelect`).
+ */
+export interface ToolQuestion {
+  header?: string;
+  question: string;
+  multiple: boolean;
+  options: readonly { label: string; description?: string }[];
 }
 
 /**
@@ -52,6 +64,12 @@ export type ToolCall =
   | { kind: "delete" | "move"; path: string; to?: string }
   /** A subagent ran. */
   | { kind: "task"; agent: string; summary: string }
+  /**
+   * The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is
+   * the list of chosen labels for question `i`, present only once the call completed with answers.
+   * Keyed on the input's SHAPE (see {@link classifyToolCall}), never on the tool's name.
+   */
+  | { kind: "question"; name: string; summary: string; questions: readonly ToolQuestion[]; answers?: readonly (readonly string[])[] }
   /** Anything else, including a tool this code has never heard of. */
   | { kind: "other"; name: string; summary: string };
 
@@ -135,6 +153,57 @@ function num(o: JsonObject, ...keys: string[]): number | undefined {
   return undefined;
 }
 
+/** Most questions one call may carry. A guard against a runaway input, not a limit any harness sets. */
+const MAX_QUESTIONS = 9;
+/** Most options one question may carry. */
+const MAX_OPTIONS = 20;
+const MAX_QUESTION_CHARS = 500;
+const MAX_HEADER_CHARS = 80;
+const MAX_LABEL_CHARS = 200;
+const MAX_DESCRIPTION_CHARS = 500;
+
+function isRecord(v: JsonValue | undefined): v is JsonObject {
+  return v !== null && v !== undefined && typeof v === "object" && !Array.isArray(v);
+}
+
+/** A non-blank string, clamped, or `undefined`. */
+function text(v: JsonValue | undefined, max: number): string | undefined {
+  return typeof v === "string" && v.trim() !== "" ? clamp(v.trim(), max).text : undefined;
+}
+
+/**
+ * Read an input's `questions` list, or `undefined` when it holds nothing a person could answer.
+ *
+ * The SHAPE is the rule, not the tool name: opencode's `question` and Claude Code's AskUserQuestion
+ * spell the same list, and a third harness that copies the shape gets the card for free. An entry
+ * needs a string `question` and an `options` array. Options are strings or `{label, description}`.
+ * A malformed entry is dropped rather than thrown on, because this is a value off somebody else's
+ * disk, and a list with nothing valid left is not a question at all.
+ */
+function readQuestions(o: JsonObject): ToolQuestion[] | undefined {
+  if (!Array.isArray(o.questions) || o.questions.length === 0) return undefined;
+  const questions: ToolQuestion[] = [];
+  for (const q of o.questions.slice(0, MAX_QUESTIONS)) {
+    if (!isRecord(q) || !Array.isArray(q.options)) continue;
+    const question = text(q.question, MAX_QUESTION_CHARS);
+    if (question === undefined) continue;
+    const options: ToolQuestion["options"][number][] = [];
+    for (const opt of q.options.slice(0, MAX_OPTIONS)) {
+      const label = text(isRecord(opt) ? opt.label : opt, MAX_LABEL_CHARS);
+      if (label === undefined) continue;
+      const entry: ToolQuestion["options"][number] = { label };
+      const description = isRecord(opt) ? text(opt.description, MAX_DESCRIPTION_CHARS) : undefined;
+      if (description !== undefined) entry.description = description;
+      options.push(entry);
+    }
+    const parsed: ToolQuestion = { question, multiple: q.multiple === true || q.multiSelect === true, options };
+    const header = text(q.header, MAX_HEADER_CHARS);
+    if (header !== undefined) parsed.header = header;
+    questions.push(parsed);
+  }
+  return questions.length > 0 ? questions : undefined;
+}
+
 /**
  * Classify a tool call from its name and input alone.
  *
@@ -148,6 +217,13 @@ function num(o: JsonObject, ...keys: string[]): number | undefined {
  */
 export function classifyToolCall(name: string, input: JsonValue | undefined, summary: string): ToolCall {
   const o: JsonObject = input !== null && typeof input === "object" && !Array.isArray(input) ? input : {};
+  // A question is recognised by its input, so it outranks the name table: opencode calls the tool
+  // `question`, Claude Code `AskUserQuestion`, and neither spelling is worth a table entry.
+  const questions = readQuestions(o);
+  if (questions !== undefined) {
+    // `oneLine` of the first question, so the one-line row reads as what was asked.
+    return { kind: "question", name, summary: oneLine(questions[0]?.question ?? summary), questions };
+  }
   // SAFETY: an index into a lookup table with an arbitrary key. The assertion widens the key, not the
   // value: the result is typed as possibly `undefined` above, and `default` handles that miss.
   const kind: ToolCall["kind"] | undefined = NAMES[name.toLowerCase() as keyof typeof NAMES];

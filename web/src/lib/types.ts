@@ -830,6 +830,17 @@ export interface Hunk {
 }
 
 /**
+ * One question an agent put to the operator. Mirrors `bridge/journal/tool-call.ts`. Field names
+ * follow opencode's `question` tool; Claude Code's `multiSelect` arrives here as `multiple`.
+ */
+export interface ToolQuestion {
+  header?: string;
+  question: string;
+  multiple: boolean;
+  options: readonly { label: string; description?: string }[];
+}
+
+/**
  * What a tool call did, in the shape the thing it did suggests. Mirrors
  * `bridge/journal/tool-call.ts`, where the reasoning for the nine kinds lives.
  *
@@ -845,6 +856,8 @@ export type ToolCall =
   | { kind: "fetch"; url: string }
   | { kind: "delete" | "move"; path: string; to?: string }
   | { kind: "task"; agent: string; summary: string }
+  /** The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is the list of chosen labels for question `i`, present only once the call completed with answers. */
+  | { kind: "question"; name: string; summary: string; questions: readonly ToolQuestion[]; answers?: readonly (readonly string[])[] }
   | { kind: "other"; name: string; summary: string };
 
 /**

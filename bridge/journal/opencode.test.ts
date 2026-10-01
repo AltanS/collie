@@ -1490,6 +1490,78 @@ describe("parseOpencodeTranscript: the structured tool call", () => {
     expect(part.result).toBeUndefined();
   });
 
+  // Input and metadata shapes verified on a real 1.18.x / 2.x store: `{questions:[{question, header,
+  // options:[{label, description}], multiple?}]}` in, `metadata.answers: string[][]` out, and a
+  // dismissal is `status: "error"` with the text "The user dismissed this question" and no metadata.
+  describe("a question call", () => {
+    const input = {
+      questions: [
+        {
+          question: "Which color?",
+          header: "Color choice",
+          options: [
+            { label: "Red", description: "The color red" },
+            { label: "Blue", description: "The color blue" },
+          ],
+          multiple: false,
+        },
+      ],
+    };
+    const asked = [
+      {
+        header: "Color choice",
+        question: "Which color?",
+        multiple: false,
+        options: [
+          { label: "Red", description: "The color red" },
+          { label: "Blue", description: "The color blue" },
+        ],
+      },
+    ];
+
+    test("a running one carries what was asked and no answers", () => {
+      const part = firstTool(one(toolPart("question", { status: "running", input })));
+      expect(part.call).toEqual({ kind: "question", name: "question", summary: "Which color?", questions: asked });
+      expect(part.summary).toBe("Which color?");
+      expect(part.result).toBeUndefined();
+    });
+
+    test("a completed one carries the chosen labels, one list per question", () => {
+      const part = firstTool(
+        one(
+          toolPart("question", {
+            status: "completed",
+            input,
+            output: 'User has answered your questions: "Which color?"="Blue".',
+            metadata: { answers: [["Blue"]], truncated: false },
+          }),
+        ),
+      );
+      expect(part.call).toEqual({
+        kind: "question",
+        name: "question",
+        summary: "Which color?",
+        questions: asked,
+        answers: [["Blue"]],
+      });
+    });
+
+    test("a dismissed one is denied and has no answers", () => {
+      const part = firstTool(
+        one(toolPart("question", { status: "error", input, error: "The user dismissed this question" })),
+      );
+      expect(part.result).toEqual({ text: "The user dismissed this question", isError: true, denied: true });
+      expect(part.call).toEqual({ kind: "question", name: "question", summary: "Which color?", questions: asked });
+    });
+
+    test("an answers field of the wrong shape is ignored", () => {
+      const part = firstTool(
+        one(toolPart("question", { status: "completed", input, output: "ok", metadata: { answers: ["Blue", 3] } })),
+      );
+      expect(part.call).not.toHaveProperty("answers");
+    });
+  });
+
   test("a tool outside the nine kinds is `other` and reads exactly as its row did", () => {
     const part = firstTool(one(toolPart("todowrite", { status: "completed", input: { todos: [] }, output: "ok" })));
     expect(part.call).toEqual({ kind: "other", name: "todowrite", summary: part.summary });

@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **The Chat view shows what a question tool asked, with its options.** An opencode `question` call or a Claude Code AskUserQuestion reaches the phone with its questions, their options and, once answered, the labels chosen, instead of a bare tool name, and while it waits the card points at the dialog below the stream (#329).
+
 ### Changed
 
 - **A compaction is one marker line in a session view, and its recap is off by default.** When an
@@ -64,7 +68,6 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   that on as the terminal title, so every such pane read as "Terminal 6247db65" on the phone. The
   placeholder is now dropped and the pane reads as a shell, as on tmux and zellij. Thanks
   @Gaurav-Gosain (#328).
-
 ## [1.15.0] - 2026-10-01
 
 ### Added

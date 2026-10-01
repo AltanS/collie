@@ -170,6 +170,12 @@ function toolResult(text: string, isError: boolean): ToolResult {
   return result;
 }
 
+/** Whether a joined multi-select answer holds `label` as one whole item, quoted or not. */
+function namesItem(joined: string, label: string): boolean {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|, )(?:"${escaped}"|${escaped})(?=, |$)`).test(joined);
+}
+
 /**
  * Enrich a classified call from the row's `toolUseResult`, which is where Claude records what the
  * call actually DID rather than what it was asked to do.
@@ -207,6 +213,21 @@ function enrichCall(call: ToolCall, raw: JsonValue | undefined): void {
   } else if (call.kind === "execute") {
     const code = raw.exitCode ?? raw.exit_code ?? raw.returnCode;
     if (typeof code === "number" && Number.isFinite(code)) call.exitCode = code;
+  } else if (call.kind === "question") {
+    // AskUserQuestion's `answers` is an object keyed by the question's own text, one string each:
+    // `{"Which fruit?": "Apple"}` (verified in a real 2.1.x log). A multi-select answer is ONE string
+    // joining the picks with ", " and quoting only the ones that contain a comma, so it is read back
+    // by finding which option labels it names. A free-text "Other" answer names none and stays whole.
+    const answers = raw.answers;
+    if (answers === null || typeof answers !== "object" || Array.isArray(answers)) return;
+    const chosen: string[][] = [];
+    for (const q of call.questions) {
+      const given = answers[q.question];
+      if (typeof given !== "string") return;
+      const named = q.multiple ? q.options.map((o) => o.label).filter((l) => namesItem(given, l)) : [];
+      chosen.push(named.length > 0 ? named : [given]);
+    }
+    call.answers = chosen;
   }
 }
 

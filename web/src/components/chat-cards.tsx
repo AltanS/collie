@@ -10,9 +10,15 @@
 // A card may have something waiting on it: a permission dialog, a question. Collie has no channel
 // that can say so. A session log records that a dialog was ANSWERED, never that one is open, so file
 // mode emits no such event and there is no collie code path that could fill it. The card therefore
-// carries a {@link CardWaiting} SLOT that a host fills, and collie declares no `Ask`, no `Question`
-// and no `Answer`: a seam with no caller is a guess (ADR 0073 point 8), and the first real dialog
+// carries a {@link CardWaiting} SLOT that a host fills, and collie declares no `Ask`, no `Answer`
+// and no channel: a seam with no caller is a guess (ADR 0073 point 8), and the first real dialog
 // channel deserves to shape its own types rather than inherit a prototype's.
+//
+// The one filler there is says only where to look, never what to ask. A question tool call
+// (`kind: "question"`) draws what it asked and, once answered, what was chosen; while it waits, the
+// dock below the stream already holds the pane's own dialog as tappable options, and
+// `lib/question-waiting.ts` fills the slot's `note` with a line saying so, when the join is exact.
+// The options on the card are therefore never buttons: answering lives in one place.
 //
 // ── TRANSLATED, SINCE THE SCREEN THAT MOUNTS THEM LANDED ────────────────────
 // M41/10 left the copy here as English literals on purpose: nothing rendered these, so no operator
@@ -30,7 +36,9 @@ import { createContext, memo, useContext, useMemo, useState, type ReactNode } fr
 import {
   ArrowRightLeft,
   Bot,
+  Check,
   ChevronRight,
+  CircleQuestionMark,
   FilePlusCorner,
   FileText,
   Globe,
@@ -51,11 +59,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { OneOf } from "@/components/ui/one-of";
+import { SectionLabel } from "@/components/ui/section-label";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatItem, ChatToolCall, ChatToolStatus } from "@/lib/chat-items";
 import { clockTime } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
-import type { Hunk } from "@/lib/types";
+import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
 
@@ -179,7 +188,7 @@ export const ToolGroup = memo(
       [count("read"), "chat.run.reads"],
       [count("search") + count("fetch"), "chat.run.searches"],
       [count("task"), "chat.run.agents"],
-      [count("other") + count("delete") + count("move"), "chat.run.others"],
+      [count("other") + count("question") + count("delete") + count("move"), "chat.run.others"],
     ];
     const summary = parts
       .filter(([n]) => n > 0)
@@ -291,6 +300,7 @@ export function stepLine(call: ChatToolCall): StepLine {
     // A sub-agent's name and a tool's own name are the harness's vocabulary, never a dictionary's.
     case "task":
       return { verb: `${call.agent}:`, subject: call.summary, mono: false };
+    case "question":
     case "other":
       return { verb: `${call.name}:`, subject: call.summary.split("\n")[0] ?? "", mono: false };
     case "delete":
@@ -469,6 +479,7 @@ const KIND_ICON = {
   fetch: Globe,
   task: Bot,
   other: Wrench,
+  question: CircleQuestionMark,
   delete: Trash2,
   move: ArrowRightLeft,
 } satisfies Record<ChatToolCall["kind"], LucideIcon>;
@@ -606,6 +617,8 @@ export function ToolCard({
           )}
         </LineTool>
       );
+    case "question":
+      return <QuestionTool call={tool} status={status} waiting={waiting} anchor={anchor} held={held} />;
     case "search":
     case "fetch":
     case "task":
@@ -667,6 +680,137 @@ export function ToolCard({
       );
     }
   }
+}
+
+/**
+ * A question the agent put to the reader: what it asked, the options it offered and, once answered,
+ * which of them were chosen. Drawn in the same `Card` frame as an edit or a command.
+ *
+ * Nothing here is a button. The answer is given in the dock below the stream, where the pane's own
+ * dialog is drawn as tappable options (`lib/question-waiting.ts`), so a second set of buttons on the
+ * card would be a second way to answer one question, and a stale one the moment the dialog moved.
+ *
+ * Every state is a repaint of one box (DESIGN.md §2). Each option row reserves the cell the check
+ * takes, so a chosen row's text starts where an unchosen row's does. The only height that changes is
+ * the one the answer itself adds: a free-text answer is a row, and it did not exist before it was
+ * given.
+ */
+function QuestionTool({
+  call,
+  status,
+  waiting,
+  anchor,
+  held,
+}: {
+  call: Extract<ChatToolCall, { kind: "question" }>;
+  status: ChatToolStatus;
+  waiting?: CardWaiting;
+  anchor?: string;
+  held: string | false;
+}) {
+  useLocale();
+  const many = call.questions.length > 1;
+  // One question names the card with its own header. Several cannot share one, so each names itself
+  // above its text and the card keeps the generic word.
+  const header = call.questions.length === 1 ? call.questions[0]?.header : undefined;
+  const asking = status === "running" && waiting?.body === undefined;
+  return (
+    <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
+      <ToolHead icon={CircleQuestionMark} label={header || t("chat.tool.question")} status={status} />
+      {call.questions.map((q, i) => (
+        <QuestionBlock
+          key={i}
+          question={q}
+          chosen={status === "done" ? call.answers?.[i] : undefined}
+          title={many ? q.header : undefined}
+        />
+      ))}
+      {/* The body is the host's alone. The line below is the note's own place, so a note arriving
+          swaps a sentence for a sentence rather than opening a second line under the first. */}
+      <WaitingArea waiting={waiting && { ...waiting, note: undefined }} />
+      {(asking || status === "denied") && (
+        <p className="border-t border-border px-3 py-2.5 text-xs text-muted-foreground">
+          {status === "denied"
+            ? t("chat.question.dismissed")
+            : (waiting?.note ?? t("chat.question.waiting"))}
+        </p>
+      )}
+    </Card>
+  );
+}
+
+/** One question: its text, the multi-pick hint, and its options with the chosen ones marked. */
+function QuestionBlock({
+  question,
+  chosen,
+  title,
+}: {
+  question: ToolQuestion;
+  chosen?: readonly string[];
+  title?: string;
+}) {
+  const labels = new Set(question.options.map((o) => o.label));
+  // A free-text answer names no option, so it is its own marked row, after the options it was not.
+  const typed = chosen?.filter((c) => !labels.has(c)) ?? [];
+  return (
+    <div className="border-t border-border">
+      <div className="flex flex-col gap-0.5 px-3 py-2.5">
+        {title && <SectionLabel placement="above">{title}</SectionLabel>}
+        <p className="font-content whitespace-pre-wrap break-words text-sm">{question.question}</p>
+        {question.multiple && <p className="text-xs text-muted-foreground">{t("chat.question.multiple")}</p>}
+      </div>
+      {(question.options.length > 0 || typed.length > 0) && (
+        <ul className="divide-y divide-border border-t border-border">
+          {question.options.map((o, i) => {
+            const picked = chosen?.includes(o.label) === true;
+            return (
+              <QuestionRow
+                key={i}
+                label={o.label}
+                description={o.description}
+                picked={picked}
+                muted={chosen !== undefined && !picked}
+              />
+            );
+          })}
+          {typed.map((text, i) => (
+            <QuestionRow key={`typed-${i}`} label={text} picked />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** One option: a reserved glyph cell, the label in body ink, the description under it in muted ink. */
+function QuestionRow({
+  label,
+  description,
+  picked,
+  muted,
+}: {
+  label: string;
+  description?: string;
+  picked: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <li aria-current={picked || undefined} className="flex items-start gap-2 px-3 py-1.5">
+      <span aria-hidden className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
+        {picked && <Check className="size-3.5 text-status-done" />}
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className={cn("font-content whitespace-pre-wrap break-words text-sm", muted && "text-muted-foreground")}>
+          {label}
+        </span>
+        {description && (
+          <span className="font-content whitespace-pre-wrap break-words text-xs text-muted-foreground">
+            {description}
+          </span>
+        )}
+      </span>
+    </li>
+  );
 }
 
 /**

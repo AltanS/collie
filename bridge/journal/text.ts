@@ -74,7 +74,15 @@ export function summarizeToolInput(input: JsonValue | undefined): string {
   // what you actually searched for, so `pattern` MUST outrank the bare `path` (a test pins this). A
   // subagent call carries both `description`/`task` and `prompt`, and the short one is already the
   // one-line form.
+  // A question call (opencode `question`, Claude `AskUserQuestion`) holds its words in a list of
+  // objects, which no pick below reaches. The first question is what was asked.
+  const firstQuestion = Array.isArray(named.questions) ? named.questions[0] : undefined;
+  const asked =
+    firstQuestion !== null && typeof firstQuestion === "object" && !Array.isArray(firstQuestion)
+      ? firstQuestion.question
+      : undefined;
   const chosen =
+    (typeof asked === "string" && asked.trim() !== "" ? asked : undefined) ??
     pick(
       "file_path",
       "command",

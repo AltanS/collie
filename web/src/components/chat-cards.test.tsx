@@ -217,6 +217,145 @@ describe("the host's waiting slot", () => {
   });
 });
 
+describe("a question card", () => {
+  const asked: Extract<ChatToolCall, { kind: "question" }> = {
+    kind: "question",
+    name: "question",
+    summary: "Which color?",
+    questions: [
+      {
+        header: "Color choice",
+        question: "Which color?",
+        multiple: false,
+        options: [
+          { label: "Red", description: "The color red" },
+          { label: "Blue", description: "The color blue" },
+        ],
+      },
+    ],
+  };
+  /** The marked rows: the question draws its chosen options with `aria-current`. */
+  const marked = (container: HTMLElement) =>
+    [...container.querySelectorAll("li[aria-current]")].map((li) => li.textContent);
+
+  it("shows the header, the question and every option with its description", () => {
+    render(<ToolCard tool={asked} status="running" />);
+    expect(screen.getByText("Color choice")).toBeInTheDocument();
+    expect(screen.getByText("Which color?")).toBeInTheDocument();
+    expect(screen.getByText("Red")).toBeInTheDocument();
+    expect(screen.getByText("The color red")).toBeInTheDocument();
+    expect(screen.getByText("Blue")).toBeInTheDocument();
+    expect(screen.getByText("The color blue")).toBeInTheDocument();
+  });
+
+  it("names itself Question when the call sent no header", () => {
+    const bare = { ...asked, questions: [{ ...asked.questions[0]!, header: undefined }] };
+    render(<ToolCard tool={bare} status="running" />);
+    expect(screen.getByText("Question")).toBeInTheDocument();
+  });
+
+  it("draws no button: answering lives in the dock", () => {
+    render(<ToolCard tool={asked} status="running" />);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("waits with the waiting dot and its own sentence", () => {
+    const { container } = render(<ToolCard tool={asked} status="running" />);
+    expect(screen.getByText("Waiting for an answer")).toBeInTheDocument();
+    expect(container.querySelector("[data-active] [aria-label='running']")).not.toBeNull();
+  });
+
+  it("says what the host's note says in that sentence's place, once", () => {
+    withWaiting(<ToolCard tool={asked} status="running" waiting={{ id: "q1", note: "Answer in the card below" }} />, {});
+    expect(screen.getByText("Answer in the card below")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for an answer")).toBeNull();
+  });
+
+  it("reads the note through the context when it sits in a stream", () => {
+    const { container } = withWaiting(<ItemView item={tool(asked, { id: "q1", status: "running" })} />, {
+      q1: { id: "q1", note: "Answer in the card below" },
+    });
+    expect(screen.getByText("Answer in the card below")).toBeInTheDocument();
+    expect(container.querySelector('[data-waiting="q1"]')).not.toBeNull();
+  });
+
+  it("marks the chosen label once answered, and only that one", () => {
+    const { container } = render(<ToolCard tool={{ ...asked, answers: [["Blue"]] }} status="done" />);
+    expect(marked(container)).toEqual(["BlueThe color blue"]);
+    expect(screen.queryByText("Waiting for an answer")).toBeNull();
+    expect(container.querySelector("svg.text-status-done")).not.toBeNull();
+  });
+
+  it("shows a free-text answer as its own marked row", () => {
+    const { container } = render(<ToolCard tool={{ ...asked, answers: [["Teal"]] }} status="done" />);
+    expect(marked(container)).toEqual(["Teal"]);
+    // The two real options are still listed, unmarked.
+    expect(screen.getByText("Red")).toBeInTheDocument();
+    expect(screen.getByText("Blue")).toBeInTheDocument();
+  });
+
+  it("marks every pick of a multiple question and says so", () => {
+    const multi = {
+      ...asked,
+      questions: [{ ...asked.questions[0]!, multiple: true }],
+      answers: [["Red", "Blue"]],
+    };
+    const { container } = render(<ToolCard tool={multi} status="done" />);
+    expect(screen.getByText("Pick any that apply")).toBeInTheDocument();
+    expect(marked(container)).toHaveLength(2);
+  });
+
+  it("says nothing about a pick when the call completed without answers", () => {
+    const { container } = render(<ToolCard tool={asked} status="done" />);
+    expect(marked(container)).toEqual([]);
+    expect(screen.queryByText("Waiting for an answer")).toBeNull();
+    expect(screen.queryByText("Dismissed")).toBeNull();
+  });
+
+  it("says Dismissed when the reader closed it", () => {
+    const { container } = render(<ToolCard tool={asked} status="denied" />);
+    expect(screen.getByText("Dismissed")).toBeInTheDocument();
+    expect(container.querySelector("[data-active]")).toHaveTextContent("denied");
+  });
+
+  it("gives each question its own header when the call carried several", () => {
+    const two = {
+      ...asked,
+      questions: [
+        asked.questions[0]!,
+        { header: "Size", question: "Which size?", multiple: false, options: [{ label: "S" }] },
+      ],
+    };
+    render(<ToolCard tool={two} status="running" />);
+    expect(screen.getByText("Question")).toBeInTheDocument();
+    expect(screen.getByText("Color choice")).toBeInTheDocument();
+    expect(screen.getByText("Size")).toBeInTheDocument();
+    expect(screen.getByText("Which size?")).toBeInTheDocument();
+  });
+
+  it("renders the agent's words as text, never as markup", () => {
+    const hostile = {
+      ...asked,
+      questions: [{ question: "<img src=x onerror=alert(1)>", multiple: false, options: [{ label: "<b>x</b>" }] }],
+    };
+    render(<ToolCard tool={hostile} status="running" />);
+    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
+    expect(screen.getByText("<b>x</b>")).toBeInTheDocument();
+    expect(document.querySelector("img")).toBeNull();
+  });
+
+  it("reads as the first question in a folded run, and counts among the other steps", async () => {
+    expect(stepLine(asked)).toEqual({ verb: "question:", subject: "Which color?", mono: false });
+    const items: ChatItem[] = [
+      tool(asked, { id: "a" }),
+      tool({ kind: "read", path: "/a.ts" }, { id: "b" }),
+      tool({ kind: "read", path: "/b.ts" }, { id: "c" }),
+    ];
+    render(<ToolGroup items={items} />);
+    expect(screen.getByText("2 reads, 1 other step")).toBeInTheDocument();
+  });
+});
+
 describe("ToolGroup", () => {
   const finished: ChatItem[] = [
     tool({ kind: "execute", command: "ls" }, { id: "a" }),

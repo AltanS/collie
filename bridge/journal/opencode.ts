@@ -714,6 +714,15 @@ function enrichCall(call: ToolCall, state: JsonObject): void {
     // `matches` is grep's count of matching lines; `count` is glob's count of paths.
     const hits = typeof metadata.matches === "number" ? metadata.matches : metadata.count;
     if (typeof hits === "number" && Number.isFinite(hits)) call.hits = hits;
+  } else if (call.kind === "question") {
+    // `answers` is one list of chosen labels per question, in question order: `[["Blue"]]`. Verified
+    // on the local store (1.18.x and 2.x rows); a dismissed call is `status: "error"` with no
+    // metadata at all, so it never reaches here with answers.
+    const answers = metadata.answers;
+    if (Array.isArray(answers) && answers.every((a) => Array.isArray(a) && a.every((l) => typeof l === "string"))) {
+      // SAFETY: the `every` above proved each entry is an array of strings; `JsonValue` cannot say so.
+      call.answers = answers as string[][];
+    }
   }
   // NOT filled: a read's range. V1's `metadata.display` names the lines the tool actually returned,
   // which can be narrower than the ones asked for, and `classifyToolCall` has already set `range`
