@@ -559,6 +559,67 @@ describe("restart, under the Windows community supervisor", () => {
     expect(probes).toBeGreaterThanOrEqual(4);
   });
 
+  // The in-place update stops on this code, so a dead bridge must not read as `✓ update complete`.
+  // The detached runner ignores it and polls its own gate (pinned in cli/update.test.ts).
+  test("a relaunched bridge that never answers is a failure, after the whole wait", async () => {
+    const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7200: BRIDGE_CMD }, ready: false });
+    let slept = 0;
+    h.deps.sleep = () => {
+      slept++;
+      return Promise.resolve();
+    };
+    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+    expect(h.exec.killed).toEqual([7200]);
+    expect(slept).toBe(30);
+    // The banner still prints what it sees, and the error comes last, naming where to look.
+    expect(h.io.stderr.join("\n")).toContain("did not answer on 127.0.0.1:8787 within 30s; it may still be starting");
+    expect(h.io.stderr.join("\n")).toContain("`collie status`");
+    expect(h.io.stderr.at(-1)).toContain("collie-ctl.ps1 logs");
+    // Still no second bridge started beside the supervised one.
+    expect(h.exec.spawned).toHaveLength(0);
+  });
+
+  test("the wait follows COLLIE_UPDATE_HEALTH_TIMEOUT_MS, the update gate's own budget", async () => {
+    const h = windows({
+      files: { [RECORD]: "7100|7200" },
+      ps: { 7200: BRIDGE_CMD },
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "3000" },
+      ready: false,
+    });
+    let slept = 0;
+    h.deps.sleep = () => {
+      slept++;
+      return Promise.resolve();
+    };
+    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+    expect(slept).toBe(3);
+    expect(h.io.stderr.join("\n")).toContain("within 3s");
+
+    // A slow bridge that answers inside the raised budget is a success, and the wait stops there.
+    const late = windows({
+      files: { [RECORD]: "7100|7200" },
+      ps: { 7200: BRIDGE_CMD },
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "60000" },
+    });
+    let probes = 0;
+    late.deps.ready = () => Promise.resolve(++probes >= 35);
+    expect(await cmdRestart(late.deps)).toBe(EXIT.OK);
+    expect(probes).toBeGreaterThanOrEqual(35);
+  });
+
+  test("a probe that throws reads as no answer, not as a crashed restart", async () => {
+    const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7200: BRIDGE_CMD } });
+    h.deps.sleep = () => Promise.resolve();
+    // Throws on every probe of the wait; the banner's own probe afterwards just answers no.
+    let probes = 0;
+    h.deps.ready = () => {
+      if (++probes <= 30) throw new Error("connect refused");
+      return Promise.resolve(false);
+    };
+    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("did not answer");
+  });
+
   test("with no record, restart keeps the path it had, and finds bin/collie.exe", async () => {
     const h = windows();
     expect(await cmdRestart(h.deps)).toBe(EXIT.OK);

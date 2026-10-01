@@ -52,6 +52,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   used to swap the body at once, onto an empty box, and the turns popped in after it. Chat now reads
   the session while the pane menu or the Display sheet is open, so the swap happens as the sheet
   closes. If that read has not come, the terminal stays up for at most a second and a half.
+- **A Windows restart reports it when the bridge never comes back.** On Windows with the community
+  supervisor, `collie restart` waits for the bridge to answer, 30 seconds unless
+  `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` says longer. If nothing answers, it now exits with an error that
+  points to `collie status` and `collie-ctl.ps1 logs`, where it used to report success. An update run
+  in a terminal then no longer prints `✓ update complete`, though the new version may already be
+  installed, and a slow machine can come up a few seconds after the error. The phone's Update button
+  keeps its own health check and its one rollback. Windows stays community-supported and best effort.
 
 ## [1.15.0] - 2026-10-01
 

@@ -743,6 +743,15 @@ describe("_apply-update", () => {
     expect(h.io.stderr.join("\n")).toContain("the checkout advanced but the build failed");
     expect(h.io.stdout.join("\n")).not.toContain("update complete");
   });
+
+  // This path has no health gate of its own (ADR 0006), so the restart's code is the whole verdict:
+  // a failed one must not end on `✓ update complete`, and `update` then records no `pass` either.
+  test("a failed restart stops before the ✓", async () => {
+    const h = harness({ answers: [...LINKED, ...SHALLOW], restart: EXIT.FAIL });
+    expect(await cmdApplyUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.restarts).toBe(1);
+    expect(h.io.stdout.join("\n")).not.toContain("update complete");
+  });
 });
 
 describe("update", () => {
@@ -2039,6 +2048,28 @@ describe("the detached updater's health gate", () => {
     });
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
     expect(parseUpdateRun(h.files.read(RUN_FILE))?.state).toBe("rolled-back");
+  });
+
+  // `collie restart` may exit non-zero over a bridge that is merely slow (the Windows tier does, after
+  // its own wait). The runner must neither trust that code nor skip its gate and its one rollback.
+  test("a restart that exits non-zero still gets the health gate, and the one rollback", async () => {
+    const restartFails: NonNullable<BinaryOptions["answers"]> = [
+      [`${INST}$ ${INST}/current/bin/collie restart`, { code: 1 }],
+    ];
+    const late = binaryHarness({ answers: restartFails });
+    expect(await runner(late, BINARY_APPLY)).toBe(EXIT.OK);
+    // The scripted failure was the call actually made, so the gate below is what decided.
+    expect(late.exec.calls).toContain(`${INST}$ ${INST}/current/bin/collie restart`);
+    expect(parseUpdateRun(late.files.read(RUN_FILE))?.state).toBe("done");
+
+    const dead = binaryHarness({
+      answers: restartFails,
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "1000" },
+      health: [{ down: true }, { down: true }, { version: "1.0.0" }],
+    });
+    expect(await runner(dead, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(parseUpdateRun(dead.files.read(RUN_FILE))?.state).toBe("rolled-back");
+    expect(dead.exec.calls.filter((c) => c.endsWith("current/bin/collie restart")).length).toBe(2);
   });
 
   test("a deposed peer answering health is not a success — it is rolled back like any other failure", async () => {

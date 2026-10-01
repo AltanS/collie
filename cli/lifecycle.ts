@@ -7,6 +7,7 @@ import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
 import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
+import { healthTimeoutMs } from "./update-run.ts";
 import {
   bridgeUrl,
   configuredPublicUrl,
@@ -285,16 +286,31 @@ export async function restartWindowsSupervised(deps: LifecycleDeps): Promise<num
 
   // The loop waits a few seconds before it relaunches, and the bridge then has to come up. Say
   // whether it did, rather than printing a banner over a bridge that is still starting.
-  for (let attempt = 0; attempt < WINDOWS_RELAUNCH_WAIT_S; attempt++) {
-    if (await deps.ready(deps.ctx.port, dialableBridgeHost(deps.ctx.env))) break;
-    await deps.sleep(1000);
+  // The update health gate's own budget, so a slow machine that raised `COLLIE_UPDATE_HEALTH_TIMEOUT_MS`
+  // is waited for here too, and both call the same silence a failure.
+  const waitS = Math.max(1, Math.ceil(healthTimeoutMs(deps.ctx.env) / 1000));
+  let answered = false;
+  for (let attempt = 0; attempt < waitS && !answered; attempt++) {
+    try {
+      answered = await deps.ready(deps.ctx.port, dialableBridgeHost(deps.ctx.env));
+    } catch {
+      answered = false; // a probe that throws is a bridge that did not answer, not a crashed restart
+    }
+    if (!answered) await deps.sleep(1000);
   }
   await printStatusBanner(deps);
-  return EXIT.OK;
+  if (answered) return EXIT.OK;
+  // A FAILURE, because this tier waited and saw no bridge, which the other tiers cannot know. The
+  // in-place update stops here instead of recording a `pass` and printing `✓ update complete` over a
+  // dead bridge. The detached runner does not read this code: it polls its own health gate and rolls
+  // back once whatever the restart returned (`driveApply` in `cli/update-run.ts`).
+  deps.io.err(
+    `error: Collie did not answer on ${localBridgeHostPort(deps.ctx.env, deps.ctx.port)} within ${waitS}s; it may still be starting`,
+  );
+  deps.io.err("       wait a minute, then run `collie status`. If it stays down, read why with:");
+  deps.io.err("       powershell -File contrib\\windows\\collie-ctl.ps1 logs");
+  return EXIT.FAIL;
 }
-
-/** How long a Windows restart waits for the relaunched bridge before reporting what it sees. */
-const WINDOWS_RELAUNCH_WAIT_S = 30;
 
 // ── Writing the service definition ───────────────────────────────────────────
 
