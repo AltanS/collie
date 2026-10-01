@@ -57,9 +57,19 @@ export interface ServiceSpec {
   tailscaleHosts: string;
 }
 
-/** Where the compiled binary lives relative to its checkout — the one place that layout is written down. */
-export function collieBinary(root: string): string {
-  return join(root, "bin", "collie");
+/**
+ * Where the compiled binary lives relative to its checkout — the one place that layout is written
+ * down. The bridge imports it too, because it gates and spawns the update action on the same file.
+ *
+ * On Windows the file is `bin/collie.exe`: Bun's compiler appends the extension, and an existence
+ * check on the bare name is never true there. That failed `requireBinary()` on every restart, made
+ * `installIsIntact()` rebuild on every update, and kept the bridge's update action (and so the
+ * phone's Update button) off. Spawning the bare name still resolves, so the callers that only
+ * launch it never noticed. `platform` defaults to the host's and is injected in tests, so the
+ * Windows spelling is pinned on Linux CI.
+ */
+export function collieBinary(root: string, platform: string = process.platform): string {
+  return join(root, "bin", platform === "win32" ? "collie.exe" : "collie");
 }
 
 export function serviceSpec(ctx: CliContext, tailscaleHosts = ""): ServiceSpec {

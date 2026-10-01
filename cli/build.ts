@@ -66,7 +66,7 @@ export const webStaging = (root: string): string => join(root, "web", "dist-stag
  * Writing into the live path instead can corrupt a running process mid-read: a Bun single-file
  * executable carries its payload INSIDE the file.
  */
-export const collieBinaryStaging = (root: string): string => `${collieBinary(root)}.new`;
+export const collieBinaryStaging = (root: string): string => join(root, "bin", "collie.new");
 
 /**
  * The file `bun build --compile --outfile <path>` actually writes. On Windows Bun appends `.exe` to
@@ -78,6 +78,51 @@ export const collieBinaryStaging = (root: string): string => `${collieBinary(roo
 export function compiledPath(outfile: string, platform: string = process.platform): string {
   if (platform !== "win32" || outfile.toLowerCase().endsWith(".exe")) return outfile;
   return `${outfile}.exe`;
+}
+
+/**
+ * Put a freshly compiled binary at `live`. Everywhere but Windows this is one rename: the new file
+ * gets a new inode and a process still executing the old one keeps reading it.
+ *
+ * Windows refuses to rename ONTO an executable that is running (EPERM), and during `collie update`
+ * the running executable is `bin/collie.exe` itself, the updater. It does allow renaming the running
+ * file AWAY, so the live binary steps aside to `<live>.old` first and the new one takes its place.
+ * The old file can only be deleted once nothing runs it, so that is tried and a failure is left for
+ * the next build, which clears it before stepping aside again.
+ *
+ * The live binary is the one working copy, so it never steps aside for a staged file that is not
+ * there (the rename then fails exactly as it always did, with the live binary untouched), and it
+ * goes back into place if the staged file cannot take its place.
+ */
+export function swapBinary(
+  files: Files,
+  staged: string,
+  live: string,
+  platform: string = process.platform,
+): void {
+  if (platform !== "win32" || !files.exists(live) || !files.exists(staged)) {
+    files.rename(staged, live);
+    return;
+  }
+  const aside = `${live}.old`;
+  tryRemove(files, aside);
+  files.rename(live, aside);
+  try {
+    files.rename(staged, live);
+  } catch (err) {
+    files.rename(aside, live);
+    throw err;
+  }
+  tryRemove(files, aside);
+}
+
+/** Remove `p` if it can be removed. A file some process still executes cannot be, on Windows. */
+function tryRemove(files: Files, p: string): void {
+  try {
+    files.remove(p);
+  } catch {
+    // Still running: the next swap clears it.
+  }
 }
 
 /** Prefixes for private, atomically-created directories under the checkout's real `bin`. */
@@ -233,7 +278,7 @@ export function compileCli(deps: CliCompileDeps, options: CliCompileOptions = {}
 
   const bun = options.bun ?? "bun";
   const target = options.target ?? "bun";
-  const output = resolve(options.outfile ?? collieBinary(paths.root));
+  const output = resolve(options.outfile ?? collieBinary(paths.root, deps.platform));
   let compiled = false;
   try {
     compiled = step(
@@ -281,8 +326,8 @@ export function compileCliToLive(
   }
 
   try {
-    const live = compiledPath(collieBinary(paths.root), deps.platform);
-    deps.files.rename(compiledPath(output, deps.platform), live);
+    const live = collieBinary(paths.root, deps.platform);
+    swapBinary(deps.files, compiledPath(output, deps.platform), live, deps.platform);
   } catch (err) {
     deps.io.err(`error: could not publish the compiled collie binary (${String(err)})`);
     cleanOwnedDirectory(deps, staging, "CLI output staging directory");
@@ -375,7 +420,7 @@ export function cmdBuild(deps: BuildDeps): number {
   }
 
   // 6. The swaps, last. The binary first because it is the smaller window, then the served bundle.
-  deps.files.rename(binaryWritten, compiledPath(collieBinary(root), deps.platform));
+  swapBinary(deps.files, binaryWritten, collieBinary(root, deps.platform), deps.platform);
   deps.files.removeTree(webDist(root));
   deps.files.rename(staging, webDist(root));
   return EXIT.OK;

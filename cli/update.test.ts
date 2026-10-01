@@ -928,6 +928,27 @@ describe("update", () => {
     expect(built(h)).toBe(true);
   });
 
+  // On Windows the binary is `bin/collie.exe`, so a check for the bare name was never true there and
+  // every update rebuilt, even one with nothing to take.
+  test("Windows: an intact install is found at bin/collie.exe, so nothing to take builds nothing", async () => {
+    const h = noop();
+    h.deps.platform = "win32";
+    stamp(h, "0.32.0");
+    h.files.entries.delete(BINARY);
+    h.files.entries.set(`${BINARY}.exe`, { text: "" });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(false);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("Windows: an extensionless bin/collie is not an install there, so it still builds", async () => {
+    const h = noop();
+    h.deps.platform = "win32";
+    stamp(h, "0.32.0");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(true);
+  });
+
   test("nothing to take but the bundle is of another version: build anyway", async () => {
     const h = noop();
     stamp(h, "0.31.1");

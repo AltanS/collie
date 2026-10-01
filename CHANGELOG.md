@@ -40,6 +40,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   pane's Display sheet, and it folds behind the marker and opens on a tap. A find on History always
   reaches it. Long machine notes fold behind a System label as well.
 
+### Fixed
+
+- **Updating on Windows works with the community supervisor.** With the community Task Scheduler
+  supervisor, `collie restart` stops only the bridge process it recorded and the supervisor
+  relaunches it, where it used to fail on a `bin/collie` that Windows names `collie.exe`. The build
+  steps the running `collie.exe` aside to `.old` before the swap, because Windows refuses to rename
+  onto a running executable, and the bridge finds `bin/collie.exe`, so the phone's Update button can
+  run there. Windows stays community-supported and best effort. Thanks @mqmalagris (#309).
+
 ## [1.15.0] - 2026-10-01
 
 ### Added

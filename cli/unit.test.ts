@@ -181,8 +181,13 @@ describe("the launchd agent", () => {
 
 describe("paths and escaping", () => {
   test("the binary lives at <checkout>/bin/collie", () => {
-    expect(collieBinary("/opt/collie")).toBe("/opt/collie/bin/collie");
+    expect(collieBinary("/opt/collie", "linux")).toBe("/opt/collie/bin/collie");
+    expect(collieBinary("/opt/collie", "darwin")).toBe("/opt/collie/bin/collie");
     expect(bridgeCommand(SPEC)).toEqual(["/opt/collie/bin/collie", "_exec-bridge"]);
+  });
+
+  test("on Windows it is bin/collie.exe, the file Bun's compiler writes and an existence check can find", () => {
+    expect(collieBinary("/opt/collie", "win32")).toBe("/opt/collie/bin/collie.exe");
   });
 
   test("unit and agent land where the supervisors look", () => {
