@@ -49,11 +49,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
-- **Collie drives tuios.** Set `COLLIE_MUX=tuios` to mirror a tuios daemon's sessions as spaces,
-  its workspaces as tabs and its windows as panes, with the agent, its state and its conversation
-  read from tuios itself. It needs a tuios build from October 2026 or later. The mux contract now
-  also says that an agent name is one of Collie's harness names or `shell`. Thanks @Gaurav-Gosain
-  (#321, #322).
+- **Collie drives tuios, as an experimental backend.** Set `COLLIE_MUX=tuios` to mirror a tuios
+  daemon's sessions as spaces, its workspaces as tabs and its windows as panes, with the agent, its
+  state and its conversation read from tuios itself. It needs a tuios newer than 0.8.2, so until the
+  next tuios release, a tuios built from main. The mux contract now also says that an agent name is
+  one of Collie's harness names or `shell`. Thanks @Gaurav-Gosain (#321, #322).
 
 - **Chat says a turn is still running, and shows what you queued behind it.** A compaction writes no
   row for minutes, so a compacting pane in Chat looked exactly like a finished one, and a message

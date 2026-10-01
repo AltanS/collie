@@ -8,10 +8,11 @@ uses to detect an agent in a pane.
 
 Name the backend in `COLLIE_MUX`, point it at an endpoint, restart, and install the beacon hooks.
 
-> **Experimental in 1.0.** tmux and zellij were tested on **tmux 3.6b** and **zellij 0.44.2**, on a
-> single host. Herdr is the default and the primary supported backend. **Testers wanted:** open an
-> issue on [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …` or
-> `zellij: …`, with your multiplexer, version, OS, and what you saw.
+> **Experimental.** tmux and zellij (since 1.0) were tested on **tmux 3.6b** and **zellij 0.44.2**,
+> on a single host. tuios (since 1.15.0) was tested on a tuios build from main, newer than 0.8.2.
+> Herdr is the default and the primary supported backend. **Testers wanted:** open an issue on
+> [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …`, `zellij: …` or
+> `tuios: …`, with your multiplexer, version, OS, and what you saw.
 
 Name the multiplexer on the command line:
 
@@ -151,8 +152,9 @@ The endpoint is the daemon's socket. Leave it empty to use the socket that `tuio
 Collie reads `XDG_RUNTIME_DIR` to find it, so make sure the service has that variable. Inside a
 tuios pane, `echo $TUIOS_SOCKET` prints the path.
 
-Collie needs a tuios build from October 2026 or later. With an older daemon, Collie shows the
-bridge as disconnected and the log says what to update.
+Collie needs a tuios newer than 0.8.2: the daemon must announce the `workspace-renamed` event.
+Until the next tuios release, that means a tuios built from main. With an older daemon, Collie
+shows the bridge as disconnected and the log says what to update.
 
 Some things work differently on tuios:
 

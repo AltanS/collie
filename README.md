@@ -145,7 +145,7 @@ and that is the only way to install it on a phone.
 | [**Changes**](./docs/changes.md) | What an agent changed in its workspace: the changed files, their diffs and the last commit, from the pane or the dashboard. Read-only git, nested repos, and the two settings that decide how far it looks |
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
-| [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij or tuios, what each backend can answer, and agent beacons. Experimental in 1.0 for tmux and zellij; bug reports wanted |
+| [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux, zellij or tuios, what each backend can answer, and agent beacons. Experimental for tmux, zellij and tuios; bug reports wanted |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
