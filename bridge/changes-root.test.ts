@@ -11,6 +11,7 @@ import {
   withinBound,
   workspaceRoot,
   type RootSnapshot,
+  type WorkspaceRootInput,
 } from "./changes-root.ts";
 import { gitEnv } from "./changes.ts";
 import { paneChanges, workspaceChanges } from "./server.ts";
@@ -18,10 +19,14 @@ import type { AgentView, WorkspaceView } from "./types.ts";
 
 const HOME = "/home/dev";
 
+// These rules mean POSIX paths, so they pin path.posix: the default is the host's own flavour, which
+// on Windows reads `/home/dev/...` as a drive-relative path.
+const posixRoot = (input: Omit<WorkspaceRootInput, "pathApi">): string | null => workspaceRoot({ ...input, pathApi: posix });
+
 describe("workspaceRoot — which folder a workspace's Changes list reads", () => {
   test("the mux's own folder wins (herdr worktree checkout, tmux session_path)", () => {
     expect(
-      workspaceRoot({
+      posixRoot({
         folder: "/home/dev/projects/collie-workspace",
         cwds: ["/home/dev/projects/collie-workspace/experiments/session-stream"],
         home: HOME,
@@ -31,7 +36,7 @@ describe("workspaceRoot — which folder a workspace's Changes list reads", () =
 
   test("without one, the deepest common ancestor of the panes' cwds", () => {
     expect(
-      workspaceRoot({
+      posixRoot({
         cwds: [
           "/home/dev/projects/collie-workspace",
           "/home/dev/projects/collie-workspace/experiments/session-stream",
@@ -41,40 +46,40 @@ describe("workspaceRoot — which folder a workspace's Changes list reads", () =
       }),
     ).toBe("/home/dev/projects/collie-workspace");
     // A shared name prefix is not a shared folder.
-    expect(workspaceRoot({ cwds: ["/home/dev/projects/ab/x", "/home/dev/projects/abc/y"], home: HOME })).toBe(
+    expect(posixRoot({ cwds: ["/home/dev/projects/ab/x", "/home/dev/projects/abc/y"], home: HOME })).toBe(
       "/home/dev/projects",
     );
     // One pane: its own folder.
-    expect(workspaceRoot({ cwds: ["/home/dev/projects/one/"], home: HOME })).toBe("/home/dev/projects/one");
+    expect(posixRoot({ cwds: ["/home/dev/projects/one/"], home: HOME })).toBe("/home/dev/projects/one");
   });
 
   test("blank and relative cwds are ignored", () => {
-    expect(workspaceRoot({ cwds: ["", "  ", "relative/x", "/home/dev/p/a"], home: HOME })).toBe("/home/dev/p/a");
-    expect(workspaceRoot({ cwds: ["", "  "], home: HOME })).toBeNull();
-    expect(workspaceRoot({ folder: "", cwds: [], home: HOME })).toBeNull();
+    expect(posixRoot({ cwds: ["", "  ", "relative/x", "/home/dev/p/a"], home: HOME })).toBe("/home/dev/p/a");
+    expect(posixRoot({ cwds: ["", "  "], home: HOME })).toBeNull();
+    expect(posixRoot({ folder: "", cwds: [], home: HOME })).toBeNull();
   });
 
   test("never `/`, never home itself, never above home", () => {
-    expect(workspaceRoot({ cwds: ["/home/dev/a", "/srv/b"], home: HOME })).toBeNull();
-    expect(workspaceRoot({ cwds: ["/home/dev/a", "/home/dev/b"], home: HOME })).toBeNull();
-    expect(workspaceRoot({ cwds: ["/home/dev/a", "/home/other"], home: HOME })).toBeNull();
-    expect(workspaceRoot({ cwds: ["/home/dev"], home: `${HOME}/` })).toBeNull();
+    expect(posixRoot({ cwds: ["/home/dev/a", "/srv/b"], home: HOME })).toBeNull();
+    expect(posixRoot({ cwds: ["/home/dev/a", "/home/dev/b"], home: HOME })).toBeNull();
+    expect(posixRoot({ cwds: ["/home/dev/a", "/home/other"], home: HOME })).toBeNull();
+    expect(posixRoot({ cwds: ["/home/dev"], home: `${HOME}/` })).toBeNull();
   });
 
   test("a mux folder out of bounds (a tmux session started in ~) falls through to the panes", () => {
-    expect(workspaceRoot({ folder: HOME, cwds: ["/home/dev/p/a", "/home/dev/p/b"], home: HOME })).toBe("/home/dev/p");
-    expect(workspaceRoot({ folder: "/", cwds: [], home: HOME })).toBeNull();
+    expect(posixRoot({ folder: HOME, cwds: ["/home/dev/p/a", "/home/dev/p/b"], home: HOME })).toBe("/home/dev/p");
+    expect(posixRoot({ folder: "/", cwds: [], home: HOME })).toBeNull();
   });
 
   test("a folder outside home is fine", () => {
-    expect(workspaceRoot({ cwds: ["/srv/app/a", "/srv/app/b"], home: HOME })).toBe("/srv/app");
-    expect(withinBound("/tmp/x", HOME)).toBe(true);
+    expect(posixRoot({ cwds: ["/srv/app/a", "/srv/app/b"], home: HOME })).toBe("/srv/app");
+    expect(withinBound("/tmp/x", HOME, posix)).toBe(true);
   });
 
   test("commonAncestor", () => {
-    expect(commonAncestor([])).toBeNull();
-    expect(commonAncestor(["/a/b/c", "/a/b"])).toBe("/a/b");
-    expect(commonAncestor(["/a", "/b"])).toBe("/");
+    expect(commonAncestor([], posix)).toBeNull();
+    expect(commonAncestor(["/a/b/c", "/a/b"], posix)).toBe("/a/b");
+    expect(commonAncestor(["/a", "/b"], posix)).toBe("/");
   });
 });
 

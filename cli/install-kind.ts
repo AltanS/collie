@@ -1,9 +1,12 @@
-import { basename, dirname, join, posix, resolve, win32 } from "node:path";
+import { basename, dirname, join, posix, win32 } from "node:path";
 
 import type { CliContext } from "./context.ts";
 import type { LinkReader } from "./link.ts";
 import type { Exec, Files } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
+
+/** The path rules of the platform a layout is judged for, so a Windows root is compared the Windows way on any host. */
+const pathApi = (platform: string) => (platform === "win32" ? win32 : posix);
 
 // HOW THIS COLLIE GOT HERE, and where its updates come from — the two questions `update` and
 // `doctor` must answer the same way, so they are answered once, here.
@@ -278,7 +281,7 @@ export function publishedBinary(root: string, link: LinkReader, platform: string
   if (basename(layout.versionsDir) !== "versions") return collieBinary(root, platform);
   const probe = link.probe(layout.currentLink);
   if (probe.kind !== "symlink") return collieBinary(root, platform);
-  const target = resolve(layout.installRoot, probe.target);
+  const target = pathApi(platform).resolve(layout.installRoot, probe.target);
   const inLayout = isSameOrInside(layout.versionsDir, target, platform);
   return inLayout ? collieBinary(layout.currentLink, platform) : collieBinary(root, platform);
 }
@@ -299,7 +302,7 @@ export function probeInstall(
   const git = isGitCheckout(deps.exec, root);
   const layout = binaryLayout(root);
   const probe = deps.link.probe(layout.currentLink);
-  const target = probe.kind === "symlink" ? resolve(layout.installRoot, probe.target) : null;
+  const target = probe.kind === "symlink" ? pathApi(platform).resolve(layout.installRoot, probe.target) : null;
   return {
     isGitCheckout: git,
     isDetached: git && isManagedCheckout(deps.exec, root),

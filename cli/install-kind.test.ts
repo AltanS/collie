@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { resolvePluginRoot } from "../bridge/root.ts";
-import { fakeExec, fakeFiles, fakeLinkFs, HOME } from "./fakes.ts";
+import { fakeExec, fakeFiles, fakeLinkFs, HOME, posixKey } from "./fakes.ts";
 import { realExec, realFiles } from "./sys.ts";
 import {
   classifyInstall,
@@ -199,14 +199,14 @@ describe("publishedBinary on win32, from a host that is not Windows", () => {
   test("a binary install publishes `current/bin/collie.exe`, the name Bun's compiler writes", () => {
     const root = "/inst/versions/1.1.0";
     const link = fakeLinkFs({ "/inst/current": { kind: "symlink", target: root } });
-    expect(publishedBinary(root, link, "win32")).toBe("/inst/current/bin/collie.exe");
-    expect(publishedBinary(root, link, "linux")).toBe("/inst/current/bin/collie");
+    expect(posixKey(publishedBinary(root, link, "win32"))).toBe("/inst/current/bin/collie.exe");
+    expect(posixKey(publishedBinary(root, link, "linux"))).toBe("/inst/current/bin/collie");
   });
 
   test("a checkout, or a `current` that points elsewhere, publishes its own `bin/collie.exe`", () => {
-    expect(publishedBinary("/src/collie", fakeLinkFs(), "win32")).toBe("/src/collie/bin/collie.exe");
+    expect(posixKey(publishedBinary("/src/collie", fakeLinkFs(), "win32"))).toBe("/src/collie/bin/collie.exe");
     const elsewhere = fakeLinkFs({ "/inst/current": { kind: "symlink", target: "/somewhere/else" } });
-    expect(publishedBinary("/inst/versions/1.1.0", elsewhere, "win32")).toBe("/inst/versions/1.1.0/bin/collie.exe");
+    expect(posixKey(publishedBinary("/inst/versions/1.1.0", elsewhere, "win32"))).toBe("/inst/versions/1.1.0/bin/collie.exe");
   });
 });
 
