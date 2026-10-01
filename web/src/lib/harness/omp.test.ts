@@ -47,10 +47,10 @@ const allOmpModalFixtures = allOmpFixtures.filter(
 );
 
 // Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
-// can draw. These are NOT "neutral output" in the plain sense: fifteen of them are live modals with
+// can draw. These are NOT "neutral output" in the plain sense: seventeen of them are live modals with
 // the keyboard, and the conformance assertion (raw-only) is exactly the promise worth pinning,
 // because it is a promise about a screen where being wrong would type a keystroke. The tool-approval
-// dialog, once this corpus's one known gap, is now three of those fifteen. One reason per line.
+// dialog, once this corpus's one known gap, is now three of those seventeen. One reason per line.
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -75,15 +75,25 @@ const DECLINED = new Set([
   //   (lib/agent-commands.ts's `omp` catalog), not a lifted block.
   "omp--slash-palette--filtered.txt",
   "omp--slash-palette.txt",
-  // — The `ask` tool's dialogs. A boxed widget whose `handleInput` we have not read; its `Other (type
-  //   your own)` and `n note` rows open free-text inputs that would strand a phone user mid-dialog;
-  //   and `omp--select-multi-review.txt` renders a NUMBERED summary (`1. toppings: …`), the exact
-  //   digit trap .adr/0009 exists for. Fail-closed: raw.
+  // — The `ask` tool's dialogs. A boxed widget whose selection `handleInput` we have not read; its
+  //   `Other (type your own)` and `n note` rows open the answer editor below, a second screen a lift
+  //   would have to drive; and `omp--select-multi-review.txt` renders a NUMBERED summary
+  //   (`1. toppings: …`), the exact digit trap .adr/0009 exists for. Fail-closed: raw. omp 18.4.4
+  //   adds the pointer on `Other` and the `✎ note` marker a saved note leaves on its row.
   "omp--select-menu-moved.txt",
+  "omp--select-menu-noted.txt",
+  "omp--select-menu-other.txt",
   "omp--select-menu.txt",
   "omp--select-multi-checked.txt",
   "omp--select-multi-review.txt",
   "omp--select-multi.txt",
+  // — The answer editor `Other` and `n note` open. A free-text input, never a dialog block: the
+  //   phone's composer types into it (omp/answer-editor.ts), and the mirror keeps it visible.
+  "omp--answer-editor-empty.txt",
+  "omp--answer-editor-long.txt",
+  "omp--answer-editor-note.txt",
+  "omp--answer-editor-typed.txt",
+  "omp--answer-editor-wrapped.txt",
   // — The full-screen pickers. No `menu` block for these: `parseKeyHintFooter` (the shared, pinned
   //   key-hint grammar) returns [] for the `/model` and `/resume` footers, and for `/settings` it
   //   yields only {Jump sections, [Tab]} + {Close, [Escape]} because `menuKeyFor` rejects the
@@ -115,7 +125,7 @@ const DECLINED = new Set([
 
 // Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
 // each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
-// raw-only on all 33 omp captures and every foreign harness capture.
+// raw-only on all 40 omp captures and every foreign harness capture.
 const ownFixtures: string[] = [];
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
@@ -130,6 +140,11 @@ describeAdapterConformance(ompAdapter, {
 // this test before it can quietly widen or narrow the gate above.
 describe("the omp corpus", () => {
   const PINNED = [
+    "omp--answer-editor-empty.txt",
+    "omp--answer-editor-long.txt",
+    "omp--answer-editor-note.txt",
+    "omp--answer-editor-typed.txt",
+    "omp--answer-editor-wrapped.txt",
     "omp--approval-bash.txt",
     "omp--approval-write--deny.txt",
     "omp--approval-write.txt",
@@ -150,6 +165,8 @@ describe("the omp corpus", () => {
     "omp--menu-settings-moved.txt",
     "omp--menu-settings.txt",
     "omp--select-menu-moved.txt",
+    "omp--select-menu-noted.txt",
+    "omp--select-menu-other.txt",
     "omp--select-menu.txt",
     "omp--select-multi-checked.txt",
     "omp--select-multi-review.txt",
@@ -165,11 +182,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 33 captures this adapter was developed against", () => {
+  it("is exactly the 40 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all thirty-three — nothing is up-levelled", () => {
+  it("declines all forty — nothing is up-levelled", () => {
     expect(neutralFixtures).toEqual(PINNED);
     expect(ownFixtures).toEqual([]);
   });
@@ -202,6 +219,7 @@ describe("ompBuildBlocks emits nothing but raw", () => {
         "draftIsOpaque", // never take over an opaque paste chip as literal text
         "extractInputDraft", // the stranded-draft preview + the type-then-verify half
         "extractStatusLines", // the statusline the strip peels off the mirror
+        "newlineSubmits", // the pre-flight's refusal of a multi-line message
       ].toSorted(),
     );
   });
@@ -210,7 +228,14 @@ describe("ompBuildBlocks emits nothing but raw", () => {
 // The reply pre-flight's half of Tier 1, asserted directly rather than only through the conformance
 // suite's menu leg (which this adapter never reaches, having no menu fixtures). `composerReady` is
 // what makes reply-action.ts refuse to type into a modal; a wrong `true` here puts the user's message
-// into a picker, and a wrong `false` blocks every reply on a live composer.
+// into a picker, and a wrong `false` blocks every reply on a live input.
+const ANSWER_EDITOR_FIXTURES = [
+  "omp--answer-editor-empty.txt",
+  "omp--answer-editor-long.txt",
+  "omp--answer-editor-note.txt",
+  "omp--answer-editor-typed.txt",
+  "omp--answer-editor-wrapped.txt",
+];
 const COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
   "omp--done.txt",
@@ -233,7 +258,8 @@ const COMPOSER_FIXTURES = [
 ];
 
 describe("composerReady — the gate the reply path pre-flights on", () => {
-  it.each(allOmpFixtures.filter((f) => !COMPOSER_FIXTURES.includes(f)))(
+  const ready = new Set([...COMPOSER_FIXTURES, ...ANSWER_EDITOR_FIXTURES]);
+  it.each(allOmpFixtures.filter((f) => !ready.has(f)))(
     "%s: a modal owns the keyboard ⇒ false",
     (name) => {
       expect(ompAdapter.composerReady!(fixtureLines(name))).toBe(false);
@@ -242,6 +268,25 @@ describe("composerReady — the gate the reply path pre-flights on", () => {
 
   it.each(COMPOSER_FIXTURES)("%s: the composer is on screen ⇒ true", (name) => {
     expect(ompAdapter.composerReady!(fixtureLines(name))).toBe(true);
+    expect(ompAdapter.newlineSubmits!(fixtureLines(name))).toBe(false);
+  });
+
+  it.each(ANSWER_EDITOR_FIXTURES)("%s: the answer editor is on screen ⇒ true, and a newline submits it", (name) => {
+    expect(ompAdapter.composerReady!(fixtureLines(name))).toBe(true);
+    expect(ompAdapter.newlineSubmits!(fixtureLines(name))).toBe(true);
+  });
+
+  it("reads the answer as the draft, so the reply guard can verify it", () => {
+    const draft = (name: string) => ompAdapter.extractInputDraft(fixtureLines(name));
+    expect(draft("omp--answer-editor-empty.txt")).toBeNull();
+    expect(draft("omp--answer-editor-typed.txt")).toBe("a deep teal, like the sea at dusk");
+    expect(draft("omp--answer-editor-note.txt")).toBe("only if it is a warm blue");
+    expect(draft("omp--answer-editor-wrapped.txt")).toBe(
+      "a deep teal, like the sea at dusk — and here is a much longer continuation so that the custom answer editor has to soft wrap this text onto a second and maybe a third row of the box to see how it folds",
+    );
+    expect(draft("omp--answer-editor-long.txt")).toBe(
+      Array.from({ length: 700 }, (_, i) => `word${String(i).padStart(4, "0")}`).join(" "),
+    );
   });
 });
 

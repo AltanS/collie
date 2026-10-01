@@ -942,6 +942,48 @@ half of that test: exactly one styled row with more than one segment.
 | `omp--v18-pi-effort-hint.txt` | `pi` composer: the hint right-aligned on the single draft row between the two rules, status row below | `idle` |
 | `omp--fresh-agents-hint.txt` | Boxed composer with a background subagent running: `← ← to see 1 running agent` right-aligned in the bottom border | `idle` |
 
+## OMP `ask` answer editor (captured 2026-10-01, oh-my-pi `omp` v18.4.4, herdr 0.9.3, throwaway Herdr pane)
+
+Seven byte-faithful `pane.read format:ansi` captures, read through the local bridge from one throwaway
+Herdr workspace in `/tmp/ompask`. The prompt asked omp to call its `ask` tool with one question and
+three options, and the dialog was then driven with `Up`/`Down`, `Enter`, `n` and typed text.
+
+They exist for one screen: the free-text box the `ask` tool opens for `Other (type your own)` and
+for `n note`. omp's prompt-style `HookEditorComponent` (pi-tui `overlays/hook-editor.ts`) REPLACES the
+composer while it is open (`extension-ui-controller.ts` clears the editor container and mounts only
+this), so before `omp/answer-editor.ts` the reply pre-flight saw no composer and refused every reply
+typed into it.
+
+The box is titled `Custom answer: <question>` or `Note for <option>: <question>`, the first answer row
+carries the editor's `> ` gutter, continuation rows are indented by the gutter's width, and the hint
+row reads `<enter> or <ctrl+q> submit  <esc> cancel  <ctrl+g> external editor`. The hint is the one row
+that tells the two editor modes apart: hook-style joins its submit keys with `/` and inserts a newline
+on plain Enter.
+
+Keys live-probed on the real editor, not inferred. Plain `Enter` submits. **A raw newline submits
+too**: `pane.send_text` of `line one\nline two` answered the question with `line one` and typed
+`line two` into the composer behind it (HERDR_API.md: `send_text` writes raw bytes). `Escape` returns
+to the Ask dialog with nothing recorded.
+
+CRLF throughout with no trailing newline; `wc -l` is 38 for `empty`, `typed` and `note`, 39 for
+`wrapped`, 61 for `long`, and 43 for both dialog captures. **No sanitization pass was needed**, and that is verified rather
+than assumed: no username, hostname, home or `/tmp` path, email, session id or UUID appears, and the
+box covers the statusline. Every row above the box is the sandbox session's own transcript and omp's
+`Update Available` notice.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--select-menu-other.txt` | omp 18's single-choice Ask dialog with the pointer on `Other (type your own)`; footer `<enter> select · n note · ↑/↓ move · <esc> cancel`. A modal: `composerReady` false | `working` |
+| `omp--select-menu-noted.txt` | Back on the Ask dialog after a note was submitted with `Enter`: `Blue  ✎ note`. A modal: `composerReady` false | `working` |
+| `omp--answer-editor-empty.txt` | `Enter` on `Other`: `╭─ Custom answer: Pick a colour ─╮`, an empty `│ > ` row, the prompt-style hint | `working` |
+| `omp--answer-editor-typed.txt` | The same editor holding `a deep teal, like the sea at dusk` | `working` |
+| `omp--answer-editor-wrapped.txt` | A longer answer soft-wrapped onto a second row | `working` |
+| `omp--answer-editor-long.txt` | A 700-word answer: the box grows with it, to 37 answer rows | `working` |
+| `omp--answer-editor-note.txt` | `n` on `Blue`: the same editor titled `Note for Blue: Pick a colour`, holding `only if it is a warm blue` | `working` |
+
+The answers were typed with `herdr pane send-text` into the sandbox session only, and the workspace was
+closed afterwards.
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

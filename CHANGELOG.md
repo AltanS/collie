@@ -34,6 +34,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
 
+### Fixed
+
+- **A phone reply reaches omp's `ask` answer box.** Picking `Other (type your own)` or adding a note
+  opens a box Collie did not recognise, so Send refused with "input box isn't on screen". Send now
+  types, checks and submits there. A multi-line message is refused on that box, because a newline
+  submits it.
+
 ## [1.15.3] - 2026-10-02
 
 ### Fixed
