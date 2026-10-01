@@ -20,6 +20,7 @@ import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
+import { useChatReady } from "@/hooks/use-chat-ready";
 import { useLatestReply } from "@/hooks/use-latest-reply";
 import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
@@ -849,7 +850,19 @@ export function AgentChat({
   const chatBody = chatChosen && historyAvailable;
   // The live window, moved by the poll that already exists (ADR 0073). Disabled is free: no fetch,
   // no timer, the empty window.
-  const chatFeed = useChatWindow({ paneId, scope, enabled: chatBody });
+  // WARMED BEFORE THE TAP. The read starts when the menu that holds the switch opens, not when the
+  // switch is pressed, so by the time it is the answer is already in hand and the swap lands with the
+  // sheet's own close instead of after it. Only for a pane that has a journal and only while one of
+  // the two sheets that carry the switch is open, so a terminal-only operator pays nothing standing
+  // still on a pane.
+  const switchSheetOpen = drawer === "paneMenu" || drawer === "display";
+  const warming = chatOffered && historyAvailable && switchSheetOpen;
+  const chatFeed = useChatWindow({ paneId, scope, enabled: chatBody || warming });
+  // WHICH BODY IS ON SCREEN. `chatBody` is what was chosen and starts the read above; `chatShown` is
+  // what is drawn, and it lags by one answer. The swap used to land on an empty stream in the same
+  // tick the menu started to close, so the turns popped in after it. The terminal now stays up until
+  // Chat has something to show (hooks/use-chat-ready.ts), with a cap so a failed read cannot strand it.
+  const chatShown = useChatReady(chatBody, chatFeed.window.status.kind !== "empty");
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
   // question this side can answer. There are two layers and the split is deliberate: a pane with no
   // journal at all never asks the bridge, so the reason belongs on the ⋮ row here, while a pane
@@ -1988,7 +2001,7 @@ export function AgentChat({
                 whichever body is on screen back to its tail without knowing which one it is. The
                 draft-notice slot below is outside the swap on purpose: the composer portals into it
                 and the notice floats over both bodies alike (ADR 0061). */}
-            {chatBody ? (
+            {chatShown ? (
               <SessionStream
                 feed={chatFeed}
                 address={paneScopeKey(scope, paneId)}
@@ -2480,7 +2493,7 @@ export function AgentChat({
               chatOffered
                 ? {
                     chosen: dash.prefs.paneView,
-                    showing: chatBody ? "chat" : "terminal",
+                    showing: chatShown ? "chat" : "terminal",
                     onChange: dash.setPaneView,
                     note: chatNote,
                     showToolCalls: dash.prefs.showToolCalls,
@@ -2531,7 +2544,7 @@ export function AgentChat({
           // Find searches the MIRROR, and highlights its hits there. In chat mode the mirror is
           // not on screen, so the row would open a bar over a surface with nothing to show —
           // withheld, the way the sheet withholds every row it was given nothing for.
-          onFind={display && !chatBody ? openFind : undefined}
+          onFind={display && !chatShown ? openFind : undefined}
           onHistory={historyAvailable ? () => nav.down(historyPath(paneId, scope)) : undefined}
           // Copy the buffered output — gated on there being output AND a clipboard to write to (absent
           // over plain HTTP), so the row hides where it could only fail, the way find hides with no

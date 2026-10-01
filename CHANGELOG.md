@@ -48,6 +48,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   steps the running `collie.exe` aside to `.old` before the swap, because Windows refuses to rename
   onto a running executable, and the bridge finds `bin/collie.exe`, so the phone's Update button can
   run there. Windows stays community-supported and best effort. Thanks @mqmalagris (#309).
+- **Switching a pane to Chat lands with the turns already there.** Choosing Chat from the pane menu
+  used to swap the body at once, onto an empty box, and the turns popped in after it. Chat now reads
+  the session while the pane menu or the Display sheet is open, so the swap happens as the sheet
+  closes. If that read has not come, the terminal stays up for at most a second and a half.
 
 ## [1.15.0] - 2026-10-01
 
