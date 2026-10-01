@@ -30,6 +30,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A folder on Windows no longer reads as "no folder".** The Changes view only accepted a path that
+  started with `/`, so every Windows folder was refused. It now reads a path the way the host does, and
+  the install check, the link check and the update smoke test find `collie.exe` instead of a bare
+  `collie`. Nothing changes on Linux or macOS.
+
 ## [1.15.2] - 2026-10-02
 
 ### Fixed
@@ -60,10 +67,6 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
-- **A folder or a binary on Windows is read with Windows path rules.** The changes view, the install
-  checks and the update smoke test compared paths with a literal `/` and named the binary `collie`
-  with no `.exe`, so a Windows folder was refused as "no folder" and a Windows install was not
-  recognised. They now follow the host's path rules, and the tests pin both spellings on Linux.
 - **Updating on Windows works with the community supervisor.** With the community Task Scheduler
   supervisor, `collie restart` stops only the bridge process it recorded and the supervisor
   relaunches it, where it used to fail on a `bin/collie` that Windows names `collie.exe`. The build

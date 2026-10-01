@@ -19,6 +19,82 @@ import type { AgentView, WorkspaceView } from "./types.ts";
 
 const HOME = "/home/dev";
 
+// The rules as they stood before the Windows work, copied here so the rewrite is proven to answer a
+// POSIX path the way the string version did, not only to pass the cases written after it.
+const legacyNormalize = (path: string | undefined): string | null => {
+  if (path === undefined) return null;
+  const trimmed = path.trim();
+  if (!trimmed.startsWith("/")) return null;
+  const stripped = trimmed.replace(/\/+$/, "");
+  return stripped === "" ? "/" : stripped;
+};
+const legacyCommonAncestor = (paths: readonly string[]): string | null => {
+  if (paths.length === 0) return null;
+  let parts = paths[0]!.split("/").filter(Boolean);
+  for (const path of paths.slice(1)) {
+    const other = path.split("/").filter(Boolean);
+    let i = 0;
+    while (i < parts.length && i < other.length && parts[i] === other[i]) i++;
+    parts = parts.slice(0, i);
+  }
+  return `/${parts.join("/")}`;
+};
+const legacyWithinBound = (path: string, home: string): boolean => {
+  if (path === "/") return false;
+  const h = legacyNormalize(home);
+  if (h === null || h === "/") return true;
+  return path !== h && !h.startsWith(`${path}/`);
+};
+const legacyWorkspaceRoot = (input: Omit<WorkspaceRootInput, "pathApi">): string | null => {
+  const folder = legacyNormalize(input.folder);
+  if (folder !== null && legacyWithinBound(folder, input.home)) return folder;
+  const cwds = input.cwds.map(legacyNormalize).filter((c): c is string => c !== null);
+  const common = legacyCommonAncestor(cwds);
+  if (common !== null && legacyWithinBound(common, input.home)) return common;
+  return null;
+};
+
+describe("the POSIX answers are the ones the string rules gave", () => {
+  const folders = [
+    "/", "/home", "/home/dev", "/home/dev/", "/home/dev/a", "/home/dev/a/b", "/home/devx", "/home/dev/ab",
+    "/srv/app", "/srv/app/", "/tmp/x", "/opt", "/Home/Dev", "relative/dir", "", "   ", "./here",
+  ];
+  const homes = ["/home/dev", "/home/dev/", "/", "", "/root", "relative"];
+
+  test("withinBound agrees on every folder against every home", () => {
+    for (const home of homes) {
+      for (const f of folders) {
+        const path = legacyNormalize(f);
+        if (path === null) continue;
+        expect(withinBound(path, home, posix)).toBe(legacyWithinBound(path, home));
+      }
+    }
+  });
+
+  test("commonAncestor agrees on every pair and triple of folders", () => {
+    const clean = folders.map(legacyNormalize).filter((f): f is string => f !== null);
+    for (const a of clean) {
+      for (const b of clean) {
+        expect(commonAncestor([a, b], posix)).toBe(legacyCommonAncestor([a, b]));
+        expect(commonAncestor([a, b, "/home/dev/a"], posix)).toBe(legacyCommonAncestor([a, b, "/home/dev/a"]));
+      }
+    }
+    expect(commonAncestor([], posix)).toBeNull();
+  });
+
+  test("workspaceRoot agrees on every mux folder and pane set against every home", () => {
+    const cwdSets = [[], ["/home/dev/a"], ["/home/dev/a", "/home/dev/b"], ["/srv/app", "/srv/other"], ["/home/dev/a/", "rel"]];
+    for (const home of homes) {
+      for (const folder of [undefined, ...folders]) {
+        for (const cwds of cwdSets) {
+          const input = { folder, cwds, home };
+          expect(posixRoot(input)).toBe(legacyWorkspaceRoot(input));
+        }
+      }
+    }
+  });
+});
+
 // These rules mean POSIX paths, so they pin path.posix: the default is the host's own flavour, which
 // on Windows reads `/home/dev/...` as a drive-relative path.
 const posixRoot = (input: Omit<WorkspaceRootInput, "pathApi">): string | null => workspaceRoot({ ...input, pathApi: posix });

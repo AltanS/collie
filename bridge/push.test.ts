@@ -240,6 +240,7 @@ describe("Push — eviction of persistently-failing subscriptions", () => {
 
 describe("Push — persistence", () => {
   // NTFS has no 0600 mode bits: stat() reports 0o666 for a writable file, so the assertion has no meaning there.
+  // What protects the file on Windows is M43 spec 04's question, not this test's.
   test.skipIf(process.platform === "win32")("addSubscription persists with owner-only (0600) permissions", async () => {
     const cfg = await tempCfg();
     const push = new Push(cfg, () => Promise.resolve());

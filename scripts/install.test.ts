@@ -310,7 +310,8 @@ function runKeeping(opts: Options, inspect: (r: Omit<Run, "installed" | "headers
 }
 
 // install.sh is a POSIX shell installer driven through /bin/sh, symlinks and a fake `curl`; a Windows
-// host has no /bin/sh and installs with install.ps1, whose tests are added separately.
+// host has no /bin/sh and installs with install.ps1, whose tests are M43 spec 07's. This skip comes off
+// when they land.
 describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
   test("is valid POSIX sh", () => {
     const proc = Bun.spawnSync(["/bin/sh", "-n", SCRIPT]);
