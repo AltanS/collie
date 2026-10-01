@@ -21,6 +21,15 @@ export const HOME = "/home/pat";
 export const HANDLER_FILE = `${CONFIG}/tailscale-managed-handler`;
 export const STATE = "/state";
 
+/**
+ * The key a fake filesystem stores a path under: POSIX, no drive. On Windows `join` and `resolve`
+ * return `C:\opt\collie\bin\collie`; the fakes model a POSIX box, so that folds back to
+ * `/opt/collie/bin/collie`. The platform is a parameter so Linux CI pins the Windows branch.
+ */
+export function posixKey(p: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32" ? p.replace(/^[A-Za-z]:/, "").replaceAll("\\", "/") : p;
+}
+
 export interface FakeExec extends Exec {
   /**
    * `<tool> <args…>` for every call, in order. A {@link Exec.runIn} call is recorded with its
@@ -231,7 +240,7 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
   // staging swap, whose whole content is `web/dist/**`.
   const under = (p: string): string[] =>
     [...new Set([...entries.keys(), ...entryTypes.keys()])].filter((k) => k === p || k.startsWith(`${p}/`));
-  return {
+  const raw: FakeFiles = {
     entries,
     undeletable,
     rootOwned,
@@ -303,6 +312,30 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
         if (type !== undefined) entryTypes.set(to + k.slice(from.length), type);
       }
     },
+  };
+  // The seeded keys are POSIX. Code under test builds paths with `join` and `resolve`, which hand
+  // back `C:\opt\collie\bin` on Windows, so every path that comes in is folded to the key a test wrote.
+  const one = <A extends unknown[], R>(f: (p: string, ...rest: A) => R) =>
+    (p: string, ...rest: A): R => f(posixKey(p), ...rest);
+  return {
+    ...raw,
+    ownerUid: one(raw.ownerUid),
+    writable: one(raw.writable),
+    exists: one(raw.exists),
+    executable: one(raw.executable),
+    read: one(raw.read),
+    entryType: one(raw.entryType),
+    list: one(raw.list),
+    listStrict: one(raw.listStrict),
+    realpath: one(raw.realpath),
+    mkdtemp: one(raw.mkdtemp),
+    write: one(raw.write),
+    mkdirp: one(raw.mkdirp),
+    remove: one(raw.remove),
+    removeTree: one(raw.removeTree),
+    stat: one(raw.stat),
+    readlink: one(raw.readlink),
+    rename: (from, to) => raw.rename(posixKey(from), posixKey(to)),
   };
 }
 
