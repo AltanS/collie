@@ -211,8 +211,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   and every one passed. `journal` is the new scenario: it parses the canary's own session with the
   same adapter Chat uses, and asserts the kinds it finds. The ledger now carries two lines per
   agent, the screen reader's and the journal reader's, so `bun run harness:drift` covers Chat as
-  well as the mirror. Codex 0.159.2 passed every screen scenario and is not recorded: it answered
-  the journal prompt in words without calling a tool, so that scenario reached no verdict.
+  well as the mirror.
 
 - **The canary's journal prompt cannot be answered without opening the file.** It used to say "read
   README.md, then reply with only OK", and "OK" needs nothing from the file, so an agent was free to
@@ -232,6 +231,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   entries for Claude 2.1.285 and opencode 1.18.33, both of which had passed all six of their own
   scenarios and were the two versions the drift check was asking about. Another vendor's startup
   prompt is not evidence about our Claude reader. A run with any failure is still a failed run.
+
+- **Codex 0.159.2 is verified, for both readers.** The canary ran idle, drafts, sends, journal and
+  narrow against it and every one passed. The journal scenario saw Codex's `custom_tool_call` and
+  counted no row it does not know, so the ledger now names 0.159.2 for the screen reader and for
+  the journal reader, which had been last swept at 0.156.1.
 
 ### Added
 
