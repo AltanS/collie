@@ -835,6 +835,8 @@ export const zhTW: Dictionary = {
     "目前處於密碼提示狀態，終端機沒有回顯，因此無法確認輸入是否送達。未輸入任何內容。",
   "reply.blocked.composerLeft":
     "清空輸入列時 Agent 輸入框消失，可能觸發了彈出視窗或選單。訊息未寫入。",
+  "reply.refused.multiline":
+    "此輸入框遇到換行就會送出，多行訊息會在第一個換行處被截斷。請寫成一行。未輸入任何內容。",
   "reply.stalled.noEcho":
     "目前處於密碼提示狀態，終端機沒有回顯，因此無法確認文字且尚未提交。輸入的內容已寫入窗格。",
   "reply.stalled.generic":
