@@ -44,6 +44,11 @@ export const BAR = "┃";
 // the scanners' position — hung off the rule at the tail — says which bar rows are the composer's.
 const BAR_ROW = /^\s*┃/;
 
+/** True when this row is a BARE bar row: the bar and nothing else (the box's padding). */
+export function isBareBar(text: string): boolean {
+  return /^\s*┃\s*$/.test(rstrip(text));
+}
+
 /** True when this row is a bar row (the bar as the first glyph after the pad). */
 export function isBarRow(text: string): boolean {
   return BAR_ROW.test(rstrip(text));
@@ -122,3 +127,50 @@ export const CONFIRM_HINT = "enter confirm";
 export function hasFooterHints(text: string): boolean {
   return rstrip(text).includes(SELECT_HINT) && rstrip(text).includes(CONFIRM_HINT);
 }
+
+// The QUESTION dialog's footer (the `question` tool, measured on 1.18.33, QUESTION_NOTES.md). It
+// names its own dialog, and `esc dismiss` is the common marker: the permission footer never prints
+// it. The words after `enter` say which dialog it is:
+//
+//     ↑↓ select  enter submit  esc dismiss                  one question, single select
+//     ⇆ tab  ↑↓ select  enter toggle  esc dismiss           one question, multi select, list tab
+//     ⇆ tab  ↑↓ select  enter confirm  esc dismiss          two or more questions
+//     ⇆ tab  enter submit  esc dismiss                      the Confirm tab (no options)
+//
+// At 50 columns the two-space gaps shrink to one space, so every check below matches on the words
+// with `\s+`, never on a gap width.
+const QUESTION_FOOTER_ROW = /\benter\s+(submit|toggle|confirm)\s+esc\s+dismiss$/;
+
+/** What a question footer says about its dialog. */
+export interface QuestionFooter {
+  /** The word after `enter`. */
+  verb: "submit" | "toggle" | "confirm";
+  /** `⇆ tab` is printed: the dialog has a tab bar (several questions, a multi select, or Confirm). */
+  tabs: boolean;
+  /** `↑↓ select` is printed: the row is a list, not the Confirm tab. */
+  list: boolean;
+}
+
+/** Read the question footer off a bar row's text, or null when the row is not one. */
+export function questionFooter(text: string): QuestionFooter | null {
+  if (!isBarRow(text)) return null;
+  const flat = rstrip(text).replace(/\s+/g, " ");
+  const m = QUESTION_FOOTER_ROW.exec(flat);
+  const verb = m?.[1];
+  if (verb !== "submit" && verb !== "toggle" && verb !== "confirm") return null;
+  return {
+    verb,
+    tabs: flat.includes("⇆ tab"),
+    list: flat.includes("↑↓ select"),
+  };
+}
+
+/** True when this row is a question dialog's footer, whichever dialog it is. */
+export function isQuestionFooter(text: string): boolean {
+  return questionFooter(text) !== null;
+}
+
+// The free-text row opencode adds as the LAST numbered row of every list. It is not an option: the
+// model never sent it (QUESTION_NOTES.md, "The journal"). Its label doubles as the placeholder the
+// input row shows once the row is opened.
+export const FREE_TEXT_LABEL = "Type your own answer";

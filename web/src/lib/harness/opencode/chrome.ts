@@ -26,9 +26,11 @@ import type { StyledLine } from "../../blocks";
 import {
   barDraftText,
   hasFooterHints,
+  isBareBar,
   isBarRow,
   isBlank,
   isModelRow,
+  isQuestionFooter,
   isRuleRow,
   lineText,
   rstrip,
@@ -213,11 +215,6 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
   return end === lines.length ? lines : lines.slice(0, end);
 }
 
-/** A row whose only glyph is the bar — interior padding, not content. */
-function isBareBar(text: string): boolean {
-  return /^\s*┃\s*$/.test(rstrip(text));
-}
-
 /**
  * The status rows painted BELOW the rule, verbatim and STYLED — cwd, key hints, the token/cost run,
  * the version row. `[]` when there is no composer tail (a dialog owns the screen, or the buffer is
@@ -341,9 +338,12 @@ const MODAL_FOOTER_WINDOW = 3;
  * Positive evidence that one of opencode's own modals is up — the fifth condition of the
  * unread-dialog card (.adr/0053, addendum 2026-09-26). `composerReady` answering false says only
  * that no composer is there, which is also what the shell looks like while opencode starts and
- * after it exits; the card must not offer Escape there. Two shapes count, both measured on 1.18.32:
- * a picker (`pickerOverlayUp`), and a dialog painted in the bar run, whose footer — a bar row
- * carrying `⇆ select` and `enter confirm` — sits at the tail.
+ * after it exits; the card must not offer Escape there. Three shapes count: a picker
+ * (`pickerOverlayUp`), a permission dialog painted in the bar run, whose footer — a bar row
+ * carrying `⇆ select` and `enter confirm` — sits at the tail (1.18.32), and a question dialog,
+ * whose footer is a bar row carrying `esc dismiss` after `enter submit|toggle|confirm` (1.18.33).
+ * The question footer counts on EVERY question screen, the ones the grammar refuses included (a tab
+ * bar, a long list): the card and the composer lock must work on exactly those.
  */
 export function modalOnScreen(lines: StyledLine[]): boolean {
   if (pickerOverlayUp(lines)) return true;
@@ -352,7 +352,7 @@ export function modalOnScreen(lines: StyledLine[]): boolean {
     const text = rstrip(lineText(lines[i]!));
     if (isBlank(text)) continue;
     seen++;
-    if (isBarRow(text) && hasFooterHints(text)) return true;
+    if (isBarRow(text) && (hasFooterHints(text) || isQuestionFooter(text))) return true;
   }
   return false;
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 
+import { AnswerList } from "@/components/answer-list";
 import { WizardStepper } from "@/components/wizard-stepper";
 import type { StyledLine, WizardModel, WizardOption } from "@/lib/blocks";
 import { OptionButton, PromptPanel, QuestionHeading } from "@/components/option-button";
@@ -173,16 +174,7 @@ function ReviewStep({
   return (
     <>
       <div className="text-sm font-medium text-foreground">{t("dialog.reviewAnswers")}</div>
-      {wizard.answers.length > 0 && (
-        <dl className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2">
-          {wizard.answers.map((qa, i) => (
-            <div key={i}>
-              <dt className="font-content text-xs text-muted-foreground">{qa.question}</dt>
-              <dd className="font-content text-sm font-medium text-foreground">{qa.answer}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      <AnswerList answers={wizard.answers} />
       {wizard.incomplete && (
         <div className="flex items-center gap-1.5 text-xs text-status-working">
           <AlertTriangle className="size-3.5 shrink-0" />
@@ -193,7 +185,7 @@ function ReviewStep({
         <button
           type="button"
           disabled={locked}
-          onClick={() => onPress("submit", WIZARD_SUBMIT_KEYS)}
+          onClick={() => onPress("submit", wizard.submitKeys ?? WIZARD_SUBMIT_KEYS)}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary/60 bg-primary/15 px-3 py-2 text-sm font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
         >
           {sendingId === "submit" ? (
@@ -204,13 +196,13 @@ function ReviewStep({
         <button
           type="button"
           disabled={locked}
-          onClick={() => onPress("cancel", WIZARD_CANCEL_KEYS)}
+          onClick={() => onPress("cancel", wizard.cancelKeys ?? WIZARD_CANCEL_KEYS)}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           {sendingId === "cancel" ? (
             <Loader2 className="size-3.5 shrink-0 animate-spin" aria-label={t("dialog.sendingAria")} />
           ) : null}
-          {t("dialog.cancel")}
+          {wizard.cancelLabel ?? t("dialog.cancel")}
         </button>
       </div>
     </>

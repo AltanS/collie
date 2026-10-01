@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MultiSelectModel, StyledLine } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
+import { AnswerList } from "@/components/answer-list";
 import { KeyBadge, optionSurface, PromptPanel, QuestionHeading } from "@/components/option-button";
 import { WizardStepper } from "@/components/wizard-stepper";
 import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/wizard-model";
@@ -13,10 +14,10 @@ import { useLocale } from "@/hooks/use-locale";
 export interface MultiSelectBlockProps {
   /** The detected multi-select dialog (checkbox screen or review screen). */
   multi: MultiSelectModel;
-  /** The region this block replaced — passed through to the CHECKBOX phase's PromptPanel as its
-   *  way back (ADR 0056). This component renders one of two PromptPanel instances (checkbox or
-   *  review); the checkbox phase is the primary one and carries the control, the review phase
-   *  (a short confirm screen over answers already shown) does not get a second one. */
+  /** The region this block replaced — passed through to whichever PromptPanel this component
+   *  renders (checkbox or review) as its way back (ADR 0056). The review used to go without one,
+   *  as a short confirm screen over answers already shown; a review can now carry its own answers
+   *  and its own declared keys, so it is a card worth checking against the terminal too. */
   lines?: StyledLine[];
   /**
    * Injected send handler (from AgentChat). Presentational contract: this component NEVER touches
@@ -53,8 +54,8 @@ export function MultiSelectBlock({ multi, lines, onAction, disabled }: MultiSele
   if (multi.phase === "review") {
     return (
       <ReviewPhase
-        incomplete={multi.incomplete}
-        cancelLabel={multi.cancelLabel}
+        multi={multi}
+        lines={lines}
         locked={locked}
         sending={sending}
         onPress={press}
@@ -178,24 +179,24 @@ function CheckboxPhase({
 }
 
 function ReviewPhase({
-  incomplete,
-  cancelLabel,
+  multi,
+  lines,
   locked,
   sending,
   onPress,
 }: {
-  incomplete: boolean;
-  /** The terminal's own cancel-row label (Muse: `Interrupt turn`); absent ⇒ "Cancel". */
-  cancelLabel: string | undefined;
+  multi: Extract<MultiSelectModel, { phase: "review" }>;
+  lines?: StyledLine[];
   locked: boolean;
   sending: string | null;
   onPress: (id: string, action: MultiSelectIntent) => void;
 }) {
   useLocale();
   return (
-    <PromptPanel ariaLabel={t("dialog.readySubmit")}>
+    <PromptPanel ariaLabel={t("dialog.readySubmit")} raw={lines}>
       <QuestionHeading>{t("dialog.readySubmit")}</QuestionHeading>
-      {incomplete ? (
+      {multi.answers ? <AnswerList answers={multi.answers} /> : null}
+      {multi.incomplete ? (
         // role="alert" so a screen reader announces the incomplete-answers warning when the review
         // screen mounts — otherwise a user could confirm a partial set without ever hearing it.
         <div role="alert" className="flex items-center gap-1.5 text-xs text-status-working">
@@ -213,6 +214,19 @@ function ReviewPhase({
           {sending === "confirm" ? <SpinnerSm /> : null}
           {t("dialog.submitAnswers")}
         </button>
+        {/* Back to the checkbox screen: one declared keystroke, offered only when the harness
+            declares it. De-emphasised like cancel, and above it, because it loses nothing. */}
+        {multi.backKeys ? (
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() => onPress("back", { kind: "back" })}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
+          >
+            {sending === "back" ? <SpinnerSm /> : null}
+            {t("dialog.backToOptions")}
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={locked}
@@ -220,7 +234,8 @@ function ReviewPhase({
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           {sending === "cancel" ? <SpinnerSm /> : null}
-          {cancelLabel ?? t("dialog.cancel")}
+          {/* The terminal's own cancel-row label (Muse: `Interrupt turn`); absent ⇒ "Cancel". */}
+          {multi.cancelLabel ?? t("dialog.cancel")}
         </button>
       </div>
     </PromptPanel>

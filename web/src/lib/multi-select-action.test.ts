@@ -9,6 +9,45 @@ vi.mock("./api", () => ({
   sendKeys: vi.fn(),
 }));
 
+// A harness that declares its submit keys as data (opencode's `question` tool shape). It re-uses
+// Claude's grammar for the screens and adds the declared plans on top, so the guard re-derives
+// through a real detector and the declared fields ride every derivation, exactly as an adapter that
+// emits them would. Every other agent resolves through the real registry.
+const keysHarness = vi.hoisted(() => {
+  const agent = "keys-harness";
+  const declare = (m: import("./blocks").MultiSelectModel): import("./blocks").MultiSelectModel =>
+    m.phase === "checkbox"
+      ? { ...m, advanceKeys: ["Tab"] }
+      : {
+          ...m,
+          submit: "keys",
+          submitKeys: ["Enter"],
+          cancelKeys: ["Escape"],
+          backKeys: ["Left"],
+          answers: [{ question: "Toppings", answer: "Cheese, Olives" }],
+        };
+  return { agent, declare };
+});
+vi.mock("./harness/registry", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./harness/registry")>();
+  return {
+    ...real,
+    adapterFor: (agent: string | undefined) => {
+      if (agent !== keysHarness.agent) return real.adapterFor(agent);
+      const claude = real.adapterFor("claude")!;
+      return {
+        ...claude,
+        agent: keysHarness.agent,
+        buildBlocks: (lines: import("./blocks").StyledLine[]) => {
+          const blocks = claude.buildBlocks(lines);
+          for (const b of blocks) if (b.kind === "multi-select") b.multi = keysHarness.declare(b.multi);
+          return blocks;
+        },
+      };
+    },
+  };
+});
+
 import { fetchPane, sendKeys } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines, type MultiSelectModel } from "./blocks";
@@ -648,5 +687,141 @@ describe("comparators — choreography is identity, pointer position is transien
     const moved = museModel(museReviewBuffer({ pointer: "cancel" }));
     expect(multiSelectEquals(a, moved)).toBe(true);
     expect(multiSelectIdentity(a, moved)).toBe(true);
+  });
+});
+
+// KEYS mode: a harness that declares its plans on the model (opencode's lone multi-select list has
+// no advance row, and its `Confirm` tab has no action rows). Every plan is ONE guarded write bound to
+// the entry region; no pointer walk runs and no Down/Up is ever sent.
+describe("keys mode — declared plans, one guarded write each", () => {
+  const keysBase = { ...base, agent: keysHarness.agent };
+  const keysModel = (text: string) => keysHarness.declare(model(text));
+
+  it("advance sends advanceKeys once, bound to the entry region, and never walks the pointer", async () => {
+    const m = keysModel(checkboxBuffer({ pointer: "opt1" }));
+    mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "opt1" })));
+    const res = await submitMultiSelectIntent({ ...keysBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Tab"], undefined, m.regionSignature]]);
+    expect(keysSent().flat()).not.toContain("Down");
+    expect(keysSent().flat()).not.toContain("Up");
+    // One fresh read for the entry guard, none for a walk.
+    expect(mockFetchPane).toHaveBeenCalledTimes(1);
+  });
+
+  it("confirm, cancel and back send their declared plans, each bound to the entry region", async () => {
+    const m = keysModel(reviewBuffer());
+    mockFetchPane.mockResolvedValue(paneWith(reviewBuffer()));
+    for (const kind of ["confirm", "cancel", "back"] as const) {
+      expect(await submitMultiSelectIntent({ ...keysBase, multi: m, intent: { kind } })).toEqual({
+        status: "sent",
+      });
+    }
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Enter"], undefined, m.regionSignature],
+      ["w1:p1", ["Escape"], undefined, m.regionSignature],
+      ["w1:p1", ["Left"], undefined, m.regionSignature],
+    ]);
+  });
+
+  it("back refuses when the review declares no backKeys, sending nothing", async () => {
+    const declared = keysModel(reviewBuffer());
+    if (declared.phase !== "review") throw new Error("fixture is not a review screen");
+    const { backKeys: _dropped, ...m } = declared;
+    mockFetchPane.mockResolvedValue(paneWith(reviewBuffer()));
+    const res = await submitMultiSelectIntent({ ...keysBase, multi: m, intent: { kind: "back" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(mockFetchPane).not.toHaveBeenCalled();
+  });
+
+  it("back refuses on the checkbox phase, sending nothing", async () => {
+    const m = keysModel(checkboxBuffer({}));
+    mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({})));
+    const res = await submitMultiSelectIntent({ ...keysBase, multi: m, intent: { kind: "back" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("advance refuses a drifted checkbox at the entry guard, before any key", async () => {
+    const m = keysModel(checkboxBuffer({ checked: [] }));
+    mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ checked: [2] }))); // a box flipped
+    const res = await submitMultiSelectIntent({ ...keysBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("confirm, cancel and back refuse a drifted review at the entry guard, before any key", async () => {
+    const m = keysModel(reviewBuffer());
+    // The review now warns about an unanswered question: a different screen than the one tapped.
+    mockFetchPane.mockResolvedValue(paneWith(reviewBuffer({ incomplete: true })));
+    for (const kind of ["confirm", "cancel", "back"] as const) {
+      expect(await submitMultiSelectIntent({ ...keysBase, multi: m, intent: { kind } })).toEqual({
+        status: "changed",
+      });
+    }
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the fresh screen carries different plans than the tapped model", async () => {
+    // The tapped model declares Tab; the adapter now derives Tab too, but the tap carried Right.
+    // SAFETY: the spread base IS a checkbox MultiSelectModel and only the declared optional
+    // `advanceKeys` is overridden; the cast only restores the discriminant the spread widened.
+    const m = { ...keysModel(checkboxBuffer({})), advanceKeys: ["Right"] } as MultiSelectModel;
+    mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({})));
+    const res = await submitMultiSelectIntent({ ...keysBase, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+});
+
+// Every declared plan and the echoed answers are part of the screen's identity: a plan that changed
+// would send a key the button did not advertise, and a changed answer is a different review.
+describe("comparators — declared plans and answers", () => {
+  const checkbox = keysHarness.declare(model(checkboxBuffer({})));
+  const review = keysHarness.declare(model(reviewBuffer()));
+  // SAFETY: each spread base IS a MultiSelectModel of the phase the overridden field belongs to, and
+  // only declared fields are overridden; the casts restore the discriminant the spread widened.
+  const variants: [string, MultiSelectModel, MultiSelectModel][] = [
+    ["advanceKeys differ", checkbox, { ...checkbox, advanceKeys: ["Right"] } as MultiSelectModel],
+    ["advanceKeys absent", checkbox, { ...checkbox, advanceKeys: undefined } as MultiSelectModel],
+    ["submitKeys differ", review, { ...review, submitKeys: ["1"] } as MultiSelectModel],
+    ["cancelKeys differ", review, { ...review, cancelKeys: ["2"] } as MultiSelectModel],
+    ["backKeys differ", review, { ...review, backKeys: ["Tab"] } as MultiSelectModel],
+    ["backKeys absent", review, { ...review, backKeys: undefined } as MultiSelectModel],
+    [
+      "an answer differs",
+      review,
+      { ...review, answers: [{ question: "Toppings", answer: "Cheese" }] } as MultiSelectModel,
+    ],
+    [
+      "a question differs",
+      review,
+      { ...review, answers: [{ question: "Crust", answer: "Cheese, Olives" }] } as MultiSelectModel,
+    ],
+    ["answers absent", review, { ...review, answers: undefined } as MultiSelectModel],
+    [
+      "keys mode vs digit mode",
+      review,
+      {
+        ...review,
+        submit: "digit",
+        submitKeys: undefined,
+        cancelKeys: undefined,
+      } as MultiSelectModel,
+    ],
+  ];
+
+  for (const [label, a, b] of variants) {
+    it(`${label}: breaks both equality and identity`, () => {
+      expect(multiSelectEquals(a, b)).toBe(false);
+      expect(multiSelectIdentity(a, b)).toBe(false);
+    });
+  }
+
+  it("the same declared screen still equals itself", () => {
+    expect(multiSelectEquals(checkbox, keysHarness.declare(model(checkboxBuffer({}))))).toBe(true);
+    expect(multiSelectIdentity(review, keysHarness.declare(model(reviewBuffer())))).toBe(true);
+    expect(multiSelectEquals(review, keysHarness.declare(model(reviewBuffer())))).toBe(true);
   });
 });

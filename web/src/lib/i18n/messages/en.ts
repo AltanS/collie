@@ -894,6 +894,7 @@ export const en = {
   "dialog.incomplete": "You have not answered all questions",
   "dialog.submitAnswers": "Submit answers",
   "dialog.cancel": "Cancel",
+  "dialog.backToOptions": "Back to the options",
   "dialog.endsQuestionsSuffix": "— ends the questions",
   "dialog.autocomplete.title": "Slash commands",
   "dialog.menu.moveUp": "Move up",

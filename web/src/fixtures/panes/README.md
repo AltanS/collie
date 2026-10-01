@@ -1076,3 +1076,54 @@ wrap, Tab does nothing, Enter confirms, Escape declines, no digit).
 | `oc--narrow--done.txt` | 50 columns, after a rejected command: the cwd/tokens/cost status row folds onto two rows | `done` |
 | `oc--narrow--permission-bash.txt` | 50 columns: the chips on a bar row of their own, a bare bar row, then the hints on a row of their own | `blocked` |
 | `oc--narrow--permission-always-bash.txt` | 50 columns, the second step: the body wraps over two rows, chips and hints on rows of their own | `blocked` |
+
+## opencode question corpus (captured 2026-10-01, opencode 1.18.33, herdr 0.9.3, private Herdr session)
+
+Captures of the `question` tool's dialog on **opencode 1.18.33**, in a private Herdr session run
+headless (no client attached, so the pane is Herdr's own 120 by 40), with the user's normal opencode
+config and a free model. The narrow files come from the same session with a client attached through
+a private tmux, sized so the pane reads 50 by 40. Read with `herdr pane read --ansi --source recent
+--lines 300`, which is the call the bridge's `readPane` makes (checked byte-equal against `/api/pane`
+on a live pane), because the dev bridge does not watch a private session. Byte-faithful, no
+substitutions: every file was checked for user and host names, home paths and keys, and holds only
+probe strings, the model name and `/tmp/oc-question-lab`. The recipe, the focus marker and the
+journal shapes are in `web/src/lib/harness/opencode/QUESTION_NOTES.md`. The status column was read
+with `herdr pane get` once on the single-select dialog (`blocked`) and once after `Escape` (`idle`);
+the other `blocked` cells repeat that by shape and were not read one by one.
+
+The dialog paints in its own bar run (`┃`, purple here, `157;124;216`) at the buffer's tail, in
+place of the composer: no model row, no rule, no status row. The pointer is a background chip on
+the option's `N. label` run, one step lighter than the dialog (`30;30;30` on `20;20;20`).
+
+| Fixture | State / what's in it | Herdr status |
+| --- | --- | --- |
+| `oc--question--single.txt` | One single-select question, three options with descriptions plus `4. Type your own answer`, pointer on `1. Red`, footer `↑↓ select  enter submit  esc dismiss`. No tab bar and no header row | `blocked` |
+| `oc--question--single--moved.txt` | After one `Down`: the chip is on `2. Green`, nothing else changed | `blocked` |
+| `oc--question--single--narrow.txt` | 50 columns: the same dialog, the same rows and footer, only the user message above it wraps | `blocked` |
+| `oc--question--free-text.txt` | Digit `4` on the free-text row: it opened an input row under it that shows the placeholder `Type your own answer` in the description grey, one row taller | `blocked` |
+| `oc--question--free-text--typed.txt` | The same input with `hello` typed: the text sits on the input row in the bright foreground | `blocked` |
+| `oc--question--multi.txt` | One multi-select question, four options: a tab bar (` Colour ` chip, `Confirm`), `(select all that apply)` after the question, `[ ]` boxes, footer `⇆ tab  ↑↓ select  enter toggle  esc dismiss` | `blocked` |
+| `oc--question--multi--toggled.txt` | After `Enter` on `1. [ ] Red`: the row reads `1. [✓] Red`, the pointer stays on it | `blocked` |
+| `oc--question--multi--confirm.txt` | After `Tab`: the `Confirm` chip is active, the body is `Review` and `Colour: Red`, footer `⇆ tab  enter submit  esc dismiss` | `blocked` |
+| `oc--question--multi--narrow.txt` | 50 columns, a long question: the question wraps over four rows, the footer's two-space gaps shrink to one space, and two bare bar rows close the dialog | `blocked` |
+| `oc--question--two--q1.txt` | Two questions in one call: tab bar ` Colour ` chip, `Size`, `Confirm`; footer `⇆ tab  ↑↓ select  enter confirm  esc dismiss` | `blocked` |
+| `oc--question--two--q1-answered.txt` | Back on the first tab after answering it: the answered option reads `1. Red ✓` (green), the pointer chip stays where it was, the tab `Size` is bright | `blocked` |
+| `oc--question--two--q2.txt` | After `Enter` on the first tab: the `Size` chip is active, `Which size?`, the first tab `Colour` is bright | `blocked` |
+| `oc--question--two--review.txt` | After `Enter` on the last question: the `Confirm` chip, `Review`, `Colour: Red`, `Size: Small` | `blocked` |
+| `oc--question--tall8.txt` | Eight options with descriptions: the question row sits 20 rows above the footer, past the permission lift's 16-row bound | `blocked` |
+| `oc--question--tall9.txt` | Nine options: the pointer started on `2. Two`, not on `1`. Reproduced three times, see the notes | `blocked` |
+| `oc--question--tall14.txt` | Fourteen options: the dialog fills the pane (rows 1 to 38), the pointer started on `7. Seven`, the user message above is cut to its first row | `blocked` |
+| `oc--question--answered.txt` | After `Enter` on `1. Red` and the model's reply: the dialog is gone, a `# Questions` block shows `Which colour?` and `Red`, then `You chose Red (warm).` and the empty composer | not read |
+| `oc--question--dismissed.txt` | After `Escape`: the dialog is gone, the transcript keeps `→ Asked 1 question`, nothing answers it, the turn has ended | `idle` |
+| `oc--question--three--q2-multi.txt` | Round two, **opencode 1.18.34**. Three questions, `Colour` answered, now on `Toppings` (multi, untouched): tab bar `Colour   Toppings   Size   Confirm` with `Toppings` active and `Colour` bright, `(select all that apply)`, four `[ ]` rows plus the free-text row, footer `⇆ tab  ↑↓ select  enter toggle  esc dismiss` while the other two question tabs say `enter confirm` | `idle` (read on this shape, not `blocked`) |
+| `oc--question--three--q2-multi--toggled.txt` | The same tab after digit `2`: `2. [✓] Olives`, the chip on it, still on `Toppings`. A digit toggles and never advances here | `idle` |
+| `oc--question--three--review.txt` | The `Confirm` tab with all three answered: `Review`, `Colour: Red`, `Toppings: Ham`, `Size: Large`, footer `⇆ tab  enter submit  esc dismiss` | `idle` |
+| `oc--question--three--review--incomplete.txt` | The `Confirm` tab with `Size` not answered: `Size: (not answered)` in red (`224;108;117`), `Colour: Green`, `Toppings: Olives`. `Enter` still submits, journal `[["Green"],["Olives"],[]]`. Only answered tabs are bright, `Size` is grey although it was visited | `idle` |
+| `oc--question--multi--free-text.txt` | Round two, 1.18.34. A lone multi call, digit `5` on the free-text row: the input row under `5. [ ] Type your own answer` shows the placeholder `Type your own answer`, no toggle yet | not read |
+| `oc--question--multi--free-text--committed.txt` | After `mine` and `Enter`: `5. [✓] Type your own answer`, the input closed, `mine` under the row in grey (`128`) | not read |
+| `oc--question--multi--confirm--empty.txt` | The `Confirm` tab of a lone multi call with nothing toggled: `Review`, `Colour: (not answered)` in red, footer `⇆ tab  enter submit  esc dismiss` | not read |
+
+The last seven rows were captured on opencode 1.18.34, the rest of this corpus on 1.18.33. Herdr read
+`idle`, not `blocked`, under the question dialogs probed in round two (see "Round two" in
+`QUESTION_NOTES.md`). Each of the seven was checked for user and host names, home paths, tokens and
+session ids and holds only probe strings and the model name.

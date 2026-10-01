@@ -829,6 +829,7 @@ export const de: Dictionary = {
   "dialog.incomplete": "Nicht alle Fragen wurden beantwortet.",
   "dialog.submitAnswers": "Antworten absenden",
   "dialog.cancel": "Abbrechen",
+  "dialog.backToOptions": "Zurück zu den Optionen",
   "dialog.endsQuestionsSuffix": "- beendet den Fragenteil",
   "dialog.autocomplete.title": "Slash-Befehle",
   "dialog.menu.moveUp": "Nach oben",

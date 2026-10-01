@@ -18,7 +18,7 @@ export { wizardsEqual } from "./harness/wizard-model";
 
 /**
  * Run the race guard and, if it passes, send `keys` (one wizard keystroke: an option digit,
- * Left/Right, or the review step's 1/2). Pure of any UI — the caller maps the result to a status
+ * Left/Right, or the review step's submit/cancel plan, 1/2 unless the model declares its own). Pure of any UI — the caller maps the result to a status
  * message and a revalidation. Result shape shared with prompt-action so AgentChat handles both
  * through one code path.
  */

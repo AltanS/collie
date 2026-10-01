@@ -236,9 +236,21 @@ const CARD_FIXTURES = {
   agy: { modals: [], notModals: [] },
   antigravity: { modals: [], notModals: [] },
   // Every opencode picker: composerReady refuses it (the picker shape) and no grammar reads it, so
-  // Escape, which closes a picker (probed on 1.18.32), is its way out. The permission steps lift
-  // their buttons and get no card.
-  opencode: { modals: ["oc--agents-picker.txt", "oc--command-palette.txt"], notModals: [] },
+  // Escape, which closes a picker (probed on 1.18.32), is its way out. The permission steps and every
+  // question dialog the grammars lift (single select, multi select, a many-question call, the Confirm
+  // tab: question.ts and question-tabs.ts, issue 329) lift their buttons and get no card. What stays
+  // raw is a real modal with `esc dismiss` in its footer, so it gets the card (ADR 0053): a
+  // multi-select whose free-text input is open (a digit would be typed as text) and a list too long
+  // for a digit (fourteen options).
+  opencode: {
+    modals: [
+      "oc--agents-picker.txt",
+      "oc--command-palette.txt",
+      "oc--question--multi--free-text.txt",
+      "oc--question--tall14.txt",
+    ],
+    notModals: [],
+  },
 } satisfies Record<string, { modals: string[]; notModals: string[] }>;
 
 /** This adapter's own captures, by file prefix. `claude-lab--` is Claude's capture lab, and
@@ -285,6 +297,8 @@ describe("the declaration tracks the harness", () => {
     ["grok", "grok--permission-rm.txt", "Ctrl+c:cancel"],
     // opencode's pickers print the key as a bare `esc` at the end of the title row.
     ["opencode", "oc--agents-picker.txt", "Select agent                                     esc"],
+    // ...and its question dialog prints it as `esc dismiss` at the end of the footer.
+    ["opencode", "oc--question--tall14.txt", "esc dismiss"],
   ])("%s: a real dialog's footer names the declared key", (agent, fixture, spelling) => {
     const screen = fixtureLines(fixture).map(lineText).join("\n");
     expect(screen).toContain(spelling);

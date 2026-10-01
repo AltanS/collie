@@ -6,14 +6,18 @@
 // (lib/wizard-action.ts → lib/dialog-guard.ts) are written against these types alone.
 //
 // Claude's reference detector is harness/claude/wizard.ts; the verified choreography behind the
-// incremental round-trip is grammar/WIZARD_NOTES.md. This module imports nothing, so `lib/blocks.ts`
-// can re-export it without a cycle. The identity comparator lives in dialog-contract.ts.
+// incremental round-trip is grammar/WIZARD_NOTES.md. This module imports only the key-plan
+// comparator from its sibling prompt model, so `lib/blocks.ts` can re-export it without a cycle. The
+// identity comparator below is wired to this kind by dialog-contract.ts.
+
+import { sameOptionalKeys } from "./prompt-model";
 
 /** One question chip in the stepper header (the Submit chip is implicit — see `WizardModel`). */
 export interface WizardStepChip {
   /** The chip's visible label, e.g. "Focus area" (a React text node downstream). */
   label: string;
-  /** From the glyph: `☒`/`☑` answered, `☐` not yet. */
+  /** The harness's own mark that this question has an answer (Claude reads a glyph, `☒`/`☑`
+   *  answered and `☐` not yet; another harness may read it from the chip's colour). */
   answered: boolean;
   /** This chip carries the background-highlight (the step currently on screen). At most one chip
    *  is current; on the review step NONE is (the highlight sits on the Submit chip). */
@@ -44,8 +48,10 @@ export interface WizardAnswer {
 /**
  * The detected wizard, a union on `phase`:
  *  - `question`: a question step is on screen — its text + options (answered by ONE digit each).
- *  - `review`: the Submit step — the echoed answers; submit = `WIZARD_SUBMIT_KEYS`, cancel =
- *    `WIZARD_CANCEL_KEYS` (constants below, so the model doesn't carry them).
+ *  - `review`: the Submit step — the echoed answers, plus the keys that submit and cancel. A
+ *    harness whose review takes other keys declares them (`submitKeys`, `cancelKeys`, and the
+ *    terminal's own `cancelLabel`); absent, they fall back to `WIZARD_SUBMIT_KEYS` /
+ *    `WIZARD_CANCEL_KEYS` (constants below) and the translated "Cancel", which is Claude's review.
  * Both carry the stepper chips (per-question answered/current state) and a byte-signature of the
  * on-screen region (stepper header → tail): the full dialog state. The race guard compares it so a
  * wizard that re-rendered between render and tap can't pass as the one the user saw. Herdr's
@@ -65,6 +71,13 @@ export type WizardModel =
       steps: WizardStepChip[];
       answers: WizardAnswer[];
       incomplete: boolean;
+      /** The submit plan; absent ⇒ `WIZARD_SUBMIT_KEYS`. Compared exactly by `wizardsEqual`. */
+      submitKeys?: string[];
+      /** The cancel plan; absent ⇒ `WIZARD_CANCEL_KEYS`. Compared exactly by `wizardsEqual`. */
+      cancelKeys?: string[];
+      /** The terminal's own words for cancel (opencode's `dismiss` ends the turn); absent ⇒ the
+       *  translated "Cancel". Compared by `wizardsEqual`. */
+      cancelLabel?: string;
       signature: string;
     };
 
@@ -80,7 +93,9 @@ export const WIZARD_NEXT_KEYS = ["Right"];
  * Whether two derivations are the same step of the same dialog. Field-by-field over the
  * discriminated union: the stepper chips (labels + answered + current), then the phase payload —
  * question text + option labels/chosen for a question step, answers + incompleteness for the
- * review. Keys/descriptions are derived from the same rows, so they can't differ independently.
+ * review. A question's keys/descriptions are derived from the same rows, so they can't differ
+ * independently; the review's declared plans and cancel label are not on screen, so they are
+ * compared explicitly (a changed plan would send a key the button did not advertise).
  *
  * Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
  * adapter produced the block through exactly this function.
@@ -113,6 +128,9 @@ export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
   if (a.phase === "review" && b.phase === "review") {
     return (
       a.incomplete === b.incomplete &&
+      sameOptionalKeys(a.submitKeys, b.submitKeys) &&
+      sameOptionalKeys(a.cancelKeys, b.cancelKeys) &&
+      a.cancelLabel === b.cancelLabel &&
       a.answers.length === b.answers.length &&
       a.answers.every(
         (qa, i) => qa.question === b.answers[i]!.question && qa.answer === b.answers[i]!.answer,

@@ -102,6 +102,71 @@ describe("MultiSelectBlock — review screen", () => {
   });
 });
 
+// A review screen whose harness declares its own keys (opencode's `Confirm` tab): it echoes the
+// answers, offers a way back to the options, names its cancel in the terminal's words, and keeps the
+// Terminal escape like every other card.
+describe("MultiSelectBlock — a review with declared keys", () => {
+  function declaredReview(): MultiSelectModel {
+    const model = fixtureModel("claude--select-multiselect-review.txt");
+    if (model.phase !== "review") throw new Error("fixture is not a review screen");
+    return {
+      ...model,
+      incomplete: false,
+      submit: "keys",
+      submitKeys: ["Enter"],
+      cancelKeys: ["Escape"],
+      backKeys: ["Left"],
+      cancelLabel: "Dismiss",
+      answers: [
+        { question: "Colour", answer: "Red, Blue, mine" },
+        { question: "Size", answer: "Small" },
+      ],
+    };
+  }
+
+  it("lists the echoed answers as question → answer pairs", () => {
+    render(<MultiSelectBlock multi={declaredReview()} onAction={vi.fn()} />);
+    expect(screen.getAllByRole("term").map((e) => e.textContent)).toEqual(["Colour", "Size"]);
+    expect(screen.getAllByRole("definition").map((e) => e.textContent)).toEqual([
+      "Red, Blue, mine",
+      "Small",
+    ]);
+  });
+
+  it("offers Back above cancel, routes it as back, and shows the terminal's cancel label", async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={declaredReview()} onAction={onAction} />);
+
+    const names = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(names.indexOf("Back to the options")).toBeGreaterThan(names.indexOf("Submit answers"));
+    expect(names.indexOf("Back to the options")).toBeLessThan(names.indexOf("Dismiss"));
+    expect(screen.queryByRole("button", { name: /^Cancel$/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to the options" }));
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "back" });
+    await user.click(screen.getByRole("button", { name: "Submit answers" }));
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "confirm" });
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "cancel" });
+  });
+
+  it("offers no Back when the review declares no way back", () => {
+    const model = fixtureModel("claude--select-multiselect-review.txt");
+    render(<MultiSelectBlock multi={model} onAction={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Back to the options" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("term")).not.toBeInTheDocument();
+  });
+
+  it("carries the Terminal escape on the review when given the replaced lines", () => {
+    const lines = splitLines(parseAnsi(fixtureText("claude--select-multiselect-review.txt")));
+    render(<MultiSelectBlock multi={declaredReview()} lines={lines} onAction={vi.fn()} />);
+    expect(
+      screen.getByRole("button", { name: "Show the terminal instead of this card" }),
+    ).toBeInTheDocument();
+  });
+});
+
 // A checkbox question that is one STEP of a wizard. Everything the parser lifts for this shape —
 // the chips, the Left/Right navigation, and the advance row's literal label — has to reach the DOM,
 // and none of it is exercised by the single-question fixtures (their `steps` is null).

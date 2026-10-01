@@ -819,6 +819,7 @@ export const ko: Dictionary = {
   "dialog.incomplete": "미답변 질문이 있습니다",
   "dialog.submitAnswers": "답변 제출",
   "dialog.cancel": "취소",
+  "dialog.backToOptions": "선택지로 돌아가기",
   "dialog.endsQuestionsSuffix": " (질문 종료)",
   "dialog.autocomplete.title": "슬래시 명령",
   "dialog.menu.moveUp": "위로 이동",

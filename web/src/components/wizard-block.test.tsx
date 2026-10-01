@@ -140,6 +140,27 @@ describe("WizardBlock — review (Submit) step presentation", () => {
     expect(onAction).toHaveBeenLastCalledWith(["2"]);
   });
 
+  // A harness whose review takes other keys declares them on the model (opencode's `Confirm` tab:
+  // Enter submits, Escape dismisses the whole call); its words replace the translated "Cancel".
+  it("sends the review's declared plans and shows its cancel label", async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    const model = fixtureModel("claude--wizard-submit.txt");
+    if (model.phase !== "review") throw new Error("fixture is not a review step");
+    render(
+      <WizardBlock
+        wizard={{ ...model, submitKeys: ["Enter"], cancelKeys: ["Escape"], cancelLabel: "Dismiss" }}
+        onAction={onAction}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Submit answers/ }));
+    expect(onAction).toHaveBeenLastCalledWith(["Enter"]);
+    await user.click(screen.getByRole("button", { name: /^Dismiss$/ }));
+    expect(onAction).toHaveBeenLastCalledWith(["Escape"]);
+    expect(screen.queryByRole("button", { name: /^Cancel$/ })).not.toBeInTheDocument();
+  });
+
   it("surfaces the not-all-answered warning on an incomplete review", () => {
     const model = fixtureModel("claude--wizard-submit-unanswered.txt");
     render(<WizardBlock wizard={model} onAction={vi.fn()} />);
@@ -164,6 +185,18 @@ describe("wizardsEqual", () => {
         fixtureModel("claude--wizard-submit-unanswered.txt"),
       ),
     ).toBe(false);
+  });
+
+  it("compares the review's declared plans exactly and its cancel label", () => {
+    const review = fixtureModel("claude--wizard-submit.txt");
+    if (review.phase !== "review") throw new Error("fixture is not a review step");
+    const declared: WizardModel = { ...review, submitKeys: ["Enter"], cancelKeys: ["Escape"], cancelLabel: "Dismiss" };
+    expect(wizardsEqual(declared, { ...declared })).toBe(true);
+    // Absent vs declared, and declared vs a different plan, are different screens.
+    expect(wizardsEqual(review, declared)).toBe(false);
+    expect(wizardsEqual(declared, { ...declared, submitKeys: ["1"] })).toBe(false);
+    expect(wizardsEqual(declared, { ...declared, cancelKeys: ["2"] })).toBe(false);
+    expect(wizardsEqual(declared, { ...declared, cancelLabel: undefined })).toBe(false);
   });
 });
 

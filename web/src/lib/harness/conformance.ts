@@ -14,7 +14,9 @@
 //   3. KEY-GRAMMAR VALIDITY — every keystroke any interactive block can emit is a valid Herdr
 //      `pane.send_keys` key (HERDR_API.md §"send_keys key grammar"): a single literal char, a bare
 //      special key, or a `+`-joined modifier chord. Multi-char digit runs ("10") and the paging/edit
-//      keys (PageUp/Home/End/Delete) are rejected — Herdr answers those with `invalid_key`.
+//      keys (PageUp/Home/End/Delete) are rejected — Herdr answers those with `invalid_key`. A key
+//      plan a model declares as data (`advanceKeys`, a review's `submitKeys`/`cancelKeys`/`backKeys`)
+//      must also be non-empty, since a button bound to an empty plan sends nothing.
 //   4. THE GENERIC MODAL CONTRACT — for any fixture that lifts a `menu` block: every action key came
 //      out of the shared whitelist (menu-hints.ts) and none is a digit (.adr/0009), the model carries
 //      a non-empty signature that MOVES when the region's text does (it is the whole race guard), and
@@ -38,7 +40,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
-import { lineText, splitLines, type Block, type StyledLine } from "../blocks";
+import { lineText, splitLines, type Block, type MultiSelectModel, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
 import {
   DIALOG_CONTRACT,
@@ -292,16 +294,16 @@ export function emittableKeys(block: Block): string[] | null {
     case "prompt-select":
       return block.prompt.options.flatMap((o) => o.keys);
     case "wizard": {
-      // Both phases can navigate steps; the review phase's controls ARE submit(1)/cancel(2).
-      const controls = [
-        ...WIZARD_BACK_KEYS,
-        ...WIZARD_NEXT_KEYS,
-        ...WIZARD_SUBMIT_KEYS,
-        ...WIZARD_CANCEL_KEYS,
-      ];
+      // Both phases can navigate steps; the review phase's controls ARE submit/cancel, the plans the
+      // model declares or the 1/2 constants.
+      const nav = [...WIZARD_BACK_KEYS, ...WIZARD_NEXT_KEYS];
       return block.wizard.phase === "question"
-        ? [...block.wizard.options.flatMap((o) => o.keys), ...controls]
-        : controls;
+        ? [...block.wizard.options.flatMap((o) => o.keys), ...nav, ...WIZARD_SUBMIT_KEYS, ...WIZARD_CANCEL_KEYS]
+        : [
+            ...nav,
+            ...(block.wizard.submitKeys ?? WIZARD_SUBMIT_KEYS),
+            ...(block.wizard.cancelKeys ?? WIZARD_CANCEL_KEYS),
+          ];
     }
     case "preview-select": {
       // preview-action.ts's recipe: a digit moves the pointer, Enter selects, `n` opens the note
@@ -321,8 +323,9 @@ export function emittableKeys(block: Block): string[] | null {
     case "multi-select":
       // checkbox: a digit toggles each option (and the "Chat about this" escape) in digit mode, or
       // jumps the pointer there in pointer mode — either way the digits ride plus Up/Down/Enter.
-      // review: the confirm screen's `1. Submit answers / 2. Cancel` in digit mode, or a pointer
-      // walk + Enter in pointer mode.
+      // A declared `advanceKeys` plan rides too. review: the confirm screen's `1. Submit answers /
+      // 2. Cancel` in digit mode, a pointer walk + Enter in pointer mode, or the declared plans in
+      // keys mode, plus the declared way back.
       if (block.multi.phase === "checkbox") {
         return [
           ...block.multi.options.map((o) => String(o.n)),
@@ -330,9 +333,10 @@ export function emittableKeys(block: Block): string[] | null {
           "Up",
           "Down",
           "Enter",
+          ...(block.multi.advanceKeys ?? []),
         ];
       }
-      return block.multi.submit === "pointer" ? ["Up", "Down", "Enter"] : ["1", "2"];
+      return [...reviewActionKeys(block.multi), ...(block.multi.backKeys ?? [])];
     case "menu":
       // The generic grammar emits ONLY the keys the screen's own footer named, plus the arrows it
       // advertised. Walking `actions` here is what pins .adr/0009's ban in CI: a digit can only
@@ -361,6 +365,40 @@ export function emittableKeys(block: Block): string[] | null {
       throw new Error(`conformance: unmodelled interactive block kind "${kind}" — extend emittableKeys`);
     }
   }
+}
+
+/** The keys a multi-select review's submit and cancel can send, per its `submit` recipe. */
+function reviewActionKeys(multi: Extract<MultiSelectModel, { phase: "review" }>): string[] {
+  if (multi.submit === "pointer") return ["Up", "Down", "Enter"];
+  if (multi.submit === "keys") return [...multi.submitKeys, ...multi.cancelKeys];
+  return ["1", "2"];
+}
+
+/**
+ * Every key PLAN a block's model declares as data, named by field — as opposed to the plans the
+ * action modules derive from rows or constants. Each is sent as one write, so an empty plan is a
+ * button that sends nothing, and the suite refuses it (every key in it is also walked by
+ * {@link emittableKeys}, which refuses an empty string). Kinds that declare no plans return none.
+ */
+export function declaredKeyPlans(block: Block): { field: string; keys: string[] }[] {
+  const plans: { field: string; keys: string[] | undefined }[] = [];
+  if (block.kind === "multi-select" && block.multi.phase === "checkbox") {
+    plans.push({ field: "advanceKeys", keys: block.multi.advanceKeys });
+  }
+  if (block.kind === "multi-select" && block.multi.phase === "review") {
+    plans.push(
+      { field: "submitKeys", keys: block.multi.submitKeys },
+      { field: "cancelKeys", keys: block.multi.cancelKeys },
+      { field: "backKeys", keys: block.multi.backKeys },
+    );
+  }
+  if (block.kind === "wizard" && block.wizard.phase === "review") {
+    plans.push(
+      { field: "submitKeys", keys: block.wizard.submitKeys },
+      { field: "cancelKeys", keys: block.wizard.cancelKeys },
+    );
+  }
+  return plans.flatMap((p) => (p.keys === undefined ? [] : [{ field: p.field, keys: p.keys }]));
 }
 
 /**
@@ -654,6 +692,12 @@ export function describeAdapterConformance(
                 isValidHerdrKey(key),
                 `${name} / ${block.kind} emits invalid key ${JSON.stringify(key)}`,
               ).toBe(true);
+            }
+            for (const plan of declaredKeyPlans(block)) {
+              expect(
+                plan.keys.length,
+                `${name} / ${block.kind} declares an empty ${plan.field} plan`,
+              ).toBeGreaterThan(0);
             }
           }
         });

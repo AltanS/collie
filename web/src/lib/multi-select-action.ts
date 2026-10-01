@@ -11,7 +11,11 @@
 //     swallows digits entirely, so toggle is digit-jump + verified Enter and review submit/cancel is
 //     a verified pointer walk + a freshly-bound Enter (the irreversible keystroke carries a fresh
 //     region, prompt-feedback style, so a pointer move in the final gap 409s instead of misfiring).
-//   - Submit (checkbox → review) is the hard case in BOTH modes: Enter activates the POINTED row, NOT
+//   - KEYS mode (a harness that declares its plans on the model, opencode's `question` tool): a
+//     checkbox with no advance row carries `advanceKeys`, and a review with no action rows carries
+//     `submit: "keys"` plus `submitKeys`/`cancelKeys` (and optionally `backKeys`). Each is sent ONCE
+//     as one guarded write bound to the entry region; no pointer walk runs.
+//   - Submit (checkbox → review) is the hard case in BOTH row-driven modes: Enter activates the POINTED row, NOT
 //     a global submit, and Down CLAMPS at the bottom ("Chat about this") with "Submit" exactly one row
 //     above it. So the deterministic macro is: clamp Down to the bottom → Up once → VERIFY the pointer
 //     sits on "Submit" → only then Enter. The pointer is re-derived from a fresh read at every step, so
@@ -42,10 +46,13 @@ export type MultiSelectIntent =
   | { kind: "toggle"; n: number } // checkbox: toggle option n on/off (digit, or digit-jump + Enter)
   | { kind: "escape" } //            checkbox: "Chat about this" — aborts the tool
   | { kind: "advance" } //           checkbox: the closed-loop Down→Up→verify→Enter macro onto the
-  //                                 advance row ("Submit" on the last question, "Next" before it)
+  //                                 advance row ("Submit" on the last question, "Next" before it),
+  //                                 or the declared `advanceKeys` sent once
   | { kind: "nav"; keys: string[] } // checkbox step of a wizard: Left/Right to another question
-  | { kind: "confirm" } //           review: submit the answers (digit 1, or pointer walk + Enter)
-  | { kind: "cancel" }; //           review: back out (digit 2, or pointer walk + Enter)
+  | { kind: "confirm" } //           review: submit the answers (digit 1, pointer walk + Enter, or
+  //                                 the declared `submitKeys`)
+  | { kind: "cancel" } //            review: back out (digit 2, pointer walk + Enter, or `cancelKeys`)
+  | { kind: "back" }; //             review: back to the checkbox screen (the declared `backKeys`)
 
 /** The multi-select identity comparators, part of the neutral contract
  *  (harness/multi-select-model.ts). Re-exported under their original names so existing call sites and
@@ -87,7 +94,8 @@ const paneKey = (paneId: string, scope: Scope | undefined) => paneScopeKey(scope
 
 /**
  * Dispatch a multi-select intent through the race guard, serialized per pane. Toggle/escape/confirm/
- * cancel are one guarded keystroke each; submit is the closed-loop macro. Pure of any UI — the caller
+ * cancel/back are one guarded keystroke each (pointer mode aside); submit is the closed-loop macro,
+ * or one guarded write when the model declares `advanceKeys`. Pure of any UI — the caller
  * maps the result to a status message + a revalidation. A second call on a pane already mid-action (in
  * this browser context) is rejected as "changed" without touching the terminal.
  */
@@ -109,7 +117,13 @@ async function dispatchIntent(
   args: GuardArgs & { intent: MultiSelectIntent },
 ): Promise<ActionResult> {
   const { intent } = args;
-  if (intent.kind === "advance") return runAdvanceMacro(args);
+  if (intent.kind === "advance") {
+    if (args.multi.phase !== "checkbox") return { status: "changed" };
+    // No advance row to walk onto: the harness declared the advance as keys, so it is one guarded
+    // write bound to the entry region, and the pointer is never moved.
+    if (args.multi.advanceKeys) return guardedKey(args, args.multi.advanceKeys);
+    return runAdvanceMacro(args);
+  }
   if (intent.kind === "toggle") {
     // Validate the tapped digit against the CURRENT model BEFORE the guard reads: a renderer that
     // emits an out-of-range / non-option `n` must never inject a stray digit into the live terminal.
@@ -130,14 +144,23 @@ async function dispatchIntent(
     if (args.multi.phase !== "checkbox" || !args.multi.escape) return { status: "changed" };
     return guardedKey(args, [String(args.multi.escape.n)]);
   }
+  if (intent.kind === "back") {
+    if (args.multi.phase !== "review" || !args.multi.backKeys) return { status: "changed" };
+    return guardedKey(args, args.multi.backKeys);
+  }
   if (intent.kind === "confirm") {
     if (args.multi.phase !== "review") return { status: "changed" };
     if (args.multi.submit === "pointer") return runReviewMacro(args, "submit");
+    // The submit is irreversible. In keys mode there is no walk to verify, so the protection is the
+    // entry guard itself: it reads fresh, compares the full review (answers and plans included), and
+    // binds this one write to the region it just read, so a screen that moved in the gap 409s.
+    if (args.multi.submit === "keys") return guardedKey(args, args.multi.submitKeys);
     return guardedKey(args, ["1"]);
   }
   // cancel
   if (args.multi.phase !== "review") return { status: "changed" };
   if (args.multi.submit === "pointer") return runReviewMacro(args, "cancel");
+  if (args.multi.submit === "keys") return guardedKey(args, args.multi.cancelKeys);
   return guardedKey(args, ["2"]);
 }
 

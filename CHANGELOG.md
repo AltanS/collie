@@ -68,6 +68,16 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   that on as the terminal title, so every such pane read as "Terminal 6247db65" on the phone. The
   placeholder is now dropped and the pane reads as a shell, as on tmux and zellij. Thanks
   @Gaurav-Gosain (#328).
+- **An opencode question dialog can be answered from the phone.** A single-select question shows as
+  a card with one button per option, and a tap sends that option's digit. A multi-select question
+  shows its options as checkboxes: a tap toggles one, a button moves on to the Confirm tab, and
+  Confirm lists the answers with a button to submit them and one to dismiss the dialog, which ends the
+  turn. A call with several questions shows each question as a step with its tabs, and the same
+  Confirm tab ends it. Before, every one of these showed as raw terminal text that no button could
+  answer. The card locks while the free-text row is open, because the terminal takes digits as text
+  there, and Collie never types into that row. A list of more than nine options stays on the
+  terminal mirror, with the Escape card to dismiss it (#329).
+
 ## [1.15.0] - 2026-10-01
 
 ### Added

@@ -828,6 +828,7 @@ export const es: Dictionary = {
   "dialog.incomplete": "Quedan preguntas sin responder.",
   "dialog.submitAnswers": "Enviar respuestas",
   "dialog.cancel": "Cancelar",
+  "dialog.backToOptions": "Volver a las opciones",
   "dialog.endsQuestionsSuffix": ": finaliza el cuestionario",
   "dialog.autocomplete.title": "Comandos de barra",
   "dialog.menu.moveUp": "Subir",

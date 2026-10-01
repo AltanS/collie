@@ -162,3 +162,9 @@ export function promptsSameIdentity(a: PromptModel, b: PromptModel): boolean {
 export function sameKeys(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((k, i) => k === b[i]);
 }
+
+/** {@link sameKeys} for a plan a model may leave out: absent equals only absent. */
+export function sameOptionalKeys(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return sameKeys(a, b);
+}

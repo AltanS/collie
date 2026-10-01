@@ -178,7 +178,7 @@ function firstParagraph(texts: string[], from: number, to: number): string | nul
 }
 
 /** The background of the first cell carrying `text` on `line`, or undefined when unpainted. */
-function backgroundOf(line: StyledLine, start: number, end: number): string | undefined {
+export function backgroundOf(line: StyledLine, start: number, end: number): string | undefined {
   let at = 0;
   for (const seg of line.segments) {
     const from = Math.max(at, start);

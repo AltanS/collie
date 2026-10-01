@@ -804,6 +804,7 @@ export const zhTW: Dictionary = {
   "dialog.incomplete": "部分問題尚未回答",
   "dialog.submitAnswers": "提交回答",
   "dialog.cancel": "取消",
+  "dialog.backToOptions": "返回選項",
   "dialog.endsQuestionsSuffix": "（結束問答）",
   "dialog.autocomplete.title": "斜線指令",
   "dialog.menu.moveUp": "上移",
