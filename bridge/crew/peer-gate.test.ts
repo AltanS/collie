@@ -70,6 +70,14 @@ describe("the device identity comes off the LINK, not off the peer's own header"
     expect(crewDeviceOf(req({ "x-tailnet-device": "phone-7" }))).toBeNull();
   });
 
+  test("an RFC 8187 value is decoded before the peer's allowlist sees it (#324)", () => {
+    expect(crewDeviceOf(req({ "x-crew-device": "UTF-8''%ED%8F%B0" }))).toBe("폰");
+    const gate: PeerGateConfig = { deviceHeader: "x-tailnet-device", deviceAllowlist: ["폰"] };
+    expect(crewGate("write", gate, crewDeviceOf(req({ "x-crew-device": "UTF-8''%ED%8F%B0" }))).ok).toBe(
+      true,
+    );
+  });
+
   test("absent and blank are the same thing", () => {
     expect(crewDeviceOf(req({}))).toBeNull();
     expect(crewDeviceOf(req({ "x-crew-device": "   " }))).toBeNull();

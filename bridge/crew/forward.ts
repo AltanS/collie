@@ -1,6 +1,6 @@
 import type { JsonObject } from "../json.ts";
 import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
-import { DEVICE_HEADER } from "./admission.ts";
+import { DEVICE_HEADER, encodeDeviceHeader } from "./admission.ts";
 import { type CrewLink, type PeerFailure, type PeerOutcome, WRITE_BUDGET_MS } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
 
@@ -222,7 +222,9 @@ export function forwardHeaders(req: Request, device?: string | null): Headers {
     const value = req.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  if (device !== null && device !== undefined && device !== "") headers.set(DEVICE_HEADER, device);
+  if (device !== null && device !== undefined && device !== "") {
+    headers.set(DEVICE_HEADER, encodeDeviceHeader(device));
+  }
   headers.set("accept-encoding", "identity");
   return headers;
 }

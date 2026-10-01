@@ -1,6 +1,12 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
-import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
+import {
+  DEVICE_HEADER,
+  encodeDeviceHeader,
+  MEMBER_HEADER,
+  PROTOCOL_HEADER,
+  parseProtocolHeader,
+} from "./admission.ts";
 import {
   LEAD_CONFLICT,
   CREW_MUX_FIELD,
@@ -892,7 +898,9 @@ export class PeerClient {
     // operator the LEAD authenticated for *this* action, where the client-level source is a process
     // default with no request behind it. Authorization/protocol/member are NOT negotiable this way —
     // they are set unconditionally above, so nothing a caller passes can shape the link's own claims.
-    if (!headers.has(DEVICE_HEADER) && device !== null && device !== "") headers.set(DEVICE_HEADER, device);
+    if (!headers.has(DEVICE_HEADER) && device !== null && device !== "") {
+      headers.set(DEVICE_HEADER, encodeDeviceHeader(device));
+    }
 
     // §8.6's signature, when this client holds an identity key. Signed over the body **as it will be
     // sent** — hence the requirement that `init.body` be a string here: a stream could not be hashed

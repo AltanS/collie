@@ -18,6 +18,7 @@ import {
   type ForwardErrorCode,
   type ForwardTransport,
 } from "./forward.ts";
+import { crewDeviceOf } from "./peer-gate.ts";
 import { crewTimeoutBudget, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import type { PeerState } from "./registry.ts";
 
@@ -505,6 +506,16 @@ describe("request shaping", () => {
     // Identity bytes only, and ASKED FOR rather than merely not-forwarded: Bun's `fetch` supplies its
     // own `accept-encoding: gzip, …` when the init carries none, so an absent header is a gzipped hop.
     expect(headers.get("accept-encoding")).toBe("identity");
+  });
+
+  test("a device name outside ASCII is forwarded, not thrown on (#324)", () => {
+    // `Headers.set` throws on a value that is not a ByteString, so a phone paired as `폰` turned every
+    // forwarded call into a 500. The name travels percent-encoded and the peer reads it back whole.
+    const req = new Request("https://lead.example/api/pane/w1:p9/reply", { method: "POST" });
+    const headers = forwardHeaders(req, "폰");
+    expect(headers.get("x-crew-device")).toBe("UTF-8''%ED%8F%B0");
+    const atPeer = new Request("https://peer.example/api/pane/w1:p9/reply", { headers });
+    expect(crewDeviceOf(atPeer)).toBe("폰");
   });
 
   test("no device header at all when the lead's device gate is off", () => {

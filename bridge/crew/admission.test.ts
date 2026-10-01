@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   admitCrewRequest,
+  decodeDeviceHeader,
+  encodeDeviceHeader,
   factsFrom,
   crewResponseHeaders,
   parseProtocolHeader,
@@ -313,5 +315,26 @@ describe("a two-anchored peer resolves its caller by SIGNATURE, never by the TLS
   test("the secret is still required of both — one factor never admits anything", () => {
     const attested = dialled({ deputy, dial: { memberId: "desk", isDeputy: false }, authorization: null });
     expect(admitCrewRequest(peer, attested)).toEqual({ ok: false, refusal: "unauthorized", factor: "secret" });
+  });
+});
+
+describe("the device header carries any pairing label (#324)", () => {
+  test("a printable-ASCII name travels as itself, so an older peer's allowlist still matches", () => {
+    for (const name of ["phone-7", "Altan's phone", "tablet 2 (work)"]) {
+      expect(encodeDeviceHeader(name)).toBe(name);
+      expect(decodeDeviceHeader(encodeDeviceHeader(name))).toBe(name);
+    }
+  });
+
+  test("any other name round-trips through RFC 8187's ext-value form", () => {
+    for (const name of ["폰", "Täblet", "手机 📱", "UTF-8''looks-encoded"]) {
+      const value = encodeDeviceHeader(name);
+      expect(() => new Headers({ "x-crew-device": value })).not.toThrow();
+      expect(decodeDeviceHeader(value)).toBe(name);
+    }
+  });
+
+  test("a malformed ext-value reads as itself rather than throwing", () => {
+    expect(decodeDeviceHeader("UTF-8''%E0%A4%A")).toBe("UTF-8''%E0%A4%A");
   });
 });

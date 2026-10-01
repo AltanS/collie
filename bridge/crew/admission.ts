@@ -25,6 +25,35 @@ export const MEMBER_HEADER = "x-crew-member";
 /** The operator's device identity, forwarded for the peer's audit trail (§6, §12). */
 export const DEVICE_HEADER = "x-crew-device";
 
+/** RFC 8187's charset prefix: what marks a {@link DEVICE_HEADER} value as percent-encoded UTF-8. */
+const EXT_VALUE_PREFIX = "UTF-8''";
+/** Printable ASCII, the only bytes a device name may carry on the wire as itself. */
+const PLAIN_HEADER_VALUE = /^[\x20-\x7e]*$/u;
+
+/**
+ * A device name as a {@link DEVICE_HEADER} value (#324).
+ *
+ * A header value must be a ByteString, so `Headers.set` THROWS on a pairing label like `폰` and every
+ * forwarded call failed with a 500. A printable-ASCII name travels as itself, byte for byte, because
+ * a peer's `crewGate` matches it against `COLLIE_DEVICE_ALLOWLIST` and a peer one release behind
+ * must keep matching. Anything else travels in RFC 8187's ext-value form. An older peer cannot read
+ * that form, but those names never reached it at all before, so nothing that worked breaks.
+ */
+export function encodeDeviceHeader(device: string): string {
+  if (PLAIN_HEADER_VALUE.test(device) && !device.startsWith(EXT_VALUE_PREFIX)) return device;
+  return `${EXT_VALUE_PREFIX}${encodeURIComponent(device)}`;
+}
+
+/** The device name a {@link DEVICE_HEADER} value carries. A malformed ext-value reads as itself. */
+export function decodeDeviceHeader(value: string): string {
+  if (!value.startsWith(EXT_VALUE_PREFIX)) return value;
+  try {
+    return decodeURIComponent(value.slice(EXT_VALUE_PREFIX.length));
+  } catch {
+    return value;
+  }
+}
+
 /**
  * The facts admission decides on. Deliberately a plain record rather than a `Request`: the TLS
  * fingerprint does not live on a `Request` at all, so taking one would force this function to reach

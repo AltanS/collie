@@ -36,6 +36,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   mirror shows the agent's own spinner, but Chat draws the agent's record, and a record gains nothing
   while a session compacts. So a pane that had been busy for minutes looked exactly like a finished
   one. The thread now ends with a working mark until the next turn lands.
+- **A phone paired under a name outside ASCII can reach a crew member again.** A header value must
+  be plain bytes, so a label like `폰` made every forwarded call fail with a 500 before it left the
+  lead. A name like that now travels percent-encoded (RFC 8187) and the member reads it back whole,
+  for its allowlist and its audit line. An ASCII name is sent exactly as before. Reported by
+  @dmstjd1024 (#324).
 
 ### Added
 

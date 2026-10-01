@@ -20,7 +20,7 @@
 // ADR 0013), which are strictly stronger than same-origin. The device layer is what remains, and it
 // is what this function applies, unchanged and locally owned.
 
-import { DEVICE_HEADER } from "./admission.ts";
+import { decodeDeviceHeader, DEVICE_HEADER } from "./admission.ts";
 
 /** The slice of `Config` this gate reads. Narrowed so a test needs no `loadConfig`. */
 export interface PeerGateConfig {
@@ -70,6 +70,8 @@ export function crewGate(level: "read" | "write", cfg: PeerGateConfig, device: s
  * {@link crewGate} answers the second.
  */
 export function crewDeviceOf(req: Request): string | null {
-  const raw = req.headers.get(DEVICE_HEADER);
-  return raw?.trim() ? raw.trim() : null;
+  const raw = req.headers.get(DEVICE_HEADER)?.trim();
+  if (!raw) return null;
+  const device = decodeDeviceHeader(raw).trim();
+  return device === "" ? null : device;
 }
