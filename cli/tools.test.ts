@@ -135,6 +135,17 @@ describe("findTool on win32, from a host that is not Windows", () => {
     expect(findTool("herdr", env, HOME, "win32")).toBe(shim);
   });
 
+  // Bun's compiler writes `collie.exe`; a caller holding the bare absolute path means that file. The
+  // suffix is lowercase for the same reason as above: this runs on a case-sensitive filesystem.
+  test("an absolute name without its suffix finds the file beside it, as `collie.exe` is found", () => {
+    const exe = join(dir, "collie.exe");
+    writeFileSync(exe, "MZ");
+    chmodSync(exe, 0o755);
+    expect(findTool(join(dir, "collie"), { PATHEXT: ".exe" }, HOME, "win32")).toBe(exe);
+    expect(findTool(join(dir, "collie"), { PATHEXT: ".exe" }, HOME, "linux")).toBeNull();
+    expect(findTool(join(dir, "nothing"), { PATHEXT: ".exe" }, HOME, "win32")).toBeNull();
+  });
+
   test("the same shim is not matched on linux — there the bare name is the only candidate", () => {
     expect(findTool("herdr", env, HOME, "linux")).toBeNull();
   });

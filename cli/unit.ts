@@ -72,11 +72,11 @@ export function collieBinary(root: string, platform: string = process.platform):
   return join(root, "bin", platform === "win32" ? "collie.exe" : "collie");
 }
 
-export function serviceSpec(ctx: CliContext, tailscaleHosts = ""): ServiceSpec {
+export function serviceSpec(ctx: CliContext, tailscaleHosts = "", platform: string = process.platform): ServiceSpec {
   return {
     root: ctx.root,
     instance: ctx.instance,
-    binary: collieBinary(ctx.root),
+    binary: collieBinary(ctx.root, platform),
     configDir: ctx.configDir,
     socket: ctx.socket,
     port: ctx.port,

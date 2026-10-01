@@ -221,7 +221,7 @@ export function stopPidfileProcess(deps: LifecycleDeps): void {
     const pid = Number(text);
     if (pid > 1) {
       const command = deps.exec.processCommand(pid);
-      if (command !== null && isOurBridge(command, collieBinary(deps.ctx.root), deps.ctx.instance)) {
+      if (command !== null && isOurBridge(command, collieBinary(deps.ctx.root, deps.platform), deps.ctx.instance)) {
         deps.exec.kill(pid);
       }
     }
@@ -368,7 +368,7 @@ export function resolveTailscaleHosts(deps: LifecycleDeps): string {
 
 export function writeUnit(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
   deps.files.mkdirp(deps.ctx.configDir);
   deps.files.write(unitFilePath(deps.ctx.home, deps.ctx.instance), systemdUnit(spec));
   deps.exec.capture("systemctl", ["--user", "daemon-reload"]);
@@ -377,7 +377,7 @@ export function writeUnit(deps: LifecycleDeps): boolean {
 
 export function writeAgent(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
   deps.files.mkdirp(deps.ctx.configDir);
   deps.files.write(
     agentFilePath(deps.ctx.home, deps.ctx.instance),
@@ -397,7 +397,7 @@ export function writeAgent(deps: LifecycleDeps): boolean {
  */
 export function startUnsupervised(deps: LifecycleDeps): number {
   if (!requireBinary(deps)) return EXIT.FAIL;
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
   deps.files.mkdirp(deps.ctx.configDir);
   const pid = deps.exec.spawnDetached(bridgeCommand(spec), {
     cwd: deps.ctx.root,
@@ -643,7 +643,7 @@ export function cmdLogs(deps: LifecycleDeps, args: readonly string[]): number {
 export async function cmdExecBridge(deps: LifecycleDeps): Promise<number> {
   // Discovered here as well as at write time: an unsupervised or hand-written unit carries no baked
   // allowlist, and a MagicDNS name can change under a unit that was written months ago.
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps));
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
   const env = { ...stringEnv(deps.ctx.env), ...bridgeEnvironment(spec) };
   for (const [k, v] of Object.entries(env)) process.env[k] = v;
   await import("../bridge/index.ts");

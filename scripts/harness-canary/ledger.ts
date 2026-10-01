@@ -8,9 +8,10 @@
 // the file: a missing ledger is spec 01's to add, not the canary's.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { asJsonBoolean, asJsonObject, parseJson, type JsonObject } from "../../web/src/lib/json";
 
-export const LEDGER_FILE = new URL("../../web/src/lib/harness/verified-versions.json", import.meta.url).pathname;
+export const LEDGER_FILE = fileURLToPath(new URL("../../web/src/lib/harness/verified-versions.json", import.meta.url));
 
 /** The JOURNAL reader's half of one entry: the same three facts about the other reader. */
 export interface JournalRecord {

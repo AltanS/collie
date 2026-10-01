@@ -10,6 +10,8 @@ import {
   classifyInstall,
   detectInstall,
   isGitCheckout,
+  isInside,
+  isSameOrInside,
   type InstallProbe,
   originMatches,
   originOf,
@@ -154,7 +156,57 @@ describe("publishedBinary — the PATH name is a pointer (ADR 0021)", () => {
   test("a checkout still publishes its own binary, byte for byte as before", () => {
     expect(publishedBinary("/src/collie", fakeLinkFs())).toBe(join("/src/collie", "bin", BINARY_NAME));
     // A versions/ parent with no `current` is not a layout to point through.
-    expect(publishedBinary("/inst/versions/1.1.0", fakeLinkFs())).toBe("/inst/versions/1.1.0/bin/collie");
+    expect(publishedBinary("/inst/versions/1.1.0", fakeLinkFs())).toBe(join("/inst/versions/1.1.0", "bin", BINARY_NAME));
+  });
+});
+
+// The layout checks ran on `startsWith(`${dir}/`)`, which a backslash path can never satisfy. These
+// pin the Windows answer from Linux with the `platform` argument, so CI sees what a Windows host sees.
+describe("isInside / isSameOrInside — a path test that holds on both separators", () => {
+  const VERSIONS = "C:\\Users\\pat\\.collie\\versions";
+
+  test("a Windows path below the directory is inside, whichever slash it is spelled with", () => {
+    expect(isInside(VERSIONS, `${VERSIONS}\\1.2.3`, "win32")).toBe(true);
+    expect(isInside(VERSIONS, `${VERSIONS}\\1.2.3\\bin\\collie.exe`, "win32")).toBe(true);
+    expect(isInside("C:/Users/pat/.collie/versions", `${VERSIONS}\\1.2.3`, "win32")).toBe(true);
+    // The drive letter and the case are not part of a Windows path's identity.
+    expect(isInside("c:\\users\\PAT\\.collie\\versions", `${VERSIONS}\\1.2.3`, "win32")).toBe(true);
+  });
+
+  test("the directory itself is the same, not inside; a sibling or another drive is outside", () => {
+    expect(isInside(VERSIONS, VERSIONS, "win32")).toBe(false);
+    expect(isSameOrInside(VERSIONS, VERSIONS, "win32")).toBe(true);
+    expect(isSameOrInside(VERSIONS, `${VERSIONS}-old\\1.2.3`, "win32")).toBe(false);
+    expect(isSameOrInside(VERSIONS, "C:\\Users\\pat\\.collie", "win32")).toBe(false);
+    expect(isSameOrInside(VERSIONS, "D:\\Users\\pat\\.collie\\versions\\1.2.3", "win32")).toBe(false);
+  });
+
+  test("a name that merely starts with two dots is inside, not an escape", () => {
+    expect(isInside(VERSIONS, `${VERSIONS}\\..hidden`, "win32")).toBe(true);
+  });
+
+  test("POSIX answers are the ones the string prefix gave: case counts, a longer sibling name is outside", () => {
+    expect(isInside("/inst/versions", "/inst/versions/1.2.3", "linux")).toBe(true);
+    expect(isSameOrInside("/inst/versions", "/inst/versions", "linux")).toBe(true);
+    expect(isInside("/inst/versions", "/inst/versions", "linux")).toBe(false);
+    expect(isSameOrInside("/inst/versions", "/inst/versions-old/1.2.3", "linux")).toBe(false);
+    expect(isSameOrInside("/inst/Versions", "/inst/versions/1.2.3", "linux")).toBe(false);
+    expect(isInside("/home/pat", "/home/patrick/x", "darwin")).toBe(false);
+  });
+});
+
+describe("publishedBinary on win32, from a host that is not Windows", () => {
+  test("a binary install publishes `current/bin/collie.exe`, the name Bun's compiler writes", () => {
+    const root = "/inst/versions/1.1.0";
+    const link = fakeLinkFs({ "/inst/current": { kind: "symlink", target: root } });
+    expect(publishedBinary(root, link, "win32")).toBe("/inst/current/bin/collie.exe");
+    expect(publishedBinary(root, link, "linux")).toBe("/inst/current/bin/collie");
+  });
+
+  test("a checkout, or a `current` that points elsewhere, publishes its own `bin/collie.exe`", () => {
+    expect(publishedBinary("/src/collie", fakeLinkFs(), "win32")).toBe("/src/collie/bin/collie.exe");
+    const elsewhere = fakeLinkFs({ "/inst/current": { kind: "symlink", target: "/somewhere/else" } });
+    expect(publishedBinary("/inst/versions/1.1.0", elsewhere, "win32")).toBe("/inst/versions/1.1.0/bin/collie.exe");
   });
 });
 

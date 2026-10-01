@@ -54,10 +54,11 @@ export function resolveLinkTarget(linkAt: string, rawTarget: string): string {
 /**
  * Does this target name SOME collie checkout's compiled binary? That — not equality with our own —
  * is what makes a destination one Collie published and may therefore replace. Both separators are
- * accepted because the CLI runs on Windows too.
+ * accepted because the CLI runs on Windows too, and `collie.exe` there.
  */
-export function isCollieBinaryPath(target: string): boolean {
-  return /[/\\]bin[/\\]collie$/.test(target);
+export function isCollieBinaryPath(target: string, platform: string = process.platform): boolean {
+  // `collieBinary` spells `bin/collie.exe` on Windows, so the bare name alone would reject our own.
+  return (platform === "win32" ? /[/\\]bin[/\\]collie(?:\.exe)?$/ : /[/\\]bin[/\\]collie$/).test(target);
 }
 
 export type LinkVerdict =

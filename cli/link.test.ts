@@ -66,6 +66,15 @@ describe("the published name", () => {
     expect(isCollieBinaryPath("/usr/bin/git")).toBe(false);
   });
 
+  test("on win32 the `collie.exe` that Bun's compiler writes is recognised, on either separator", () => {
+    expect(isCollieBinaryPath("C:\\Users\\pat\\.collie\\versions\\1.2.3\\bin\\collie.exe", "win32")).toBe(true);
+    expect(isCollieBinaryPath("C:/src/collie/bin/collie.exe", "win32")).toBe(true);
+    expect(isCollieBinaryPath("C:\\src\\collie\\bin\\collie", "win32")).toBe(true);
+    expect(isCollieBinaryPath("C:\\src\\collie\\bin\\collie.exe.bak", "win32")).toBe(false);
+    // Elsewhere the `.exe` spelling is not a name Collie publishes.
+    expect(isCollieBinaryPath("/opt/collie/bin/collie.exe", "linux")).toBe(false);
+  });
+
   test("this platform's own binary name is recognised", () => {
     // `collieBinary` spells `collie.exe` on Windows; a link to it is a name Collie published.
     expect(isCollieBinaryPath(collieBinary("/opt/collie-v1"))).toBe(true);

@@ -7,6 +7,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { USAGE, parseArgs, type CanaryAgent, type CanaryOptions } from "./args";
 import { claude } from "./agents/claude";
 import { codex } from "./agents/codex";
@@ -25,7 +26,7 @@ import { installTransport } from "./transport";
 import { applyKnownGaps, exitCode, notReachedCase, recordable, renderTable, scenarioResult, type ScenarioResult } from "./verdict";
 
 const PROFILES = { claude, codex, opencode, pi } satisfies Record<CanaryAgent, AgentProfile>;
-const REPO_ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/[\\/]$/, "");
 
 function log(line: string): void {
   console.log(line);

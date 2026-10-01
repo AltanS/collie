@@ -5,6 +5,7 @@
 // stale entry, so a gap that closed does not stay listed.
 
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json";
 import { isScenarioId, type ScenarioId } from "./verdict";
 
@@ -17,7 +18,7 @@ export interface KnownGap {
   readonly ref: string;
 }
 
-export const KNOWN_GAPS_FILE = new URL("./known-gaps.json", import.meta.url).pathname;
+export const KNOWN_GAPS_FILE = fileURLToPath(new URL("./known-gaps.json", import.meta.url));
 
 /** A reference the fix can be found under: an issue or PR number, a milestone spec, or an ADR. */
 const REF = /^(#\d+|M\d+\/\d+|ADR \d{4})(\b.*)?$/;

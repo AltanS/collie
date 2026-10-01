@@ -1587,9 +1587,8 @@ describe("the hooks nudge", () => {
   });
 
   test("the checkout path asks the binary `build` just wrote, for the same reason", async () => {
-    // `nudgeHooks` names the binary by the host's own spelling (`bin/collie.exe` on Windows), not the
-    // harness's pinned "linux", so the expected path is built the way the code builds it.
-    const built = posixKey(collieBinary(ROOT));
+    // `nudgeHooks` names the binary by the injected platform's spelling, the harness's pinned "linux".
+    const built = posixKey(collieBinary(ROOT, "linux"));
     const h = harness({
       answers: [...LINKED, ...SHALLOW, [`${built} hooks status --check`, { code: EXIT.STATE }]],
     });
@@ -1751,8 +1750,10 @@ describe("the staged checkout path", () => {
     // The name on PATH was published at the clone's own binary before the migration (ADR 0021).
     // A link target is compared as a string against the path the code built, so it is spelled that way.
     h.link.entries.set(`${HOME}/.local/bin/collie`, { kind: "symlink", target: collieBinary(ROOT) });
-    // The flip is what makes this path resolve; the fake filesystem is flat, so it is seeded.
+    // The flip is what makes this path resolve; the fake filesystem is flat, so it is seeded. `link`
+    // names the binary by the host's spelling (`collie.exe` on Windows), so that is the file it looks for.
     h.files.entries.set(`${CURRENT}/bin/collie`, { text: "NEW BINARY" });
+    h.files.entries.set(collieBinary(CURRENT), { text: "NEW BINARY" });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     const said = h.io.stdout.join("\n");
     expect(said).toContain(`${join(VERSIONS)} and ${join(CURRENT)} are created now`);
@@ -1763,7 +1764,7 @@ describe("the staged checkout path", () => {
     expect(
       await runner(h, { to: "v0.32.0", from: null, version: "0.32.0", commit: "b2peeled", kind: "checkout" }),
     ).toBe(EXIT.OK);
-    expect(h.link.ops).toContain(`symlink ${CURRENT}/bin/collie ${HOME}/.local/bin/collie`);
+    expect(h.link.ops).toContain(`symlink ${posixKey(collieBinary(CURRENT))} ${HOME}/.local/bin/collie`);
     // And Herdr is re-registered at `current`, so a plugin action runs whatever is live.
     expect(h.exec.calls).toContain(`herdr plugin link ${CURRENT}`);
   });
@@ -2672,14 +2673,25 @@ describe("#283: another install's collie runs under its own root", () => {
     expect(reason.endsWith("…")).toBe(true);
   });
 
+  test("the smoke runs the binary under the injected platform's name, `collie.exe` on Windows", () => {
+    const exec = posixExec();
+    expect(smoke({ exec, platform: "win32" }, "/c", NEW).ok).toBe(false);
+    expect(smoke({ exec, platform: "linux" }, "/c", NEW).ok).toBe(false);
+    expect(exec.calls).toEqual(["/c/bin/collie.exe version", "/c/bin/collie version"]);
+  });
+
   test("a signal and a hang are named as such, not as an exit code", () => {
     const killed = smoke(
-      { exec: posixExec({ answers: [["/c/bin/collie version", { code: 124, signal: "SIGKILL" }]] }) },
+      { exec: posixExec({ answers: [["/c/bin/collie version", { code: 124, signal: "SIGKILL" }]] }), platform: "linux" },
       "/c",
       NEW,
     );
     expect(killed.ok || smokeReason(killed)).toBe("the new version did not start here (killed by SIGKILL)");
-    const hung = smoke({ exec: posixExec({ answers: [["/c/bin/collie version", { code: 124 }]] }) }, "/c", NEW);
+    const hung = smoke(
+      { exec: posixExec({ answers: [["/c/bin/collie version", { code: 124 }]] }), platform: "linux" },
+      "/c",
+      NEW,
+    );
     expect(hung.ok || smokeReason(hung)).toBe("the new version did not start here (no answer in 20s)");
   });
 

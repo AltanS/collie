@@ -928,7 +928,7 @@ export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] =
   refreshRegistry(deps);
   deps.io.out("✓ update complete");
   // `build` just wrote this binary from the code we are running, so it is the new list, not ours.
-  nudgeHooks(deps, collieBinary(deps.ctx.root));
+  nudgeHooks(deps, collieBinary(deps.ctx.root, deps.platform));
   return EXIT.OK;
 }
 
@@ -1334,10 +1334,15 @@ export type SmokeResult =
  * failure says why and keeps the child's last lines, because "did not run" with nothing after it is
  * the report that took a macOS operator three attempts and a log dive to not explain.
  */
-export function smoke(deps: Pick<UpdateDeps, "exec">, dir: string, version: string): SmokeResult {
+export function smoke(
+  // `platform` picks the binary's name (`collie.exe` on Windows); the host's when absent.
+  deps: Pick<UpdateDeps, "exec"> & { readonly platform?: string },
+  dir: string,
+  version: string,
+): SmokeResult {
   let r: ExecResult;
   try {
-    r = deps.exec.capture(join(dir, "bin", "collie"), ["version"], SMOKE_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
+    r = deps.exec.capture(collieBinary(dir, deps.platform), ["version"], SMOKE_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
   } catch (err) {
     // `capture` throws when the child cannot even start (ENOEXEC, EACCES).
     return { ok: false, why: `it could not be started: ${err instanceof Error ? err.message : String(err)}`, tail: [] };

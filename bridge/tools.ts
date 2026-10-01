@@ -150,10 +150,11 @@ export function isExecutableFile(p: string): boolean {
  *
  * An ALREADY-ABSOLUTE `name` is not searched for — it is checked where it is. Without that,
  * `join(dir, "/usr/bin/tmux")` asks after `/usr/bin/usr/bin/tmux` in every directory and the caller
- * is told the binary does not exist. It matters because the mux adapters resolve their binary
- * themselves, from an operator setting (`COLLIE_TMUX_BIN`) or a fixed candidate list
- * (`bridge/mux/<name>/exec.ts`), and `collie doctor` runs that same resolved path through the
- * `Exec` seam, which resolves every tool through here.
+ * is told the binary does not exist. On Windows the suffixes are still tried, so a bare path finds
+ * its `.exe`. It matters because the mux adapters resolve their binary themselves, from an
+ * operator setting (`COLLIE_TMUX_BIN`) or a fixed candidate list (`bridge/mux/<name>/exec.ts`), and
+ * `collie doctor` runs that same resolved path through the `Exec` seam, which resolves every tool
+ * through here.
  */
 export function findTool(
   name: string,
@@ -161,7 +162,11 @@ export function findTool(
   home: string,
   platform: NodeJS.Platform = process.platform,
 ): string | null {
-  if (isAbsolute(name)) return isExecutableFile(name) ? name : null;
+  if (isAbsolute(name)) {
+    // Bun writes `collie.exe`; a caller holding the bare absolute path still means that file.
+    const ext = toolExts(env, platform).find((e) => isExecutableFile(name + e));
+    return ext === undefined ? null : name + ext;
+  }
   return findIn(
     name,
     searchDirs(envGet(env, "PATH", platform), home, platform),

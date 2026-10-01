@@ -4,3 +4,7 @@
 # any future one from costing reviewability.
 *.ts diff
 *.tsx diff
+
+# A shell script is read by `sh`, which cannot take a CRLF line. A Windows checkout with autocrlf would
+# turn the installer the CLI embeds (and `crew add` sends to a POSIX host) into one.
+*.sh text eol=lf

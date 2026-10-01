@@ -21,12 +21,12 @@ import { PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 
 // The binary, spelled the way the code under test spells it. `collieBinary` joins with the host
-// separator and names `bin/collie.exe` on a Windows host, so a POSIX literal like
-// `/opt/collie/bin/collie` never matches there. The unit, the plist, the spawn and the pid guard ask
-// for the HOST's binary (`BINARY`); `start`'s existence check asks for the one of the platform the
-// harness injects (`binaryOn`). On Linux and macOS the two are the same string.
-const BINARY = collieBinary(ROOT);
+// separator, so a POSIX literal like `/opt/collie/bin/collie` never matches on a Windows host, and it
+// names `bin/collie.exe` for a `win32` platform. Everything here asks for the binary of the platform
+// the harness injects (`deps.platform`), never the host's: `BINARY` is the one every non-Windows
+// harness platform shares, and `binaryOn` is the one for a platform a test pins.
 const binaryOn = (platform: NodeJS.Platform): string => collieBinary(ROOT, platform);
+const BINARY = binaryOn("linux");
 
 /** The `Io` a nested `serve` was handed — `null` until it has been called. */
 interface SeenIo {
@@ -274,6 +274,24 @@ describe("the pidfile guard", () => {
     expect(h.files.exists(`${CONFIG}/collie.pid`)).toBe(false);
     // A plain liveness question keeps the short default bound (#309 review).
     expect(h.exec.probed).toEqual([{ pid: 4242 }]);
+  });
+
+  test("recognises its bridge by the injected platform's binary name, `collie.exe` on win32", () => {
+    const win = harness({
+      platform: "win32",
+      files: { [`${CONFIG}/collie.pid`]: "4242\n" },
+      ps: { 4242: `${binaryOn("win32")} _exec-bridge` },
+    });
+    stopPidfileProcess(win.deps);
+    expect(win.exec.killed).toEqual([4242]);
+    // Under win32 the binary this install has is `collie.exe`; the bare name is somebody else's.
+    const bare = harness({
+      platform: "win32",
+      files: { [`${CONFIG}/collie.pid`]: "4242\n" },
+      ps: { 4242: `${binaryOn("linux")} _exec-bridge` },
+    });
+    stopPidfileProcess(bare.deps);
+    expect(bare.exec.killed).toEqual([]);
   });
 
   test("never signals a pid the OS recycled to something else", () => {

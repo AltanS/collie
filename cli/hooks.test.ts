@@ -115,8 +115,9 @@ describe("the command it writes", () => {
   // carries a drive. A root spelled without one would never equal its own `versions/` directory.
   const INSTALL_ROOT = resolve(HOME, ".local", "share", "collie");
   const VERSION_ROOT = join(INSTALL_ROOT, "versions", "1.0.0-beta.49");
-  const VERSIONED = join(VERSION_ROOT, "bin", "collie");
-  const CURRENT = join(INSTALL_ROOT, "current", "bin", "collie");
+  // `collieBinary`, not a bare `collie`: the published binary is `collie.exe` on Windows.
+  const VERSIONED = collieBinary(VERSION_ROOT);
+  const CURRENT = collieBinary(join(INSTALL_ROOT, "current"));
 
   /** A binary install: the process runs from the version directory, `current` points at it. */
   function binaryDeps(published?: string): ReturnType<typeof deps> {
@@ -155,7 +156,7 @@ describe("the command it writes", () => {
   });
 
   test("a published name left over at a GC'd version falls back to `current`, never to the dangling path", () => {
-    const d = binaryDeps(join(INSTALL_ROOT, "versions", "1.0.0-beta.47", "bin", "collie"));
+    const d = binaryDeps(collieBinary(join(INSTALL_ROOT, "versions", "1.0.0-beta.47")));
     expect(resolveHookCommand(d.ctx, d.fs).binary).toBe(CURRENT);
   });
 

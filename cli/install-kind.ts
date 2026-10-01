@@ -1,4 +1,4 @@
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 
 import type { CliContext } from "./context.ts";
 import type { LinkReader } from "./link.ts";
@@ -120,7 +120,7 @@ export interface InstallProbe {
    * free to claim it. This is the Nix store's fact.
    */
   readonly rootIsReadOnly: boolean;
-  /** `!root.startsWith(ctx.home + "/")` — the root sits outside the operator's home. Homebrew's fact. */
+  /** The root is not under `ctx.home` — it sits outside the operator's home. Homebrew's fact. */
   readonly rootOutsideHome: boolean;
 }
 
@@ -223,6 +223,31 @@ export interface BinaryLayout {
   readonly version: string;
 }
 
+/**
+ * Is `child` under `parent`, however either is spelled? A string prefix test with a `/` never matches
+ * on Windows: `resolve` hands back `C:\inst\versions\1.1.0`, `dirname` of a forward-slash root keeps
+ * its slashes, and the drive letter and case may differ. `relative` folds all of that. `platform`
+ * picks the path rules, so a Linux test pins the Windows answer.
+ */
+function relationOf(parent: string, child: string, platform: string): "same" | "inside" | "outside" {
+  const api = platform === "win32" ? win32 : posix;
+  const rel = api.relative(parent, child);
+  if (rel === "") return "same";
+  // `relative` returns `child` itself, absolute, when no path leads there (another drive).
+  const escapes = rel === ".." || rel.startsWith(`..${api.sep}`) || api.isAbsolute(rel);
+  return escapes ? "outside" : "inside";
+}
+
+/** `child` is strictly below `parent`. */
+export function isInside(parent: string, child: string, platform: string = process.platform): boolean {
+  return relationOf(parent, child, platform) === "inside";
+}
+
+/** `child` is `parent` or below it. */
+export function isSameOrInside(parent: string, child: string, platform: string = process.platform): boolean {
+  return relationOf(parent, child, platform) !== "outside";
+}
+
 export function binaryLayout(root: string): BinaryLayout {
   const versionsDir = dirname(root);
   const installRoot = dirname(versionsDir);
@@ -248,21 +273,29 @@ export function binaryLayout(root: string): BinaryLayout {
  * Structural and git-free — only the layout decides, so a checkout keeps pointing at its own
  * `bin/collie` exactly as before.
  */
-export function publishedBinary(root: string, link: LinkReader): string {
+export function publishedBinary(root: string, link: LinkReader, platform: string = process.platform): string {
   const layout = binaryLayout(root);
-  if (basename(layout.versionsDir) !== "versions") return collieBinary(root);
+  if (basename(layout.versionsDir) !== "versions") return collieBinary(root, platform);
   const probe = link.probe(layout.currentLink);
-  if (probe.kind !== "symlink") return collieBinary(root);
+  if (probe.kind !== "symlink") return collieBinary(root, platform);
   const target = resolve(layout.installRoot, probe.target);
-  const inLayout = target === layout.versionsDir || target.startsWith(`${layout.versionsDir}/`);
-  return inLayout ? join(layout.currentLink, "bin", "collie") : collieBinary(root);
+  const inLayout = isSameOrInside(layout.versionsDir, target, platform);
+  return inLayout ? collieBinary(layout.currentLink, platform) : collieBinary(root, platform);
 }
 
 /** What the world says about `root` — one `git` call, one `lstat`, one `readlink`. All reads. */
 export function probeInstall(
-  deps: { readonly ctx: Pick<CliContext, "home">; readonly exec: Exec; readonly files: Files; readonly link: LinkReader },
+  deps: {
+    readonly ctx: Pick<CliContext, "home">;
+    readonly exec: Exec;
+    readonly files: Files;
+    readonly link: LinkReader;
+    /** Which path rules compare the layout; the host's when absent. */
+    readonly platform?: string;
+  },
   root: string,
 ): InstallProbe {
+  const platform = deps.platform ?? process.platform;
   const git = isGitCheckout(deps.exec, root);
   const layout = binaryLayout(root);
   const probe = deps.link.probe(layout.currentLink);
@@ -274,13 +307,12 @@ export function probeInstall(
     hasGitEntry: deps.files.exists(join(root, ".git")),
     parentIsVersions: basename(layout.versionsDir) === "versions",
     currentIsSymlink: probe.kind === "symlink",
-    currentResolvesHere:
-      target !== null && (target === layout.versionsDir || target.startsWith(`${layout.versionsDir}/`)),
+    currentResolvesHere: target !== null && isSameOrInside(layout.versionsDir, target, platform),
     hasMarker: deps.files.exists(join(root, "herdr-plugin.toml")),
     rootOwnerUid: deps.files.ownerUid(root),
     // `null` — the probe could not reach the question — is NOT read-only. See the field's comment.
     rootIsReadOnly: deps.files.writable(root) === false,
-    rootOutsideHome: !root.startsWith(`${deps.ctx.home}/`),
+    rootOutsideHome: !isInside(deps.ctx.home, root, platform),
   };
 }
 
@@ -290,6 +322,7 @@ export function detectInstall(deps: {
   readonly exec: Exec;
   readonly files: Files;
   readonly link: LinkReader;
+  readonly platform?: string;
 }): InstallKind {
   return classifyInstall(probeInstall(deps, deps.ctx.root));
 }

@@ -56,6 +56,7 @@
 import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
+import { isAbsoluteFolder, isInside } from "./changes-root.ts";
 import { containedRealpath } from "./journal/files.ts";
 import type {
   ChangeCommit,
@@ -689,7 +690,7 @@ async function mapLimited<T, R>(items: readonly T[], limit: number, fn: (item: T
 
 /** Whether `cwd` is a folder we can look in at all. */
 async function usableFolder(cwd: string): Promise<boolean> {
-  if (cwd.trim() === "" || !cwd.startsWith("/")) return false;
+  if (!isAbsoluteFolder(cwd)) return false;
   const st = await stat(cwd).catch(() => null);
   return st !== null && st.isDirectory();
 }
@@ -729,13 +730,15 @@ export async function repoOfFolder(
   repos: readonly Pick<ChangedRepo, "relPath">[],
   folder: string,
 ): Promise<string | undefined> {
-  if (!folder.startsWith("/")) return undefined;
+  if (!isAbsoluteFolder(folder)) return undefined;
   const real = await realpath(folder).catch(() => null);
   if (real === null) return undefined;
+  // Both sides real: a Windows temp folder can be spelled with an 8.3 short name on one side only.
+  const realRoot = await realpath(root).catch(() => root);
   let best: { relPath: string; length: number } | undefined;
   for (const repo of repos) {
-    const dir = resolve(root, repo.relPath);
-    const inside = real === dir || real.startsWith(dir.endsWith(sep) ? dir : `${dir}${sep}`);
+    const dir = resolve(realRoot, repo.relPath);
+    const inside = isInside({ folder: real, parent: dir });
     if (inside && (best === undefined || dir.length > best.length)) best = { relPath: repo.relPath, length: dir.length };
   }
   return best?.relPath;

@@ -9,40 +9,103 @@
 // Pure: the snapshot and the home folder come in as arguments, so the rule is tested without a mux,
 // a disk or a server. bridge/server.ts feeds it the live snapshot.
 
+import nodePath from "node:path";
+
 import type { AgentView, WorkspaceView } from "./types.ts";
 
-/** A path with its trailing slashes gone (`/` itself stays `/`), or `null` when it is not absolute. */
-function normalize(path: string | undefined): string | null {
-  if (path === undefined) return null;
-  const trimmed = path.trim();
-  if (!trimmed.startsWith("/")) return null;
-  const stripped = trimmed.replace(/\/+$/, "");
-  return stripped === "" ? "/" : stripped;
+/**
+ * The `node:path` flavour a rule reads paths with. Native by default; a test pins `path.win32` (or
+ * `path.posix`) so the Windows branch runs on Linux CI.
+ */
+export type PathApi = typeof nodePath;
+
+/** A path cut into its root (`/`, `C:\`, `\\srv\share\`) and its folder names. */
+interface SplitPath {
+  root: string;
+  parts: string[];
 }
 
-/** The deepest folder every path sits in. `null` for no paths. */
-export function commonAncestor(paths: readonly string[]): string | null {
-  if (paths.length === 0) return null;
-  let parts = paths[0]!.split("/").filter(Boolean);
-  for (const path of paths.slice(1)) {
-    const other = path.split("/").filter(Boolean);
-    let i = 0;
-    while (i < parts.length && i < other.length && parts[i] === other[i]) i++;
-    parts = parts.slice(0, i);
-  }
-  return `/${parts.join("/")}`;
+const isWindows = (api: PathApi): boolean => api.sep === "\\";
+
+/** Windows spells a name in any case, and a drive letter or share the same way. POSIX is exact. */
+const foldFor = (api: PathApi) => (name: string): string => (isWindows(api) ? name.toLowerCase() : name);
+
+/** `\\?\C:\x` is `C:\x` and `\\?\UNC\srv\share` is `\\srv\share`: same place, a spelling the checks do not know. */
+function dropExtendedPrefix(path: string): string {
+  if (/^\\\\\?\\UNC\\/i.test(path)) return `\\\\${path.slice(8)}`;
+  return path.startsWith("\\\\?\\") ? path.slice(4) : path;
+}
+
+function splitPath(path: string, api: PathApi): SplitPath {
+  const win = isWindows(api);
+  const plain = win ? dropExtendedPrefix(path) : path;
+  const root = api.parse(plain).root;
+  const parts = plain.slice(root.length).split(win ? /[\\/]+/ : /\/+/).filter(Boolean);
+  return { root: win ? root.replaceAll("/", "\\") : root, parts };
+}
+
+/** Whether `folder` is an absolute, non-blank path in this flavour: the test for "a folder we can look in". */
+export function isAbsoluteFolder(folder: string, pathApi: PathApi = nodePath): boolean {
+  return folder.trim() !== "" && pathApi.isAbsolute(folder);
 }
 
 /**
- * Whether a root is narrow enough to scan. `/`, the home folder itself and every folder above home
- * are not: a list of every repo the operator owns is not one workspace's picture, and a walk of it
- * is the cost the depth caps exist to avoid. A folder outside home (`/srv/app`, `/tmp/x`) is fine.
+ * Whether `folder` is `parent` or sits anywhere below it. By folder names, so `/a/ab` is not inside
+ * `/a/a`, and on Windows by case-folded names, so `c:\users\pat` is inside `C:\Users\Pat`. A path on
+ * another drive or share is never inside. Pure: neither path has to exist.
  */
-export function withinBound(path: string, home: string): boolean {
-  if (path === "/") return false;
-  const h = normalize(home);
-  if (h === null || h === "/") return true;
-  return path !== h && !h.startsWith(`${path}/`);
+export function isInside(opts: { folder: string; parent: string; pathApi?: PathApi }): boolean {
+  const api = opts.pathApi ?? nodePath;
+  const fold = foldFor(api);
+  const child = splitPath(opts.folder, api);
+  const parent = splitPath(opts.parent, api);
+  if (fold(child.root) !== fold(parent.root)) return false;
+  if (parent.parts.length > child.parts.length) return false;
+  return parent.parts.every((name, i) => fold(name) === fold(child.parts[i]!));
+}
+
+/** A path with its trailing separators gone (a root such as `/` or `C:\` stays), or `null` when it is not absolute. */
+function normalize(path: string | undefined, api: PathApi): string | null {
+  if (path === undefined) return null;
+  const trimmed = path.trim();
+  if (!isAbsoluteFolder(trimmed, api)) return null;
+  const plain = isWindows(api) ? dropExtendedPrefix(trimmed) : trimmed;
+  const root = api.parse(plain).root;
+  const body = plain.slice(root.length).replace(isWindows(api) ? /[\\/]+$/ : /\/+$/, "");
+  return body === "" ? root : `${root}${body}`;
+}
+
+/**
+ * The deepest folder every path sits in. `null` for no paths, and for paths on different drives or
+ * shares, which have no folder in common. A common folder that is only the root comes back as the root.
+ */
+export function commonAncestor(paths: readonly string[], pathApi: PathApi = nodePath): string | null {
+  if (paths.length === 0) return null;
+  const fold = foldFor(pathApi);
+  const first = splitPath(paths[0]!, pathApi);
+  let parts = first.parts;
+  for (const path of paths.slice(1)) {
+    const other = splitPath(path, pathApi);
+    if (fold(other.root) !== fold(first.root)) return null;
+    let i = 0;
+    while (i < parts.length && i < other.parts.length && fold(parts[i]!) === fold(other.parts[i]!)) i++;
+    parts = parts.slice(0, i);
+  }
+  return `${first.root === "" ? pathApi.sep : first.root}${parts.join(pathApi.sep)}`;
+}
+
+/**
+ * Whether a root is narrow enough to scan. A drive or filesystem root (`/`, `C:\`), the home folder
+ * itself and every folder above home are not: a list of every repo the operator owns is not one
+ * workspace's picture, and a walk of it is the cost the depth caps exist to avoid. A folder outside
+ * home (`/srv/app`, `/tmp/x`, another drive) is fine.
+ */
+export function withinBound(path: string, home: string, pathApi: PathApi = nodePath): boolean {
+  if (splitPath(path, pathApi).parts.length === 0) return false;
+  const h = normalize(home, pathApi);
+  if (h === null || splitPath(h, pathApi).parts.length === 0) return true;
+  // Above home or home itself: the candidate holds home. Anything else, home included, is below it.
+  return !isInside({ folder: h, parent: path, pathApi });
 }
 
 export interface WorkspaceRootInput {
@@ -52,6 +115,8 @@ export interface WorkspaceRootInput {
   cwds: readonly string[];
   /** The operator's home folder, the upper bound. */
   home: string;
+  /** The path flavour to read folders with. Native unless a test pins one. */
+  pathApi?: PathApi;
 }
 
 /**
@@ -66,11 +131,12 @@ export interface WorkspaceRootInput {
  * common folder is still the better answer than none.
  */
 export function workspaceRoot(input: WorkspaceRootInput): string | null {
-  const folder = normalize(input.folder);
-  if (folder !== null && withinBound(folder, input.home)) return folder;
-  const cwds = input.cwds.map(normalize).filter((c): c is string => c !== null);
-  const common = commonAncestor(cwds);
-  if (common !== null && withinBound(common, input.home)) return common;
+  const api = input.pathApi ?? nodePath;
+  const folder = normalize(input.folder, api);
+  if (folder !== null && withinBound(folder, input.home, api)) return folder;
+  const cwds = input.cwds.map((c) => normalize(c, api)).filter((c): c is string => c !== null);
+  const common = commonAncestor(cwds, api);
+  if (common !== null && withinBound(common, input.home, api)) return common;
   return null;
 }
 
