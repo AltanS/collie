@@ -1,0 +1,146 @@
+# Changes: see what an agent changed
+
+The Changes view shows what changed in a workspace's git repos since the last commit. You read it
+on your phone while the agent works: the changed files, their added and removed lines, and each
+file's diff with syntax colour. When the agent has already committed, it shows the last commit.
+
+> **Note.** Changes only reads. It never stages, commits, edits or checks out a file
+> ([below](#read-only-and-safe)).
+
+## Open it
+
+There are two ways in.
+
+- **From a pane.** Tap the Changes button on the pane's actions belt, the icon left of the Switch
+  mark. The list covers the pane's whole workspace and marks the pane's own repo.
+- **From the dashboard.** Tap **Changes** in the dashboard's footer, beside **Panes** and
+  **Focus**. It lists one row per workspace with its changed-file count and the summed added and
+  removed lines. A workspace with no changes stays in its place, dimmed. Tap a row to open that
+  workspace's list.
+
+The dashboard counts refresh every 5 seconds, and only while the Changes tab is on screen. The tab
+you pick is kept per device.
+
+## The list
+
+The list groups the changed files by git repo. Each file shows its status and its `+added −removed`
+line counts.
+
+| Status | Meaning |
+| --- | --- |
+| Modified | A tracked file changed |
+| Added | A new file, staged |
+| Deleted | A tracked file is gone |
+| Renamed | A file moved; its diff names the old path |
+| Untracked | A new file git does not track yet |
+
+- **The base is the last commit.** Staged and unstaged changes show together. A repo with no commits
+  is compared against an empty tree.
+- **A new file** shows as all added lines. **A new folder** is one entry: Collie says the folder is
+  new and does not list the files inside it. That keeps a fresh `node_modules` out of the list.
+- **A binary file** is listed, but its lines are not shown.
+- **This pane.** Opened from a pane, with more than one repo listed, the pane's own repo carries a
+  **This pane** label. On the first read, the list scrolls to it.
+- **List or Tree.** The **Layout** switch shows the files as one flat list per repo, or as a folder
+  tree.
+- **Filter files.** The filter button narrows the list by path text and by status. The list then
+  says how many of its files are shown.
+
+## Read a diff
+
+Tap a file to read its diff. **Previous file** and **Next file** step through the list without going
+back to it.
+
+- The diff shows two line-number gutters, tinted added and removed rows, and lines that wrap.
+- Common languages get syntax colour: TypeScript and JavaScript, JSON, CSS, HTML, Markdown, Python,
+  Go, Rust, shell, YAML, TOML and more. A file in another language, or a diff over 2000 lines, stays
+  plain.
+- A very long diff stops at a limit and says so.
+- If the agent reverts or commits the file while you read it, the diff stays on screen and its header
+  says **No longer changed**. The view never jumps away.
+
+## The last commit
+
+Agents often commit their own work, so the list can be empty right after the change you want to read.
+For a repo with no uncommitted changes, the view offers **Show last commit**.
+
+The commit view shows the subject, the author, the time, the short hash and the commit's files, each
+with its own diff. It compares the commit with its first parent, so a merge shows what it brought in.
+It reads the newest commit only. There is no history browser.
+
+- When the agent commits again, a quiet **A newer commit exists** waits for a tap. The files on
+  screen do not change under you.
+- When new uncommitted changes appear, **New uncommitted changes** takes you back to the list.
+
+## It stays up to date
+
+An open Changes screen reads git again every 5 seconds while the page is visible. On a diff, the open
+file is read again too. A re-read that finds nothing new moves nothing on screen: your scroll, your
+filter and your folded folders stay as they are.
+
+- A hidden page stops reading, and reads once when it is visible again.
+- The refresh button reads now.
+- If two reads in a row fail, the header says **Not updating**, and the last good list stays. The next
+  good read clears it.
+
+## Which folder, and which repos
+
+The list covers the pane's **workspace**, not only the pane's own folder, so every pane in one
+workspace shows the same list. The header names the workspace and its folder. Collie picks that folder
+in this order:
+
+| Order | Folder |
+| --- | --- |
+| 1 | The workspace's own folder, when the multiplexer keeps one: Herdr's worktree, tmux's session folder |
+| 2 | The deepest folder that holds every pane of the workspace |
+| 3 | The pane's own folder, when the first two would be `/`, your home folder, or above it |
+
+Collie then finds the repo that holds that folder. It also looks for repos in folders below it, even
+repos the parent repo ignores. That is how a workspace repo with its member repos ignored inside it
+still shows every member's changes.
+
+Two per-device settings control that search. Both live in **Settings → Device → Changes**.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Look for repos inside this folder | on | Also lists repos in folders below the workspace folder, even ones the parent repo ignores |
+| How deep to look | 2 | How many folder levels below the workspace folder the search goes, 1 to 4 |
+
+The search never follows a symlink. It skips dot-folders and `node_modules`, `dist`, `build`, `vendor`
+and `target`. It stops at 20 repos or 5000 folder entries.
+
+When the search stops at its depth and there are repos further down, the list ends with
+"Stopped at 2 levels, with repos further down." and a **Look deeper in Settings** link. When it hits
+the repo or entry limit, the list ends with "The list hit a limit" instead, because files may be
+missing.
+
+A submodule or a nested repo that the search finds shows once, as its own repo. A submodule below the
+depth shows as one entry in its parent repo.
+
+## Read-only and safe
+
+Changes runs git to read, and nothing else.
+
+- It never stages, commits, edits or checks out. It does not even refresh git's index cache.
+- A repo's own hooks, filters, external diff programs and text conversions never run while Collie
+  reads it. An agent may have cloned anything, and you only tapped Changes.
+- It never touches the network, not even to fetch a missing file in a partial clone. That file then
+  shows with zero counts and an empty diff.
+- A diff is served only for a file git itself listed as changed, in a repo the search found.
+
+The full rules are in [ADR 0065](../.adr/0065-the-changes-view-reads-git-read-only.md).
+
+## Across a crew
+
+In a [crew](crew.md), a pane or workspace on another machine is read on that machine. The lead
+forwards the request, and that machine's git answers. That machine must run Collie 1.13.0 or later.
+
+## Limits
+
+- **zellij panes have no Changes button.** zellij does not report a pane's folder. The dashboard row
+  for a zellij workspace reads "No folder".
+- **Git must be installed** on the machine that owns the pane.
+- **Git LFS files may show as modified.** With filters off, Collie compares an LFS file with its
+  pointer. It can only show too much, never hide a change.
+- **One workspace, one folder.** A workspace whose panes sit in unrelated folders under your home folder
+  reads the asking pane's own folder instead of a merged view.

@@ -34,6 +34,7 @@ until explicitly configured.
 - **Quick actions and slash commands** configured per agent
 - **Keypad for terminal control keys**: `Esc`, `Ctrl+C`, arrows, and modifier combinations
 - **Output search** and full conversation history beyond standard terminal scrollback
+- **Changes view**: what an agent changed in its workspace's git repos, as diffs with syntax colour, and its last commit, read-only
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** as the write credential: once a device is paired, every write needs its token
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
@@ -141,6 +142,7 @@ and that is the only way to install it on a phone.
 | [**Install**](./docs/install.md) | The front door you need, then the install for your system: Linux, Arch and Omarchy, Nix, macOS, Windows, or as a Herdr plugin. Covers first run, setup on an iPhone or Android phone, updates, and uninstallation |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device as the write credential |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |
+| [**Changes**](./docs/changes.md) | What an agent changed in its workspace: the changed files, their diffs and the last commit, from the pane or the dashboard. Read-only git, nested repos, and the two settings that decide how far it looks |
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux or zellij, what each backend can answer, and agent beacons. Experimental in 1.0 for tmux and zellij; bug reports wanted |

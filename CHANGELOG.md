@@ -366,6 +366,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   documentation table splits into Guides and Reference, and `collie docs five-minute-install` prints
   the guide from the binary.
 
+- **Changes has its own docs page, and the README names it as a feature.** The view was
+  documented only as one section of the Configure page, which said it opens from the pane menu and
+  never updates on its own. Both had stopped being true. `docs/changes.md` covers both ways in, the
+  list, the diff, the last commit, the 5-second refresh, how the folder and nested repos are found,
+  the read-only rules and the limits. `collie docs changes` prints it from the binary.
+
 ## [1.14.2] - 2026-09-28
 
 ### Docs

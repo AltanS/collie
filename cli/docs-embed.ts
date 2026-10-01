@@ -17,6 +17,7 @@
 // lands in `docs/` without a line below. The root contributor specifications are deliberately not
 // here: the largest of them is 194 KB on its own, and an agent that needs them has the checkout.
 
+import changes from "../docs/changes.md" with { type: "text" };
 import claudeCodeOnYourPhone from "../docs/claude-code-on-your-phone.md" with { type: "text" };
 import commands from "../docs/commands.md" with { type: "text" };
 import crew from "../docs/crew.md" with { type: "text" };
@@ -46,7 +47,7 @@ export interface DocPage {
 }
 
 /**
- * The twelve pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
+ * The thirteen pages in an OPERATOR'S READING ORDER — the five-minute guide first, troubleshooting
  * last — and never alphabetically. `collie docs` lists them in this order and `collie docs --all` prints them in it.
  */
 export const DOC_PAGES: readonly DocPage[] = [
@@ -64,6 +65,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "claude-code-on-your-phone",
     purpose: "One path end to end: Claude Code in a pane, answered from your phone",
     text: claudeCodeOnYourPhone,
+  },
+  {
+    name: "changes",
+    purpose: "What an agent changed: the changed files, their diffs and the last commit, read-only",
+    text: changes,
   },
   {
     name: "configure",
