@@ -96,3 +96,25 @@ describe("a window on another machine", () => {
     expect(typed.ok ? "ok" : typed.reason).toBe("gone");
   });
 });
+
+/** A daemon whose first window has tuios's placeholder title and whose second has a real one. */
+class WithPlaceholderTitle extends FakeTuios {
+  override async listWindows(sessionName: string): Promise<WireWindowList> {
+    const listed = await super.listWindows(sessionName);
+    if (sessionName !== "collie") return listed;
+    const windows = listed.windows.map((window, index) =>
+      index === 0 ? { ...window, title: `Terminal ${window.windowId.slice(0, 8)}` } : { ...window, title: "npm run dev" },
+    );
+    return { ...listed, windows };
+  }
+}
+
+describe("the title tuios gives a window before its program sets one", () => {
+  test("is not the program's title", async () => {
+    const snapshot = await new TuiosMux(new WithPlaceholderTitle()).snapshot();
+    const [placeholder, titled] = snapshot.panes.filter((pane) => pane.spaceLabel === "collie");
+    expect(placeholder?.terminalTitle).toBeUndefined();
+    // The positive half: a title the program did set still arrives.
+    expect(titled?.terminalTitle).toBe("npm run dev");
+  });
+});

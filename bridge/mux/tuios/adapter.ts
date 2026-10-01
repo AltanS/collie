@@ -246,6 +246,19 @@ function parseTabId(tabId: string): { sessionId: string; workspace: number } | n
   return { sessionId: tabId.slice(0, cut), workspace };
 }
 
+/**
+ * The title the pane's program set, or `""` when it set none.
+ *
+ * Until a program sets a title, tuios fills the window's `title` with a name of its own:
+ * `Terminal ` and the first eight characters of the window id (tuios
+ * internal/session/session_ops.go; probed on tuios main `051da3ac`, where a zsh with no title hook
+ * listed `Terminal 6247db65`). That is tuios's placeholder and not something the program said, so it
+ * is not a `terminalTitle`. Reported as one, it named every quiet shell on the phone by an id.
+ */
+function programTitle(window: WireWindow): string {
+  return window.title === `Terminal ${window.windowId.slice(0, 8)}` ? "" : window.title;
+}
+
 /** A styled capture pads every row to the pane's width with spaces; the mirror wants the row. */
 function trimRows(text: string): string {
   return text
@@ -747,7 +760,7 @@ function toSnapshot(
         pane.tabNamed = true;
       }
       if (window.customName !== "") pane.paneLabel = window.customName;
-      const title = meaningfulTerminalTitle(window.title, undefined, pane.agent, session.name);
+      const title = meaningfulTerminalTitle(programTitle(window), undefined, pane.agent, session.name);
       if (title !== undefined) pane.terminalTitle = title;
       // The scrollback above the screen plus the screen: what a `recent` read can return.
       if (window.height > 0) pane.readableLines = window.historyRows + window.height;
