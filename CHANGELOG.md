@@ -30,6 +30,16 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A working Claude pane no longer shows "Collie cannot read this dialog".** Claude Code's default
+  footer prints `esc to interrupt` while a turn runs and `↓ to manage` while a background task or
+  monitor exists. Collie took both for a modal's key hints, found no input box, and drew the Escape
+  card over a live composer, where the reply path then refused to type. A pane with a custom
+  statusline never showed it, which is why no capture in the corpus had the footer. Those two hints,
+  and their clipped forms on a narrow pane, now read as the composer's own status, and a real
+  `Esc to cancel` footer still refuses. Thanks @aryanscaler (#330).
+
 ## [1.15.1] - 2026-10-02
 
 ### Added
