@@ -30,79 +30,42 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
-### Fixed
-
-- **Chat says when a turn is still running, so a compaction is not an empty screen.** The terminal
-  mirror shows the agent's own spinner, but Chat draws the agent's record, and a record gains nothing
-  while a session compacts. So a pane that had been busy for minutes looked exactly like a finished
-  one. The thread now ends with a working mark until the next turn lands.
-- **A phone paired under a name outside ASCII can reach a crew member again.** A header value must
-  be plain bytes, so a label like `폰` made every forwarded call fail with a 500 before it left the
-  lead. A name like that now travels percent-encoded (RFC 8187) and the member reads it back whole,
-  for its allowlist and its audit line. An ASCII name is sent exactly as before. Reported by
-  @dmstjd1024 (#324).
-- **A Codex pane pursuing a goal keeps its input box.** A Codex `/goal` puts `Pursuing goal (…)`
-  at the right end of the status row, and Codex paints the spaces in front of it in the colour of
-  the field before. Collie read that as a row it did not know, so it lost the input box: the pane
-  showed the unread-dialog card and every reply from the phone was refused. The padding now reads
-  as the gap it is. Reported with a capture by @CorrectRoadH (#317).
-- **The canary judges the read send by its token and starts codex without its update prompt.**
-  The `sends` scenario accepted only a bare "OK" as an answer, so a codex that replied with the
-  README token the read prompt asks for still timed out. A message can now declare its expected
-  reply. Separately, codex's "Update available" prompt (default answer: Update now) took the place
-  of the composer at startup, so the canary now launches codex with
-  `check_for_update_on_startup=false`.
+## [1.15.0] - 2026-10-01
 
 ### Added
-
-- **Collie drives tuios, as an experimental backend.** Set `COLLIE_MUX=tuios` to mirror a tuios
-  daemon's sessions as spaces, its workspaces as tabs and its windows as panes, with the agent, its
-  state and its conversation read from tuios itself. It needs tuios 0.8.3 or newer. The mux
-  contract now also says that an agent name is one of Collie's harness names or `shell`. Thanks
-  @Gaurav-Gosain (#321, #322).
-
-- **Chat says a turn is still running, and shows what you queued behind it.** A compaction writes no
-  row for minutes, so a compacting pane in Chat looked exactly like a finished one, and a message
-  typed while the agent was busy appeared nowhere at all. The thread now ends with a working mark, and
-  the queue sits under it in your own colour until the agent takes it.
-
-- **Chat shows the work a codex pane did, not only the words it said.** Codex runs nearly everything
-  through one custom tool, and the journal reader dropped that shape, so every file it read and every
-  patch it wrote was missing from Chat. It reads now, with the command, the output and the exit code.
-  Claude's pasted images reach the phone too, and an OpenCode patch or attachment shows as itself.
-
-- **The boot splash shows the Collie mark, not the old galloping dog.** The sprite was retired when
-  the new mark landed and every screen moved to it, but the first-paint splash in `index.html` kept
-  its own hand-written copy, so a cold open still flashed a galloping dog and then swapped it for a
-  different animal. It is the brand's own header-weight mark now, in a light and a dark file, so the
-  hand-off to React changes nothing but the mark's own motion.
-
-- **A pane that becomes an agent pane says so.** You are watching a bare shell on your phone, you
-  type `opencode` at your desk, and the Collie mark flies out of the header, blooms over the mirror
-  and hands the pane to the agent's own mark. It marks a fact the poll has already found, so it
-  never reads as progress, it holds no space and moves nothing, a tap ends it, and under reduced
-  motion it is a still picture instead. Opening a pane that was already running an agent announces
-  nothing: it is the change that is drawn, never the state.
-
-- **Tool calls are off in a session view, and that is the new default.** A working session is
-  mostly tool calls: one turn can be forty reads and a grep, which buried the paragraph you opened
-  the page for. The History page now draws what the agent SAID, with one muted line per turn saying
-  how many steps it took and a tap to bring them back. A find always overrides it, so a search that
-  matches inside a command's output still shows what it matched. Turn them back on for good under
-  Settings → Appearance → Tool calls.
-
-- **Settings is four sections instead of one long column.** The page was seventeen cards deep on a
-  phone with no headings to skim by, so finding one switch meant reading every card above it. It is
-  an index now: Appearance, Device, Alerts and System, each short enough to take in at once. No
-  setting is removed and none changes what it does. Back from a section returns to the index. The
-  QR `collie pair` prints still opens the pairing form, which now lives under System.
 
 - **The journal now says what a tool call did, not only what it was asked to do.** Every tool part
   carries a structured `call` beside its one-line summary: an edit knows its path, its diff hunks
   and how many lines moved, a command knows its exit code, a read knows its range. A refused call is
   marked `denied` rather than lumped in with a real failure, because "you said no" and "it crashed"
   are not the same thing to read. The shape is additive, so every existing view keeps working, and
-  the name table is shared, so `Bash`, `bash`, `shell` and `exec_command` are one kind of thing.
+  the name table is shared, so `Bash`, `bash`, `shell` and `exec_command` are one kind of thing. ([d5faea94](https://github.com/AltanS/collie/commit/d5faea94))
+
+- **Settings is four sections instead of one long column.** The page was seventeen cards deep on a
+  phone with no headings to skim by, so finding one switch meant reading every card above it. It is
+  an index now: Appearance, Device, Alerts and System, each short enough to take in at once. No
+  setting is removed and none changes what it does. Back from a section returns to the index. The
+  QR `collie pair` prints still opens the pairing form, which now lives under System. ([7527b53e](https://github.com/AltanS/collie/commit/7527b53e))
+
+- **Tool calls are off in a session view, and that is the new default.** A working session is
+  mostly tool calls: one turn can be forty reads and a grep, which buried the paragraph you opened
+  the page for. The History page now draws what the agent SAID, with one muted line per turn saying
+  how many steps it took and a tap to bring them back. A find always overrides it, so a search that
+  matches inside a command's output still shows what it matched. Turn them back on for good under
+  Settings → Appearance → Tool calls. ([b36b7c55](https://github.com/AltanS/collie/commit/b36b7c55))
+
+- **A pane that becomes an agent pane says so.** You are watching a bare shell on your phone, you
+  type `opencode` at your desk, and the Collie mark flies out of the header, blooms over the mirror
+  and hands the pane to the agent's own mark. It marks a fact the poll has already found, so it
+  never reads as progress, it holds no space and moves nothing, a tap ends it, and under reduced
+  motion it is a still picture instead. Opening a pane that was already running an agent announces
+  nothing: it is the change that is drawn, never the state. ([36063545](https://github.com/AltanS/collie/commit/36063545))
+
+- **The boot splash shows the Collie mark, not the old galloping dog.** The sprite was retired when
+  the new mark landed and every screen moved to it, but the first-paint splash in `index.html` kept
+  its own hand-written copy, so a cold open still flashed a galloping dog and then swapped it for a
+  different animal. It is the brand's own header-weight mark now, in a light and a dark file, so the
+  hand-off to React changes nothing but the mark's own motion. ([2dd6ca80](https://github.com/AltanS/collie/commit/2dd6ca80))
 
 - **Every harness now records what a tool call DID, not just that one ran.** Claude already did;
   Codex, opencode, pi, grok and hermes now do too. A command carries its exit code, an edit carries
@@ -110,7 +73,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   operator refused is marked as refused rather than as an error. Nothing is guessed: each harness
   fills only what its own record actually holds, and the three that write no exit code and no patch
   say so rather than inventing one. This is what a session card will draw, and it is read from one
-  place for all six.
+  place for all six. ([0a143094](https://github.com/AltanS/collie/commit/0a143094))
 
 - **The pane switcher can run by activity instead of by place.** The sheet you open with the layers
   mark keeps every pane in its space and tab, which is the right answer when you know where you are
@@ -119,7 +82,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   newest first, counting both the agent's own last turn and the last time you were in the pane. The
   choice is a standing one and also a row under Settings → Appearance → Pane order. It reads the
   clock once, when the sheet opens, so a pane that finishes a turn while you are reaching for a row
-  repaints where it stands and never moves under your thumb.
+  repaints where it stands and never moves under your thumb. ([cf10b860](https://github.com/AltanS/collie/commit/cf10b860))
 
 - **The journal reads a session one row at a time.** Every harness adapter now folds its log row by
   row instead of only parsing a whole file, and says which earlier turns a row changed as well as
@@ -127,7 +90,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   belongs to, so attaching it edits a turn that is already on screen. A live session that gains one
   row can now cost one row of work instead of re-reading and re-parsing the last 32 MB of a log that
   can be 187 MB long. Nothing you can see changes yet, and the whole-file reading is the same reading
-  it always was, proved for all six harnesses against the same bytes arriving in torn random chunks.
+  it always was, proved for all six harnesses against the same bytes arriving in torn random chunks. ([a417a46d](https://github.com/AltanS/collie/commit/a417a46d))
 
 - **Asking a session what is new now costs only what is new.** Every harness can answer that
   question in the language its own storage speaks: the four that write a log file count bytes, and
@@ -139,7 +102,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   until the newline arrives, so it is never shown half and never dropped. And a read that cannot
   simply continue, because a log was truncated or because Claude handed the conversation over to a
   new file, says so in one word and hands back the truth instead of a guess. Nothing you can see
-  changes yet.
+  changes yet. ([7953e9c8](https://github.com/AltanS/collie/commit/7953e9c8))
 
 - **A watching screen asks what is new and is told only that.** A new read answers a pane's session
   the way a poll wants it answered: the turns you have not seen, the turns that changed since you
@@ -148,7 +111,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   memory, and older turns come off the disk only when somebody asks for them. It rides the poll
   Collie already has rather than a new socket, so it crosses a crew link exactly as the history read
   does, and a member one release behind simply reports no such read instead of an empty session.
-  Nothing you can see changes yet.
+  Nothing you can see changes yet. ([c75ced6e](https://github.com/AltanS/collie/commit/c75ced6e))
 
 - **The pane menu can copy a pane's output.** There was no way to get the terminal text off a
   phone at all: an installed iOS PWA suppresses long-press selection app-wide unless an element asks
@@ -157,7 +120,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   copies the whole buffer in one tap, unwrapped, so a paste reads as real lines rather than as the
   phone's own hard wraps. The row copies the screen you are looking at, not a poll that landed under
   your thumb, and it stays hidden where there is no output or no clipboard to write to, which is
-  every plain-HTTP deploy. Thanks @jyothyswaroop (#287).
+  every plain-HTTP deploy. Thanks @jyothyswaroop (#287). ([d5057d23](https://github.com/AltanS/collie/commit/d5057d23))
 
 - **A push notification arrives in the language you picked.** The bridge writes a notification title,
   and the bridge has no idea which language your phone is set to, so a German device still read an
@@ -165,7 +128,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   title. The page leaves the active language's templates in Cache Storage, and the service worker
   fills them in there, which is the only place that runs when the app is closed. Any miss falls back
   to the English title, so a phone that has not opened the app since you changed language still gets
-  a readable notice instead of a code. Thanks @jaehyun2yo (#310).
+  a readable notice instead of a code. Thanks @jaehyun2yo (#310). ([ffd600cb](https://github.com/AltanS/collie/commit/ffd600cb))
 
 - **A canary run now checks what Chat reads, not only what the screen shows.** Each of the six
   journal readers counts the row kinds and content kinds it has no branch for, and `bun run canary`
@@ -177,20 +140,20 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   agent's log carries file contents from every read and environment from every command, so only
   counts and item kinds are kept. `verified-versions.json` records the journal reader's verified
   version beside the screen reader's and `bun run harness:drift` prints a row per reader, because
-  the two drift apart: a vendor can change what it paints without changing what it writes.
+  the two drift apart: a vendor can change what it paints without changing what it writes. ([160d2fab](https://github.com/AltanS/collie/commit/160d2fab))
 
 - **The phone can now read a working session and hold it correctly.** It asks a pane's session what
   moved and merges the answer by turn, so a turn that changed is written over where it already sits
   and never drawn a second time lower down. An unchanged poll costs nothing and changes nothing. A
   machine still running an older Collie has no such read at all, and it now says so and names the
-  remedy instead of looking like a pane with nothing to show. No screen uses this yet.
+  remedy instead of looking like a pane with nothing to show. No screen uses this yet. ([a2231ee1](https://github.com/AltanS/collie/commit/a2231ee1))
 
 - **Collie now holds the blocks a session reads as.** A turn from an agent's own record becomes what
   you would expect to see: your own turn, the reply, thinking behind a fold, and a card per step. A
   command carries its output, an edit carries its diff in the same colours the Changes view uses, and
   a run of steps folds to one line you can open. They were drawn and lived with in the session-stream
   prototype first and moved here whole, tests included, so there is one definition of a card and not
-  two. No screen mounts them yet.
+  two. No screen mounts them yet. ([c126f4fa](https://github.com/AltanS/collie/commit/c126f4fa))
 
 - **A pane can be read as a chat instead of a terminal.** Turn Chat on under Settings →
   Experiments, and a pane draws the agent's own conversation: your turns, its replies, thinking
@@ -199,107 +162,75 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the choice is one standing setting for the whole device. Older turns load on a tap. A pane with no
   session keeps the terminal and the row says why, and a crew member a release behind says to update
   it rather than pretending there is nothing to show. Terminal stays the default; the default flips
-  in 2.0 (#316).
-
-### Changed
-
-- **The theme card is called Theme.** It was called Appearance, which is now the name of the
-  section it sits in, and a page that says Appearance twice tells you nothing the second time.
-
-- **Claude Code 2.1.285, opencode 1.18.33 and pi 0.87.1 are verified, for both readers.** The canary
-  ran all six scenarios against each of them, idle, drafts, sends, journal, narrow and start-exit,
-  and every one passed. `journal` is the new scenario: it parses the canary's own session with the
-  same adapter Chat uses, and asserts the kinds it finds. The ledger now carries two lines per
-  agent, the screen reader's and the journal reader's, so `bun run harness:drift` covers Chat as
-  well as the mirror.
-
-- **The canary's journal prompt cannot be answered without opening the file.** It used to say "read
-  README.md, then reply with only OK", and "OK" needs nothing from the file, so an agent was free to
-  skip the very tool call the scenario exists to watch. Codex did exactly that, on two versions. The
-  canary's own README now carries a token, and the prompt asks for the token it names, which no
-  agent can answer without reading. The reply is still one word.
-
-- **The canary runs pi the way an operator runs it.** pi was launched with `--no-session`, so it
-  wrote no session file, so the journal check spec 05 added could never see pi at all. The flag is
-  gone. pi was also the only agent exempt: Claude, Codex and opencode already write to their own
-  stores on every canary run, because the canary isolates Herdr and deliberately leaves an agent's
-  own configuration alone. `--thinking off` stays, because that one only makes a run cheaper.
-
-- **A canary ledger entry is judged per agent, not per run.** One agent failing used to block the
-  ledger for every agent in the run. The run on 2026-09-30 showed the cost: a Codex three versions
-  behind painted its update picker over the composer and failed one scenario, which blocked the
-  entries for Claude 2.1.285 and opencode 1.18.33, both of which had passed all six of their own
-  scenarios and were the two versions the drift check was asking about. Another vendor's startup
-  prompt is not evidence about our Claude reader. A run with any failure is still a failed run.
-
-- **Codex 0.159.2 is verified, for both readers.** The canary ran idle, drafts, sends, journal and
-  narrow against it and every one passed. The journal scenario saw Codex's `custom_tool_call` and
-  counted no row it does not know, so the ledger now names 0.159.2 for the screen reader and for
-  the journal reader, which had been last swept at 0.156.1.
-
-### Added
+  in 2.0 (#316). ([2e46ea22](https://github.com/AltanS/collie/commit/2e46ea22))
 
 - **The pane switcher can sort by which prompt cache dies first.** A third order beside Place and
   Activity, and the one with a deadline in it: the pane you should go to next is often neither the
   one you just left nor the one asking for you, it is the one whose cache you are about to pay to
   rebuild. A pane with no cache left to lose sinks to the bottom in its usual order. Like Activity,
   the order is read once when you open the sheet and held there, so a window ticking down never
-  pulls a row out from under your thumb.
+  pulls a row out from under your thumb. ([f0e5856f](https://github.com/AltanS/collie/commit/f0e5856f))
+
+- **Chat shows the work a codex pane did, not only the words it said.** Codex runs nearly everything
+  through one custom tool, and the journal reader dropped that shape, so every file it read and every
+  patch it wrote was missing from Chat. It reads now, with the command, the output and the exit code.
+  Claude's pasted images reach the phone too, and an OpenCode patch or attachment shows as itself. ([38a93df6](https://github.com/AltanS/collie/commit/38a93df6))
+
+- **Chat says a turn is still running, and shows what you queued behind it.** A compaction writes no
+  row for minutes, so a compacting pane in Chat looked exactly like a finished one, and a message
+  typed while the agent was busy appeared nowhere at all. The thread now ends with a working mark, and
+  the queue sits under it in your own colour until the agent takes it. ([c906c453](https://github.com/AltanS/collie/commit/c906c453))
+
+- **Collie drives tuios, as an experimental backend.** Set `COLLIE_MUX=tuios` to mirror a tuios
+  daemon's sessions as spaces, its workspaces as tabs and its windows as panes, with the agent, its
+  state and its conversation read from tuios itself. It needs tuios 0.8.3 or newer. The mux
+  contract now also says that an agent name is one of Collie's harness names or `shell`. Thanks
+  @Gaurav-Gosain (#321, #322). ([c1928e3d](https://github.com/AltanS/collie/commit/c1928e3d))
+
+### Changed
+
+- **The theme card is called Theme.** It was called Appearance, which is now the name of the
+  section it sits in, and a page that says Appearance twice tells you nothing the second time. ([7527b53e](https://github.com/AltanS/collie/commit/7527b53e))
+
+- **The canary runs pi the way an operator runs it.** pi was launched with `--no-session`, so it
+  wrote no session file, so the journal check spec 05 added could never see pi at all. The flag is
+  gone. pi was also the only agent exempt: Claude, Codex and opencode already write to their own
+  stores on every canary run, because the canary isolates Herdr and deliberately leaves an agent's
+  own configuration alone. `--thinking off` stays, because that one only makes a run cheaper. ([71cbe684](https://github.com/AltanS/collie/commit/71cbe684))
+
+- **A canary ledger entry is judged per agent, not per run.** One agent failing used to block the
+  ledger for every agent in the run. The run on 2026-09-30 showed the cost: a Codex three versions
+  behind painted its update picker over the composer and failed one scenario, which blocked the
+  entries for Claude 2.1.285 and opencode 1.18.33, both of which had passed all six of their own
+  scenarios and were the two versions the drift check was asking about. Another vendor's startup
+  prompt is not evidence about our Claude reader. A run with any failure is still a failed run. ([a4dfd913](https://github.com/AltanS/collie/commit/a4dfd913))
+
+- **Claude Code 2.1.285, opencode 1.18.33 and pi 0.87.1 are verified, for both readers.** The canary
+  ran all six scenarios against each of them, idle, drafts, sends, journal, narrow and start-exit,
+  and every one passed. `journal` is the new scenario: it parses the canary's own session with the
+  same adapter Chat uses, and asserts the kinds it finds. The ledger now carries two lines per
+  agent, the screen reader's and the journal reader's, so `bun run harness:drift` covers Chat as
+  well as the mirror. ([926a03e4](https://github.com/AltanS/collie/commit/926a03e4))
+
+- **The canary's journal prompt cannot be answered without opening the file.** It used to say "read
+  README.md, then reply with only OK", and "OK" needs nothing from the file, so an agent was free to
+  skip the very tool call the scenario exists to watch. Codex did exactly that, on two versions. The
+  canary's own README now carries a token, and the prompt asks for the token it names, which no
+  agent can answer without reading. The reply is still one word. ([d0411bef](https://github.com/AltanS/collie/commit/d0411bef))
+
+- **Codex 0.159.2 is verified, for both readers.** The canary ran idle, drafts, sends, journal and
+  narrow against it and every one passed. The journal scenario saw Codex's `custom_tool_call` and
+  counted no row it does not know, so the ledger now names 0.159.2 for the screen reader and for
+  the journal reader, which had been last swept at 0.156.1. ([3bbd7863](https://github.com/AltanS/collie/commit/3bbd7863))
 
 ### Fixed
 
-- **A URL an agent typed as itself is now a link you can tap.** Agents write a bare address
-  constantly, a server they started or a pull request they opened, and only a `[text](url)` link ever
-  became an anchor. A bare `http://`, `https://` or `mailto:` is now one too, in History and in Chat.
-  It keeps the sentence punctuation it ended on, so a URL at the end of a sentence does not swallow
-  the full stop, and a URL inside backticks stays code.
-
-- **Prose reads better: code wears the docs site's blue chip, and your own turns are findable.**
-  Inline code was grey ink on a grey wash inside grey prose, with nothing to scan for. It now wears
-  the same blue chip `colliepwa.dev` draws around a command, so one command looks like one thing
-  wherever you read it. A short hash also stopped splitting mid-word across two lines, `6c` on one
-  and `70894d` on the next, and a long token now breaks only when it cannot fit a line of its own.
-  Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
-  glance rather than a read.
-
-- **The pane switcher gives two rows back to the panes.** The alarm line and the order control each
-  took a full row of a phone sheet, above a heading, before the first pane. They now share one row,
-  with the order as glyphs. The heading below still names the order in words, so nothing is lost.
-
-- **Tool calls off now actually hides them in a live session.** The setting folded a run of steps to
-  one line, and then a step that was still running opened the run again and kept it open for good.
-  In a live session almost every run is running at some point, so the setting looked like it did
-  nothing. A running step no longer overrules the choice. Your own tap still opens any run.
-
-- **The belt's Display settings open as a sheet, so nothing under them moves.** They rode an in-flow
-  panel that took its height out of the pane body, so opening the settings pushed the very thing you
-  opened them to look at, and the terminal and Chat lists are different lengths, so switching bodies
-  pushed it again. It is the pane switcher's own sheet now: it covers, and nothing above it shifts.
-
-- **The belt's Display settings answer for the body you are looking at.** Over a Chat stream you got
-  the terminal mirror's six rows, of which one did anything, with no way to tell which. The dock now
-  carries the Terminal / Chat switch at the top, the same choice the pane's ⋮ menu writes, and below
-  it the rows that apply: text size and tool calls for Chat, the mirror's five for the terminal.
-  Text size comes first in both instead of last under five switches, and Chat's size is its own
-  number, so a stream you can read does not mean a terminal you cannot.
-
-- **A flag or a branch name in backticks is no longer cut in half at the line end.** A hyphen, a
-  slash and a colon are ordinary places for a line to break, so `--force` could come out as `--`
-  then `force`, and an address like `http://bluefin:8788` could be split across two lines. Anything
-  short enough to fit a column of its own now stays in one piece, and only something genuinely too
-  long to fit, a full path, breaks where it must.
-
-- **A bulleted list now reads at the same pace as a paragraph.** A list took the base line height
-  and a paragraph took the relaxed one, so the same prose was set two different ways depending on
-  whether it had a bullet in front of it. A list was also the one place a code chip did not fit its
-  line: two chips on consecutive wrapped lines touched. Lists and block quotes take the paragraph's
-  own leading now, and the chip is a millimetre shorter so it sits inside the line rather than
-  pushing it apart.
-
-- **Loading older turns in Chat keeps your place instead of throwing you to the top.** The tap puts
-  forty turns in above what you are reading, and the scroller held its offset, so the block you were
-  on slid down by the whole height of the new page. It gives that height back once the page paints,
-  the way History's own scrollback and the terminal mirror's already did.
+- **A long file name in Changes keeps both ends instead of losing its start.** The tree truncated a
+  name from the left, which is correct for a path and wrong for a bare file name, so a folder of
+  long names drew every row as `…m_breaks_under_podman_compose.md` with the very prefix that orders
+  them cut off. A name now gives up its MIDDLE: the start and the extension both stay, the way a
+  file manager does it. Compacted folder rows keep both ends too, so two repos holding the same deep
+  folder chain no longer read as the same row. ([fe7015b0](https://github.com/AltanS/collie/commit/fe7015b0))
 
 - **A two-pane box pans on a phone instead of losing its right half.** Claude Code's dynamic-workflow
   view draws the phases in a left pane and the running agents in a right one, and on a phone every row
@@ -307,32 +238,25 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   off the side. The mirror only ever panned a box whose divider crossed a rule, `┼`, and a two-pane box
   never draws one, so it was refused and then clipped rather than wrapped. It now pans like any other
   wide table, which also gives back the model names in omp's `/model` picker and the Tips beside omp's
-  welcome logo. Thanks @cryptiklemur (discussion #301).
-
-- **A long file name in Changes keeps both ends instead of losing its start.** The tree truncated a
-  name from the left, which is correct for a path and wrong for a bare file name, so a folder of
-  long names drew every row as `…m_breaks_under_podman_compose.md` with the very prefix that orders
-  them cut off. A name now gives up its MIDDLE: the start and the extension both stay, the way a
-  file manager does it. Compacted folder rows keep both ends too, so two repos holding the same deep
-  folder chain no longer read as the same row.
+  welcome logo. Thanks @cryptiklemur (discussion #301). ([8c811438](https://github.com/AltanS/collie/commit/8c811438))
 
 - **A pi turn that failed now says so, instead of vanishing.** When a provider call errors, pi
   writes the turn with no content at all, so the failure was not merely unexplained, the turn was
   simply missing from the history. The message pi recorded now shows as a note under the turn, set
   apart from anything the agent said, and an interrupted turn says so too while keeping whatever the
   model got out first. Measured over 44 real sessions before the fix: 37 errored turns, every one of
-  them empty, and 15 interrupted ones.
+  them empty, and 15 interrupted ones. ([d2a0dec4](https://github.com/AltanS/collie/commit/d2a0dec4))
 
 - **A pi session you rewound shows the path you are on, not both paths.** pi keeps every branch in
   one file, and Collie was reading all of it, so History showed the turns you had abandoned mixed in
   with the live ones and nothing said which was which. It now follows the branch you are actually on,
   and rewinding back onto a path you left brings it back. Eight of forty-four real sessions had
-  forked, so this was the common case rather than the corner.
+  forked, so this was the common case rather than the corner. ([d2a0dec4](https://github.com/AltanS/collie/commit/d2a0dec4))
 
 - **pi's compaction, its branch summaries and a desk command all show up now.** Collie read only
   pi's message rows, so a compacted conversation read as though nothing had happened, an extension's
   own note never appeared, and a `!command` you ran at the desk looked like a message you had typed.
-  Each now reads as what it is, set apart from anything the agent said.
+  Each now reads as what it is, set apart from anything the agent said. ([d2a0dec4](https://github.com/AltanS/collie/commit/d2a0dec4))
 
 - **A panel drawn over opencode's composer no longer reads as a draft.** When another panel's box
   border crosses the composer bar, the draft walk could land on that border row and hand it back as
@@ -342,61 +266,138 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   it. Either condition on its own gets a real draft wrong. People type a bare rule inside a message,
   and a pasted `tree` carries a junction on every line, which read four typed lines back as the last
   one. The reader also held two glyph sets that disagreed about whether `─` and `│` were border
-  glyphs, and there is one set now. Thanks @AndiWandHerd (#319).
+  glyphs, and there is one set now. Thanks @AndiWandHerd (#319). ([ed705820](https://github.com/AltanS/collie/commit/ed705820))
 
 - **Two Chinese catalogues said a cache had expired when it had only gone cold.** A cold cache still
   works, it only costs more, so the word carries a fact. The Simplified Chinese notification setting
   read 缓存即将失效, which claims the cache became invalid, while the two strings next to it already
   said 变冷. Traditional Chinese said 冷卻 where its own neighbours say 變冷, which was consistency
-  rather than fact. Both now use the wording their catalogue already uses everywhere else.
+  rather than fact. Both now use the wording their catalogue already uses everywhere else. ([1f46ffcf](https://github.com/AltanS/collie/commit/1f46ffcf))
 
 - **German, Japanese and Korean said a cache had expired, and German said it was idle.** The same
   wrong fact sat in three strings in each of those catalogues. German is the worst of the three:
   "inaktiv" is German's own word for an IDLE pane, so one word named two different states. Each
   catalogue now uses the word its own cache chip already uses, "kalt" in German, コールド in Japanese
-  and 콜드 in Korean. Nothing was newly translated; the word was already in the file.
+  and 콜드 in Korean. Nothing was newly translated; the word was already in the file. ([89724bc5](https://github.com/AltanS/collie/commit/89724bc5))
 
 - **A notification about a finished agent now uses the same word as the app.** German said "ist
   fertig" and Spanish "ha terminado", while the status chip in the app says "abgeschlossen" and
   "completado". Every other push title matches its chip, so these two were the exception. Both carry
   the chip's word now, with an object, because German "ist abgeschlossen" is wrong for an actor and a
-  bare "hat abgeschlossen" can be read as having locked up.
+  bare "hat abgeschlossen" can be read as having locked up. ([89724bc5](https://github.com/AltanS/collie/commit/89724bc5))
 
 - **A send on a Muse pane could type your message and then never submit it.** With block grammars
   on, tapping Send typed the text into the composer and stalled, three taps in a row, while the
   words sat in the box. The verify read after typing can catch the terminal's echo one character
   short, and the matcher accepted that prefix, so the phone bound a partial row and the bridge's own
   exact check then refused to submit it. A single-chunk send now waits for the echo's tail before it
-  binds, which is what the multi-chunk loop already did. Thanks @jpcarranza94 (#312).
+  binds, which is what the multi-chunk loop already did. Thanks @jpcarranza94 (#312). ([1791674b](https://github.com/AltanS/collie/commit/1791674b))
 
 - **`collie status` sees a launchd agent that Home Manager put in the user domain.** Collie probed
   only `gui/<uid>`, so an agent declared with `domain = "user"`, which is what a background service
   without a graphical login needs, read as not loaded while it was running. Both domains are probed
   now, the status line names the full target, and both registrations are reported when both exist,
   so a running background agent is not hidden behind a stopped GUI one. The pidfile fallback is
-  unchanged. Thanks @mavam (#314).
+  unchanged. Thanks @mavam (#314). ([623401a6](https://github.com/AltanS/collie/commit/623401a6))
+
+- **A URL an agent typed as itself is now a link you can tap.** Agents write a bare address
+  constantly, a server they started or a pull request they opened, and only a `[text](url)` link ever
+  became an anchor. A bare `http://`, `https://` or `mailto:` is now one too, in History and in Chat.
+  It keeps the sentence punctuation it ended on, so a URL at the end of a sentence does not swallow
+  the full stop, and a URL inside backticks stays code. ([8ab22bcc](https://github.com/AltanS/collie/commit/8ab22bcc))
+
+- **Prose reads better: code wears the docs site's blue chip, and your own turns are findable.**
+  Inline code was grey ink on a grey wash inside grey prose, with nothing to scan for. It now wears
+  the same blue chip `colliepwa.dev` draws around a command, so one command looks like one thing
+  wherever you read it. A short hash also stopped splitting mid-word across two lines, `6c` on one
+  and `70894d` on the next, and a long token now breaks only when it cannot fit a line of its own.
+  Your own turns carry the brand's orange as a wash, so scrolling back for what you asked is a
+  glance rather than a read. ([8ab22bcc](https://github.com/AltanS/collie/commit/8ab22bcc))
+
+- **Loading older turns in Chat keeps your place instead of throwing you to the top.** The tap puts
+  forty turns in above what you are reading, and the scroller held its offset, so the block you were
+  on slid down by the whole height of the new page. It gives that height back once the page paints,
+  the way History's own scrollback and the terminal mirror's already did. ([1712ec61](https://github.com/AltanS/collie/commit/1712ec61))
+
+- **A bulleted list now reads at the same pace as a paragraph.** A list took the base line height
+  and a paragraph took the relaxed one, so the same prose was set two different ways depending on
+  whether it had a bullet in front of it. A list was also the one place a code chip did not fit its
+  line: two chips on consecutive wrapped lines touched. Lists and block quotes take the paragraph's
+  own leading now, and the chip is a millimetre shorter so it sits inside the line rather than
+  pushing it apart. ([30f2ac31](https://github.com/AltanS/collie/commit/30f2ac31))
+
+- **A flag or a branch name in backticks is no longer cut in half at the line end.** A hyphen, a
+  slash and a colon are ordinary places for a line to break, so `--force` could come out as `--`
+  then `force`, and an address like `http://bluefin:8788` could be split across two lines. Anything
+  short enough to fit a column of its own now stays in one piece, and only something genuinely too
+  long to fit, a full path, breaks where it must. ([37161551](https://github.com/AltanS/collie/commit/37161551))
+
+- **The belt's Display settings answer for the body you are looking at.** Over a Chat stream you got
+  the terminal mirror's six rows, of which one did anything, with no way to tell which. The dock now
+  carries the Terminal / Chat switch at the top, the same choice the pane's ⋮ menu writes, and below
+  it the rows that apply: text size and tool calls for Chat, the mirror's five for the terminal.
+  Text size comes first in both instead of last under five switches, and Chat's size is its own
+  number, so a stream you can read does not mean a terminal you cannot. ([299fc465](https://github.com/AltanS/collie/commit/299fc465))
+
+- **The belt's Display settings open as a sheet, so nothing under them moves.** They rode an in-flow
+  panel that took its height out of the pane body, so opening the settings pushed the very thing you
+  opened them to look at, and the terminal and Chat lists are different lengths, so switching bodies
+  pushed it again. It is the pane switcher's own sheet now: it covers, and nothing above it shifts. ([71c096dc](https://github.com/AltanS/collie/commit/71c096dc))
+
+- **Tool calls off now actually hides them in a live session.** The setting folded a run of steps to
+  one line, and then a step that was still running opened the run again and kept it open for good.
+  In a live session almost every run is running at some point, so the setting looked like it did
+  nothing. A running step no longer overrules the choice. Your own tap still opens any run. ([6563ed77](https://github.com/AltanS/collie/commit/6563ed77))
+
+- **The pane switcher gives two rows back to the panes.** The alarm line and the order control each
+  took a full row of a phone sheet, above a heading, before the first pane. They now share one row,
+  with the order as glyphs. The heading below still names the order in words, so nothing is lost. ([f0e5856f](https://github.com/AltanS/collie/commit/f0e5856f))
+
+- **Chat says when a turn is still running, so a compaction is not an empty screen.** The terminal
+  mirror shows the agent's own spinner, but Chat draws the agent's record, and a record gains nothing
+  while a session compacts. So a pane that had been busy for minutes looked exactly like a finished
+  one. The thread now ends with a working mark until the next turn lands. ([43827305](https://github.com/AltanS/collie/commit/43827305))
+
+- **A phone paired under a name outside ASCII can reach a crew member again.** A header value must
+  be plain bytes, so a label like `폰` made every forwarded call fail with a 500 before it left the
+  lead. A name like that now travels percent-encoded (RFC 8187) and the member reads it back whole,
+  for its allowlist and its audit line. An ASCII name is sent exactly as before. Reported by
+  @dmstjd1024 (#324). ([06374508](https://github.com/AltanS/collie/commit/06374508))
+
+- **A Codex pane pursuing a goal keeps its input box.** A Codex `/goal` puts `Pursuing goal (…)`
+  at the right end of the status row, and Codex paints the spaces in front of it in the colour of
+  the field before. Collie read that as a row it did not know, so it lost the input box: the pane
+  showed the unread-dialog card and every reply from the phone was refused. The padding now reads
+  as the gap it is. Reported with a capture by @CorrectRoadH (#317). ([ed647185](https://github.com/AltanS/collie/commit/ed647185))
+
+- **The canary judges the read send by its token and starts codex without its update prompt.**
+  The `sends` scenario accepted only a bare "OK" as an answer, so a codex that replied with the
+  README token the read prompt asks for still timed out. A message can now declare its expected
+  reply. Separately, codex's "Update available" prompt (default answer: Update now) took the place
+  of the composer at startup, so the canary now launches codex with
+  `check_for_update_on_startup=false`. ([9dd96df0](https://github.com/AltanS/collie/commit/9dd96df0))
 
 ### Docs
-
-- **Every Settings path in the docs names its section.** The settings page became an index of four
-  sections, so fifteen instructions across seven pages pointed at a card that had moved. Paired
-  devices and Updates are under System, the harness shortcuts, the typeface and the language are
-  under Appearance, and zen and Changes are under Device. Two were wrong twice over: one told you
-  to open Appearance and pick a theme, which is now the Theme card inside that section, and two
-  named a "notifications" section that never existed and is called Alerts.
 
 - **The docs have a Guides section, and it opens with an install in five minutes.** Install was
   the only way in, and it answers every system and every front door at once, so a first-time reader
   had to find their own path through it. The new guide walks one path: Tailscale, Herdr and the
   install script on the computer, then the home screen and `collie pair` on the phone. The README's
   documentation table splits into Guides and Reference, and `collie docs five-minute-install` prints
-  the guide from the binary.
+  the guide from the binary. ([9243abd2](https://github.com/AltanS/collie/commit/9243abd2))
+
+- **Every Settings path in the docs names its section.** The settings page became an index of four
+  sections, so fifteen instructions across seven pages pointed at a card that had moved. Paired
+  devices and Updates are under System, the harness shortcuts, the typeface and the language are
+  under Appearance, and zen and Changes are under Device. Two were wrong twice over: one told you
+  to open Appearance and pick a theme, which is now the Theme card inside that section, and two
+  named a "notifications" section that never existed and is called Alerts. ([95bf1b74](https://github.com/AltanS/collie/commit/95bf1b74))
 
 - **Changes has its own docs page, and the README names it as a feature.** The view was
   documented only as one section of the Configure page, which said it opens from the pane menu and
   never updates on its own. Both had stopped being true. `docs/changes.md` covers both ways in, the
   list, the diff, the last commit, the 5-second refresh, how the folder and nested repos are found,
-  the read-only rules and the limits. `collie docs changes` prints it from the binary.
+  the read-only rules and the limits. `collie docs changes` prints it from the binary. ([1948ef6b](https://github.com/AltanS/collie/commit/1948ef6b))
 
 ## [1.14.2] - 2026-09-28
 
