@@ -10,7 +10,7 @@
 // matched by POSITION (below the box's bottom border), never by its content strings.
 
 import type { StyledLine } from "../../blocks";
-import { namesAMenuKey } from "../menu-hints";
+import { namesAMenuKey, SEGMENT_SPLIT } from "../menu-hints";
 import { findAutocompleteRun, MAX_AUTOCOMPLETE_LINES } from "./autocomplete";
 import {
   classifyFooter,
@@ -489,7 +489,33 @@ function steppedMarksAreStatusline(
  *  walk (its footer split off by a blank, like the background-agents footer), and only these rows
  *  tell it apart. A popup tail is exempt, because its grammar named every row. */
 function tailNamesAMenu(text: string): boolean {
-  return NUMBERED_OPTION_ROW.test(text) || namesAMenuKey(text);
+  return NUMBERED_OPTION_ROW.test(text) || namesAModalKey(text);
+}
+
+// Claude's own status hints. They read like a modal's "<key> to <verb>" footer but belong to the
+// live composer: the default footer paints "esc to interrupt" while a turn runs and "↓ to manage"
+// while background tasks or monitors exist. A modal's footer says "Esc to cancel" / "to close" /
+// "to select", never these. The footer is clipped with "…" on a narrow pane, so "esc to inter…" is
+// the same hint cut short.
+const ESC_TO_INTERRUPT = /^esc to (?:interrupt|i(?:n(?:t(?:e(?:r(?:r(?:u(?:p)?)?)?)?)?)?)?…|…)$/i;
+const DOWN_TO_MANAGE = /^↓ to (?:manage|m(?:a(?:n(?:a(?:g)?)?)?)?…|…)$/i;
+
+function isStatusHint(segment: string): boolean {
+  const t = segment.trim();
+  return ESC_TO_INTERRUPT.test(t) || DOWN_TO_MANAGE.test(t);
+}
+
+/**
+ * `namesAMenuKey` for a Claude row, minus Claude's own status hints. The generic test stays loose on
+ * purpose (a lone "Esc to cancel" must refuse), so the exemption is a closed list of the hints the
+ * composer's footer prints, not a loosening of the key grammar. Shared with the adapter's
+ * `modalOnScreen` so the box locator and the unread-dialog card agree on what a modal footer is.
+ */
+export function namesAModalKey(text: string): boolean {
+  const segments = text.trim().split(SEGMENT_SPLIT);
+  const kept = segments.filter((segment) => !isStatusHint(segment));
+  if (kept.length === segments.length) return namesAMenuKey(text);
+  return kept.length > 0 && namesAMenuKey(kept.join(" · "));
 }
 
 /**
