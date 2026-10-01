@@ -30,9 +30,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-10-02
+
 ### Added
 
-- **The Chat view shows what a question tool asked, with its options.** An opencode `question` call or a Claude Code AskUserQuestion reaches the phone with its questions, their options and, once answered, the labels chosen, instead of a bare tool name, and while it waits the card points at the dialog below the stream (#329).
+- **The Chat view shows what a question tool asked, with its options.** An opencode `question` call or a Claude Code AskUserQuestion reaches the phone with its questions, their options and, once answered, the labels chosen, instead of a bare tool name, and while it waits the card points at the dialog below the stream (#329). ([10a383c9](https://github.com/AltanS/collie/commit/10a383c9))
 
 ### Changed
 
@@ -42,7 +44,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   all built into the page. Both views now draw "Context compacted" and the time, and the text is
   never built. Turn the recap back on under Settings → Appearance → Compaction summaries, or in a
   pane's Display sheet, and it folds behind the marker and opens on a tap. A find on History always
-  reaches it. Long machine notes fold behind a System label as well.
+  reaches it. Long machine notes fold behind a System label as well. ([ec93cae6](https://github.com/AltanS/collie/commit/ec93cae6))
 
 ### Fixed
 
@@ -51,23 +53,23 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   relaunches it, where it used to fail on a `bin/collie` that Windows names `collie.exe`. The build
   steps the running `collie.exe` aside to `.old` before the swap, because Windows refuses to rename
   onto a running executable, and the bridge finds `bin/collie.exe`, so the phone's Update button can
-  run there. Windows stays community-supported and best effort. Thanks @mqmalagris (#309).
+  run there. Windows stays community-supported and best effort. Thanks @mqmalagris (#309). ([0debdcc4](https://github.com/AltanS/collie/commit/0debdcc4), [c942047b](https://github.com/AltanS/collie/commit/c942047b), [2c96e76b](https://github.com/AltanS/collie/commit/2c96e76b), [039a4b11](https://github.com/AltanS/collie/commit/039a4b11), [eb1fd1ca](https://github.com/AltanS/collie/commit/eb1fd1ca), [a0017871](https://github.com/AltanS/collie/commit/a0017871))
 - **Switching a pane to Chat lands with the turns already there.** Choosing Chat from the pane menu
   used to swap the body at once, onto an empty box, and the turns popped in after it. Chat now reads
   the session while the pane menu or the Display sheet is open, so the swap happens as the sheet
-  closes. If that read has not come, the terminal stays up for at most a second and a half.
+  closes. If that read has not come, the terminal stays up for at most a second and a half. ([6ca7b5a4](https://github.com/AltanS/collie/commit/6ca7b5a4))
 - **A Windows restart reports it when the bridge never comes back.** On Windows with the community
   supervisor, `collie restart` waits for the bridge to answer, 30 seconds unless
   `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` says longer. If nothing answers, it now exits with an error that
   points to `collie status` and `collie-ctl.ps1 logs`, where it used to report success. An update run
   in a terminal then no longer prints `✓ update complete`, though the new version may already be
   installed, and a slow machine can come up a few seconds after the error. The phone's Update button
-  keeps its own health check and its one rollback. Windows stays community-supported and best effort.
+  keeps its own health check and its one rollback. Windows stays community-supported and best effort. ([29760622](https://github.com/AltanS/collie/commit/29760622))
 - **A quiet tuios shell is named a shell, not an id.** Until a program sets a title, tuios fills the
   window title with `Terminal` and the first eight characters of the window id, and Collie passed
   that on as the terminal title, so every such pane read as "Terminal 6247db65" on the phone. The
   placeholder is now dropped and the pane reads as a shell, as on tmux and zellij. Thanks
-  @Gaurav-Gosain (#328).
+  @Gaurav-Gosain (#328). ([20df9596](https://github.com/AltanS/collie/commit/20df9596))
 - **An opencode question dialog can be answered from the phone.** A single-select question shows as
   a card with one button per option, and a tap sends that option's digit. A multi-select question
   shows its options as checkboxes: a tap toggles one, a button moves on to the Confirm tab, and
@@ -76,7 +78,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Confirm tab ends it. Before, every one of these showed as raw terminal text that no button could
   answer. The card locks while the free-text row is open, because the terminal takes digits as text
   there, and Collie never types into that row. A list of more than nine options stays on the
-  terminal mirror, with the Escape card to dismiss it (#329).
+  terminal mirror, with the Escape card to dismiss it (#329). ([199d31f5](https://github.com/AltanS/collie/commit/199d31f5))
 
 ## [1.15.0] - 2026-10-01
 
