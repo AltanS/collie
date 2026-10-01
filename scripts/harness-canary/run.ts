@@ -17,6 +17,7 @@ import { CANARY_SESSION, CanarySession, listSessions } from "./herdr";
 import { canaryJournals } from "./journal";
 import { loadKnownGaps } from "./known-gaps";
 import { LEDGER_FILE, recordVerified, type LedgerRecord } from "./ledger";
+import { README_TOKEN } from "./messages";
 import { loadReaders } from "./readers";
 import { runBusy, runDialogs } from "./dialogs";
 import { runAgent } from "./scenarios";
@@ -59,7 +60,7 @@ function freshProject(): string {
   // The token is why this file has one. The journal send asks for it, and an agent cannot answer
   // without opening the file, which is the whole point of that scenario. `# canary` alone was
   // guessable from the folder name, and on 2026-09-30 codex answered the read prompt in words.
-  writeFileSync(join(dir, "README.md"), "# canary\n\nA scratch project the Collie canary starts agents in.\n\ntoken: quartz-heron-7741\n");
+  writeFileSync(join(dir, "README.md"), `# canary\n\nA scratch project the Collie canary starts agents in.\n\ntoken: ${README_TOKEN}\n`);
   const git = (...args: string[]) =>
     Bun.spawnSync(["git", "-c", "user.name=collie-canary", "-c", "user.email=canary@invalid", ...args], { cwd: dir, stdout: "ignore", stderr: "ignore" });
   git("init", "-q");

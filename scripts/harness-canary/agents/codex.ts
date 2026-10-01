@@ -7,10 +7,17 @@ import { backspaceSweep, launchLine, pointedRow, type AgentProfile } from "./pro
 const TRUST_QUESTION = "Trust this folder?";
 const TRUST_YES = "Trust and continue";
 
+/**
+ * The launch arguments every canary codex shares. `check_for_update_on_startup=false` keeps codex's
+ * "Update available" prompt away: its default answer is "Update now", which would change the user's
+ * install, and it takes the place of the composer the canary waits for.
+ */
+export const CODEX_ARGS = `-c 'model_reasoning_effort="low"' -c check_for_update_on_startup=false`;
+
 export const codex: AgentProfile = {
   agent: "codex",
   versionCommand: ["codex", "--version"],
-  launch: (cols) => launchLine(cols, `codex -c 'model_reasoning_effort="low"'`),
+  launch: (cols) => launchLine(cols, `codex ${CODEX_ARGS}`),
   startupAnswer(texts) {
     // The folder trust question (0.156.1). `-c projects…trust_level` and `-a`/`-s` do not skip it,
     // measured 2026-09-26, so it is answered like a person would: pointer on "Trust and continue",

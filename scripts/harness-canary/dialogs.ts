@@ -15,6 +15,7 @@
 
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CODEX_ARGS } from "./agents/codex";
 import { launchLine } from "./agents/profile";
 import { Driver, POLL_MS, answeredBelow, wordsOnScreen, type AgentContext, type Screen } from "./scenarios";
 import { failCase, notReachedCase, passCase, type CaseResult } from "./verdict";
@@ -295,7 +296,7 @@ async function claudeDialogs(ctx: AgentContext): Promise<CaseResult[]> {
 async function codexDialogs(ctx: AgentContext): Promise<CaseResult[]> {
   const cases: CaseResult[] = [];
   const d = await Driver.open(ctx, "canary-codex-dialogs", ctx.options.cols, "dialogs");
-  const command = `codex -c 'model_reasoning_effort="low"' -c approvals_reviewer=user -a on-request -s read-only`;
+  const command = `codex ${CODEX_ARGS} -c approvals_reviewer=user -a on-request -s read-only`;
   try {
     if ((await d.launch([], launchLine(ctx.options.cols, command))) === null) return unreached(["dialogs"], "Codex never came up idle");
     const declineRow = /^(No\b|Don'?t|Deny|Decline|Cancel|Reject)/i;

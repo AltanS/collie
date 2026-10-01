@@ -184,18 +184,31 @@ export function wordsOnScreen(texts: readonly string[], text: string): boolean {
   return probes(text).some((p) => flat.includes(p));
 }
 
-/** The reply every canary message asks for: a row that is just "OK", after a bullet or not. */
-const OK_ROW = /^\s*(?:[⏺•●▣>*-]\s*)?OK[.。!]?\s*$/u;
+/** The bullet glyphs an agent puts before its reply row. */
+const REPLY_BULLET = "(?:[⏺•●▣>*-]\\s*)?";
 
-/** Whether an "OK" row stands below the last row that carries `text`'s last line. */
-export function answeredBelow(texts: readonly string[], text: string): boolean {
+/** The reply most canary messages ask for: a row that is just "OK", after a bullet or not. */
+const OK_ROW = new RegExp(`^\\s*${REPLY_BULLET}OK[.。!]?\\s*$`, "u");
+
+/** A row that is just `answer`, with the same tolerance as {@link OK_ROW}. */
+function answerRow(answer: string): RegExp {
+  const escaped = answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^\\s*${REPLY_BULLET}${escaped}[.。!]?\\s*$`, "u");
+}
+
+/**
+ * Whether the expected reply stands on a row below the last row that carries `text`'s last line.
+ * The reply is `answer` when the message declares one (`CanaryMessage.answer`), "OK" otherwise.
+ */
+export function answeredBelow(texts: readonly string[], text: string, answer?: string): boolean {
   const last = probes(text).at(-1);
   if (last === undefined) return false;
   let at = -1;
   texts.forEach((t, i) => {
     if (t.replace(/\s+/g, "").includes(last)) at = i;
   });
-  return at >= 0 && texts.slice(at + 1).some((t) => OK_ROW.test(t));
+  const row = answer === undefined ? OK_ROW : answerRow(answer);
+  return at >= 0 && texts.slice(at + 1).some((t) => row.test(t));
 }
 
 export class Driver {
@@ -446,7 +459,7 @@ export class Driver {
       // Herdr's idle can flicker between the submit and the turn, so it must hold for two polls,
       // and the answer must sit BELOW the message: an earlier send's OK does not count.
       settledPolls = info.agent === this.agent && (info.status === "idle" || info.status === "done") ? settledPolls + 1 : 0;
-      if (shown && answeredBelow(s.texts, m.text) && settledPolls >= 2) {
+      if (shown && answeredBelow(s.texts, m.text, m.answer) && settledPolls >= 2) {
         await Bun.sleep(800);
         this.save(`sends-${m.id}`, await this.screen());
         return { result: passCase(m.id, "sent, shown, answered"), idleAfter: true, submitted: true, answered: true };

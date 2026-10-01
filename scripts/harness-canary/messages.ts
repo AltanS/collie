@@ -14,7 +14,18 @@ export interface CanaryMessage {
    * and gets a budget to match (`scenarios.ts` § TOOL_TURN_TIMEOUT_MS).
    */
   readonly usesTool?: true;
+  /**
+   * The exact reply this message asks for, when it is not "OK". A row that is just this token below
+   * the message counts as the answer (`scenarios.ts` § answeredBelow).
+   */
+  readonly answer?: string;
 }
+
+/**
+ * The token `run.ts` writes into the scratch README, and the reply `16-read` expects. One constant,
+ * so the file and the expected answer cannot drift apart.
+ */
+export const README_TOKEN = "quartz-heron-7741";
 
 const RULE = "────────────────────";
 
@@ -68,6 +79,7 @@ export const JOURNAL_MESSAGE: CanaryMessage = {
   // The reply is still one word, so the cost rule above is kept.
   text: "Read the file README.md in this folder, then reply with only the token it names.",
   usesTool: true,
+  answer: README_TOKEN,
 };
 
 /** The four real sends of scenario 3: plain, multi-line with a `────` line, Chinese, and the read. */

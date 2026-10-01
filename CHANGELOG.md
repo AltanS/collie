@@ -46,6 +46,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the field before. Collie read that as a row it did not know, so it lost the input box: the pane
   showed the unread-dialog card and every reply from the phone was refused. The padding now reads
   as the gap it is. Reported with a capture by @CorrectRoadH (#317).
+- **The canary judges the read send by its token and starts codex without its update prompt.**
+  The `sends` scenario accepted only a bare "OK" as an answer, so a codex that replied with the
+  README token the read prompt asks for still timed out. A message can now declare its expected
+  reply. Separately, codex's "Update available" prompt (default answer: Update now) took the place
+  of the composer at startup, so the canary now launches codex with
+  `check_for_update_on_startup=false`.
 
 ### Added
 
