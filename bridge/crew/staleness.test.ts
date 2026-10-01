@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { leadStore, member, peerStore } from "./fixtures.ts";
 import {
@@ -125,7 +126,7 @@ describe("the marker", () => {
   });
 
   test("lives in the state dir beside the store it describes", () => {
-    expect(crewRuntimePath("/state")).toBe("/state/crew-runtime.json");
+    expect(crewRuntimePath("/state")).toBe(join("/state", "crew-runtime.json"));
   });
 });
 

@@ -198,8 +198,11 @@ describe("TrustStore — the write discipline", () => {
 
       const entries = await readdir(stateDir);
       expect(entries).toEqual([TRUST_STORE_FILENAME]);
-      expect((await stat(trustStorePath(stateDir))).mode & 0o777).toBe(0o600);
-      expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+      // NTFS has no 0600/0700 mode bits (stat() says 0o666 and 0o777), so the content checks below are all that run there.
+      if (process.platform !== "win32") {
+        expect((await stat(trustStorePath(stateDir))).mode & 0o777).toBe(0o600);
+        expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+      }
       // A second process reads back exactly what was written.
       expect(await new TrustStore(stateDir).load()).toEqual(data);
     } finally {

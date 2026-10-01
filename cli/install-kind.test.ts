@@ -140,15 +140,19 @@ describe("probeInstall / detectInstall", () => {
   });
 });
 
+// Bun's compiler writes `collie.exe` on Windows (see `collieBinary`), and the answer is joined with the
+// host separator, so the expectation is spelled the same way rather than as a POSIX literal.
+const BINARY_NAME = process.platform === "win32" ? "collie.exe" : "collie";
+
 describe("publishedBinary — the PATH name is a pointer (ADR 0021)", () => {
   test("a binary install publishes `current/bin/collie`, so a flip needs no re-link", () => {
     const root = "/inst/versions/1.1.0";
     const link = fakeLinkFs({ "/inst/current": { kind: "symlink", target: root } });
-    expect(publishedBinary(root, link)).toBe("/inst/current/bin/collie");
+    expect(publishedBinary(root, link)).toBe(join("/inst", "current", "bin", BINARY_NAME));
   });
 
   test("a checkout still publishes its own binary, byte for byte as before", () => {
-    expect(publishedBinary("/src/collie", fakeLinkFs())).toBe("/src/collie/bin/collie");
+    expect(publishedBinary("/src/collie", fakeLinkFs())).toBe(join("/src/collie", "bin", BINARY_NAME));
     // A versions/ parent with no `current` is not a layout to point through.
     expect(publishedBinary("/inst/versions/1.1.0", fakeLinkFs())).toBe("/inst/versions/1.1.0/bin/collie");
   });
@@ -204,9 +208,11 @@ describe("process.execPath is realpath-resolved", () => {
       mkdirSync(version, { recursive: true });
       // The running Bun, reached through BOTH a symlinked directory component and a symlinked name —
       // exactly the two indirections a binary install introduces.
-      symlinkSync(process.execPath, join(version, "probe"));
+      // Windows will not launch a name without `.exe`, symlink or not.
+      const probeName = process.platform === "win32" ? "probe.exe" : "probe";
+      symlinkSync(process.execPath, join(version, probeName));
       symlinkSync(join("versions", "1.1.0"), join(root, "current"));
-      const r = Bun.spawnSync([join(root, "current", "bin", "probe"), "-e", "console.log(process.execPath)"]);
+      const r = Bun.spawnSync([join(root, "current", "bin", probeName), "-e", "console.log(process.execPath)"]);
       expect(r.exitCode).toBe(0);
       expect(r.stdout.toString().trim()).toBe(realpathSync(process.execPath));
     } finally {

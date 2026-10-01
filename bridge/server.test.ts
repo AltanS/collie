@@ -405,19 +405,21 @@ describe("isHostAllowed", () => {
 });
 
 describe("resolveStaticPath — static path traversal guard", () => {
-  const WEB = "/srv/collie/web/dist";
+  // `join`, because the resolver `normalize`s its result and the guard compares it to `webDir + sep`:
+  // on Windows a `/`-spelled webDir would never match its own backslashed output.
+  const WEB = join("/srv", "collie", "web", "dist");
 
   test("resolves a normal file under the web dir", () => {
     expect(resolveStaticPath("/assets/app.js", WEB)).toEqual({
       rel: "assets/app.js",
-      full: "/srv/collie/web/dist/assets/app.js",
+      full: join(WEB, "assets", "app.js"),
     });
   });
 
   test("maps / to index.html", () => {
     expect(resolveStaticPath("/", WEB)).toEqual({
       rel: "index.html",
-      full: "/srv/collie/web/dist/index.html",
+      full: join(WEB, "index.html"),
     });
   });
 

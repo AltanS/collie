@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   codexCursor,
@@ -351,8 +352,9 @@ describe("CodexTranscriptSource — several sessions roots", () => {
     const created = `${tmpdir()}/collie-codex-roots-${Math.floor(performance.now() * 1000)}`;
     await mkdir(created, { recursive: true });
     const base = await realpath(created);
-    const a = `${base}/a`;
-    const b = `${base}/b`;
+    // `join`, because `resolve` answers with this platform's separators and a test compares to it.
+    const a = join(base, "a");
+    const b = join(base, "b");
     await mkdir(`${a}/2026/08/11`, { recursive: true });
     await mkdir(`${b}/2026/08/11`, { recursive: true });
     await Bun.write(`${a}/2026/08/11/rollout-2026-08-11T09-00-00-${A}.jsonl`, "{}\n");
@@ -382,7 +384,7 @@ describe("CodexTranscriptSource — several sessions roots", () => {
     await symlink(`${base}/outside.jsonl`, `${a}/2026/08/11/rollout-2026-08-11T11-00-00-${B}.jsonl`);
     const src = new CodexTranscriptSource([a, b]);
     expect(await src.resolve({ kind: "id", value: B })).toBe(
-      `${b}/2026/08/11/rollout-2026-08-11T10-00-00-${B}.jsonl`,
+      join(b, "2026", "08", "11", `rollout-2026-08-11T10-00-00-${B}.jsonl`),
     );
     await rm(base, { recursive: true, force: true });
   });

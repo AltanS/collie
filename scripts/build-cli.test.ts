@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
 import { collieBinaryStaging } from "../cli/build.ts";
-import { BINARY, capture, fakeExec, fakeFiles, ROOT } from "../cli/fakes.ts";
+import { BINARY, capture, fakeExec, fakeFiles, posixKey, ROOT } from "../cli/fakes.ts";
 
 import { buildCli, parseCompileCliArgs } from "./build-cli.ts";
 
@@ -13,8 +13,11 @@ const root = join(import.meta.dir, "..");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };
-const release = readFileSync(join(root, ".github", "workflows", "release.yml"), "utf8");
-const aurVmTest = readFileSync(join(root, "packaging", "aur", "vm-install.test.sh"), "utf8");
+// A Windows checkout with `core.autocrlf` holds these files with CRLF line ends; the assertions below
+// match multi-line shell, so both are read with LF line ends whatever the checkout did.
+const readLf = (path: string): string => readFileSync(path, "utf8").replaceAll("\r\n", "\n");
+const release = readLf(join(root, ".github", "workflows", "release.yml"));
+const aurVmTest = readLf(join(root, "packaging", "aur", "vm-install.test.sh"));
 
 describe("build-cli arguments", () => {
   test("keeps ordinary build:cli on the helper defaults", () => {
@@ -48,6 +51,17 @@ function cliHarness() {
   const io = capture();
   const exec = fakeExec();
   const files = fakeFiles({ [BINARY]: "OLD BINARY" });
+  // The fake answers in the POSIX spelling it was seeded with (`/opt/collie/bin`). `buildCli` builds
+  // paths with `join` and `resolve` and compares what a real `realpath` and `mkdtemp` hand back, which
+  // on Windows is `C:\opt\collie\bin`. So these two answer in the host's spelling, as a real disk does.
+  // `resolve` leaves a POSIX path as it is.
+  const realpath = files.realpath.bind(files);
+  files.realpath = (p) => {
+    const real = realpath(p);
+    return real === null ? null : resolve(real);
+  };
+  const mkdtemp = files.mkdtemp.bind(files);
+  files.mkdtemp = (prefix) => resolve(mkdtemp(prefix));
   const runIn = exec.runIn.bind(exec);
   exec.runIn = (tool, args, cwd, pathPrefix) => {
     const result = runIn(tool, args, cwd, pathPrefix);
@@ -58,7 +72,10 @@ function cliHarness() {
     }
     return result;
   };
-  return { deps: { root: ROOT, io, exec, files }, io, exec, files };
+  // The platform is pinned to the POSIX publication path (one rename onto `bin/collie`) this suite
+  // asserts. The Windows `.exe` and step-aside swap is the same code with `platform: "win32"`, and
+  // its own tests inject that platform; the host's `process.platform` must not choose which one runs.
+  return { deps: { root: ROOT, io, exec, files, platform: "linux" }, io, exec, files };
 }
 
 const compilerOutfiles = (calls: readonly string[]): string[] =>
@@ -71,7 +88,7 @@ describe("build:cli publication", () => {
     const h = cliHarness();
 
     expect(buildCli(h.deps, { bun: "bun" })).toBe(true);
-    const [outfile] = compilerOutfiles(h.exec.calls);
+    const [outfile] = compilerOutfiles(h.exec.calls).map((out) => posixKey(out));
     expect(outfile).toStartWith(`${ROOT}/bin/.collie-cli-`);
     expect(outfile).toEndWith("/collie");
     expect(outfile).not.toBe(collieBinaryStaging(ROOT));
@@ -129,7 +146,7 @@ describe("build:cli publication", () => {
     expect(buildCli(h.deps, { bun: "bun" })).toBe(true);
     expect(buildCli(h.deps, { bun: "bun" })).toBe(true);
 
-    const outfiles = compilerOutfiles(h.exec.calls);
+    const outfiles = compilerOutfiles(h.exec.calls).map((outfile) => posixKey(outfile));
     expect(outfiles).toHaveLength(2);
     expect(new Set(outfiles).size).toBe(2);
     expect(outfiles.every((outfile) => outfile.startsWith(`${ROOT}/bin/.collie-cli-`))).toBe(true);
@@ -152,7 +169,8 @@ describe("build:cli publication", () => {
     const artifact = "/artifacts/collie";
 
     expect(buildCli(h.deps, { bun: "/tool/bun", target: "bun-linux-x64", outfile: artifact })).toBe(true);
-    expect(compilerOutfiles(h.exec.calls)).toEqual([artifact]);
+    // `--outfile` is resolved against the host, so `/artifacts/collie` is `C:\artifacts\collie` on Windows.
+    expect(compilerOutfiles(h.exec.calls)).toEqual([resolve(artifact)]);
     expect(h.files.entries.get(artifact)?.text).toBe("NEW BINARY");
     expect(h.files.entries.get(BINARY)?.text).toBe("OLD BINARY");
     expect(h.files.ops.some((op) => op.endsWith(` ${BINARY}`))).toBe(false);

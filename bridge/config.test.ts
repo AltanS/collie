@@ -92,7 +92,7 @@ describe("loadConfig", () => {
     expect(cfg.transcript).toBe(true);
     // One root by default, and it is a list of one rather than a special case (issue #92).
     expect(cfg.journalRoots.claude).toHaveLength(1);
-    expect(cfg.journalRoots.claude[0]).toEndWith("/.claude/projects");
+    expect(cfg.journalRoots.claude[0]).toBe(join(homedir(), ".claude", "projects"));
     // OpenCode keeps ONE sqlite database at the top of its XDG data dir — no per-session files.
     expect(cfg.journalRoots.opencode).toEqual([join(homedir(), ".local", "share", "opencode")]);
     expect(cfg.journalRoots.grok).toEqual([join(homedir(), ".grok", "sessions")]);
@@ -213,10 +213,10 @@ describe("loadConfig", () => {
     process.env.XDG_DATA_HOME = "/srv/share";
     process.env.GROK_HOME = "/srv/grok";
     const cfg = loadConfig();
-    expect(cfg.journalRoots.codex).toEqual(["/srv/codex/sessions"]);
-    expect(cfg.journalRoots.pi).toEqual(["/srv/pi/sessions"]);
-    expect(cfg.journalRoots.opencode).toEqual(["/srv/share/opencode"]);
-    expect(cfg.journalRoots.grok).toEqual(["/srv/grok/sessions"]);
+    expect(cfg.journalRoots.codex).toEqual([join("/srv/codex", "sessions")]);
+    expect(cfg.journalRoots.pi).toEqual([join("/srv/pi", "sessions")]);
+    expect(cfg.journalRoots.opencode).toEqual([join("/srv/share", "opencode")]);
+    expect(cfg.journalRoots.grok).toEqual([join("/srv/grok", "sessions")]);
   });
 
   test("an explicit COLLIE_* root beats the harness's home var", () => {

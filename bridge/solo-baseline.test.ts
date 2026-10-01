@@ -64,7 +64,9 @@ const FIXTURES = join(import.meta.dir, "fixtures", "solo-baseline");
 const REGEN = process.env.COLLIE_REGEN_SOLO_BASELINE === "1";
 
 function golden(name: string): string {
-  return readFileSync(join(FIXTURES, name), "utf8");
+  // A Windows checkout may turn the committed LF into CRLF (core.autocrlf); the bytes the code
+  // produces are LF, so the fixture is read as the LF text that was committed.
+  return readFileSync(join(FIXTURES, name), "utf8").replace(/\r\n/g, "\n");
 }
 
 /** Compare against a committed golden, or rewrite it under COLLIE_REGEN_SOLO_BASELINE=1. */
@@ -1083,7 +1085,7 @@ describe("solo zero-tax — notifications", () => {
     expect(src).toContain("if (msg.session !== undefined) data.session = msg.session;");
     expect(src).toContain("if (msg.host !== undefined) data.host = msg.host;");
     // Never stamped unconditionally: an unguarded assignment is what would change the solo payload.
-    const stamps = src.split("\n").filter((l) => l.includes("data.host"));
+    const stamps = src.split(/\r?\n/).filter((l) => l.includes("data.host"));
     expect(stamps).toEqual(["    if (msg.host !== undefined) data.host = msg.host;"]);
   });
 

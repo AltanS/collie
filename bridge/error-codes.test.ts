@@ -42,18 +42,21 @@ function blockAfter(source: string, opener: string, closer: string): string {
 function bridgeCodesFromSource(): string[] {
   const block = blockAfter(readFileSync(BRIDGE_CATALOGUE, "utf8"), "export const ERROR_CODES = {", "} as const;");
   const codes: string[] = [];
-  for (const line of block.split("\n")) {
+  for (const line of block.split(/\r?\n/)) {
     const match = /^\s{2}(?:"([^"]+)"|([A-Za-z_$][\w$]*)):/.exec(line);
     if (match) codes.push(match[1] ?? match[2]!);
   }
   return codes;
 }
 
-/** The codes the WEB mirror lists. Same idea, one entry per line, comments skipped. */
+/**
+ * The codes the WEB mirror lists. Same idea, one entry per line, comments skipped. Lines split on
+ * `\r?\n` because a Windows checkout may carry CRLF, and the `,$` anchor below would not match "\r".
+ */
 function webCodesFromSource(): string[] {
   const block = blockAfter(readFileSync(WEB_MIRROR, "utf8"), "export const API_ERROR_CODES = [", "] as const;");
   const codes: string[] = [];
-  for (const line of block.split("\n")) {
+  for (const line of block.split(/\r?\n/)) {
     const match = /^\s{2}"([^"]+)",$/.exec(line);
     if (match) codes.push(match[1]!);
   }

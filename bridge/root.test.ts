@@ -11,18 +11,21 @@ import { resolvePluginRoot } from "./root.ts";
 const CHECKOUT = "/home/tester/collie";
 const MARKER = `${CHECKOUT}/herdr-plugin.toml`;
 
+/** One spelling for a path, so the fake disk answers for `join`'s backslashes on Windows too. */
+const slashed = (p: string): string => p.replaceAll("\\", "/");
+
 function resolve(opts: {
   env?: Record<string, string | undefined>;
   execPath: string;
   source: string | null;
   present?: string[];
 }) {
-  const files = new Set(opts.present ?? []);
+  const files = new Set((opts.present ?? []).map(slashed));
   return resolvePluginRoot({
     env: opts.env ?? {},
     execPath: opts.execPath,
     source: opts.source,
-    exists: (p) => files.has(p),
+    exists: (p) => files.has(slashed(p)),
   });
 }
 

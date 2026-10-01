@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { parseEnvFile } from "./context.ts";
 import { capture, context, CONFIG, fakeExec, fakeFiles, HOME, type Scripted } from "./fakes.ts";
@@ -132,7 +133,7 @@ describe("an explicit COLLIE_MUX", () => {
     const h = host({ env: { COLLIE_MUX: "tmux" }, files: { [TMUX_BIN]: "" } });
     expect(await ensureMuxChosen(h.deps)).toBe(EXIT.OK);
     expect(parseEnvFile(h.dotenv() ?? "")).toEqual({ COLLIE_MUX: "tmux" });
-    expect(h.io.stdout.join("\n")).toContain(`wrote COLLIE_MUX=tmux to ${CONFIG}/.env`);
+    expect(h.io.stdout.join("\n")).toContain(`wrote COLLIE_MUX=tmux to ${join(CONFIG, ".env")}`);
   });
 
   test("carries the endpoint the shell set beside it — a choice that half lands is the bug", async () => {

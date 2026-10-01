@@ -43,13 +43,24 @@ import type { Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
 import type { ExecResult } from "./sys.ts";
 import { realFiles } from "./sys.ts";
+import { collieBinary } from "./unit.ts";
 
 // `build` against the two seams. What is asserted here is ORDER and the swap invariant: the shell
 // got both right by accident of `set -e` plus a trailing `mv`, and a port that merely produced the
 // same artifacts on the happy path would silently lose the property that matters — a build that
 // fails leaves the previously served `web/dist` byte-identical.
 
-const WEB = `${ROOT}/web`;
+// The fakes key every path POSIX (`posixKey`), but what the code under test builds with `join` and
+// `resolve` is spelled with the host's separator, and `resolve` adds a drive on Windows: the recorded
+// command `C:\opt\collie\bin\.bun-compile-1$ bun build … --outfile C:\opt\collie\bin\collie.new` is
+// one line with several such paths. So a recorded line, and the line a test expects, are both folded
+// to the POSIX spelling before they are compared. Off Windows this changes nothing.
+const posix = (text: string): string =>
+  process.platform === "win32" ? text.replace(/\b[A-Za-z]:(?=[\\/])/g, "").replaceAll("\\", "/") : text;
+
+// WEB and GATE are spelled the way the code spells them (`join`): an `answers` prefix is matched
+// against the raw call line, which carries that spelling.
+const WEB = join(ROOT, "web");
 const DIST = webDist(ROOT);
 const STAGING = webStaging(ROOT);
 const BINARY_NEW = collieBinaryStaging(ROOT);
@@ -61,7 +72,7 @@ const hasCompilerSandbox = (root: string): boolean => {
   const bin = join(root, "bin");
   return existsSync(bin) && readdirSync(bin).some((name) => name.startsWith(".bun-compile-"));
 };
-const GATE = `${ROOT}/scripts/check-version.sh`;
+const GATE = join(ROOT, "scripts", "check-version.sh");
 
 interface Harness {
   deps: BuildDeps;
@@ -82,13 +93,18 @@ function harness(
     [BINARY]: "OLD BINARY",
     ...over.files,
   });
-  return { deps: { ctx: context(over.env ?? {}), io, exec, files }, io, exec, files };
+  // The platform is pinned, not read from the host: these cases are about a Linux box (`bin/collie`,
+  // one rename); the Windows swap has its own cases that pass "win32" and pass on every host.
+  return { deps: { ctx: context(over.env ?? {}), io, exec, files, platform: "linux" }, io, exec, files };
 }
+
+/** Every command the fake exec recorded, folded to the POSIX spelling (see {@link posix}). */
+const calls = (h: Harness): string[] => h.exec.calls.map(posix);
 
 /** The live bundle, as a comparable snapshot. */
 const servedBundle = (files: FakeFiles): SeededFiles =>
   Object.fromEntries(
-    [...files.entries].filter(([p]) => p.startsWith(`${DIST}/`)).map(([p, v]) => [p, v.text]),
+    [...files.entries].filter(([p]) => p.startsWith(`${posix(DIST)}/`)).map(([p, v]) => [p, v.text]),
   );
 
 // This fixture is a real Git checkout. The minimal Vite module shims only host vite.config.ts's
@@ -267,8 +283,10 @@ function hermeticBuild(fixture: GitFixture, compilerCode: number): HermeticBuild
       if (output === undefined) throw new Error("compiler invocation lacks --outfile");
       compilerCwds.push(cwd);
       writeFileSync(join(cwd, SIDECAR), "Bun compiler scratch\n");
-      mkdirSync(dirname(output), { recursive: true });
-      writeFileSync(output, "NEW BINARY\n");
+      // Bun appends `.exe` on Windows (see `compiledPath`), so that is the file this stand-in writes.
+      const written = compiledPath(output);
+      mkdirSync(dirname(written), { recursive: true });
+      writeFileSync(written, "NEW BINARY\n");
       return result(compilerCode);
     }
     if (args[0] === "run" && args[1] === "build") {
@@ -303,18 +321,22 @@ describe("build: the ordered steps", () => {
   test("gate → install both trees → typecheck both sides → compile the CLI → build the web UI", () => {
     const h = harness();
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
-    const compile = h.exec.calls.find(compilerCall);
+    const compile = calls(h).find(compilerCall);
     expect(compile).toBeDefined();
-    expect(compilerCwd(compile!)).toStartWith(SANDBOX_PREFIX);
-    expect(compile).toEndWith(`bun build --compile --target=bun ${ROOT}/cli/main.ts --outfile ${BINARY_NEW}`);
-    expect(h.exec.calls.filter((call) => !compilerCall(call))).toEqual([
-      `${ROOT}$ bash ${GATE}`,
-      `${ROOT}$ bun install`,
-      `${WEB}$ bun install`,
-      `${ROOT}$ bun run typecheck`,
-      `${WEB}$ bun run typecheck`,
-      `${WEB}$ bun run build -- --outDir dist-staging --emptyOutDir`,
-    ]);
+    expect(compilerCwd(compile!)).toStartWith(posix(SANDBOX_PREFIX));
+    expect(compile).toEndWith(
+      `bun build --compile --target=bun ${ROOT}/cli/main.ts --outfile ${posix(BINARY_NEW)}`,
+    );
+    expect(calls(h).filter((call) => !compilerCall(call))).toEqual(
+      [
+        `${ROOT}$ bash ${GATE}`,
+        `${ROOT}$ bun install`,
+        `${WEB}$ bun install`,
+        `${ROOT}$ bun run typecheck`,
+        `${WEB}$ bun run typecheck`,
+        `${WEB}$ bun run build -- --outDir dist-staging --emptyOutDir`,
+      ].map(posix),
+    );
   });
 
   test("the swaps are LAST, and both are renames", () => {
@@ -322,15 +344,12 @@ describe("build: the ordered steps", () => {
     // The staging dir is cleared before the build writes it, and the two swaps come after every
     // step that can fail.
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
-    const sandboxCleanup = h.files.ops.find((op) => op.startsWith(`rm -rf ${SANDBOX_PREFIX}`));
+    const sandboxCleanup = h.files.ops.find((op) => op.startsWith(posix(`rm -rf ${SANDBOX_PREFIX}`)));
     expect(sandboxCleanup).toBeDefined();
-    expect(h.files.ops.filter((op) => op.startsWith(`rm -rf ${SANDBOX_PREFIX}`))).toHaveLength(1);
-    expect(h.files.ops.slice(-4)).toEqual([
-      `rm -rf ${STAGING}`,
-      `mv ${BINARY_NEW} ${BINARY}`,
-      `rm -rf ${DIST}`,
-      `mv ${STAGING} ${DIST}`,
-    ]);
+    expect(h.files.ops.filter((op) => op.startsWith(posix(`rm -rf ${SANDBOX_PREFIX}`)))).toHaveLength(1);
+    expect(h.files.ops.slice(-4)).toEqual(
+      [`rm -rf ${STAGING}`, `mv ${BINARY_NEW} ${BINARY}`, `rm -rf ${DIST}`, `mv ${STAGING} ${DIST}`].map(posix),
+    );
   });
 
   test("the compiled binary is renamed into place, never written there", () => {
@@ -338,12 +357,12 @@ describe("build: the ordered steps", () => {
     // may be executing it: the compile MUST target another path.
     const h = harness();
     cmdBuild(h.deps);
-    const compile = h.exec.calls.find(compilerCall)!;
+    const compile = calls(h).find(compilerCall)!;
     expect(compile).toContain(`${ROOT}/cli/main.ts`);
-    expect(compile).toContain(`--outfile ${BINARY_NEW}`);
-    expect(compilerCwd(compile)).toStartWith(SANDBOX_PREFIX);
+    expect(compile).toContain(`--outfile ${posix(BINARY_NEW)}`);
+    expect(compilerCwd(compile)).toStartWith(posix(SANDBOX_PREFIX));
     expect(compile.endsWith(`--outfile ${BINARY}`)).toBe(false);
-    expect(h.files.ops).toContain(`mv ${BINARY_NEW} ${BINARY}`);
+    expect(h.files.ops).toContain(posix(`mv ${BINARY_NEW} ${BINARY}`));
   });
 
   test("Windows: the swap renames the `.exe` Bun wrote onto the live `.exe`", () => {
@@ -352,30 +371,32 @@ describe("build: the ordered steps", () => {
     const h = harness({ files: { [`${STAGING}/index.html`]: "<!doctype html>NEW" } });
     h.deps.platform = "win32";
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.calls.find(compilerCall)).toEndWith(`--outfile ${BINARY_NEW}`);
-    expect(h.files.ops.slice(-4)).toEqual([
-      `rm -rf ${STAGING}`,
-      `mv ${BINARY_NEW}.exe ${BINARY}.exe`,
-      `rm -rf ${DIST}`,
-      `mv ${STAGING} ${DIST}`,
-    ]);
+    expect(calls(h).find(compilerCall)).toEndWith(`--outfile ${posix(BINARY_NEW)}`);
+    expect(h.files.ops.slice(-4)).toEqual(
+      [
+        `rm -rf ${STAGING}`,
+        `mv ${BINARY_NEW}.exe ${BINARY}.exe`,
+        `rm -rf ${DIST}`,
+        `mv ${STAGING} ${DIST}`,
+      ].map(posix),
+    );
   });
 
   test("off Windows the swap stays one rename over the live binary", () => {
     const h = harness();
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
     expect(h.files.ops.filter((op) => op.startsWith("mv ") && op.includes("/bin/"))).toEqual([
-      `mv ${BINARY_NEW} ${BINARY}`,
+      posix(`mv ${BINARY_NEW} ${BINARY}`),
     ]);
   });
 
   test("SKIP_VERSION_CHECK=1 and SKIP_TYPECHECK=1 drop exactly their own step", () => {
     const h = harness({ env: { SKIP_VERSION_CHECK: "1", SKIP_TYPECHECK: "1" } });
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.calls.some((c) => c.includes("check-version.sh"))).toBe(false);
-    expect(h.exec.calls.some((c) => c.includes("typecheck"))).toBe(false);
-    expect(h.exec.calls).toContain(`${ROOT}$ bun install`);
-    expect(h.exec.calls).toContain(`${WEB}$ bun run build -- --outDir dist-staging --emptyOutDir`);
+    expect(calls(h).some((c) => c.includes("check-version.sh"))).toBe(false);
+    expect(calls(h).some((c) => c.includes("typecheck"))).toBe(false);
+    expect(calls(h)).toContain(`${ROOT}$ bun install`);
+    expect(calls(h)).toContain(posix(`${WEB}$ bun run build -- --outDir dist-staging --emptyOutDir`));
   });
 
   test("the operator build issues NO lint invocation at all — a lint gate here aborted installs on hosts under ~7 GB of RAM", () => {
@@ -407,12 +428,13 @@ describe("build: the ordered steps", () => {
 describe("swapBinary on Windows", () => {
   const LIVE = `${BINARY}.exe`;
   const STAGED = `${BINARY_NEW}.exe`;
+  // `files.ops` is POSIX (the fake folds what it records); `STAGED` is spelled with `join`.
   const moves = (files: FakeFiles): string[] => files.ops.filter((op) => op.startsWith("mv "));
 
   test("the live collie.exe steps aside, the new one lands, and the old one is cleared", () => {
     const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
     swapBinary(files, STAGED, LIVE, "win32");
-    expect(moves(files)).toEqual([`mv ${LIVE} ${LIVE}.old`, `mv ${STAGED} ${LIVE}`]);
+    expect(moves(files)).toEqual([posix(`mv ${LIVE} ${LIVE}.old`), posix(`mv ${STAGED} ${LIVE}`)]);
     expect(files.read(LIVE)).toBe("NEW");
     // Nothing runs the old file in this fake, so it is cleared at once.
     expect(files.exists(`${LIVE}.old`)).toBe(false);
@@ -421,7 +443,7 @@ describe("swapBinary on Windows", () => {
   test("a staged file that is not there never moves the one working binary", () => {
     const files = fakeFiles({ [LIVE]: "OLD" });
     swapBinary(files, STAGED, LIVE, "win32");
-    expect(moves(files)).toEqual([`mv ${STAGED} ${LIVE}`]);
+    expect(moves(files)).toEqual([posix(`mv ${STAGED} ${LIVE}`)]);
     expect(files.read(LIVE)).toBe("OLD");
   });
 
@@ -429,7 +451,7 @@ describe("swapBinary on Windows", () => {
     const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
     files.unrenamable.add(STAGED);
     expect(() => swapBinary(files, STAGED, LIVE, "win32")).toThrow();
-    expect(moves(files).at(-1)).toBe(`mv ${LIVE}.old ${LIVE}`);
+    expect(moves(files).at(-1)).toBe(posix(`mv ${LIVE}.old ${LIVE}`));
     expect(files.read(LIVE)).toBe("OLD");
   });
 });
@@ -452,7 +474,7 @@ describe("build: CLI-only compiler", () => {
     const io = capture();
     const files = fakeFiles({ [`${ROOT}/cli/main.ts`]: "export {};" });
 
-    expect(compileCli({ root: ROOT, io, exec: fakeExec(), files })).toBe(true);
+    expect(compileCli({ root: ROOT, io, exec: fakeExec(), files, platform: "linux" })).toBe(true);
     expect(files.entryType(`${ROOT}/bin`)).toBe("directory");
   });
 
@@ -465,10 +487,10 @@ describe("build: CLI-only compiler", () => {
       return result;
     };
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files })).toBe(true);
-    const compile = h.exec.calls.find(compilerCall)!;
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
+    const compile = calls(h).find(compilerCall)!;
     const sandbox = compilerCwd(compile);
-    expect(sandbox).toStartWith(SANDBOX_PREFIX);
+    expect(sandbox).toStartWith(posix(SANDBOX_PREFIX));
     expect(compile).toEndWith(`bun build --compile --target=bun ${ROOT}/cli/main.ts --outfile ${BINARY}`);
     expect(h.files.exists(sandbox)).toBe(false);
     expect(h.files.entries.has(`${ROOT}/${SIDECAR}`)).toBe(false);
@@ -479,7 +501,7 @@ describe("build: CLI-only compiler", () => {
 
     expect(
       compileCli(
-        { root: ROOT, io: h.io, exec: h.exec, files: h.files },
+        { root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" },
         {
           bun: "/tool/upstream-bun",
           target: "bun-linux-x64-baseline",
@@ -487,8 +509,8 @@ describe("build: CLI-only compiler", () => {
         },
       ),
     ).toBe(true);
-    const compile = h.exec.calls.find(compilerCall)!;
-    expect(compilerCwd(compile)).toStartWith(SANDBOX_PREFIX);
+    const compile = calls(h).find(compilerCall)!;
+    expect(compilerCwd(compile)).toStartWith(posix(SANDBOX_PREFIX));
     expect(compile).toEndWith(
       "/tool/upstream-bun build --compile --target=bun-linux-x64-baseline /opt/collie/cli/main.ts --outfile /artifacts/collie",
     );
@@ -504,8 +526,8 @@ describe("build: CLI-only compiler", () => {
       return { ...result, code: 1 };
     };
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files })).toBe(false);
-    const sandbox = compilerCwd(h.exec.calls.find(compilerCall)!);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(false);
+    const sandbox = compilerCwd(calls(h).find(compilerCall)!);
     expect(h.files.exists(sandbox)).toBe(false);
     expect(h.files.entries.has(`${ROOT}/${SIDECAR}`)).toBe(false);
   });
@@ -515,27 +537,27 @@ describe("build: CLI-only compiler", () => {
     const sentinel = join(fixed, "sentinel");
     const h = harness({ files: { [sentinel]: "UNOWNED" } });
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files })).toBe(true);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
     expect(h.files.entries.get(sentinel)?.text).toBe("UNOWNED");
-    expect(h.files.ops).not.toContain(`rm -rf ${fixed}`);
+    expect(h.files.ops).not.toContain(posix(`rm -rf ${fixed}`));
   });
 
   test("gives overlapping compiler calls separate sandboxes", () => {
     const h = harness();
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files })).toBe(true);
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files })).toBe(true);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
 
-    const sandboxes = h.exec.calls.filter(compilerCall).map(compilerCwd);
+    const sandboxes = calls(h).filter(compilerCall).map(compilerCwd);
     expect(sandboxes).toHaveLength(2);
     expect(new Set(sandboxes).size).toBe(2);
-    expect(sandboxes.every((sandbox) => sandbox.startsWith(SANDBOX_PREFIX))).toBe(true);
+    expect(sandboxes.every((sandbox) => sandbox.startsWith(posix(SANDBOX_PREFIX)))).toBe(true);
   });
 
   test("fails closed when the checkout root cannot be listed", () => {
     const h = harness();
     h.files.unlistable.add(ROOT);
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files })).toBe(false);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(false);
     expect(h.exec.calls).toEqual([]);
     expect(h.io.stderr.join("\n")).toContain("could not list the checkout root");
   });
@@ -544,7 +566,7 @@ describe("build: CLI-only compiler", () => {
     const h = harness({ files: { ["/external/bin/.bun-compile/sentinel"]: "EXTERNAL" } });
     h.files.realPaths.set(`${ROOT}/bin`, "/external/bin");
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files })).toBe(false);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(false);
     expect(h.files.entries.get("/external/bin/.bun-compile/sentinel")?.text).toBe("EXTERNAL");
     expect(h.exec.calls).toEqual([]);
     expect(h.io.stderr.join("\n")).toContain("resolves outside its canonical path");
@@ -586,8 +608,8 @@ describe("build: a failure never empties the live web/dist", () => {
       // The served bundle is byte-identical and the running binary is the one that started.
       expect(servedBundle(h.files)).toEqual(before);
       expect(h.files.entries.get(BINARY)?.text).toBe("OLD BINARY");
-      expect(h.files.ops).not.toContain(`rm -rf ${DIST}`);
-      expect(h.files.ops).not.toContain(`mv ${BINARY_NEW} ${BINARY}`);
+      expect(h.files.ops).not.toContain(posix(`rm -rf ${DIST}`));
+      expect(h.files.ops).not.toContain(posix(`mv ${BINARY_NEW} ${BINARY}`));
       expect(h.io.stderr.join("\n")).toContain("failed");
     });
   }
@@ -604,7 +626,7 @@ describe("build: a failure never empties the live web/dist", () => {
     expect(cmdBuild(h.deps)).toBe(EXIT.FAIL);
     expect(servedBundle(h.files)).toEqual(before);
     expect(h.files.entries.get(BINARY)?.text).toBe("OLD BINARY");
-    expect(h.files.ops).not.toContain(`rm -rf ${DIST}`);
+    expect(h.files.ops).not.toContain(posix(`rm -rf ${DIST}`));
   });
 
   test("a failed web build leaves no half-compiled binary lying around", () => {
@@ -699,7 +721,7 @@ describe("build: real Git identity", () => {
     withGitBuildFixture(
       (fixture) => {
         const { root } = fixture;
-        const binary = join(root, "bin", "collie");
+        const binary = collieBinary(root);
         mkdirSync(dirname(binary), { recursive: true });
         writeFileSync(binary, "OLD BINARY\n");
         mkdirSync(join(root, "web", "dist"), { recursive: true });
@@ -740,7 +762,7 @@ describe("build: real Git identity", () => {
   test("keeps an ignored legacy Bun sidecar through the first fixed build", () => {
     withGitBuildFixture((fixture) => {
       const { root } = fixture;
-      const binary = join(root, "bin", "collie");
+      const binary = collieBinary(root);
       const legacy = join(root, SIDECAR);
       mkdirSync(dirname(binary), { recursive: true });
       writeFileSync(binary, "OLD BINARY\n");
@@ -764,7 +786,7 @@ describe("build: real Git identity", () => {
     withGitBuildFixture(
       (fixture) => {
         const { root } = fixture;
-        const binary = join(root, "bin", "collie");
+        const binary = collieBinary(root);
         const liveBundle = join(root, "web", "dist", "index.html");
         mkdirSync(dirname(binary), { recursive: true });
         mkdirSync(dirname(liveBundle), { recursive: true });

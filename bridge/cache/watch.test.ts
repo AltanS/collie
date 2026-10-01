@@ -79,7 +79,9 @@ describe("CacheWatchStore", () => {
     const stateDir = await tempDir();
     const store = new CacheWatchStore({ stateDir }, () => TS);
     await store.set(peer, "collie · next", true);
-    expect((await stat(join(stateDir, "cache-watch.json"))).mode & 0o777).toBe(0o600);
+    // NTFS has no 0600 mode bits (stat() says 0o666), so only the round trip below is checked there.
+    const { mode } = await stat(join(stateDir, "cache-watch.json"));
+    if (process.platform !== "win32") expect(mode & 0o777).toBe(0o600);
 
     const reloaded = new CacheWatchStore({ stateDir }, () => TS);
     await reloaded.load();

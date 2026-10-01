@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { parseBeacon } from "./parse.ts";
 import { beaconFileName, beaconKey, beaconKeyOf, beaconsDir } from "./paths.ts";
@@ -99,7 +100,7 @@ describe("the pane key", () => {
   });
 
   test("the directory hangs off the resolved state dir", () => {
-    expect(beaconsDir("/var/state/collie")).toBe("/var/state/collie/beacons");
+    expect(beaconsDir("/var/state/collie")).toBe(join("/var/state/collie", "beacons"));
   });
 });
 

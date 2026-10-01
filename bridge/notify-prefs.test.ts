@@ -74,7 +74,8 @@ describe("NotifyPrefsStore", () => {
     expect(store.current()).toEqual(DEFAULT_NOTIFY_PREFS);
   });
 
-  test("persists with owner-only (0600) permissions", async () => {
+  // NTFS has no 0600 mode bits: stat() reports 0o666 for a writable file, so the assertion has no meaning there.
+  test.skipIf(process.platform === "win32")("persists with owner-only (0600) permissions", async () => {
     const cfg = await tempCfg();
     const store = new NotifyPrefsStore(cfg);
     await store.set({ blocked: false });

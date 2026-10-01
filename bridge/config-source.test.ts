@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { loadConfig } from "./config.ts";
 import {
@@ -138,8 +138,8 @@ describe("the file's shape", () => {
     const layer = await read({
       [HOME_FILE]: '[bridge]\nstate_dir = "~/state/collie"\n\n[journal]\ntranscript_root = ["~/.claude/projects"]\n',
     });
-    expect(layer.env.COLLIE_STATE_DIR).toBe("/home/pat/state/collie");
-    expect(layer.env.COLLIE_TRANSCRIPT_ROOT).toBe("/home/pat/.claude/projects");
+    expect(layer.env.COLLIE_STATE_DIR).toBe(join(HOME, "state", "collie"));
+    expect(layer.env.COLLIE_TRANSCRIPT_ROOT).toBe(join(HOME, ".claude", "projects"));
   });
 
   test("a bool reaches the env in the spelling envBool already reads", async () => {
@@ -317,7 +317,7 @@ describe("a secret in the file is held to 0600", () => {
 describe("no path is ever named after an instance", () => {
   test("neither resolved path carries a `config.<instance>.toml` name", () => {
     for (const entry of configFilePaths({ COLLIE_INSTANCE: "next" }, HOME, CONFIG_DIR)) {
-      expect(entry.path.endsWith(`/${CONFIG_FILENAME}`)).toBe(true);
+      expect(basename(entry.path)).toBe(CONFIG_FILENAME);
       expect(entry.path).not.toContain("config.next");
     }
   });

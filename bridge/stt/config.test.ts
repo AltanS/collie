@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import type { OperatorFileIo } from "../operator-file.ts";
 import type { OpenAiSttSettings, SttSettings } from "./config.ts";
@@ -420,7 +421,7 @@ describe("stt settings — the reader re-reads behind an mtime check", () => {
   }
 
   test("the path is stt.json under the state dir", () => {
-    expect(sttSettingsPath("/var/state")).toBe(`/var/state/${STT_FILENAME}`);
+    expect(sttSettingsPath("/var/state")).toBe(join("/var/state", STT_FILENAME));
   });
 
   test("no file is off, and is not an error", async () => {

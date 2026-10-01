@@ -31,7 +31,7 @@ function blockAfter(source: string, opener: string, closer: string): string {
 function bridgeCodesFromSource(): string[] {
   const block = blockAfter(readFileSync(BRIDGE_CATALOGUE, "utf8"), "export const PUSH_TITLES = {", "} as const;");
   const codes: string[] = [];
-  for (const line of block.split("\n")) {
+  for (const line of block.split(/\r?\n/)) {
     const match = /^\s{2}"([^"]+)":/.exec(line);
     if (match) codes.push(match[1]!);
   }
@@ -42,7 +42,7 @@ function bridgeCodesFromSource(): string[] {
 function webCodesFromSource(): string[] {
   const block = blockAfter(readFileSync(WEB_MIRROR, "utf8"), "export const PUSH_TITLE_CODES = [", "] as const;");
   const codes: string[] = [];
-  for (const line of block.split("\n")) {
+  for (const line of block.split(/\r?\n/)) {
     const match = /^\s{2}"([^"]+)",$/.exec(line);
     if (match) codes.push(match[1]!);
   }

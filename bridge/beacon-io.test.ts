@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { documentCarriesOurHooks, hooksInstalledProbe, HOOKS_PROBE_TTL_MS } from "./beacon-io.ts";
 import { HOOK_MARKER } from "../cli/hooks.ts";
@@ -41,10 +42,12 @@ describe("documentCarriesOurHooks", () => {
 
 describe("hooksInstalledProbe", () => {
   test("one profile carrying the marker is enough", () => {
+    // The target path is built with `join`, so it carries this platform's separator.
+    const workSettings = join("/home/dev/.claude-work", "settings.json");
     const probe = hooksInstalledProbe({
       home: HOME,
       env: { COLLIE_TRANSCRIPT_ROOT: "/home/dev/.claude-work/projects" },
-      readFile: (path) => (path === "/home/dev/.claude-work/settings.json" ? installed() : null),
+      readFile: (path) => (path === workSettings ? installed() : null),
     });
     expect(probe()).toBe(true);
   });

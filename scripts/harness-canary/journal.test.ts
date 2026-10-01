@@ -6,6 +6,7 @@
 // session ref and the disk read are not, and those are the two lines `Driver.judgeOwnJournal` holds.
 
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { claudeJournal } from "../../bridge/journal/claude";
 import { canaryJournalRoots, judgeJournal, readRows, type JournalReading } from "./journal";
@@ -155,20 +156,23 @@ describe("judgeJournal: nothing to read is never a fail", () => {
   });
 });
 
+// The roots are built with `join`, so they carry the host's separator: `/tmp/profile/projects` on
+// POSIX and `\\tmp\\profile\\projects` on Windows. The expectations are built the same way.
 describe("canaryJournalRoots", () => {
   test("a Claude profile config dir becomes a root, ahead of the default", () => {
     const roots = canaryJournalRoots({ CLAUDE_CONFIG_DIR: "/tmp/profile" }, "/home/me");
-    expect(roots.claude).toEqual(["/tmp/profile/projects", "/home/me/.claude/projects"]);
+    expect(roots.claude).toEqual([join("/tmp/profile", "projects"), join("/home/me", ".claude", "projects")]);
   });
 
   test("without one, the bridge's own answer is used unchanged", () => {
-    expect(canaryJournalRoots({}, "/home/me").claude).toEqual(["/home/me/.claude/projects"]);
+    expect(canaryJournalRoots({}, "/home/me").claude).toEqual([join("/home/me", ".claude", "projects")]);
     expect(canaryJournalRoots({ CLAUDE_CONFIG_DIR: "" }, "/home/me").claude).toHaveLength(1);
   });
 
   test("a root the operator already configured is not added twice", () => {
-    const env = { CLAUDE_CONFIG_DIR: "/tmp/profile", COLLIE_TRANSCRIPT_ROOT: "/tmp/profile/projects" };
-    expect(canaryJournalRoots(env, "/home/me").claude).toEqual(["/tmp/profile/projects"]);
+    const configured = join("/tmp/profile", "projects");
+    const env = { CLAUDE_CONFIG_DIR: "/tmp/profile", COLLIE_TRANSCRIPT_ROOT: configured };
+    expect(canaryJournalRoots(env, "/home/me").claude).toEqual([configured]);
   });
 
   test("every harness gets a root, so no agent is silently journal-less", () => {

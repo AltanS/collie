@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { deriveConfigRoot, discoverSessionSockets, herdrSessionsIn } from "./sessions.ts";
 
@@ -19,33 +20,34 @@ describe("deriveConfigRoot", () => {
 });
 
 describe("discoverSessionSockets", () => {
-  const root = "/cfg/herdr";
+  // `join`, because the module joins onto the root and the fake lister/probe compare to its output.
+  const root = join("/cfg", "herdr");
 
   test("finds the default socket plus each sessions/<name>/herdr.sock that exists", () => {
     const present = new Set([
-      `${root}/herdr.sock`,
-      `${root}/sessions/alpha/herdr.sock`,
+      join(root, "herdr.sock"),
+      join(root, "sessions", "alpha", "herdr.sock"),
       // 'zeta' dir exists but its socket does not (session cleanly stopped → socket removed).
     ]);
     const found = discoverSessionSockets(
       root,
-      (dir) => (dir === `${root}/sessions` ? ["alpha", "zeta"] : []),
+      (dir) => (dir === join(root, "sessions") ? ["alpha", "zeta"] : []),
       (p) => present.has(p),
     );
     expect(found).toEqual([
-      { name: "default", socketPath: `${root}/herdr.sock` },
-      { name: "alpha", socketPath: `${root}/sessions/alpha/herdr.sock` },
+      { name: "default", socketPath: join(root, "herdr.sock") },
+      { name: "alpha", socketPath: join(root, "sessions", "alpha", "herdr.sock") },
     ]);
   });
 
   test("omits the default when its socket is absent (default session not running)", () => {
-    const present = new Set([`${root}/sessions/only/herdr.sock`]);
+    const present = new Set([join(root, "sessions", "only", "herdr.sock")]);
     const found = discoverSessionSockets(
       root,
       () => ["only"],
       (p) => present.has(p),
     );
-    expect(found).toEqual([{ name: "only", socketPath: `${root}/sessions/only/herdr.sock` }]);
+    expect(found).toEqual([{ name: "only", socketPath: join(root, "sessions", "only", "herdr.sock") }]);
   });
 
   test("returns nothing when no sockets exist", () => {
@@ -54,13 +56,14 @@ describe("discoverSessionSockets", () => {
 });
 
 describe("herdrSessionsIn", () => {
-  const root = "/cfg/herdr";
+  // `join`, because the module joins onto the root and the fake lister/probe compare to its output.
+  const root = join("/cfg", "herdr");
 
   test("a socket path IS the endpoint the port asks for", () => {
-    const present = new Set([`${root}/herdr.sock`, `${root}/sessions/work/herdr.sock`]);
+    const present = new Set([join(root, "herdr.sock"), join(root, "sessions", "work", "herdr.sock")]);
     expect(herdrSessionsIn(root, () => ["work"], (p) => present.has(p))).toEqual([
-      { name: "default", endpoint: `${root}/herdr.sock` },
-      { name: "work", endpoint: `${root}/sessions/work/herdr.sock` },
+      { name: "default", endpoint: join(root, "herdr.sock") },
+      { name: "work", endpoint: join(root, "sessions", "work", "herdr.sock") },
     ]);
   });
 

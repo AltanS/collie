@@ -272,8 +272,11 @@ describe("the file", () => {
       await store.replace(next);
       expect(standbyDevicesPath(stateDir)).toBe(join(stateDir, STANDBY_DEVICES_FILENAME));
       expect(STANDBY_DEVICES_FILENAME).not.toBe("paired-devices.json");
-      expect((await stat(standbyDevicesPath(stateDir))).mode & 0o777).toBe(0o600);
-      expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+      // NTFS has no 0600/0700 mode bits (stat() says 0o666 and 0o777), so the content checks below are all that run there.
+      if (process.platform !== "win32") {
+        expect((await stat(standbyDevicesPath(stateDir))).mode & 0o777).toBe(0o600);
+        expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+      }
       // Re-read from disk by a fresh store: this is the file the door will authenticate against.
       expect(await new StandbyDeviceStore(stateDir).load()).toEqual(next);
       expect(JSON.parse(await readFile(standbyDevicesPath(stateDir), "utf8")).devices).toHaveLength(1);

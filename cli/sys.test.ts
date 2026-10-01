@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
-import { fakeExec, fakeFiles, HOME } from "./fakes.ts";
+import { fakeExec, fakeFiles, HOME, posixKey } from "./fakes.ts";
 import {
   BUN_PROBE_TIMEOUT_MS,
   realExec,
@@ -24,6 +24,11 @@ import {
 
 const REPO = `${import.meta.dir}/..`;
 
+/** The Bun under `$BUN_INSTALL=/opt/bun`, spelled the way `toolCandidates` builds it (`join`). */
+const OPT_BUN = join("/opt/bun", "bin", "bun");
+/** `~/.bun/bin/bun`, the default when `BUN_INSTALL` is unset or empty. */
+const HOME_BUN = join(HOME, ".bun", "bin", "bun");
+
 /** A `which` that answers `found` for `bun` and null for everything else. */
 const whichIs = (found: string | null) => ({
   which: (tool: string): string | null => (tool === "bun" ? found : null),
@@ -31,16 +36,16 @@ const whichIs = (found: string | null) => ({
 
 describe("the canonical tool candidate list", () => {
   test("BUN_INSTALL outranks the default ~/.bun, and an empty value counts as unset", () => {
-    expect(toolCandidates({ BUN_INSTALL: "/opt/bun" }, HOME, "bun")[0]).toBe("/opt/bun/bin/bun");
-    expect(toolCandidates({ BUN_INSTALL: "" }, HOME, "bun")[0]).toBe(`${HOME}/.bun/bin/bun`);
-    expect(toolCandidates({}, HOME, "bun")[0]).toBe(`${HOME}/.bun/bin/bun`);
+    expect(toolCandidates({ BUN_INSTALL: "/opt/bun" }, HOME, "bun")[0]).toBe(OPT_BUN);
+    expect(toolCandidates({ BUN_INSTALL: "" }, HOME, "bun")[0]).toBe(HOME_BUN);
+    expect(toolCandidates({}, HOME, "bun")[0]).toBe(HOME_BUN);
   });
 
   test("the order is the shim's, extended by the remote probe's tail", () => {
     expect(toolCandidates({}, HOME, "bun")).toEqual([
-      `${HOME}/.bun/bin/bun`,
-      `${HOME}/.bun/bin/bun`,
-      `${HOME}/.local/bin/bun`,
+      HOME_BUN,
+      HOME_BUN,
+      join(HOME, ".local", "bin", "bun"),
       "/usr/local/bin/bun",
       "/opt/homebrew/bin/bun",
       "/usr/bin/bun",
@@ -52,7 +57,7 @@ describe("the canonical tool candidate list", () => {
 
   test("every candidate is absolute", () => {
     for (const c of toolCandidates({ BUN_INSTALL: "/opt/bun" }, HOME, "bun")) {
-      expect(c.startsWith("/")).toBe(true);
+      expect(isAbsolute(c)).toBe(true);
     }
   });
 });
@@ -72,19 +77,17 @@ describe("resolveTool", () => {
   });
 
   test("a Bun off PATH is found at a candidate, BUN_INSTALL first", () => {
-    const files = fakeFiles({ "/opt/bun/bin/bun": "", [`${HOME}/.bun/bin/bun`]: "" });
-    expect(resolveTool(whichIs(null), files, { BUN_INSTALL: "/opt/bun" }, HOME, "bun")?.path).toBe(
-      "/opt/bun/bin/bun",
-    );
-    expect(resolveTool(whichIs(null), files, {}, HOME, "bun")?.path).toBe(`${HOME}/.bun/bin/bun`);
+    const files = fakeFiles({ [OPT_BUN]: "", [HOME_BUN]: "" });
+    expect(resolveTool(whichIs(null), files, { BUN_INSTALL: "/opt/bun" }, HOME, "bun")?.path).toBe(OPT_BUN);
+    expect(resolveTool(whichIs(null), files, {}, HOME, "bun")?.path).toBe(HOME_BUN);
   });
 
   test("a candidate that is present but not executable is skipped, exactly as `[ -x ]` skips it", () => {
     // Both shells ask `[ -x "$candidate" ]`. A path that exists and cannot be run — a half-written
     // download, an empty file left where an uninstall took the binary from — is not the tool, and
     // taking it would hand the update an absolute path that dies with EACCES.
-    const files = fakeFiles({ [`${HOME}/.bun/bin/bun`]: "", "/usr/bin/bun": "" });
-    files.notExecutable.add(`${HOME}/.bun/bin/bun`);
+    const files = fakeFiles({ [HOME_BUN]: "", "/usr/bin/bun": "" });
+    files.notExecutable.add(HOME_BUN);
     expect(resolveTool(whichIs(null), files, {}, HOME, "bun")?.path).toBe("/usr/bin/bun");
     files.notExecutable.add("/usr/bin/bun");
     expect(resolveTool(whichIs(null), files, {}, HOME, "bun")).toBeNull();
@@ -97,7 +100,7 @@ describe("resolveTool", () => {
 
 describe("a runnable Bun", () => {
   test("proves the resolved absolute path with a bounded version probe", () => {
-    const bun = "/opt/bun/bin/bun";
+    const bun = OPT_BUN;
     const exec = fakeExec({ absent: ["bun"], answers: [[`${bun} --version`, { stdout: "1.1.0\n" }]] });
     const readiness = resolveRunnableBun(exec, fakeFiles({ [bun]: "" }), { BUN_INSTALL: "/opt/bun" }, HOME);
     expect(readiness).toEqual({ kind: "ready", bun: { path: bun, onPath: false, version: "1.1.0" } });
@@ -218,15 +221,17 @@ describe("bun lookup parity", () => {
   for (const [label, bunInstall] of cases) {
     test(`scripts/collie-ctl.sh's resolve_bun spells the canonical list ${label}`, async () => {
       const words = shellCandidates(await shim, "for candidate in");
+      // The shell spells POSIX paths; `toolCandidates` builds native ones. Same path, one spelling.
       expect(words.map((w) => expand(w, HOME, bunInstall, "bun"))).toEqual(
-        toolCandidates({ BUN_INSTALL: bunInstall }, HOME, "bun"),
+        toolCandidates({ BUN_INSTALL: bunInstall }, HOME, "bun").map((c) => posixKey(c)),
       );
     });
 
     test(`cli/remote.ts's TOOL_LOOKUP spells the canonical list ${label}`, async () => {
       const words = shellCandidates(await remote, "for _c in");
+      // The shell spells POSIX paths; `toolCandidates` builds native ones. Same path, one spelling.
       expect(words.map((w) => expand(w, HOME, bunInstall, "bun"))).toEqual(
-        toolCandidates({ BUN_INSTALL: bunInstall }, HOME, "bun"),
+        toolCandidates({ BUN_INSTALL: bunInstall }, HOME, "bun").map((c) => posixKey(c)),
       );
     });
   }
@@ -453,16 +458,18 @@ describe("a per-call override wins over the Exec's own environment (#283)", () =
     const d = dir();
     try {
       const exec = realExec({ PATH: process.env.PATH ?? "", COLLIE_PLUGIN_ROOT: "/old" }, d);
-      const out = join(d, "out");
-      const r = exec.runIn("sh", ["-c", `${PRINT} > ${out}`], d, undefined, { COLLIE_PLUGIN_ROOT: null, GIT_DIR: "/x" });
+      // The redirect target is relative to `d`, the call's cwd: a Windows temp path in a `sh -c` string
+      // would have its backslashes read as escapes.
+      const r = exec.runIn("sh", ["-c", `${PRINT} > out`], d, undefined, { COLLIE_PLUGIN_ROOT: null, GIT_DIR: "/x" });
       expect(r.code).toBe(0);
-      expect(readFileSync(out, "utf8").trim()).toBe("[unset][unset][unset]");
+      expect(readFileSync(join(d, "out"), "utf8").trim()).toBe("[unset][unset][unset]");
     } finally {
       rmSync(d, { recursive: true, force: true });
     }
   });
 
-  test("a child killed by a signal says which one", () => {
+  // Windows has no POSIX signals: a child is ended with an exit code, so there is no signal name to report.
+  test.skipIf(process.platform === "win32")("a child killed by a signal says which one", () => {
     const d = dir();
     try {
       const r = realExec({ PATH: process.env.PATH ?? "" }, d).capture("sh", ["-c", "kill -KILL $$"]);

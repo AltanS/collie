@@ -198,7 +198,8 @@ describe("FolderStore — the file", () => {
       const store = new FolderStore({ stateDir: dir }, HOME);
       await store.recordRecent("/srv/a");
       expect(await readdir(dir)).toEqual(["folders.json"]);
-      expect((await stat(join(dir, "folders.json"))).mode & 0o777).toBe(0o600);
+      // NTFS has no 0600 mode bits (stat reports 0666), so only the temp-file half runs there.
+      if (process.platform !== "win32") expect((await stat(join(dir, "folders.json"))).mode & 0o777).toBe(0o600);
     });
   });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 // The version resolver itself lives in `bridge/version.ts` (the bridge answers `hello` with it and
 // cannot import from `cli/`); `collieVersion*` are re-exported from here, so these cases exercise
@@ -411,7 +411,11 @@ describe("derived settings", () => {
       serveMode: "https",
       servePort: 443,
       basePath: "/",
-      socket: join(HOME, ".config", "herdr", "herdr.sock"),
+      // herdr keeps its socket under %APPDATA% on Windows (bridge/config.ts), `~/.config` elsewhere.
+      socket:
+        process.platform === "win32"
+          ? join(HOME, "AppData", "Roaming", "herdr", "herdr.sock")
+          : join(HOME, ".config", "herdr", "herdr.sock"),
     });
   });
 
@@ -480,7 +484,8 @@ describe("resolveHome", () => {
   test("falls back to the passwd entry when there is no environment at all", () => {
     // `env -i` is the primary contract: no HOME, and every ~-derived path still has to resolve.
     const h = resolveHome({});
-    expect(h.startsWith("/")).toBe(true);
+    // Absolute on this platform: `/home/x` on POSIX, `C:\Users\x` on Windows.
+    expect(isAbsolute(h)).toBe(true);
     expect(h).not.toBe("");
   });
 });

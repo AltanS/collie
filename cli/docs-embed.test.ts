@@ -77,9 +77,12 @@ describe("the embedded docs registry", () => {
   });
 
   test("the skill text holds both placeholders the printer resolves", () => {
-    expect(SKILL_TEMPLATE).toContain("{{COLLIE_DOCS_TABLE}}");
-    expect(SKILL_TEMPLATE).toContain("{{COLLIE_VERSION}}");
-    expect(SKILL_TEMPLATE.split("\n")[0]).toBe("---");
-    expect(SKILL_TEMPLATE).toContain("\nname: collie\n");
+    // The repo has no `.gitattributes` eol rule, so a Windows checkout (core.autocrlf) reads the file
+    // with CRLF line ends. The claim is about lines, not about which break ends them.
+    const skill = SKILL_TEMPLATE.replaceAll("\r\n", "\n");
+    expect(skill).toContain("{{COLLIE_DOCS_TABLE}}");
+    expect(skill).toContain("{{COLLIE_VERSION}}");
+    expect(skill.split("\n")[0]).toBe("---");
+    expect(skill).toContain("\nname: collie\n");
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import {
-  BINARY,
   capture,
   CONFIG,
   context,
@@ -18,6 +18,15 @@ import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 import { PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
+import { collieBinary } from "./unit.ts";
+
+// The binary, spelled the way the code under test spells it. `collieBinary` joins with the host
+// separator and names `bin/collie.exe` on a Windows host, so a POSIX literal like
+// `/opt/collie/bin/collie` never matches there. The unit, the plist, the spawn and the pid guard ask
+// for the HOST's binary (`BINARY`); `start`'s existence check asks for the one of the platform the
+// harness injects (`binaryOn`). On Linux and macOS the two are the same string.
+const BINARY = collieBinary(ROOT);
+const binaryOn = (platform: NodeJS.Platform): string => collieBinary(ROOT, platform);
 
 /** The `Io` a nested `serve` was handed — `null` until it has been called. */
 interface SeenIo {
@@ -74,7 +83,7 @@ function harness(over: HarnessOptions = {}): Harness {
   const exec = fakeExec(over);
   // The binary exists unless a test deliberately removes it — every other test would otherwise be
   // asserting the "no binary" guard by accident.
-  const files = fakeFiles({ [BINARY]: "", ...over.files });
+  const files = fakeFiles({ [BINARY]: "", [binaryOn(over.platform ?? "linux")]: "", ...over.files });
   const readyCalls: Array<{ port: number; host: string }> = [];
   const deps: LifecycleDeps = {
     // Every fixture here is a Collie that has already chosen its multiplexer, so `start`'s first-run
@@ -301,9 +310,9 @@ describe("start, on systemd", () => {
 
   test("refuses to install a unit pointing at a binary that isn't there", async () => {
     const h = harness();
-    h.files.remove(BINARY);
+    h.files.remove(binaryOn("linux"));
     expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
-    expect(h.io.stderr.join("\n")).toContain(`no collie binary at ${BINARY}`);
+    expect(h.io.stderr.join("\n")).toContain(`no collie binary at ${binaryOn("linux")}`);
     expect(h.exec.calls).not.toContain("systemctl --user enable --now collie");
   });
 
@@ -344,7 +353,8 @@ describe("start, on systemd", () => {
     expect(await cmdStart(h.deps)).toBe(EXIT.OK);
     expect(h.io.stdout.join("\n")).toContain("building web UI (first run)");
 
-    const broken = harness({ answers: [[`${ROOT}/web$ bun run build --`, { code: 1 }]] });
+    // The answer is matched against the raw call line, which spells the cwd with `join`.
+    const broken = harness({ answers: [[`${join(ROOT, "web")}$ bun run build --`, { code: 1 }]] });
     expect(await cmdStart(broken.deps)).toBe(EXIT.OK);
     expect(broken.io.stderr.join("\n")).toContain("the UI will 503");
     expect(broken.io.stdout.join("\n")).toContain("bridge started");
@@ -366,7 +376,7 @@ describe("start, on launchd", () => {
     expect(h.exec.calls).toContain("launchctl bootout gui/501/herdr.collie");
     expect(h.exec.calls).toContain("launchctl enable gui/501/herdr.collie");
     expect(h.exec.calls).toContain(
-      `launchctl bootstrap gui/501 ${HOME}/Library/LaunchAgents/herdr.collie.plist`,
+      `launchctl bootstrap gui/501 ${join(HOME, "Library", "LaunchAgents", "herdr.collie.plist")}`,
     );
     expect(h.io.stdout).toContain("bridge started (launchd: herdr.collie)");
   });
@@ -426,7 +436,7 @@ describe("start, unsupervised", () => {
     expect(h.exec.spawned[0]?.command).toEqual([BINARY, "_exec-bridge"]);
     expect(h.exec.spawned[0]?.env.COLLIE_PLUGIN_ROOT).toBe(ROOT);
     expect(h.exec.spawned[0]?.env.COLLIE_PORT).toBe("8787");
-    expect(h.exec.spawned[0]?.logPath).toBe(`${CONFIG}/collie.log`);
+    expect(h.exec.spawned[0]?.logPath).toBe(join(CONFIG, "collie.log"));
     expect(h.io.stdout).toContain("bridge started (pid 4242, unsupervised)");
   });
 
@@ -451,7 +461,7 @@ describe("the first-run multiplexer gate", () => {
     expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
     expect(h.exec.spawned).toHaveLength(0);
     expect(h.io.stderr.join("\n")).toContain("no COLLIE_MUX is set");
-    expect(h.io.stderr.join("\n")).toContain(`${CONFIG}/.env`);
+    expect(h.io.stderr.join("\n")).toContain(join(CONFIG, ".env"));
   });
 
   test("auto-selects the only multiplexer running, writes it down, and hands it to the bridge", async () => {
@@ -495,7 +505,7 @@ describe("restart, under the Windows community supervisor", () => {
       ...over,
       platform: "win32",
       answers: [...NO_SYSTEMD, ...(over.answers ?? [])],
-      files: { [`${BINARY}.exe`]: "", ...over.files },
+      files: { [binaryOn("win32")]: "", ...over.files },
     });
 
   test("kills the recorded bridge and nothing else, then leaves the relaunch to the supervisor", async () => {
@@ -952,7 +962,7 @@ describe("uninstall", () => {
     // `uninstall` removes only what `start` created.
     expect(h.files.exists(`${CONFIG}/.env`)).toBe(true);
     expect(h.io.stdout.join("\n")).toContain("✓ uninstalled:");
-    expect(h.io.stdout.join("\n")).toContain(`kept: ${CONFIG}/.env and the checkout`);
+    expect(h.io.stdout.join("\n")).toContain(`kept: ${join(CONFIG, ".env")} and the checkout`);
   });
 
   test("on launchd: the plist goes, then `enable` clears the disable record a reinstall would inherit", () => {

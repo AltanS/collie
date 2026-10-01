@@ -356,8 +356,11 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
     entryType: one(raw.entryType),
     list: one(raw.list),
     listStrict: one(raw.listStrict),
-    realpath: one(raw.realpath),
-    mkdtemp: one(raw.mkdtemp),
+    // These two RETURN a path the code under test then compares with one it built itself (`compilePaths`:
+    // `realpath(bin) !== bin`; `createOwnedDirectory`: `dirname(mkdtemp(prefix)) !== bin`), so the answer
+    // keeps the caller's spelling; only the lookup is folded.
+    realpath: (p) => (raw.realpath(posixKey(p)) === null ? null : (raw.realPaths.get(p) ?? p)),
+    mkdtemp: (prefix) => `${prefix}${raw.mkdtemp(posixKey(prefix)).slice(posixKey(prefix).length)}`,
     write: one(raw.write),
     mkdirp: one(raw.mkdirp),
     remove: one(raw.remove),
@@ -382,22 +385,27 @@ export interface FakeLinkFs extends LinkWriter {
  * because every decision this seam feeds is made from the destination alone.
  */
 export function fakeLinkFs(seed: Record<string, LinkProbe> = {}): FakeLinkFs {
-  const entries = new Map<string, LinkProbe>(Object.entries(seed));
+  // Keys fold through `posixKey` like every other fake path (see `fakeFiles`): a seed or a probe may
+  // spell a path either way. A link TARGET is stored as written, because the code under test compares
+  // it against a path it built itself (`classifyLink`: `probe.target === own`) and a folded target
+  // would never match on Windows.
+  const entries = new PathMap<LinkProbe>();
+  for (const [p, probe] of Object.entries(seed)) entries.set(p, probe);
   const ops: string[] = [];
-  const readonlyPaths = new Set<string>();
+  const readonlyPaths = new PathSet();
   return {
     entries,
     ops,
     readonly: readonlyPaths,
     probe: (p) => entries.get(p) ?? { kind: "absent" },
-    mkdirp: (p) => void ops.push(`mkdirp ${p}`),
+    mkdirp: (p) => void ops.push(`mkdirp ${posixKey(p)}`),
     symlink(target, at) {
-      ops.push(`symlink ${target} ${at}`);
+      ops.push(`symlink ${posixKey(target)} ${posixKey(at)}`);
       if (readonlyPaths.has(at)) throw new Error("EACCES: permission denied");
       entries.set(at, { kind: "symlink", target });
     },
     remove(at) {
-      ops.push(`rm ${at}`);
+      ops.push(`rm ${posixKey(at)}`);
       if (readonlyPaths.has(at)) throw new Error("EACCES: permission denied");
       entries.delete(at);
     },

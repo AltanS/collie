@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import {
   MAX_OPERATOR_FONT_BYTES,
@@ -164,14 +165,16 @@ describe("validateOperatorFonts", () => {
 
 describe("resolveOperatorFont — the serve-time half", () => {
   const declared: OperatorFontRow[] = [{ family: "Departure Mono", basename: "departure.woff2" }];
+  // Built with `join`, as the resolver builds its candidate, so the fake's `startsWith` agrees on every platform.
+  const FONTS_DIR = join("/cfg", "fonts");
   const ok: OperatorFontFs = {
     contained: async (candidate, root) => (candidate.startsWith(root) ? candidate : null),
     size: async () => 1024,
   };
 
   test("serves a declared row, from the row's own path", async () => {
-    expect(await resolveOperatorFont("departure.woff2", declared, "/cfg/fonts", ok, silent)).toBe(
-      "/cfg/fonts/departure.woff2",
+    expect(await resolveOperatorFont("departure.woff2", declared, FONTS_DIR, ok, silent)).toBe(
+      join(FONTS_DIR, "departure.woff2"),
     );
   });
 
@@ -188,7 +191,7 @@ describe("resolveOperatorFont — the serve-time half", () => {
           throw new Error("the filesystem must not be reached for an undeclared name");
         },
       };
-      expect(await resolveOperatorFont(name, declared, "/cfg/fonts", fs, silent)).toBeNull();
+      expect(await resolveOperatorFont(name, declared, FONTS_DIR, fs, silent)).toBeNull();
     },
   );
 
@@ -196,21 +199,21 @@ describe("resolveOperatorFont — the serve-time half", () => {
   // answer after symlinks, and it must be able to refuse a row the grammar admitted.
   test("refuses a declared row that resolves outside the fonts dir", async () => {
     const escaped: OperatorFontFs = { contained: async () => null, size: async () => 1024 };
-    expect(await resolveOperatorFont("departure.woff2", declared, "/cfg/fonts", escaped, silent)).toBeNull();
+    expect(await resolveOperatorFont("departure.woff2", declared, FONTS_DIR, escaped, silent)).toBeNull();
   });
 
   // Asked per request, so a file deleted after theme.toml was last read is refused without anyone
   // having to invalidate an mtime cache.
   test("refuses a declared row whose file has since vanished", async () => {
     const gone: OperatorFontFs = { contained: async () => null, size: async () => null };
-    expect(await resolveOperatorFont("departure.woff2", declared, "/cfg/fonts", gone, silent)).toBeNull();
+    expect(await resolveOperatorFont("departure.woff2", declared, FONTS_DIR, gone, silent)).toBeNull();
   });
 
   test("refuses a file that has grown past the cap", async () => {
     const huge: OperatorFontFs = { ...ok, size: async () => MAX_OPERATOR_FONT_BYTES + 1 };
-    expect(await resolveOperatorFont("departure.woff2", declared, "/cfg/fonts", huge, silent)).toBeNull();
+    expect(await resolveOperatorFont("departure.woff2", declared, FONTS_DIR, huge, silent)).toBeNull();
     const atCap: OperatorFontFs = { ...ok, size: async () => MAX_OPERATOR_FONT_BYTES };
-    expect(await resolveOperatorFont("departure.woff2", declared, "/cfg/fonts", atCap, silent)).not.toBeNull();
+    expect(await resolveOperatorFont("departure.woff2", declared, FONTS_DIR, atCap, silent)).not.toBeNull();
   });
 });
 

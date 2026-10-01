@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join, sep } from "node:path";
 
 import {
   readStagingLog,
@@ -13,11 +14,12 @@ import {
 // The staging progress file (M20/10). The write side is `cli/update.ts`; this is the read side and
 // the shape both sides agree on.
 
-const STATE = "/var/state/collie";
+// `join`, because `stagingLogPath` joins onto it and returns this platform's separators.
+const STATE = join("/var/state", "collie");
 
 describe("the staging progress file", () => {
   test("the name is keyed to the run, which is what makes a stale file unreadable", () => {
-    expect(stagingLogPath(STATE, "r-abc")).toBe(`${STATE}/${STAGING_LOG_PREFIX}r-abc.log`);
+    expect(stagingLogPath(STATE, "r-abc")).toBe(join(STATE, `${STAGING_LOG_PREFIX}r-abc.log`));
     // A reader asks for the run it is looking at, so last week's file is a path nobody requests.
     expect(stagingLogPath(STATE, "r-abc")).not.toBe(stagingLogPath(STATE, "r-def"));
     // And a run nobody wrote a file for simply reads as nothing.
@@ -29,7 +31,7 @@ describe("the staging progress file", () => {
     // nothing — but a value that COULD carry `/` or `..` is closed here rather than trusted at the
     // call site.
     expect(safeRunId("../../etc/passwd")).toBe("....etcpasswd");
-    expect(stagingLogPath(STATE, "../../etc/passwd").startsWith(`${STATE}/`)).toBe(true);
+    expect(stagingLogPath(STATE, "../../etc/passwd").startsWith(`${STATE}${sep}`)).toBe(true);
     expect(safeRunId("")).toBe("unknown");
     expect(safeRunId("/".repeat(20))).toBe("unknown");
     expect(safeRunId("a".repeat(200)).length).toBe(64);

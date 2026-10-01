@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { identityOf } from "./beacon/decorate.ts";
 import { fakeBeaconReader, type FakeBeacon } from "./beacon/fake.ts";
@@ -139,13 +140,15 @@ async function fixture() {
   const created = `${tmpdir()}/collie-beacon-journal-${Math.floor(performance.now() * 1000)}`;
   await mkdir(created, { recursive: true });
   const base = await realpath(created);
-  const claude = `${base}/claude`;
-  const pi = `${base}/pi`;
+  // `join`, because a path the code resolves comes back with this platform's separators and the
+  // assertions below compare it to the fixture's own spelling.
+  const claude = join(base, "claude");
+  const pi = join(base, "pi");
   await mkdir(`${claude}/-var-home-you-repo`, { recursive: true });
   await mkdir(`${pi}/-repo-`, { recursive: true });
   await mkdir(`${base}/outside`, { recursive: true });
   await Bun.write(`${claude}/-var-home-you-repo/${CLAUDE_SESSION}.jsonl`, claudeRow(CLAUDE_SESSION, "hello"));
-  const piLog = `${pi}/-repo-/2026-08-20T10-00-00-000Z_${PI_SESSION}.jsonl`;
+  const piLog = join(pi, "-repo-", `2026-08-20T10-00-00-000Z_${PI_SESSION}.jsonl`);
   await Bun.write(piLog, piRows(PI_SESSION, "hello from pi"));
   await Bun.write(`${base}/outside/secrets.jsonl`, piRows(PI_SESSION, "not yours to read"));
   const escape = `${pi}/-repo-/escape.jsonl`;
@@ -183,7 +186,7 @@ describe("a beacon's session ref, read by the journal registry", () => {
     expect(reading.session).toEqual({ kind: "id", value: CLAUDE_SESSION });
 
     const history = await historyFor(reading, fx.registry);
-    expect(history?.path).toBe(`${fx.claude}/-var-home-you-repo/${CLAUDE_SESSION}.jsonl`);
+    expect(history?.path).toBe(join(fx.claude, "-var-home-you-repo", `${CLAUDE_SESSION}.jsonl`));
     expect(history?.turns).toBe(1);
     await rm(fx.base, { recursive: true, force: true });
   });
@@ -214,7 +217,7 @@ describe("a beacon's session ref, read by the journal registry", () => {
     expect(journalAgentOf(pane)).toBe("claude");
     const adapter = adapterFor(fx.registry, journalAgentOf(pane));
     expect(await adapter?.source.resolve(named.session)).toBe(
-      `${fx.claude}/-var-home-you-repo/${CLAUDE_SESSION}.jsonl`,
+      join(fx.claude, "-var-home-you-repo", `${CLAUDE_SESSION}.jsonl`),
     );
     await rm(fx.base, { recursive: true, force: true });
   });

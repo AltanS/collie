@@ -22,6 +22,13 @@ import {
 // is pinned here: every field the shell carried, including the ones whose only justification is a
 // comment above them.
 
+// The unit and the plist spell a few paths through `join` (the env file, the log, the unit and plist
+// locations), so on a Windows host those come out with backslashes. The expectations build the same
+// paths the same way; a path the spec hands over verbatim is still compared as the literal it is.
+const ENV_FILE = join("/home/pat/.config/collie", ".env");
+const LOG_FILE = join("/home/pat/.config/collie", "collie.log");
+const V1_LOG_FILE = join("/home/pat/.config/collie", "collie-v1.log");
+
 const SPEC: ServiceSpec = {
   root: "/opt/collie",
   instance: null,
@@ -81,7 +88,7 @@ Environment=COLLIE_PORT=8787
 Environment=HERDR_PLUGIN_CONFIG_DIR=/home/pat/.config/collie
 Environment=COLLIE_PLUGIN_ROOT=/opt/collie
 # Leading '-': a missing .env is not a startup failure.
-EnvironmentFile=-/home/pat/.config/collie/.env
+EnvironmentFile=-${ENV_FILE}
 
 [Install]
 WantedBy=default.target
@@ -97,7 +104,7 @@ WantedBy=default.target
     // a static ReadWritePaths.
     expect(unit).not.toContain("ProtectSystem=");
     // Leading `-`: a missing .env must not be a startup failure.
-    expect(unit).toContain("EnvironmentFile=-/home/pat/.config/collie/.env");
+    expect(unit).toContain(`EnvironmentFile=-${ENV_FILE}`);
   });
 
   test("never puts Bun on the runtime path", () => {
@@ -154,12 +161,8 @@ describe("the launchd agent", () => {
   });
 
   test("logs to the config dir, both streams", () => {
-    expect(plist).toContain(
-      "<key>StandardOutPath</key>\n    <string>/home/pat/.config/collie/collie.log</string>",
-    );
-    expect(plist).toContain(
-      "<key>StandardErrorPath</key>\n    <string>/home/pat/.config/collie/collie.log</string>",
-    );
+    expect(plist).toContain(`<key>StandardOutPath</key>\n    <string>${LOG_FILE}</string>`);
+    expect(plist).toContain(`<key>StandardErrorPath</key>\n    <string>${LOG_FILE}</string>`);
   });
 
   test("XML-escapes every interpolated path", () => {
@@ -181,18 +184,19 @@ describe("the launchd agent", () => {
 
 describe("paths and escaping", () => {
   test("the binary lives at <checkout>/bin/collie", () => {
-    expect(collieBinary("/opt/collie", "linux")).toBe("/opt/collie/bin/collie");
-    expect(collieBinary("/opt/collie", "darwin")).toBe("/opt/collie/bin/collie");
+    expect(collieBinary("/opt/collie", "linux")).toBe(join("/opt/collie", "bin", "collie"));
+    expect(collieBinary("/opt/collie", "darwin")).toBe(join("/opt/collie", "bin", "collie"));
     expect(bridgeCommand(SPEC)).toEqual(["/opt/collie/bin/collie", "_exec-bridge"]);
   });
 
   test("on Windows it is bin/collie.exe, the file Bun's compiler writes and an existence check can find", () => {
-    expect(collieBinary("/opt/collie", "win32")).toBe("/opt/collie/bin/collie.exe");
+    // `collieBinary` joins with the host's separator, so the expectation joins the same way.
+    expect(collieBinary("/opt/collie", "win32")).toBe(join("/opt/collie", "bin", "collie.exe"));
   });
 
   test("unit and agent land where the supervisors look", () => {
-    expect(unitFilePath("/home/pat")).toBe("/home/pat/.config/systemd/user/collie.service");
-    expect(agentFilePath("/home/pat")).toBe("/home/pat/Library/LaunchAgents/herdr.collie.plist");
+    expect(unitFilePath("/home/pat")).toBe(join("/home/pat", ".config", "systemd", "user", "collie.service"));
+    expect(agentFilePath("/home/pat")).toBe(join("/home/pat", "Library", "LaunchAgents", "herdr.collie.plist"));
   });
 
   test("xmlEscape does ampersands first", () => {
@@ -209,10 +213,14 @@ describe("a suffixed instance", () => {
   const V1: ServiceSpec = { ...SPEC, instance: "v1", port: 8788 };
 
   test("names its own unit file and launchd plist, and leaves the solo names free", () => {
-    expect(unitFilePath("/home/pat", "v1")).toBe("/home/pat/.config/systemd/user/collie-v1.service");
-    expect(unitFilePath("/home/pat")).toBe("/home/pat/.config/systemd/user/collie.service");
-    expect(agentFilePath("/home/pat", "v1")).toBe("/home/pat/Library/LaunchAgents/herdr.collie-v1.plist");
-    expect(agentFilePath("/home/pat")).toBe("/home/pat/Library/LaunchAgents/herdr.collie.plist");
+    expect(unitFilePath("/home/pat", "v1")).toBe(
+      join("/home/pat", ".config", "systemd", "user", "collie-v1.service"),
+    );
+    expect(unitFilePath("/home/pat")).toBe(join("/home/pat", ".config", "systemd", "user", "collie.service"));
+    expect(agentFilePath("/home/pat", "v1")).toBe(
+      join("/home/pat", "Library", "LaunchAgents", "herdr.collie-v1.plist"),
+    );
+    expect(agentFilePath("/home/pat")).toBe(join("/home/pat", "Library", "LaunchAgents", "herdr.collie.plist"));
   });
 
   test("carries the instance in argv and in the environment, and the solo spec carries neither", () => {
@@ -242,7 +250,7 @@ describe("a suffixed instance", () => {
   test("the plist's label and log path are the instance's own", () => {
     const plist = launchAgentPlist(V1);
     expect(plist).toContain("<string>herdr.collie-v1</string>");
-    expect(plist).toContain("<string>/home/pat/.config/collie/collie-v1.log</string>");
-    expect(launchAgentPlist(SPEC)).toContain("<string>/home/pat/.config/collie/collie.log</string>");
+    expect(plist).toContain(`<string>${V1_LOG_FILE}</string>`);
+    expect(launchAgentPlist(SPEC)).toContain(`<string>${LOG_FILE}</string>`);
   });
 });

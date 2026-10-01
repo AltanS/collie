@@ -125,7 +125,8 @@ describe("readJournalRoots", () => {
     const piRoots = readings.filter((r) => r.agent === "pi").map((r) => r.path);
     expect(piRoots).toEqual([join(HOME, ".omp", "agent", "sessions"), join(HOME, ".pi", "agent", "sessions")]);
     const claude = readings.find((r) => r.agent === "claude");
-    expect(claude?.path).toBe(CLAUDE_ROOT);
+    // The reader joins the root with the host separator; the fake fs folds either spelling.
+    expect(claude?.path).toBe(join(HOME, ".claude", "projects"));
     expect(claude?.exists).toBe(true);
     expect(claude?.entries).toBe(1);
   });

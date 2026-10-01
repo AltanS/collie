@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import {
@@ -59,6 +60,11 @@ import { dialableBridgeHost } from "./tailnet.ts";
 // function, and the store is an in-memory `TrustStoreIo`. That is the same safety boundary
 // cli/fakes.ts draws for the lifecycle verbs, extended one milestone.
 
+// The primary herdr socket as a real context carries it: `defaultSocketPath` joins it, so on a
+// Windows host it has backslashes. The session discovery joins the same way and compares the result
+// to this string to tell the primary from a named session, so the fixture must spell it the same way.
+const HERDR_SOCKET = join("/home/pat/.config/herdr", "herdr.sock");
+
 const TAILSCALE_JSON = JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } });
 
 interface Harness {
@@ -103,7 +109,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
   const auditLines: AuditEntry[] = [];
   const out = capture();
   const exec = fakeExec({ answers: [["tailscale status --json", { stdout: TAILSCALE_JSON }]] });
-  const files = fakeFiles({ "/home/pat/.config/herdr/herdr.sock": "" });
+  const files = fakeFiles({ [HERDR_SOCKET]: "" });
   const requests: Harness["requests"] = [];
   const restarts: number[] = [];
   const serves: number[] = [];
@@ -118,7 +124,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
     // so the only thing the default timeout can do here is misfire under a stalled event loop and
     // report a reachable fake peer as unreachable. Set it far above anything this process could stall
     // for real, so the timer never fires; it does not change what any test observes.
-    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { socket: "/home/pat/.config/herdr/herdr.sock" }),
+    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { socket: HERDR_SOCKET }),
     io: out,
     exec,
     files,
@@ -1418,7 +1424,7 @@ describe("collie crew status", () => {
     const h = harness(peerStore(), [], {
       ctx: context(
         { COLLIE_HOST: "0.0.0.0", COLLIE_CREW_TIMEOUT_MS: "60000" },
-        { socket: "/home/pat/.config/herdr/herdr.sock" },
+        { socket: HERDR_SOCKET },
       ),
     });
     await cmdCrewStatus(h.deps, ["--no-probe"]);
@@ -1835,7 +1841,7 @@ describe("collie crew remove", () => {
     });
     expect(await cmdCrewRemove(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(text(h.io)).toContain("ssh op@192.168.77.2 /home/op/.collie/bin/collie leave");
-    expect(text(h.io)).toContain("/state/crew-ops.json");
+    expect(text(h.io)).toContain(join("/state", "crew-ops.json"));
     // The row survives — this is the whole finding.
     expect(await h.deps.ops.get("nas")).toMatchObject({ sshHost: "op@192.168.77.2" });
   });

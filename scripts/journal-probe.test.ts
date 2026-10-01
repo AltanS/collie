@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { refFor } from "./journal-probe.ts";
 
@@ -36,7 +37,7 @@ test("importing journal-probe has no side effects", async () => {
   // exited the process before `bun -e` ever reached its own console.log. Spawned out-of-process
   // so a regression here fails loudly instead of aborting this very test run mid-suite.
   const proc = Bun.spawn(["bun", "-e", 'import("./scripts/journal-probe.ts").then(()=>console.log("alive"))'], {
-    cwd: import.meta.dir.replace(/\/scripts$/, ""),
+    cwd: join(import.meta.dir, ".."),
     stdout: "pipe",
     stderr: "pipe",
   });

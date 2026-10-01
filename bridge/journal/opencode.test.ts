@@ -1761,8 +1761,12 @@ describe("OpencodeTranscriptSource — readSince, V1", () => {
   });
 
   test("a first read is bounded by rows, so a long session is not composed to be thrown away", async () => {
+    // One transaction: a commit per row is one disk sync per row, which is seconds on Windows
+    // (NTFS flushes are slow) and a load flake on a busy Linux runner. The rows are the same.
     const f = await lab();
-    for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) f.turn(`msg_${String(n).padStart(4, "0")}`, n, n, `turn ${n}`);
+    f.db.transaction(() => {
+      for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) f.turn(`msg_${String(n).padStart(4, "0")}`, n, n, `turn ${n}`);
+    })();
     const { src, key } = await opened(f.root);
 
     const first = await src.readSince(key, NO_CURSOR);
@@ -1791,8 +1795,12 @@ describe("OpencodeTranscriptSource — readSince, V1", () => {
     expect(next.fromStart).toBe(false);
     await short.clean();
 
+    // One transaction: a commit per row is one disk sync per row, which is seconds on Windows
+    // (NTFS flushes are slow) and a load flake on a busy Linux runner. The rows are the same.
     const long = await lab();
-    for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) long.turn(`msg_${String(n).padStart(4, "0")}`, n, n, `turn ${n}`);
+    long.db.transaction(() => {
+      for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) long.turn(`msg_${String(n).padStart(4, "0")}`, n, n, `turn ${n}`);
+    })();
     const two = await opened(long.root);
     const longRead = await two.src.readSince(two.key, NO_CURSOR);
     expect(longRead.reset).toBe(true);
@@ -1878,10 +1886,14 @@ describe("OpencodeTranscriptSource — readSince, V2", () => {
   });
 
   test("a first read is bounded by rows in this store too", async () => {
+    // One transaction: a commit per row is one disk sync per row, which is seconds on Windows
+    // (NTFS flushes are slow) and a load flake on a busy Linux runner. The rows are the same.
     const f = await lab();
-    for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) {
-      f.row(`msg_${String(n).padStart(4, "0")}`, "user", n, n, v2UserData(`turn ${n}`, n));
-    }
+    f.db.transaction(() => {
+      for (let n = 1; n <= FIRST_TAIL_ROWS + 5; n++) {
+        f.row(`msg_${String(n).padStart(4, "0")}`, "user", n, n, v2UserData(`turn ${n}`, n));
+      }
+    })();
     const src = new OpencodeTranscriptSource(f.root);
     const key = (await src.resolve({ kind: "id", value: V2_SID }))!;
 

@@ -84,13 +84,13 @@ function harness(over: { record?: string | null; status?: string; missing?: bool
 describe("the record file both processes have to name identically", () => {
   test("the unsuffixed instance keeps today's name, byte for byte", () => {
     expect(managedHandlerPath("/config", instanceSuffixOf(undefined))).toBe(
-      "/config/tailscale-managed-handler",
+      join("/config", "tailscale-managed-handler"),
     );
   });
 
   test("a second instance names its own, so it can never take the first's door down", () => {
     expect(managedHandlerPath("/config", instanceSuffixOf("v1"))).toBe(
-      "/config/tailscale-managed-handler-v1",
+      join("/config", "tailscale-managed-handler-v1"),
     );
   });
 });

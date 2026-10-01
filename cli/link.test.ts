@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { delimiter, join, resolve } from "node:path";
 
-import { BINARY, capture, context, fakeFiles, fakeLinkFs, HOME, ROOT } from "./fakes.ts";
+import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   classifyLink,
@@ -14,13 +15,18 @@ import {
   onPath,
   resolveLinkTarget,
 } from "./link.ts";
+import { collieBinary } from "./unit.ts";
 
 // `collie link` / `collie unlink`. The decisions are pure functions of what is at the destination
 // (ADR 0021), so they are pinned directly; the two verbs are then only asserted for what they
 // actually DO with a verdict — which write happens, which does not, and what the operator reads.
 
-const AT = `${HOME}/.local/bin/collie`;
-const DIR = `${HOME}/.local/bin`;
+// Paths the code builds are spelled the way it builds them (`join`), so they hold on Windows too. The
+// fake filesystems fold their keys to POSIX, which is why a recorded op is compared through `posixKey`.
+const AT = join(HOME, ".local", "bin", "collie");
+const DIR = join(HOME, ".local", "bin");
+/** This checkout's compiled binary — `bin/collie` on POSIX, `bin/collie.exe` on Windows. */
+const BINARY = collieBinary(ROOT);
 /** Another instance's checkout — a real collie binary, and not ours. */
 const OTHER = "/opt/collie-v1/bin/collie";
 
@@ -36,7 +42,7 @@ function deps(
   const io = capture();
   const fs = fakeLinkFs(over.seed);
   const files = fakeFiles(over.built === false ? {} : { [BINARY]: "#!/bin/collie" });
-  return { ctx: context({ PATH: over.path ?? `/usr/bin:${DIR}` }), io, files, fs };
+  return { ctx: context({ PATH: over.path ?? ["/usr/bin", DIR].join(delimiter) }), io, files, fs };
 }
 
 describe("the published name", () => {
@@ -46,18 +52,23 @@ describe("the published name", () => {
   });
 
   test("a relative link target resolves against the link's own directory", () => {
-    expect(resolveLinkTarget(AT, "../../src/collie/bin/collie")).toBe(`${HOME}/src/collie/bin/collie`);
+    expect(resolveLinkTarget(AT, "../../src/collie/bin/collie")).toBe(resolve(HOME, "src", "collie", "bin", "collie"));
     expect(resolveLinkTarget(AT, BINARY)).toBe(BINARY);
   });
 
   test("a collie binary is recognised by its shape, on either separator", () => {
-    expect(isCollieBinaryPath(BINARY)).toBe(true);
+    expect(isCollieBinaryPath("/opt/collie/bin/collie")).toBe(true);
     expect(isCollieBinaryPath(OTHER)).toBe(true);
     expect(isCollieBinaryPath("C:\\src\\collie\\bin\\collie")).toBe(true);
     // Near misses: the name alone, a sibling, a different tool.
     expect(isCollieBinaryPath("/usr/local/bin/collie-helper")).toBe(false);
     expect(isCollieBinaryPath("/opt/collie/bin/collie.new")).toBe(false);
     expect(isCollieBinaryPath("/usr/bin/git")).toBe(false);
+  });
+
+  test("this platform's own binary name is recognised", () => {
+    // `collieBinary` spells `collie.exe` on Windows; a link to it is a name Collie published.
+    expect(isCollieBinaryPath(collieBinary("/opt/collie-v1"))).toBe(true);
   });
 });
 
@@ -116,22 +127,22 @@ describe("classifyUnlink", () => {
 
 describe("onPath", () => {
   test("an exact entry, anywhere in the list", () => {
-    expect(onPath(DIR, `/usr/bin:${DIR}:/bin`)).toBe(true);
+    expect(onPath(DIR, ["/usr/bin", DIR, "/bin"].join(delimiter))).toBe(true);
     expect(onPath(DIR, DIR)).toBe(true);
   });
 
   test("a trailing separator on either side still matches", () => {
-    expect(onPath(DIR, `/usr/bin:${DIR}/`)).toBe(true);
-    expect(onPath(`${DIR}/`, `/usr/bin:${DIR}`)).toBe(true);
+    expect(onPath(DIR, ["/usr/bin", `${DIR}/`].join(delimiter))).toBe(true);
+    expect(onPath(`${DIR}/`, ["/usr/bin", DIR].join(delimiter))).toBe(true);
   });
 
   test("a prefix is not a match, and neither is an empty or unset PATH", () => {
-    expect(onPath(DIR, "/usr/bin:/home/pat/.local")).toBe(false);
+    expect(onPath(DIR, ["/usr/bin", join(HOME, ".local")].join(delimiter))).toBe(false);
     expect(onPath(DIR, `${DIR}-other`)).toBe(false);
     expect(onPath(DIR, "")).toBe(false);
     expect(onPath(DIR, undefined)).toBe(false);
     // An empty entry means "the current directory" to a shell; it is never our directory.
-    expect(onPath(DIR, "::")).toBe(false);
+    expect(onPath(DIR, `${delimiter}${delimiter}`)).toBe(false);
   });
 });
 
@@ -139,7 +150,7 @@ describe("collie link", () => {
   test("creates the link, and says it is a pointer rather than a copy", () => {
     const d = deps();
     expect(cmdLink(d)).toBe(EXIT.OK);
-    expect(d.fs.ops).toEqual([`mkdirp ${DIR}`, `symlink ${BINARY} ${AT}`]);
+    expect(d.fs.ops).toEqual([`mkdirp ${posixKey(DIR)}`, `symlink ${posixKey(BINARY)} ${posixKey(AT)}`]);
     expect(d.fs.probe(AT)).toEqual({ kind: "symlink", target: BINARY });
     expect(d.io.stdout.join("\n")).toContain(`${AT} → ${BINARY}`);
     expect(d.io.stdout.join("\n")).toContain("not a copy");
@@ -163,7 +174,11 @@ describe("collie link", () => {
     const d = deps({ seed: { [AT]: symlink(OTHER) } });
     expect(cmdLink(d)).toBe(EXIT.OK);
     // Remove then create: a symlink cannot be made over an existing name.
-    expect(d.fs.ops).toEqual([`mkdirp ${DIR}`, `rm ${AT}`, `symlink ${BINARY} ${AT}`]);
+    expect(d.fs.ops).toEqual([
+      `mkdirp ${posixKey(DIR)}`,
+      `rm ${posixKey(AT)}`,
+      `symlink ${posixKey(BINARY)} ${posixKey(AT)}`,
+    ]);
     expect(d.io.stdout.join("\n")).toContain(OTHER);
     expect(d.io.stdout.join("\n")).toContain("no longer owns the name");
   });
@@ -183,13 +198,13 @@ describe("collie link", () => {
   });
 
   test("warns when the directory is not on PATH — and never edits a profile", () => {
-    const d = deps({ path: "/usr/bin:/bin" });
+    const d = deps({ path: ["/usr/bin", "/bin"].join(delimiter) });
     expect(cmdLink(d)).toBe(EXIT.OK);
     const out = d.io.stdout.join("\n");
     expect(out).toContain(`${DIR} is not on your PATH`);
     expect(out).toContain("shell profile");
     // The only writes are the link's own.
-    expect(d.fs.ops).toEqual([`mkdirp ${DIR}`, `symlink ${BINARY} ${AT}`]);
+    expect(d.fs.ops).toEqual([`mkdirp ${posixKey(DIR)}`, `symlink ${posixKey(BINARY)} ${posixKey(AT)}`]);
   });
 
   test("says nothing about PATH when the directory is already on it", () => {
@@ -210,7 +225,7 @@ describe("collie unlink", () => {
   test("removes our own link, and says the checkout is untouched", () => {
     const d = deps({ seed: { [AT]: symlink(BINARY) } });
     expect(cmdUnlink(d)).toBe(EXIT.OK);
-    expect(d.fs.ops).toEqual([`rm ${AT}`]);
+    expect(d.fs.ops).toEqual([`rm ${posixKey(AT)}`]);
     expect(d.fs.probe(AT)).toEqual({ kind: "absent" });
     expect(d.io.stdout.join("\n")).toContain(ROOT);
   });

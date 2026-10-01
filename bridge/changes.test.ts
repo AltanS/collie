@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   capDiff,
@@ -43,6 +44,14 @@ function fixtureEnv(): Record<string, string> {
   delete env.GIT_PROTOCOL_FROM_USER;
   return env;
 }
+
+/**
+ * A path as a POSIX shell reads it. git runs a configured hook (core.fsmonitor, diff.external,
+ * core.sshCommand) through `sh -c`, where a Windows path's backslashes are escapes and vanish, and
+ * the same goes for a path written inside a hook script. Forward slashes survive both, and Windows
+ * file APIs accept them.
+ */
+const posix = (path: string): string => path.replaceAll("\\", "/");
 
 /** Plain git for building fixtures — NOT the hardened runner under test. */
 function git(cwd: string, ...args: string[]): string {
@@ -361,9 +370,9 @@ describe("a hostile repo runs nothing", () => {
     mkdirSync(markers);
     const hook = (name: string, body: string) => {
       const path = join(base, `${name}.sh`);
-      writeFileSync(path, `#!/bin/sh\ntouch '${join(markers, name)}'\n${body}\n`);
+      writeFileSync(path, `#!/bin/sh\ntouch '${posix(join(markers, name))}'\n${body}\n`);
       chmodSync(path, 0o755);
-      return path;
+      return posix(path);
     };
     const setConfig = () => {
       git(dir, "config", "core.fsmonitor", hook("fsmonitor", "exit 1"));
@@ -415,7 +424,7 @@ describe("a hostile repo runs nothing", () => {
     git(bare, "config", "uploadpack.allowFilter", "true");
     const dir = join(base, "lazy");
     const clone = Bun.spawnSync(
-      ["git", "clone", "-q", "--filter=blob:none", "--no-checkout", `file://${bare}`, dir],
+      ["git", "clone", "-q", "--filter=blob:none", "--no-checkout", pathToFileURL(bare).href, dir],
       { env: fixtureEnv(), stdout: "pipe", stderr: "pipe" },
     );
     if (clone.exitCode !== 0) throw new Error(`clone: ${clone.stderr.toString()}`);
@@ -427,15 +436,16 @@ describe("a hostile repo runs nothing", () => {
     const markers = join(base, "lazy-markers");
     mkdirSync(markers);
     const marker = join(base, "lazy-marker.sh");
-    writeFileSync(marker, `#!/bin/sh\ntouch '${markers}'/"$1"\nexit 1\n`);
+    writeFileSync(marker, `#!/bin/sh\ntouch '${posix(markers)}'/"$1"\nexit 1\n`);
     chmodSync(marker, 0o755);
+    const markerCmd = posix(marker);
     const transports = [
       { name: "ssh", set: () => {
         git(dir, "config", "remote.origin.url", "ssh://x/y");
-        git(dir, "config", "core.sshCommand", `${marker} ssh`);
+        git(dir, "config", "core.sshCommand", `${markerCmd} ssh`);
       } },
       { name: "ext", set: () => {
-        git(dir, "config", "remote.origin.url", `ext::${marker} ext`);
+        git(dir, "config", "remote.origin.url", `ext::${markerCmd} ext`);
         git(dir, "config", "protocol.ext.allow", "always");
       } },
     ];
@@ -577,9 +587,9 @@ describe("the last commit (ADR 0065 rule 9)", () => {
     mkdirSync(markers);
     const hook = (name: string, body: string) => {
       const path = join(base, `commit-${name}.sh`);
-      writeFileSync(path, `#!/bin/sh\ntouch '${join(markers, name)}'\n${body}\n`);
+      writeFileSync(path, `#!/bin/sh\ntouch '${posix(join(markers, name))}'\n${body}\n`);
       chmodSync(path, 0o755);
-      return path;
+      return posix(path);
     };
     git(dir, "config", "core.fsmonitor", hook("fsmonitor", "exit 1"));
     git(dir, "config", "diff.external", hook("external", "exit 0"));

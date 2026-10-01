@@ -194,8 +194,12 @@ describe("HermesTranscriptSource — readSince", () => {
   });
 
   test("a first read is bounded by rows, so a long session is not composed to be thrown away", async () => {
+    // One transaction: a commit per row is one disk sync per row, which is seconds on Windows
+    // (NTFS flushes are slow) and a load flake on a busy Linux runner. The rows are the same.
     const f = await lab();
-    for (let id = 1; id <= FIRST_TAIL_ROWS + 5; id++) f.say(id, `turn ${id}`);
+    f.db.transaction(() => {
+      for (let id = 1; id <= FIRST_TAIL_ROWS + 5; id++) f.say(id, `turn ${id}`);
+    })();
     const src = new HermesTranscriptSource(f.root);
     const key = await src.resolve({ kind: "id", value: SID });
 
@@ -229,8 +233,12 @@ describe("HermesTranscriptSource — readSince", () => {
     expect((await one.readSince(shortKey!, shortRead.cursor)).fromStart).toBe(false);
     await short.clean();
 
+    // One transaction: a commit per row is one disk sync per row, which is seconds on Windows
+    // (NTFS flushes are slow) and a load flake on a busy Linux runner. The rows are the same.
     const long = await lab();
-    for (let id = 1; id <= FIRST_TAIL_ROWS + 5; id++) long.say(id, `turn ${id}`);
+    long.db.transaction(() => {
+      for (let id = 1; id <= FIRST_TAIL_ROWS + 5; id++) long.say(id, `turn ${id}`);
+    })();
     const two = new HermesTranscriptSource(long.root);
     const longKey = await two.resolve({ kind: "id", value: SID });
     const longRead = await two.readSince(longKey!, NO_CURSOR);

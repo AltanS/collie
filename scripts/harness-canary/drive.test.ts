@@ -1,6 +1,7 @@
 // The pure parts of driving an agent: options, startup answers, draft clearing, colour answers.
 
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { claude } from "./agents/claude";
 import { codex } from "./agents/codex";
 import { backspaceSweep, launchLine } from "./agents/profile";
@@ -33,7 +34,8 @@ describe("parseArgs", () => {
     expect(o.agents).toEqual(["claude", "codex"]);
     expect(o.scenarios).toEqual(["idle", "drafts"]);
     expect(o.cols).toBe(80);
-    expect(o.readers).toBe("/tmp/c1131");
+    // The flag is resolved against the host: `/tmp/c1131` is `C:\tmp\c1131` on Windows.
+    expect(o.readers).toBe(resolve("/tmp/c1131"));
   });
 
   test("refuses what it does not know", () => {

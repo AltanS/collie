@@ -387,7 +387,10 @@ const GOLDEN: [file: string, script: string][] = [
 describe("the leg scripts", () => {
   for (const [file, script] of GOLDEN) {
     test(`${file} matches its golden file`, () => {
-      expect(script).toBe(readFileSync(join(import.meta.dir, "testdata", file), "utf8"));
+      // The generated script is LF text (a template literal normalises its line breaks). A Windows
+      // checkout may translate the golden file to CRLF, which is the checkout's doing, not the script's.
+      const golden = readFileSync(join(import.meta.dir, "testdata", file), "utf8").replaceAll("\r\n", "\n");
+      expect(script).toBe(golden);
     });
   }
 

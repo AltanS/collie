@@ -15,9 +15,22 @@ interface Run {
   out: string;
 }
 
+/**
+ * An absolute Windows path in the form the script's `bash` reads: `C:\Users\x` becomes `/c/Users/x`.
+ *
+ * On Windows `bash` is Git for Windows' MSYS bash. The script pipes `find` through `xargs`, and
+ * `xargs` treats a backslash as an escape, so a `C:\...` scratch directory loses its separators and
+ * `grep` reads files that do not exist, which the script's `|| true` turns into "no violation". A
+ * relative path such as `web/src`, and any POSIX path, passes through unchanged.
+ */
+function bashPath(path: string): string {
+  if (process.platform !== "win32") return path;
+  return path.replace(/^([A-Za-z]):[\\/]/, (_m, drive: string) => `/${drive.toLowerCase()}/`).replaceAll("\\", "/");
+}
+
 function run(target?: string, bridgeTarget?: string): Run {
-  const args = [target, bridgeTarget].filter((a): a is string => a !== undefined);
-  const proc = Bun.spawnSync(["bash", SCRIPT, ...args], {
+  const args = [target, bridgeTarget].filter((a): a is string => a !== undefined).map(bashPath);
+  const proc = Bun.spawnSync(["bash", bashPath(SCRIPT), ...args], {
     cwd: join(import.meta.dir, ".."),
   });
   return {

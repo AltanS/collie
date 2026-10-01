@@ -586,7 +586,9 @@ describe("filePairingIo", () => {
     await io.writePending(newPending("ABCD2345", 0));
     await io.writeRegistry({ devices: [{ label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1 }] });
     for (const name of [PENDING_FILENAME, DEVICES_FILENAME]) {
-      expect((await stat(join(stateDir, name))).mode & 0o777).toBe(0o600);
+      // NTFS has no 0600 mode bits (stat() says 0o666), so only the existence of the file is checked there.
+      const { mode } = await stat(join(stateDir, name));
+      if (process.platform !== "win32") expect(mode & 0o777).toBe(0o600);
     }
     expect(JSON.parse(await readFile(join(stateDir, DEVICES_FILENAME), "utf8")).devices).toHaveLength(1);
   });

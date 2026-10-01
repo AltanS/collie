@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -495,13 +495,15 @@ describe("the runner's own output is kept (#283)", () => {
   test("a log that cannot be opened is null, and the launch goes ahead with the streams ignored", () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-runner-log-"));
     try {
-      chmodSync(dir, 0o500);
-      expect(openRunnerLog(dir, "header")).toBeNull();
+      // A state dir that is really a file: no log can be created under it, whatever the platform's
+      // permission model is (a read-only dir, `chmod 0o500`, stops nothing on NTFS and nothing as root).
+      const notADir = join(dir, "a-file");
+      writeFileSync(notADir, "");
+      expect(openRunnerLog(join(notADir, "state"), "header")).toBeNull();
       const seen: UpdateRunnerSpawnOptions[] = [];
       launchUpdateRunner(plan(), { cwd: "/x", spawn: (_c, o) => (seen.push(o), { unref: () => {} }), log: null });
       expect(seen[0]?.stdout).toBe("ignore");
     } finally {
-      chmodSync(dir, 0o700);
       rmSync(dir, { recursive: true, force: true });
     }
   });

@@ -710,14 +710,16 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
     const created = `${tmpdir()}/collie-pi-${Math.floor(performance.now() * 1000)}`;
     await mkdir(created, { recursive: true });
     const base = await realpath(created);
-    const root = `${base}/sessions`;
-    const project = `${root}/--var-home-you-repo--`;
+    // Built with `join`: `resolve` answers with this platform's separators, and the tests compare
+    // its answer to the fixture's own spelling of the path.
+    const root = join(base, "sessions");
+    const project = join(root, "--var-home-you-repo--");
     await mkdir(project, { recursive: true });
-    const log = `${project}/2026-07-29T10-00-00-000Z_${SID}.jsonl`;
+    const log = join(project, `2026-07-29T10-00-00-000Z_${SID}.jsonl`);
     await Bun.write(log, speech("a", "user", "hi"));
-    const outside = `${base}/outside.jsonl`;
+    const outside = join(base, "outside.jsonl");
     await Bun.write(outside, speech("z", "user", "secrets"));
-    const sneaky = `${project}/2026-07-29T11-00-00-000Z_${OUTSIDE_SID}.jsonl`;
+    const sneaky = join(project, `2026-07-29T11-00-00-000Z_${OUTSIDE_SID}.jsonl`);
     await symlink(outside, sneaky);
     return { base, root, log, sneaky };
   }
@@ -781,15 +783,16 @@ describe("PiTranscriptSource — several sessions roots", () => {
     const created = `${tmpdir()}/collie-pi-roots-${Math.floor(performance.now() * 1000)}`;
     await mkdir(created, { recursive: true });
     const base = await realpath(created);
-    const first = `${base}/first`;
-    const second = `${base}/second`;
-    await mkdir(`${first}/--repo--`, { recursive: true });
-    await mkdir(`${second}/--side--`, { recursive: true });
-    const logA = `${first}/--repo--/2026-08-11T09-00-00-000Z_${A}.jsonl`;
-    const logB = `${second}/--side--/2026-08-11T10-00-00-000Z_${B}.jsonl`;
+    // `join`, for the same reason as the fixture above: compare like with like on every platform.
+    const first = join(base, "first");
+    const second = join(base, "second");
+    await mkdir(join(first, "--repo--"), { recursive: true });
+    await mkdir(join(second, "--side--"), { recursive: true });
+    const logA = join(first, "--repo--", `2026-08-11T09-00-00-000Z_${A}.jsonl`);
+    const logB = join(second, "--side--", `2026-08-11T10-00-00-000Z_${B}.jsonl`);
     await Bun.write(logA, speech("a", "user", "one"));
     await Bun.write(logB, speech("b", "user", "two"));
-    const outside = `${base}/outside.jsonl`;
+    const outside = join(base, "outside.jsonl");
     await Bun.write(outside, speech("z", "user", "secrets"));
     return { base, first, second, logA, logB, outside };
   }

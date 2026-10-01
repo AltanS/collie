@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { BEACON_HOOKS } from "./beacon.ts";
-import { BINARY, capture, context, fakeFiles, fakeLinkFs, HOME } from "./fakes.ts";
+import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT } from "./fakes.ts";
 import {
   claudeSettingsTargets,
   cmdHooksInstall,
@@ -17,6 +18,7 @@ import {
 } from "./hooks.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
+import { collieBinary } from "./unit.ts";
 import type { JsonValue } from "../bridge/json.ts";
 
 // `collie hooks install|uninstall|status`. Every decision is a pure function of the document on disk,
@@ -25,10 +27,23 @@ import type { JsonValue } from "../bridge/json.ts";
 //
 // Nothing here may reach a real `~/.claude`: the filesystem and the symlink probe are both fakes.
 
-const SETTINGS = `${HOME}/.claude/settings.json`;
+// Paths the code under test BUILDS are spelled the way it builds them (`join`), so the expectation
+// holds on Windows too, where a join comes back with backslashes. The fake filesystems fold every key
+// to POSIX (`posixKey`), so a seed may use either spelling; only a recorded op log needs folding.
+const CLAUDE_DIR = join(HOME, ".claude");
+const SETTINGS = join(CLAUDE_DIR, "settings.json");
 const BACKUP = `${SETTINGS}.collie-backup`;
-const PUBLISHED = `${HOME}/.local/bin/collie`;
-const COMMAND = `${BINARY} beacon emit ${HOOK_MARKER}`;
+const PUBLISHED = join(HOME, ".local", "bin", "collie");
+/** This checkout's compiled binary: `bin/collie` on POSIX, `bin/collie.exe` on Windows. */
+const OWN = collieBinary(ROOT);
+const COMMAND = `${OWN} beacon emit ${HOOK_MARKER}`;
+/** A second Claude profile, named by `COLLIE_TRANSCRIPT_ROOT`, and the settings file beside its journal. */
+const OPS_PROFILE = join("/srv", "ops");
+const OPS_SETTINGS = join(OPS_PROFILE, "settings.json");
+/** Where a stow/chezmoi-style `~/.claude` link points. */
+const DOTFILES = join("/dotfiles", "claude");
+/** A path segment that only a version directory has — the hook command must never contain it. */
+const VERSIONS_SEGMENT = /[/\\]versions[/\\]/;
 
 /** A hook the OPERATOR wrote. Nothing Collie does may touch it, read it, or move it. */
 const THEIRS = { matcher: "Bash", hooks: [{ type: "command", command: "/usr/local/bin/audit.sh" }] };
@@ -42,7 +57,7 @@ function deps(
 } {
   const io = capture();
   const files = fakeFiles(over.files ?? {});
-  const fs = fakeLinkFs(over.linked === true ? { [PUBLISHED]: { kind: "symlink", target: BINARY } } : {});
+  const fs = fakeLinkFs(over.linked === true ? { [PUBLISHED]: { kind: "symlink", target: OWN } } : {});
   return { ctx: context(over.env ?? {}), io, files, fs };
 }
 
@@ -51,16 +66,18 @@ const settingsOf = (d: ReturnType<typeof deps>, path = SETTINGS): JsonValue =>
 
 describe("the targets", () => {
   test("are ~/.claude, plus one per configured Claude journal root (issue #92)", () => {
-    expect(claudeSettingsTargets(context({ COLLIE_TRANSCRIPT_ROOT: "/srv/work/projects,/srv/ops/projects" }))).toEqual([
-      { dir: `${HOME}/.claude`, path: SETTINGS },
-      { dir: "/srv/work", path: "/srv/work/settings.json" },
-      { dir: "/srv/ops", path: "/srv/ops/settings.json" },
+    const work = join("/srv", "work");
+    const roots = [join(work, "projects"), join(OPS_PROFILE, "projects")].join(",");
+    expect(claudeSettingsTargets(context({ COLLIE_TRANSCRIPT_ROOT: roots }))).toEqual([
+      { dir: CLAUDE_DIR, path: SETTINGS },
+      { dir: work, path: join(work, "settings.json") },
+      { dir: OPS_PROFILE, path: OPS_SETTINGS },
     ]);
   });
 
   test("never name a project settings file, and never repeat one", () => {
-    const targets = claudeSettingsTargets(context({ COLLIE_TRANSCRIPT_ROOT: `${HOME}/.claude/projects` }));
-    expect(targets).toEqual([{ dir: `${HOME}/.claude`, path: SETTINGS }]);
+    const targets = claudeSettingsTargets(context({ COLLIE_TRANSCRIPT_ROOT: join(CLAUDE_DIR, "projects") }));
+    expect(targets).toEqual([{ dir: CLAUDE_DIR, path: SETTINGS }]);
     for (const target of targets) expect(target.path).not.toContain("settings.local.json");
   });
 });
@@ -77,8 +94,8 @@ describe("the command it writes", () => {
 
   test("falls back to the checkout binary — absolute either way, because a hook has no login shell", () => {
     const d = deps();
-    expect(resolveHookCommand(d.ctx, d.fs)).toEqual({ binary: BINARY, source: "checkout", command: COMMAND });
-    expect(COMMAND.startsWith("/")).toBe(true);
+    expect(resolveHookCommand(d.ctx, d.fs)).toEqual({ binary: OWN, source: "checkout", command: COMMAND });
+    expect(isAbsolute(OWN)).toBe(true);
   });
 
   test("is pinned to the checkout when the published name is somebody else's", () => {
@@ -94,10 +111,12 @@ describe("the command it writes", () => {
   // under itself after one or two updates and fires into nothing, silently. Nothing here may write a
   // `versions/` path.
 
-  const INSTALL_ROOT = `${HOME}/.local/share/collie`;
-  const VERSION_ROOT = `${INSTALL_ROOT}/versions/1.0.0-beta.49`;
-  const VERSIONED = `${VERSION_ROOT}/bin/collie`;
-  const CURRENT = `${INSTALL_ROOT}/current/bin/collie`;
+  // `resolve`, not `join`: `publishedBinary` compares `resolve`d paths, and on Windows a resolved path
+  // carries a drive. A root spelled without one would never equal its own `versions/` directory.
+  const INSTALL_ROOT = resolve(HOME, ".local", "share", "collie");
+  const VERSION_ROOT = join(INSTALL_ROOT, "versions", "1.0.0-beta.49");
+  const VERSIONED = join(VERSION_ROOT, "bin", "collie");
+  const CURRENT = join(INSTALL_ROOT, "current", "bin", "collie");
 
   /** A binary install: the process runs from the version directory, `current` points at it. */
   function binaryDeps(published?: string): ReturnType<typeof deps> {
@@ -125,18 +144,18 @@ describe("the command it writes", () => {
       source: "install-current",
       command: `${CURRENT} beacon emit ${HOOK_MARKER}`,
     });
-    expect(resolved.command).not.toContain("/versions/");
+    expect(resolved.command).not.toMatch(VERSIONS_SEGMENT);
   });
 
   test("a published name pointing straight at THIS version is still the published name, not the version path", () => {
     const d = binaryDeps(VERSIONED);
     const resolved = resolveHookCommand(d.ctx, d.fs);
     expect(resolved.binary).toBe(PUBLISHED);
-    expect(resolved.command).not.toContain("/versions/");
+    expect(resolved.command).not.toMatch(VERSIONS_SEGMENT);
   });
 
   test("a published name left over at a GC'd version falls back to `current`, never to the dangling path", () => {
-    const d = binaryDeps(`${INSTALL_ROOT}/versions/1.0.0-beta.47/bin/collie`);
+    const d = binaryDeps(join(INSTALL_ROOT, "versions", "1.0.0-beta.47", "bin", "collie"));
     expect(resolveHookCommand(d.ctx, d.fs).binary).toBe(CURRENT);
   });
 
@@ -154,7 +173,7 @@ describe("the command it writes", () => {
     expect(stop[0]).toEqual(THEIRS);
     expect(stop).toHaveLength(2);
     expect(markedCommandIn(stop[1])).toBe(`${CURRENT} beacon emit ${HOOK_MARKER}`);
-    expect(JSON.stringify(stop)).not.toContain("/versions/");
+    expect(JSON.stringify(stop)).not.toMatch(VERSIONS_SEGMENT);
   });
 
   test("carries a version-prefixed ownership marker", () => {
@@ -235,7 +254,7 @@ describe("install", () => {
   test("is atomic — the live file is renamed into place, never written through", () => {
     const d = deps();
     cmdHooksInstall(d, ["claude"]);
-    expect(d.files.ops.filter((op) => op.startsWith("mv "))).toEqual([`mv ${SETTINGS}.collie-tmp ${SETTINGS}`]);
+    expect(d.files.ops.filter((op) => op.startsWith("mv "))).toEqual([`mv ${posixKey(`${SETTINGS}.collie-tmp`)} ${posixKey(SETTINGS)}`]);
     expect([...d.files.entries.keys()].filter((p) => p.endsWith(".collie-tmp"))).toEqual([]);
   });
 
@@ -316,15 +335,15 @@ describe("install", () => {
   });
 
   test("writes every configured profile, not just ~/.claude", () => {
-    const d = deps({ env: { COLLIE_TRANSCRIPT_ROOT: "/srv/ops/projects" } });
+    const d = deps({ env: { COLLIE_TRANSCRIPT_ROOT: join(OPS_PROFILE, "projects") } });
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
     expect(d.files.entries.has(SETTINGS)).toBe(true);
-    expect(d.files.entries.has("/srv/ops/settings.json")).toBe(true);
+    expect(d.files.entries.has(OPS_SETTINGS)).toBe(true);
   });
 
   test("refuses a symlinked settings file, untouched, with a remedy", () => {
     const d = deps({ files: { [SETTINGS]: "{}\n" } });
-    d.fs.entries.set(SETTINGS, { kind: "symlink", target: "/elsewhere/settings.json" });
+    d.fs.entries.set(SETTINGS, { kind: "symlink", target: join("/elsewhere", "settings.json") });
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.FAIL);
     expect(d.files.entries.get(SETTINGS)!.text).toBe("{}\n");
     expect(d.io.stderr.join("\n")).toContain("is a symlink");
@@ -333,27 +352,27 @@ describe("install", () => {
 
   test("writes through a symlinked parent directory (stow, chezmoi) — install and uninstall both follow it", () => {
     const d = deps();
-    d.fs.entries.set(`${HOME}/.claude`, { kind: "symlink", target: "/dotfiles/claude" });
-    d.fs.entries.set("/dotfiles/claude", { kind: "other", what: "a directory" });
+    d.fs.entries.set(CLAUDE_DIR, { kind: "symlink", target: DOTFILES });
+    d.fs.entries.set(DOTFILES, { kind: "other", what: "a directory" });
 
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
-    expect(d.files.entries.has("/dotfiles/claude/settings.json")).toBe(true);
+    expect(d.files.entries.has(join(DOTFILES, "settings.json"))).toBe(true);
     expect(d.files.entries.has(SETTINGS)).toBe(false);
 
     expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
-    expect(settingsOf(d, "/dotfiles/claude/settings.json")).toEqual({});
+    expect(settingsOf(d, join(DOTFILES, "settings.json"))).toEqual({});
   });
 
   test("a dangling directory link fails with a worded error, never a raw write error (#190)", () => {
     const d = deps();
-    d.fs.entries.set(`${HOME}/.claude`, { kind: "symlink", target: "/dotfiles/claude" });
-    // "/dotfiles/claude" is never seeded, so the fake reports it absent — the link's target is gone,
+    d.fs.entries.set(CLAUDE_DIR, { kind: "symlink", target: DOTFILES });
+    // The dotfiles directory is never seeded, so the fake reports it absent — the link's target is gone,
     // the way an unmounted drive or a home-manager generation nobody built yet would read.
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.FAIL);
     expect(d.files.entries.size).toBe(0);
     const said = d.io.stderr.join("\n");
-    expect(said).toContain(`${HOME}/.claude`);
-    expect(said).toContain("/dotfiles/claude");
+    expect(said).toContain(CLAUDE_DIR);
+    expect(said).toContain(DOTFILES);
     expect(said).toContain("does not exist");
     expect(said).toContain("re-run");
   });
@@ -363,14 +382,14 @@ describe("install", () => {
     // matches the guard shape used elsewhere in this suite in case that ever changes.
     if (process.getuid?.() === 0) return;
     const d = deps();
-    d.fs.entries.set(`${HOME}/.claude`, { kind: "symlink", target: "/dotfiles/claude" });
-    d.fs.entries.set("/dotfiles/claude", { kind: "other", what: "a directory" });
-    d.files.readOnly.add("/dotfiles/claude");
+    d.fs.entries.set(CLAUDE_DIR, { kind: "symlink", target: DOTFILES });
+    d.fs.entries.set(DOTFILES, { kind: "other", what: "a directory" });
+    d.files.readOnly.add(DOTFILES);
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.FAIL);
     expect(d.files.entries.size).toBe(0);
     const said = d.io.stderr.join("\n");
-    expect(said).toContain(`${HOME}/.claude`);
-    expect(said).toContain("/dotfiles/claude");
+    expect(said).toContain(CLAUDE_DIR);
+    expect(said).toContain(DOTFILES);
     expect(said).toContain("cannot write");
   });
 
@@ -408,19 +427,19 @@ describe("uninstall", () => {
 
   test("refuses to follow a symlink on the way out too", () => {
     const d = deps({ files: { [SETTINGS]: serializeSettings({ hooks: {} }) } });
-    d.fs.entries.set(SETTINGS, { kind: "symlink", target: "/elsewhere/settings.json" });
+    d.fs.entries.set(SETTINGS, { kind: "symlink", target: join("/elsewhere", "settings.json") });
     expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.FAIL);
   });
 });
 
 describe("status", () => {
   test("reports each target and writes absolutely nothing", () => {
-    const d = deps({ env: { COLLIE_TRANSCRIPT_ROOT: "/srv/ops/projects" } });
+    const d = deps({ env: { COLLIE_TRANSCRIPT_ROOT: join(OPS_PROFILE, "projects") } });
     expect(cmdHooksStatus(d)).toBe(EXIT.OK);
     const said = d.io.stdout.join("\n");
     expect(said).toContain(`${SETTINGS}: no settings file`);
-    expect(said).toContain("/srv/ops/settings.json: no settings file");
-    expect(said).toContain(BINARY);
+    expect(said).toContain(`${OPS_SETTINGS}: no settings file`);
+    expect(said).toContain(OWN);
     expect(d.files.entries.size).toBe(0);
     expect(d.files.ops).toEqual([]);
   });
@@ -504,8 +523,8 @@ describe("status --check", () => {
 
   test("is behind when ANY configured profile is, not only ~/.claude (issue #92)", () => {
     const d = deps({
-      env: { COLLIE_TRANSCRIPT_ROOT: "/srv/ops/projects" },
-      files: { [SETTINGS]: installed(), "/srv/ops/settings.json": partial() },
+      env: { COLLIE_TRANSCRIPT_ROOT: join(OPS_PROFILE, "projects") },
+      files: { [SETTINGS]: installed(), [OPS_SETTINGS]: partial() },
     });
     expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.STATE);
   });
