@@ -14,6 +14,8 @@ export const zhTW: Dictionary = {
   "transcript.tools.hidden.other": "已隱藏 {count} 個步驟，點按顯示",
   "settings.tools.title": "工具呼叫",
   "settings.tools.description": "顯示代理執行的讀取、搜尋、指令和編輯。關閉後只保留它說的話。",
+  "settings.compactions.title": "壓縮摘要",
+  "settings.compactions.description": "保留代理壓縮上下文時寫下的摘要。關閉後，該處只留下一行標記。",
   "settings.experiments.contract": "這裡的項目可能會變更、失去設定，或在修補版本中移除。",
   "settings.experiments.chat.title": "聊天",
   "settings.experiments.chat.description": "把窗格當成代理自己的對話來讀，而不是終端機。可從窗格的 ⋮ 選單切回。",

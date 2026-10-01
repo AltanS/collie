@@ -13,6 +13,8 @@ export const ja: Dictionary = {
   "transcript.tools.hidden.other": "{count} 件の操作を非表示。タップで表示",
   "settings.tools.title": "ツール呼び出し",
   "settings.tools.description": "エージェントが実行した読み取り、検索、コマンド、編集を表示します。オフにすると発言だけが残ります。",
+  "settings.compactions.title": "圧縮の要約",
+  "settings.compactions.description": "エージェントがコンテキストを圧縮するときに書く要約を残します。オフにすると、その位置に印の1行だけが残ります。",
   "settings.experiments.contract": "ここにあるものは変更されたり、設定がなくなったり、パッチリリースで撤回されたりすることがあります。",
   "settings.experiments.chat.title": "チャット",
   "settings.experiments.chat.description": "ペインをターミナルではなくエージェント自身の会話として読みます。ペインの ⋮ メニューから元に戻せます。",

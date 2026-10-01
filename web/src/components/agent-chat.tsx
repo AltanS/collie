@@ -1999,6 +1999,7 @@ export function AgentChat({
                 // arriving.
                 working={agent?.status === "working" && !connecting}
                 showToolCalls={dash.prefs.showToolCalls}
+                showCompactions={dash.prefs.showCompactions}
                 fontSize={prefs.chatFontSize}
                 listRef={listRef}
               />
@@ -2484,6 +2485,8 @@ export function AgentChat({
                     note: chatNote,
                     showToolCalls: dash.prefs.showToolCalls,
                     setShowToolCalls: dash.setShowToolCalls,
+                    showCompactions: dash.prefs.showCompactions,
+                    setShowCompactions: dash.setShowCompactions,
                     chatFontSize: prefs.chatFontSize,
                     stepChatFontSize,
                   }

@@ -33,11 +33,22 @@ describe("itemsOf", () => {
     });
   });
 
-  it("reads a compaction summary and a machine note as a notice, never as speech", () => {
-    for (const role of ["summary", "note"] as const) {
-      const [item] = itemsOf(entry({ role, parts: [{ kind: "text", text: "context compacted" }] }));
-      expect(item).toMatchObject({ kind: "notice" });
-    }
+  it("reads a machine note as a notice, never as speech", () => {
+    const [item] = itemsOf(entry({ role: "note", parts: [{ kind: "text", text: "injected" }] }));
+    expect(item).toMatchObject({ kind: "notice", note: true });
+  });
+
+  it("reads a compaction as ONE marker without its recap, unless the recap is asked for", () => {
+    const summary = entry({
+      role: "summary",
+      parts: [{ kind: "text", text: "the recap" }, { kind: "text", text: "more of it" }],
+    });
+    const bare = itemsOf(summary);
+    expect(bare).toHaveLength(1);
+    expect(bare[0]).toEqual({ id: "u1:0", ts: "2026-09-30T08:00:00.000Z", kind: "compacted" });
+    expect(itemsOf(summary, true)).toEqual([
+      { id: "u1:0", ts: "2026-09-30T08:00:00.000Z", kind: "compacted", text: "the recap\n\nmore of it" },
+    ]);
   });
 
   it("drops a text part that is empty or only whitespace", () => {

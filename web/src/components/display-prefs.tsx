@@ -55,6 +55,9 @@ export interface PaneViewControl {
   /** Whether the stream draws the agent's tool calls. Settings → Appearance writes the same value. */
   showToolCalls: boolean;
   setShowToolCalls: (on: boolean) => void;
+  /** Whether the stream keeps the recap Claude writes at a compaction. Settings → Appearance writes the same value. */
+  showCompactions: boolean;
+  setShowCompactions: (on: boolean) => void;
   /** The stream's own text size in px, and its stepper. Its own number, never the mirror's. */
   chatFontSize: number;
   stepChatFontSize: (delta: number) => void;
@@ -235,6 +238,19 @@ export function DisplayPrefsContent({
                 checked={paneView.showToolCalls}
                 onCheckedChange={paneView.setShowToolCalls}
                 aria-label={t("settings.tools.title")}
+              />
+            }
+          />
+          <Row
+            label={t("settings.compactions.title")}
+            hint={t("settings.compactions.description")}
+            htmlFor="pref-compactions"
+            control={
+              <Switch
+                id="pref-compactions"
+                checked={paneView.showCompactions}
+                onCheckedChange={paneView.setShowCompactions}
+                aria-label={t("settings.compactions.title")}
               />
             }
           />

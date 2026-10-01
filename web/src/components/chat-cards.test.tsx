@@ -305,6 +305,38 @@ describe("ItemView", () => {
   });
 });
 
+describe("a compaction", () => {
+  const recap = "This session is being continued from a previous conversation. ".repeat(6);
+
+  it("draws one marker line and no recap when the recap is withheld", () => {
+    render(<ItemView item={{ id: "s", kind: "compacted", ts: "2026-09-30T08:00:00.000Z" }} />);
+    expect(screen.getByText(/Context compacted/)).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("folds the recap behind its label and opens on a tap when it is kept", async () => {
+    const user = userEvent.setup();
+    render(<ItemView item={{ id: "s", kind: "compacted", text: recap }} />);
+    expect(screen.queryByText(/continued from a previous/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Context compacted/ }));
+    expect(screen.getByText(/continued from a previous/)).toBeInTheDocument();
+  });
+});
+
+describe("a long machine note", () => {
+  it("folds behind the System label, and a short one stays inline", async () => {
+    const user = userEvent.setup();
+    render(<ItemView item={{ id: "n", kind: "notice", text: "x ".repeat(100), note: true }} />);
+    await user.click(screen.getByRole("button", { name: /System/ }));
+    expect(screen.getByText(/x x x/)).toBeInTheDocument();
+  });
+
+  it("leaves a short note inline", () => {
+    render(<ItemView item={{ id: "n", kind: "notice", text: "Interrupted", note: true }} />);
+    expect(screen.getByText("Interrupted")).toBeInTheDocument();
+  });
+});
+
 describe("Disclosure", () => {
   it("keeps its body out of the DOM until it is opened", async () => {
     const user = userEvent.setup();

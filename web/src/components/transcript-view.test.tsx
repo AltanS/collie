@@ -114,14 +114,37 @@ describe("TranscriptView", () => {
     expect(screen.getByText(/output truncated/)).toBeInTheDocument();
   });
 
-  it("marks a compaction summary as its own thing, not as something a human said", () => {
+  it("draws a compaction as one marker line, with none of its recap", () => {
     render(
       <TranscriptView
         entries={[turn({ role: "summary", parts: [{ kind: "text", text: "…prior context…" }] })]}
       />,
     );
     expect(screen.getByText(/Context compacted/)).toBeInTheDocument();
+    expect(screen.queryByText(/prior context/)).not.toBeInTheDocument();
     expect(screen.queryByText("You")).not.toBeInTheDocument();
+  });
+
+  it("marks a kept compaction recap as its own thing, not as something a human said", () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ showCompactions: true }));
+    render(
+      <TranscriptView
+        entries={[turn({ role: "summary", parts: [{ kind: "text", text: "…prior context…" }] })]}
+      />,
+    );
+    expect(screen.getByText(/Context compacted/)).toBeInTheDocument();
+    expect(screen.getByText(/prior context/)).toBeInTheDocument();
+    expect(screen.queryByText("You")).not.toBeInTheDocument();
+  });
+
+  it("lets a find land inside a compaction recap whatever the setting says", () => {
+    render(
+      <TranscriptView
+        query="prior"
+        entries={[turn({ role: "summary", parts: [{ kind: "text", text: "…prior context…" }] })]}
+      />,
+    );
+    expect(screen.getByText("prior")).toBeInTheDocument();
   });
 
   // Markdown introduced ONE new way for log content to reach the browser: an <a href>. A hostile

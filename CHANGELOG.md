@@ -30,6 +30,16 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- **A compaction is one marker line in a session view, and its recap is off by default.** When an
+  agent compacts its context it writes a recap of the whole session for itself. Chat drew that as a
+  centred wall of text and History as a full card, thousands of characters nobody reads on a phone,
+  all built into the page. Both views now draw "Context compacted" and the time, and the text is
+  never built. Turn the recap back on under Settings → Appearance → Compaction summaries, or in a
+  pane's Display sheet, and it folds behind the marker and opens on a tap. A find on History always
+  reaches it. Long machine notes fold behind a System label as well.
+
 ## [1.15.0] - 2026-10-01
 
 ### Added

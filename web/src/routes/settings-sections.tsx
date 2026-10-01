@@ -21,6 +21,7 @@ import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
+import { CompactionsControl } from "@/components/compactions-control";
 import { ToolCallsControl } from "@/components/tool-calls-control";
 import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
@@ -87,6 +88,7 @@ export function SettingsAppearanceRoute() {
           answers is the same question — what do I want on screen — and filing it under Device would
           put a rendering choice beside haptics. */}
       <ToolCallsControl />
+      <CompactionsControl />
     </SettingsPage>
   );
 }

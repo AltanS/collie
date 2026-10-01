@@ -316,11 +316,54 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
         </Disclosure>
       );
     case "notice":
-      return <p className="py-1 text-center text-xs text-muted-foreground">{item.text}</p>;
+      return <Notice item={item} />;
+    case "compacted":
+      return <Compacted item={item} />;
     case "tool":
       return <ToolCard tool={item.tool} status={item.status} waiting={waiting} />;
   }
 });
+
+/** A machine note longer than this, or on more than one line, folds. Shorter ones are a status line. */
+const NOTICE_FOLD_CHARS = 160;
+
+/**
+ * A notice, set apart from speech. A machine note can be a pasted skill or reminder, so a long one
+ * folds behind its label, left-aligned like every other block of prose; a short one stays a centred
+ * status line.
+ */
+function Notice({ item }: { item: Extract<ChatItem, { kind: "notice" }> }) {
+  const folds = item.note === true && (item.text.length > NOTICE_FOLD_CHARS || item.text.includes("\n"));
+  if (!folds) return <p className="py-1 text-center text-xs text-muted-foreground">{item.text}</p>;
+  return (
+    <Disclosure label={t("transcript.systemLabel")} icon={ChevronRight}>
+      {() => <MarkdownText text={item.text} className="px-5 pb-1 text-sm text-muted-foreground" />}
+    </Disclosure>
+  );
+}
+
+/**
+ * A compaction. Claude Code draws one rule and a label; so does this, and the recap behind it is
+ * the reader's to ask for (Settings → Appearance). With the recap withheld there is no text to
+ * build, only the marker. With it, the recap folds behind the same label and its body enters the
+ * DOM only while open.
+ */
+function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> }) {
+  if (item.text === undefined) {
+    return (
+      <p className="py-1 text-center text-xs text-muted-foreground">
+        {t("transcript.summaryLabel")}
+        {item.ts && ` · ${clockTimeOf(item.ts)}`}
+      </p>
+    );
+  }
+  const text = item.text;
+  return (
+    <Disclosure label={t("transcript.summaryLabel")} icon={ChevronRight}>
+      {() => <MarkdownText text={text} className="px-5 pb-1 text-sm text-muted-foreground" />}
+    </Disclosure>
+  );
+}
 
 /**
  * The reader's own turn, as collie's transcript draws one (transcript-view.tsx): a bordered well

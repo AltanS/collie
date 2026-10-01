@@ -68,6 +68,15 @@ export interface DashPrefs {
    */
   showToolCalls: boolean;
   /**
+   * Whether a session view keeps the recap the agent writes when it compacts its own context.
+   *
+   * OFF by default, for the reason Claude Code's own UI folds it: the recap is thousands of
+   * characters the agent wrote for ITSELF, and a phone has no use for it. Off draws one marker line
+   * where the compaction happened and never builds the text; on folds the recap behind that marker.
+   * Read by the Chat stream and the History page, as {@link showToolCalls} is.
+   */
+  showCompactions: boolean;
+  /**
    * The order a pane list runs in: `place` (machine, space, tab, position) or `activity` (whatever
    * happened last, first). PLACE by default, which is the order ADR 0063 gave every surface.
    *
@@ -124,6 +133,7 @@ const DEFAULTS: DashPrefs = {
   beltScale: 1.15,
   dashView: "panes",
   showToolCalls: false,
+  showCompactions: false,
   paneOrder: "place",
   chatExperiment: false,
   paneView: "chat",
@@ -176,6 +186,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     beltScale: coerceBeltScale(p.beltScale),
     dashView: coerceDashView(p.dashView),
     showToolCalls: asJsonBoolean(p.showToolCalls) ?? DEFAULTS.showToolCalls,
+    showCompactions: asJsonBoolean(p.showCompactions) ?? DEFAULTS.showCompactions,
     paneOrder: coercePaneOrder(p.paneOrder),
     chatExperiment: asJsonBoolean(p.chatExperiment) ?? DEFAULTS.chatExperiment,
     paneView: coercePaneView(p.paneView),
@@ -216,6 +227,7 @@ export interface UseDashPrefsReturn {
   setBeltScale: (scale: number) => void;
   setDashView: (view: DashView) => void;
   setShowToolCalls: (show: boolean) => void;
+  setShowCompactions: (show: boolean) => void;
   setPaneOrder: (order: PaneOrder) => void;
   setChatExperiment: (on: boolean) => void;
   setPaneView: (view: PaneView) => void;
@@ -245,6 +257,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
 
   const setChangesLayout = useCallback((changesLayout: ChangesLayout) => update({ changesLayout }), [update]);
   const setShowToolCalls = useCallback((showToolCalls: boolean) => update({ showToolCalls }), [update]);
+  const setShowCompactions = useCallback((showCompactions: boolean) => update({ showCompactions }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
   const setChatExperiment = useCallback((chatExperiment: boolean) => update({ chatExperiment }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
@@ -282,6 +295,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setBeltScale,
     setDashView,
     setShowToolCalls,
+    setShowCompactions,
     setPaneOrder,
     setChatExperiment,
     setPaneView,

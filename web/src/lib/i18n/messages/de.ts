@@ -14,6 +14,8 @@ export const de: Dictionary = {
   "transcript.tools.hidden.other": "{count} Schritte ausgeblendet, zum Anzeigen tippen",
   "settings.tools.title": "Werkzeugaufrufe",
   "settings.tools.description": "Zeigt die Lesevorgänge, Suchen, Befehle und Änderungen eines Agenten. Aus bleibt der Verlauf beim Gesagten.",
+  "settings.compactions.title": "Komprimierungs-Zusammenfassungen",
+  "settings.compactions.description": "Behält die Zusammenfassung, die ein Agent beim Komprimieren seines Kontexts schreibt. Aus bleibt nur eine Markierung an der Stelle.",
   "settings.experiments.contract": "Alles hier kann sich ändern, Einstellungen verlieren oder in einem Patch-Release entfallen.",
   "settings.experiments.chat.title": "Chat",
   "settings.experiments.chat.description": "Ein Pane als eigene Konversation des Agenten lesen statt als Terminal. Über das ⋮-Menü eines Panes zurückschalten.",

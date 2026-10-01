@@ -13,6 +13,8 @@ export const es: Dictionary = {
   "transcript.tools.hidden.other": "{count} pasos ocultos, toca para mostrarlos",
   "settings.tools.title": "Llamadas a herramientas",
   "settings.tools.description": "Muestra las lecturas, búsquedas, comandos y ediciones que ejecutó un agente. Desactivado, el hilo solo muestra lo que dijo.",
+  "settings.compactions.title": "Resúmenes de compactación",
+  "settings.compactions.description": "Conserva el resumen que escribe un agente al compactar su contexto. Desactivado, queda solo una línea marcadora donde ocurrió.",
   "settings.experiments.contract": "Todo lo que hay aquí puede cambiar, perder ajustes o retirarse en una versión de parche.",
   "settings.experiments.chat.title": "Chat",
   "settings.experiments.chat.description": "Lee un panel como la conversación del propio agente en lugar de su terminal. Vuelve atrás desde el menú ⋮ de un panel.",

@@ -50,6 +50,7 @@ function renderStream(feed: ChatFeed, showToolCalls = true, working = false) {
       address="w1:p1"
       working={working}
       showToolCalls={showToolCalls}
+      showCompactions={false}
       fontSize={14}
       listRef={listRef}
     />,
@@ -134,6 +135,7 @@ describe("SessionStream", () => {
         address="w1:p1"
         working={false}
         showToolCalls
+        showCompactions={false}
         fontSize={14}
         listRef={listRef}
       />,
@@ -154,6 +156,7 @@ describe("SessionStream", () => {
         address="w1:p1"
         working={false}
         showToolCalls
+        showCompactions={false}
         fontSize={14}
         listRef={listRef}
       />
@@ -195,6 +198,7 @@ describe("SessionStream", () => {
         address="w1:p1"
         working={false}
         showToolCalls
+        showCompactions={false}
         fontSize={14}
         listRef={listRef}
       />

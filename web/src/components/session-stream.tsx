@@ -144,6 +144,7 @@ export function SessionStream({
   address,
   working,
   showToolCalls,
+  showCompactions,
   fontSize,
   listRef,
 }: {
@@ -158,6 +159,8 @@ export function SessionStream({
   working: boolean;
   /** Settings → Appearance. Off folds every run, including a lone step, to one summary line. */
   showToolCalls: boolean;
+  /** Settings → Appearance. Off draws a compaction as a one-line marker and never builds its recap. */
+  showCompactions: boolean;
   /** The stream's own text size in px, from the belt's Display dock (`chatFontSize`). */
   fontSize: number;
   /** The pane view's one list handle: a send snaps the body it is looking at back to the tail. */
@@ -180,8 +183,8 @@ export function SessionStream({
     const entries = window.entries.filter((e) => e.abandoned !== true);
     // Tool calls off folds EVERY run, a lone step included, which is the same treatment the History
     // page gives a turn's steps. One idea, one look, two surfaces.
-    return groupRuns(entries.flatMap(itemsOf), showToolCalls ? 3 : 1);
-  }, [window.entries, showToolCalls, revision]);
+    return groupRuns(entries.flatMap((e) => itemsOf(e, showCompactions)), showToolCalls ? 3 : 1);
+  }, [window.entries, showToolCalls, showCompactions, revision]);
 
   // A PANE KEEPS ITS PLACE (ADR 0063). Switching modes unmounts this body and switching panes
   // remounts it, so neither the DOM nor the scroller remembers where the reader was — the same gap

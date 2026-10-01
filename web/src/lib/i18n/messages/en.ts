@@ -27,6 +27,8 @@ export const en = {
   "transcript.tools.hidden.other": "{count} steps hidden — tap to show",
   "settings.tools.title": "Tool calls",
   "settings.tools.description": "Draw the reads, searches, commands and edits an agent ran. Off keeps the thread to what it said.",
+  "settings.compactions.title": "Compaction summaries",
+  "settings.compactions.description": "Keep the recap an agent writes when it compacts its context. Off leaves one marker line where it happened.",
   // --- settings.experiments (the fifth section) ---
   // The contract is the SECTION'S, said once at the top rather than repeated on every card.
   "settings.experiments.contract": "Anything here may change, lose settings, or be withdrawn in a patch release.",

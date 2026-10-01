@@ -48,7 +48,11 @@ export type ChatItem =
   | { id: string; ts?: string; kind: "user"; text: string }
   | { id: string; ts?: string; kind: "reply"; text: string }
   | { id: string; ts?: string; kind: "thinking"; text: string }
-  | { id: string; ts?: string; kind: "notice"; text: string }
+  | { id: string; ts?: string; kind: "notice"; text: string; note?: true }
+  // A compaction. `text` is the agent's recap of its own history and is present only when the reader
+  // asked for it (Settings → Appearance → Compaction summaries); without it the item is a one-line
+  // marker, so the recap's thousands of characters are never built into a block at all.
+  | { id: string; ts?: string; kind: "compacted"; text?: string }
   | { id: string; ts?: string; kind: "tool"; tool: ChatToolCall; status: ChatToolStatus };
 
 /**
@@ -114,17 +118,30 @@ export function toolStatus(part: Extract<TranscriptPart, { kind: "tool" }>): Cha
  * filter, on purpose and for the whole journal: a page cursor still has to resolve a hidden turn's
  * uuid, so hiding it is the screen's job, exactly as it is on the History page.
  */
-export function itemsOf(entry: TranscriptEntry): ChatItem[] {
+export function itemsOf(entry: TranscriptEntry, showCompactions = false): ChatItem[] {
   const ts = entry.ts || undefined;
+  if (entry.role === "summary") {
+    // ONE item per compaction, whatever the recap's parts: it is a single event, and the marker has
+    // nothing to say per part.
+    const text = entry.parts.flatMap((p) => (p.kind === "text" && p.text.trim() ? [p.text] : [])).join("\n\n");
+    const marker: ChatItem = { id: `${entry.uuid}:0`, ts, kind: "compacted" };
+    if (showCompactions && text) marker.text = text;
+    return [marker];
+  }
   const said = entry.role === "user" ? "user" : entry.role === "assistant" ? "reply" : "notice";
   const items: ChatItem[] = [];
   entry.parts.forEach((part, i) => {
     const id = part.kind === "tool" && part.id ? part.id : `${entry.uuid}:${i}`;
     switch (part.kind) {
       case "text":
-        // A `summary` is a compaction summary the agent wrote about its own history and a `note` is
-        // machine-injected; neither is speech, so both are a notice rather than a reply.
-        if (part.text.trim()) items.push({ id, ts, kind: said, text: part.text });
+        // A `note` is machine-injected, so it is a notice rather than a reply. (A compaction summary
+        // never gets here: it is its own item above.)
+        if (!part.text.trim()) return;
+        items.push(
+          said === "notice"
+            ? { id, ts, kind: said, text: part.text, note: true }
+            : { id, ts, kind: said, text: part.text },
+        );
         return;
       case "thinking":
         if (part.text.trim()) items.push({ id, ts, kind: "thinking", text: part.text });

@@ -14,6 +14,8 @@ export const ko: Dictionary = {
   "transcript.tools.hidden.other": "{count}개 단계 숨김, 탭하여 표시",
   "settings.tools.title": "도구 호출",
   "settings.tools.description": "에이전트가 실행한 읽기, 검색, 명령, 편집을 표시합니다. 끄면 말한 내용만 남습니다.",
+  "settings.compactions.title": "압축 요약",
+  "settings.compactions.description": "에이전트가 컨텍스트를 압축할 때 쓰는 요약을 유지합니다. 끄면 그 자리에 표시 한 줄만 남습니다.",
   "settings.experiments.contract": "여기에 있는 항목은 패치 릴리스에서 바뀌거나, 설정이 사라지거나, 철회될 수 있습니다.",
   "settings.experiments.chat.title": "채팅",
   "settings.experiments.chat.description": "패널을 터미널 대신 에이전트의 대화로 읽습니다. 패널의 ⋮ 메뉴에서 되돌릴 수 있습니다.",

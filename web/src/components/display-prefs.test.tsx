@@ -40,6 +40,8 @@ function draw(paneView?: Partial<PaneViewControl>) {
           onChange,
           showToolCalls: false,
           setShowToolCalls,
+          showCompactions: false,
+          setShowCompactions: vi.fn(),
           chatFontSize: 14,
           stepChatFontSize,
           ...paneView,
