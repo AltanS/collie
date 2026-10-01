@@ -201,6 +201,29 @@ function isGapSegment(segment: AnsiSegment): boolean {
   return /^ {2,}$/.test(segment.text) && isUnstyled(segment);
 }
 
+/**
+ * A field segment that carries the right-notice gap in its own paint, split back into the field and
+ * an unstyled gap. Codex 0.158.0 paints the padding in front of a right-aligned notice (`Pursuing
+ * goal (17h 43m)`) in the colour of the field before it, so the field and the gap arrive as ONE
+ * segment and the row was refused: no composer, the unread-dialog card, every send refused (#317,
+ * the reporter's capture, codex--v0158-goal-notice.txt). A space draws no ink, so its foreground is
+ * not evidence of anything and reading it as unstyled loses nothing. Only a segment that something
+ * follows is split: trailing padding at the row's end is `foldTrailingPadding`'s, and a row that
+ * ends there was never a notice row.
+ */
+function splitPaintedGaps(segments: AnsiSegment[]): AnsiSegment[] {
+  const out: AnsiSegment[] = [];
+  segments.forEach((segment, index) => {
+    const match = /^(\S(?:.*\S)?)( {2,})$/u.exec(segment.text);
+    if (match === null || index === segments.length - 1 || segment.fg === undefined) {
+      out.push(segment);
+      return;
+    }
+    out.push({ ...segment, text: match[1]! }, { text: match[2]!, style: {}, muted: false });
+  });
+  return out;
+}
+
 // The busy row's spinner frames: the ten of the dots spinner, the only run of them in the 0.156.1
 // binary (beside its status-surface code). The canary's busy captures hold `⠋` and `⠧`. The starfield
 // draws from eight single-dot glyphs instead (`⠁⠂⠄⠈⠐⠠⡀⢀`, every sparkle in
@@ -267,8 +290,9 @@ function isStyledStatusRow(text: string, line: StyledLine): boolean {
   if (hasControlChar(rowText)) return false;
   if (codePointCount(rowText) > MAX_STATUS_ROW_CHARS) return false;
 
-  const segments = foldTrailingPadding(line.segments);
-  if (segments === null) return false;
+  const folded = foldTrailingPadding(line.segments);
+  if (folded === null) return false;
+  const segments = splitPaintedGaps(folded);
   if (!isIndentSegment(segments[0]!)) return false;
 
   let fields = 0;

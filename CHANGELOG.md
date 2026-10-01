@@ -41,6 +41,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   lead. A name like that now travels percent-encoded (RFC 8187) and the member reads it back whole,
   for its allowlist and its audit line. An ASCII name is sent exactly as before. Reported by
   @dmstjd1024 (#324).
+- **A Codex pane pursuing a goal keeps its input box.** A Codex `/goal` puts `Pursuing goal (…)`
+  at the right end of the status row, and Codex paints the spaces in front of it in the colour of
+  the field before. Collie read that as a row it did not know, so it lost the input box: the pane
+  showed the unread-dialog card and every reply from the phone was refused. The padding now reads
+  as the gap it is. Reported with a capture by @CorrectRoadH (#317).
 
 ### Added
 

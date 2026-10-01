@@ -71,6 +71,7 @@ const PINNED = [
   "codex--v0157-draft-notice.txt",
   "codex--v0157-idle-50.txt",
   "codex--v0157-idle.txt",
+  "codex--v0158-goal-notice.txt",
   "codex--working.txt",
 ];
 
@@ -1143,6 +1144,20 @@ describe("Codex 0.157.1 fullscreen: one key-hint row under the status row", () =
     expect(kept).toContain("• Working (6s • esc to interrupt)");
   });
 
+  // #317, Codex 0.158.0: a `/goal` puts `Pursuing goal (17h 43m)` at the status row's right edge, and
+  // the padding in front of it arrives in the paint of the field before it, one segment with that
+  // field. The row was refused, so the pane had no composer: the card, and every send refused.
+  it("#317: a notice whose gap carries the last field's paint still leaves a status row", () => {
+    const lines = fixtureLines("codex--v0158-goal-notice.txt");
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    const box = locateComposer(lines)!;
+    expect(lineText(lines[box.promptRow]!).trimEnd()).toBe(`› ${PLACEHOLDER}`);
+    expect(lineText(lines[box.statusRow]!).trimEnd()).toMatch(/^ {2}GPT-6-Astra high · .* {2,}Pursuing goal \(17h 43m\)$/u);
+    expect(codexAdapter.extractInputDraft(lines)).toBeNull();
+    expect(buildBlocks(lines, { agent: "codex" }).map((b) => b.kind)).toEqual(["raw"]);
+    expect(stripChrome(lines).map(lineText).join("\n")).toContain("• Working (5m 47s • esc to interrupt)");
+  });
+
   describe("the hint row opens no new way in", () => {
     const OFF = "\u001b[0m";
     const FIELD = "\u001b[38;2;246;226;183m";
@@ -1154,6 +1169,17 @@ describe("Codex 0.157.1 fullscreen: one key-hint row under the status row", () =
 
     const ready = (...tail: string[]) =>
       codexAdapter.composerReady!(splitLines(parseAnsi([`› ${PLACEHOLDER}`, "", ...tail].join("\n"))));
+
+    it("#317: a painted gap is read as a gap, so what follows must still be a bounded notice", () => {
+      const PURPLE = "\u001b[38;2;203;166;247m";
+      const NOTICE = "\u001b[38;5;5m";
+      const painted = `  ${FIELD}GPT-6-Luna low${OFF}${MUTED} · ${OFF}${PURPLE}/tmp/project      ${OFF}`;
+      expect(ready(`${painted}${NOTICE}Pursuing goal (1m)${OFF}`, HINT)).toBe(true);
+      // Plain text after the gap is what an echo or prose looks like, not a notice.
+      expect(ready(`${painted}an unpainted sentence after the gap${OFF}`, HINT)).toBe(false);
+      // One field before the gap is not a status row, painted gap or not.
+      expect(ready(`  ${PURPLE}GPT-6-Luna low      ${OFF}${NOTICE}Pursuing goal (1m)${OFF}`, HINT)).toBe(false);
+    });
 
     it("accepts the hint row straight under a status row, painted or not", () => {
       expect(ready(STATUS, HINT)).toBe(true);

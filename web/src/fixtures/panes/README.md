@@ -201,6 +201,18 @@ the status row and the hint row are byte-faithful, with the reporter's theme col
 |---|---|---|
 | `codex--reporter-294-busy-agents-hint.txt` | An echo `› herdr pane read …` band, `• Working (6s • esc to interrupt)`, the empty composer, `  GPT-6-Luna medium · ~/Code/project · Read recent pane output`, and `  ← for agents · ? for shortcuts` as the last row. `composerReady` must be TRUE, the lowest `›` row is the composer, no card | `working` |
 
+## Codex reporter capture (#317, 2026-09-28, macOS, Codex 0.158.0, Herdr 0.9.1, SCRUBBED)
+
+The reporter's `herdr pane read <pane-id> --source recent --lines 200 --format ansi`, taken from
+inside the Codex session while it worked, and redacted by the reporter (equal-display-width
+placeholders, published in a gist with the exact bytes as Base64). **Cut further here**: only the
+Working row and the composer band below it are kept, so none of the redacted chat is in the tree.
+The kept rows are byte-faithful to the reporter's file, theme colours included.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0158-goal-notice.txt` | `• Working (5m 47s • esc to interrupt)`, the empty composer, and a status row whose third field carries the padding in its own purple before a right-aligned `Pursuing goal (17h 43m)` (a Codex `/goal`). `  ? for shortcuts` is the last row. Collie 1.14.x refused that row, so the pane had no composer: the unread-dialog card and every send refused. `composerReady` must be TRUE, no card | `working` |
+
 ## Codex mobile chrome (reconstructed 2026-09-03)
 
 **Not a capture.** This one file is RECONSTRUCTED from the two rows reported in
