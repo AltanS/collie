@@ -59,6 +59,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   in a terminal then no longer prints `✓ update complete`, though the new version may already be
   installed, and a slow machine can come up a few seconds after the error. The phone's Update button
   keeps its own health check and its one rollback. Windows stays community-supported and best effort.
+- **A quiet tuios shell is named a shell, not an id.** Until a program sets a title, tuios fills the
+  window title with `Terminal` and the first eight characters of the window id, and Collie passed
+  that on as the terminal title, so every such pane read as "Terminal 6247db65" on the phone. The
+  placeholder is now dropped and the pane reads as a shell, as on tmux and zellij. Thanks
+  @Gaurav-Gosain (#328).
 
 ## [1.15.0] - 2026-10-01
 
