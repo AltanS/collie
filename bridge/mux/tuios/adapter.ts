@@ -46,7 +46,7 @@
 // ── THE DAEMON IS PINNED ────────────────────────────────────────────────────────────────────────
 //
 // `hello` names protocol 1, and the daemon must also send `workspace-renamed`, which a protocol-1
-// daemon older than tuios main `c24cbc80` does not. Either gap makes `reachable()` false and the
+// daemon older than tuios 0.8.3 (the first release with tuios main `c24cbc80`) does not. Either gap makes `reachable()` false and the
 // snapshot throw a sentence that says what to update.
 
 import { meaningfulTerminalTitle } from "../../activity.ts";
@@ -593,7 +593,7 @@ export class TuiosMux implements MuxAdapter {
         return `This tuios daemon does not speak protocol ${String(TUIOS_PROTOCOL)}, which this Collie needs. Update tuios or Collie so the two match. tuios said: ${err.message}`;
       }
       if (err instanceof TuiosError && err.code === "unknown_verb") {
-        return "This tuios daemon is too old for Collie. Update tuios, then restart its daemon with `tuios kill-server`.";
+        return "This tuios daemon is too old for Collie. Update tuios to 0.8.3 or newer, then restart its daemon with `tuios kill-server`.";
       }
       throw err;
     }
@@ -601,7 +601,7 @@ export class TuiosMux implements MuxAdapter {
     const types = await this.rpc.subscribeTypes();
     const problem = types.includes(TUIOS_REQUIRED_EVENT)
       ? null
-      : `This tuios daemon (${hello.version || "unknown version"}) does not send ${TUIOS_REQUIRED_EVENT} events, which Collie needs. Update tuios, then restart its daemon with \`tuios kill-server\`.`;
+      : `This tuios daemon (${hello.version || "unknown version"}) does not send ${TUIOS_REQUIRED_EVENT} events, which Collie needs. Update tuios to 0.8.3 or newer, then restart its daemon with \`tuios kill-server\`.`;
     this.checked = { instance: hello.instance, problem };
     return problem;
   }
