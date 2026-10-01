@@ -41,6 +41,9 @@ beforeAll(() => {
     { cwd: lab, stdout: "pipe", stderr: "pipe" },
   );
   if (built.exitCode !== 0) throw new Error(`compile failed: ${built.stderr.toString()}`);
+  // A new executable is scanned the first time it runs on Windows, and one real run failed on that
+  // first start. Take it here, outside a test; the answer does not matter.
+  Bun.spawnSync([collieBinary(candidate), "version"], { cwd: lab, stdout: "pipe", stderr: "pipe" });
 }, 120_000);
 
 afterAll(() => {
