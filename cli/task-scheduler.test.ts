@@ -12,7 +12,9 @@ import {
   type LaunchedBridge,
   parseSuperviseArgs,
   parseTaskRecord,
-  RELAUNCH_DELAY_MS,
+  HEALTHY_RUN_MS,
+  RELAUNCH_DELAY_MAX_MS,
+  RELAUNCH_DELAY_MIN_MS,
   type SuperviseDeps,
   taskRecordPath,
 } from "./task-scheduler.ts";
@@ -129,8 +131,11 @@ describe("_supervise, the loop", () => {
   const ARGS = [`COLLIE_PLUGIN_ROOT=${ROOT}`, `HERDR_PLUGIN_CONFIG_DIR=${CONFIG}`, "COLLIE_PORT=8787"];
   const RECORD = taskRecordPath(CONFIG, null, WIN);
 
-  /** A launcher whose bridges exit with `codes` in turn; `null` is a launch that failed outright. */
-  function launcher(codes: (number | null)[]) {
+  /**
+   * A launcher whose bridges exit with `codes` in turn; `null` is a launch that failed outright. A
+   * `[code, ms]` pair is a bridge that lived `ms` before it exited; a bare code lived no time at all.
+   */
+  function launcher(codes: (number | null | [number, number])[]) {
     const io = capture();
     const files = fakeFiles();
     const writes: string[] = [];
@@ -138,6 +143,7 @@ describe("_supervise, the loop", () => {
     const notes: string[] = [];
     const slept: number[] = [];
     let next = 9000;
+    let clock = 1_000_000;
     const deps: SuperviseDeps = {
       io,
       files: {
@@ -152,13 +158,18 @@ describe("_supervise, the loop", () => {
       env: { Path: "C:\\Windows", COLLIE_PORT: "1" },
       sleep(ms) {
         slept.push(ms);
+        clock += ms;
         return Promise.resolve();
       },
+      now: () => clock,
       launch(command, opts): LaunchedBridge | null {
-        const code = codes.shift();
-        if (code === undefined) throw new Error("the loop launched more bridges than the test scripted");
+        const step = codes.shift();
+        if (step === undefined) throw new Error("the loop launched more bridges than the test scripted");
         launched.push({ command, ...opts });
-        return code === null ? null : { pid: ++next, exited: Promise.resolve(code) };
+        if (step === null) return null;
+        const [code, lived] = Array.isArray(step) ? step : [step, 0];
+        clock += lived;
+        return { pid: ++next, exited: Promise.resolve(code) };
       },
       note: (_p, line) => void notes.push(line),
     };
@@ -169,7 +180,7 @@ describe("_supervise, the loop", () => {
     const l = launcher([1, null, 3, 0]);
     expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
     expect(l.launched).toHaveLength(4);
-    expect(l.slept).toEqual([RELAUNCH_DELAY_MS, RELAUNCH_DELAY_MS, RELAUNCH_DELAY_MS]);
+    expect(l.slept).toEqual([5_000, 10_000, 20_000]);
     // The record follows every launch: bridge 0 between two, the live pid while one runs.
     expect(l.writes).toEqual([
       formatTaskRecord(7100, 0),
@@ -185,7 +196,21 @@ describe("_supervise, the loop", () => {
     // A bridge that chose to stop leaves nothing to own, so no record either.
     expect(l.files.exists(RECORD)).toBe(false);
     expect(l.notes.join("\n")).toContain("the bridge (pid 9001) exited 1; relaunching in 5s");
+    expect(l.notes.join("\n")).toContain("the bridge (pid 9002) exited 3; relaunching in 20s");
     expect(l.notes.join("\n")).toContain("could not start");
+  });
+
+  test("backs off from 5 s, doubling to a one-minute cap, and starts over after a bridge that lived", async () => {
+    expect([RELAUNCH_DELAY_MIN_MS, RELAUNCH_DELAY_MAX_MS, HEALTHY_RUN_MS]).toEqual([5_000, 60_000, 60_000]);
+    const crashLoop = launcher([1, 1, 1, 1, 1, 1, 1, [1, HEALTHY_RUN_MS], 1, [1, HEALTHY_RUN_MS - 1], 0]);
+    expect(await cmdSupervise(crashLoop.deps, ARGS)).toBe(EXIT.OK);
+    expect(crashLoop.slept).toEqual([
+      5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000,
+      // A bridge that lived a minute: its failure is a fresh one.
+      5_000, 10_000,
+      // One that lived just under a minute is still part of the loop.
+      20_000,
+    ]);
   });
 
   test("runs the same bridge every supervisor runs, from the checkout, with its env on top", async () => {

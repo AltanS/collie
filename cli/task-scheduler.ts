@@ -174,8 +174,16 @@ export function isTaskBridge(commandLine: string, root: string, instance: string
 
 // ── The launcher: `collie _supervise` ────────────────────────────────────────
 
-/** The pause before a relaunch: systemd's `RestartSec=5`, launchd's `ThrottleInterval`, the script's 5 s. */
-export const RELAUNCH_DELAY_MS = 5_000;
+/**
+ * The pause before a relaunch starts at 5 s (systemd's `RestartSec=5`, launchd's `ThrottleInterval`,
+ * the script's fixed 5 s) and doubles on every failure in a row, up to a minute. A bridge that dies at
+ * once, say on a port another process holds, then costs a log line a minute instead of twelve. A
+ * bridge that ran for {@link HEALTHY_RUN_MS} before it failed starts the ladder again at 5 s.
+ */
+export const RELAUNCH_DELAY_MIN_MS = 5_000;
+export const RELAUNCH_DELAY_MAX_MS = 60_000;
+/** How long a bridge must have lived for its failure to count as a fresh one, not part of a crash loop. */
+export const HEALTHY_RUN_MS = 60_000;
 
 /** One bridge the launcher started. */
 export interface LaunchedBridge {
@@ -192,6 +200,8 @@ export interface SuperviseDeps {
   readonly pid: number;
   readonly env: Readonly<Record<string, string>>;
   sleep(ms: number): Promise<void>;
+  /** Milliseconds since the epoch: how long a bridge lived decides the next pause. */
+  now(): number;
   /** Start the bridge, both streams appended to `logPath`. `null` when it never started. */
   launch(command: readonly string[], opts: { cwd: string; env: Record<string, string>; logPath: string }): LaunchedBridge | null;
   /** Append one line of the launcher's own to the log the operator reads with `collie logs`. */
@@ -227,7 +237,7 @@ export function parseSuperviseArgs(args: readonly string[]): SuperviseArgs | nul
 
 /**
  * The launcher. Runs the bridge, records both pids, and relaunches a bridge that exits non-zero after
- * {@link RELAUNCH_DELAY_MS}; a bridge that exits 0 chose to stop, and the launcher stops with it
+ * a pause that backs off ({@link RELAUNCH_DELAY_MIN_MS}); a bridge that exits 0 chose to stop, and the launcher stops with it
  * (systemd's `Restart=on-failure`). `restart` relies on this loop: it kills the bridge ALONE, because
  * the phone's Update button runs `collie update` as a detached child of the bridge, and anything that
  * took the launcher's whole tree down would end that update half way through its own restart (#213).
@@ -248,12 +258,18 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   const command = [collieBinary(root, deps.host), "_exec-bridge", ...(instance === null ? [] : ["--instance", instance])];
   const env = { ...deps.env, ...parsed.env };
 
+  let delay = RELAUNCH_DELAY_MIN_MS;
+  const pause = async (): Promise<void> => {
+    await deps.sleep(delay);
+    delay = Math.min(delay * 2, RELAUNCH_DELAY_MAX_MS);
+  };
   for (;;) {
     deps.files.write(record, formatTaskRecord(deps.pid, 0));
+    const started = deps.now();
     const bridge = deps.launch(command, { cwd: root, env, logPath });
     if (bridge === null) {
-      deps.note(logPath, `could not start ${command[0]}; trying again in ${RELAUNCH_DELAY_MS / 1000}s`);
-      await deps.sleep(RELAUNCH_DELAY_MS);
+      deps.note(logPath, `could not start ${command[0]}; trying again in ${delay / 1000}s`);
+      await pause();
       continue;
     }
     deps.files.write(record, formatTaskRecord(deps.pid, bridge.pid));
@@ -263,9 +279,10 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
       deps.files.remove(record);
       return EXIT.OK;
     }
+    if (deps.now() - started >= HEALTHY_RUN_MS) delay = RELAUNCH_DELAY_MIN_MS;
     deps.files.write(record, formatTaskRecord(deps.pid, 0));
-    deps.note(logPath, `the bridge (pid ${bridge.pid}) exited ${code}; relaunching in ${RELAUNCH_DELAY_MS / 1000}s`);
-    await deps.sleep(RELAUNCH_DELAY_MS);
+    deps.note(logPath, `the bridge (pid ${bridge.pid}) exited ${code}; relaunching in ${delay / 1000}s`);
+    await pause();
   }
 }
 
@@ -280,6 +297,7 @@ export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove">
     pid: process.pid,
     env,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
     launch(command, opts) {
       const [program, ...rest] = command;
       if (program === undefined) return null;

@@ -582,6 +582,15 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.io.stdout.join("\n")).toContain("note: Collie publishes no front door here");
     });
 
+    test("no secret from the environment reaches the task file", async () => {
+      const h = windows({ env: { COLLIE_VAPID_PRIVATE: "s3cret-vapid", COLLIE_TRUSTED_USER: "pat@example.com" } });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      const xml = h.files.read(TASK_FILE) ?? "";
+      expect(xml).not.toContain("s3cret-vapid");
+      expect(xml).not.toContain("COLLIE_VAPID_PRIVATE");
+      expect(xml).not.toContain("COLLIE_TRUSTED_USER");
+    });
+
     test("without conhost the task runs the launcher straight", async () => {
       const h = windows({ absent: ["conhost"] });
       expect(await cmdStart(h.deps)).toBe(EXIT.OK);

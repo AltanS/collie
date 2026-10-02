@@ -378,6 +378,17 @@ describe("the Task Scheduler task (Windows)", () => {
     expect(bridgeEnvironment(spec).HERDR_PLUGIN_CONFIG_DIR).toBe(`${odd}\\cfg dir\\`);
   });
 
+  // The task's command line is visible to every process on the machine (Win32_Process) and sits in
+  // a readable task file. Secrets reach the bridge from the instance `.env`, which `_exec-bridge`
+  // reads itself at launch: only paths, the port, the instance and the Host allowlist travel here.
+  test("the launcher's command line carries no secret, only the non-secret KEY=value words", () => {
+    const spec = { ...WIN_SPEC, instance: "v1", tailscaleHosts: "desk.ts.net" };
+    const keys = superviseArgs(spec).slice(3).map((w) => w.slice(0, w.indexOf("=")));
+    expect(keys.toSorted()).toEqual(
+      ["COLLIE_INSTANCE", "COLLIE_PLUGIN_ROOT", "COLLIE_PORT", "COLLIE_TAILSCALE_HOSTS", "HERDR_PLUGIN_CONFIG_DIR", "HERDR_SOCKET_PATH"],
+    );
+  });
+
   test("parseWindowsArgs reads back every word windowsArg writes", () => {
     const words = ["plain", "", "a b", 'say "hi"', "C:\\with space\\", "a\\\\b", 'x\\"y z', "\\\\.\\pipe\\herdr"];
     expect(parseWindowsArgs(words.map(windowsArg).join(" "))).toEqual(words);
