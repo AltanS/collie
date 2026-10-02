@@ -4,6 +4,9 @@
 - **Amended in scope by:** [ADR 0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md):
   the Ask tool's one-question single-select dialog is now lifted as a pointed list, so it draws no
   Escape card. The multi-select dialog, the tool-approval dialog and everything else below stand.
+- **Amended in scope by:** [ADR 0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md):
+  the `bash` and `write` tool-approval dialog in its two captured presets is now lifted as a card, so
+  it draws no Escape card. Every other approval and everything else below stand.
 - **Date:** 2026-10-02
 - **Shipped in:** pending
 - **Amends:** [ADR 0053](./0053-an-unread-dialog-still-has-a-way-out.md) and

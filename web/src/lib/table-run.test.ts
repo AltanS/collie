@@ -289,19 +289,26 @@ describe("tableRuns — the whole pane corpus", () => {
       // grows up through the whole box.
       "claude--workflow-view.txt 8..59",
       // omp's welcome splash: the logo on the left, Tips / LSP servers / Recent sessions on the right.
-      // It sits in the scrollback of most omp captures, which is why it appears 22 times and always
+      // It sits in the scrollback of most omp captures, which is why it appears 25 times and always
       // at the same rows. The menus and dialogs BELOW it are not claimed, and that is the point: the
       // run stops where the box does.
       //
-      // Absent from this list since .adr/0076: every omp modal that prints its own way out (the three
-      // approval screens, the `/model` picker, the Ask tool's multi-select screens) now gets the
-      // unread-dialog card, which mirrors the whole pane in its own horizontally scrolling region
-      // instead of a raw block, so no raw block carries a table run there. That includes the `/model` box ADR 0072 once
+      // Absent from this list since .adr/0076: every omp modal that prints its own way out and that no
+      // grammar lifts (the `/model` picker, the Ask tool's multi-select screens) gets the unread-dialog
+      // card, which mirrors the whole pane in its own horizontally scrolling region instead of a raw
+      // block, so no raw block carries a table run there. That includes the `/model` box ADR 0072 once
       // panned, which scrolls as part of the card's mirror, as Claude's generic-menu card always has.
       //
       // Back on this list since .adr/0077: the Ask tool's one-question single-select dialog is a
       // `prompt-select` card now, and the transcript above it is an ordinary raw block again, splash
       // included. The note editor `n` opens is an input, not a modal, so it never had the card.
+      //
+      // Back on this list since .adr/0078, for the same reason: the three omp 18.1.17 tool-approval
+      // screens are a `prompt-select` card now. The five 18.4.10 approval captures are not here because
+      // their splash has scrolled out of the buffer.
+      "omp--approval-bash.txt 2..20",
+      "omp--approval-write--deny.txt 2..20",
+      "omp--approval-write.txt 2..20",
       "omp--done--tool-result.txt 2..20",
       "omp--done.txt 2..20",
       "omp--draft-ghost-suggestion-busy.txt 2..20",

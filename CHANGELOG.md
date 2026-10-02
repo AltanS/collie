@@ -46,6 +46,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   own)` opens omp's answer box, and the phone's composer types into it. A question where you pick
   several answers, several questions in one call, options with descriptions, or a long list still
   show the terminal text with an Escape button.
+- **Oh My Pi's `bash` and `write` approvals are buttons on the phone.** The card names the tool and
+  shows the whole command, or the path and all of the file's content, on the Approve button. Approve,
+  Deny and Cancel each take one tap, and Deny can never land on Approve, even if the pointer moves at
+  the desk. Approvals for other tools, a third choice, a countdown, text omp itself cut short, a file
+  of more than thirty rows, hidden or direction-changing characters, or a screen that is not omp
+  18.4.10 or 18.1.17 still show the terminal text with an Escape button, which denies.
 
 ### Changed
 

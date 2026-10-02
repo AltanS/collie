@@ -1,101 +1,167 @@
-# omp tool approval: assessment, not a recipe
+# omp tool approval: keystroke recipe
 
-This file assesses whether omp's tool-approval dialog can be lifted safely. Nothing here is
-implemented. The dialog stays raw, with the unread-dialog card's `Escape` over it
-([ADR 0076](../../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)).
-A wrong tap on this screen approves a shell command, so every claim below names its evidence.
+The choreography notes file the Tier-2 bar asks for (`HARNESS_CONTRIBUTING.md`), for the third omp
+screen the adapter lifts ([ADR 0078](../../../../../.adr/0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md)).
+Grammar: `approval.ts`. A wrong tap on this screen runs a shell command or writes a file, so every
+claim below names its evidence.
 
-Corpus: `omp--approval-bash.txt`, `omp--approval-write.txt`, `omp--approval-write--deny.txt`
-(omp 18.1.17, 2026-09-10, Nerd Font symbol preset). Source: `tools/approval.ts`,
-`extensibility/extensions/wrapper.ts` and pi-tui's `overlays/hook-selector.ts`, read in the omp
-18.4.10 packages, which is newer than the captures.
+Corpus: `omp--approval-bash.txt`, `omp--approval-write.txt`, `omp--approval-write--deny.txt` (omp
+18.1.17, 2026-09-10, Nerd Font symbol preset) and `omp--v18-4-approval-*.txt` (omp 18.4.10,
+2026-10-02, the default `unicode` preset: `bash` and `write` in both selection states, and a
+fourteen-row `write`). Source, read in the published omp 18.4.10 packages: `tools/approval.ts`
+(`formatApprovalPrompt`, `truncateForPrompt`), `extensibility/extensions/wrapper.ts` (the call),
+`tools/bash.ts` and `tools/write.ts` (`formatApprovalDetails`), and pi-tui's
+`overlays/hook-selector.ts` (the box, the keys).
+
+This file replaces the assessment that stood here before the lift. Two of its statements were
+source reads the 18.4.10 captures now settle: the `unicode` pointer is `❯`, and the 18.4.10 footer
+prints glyph keycaps, `↑/↓ navigate  ⏎ select  ⎋ cancel`.
 
 ## What the screen prints
 
+omp 18.4.10, a `write` call (`omp--v18-4-approval-write.txt`, 108 columns):
+
 ```
-╭─ Allow tool: write ─────────────────────────────╮
-│                                                 │
-│ Path: /tmp/collie-omp-sandbox/scratch.txt       │   the body: Reason, Command, Path, Content …
-│ Content:                                        │
-│ hello                                           │
-│                                                 │
-│  U+F054 Approve                                 │   the pointed row
-│    Deny                                         │
-│                                                 │
-│ up/down navigate  enter select  esc cancel      │   segments split by two spaces
-│                                                 │
-╰─────────────────────────────────────────────────╯
- A 0h 0% w 00% …                                    the usage strip under the box
+╭─ Allow tool: write ──────────────────────────────╮
+│                                                  │
+│ Path: /tmp/omp-sandbox-approval/note.txt         │   the body: what is approved
+│ Content:                                         │
+│ hello approval                                   │
+│                                                  │
+│  ❯ Approve                                       │   the pointed row
+│    Deny                                          │
+│                                                  │
+│ ↑/↓ navigate  ⏎ select  ⎋ cancel                 │   segments split by two spaces
+│                                                  │
+╰──────────────────────────────────────────────────╯
 ```
 
-## Is the selected row readable? Yes, by a glyph, not only by colour
+The title is `formatApprovalPrompt`'s first line, `Allow tool: <tool name>`. Each later line of the
+prompt is one body row, word-wrapped to the box: an optional `Reason: …` (a config pattern asked for
+the approval), then the tool's details. `bash` prints `Command: <command>`. `write` prints
+`Path: <path>`, a row reading `Content:` and the content. The box grows with the body
+(`omp--v18-4-approval-write-long.txt`, fourteen content rows). omp shortens each field past 2000
+characters itself and marks the cut `[…Nch elided…]`.
 
-The brief for this file said the rows carry no pointer glyph. **The captures say otherwise.** Read
-through the real `parseAnsi` → `splitLines` pipeline, the pointed row starts with U+F054
-(nf-fa-chevron_right), the Nerd Font preset's `nav.cursor`, the same pointer the Ask dialog prints in
-that preset (`omp--select-menu-other.txt`). It is a private-use glyph, so it is invisible in most
-editors and terminals without a Nerd Font, which is likely why it looked absent.
+The two captured presets:
 
-| Capture | Row `Approve` | Row `Deny` |
+| Preset | Pointer | Footer | Captures |
+|---|---|---|---|
+| `unicode` (omp 18.4.10, the default) | `❯` | `↑/↓ navigate  ⏎ select  ⎋ cancel` | `omp--v18-4-approval-*.txt` |
+| `nerd` (omp 18.1.17) | U+F054 | `up/down navigate  enter select  esc cancel` | `omp--approval-*.txt` |
+
+The 18.1.17 captures also carry a one-row usage strip under the bottom border, from the operator's
+statusline. The 18.4.10 captures carry none.
+
+## Read the glyph, never the colour
+
+The pointed row carries the preset's `nav.cursor` and one space before its label; the other row
+carries three spaces. Both labels start at the same column. The pointed row also carries a theme
+band, and the two capture sets show why the band is never read:
+
+| Capture | Pointed row | Other row |
 |---|---|---|
-| `omp--approval-bash.txt` | `│  U+F054 Approve`, bg `rgb(60,56,54)`, label fg `rgb(254,128,25)` | `│    Deny`, no style |
-| `omp--approval-write.txt` | the same | the same |
-| `omp--approval-write--deny.txt` | `│    Approve`, no style | `│  U+F054 Deny`, bg `rgb(60,56,54)`, label fg `rgb(254,128,25)` |
+| `omp--approval-bash.txt` (18.1.17) | `│  U+F054 Approve`, bg `rgb(60,56,54)`, fg `rgb(254,128,25)` | `│    Deny`, no style |
+| `omp--v18-4-approval-bash.txt` (18.4.10) | `│  ❯ Approve`, bg `rgb(0,130,179)`, fg `rgb(0,180,255)` | `│    Deny`, no style |
 
-Three facts follow, consistent across all three captures:
+The band is the theme's `selectedBg`, painted by `paintSelectedRow` in `hook-selector.ts`, and the
+label takes its `accent`. They differ between the two themes above, and a light theme, a 256- or
+16-colour terminal or `NO_COLOR` moves them again. The glyph moves with the selection and with
+nothing else: it is on `Approve` in four captures, on `Deny` in the other four, and on no other row.
 
-1. **The glyph moves with the selection.** It sits on `Approve` in two captures and on `Deny` in the
-   third, and on no other row.
-2. **A background band moves with it.** The pointed row carries `bg rgb(60,56,54)` across its whole
-   width: the theme's `selectedBg`, painted by `paintSelectedRow` in `hook-selector.ts`. The label
-   takes the theme's `accent` foreground.
-3. **The text alone tells the rows apart.** Pointed: a pointer glyph and one space before the label.
-   Not pointed: two spaces. Both rows begin at the same column.
+## What a tap sends
 
-**Read the glyph, never the colour.** The band and the accent are theme colours. Another theme, a
-light theme, or a terminal in 256 or 16 colours changes both values, and `NO_COLOR` may drop them.
-The glyph is the preset's `nav.cursor`, which this adapter already reads per preset in `ask.ts`:
-`❯` in `unicode`, U+F054 in `nerd`, and an uncaptured glyph in `ascii`. A grammar could use the band
-only as a second check that must agree with the glyph, and it must decline when they disagree.
+| Tap | Pointer on Approve | Pointer on Deny |
+|---|---|---|
+| Approve | `Enter` | `Up`, `Enter` |
+| Deny | `Down`, `Enter` | `Down`, `Enter` |
+| the card's last row, `Cancel` | `Escape` | `Escape` |
 
-## What a safe grammar would need
+One batch per tap. No digit anywhere: the screen printed none. The footer prints the arrows and
+Enter, so every key is one the screen named.
 
-1. **Every row's role from the screen.** The options are whatever omp passes to `ui.select`. Today
-   the tool wrapper passes exactly `Approve`, `Deny`. Config writes pass `Always for this session`,
-   `Allow once`, `Deny`, in that order (`interactive-mode.ts`), so there the default row grants a
-   standing permission. A grammar must list the label sets it knows and decline any other.
-2. **The pointer in exactly one row, in the preset that the footer's keycaps also name.** The text
-   footer above is from 18.1.17. The 18.4.10 hook selector builds it from `formatKeyHint`, so it may
-   print glyph keycaps now. That is uncaptured.
-3. **The default is Approve.** The pointer starts on the first row (`initialIndex ?? 0` in
-   `hook-selector.ts`; the `bash` and `write` captures show it there), so a bare `Enter`
-   approves. ADR
-   0055 already requires the card to show which row a bare commit key takes. On this screen the card
-   should also never offer a bare `Enter`. Each button should carry its own walk, and the race guard
-   must bind the pointer column.
-4. **`Escape` means deny.** `select` resolves to `undefined` on cancel, the wrapper reads anything but
-   `Approve` as a denial, and the call fails with `Tool call denied by user`. The card's Escape is
-   therefore safe today, and a lift keeps it.
-5. **The subject in the signature.** Two approvals for the same tool differ only in their body, the
-   command or the path. The signature must carry the whole box verbatim, title through bottom
-   border, as `ask.ts` and `resume.ts` do. The usage strip under the box ticks and must stay out.
-6. **A long body.** A long command wraps, and `Content:` can run for many rows. The region may then
-   pass the bridge's 32768-character bound, so the grammar must decline there, as the other two do.
-7. **A timeout.** Config-write approvals wait 10 seconds (`CFG_APPROVAL_TIMEOUT_MS`), then fail as
-   unanswered. A tap that arrives late meets a different screen, and the guard refuses it. That is
-   safe, but the card should not suggest more time than exists.
+What each key does, from omp 18.4.10's `HookSelectorComponent.handleInput`:
 
-## What to capture next
+- `Up` and `Down` move the pointer through `MenuSelection.move(delta, false)`, which clamps at both
+  ends and never wraps. So `Down` on `Deny` leaves the pointer on `Deny`. That is why the Deny button
+  always sends `Down` first: whatever row the pointer is on when the keys land, the tap ends on
+  `Deny`. Every race between the guard's read and the keys therefore resolves toward a denial.
+- `Enter` calls the select callback with the pointed label. The wrapper approves only on the exact
+  string `Approve` and throws `Tool call denied by user: <tool>` on anything else.
+- `Escape` cancels. `select` resolves to `undefined`, which the wrapper treats as a denial.
+- A digit jumps only to a label that starts with `N. `, and neither label does. Typing searches only
+  when the list overflows its row budget, which two rows never do.
 
-All on omp 18.4.10, in a sandbox pane, nothing approved that matters:
+## What the card shows
 
-1. A `bash` approval in the default `unicode` preset, pointer on `Approve`, then the same screen after
-   one `Down`. This shows the 18.4 pointer and the 18.4 footer keycaps.
-2. The same pair in the `nerd` preset, to confirm the 18.1.17 shape still holds.
-3. A `write` approval whose `Content:` runs past the box height, to show how a long body scrolls or
-   clips.
-4. A config-write approval with three rows (`Always for this session`, `Allow once`, `Deny`).
-5. One capture under a light theme, to document that the band colour moves while the glyph does not.
+- **Caption:** the title, `Allow tool: bash`, so the tool is named.
+- **Approve's description:** every body row, joined by ` ↵ `. A row break is shown, never hidden, so
+  `echo hi` and `rm -rf ~/x` on two rows can never read as one harmless `echo`. A soft wrap shows as a
+  break too, which overstates and is the safe direction.
+- **The accessible name** (`question`): the title and the same rows, one per line.
+- **The raw mirror above the card:** the box's title and body, verbatim. The card starts at the
+  `Approve` row, as Claude's and Codex's permission cards start at their first option.
 
-Use `--approval-mode always-ask` or a config `approval: prompt` pattern, as the 18.1.17 captures did.
-Live-probe `Down`, `Up`, `Enter` on `Deny` and `Escape` on that screen before a recipe is written.
+There is no elision. Every row of a `bash` body, a `Reason:` row, a wrapped `Path:` and a `write`
+body's content is on the Approve button. A write with more than thirty content rows declines, and so
+does a field omp itself shortened (it marks any field past 2000 characters), so the card never shows
+less than the dialog does. A first draft cut the content to six rows and `… +N`; it was dropped
+because the signature would bind rows nobody read and a content row `… +4` would forge the marker.
+
+## What the grammar requires, all of it
+
+1. The bottom border is the last non-blank row. Under the 18.1.17 preset alone it may instead be the
+   row above exactly one non-frame row (the usage strip, not part of the signature because it
+   ticks). Under 18.4.10 any row under the border declines: it could be a shell prompt under a box an
+   exited omp left behind, and `Up`, `Enter` would run the last command.
+2. Above the border: a blank box row, the footer, a blank box row, exactly two option rows, a blank
+   box row.
+3. The footer is exactly one preset's text from the table above, character for character.
+4. The option rows read `Approve` then `Deny`, and exactly one carries that same preset's pointer.
+5. Above the options, a body of rows that open with the box's left side, its first row not blank, a
+   blank box row, and the title `Allow tool: <name>` with nothing after the name.
+6. The tool is `bash` or `write`, the two whose body is captured, and the body has the captured
+   shape: an optional `Reason:` row, then `Command:` (bash) or `Path:` and a later `Content:` row
+   (write).
+7. No `[…Nch elided…]` mark anywhere in the body, even split across a wrap, no
+   `Provider safety checks:` row, no control, zero-width or bidi character, no row that ends in `…`
+   without a right border (a clipped row), and at most thirty content rows.
+8. A signature no longer than the bridge accepts as a bound region (32000 characters here).
+
+Anything missing returns null, and the screen stays raw with the unread-dialog card's Escape over it,
+which omp also reads as a denial.
+
+## Declined on purpose
+
+- **A third option row.** omp's config-write approval prints `Always for this session`, `Allow
+  once`, `Deny`, starts its pointer on the second row and runs a ten-second countdown
+  (`#promptCfgChange` in `interactive-mode.ts`). Its title is not `Allow tool:` either. Never
+  captured.
+- **A countdown.** `HookSelectorComponent` appends `(Ns)` to the title while a timeout runs, and on
+  expiry it selects the pointed row, which is `Approve` by default. The tool wrapper passes no
+  timeout in 18.4.10. A title with a countdown declines, so the card never races a clock.
+- **Another tool.** `edit` (`File:`), `eval` (`Language:`, `Code:`), MCP tools (`Origin:`), `task`,
+  `lsp` and the rest print other bodies. Each needs its own capture.
+- **The `ascii` preset** (pointer `>`), the `nerd` preset in 18.4 (private-use keycaps in the footer,
+  as the Ask captures of 18.4.4 show), and `❯` over the text keycaps. None is captured.
+- **A shortened field or a safety-check section**, for the reasons above.
+
+## Not proven by the captures
+
+- **Probed live, 2026-10-02 (omp 18.4.10, Herdr, `tools.approvalMode: always-ask`, paired headless
+  browser).** Approve with the pointer on `Approve` ran `echo hello-approval-one`. Deny with the
+  pointer on `Deny` (Down clamps) and Deny with the pointer on `Approve` each denied, and the file
+  stayed absent. Approve with the pointer moved to `Deny` at the desk wrote the file (`Up`, `Enter`).
+  A ten-line write showed six content rows and `… +4` on the card (the cut was dropped afterwards, so
+  the card now shows all rows). Cancel denied, and the file stayed absent. A desk move followed at once by a Deny tap ended in a denial. That does not prove the guard
+  refused the tap, because a tap that landed would also deny: the refusal is pinned by the bridge's
+  `expected_prompt` tests and by `approval.test.ts`. Not probed: `Down` on `Deny` and `Up` on
+  `Approve` read back on screen (the clamp is read from source, and the Deny-on-Deny tap above shows
+  it), the 18.1.17 `nerd` preset, and a tool other than `bash` and `write`.
+- **A body taller than the pane.** omp gives an overlay at most part of the terminal. Whether a very
+  tall body scrolls, clips its top (then the title is gone and the grammar declines) or clips its
+  middle is not captured. A middle clip would hide rows from the terminal too.
+- **A process that exits under the dialog.** If omp exits with the box still painted and a shell
+  prompt prints under it, the strip rule could read the prompt as the usage strip. Herdr stops
+  reporting the agent about half a second after it exits (ADR 0053's addendum), after which no omp
+  grammar runs.

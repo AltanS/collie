@@ -11,16 +11,17 @@ import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
 import { decorateOmpDisplay } from "./omp/display";
 
-// The omp adapter's CI gate. This adapter is Tier 1 everywhere EXCEPT TWO SCREENS: it lifts the
-// `/resume` session picker (omp/resume.ts, .adr/0076) and the `ask` tool's one-question single-select
-// dialog (omp/ask.ts, .adr/0077), and nothing else. So `ownFixtures` is exactly the resume captures that
-// list at least one session plus the single-select Ask captures, and every other capture is a NEUTRAL
-// fixture the adapter must leave raw. That is still not a weaker gate than Claude's: the neutral cohort
-// is asserted over the entire rest of the corpus rather than over a chosen subset, so no interactive
-// block kind is ever constructed from a `/model`, `/settings`, `/tree`, Ask multi-select or
-// tool-approval screen; the only key a tap can send there is the unread-dialog card's declared Escape,
-// which this adapter does not build (unread-dialog.test.ts pins it). See harness/omp/index.ts for why
-// each of those is a later PR.
+// The omp adapter's CI gate. This adapter is Tier 1 everywhere EXCEPT THREE SCREENS: it lifts the
+// `/resume` session picker (omp/resume.ts, .adr/0076), the `ask` tool's one-question single-select
+// dialog (omp/ask.ts, .adr/0077) and the `bash` and `write` tool-approval dialog (omp/approval.ts,
+// .adr/0078), and nothing else. So `ownFixtures` is exactly the resume captures that list at least one
+// session, the single-select Ask captures and the approval captures, and every other capture is a
+// NEUTRAL fixture the adapter must leave raw. That is still not a weaker gate than Claude's: the neutral
+// cohort is asserted over the entire rest of the corpus rather than over a chosen subset, so no
+// interactive block kind is ever constructed from a `/model`, `/settings`, `/tree` or Ask multi-select
+// screen; the only key a tap can send there is the unread-dialog card's declared Escape, which this
+// adapter does not build (unread-dialog.test.ts pins it). See harness/omp/index.ts for why each of
+// those is a later PR.
 //
 // The FOREIGN cohort is every claude, codex and grok capture, which pins the cross-adapter fail-closed
 // leg. The other directions of that loop live in conformance.test.ts (Claude's leg takes omp--* +
@@ -54,9 +55,11 @@ const allOmpModalFixtures = allOmpFixtures.filter(
 );
 
 // The screens this adapter lifts. The `/resume` captures that list at least one session, seven of the
-// eight (`omp--v18-4-resume-nomatch.txt` has no rows and stays raw, below), and the Ask tool's
+// eight (`omp--v18-4-resume-nomatch.txt` has no rows and stays raw, below), the Ask tool's
 // one-question single-select dialog in all three keycap dialects: text (17.2.12), Nerd Font (18.4.4)
-// and glyph (18.4.10).
+// and glyph (18.4.10), and the tool-approval dialog in both captured presets: `nerd` with text keycaps
+// (18.1.17, `bash` and `write`, the latter in both selection states) and `unicode` with glyph keycaps
+// (18.4.10, `bash` and `write` in both selection states, and a fourteen-row `write`).
 const LIFTED = new Set([
   "omp--menu-resume-moved.txt",
   "omp--menu-resume.txt",
@@ -71,14 +74,21 @@ const LIFTED = new Set([
   "omp--select-menu.txt",
   "omp--v18-4-ask-single-moved.txt",
   "omp--v18-4-ask-single.txt",
+  "omp--approval-bash.txt",
+  "omp--approval-write--deny.txt",
+  "omp--approval-write.txt",
+  "omp--v18-4-approval-bash-moved.txt",
+  "omp--v18-4-approval-bash.txt",
+  "omp--v18-4-approval-write-long.txt",
+  "omp--v18-4-approval-write-moved.txt",
+  "omp--v18-4-approval-write.txt",
 ]);
 
 // Every omp screen this adapter DECLINES, which is every screen IN THIS CORPUS bar the lifted resume
-// pickers and Ask single-selects, not every screen omp can draw. These are NOT "neutral output" in the
-// plain sense: seventeen of them are live modals with the keyboard, and the conformance assertion (raw-only) is exactly the
-// promise worth pinning, because it is a promise about a screen where being wrong would type a
-// keystroke. The tool-approval dialog, once this corpus's one known gap, is three of those seventeen.
-// One reason per line.
+// pickers, Ask single-selects and tool approvals, not every screen omp can draw. These are NOT "neutral
+// output" in the plain sense: fourteen of them are live modals with the keyboard, and the conformance
+// assertion (raw-only) is exactly the promise worth pinning, because it is a promise about a screen
+// where being wrong would type a keystroke. One reason per line.
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -135,15 +145,6 @@ const DECLINED = new Set([
   "omp--menu-settings.txt",
   "omp--v18-4-menu-model.txt",
   "omp--v18-4-menu-settings.txt",
-  // — The tool-approval dialog: a `bash` screen and a `write` screen, the `write` one in both
-  //   selection states. Captured 2026-09-10 against omp v18.1.17, the screen omp/index.ts named as
-  //   the corpus's one gap. It is a box at column 0 like every modal above, so `locateComposer`
-  //   refuses the composer under it and the adapter stays raw — which these fixtures now MEASURE
-  //   rather than infer. Fail-closed is still the right answer regardless: `Approve`/`Deny` is the
-  //   screen where a wrong lift would run a command.
-  "omp--approval-bash.txt",
-  "omp--approval-write--deny.txt",
-  "omp--approval-write.txt",
   // — The `/tree` picker, captured 2026-09-13 against omp v18.1.19 to vouch for the harness bar's
   //   Tree button. Another box at column 0, and declined for the same reason as the pickers above:
   //   its hint row names `Alt+↑/↓`, `PgUp/PgDn`, `Shift+Enter` and `Ctrl+O`, compound tokens
@@ -156,10 +157,10 @@ const DECLINED = new Set([
   "omp--v18-4-resume-nomatch.txt",
 ]);
 
-// The own cohort is the thirteen lifted captures, so every conformance leg that needs one runs on them
+// The own cohort is the twenty-one lifted captures, so every conformance leg that needs one runs on them
 // for real: each lifts, none lifts once output scrolls below it, every key is send_keys-valid, and each
 // model signs itself and fails the committing check when a row of it changes. The neutral cohort still
-// carries the leg that matters most here: raw-only on the other 42 omp captures and on every foreign
+// carries the leg that matters most here: raw-only on the other 39 omp captures and on every foreign
 // harness capture.
 const ownFixtures = allOmpFixtures.filter((f) => LIFTED.has(f));
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
@@ -209,6 +210,11 @@ describe("the omp corpus", () => {
     "omp--slash-palette--filtered.txt",
     "omp--slash-palette.txt",
     "omp--tree.txt",
+    "omp--v18-4-approval-bash-moved.txt",
+    "omp--v18-4-approval-bash.txt",
+    "omp--v18-4-approval-write-long.txt",
+    "omp--v18-4-approval-write-moved.txt",
+    "omp--v18-4-approval-write.txt",
     "omp--v18-4-ask-multi-checked.txt",
     "omp--v18-4-ask-multi.txt",
     "omp--v18-4-ask-note-editor.txt",
@@ -232,11 +238,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 55 captures this adapter was developed against", () => {
+  it("is exactly the 60 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("lifts the thirteen `/resume` and Ask single-select captures and declines the other forty-two", () => {
+  it("lifts the twenty-one `/resume`, Ask single-select and approval captures and declines the other thirty-nine", () => {
     expect(ownFixtures).toEqual([...LIFTED].toSorted());
     expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
     expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);
@@ -245,11 +251,11 @@ describe("the omp corpus", () => {
 
 // The structural version of the same promise, and the one that survives a refactor of the cohort
 // lists above: walk the adapter's OWN output and assert that the only interactive block it can build is
-// the `prompt-select` of the `/resume` picker or the Ask single-select, on the lifted captures and
-// nowhere else. `describeAdapterConformance` checks this per fixture through its own kind-agnostic
-// filter; asserting the kinds directly here is what makes the claim in omp/index.ts's header, "no
-// interactive kind but those two lists", a test rather than a comment.
-describe("ompBuildBlocks emits nothing but raw, bar the /resume picker and the Ask single-select", () => {
+// the `prompt-select` of the `/resume` picker, the Ask single-select or the tool approval, on the lifted
+// captures and nowhere else. `describeAdapterConformance` checks this per fixture through its own
+// kind-agnostic filter; asserting the kinds directly here is what makes the claim in omp/index.ts's
+// header, "no interactive kind but those three lists", a test rather than a comment.
+describe("ompBuildBlocks emits nothing but raw, bar the /resume picker, the Ask single-select and the approval", () => {
   it.each(allOmpFixtures.filter((f) => !LIFTED.has(f)))("%s builds only raw blocks", (name) => {
     const blocks = ompAdapter.buildBlocks(fixtureLines(name));
     expect(blocks.length).toBeGreaterThan(0);
@@ -270,7 +276,7 @@ describe("ompBuildBlocks emits nothing but raw, bar the /resume picker and the A
     expect(Object.keys(ompAdapter).toSorted()).toEqual(
       [
         "agent", // the registry key
-        "buildBlocks", // raw-only except the /resume picker and the Ask single-select, asserted above
+        "buildBlocks", // raw-only except /resume, the Ask single-select and the approval, asserted above
         "cancelKey", // the unread-dialog card's one key, a declaration (.adr/0053, .adr/0076)
         "composerPrompt", // the row a destructive write BINDS to; it sends nothing itself
         "composerReady", // the pre-flight's refusal

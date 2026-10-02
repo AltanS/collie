@@ -43,6 +43,13 @@ const MODALS_WITH_A_WAY_OUT = [
   // The Ask tool in omp 18.4.10. The single-select pair is LIFTED (omp/ask.ts) and draws no card, but
   // the gate still sees a modal on it, which is the honest answer; the multi-select pair stays raw and
   // takes the card. The note editor `n` opens ends its hint row on `external editor`, so it is not here.
+  // The tool-approval dialog in omp 18.4.10, LIFTED as a card (omp/approval.ts) like the 18.1.17 trio
+  // above: the gate still sees a modal on all of them, and the lift is what keeps the card off.
+  "omp--v18-4-approval-bash-moved.txt",
+  "omp--v18-4-approval-bash.txt",
+  "omp--v18-4-approval-write-long.txt",
+  "omp--v18-4-approval-write-moved.txt",
+  "omp--v18-4-approval-write.txt",
   "omp--v18-4-ask-multi-checked.txt",
   "omp--v18-4-ask-multi.txt",
   "omp--v18-4-ask-single-moved.txt",

@@ -276,15 +276,12 @@ const CARD_FIXTURES = {
   },
   // Every omp modal that prints its own way out (omp/modal.ts) and that no grammar lifts: the Ask
   // tool's multi-select screens in both versions and its review screen, the `/model` and `/settings`
-  // pickers in both versions, the three tool-approval screens and the `/resume` picker with no session
-  // to list. The `/resume` pickers that DO list a session and the Ask tool's one-question single-select
-  // dialogs lift as a prompt-select and get no card, `/tree` prints no way out, and the note editor is
-  // an input, so none of those is here.
+  // pickers in both versions, and the `/resume` picker with no session to list. The `/resume` pickers
+  // that DO list a session, the Ask tool's one-question single-select dialogs and every captured
+  // tool-approval dialog (.adr/0078) lift as a prompt-select and get no card, `/tree` prints no way
+  // out, and the note editor is an input, so none of those is here.
   omp: {
     modals: [
-      "omp--approval-bash.txt",
-      "omp--approval-write--deny.txt",
-      "omp--approval-write.txt",
       "omp--menu-model-moved.txt",
       "omp--menu-model.txt",
       "omp--menu-settings-moved.txt",

@@ -875,6 +875,11 @@ probed on the `write` dialog, with the target file verified absent afterwards. O
 worth recording: `read` is auto-approved even under `--approval-mode always-ask`, so a read call
 paints no dialog and cannot be used to generate one.
 
+Since [ADR 0078](../../../../.adr/0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md)
+all three lift as a card (`omp/approval.ts`): Approve, Deny and Cancel, the command or the path and
+content in Approve's description. They are the evidence for the `nerd` preset: U+F054 as the pointer
+over the text-keycap footer. The usage strip under the box stays out of the signature.
+
 ## OMP `/tree` capture (2026-09-13, oh-my-pi `omp` v18.1.19, throwaway Herdr pane)
 
 One byte-faithful `pane.read format:ansi` capture, and the only thing it is evidence for is that omp
@@ -944,7 +949,7 @@ half of that test: exactly one styled row with more than one segment.
 
 ## OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)
 
-Nine captures from omp 18.4.10 (five more for the `ask` tool follow below), byte-faithful but for the sanitization pass below, taken to lift `/resume` and to give every other omp modal a declared way out ([ADR 0076](../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)).
+Nine captures from omp 18.4.10 (five more for the `ask` tool and five for the tool approval follow below), byte-faithful but for the sanitization pass below, taken to lift `/resume` and to give every other omp modal a declared way out ([ADR 0076](../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)).
 omp 18.4 draws its pickers as a rounded box that fills the pane (59 rows by 109 columns here) and prints **glyph keycaps** in the footer: `⏎` for Enter, `⌦/⌫` for delete, `⇥` for Tab, `⎋` for Escape. omp 17.x to 18.1 printed the same keys as words (`Enter`, `Del/⌫`, `Tab`, `Esc`), so the corpus now holds both dialects of the footer, and `omp/modal.ts` accepts exactly the six spellings of the way out (`⎋ cancel`, `⎋ close`, `⎋ to close`, `Esc cancel`, `Esc close`, `Esc to close`).
 
 The `/resume` captures are the boxed layout of that picker: a titled top border (`╭─ Resume Session (current folder) ─…╮`), a `│ > <typed text> │` search row, sessions as blank-separated groups of three rows (title, first prompt, meta), and a bracketed footer, then the bottom border. The meta row reads `<age> ago · <size> · [current ·] ✔ done|⚠ interrupted · [⑂ fork] · [<cwd>]`, with a double space on each side of every `·`. Both sessions in these captures share one title, so the meta row is what tells them apart on the card. `omp--v18-4-resume-nomatch.txt` is the state with no row to point at: the grammar declines it, and the unread-dialog card with its Escape button stands over the raw mirror.
@@ -1003,6 +1008,27 @@ omp 18.4.10's source confirms that Enter on an option there submits the checked 
 | `omp--v18-4-ask-note-editor.txt` | `n` on Green: the prompt-style answer editor titled `Note for Green: Pick a color`, an empty `│ > ` row, hint `⏎ or Ctrl+Q submit  ⎋ cancel  Ctrl+G external editor`. An input: `composerReady` true, no card | not recorded |
 | `omp--v18-4-ask-multi.txt` | The multi-select dialog: the tab strip `toppings    Submit`, `Pick toppings`, `❯ ☐ Cheese`, `☐ Olives`, `☐ Basil`, `☐ Other (type your own)`, footer `␣ toggle · ⏎ submit · ↑/↓ move · ⇥/←/→ · ⎋ cancel`. Stays raw, gets the card | not recorded |
 | `omp--v18-4-ask-multi-checked.txt` | The same dialog after one `Space`: `❯ ☑ Cheese`. Stays raw, gets the card | not recorded |
+
+**Five more, the same day, for the tool-approval dialog** ([ADR 0078](../../../../.adr/0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md)),
+from the same session at 108 columns, 300 rows each. Each prompt asked omp for one harmless call,
+`echo hello-approval` or a file under `/tmp/omp-sandbox-approval`, with approval required for every
+call and no config pattern behind it, so the box carries no `Reason:` row. The moved states are one `Down` from the dialog as it opened.
+These are the evidence for the `unicode` preset: the pointer is `❯` and the footer prints glyph
+keycaps, `↑/↓ navigate  ⏎ select  ⎋ cancel`, segments split by two spaces. No usage strip sits under
+the box. The pointed row's band is `rgb(0,130,179)` here and `rgb(60,56,54)` in the 18.1.17 captures,
+which is why only the glyph is read (`omp/APPROVAL_NOTES.md`). **No sanitization pass was needed**,
+and that is checked rather than assumed: the operator's user name and host names, `collie-workspace`,
+`/home/`, `/Users/`, `/var/home`, a UUID pattern, an email, an `sk-`/`ghp_`/`AKIA`-shaped string, a
+long hex or base64 token and an OSC escape match nothing in the five files. The only paths are the
+sandbox's. All five are CRLF with no trailing newline; `wc -l` is 299.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-4-approval-bash.txt` | `╭─ Allow tool: bash ─╮`, `Command: echo hello-approval`, `❯ Approve`, `Deny`. Lifts as a card: Approve sends `Enter`, Deny `Down` `Enter`, Cancel `Escape` | not recorded |
+| `omp--v18-4-approval-bash-moved.txt` | The same dialog after one `Down`: `❯ Deny`. Approve sends `Up` `Enter`, Deny still `Down` `Enter` | not recorded |
+| `omp--v18-4-approval-write.txt` | `Allow tool: write`, `Path: /tmp/omp-sandbox-approval/note.txt`, `Content:`, `hello approval`, the pointer on Approve. Above it, the transcript records the denied shell command, then the call's own streaming preview | not recorded |
+| `omp--v18-4-approval-write-moved.txt` | The same dialog after one `Down`: `❯ Deny` | not recorded |
+| `omp--v18-4-approval-write-long.txt` | A `write` of fourteen rows, `sample line N for the approval dialog`: the box grows to hold them all. The card shows all fourteen, and so does the raw mirror above it | not recorded |
 
 ## OMP `ask` answer editor (captured 2026-10-01, oh-my-pi `omp` v18.4.4, herdr 0.9.3, throwaway Herdr pane)
 

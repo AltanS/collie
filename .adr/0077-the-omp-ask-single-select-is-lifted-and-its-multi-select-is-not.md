@@ -1,6 +1,9 @@
 # 0077: The omp Ask single-select is lifted, and its multi-select is not
 
 - **Status:** Accepted
+- **Amended in scope by:** [ADR 0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md):
+  the tool-approval dialog this record left assessed but raw is now lifted for `bash` and `write`.
+  Everything below stands.
 - **Date:** 2026-10-02
 - **Shipped in:** pending
 - **Amends:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md),
