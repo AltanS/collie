@@ -121,8 +121,16 @@ describe("scripts/install.ps1, read as text", () => {
     expect(TEXT).toContain("[System.IO.Directory]::Delete($Path, $false)");
   });
 
+  test("the token goes with the tags call alone, never with a download", () => {
+    expect(offending(/Authorization/)).toHaveLength(1);
+    expect(offending(/Authorization/)[0]).toContain("$mirror -eq ''");
+    const withHeaders = CODE.filter((l) => /-Headers/.test(l));
+    expect(withHeaders).toHaveLength(1);
+    expect(withHeaders[0]).toContain("/tags?per_page=100");
+  });
+
   test("stops on a missing sidecar and on a digest that does not match", () => {
-    expect(TEXT).toContain("Refusing to install an unverified binary");
+    expect(TEXT).toContain("so a download could not be checked");
     expect(TEXT).toContain("CHECKSUM MISMATCH");
     expect(TEXT).toContain("[StringComparison]::OrdinalIgnoreCase");
   });
@@ -158,6 +166,10 @@ interface Asset {
 /** A release mirror: the tags API and the download path, both as GitHub spells them. */
 class Mirror {
   readonly requests: string[] = [];
+  /** Every Authorization header the mirror was sent. A token must never reach it. */
+  readonly authorizations: string[] = [];
+  /** The tags API's status, so a case can be rate-limited. */
+  tagsStatus = 200;
   readonly files = new Map<string, Uint8Array<ArrayBuffer> | string>();
   tags: string[] = [];
   private server: ReturnType<typeof Bun.serve> | null = null;
@@ -174,7 +186,10 @@ class Mirror {
       fetch: (req) => {
         const path = new URL(req.url).pathname;
         this.requests.push(path);
+        const auth = req.headers.get("authorization");
+        if (auth !== null) this.authorizations.push(auth);
         if (/^\/repos\/[^/]+\/[^/]+\/tags$/.test(path)) {
+          if (this.tagsStatus !== 200) return new Response("rate limited", { status: this.tagsStatus });
           return new Response(JSON.stringify(this.tags.map((name) => ({ name, commit: { sha: `sha-${name}` } }))), {
             headers: { "content-type": "application/json; charset=utf-8" },
           });
@@ -420,8 +435,8 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     // The tags call, then the zip, its sidecar and the manifest. Nothing else is asked.
     expect(r.asked).toEqual([
       `/repos/${REPO}/tags`,
-      `/${REPO}/releases/download/v${v1}/collie-${v1}-${PLATFORM}.zip`,
       `/${REPO}/releases/download/v${v1}/collie-${v1}-${PLATFORM}.zip.sha256`,
+      `/${REPO}/releases/download/v${v1}/collie-${v1}-${PLATFORM}.zip`,
       `/${REPO}/releases/download/v${v1}/collie-${v1}.manifest.json`,
     ]);
   }, 60_000);
@@ -534,7 +549,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     mirror.drop(`v${v}`, `collie-${v}-${PLATFORM}.zip.sha256`);
     const r = await install(b, mirror, { env: { COLLIE_TAG: `v${v}` } });
     expectFailed(r);
-    expect(r.out).toContain("Refusing to install an unverified binary");
+    expect(r.out).toContain("so a download could not be checked");
     expect(existsSync(b.dir)).toBe(false);
   }, 60_000);
 
@@ -553,7 +568,8 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const b = box();
     const r = await install(b, mirror, { env: { COLLIE_TAG: "v0.35.0" } });
     expectFailed(r);
-    expect(r.out).toContain(`release v0.35.0 has no ${PLATFORM} artifact (HTTP 404)`);
+    expect(r.out).toContain(`release v0.35.0 has no collie-0.35.0-${PLATFORM}.zip.sha256 (HTTP 404)`);
+    expect(r.out).toContain("Either that release has no Windows build");
     expect(existsSync(b.dir)).toBe(false);
   }, 60_000);
 
@@ -645,6 +661,63 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
     expect(r.code).toBe(0);
     expect(r.asked).toEqual([]);
+  }, 60_000);
+
+  test("without a pin, a newest release with no Windows build is skipped for the next older one", async () => {
+    const b = box();
+    const saved = mirror.tags;
+    mirror.tags = ["v0.38.5", "v0.38.4", `v${v1}`, "v0.1.0"];
+    try {
+      const r = await install(b, mirror);
+      expect(r.code).toBe(0);
+      expect(r.out).toContain("v0.38.5 has no Windows build. Trying the next older release.");
+      expect(r.out).toContain("v0.38.4 has no Windows build. Trying the next older release.");
+      expect(r.out).toContain(`Collie v${v1} is installed`);
+      expect(r.asked.filter((p) => p.endsWith(".sha256"))).toEqual([
+        `/${REPO}/releases/download/v0.38.5/collie-0.38.5-${PLATFORM}.zip.sha256`,
+        `/${REPO}/releases/download/v0.38.4/collie-0.38.4-${PLATFORM}.zip.sha256`,
+        `/${REPO}/releases/download/v${v1}/collie-${v1}-${PLATFORM}.zip.sha256`,
+      ]);
+    } finally {
+      mirror.tags = saved;
+    }
+  }, 60_000);
+
+  test("when no recent release has a Windows build, it says so plainly and names the pin", async () => {
+    const b = box();
+    const saved = mirror.tags;
+    mirror.tags = ["v2.0.5", "v2.0.4", "v2.0.3", "v2.0.2", "v2.0.1", `v${v1}`];
+    try {
+      const r = await install(b, mirror);
+      expectFailed(r);
+      expect(r.out).toContain("none of the newest 5 releases of AltanS/collie carries a Windows build yet");
+      expect(lastLine(r.out)).toContain("COLLIE_TAG");
+      expect(r.out).not.toContain("HTTP 404");
+      expect(existsSync(b.dir)).toBe(false);
+    } finally {
+      mirror.tags = saved;
+    }
+  }, 60_000);
+
+  test("a rate-limited tags API is named as one, with the pin that skips the call", async () => {
+    const b = box();
+    mirror.tagsStatus = 403;
+    try {
+      const r = await install(b, mirror);
+      expectFailed(r);
+      expect(r.out).toContain("rate limit says no (HTTP 403)");
+      expect(lastLine(r.out)).toContain("$env:COLLIE_TAG = 'vX.Y.Z'");
+    } finally {
+      mirror.tagsStatus = 200;
+    }
+  }, 60_000);
+
+  test("a GitHub token in the environment never reaches a mirror", async () => {
+    const before = mirror.authorizations.length;
+    const r = await install(box(), mirror, { env: { GH_TOKEN: "ghp_secret", COLLIE_GITHUB_TOKEN: "ghp_secret2" } });
+    expect(r.code).toBe(0);
+    expect(mirror.authorizations.slice(before)).toEqual([]);
+    expect(r.out).not.toContain("ghp_secret");
   }, 60_000);
 
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
@@ -815,7 +888,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
         `Show (Get-CollieDigestProblem '${d}  x.zip' 'x.zip' '${"cd".repeat(32)}')`,
         `Show (Get-CollieDigestProblem '${d}  y.zip' 'x.zip' '${d}')`,
         "Show (Get-CollieDigestProblem '' 'x.zip' 'aa')",
-        "Show (Select-CollieNewestTag @('v1.9.0', 'v1.10.0', 'v1.11.0-rc.1', 'v1.2.0', 'nightly'))",
+        "Show ((Sort-CollieTags @('v1.9.0', 'v1.15.0', 'v1.10.0', 'v1.16.0-rc.1', 'v1.2.0', 'nightly')) -join ',')",
       ].join("\r\n"),
     );
     expect(r.code).toBe(0);
@@ -824,7 +897,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(lines[1]).toBe("VALUE CHECKSUM MISMATCH for x.zip");
     expect(lines[2]).toContain("names y.zip");
     expect(lines[3]).toContain("is not one");
-    expect(lines[4]).toBe("VALUE v1.10.0");
+    expect(lines[4]).toBe("VALUE v1.15.0,v1.10.0,v1.9.0,v1.2.0");
   }, 60_000);
 
   /** An install folder with two versions and `current` on the first, plus a sentinel file. */

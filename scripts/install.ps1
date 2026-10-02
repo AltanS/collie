@@ -27,6 +27,8 @@
 #   COLLIE_UPDATE_REPO  which GitHub repository to download from. Default: AltanS/collie
 #   COLLIE_TAG          install one exact release tag, for example v1.16.0. A pin skips the tag
 #                       lookup, so the script makes no call to api.github.com.
+# A GitHub token in COLLIE_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN goes only to api.github.com, with
+# the one call that lists the tags. It never goes with a download and never to a mirror.
 # Two more exist on Windows only, and neither is in install.sh:
 #   COLLIE_NO_PATH_EDIT=1     do not change the user PATH. Run <COLLIE_DIR>\current\bin\collie.exe.
 #   COLLIE_INSTALL_MIRROR     A TEST SEAM for tests and rehearsals, not a way to install. A base URL
@@ -104,11 +106,10 @@ function Get-CollieDirProblem([string]$Path) {
   return $null
 }
 
-# The newest strict release tag (vX.Y.Z), compared by number. A prerelease is never picked: pin it.
-function Select-CollieNewestTag([string[]]$Names) {
-  $strict = @($Names | Where-Object { Test-CollieTag $_ })
-  if ($strict.Count -eq 0) { return $null }
-  return @($strict | Sort-Object { [version]$_.Substring(1) })[-1]
+# The strict release tags (vX.Y.Z), newest first, compared as numbers (v1.15.0 is newer than v1.9.0).
+# A prerelease is never picked: pin it.
+function Sort-CollieTags([string[]]$Names) {
+  return @($Names | Where-Object { Test-CollieTag $_ } | Sort-Object { [version]$_.Substring(1) } -Descending)
 }
 
 # Check a downloaded file against its sidecar line "<sha256>  <name>". Returns the problem, or $null.
@@ -339,9 +340,14 @@ function Invoke-CollieInstall {
   }
 
   # Which release. The tags are the list `collie update` reads too, never `releases/latest`. A
-  # GitHub token, if you have one, goes with this ONE call, never with a download and never to a mirror.
-  $tag = $pin
-  if ($tag -eq '') {
+  # GitHub token, if you have one, goes with this ONE call to api.github.com: never with a download
+  # (Windows PowerShell 5.1 can carry the header across the redirect to the file host) and never to
+  # a mirror. Without a pin, the newest strict tag is tried first, then up to four older ones,
+  # because a release made before Collie shipped a Windows zip has none.
+  $platform = "windows-x64"
+  $releases = "https://github.com/$repo/releases"
+  $candidates = @($pin)
+  if ($pin -eq '') {
     $api = if ($mirror -ne '') { $mirror } else { "https://api.github.com" }
     $headers = @{ Accept = "application/vnd.github+json" }
     $tokenFrom = ''
@@ -350,7 +356,7 @@ function Invoke-CollieInstall {
       if ("$value" -ne '') { $tokenFrom = $name; break }
     }
     if ($tokenFrom -ne '' -and $mirror -eq '') { $headers.Authorization = "Bearer " + [Environment]::GetEnvironmentVariable($tokenFrom) }
-    $pinFix = "Name the version and skip this call:  `$env:COLLIE_TAG = 'vX.Y.Z'  (the tags are at https://github.com/$repo/releases)"
+    $pinFix = "Name the version and skip this call:  `$env:COLLIE_TAG = 'vX.Y.Z'  (the tags are at $releases)"
     try {
       if ($api.StartsWith("file:///")) {
         $tagsFile = ([Uri]"$api/repos/$repo/tags").LocalPath
@@ -370,17 +376,16 @@ function Invoke-CollieInstall {
       Stop-CollieInstall "$api answered HTTP $code when asked for the tags of $repo." "Try again later, or $pinFix"
     }
     $names = @($answer.Content | ConvertFrom-Json | ForEach-Object { $_ } | ForEach-Object { "$($_.name)" })
-    $tag = Select-CollieNewestTag $names
-    if ($null -eq $tag) { Stop-CollieInstall "no release tag found for $repo." "Pin a version with COLLIE_TAG, or report this at https://github.com/AltanS/collie/issues" }
+    $candidates = @(Sort-CollieTags $names | Select-Object -First 5)
+    if ($candidates.Count -eq 0) { Stop-CollieInstall "no release tag found for $repo." "Pin a version with COLLIE_TAG, or report this at https://github.com/AltanS/collie/issues" }
   }
-  $version = $tag.Substring(1)
-  $platform = "windows-x64"
-  $zipName = "collie-$version-$platform.zip"
-  $base = if ($mirror -ne '') { "$mirror/$repo/releases/download/$tag" } else { "https://github.com/$repo/releases/download/$tag" }
-  $versionDir = Join-Path $dir "versions\$version"
   $current = Join-Path $dir "current"
 
   # The pinned version may be on disk already: then the rescue is a junction flip and nothing more.
+  if ($rescue) {
+    $tag = $pin
+    $versionDir = Join-Path $dir "versions\$($tag.Substring(1))"
+  }
   if ($rescue -and (Test-Path -LiteralPath $versionDir)) {
     if (-not (Test-Path -LiteralPath (Join-Path $versionDir "bin\collie.exe"))) {
       Stop-CollieInstall "$versionDir is there but holds no bin\collie.exe." "Move $versionDir aside, then run the installer again."
@@ -400,23 +405,38 @@ function Invoke-CollieInstall {
 
   # Download, and verify before anything is unpacked. The scratch folder is inside COLLIE_DIR, and
   # it is removed on every way out.
-  if ($rescue) { Write-CollieLine "Collie is already installed at $dir. Laying $tag down beside it, and pointing current at it." }
+  if ($rescue) { Write-CollieLine "Collie is already installed at $dir. Laying $pin down beside it, and pointing current at it." }
   $createdDir = -not (Test-Path -LiteralPath $dir)
   $staging = Join-Path $dir ".staging"
   $work = Join-Path $staging "install-$PID"
   try {
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $work | Out-Null
+    # The checksum file first: it is small, and a release with no Windows build has none.
+    $tag = $null
+    foreach ($candidate in $candidates) {
+      $zipName = "collie-$($candidate.Substring(1))-$platform.zip"
+      $base = if ($mirror -ne '') { "$mirror/$repo/releases/download/$candidate" } else { "$releases/download/$candidate" }
+      $code = Get-CollieFile "$base/$zipName.sha256" (Join-Path $work "$zipName.sha256")
+      if ($code -eq 0) { Stop-CollieInstall "could not reach the download for $candidate." "Check your network, then run the installer again." }
+      if ($code -eq 200) { $tag = $candidate; break }
+      if ($pin -ne '') {
+        Stop-CollieInstall "release $pin has no $zipName.sha256 (HTTP $code), so a download could not be checked. Either that release has no Windows build, or its checksum file is missing. Nothing was installed." "Check the tag against $releases, or pin another one with COLLIE_TAG."
+      }
+      Write-CollieLine "$candidate has no Windows build. Trying the next older release."
+    }
+    if ($null -eq $tag) {
+      Stop-CollieInstall "none of the newest $($candidates.Count) releases of $repo carries a Windows build yet. Nothing was installed." "Pin a release that has one:  `$env:COLLIE_TAG = 'vX.Y.Z'  (see $releases)"
+    }
+    $version = $tag.Substring(1)
+    $versionDir = Join-Path $dir "versions\$version"
     $zip = Join-Path $work $zipName
     if ($mirror -ne '') { Write-CollieLine "Downloading Collie $tag for $platform from the mirror $mirror ..." }
     else { Write-CollieLine "Downloading Collie $tag for $platform ..." }
     $code = Get-CollieFile "$base/$zipName" $zip
     if ($code -eq 0) { Stop-CollieInstall "could not reach the download for $zipName." "Check your network, then run the installer again." }
     if ($code -ne 200) {
-      Stop-CollieInstall "release $tag has no $platform artifact (HTTP $code). Either that tag does not exist, or it was published before Collie shipped a Windows zip." "Check the tag against https://github.com/$repo/releases"
-    }
-    if ((Get-CollieFile "$base/$zipName.sha256" "$zip.sha256") -ne 200) {
-      Stop-CollieInstall "could not download $zipName.sha256. Refusing to install an unverified binary. Nothing was installed." "Try again later. If it happens again, report it at https://github.com/AltanS/collie/issues"
+      Stop-CollieInstall "release $tag has a checksum file but no $zipName (HTTP $code). Nothing was installed." "Try again later. If it happens again, report it at https://github.com/AltanS/collie/issues"
     }
     $manifestPath = Join-Path $work "manifest.json"
     if ((Get-CollieFile "$base/collie-$version.manifest.json" $manifestPath) -ne 200) {
