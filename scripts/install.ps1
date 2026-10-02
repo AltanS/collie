@@ -112,13 +112,14 @@ function Sort-CollieTags([string[]]$Names) {
   return @($Names | Where-Object { Test-CollieTag $_ } | Sort-Object { [version]$_.Substring(1) } -Descending)
 }
 
-# Check a downloaded file against its sidecar line "<sha256>  <name>". Returns the problem, or $null.
+# Check a downloaded file against its sidecar line "<sha256>  <name>" (the name may be left out).
+# Returns the problem, or $null.
 function Get-CollieDigestProblem([string]$Sidecar, [string]$Name, [string]$Actual) {
   $words = @("$Sidecar".Trim() -split '\s+')
-  if ($words.Count -lt 2 -or $words[0] -cnotmatch '\A[0-9a-fA-F]{64}\z') {
+  if ($words.Count -gt 2 -or $words[0] -cnotmatch '\A[0-9a-fA-F]{64}\z') {
     return "$Name.sha256 is not one '<sha256>  <name>' line"
   }
-  if ($words[1].TrimStart('*') -ne $Name) { return "$Name.sha256 names $($words[1]), not $Name" }
+  if ($words.Count -eq 2 -and $words[1].TrimStart('*') -cne $Name) { return "$Name.sha256 names $($words[1]), not $Name" }
   if (-not [string]::Equals($words[0], $Actual, [StringComparison]::OrdinalIgnoreCase)) {
     return "CHECKSUM MISMATCH for $Name"
   }
@@ -189,6 +190,47 @@ function Get-CollieFile([string]$Url, [string]$OutFile) {
   } catch {
     Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
     return (Get-CollieHttpCode $_)
+  }
+}
+
+# Why a zip entry may not be unpacked, or $null. Every entry must sit under Root/, with no drive, no
+# stream (':'), no leading slash and no '..' part. This is what stops a zip that writes outside the
+# folder it is unpacked into.
+function Get-CollieEntryProblem([string]$Name, [string]$Root) {
+  if ($Name -ceq '') { return "an entry with no name" }
+  if ($Name.Contains(':')) { return "'$Name' names a drive or a stream" }
+  if ($Name.StartsWith('/') -or $Name.StartsWith('\')) { return "'$Name' starts at the root" }
+  if (@($Name -split '[\\/]' | Where-Object { $_ -ceq '..' }).Count -gt 0) { return "'$Name' climbs out with '..'" }
+  if (-not $Name.StartsWith("$Root/", [StringComparison]::Ordinal)) { return "'$Name' is not under $Root/" }
+  return $null
+}
+
+# Unpack Zip into Destination, one entry at a time, after EVERY entry has been checked: by name, and
+# by its full path, which must start with Destination\. Nothing is written when one entry fails.
+# System.IO.Compression is part of Windows; nothing is compiled.
+function Expand-CollieZip([string]$Zip, [string]$Destination, [string]$Root) {
+  try { Add-Type -AssemblyName System.IO.Compression.FileSystem } catch { }
+  $dest = [System.IO.Path]::GetFullPath($Destination).TrimEnd('\') + '\'
+  $archive = [System.IO.Compression.ZipFile]::OpenRead($Zip)
+  try {
+    $plan = New-Object System.Collections.ArrayList
+    foreach ($entry in $archive.Entries) {
+      $problem = Get-CollieEntryProblem $entry.FullName $Root
+      if ($null -eq $problem) {
+        $target = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($dest, $entry.FullName.Replace('/', '\')))
+        if (-not $target.StartsWith($dest, [StringComparison]::OrdinalIgnoreCase)) { $problem = "'$($entry.FullName)' resolves outside the folder" }
+      }
+      if ($null -ne $problem) { Stop-CollieInstall "the zip is not safe to unpack: $problem. Nothing was installed." "Report it at https://github.com/AltanS/collie/issues" }
+      [void]$plan.Add(@($entry, $target))
+    }
+    foreach ($item in $plan) {
+      $entry = $item[0]; $target = $item[1]
+      if ($entry.FullName.EndsWith('/')) { [void][System.IO.Directory]::CreateDirectory($target); continue }
+      [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($target))
+      [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $false)
+    }
+  } finally {
+    $archive.Dispose()
   }
 }
 
@@ -451,12 +493,14 @@ function Invoke-CollieInstall {
     if ($null -ne $problem) {
       Stop-CollieInstall "$problem. The download was discarded and nothing was installed." "Run the installer again. If it happens again, report it at https://github.com/AltanS/collie/issues"
     }
-    $entry = @($manifest.artifacts | Where-Object { $_.platform -eq $platform -and "$($_.sha256)" -eq $digest })
-    if ($entry.Count -eq 0) { Stop-CollieInstall "the digest of $zipName is not the one release $version's manifest names. Nothing was installed." "Report it at https://github.com/AltanS/collie/issues" }
+    # The manifest's own Windows entry, matched by platform, and its digest compared as a whole value.
+    $entries = @($manifest.artifacts | Where-Object { "$($_.platform)" -ceq $platform })
+    $named = ($entries.Count -eq 1) -and ("$($entries[0].name)" -ceq $zipName) -and [string]::Equals("$($entries[0].sha256)", $digest, [StringComparison]::OrdinalIgnoreCase)
+    if (-not $named) { Stop-CollieInstall "the digest of $zipName is not the one release $version's manifest names. Nothing was installed." "Report it at https://github.com/AltanS/collie/issues" }
 
     # Lay it down: one complete payload per version, and `current` names one of them.
     $unpacked = Join-Path $work "unpacked"
-    Expand-Archive -LiteralPath $zip -DestinationPath $unpacked -Force
+    Expand-CollieZip $zip $unpacked "collie-$version-$platform"
     $payload = Join-Path $unpacked "collie-$version-$platform"
     if (-not (Test-Path -LiteralPath (Join-Path $payload "bin\collie.exe"))) {
       Stop-CollieInstall "$zipName does not contain bin\collie.exe. Refusing to install it." "Report it at https://github.com/AltanS/collie/issues"

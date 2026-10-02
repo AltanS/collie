@@ -129,6 +129,12 @@ describe("scripts/install.ps1, read as text", () => {
     expect(withHeaders[0]).toContain("/tags?per_page=100");
   });
 
+  test("unpacks with its own checked loop, never with Expand-Archive alone", () => {
+    expect(offending(/Expand-Archive/)).toEqual([]);
+    expect(TEXT).toContain("[System.IO.Compression.ZipFile]::OpenRead($Zip)");
+    expect(offending(/Add-Type(?! -AssemblyName)/)).toEqual([]);
+  });
+
   test("stops on a missing sidecar and on a digest that does not match", () => {
     expect(TEXT).toContain("so a download could not be checked");
     expect(TEXT).toContain("CHECKSUM MISMATCH");
@@ -236,6 +242,28 @@ function buildZip(scratch: string, version: string): Asset {
   const out = join(scratch, `${root}.zip`);
   const tar = Bun.spawnSync([TAR, "-a", "-c", "-f", out, "-C", stage, root], { stdout: "ignore", stderr: "pipe" });
   if (tar.exitCode !== 0) throw new Error(`could not build the fixture zip: ${tar.stderr.toString()}`);
+  const zip = new Uint8Array(readFileSync(out));
+  return { zip, digest: sha256(zip) };
+}
+
+/** A zip with the real payload's root and one extra entry named `bad`, written by .NET's own
+ *  ZipArchive, which (unlike tar.exe) writes any name it is given. */
+function hostileZip(scratch: string, version: string, bad: string): Asset {
+  const root = `collie-${version}-${PLATFORM}`;
+  const out = join(scratch, `hostile-${version}.zip`);
+  const names = [`${root}/bin/collie.exe`, `${root}/herdr-plugin.toml`, bad];
+  const ps1 = join(scratch, `hostile-${version}.ps1`);
+  writeFileSync(
+    ps1,
+    [
+      "Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem",
+      `$z = [System.IO.Compression.ZipFile]::Open(${psQuote(out)}, 'Create')`,
+      `foreach ($n in @(${names.map(psQuote).join(", ")})) { $w = New-Object System.IO.StreamWriter($z.CreateEntry($n).Open()); $w.Write('x'); $w.Dispose() }`,
+      "$z.Dispose()",
+    ].join("\r\n"),
+  );
+  const made = Bun.spawnSync([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1], { stdout: "ignore", stderr: "pipe" });
+  if (made.exitCode !== 0 || !existsSync(out)) throw new Error(`could not build the hostile zip: ${made.stderr.toString()}`);
   const zip = new Uint8Array(readFileSync(out));
   return { zip, digest: sha256(zip) };
 }
@@ -720,6 +748,21 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(r.out).not.toContain("ghp_secret");
   }, 60_000);
 
+  test("a zip with an entry that climbs out, or names a drive, is refused before anything is written", async () => {
+    let n = 0;
+    for (const bad of ["collie-0.42.0-windows-x64/../../evil.txt", "C:/evil.txt", "/evil.txt", "other-root/evil.txt"]) {
+      const v = `0.42.${n++}`;
+      const asset = hostileZip(scratch, v, bad.replace("0.42.0", v));
+      publish(mirror, asset, v);
+      const b = box();
+      const r = await install(b, mirror, { env: { COLLIE_TAG: `v${v}` } });
+      expectFailed(r);
+      expect(r.out).toContain("the zip is not safe to unpack");
+      expect(existsSync(b.dir)).toBe(false);
+      expect(filesUnder(b.root).filter((f) => f.endsWith("evil.txt"))).toEqual([]);
+    }
+  }, 120_000);
+
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
     const b = box();
     const r = await install(b, mirror, { env: { COLLIE_TAG: "1.0.0" } });
@@ -888,6 +931,12 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
         `Show (Get-CollieDigestProblem '${d}  x.zip' 'x.zip' '${"cd".repeat(32)}')`,
         `Show (Get-CollieDigestProblem '${d}  y.zip' 'x.zip' '${d}')`,
         "Show (Get-CollieDigestProblem '' 'x.zip' 'aa')",
+        `Show (Get-CollieDigestProblem '${d}' 'x.zip' '${d}')`,
+        `Show (Get-CollieDigestProblem '${d}  *x.zip' 'x.zip' '${d}')`,
+        `Show (Get-CollieDigestProblem '${d}  x.zip extra' 'x.zip' '${d}')`,
+        `Show (Get-CollieDigestProblem '${d.slice(1)}  x.zip' 'x.zip' '${d}')`,
+        "$r = 'collie-1.0.0-windows-x64'",
+        "foreach ($n in @(\"$r/bin/collie.exe\", \"$r/\", \"$r/../x\", \"$r/a/../../x\", 'C:/x', \"$r/a:b\", '/x', '\\x', \"$r\\..\\x\", 'other/x', '')) { Show (Get-CollieEntryProblem $n $r) }",
         "Show ((Sort-CollieTags @('v1.9.0', 'v1.15.0', 'v1.10.0', 'v1.16.0-rc.1', 'v1.2.0', 'nightly')) -join ',')",
       ].join("\r\n"),
     );
@@ -897,7 +946,14 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(lines[1]).toBe("VALUE CHECKSUM MISMATCH for x.zip");
     expect(lines[2]).toContain("names y.zip");
     expect(lines[3]).toContain("is not one");
-    expect(lines[4]).toBe("VALUE v1.15.0,v1.10.0,v1.9.0,v1.2.0");
+    // The name may be left out, a `*` (binary mode) is read through, anything more is refused.
+    expect(lines.slice(4, 8).map((l) => l === "NULL")).toEqual([true, true, false, false]);
+    // Zip entries: two under the root pass; every other one names its reason.
+    expect(lines.slice(8, 10)).toEqual(["NULL", "NULL"]);
+    expect(lines.slice(10, 19)).toHaveLength(9);
+    for (const line of lines.slice(10, 19)) expect(line).toMatch(/^VALUE /);
+    expect(lines[19]).toBe("VALUE v1.15.0,v1.10.0,v1.9.0,v1.2.0");
+    expect(lines).toHaveLength(20);
   }, 60_000);
 
   /** An install folder with two versions and `current` on the first, plus a sentinel file. */
