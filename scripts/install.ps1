@@ -27,11 +27,13 @@
 #   COLLIE_UPDATE_REPO  which GitHub repository to download from. Default: AltanS/collie
 #   COLLIE_TAG          install one exact release tag, for example v1.16.0. A pin skips the tag
 #                       lookup, so the script makes no call to api.github.com.
-# Two more are for tests and rehearsals:
+# Two more exist on Windows only, and neither is in install.sh:
 #   COLLIE_NO_PATH_EDIT=1     do not change the user PATH. Run <COLLIE_DIR>\current\bin\collie.exe.
-#   COLLIE_INSTALL_MIRROR     a base URL that replaces https://api.github.com and https://github.com.
-#                             The script asks it for /repos/<repo>/tags and for
-#                             /<repo>/releases/download/<tag>/<file>. The token is never sent to it.
+#   COLLIE_INSTALL_MIRROR     A TEST SEAM for tests and rehearsals, not a way to install. A base URL
+#                             that replaces https://api.github.com and https://github.com. Only a
+#                             file:/// URL or http://127.0.0.1 or http://localhost (with a port) is
+#                             accepted, and a loud line says it is set. The script asks it for
+#                             /repos/<repo>/tags and /<repo>/releases/download/<tag>/<file>.
 #
 # The layout is the one `collie update` reads: <COLLIE_DIR>\versions\<X.Y.Z> holds one release, and
 # <COLLIE_DIR>\current is a directory junction to one of them. A standard user can make a junction.
@@ -166,8 +168,20 @@ function Get-CollieHttpCode($ErrorRecord) {
   try { return [int]$response.StatusCode } catch { return 0 }
 }
 
+# Is Url a mirror this script accepts? Only a local folder or this machine's loopback address.
+function Test-CollieMirror([string]$Url) {
+  return $Url -cmatch '\A(file:///[A-Za-z]:/[A-Za-z0-9._~/ -]*|http://(127\.0\.0\.1|localhost)(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?)\z'
+}
+
 # Download Url to OutFile. Returns 200, the HTTP status of a failure, or 0 when no server answered.
+# A file:/// URL (a mirror folder) is copied, and a missing file answers 404.
 function Get-CollieFile([string]$Url, [string]$OutFile) {
+  if ($Url.StartsWith("file:///")) {
+    $local = ([Uri]$Url).LocalPath
+    if (-not (Test-Path -LiteralPath $local -PathType Leaf)) { return 404 }
+    Copy-Item -LiteralPath $local -Destination $OutFile
+    return 200
+  }
   try {
     Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $OutFile -ErrorAction Stop
     return 200
@@ -284,8 +298,11 @@ function Invoke-CollieInstall {
   if ($null -ne $problem) { Stop-CollieInstall "$problem." "Set COLLIE_DIR to a full folder path such as C:\Users\you\collie, then run the installer again." }
   $dir = [System.IO.Path]::GetFullPath($dir).TrimEnd('\')
   $mirror = "$env:COLLIE_INSTALL_MIRROR".Trim().TrimEnd('/')
-  if ($mirror -ne '' -and $mirror -cnotmatch '\Ahttps?://') {
-    Stop-CollieInstall "COLLIE_INSTALL_MIRROR='$mirror' is not an http or https URL."
+  if ($mirror -ne '') {
+    if (-not (Test-CollieMirror $mirror)) {
+      Stop-CollieInstall "COLLIE_INSTALL_MIRROR='$mirror' is not a file:/// URL or an http://127.0.0.1 or http://localhost URL. It is a test seam, never a download source." "Remove COLLIE_INSTALL_MIRROR to install from GitHub."
+    }
+    Write-CollieLine "WARNING: COLLIE_INSTALL_MIRROR is set. This is a test seam: everything comes from $mirror, not from GitHub."
   }
 
   # A pinned tag is checked before anything is fetched or touched.
@@ -335,8 +352,15 @@ function Invoke-CollieInstall {
     if ($tokenFrom -ne '' -and $mirror -eq '') { $headers.Authorization = "Bearer " + [Environment]::GetEnvironmentVariable($tokenFrom) }
     $pinFix = "Name the version and skip this call:  `$env:COLLIE_TAG = 'vX.Y.Z'  (the tags are at https://github.com/$repo/releases)"
     try {
-      $answer = Invoke-WebRequest -UseBasicParsing -Uri "$api/repos/$repo/tags?per_page=100" -Headers $headers -ErrorAction Stop
+      if ($api.StartsWith("file:///")) {
+        $tagsFile = ([Uri]"$api/repos/$repo/tags").LocalPath
+        if (-not (Test-Path -LiteralPath $tagsFile -PathType Leaf)) { Stop-CollieInstall "the mirror has no $tagsFile." "Put the tags list there, or remove COLLIE_INSTALL_MIRROR." }
+        $answer = @{ Content = [System.IO.File]::ReadAllText($tagsFile) }
+      } else {
+        $answer = Invoke-WebRequest -UseBasicParsing -Uri "$api/repos/$repo/tags?per_page=100" -Headers $headers -ErrorAction Stop
+      }
     } catch {
+      if ($null -ne $_.Exception.Data["CollieFix"]) { throw }
       $code = Get-CollieHttpCode $_
       if ($code -eq 0) { Stop-CollieInstall "could not reach $api to list the releases." "Check your network, or $pinFix" }
       if ($code -eq 401 -and $headers.ContainsKey("Authorization")) { Stop-CollieInstall "GitHub refused the token in $tokenFrom (HTTP 401)." "Fix or remove $tokenFrom, then run the installer again." }

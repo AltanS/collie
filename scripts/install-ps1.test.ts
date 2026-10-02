@@ -618,6 +618,35 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(r.asked[0]).toBe("/repos/someone/collie-fork/tags");
   }, 60_000);
 
+  test("COLLIE_INSTALL_MIRROR takes only file:/// and loopback http, and says loudly that it is set", async () => {
+    for (const url of ["https://example.com", "http://10.0.0.1:8080", "http://127.0.0.1.evil.example", "http://user@127.0.0.1", "ftp://127.0.0.1", "\\\\server\\share"]) {
+      const b = box();
+      const r = await install(b, mirror, { env: { COLLIE_INSTALL_MIRROR: url } });
+      expectFailed(r);
+      expect(r.out).toContain("It is a test seam");
+      expect(r.asked).toEqual([]);
+    }
+    const ok = await install(box(), mirror);
+    expect(ok.out).toContain(`WARNING: COLLIE_INSTALL_MIRROR is set. This is a test seam: everything comes from ${mirror.url}`);
+  }, 120_000);
+
+  test("a file:/// mirror folder works the same way", async () => {
+    const b = box();
+    const root = join(b.root, "mirror-folder");
+    mkdirSync(join(root, "repos", ...REPO.split("/")), { recursive: true });
+    writeFileSync(join(root, "repos", ...REPO.split("/"), "tags"), JSON.stringify([{ name: `v${v1}` }]));
+    const release = join(root, ...REPO.split("/"), "releases", "download", `v${v1}`);
+    mkdirSync(release, { recursive: true });
+    for (const [key, body] of mirror.files) {
+      if (key.startsWith(`v${v1}/`)) writeFileSync(join(release, key.slice(`v${v1}/`.length)), body);
+    }
+    const url = `file:///${root.replace(/\\/g, "/")}`;
+    const r = await install(b, mirror, { env: { COLLIE_INSTALL_MIRROR: url } });
+    expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
+    expect(r.code).toBe(0);
+    expect(r.asked).toEqual([]);
+  }, 60_000);
+
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
     const b = box();
     const r = await install(b, mirror, { env: { COLLIE_TAG: "1.0.0" } });
