@@ -48,10 +48,10 @@
 # A symbolic link needs Developer Mode, so this uses none.
 #
 # Everything is inside functions, and the last line calls them. If the download of this file stops
-# half way, `iex` gets no last line, and nothing runs. It never calls `exit`, because under
-# `irm | iex` that would close your window. It sets $LASTEXITCODE instead: 0 when it installed, 1
-# when it failed. A failed run ends with a line that starts "Install failed." and names one fix.
-# (So `powershell -File install.ps1` exits 0 either way. Read $LASTEXITCODE or the last line.)
+# half way, `iex` gets no last line, and nothing runs. A failed run ends with a line that starts
+# "Install failed." and names one fix, and sets $LASTEXITCODE: 0 when it installed, 1 when it failed.
+# Run as a file (`powershell -File install.ps1`), a failure also ends with `exit 1`, which ends only
+# that PowerShell. Under `irm | iex` it never calls `exit`, because that would close your window.
 
 # Stop the install. What happened, then the one thing to do about it. The entry function prints both,
 # with "Install failed." in front of the fix, as the last line.
@@ -662,10 +662,10 @@ function Write-CollieFailure([string]$What, [string]$Fix) {
   Write-Host "Install failed. $Fix" -ForegroundColor Red
 }
 
-# The entry. It never calls `exit`: under `irm | iex` that would close your PowerShell window. It
-# sets $LASTEXITCODE instead (0 on success, 1 on a failure, 2 on an option), and it puts back the one
-# process-wide setting it changes (the TLS protocols), so nothing it did stays in your session.
-function Install-Collie([object[]]$Arguments) {
+# The install and its outcome. It sets $LASTEXITCODE (0 on success, 1 on a failure, 2 on an option)
+# and puts back the one process-wide setting it changes (the TLS protocols), so nothing it did stays
+# in your session.
+function Invoke-CollieEntry([object[]]$Arguments) {
   $ErrorActionPreference = "Stop"
   $ProgressPreference = "SilentlyContinue"
   if ($ExecutionContext.SessionState.LanguageMode -ne "FullLanguage") {
@@ -691,6 +691,14 @@ function Install-Collie([object[]]$Arguments) {
   } finally {
     [Net.ServicePointManager]::SecurityProtocol = $tls
   }
+}
+
+# The entry. $PSCommandPath names the script file when it runs as one; under `irm | iex` it is empty.
+# Only a file run ends a failure with `exit`: there it ends just that PowerShell and gives the caller
+# the exit code. Under `iex` an `exit` would close your window, so the function returns instead.
+function Install-Collie([object[]]$Arguments) {
+  Invoke-CollieEntry $Arguments
+  if ($global:LASTEXITCODE -ne 0 -and "$PSCommandPath" -ne '') { exit $global:LASTEXITCODE }
 }
 
 Install-Collie $args

@@ -82,14 +82,20 @@ describe("scripts/install.ps1, read as text", () => {
     expect(TEXT.split(ENTRY).length - 1).toBe(1);
   });
 
-  test("never calls exit, which under `irm | iex` would close the terminal", () => {
-    expect(offending(/\bexit\b/i)).toEqual([]);
+  test("calls exit only when it runs as a file, never under `irm | iex`, where it would close the terminal", () => {
+    // The one `exit` sits behind the $PSCommandPath check, which is empty under `iex`.
+    expect(offending(/\bexit\b/i)).toEqual([
+      `  if ($global:LASTEXITCODE -ne 0 -and "" -ne '') { exit $global:LASTEXITCODE }`,
+    ]);
+    expect(CODE.filter((l) => /\{ exit /.test(l))).toEqual([
+      `  if ($global:LASTEXITCODE -ne 0 -and "$PSCommandPath" -ne '') { exit $global:LASTEXITCODE }`,
+    ]);
     expect(TEXT).toContain("$global:LASTEXITCODE = 1");
   });
 
   test("puts back the TLS setting it changes, and refuses Constrained Language Mode first", () => {
     expect(TEXT).toMatch(/finally \{\s*\[Net\.ServicePointManager\]::SecurityProtocol = \$tls\s*\}/);
-    const entry = TEXT.slice(TEXT.indexOf("function Install-Collie("));
+    const entry = TEXT.slice(TEXT.indexOf("function Invoke-CollieEntry("));
     expect(entry.indexOf("LanguageMode")).toBeLessThan(entry.indexOf("ServicePointManager"));
   });
 
@@ -412,8 +418,8 @@ async function install(
   opts: { env?: Record<string, string | undefined>; args?: readonly string[]; herdr?: boolean } = {},
 ): Promise<Result> {
   const before = mirror.requests.length;
-  // `& script; exit $LASTEXITCODE`: the script never calls `exit`, so `-File` would report 0 for a
-  // failed run (measured on the VM). $LASTEXITCODE is what the script sets for its caller.
+  // `& script; exit $LASTEXITCODE`: the script ends a failure with `exit` when run as a file, and
+  // $LASTEXITCODE carries the code either way. The `-File` cases below check the process exit code.
   const call = [`& ${psQuote(SCRIPT)}`, ...(opts.args ?? [])].join(" ");
   const r = await runPowerShell(box, ["-Command", `${call}; exit $LASTEXITCODE`], childEnv(box, mirror, opts.env ?? {}, opts.herdr ?? false));
   return { ...r, asked: mirror.requests.slice(before) };
@@ -941,6 +947,26 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(currentTarget(b)).toBe(versionDir(b, v1));
     expect(r.out).toContain("LEAK functions=0 eap=True progress=True tls=True");
   }, 60_000);
+
+  test("run with -File, a failure exits 1 and a success exits 0", async () => {
+    const v = "0.44.0";
+    const good = buildZip(scratch, v);
+    publish(mirror, good, v);
+    const corrupt = new Uint8Array(good.zip);
+    const at = corrupt.length - 30;
+    corrupt.set([(corrupt[at] ?? 0) ^ 0xff], at);
+    mirror.put(`v${v}`, `collie-${v}-${PLATFORM}.zip`, corrupt);
+    const bad = box();
+    const failed = await runPowerShell(bad, ["-File", SCRIPT], childEnv(bad, mirror, { COLLIE_TAG: `v${v}` }, false));
+    expect(failed.code).toBe(1);
+    expect(lastLine(failed.out)).toMatch(/^Install failed\. /);
+    expect(failed.out).toContain("CHECKSUM MISMATCH");
+
+    const ok = box();
+    const installed = await runPowerShell(ok, ["-File", SCRIPT], childEnv(ok, mirror, {}, false));
+    expect(installed.out).toContain(`Collie ${v1} is installed in ${ok.dir}`);
+    expect(installed.code).toBe(0);
+  }, 90_000);
 
   test("a failure under `irm | iex` returns to the prompt with $LASTEXITCODE 1, and keeps the window open", async () => {
     const b = box();
