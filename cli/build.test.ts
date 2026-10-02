@@ -24,6 +24,7 @@ import {
   collieBinaryStaging,
   compiledPath,
   swapBinary,
+  sweepAsides,
   ensureBuild,
   webDist,
   webStaging,
@@ -434,11 +435,58 @@ describe("swapBinary on Windows", () => {
 
   test("the live collie.exe steps aside, the new one lands, and the old one is cleared", () => {
     const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
-    swapBinary(files, STAGED, LIVE, hostFor("win32"));
-    expect(moves(files)).toEqual([posix(`mv ${LIVE} ${LIVE}.old`), posix(`mv ${STAGED} ${LIVE}`)]);
+    swapBinary(files, STAGED, LIVE, hostFor("win32"), "41-a");
+    expect(moves(files)).toEqual([posix(`mv ${LIVE} ${LIVE}.old-41-a`), posix(`mv ${STAGED} ${LIVE}`)]);
     expect(files.read(LIVE)).toBe("NEW");
     // Nothing runs the old file in this fake, so it is cleared at once.
+    expect(files.exists(`${LIVE}.old-41-a`)).toBe(false);
+  });
+
+  test("a second swap while the first old process still runs takes a new aside name", () => {
+    // The first swap's old file is still executed by a process, so Windows refuses to remove it.
+    // With one fixed `.old` name the next step aside was a rename onto that file: EPERM.
+    const held = `${LIVE}.old-41-a`;
+    const files = fakeFiles({ [LIVE]: "MIDDLE", [STAGED]: "NEW", [held]: "OLD" });
+    files.undeletable.add(held);
+    swapBinary(files, STAGED, LIVE, hostFor("win32"), "42-b");
+    expect(moves(files)).toEqual([posix(`mv ${LIVE} ${LIVE}.old-42-b`), posix(`mv ${STAGED} ${LIVE}`)]);
+    expect(files.read(LIVE)).toBe("NEW");
+    expect(files.read(held)).toBe("OLD");
+    expect(files.exists(`${LIVE}.old-42-b`)).toBe(false);
+  });
+
+  test("the default aside name is unique to this process and this moment", () => {
+    const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
+    files.undeletable.add(`${LIVE}.old`);
+    swapBinary(files, STAGED, LIVE, hostFor("win32"));
+    const aside = moves(files)[0] ?? "";
+    expect(aside).toMatch(new RegExp(`\\.old-${process.pid}-[0-9a-z]+$`));
+  });
+
+  test("the sweep clears every aside nothing runs, the legacy `.old` too, and leaves the rest", () => {
+    const dir = `${ROOT}/bin`;
+    const files = fakeFiles({
+      [LIVE]: "LIVE",
+      [`${LIVE}.old`]: "legacy",
+      [`${LIVE}.old-1-a`]: "free",
+      [`${LIVE}.old-2-b`]: "held",
+      [`${dir}/collie.exe.older`]: "not an aside",
+      [`${dir}/other.exe.old-3-c`]: "not ours",
+    });
+    files.undeletable.add(`${LIVE}.old-2-b`);
+    sweepAsides(files, LIVE, hostFor("win32"));
     expect(files.exists(`${LIVE}.old`)).toBe(false);
+    expect(files.exists(`${LIVE}.old-1-a`)).toBe(false);
+    expect(files.exists(`${LIVE}.old-2-b`)).toBe(true);
+    expect(files.exists(`${dir}/collie.exe.older`)).toBe(true);
+    expect(files.exists(`${dir}/other.exe.old-3-c`)).toBe(true);
+    expect(files.exists(LIVE)).toBe(true);
+  });
+
+  test("off Windows the sweep touches nothing", () => {
+    const files = fakeFiles({ [`${BINARY}.old-1-a`]: "x" });
+    sweepAsides(files, BINARY, hostFor("linux"));
+    expect(files.exists(`${BINARY}.old-1-a`)).toBe(true);
   });
 
   test("a staged file that is not there never moves the one working binary", () => {
@@ -451,8 +499,8 @@ describe("swapBinary on Windows", () => {
   test("a staged file that cannot take its place puts the old binary back, and the failure rises", () => {
     const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
     files.unrenamable.add(STAGED);
-    expect(() => swapBinary(files, STAGED, LIVE, hostFor("win32"))).toThrow();
-    expect(moves(files).at(-1)).toBe(posix(`mv ${LIVE}.old ${LIVE}`));
+    expect(() => swapBinary(files, STAGED, LIVE, hostFor("win32"), "41-a")).toThrow();
+    expect(moves(files).at(-1)).toBe(posix(`mv ${LIVE}.old-41-a ${LIVE}`));
     expect(files.read(LIVE)).toBe("OLD");
   });
 });

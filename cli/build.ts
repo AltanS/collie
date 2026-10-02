@@ -86,9 +86,13 @@ export function compiledPath(outfile: string, host: Host = HOST): string {
  *
  * Windows refuses to rename ONTO an executable that is running (EPERM), and during `collie update`
  * the running executable is `bin/collie.exe` itself, the updater. It does allow renaming the running
- * file AWAY, so the live binary steps aside to `<live>.old` first and the new one takes its place.
- * The old file can only be deleted once nothing runs it, so that is tried and a failure is left for
- * the next build, which clears it before stepping aside again.
+ * file AWAY, so the live binary steps aside first and the new one takes its place. The old file can
+ * only be deleted once nothing runs it, so that is tried, and a failure is left for a later sweep.
+ *
+ * The aside name is new for every swap (`<live>.old-<pid>-<time>`). With one fixed name, a second
+ * swap while the first old process still ran met a file it could not remove, and the rename onto it
+ * failed with EPERM. Every aside that nothing runs any more is removed before the step aside, and
+ * again when a bridge starts ({@link sweepAsides}).
  *
  * The live binary is the one working copy, so it never steps aside for a staged file that is not
  * there (the rename then fails exactly as it always did, with the live binary untouched), and it
@@ -99,13 +103,14 @@ export function swapBinary(
   staged: string,
   live: string,
   host: Host = HOST,
+  tag: string = `${process.pid}-${Date.now().toString(36)}`,
 ): void {
   if (host.platform !== "win32" || !files.exists(live) || !files.exists(staged)) {
     files.rename(staged, live);
     return;
   }
-  const aside = `${live}.old`;
-  tryRemove(files, aside);
+  sweepAsides(files, live, host);
+  const aside = asidePath(live, tag);
   files.rename(live, aside);
   try {
     files.rename(staged, live);
@@ -116,12 +121,29 @@ export function swapBinary(
   tryRemove(files, aside);
 }
 
+/** Where the live binary steps aside to for one swap. `tag` makes the name unique to that swap. */
+export const asidePath = (live: string, tag: string): string => `${live}.old-${tag}`;
+
+/**
+ * Remove every aside of `live` that nothing runs any more: `<live>.old-*`, and the one fixed
+ * `<live>.old` that builds before this name used. A file a process still executes cannot be removed
+ * on Windows, so it stays for the next sweep. Never throws, and does nothing off Windows.
+ */
+export function sweepAsides(files: Pick<Files, "list" | "remove">, live: string, host: Host = HOST): void {
+  if (host.platform !== "win32") return;
+  const prefix = `${host.path.basename(live)}.old`;
+  const dir = host.path.dirname(live);
+  for (const name of files.list(dir)) {
+    if (name === prefix || name.startsWith(`${prefix}-`)) tryRemove(files, host.path.join(dir, name));
+  }
+}
+
 /** Remove `p` if it can be removed. A file some process still executes cannot be, on Windows. */
-function tryRemove(files: Files, p: string): void {
+function tryRemove(files: Pick<Files, "remove">, p: string): void {
   try {
     files.remove(p);
   } catch {
-    // Still running: the next swap clears it.
+    // Still running: a later sweep clears it.
   }
 }
 
