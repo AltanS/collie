@@ -294,6 +294,20 @@ describe("_supervise, the loop", () => {
     expect(l.writes).toContain(formatTaskRecord(7100, 9001));
   });
 
+  test("off Windows it refuses with one line, writes nothing and launches nothing", async () => {
+    for (const platform of ["linux", "darwin"]) {
+      const l = launcher([]);
+      const deps = { ...l.deps, host: hostFor(platform) };
+      expect(await cmdSupervise(deps, ARGS)).toBe(EXIT.USAGE);
+      expect(l.io.stderr).toEqual([
+        "error: _supervise is the Windows Task Scheduler launcher; here the service manager runs the bridge",
+      ]);
+      expect(l.io.stdout).toEqual([]);
+      expect(l.launched).toHaveLength(0);
+      expect(l.files.entries.size).toBe(0);
+    }
+  });
+
   test("refuses to run without the root and the config dir, and launches nothing", async () => {
     for (const args of [[], [`COLLIE_PLUGIN_ROOT=${ROOT}`], [`HERDR_PLUGIN_CONFIG_DIR=${CONFIG}`], ["nonsense"]]) {
       const l = launcher([]);

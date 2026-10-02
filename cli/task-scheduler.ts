@@ -283,6 +283,12 @@ export function parseSuperviseArgs(args: readonly string[]): SuperviseArgs | nul
  * Returns only when the bridge exits 0, or at once with exit 2 when its arguments are unusable.
  */
 export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[]): Promise<number> {
+  // Off Windows the service manager runs `_exec-bridge` itself; a launcher here would be a second,
+  // unwatched supervisor. One line, nothing touched.
+  if (deps.host.platform !== "win32") {
+    deps.io.err("error: _supervise is the Windows Task Scheduler launcher; here the service manager runs the bridge");
+    return EXIT.USAGE;
+  }
   const parsed = parseSuperviseArgs(args);
   const root = parsed?.env.COLLIE_PLUGIN_ROOT;
   const configDir = parsed?.env.HERDR_PLUGIN_CONFIG_DIR;

@@ -330,6 +330,9 @@ describe("exit codes", () => {
     const body = helpText().join("\n");
     expect(body).toContain("--plain");
     for (const c of COMMANDS) if (c.internal === true) expect(body).not.toContain(c.name);
+    // The Windows launcher by name: Task Scheduler runs it, an operator never types it.
+    expect(findCommand("_supervise")?.internal).toBe(true);
+    expect(body).not.toContain("_supervise");
   });
 
   test("an unknown verb with arguments is still reported by its own name", async () => {
