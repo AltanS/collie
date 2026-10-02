@@ -10,10 +10,10 @@ import { classifyToolCall } from "./tool-call.ts";
 
 describe("classifyToolCall", () => {
   test("the same tool under every harness's spelling lands on one kind", () => {
-    // The whole point of a shared table: six adapters, one answer per tool.
+    // The whole point of a shared table: seven adapters, one answer per tool.
     for (const name of ["Bash", "bash", "shell", "exec_command"])
       expect(classifyToolCall(name, { command: "ls" }, "ls").kind).toBe("execute");
-    for (const name of ["Edit", "MultiEdit", "Write", "apply_patch"])
+    for (const name of ["Edit", "MultiEdit", "Write", "apply_patch", "edit_file", "write_file"])
       expect(classifyToolCall(name, { file_path: "/a.ts" }, "/a.ts").kind).toBe("edit");
     for (const name of ["Read", "read", "read_file", "view"])
       expect(classifyToolCall(name, { file_path: "/a.ts" }, "/a.ts").kind).toBe("read");

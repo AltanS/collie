@@ -1,4 +1,8 @@
-import { KNOWN_HARNESS_NAMES, REPORTS_SESSION_ON_FIRST_PROMPT } from "../bridge/journal/registry.ts";
+import {
+  DISCOVERS_OWN_SESSIONS,
+  KNOWN_HARNESS_NAMES,
+  REPORTS_SESSION_ON_FIRST_PROMPT,
+} from "../bridge/journal/registry.ts";
 import { resolveJournalRoots } from "../bridge/config.ts";
 import type { CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type Finding } from "./finding.ts";
@@ -7,8 +11,9 @@ import type { Exec, Files } from "./sys.ts";
 // ── Why the History link is not there (issue #137) ───────────────────────────
 //
 // "Show entire history" and the pane's history icon key on ONE boolean the browser is handed:
-// `hasSession`. The bridge sets it (`bridge/types.ts` § `toPaneWire`) only when BOTH hold — the pane
-// record carries a session ref, and the agent has a journal adapter (`bridge/journal/registry.ts`).
+// `hasSession`. The bridge sets it (`bridge/types.ts` § `toPaneWire`) when the agent has a journal
+// adapter and a session is addressable — reported on the pane record, or found by an adapter that
+// discovers its own (`DISCOVERS_OWN_SESSIONS`).
 //
 // The session ref reaches Herdr from ONE place: the agent-side hook `herdr integration install
 // <agent>` writes. That hook exits silently when its environment is not what it expects, and it
@@ -285,6 +290,11 @@ function integration(
   }
   const line = status.get(agent);
   if (line === undefined) {
+    // An adapter that discovers its own session needs no hook at all: no Herdr build lists one,
+    // and none has to. Green, not skipped — there is nothing to do here.
+    if (DISCOVERS_OWN_SESSIONS.includes(agent)) {
+      return ok(check, "no hook — the adapter finds the session log itself");
+    }
     return skipped(
       check,
       `this Herdr build does not list ${agent} — Collie can read its journal, Herdr has no hook for it`,

@@ -532,6 +532,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "Where Hermes keeps its session logs. Empty takes ~/.hermes.",
     configField: "journalRoots",
   },
+  {
+    key: "muse_root",
+    env: "COLLIE_MUSE_ROOT",
+    section: "journal",
+    kind: "roots",
+    default: [],
+    doc: "Where Muse keeps its session logs. Empty takes $XDG_DATA_HOME/muse/sessions.",
+    configField: "journalRoots",
+  },
 
   // ── crew ───────────────────────────────────────────────────────────────────
   {

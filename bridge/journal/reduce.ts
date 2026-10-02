@@ -8,7 +8,7 @@
 // therefore costs 32 MB of reading and a full re-parse of it. That is the cost this module removes.
 //
 // ── THE ONE FACT THE WHOLE DESIGN RESTS ON ───────────────────────────────────
-// A raw `\n` byte is always a row boundary, in all six formats. The three file harnesses write JSONL,
+// A raw `\n` byte is always a row boundary, in all seven formats. The five file harnesses write JSONL,
 // and the two SQLite harnesses serialise their rows through `JSON.stringify`, which escapes a newline
 // inside a string value as `\n` (two characters) and never emits a raw one. So a reader may cut the
 // byte stream anywhere: a fragment either completes with the next chunk or is a fragment of exactly
@@ -65,7 +65,7 @@ export interface Reduction {
 /**
  * A role name in a tally wears this prefix, so a name always says which field produced it.
  *
- * Two of the six formats decide a row's kind with a `type` AND a role (codex and pi); claude and grok
+ * Two of the seven formats decide a row's kind with a `type` AND a role (codex and pi); claude and grok
  * never read one, and opencode and hermes have nothing else. Without the prefix a tally saying
  * `developer` would not say where to look. Not exported: it is a spelling inside the names this
  * module produces, and a caller reads those names rather than composing one.
@@ -165,7 +165,7 @@ export function createUnknownCounter(known: KnownTypes): UnknownCounter {
 }
 
 /**
- * An empty tally, for a `RowReducer` that is not one of the six grammars.
+ * An empty tally, for a `RowReducer` that is not one of the seven grammars.
  *
  * A function rather than a shared constant: `Object.freeze` does not stop `Map.set`, so a shared
  * empty tally would be a shared mutable handed to every caller.
@@ -318,7 +318,7 @@ export function noQueue(): readonly string[] {
 /**
  * Build one row's answer.
  *
- * Two rules live here rather than in six adapters. A `uuid` of `""` is dropped from `changed`,
+ * Two rules live here rather than in seven adapters. A `uuid` of `""` is dropped from `changed`,
  * because a turn with no name cannot be addressed by one. And a `uuid` that is in `added` is dropped
  * too: a row that both makes a turn and folds a result into it has not changed anything the caller
  * held, it has simply handed over a finished turn.

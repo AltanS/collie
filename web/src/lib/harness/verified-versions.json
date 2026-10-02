@@ -72,7 +72,13 @@
       "verified": "2026-09-26",
       "how": "capture",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md: muse--tasks-popup, muse--tasks-popup-draft and muse--tasks-popup-approval, captured 2026-09-26 on Muse Code 1.4.0 (#304/#305); the rest of the Muse corpus is from 1.3.0 (2026-09-18)"
+      "evidence": "web/src/fixtures/panes/README.md: muse--tasks-popup, muse--tasks-popup-draft and muse--tasks-popup-approval, captured 2026-09-26 on Muse Code 1.4.0 (#304/#305); the rest of the Muse corpus is from 1.3.0 (2026-09-18)",
+      "journal": {
+        "version": "1.4.2",
+        "verified": "2026-10-02",
+        "how": "unverified",
+        "evidence": "bridge/journal/muse.ts's row inventory was verified against on-disk Muse sessions on 2026-10-02 (Muse Code 1.4.2): envelope plus every transcript-carrying row probed over one 101,565-row log and half a dozen siblings, joins measured (2,491 tool calls join 1:1 with 2,490 results; the miss is in flight). No canary runs Muse, so nothing re-checks it in CI."
+      }
     },
     "opencode": {
       "version": "1.18.33",
