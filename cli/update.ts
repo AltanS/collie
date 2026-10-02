@@ -1569,6 +1569,14 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
     return EXIT.FAIL;
   }
   const artifact = verdict.manifest.artifacts.find((a) => a.platform === platform);
+  if (artifact === undefined && platform === "windows-x64") {
+    // For one release cycle a release may ship without its Windows zip (release.yml), and that must
+    // read as a pause, not as a reason to build from source on a machine with no toolchain.
+    const said = `release ${target.version} has no Windows build; try again after the next release`;
+    deps.io.err(`error: ${said}. Nothing was changed.`);
+    abandonStaging(deps, said);
+    return EXIT.FAIL;
+  }
   if (artifact === undefined) {
     deps.io.err(`error: release ${target.version} publishes no artifact for ${platform}.`);
     deps.io.err('       Build from source instead: docs/install.md → "From source". Nothing was changed.');

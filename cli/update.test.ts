@@ -1589,6 +1589,25 @@ describe("collie update on a binary install", () => {
     expect(fetched).toEqual([`https://github.com/AltanS/collie/releases/download/v${NEW}/${PAYLOAD}.tar.gz`]);
   });
 
+  test("Windows: a release with no `windows-x64` entry says so plainly and changes nothing", async () => {
+    // The fixture's manifest lists linux-x64 only: a release whose Windows build failed.
+    const h = windowsBinaryHarness();
+    const fetched: string[] = [];
+    h.deps.net = { ...h.deps.net, download: (url) => (fetched.push(url), Promise.reject(new Error("no download expected"))) };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain(`error: release ${NEW} has no Windows build; try again after the next release. Nothing was changed.`);
+    expect(err).not.toContain("From source");
+    expect(fetched).toEqual([]);
+    expect(h.link.ops).toEqual([]);
+    expect(h.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+    expect(h.files.exists(`${INST}/.staging`)).toBe(false);
+    expect(currentTarget(h)).toBe(BROOT);
+    expect(h.exec.calls.some((c) => c.includes("tar"))).toBe(false);
+    // The phone reads the same sentence from the run record.
+    expect(h.files.read(`${STATE}/update.json`) ?? "").toContain("has no Windows build");
+  });
+
   test("Linux still unpacks with `tar -xzf`, the exact vector it always ran", async () => {
     const h = binaryHarness();
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
