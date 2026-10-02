@@ -7,7 +7,7 @@ import { Push, topicIsSendable } from "./push.ts";
 import type { PushSender, PushSubscription } from "./push.ts";
 import { loadConfig } from "./config.ts";
 import { HOST } from "./host.ts";
-import { ensureOwnerOnlyDir, isOwnerOnly } from "./owner-only.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 
 // The broadcast prune-vs-log logic and the on-disk persistence are the untested-by-Bun.serve parts.
 // We inject a fake sender so the 404/410-prune path is exercised without the real web-push library,
@@ -245,7 +245,7 @@ describe("Push — persistence", () => {
   // file the store writes inherits it. NTFS has no 0600, so the check reads that list instead.
   test("addSubscription persists with owner-only (0600) permissions", async () => {
     const cfg = await tempCfg();
-    if (process.platform === "win32") ensureOwnerOnlyDir(cfg.stateDir, HOST);
+    if (process.platform === "win32") ensureOwnerOnlyDir(cfg.stateDir, HOST, { root: privateRoot("state"), repair: true });
     const push = new Push(cfg, () => Promise.resolve());
     enable(push, []);
 

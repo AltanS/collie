@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
-import { ensureOwnerOnlyDir, isOwnerOnly } from "../owner-only.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import {
   CacheWatchStore,
   coerceCacheWatchFile,
@@ -80,7 +80,7 @@ describe("CacheWatchStore", () => {
   test("a toggle round-trips through disk and writes owner-only", async () => {
     const stateDir = await tempDir();
     // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
-    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST);
+    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
     const store = new CacheWatchStore({ stateDir }, () => TS);
     await store.set(peer, "collie · next", true);
     // NTFS has no 0600 mode bits (stat() says 0o666), so Windows reads the access list instead.

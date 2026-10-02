@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DEFAULT_NOTIFY_PREFS, NotifyPrefsStore, coerceNotifyPrefs } from "./notify-prefs.ts";
 import { loadConfig } from "./config.ts";
 import { HOST } from "./host.ts";
-import { ensureOwnerOnlyDir, isOwnerOnly } from "./owner-only.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 
 // Notify-type prefs own which agent statuses push. The coercion is pure; the merge + disk round-trip
 // is verified through a throwaway temp state dir (mirrors snooze.test.ts / push.test.ts).
@@ -80,7 +80,7 @@ describe("NotifyPrefsStore", () => {
   // file the store writes inherits it. NTFS has no 0600, so the check reads that list instead.
   test("persists with owner-only (0600) permissions", async () => {
     const cfg = await tempCfg();
-    if (process.platform === "win32") ensureOwnerOnlyDir(cfg.stateDir, HOST);
+    if (process.platform === "win32") ensureOwnerOnlyDir(cfg.stateDir, HOST, { root: privateRoot("state"), repair: true });
     const store = new NotifyPrefsStore(cfg);
     await store.set({ blocked: false });
     if (process.platform === "win32") {

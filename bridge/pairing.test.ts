@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "./host.ts";
-import { ensureOwnerOnlyDir, isOwnerOnly } from "./owner-only.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 import {
   addDevice,
   bearerToken,
@@ -585,7 +585,7 @@ describe("filePairingIo", () => {
   test("writes are owner-only and land under the state dir", async () => {
     const stateDir = join(await tempStateDir(), "nested");
     // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
-    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST);
+    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
     const io = filePairingIo(stateDir);
     await io.writePending(newPending("ABCD2345", 0));
     await io.writeRegistry({ devices: [{ label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1 }] });

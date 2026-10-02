@@ -584,7 +584,7 @@ const diskFilePerms: FilePerms = hostFilePerms(HOST, {
       return false;
     }
   },
-}, (path) => secretFileVerdict(path));
+}, (path, repair) => secretFileVerdict(path, { repair }));
 
 export function loadConfig(env: Environment = process.env): Config {
   const stateDir = resolveStateDir(env);
@@ -685,14 +685,19 @@ export function normaliseBasePath(raw: string | undefined): string {
  * it is not resolved at module scope, because importing `bridge/config.ts` must not open a file (the
  * CLI imports it for `resolveStateDir` alone, in every verb). `cli/context.ts` resolves the same two
  * paths from its own config-dir ladder, so both sides land on one answer.
+ *
+ * `repairAcl`: whether a loose secret file's access list may be changed (Windows only). The
+ * bridge's entry point passes `true`; anything else that calls this only verifies.
  */
 export async function loadConfigLayer(
   env: Environment = process.env,
   home: string = homedir(),
   warn: (line: string) => void = (l) => console.warn(l),
+  repairAcl = false,
 ): Promise<ConfigFileLayer> {
   return readConfigFiles(diskIo, configFilePaths(env, home, resolveConfigDir(env, home)), warn, {
     home,
     perms: diskFilePerms,
+    repairAcl,
   });
 }

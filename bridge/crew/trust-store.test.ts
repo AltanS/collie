@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
-import { ensureOwnerOnlyDir, isOwnerOnly } from "../owner-only.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { deriveMode } from "./mode.ts";
 import {
   enrollmentOf,
@@ -195,7 +195,7 @@ describe("TrustStore — the write discipline", () => {
     const stateDir = join(parent, "state");
     try {
       // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
-      if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST);
+      if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
       const store = new TrustStore(stateDir);
       const data = leadStore();
       await store.update(() => ({ next: data, result: "ok" as const }));

@@ -38,20 +38,19 @@ import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
 import type { HelloResult, CrewFetch, PeerOutcome } from "../bridge/crew/peer-client.ts";
 import { crewRuntimePath, parseMarker, rosterDrift, type CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
-import {
-  enrollmentOf,
-  TRUST_STORE_FILENAME,
-  TrustStore,
-  type TrustedMember,
-  type TrustStoreData,
-} from "../bridge/crew/trust-store.ts";
+import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import {
   currentUserSid,
+  foreignOwners,
   isOwnerOnly,
-  ownerOnlyCommand,
   type OwnerOnlyDeps,
+  privateCommand,
+  PRIVATE_ROOTS,
   realOwnerOnlyDeps,
+  scopeOf,
+  whoCanRead,
 } from "../bridge/owner-only.ts";
+import { sidName } from "../bridge/sddl.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
@@ -398,7 +397,9 @@ function line(f: Finding): string {
   const head = f.status === "ok" ? "✓" : `${f.status}:`;
   // 22 = longest check id ("integration-opencode", 20 chars) + 2, so every id gets
   // at least one space before the detail. Grow this if a longer check id lands.
-  const body = `  ${head.padEnd(9)}${f.check.padEnd(22)}${f.detail}`;
+  // A detail of more than one line (the Windows `secrets-private` line puts a path on its own)
+  // continues under its first line. No other detail holds a line break.
+  const body = `  ${head.padEnd(9)}${f.check.padEnd(22)}${f.detail.replaceAll("\n", `\n${" ".repeat(33)}`)}`;
   return f.remedy === null ? body : `${body} → ${f.remedy}`;
 }
 
@@ -1479,94 +1480,80 @@ export function windowsLongPaths(deps: Pick<DoctorDeps, "ctx" | "exec">): Findin
 }
 
 /**
- * `secrets-private`: Windows only (M43 spec 04). The state dir, the config dir, `.env` and the trust
- * store, each read by its access list (`bridge/owner-only.ts`'s `isOwnerOnly`): a folder with
- * everything below it, a file with its own folder. One that Everyone, Users, Authenticated Users or
- * Guests can read is an `error`, the same severity a `config.toml` secret dropped for a loose mode
- * gets on POSIX (`config-file`), and the line names the path and the fix. A list that cannot be read
- * is `skipped` with the reason: no claim about a file this process could not see.
+ * `secrets-private`: Windows only (M43 spec 04). The state folder and the config folder, each read
+ * with everything below it (`isOwnerOnly`, one `icacls /T` each), and the owner of each folder and
+ * secret file (one PowerShell `Get-Acl`, which `icacls` cannot answer). Three answers:
  *
- * `doctor` repairs nothing (the contract at the top of this file). The bridge's start repairs both
- * folders, so `collie restart` is the first fix; the `icacls` line is the same repair by hand.
+ *   - a VERIFIED grant to an account outside the allowlist, or a foreign owner: `error`, the
+ *     severity a `config.toml` secret dropped for a loose mode gets on POSIX (`config-file`);
+ *   - a folder that could not be checked (no access list, a network share, a tool that failed):
+ *     `warn`, "cannot confirm", never silent and never ok;
+ *   - private: ok.
+ *
+ * `doctor` changes nothing (the contract at the top of this file). The bridge repairs Collie's own
+ * folders at start, so "restart Collie" is the first fix there; the `icacls` line is the same repair
+ * by hand, and the only fix for a folder Collie does not own.
  */
 export function secretsPrivate(deps: Pick<DoctorDeps, "ctx" | "host" | "ownerOnly">): Finding {
   const check = "secrets-private";
   const { path } = deps.host;
-  const targets = [
-    { label: "state dir", file: deps.ctx.stateDir, folder: true },
-    { label: "config dir", file: deps.ctx.configDir, folder: true },
-    { label: ".env", file: path.join(deps.ctx.configDir, ".env"), folder: false },
-    { label: "trust store", file: path.join(deps.ctx.stateDir, TRUST_STORE_FILENAME), folder: false },
-  ].filter((t) => deps.ownerOnly.stat(t.file) !== null);
-  if (targets.length === 0) {
-    return skipped(check, "no state dir, config dir, .env or trust store yet", "`collie start` creates the state dir owner-only");
+  const roots = PRIVATE_ROOTS.map((root) => ({ root, dir: root.id === "state" ? deps.ctx.stateDir : deps.ctx.configDir })).filter(
+    (r) => deps.ownerOnly.stat(r.dir) !== null,
+  );
+  if (roots.length === 0) {
+    return skipped(check, "there is no Collie state or config folder yet", "`collie start` creates the state folder private");
   }
-  const loose: LooseFinding[] = [];
-  const unknown: string[] = [];
-  for (const t of targets) {
-    const verdict = isOwnerOnly(t.file, deps.host, deps.ownerOnly);
-    if (verdict.state === "loose") loose.push(looseFinding(t, verdict.principals, verdict.where, path));
-    else if (verdict.state === "unknown") unknown.push(`${t.label} ${t.file} (${verdict.why})`);
+  const owned = roots.flatMap(({ root, dir }) => [dir, ...root.secrets.map((n) => path.join(dir, n))]).filter(
+    (p) => deps.ownerOnly.stat(p) !== null,
+  );
+  const owners = foreignOwners(owned, deps.ownerOnly);
+  const user = currentUserSid(deps.ownerOnly.acl);
+  const problems: { detail: string; remedy: string }[] = [];
+  const unconfirmed: string[] = [];
+  for (const { root, dir } of roots) {
+    const verdict = isOwnerOnly(dir, deps.host, deps.ownerOnly);
+    const strangeOwners = owned.filter((p) => (p === dir || path.dirname(p) === dir) && owners.has(p));
+    if (verdict.state === "not-checked" && strangeOwners.length === 0) {
+      unconfirmed.push(`${root.label}: ${verdict.reason}\n${dir}`);
+      continue;
+    }
+    const leaks = verdict.state === "loose" ? verdict.leaks : [];
+    const own = leaks.filter((l) => l.path === dir);
+    const inside = leaks.filter((l) => l.path !== dir);
+    const ownCollie = scopeOf(dir, false, deps.host, deps.ownerOnly).allowed;
+    const restart = ownCollie ? "restart Collie, or run: " : "run: ";
+    if (own.length > 0 && user !== null) {
+      problems.push({
+        detail: `${root.label} can be read by other accounts (${whoCanRead(own)}).\n${dir}`,
+        remedy: `Fix: ${restart}${privateCommand(dir, user, true, own)}`,
+      });
+    } else if (inside.length > 0) {
+      const files = [...new Set(inside.map((l) => l.path))];
+      const secret = files.every((f) => root.secrets.includes(path.basename(f)));
+      problems.push({
+        detail: `${root.label} holds files other accounts can read (${whoCanRead(inside)}): ${files.slice(0, 3).map((f) => path.relative(dir, f)).join(", ")}.\n${dir}`,
+        remedy: `Fix: ${secret && ownCollie ? "restart Collie, or run: " : "run: "}icacls "${files[0]!}" /reset`,
+      });
+    }
+    for (const p of strangeOwners) {
+      const sid = owners.get(p)!;
+      problems.push({
+        detail: `${p === dir ? root.label : path.basename(p)} is owned by ${sidName(sid)} [${sid}], who can always change its permissions.\n${p}`,
+        remedy: user === null ? "Fix: take ownership as your account" : `Fix: in an Administrator PowerShell, icacls "${p}" /setowner "*${user}"`,
+      });
+    }
   }
-  if (loose.length > 0) {
-    const first = loose[0]!;
-    const sid = currentUserSid(deps.ownerOnly.acl);
-    // A folder: the bridge's start repairs it, and the by-hand line is that same repair. A file
-    // with a grant of its own: that one file, made owner-only where it is.
-    const byHand = first.below !== null ? `icacls "${first.below}" /reset` : ownerOnlyCommand(first.file, sid, first.folder);
-    return bad(
+  if (problems.length > 0) {
+    return bad(check, problems.map((p) => p.detail).join("\n"), problems.map((p) => p.remedy).join("; "));
+  }
+  if (unconfirmed.length > 0) {
+    return warn(
       check,
-      loose.map((l) => l.detail).join("; "),
-      first.folder ? `\`collie restart\` repairs it at start, or by hand: ${byHand}` : `run: ${byHand}`,
+      `cannot confirm who can read ${unconfirmed.join("\n")}`,
+      "keep the state and config folders on an NTFS drive on this PC, and run `collie doctor` as the account that runs Collie",
     );
   }
-  if (unknown.length > 0) {
-    return skipped(
-      check,
-      `could not read the access list of ${unknown.join(", ")}; Collie cannot say who can read it`,
-      "run `collie doctor` as the user Collie runs as",
-    );
-  }
-  return ok(check, `${targets.map((t) => t.label).join(", ")} are owner-only: only you, SYSTEM and Administrators can read them`);
-}
-
-/** One loose target, in words, with what the remedy needs. */
-interface LooseFinding {
-  readonly file: string;
-  readonly folder: boolean;
-  readonly detail: string;
-  /** The first loose entry below a folder whose own list is fine, as a full path, else `null`. */
-  readonly below: string | null;
-}
-
-/**
- * Where the leak is, in words: the path itself, the folder a file sits in, or files inside a folder
- * (as `icacls` names them, the first three). A file whose own list is private but whose folder is
- * loose must not read "is not owner-only": the loader may have just made that file owner-only.
- */
-function looseFinding(
-  t: { label: string; file: string; folder: boolean },
-  principals: readonly string[],
-  where: readonly string[],
-  path: Host["path"],
-): LooseFinding {
-  const who = principals.join(", ");
-  if (!t.folder) {
-    const detail = where.includes(t.file)
-      ? `${t.label} ${t.file} is not owner-only: ${who} can read it`
-      : `${t.label} ${t.file} sits in a folder that ${who} can read`;
-    return { file: t.file, folder: false, detail, below: null };
-  }
-  const inside = where.filter((w) => w !== path.basename(t.file));
-  if (inside.length < where.length) {
-    return { file: t.file, folder: true, detail: `${t.label} ${t.file} is not owner-only: ${who} can read it`, below: null };
-  }
-  return {
-    file: t.file,
-    folder: true,
-    detail: `${t.label} ${t.file} holds files that ${who} can read (${inside.slice(0, 3).join(", ")})`,
-    below: path.join(path.dirname(t.file), inside[0]!),
-  };
+  return ok(check, `${roots.map((r) => r.root.label).join(" and ")} are private to your account, SYSTEM and Administrators`);
 }
 
 /**

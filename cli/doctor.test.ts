@@ -20,7 +20,8 @@ import {
   windowsLongPaths,
   windowsTask,
 } from "./doctor.ts";
-import type { AclTool, OwnerOnlyDeps } from "../bridge/owner-only.ts";
+import type { AclTool, SaveResult } from "../bridge/icacls.ts";
+import type { OwnerOnlyDeps } from "../bridge/owner-only.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
@@ -140,33 +141,50 @@ function healthyFiles(): SeededFiles {
 }
 
 /**
- * The owner-only seams with no disk and no `icacls`. `saved[path]` is what `icacls /save` wrote for
- * that path (captured on the VM); a path not named reads as an owner-only profile folder. `absent`
- * paths do not exist; a path ending in a known file name is a file, anything else a folder.
+ * The owner-only seams with no disk and no `icacls`. `trees[path]` is what `icacls /save /T` wrote
+ * for that folder (lines captured on the VM); a folder not named reads as a private profile folder.
+ * `absent` paths do not exist; a name ending in `.env`, `.json` or `.toml` is a file. `owners` is
+ * what one `Get-Acl` would answer. The repair and mkdir seams throw: doctor changes nothing.
  */
-function fakeOwnerOnly(saved: Record<string, string>, absent: readonly string[] = []): OwnerOnlyDeps {
+/** A `/save` that ran out of time, as the fake's answer for a folder. */
+const ACL_TIMED_OUT = "\u0000timed-out";
+/** A `/save` that wrote no list (FAT, exFAT, a share: simulated). */
+const ACL_NO_LIST = "\u0000no-list";
+
+function fakeOwnerOnly(
+  trees: Record<string, string>,
+  over: { absent?: readonly string[]; owners?: Record<string, string>; lists?: Record<string, string[]> } = {},
+): OwnerOnlyDeps {
+  const fail = (): never => {
+    throw new Error("doctor must never change an access list");
+  };
   const acl: AclTool = {
-    // Without `/T` icacls writes the path's own entry only: the first name and list of the tree.
-    save: (path, tree) => {
-      const text = saved[path] ?? `x\r\nD:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;${WIN_SID})\r\n`;
-      return { code: 0, text: tree ? text : text.split("\r\n").slice(0, 2).join("\r\n") };
+    save: (path) => {
+      const answer = trees[path] ?? `x\r\nD:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;${WIN_SID})\r\n`;
+      if (answer === ACL_TIMED_OUT) return { kind: "timed-out" } satisfies SaveResult;
+      return { kind: "ok", code: answer === ACL_NO_LIST ? 1 : 0, text: answer === ACL_NO_LIST ? "" : answer } satisfies SaveResult;
     },
-    icacls: () => {
-      throw new Error("doctor must never repair an access list");
-    },
-    whoami: () => ({ code: 0, stdout: `"pc\\pat","${WIN_SID}"\r\n` }),
+    restore: fail,
+    reset: fail,
+    whoami: () => ({ code: 0, stdout: `"pc\\pat","${WIN_SID}"\r\n`, timedOut: false }),
+    descriptors: (paths) => new Map(paths.flatMap((p) => (over.owners?.[p] === undefined ? [] : [[p, over.owners[p]!] as const]))),
   };
   return {
     acl,
-    stat: (path) => (absent.includes(path) ? null : { dir: !/(\.env|\.json)$/.test(path), mode: 0o600 }),
-    mkdir: () => {
-      throw new Error("doctor must never create a folder");
-    },
-    systemPlaces: [],
+    stat: (path) => ((over.absent ?? []).includes(path) ? null : { dir: !/(\.env|\.json|\.toml)$/.test(path), mode: 0o600, nlink: 1 }),
     isLink: () => false,
+    realpath: (path) => path,
+    list: (path) => over.lists?.[path] ?? [],
+    mkdir: fail,
+    writeBackup: fail,
+    removeFile: fail,
+    env: { USERPROFILE: WIN_HOME, APPDATA: `${WIN_HOME}\\AppData\\Roaming`, LOCALAPPDATA: `${WIN_HOME}\\AppData\\Local`, SystemRoot: "C:\\Windows" },
+    home: WIN_HOME,
+    now: () => T0,
   };
 }
 
+const WIN_HOME = "C:\\Users\\Rehearse Ünal";
 const WIN_SID = "S-1-5-21-1678274354-1849132225-3673151578-1000";
 
 interface Harness {
@@ -2000,85 +2018,90 @@ describe("windows-long-paths", () => {
 
 describe("secrets-private (M43 spec 04)", () => {
   const WIN = hostFor("win32");
-  const WIN_STATE = "C:\\Users\\Rehearse Ünal\\.local\\state\\collie";
-  const WIN_CONFIG = "C:\\Users\\Rehearse Ünal\\AppData\\Roaming\\herdr\\plugins\\config\\herdr.collie";
+  const WIN_STATE = `${WIN_HOME}\\.local\\state\\collie`;
+  const WIN_CONFIG = `${WIN_HOME}\\AppData\\Roaming\\herdr\\plugins\\config\\herdr.collie`;
   const ENV = `${WIN_CONFIG}\\.env`;
-  const TRUST = `${WIN_STATE}\\crew-trust.json`;
-  // `.env` after `icacls .env /grant Everyone:R` in an owner-only folder (VM, 2026-10-02).
-  const ENV_EVERYONE = `.env\r\nD:AI(A;;FR;;;WD)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;FA;;;${WIN_SID})\r\n`;
   // A folder made under C:\ (VM): Users read it, Authenticated Users change it.
-  const DRIVE_ROOT =
-    "collie\r\nD:AI(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)\r\n";
-  const run = (saved: Record<string, string>, absent: string[] = []) =>
-    secretsPrivate({
-      ctx: context({}, { stateDir: WIN_STATE, configDir: WIN_CONFIG }),
-      host: WIN,
-      ownerOnly: fakeOwnerOnly(saved, absent),
-    });
+  const DRIVE = (name: string) =>
+    `${name}\r\nD:AI(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)\r\n`;
+  const PRIVATE = (name: string) => `${name}\r\nD:PAI(A;OICI;FA;;;${WIN_SID})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)\r\n`;
+  const run = (trees: Record<string, string>, over: Parameters<typeof fakeOwnerOnly>[1] = {}, stateDir = WIN_STATE) =>
+    secretsPrivate({ ctx: context({}, { stateDir, configDir: WIN_CONFIG }), host: WIN, ownerOnly: fakeOwnerOnly(trees, over) });
 
-  test("ok when all four are owner-only, and says who may read them", () => {
+  test("ok: both folders private, in the words a person reads", () => {
     const f = run({});
     expect(f.status).toBe("ok");
-    expect(f.detail).toBe(
-      "state dir, config dir, .env, trust store are owner-only: only you, SYSTEM and Administrators can read them",
-    );
+    expect(f.detail).toBe("the Collie state folder and the Collie config folder are private to your account, SYSTEM and Administrators");
   });
 
-  test("an Everyone grant on .env is an error that names the path, who can read it, and the fix", () => {
-    const f = run({ [ENV]: ENV_EVERYONE });
+  test("a loose state folder is an error: who, the path on its own line, and the fix", () => {
+    const f = run({ [WIN_STATE]: DRIVE("collie") });
     expect(f.status).toBe("error");
-    expect(f.detail).toBe(`.env ${ENV} is not owner-only: Everyone (S-1-1-0) can read it`);
-    expect(f.remedy).toBe(
-      `run: icacls "${ENV}" /inheritance:r /grant:r *${WIN_SID}:F *S-1-5-18:F *S-1-5-32-544:F ` +
-        "/remove:g *S-1-1-0 *S-1-5-32-545 *S-1-5-11 *S-1-5-32-546",
-    );
-  });
-
-  test("a loose state dir is an error too; the fix is a restart, or the folder line and the reset of its children", () => {
-    const f = run({ [WIN_STATE]: DRIVE_ROOT });
-    expect(f.status).toBe("error");
-    // The trust store inside it is named too, by where the leak is: its folder, not its own list.
     expect(f.detail).toBe(
-      `state dir ${WIN_STATE} is not owner-only: Users (S-1-5-32-545), Authenticated Users (S-1-5-11) can read it; ` +
-        `trust store ${TRUST} sits in a folder that Users (S-1-5-32-545), Authenticated Users (S-1-5-11) can read`,
+      `the Collie state folder can be read by other accounts (Users [S-1-5-32-545], Authenticated Users [S-1-5-11]).\n${WIN_STATE}`,
     );
     expect(f.remedy).toBe(
-      `\`collie restart\` repairs it at start, or by hand: icacls "${WIN_STATE}" /inheritance:r /grant:r ` +
-        `"*${WIN_SID}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /remove:g *S-1-1-0 *S-1-5-32-545 *S-1-5-11 *S-1-5-32-546`,
+      `Fix: restart Collie, or run: icacls "${WIN_STATE}" /grant:r "*${WIN_SID}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" ` +
+        `"*S-1-5-32-544:(OI)(CI)F" /inheritance:r /remove:g *S-1-5-32-545 *S-1-5-11`,
     );
   });
 
-  test("a loose file inside a private folder is named by the folder line, as icacls names it", () => {
-    const tree = `collie\r\nD:PAI(A;OICI;FA;;;${WIN_SID})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)\r\ncollie\\paired-devices.json\r\nD:AI(A;;FR;;;WD)(A;ID;FA;;;SY)\r\n`;
-    const f = run({ [WIN_STATE]: tree });
+  test("an Everyone grant on .env names the file inside the folder, and the one reset that fixes it", () => {
+    const tree = `${PRIVATE("herdr.collie")}herdr.collie\\.env\r\nD:AI(A;;FR;;;WD)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;FA;;;${WIN_SID})\r\n`;
+    const f = run({ [WIN_CONFIG]: tree });
     expect(f.status).toBe("error");
-    expect(f.detail).toBe(`state dir ${WIN_STATE} holds files that Everyone (S-1-1-0) can read (collie\\paired-devices.json)`);
-    // The one entry, by its full path: never a reset of the whole folder.
-    expect(f.remedy).toBe(`\`collie restart\` repairs it at start, or by hand: icacls "${WIN_STATE}\\paired-devices.json" /reset`);
+    expect(f.detail).toBe(`the Collie config folder holds files other accounts can read (Everyone [S-1-1-0]): .env.\n${WIN_CONFIG}`);
+    expect(f.remedy).toBe(`Fix: restart Collie, or run: icacls "${ENV}" /reset`);
   });
 
-  test("a list it cannot read is skipped with the reason, never called loose", () => {
-    const deps = fakeOwnerOnly({});
-    const unreadable: OwnerOnlyDeps = { ...deps, acl: { ...deps.acl, save: () => ({ code: 5, text: "" }) } };
-    const f = secretsPrivate({ ctx: context({}, { stateDir: WIN_STATE, configDir: WIN_CONFIG }), host: WIN, ownerOnly: unreadable });
-    expect(f.status).toBe("skipped");
-    expect(f.detail).toContain("could not read the access list of state dir");
-    expect(f.detail).toContain("Collie cannot say who can read it");
-    expect(f.detail).not.toContain("not owner-only");
+  test("a custom folder Collie does not own: the fix is the icacls line alone, never 'restart'", () => {
+    const custom = "D:\\Projects";
+    const f = run({ [custom]: DRIVE("Projects") }, { lists: { [custom]: ["src", "crew-trust.json"] } }, custom);
+    expect(f.status).toBe("error");
+    expect(f.remedy).toStartWith(`Fix: run: icacls "${custom}" /grant:r`);
   });
 
-  test("only what exists is checked; nothing at all is skipped", () => {
-    expect(run({}, [TRUST, ENV]).detail).toStartWith("state dir, config dir are owner-only");
-    expect(run({}, [WIN_STATE, WIN_CONFIG, ENV, TRUST]).status).toBe("skipped");
+  test("a folder that cannot be checked is a warning, 'cannot confirm', never ok and never an error", () => {
+    const f = run({ [WIN_STATE]: ACL_TIMED_OUT });
+    expect(f.status).toBe("warn");
+    expect(f.detail).toBe(
+      `cannot confirm who can read the Collie state folder: icacls did not answer within 10 seconds\n${WIN_STATE}`,
+    );
+    // FAT, exFAT or a share (simulated: icacls writes no list there).
+    expect(run({ [WIN_STATE]: ACL_NO_LIST }).detail).toContain("FAT, exFAT and network drives have none");
   });
 
-  test("is a line on Windows only", async () => {
+  test("a foreign owner is an error even when the list is private: an owner can always change it", () => {
+    const f = run({}, { owners: { [`${WIN_STATE}\\crew-trust.json`]: "O:S-1-5-21-1-2-3-1002G:S-1-5-21-1-2-3-513D:(A;;FA;;;SY)" } });
+    expect(f.status).toBe("error");
+    expect(f.detail).toBe(
+      `crew-trust.json is owned by another account [S-1-5-21-1-2-3-1002], who can always change its permissions.\n${WIN_STATE}\\crew-trust.json`,
+    );
+    expect(f.remedy).toBe(`Fix: in an Administrator PowerShell, icacls "${WIN_STATE}\\crew-trust.json" /setowner "*${WIN_SID}"`);
+  });
+
+  test("nothing there yet is skipped", () => {
+    expect(run({}, { absent: [WIN_STATE, WIN_CONFIG] }).status).toBe("skipped");
+  });
+
+  test("is a line on Windows only, with the path printed on its own line", async () => {
     const win = harness(null);
     win.deps = { ...win.deps, host: WIN };
     expect((await findings(win)).byCheck.get("secrets-private")?.status).toBe("ok");
     const linux = harness(null);
     linux.deps = { ...linux.deps, host: hostFor("linux") };
     expect((await findings(linux)).byCheck.has("secrets-private")).toBe(false);
+    const loose = harness(null);
+    loose.deps = {
+      ...loose.deps,
+      host: WIN,
+      ctx: { ...loose.deps.ctx, stateDir: WIN_STATE, configDir: WIN_CONFIG },
+      ownerOnly: fakeOwnerOnly({ [WIN_STATE]: DRIVE("collie") }),
+    };
+    await cmdDoctor(loose.deps, []);
+    const out = loose.io.stdout.join("\n");
+    expect(out).toContain(`secrets-private       the Collie state folder can be read by other accounts`);
+    expect(out).toContain(`\n${" ".repeat(33)}${WIN_STATE} → Fix: restart Collie, or run: icacls`);
   });
 });
 

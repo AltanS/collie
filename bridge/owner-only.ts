@@ -1,334 +1,100 @@
-// OWNER-ONLY: WHO MAY READ COLLIE'S SECRETS, ON EVERY HOST (M43 spec 04).
+// PRIVATE TO YOUR ACCOUNT: WHO MAY READ COLLIE'S SECRETS, ON EVERY HOST (M43 spec 04).
 //
 // The trust store, the pairing registry, push subscriptions, the VAPID key in `.env` and the rest
-// must be readable by their owner only. On Linux and macOS the mode bits say that: files are 0600
-// and the folders 0700. NTFS has no mode bits. `stat` reports 666 or 777 for everything and `chmod`
-// flips only the read-only flag, so on Windows the guarantee must come from the access list (ACL).
+// must be readable by the account that runs Collie only. On Linux and macOS the mode bits say that
+// (files 0600, folders 0700), and nothing here changes how. NTFS has no mode bits: `stat` reports
+// 666 or 777 and `chmod` flips only the read-only flag, so on Windows the guarantee comes from the
+// access list, and this module is the one door to it. The callers import from here only:
 //
-// THE WINDOWS RULE. Collie does not set an ACL per file: a process per write is slow, and a file
-// written first and fixed after is readable for a moment. Instead the PRIVATE FOLDERS (the state
-// dir and the config dir) get a protected access list: nothing is inherited from the parent, and
-// three principals get full control, which every file and folder created inside then inherits from
-// its birth:
+//   `sddl.ts`        the text of an access list, and the allowlist rule (pure)
+//   `acl-policy.ts`  what Collie may change and what it only looks at (pure)
+//   `icacls.ts`      the Windows tools, by absolute path, bounded
 //
-//   - the user Collie runs as (by SID, so a name with a space or a non-ASCII letter cannot break it),
-//   - SYSTEM (S-1-5-18), and
-//   - the local Administrators group (S-1-5-32-544).
+// THE THREE ANSWERS. A path is `private`, `loose` (a VERIFIED grant to someone outside the
+// allowlist, with who and what), or `not-checked` (with the reason: a link, a network share, no
+// access list, a tool that failed or ran out of time). Only `loose` is ever reported as a leak, and
+// only `loose` can make the config loader withhold a secret.
 //
-// SYSTEM and Administrators stay because a normal Windows user profile already grants them exactly
-// this (read on a fresh Windows 11 profile with `icacls`, 2026-10-02): SYSTEM runs backup, search
-// and antivirus, and an administrator can take ownership of any file anyway, so a list without them
-// protects nothing more and breaks the tools that expect them.
-//
-// THE CHECK. A path is NOT owner-only when an allow entry gives one of four broad principals the
-// right to read it: Everyone (S-1-1-0), Users (S-1-5-32-545), Authenticated Users (S-1-5-11) or
-// Guests (S-1-5-32-546). Inherited entries count, and so do inherit-only entries on a folder (they
-// reach every new file). A deny entry is never a leak. The list is read as SDDL from `icacls /save`,
-// which spells principals as SIDs. The plain `icacls` output names them in the system language
-// (`Jeder`, `VORDEFINIERT\Benutzer` on a German Windows), so it is never parsed.
-//
-// A path whose list cannot be read is UNKNOWN, never loose: Collie says that it cannot say, and
-// claims nothing about the file.
-//
-// On POSIX nothing here changes what Collie did before: `ensureOwnerOnlyDir` is the old
-// `mkdir(..., { mode: 0o700 })` and nothing else, and the config loader keeps its mode rule.
+// THE REPAIR runs in the bridge process at start and nowhere else (a CLI command only verifies and
+// warns), only on a folder `acl-policy.ts` calls Collie's own, and never with `/T`. It sets the
+// folder's whole list in one `icacls /restore` (grants and protection together, so the list is
+// never empty for a moment), then resets to "inherit" only the entries a second check still finds
+// loose, after a fresh `lstat` of each (no link, no hard link). The old lists are saved first, and
+// the line to put them back is printed. `COLLIE_NO_ACL_REPAIR=1` turns every change off; the check
+// still runs and still warns.
 
-import { randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { lstatSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 
+import {
+  defaultLocations,
+  isNetworkPath,
+  type PrivateRoot,
+  repairScope,
+  type Scope,
+  systemPlaces,
+} from "./acl-policy.ts";
 import { PRIVATE_FILE_MODES, type PrivateFileVerdict } from "./config-source.ts";
-import { type Host, hostFor, isInside, splitPath } from "./host.ts";
+import { type Host, hostFor } from "./host.ts";
+import { type AclTool, aclTool } from "./icacls.ts";
+import {
+  ADMINISTRATORS_SID,
+  foreignGrants,
+  foreignOwner,
+  parseSaved,
+  parseSddl,
+  parseWhoamiSid,
+  type SavedAcl,
+  sidName,
+  SYSTEM_SID,
+} from "./sddl.ts";
 
-/** The host {@link secretFileVerdict} reads paths with: it runs on Windows only. */
+export { PRIVATE_ROOTS, privateRoot, type PrivateRoot } from "./acl-policy.ts";
+
+/** The host the Windows-only entry points read paths with. */
 const WINDOWS = hostFor("win32");
 
-// ── The principals ───────────────────────────────────────────────────────────
+/** The off switch. The check still runs and still warns; nothing is changed. */
+export const NO_ACL_REPAIR_ENV = "COLLIE_NO_ACL_REPAIR";
 
-/** The four principals that make a secret readable by other people, by SID, with a label to print. */
-export const BROAD_PRINCIPALS: ReadonlyMap<string, string> = new Map([
-  ["S-1-1-0", "Everyone"],
-  ["S-1-5-32-545", "Users"],
-  ["S-1-5-11", "Authenticated Users"],
-  ["S-1-5-32-546", "Guests"],
-]);
-
-/** SYSTEM and the local Administrators group: the two that keep full control beside the user. */
-export const SYSTEM_SID = "S-1-5-18";
-export const ADMINISTRATORS_SID = "S-1-5-32-544";
-
-/** The two-letter SDDL names of the SIDs this module reads. Any other alias is kept as written. */
-const SDDL_ALIASES: ReadonlyMap<string, string> = new Map([
-  ["WD", "S-1-1-0"],
-  ["BU", "S-1-5-32-545"],
-  ["AU", "S-1-5-11"],
-  ["BG", "S-1-5-32-546"],
-  ["SY", SYSTEM_SID],
-  ["BA", ADMINISTRATORS_SID],
-]);
-
-/** `Users (S-1-5-32-545)`: the label first, then the SID, which is the same in every language. */
-function principalLabel(sid: string): string {
-  return `${BROAD_PRINCIPALS.get(sid) ?? sid} (${sid})`;
+/** May this process change an access list at all? `COLLIE_NO_ACL_REPAIR=1` says no. */
+export function aclRepairAllowed(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return env[NO_ACL_REPAIR_ENV] !== "1";
 }
 
-// ── Reading SDDL ─────────────────────────────────────────────────────────────
+// ── The seams ────────────────────────────────────────────────────────────────
 
-/** One access control entry, as much of it as the check reads. */
-export interface Ace {
-  /** `A` allow, `D` deny, `OA`/`XA`/`ZA` the other allow kinds, and so on. */
-  readonly type: string;
-  /** The inheritance flags, as written (`OICIID`). */
-  readonly flags: string;
-  /** The access mask. `null` when a right in it has no known value. */
-  readonly mask: number | null;
-  /** The SID, with the two-letter aliases this module knows spelled out. */
-  readonly sid: string;
-}
-
-/** A discretionary access list (DACL). `aces: null` is a null DACL: no list at all, so anyone may do anything. */
-export interface Dacl {
-  /** `P`: nothing is inherited from the parent folder. */
-  readonly protected: boolean;
-  readonly aces: readonly Ace[] | null;
-}
-
-// The access-right letters SDDL writes, with their mask values (Microsoft's "ACE strings" page).
-const RIGHTS: ReadonlyMap<string, number> = new Map([
-  ["GA", 0x10000000],
-  ["GR", 0x80000000],
-  ["GW", 0x40000000],
-  ["GX", 0x20000000],
-  ["RC", 0x20000],
-  ["SD", 0x10000],
-  ["WD", 0x40000],
-  ["WO", 0x80000],
-  ["RP", 0x10],
-  ["WP", 0x20],
-  ["CC", 0x1],
-  ["DC", 0x2],
-  ["LC", 0x4],
-  ["SW", 0x8],
-  ["LO", 0x80],
-  ["DT", 0x40],
-  ["CR", 0x100],
-  ["FA", 0x1f01ff],
-  ["FR", 0x120089],
-  ["FW", 0x120116],
-  ["FX", 0x1200a0],
-  ["KA", 0xf003f],
-  ["KR", 0x20019],
-  ["KW", 0x20006],
-  ["KX", 0x20019],
-]);
-
-/** The bits that let a principal read a file's data or list a folder: read data, generic read, generic all. */
-const READ_BITS = 0x1 | 0x80000000 | 0x10000000;
-
-function parseMask(text: string): number | null {
-  if (/^0x[0-9a-f]+$/i.test(text)) return Number.parseInt(text.slice(2), 16);
-  if (/^[0-9]+$/.test(text)) return Number.parseInt(text, 10);
-  if (text.length % 2 !== 0) return null;
-  let mask = 0;
-  for (let i = 0; i < text.length; i += 2) {
-    const bit = RIGHTS.get(text.slice(i, i + 2).toUpperCase());
-    if (bit === undefined) return null;
-    mask |= bit;
-  }
-  return mask >>> 0;
-}
-
-/**
- * The DACL of a security descriptor in SDDL (`O:BAG:...D:PAI(A;OICI;FA;;;SY)...`), or `null` when
- * the text has no `D:` part. Only the DACL is read; the owner, the group and the audit list are not.
- */
-export function parseSddl(sddl: string): Dacl | null {
-  const text = sddl.trim();
-  // `D:` outside every bracket opens the DACL. No SID or alias contains a colon, so a `D` before a
-  // colon can only be the section mark, even right after a group SID (`...-513D:AI(...)`).
-  let depth = 0;
-  let start = -1;
-  for (let i = 0; i < text.length - 1; i++) {
-    const c = text[i];
-    if (c === "(") depth++;
-    else if (c === ")") depth--;
-    else if (depth === 0 && c === "D" && text[i + 1] === ":") {
-      start = i + 2;
-      break;
-    }
-  }
-  if (start < 0) return null;
-  let i = start;
-  let flags = "";
-  while (i < text.length && text[i] !== "(" && !(text[i + 1] === ":" && "OGS".includes(text[i] ?? ""))) {
-    flags += text[i];
-    i++;
-  }
-  if (flags.includes("NO_ACCESS_CONTROL")) return { protected: false, aces: null };
-  const aces: Ace[] = [];
-  while (i < text.length && text[i] === "(") {
-    // One entry, brackets balanced: a conditional entry carries its own brackets inside.
-    let level = 0;
-    let end = i;
-    for (; end < text.length; end++) {
-      if (text[end] === "(") level++;
-      else if (text[end] === ")" && --level === 0) break;
-    }
-    if (end >= text.length) return null;
-    const [type = "", aceFlags = "", rights = "", , , sid = ""] = text.slice(i + 1, end).split(";");
-    const upper = sid.trim().toUpperCase();
-    aces.push({ type: type.toUpperCase(), flags: aceFlags.toUpperCase(), mask: parseMask(rights), sid: SDDL_ALIASES.get(upper) ?? upper });
-    i = end + 1;
-  }
-  return { protected: flags.includes("P"), aces };
-}
-
-/** Allow-type entries. `D`, `OD`, `XD` deny; the audit kinds grant nothing. */
-const ALLOW_TYPES = new Set(["A", "OA", "XA", "ZA"]);
-
-/**
- * The broad principals that may read under `dacl`, as `Users (S-1-5-32-545)` labels. Empty means
- * owner-only by this module's rule. A right this parser does not know counts as read, so an odd
- * list fails the check instead of passing it.
- */
-export function broadReaders(dacl: Dacl): string[] {
-  if (dacl.aces === null) return [`${principalLabel("S-1-1-0")}, no access list at all`];
-  const found: string[] = [];
-  for (const ace of dacl.aces) {
-    if (!ALLOW_TYPES.has(ace.type) || !BROAD_PRINCIPALS.has(ace.sid)) continue;
-    if (ace.mask !== null && (ace.mask & READ_BITS) === 0) continue;
-    const label = principalLabel(ace.sid);
-    if (!found.includes(label)) found.push(label);
-  }
-  return found;
-}
-
-/** One entry of an `icacls /save` file: the name as icacls wrote it, and its list. */
-export interface SavedAcl {
-  readonly name: string;
-  readonly sddl: string;
-}
-
-/**
- * The text `icacls <path> /save <file>` writes, read back: a name line, then an SDDL line, for the
- * path itself and (with `/T`) every entry below it. Blank lines are skipped.
- */
-export function parseSaved(text: string): SavedAcl[] {
-  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
-  const out: SavedAcl[] = [];
-  for (let i = 0; i + 1 < lines.length; i += 2) {
-    out.push({ name: lines[i]!, sddl: lines[i + 1]! });
-  }
-  return out;
-}
-
-/** The SID in `whoami /user /fo csv /nh` (`"pc\pat","S-1-5-21-...-1001"`). The name half may be in any code page. */
-export function parseWhoamiSid(stdout: string): string | null {
-  const match = /"?(S-1-[0-9]+(?:-[0-9]+)+)"?\s*$/m.exec(stdout.trim());
-  return match?.[1] ?? null;
-}
-
-// ── The seam ─────────────────────────────────────────────────────────────────
-
-/** What a run of `icacls` or `whoami` answered. `null` from the seam when the tool would not start. */
-export interface ToolRun {
-  readonly code: number;
-  readonly stdout: string;
-}
-
-/**
- * The three Windows tools this module runs. A seam, so every rule here is tested on Linux with
- * the real output captured on the VM, and production spawns exactly what the tests name.
- */
-export interface AclTool {
-  /**
-   * `icacls <path> /save <temp> [/T] /C /Q`, and the file it wrote read back (UTF-16). `text` is
-   * empty when icacls wrote nothing. `null` when icacls would not start.
-   */
-  save(path: string, tree: boolean): { code: number; text: string } | null;
-  /** `icacls` with these arguments, for a repair. */
-  icacls(args: readonly string[]): ToolRun | null;
-  /** `whoami /user /fo csv /nh`: the SID of the user this process runs as. */
-  whoami(): ToolRun | null;
-}
-
-const TOOL_TIMEOUT_MS = 15_000;
-
-/** `C:\Windows\System32\<name>`: an absolute path, so no `icacls.exe` in the folder or on PATH is run instead. */
-function system32(name: string): string {
-  const root = process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows";
-  return join(root, "System32", name);
-}
-
-function runTool(argv: readonly string[]): ToolRun | null {
-  try {
-    const r = Bun.spawnSync([...argv], { stdout: "pipe", stderr: "pipe", timeout: TOOL_TIMEOUT_MS });
-    return { code: r.exitCode ?? 124, stdout: r.stdout.toString() };
-  } catch {
-    return null;
-  }
-}
-
-/** The real tools. Only ever called on Windows; elsewhere every call answers `null`. */
-export const realAclTool: AclTool = {
-  save(path, tree) {
-    if (process.platform !== "win32") return null;
-    // In the user's own temp folder, which the profile keeps private. The file holds the access
-    // list of Collie's folders, not a secret, and is removed at once.
-    const file = join(tmpdir(), `collie-acl-${randomUUID()}.txt`);
-    const run = runTool([system32("icacls.exe"), path, "/save", file, ...(tree ? ["/T"] : []), "/C", "/Q"]);
-    if (run === null) return null;
-    let text = "";
-    try {
-      text = readFileSync(file).toString("utf16le");
-    } catch {
-      text = "";
-    } finally {
-      rmSync(file, { force: true });
-    }
-    return { code: run.code, text };
-  },
-  icacls(args) {
-    return process.platform === "win32" ? runTool([system32("icacls.exe"), ...args]) : null;
-  },
-  whoami() {
-    return process.platform === "win32" ? runTool([system32("whoami.exe"), "/user", "/fo", "csv", "/nh"]) : null;
-  },
-};
-
-/** Everything the rules here touch outside themselves. */
+/** Everything the rules touch outside themselves. Production passes {@link realOwnerOnlyDeps}. */
 export interface OwnerOnlyDeps {
   readonly acl: AclTool;
-  /** What is at `path`, following links, or `null` when nothing can be read there. */
-  stat(path: string): { readonly dir: boolean; readonly mode: number } | null;
+  /** What is at `path`, links followed, or `null` when nothing can be read there. */
+  stat(path: string): { readonly dir: boolean; readonly mode: number; readonly nlink: number } | null;
+  /** Whether `path` itself is a link (a symbolic link or a junction). `false` when it cannot be read. */
+  isLink(path: string): boolean;
+  /** The real path: links, 8.3 names and `\\?\` resolved. `null` when it cannot be resolved. */
+  realpath(path: string): string | null;
+  /** The names in a folder, or `null` when it cannot be listed. */
+  list(path: string): string[] | null;
   /** `mkdir -p`, with the mode POSIX applies to a folder it creates. */
   mkdir(path: string, mode: number): void;
-  /**
-   * Whether `path` itself is a link: a symbolic link or, on Windows, a junction (Bun's `lstat` reports
-   * both as links). `false` when it cannot be read.
-   */
-  isLink(path: string): boolean;
-  /**
-   * Folders whose access list Collie must never change, nor that of any folder above them: Windows,
-   * Program Files, ProgramData and the user profile. A state dir set to one of them, or to a drive
-   * root, is checked and never repaired, because the repair would re-permission the whole system.
-   */
-  readonly systemPlaces: readonly string[];
+  /** Write a backup file (UTF-16, the `icacls /save` format) and remove an old one. */
+  writeBackup(path: string, text: string): boolean;
+  removeFile(path: string): void;
+  /** The environment the places and default locations come from, and the user's home. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly home: string;
+  now(): number;
 }
 
 export const realOwnerOnlyDeps: OwnerOnlyDeps = {
-  acl: realAclTool,
+  acl: aclTool(),
   stat(path) {
     try {
       const s = statSync(path);
-      return { dir: s.isDirectory(), mode: s.mode & 0o777 };
+      return { dir: s.isDirectory(), mode: s.mode & 0o777, nlink: s.nlink };
     } catch {
       return null;
     }
-  },
-  mkdir(path, mode) {
-    mkdirSync(path, { recursive: true, mode });
   },
   isLink(path) {
     try {
@@ -337,307 +103,453 @@ export const realOwnerOnlyDeps: OwnerOnlyDeps = {
       return false;
     }
   },
-  systemPlaces: ["SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "USERPROFILE"]
-    .map((name) => process.env[name] ?? "")
-    .filter((place) => place !== ""),
+  realpath(path) {
+    try {
+      return realpathSync.native(path);
+    } catch {
+      return null;
+    }
+  },
+  list(path) {
+    try {
+      return readdirSync(path);
+    } catch {
+      return null;
+    }
+  },
+  mkdir(path, mode) {
+    mkdirSync(path, { recursive: true, mode });
+  },
+  writeBackup(path, text) {
+    try {
+      writeFileSync(path, Buffer.from(text, "utf16le"));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  removeFile(path) {
+    rmSync(path, { force: true });
+  },
+  env: process.env,
+  home: homedir(),
+  now: () => Date.now(),
 };
+
+/** The account that runs Collie, by SID, asked of `whoami` once per tool. */
+const users = new WeakMap<AclTool, string | null>();
+
+export function currentUserSid(acl: AclTool): string | null {
+  if (!users.has(acl)) {
+    const run = acl.whoami();
+    users.set(acl, run === null || run.timedOut || run.code !== 0 ? null : parseWhoamiSid(run.stdout));
+  }
+  return users.get(acl) ?? null;
+}
 
 // ── The check ────────────────────────────────────────────────────────────────
 
-/** The check's answer. `unknown` is never treated as loose: nothing is claimed about the path. */
+/** One grant outside the allowlist: on which path, to whom, and what it allows. */
+export interface Leak {
+  readonly path: string;
+  readonly sid: string;
+  readonly what: string;
+}
+
+/** The check's answer. Only `loose` is a verified leak. */
 export type OwnerOnly =
   | { readonly state: "private" }
-  | {
-      readonly state: "loose";
-      /** The broad principals that can read, as `Users (S-1-5-32-545)` labels. */
-      readonly principals: readonly string[];
-      /** The entries that let them: the path itself, its folder, or a name below a folder. */
-      readonly where: readonly string[];
-    }
-  | { readonly state: "unknown"; readonly why: string };
+  | { readonly state: "loose"; readonly leaks: readonly Leak[] }
+  | { readonly state: "not-checked"; readonly reason: string };
 
-/** What one `/save` read found. `protected` is the first entry's flag: the path itself. */
-interface TreeRead {
+/** One read, as the repair needs it: the verdict, the folder's protection, the loose entries. */
+interface Reading {
   readonly verdict: OwnerOnly;
   readonly protected: boolean;
-  /** The loose entries BELOW the path, as icacls names them (relative to the path's parent folder). */
+  /** Loose paths below the folder read, in full. */
   readonly looseBelow: readonly string[];
 }
 
+const notChecked = (reason: string): Reading => ({ verdict: { state: "not-checked", reason }, protected: false, looseBelow: [] });
+
 /**
- * Read `path` (with `/T`, everything below it too) and judge it.
+ * Read `path` with `icacls /save` (with `/T`, everything below it too) and judge it.
  *
- * `icacls /T` FOLLOWS a junction (VM, 2026-10-02: `state\link\shared.txt` was listed through a
- * junction to a folder outside). An entry that is a link, or sits below one, is not Collie's: it is
- * left out of the verdict, so the check never blames the folder for it and the repair never resets
- * a file somewhere else on the disk. Only a loose entry is looked at, so the cost is an `lstat` per
- * folder name of a loose entry, which a healthy folder never pays.
+ * `/T` FOLLOWS a junction (VM, 2026-10-02: `state\link\shared.txt` was listed through a junction to
+ * a folder outside). An entry that is a link, or sits below one, is not Collie's: it is left out,
+ * so the check never blames the folder for it and the repair never touches it.
  */
-function readAcl(path: string, tree: boolean, deps: OwnerOnlyDeps, host: Host): TreeRead {
+function readPath(path: string, tree: boolean, host: Host, deps: OwnerOnlyDeps): Reading {
+  if (isNetworkPath(path)) return notChecked("it is on a network share, whose own share permissions Collie cannot read");
+  const user = currentUserSid(deps.acl);
+  if (user === null) return notChecked("whoami did not name the account that runs Collie");
   const saved = deps.acl.save(path, tree);
-  if (saved === null) return unknown("icacls did not run");
+  if (saved.kind === "timed-out") return notChecked("icacls did not answer within 10 seconds");
+  if (saved.kind === "not-run") return notChecked("icacls did not start");
   const entries = parseSaved(saved.text);
-  if (entries.length === 0) return unknown(`icacls exited ${String(saved.code)} and wrote no access list`);
-  const principals: string[] = [];
-  const where: string[] = [];
+  if (entries.length === 0) {
+    return notChecked(`icacls found no access list (exit ${String(saved.code)}); FAT, exFAT and network drives have none`);
+  }
+  const leaks: Leak[] = [];
   const looseBelow: string[] = [];
   let unreadable = 0;
+  const parent = host.path.dirname(path);
   entries.forEach((entry, index) => {
-    const dacl = parseSddl(entry.sddl);
+    const dacl = parseSddl(entry.sddl).dacl;
     if (dacl === null) {
       unreadable++;
       return;
     }
-    const found = broadReaders(dacl);
-    if (found.length === 0) return;
-    if (index > 0 && throughLink(path, entry.name, deps, host)) return;
-    if (index > 0) looseBelow.push(entry.name);
-    where.push(entry.name);
-    for (const p of found) if (!principals.includes(p)) principals.push(p);
+    const grants = foreignGrants(dacl, user);
+    if (grants.length === 0) return;
+    if (index > 0 && throughLink(path, entry.name, host, deps)) return;
+    const full = index === 0 ? path : host.path.join(parent, entry.name);
+    if (index > 0) looseBelow.push(full);
+    for (const g of grants) leaks.push({ path: full, sid: g.sid, what: g.what });
   });
-  const isProtected = parseSddl(entries[0]!.sddl)?.protected ?? false;
-  // A loose entry is a fact even when another entry could not be read. With no loose entry, a
-  // failed exit or an entry without a list means some of the tree went unseen: unknown.
-  if (principals.length > 0) return { verdict: { state: "loose", principals, where }, protected: isProtected, looseBelow };
-  if (saved.code !== 0 || unreadable > 0) return unknown(`icacls exited ${String(saved.code)}`);
+  const isProtected = parseSddl(entries[0]!.sddl).dacl?.protected ?? false;
+  // A loose entry is a fact even when another entry could not be read. With none, a failed exit or
+  // an entry without a list means some of it went unseen: not checked, never "private".
+  if (leaks.length > 0) return { verdict: { state: "loose", leaks }, protected: isProtected, looseBelow };
+  if (saved.code !== 0 || unreadable > 0) return notChecked(`icacls could not read all of it (exit ${String(saved.code)})`);
   return { verdict: { state: "private" }, protected: isProtected, looseBelow: [] };
 }
 
 /**
  * Whether the entry `name` (as icacls names it below `path`: `state\link\shared.txt`) is a link or
- * sits below one. The first part is `path`'s own name, and `path` itself is never asked: a state dir
- * the operator pointed at a junction is still the state dir.
+ * sits below one. `path` itself is never asked: a state dir pointed at a junction is still the state dir.
  */
-function throughLink(path: string, name: string, deps: OwnerOnlyDeps, host: Host): boolean {
-  const parts = name.split(/[\\/]+/).filter((part) => part !== "");
+function throughLink(path: string, name: string, host: Host, deps: OwnerOnlyDeps): boolean {
   let at = path;
-  for (const part of parts.slice(1)) {
+  for (const part of name.split(/[\\/]+/).filter((p) => p !== "").slice(1)) {
     at = host.path.join(at, part);
     if (deps.isLink(at)) return true;
   }
   return false;
 }
 
-function unknown(why: string): TreeRead {
-  return { verdict: { state: "unknown", why }, protected: false, looseBelow: [] };
+/** Several readings as one: loose wins, then not-checked, then private. */
+function combine(readings: readonly OwnerOnly[]): OwnerOnly {
+  const leaks = readings.flatMap((r) => (r.state === "loose" ? r.leaks : []));
+  if (leaks.length > 0) return { state: "loose", leaks };
+  const skipped = readings.find((r) => r.state === "not-checked");
+  return skipped ?? { state: "private" };
 }
 
 /**
- * Is `path` readable by its owner only?
+ * Is `path` private to the account that runs Collie?
  *
- * On Windows: a folder is read with everything below it (`/T`, one process), so a loose file
- * inside is found too. A file is read with its own folder, because a folder that Users can list
- * and whose new files Users inherit is not a private place for a secret. On POSIX: the mode bits,
- * 0600 or 0400 for a file and no group or other bits for a folder, as before.
+ * Windows: a folder is read with everything below it (`/T`, one process; `collie doctor`'s full
+ * scan). A file is read with its own folder, because a folder other accounts can list and whose
+ * new files they inherit is not a private place for a secret. POSIX: the mode bits, 0600 or 0400
+ * for a file and no group or other bits for a folder, as before.
  */
 export function isOwnerOnly(path: string, host: Host, deps: OwnerOnlyDeps = realOwnerOnlyDeps): OwnerOnly {
   const found = deps.stat(path);
+  if (found === null) return { state: "not-checked", reason: "it cannot be read" };
   if (host.platform !== "win32") {
-    if (found === null) return { state: "unknown", why: "it cannot be read" };
     const ok = found.dir ? (found.mode & 0o077) === 0 : PRIVATE_FILE_MODES.has(found.mode);
-    return ok ? { state: "private" } : { state: "loose", principals: ["group or other users"], where: [path] };
+    return ok ? { state: "private" } : { state: "loose", leaks: [{ path, sid: "group or other", what: "read" }] };
   }
-  if (found === null) return { state: "unknown", why: "it cannot be read" };
-  if (found.dir) return readAcl(path, true, deps, host).verdict;
-  const own = readAcl(path, false, deps, host).verdict;
-  const folder = readAcl(host.path.dirname(path), false, deps, host).verdict;
-  return combine([
-    { verdict: own, name: path },
-    { verdict: folder, name: host.path.dirname(path) },
-  ]);
+  if (found.dir) return readPath(path, true, host, deps).verdict;
+  return combine([readPath(path, false, host, deps).verdict, readPath(host.path.dirname(path), false, host, deps).verdict]);
 }
 
-/** Several answers as one: loose wins over unknown, unknown over private. */
-function combine(parts: readonly { verdict: OwnerOnly; name: string }[]): OwnerOnly {
-  const principals: string[] = [];
-  const where: string[] = [];
-  let why: string | null = null;
-  for (const { verdict, name } of parts) {
-    if (verdict.state === "loose") {
-      for (const p of verdict.principals) if (!principals.includes(p)) principals.push(p);
-      where.push(name);
-    } else if (verdict.state === "unknown") {
-      why ??= verdict.why;
-    }
+/**
+ * The owner of each path when it is someone outside the allowlist: an owner keeps WRITE_DAC, so it
+ * can open the list again whatever the list says, and no repair here can change an owner. One
+ * PowerShell for all of them (icacls never writes the owner); `collie doctor` alone pays for it.
+ */
+export function foreignOwners(paths: readonly string[], deps: OwnerOnlyDeps = realOwnerOnlyDeps): Map<string, string> {
+  const user = currentUserSid(deps.acl);
+  const out = new Map<string, string>();
+  const read = user === null ? null : deps.acl.descriptors(paths);
+  if (read === null || user === null) return out;
+  for (const [path, sddl] of read) {
+    const owner = foreignOwner(parseSddl(sddl), user);
+    if (owner !== null) out.set(path, owner);
   }
-  if (principals.length > 0) return { state: "loose", principals, where };
-  if (why !== null) return { state: "unknown", why };
-  return { state: "private" };
+  return out;
+}
+
+// ── Words ────────────────────────────────────────────────────────────────────
+
+/** `Users [S-1-5-32-545], Everyone [S-1-1-0]`: names for the sentence, each SID once in brackets. */
+export function whoCanRead(leaks: readonly Leak[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const l of leaks) {
+    if (seen.has(l.sid)) continue;
+    seen.add(l.sid);
+    out.push(l.sid.startsWith("S-") ? `${sidName(l.sid)} [${l.sid}]` : sidName(l.sid));
+  }
+  return out.join(", ");
+}
+
+/**
+ * The repair as one line an operator can paste into PowerShell or cmd: the grants first, then the
+ * end of inheritance, then every named stranger removed. Quoted path, the account by SID, no
+ * placeholder. A domain alias with no fixed SID (`DU`) cannot be named on a command line; the
+ * `/inheritance:r` still drops it when it was inherited.
+ */
+export function privateCommand(path: string, userSid: string, folder: boolean, leaks: readonly Leak[] = []): string {
+  const inherit = folder ? "(OI)(CI)" : "";
+  const grants = [userSid, SYSTEM_SID, ADMINISTRATORS_SID].map((sid) => `"*${sid}:${inherit}F"`).join(" ");
+  const strangers = [...new Set(leaks.map((l) => l.sid).filter((sid) => sid.startsWith("S-")))].map((sid) => `*${sid}`);
+  return `icacls "${path}" /grant:r ${grants} /inheritance:r${strangers.length > 0 ? ` /remove:g ${strangers.join(" ")}` : ""}`;
 }
 
 // ── The repair ───────────────────────────────────────────────────────────────
 
-const BROAD_ARGS = [...BROAD_PRINCIPALS.keys()].map((sid) => `*${sid}`);
+/** The exact list a private folder (or file) gets: three principals, nothing inherited. */
+function privateSddl(userSid: string, folder: boolean): string {
+  const inherit = folder ? "OICI" : "";
+  return `D:PAI(A;${inherit};FA;;;${userSid})(A;${inherit};FA;;;${SYSTEM_SID})(A;${inherit};FA;;;BA)`;
+}
+
+/** Saved lists waiting for the state folder: `/restore` takes one parent per file. */
+const pendingBackups = new Map<string, SavedAcl[]>();
+
+/** Save `path`'s current list (no `/T`) under `parent`, named relative to it, before it changes. */
+function backUp(path: string, parent: string, host: Host, deps: OwnerOnlyDeps): void {
+  const saved = deps.acl.save(path, false);
+  if (saved.kind !== "ok") return;
+  const entry = parseSaved(saved.text)[0];
+  if (entry === undefined) return;
+  const name = host.path.relative(parent, path);
+  const list = pendingBackups.get(parent) ?? [];
+  list.push({ name, sddl: entry.sddl });
+  pendingBackups.set(parent, list);
+}
+
+/** How many runs of backups are kept. */
+const BACKUP_RUNS = 3;
+
+/** The state folder's subfolder the saved lists go to (Windows only, created on the first repair). */
+export const ACL_BACKUPS = "acl-backups";
 
 /**
- * The `icacls` arguments that make `path` owner-only: nothing inherited from the parent, full
- * control for the user, SYSTEM and Administrators (inherited by every child of a folder), and every
- * grant to a broad principal taken out. One process; Windows passes the new list down to the
- * children that inherit (measured on the VM: 2000 files in 81 ms).
+ * Write the saved lists into `<stateDir>\acl-backups` as `acl-backup-<time>-<n>.sddl`, one file
+ * per parent (`/restore` takes one), keep the last {@link BACKUP_RUNS} runs, and return the lines
+ * that say how to put each one back. The folder sits inside the state folder, so it is private.
  */
-export function ownerOnlyArgs(path: string, userSid: string, folder: boolean): string[] {
-  const inherit = folder ? "(OI)(CI)" : "";
-  return [
-    path,
-    "/inheritance:r",
-    "/grant:r",
-    `*${userSid}:${inherit}F`,
-    `*${SYSTEM_SID}:${inherit}F`,
-    `*${ADMINISTRATORS_SID}:${inherit}F`,
-    "/remove:g",
-    ...BROAD_ARGS,
-    "/Q",
-  ];
+export function flushAclBackups(stateDir: string, host: Host = WINDOWS, deps: OwnerOnlyDeps = realOwnerOnlyDeps): string[] {
+  if (pendingBackups.size === 0) return [];
+  const folder = host.path.join(stateDir, ACL_BACKUPS);
+  deps.mkdir(folder, 0o700);
+  const stamp = new Date(deps.now()).toISOString().replace(/[:.]/g, "-");
+  const lines: string[] = [];
+  let n = 0;
+  for (const [parent, entries] of pendingBackups) {
+    const file = host.path.join(folder, `acl-backup-${stamp}-${String(++n)}.sddl`);
+    const text = entries.map((e) => `${e.name}\r\n${e.sddl}\r\n`).join("");
+    if (deps.writeBackup(file, text)) {
+      lines.push(`[secrets] the old permissions are saved. To put them back: icacls "${parent}" /restore "${file}"`);
+    }
+  }
+  pendingBackups.clear();
+  const names = deps.list(folder) ?? [];
+  const runs = [...new Set(names.flatMap((name) => /^acl-backup-(.+)-\d+\.sddl$/.exec(name)?.slice(1, 2) ?? []))].toSorted();
+  for (const old of runs.slice(0, Math.max(0, runs.length - BACKUP_RUNS))) {
+    for (const name of names) if (name.startsWith(`acl-backup-${old}-`)) deps.removeFile(host.path.join(folder, name));
+  }
+  return lines;
+}
+
+/** For tests: forget saved lists and the cached account. */
+export function resetOwnerOnlyState(): void {
+  pendingBackups.clear();
+  toldNotChecked.clear();
 }
 
 /**
- * The same repair as one line an operator can paste into PowerShell or cmd. The grants are quoted
- * because PowerShell reads a bare `(OI)` as an expression.
+ * Re-check one entry right before it is reset: it must still be inside `dir` with no link on the
+ * way, not be a link itself, and not be a hard link (a second name would carry the change to a file
+ * somewhere else). The window between the check and the change is the one a swap would use.
  */
-export function ownerOnlyCommand(path: string, userSid: string | null, folder: boolean): string {
-  const args = ownerOnlyArgs(path, userSid ?? "<your SID from whoami /user>", folder).slice(0, -1);
-  return `icacls ${args.map((a) => (/[\s()]/.test(a) || a === path ? `"${a}"` : a)).join(" ")}`;
+function safeToReset(entry: string, dir: string, host: Host, deps: OwnerOnlyDeps): boolean {
+  const rel = host.path.relative(dir, entry);
+  if (rel === "" || rel.startsWith("..") || host.path.isAbsolute(rel)) return false;
+  let at = dir;
+  for (const part of rel.split(/[\\/]+/)) {
+    at = host.path.join(at, part);
+    if (deps.isLink(at)) return false;
+  }
+  const s = deps.stat(entry);
+  return s !== null && (s.dir || s.nlink <= 1);
 }
 
-/** The SID of the user this process runs as, or `null`. */
-export function currentUserSid(acl: AclTool): string | null {
-  const run = acl.whoami();
-  return run === null || run.code !== 0 ? null : parseWhoamiSid(run.stdout);
-}
-
-/** What {@link ensureOwnerOnlyDir} did. */
+/** What one secured folder came to. */
 export type DirOutcome =
-  /** Owner-only already, with its own protected list. Nothing was changed. */
+  /** Private already, with its own protected list. Nothing was changed. */
   | { readonly state: "private" }
-  /** Changed, and a second read confirmed it. `was` names who could read before (may be empty). */
-  | { readonly state: "made-private"; readonly was: readonly string[] }
-  /** Still readable by `principals` after the repair, or the repair could not run. */
-  | { readonly state: "loose"; readonly principals: readonly string[]; readonly why: string }
-  | { readonly state: "unknown"; readonly why: string };
+  /** Changed, and a second check confirmed it. `removed` names who could read before (may be empty). */
+  | { readonly state: "made-private"; readonly removed: readonly Leak[] }
+  /** Loose, and not changed: Collie may not change it, or the switch is off. */
+  | { readonly state: "left-loose"; readonly leaks: readonly Leak[]; readonly why: string }
+  /** Loose after an attempt to repair it. */
+  | { readonly state: "repair-failed"; readonly leaks: readonly Leak[]; readonly why: string }
+  | { readonly state: "not-checked"; readonly reason: string };
+
+/** The start-up read: the folder itself and the secret files of its root that exist, never `/T`. */
+function readRoot(dir: string, root: PrivateRoot, host: Host, deps: OwnerOnlyDeps): Reading {
+  const self = readPath(dir, false, host, deps);
+  const files = root.secrets.map((name) => host.path.join(dir, name)).filter((p) => deps.stat(p) !== null);
+  const readings = [self, ...files.map((f) => readPath(f, false, host, deps))];
+  const verdict = combine(readings.map((r) => r.verdict));
+  const looseBelow = files.filter((_, i) => readings[i + 1]!.verdict.state === "loose");
+  return { verdict, protected: self.protected, looseBelow };
+}
+
+/** The facts {@link repairScope} needs about `dir`. */
+export function scopeOf(dir: string, createdNow: boolean, host: Host, deps: OwnerOnlyDeps): Scope {
+  const places = systemPlaces(deps.env, (p) => deps.realpath(p));
+  const defaults = defaultLocations(host, deps.env, deps.home).map((d) => ({ parent: deps.realpath(d.parent) ?? d.parent, prefix: d.prefix }));
+  return repairScope({ realPath: deps.realpath(dir), createdNow, names: deps.list(dir) }, host, places, defaults);
+}
 
 /**
- * Create `path` if needed and make it a private folder.
+ * Make one private root private, at bridge start.
  *
- * POSIX: `mkdir -p` with mode 0700, and nothing else, exactly what the bridge did before. Returns
- * `null`, because nothing was checked.
+ * POSIX: `mkdir -p` with mode 0700 and nothing else, as before; returns `null`, nothing checked.
  *
- * Windows: one read of the folder and everything below it. When the folder already has its own
- * protected list and nobody broad can read anything in it, that read is the whole cost. Otherwise:
- * the user's SID (`whoami`), the folder's list set ({@link ownerOnlyArgs}), which Windows passes down
- * to every entry that inherits, and a second read. An entry still loose after that has a grant or a
- * list of its own, and only that entry is reset to inherit (`icacls <entry> /reset`), never the
- * whole tree, so a hand-made exception elsewhere in the folder stays. Then one last read. The answer
- * says `made-private` ONLY when the last read passes.
- *
- * A drive root, or a folder that is or holds Windows, Program Files, ProgramData or the user profile
- * ({@link OwnerOnlyDeps.systemPlaces}), is read and never changed.
+ * Windows: read the folder and its secret files (one `icacls` each, no `/T`). Private and protected:
+ * done. Otherwise, when `repair` is on and {@link scopeOf} allows it: save the old lists, set the
+ * folder's whole list in one `icacls /restore`, read again, reset each secret file a fresh `lstat`
+ * still clears ({@link safeToReset}), read a last time. `made-private` only when that last read
+ * passes. When Collie may not change it, `left-loose` with the reason, and nothing changed.
  */
 export function ensureOwnerOnlyDir(
-  path: string,
+  dir: string,
   host: Host,
+  opts: { readonly root: PrivateRoot; readonly repair: boolean; readonly createdNow?: boolean },
   deps: OwnerOnlyDeps = realOwnerOnlyDeps,
 ): DirOutcome | null {
-  deps.mkdir(path, 0o700);
+  deps.mkdir(dir, 0o700);
   if (host.platform !== "win32") return null;
-  const before = readAcl(path, true, deps, host);
-  if (before.verdict.state === "unknown") return before.verdict;
+  const before = readRoot(dir, opts.root, host, deps);
+  if (before.verdict.state === "not-checked") return before.verdict;
   if (before.verdict.state === "private" && before.protected) return { state: "private" };
-  const was = before.verdict.state === "loose" ? before.verdict.principals : [];
-  if (isSystemPlace(path, host, deps.systemPlaces)) {
-    if (before.verdict.state === "private") return { state: "private" };
-    return { state: "loose", principals: was, why: "it is a drive root or holds a system or profile folder, which Collie never changes" };
+  const leaks = before.verdict.state === "loose" ? before.verdict.leaks : [];
+  if (!opts.repair) {
+    if (leaks.length === 0) return { state: "private" };
+    return { state: "left-loose", leaks, why: `${NO_ACL_REPAIR_ENV}=1 turns the repair off` };
   }
-  const sid = currentUserSid(deps.acl);
-  if (sid === null) {
-    return { state: "loose", principals: was, why: "whoami did not name the user this process runs as" };
+  const scope = scopeOf(dir, opts.createdNow === true, host, deps);
+  if (!scope.allowed) {
+    if (leaks.length === 0) return { state: "private" };
+    return { state: "left-loose", leaks, why: scope.why };
   }
-  const set = deps.acl.icacls(ownerOnlyArgs(path, sid, true));
-  if (set === null || set.code !== 0) {
-    return { state: "loose", principals: was, why: `icacls exited ${set === null ? "before it started" : String(set.code)}` };
+  const user = currentUserSid(deps.acl);
+  if (user === null) return { state: "not-checked", reason: "whoami did not name the account that runs Collie" };
+  const parent = host.path.dirname(dir);
+  if (opts.createdNow !== true) {
+    backUp(dir, parent, host, deps);
+    for (const entry of before.looseBelow) backUp(entry, parent, host, deps);
   }
-  let after = readAcl(path, true, deps, host);
+  const set = deps.acl.restore(parent, [{ name: host.path.basename(dir), sddl: privateSddl(user, true) }]);
+  if (set === null || set.timedOut || set.code !== 0) {
+    const why = set === null ? "icacls did not start" : set.timedOut ? "icacls did not answer" : `icacls exited ${String(set.code)}`;
+    return { state: "repair-failed", leaks, why };
+  }
+  let after = readRoot(dir, opts.root, host, deps);
   if (after.looseBelow.length > 0) {
-    const parent = host.path.dirname(path);
-    for (const name of after.looseBelow) deps.acl.icacls([host.path.join(parent, name), "/reset", "/C", "/Q"]);
-    after = readAcl(path, true, deps, host);
+    for (const entry of after.looseBelow) if (safeToReset(entry, dir, host, deps)) deps.acl.reset(entry);
+    after = readRoot(dir, opts.root, host, deps);
   }
-  if (after.verdict.state === "private" && after.protected) return { state: "made-private", was };
-  if (after.verdict.state === "loose") return { state: "loose", principals: after.verdict.principals, why: "it is still readable after the repair" };
-  return { state: "unknown", why: after.verdict.state === "unknown" ? after.verdict.why : "the list is not protected after the repair" };
-}
-
-/** A drive root, or a folder that is one of `places` or holds one of them. */
-function isSystemPlace(path: string, host: Host, places: readonly string[]): boolean {
-  const { root, parts } = splitPath(host, path);
-  if (parts.length === 0 && root !== "") return true;
-  return places.some((place) => isInside(host, place, path));
+  if (after.verdict.state === "private" && after.protected) return { state: "made-private", removed: leaks };
+  if (after.verdict.state === "loose") return { state: "repair-failed", leaks: after.verdict.leaks, why: "it is still open after the repair" };
+  return { state: "not-checked", reason: after.verdict.state === "not-checked" ? after.verdict.reason : "its list is not protected after the repair" };
 }
 
 /**
- * The one line the bridge prints for {@link ensureOwnerOnlyDir}'s answer, or `null` when there is
- * nothing to say. Never "made it owner-only" unless the second read confirmed it.
+ * A folder Collie creates now (the CLI's `mkdirp(..., 0o700)` before any bridge ran): give it the
+ * private list at birth. Not a repair: nothing existed, so nothing is saved or reported. Off with
+ * the switch, and a no-op off Windows.
  */
-export function dirOutcomeLine(path: string, outcome: DirOutcome | null, sid: string | null = null): string | null {
+export function createPrivateDir(dir: string, host: Host, deps: OwnerOnlyDeps = realOwnerOnlyDeps): void {
+  deps.mkdir(dir, 0o700);
+  if (host.platform !== "win32" || !aclRepairAllowed(deps.env)) return;
+  const user = currentUserSid(deps.acl);
+  if (user === null) return;
+  deps.acl.restore(host.path.dirname(dir), [{ name: host.path.basename(dir), sddl: privateSddl(user, true) }]);
+}
+
+/** The line the bridge prints for an outcome, or `null` when there is nothing to say. */
+export function dirOutcomeLine(dir: string, outcome: DirOutcome | null, deps: OwnerOnlyDeps = realOwnerOnlyDeps): string | null {
   if (outcome === null || outcome.state === "private") return null;
+  const user = currentUserSid(deps.acl);
   switch (outcome.state) {
     case "made-private":
-      return outcome.was.length > 0
-        ? `[secrets] ${path} was readable by ${outcome.was.join(", ")}; made it owner-only.`
-        : `[secrets] made ${path} owner-only: only you, SYSTEM and Administrators can open it.`;
-    case "loose":
+      return outcome.removed.length > 0
+        ? `[secrets] ${dir} could be read by other accounts on this PC (${whoCanRead(outcome.removed)}). ` +
+            "Collie restricted it to your account, SYSTEM and Administrators. Nothing for you to do. If this repeats on " +
+            "every start, something resets the permissions (a backup restore, a sync tool, antivirus)."
+        : `[secrets] ${dir} now keeps its own permissions: your account, SYSTEM and Administrators. Nothing for you to do.`;
+    case "left-loose":
       return (
-        `[secrets] ${path} could not be made owner-only (${outcome.why})` +
-        (outcome.principals.length > 0 ? `; ${outcome.principals.join(", ")} can read it` : "") +
-        `. Fix it with: ${ownerOnlyCommand(path, sid, true)}`
+        `[secrets] ${dir} can be read by other accounts on this PC (${whoCanRead(outcome.leaks)}). ` +
+        `Collie did not change it: ${outcome.why}.` +
+        (user === null ? "" : ` To make it private, run: ${privateCommand(dir, user, true, outcome.leaks)}`)
       );
-    case "unknown":
-      return `[secrets] could not read the access list of ${path} (${outcome.why}); Collie cannot say who can read it.`;
+    case "repair-failed":
+      return (
+        `[secrets] could not make ${dir} private (${outcome.why}). Other accounts on this PC (${whoCanRead(outcome.leaks)}) can still read it.` +
+        (user === null ? " Restart Collie to try again." : ` Fix: ${privateCommand(dir, user, true, outcome.leaks)}, then restart Collie.`)
+      );
+    case "not-checked":
+      return `[secrets] cannot confirm who can read ${dir}: ${outcome.reason}.`;
   }
 }
 
-// ── A secret file outside the private folders ────────────────────────────────
+// ── One secret file, for the config loader ───────────────────────────────────
 
-/** Paths this process already said "cannot say" about. Once each, never a line per read. */
-const toldUnknown = new Set<string>();
+/** Paths this process already said "cannot confirm" about. Once each, never a line per read. */
+const toldNotChecked = new Set<string>();
 
 /**
- * The Windows rule for ONE secret file, in the shape the config loader takes from the POSIX mode
- * rule (`bridge/config-source.ts`'s {@link PrivateFileVerdict}): `ok` is false only when the file is
- * loose AND the repair did not take, and the caller withholds exactly what it withholds on POSIX.
+ * The Windows rule for ONE secret file (`.env`, `config.toml`), in the shape the config loader takes
+ * from the POSIX mode rule (`config-source.ts`'s {@link PrivateFileVerdict}).
  *
- * The file's own list decides, not its folder's: the file is what holds the secret, and a file that
- * sits outside Collie's folders (`~/.collie/config.toml`) is checked and repaired where it is, never
- * moved, and its folder is left alone. The repair is a file-level {@link ownerOnlyArgs}; the line
- * says "made it owner-only" only when a second read passes.
+ * The file's own list decides. Not checked: no claim, said once, and the secret is used. Loose and
+ * `repair` off (every CLI command): a warning that says how to fix it, and `ok: false`, so the
+ * loader withholds a `config.toml` secret exactly as POSIX does for a file it could not tighten.
+ * Loose and `repair` on (the bridge at start), when the file's folder is Collie's own: the old list
+ * saved, the file's whole list set in one call, and "private" said only when a second read passes.
  */
-export function secretFileVerdict(path: string, deps: OwnerOnlyDeps = realOwnerOnlyDeps): PrivateFileVerdict {
-  // One file, never `/T`: there is nothing below it, so no link can be crossed.
-  const before = readAcl(path, false, deps, WINDOWS).verdict;
+export function secretFileVerdict(
+  path: string,
+  opts: { readonly repair: boolean },
+  deps: OwnerOnlyDeps = realOwnerOnlyDeps,
+): PrivateFileVerdict {
+  const host = WINDOWS;
+  const before = readPath(path, false, host, deps).verdict;
   if (before.state === "private") return { ok: true, warning: null };
-  if (before.state === "unknown") {
-    if (toldUnknown.has(path)) return { ok: true, warning: null };
-    toldUnknown.add(path);
+  if (before.state === "not-checked") {
+    if (toldNotChecked.has(path)) return { ok: true, warning: null };
+    toldNotChecked.add(path);
+    return { ok: true, warning: `note: cannot confirm who can read ${path}: ${before.reason}.` };
+  }
+  const who = whoCanRead(before.leaks);
+  const user = currentUserSid(deps.acl);
+  const fix = user === null ? "" : privateCommand(path, user, false, before.leaks);
+  const folder = host.path.dirname(path);
+  const scope = opts.repair && aclRepairAllowed(deps.env) ? scopeOf(folder, false, host, deps) : null;
+  if (scope === null || !scope.allowed || user === null) {
+    const reason = scope === null ? "Restart Collie to repair it" : `Collie does not change it here (${scope.allowed ? "whoami failed" : scope.why})`;
+    return { ok: false, warning: `warn: ${path} can be read by other accounts on this PC (${who}). ${reason}, or run: ${fix}` };
+  }
+  backUp(path, folder, host, deps);
+  const set = deps.acl.restore(folder, [{ name: host.path.basename(path), sddl: privateSddl(user, false) }]);
+  const after = set !== null && !set.timedOut && set.code === 0 ? readPath(path, false, host, deps).verdict : before;
+  if (after.state === "private") {
     return {
       ok: true,
-      warning: `note: could not read the access list of ${path} (${before.why}); Collie cannot say who can read it.`,
+      warning: `warn: ${path} could be read by other accounts on this PC (${who}). Collie restricted it to your account, SYSTEM and Administrators.`,
     };
-  }
-  const who = before.principals.join(", ");
-  const sid = currentUserSid(deps.acl);
-  const set = sid === null ? null : deps.acl.icacls(ownerOnlyArgs(path, sid, false));
-  const after = set !== null && set.code === 0 ? readAcl(path, false, deps, WINDOWS).verdict : before;
-  if (after.state === "private") {
-    return { ok: true, warning: `warn: ${path} was readable by ${who}; made it owner-only.` };
   }
   return {
     ok: false,
-    warning:
-      `warn: ${path} is readable by ${who} and could not be made owner-only; other users may read it. ` +
-      `Fix it with: ${ownerOnlyCommand(path, sid, false)}`,
+    warning: `warn: could not make ${path} private. Collie did not load the secrets in it. Fix: ${fix}, then restart Collie.`,
   };
-}
-
-/** For tests: forget which paths were already reported as unreadable. */
-export function forgetUnknownNotes(): void {
-  toldUnknown.clear();
 }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "./host.ts";
-import { ensureOwnerOnlyDir, isOwnerOnly } from "./owner-only.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 import {
   coerceFolderLists,
   FolderStore,
@@ -198,7 +198,7 @@ describe("FolderStore — the file", () => {
   test("a write is atomic and owner-only: no temp file left, mode 0600", async () => {
     await withStateDir(async (dir) => {
       // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
-      if (process.platform === "win32") ensureOwnerOnlyDir(dir, HOST);
+      if (process.platform === "win32") ensureOwnerOnlyDir(dir, HOST, { root: privateRoot("state"), repair: true });
       const store = new FolderStore({ stateDir: dir }, HOME);
       await store.recordRecent("/srv/a");
       expect(await readdir(dir)).toEqual(["folders.json"]);

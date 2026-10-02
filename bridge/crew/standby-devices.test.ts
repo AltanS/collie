@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../host.ts";
-import { ensureOwnerOnlyDir, isOwnerOnly } from "../owner-only.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { EMPTY_REGISTRY, sha256Hex, type PairedRegistry } from "../pairing.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { T0 } from "./fixtures.ts";
@@ -269,7 +269,7 @@ describe("the file", () => {
     const stateDir = join(await mkdtemp(join(tmpdir(), "collie-standby-")), "nested");
     try {
       // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
-      if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST);
+      if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
       const store = new StandbyDeviceStore(stateDir);
       expect(await store.load()).toBeNull();
       const next = { ...noStandbyDevices("crew-1", "desk"), syncedAt: T0, devices: devices(device("phone", HASH_A)) };
