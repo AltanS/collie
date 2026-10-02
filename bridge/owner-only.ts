@@ -304,12 +304,21 @@ export function privateArgs(path: string, userSid: string, folder: boolean, leak
 }
 
 /**
+ * A path quoted for a line the operator pastes. Double quotes, which PowerShell and cmd both read,
+ * unless the path holds a `$` or a backtick: inside double quotes PowerShell expands `$x` and reads
+ * a backtick as an escape, so such a path is single-quoted with each `'` doubled, PowerShell's form.
+ */
+export function quotePath(path: string): string {
+  return /[$`]/.test(path) ? `'${path.replaceAll("'", "''")}'` : `"${path}"`;
+}
+
+/**
  * The same repair as one line an operator can paste into PowerShell or cmd: the path and the grants
  * quoted (PowerShell reads a bare `(OI)` as an expression), no placeholder.
  */
 export function privateCommand(path: string, userSid: string, folder: boolean, leaks: readonly Leak[] = []): string {
   const [first, ...rest] = privateArgs(path, userSid, folder, leaks);
-  return `icacls "${first!}" ${rest.map((a) => (a.includes("(") ? `"${a}"` : a.startsWith("*S-") && a.includes(":") ? `"${a}"` : a)).join(" ")}`;
+  return `icacls ${quotePath(first!)} ${rest.map((a) => (a.includes("(") ? `"${a}"` : a.startsWith("*S-") && a.includes(":") ? `"${a}"` : a)).join(" ")}`;
 }
 
 /** Run the repair. `null` when it went through, else why not. */
@@ -358,7 +367,7 @@ export function flushAclBackups(stateDir: string, host: Host = WINDOWS, deps: Ow
     const text = formatSaved(entries);
     if (deps.writeBackup(file, text)) {
       // `/restore` needs the Restore privilege: an administrator's terminal, for any account.
-      lines.push(`[secrets] the old permissions are saved. To put them back, in a terminal run as administrator: icacls "${parent}" /restore "${file}"`);
+      lines.push(`[secrets] the old permissions are saved. To put them back, in a terminal run as administrator: icacls ${quotePath(parent)} /restore ${quotePath(file)}`);
     }
   }
   pendingBackups.clear();

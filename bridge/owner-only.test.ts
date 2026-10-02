@@ -11,6 +11,7 @@ import {
   isOwnerOnly,
   type OwnerOnlyDeps,
   privateCommand,
+  quotePath,
   resetOwnerOnlyState,
   secretFileVerdict,
   whoCanRead,
@@ -428,6 +429,15 @@ describe("the rest", () => {
   test("privateCommand: quoted path, grants first, then /inheritance:r, SIDs only, no placeholder", () => {
     expect(privateCommand("C:\\Users\\Rehearse Ünal\\x", SID, true, [{ path: "x", sid: "S-1-5-4", what: "read" }, { path: "x", sid: "DU", what: "read" }])).toBe(
       `icacls "C:\\Users\\Rehearse Ünal\\x" /grant:r "*${SID}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /inheritance:r /remove:g *S-1-5-4`,
+    );
+  });
+
+  test("a path with `$` or a backtick is single-quoted, `'` doubled, so PowerShell pastes it as written", () => {
+    expect(quotePath("C:\\Users\\pat\\collie")).toBe('"C:\\Users\\pat\\collie"');
+    expect(quotePath("C:\\Users\\o'brien\\collie")).toBe('"C:\\Users\\o\'brien\\collie"');
+    expect(quotePath("D:\\$work\\pat's `cfg")).toBe("'D:\\$work\\pat''s `cfg'");
+    expect(privateCommand("D:\\$env:x\\it's", SID, false)).toBe(
+      `icacls 'D:\\$env:x\\it''s' /grant:r "*${SID}:F" "*S-1-5-18:F" "*S-1-5-32-544:F" /inheritance:r`,
     );
   });
 
