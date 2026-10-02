@@ -1569,6 +1569,26 @@ describe("collie update on a binary install", () => {
     expect(h.restarts).toBe(0);
   });
 
+  test("Windows: when putting the old junction back fails too, the error prints the exact repair command", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    const rename = h.files.rename;
+    h.files.rename = (from, to) => {
+      if (posixKey(to) === `${INST}/current`) throw new Error("EBUSY: resource busy");
+      rename(from, to);
+    };
+    const junction = h.link.junction;
+    h.link.junction = (target, at) => {
+      if (posixKey(at) === `${INST}/current`) throw new Error("EPERM: operation not permitted");
+      junction(target, at);
+    };
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("is missing now, and putting it back failed too");
+    // The command an operator can paste into cmd or PowerShell, with both paths spelled out.
+    expect(err).toContain(`Make it again by hand: cmd /c mklink /J "\\inst\\current" "${BROOT}"`);
+    expect(h.restarts).toBe(0);
+  });
+
   test("Windows: a real folder named `current` is refused and never removed", async () => {
     const h = windowsBinaryHarness({ others: ["0.9.0"] });
     h.link.entries.set(`${INST}/current`, { kind: "other", what: "a directory" });

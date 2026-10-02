@@ -1292,6 +1292,9 @@ function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): b
   }
 }
 
+/** The one command that makes a junction by hand, in a form both cmd and PowerShell accept. */
+export const junctionCommand = (at: string, target: string): string => `cmd /c mklink /J "${at}" "${target}"`;
+
 /**
  * The Windows flip. `current` is a directory junction there (`LinkWriter.junction`), and two facts
  * measured on the Windows 11 VM on 2026-10-02 change the steps: a rename onto an existing junction
@@ -1334,7 +1337,7 @@ function flipJunction(deps: UpdateDeps, layout: BinaryLayout, version: string): 
         deps.io.err(`       ${layout.currentLink} still names ${before.target}. Nothing was changed.`);
       } catch (again) {
         deps.io.err(`       ${layout.currentLink} is missing now, and putting it back failed too — ${String(again)}`);
-        deps.io.err(`       Make it again by hand: mklink /J "${layout.currentLink}" "${before.target}"`);
+        deps.io.err(`       Make it again by hand: ${junctionCommand(layout.currentLink, before.target)}`);
       }
     }
     return false;

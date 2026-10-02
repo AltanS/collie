@@ -255,7 +255,7 @@ export interface LaunchedBridge {
 
 export interface SuperviseDeps {
   readonly io: Io;
-  readonly files: Pick<Files, "write" | "remove" | "rename">;
+  readonly files: Pick<Files, "write" | "remove" | "rename" | "list">;
   readonly host: Host;
   /** Reads the `current` junction the task names, before every launch (see {@link launchRoot}). */
   readonly link: LinkReader;
@@ -315,6 +315,38 @@ async function writeRecord(deps: SuperviseDeps, path: string, logPath: string, t
 export function launchRoot(root: string, link: LinkReader, host: Host): string {
   const probe = link.probe(root);
   return probe.kind === "symlink" ? host.path.resolve(host.path.dirname(root), probe.target) : root;
+}
+
+/**
+ * `current` can be missing at launcher start: an update or a rollback was stopped between removing
+ * the old junction and renaming the new one into place (`flipJunction` in `cli/update.ts`). When
+ * `.current.new` is there, that flip is finished now, because it names the version the update had
+ * already checked. When it is not, nothing on disk says which version `current` named, so nothing is
+ * guessed: one loud line names the versions on disk and the command that repairs it, and the launch
+ * that follows fails and is retried with backoff until an operator acts. `null` when there is
+ * nothing to say. Only a root named `current` is touched, which a checkout never is.
+ */
+export function healCurrent(root: string, deps: Pick<SuperviseDeps, "files" | "link" | "host">): string | null {
+  const p = deps.host.path;
+  if (p.basename(root).toLowerCase() !== "current" || deps.link.probe(root).kind !== "absent") return null;
+  const installRoot = p.dirname(root);
+  const staged = p.join(installRoot, ".current.new");
+  const probe = deps.link.probe(staged);
+  if (probe.kind === "symlink") {
+    try {
+      deps.files.rename(staged, root);
+      return `${root} was missing; finished the interrupted flip: ${staged} is now ${root} (${probe.target})`;
+    } catch (err) {
+      return `WARNING: ${root} is missing, and renaming ${staged} into its place failed (${String(err)}). Repair it by hand: cmd /c mklink /J "${root}" "${probe.target}"`;
+    }
+  }
+  const versionsDir = p.join(installRoot, "versions");
+  const versions = deps.files.list(versionsDir);
+  if (versions.length === 0) return null;
+  return (
+    `WARNING: ${root} is missing and nothing on disk says which version it named, so the launcher does not guess. ` +
+    `Versions on disk: ${versions.join(", ")}. Pick one, then run: cmd /c mklink /J "${root}" "${p.join(versionsDir, "<version>")}"`
+  );
 }
 
 /** What `_supervise` was told on its command line. */
@@ -378,6 +410,8 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   };
   for (;;) {
     await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, 0));
+    const healed = healCurrent(root, deps);
+    if (healed !== null) deps.note(logPath, healed);
     const at = launchRoot(root, deps.link, deps.host);
     const command = [collieBinary(at, deps.host), "_exec-bridge", ...(instance === null ? [] : ["--instance", instance])];
     const env = { ...deps.env, ...parsed.env, COLLIE_PLUGIN_ROOT: at };
@@ -406,7 +440,7 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
 }
 
 /** The launcher's real seams: Node's spawn, the real filesystem, the real clock. */
-export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" | "rename">): SuperviseDeps {
+export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" | "rename" | "list">): SuperviseDeps {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
   return {

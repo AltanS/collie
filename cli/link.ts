@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
+import { lstatSync, mkdirSync, readlinkSync, rmdirSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { binaryName, dropExtendedPrefix, HOST, type Host } from "../bridge/host.ts";
@@ -258,6 +258,29 @@ export const realLinkFs: LinkWriter = {
   },
   mkdirp: (p) => void mkdirSync(p, { recursive: true }),
   symlink: (target, at) => symlinkSync(target, at),
-  remove: (at) => rmSync(at, { force: true }),
+  remove(at) {
+    if (HOST.platform !== "win32") {
+      rmSync(at, { force: true });
+      return;
+    }
+    // Windows: a junction is removed by ITSELF, never through a recursive delete, so the folder it
+    // names cannot be touched. `unlink` removes a junction; `rmdir` is the fallback for a directory
+    // symlink that refuses it. A file or a missing name takes the old path.
+    let link = false;
+    try {
+      link = lstatSync(at).isSymbolicLink();
+    } catch {
+      return;
+    }
+    if (!link) {
+      rmSync(at, { force: true });
+      return;
+    }
+    try {
+      unlinkSync(at);
+    } catch {
+      rmdirSync(at);
+    }
+  },
   junction: (target, at) => symlinkSync(target, at, "junction"),
 };

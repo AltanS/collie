@@ -198,6 +198,7 @@ describe("_supervise, the loop", () => {
           if (text !== null) writes.push(text);
         },
         remove: (p) => files.remove(p),
+        list: (p) => files.list(p),
       },
       host: WIN,
       link,
@@ -330,6 +331,52 @@ describe("_supervise, the loop", () => {
     expect(l.notes.filter((n) => n.startsWith("launching "))[1]).toBe(
       `launching ${collieBinary(at("1.16.0"), WIN)} _exec-bridge in ${at("1.16.0")}`,
     );
+  });
+
+  describe("a missing `current` at launch", () => {
+    const install = "C:\\Users\\pat\\.collie";
+    const current = `${install}\\current`;
+    const staged = `${install}\\.current.new`;
+    const v = (name: string): string => `${install}\\versions\\${name}`;
+    const args = [`COLLIE_PLUGIN_ROOT=${current}`, `HERDR_PLUGIN_CONFIG_DIR=${CONFIG}`];
+
+    test("finishes an interrupted flip when `.current.new` is there, then launches what it names", async () => {
+      const l = launcher([0]);
+      l.link.entries.set(staged, { kind: "symlink", target: v("1.16.0") });
+      // The fake keeps files and links apart; a real rename moves the junction, so this one does too.
+      const rename = l.deps.files.rename;
+      l.deps.files.rename = (from, to) => {
+        const moved = l.link.entries.get(from);
+        if (moved === undefined) return rename(from, to);
+        l.link.entries.delete(from);
+        l.link.entries.set(to, moved);
+      };
+      expect(await cmdSupervise(l.deps, args)).toBe(EXIT.OK);
+      expect(l.notes.join("\n")).toContain(`finished the interrupted flip: ${staged} is now ${current}`);
+      expect(l.launched[0]?.command[0]).toBe(collieBinary(v("1.16.0"), WIN));
+    });
+
+    test("with neither name, says so loudly, guesses nothing, and launches nothing that could be wrong", async () => {
+      const l = launcher([null, 0]);
+      l.files.write(`${v("1.15.0")}\\bin\\collie.exe`, "");
+      l.files.write(`${v("1.16.0")}\\bin\\collie.exe`, "");
+      const launch = l.deps.launch;
+      // The operator repairs it during the backoff pause.
+      l.deps.launch = (command, opts) => {
+        const bridge = launch(command, opts);
+        l.link.entries.set(current, { kind: "symlink", target: v("1.15.0") });
+        return bridge;
+      };
+      expect(await cmdSupervise(l.deps, args)).toBe(EXIT.OK);
+      const warning = l.notes.find((n) => n.startsWith("WARNING:")) ?? "";
+      expect(warning).toContain("does not guess");
+      expect(warning).toContain("1.15.0, 1.16.0");
+      expect(warning).toContain(`cmd /c mklink /J "${current}" "${v("<version>")}"`);
+      expect(l.link.ops.filter((op) => op.startsWith("junction") || op.startsWith("symlink"))).toEqual([]);
+      // The first launch names `current` itself, which fails; no version folder was picked for it.
+      expect(l.launched[0]?.command[0]).toBe(collieBinary(current, WIN));
+      expect(l.launched[1]?.command[0]).toBe(collieBinary(v("1.15.0"), WIN));
+    });
   });
 
   test("runs the same bridge every supervisor runs, from the checkout, with its env on top", async () => {
