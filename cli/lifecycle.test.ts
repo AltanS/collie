@@ -993,9 +993,10 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
       // The bridge only: the launcher (7100) is the loop that brings it back.
       expect(h.exec.killed).toEqual([7200]);
-      // The restart can wait out a slow PowerShell start, for both pids.
+      // The restart can wait out a slow PowerShell start, for both pids, and for the look after the kill.
       expect(h.exec.probed).toEqual([
         { pid: 7100, timeoutMs: PROCESS_QUERY_SLOW_START_MS },
+        { pid: 7200, timeoutMs: PROCESS_QUERY_SLOW_START_MS },
         { pid: 7200, timeoutMs: PROCESS_QUERY_SLOW_START_MS },
       ]);
       // No second bridge, no task touched: ending the task could take the phone's update with it.
@@ -1003,6 +1004,34 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(schtasks(h)).toEqual([]);
       expect(h.io.stdout.join("\n")).toContain("the Task Scheduler supervisor relaunches it");
       expect(h.files.exists(RECORD)).toBe(true);
+    });
+
+    test("a kill Windows refused fails the restart in plain words, and the launcher is not told", async () => {
+      const h = running({ unkillable: [7200] });
+      let probes = 0;
+      h.deps.ready = () => {
+        probes++;
+        return Promise.resolve(true);
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+      expect(h.exec.killed).toEqual([7200]);
+      expect(h.io.stderr).toEqual([
+        "error: the bridge (pid 7200) is still running: Windows did not let Collie stop it.",
+        "       It may run as another account or as administrator. Stop it from there, or run `collie stop` in an administrator terminal.",
+      ]);
+      expect(h.io.stdout.join("\n")).not.toContain("bridge stopped");
+      // The old bridge would have answered the health wait as if it were the new one.
+      expect(probes).toBe(0);
+      expect(h.files.exists(taskRestartPath(CONFIG, null, WIN))).toBe(false);
+    });
+
+    test("a table that does not answer after the kill is no news: the wait for the new bridge goes on", async () => {
+      const h = running();
+      const lookup = h.exec.processLookup.bind(h.exec);
+      let n = 0;
+      h.exec.processLookup = (pid, ms) => (++n === 3 ? { kind: "unknown", why: "slow" } : lookup(pid, ms));
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.join("\n")).toContain("bridge stopped (pid 7200)");
     });
 
     test("tells the launcher first, so the killed bridge is not taken for a crash", async () => {

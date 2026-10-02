@@ -746,11 +746,21 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
     tellLauncher();
     if (bridge.kind === "running") {
       deps.exec.kill(record.bridge);
-      deps.io.out(`bridge stopped (pid ${record.bridge}); the Task Scheduler supervisor relaunches it`);
       // The killed bridge can answer one more probe while Windows tears it down, and that answer
       // would be taken for the new bridge. This pause is the first second of the wait below.
       await deps.sleep(KILL_SETTLE_MS);
       settled = true;
+      // A kill Windows refused (access denied: another account's process, or an elevated one) throws
+      // nothing here, and the old bridge would go on answering the health wait below as if it were
+      // the new one. So the pid is looked at again. A table that does not answer now says nothing new.
+      const after = deps.exec.processLookup(record.bridge, PROCESS_QUERY_SLOW_START_MS);
+      if (after.kind === "running" && isTaskBridge(after.command, root, instance, deps.host)) {
+        deps.files.remove(taskRestartPath(deps.ctx.configDir, deps.ctx.instance, deps.host));
+        deps.io.err(`error: the bridge (pid ${record.bridge}) is still running: Windows did not let Collie stop it.`);
+        deps.io.err("       It may run as another account or as administrator. Stop it from there, or run `collie stop` in an administrator terminal.");
+        return EXIT.FAIL;
+      }
+      deps.io.out(`bridge stopped (pid ${record.bridge}); the Task Scheduler supervisor relaunches it`);
     } else {
       deps.io.out(`the recorded bridge (pid ${record.bridge}) has exited already; the Task Scheduler supervisor relaunches it`);
     }

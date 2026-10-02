@@ -115,6 +115,8 @@ export interface Scripted {
   psUnknown?: number[];
   /** {@link Exec.listProcesses} does not answer (`null`): PowerShell failed or ran past its bound. */
   listUnknown?: true;
+  /** Pids a kill does not end: access denied (another account's, or an elevated, process). */
+  unkillable?: number[];
   /** pid handed back by a detached spawn. */
   spawnPid?: number | null;
   /**
@@ -224,7 +226,9 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
       probed.push(timeoutMs === undefined ? { pid } : { pid, timeoutMs });
       if (scripted.psUnknown?.includes(pid) === true) return { kind: "unknown", why: "PowerShell did not answer within 60s" };
       const command = scripted.ps?.[pid];
-      return command === undefined ? { kind: "gone" } : { kind: "running", command };
+      // A killed process is gone from the next lookup, as from the next listing, unless it is unkillable.
+      const ended = killed.includes(pid) && scripted.unkillable?.includes(pid) !== true;
+      return command === undefined || ended ? { kind: "gone" } : { kind: "running", command };
     },
     // The scripted process table, minus what this fake has killed, and only the rows whose command
     // names one of the executables asked for: a killed process is gone from the next listing.
@@ -234,7 +238,11 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
       const stems = names.map((n) => n.replace(/\.exe$/i, "").toLowerCase());
       return Object.entries(scripted.ps ?? {})
         .map(([pid, command]) => ({ pid: Number(pid), command }))
-        .filter((row) => !killed.includes(row.pid) && stems.some((st) => row.command.toLowerCase().includes(st)));
+        .filter(
+          (row) =>
+            (!killed.includes(row.pid) || scripted.unkillable?.includes(row.pid) === true) &&
+            stems.some((st) => row.command.toLowerCase().includes(st)),
+        );
     },
     kill: (pid) => void killed.push(pid),
   };
