@@ -37,6 +37,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Changed
 
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
+- **The community Windows script `contrib/windows/collie-ctl.ps1` is retired.** Collie now registers and runs the `herdr.collie` task itself. A task the script registered keeps the bridge up until `collie restart` or `collie start` takes it over under the same name. Its `logs` verb is `collie logs` now.
 
 ### Fixed
 

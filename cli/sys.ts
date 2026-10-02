@@ -570,8 +570,8 @@ export function realExec(rawEnv: Environment, home: string): Exec {
 
 /**
  * {@link Exec.processCommand} on Windows, where there is no `ps` that takes `-o` (Git's MSYS `ps`
- * does not), so the answer was always null and no recorded pid could ever be recognised. Asked the
- * way `contrib/windows/collie-ctl.ps1` asks it, through `Win32_Process`. Windows PowerShell can
+ * does not), so the answer was always null and no recorded pid could ever be recognised. Asked
+ * through `Win32_Process`, as the community Windows script asked it. Windows PowerShell can
  * take tens of seconds to start under Task Scheduler, so the caller picks the bound: see
  * {@link Exec.processCommand}.
  */

@@ -10,8 +10,7 @@ concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true
 
-# The Windows suites (M43 spec 02): `bun test` over bridge, cli and scripts, plus the supervisor
-# test. The commands live in `scripts/windows-suites.ps1`, the same file the Windows VM runs
+# The Windows suites (M43 spec 02): `bun test` over bridge, cli and scripts. The commands live in `scripts/windows-suites.ps1`, the same file the Windows VM runs
 # (`make win-test` in the workspace), so CI and the VM cannot drift. The script also fails when
 # more tests are skipped than its `-MaxSkips` allows, so no test is skipped just to get green.
 #

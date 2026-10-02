@@ -2,9 +2,8 @@
 # (`make win-test`, guest-test.ps1 in the workspace) both call this file, so they cannot drift.
 #
 # The caller gets the code, the toolchain and `bun install` ready. This script does none of that.
-# It runs `bun test` over bridge, cli and scripts, then the supervisor test, and prints one line
-# per suite. Exit 0 means: no failing test, the supervisor test passed, and no more skipped tests
-# than -MaxSkips allows. Any other result exits 1.
+# It runs `bun test` over bridge, cli and scripts, and prints one line per suite. Exit 0 means: no
+# failing test, and no more skipped tests than -MaxSkips allows. Any other result exits 1.
 #
 # Works in Windows PowerShell 5.1 and in PowerShell 7.
 #
@@ -89,19 +88,6 @@ foreach ($name in $suites.Keys) {
     # bun failed with no failing test: a crash, a timeout, or a file that did not load.
     Write-Output ("         bun exit {0} with no failing test, last lines of {1}:" -f $bunExit, $log)
     $lines | Select-Object -Last 8 | ForEach-Object { Write-Output "         $_" }
-    $failed = $true
-  }
-}
-
-# The community supervisor's own tests: a plain PowerShell script that stubs the Task Scheduler.
-$ctlTest = "contrib\windows\collie-ctl.test.ps1"
-if (Test-Path $ctlTest) {
-  $ctlLog = "$Out\collie-ctl.log"
-  cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File $ctlTest > `"$ctlLog`" 2>&1"
-  $ctlExit = $LASTEXITCODE
-  Write-Output ("{0,-8} exit {1}" -f "ctl.ps1", $ctlExit)
-  if ($ctlExit -ne 0) {
-    Read-Utf8Lines $ctlLog | Select-Object -Last 8 | ForEach-Object { Write-Output "         $_" }
     $failed = $true
   }
 }

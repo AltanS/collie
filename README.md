@@ -209,9 +209,9 @@ Operational details:
 - The socket path defaults to `%APPDATA%\herdr\herdr.sock`. Override it with `HERDR_SOCKET_PATH`.
   Explicit `\\.\pipe\…` values pass through directly.
 
-**Lifecycle management:** The bridge added named pipe support in 0.15.0. An unsupported,
-community-maintained Task Scheduler configuration for start, stop, and update routines is available
-in [`contrib/windows/`](./contrib/windows/README.md).
+**Lifecycle management:** The bridge added named pipe support in 0.15.0. `collie start`, `stop`,
+`restart`, `status` and `uninstall` run it under Task Scheduler (experimental). They replace the
+community script that lived in `contrib/windows/`.
 
 **Verification:** The bridge logs `[events] stream up` on startup. Event streaming runs over the
 pipe, providing real-time updates without falling back to polling.
