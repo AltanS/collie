@@ -112,15 +112,20 @@ the key and never a verb.
 
 **Declaring nothing is a supported answer, and it has a visible cost:** no card for that agent, ever,
 so an unread modal leaves the operator with the raw mirror and the Keys pad. Take it when your
-`composerReady` has a false-negative mode you do not trust. `omp` does: one ZWJ emoji in a statusline
-template makes its composer scanner return null on every frame, so `composerReady` would be false
-forever on a healthy pane and the card would paint itself permanently over a live composer.
+`composerReady` has a false-negative mode you do not trust and you have no positive evidence of a
+modal to put beside it. `omp` had that problem: one ZWJ emoji in a statusline template makes its
+composer scanner return null on every frame, so `composerReady` would be false forever on a healthy
+pane and the card would paint itself permanently over a live composer. It now declares `cancelKey`
+together with `modalOnScreen`, which reads its own key-hint footer at the buffer tail
+([ADR 0076](./.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)); a
+composer prints no such footer, so the false negative can no longer paint the card.
 
 **Optionally declare `modalOnScreen(lines)` too**: positive evidence that one of your harness's
 modals is up. No input box is also what a shell prompt looks like while your agent starts or exits,
 and Herdr reports the agent in both windows, so without it the card can flash over the shell. When
 declared, the card needs it to answer `true`. Claude's answer is "one of the last six non-blank rows
-names a key"; pin yours against the card's allow-list test (`unread-dialog.test.ts`).
+names a key"; omp's is stricter, a footer row at the tail whose last hint is its own way out, in the six
+spellings it prints. Pin yours against the card's allow-list test (`unread-dialog.test.ts`).
 
 ### The fail-closed contract (non-negotiable)
 

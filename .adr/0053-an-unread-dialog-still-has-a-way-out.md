@@ -1,6 +1,9 @@
 # 0053 — An unread dialog still has a way out
 
 - **Status:** Accepted
+- **Amended in scope by:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md):
+  omp now declares `Escape` and a `modalOnScreen` probe, which closes the gap recorded in the table
+  below. The rules above stand.
 - **Date:** 2026-09-21
 - **Shipped in:** pending (M34, target 1.12.0)
 - **Trail:** `web/src/lib/harness/claude/markers.ts` (`classifyFooter`) ·
@@ -82,7 +85,7 @@ class that just shipped. A declaration cannot be fooled by a phrase.
 | muse | `Escape` | `muse/DIALOG_NOTES.md`: `Esc to interrupt`, and `Esc to go back` in the review phase |
 | agy / antigravity | `Escape` | same two registrations, same footers |
 | grok | `ctrl+c` | `grok/PERMISSION_NOTES.md`: `Ctrl+c:cancel │ Esc:scrollback`, Escape opens the scrollback view |
-| omp | none | gap, below |
+| omp | `Escape` (since ADR 0076) | `⎋ cancel` / `⎋ close`, read by `modalOnScreen`; was a gap, below |
 
 Grok is the reason the key is declared rather than assumed. On grok, Escape is not the way out.
 

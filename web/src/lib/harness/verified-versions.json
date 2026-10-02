@@ -41,11 +41,11 @@
       }
     },
     "omp": {
-      "version": "18.4.4",
-      "verified": "2026-09-30",
+      "version": "18.4.10",
+      "verified": "2026-10-02",
       "how": "capture",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md § \"OMP empty-editor key hint (captured 2026-09-30, oh-my-pi `omp` v18.4.4, herdr 0.9.2, throwaway Herdr panes)\" — the empty-editor hint in the boxed, rule and pi composers only; the modal grammars were last seen on 18.1.19 (§ \"OMP `/tree` capture\")",
+      "evidence": "web/src/fixtures/panes/README.md § \"OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)\", the boxed `/resume` picker in four states plus its no-match screen, `/model`, `/settings`, `/tree` and an idle composer; the Ask tool dialogs were last seen on 17.2.12 (§ \"omp corpus\") and the tool-approval dialogs on 18.1.17 (§ \"OMP tool-approval corpus\")",
       "journal": {
         "version": "18.1.19",
         "verified": "2026-09-30",

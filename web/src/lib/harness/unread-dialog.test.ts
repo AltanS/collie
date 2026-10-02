@@ -42,17 +42,18 @@ describe("the cancel key each adapter declares", () => {
     ["agy", "Escape"],
     ["antigravity", "Escape"],
     ["opencode", "Escape"],
+    ["omp", "Escape"],
     ["grok", "ctrl+c"],
   ])("%s declares %s", (agent, key) => {
     expect(adapterFor(agent)!.cancelKey).toBe(key);
   });
 
-  it("omp declares nothing, so it can never be offered a card", () => {
-    // Not an oversight: omp's modals DO print `Esc close`. Its composer scanner has a total,
-    // permanent false-negative mode (omp/chrome.ts) — one ZWJ emoji in a statusline template and
-    // `composerReady` is false forever on a healthy pane — and a card gated on that would paint
-    // itself over a live composer.
-    expect(adapterFor("omp")!.cancelKey).toBeUndefined();
+  it("omp declares its key only together with positive modal evidence (.adr/0076)", () => {
+    // omp declined a cancelKey in ADR 0053: its composer scanner has a total, permanent false-negative
+    // mode (omp/chrome.ts), so `composerReady` is false forever on a pane with one ZWJ emoji in its
+    // statusline template, and a card gated on that alone would paint itself over a live composer.
+    // The declaration is therefore only safe with `modalOnScreen`, and the two travel together.
+    expect(adapterFor("omp")!.modalOnScreen).toBeTypeOf("function");
   });
 });
 
@@ -66,6 +67,8 @@ describe("a real unread modal gets the card", () => {
     ["grok", "grok--ask-multi.txt", "ctrl+c"],
     ["muse", "muse--ask-color-notes-open.txt", "Escape"],
     ["opencode", "oc--agents-picker.txt", "Escape"],
+    ["omp", "omp--select-menu.txt", "Escape"],
+    ["omp", "omp--v18-4-menu-model.txt", "Escape"],
   ])("%s gets the card on %s", (agent, fixture, key) => {
     const lines = fixtureLines(fixture);
     const blocks = pass(agent, lines);
@@ -119,13 +122,30 @@ describe("a screen that does not get the card", () => {
     expect(cardOf(pass("claude", lines))).toBeNull();
   });
 
-  it("does not get the card on omp's own modal: no declaration, no card", () => {
-    const lines = fixtureLines("omp--select-menu.txt");
-    const omp = adapterFor("omp")!;
-    // Both of the other conditions hold — this is exactly the screen a declaration would light up.
-    expect(omp.buildBlocks(lines).every((b) => b.kind === "raw")).toBe(true);
-    expect(omp.composerReady!(lines)).toBe(false);
-    expect(cardOf(pass("omp", lines))).toBeNull();
+  it("does not get the card on omp's `/tree`, which prints no way out", () => {
+    // Both of the other conditions hold: the screen is raw and `composerReady` says false. What is
+    // missing is omp's positive modal evidence, because neither tree capture names a key that closes
+    // it (omp/modal.ts). No evidence, no card, and the raw mirror is what the operator already had.
+    for (const name of ["omp--tree.txt", "omp--v18-4-tree.txt"]) {
+      const lines = fixtureLines(name);
+      const omp = adapterFor("omp")!;
+      expect(omp.buildBlocks(lines).every((b) => b.kind === "raw"), name).toBe(true);
+      expect(omp.composerReady!(lines), name).toBe(false);
+      expect(cardOf(pass("omp", lines)), name).toBeNull();
+    }
+  });
+
+  it("does not get the card on a live omp composer even when composerReady cannot find it", () => {
+    // The failure ADR 0053 declined omp for: a scanner that answers a definite false on a healthy
+    // pane. Forced here with an adapter whose `composerReady` is always false. The composer screens
+    // print no footer naming a way out, so `modalOnScreen` is what keeps the card off every one.
+    const blind = { ...adapterFor("omp")!, composerReady: () => false };
+    for (const name of FIXTURES.filter(
+      (f) => f.startsWith("omp--") && adapterFor("omp")!.composerReady!(fixtureLines(f)),
+    )) {
+      const lines = fixtureLines(name);
+      expect(cardOf(withUnreadDialog(blind, lines, blind.buildBlocks(lines))), name).toBeNull();
+    }
   });
 
   it("does not get the card when the block list already holds a non-raw block", () => {
@@ -251,6 +271,30 @@ const CARD_FIXTURES = {
     ],
     notModals: [],
   },
+  // Every omp modal that prints its own way out (omp/modal.ts) and that no grammar lifts: the Ask
+  // tool's five screens, the `/model` and `/settings` pickers in both versions, the three tool-approval
+  // screens and the `/resume` picker with no session to list. The `/resume` pickers that DO list a
+  // session lift as a prompt-select and get no card, and `/tree` prints no way out, so neither is here.
+  omp: {
+    modals: [
+      "omp--approval-bash.txt",
+      "omp--approval-write--deny.txt",
+      "omp--approval-write.txt",
+      "omp--menu-model-moved.txt",
+      "omp--menu-model.txt",
+      "omp--menu-settings-moved.txt",
+      "omp--menu-settings.txt",
+      "omp--select-menu-moved.txt",
+      "omp--select-menu.txt",
+      "omp--select-multi-checked.txt",
+      "omp--select-multi-review.txt",
+      "omp--select-multi.txt",
+      "omp--v18-4-menu-model.txt",
+      "omp--v18-4-menu-settings.txt",
+      "omp--v18-4-resume-nomatch.txt",
+    ],
+    notModals: [],
+  },
 } satisfies Record<string, { modals: string[]; notModals: string[] }>;
 
 /** This adapter's own captures, by file prefix. `claude-lab--` is Claude's capture lab, and
@@ -295,6 +339,9 @@ describe("the declaration tracks the harness", () => {
     ["agy", "agy--permission-bash.txt", "esc to cancel"],
     ["antigravity", "agy--permission-bash.txt", "esc to cancel"],
     ["grok", "grok--permission-rm.txt", "Ctrl+c:cancel"],
+    // omp prints the key in text keycaps up to 18.1 and in glyph keycaps from 18.4.
+    ["omp", "omp--select-menu.txt", "Esc cancel"],
+    ["omp", "omp--v18-4-menu-model.txt", "⎋ close"],
     // opencode's pickers print the key as a bare `esc` at the end of the title row.
     ["opencode", "oc--agents-picker.txt", "Select agent                                     esc"],
     // ...and its question dialog prints it as `esc dismiss` at the end of the footer.

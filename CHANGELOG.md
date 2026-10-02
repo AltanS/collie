@@ -32,6 +32,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **Oh My Pi's `/resume` picker is a list of sessions on the phone.** Tap a session and Collie
+  moves the pointer to it and presses Enter, in the boxed picker of omp 18.4 and the unboxed one
+  before it. On a very large pane the picker stays terminal text with an Escape button. Every other
+  Oh My Pi dialog that names its way out, such as `/model`, `/settings`, an Ask question or a tool
+  approval, now shows a button for that key. `/tree` names none, so it keeps no button.
 - **`collie doctor` checks Oh My Pi's Herdr hook.** An `omp` pane that reported no session had no
   line of its own in `agent-sessions`, so its missing Chat and History went unexplained. The doctor
   now names the pane and the `integration-omp` line, which says to run

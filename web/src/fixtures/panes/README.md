@@ -736,8 +736,8 @@ all. It does, and the captures below measure it.
 | `omp--menu-model-moved.txt` | The same picker with the selection moved | `idle` |
 | `omp--menu-settings.txt` | `/settings`: a tabbed panel. **Declined** — its footer is the ONE omp footer `parseKeyHintFooter` parses, and it yields only `{Jump sections, [Tab]}` + `{Close, [Escape]}`, because `menuKeyFor` rejects the compound tokens (`Enter/Space`, `←/→`, `Type`) its real actions are named with. A modal whose only button is "Jump sections" is worse than the raw mirror | `idle` |
 | `omp--menu-settings-moved.txt` | The same panel with the selection moved | `idle` |
-| `omp--menu-resume.txt` | `/resume`: the session picker. **Declined** — `parseKeyHintFooter` returns `[]` for its footer too, and the footer is worth reading before writing any omp grammar: `[Del/⌫ delete · Enter select · Tab all projects · Esc cancel]` names `Del`, which is neither on `menuKeyFor`'s whitelist nor a key `pane.send_keys` accepts | `idle` |
-| `omp--menu-resume-moved.txt` | The same picker with the selection moved | `idle` |
+| `omp--menu-resume.txt` | `/resume`: the session picker, unboxed (omp 17.x to 18.1): `Resume Session (current folder)`, a rule, a `>` search row, then sessions as blank-separated groups, the pointer `❯` in column 0, footer `[Del/⌫ delete · Enter select · Tab all projects · Esc cancel]`. One titled session (three rows) and two UNTITLED ones that print only first prompt and meta (two rows). **Lifted** since [ADR 0076](../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md) (`omp/resume.ts`): the footer prints `Enter select`, so a tap is the pointer walk plus Enter. It was declined until then because `parseKeyHintFooter` returns `[]` for the footer, and `Del` is neither on `menuKeyFor`'s whitelist nor a key `pane.send_keys` accepts, which is why delete is not on the card | `idle` |
+| `omp--menu-resume-moved.txt` | The same picker with the pointer on the third session, a two-row one. Lifted: the first two walk Up | `idle` |
 
 **No picker's confirm key was ever pressed.** Every dialog here was driven onto the screen, captured,
 and dismissed with `Escape`.
@@ -941,6 +941,45 @@ half of that test: exactly one styled row with more than one segment.
 | `omp--v18-rule-effort-hint.txt` | `rule` composer: the hint right-aligned on the empty `❯` row, then the blank gap and the status row | `idle` |
 | `omp--v18-pi-effort-hint.txt` | `pi` composer: the hint right-aligned on the single draft row between the two rules, status row below | `idle` |
 | `omp--fresh-agents-hint.txt` | Boxed composer with a background subagent running: `← ← to see 1 running agent` right-aligned in the bottom border | `idle` |
+
+## OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)
+
+Nine captures from omp 18.4.10, byte-faithful but for the sanitization pass below, taken to lift `/resume` and to give every other omp modal a declared way out ([ADR 0076](../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)).
+omp 18.4 draws its pickers as a rounded box that fills the pane (59 rows by 109 columns here) and prints **glyph keycaps** in the footer: `⏎` for Enter, `⌦/⌫` for delete, `⇥` for Tab, `⎋` for Escape. omp 17.x to 18.1 printed the same keys as words (`Enter`, `Del/⌫`, `Tab`, `Esc`), so the corpus now holds both dialects of the footer, and `omp/modal.ts` accepts exactly the six spellings of the way out (`⎋ cancel`, `⎋ close`, `⎋ to close`, `Esc cancel`, `Esc close`, `Esc to close`).
+
+The `/resume` captures are the boxed layout of that picker: a titled top border (`╭─ Resume Session (current folder) ─…╮`), a `│ > <typed text> │` search row, sessions as blank-separated groups of three rows (title, first prompt, meta), and a bracketed footer, then the bottom border. The meta row reads `<age> ago · <size> · [current ·] ✔ done|⚠ interrupted · [⑂ fork] · [<cwd>]`, with a double space on each side of every `·`. Both sessions in these captures share one title, so the meta row is what tells them apart on the card. `omp--v18-4-resume-nomatch.txt` is the state with no row to point at: the grammar declines it, and the unread-dialog card with its Escape button stands over the raw mirror.
+
+**One sanitization pass, LENGTH-PRESERVING, two substitutions, ASCII for ASCII and with every SGR
+escape left untouched**, so each row keeps its byte length and its cell width:
+
+- **The session id.** `omp--v18-4-composer-idle.txt` printed the forked session's UUID twice, in the
+  `return to original: omp --resume <id>` notice and on the wrapped row under it. Both read
+  `00000000-0000-7000-8000-000000000000`.
+- **The cwd.** `~/projects/collie-workspace` became `~/projects/sample-workspace` on the composer
+  powerline (`omp--v18-4-composer-idle.txt`), on the `/settings` preview row
+  (`omp--v18-4-menu-settings.txt`) and on both meta rows of `omp--v18-4-resume-all-projects.txt`.
+
+Kept verbatim, on purpose: the session title and first prompt (a sandbox request, quoted in the
+transcript, the welcome panel's Recent sessions and the `/tree` list as well), the transcript itself,
+the `GPT-6 Luna` model and the `openrouter` provider, which the older omp captures above already
+print, and the `/model` catalogue. The whole-corpus check after the pass: a UUID pattern matches only
+the zero id, and `/home/`, `/Users/`, an email, an `sk-`/`ghp_`/`AKIA`-shaped string, an OSC escape
+and `collie-workspace` match nothing.
+
+`omp--v18-4-tree.txt` is the one capture here without a way out: neither it nor `omp--tree.txt` prints an Esc segment (the hint row is clipped), so `ompModalOnScreen` answers false on it and it keeps no card.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-4-composer-idle.txt` | 177 rows: a long transcript, `Resumed session`, and `✔ Session forked · return to original: omp --resume <id> or /resume`, then an EMPTY boxed composer whose top border carries the 18.4 powerline with a context meter (`▶─2%───┃─1.1M─`). A composer, `composerReady` true, no card | `idle` |
+| `omp--v18-4-menu-model.txt` | `/model`: the two-pane `╭─ Models ─┬─╮` picker, footer `⏎/→ models · ↑/↓ providers · type to search · Alt+←/Alt+→ kind · ⎋ close`. Stays raw; gets the card | not recorded |
+| `omp--v18-4-menu-settings.txt` | `/settings`: the tabbed panel, footer `⏎/␣ to change · ⇥ to jump sections · ←/→ to switch tabs · Type to search · ⎋ to close`. Stays raw; gets the card | not recorded |
+| `omp--v18-4-tree.txt` | `/tree`: 182 rows, the welcome panel and a long transcript above a `╭─ Session Tree ─╮` box whose hint row is clipped (`⇧⏎: summa…`). No footer names a way out, so no card | not recorded |
+| `omp--v18-4-resume.txt` | `/resume` in the current folder, two sessions that share the title `Render Fancy Content in Terminal`, the pointer on the first. Lifts as a `prompt-select`: Enter, Down+Enter, then Cancel | not recorded |
+| `omp--v18-4-resume-moved.txt` | The same screen with the pointer on the second session: Up+Enter, Enter, Cancel | not recorded |
+| `omp--v18-4-resume-untitled-dated.txt` | Four sessions: an untitled one that prints two rows (first prompt, meta; `just now`), two titled ones, and one nine days old whose age reads `9/20/2026`; the pointer on the third. The two extra session logs were hand-made copies of a real one (new id, `touch -d`, title rows removed) so omp rendered the shapes itself, and deleted after the capture | not recorded |
+| `omp--v18-4-resume-search.txt` | `ab` typed in the search row: both sessions still match, in the other order, the pointer on the first | not recorded |
+| `omp--v18-4-resume-all-projects.txt` | After `⇥`: the title reads `(all projects)`, every meta row ends in the session's cwd, and the footer offers `⇥ current folder` | not recorded |
+| `omp--v18-4-resume-nomatch.txt` | `abzzzzqq` typed: `No sessions in current folder. Press ⇥ to view all.` and no session row. The grammar declines, the card stands | not recorded |
 
 ## Lessons already encoded here (don't re-learn them)
 

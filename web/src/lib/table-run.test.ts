@@ -289,12 +289,15 @@ describe("tableRuns — the whole pane corpus", () => {
       // grows up through the whole box.
       "claude--workflow-view.txt 8..59",
       // omp's welcome splash: the logo on the left, Tips / LSP servers / Recent sessions on the right.
-      // It sits in the scrollback of most omp captures, which is why it appears 23 times and always
+      // It sits in the scrollback of most omp captures, which is why it appears 17 times and always
       // at the same rows. The menus and dialogs BELOW it are not claimed, and that is the point: the
       // run stops where the box does.
-      "omp--approval-bash.txt 2..20",
-      "omp--approval-write--deny.txt 2..20",
-      "omp--approval-write.txt 2..20",
+      //
+      // Absent from this list since .adr/0076: every omp modal that prints its own way out (the three
+      // approval screens, the `/model` picker, the Ask tool's five screens) now gets the unread-dialog
+      // card, which mirrors the whole pane in its own horizontally scrolling region instead of a raw
+      // block, so no raw block carries a table run there. That includes the `/model` box ADR 0072 once
+      // panned, which scrolls as part of the card's mirror, as Claude's generic-menu card always has.
       "omp--done--tool-result.txt 2..20",
       "omp--done.txt 2..20",
       "omp--draft-ghost-suggestion-busy.txt 2..20",
@@ -303,20 +306,11 @@ describe("tableRuns — the whole pane corpus", () => {
       "omp--draft-wrapped.txt 2..20",
       "omp--fresh-idle.txt 2..20",
       "omp--menu-dismissed.txt 2..20",
-      // omp's `/model` picker, in its alphabetical place because this list runs in the directory's
-      // order: the vendor list on the left, the model names on the right, the whole box from lid to
-      // floor. The one screen here that is also a MENU the operator drives, so panning it right can
-      // carry its `❯` off-screen until they pan back. That is the cost ADR 0072 accepts.
-      "omp--menu-model-moved.txt 0..54",
-      "omp--menu-model.txt 0..54",
-      "omp--select-menu-moved.txt 2..20",
-      "omp--select-menu.txt 2..20",
-      "omp--select-multi-checked.txt 2..20",
-      "omp--select-multi-review.txt 2..20",
-      "omp--select-multi.txt 2..20",
       "omp--slash-palette--filtered.txt 2..20",
       "omp--slash-palette.txt 2..20",
       "omp--tree.txt 2..20",
+      "omp--v18-4-composer-idle.txt 2..20",
+      "omp--v18-4-tree.txt 2..20",
       "omp--v18-rule-draft.txt 2..20",
       "omp--v18-rule-idle.txt 2..20",
       "omp--v18-rule-wrapped.txt 2..20",

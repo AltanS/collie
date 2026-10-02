@@ -11,15 +11,18 @@ import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
 import { decorateOmpDisplay } from "./omp/display";
 
-// The omp adapter's CI gate. This adapter is Tier 1 BY CHOICE — it up-levels nothing, so `ownFixtures`
-// is empty and every one of the captures is a NEUTRAL fixture the adapter must leave raw. That is
-// not a weaker gate than Claude's; it is the whole promise this contribution makes, asserted over the
-// entire corpus rather than over a chosen subset: no interactive block kind is ever constructed, so no
-// tap can reach a keystroke. See harness/omp/index.ts for why the dialog layer is a later PR.
+// The omp adapter's CI gate. This adapter is Tier 1 everywhere EXCEPT ONE SCREEN: it lifts the `/resume`
+// session picker (omp/resume.ts, .adr/0076) and nothing else. So `ownFixtures` is exactly the resume
+// captures that list at least one session, and every other capture is a NEUTRAL fixture the adapter
+// must leave raw. That is still not a weaker gate than Claude's: the neutral cohort is asserted over
+// the entire rest of the corpus rather than over a chosen subset, so no interactive block kind is ever
+// constructed from a `/model`, `/settings`, `/tree`, Ask-tool or tool-approval screen; the only key a
+// tap can send there is the unread-dialog card's declared Escape, which this adapter does not build
+// (unread-dialog.test.ts pins it). See harness/omp/index.ts for why each of those is a later PR.
 //
-// The FOREIGN cohort is every claude and codex capture, which pins the cross-adapter fail-closed leg.
-// The other directions of that loop live in conformance.test.ts (Claude's leg takes omp--* + codex--*)
-// and harness/codex.test.ts (codex's leg takes claude--* + omp--*).
+// The FOREIGN cohort is every claude, codex and grok capture, which pins the cross-adapter fail-closed
+// leg. The other directions of that loop live in conformance.test.ts (Claude's leg takes omp--* +
+// codex--*) and harness/codex.test.ts (codex's leg takes claude--* + omp--*).
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
@@ -36,21 +39,36 @@ const allGrokFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
   .toSorted();
 const allForeignFixtures = [...allClaudeFixtures, ...allCodexFixtures, ...allGrokFixtures];
-// `omp--menu-dismissed.txt` matches this prefix and is a COMPOSER capture, not a modal.
+// `omp--menu-dismissed.txt` matches this prefix and is a COMPOSER capture, not a modal, and so is
+// `omp--v18-4-composer-idle.txt`, the one `omp--v18-4-*` capture that is not a modal.
 // `omp--tree.txt` is a modal under a name that fits none of those prefixes, so it is named outright.
 const allOmpModalFixtures = allOmpFixtures.filter(
   (name) =>
     name.startsWith("omp--menu-") ||
     name.startsWith("omp--select-") ||
     name.startsWith("omp--approval-") ||
+    (name.startsWith("omp--v18-4-") && name !== "omp--v18-4-composer-idle.txt") ||
     name === "omp--tree.txt",
 );
 
-// Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
-// can draw. These are NOT "neutral output" in the plain sense: fifteen of them are live modals with
-// the keyboard, and the conformance assertion (raw-only) is exactly the promise worth pinning,
-// because it is a promise about a screen where being wrong would type a keystroke. The tool-approval
-// dialog, once this corpus's one known gap, is now three of those fifteen. One reason per line.
+// The `/resume` captures that list at least one session: the only screens this adapter lifts. Seven of
+// the eight resume captures; `omp--v18-4-resume-nomatch.txt` has no rows and stays raw (below).
+const LIFTED = new Set([
+  "omp--menu-resume-moved.txt",
+  "omp--menu-resume.txt",
+  "omp--v18-4-resume-all-projects.txt",
+  "omp--v18-4-resume-moved.txt",
+  "omp--v18-4-resume-search.txt",
+  "omp--v18-4-resume-untitled-dated.txt",
+  "omp--v18-4-resume.txt",
+]);
+
+// Every omp screen this adapter DECLINES, which is every screen IN THIS CORPUS bar the lifted resume
+// pickers, not every screen omp can draw. These are NOT "neutral output" in the plain sense: twenty of
+// them are live modals with the keyboard, and the conformance assertion (raw-only) is exactly the
+// promise worth pinning, because it is a promise about a screen where being wrong would type a
+// keystroke. The tool-approval dialog, once this corpus's one known gap, is three of those twenty.
+// One reason per line.
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -64,6 +82,7 @@ const DECLINED = new Set([
   "omp--fresh-effort-hint.txt",
   "omp--fresh-idle.txt",
   "omp--menu-dismissed.txt",
+  "omp--v18-4-composer-idle.txt",
   "omp--v18-pi-effort-hint.txt",
   "omp--v18-rule-draft.txt",
   "omp--v18-rule-idle.txt",
@@ -93,10 +112,10 @@ const DECLINED = new Set([
   //   themselves are asserted below, so that widening cannot happen without this file noticing.
   "omp--menu-model-moved.txt",
   "omp--menu-model.txt",
-  "omp--menu-resume-moved.txt",
-  "omp--menu-resume.txt",
   "omp--menu-settings-moved.txt",
   "omp--menu-settings.txt",
+  "omp--v18-4-menu-model.txt",
+  "omp--v18-4-menu-settings.txt",
   // — The tool-approval dialog: a `bash` screen and a `write` screen, the `write` one in both
   //   selection states. Captured 2026-09-10 against omp v18.1.17, the screen omp/index.ts named as
   //   the corpus's one gap. It is a box at column 0 like every modal above, so `locateComposer`
@@ -111,12 +130,19 @@ const DECLINED = new Set([
   //   its hint row names `Alt+↑/↓`, `PgUp/PgDn`, `Shift+Enter` and `Ctrl+O`, compound tokens
   //   `menuKeyFor` rejects, so a lifted modal would offer almost none of what the screen advertises.
   "omp--tree.txt",
+  "omp--v18-4-tree.txt",
+  // - The `/resume` picker with NO session to list: omp 18.4.10's "No sessions in current folder. Press
+  //   ⇥ to view all." The grammar needs a pointed row to walk from, so it declines, and what the
+  //   operator gets is the raw mirror plus the unread-dialog card with its Escape button.
+  "omp--v18-4-resume-nomatch.txt",
 ]);
 
-// Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
-// each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
-// raw-only on all 33 omp captures and every foreign harness capture.
-const ownFixtures: string[] = [];
+// The own cohort is the seven lifted `/resume` captures, so every conformance leg that needs one runs on
+// them for real: each lifts, none lifts once output scrolls below it, every key is send_keys-valid, and
+// each model signs itself and fails the committing check when a row of it changes. The neutral cohort
+// still carries the leg that matters most here: raw-only on the other 36 omp captures and on every
+// foreign harness capture.
+const ownFixtures = allOmpFixtures.filter((f) => LIFTED.has(f));
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
 describeAdapterConformance(ompAdapter, {
@@ -157,6 +183,16 @@ describe("the omp corpus", () => {
     "omp--slash-palette--filtered.txt",
     "omp--slash-palette.txt",
     "omp--tree.txt",
+    "omp--v18-4-composer-idle.txt",
+    "omp--v18-4-menu-model.txt",
+    "omp--v18-4-menu-settings.txt",
+    "omp--v18-4-resume-all-projects.txt",
+    "omp--v18-4-resume-moved.txt",
+    "omp--v18-4-resume-nomatch.txt",
+    "omp--v18-4-resume-search.txt",
+    "omp--v18-4-resume-untitled-dated.txt",
+    "omp--v18-4-resume.txt",
+    "omp--v18-4-tree.txt",
     "omp--v18-pi-effort-hint.txt",
     "omp--v18-rule-draft.txt",
     "omp--v18-rule-effort-hint.txt",
@@ -165,26 +201,34 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 33 captures this adapter was developed against", () => {
+  it("is exactly the 43 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all thirty-three — nothing is up-levelled", () => {
-    expect(neutralFixtures).toEqual(PINNED);
-    expect(ownFixtures).toEqual([]);
+  it("lifts the seven `/resume` captures that list a session and declines the other thirty-six", () => {
+    expect(ownFixtures).toEqual([...LIFTED].toSorted());
+    expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
+    expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);
   });
 });
 
 // The structural version of the same promise, and the one that survives a refactor of the cohort
-// lists above: walk the adapter's OWN output and assert no block it can build is anything but `raw`.
+// lists above: walk the adapter's OWN output and assert that the only interactive block it can build is
+// the `/resume` picker's `prompt-select`, on the lifted captures and nowhere else.
 // `describeAdapterConformance` checks this per fixture through its own kind-agnostic filter; asserting
-// the kinds directly here is what makes the claim in omp/index.ts's header — "emits NO interactive
-// block kind" — a test rather than a comment.
-describe("ompBuildBlocks emits nothing but raw", () => {
-  it.each(allOmpFixtures)("%s builds only raw blocks", (name) => {
+// the kinds directly here is what makes the claim in omp/index.ts's header, "no interactive kind but
+// the resume picker", a test rather than a comment.
+describe("ompBuildBlocks emits nothing but raw, bar the /resume picker", () => {
+  it.each(allOmpFixtures.filter((f) => !LIFTED.has(f)))("%s builds only raw blocks", (name) => {
     const blocks = ompAdapter.buildBlocks(fixtureLines(name));
     expect(blocks.length).toBeGreaterThan(0);
     expect(blocks.map((b) => b.kind)).toEqual(blocks.map(() => "raw"));
+  });
+
+  it.each([...LIFTED].toSorted())("%s builds one prompt-select, and nothing else but the raw above it", (name) => {
+    const blocks = ompAdapter.buildBlocks(fixtureLines(name));
+    expect(blocks.filter((b) => b.kind !== "raw").map((b) => b.kind)).toEqual(["prompt-select"]);
+    expect(blocks.at(-1)!.kind).toBe("prompt-select");
   });
 
   // The Tier-1 claim is about the whole adapter object, not only its pipeline: every surface it
@@ -195,9 +239,11 @@ describe("ompBuildBlocks emits nothing but raw", () => {
     expect(Object.keys(ompAdapter).toSorted()).toEqual(
       [
         "agent", // the registry key
-        "buildBlocks", // raw-only, asserted above
+        "buildBlocks", // raw-only except the /resume picker, asserted above
+        "cancelKey", // the unread-dialog card's one key, a declaration (.adr/0053, .adr/0076)
         "composerPrompt", // the row a destructive write BINDS to; it sends nothing itself
         "composerReady", // the pre-flight's refusal
+        "modalOnScreen", // positive evidence a modal is up: the card's fifth condition
         "replyChunks", // lossless transport plan, not a dialog action
         "draftIsOpaque", // never take over an opaque paste chip as literal text
         "extractInputDraft", // the stranded-draft preview + the type-then-verify half
@@ -225,6 +271,7 @@ const COMPOSER_FIXTURES = [
   "omp--slash-palette--filtered.txt",
   "omp--slash-palette.txt",
   "omp--working.txt",
+  "omp--v18-4-composer-idle.txt",
   "omp--v18-pi-effort-hint.txt",
   "omp--v18-rule-effort-hint.txt",
   "omp--v18-rule-draft.txt",
@@ -369,6 +416,11 @@ describe("the shared menu grammar finds nothing to lift in omp's modals", () => 
     { fixture: "omp--select-multi.txt", row: 57 },
     { fixture: "omp--select-multi-checked.txt", row: 57 },
     { fixture: "omp--select-multi-review.txt", row: 57 },
+    // omp 18.4 prints glyph keycaps (`⏎`, `⌦/⌫`, `⇥`, `⎋`), which the shared grammar does not know either.
+    { fixture: "omp--v18-4-menu-model.txt", row: 57 },
+    { fixture: "omp--v18-4-menu-settings.txt", row: 57 },
+    { fixture: "omp--v18-4-resume.txt", row: 56 },
+    { fixture: "omp--v18-4-resume-all-projects.txt", row: 56 },
   ];
 
   it.each(FOOTERS)("$fixture: its footer yields no menu action at all", ({ fixture, row }) => {
