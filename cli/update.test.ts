@@ -38,7 +38,7 @@ import {
 import { EXIT } from "./io.ts";
 import { stagingLogPath, tailOf } from "../bridge/staging-log.ts";
 import type { JsonObject } from "../bridge/json.ts";
-import { latestUpdateInMajor } from "../bridge/update.ts";
+import { latestUpdateInMajor, parseReleaseManifest } from "../bridge/update.ts";
 import {
   type ApplyArgs,
   applyArgv,
@@ -1505,6 +1505,33 @@ describe("collie update on a binary install", () => {
     // The fixture's download lays a POSIX payload down: `bin/collie`, no `.exe`.
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("missing bin/collie.exe");
+  });
+
+  test("a manifest with a `windows-x64` entry resolves Linux and macOS exactly as before", async () => {
+    const windows = {
+      name: `collie-${NEW}-windows-x64.zip`,
+      platform: "windows-x64",
+      sha256: "f".repeat(64),
+      size: 9,
+      payloadRoot: `collie-${NEW}-windows-x64`,
+      signed: false,
+    };
+    // The released parser keeps an entry it does not know and drops nothing else.
+    const parsed = parseReleaseManifest(manifestDoc({ artifacts: [windows, ...manifestDoc().artifacts] }));
+    expect(parsed.ok && parsed.manifest.artifacts.map((a) => a.platform)).toEqual(["windows-x64", "linux-x64"]);
+    // No platform but win32/x64 can ever name it.
+    for (const os of ["linux", "darwin", "freebsd", "win32"]) {
+      for (const arch of ["x64", "arm64", "ia32", "riscv64"]) {
+        expect(platformId(os, arch) === "windows-x64").toBe(os === "win32" && arch === "x64");
+      }
+    }
+    // The Linux update takes its own tarball, with the Windows entry listed first.
+    const h = binaryHarness({ manifest: manifestDoc({ artifacts: [windows, ...manifestDoc().artifacts] }) });
+    const fetched: string[] = [];
+    const download = h.deps.net.download;
+    h.deps.net = { ...h.deps.net, download: (url, dest) => (fetched.push(url), download(url, dest)) };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(fetched).toEqual([`https://github.com/AltanS/collie/releases/download/v${NEW}/${PAYLOAD}.tar.gz`]);
   });
 
   test("Linux still unpacks with `tar -xzf`, the exact vector it always ran", async () => {

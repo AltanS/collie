@@ -152,7 +152,7 @@ const sha256 = (path: string): string =>
  *  digest agrees with both. */
 function stageRelease(
   dir: string,
-  opts: { version: string; platform?: string; corrupt?: boolean; schemaVersion?: number },
+  opts: { version: string; platform?: string; corrupt?: boolean; schemaVersion?: number; windows?: boolean },
 ): void {
   const platform = opts.platform ?? PLATFORM;
   const root = `collie-${opts.version}-${platform}`;
@@ -188,7 +188,23 @@ function stageRelease(
         repo: "AltanS/collie",
         tag: `v${opts.version}`,
         version: opts.version,
-        artifacts: [{ name, platform, sha256: digest, size: 1, payloadRoot: root }],
+        artifacts: [
+          // The Windows entry a release carries from M43 spec 06 on, listed FIRST so a reader that
+          // took the first entry, or any unknown one, would be caught here.
+          ...(opts.windows === true
+            ? [
+                {
+                  name: `collie-${opts.version}-windows-x64.zip`,
+                  platform: "windows-x64",
+                  sha256: "f".repeat(64),
+                  size: 1,
+                  payloadRoot: `collie-${opts.version}-windows-x64`,
+                  signed: false,
+                },
+              ]
+            : []),
+          { name, platform, sha256: digest, size: 1, payloadRoot: root },
+        ],
       },
       null,
       2,
@@ -385,6 +401,19 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("from source");
     expect(r.installed).toBe(false);
+  });
+
+  test("a manifest that also lists `windows-x64` installs this platform's tarball, exactly as before", () => {
+    const r = run({
+      release: (d) => {
+        stageRelease(d, { version: VERSION, windows: true });
+        writeFileSync(join(d, "tags.json"), JSON.stringify([{ name: `v${VERSION}`, commit: { sha: "x" } }]));
+      },
+    });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(`Collie v${VERSION}`);
+    expect(r.curl).toContain(`collie-${VERSION}-${PLATFORM}.tar.gz`);
+    expect(r.curl).not.toContain("windows");
   });
 
   test("lays the payload into versions/<X.Y.Z> under a relative `current` symlink", () => {
