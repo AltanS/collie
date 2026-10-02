@@ -1056,6 +1056,27 @@ describe("preflight — a folder a package manager owns", () => {
     expect(check.remedy).toBeUndefined();
   });
 
+  test("a rehearsal mirror is where the release list is asked, and one that is not loopback is red", async () => {
+    const asked: string[] = [];
+    const h = packaged({
+      env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899" },
+      net: {
+        ...deadNet,
+        getJson: (url) => {
+          asked.push(url);
+          return Promise.resolve({ ok: true, value: [{ name: "v1.0.0", commit: { sha: "cccccccc" } }] });
+        },
+      },
+    });
+    expect(byId(await preflight(h.deps), "upstream").verdict).not.toBe("red");
+    expect(asked).toEqual(["http://127.0.0.1:8899/repos/AltanS/collie/tags?per_page=100"]);
+
+    const wide = byId(await preflight(packaged({ env: { COLLIE_UPDATE_MIRROR: "http://10.0.0.5:8899" } }).deps), "upstream");
+    expect(wide.verdict).toBe("red");
+    expect(wide.reason).toContain("is not an http://127.0.0.1 or http://localhost URL");
+    expect(wide.remedy).toBe("unset COLLIE_UPDATE_MIRROR");
+  });
+
   test("the report names the kind, which is what the crew flow branches on", async () => {
     expect((await preflight(packaged().deps)).installKind).toBe("packaged");
   });

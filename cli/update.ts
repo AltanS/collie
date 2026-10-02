@@ -12,6 +12,9 @@ import {
   isGithubApiUrl,
   majorOf,
   MANIFEST_SCHEMA_VERSION,
+  mirrorRefusal,
+  mirrorWarning,
+  updateMirror,
   parsePrereleaseTag,
   parseReleaseManifest,
   parseTagsResponse,
@@ -1173,9 +1176,10 @@ export function windowsTar(env: Environment, host: Host): string {
 export const manifestAssetName = (version: string): string => `collie-${version}.manifest.json`;
 
 /** A release asset's URL, built from (repo, tag, name) alone — see `parseReleaseManifest`'s header
- *  on why the manifest carries no URLs of its own. */
-export const releaseAssetUrl = (repo: string, tag: string, name: string): string =>
-  `https://github.com/${repo}/releases/download/${tag}/${name}`;
+ *  on why the manifest carries no URLs of its own. With a rehearsal mirror (`COLLIE_UPDATE_MIRROR`,
+ *  a loopback-only test seam, `bridge/update.ts`), the same path on that mirror. */
+export const releaseAssetUrl = (repo: string, tag: string, name: string, mirror: string | null = null): string =>
+  `${mirror ?? "https://github.com"}/${repo}/releases/download/${tag}/${name}`;
 
 /** The evidence line `doctor` and the refusal above both quote for an install we cannot name. */
 function unknownEvidence(
@@ -1480,11 +1484,18 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
     deps.io.err("       Update by pulling and rebuilding a checkout — see docs/install.md.");
     return EXIT.FAIL;
   }
+  // A rehearsal mirror is a test seam: it is said loudly, and a value that is not loopback stops here.
+  const mirror = updateMirror(deps.ctx.env);
+  if (!mirror.ok) {
+    deps.io.err(`error: ${mirrorRefusal(mirror.value)} Nothing was changed.`);
+    return EXIT.FAIL;
+  }
+  if (mirror.base !== null) deps.io.err(mirrorWarning(mirror.base));
   // 2. Sweep scratch before anything else.
   sweepScratch(deps, layout);
 
   // 3. One HTTPS GET. Never a second endpoint, never a guessed version.
-  const tagsUrl = githubTagsUrl(repo);
+  const tagsUrl = githubTagsUrl(repo, mirror.base);
   const tagsResponse = await deps.net.getJson(tagsUrl);
   if (!tagsResponse.ok) {
     netError(deps, "the release check", tagsUrl, tagsResponse.failure);
@@ -1548,7 +1559,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   progress.note(`fetching ${target.version} for ${platform}`);
 
   // 5. The manifest, and this platform's artifact inside it.
-  const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version));
+  const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version), mirror.base);
   const manifestResponse = await deps.net.getJson(manifestUrl);
   if (!manifestResponse.ok) {
     netError(deps, `the release manifest for ${target.version}`, manifestUrl, manifestResponse.failure);
@@ -1586,7 +1597,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   // 6. Download into scratch — same filesystem as `versions/`, so every rename below is a real one.
   const tarball = join(layout.stagingDir, artifact.name);
   deps.files.mkdirp(layout.stagingDir);
-  const tarballUrl = releaseAssetUrl(repo, target.tag, artifact.name);
+  const tarballUrl = releaseAssetUrl(repo, target.tag, artifact.name, mirror.base);
   const got = await deps.net.download(tarballUrl, tarball);
   if (!got.ok) {
     deps.files.removeTree(layout.stagingDir);

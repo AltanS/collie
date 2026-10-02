@@ -1407,6 +1407,59 @@ describe("collie update on a binary install", () => {
     expect(h.exec.ran[0]?.command[0]).toBe("systemd-run");
   });
 
+  test("a rehearsal mirror on loopback answers every release request, and the update says so", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899/", GH_TOKEN: "t" } });
+    const asked: string[] = [];
+    const { getJson, download } = h.deps.net;
+    h.deps.net = {
+      ...h.deps.net,
+      getJson: (url) => {
+        asked.push(url);
+        return url.includes("/repos/")
+          ? Promise.resolve({ ok: true as const, value: apiTags("v1.0.0", `v${NEW}`) })
+          : getJson(url);
+      },
+      download: (url, dest) => {
+        asked.push(url);
+        return download(url, dest);
+      },
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    const base = "http://127.0.0.1:8899";
+    expect(asked).toEqual([
+      `${base}/repos/AltanS/collie/tags?per_page=100`,
+      `${base}/AltanS/collie/releases/download/v${NEW}/collie-${NEW}.manifest.json`,
+      `${base}/AltanS/collie/releases/download/v${NEW}/${PAYLOAD}.tar.gz`,
+    ]);
+    expect(h.io.stderr.join("\n")).toContain(`WARNING: COLLIE_UPDATE_MIRROR is set. This is a test seam: releases come from ${base}`);
+  });
+
+  test("a mirror that is not this machine's loopback stops the update before any request", async () => {
+    for (const value of [
+      "http://10.0.0.5:8899",
+      "https://127.0.0.1:8899",
+      "file:///C:/mirror",
+      "http://127.0.0.1.example.com",
+      "http://localhost@example.com",
+      "http://[::1]:8899",
+    ]) {
+      const h = binaryHarness({ env: { COLLIE_UPDATE_MIRROR: value } });
+      const asked: string[] = [];
+      const { getJson } = h.deps.net;
+      h.deps.net = {
+        ...h.deps.net,
+        getJson: (url) => {
+          asked.push(url);
+          return getJson(url);
+        },
+      };
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      expect(asked).toEqual([]);
+      expect(h.io.stderr.join("\n")).toContain(`COLLIE_UPDATE_MIRROR='${value}' is not an http://127.0.0.1 or http://localhost URL`);
+      expect(h.link.ops).toEqual([]);
+    }
+  });
+
   test("a systemd-run binary with no reachable user bus falls back to setsid, not a doomed handoff", async () => {
     // The exact shape a container ships: the systemd package is on disk (`which systemd-run`
     // finds it) but no user manager or session bus is running (`systemctl --user

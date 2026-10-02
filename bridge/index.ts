@@ -148,7 +148,10 @@ import {
   bridgeStampSync,
   githubCredential,
   githubTagsFetcher,
+  mirrorRefusal,
+  mirrorWarning,
   releaseReadingFetcher,
+  updateMirror,
   UpdateMonitor,
   UpdateStateStore,
   updateDigestBody,
@@ -649,6 +652,17 @@ await updateStore.load();
 // The repo the release check + release links point at. Defaults to Collie's own; overridable for a
 // fork (or a synthetic test target) via COLLIE_UPDATE_REPO.
 const updateRepo = process.env.COLLIE_UPDATE_REPO?.trim() || "AltanS/collie";
+// A rehearsal mirror (`COLLIE_UPDATE_MIRROR`, a test seam, loopback only): the release check asks it
+// instead of GitHub, and says so once. A value that is not loopback is refused, and GitHub is asked.
+const releaseMirror = ((): string | null => {
+  const mirror = updateMirror(process.env);
+  if (!mirror.ok) {
+    console.warn(`[update] ${mirrorRefusal(mirror.value)} The release check asks GitHub.`);
+    return null;
+  }
+  if (mirror.base !== null) console.warn(`[update] ${mirrorWarning(mirror.base)}`);
+  return mirror.base;
+})();
 // How this Collie is installed — the ONE shared classifier (`cli/install-kind.ts`), probed once at
 // startup because the answer cannot change under a running process (an update restarts the service).
 // The banner spells its commands from this: Herdr actions for a Herdr-managed checkout, the `collie`
@@ -735,10 +749,10 @@ const updateMonitor = new UpdateMonitor({
   startupStamp: bridgeStampSync(bridgeDir, rootDir),
   // With the operator's GitHub token when the env holds one (#254): the same three names, in the
   // same order, that `collie update` reads, so the banner and the verb share one budget.
-  fetchTags: githubTagsFetcher(updateRepo, githubCredential(process.env)),
+  fetchTags: githubTagsFetcher(updateRepo, githubCredential(process.env), releaseMirror),
   // The newest release's own reading (M27/06) — one small GET beside the tag list, from the same
   // repo the release links point at. It answers null for every release that published none.
-  fetchReleaseReading: releaseReadingFetcher(updateRepo),
+  fetchReleaseReading: releaseReadingFetcher(updateRepo, releaseMirror),
   // Both ends of a link change: what this build speaks, and whether this machine is in a crew at
   // all. The mode was resolved above, at boot, from what the enrolment gate left on disk.
   crewProtocol: CREW_PROTOCOL_VERSION,

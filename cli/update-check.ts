@@ -6,7 +6,15 @@ import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
-import { compareSemver, githubCredential, githubTagsUrl, parseTagsResponse } from "../bridge/update.ts";
+import {
+  compareSemver,
+  githubCredential,
+  githubTagsUrl,
+  mirrorRefusal,
+  parseTagsResponse,
+  UPDATE_MIRROR_ENV,
+  updateMirror,
+} from "../bridge/update.ts";
 import { collieVersionBare, manifestVersionFrom } from "../bridge/version.ts";
 import { loadContext, type CliContext } from "./context.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
@@ -579,8 +587,11 @@ async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: strin
     }
     return { ok: true, tags: parseRemoteTags(ls.stdout) };
   }
+  // The rehearsal mirror (a loopback-only test seam) is where `update` would ask, so it is asked here.
+  const mirror = updateMirror(deps.ctx.env);
+  if (!mirror.ok) return { ok: false, reason: mirrorRefusal(mirror.value), remedy: `unset ${UPDATE_MIRROR_ENV}` };
   const credential = githubCredential(deps.ctx.env);
-  const response = await deps.net.getJson(githubTagsUrl(repo));
+  const response = await deps.net.getJson(githubTagsUrl(repo, mirror.base));
   if (!response.ok) {
     const status = response.failure.status;
     // The token is named by the variable it came from, never by value (#254). A 401 without one is

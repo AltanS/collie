@@ -13,6 +13,7 @@ import {
   githubHeaders,
   GITHUB_TOKEN_ENVS,
   githubReleaseUrl,
+  githubTagsUrl,
   isGithubApiUrl,
   isPrereleaseVersion,
   latestUpdateInMajor,
@@ -32,6 +33,7 @@ import {
   shouldNotify,
   stampOf,
   updateDigestBody,
+  updateMirror,
   updatesNewerThan,
   UpdateMonitor,
   type UpdateMonitorDeps,
@@ -1333,5 +1335,51 @@ describe("the GitHub credential (#254)", () => {
     expect(githubHeaders("https://api.github.com/x", null, base)).toBe(base);
     expect(isGithubApiUrl("https://api.github.com:443/x")).toBe(true);
     expect(isGithubApiUrl("http://api.github.com:8080/x")).toBe(false);
+  });
+});
+
+describe("the rehearsal mirror (COLLIE_UPDATE_MIRROR), a loopback-only test seam", () => {
+  it("is off when unset or blank, and GitHub is asked as before", () => {
+    expect(updateMirror({})).toEqual({ ok: true, base: null });
+    expect(updateMirror({ COLLIE_UPDATE_MIRROR: "  " })).toEqual({ ok: true, base: null });
+    expect(githubTagsUrl("AltanS/collie")).toBe("https://api.github.com/repos/AltanS/collie/tags?per_page=100");
+    expect(releaseReadingUrl("AltanS/collie", "1.8.0", null)).toBe(
+      "https://github.com/AltanS/collie/releases/download/v1.8.0/collie-release.json",
+    );
+  });
+
+  it("takes this machine's loopback, with a port and a path, and moves every release URL there", () => {
+    for (const [value, base] of [
+      ["http://127.0.0.1:8899/", "http://127.0.0.1:8899"],
+      ["http://localhost:8899", "http://localhost:8899"],
+      ["http://127.0.0.1/mirror/", "http://127.0.0.1/mirror"],
+    ] as const) {
+      expect(updateMirror({ COLLIE_UPDATE_MIRROR: value })).toEqual({ ok: true, base });
+    }
+    const base = "http://127.0.0.1:8899";
+    expect(githubTagsUrl("AltanS/collie", base)).toBe(`${base}/repos/AltanS/collie/tags?per_page=100`);
+    expect(releaseReadingUrl("AltanS/collie", "1.8.0", base)).toBe(
+      `${base}/AltanS/collie/releases/download/v1.8.0/collie-release.json`,
+    );
+  });
+
+  it("refuses everything else: another host, https, a folder, a look-alike, a user part, IPv6", () => {
+    for (const value of [
+      "http://10.0.0.5:8899",
+      "https://127.0.0.1:8899",
+      "file:///C:/mirror",
+      "http://127.0.0.1.example.com",
+      "http://localhost@example.com",
+      "http://[::1]:8899",
+      "http://127.0.0.1:8899/?x=1",
+    ]) {
+      expect(updateMirror({ COLLIE_UPDATE_MIRROR: value })).toEqual({ ok: false, value });
+    }
+  });
+
+  it("never gets the GitHub token", () => {
+    const credential = { token: "t", source: "GH_TOKEN" as const };
+    const base = { accept: "application/json" };
+    expect(githubHeaders(githubTagsUrl("AltanS/collie", "http://127.0.0.1:8899"), credential, base)).toBe(base);
   });
 });
