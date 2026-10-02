@@ -30,33 +30,36 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.15.3] - 2026-10-02
+
 ### Fixed
 
 - **A folder on Windows no longer reads as "no folder".** The Changes view only accepted a path that
   started with `/`, so every Windows folder was refused. It now reads a path the way the host does, and
   the install check, the link check and the update smoke test find `collie.exe` instead of a bare
-  `collie`. Nothing changes on Linux or macOS.
+  `collie`. On macOS a folder reached through `/tmp` or `/var` now maps to its repo. ([f70595f8](https://github.com/AltanS/collie/commit/f70595f8), [20d1e6d5](https://github.com/AltanS/collie/commit/20d1e6d5))
 - **A lead behind `tailscale serve` now tells a new member to dial port 443.** `crew add` and
   `crew invite` handed the member the bare tailnet name, and `collie join` reads a bare host as the
   lead's own listener on port 8787. A default HTTPS lead listens on loopback and publishes only 443,
   so the member saw "Unable to connect". Both now give `https://<full-tailnet-name>`, or
   `<name>:<port>` when `COLLIE_SERVE_PORT` moved the front door. With `COLLIE_SERVE_MODE=http`,
-  `invite` keeps the short name. Thanks @sbakhour (#334).
+  `invite` keeps the short name. Thanks @sbakhour (#334). ([228f65ee](https://github.com/AltanS/collie/commit/228f65ee))
 - **`collie crew join --address` now needs a port.** A portless `--address` made the lead dial port 443 on the member, so a member whose
   address had no port stayed unreachable with nothing naming the cause. `join` now refuses it and
   suggests `--address <host>:<port>`. An `https://host:8787` address is still accepted and stored
   as `host:8787`, while `https://host` with no port and any `http://` address are refused. For a
   peer row that cannot be dialled, `crew status` now names `collie crew set-address <member>
   <host:port>`. `crew status` and `doctor` print the exact `set-address` command for a stored
-  address without a port.
+  address without a port. ([228f65ee](https://github.com/AltanS/collie/commit/228f65ee), [58cd66af](https://github.com/AltanS/collie/commit/58cd66af))
 - **A failed TLS dial now says which way it failed.** Every TLS failure read "the TLS certificate
   was not accepted". A certificate that is not the pinned one now reads "something other than the
   pinned member answered at this address", which is what a wrong port looks like. A name mismatch
-  and an expired or not yet valid certificate each get their own sentence.
+  and an expired or not yet valid certificate each get their own sentence. ([228f65ee](https://github.com/AltanS/collie/commit/228f65ee))
 - **A fresh omp session no longer shows a draft in the terminal.** omp 18.4 paints a key hint,
   Shift+Tab to change thinking effort, into an empty editor. The omp reader took the hint's key
   glyphs for a typed draft, so every new session showed "Draft in terminal" with Take over. The
   reader now knows the hint's shape in all three composer layouts and reads the editor as empty.
+  Thanks @enieuwy (#320). ([e3887c1d](https://github.com/AltanS/collie/commit/e3887c1d), [487f70b0](https://github.com/AltanS/collie/commit/487f70b0), [73f417cd](https://github.com/AltanS/collie/commit/73f417cd))
 
 ## [1.15.2] - 2026-10-02
 
