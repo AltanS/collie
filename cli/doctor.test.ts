@@ -322,6 +322,7 @@ describe("collie doctor — the contract", () => {
       "integration-hermes",
       "integration-opencode",
       "integration-pi",
+      "integration-omp",
       "hook-python3",
       "agent-sessions",
       "journal-roots",

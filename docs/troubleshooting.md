@@ -8,7 +8,7 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
-unloaded** · **a pane shows no prompt-cache chip** · **a new Codex pane says it has no history
+unloaded** · **a pane shows no prompt-cache chip** · **a pane has no Chat or History** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
@@ -151,6 +151,25 @@ The pane never reported a session, which its `agent-sessions` line lists by pane
 not taken a turn yet, which is not a fault: nothing is shown before it is measured, so the chip appears
 on the agent's first reply. A harness whose vendor publishes no cache lifetime shows nothing either,
 and `cache-claims` lists every rule this build does ship.
+
+**A pane has no Chat or History, and the ⋮ menu says the pane named no session.** Chat and History read
+the agent's session log, and Collie finds the log only when the agent reports its session through the
+multiplexer. On Herdr that report comes from the agent's own integration, so a missing or old one hides
+both with no other symptom. `collie doctor` names the pane under `agent-sessions` and the fix under
+`integration-<agent>`.
+
+1. Run `herdr integration status`. If the agent is `not installed` or `outdated`, run
+   `herdr integration install <agent>`. Oh My Pi is `omp`, and pi is `pi`: each needs its own.
+2. Restart the agent in that pane. An agent loads its hook when it starts, so one that was running
+   during the install keeps reporting nothing.
+3. If the hook is current and a restarted pane still reports nothing, check whether the agent was
+   started from a shell that another agent opened. Oh My Pi's hook stays silent when `OMPCODE=1` is
+   inherited from the parent agent. Start it from a fresh terminal.
+
+On tmux and zellij only Claude Code reports a session, through Collie's beacon hooks. Run
+`collie hooks install claude` ([Collie writes hooks into Claude's own
+settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)). The other agents have no
+Chat or History there.
 
 **A new Codex pane says it has no history yet.** Expected until its first turn. Codex reports its
 session to Herdr only when the first prompt is sent, not when it starts, so a fresh pane has no

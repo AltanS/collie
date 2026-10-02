@@ -1,4 +1,4 @@
-import { KNOWN_HARNESS_NAMES, REPORTS_SESSION_ON_FIRST_PROMPT } from "../bridge/journal/registry.ts";
+import { AGENT_ALIASES, KNOWN_HARNESS_NAMES, REPORTS_SESSION_ON_FIRST_PROMPT } from "../bridge/journal/registry.ts";
 import { resolveJournalRoots } from "../bridge/config.ts";
 import type { CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type Finding } from "./finding.ts";
@@ -29,8 +29,16 @@ import type { Exec, Files } from "./sys.ts";
 // status`, one `which`, one GET of this bridge's own `/api/snapshot`, and `exists`/`list` on the
 // journal roots. It installs nothing and restarts nothing.
 
-/** Which agents this section reports on: the ones this build could actually read a journal for. */
+/** The agents this build has a journal ADAPTER for. Each owns a root list, so `readJournalRoots` walks these. */
 export const JOURNAL_AGENTS: readonly string[] = KNOWN_HARNESS_NAMES;
+
+/**
+ * Which agents this section reports on per pane and per hook: every name the bridge resolves to a
+ * journal, so an alias counts. Oh My Pi reports itself as `omp` and reads through pi's adapter
+ * (`AGENT_ALIASES`), and its hook is its own (`herdr integration install omp`). Left out, an `omp`
+ * pane with no session was invisible here while the bridge hid its History and Chat with no word.
+ */
+export const JOURNAL_AGENT_NAMES: readonly string[] = [...JOURNAL_AGENTS, ...Object.keys(AGENT_ALIASES)];
 
 // ── `herdr integration status` ───────────────────────────────────────────────
 
@@ -130,7 +138,7 @@ export function parseSnapshotPanes(text: string): SnapshotPane[] | null {
 /** Pair each pane with whether this build could read a journal for its agent. */
 export function paneVerdicts(
   panes: readonly SnapshotPane[],
-  journalAgents: readonly string[] = JOURNAL_AGENTS,
+  journalAgents: readonly string[] = JOURNAL_AGENT_NAMES,
 ): PaneVerdict[] {
   const known = new Set(journalAgents);
   return panes.map((pane) => ({ pane, journalled: known.has(pane.agent) }));
@@ -223,7 +231,7 @@ export async function historyFindings(deps: HistoryDeps): Promise<Finding[]> {
   const verdicts = panes === null ? null : paneVerdicts(panes);
   return [
     herdr,
-    ...JOURNAL_AGENTS.map((agent) => integration(agent, status, verdicts)),
+    ...JOURNAL_AGENT_NAMES.map((agent) => integration(agent, status, verdicts)),
     python(deps),
     sessions(verdicts, read),
     journalRoots(deps),

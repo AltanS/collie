@@ -30,6 +30,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **`collie doctor` checks Oh My Pi's Herdr hook.** An `omp` pane that reported no session had no
+  line of its own in `agent-sessions`, so its missing Chat and History went unexplained. The doctor
+  now names the pane and the `integration-omp` line, which says to run
+  `herdr integration install omp` and restart the agent.
+
 ### Changed
 
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
