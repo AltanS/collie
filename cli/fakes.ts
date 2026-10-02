@@ -113,6 +113,8 @@ export interface Scripted {
   ps?: Record<number, string>;
   /** Pids whose {@link Exec.processLookup} cannot be answered: a process table that did not answer in time. */
   psUnknown?: number[];
+  /** {@link Exec.listProcesses} does not answer (`null`): PowerShell failed or ran past its bound. */
+  listUnknown?: true;
   /** pid handed back by a detached spawn. */
   spawnPid?: number | null;
   /**
@@ -228,6 +230,7 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
     // names one of the executables asked for: a killed process is gone from the next listing.
     listProcesses: (names) => {
       listed.push([...names]);
+      if (scripted.listUnknown === true) return null;
       const stems = names.map((n) => n.replace(/\.exe$/i, "").toLowerCase());
       return Object.entries(scripted.ps ?? {})
         .map(([pid, command]) => ({ pid: Number(pid), command }))

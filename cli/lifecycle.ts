@@ -9,7 +9,7 @@ import type { LinkReader } from "./link.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
-import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
+import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS, type ProcessLookup } from "./sys.ts";
 import {
   formatRestartMarker,
   isTaskBridge,
@@ -441,9 +441,16 @@ function readTaskRecord(deps: LifecycleDeps): TaskRecordRead {
   return { path, raw, record: raw === null ? null : parseTaskRecord(raw) };
 }
 
-/** The process table's answer for a recorded pid. PowerShell can take tens of seconds to start. */
-const recordedCommand = (deps: LifecycleDeps, pid: number): string | null =>
-  pid > 1 ? deps.exec.processCommand(pid, PROCESS_QUERY_SLOW_START_MS) : null;
+/**
+ * The process table's answer for a recorded pid. PowerShell can take tens of seconds to start. Kept
+ * as three answers: a table that did not answer is `unknown`, never "gone", so `stop` cannot report
+ * a bridge stopped that it never saw.
+ */
+const recordedLookup = (deps: LifecycleDeps, pid: number): ProcessLookup =>
+  pid > 1 ? deps.exec.processLookup(pid, PROCESS_QUERY_SLOW_START_MS) : { kind: "gone" };
+
+/** What {@link stopTaskProcesses} found: whether a launcher was alive, or that the table did not answer. */
+type TaskStop = { readonly kind: "done"; readonly launcherAlive: boolean } | { readonly kind: "unreadable"; readonly why: string };
 
 /** `High Mandatory Level` (or System) in this process's token: an elevated shell. */
 function isElevated(exec: Exec): boolean {
@@ -563,9 +570,11 @@ const isOurBridgeOnWindows = (deps: LifecycleDeps, command: string): boolean =>
  * record does not carry start times: the command-line identity is the pid-reuse guard (a recycled pid
  * would have to be another `collie.exe _exec-bridge` of this same checkout to be killed).
  *
- * Answers whether a launcher was alive.
+ * Answers whether a launcher was alive. When the process table does not answer, at any of the three
+ * steps, it answers `unreadable` at once: what was not seen was not stopped, and the caller keeps the
+ * record and says so.
  */
-async function stopTaskProcesses(deps: LifecycleDeps, first: TaskRecord | null): Promise<boolean> {
+async function stopTaskProcesses(deps: LifecycleDeps, first: TaskRecord | null): Promise<TaskStop> {
   const killed = new Set<number>();
   const kill = (pid: number): void => {
     if (killed.has(pid)) return;
@@ -574,8 +583,9 @@ async function stopTaskProcesses(deps: LifecycleDeps, first: TaskRecord | null):
   };
   let launcherAlive = false;
   if (first !== null) {
-    const launcher = recordedCommand(deps, first.launcher);
-    if (launcher !== null && isOurLauncher(deps, launcher)) {
+    const launcher = recordedLookup(deps, first.launcher);
+    if (launcher.kind === "unknown") return { kind: "unreadable", why: launcher.why };
+    if (launcher.kind === "running" && isOurLauncher(deps, launcher.command)) {
       kill(first.launcher);
       launcherAlive = true;
     }
@@ -583,11 +593,13 @@ async function stopTaskProcesses(deps: LifecycleDeps, first: TaskRecord | null):
   const again = readTaskRecord(deps).record;
   for (const pid of new Set([first?.bridge ?? 0, again?.bridge ?? 0])) {
     if (pid <= 1) continue;
-    const bridge = recordedCommand(deps, pid);
-    if (bridge !== null && isOurBridgeOnWindows(deps, bridge)) kill(pid);
+    const bridge = recordedLookup(deps, pid);
+    if (bridge.kind === "unknown") return { kind: "unreadable", why: bridge.why };
+    if (bridge.kind === "running" && isOurBridgeOnWindows(deps, bridge.command)) kill(pid);
   }
   await deps.sleep(STOP_SETTLE_MS);
-  const left = deps.exec.listProcesses(TASK_PROCESS_NAMES, PROCESS_QUERY_SLOW_START_MS) ?? [];
+  const left = deps.exec.listProcesses(TASK_PROCESS_NAMES, PROCESS_QUERY_SLOW_START_MS);
+  if (left === null) return { kind: "unreadable", why: "the process list did not answer" };
   for (const row of left) {
     if (isOurLauncher(deps, row.command)) {
       kill(row.pid);
@@ -595,7 +607,17 @@ async function stopTaskProcesses(deps: LifecycleDeps, first: TaskRecord | null):
     }
   }
   for (const row of left) if (isOurBridgeOnWindows(deps, row.command)) kill(row.pid);
-  return launcherAlive;
+  return { kind: "done", launcherAlive };
+}
+
+/**
+ * `stop` could not see the processes it must stop. The record stays, so the next `stop` (or `restart`)
+ * still knows which pids to look at, and the verb fails: "bridge stopped" would be a guess.
+ */
+function stopUnreadable(deps: LifecycleDeps, verb: "stop" | "start", why: string): number {
+  deps.io.err(`error: could not read the Windows process table (${why}); the bridge may still be running, and its record was kept`);
+  deps.io.err(`       run \`collie ${verb}\` again in a minute`);
+  return EXIT.FAIL;
 }
 
 async function startTaskScheduler(deps: LifecycleDeps): Promise<number> {
@@ -613,8 +635,10 @@ async function startTaskScheduler(deps: LifecycleDeps): Promise<number> {
   const { path, record } = readTaskRecord(deps);
   if (record?.format === 1) {
     deps.exec.capture("schtasks", ["/End", "/TN", name]);
+    const stopped = await stopTaskProcesses(deps, record);
+    if (stopped.kind === "unreadable") return stopUnreadable(deps, "start", stopped.why);
     // Said only when there was a launcher to replace: a record left by a reboot names dead pids.
-    if (await stopTaskProcesses(deps, record)) deps.io.out("replaced the contrib\\windows\\collie-ctl.ps1 launcher with Collie's own");
+    if (stopped.launcherAlive) deps.io.out("replaced the contrib\\windows\\collie-ctl.ps1 launcher with Collie's own");
     deps.files.remove(path);
   }
   const r = deps.exec.capture("schtasks", ["/Run", "/TN", name]);
@@ -628,7 +652,7 @@ async function startTaskScheduler(deps: LifecycleDeps): Promise<number> {
   return EXIT.OK;
 }
 
-async function stopTaskScheduler(deps: LifecycleDeps): Promise<void> {
+async function stopTaskScheduler(deps: LifecycleDeps): Promise<number> {
   const name = taskName(deps);
   // Disabled FIRST: an ended task is one logon, or one RestartOnFailure, from running again. Together
   // with `/End` this is systemd's `disable --now`. Both fail on a task that is not there, which is fine.
@@ -636,10 +660,12 @@ async function stopTaskScheduler(deps: LifecycleDeps): Promise<void> {
   deps.exec.capture("schtasks", ["/End", "/TN", name]);
   const { path, raw, record } = readTaskRecord(deps);
   if (record === null && raw !== null) deps.io.err(`warn: ${path} names no process (${raw.trim()}); nothing in it was stopped`);
-  await stopTaskProcesses(deps, record);
-  // The record goes either way: it describes processes that are gone or were never ours.
+  const stopped = await stopTaskProcesses(deps, record);
+  if (stopped.kind === "unreadable") return stopUnreadable(deps, "stop", stopped.why);
+  // The record goes now: it describes processes that are gone or were never ours.
   deps.files.remove(path);
   stopPidfileProcess(deps);
+  return EXIT.OK;
 }
 
 function removeTaskScheduler(deps: LifecycleDeps): void {
@@ -806,8 +832,11 @@ function describeTaskScheduler(deps: LifecycleDeps): string {
 export interface ServiceBackend {
   /** Write the service definition and start it. Prints its own `bridge started (…)` line. */
   start(deps: LifecycleDeps): number | Promise<number>;
-  /** Stop the bridge, and keep it stopped across a login. */
-  stop(deps: LifecycleDeps): void | Promise<void>;
+  /**
+   * Stop the bridge, and keep it stopped across a login. A number other than `EXIT.OK` is a stop
+   * that could not tell whether the bridge stopped; it printed its own reason.
+   */
+  stop(deps: LifecycleDeps): void | number | Promise<void | number>;
   /** After `stop`: remove the service definition and every record of it. */
   remove(deps: LifecycleDeps): void;
   /** The banner's `service` value. */
@@ -948,7 +977,8 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
 }
 
 export async function cmdStop(deps: LifecycleDeps): Promise<number> {
-  await serviceBackend(deps).stop(deps);
+  const stopped = await serviceBackend(deps).stop(deps);
+  if (stopped !== undefined && stopped !== EXIT.OK) return stopped;
   deps.io.out("bridge stopped");
   return EXIT.OK;
 }

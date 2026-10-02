@@ -889,6 +889,47 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.io.stderr.join("\n")).toContain("names no process");
     });
 
+    describe("a process table that does not answer", () => {
+      const unreadable = (h: { io: { stdout: string[]; stderr: string[] } }): void => {
+        expect(h.io.stdout).not.toContain("bridge stopped");
+        expect(h.io.stderr).toEqual([
+          "error: could not read the Windows process table (PowerShell did not answer within 60s); the bridge may still be running, and its record was kept",
+          "       run `collie stop` again in a minute",
+        ]);
+      };
+
+      test("for the recorded launcher: nothing is killed, the record stays, and stop fails", async () => {
+        const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE }, psUnknown: [7100] });
+        expect(await cmdStop(h.deps)).toBe(EXIT.FAIL);
+        expect(h.exec.killed).toEqual([]);
+        expect(h.files.read(RECORD)).toBe(V2(7100, 7200));
+        unreadable(h);
+      });
+
+      test("for the recorded bridge: the launcher is gone, the bridge was not seen, the record stays", async () => {
+        const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE }, psUnknown: [7200] });
+        expect(await cmdStop(h.deps)).toBe(EXIT.FAIL);
+        expect(h.exec.killed).toEqual([7100]);
+        expect(h.files.exists(RECORD)).toBe(true);
+        unreadable(h);
+      });
+
+      test("for the final sweep: stop fails rather than call an unseen table empty", async () => {
+        const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE }, listUnknown: true });
+        expect(await cmdStop(h.deps)).toBe(EXIT.FAIL);
+        expect(h.files.exists(RECORD)).toBe(true);
+        expect(h.io.stdout).not.toContain("bridge stopped");
+        expect(h.io.stderr[0]).toContain("(the process list did not answer)");
+      });
+
+      test("uninstall stops there too, and removes no task", async () => {
+        const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER }, psUnknown: [7100] });
+        expect(await cmdUninstall(h.deps)).toBe(EXIT.FAIL);
+        expect(schtasks(h)).not.toContain("schtasks /Delete /TN herdr.collie /F");
+        expect(h.files.exists(RECORD)).toBe(true);
+      });
+    });
+
     test("a stale launcher record (the script's `$PID|0`) is cleared", async () => {
       const h = windows({ files: { [RECORD]: "7100|0" } });
       expect(await cmdStop(h.deps)).toBe(EXIT.OK);
