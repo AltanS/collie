@@ -1344,6 +1344,31 @@ function flipJunction(deps: UpdateDeps, layout: BinaryLayout, version: string): 
   }
 }
 
+/** How many times a Windows rename is tried while the folder is busy, about five seconds in all. */
+export const RENAME_TRIES = 5;
+
+/**
+ * `rename`, tried again on Windows while the folder is busy. A freshly unpacked folder is often held
+ * for a moment by Defender or the search indexer, and the rename then fails with EBUSY or EPERM. The
+ * pauses grow by half a second (0.5 s, 1 s, 1.5 s, 2 s). Any other error, or any error off Windows,
+ * is thrown at once, exactly as before.
+ */
+async function renameSettled(deps: Pick<UpdateDeps, "files" | "host" | "sleep">, from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      deps.files.rename(from, to);
+      return;
+    } catch (err) {
+      // SAFETY: the assertion asserts nothing. `catch` binds `unknown`; a Node errno error carries a
+      // string `code`, and any other value reads `undefined` here, which is the "not busy" answer.
+      const code = (err as { code?: string }).code;
+      const busy = code === "EBUSY" || code === "EPERM" || code === "EACCES";
+      if (deps.host.platform !== "win32" || !busy || attempt >= RENAME_TRIES) throw err;
+      await deps.sleep(500 * attempt);
+    }
+  }
+}
+
 /** The design's 20 s bound on the smoke test: `version` answers in milliseconds, so a binary still
  *  silent after this long is not slow, it is hung — and a hung candidate must FAIL the smoke, not
  *  hang the update with it. */
@@ -1603,7 +1628,15 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   const laid = join(layout.versionsDir, target.version);
   if (deps.files.exists(laid)) toTrash(deps, layout, target.version);
   deps.files.mkdirp(layout.versionsDir);
-  deps.files.rename(payload, laid);
+  try {
+    await renameSettled(deps, payload, laid);
+  } catch (err) {
+    deps.files.removeTree(layout.stagingDir);
+    deps.io.err(`error: could not move ${artifact.payloadRoot} into ${layout.versionsDir} (${String(err)}).`);
+    deps.io.err("       Nothing was changed. Try again in a minute.");
+    abandonStaging(deps, `the unpacked ${target.version} could not be moved into versions`);
+    return EXIT.FAIL;
+  }
   deps.files.removeTree(layout.stagingDir);
 
   // 9. Smoke BEFORE the flip: nothing the operator can see has moved yet.

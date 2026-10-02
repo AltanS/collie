@@ -1496,6 +1496,61 @@ describe("collie update on a binary install", () => {
     expect(h.link.ops).toEqual([]);
   });
 
+  test("Windows: a busy unpacked folder is moved after a retry, and one that stays busy changes nothing", async () => {
+    const zipManifest = (payload: string) =>
+      manifestDoc({
+        artifacts: [{ name: `${payload}.zip`, platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: PAYLOAD }],
+      });
+    const busy = (times: number) => {
+      const h = windowsBinaryHarness({ manifest: zipManifest(PAYLOAD) });
+      const download = h.deps.net.download;
+      h.deps.net = {
+        ...h.deps.net,
+        download: async (url, dest) => {
+          const got = await download(url, dest);
+          h.files.write(`${INST}/.staging/x/${PAYLOAD}/bin/collie.exe`, "NEW BINARY");
+          return got;
+        },
+      };
+      let left = times;
+      const rename = h.files.rename;
+      h.files.rename = (from, to) => {
+        if (posixKey(to) === `${INST}/versions/${NEW}` && left > 0) {
+          left--;
+          throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+        }
+        rename(from, to);
+      };
+      return h;
+    };
+    const twice = busy(2);
+    expect(await cmdUpdate(twice.deps)).toBe(EXIT.OK);
+    expect(twice.files.ops).toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${INST}/versions/${NEW}`);
+
+    const always = busy(99);
+    expect(await cmdUpdate(always.deps)).toBe(EXIT.FAIL);
+    expect(always.io.stderr.join("\n")).toContain("Nothing was changed. Try again in a minute.");
+    expect(always.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+    expect(always.files.exists(`${INST}/.staging`)).toBe(false);
+    expect(always.link.ops).toEqual([]);
+  });
+
+  test("a version folder a live launcher holds cannot be pruned, and the update still succeeds", async () => {
+    // Windows: the launcher keeps its own version folder open, so the prune's rename fails with
+    // EBUSY. It is a note, never a failure and never a rollback.
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    const rename = h.files.rename;
+    h.files.rename = (from, to) => {
+      if (posixKey(from) === `${INST}/versions/0.9.0`) throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      rename(from, to);
+    };
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("note: could not remove the old version 0.9.0");
+    expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
+    expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("done");
+    expect(currentTarget(h)).toBe(`${INST}/versions/${NEW}`);
+  });
+
   test("Windows: a payload with no `bin\\collie.exe` is not a payload", async () => {
     const h = windowsBinaryHarness({
       manifest: manifestDoc({
