@@ -1423,14 +1423,14 @@ export function windowsTask(deps: Pick<DoctorDeps, "ctx" | "exec" | "host" | "li
       );
     case "collie": {
       // A binary install's task must run the binary `current` points at, or a restart after an update
-      // relaunches the version the task was registered from. Until M43 spec 06/08 registers the task
-      // on that path, say so rather than let an update look applied while the old version runs on.
+      // relaunches the version the task was registered from. `start` registers it there (M43 spec
+      // 06), so this reads ok for a task this release wrote and warns for one an older build wrote.
       const published = publishedBinary(deps.ctx.root, deps.link, deps.host);
       if (windowsPathKey(query.program) !== windowsPathKey(published)) {
         return warn(
           check,
           `Task ${name} runs ${query.program}, not ${published}; after an update moves \`current\`, it keeps relaunching the old version`,
-          "`collie start` after every update registers the task again",
+          "run `collie start` once: it registers the task on `current`",
         );
       }
       return ok(check, `Task ${name} runs ${query.program} (${query.state})`);

@@ -9,6 +9,7 @@ import {
   fakeExec,
   type FakeFiles,
   fakeFiles,
+  fakeLinkFs,
   HOME,
   ROOT,
   STATE,
@@ -619,6 +620,43 @@ describe("the Task Scheduler tier (Windows)", () => {
         expect(await cmdStart(h.deps)).toBe(EXIT.OK);
       }
       expect(await cmdStart(windows({ answers: [[QUERY, { code: 1 }]] }).deps)).toBe(EXIT.OK);
+    });
+
+    // The hard gate from M43 spec 05 for spec 06: a binary install's task names the `current`
+    // junction, so the launcher it runs survives every update and relaunches the version `current`
+    // names. This process runs from a version folder; the task must not.
+    test("a binary install registers the task on `current`, never on the version folder it runs from", async () => {
+      const install = "C:\\Users\\pat\\.collie";
+      const root = `${install}\\versions\\1.16.0`;
+      const current = `${install}\\current`;
+      const h = windows({
+        answers: [[QUERY, { code: 1 }]],
+        files: { [collieBinary(root, WIN)]: "" },
+      });
+      h.deps.ctx = { ...h.deps.ctx, root };
+      h.deps.link = fakeLinkFs({ [current]: { kind: "symlink", target: root } });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      const xml = h.files.read(TASK_FILE) ?? "";
+      expect(xml).toContain(`<Arguments>--headless ${current}\\bin\\collie.exe _supervise `);
+      expect(xml).toContain(`COLLIE_PLUGIN_ROOT=${current}</Arguments>`);
+      expect(xml).toContain(`<WorkingDirectory>${current}</WorkingDirectory>`);
+      expect(xml).not.toContain("versions");
+
+      // Registered again while that task runs: it is this install's own task, not another's.
+      const again = windows({
+        answers: [[QUERY, { stdout: taskAnswer(`--headless ${current}\\bin\\collie.exe _supervise`) }]],
+        files: { [collieBinary(root, WIN)]: "" },
+      });
+      again.deps.ctx = { ...again.deps.ctx, root };
+      again.deps.link = h.deps.link;
+      expect(await cmdStart(again.deps)).toBe(EXIT.OK);
+    });
+
+    test("a checkout's task still runs its own `bin\\collie.exe`, with a link seam or without", async () => {
+      const h = windows({ answers: [[QUERY, { code: 1 }]] });
+      h.deps.link = fakeLinkFs();
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.files.read(TASK_FILE)).toContain(`<Arguments>--headless ${WIN_BINARY} _supervise `);
     });
 
     test("without conhost the task runs the launcher straight", async () => {

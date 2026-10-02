@@ -1161,8 +1161,13 @@ describe("platformId", () => {
     expect(platformId("linux", "arm64")).toBe("linux-arm64");
     expect(platformId("darwin", "arm64")).toBe("macos-arm64");
     expect(platformId("darwin", "x64")).toBe("macos-x64");
-    expect(platformId("win32", "x64")).toBeNull();
     expect(platformId("linux", "riscv64")).toBeNull();
+  });
+
+  test("Windows is x64 only: Windows on ARM gets the honest refusal", () => {
+    expect(platformId("win32", "x64")).toBe("windows-x64");
+    expect(platformId("win32", "arm64")).toBeNull();
+    expect(platformId("win32", "ia32")).toBeNull();
   });
 });
 
@@ -1443,6 +1448,69 @@ describe("collie update on a binary install", () => {
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain(`${INST}$ ${exe("restart")}`);
     expect(h.exec.calls.join("\n")).not.toContain(`${INST}/current/bin/collie restart`);
+  });
+
+  test("Windows: takes the `windows-x64` zip, checks its sha256, unpacks it with Windows' own tar.exe", async () => {
+    const payload = `collie-${NEW}-windows-x64`;
+    const zip = `${payload}.zip`;
+    const h = windowsBinaryHarness({
+      env: { SystemRoot: "C:\\Windows" },
+      manifest: manifestDoc({
+        artifacts: [
+          { name: `${PAYLOAD}.tar.gz`, platform: "linux-x64", sha256: "0".repeat(64), size: 4, payloadRoot: PAYLOAD },
+          { name: zip, platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: payload },
+        ],
+      }),
+    });
+    const fetched: string[] = [];
+    h.deps.net = {
+      ...h.deps.net,
+      download: (url, dest) => {
+        fetched.push(url);
+        h.files.write(dest, "zip bytes");
+        const at = `${INST}/.staging/x/${payload}`;
+        h.files.write(`${at}/bin/collie.exe`, "NEW BINARY");
+        h.files.write(`${at}/web/dist/index.html`, "NEW");
+        h.files.write(`${at}/herdr-plugin.toml`, `version = "${NEW}"\n`);
+        h.files.write(`${at}/package.json`, `{"version":"${NEW}"}`);
+        return Promise.resolve({ ok: true as const, sha256: DIGEST, size: 4 });
+      },
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(fetched).toEqual([`https://github.com/AltanS/collie/releases/download/v${NEW}/${zip}`]);
+    expect(h.exec.calls).toContain(`/Windows/System32/tar.exe -xf ${INST}/.staging/${zip} -C ${INST}/.staging/x`);
+    expect(h.exec.calls.some((c) => c.startsWith("tar ") || c.startsWith("chmod "))).toBe(false);
+    expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${payload} ${INST}/versions/${NEW}`);
+  });
+
+  test("Windows: a zip whose sha256 differs is thrown away, and nothing is unpacked", async () => {
+    const h = windowsBinaryHarness({
+      digest: "9c1a04".padEnd(64, "0"),
+      manifest: manifestDoc({
+        artifacts: [{ name: "collie-1.1.0-windows-x64.zip", platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: "p" }],
+      }),
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("checksum mismatch for collie-1.1.0-windows-x64.zip");
+    expect(h.exec.calls.some((c) => c.includes("tar.exe"))).toBe(false);
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("Windows: a payload with no `bin\\collie.exe` is not a payload", async () => {
+    const h = windowsBinaryHarness({
+      manifest: manifestDoc({
+        artifacts: [{ name: `${PAYLOAD}.zip`, platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: PAYLOAD }],
+      }),
+    });
+    // The fixture's download lays a POSIX payload down: `bin/collie`, no `.exe`.
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("missing bin/collie.exe");
+  });
+
+  test("Linux still unpacks with `tar -xzf`, the exact vector it always ran", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`tar -xzf ${INST}/.staging/${PAYLOAD}.tar.gz -C ${INST}/.staging/x`);
   });
 
   test("Windows: the runner makes `current` a junction beside the old one, removes the old one, then renames", async () => {

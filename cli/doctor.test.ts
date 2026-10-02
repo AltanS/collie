@@ -1917,7 +1917,20 @@ describe("windows-task", () => {
     const f = windowsTask({ ctx: context({}, { root }), exec, host: WIN, link });
     expect(f.status).toBe("warn");
     expect(f.detail).toContain(`runs ${collieBinary(root, WIN)}, not ${install}\\current\\bin\\collie.exe`);
-    expect(f.remedy).toBe("`collie start` after every update registers the task again");
+    expect(f.remedy).toBe("run `collie start` once: it registers the task on `current`");
+  });
+
+  test("a binary install whose task runs `current\\bin\\collie.exe` reads ok, whichever version runs", () => {
+    const install = "C:\\Users\\pat\\.collie";
+    const root = `${install}\\versions\\1.16.0`;
+    const link = fakeLinkFs({ [`${install}\\current`]: { kind: "symlink", target: `${install}\\versions\\1.16.0` } });
+    const program = `${install}\\current\\bin\\collie.exe`;
+    const exec = fakeExec({
+      answers: [[QUERY, { stdout: `Running\r\nC:\\conhost.exe\r\n--headless ${program} _supervise "COLLIE_PLUGIN_ROOT=${install}\\current"\r\n` }]],
+    });
+    const f = windowsTask({ ctx: context({}, { root }), exec, host: WIN, link });
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(`Task herdr.collie runs ${program} (Running)`);
   });
 
   test("another install's task is named, and no task or no PowerShell is a skip", () => {

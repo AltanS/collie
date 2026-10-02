@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { collieBinary, hostFor } from "../bridge/host.ts";
-import { capture, fakeFiles } from "./fakes.ts";
+import { capture, fakeFiles, fakeLinkFs } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdSupervise,
@@ -115,6 +115,21 @@ describe("whose process is this", () => {
     ).toBe(false);
   });
 
+  test("a binary install's task runs `current\\bin\\collie.exe`, and that is still this install", () => {
+    // The process table names the junction path the task started, never the version folder behind it.
+    const install = "C:\\Users\\pat\\.collie";
+    const root = `${install}\\versions\\1.16.0`;
+    const viaCurrent = `"${install}\\current\\bin\\collie.exe" _supervise "COLLIE_PLUGIN_ROOT=${install}\\current"`;
+    expect(isTaskLauncher(viaCurrent, 2, root, null, WIN)).toBe(true);
+    expect(isTaskLauncher(viaCurrent.replaceAll(".collie", ".other"), 2, root, null, WIN)).toBe(false);
+    const query = parseTaskQuery(`Running\r\nC:\\conhost.exe\r\n--headless ${viaCurrent}\r\n`, WIN);
+    expect(query === null ? null : taskOwner(query, root, WIN)).toBe("collie");
+    const other = parseTaskQuery(`Running\r\nC:\\conhost.exe\r\n--headless D:\\x\\current\\bin\\collie.exe _supervise\r\n`, WIN);
+    expect(other === null ? null : taskOwner(other, root, WIN)).toBe("foreign");
+    // The bridge the launcher starts runs from the version folder `current` named at that launch.
+    expect(isTaskBridge(`"${install}\\versions\\1.15.0\\bin\\collie.exe" _exec-bridge`, root, null, WIN)).toBe(true);
+  });
+
   test("the launcher of each format, and nobody else's", () => {
     const ours = `"${BINARY}" _supervise COLLIE_PLUGIN_ROOT=${ROOT}`;
     const script = `powershell.exe -NoProfile -File "${ROOT}\\contrib\\windows\\collie-ctl.ps1" -TaskConfigDir "${CONFIG}" _exec-bridge`;
@@ -162,6 +177,7 @@ describe("_supervise, the loop", () => {
    */
   function launcher(codes: (number | null | [number, number])[], renameFailures: string[] = []) {
     const io = capture();
+    const link = fakeLinkFs();
     const files = fakeFiles();
     const writes: string[] = [];
     const launched: { command: readonly string[]; cwd: string; env: Record<string, string>; logPath: string }[] = [];
@@ -184,6 +200,7 @@ describe("_supervise, the loop", () => {
         remove: (p) => files.remove(p),
       },
       host: WIN,
+      link,
       pid: 7100,
       env: { Path: "C:\\Windows", COLLIE_PORT: "1" },
       sleep(ms) {
@@ -203,7 +220,7 @@ describe("_supervise, the loop", () => {
       },
       note: (_p, line) => void notes.push(line),
     };
-    return { deps, io, files, writes, launched, notes, slept, renameFailures };
+    return { deps, io, files, link, writes, launched, notes, slept, renameFailures };
   }
 
   test("relaunches a bridge that fails, after the pause, and stops with one that exits 0", async () => {
@@ -284,6 +301,35 @@ describe("_supervise, the loop", () => {
       `launching ${BINARY} _exec-bridge in ${ROOT}`,
       `launching ${BINARY} _exec-bridge in ${ROOT}`,
     ]);
+  });
+
+  test("on a binary install, reads `current` again before every launch and never keeps the answer", async () => {
+    const install = "C:\\Users\\pat\\.collie";
+    const current = `${install}\\current`;
+    const at = (v: string): string => `${install}\\versions\\${v}`;
+    const l = launcher([1, 0]);
+    l.link.entries.set(current, { kind: "symlink", target: at("1.15.0") });
+    const launch = l.deps.launch;
+    // `collie update` moves the junction while the first bridge runs; its `restart` then kills it.
+    l.deps.launch = (command, opts) => {
+      const bridge = launch(command, opts);
+      l.link.entries.set(current, { kind: "symlink", target: at("1.16.0") });
+      return bridge;
+    };
+    const args = [`COLLIE_PLUGIN_ROOT=${current}`, `HERDR_PLUGIN_CONFIG_DIR=${CONFIG}`];
+    expect(await cmdSupervise(l.deps, args)).toBe(EXIT.OK);
+    expect(l.launched.map((run) => run.command)).toEqual([
+      [collieBinary(at("1.15.0"), WIN), "_exec-bridge"],
+      [collieBinary(at("1.16.0"), WIN), "_exec-bridge"],
+    ]);
+    // The bridge's root is the version folder, as the systemd unit and the plist give it.
+    expect(l.launched.map((run) => [run.cwd, run.env.COLLIE_PLUGIN_ROOT])).toEqual([
+      [at("1.15.0"), at("1.15.0")],
+      [at("1.16.0"), at("1.16.0")],
+    ]);
+    expect(l.notes.filter((n) => n.startsWith("launching "))[1]).toBe(
+      `launching ${collieBinary(at("1.16.0"), WIN)} _exec-bridge in ${at("1.16.0")}`,
+    );
   });
 
   test("runs the same bridge every supervisor runs, from the checkout, with its env on top", async () => {

@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 
 import { binaryName, collieBinary, HOST, type Host } from "../bridge/host.ts";
+import { envGet } from "../bridge/tools.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import {
   type ApiTag,
@@ -1156,9 +1157,16 @@ export function parseApiTags(tags: readonly ApiTag[]): ReleaseTag[] {
  * so the baseline penalty is not observable here.
  */
 export function platformId(platform: string, arch: string): string | null {
+  // Windows ships x64 only (M43). Windows on ARM stays best effort, so it gets the honest refusal.
+  if (platform === "win32") return arch === "x64" ? "windows-x64" : null;
   const os = platform === "linux" ? "linux" : platform === "darwin" ? "macos" : null;
   const cpu = arch === "x64" ? "x64" : arch === "arm64" ? "arm64" : null;
   return os === null || cpu === null ? null : `${os}-${cpu}`;
+}
+
+/** `%SystemRoot%\System32\tar.exe`: the bsdtar Windows ships, which reads a zip. */
+export function windowsTar(env: Environment, host: Host): string {
+  return host.path.join(envGet(env, "SystemRoot", host) ?? "C:\\Windows", "System32", "tar.exe");
 }
 
 /** `collie-<version>.manifest.json` — CONSTRUCTED from the version, never read from a document. */
@@ -1563,7 +1571,13 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   progress.note(`unpacking ${artifact.name}`);
   const unpacked = join(layout.stagingDir, "x");
   deps.files.mkdirp(unpacked);
-  const untar = deps.exec.capture("tar", ["-xzf", tarball, "-C", unpacked]);
+  // The Windows asset is a zip. Windows' own `tar.exe` (bsdtar, in System32 since Windows 10) reads
+  // it, and it is named by its full path because Git for Windows can put a GNU tar first on PATH,
+  // and GNU tar cannot read a zip. `Expand-Archive` reads it too, but needs PowerShell and is slow.
+  const untar =
+    deps.host.platform === "win32"
+      ? deps.exec.capture(windowsTar(deps.ctx.env, deps.host), ["-xf", tarball, "-C", unpacked])
+      : deps.exec.capture("tar", ["-xzf", tarball, "-C", unpacked]);
   if (!untar.found || untar.code !== 0) {
     deps.files.removeTree(layout.stagingDir);
     deps.io.err(`error: could not unpack ${artifact.name}${untar.found ? "" : " — tar is not installed"}.`);

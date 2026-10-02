@@ -3,7 +3,9 @@ import { join } from "node:path";
 import type { Host } from "../bridge/host.ts";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
+import { publishedRoot } from "./install-kind.ts";
 import { EXIT, type Io } from "./io.ts";
+import type { LinkReader } from "./link.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
@@ -37,6 +39,7 @@ import {
   launchAgentPlist,
   logFileName,
   pidFileName,
+  type ServiceSpec,
   serviceSpec,
   systemdUnit,
   taskFilePath,
@@ -63,6 +66,12 @@ export interface LifecycleDeps extends ServeDeps {
   sleep: (ms: number) => Promise<void>;
   uid: () => number;
   host: Host;
+  /**
+   * Reads `current` on a binary install, so the Windows task is registered on it (see
+   * {@link taskServiceSpec}). Absent reads as "no `current`": the task then runs `ctx.root`, as a
+   * checkout's does.
+   */
+  link?: LinkReader;
   /**
    * Publish the front door — `cmdServe` in production (wired in cli/main.ts). It stays a seam
    * because what `start` is asserted on here is its TOLERANCE of a front door that won't come up
@@ -461,6 +470,20 @@ export function taskRunLevel(deps: LifecycleDeps): TaskOptions["runLevel"] | nul
 }
 
 /**
+ * The service the Windows task runs. On a binary install that is `<install-root>\current`, the
+ * junction `collie update` moves, and never the version folder this process runs from: the task
+ * outlives every update, and a task on a version folder relaunches the old version after the
+ * `restart` an update ends with (M43 spec 05, the hard gate for spec 06). The launcher resolves the
+ * junction again before every launch (`cmdSupervise`). A checkout keeps its own root, as before.
+ */
+export function taskServiceSpec(deps: LifecycleDeps, tailscaleHosts: string): ServiceSpec {
+  const spec = serviceSpec(deps.ctx, tailscaleHosts, deps.host);
+  if (deps.link === undefined) return spec;
+  const root = publishedRoot(deps.ctx.root, deps.link, deps.host);
+  return root === spec.root ? spec : { ...spec, root, binary: collieBinary(root, deps.host) };
+}
+
+/**
  * Write the task file and register it under the task name, replacing a task of that name. Replacing
  * is the adoption: a task the community script registered under `herdr.collie` becomes this one, and
  * a running instance of it keeps running (Windows 11, 2026-10-02), so registering never interrupts
@@ -484,7 +507,7 @@ function registerTask(deps: LifecycleDeps): boolean {
     deps.io.err("error: `whoami` named no user, and the task starts at that user's logon");
     return false;
   }
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.host);
+  const spec = taskServiceSpec(deps, resolveTailscaleHosts(deps));
   const file = taskFilePath(deps.ctx.configDir, deps.ctx.instance, deps.host);
   deps.files.mkdirp(deps.ctx.configDir);
   deps.files.write(file, taskXml(spec, { user, runLevel, conhost: deps.exec.which("conhost") }));

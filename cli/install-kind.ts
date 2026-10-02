@@ -268,13 +268,22 @@ export function binaryLayout(root: string, host: Host = HOST): BinaryLayout {
  * `bin/collie` exactly as before.
  */
 export function publishedBinary(root: string, link: LinkReader, host: Host = HOST): string {
+  return collieBinary(publishedRoot(root, link, host), host);
+}
+
+/**
+ * The folder {@link publishedBinary} sits under: `<install-root>/current` on a binary install whose
+ * `current` names a version under `versions/`, and `root` itself everywhere else. The Windows task is
+ * registered on this folder (`cli/lifecycle.ts`), so the task, the PATH name and `doctor` read one
+ * answer and cannot drift apart.
+ */
+export function publishedRoot(root: string, link: LinkReader, host: Host = HOST): string {
   const layout = binaryLayout(root, host);
-  if (host.path.basename(layout.versionsDir) !== "versions") return collieBinary(root, host);
+  if (host.path.basename(layout.versionsDir) !== "versions") return root;
   const probe = link.probe(layout.currentLink);
-  if (probe.kind !== "symlink") return collieBinary(root, host);
+  if (probe.kind !== "symlink") return root;
   const target = host.path.resolve(layout.installRoot, probe.target);
-  const inLayout = isSameOrUnder(host, layout.versionsDir, target);
-  return inLayout ? collieBinary(layout.currentLink, host) : collieBinary(root, host);
+  return isSameOrUnder(host, layout.versionsDir, target) ? layout.currentLink : root;
 }
 
 /** What the world says about `root` — one `git` call, one `lstat`, one `readlink`. All reads. */

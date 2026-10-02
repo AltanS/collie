@@ -4,6 +4,7 @@ import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import { instanceSuffix } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import { type LinkReader, realLinkFs } from "./link.ts";
 import { type Exec, type Files, PROCESS_QUERY_TIMEOUT_MS } from "./sys.ts";
 import { logFileName } from "./unit.ts";
 
@@ -123,9 +124,12 @@ export const windowsPathKey = (s: string): string => s.replaceAll("\\", "/").toL
 /**
  * Collapse the version directory of a binary install (`…/versions/<v>/bin/collie.exe`) so a launcher
  * started from one version still recognises a bridge started from another. The same rule as
- * `isOurBridge` in `cli/lifecycle.ts`, over a folded path.
+ * `isOurBridge` in `cli/lifecycle.ts`, over a folded path. The task runs `…/current/bin/collie.exe`
+ * (the junction an update moves), and the process table names that path as it was started, not the
+ * folder behind it (Windows 11 VM, 2026-10-02), so `current` before `bin/collie` collapses the same way.
  */
-const collapseVersion = (key: string): string => key.replace(/\/versions\/[^/\s"]+\//, "/");
+const collapseVersion = (key: string): string =>
+  key.replace(/\/versions\/[^/\s"]+\//, "/").replace(/\/current\/(?=bin\/collie)/, "/");
 
 /**
  * Is `commandLine` this install's `collie <role>`? The binary path (folded, version collapsed), the
@@ -253,6 +257,8 @@ export interface SuperviseDeps {
   readonly io: Io;
   readonly files: Pick<Files, "write" | "remove" | "rename">;
   readonly host: Host;
+  /** Reads the `current` junction the task names, before every launch (see {@link launchRoot}). */
+  readonly link: LinkReader;
   /** This process's pid: the launcher half of the record. */
   readonly pid: number;
   readonly env: Readonly<Record<string, string>>;
@@ -296,6 +302,19 @@ async function writeRecord(deps: SuperviseDeps, path: string, logPath: string, t
       await deps.sleep(50 * attempt);
     }
   }
+}
+
+/**
+ * The folder a launch runs from. On a binary install the task names `<install-root>\current`, a
+ * junction, and this is the version folder it names AT THIS MOMENT. The bridge then runs from that
+ * folder, with that folder as its root, exactly as the systemd unit and the plist run it, so
+ * `collie update` and the identity checks see the layout they expect. The answer is never kept:
+ * the launch after an update's `restart` reads the junction again and starts the new version. Any
+ * other root, a checkout above all, is used as it is.
+ */
+export function launchRoot(root: string, link: LinkReader, host: Host): string {
+  const probe = link.probe(root);
+  return probe.kind === "symlink" ? host.path.resolve(host.path.dirname(root), probe.target) : root;
 }
 
 /** What `_supervise` was told on its command line. */
@@ -351,8 +370,6 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   const { instance } = parsed;
   const record = taskRecordPath(configDir, instance, deps.host);
   const logPath = deps.host.path.join(configDir, logFileName(instance));
-  const command = [collieBinary(root, deps.host), "_exec-bridge", ...(instance === null ? [] : ["--instance", instance])];
-  const env = { ...deps.env, ...parsed.env };
 
   let delay = RELAUNCH_DELAY_MIN_MS;
   const pause = async (): Promise<void> => {
@@ -361,11 +378,14 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   };
   for (;;) {
     await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, 0));
+    const at = launchRoot(root, deps.link, deps.host);
+    const command = [collieBinary(at, deps.host), "_exec-bridge", ...(instance === null ? [] : ["--instance", instance])];
+    const env = { ...deps.env, ...parsed.env, COLLIE_PLUGIN_ROOT: at };
     // The exact program, every time: on a binary install the path names a version folder, and this
     // line is how an operator sees which version the launcher really runs after an update.
-    deps.note(logPath, `launching ${command.join(" ")} in ${root}`);
+    deps.note(logPath, `launching ${command.join(" ")} in ${at}`);
     const started = deps.now();
-    const bridge = deps.launch(command, { cwd: root, env, logPath });
+    const bridge = deps.launch(command, { cwd: at, env, logPath });
     if (bridge === null) {
       deps.note(logPath, `could not start ${command[0]}; trying again in ${delay / 1000}s`);
       await pause();
@@ -393,6 +413,7 @@ export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" 
     io,
     files,
     host: HOST,
+    link: realLinkFs,
     pid: process.pid,
     env,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),

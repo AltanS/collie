@@ -20,6 +20,7 @@ import {
   parseGithubRemote,
   probeInstall,
   publishedBinary,
+  publishedRoot,
   updateRepoOf,
 } from "./install-kind.ts";
 import { context } from "./fakes.ts";
@@ -278,6 +279,16 @@ describe("binaryLayout reads the path rules of the host it is given", () => {
       "C:\\Users\\x\\collie\\current": { kind: "symlink", target: "C:\\Users\\x\\collie\\versions\\1.0.0" },
     });
     expect(publishedBinary(root, link, hostFor("win32"))).toBe("C:\\Users\\x\\collie\\current\\bin\\collie.exe");
+  });
+
+  test("the Windows task's folder is the one `publishedBinary` sits under: `current`, or the root itself", () => {
+    const root = "C:\\Users\\x\\collie\\versions\\1.0.0";
+    // A junction's target as Windows may spell it, with the extended prefix.
+    const link = fakeLinkFs({
+      "C:\\Users\\x\\collie\\current": { kind: "symlink", target: "\\\\?\\C:\\Users\\x\\collie\\versions\\1.0.0" },
+    });
+    expect(publishedRoot(root, link, hostFor("win32"))).toBe("C:\\Users\\x\\collie\\current");
+    expect(publishedRoot("C:\\src\\collie", link, hostFor("win32"))).toBe("C:\\src\\collie");
   });
 
   test("a POSIX pin does not split a Windows path", () => {

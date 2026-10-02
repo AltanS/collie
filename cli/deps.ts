@@ -31,6 +31,8 @@ export function lifecycleDeps(io: Io, ui: Ui | null = null): LifecycleDeps {
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     uid: () => process.getuid?.() ?? 0,
     host: HOST,
+    // Read-only here: the Windows task is registered on `current` when the install has one.
+    link: realLinkFs,
     // The first-run multiplexer question (`cli/mux.ts`), asked through Bun's built-in behind a tty
     // check exactly as `stt setup` and `crew add` guard theirs: a question nobody can answer must
     // refuse legibly rather than read EOF as an answer.
