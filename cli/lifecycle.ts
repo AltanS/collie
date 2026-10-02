@@ -7,11 +7,13 @@ import { EXIT, type Io } from "./io.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
-import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS, PROCESS_QUERY_TIMEOUT_MS } from "./sys.ts";
+import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import {
   isTaskBridge,
   isTaskLauncher,
   parseTaskRecord,
+  queryTask,
+  taskOwner,
   type TaskRecord,
   taskRecordPath,
 } from "./task-scheduler.ts";
@@ -468,6 +470,14 @@ function registerTask(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
   const runLevel = taskRunLevel(deps);
   if (runLevel === null) return false;
+  // One Collie per Windows machine. A task of this name that runs another install is that install's,
+  // and registering over it would silently take its bridge away: refuse, and name it.
+  const existing = queryTask(deps.exec, taskName(deps), deps.host);
+  if (existing !== null && existing !== undefined && taskOwner(existing, deps.ctx.root, deps.host) === "foreign") {
+    deps.io.err(`error: the task ${taskName(deps)} runs ${existing.program}, not this Collie (${deps.ctx.root})`);
+    deps.io.err("       one Collie per Windows machine: run `collie uninstall` from that install first");
+    return false;
+  }
   const who = deps.exec.capture("whoami", []);
   const user = who.found && who.code === 0 ? who.stdout.trim() : "";
   if (user === "") {
@@ -551,8 +561,12 @@ async function stopTaskProcesses(deps: LifecycleDeps, first: TaskRecord | null):
 }
 
 async function startTaskScheduler(deps: LifecycleDeps): Promise<number> {
-  if (!registerTask(deps)) return EXIT.FAIL;
   const name = taskName(deps);
+  if (deps.ctx.instance !== null) {
+    deps.io.err(`warn: one Collie per Windows machine is supported; instance ${deps.ctx.instance} gets its own task ${name}, untested`);
+  }
+  if (!registerTask(deps)) return EXIT.FAIL;
+  deps.io.out(`Registered Task Scheduler job ${name} (starts at logon)`);
   // Release the port if this host ran the unsupervised fallback before, as launchd's start does.
   stopPidfileProcess(deps);
   // A launcher of ours that is already running stays: `/Run` on a running task does nothing, so
@@ -665,22 +679,30 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
 }
 
 /**
- * The task's state as Task Scheduler names it (`Ready`, `Running`, `Disabled`), asked through
- * PowerShell because `schtasks /Query` prints it in the system's language.
+ * The task's state as Task Scheduler names it (`Ready`, `Running`, `Disabled`), and whose launcher
+ * runs: Collie's, the community script's loop still alive from before `collie start`, or a task that
+ * still points at the old script, whose file this release deleted.
  */
 function describeTaskScheduler(deps: LifecycleDeps): string {
   const name = taskName(deps);
-  const query = `(Get-ScheduledTask -TaskName '${name.replaceAll("'", "''")}' -ErrorAction Stop).State`;
-  const r = deps.exec.capture("powershell", ["-NoProfile", "-NonInteractive", "-Command", query], PROCESS_QUERY_TIMEOUT_MS);
   const head = `Task Scheduler (${name})`;
-  if (!r.found) return `${head} · unknown`;
-  if (r.code !== 0) {
+  const query = queryTask(deps.exec, name, deps.host);
+  if (query === undefined) return `${head} · unknown`;
+  if (query === null) {
     const pid = deps.files.read(pidFilePath(deps.ctx.configDir, deps.ctx.instance))?.trim();
     return pid !== undefined ? `pid ${pid} (unsupervised)` : `${head} · not registered`;
   }
-  const state = r.stdout.trim() === "" ? "unknown" : r.stdout.trim();
-  const legacy = readTaskRecord(deps).record?.format === 1;
-  return legacy ? `${head} · ${state} · launcher contrib\\windows\\collie-ctl.ps1 until \`collie start\`` : `${head} · ${state}`;
+  const status = `${head} · ${query.state}`;
+  switch (taskOwner(query, deps.ctx.root, deps.host)) {
+    case "legacy":
+      return `${status} · Task ${name} still runs the old script. Run: collie restart`;
+    case "foreign":
+      return `${status} · runs another install: ${query.program}`;
+    case "collie":
+      return readTaskRecord(deps).record?.format === 1
+        ? `${status} · launcher: the legacy collie-ctl.ps1 loop, until \`collie start\``
+        : `${status} · launcher: Collie's`;
+  }
 }
 
 // ── One interface, four supervisors ──────────────────────────────────────────

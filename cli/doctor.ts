@@ -61,7 +61,8 @@ import {
 import { packageCommand } from "./package-command.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
 import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced.ts";
-import { collieBinary, unitName } from "./unit.ts";
+import { queryTask, taskOwner } from "./task-scheduler.ts";
+import { agentLabel, collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parseCrewArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./crew.ts";
@@ -202,6 +203,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     acl(deps),
     frontDoor(deps, mode),
     mux(deps),
+    // Windows only: who the Task Scheduler task belongs to (M43 spec 05). No line elsewhere.
+    ...(deps.host.platform === "win32" ? [windowsTask(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
     // Why a pane's History link is not there (issue #137) — its own module, because the chain it
@@ -1398,6 +1401,31 @@ function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null 
  * Collie with no panes at all, and the symptom an operator sees first is an empty home screen or the
  * disconnected banner — neither of which names the socket, the session or the binary.
  */
+/**
+ * `windows-task`: the Task Scheduler task this install registers, read back. The failure it exists
+ * for is silent: a task that still runs `contrib\windows\collie-ctl.ps1` after an update deleted that
+ * file keeps the old loop alive until the next logon, and then starts nothing at all.
+ */
+export function windowsTask(deps: Pick<DoctorDeps, "ctx" | "exec" | "host" | "link">): Finding {
+  const check = "windows-task";
+  const name = agentLabel(deps.ctx.instance);
+  const query = queryTask(deps.exec, name, deps.host);
+  if (query === undefined) return skipped(check, "no PowerShell to read Task Scheduler with", "run `collie status` from a PowerShell");
+  if (query === null) return skipped(check, `no task ${name} is registered`, "`collie start` registers it");
+  switch (taskOwner(query, deps.ctx.root, deps.host)) {
+    case "legacy":
+      return warn(check, `Task ${name} still runs the old script (contrib\\windows\\collie-ctl.ps1)`, "Run: collie restart");
+    case "foreign":
+      return warn(
+        check,
+        `Task ${name} runs ${query.program}, another Collie install; one Collie per Windows machine`,
+        "run `collie uninstall` from that install, then `collie start` here",
+      );
+    case "collie":
+      return ok(check, `Task ${name} runs ${query.program} (${query.state})`);
+  }
+}
+
 function mux(deps: DoctorDeps): Finding {
   const settings = muxSettings(deps);
   const registry = buildMuxRegistry();

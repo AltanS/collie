@@ -11,11 +11,14 @@ import {
   isTaskLauncher,
   type LaunchedBridge,
   parseSuperviseArgs,
+  parseTaskQuery,
   parseTaskRecord,
   HEALTHY_RUN_MS,
   RELAUNCH_DELAY_MAX_MS,
   RELAUNCH_DELAY_MIN_MS,
   type SuperviseDeps,
+  taskOwner,
+  taskQueryScript,
   taskRecordPath,
 } from "./task-scheduler.ts";
 
@@ -315,5 +318,33 @@ describe("_supervise, the loop", () => {
       expect(l.launched).toHaveLength(0);
       expect(l.io.stderr.join("\n")).toContain("Task Scheduler runs it");
     }
+  });
+});
+
+describe("the registered task, read back", () => {
+  const CONHOST = "C:\\WINDOWS\\system32\\conhost.exe";
+  test("the query is one PowerShell line, the task name quoted for it", () => {
+    expect(taskQueryScript("herdr.collie")).toStartWith("$t = Get-ScheduledTask -TaskName 'herdr.collie' -ErrorAction Stop;");
+    expect(taskQueryScript("it's")).toContain("-TaskName 'it''s'");
+  });
+
+  test("a task under conhost names the program after --headless, and its words", () => {
+    const q = parseTaskQuery(`Running\r\n${CONHOST}\r\n--headless "C:\\with space\\bin\\collie.exe" _supervise "A=b c"\r\n`, WIN);
+    expect(q).toEqual({ state: "Running", program: "C:\\with space\\bin\\collie.exe", args: ["_supervise", "A=b c"] });
+    expect(parseTaskQuery(`Ready\n${BINARY}\n_supervise\n`, WIN)).toEqual({ state: "Ready", program: BINARY, args: ["_supervise"] });
+    expect(parseTaskQuery("", WIN)).toBeNull();
+  });
+
+  test("whose task: this install's launcher, this checkout's old script, or someone else's", () => {
+    const query = (program: string, ...args: string[]) => ({ state: "Ready", program, args });
+    expect(taskOwner(query(BINARY, "_supervise", "A=1"), ROOT, WIN)).toBe("collie");
+    expect(taskOwner(query(BINARY.toUpperCase(), "_supervise"), ROOT, WIN)).toBe("collie");
+    expect(taskOwner(query("C:\\ps\\powershell.exe", "-File", `${ROOT}\\contrib\\windows\\collie-ctl.ps1`, "_exec-bridge"), ROOT, WIN)).toBe("legacy");
+    expect(taskOwner(query("D:\\other\\bin\\collie.exe", "_supervise"), ROOT, WIN)).toBe("foreign");
+    expect(taskOwner(query("C:\\ps\\powershell.exe", "-File", "D:\\other\\contrib\\windows\\collie-ctl.ps1"), ROOT, WIN)).toBe("foreign");
+    expect(taskOwner(query(BINARY, "status"), ROOT, WIN)).toBe("foreign");
+    // A binary install's task from an earlier version is still this install's.
+    const at = (v: string): string => `C:\\Users\\pat\\.collie\\versions\\${v}`;
+    expect(taskOwner(query(collieBinary(at("1.15.0"), WIN), "_supervise"), at("1.16.0"), WIN)).toBe("collie");
   });
 });

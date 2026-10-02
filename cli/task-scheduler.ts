@@ -4,7 +4,7 @@ import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import { instanceSuffix } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
-import type { Files } from "./sys.ts";
+import { type Exec, type Files, PROCESS_QUERY_TIMEOUT_MS } from "./sys.ts";
 import { logFileName } from "./unit.ts";
 
 // WINDOWS: THE TASK SCHEDULER SUPERVISOR'S OWN PIECES (M43 spec 05).
@@ -175,6 +175,58 @@ export function isTaskLauncher(
 export function isTaskBridge(commandLine: string, root: string, instance: string | null, host: Host): boolean {
   if (isOwnWindowsProcess(commandLine, collieBinary(root, host), "_exec-bridge", instance)) return true;
   return windowsPathKey(commandLine).includes(windowsPathKey(host.path.join(root, "bridge", "index.ts")));
+}
+
+// ── The registered task, read back ───────────────────────────────────────────
+
+/** What Task Scheduler holds under a task name: its state and the program its action runs. */
+export interface TaskQuery {
+  /** `Ready`, `Running`, `Disabled`, as Task Scheduler names it, in English whatever the locale. */
+  readonly state: string;
+  /** The program that runs: the binary under `conhost --headless`, or the action's own command. */
+  readonly program: string;
+  readonly args: readonly string[];
+}
+
+/** Who the registered task belongs to. */
+export type TaskOwner = "collie" | "legacy" | "foreign";
+
+/** The PowerShell that reads one task: three lines, state, command, arguments. */
+export function taskQueryScript(name: string): string {
+  return `$t = Get-ScheduledTask -TaskName '${name.replaceAll("'", "''")}' -ErrorAction Stop; $a = @($t.Actions)[0]; [string]$t.State; [string]$a.Execute; [string]$a.Arguments`;
+}
+
+/** The three lines {@link taskQueryScript} prints, read back. `null` when there is no state line. */
+export function parseTaskQuery(stdout: string, host: Host): TaskQuery | null {
+  const [state = "", command = "", argline = ""] = stdout.split(/\r?\n/);
+  if (state.trim() === "") return null;
+  const words = parseWindowsArgs(argline);
+  const underConhost = host.path.basename(command.trim()).toLowerCase() === "conhost.exe" && words[0] === "--headless";
+  return underConhost
+    ? { state: state.trim(), program: words[1] ?? "", args: words.slice(2) }
+    : { state: state.trim(), program: command.trim(), args: words };
+}
+
+/**
+ * Ask Task Scheduler for a task, through PowerShell because `schtasks /Query` prints the state in the
+ * system's language. `undefined` when there is no PowerShell to ask, `null` when no such task exists.
+ */
+export function queryTask(exec: Pick<Exec, "capture">, name: string, host: Host): TaskQuery | null | undefined {
+  const r = exec.capture("powershell", ["-NoProfile", "-NonInteractive", "-Command", taskQueryScript(name)], PROCESS_QUERY_TIMEOUT_MS);
+  if (!r.found) return undefined;
+  return r.code === 0 ? parseTaskQuery(r.stdout, host) : null;
+}
+
+/**
+ * Whose task is this? `collie` when it runs this install's `collie.exe _supervise` (a binary install's
+ * version folder may differ, as in {@link isOwnWindowsProcess}); `legacy` when it still runs this
+ * checkout's community script; `foreign` for anything else, another checkout above all.
+ */
+export function taskOwner(query: TaskQuery, root: string, host: Host): TaskOwner {
+  const fold = (p: string): string => collapseVersion(windowsPathKey(p));
+  if (query.args[0] === "_supervise" && fold(query.program) === fold(collieBinary(root, host))) return "collie";
+  const script = windowsPathKey(legacyScript(root, host));
+  return query.args.some((word) => windowsPathKey(word) === script) ? "legacy" : "foreign";
 }
 
 // ── The launcher: `collie _supervise` ────────────────────────────────────────

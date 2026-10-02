@@ -526,10 +526,16 @@ describe("the Task Scheduler tier (Windows)", () => {
   const OLD_LAUNCHER = `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:${ROOT}\\contrib\\windows\\collie-ctl.ps1" -TaskConfigDir "C:\\cfg" _exec-bridge`;
   const OLD_BRIDGE = `C:\\Users\\pat\\.bun\\bin\\bun.exe run "${ROOT}/bridge/index.ts"`;
   const V2 = (launcher: number, bridge: number): string => formatTaskRecord(launcher, bridge);
+  // What `Get-ScheduledTask` prints for a registered task: the state, the command, the arguments.
+  const QUERY = "powershell -NoProfile -NonInteractive -Command $t = Get-ScheduledTask";
+  const CONHOST = "C:\\WINDOWS\\system32\\conhost.exe";
+  const OUR_TASK_ARGS = `--headless ${WIN_BINARY} _supervise HERDR_SOCKET_PATH=\\\\.\\pipe\\herdr COLLIE_PORT=8787`;
+  const OLD_TASK_ARGS = `--headless "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -File "${ROOT}\\contrib\\windows\\collie-ctl.ps1" -TaskConfigDir "C:\\cfg" _exec-bridge`;
+  const taskAnswer = (args: string, state = "Running"): string => `${state}\r\n${CONHOST}\r\n${args}\r\n`;
   const WHOAMI: Scripted["answers"] = [
     ["whoami /groups", { stdout: "Mandatory Label\\Medium Mandatory Level Label S-1-16-8192\n" }],
     ["whoami", { stdout: "desk\\pat\r\n" }],
-    ["powershell -NoProfile -NonInteractive -Command (Get-ScheduledTask", { stdout: "Running\r\n" }],
+    [QUERY, { stdout: taskAnswer(OUR_TASK_ARGS) }],
   ];
   const windows = (over: HarnessOptions = {}): Harness =>
     harness({
@@ -590,6 +596,29 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(xml).not.toContain("s3cret-vapid");
       expect(xml).not.toContain("COLLIE_VAPID_PRIVATE");
       expect(xml).not.toContain("COLLIE_TRUSTED_USER");
+    });
+
+    test("prints one line that proves the switch to Task Scheduler", async () => {
+      const h = windows();
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout).toContain("Registered Task Scheduler job herdr.collie (starts at logon)");
+    });
+
+    test("refuses to take over a task that runs another install: one Collie per Windows machine", async () => {
+      const h = windows({ answers: [[QUERY, { stdout: taskAnswer('--headless "D:\\other\\bin\\collie.exe" _supervise') }]] });
+      expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(h)).toEqual([]);
+      expect(h.files.exists(TASK_FILE)).toBe(false);
+      expect(h.io.stderr.join("\n")).toContain("runs D:\\other\\bin\\collie.exe, not this Collie");
+      expect(h.io.stderr.join("\n")).toContain("run `collie uninstall` from that install first");
+    });
+
+    test("takes over its own task, the community script's task of this checkout, and no task at all", async () => {
+      for (const answer of [taskAnswer(OUR_TASK_ARGS), taskAnswer(OLD_TASK_ARGS)]) {
+        const h = windows({ answers: [[QUERY, { stdout: answer }]] });
+        expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      }
+      expect(await cmdStart(windows({ answers: [[QUERY, { code: 1 }]] }).deps)).toBe(EXIT.OK);
     });
 
     test("without conhost the task runs the launcher straight", async () => {
@@ -682,9 +711,10 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.exec.killed).toEqual([4242]);
     });
 
-    test("a second instance gets its own task, record and launcher marker", async () => {
+    test("a second instance gets its own task, record and launcher marker, and a warning", async () => {
       const h = windows({ instance: "v1" });
       expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stderr.join("\n")).toContain("one Collie per Windows machine is supported; instance v1 gets its own task herdr.collie-v1");
       const file = taskFilePath(CONFIG, "v1", WIN);
       expect(schtasks(h)).toEqual([
         `schtasks /Create /TN herdr.collie-v1 /XML ${file} /F`,
@@ -994,19 +1024,27 @@ describe("the Task Scheduler tier (Windows)", () => {
   });
 
   describe("status", () => {
-    test("names the task and its state as a supervised service", async () => {
+    test("names the task, its state, and Collie's launcher as a supervised service", async () => {
       const h = windows();
-      expect(serviceDescription(h.deps)).toBe("Task Scheduler (herdr.collie) · Running");
+      expect(serviceDescription(h.deps)).toBe("Task Scheduler (herdr.collie) · Running · launcher: Collie's");
       const banner = (await statusBanner(h.deps)).join("\n");
-      expect(banner).toContain("service   Task Scheduler (herdr.collie) · Running");
+      expect(banner).toContain("service   Task Scheduler (herdr.collie) · Running · launcher: Collie's");
       expect(banner).not.toContain("not supervised");
     });
 
-    test("an unregistered task says so, and the community launcher is named until start replaces it", () => {
-      const none = windows({ answers: [["powershell -NoProfile -NonInteractive -Command (Get-ScheduledTask", { code: 1 }]] });
+    test("an unregistered task, the old loop still running, and a task that still runs the old script", () => {
+      const none = windows({ answers: [[QUERY, { code: 1 }]] });
       expect(serviceDescription(none.deps)).toBe("Task Scheduler (herdr.collie) · not registered");
-      const legacy = windows({ files: { [RECORD]: "7100|7200" } });
-      expect(serviceDescription(legacy.deps)).toContain("· Running · launcher contrib\\windows\\collie-ctl.ps1");
+      const loop = windows({ files: { [RECORD]: "7100|7200" } });
+      expect(serviceDescription(loop.deps)).toBe(
+        "Task Scheduler (herdr.collie) · Running · launcher: the legacy collie-ctl.ps1 loop, until `collie start`",
+      );
+      const old = windows({ answers: [[QUERY, { stdout: taskAnswer(OLD_TASK_ARGS, "Ready") }]] });
+      expect(serviceDescription(old.deps)).toBe(
+        "Task Scheduler (herdr.collie) · Ready · Task herdr.collie still runs the old script. Run: collie restart",
+      );
+      const other = windows({ answers: [[QUERY, { stdout: taskAnswer('--headless "D:\\other\\bin\\collie.exe" _supervise') }]] });
+      expect(serviceDescription(other.deps)).toBe("Task Scheduler (herdr.collie) · Running · runs another install: D:\\other\\bin\\collie.exe");
     });
 
     test("logs reads the log file the launcher appends to", () => {

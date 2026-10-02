@@ -3,7 +3,7 @@ import { delimiter, join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
-import { HOST } from "../bridge/host.ts";
+import { HOST, hostFor } from "../bridge/host.ts";
 import { markerFor } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
@@ -11,7 +11,7 @@ import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
-import { cmdDoctor, type DoctorDeps, type Finding } from "./doctor.ts";
+import { cmdDoctor, type DoctorDeps, type Finding, windowsTask } from "./doctor.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
@@ -315,6 +315,8 @@ describe("collie doctor — the contract", () => {
       "acl",
       "front-door",
       "mux",
+      // Windows only, and this suite runs on the real host.
+      ...(HOST.platform === "win32" ? ["windows-task"] : []),
       "beacon-hooks-claude",
       "beacons",
       "herdr-version",
@@ -1386,6 +1388,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "acl",
       "front-door",
       "mux",
+      ...(HOST.platform === "win32" ? ["windows-task"] : []),
       "beacon-hooks-claude",
       "beacons",
       "agent-sessions",
@@ -1874,5 +1877,39 @@ describe("the config-file finding", () => {
       harness(null, [], { configLayer: typo, env: { COLLIE_CONFIG: "/etc/collie-tpyo.toml" } }),
     );
     expect(byCheck.get("config-file")!.detail).toContain("/etc/collie-tpyo.toml (absent)");
+  });
+});
+
+// ── Windows: who the Task Scheduler task belongs to (M43 spec 05) ─────────────
+
+describe("windows-task", () => {
+  const WIN = hostFor("win32");
+  const QUERY = "powershell -NoProfile -NonInteractive -Command $t = Get-ScheduledTask";
+  const BIN = collieBinary(ROOT, WIN);
+  const answer = (args: string): Scripted["answers"] => [
+    [QUERY, { stdout: `Running\r\nC:\\WINDOWS\\system32\\conhost.exe\r\n${args}\r\n` }],
+  ];
+  const run = (answers: Scripted["answers"], absent: string[] = []) =>
+    windowsTask({ ctx: context(), exec: fakeExec({ answers, absent }), host: WIN, link: fakeLinkFs() });
+
+  test("names the program the task runs when it is this install's launcher", () => {
+    const f = run(answer(`--headless ${BIN} _supervise COLLIE_PORT=8787`));
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(`Task herdr.collie runs ${BIN} (Running)`);
+  });
+
+  test("a task that still runs the old script says so in one line, with the one command that fixes it", () => {
+    const f = run(answer(`--headless "C:\\ps\\powershell.exe" -File "${ROOT}\\contrib\\windows\\collie-ctl.ps1" _exec-bridge`));
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain("Task herdr.collie still runs the old script");
+    expect(f.remedy).toBe("Run: collie restart");
+  });
+
+  test("another install's task is named, and no task or no PowerShell is a skip", () => {
+    const other = run(answer('--headless "D:\\other\\bin\\collie.exe" _supervise'));
+    expect(other.status).toBe("warn");
+    expect(other.detail).toContain("D:\\other\\bin\\collie.exe, another Collie install");
+    expect(run([[QUERY, { code: 1 }]]).status).toBe("skipped");
+    expect(run([], ["powershell"]).status).toBe("skipped");
   });
 });

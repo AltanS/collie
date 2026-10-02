@@ -33,11 +33,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Added
 
 - **`collie start`, `stop`, `restart`, `status` and `uninstall` supervise the bridge on Windows through Task Scheduler.** (experimental; there is no Windows release asset yet) `start` registers the task `herdr.collie` at your logon with a limited token and runs a launcher Collie owns, which relaunches a bridge that exits with an error. `status` names the task and its state, `restart` restarts the bridge alone, and an install of the community script is taken over under the same task name. The first supervisor was written by @Pimpmuckl in contrib/windows, and the restart path by @mqmalagris (PR 309).
+- **`collie status` and `collie doctor` say whose Task Scheduler task runs on Windows.** Status names Collie's launcher or the old script's loop, `doctor` gains a `windows-task` line, and a task that still points at the deleted script is reported as `Task herdr.collie still runs the old script. Run: collie restart`. `start` refuses a task that runs another install and prints `Registered Task Scheduler job herdr.collie (starts at logon)`.
 
 ### Changed
 
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
-- **The community Windows script `contrib/windows/collie-ctl.ps1` is retired.** Collie now registers and runs the `herdr.collie` task itself. A task the script registered keeps the bridge up until `collie restart` or `collie start` takes it over under the same name. Its `logs` verb is `collie logs` now.
+- **The community Windows script in `contrib/windows` is gone, and Collie runs the task itself.** Every verb of `collie-ctl.ps1` is a `collie` verb of the same name: `update`, `build`, `version`, `logs`, `url`, `start`, `stop`, `restart`, `status` and `uninstall`. `COLLIE_TASK_NAME` is gone (the task is always `herdr.collie`), and so is the script's crash-log rotation: the bridge log is `collie.log` in the plugin config folder (`%APPDATA%\herdr\plugins\config\herdr.collie\collie.log` by default), appended to and never rotated. One Collie per Windows machine is supported: `start` refuses a task that runs another install, and warns when a second instance registers its own. Run `collie restart` once after updating (and `collie build` before it if the script's own `update` pulled this version). Until then `collie status` and `collie doctor` say `Task herdr.collie still runs the old script. Run: collie restart`.
 
 ### Fixed
 
