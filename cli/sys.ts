@@ -22,6 +22,7 @@ import {
 import { dirname, isAbsolute, join } from "node:path";
 import { connect } from "node:net";
 import { HOST, type Host } from "../bridge/host.ts";
+import { ensureOwnerOnlyDir } from "../bridge/owner-only.ts";
 
 import type { Environment } from "./context.ts";
 import { envKey, findTool } from "./tools.ts";
@@ -753,6 +754,14 @@ export const realFiles: Files = {
     writeFileSync(p, text, mode === undefined ? undefined : { mode });
   },
   mkdirp(p, mode) {
+    // A private folder (0700) this command creates first, before any bridge has started: on Windows
+    // the mode does nothing, so it gets its owner-only access list now, once, when it is born
+    // (`bridge/owner-only.ts`). An existing folder is left to the bridge's start, which checks and
+    // repairs it; nothing here runs a process per write.
+    if (process.platform === "win32" && mode === 0o700 && !existsSync(p)) {
+      ensureOwnerOnlyDir(p, HOST);
+      return;
+    }
     mkdirSync(p, { recursive: true, mode });
   },
   remove(p) {

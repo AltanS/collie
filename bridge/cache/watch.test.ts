@@ -3,6 +3,8 @@ import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly } from "../owner-only.ts";
 import {
   CacheWatchStore,
   coerceCacheWatchFile,
@@ -77,11 +79,14 @@ describe("CacheWatchStore", () => {
 
   test("a toggle round-trips through disk and writes owner-only", async () => {
     const stateDir = await tempDir();
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
+    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST);
     const store = new CacheWatchStore({ stateDir }, () => TS);
     await store.set(peer, "collie · next", true);
-    // NTFS has no 0600 mode bits (stat() says 0o666), so only the round trip below is checked there.
+    // NTFS has no 0600 mode bits (stat() says 0o666), so Windows reads the access list instead.
     const { mode } = await stat(join(stateDir, "cache-watch.json"));
     if (process.platform !== "win32") expect(mode & 0o777).toBe(0o600);
+    else expect(isOwnerOnly(join(stateDir, "cache-watch.json"), HOST)).toEqual({ state: "private" });
 
     const reloaded = new CacheWatchStore({ stateDir }, () => TS);
     await reloaded.load();

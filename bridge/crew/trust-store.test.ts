@@ -4,6 +4,8 @@ import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly } from "../owner-only.ts";
 import { deriveMode } from "./mode.ts";
 import {
   enrollmentOf,
@@ -192,16 +194,21 @@ describe("TrustStore — the write discipline", () => {
     const parent = await mkdtemp(join(tmpdir(), "collie-crew-"));
     const stateDir = join(parent, "state");
     try {
+      // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
+      if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST);
       const store = new TrustStore(stateDir);
       const data = leadStore();
       await store.update(() => ({ next: data, result: "ok" as const }));
 
       const entries = await readdir(stateDir);
       expect(entries).toEqual([TRUST_STORE_FILENAME]);
-      // NTFS has no 0600/0700 mode bits (stat() says 0o666 and 0o777), so the content checks below are all that run there.
+      // NTFS has no 0600/0700 mode bits (stat() says 0o666 and 0o777), so Windows reads the access list instead.
       if (process.platform !== "win32") {
         expect((await stat(trustStorePath(stateDir))).mode & 0o777).toBe(0o600);
         expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+      } else {
+        expect(isOwnerOnly(trustStorePath(stateDir), HOST)).toEqual({ state: "private" });
+        expect(isOwnerOnly(stateDir, HOST)).toEqual({ state: "private" });
       }
       // A second process reads back exactly what was written.
       expect(await new TrustStore(stateDir).load()).toEqual(data);

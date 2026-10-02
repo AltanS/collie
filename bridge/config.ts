@@ -12,6 +12,7 @@ import {
 } from "./config-source.ts";
 import { HOST, type Host } from "./host.ts";
 import { diskIo } from "./operator-file.ts";
+import { secretFileVerdict } from "./owner-only.ts";
 import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
 import type { JournalRoots } from "./journal/registry.ts";
@@ -565,7 +566,7 @@ export function resolveConfigDir(
  */
 /**
  * {@link FilePerms} against the real filesystem, for the secret-permission rule on `config.toml`. On
- * Windows the rule says nothing ({@link hostFilePerms}).
+ * Windows the access list decides ({@link hostFilePerms}, `bridge/owner-only.ts`).
  */
 const diskFilePerms: FilePerms = hostFilePerms(HOST, {
   mode(path) {
@@ -583,7 +584,7 @@ const diskFilePerms: FilePerms = hostFilePerms(HOST, {
       return false;
     }
   },
-});
+}, (path) => secretFileVerdict(path));
 
 export function loadConfig(env: Environment = process.env): Config {
   const stateDir = resolveStateDir(env);

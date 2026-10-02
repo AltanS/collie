@@ -125,18 +125,24 @@ export interface FilePerms {
   mode(path: string): number | null;
   /** Tighten it to `0600`. `false` when the chmod failed — a file owned by someone else. */
   tighten(path: string): boolean;
+  /**
+   * The whole verdict, when the host decides it some other way than by mode bits. Present only on
+   * Windows ({@link hostFilePerms}); when it is there, `mode` and `tighten` are never asked.
+   */
+  readonly verdict?: (path: string) => PrivateFileVerdict;
 }
 
 /**
  * {@link FilePerms} as `host` can answer them. Windows has no mode bits: NTFS keeps an access list,
- * `stat` reports `666` (or `444`) for every file, and `chmod` flips only the read-only flag. So the
- * rule cannot be stated there, and "tightened it to 600" would be a false line on every command.
- * A `null` mode is the rule's own "nothing to say". The real Windows check reads the access list
- * (M43 spec 04, not yet written); until then Windows says nothing rather than something untrue.
+ * `stat` reports `666` (or `444`) for every file, and `chmod` flips only the read-only flag, so
+ * "tightened it to 600" would be a false line on every command. There `windows` decides instead:
+ * `bridge/owner-only.ts`'s `secretFileVerdict`, which reads the access list, repairs it, and says
+ * "made it owner-only" only when a second read confirms it (M43 spec 04). It is a parameter, not an
+ * import, so this module keeps no Windows tool behind it. Every other host gets `disk` back as it is.
  */
-export function hostFilePerms(host: Host, disk: FilePerms): FilePerms {
+export function hostFilePerms(host: Host, disk: FilePerms, windows: (path: string) => PrivateFileVerdict): FilePerms {
   if (host.platform !== "win32") return disk;
-  return { mode: () => null, tighten: () => false };
+  return { mode: () => null, tighten: () => false, verdict: windows };
 }
 
 /**
@@ -151,6 +157,7 @@ export function hostFilePerms(host: Host, disk: FilePerms): FilePerms {
  * two files, so `config.toml` can never drift into a looser posture than the `.env` beside it.
  */
 export function tightenPrivateFile(path: string, perms: FilePerms): PrivateFileVerdict {
+  if (perms.verdict !== undefined) return perms.verdict(path);
   const mode = perms.mode(path);
   if (mode === null || PRIVATE_FILE_MODES.has(mode)) return { ok: true, warning: null };
   const shown = mode.toString(8).padStart(3, "0");

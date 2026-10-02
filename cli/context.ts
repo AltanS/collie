@@ -14,6 +14,7 @@ import {
   type ConfigFileReader,
 } from "../bridge/config-source.ts";
 import { pluginRoot } from "../bridge/root.ts";
+import { secretFileVerdict } from "../bridge/owner-only.ts";
 import {
   herdrActionCommand,
   instanceSuffixOf,
@@ -305,8 +306,9 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
 export { collieVersion, collieVersionBare, collieVersionFrom } from "../bridge/version.ts";
 
 /**
- * {@link EnvFilePerms} against the real filesystem. On Windows the mode check says nothing, rather
- * than the false `.env was mode 666; tightened it to 600` on every command ({@link hostFilePerms}).
+ * {@link EnvFilePerms} against the real filesystem. On Windows the access list decides instead of
+ * the mode, which ended the false `.env was mode 666; tightened it to 600` on every command
+ * ({@link hostFilePerms}, `bridge/owner-only.ts`).
  */
 const diskEnvPerms: EnvFilePerms = hostFilePerms(HOST, {
   mode(path) {
@@ -324,7 +326,7 @@ const diskEnvPerms: EnvFilePerms = hostFilePerms(HOST, {
       return false;
     }
   },
-});
+}, (path) => secretFileVerdict(path));
 
 /** File contents, or `null` when missing/unreadable. */
 function readIfPresent(p: string): string | null {

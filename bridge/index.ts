@@ -7,7 +7,7 @@ import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
-import { collieBinary as collieBinaryOf } from "./host.ts";
+import { collieBinary as collieBinaryOf, HOST } from "./host.ts";
 import { ActivityLedger } from "./activity.ts";
 import { trackActivity } from "./activity-tracking.ts";
 import { CacheTracker } from "./cache/tracker.ts";
@@ -22,6 +22,7 @@ import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
+import { currentUserSid, dirOutcomeLine, ensureOwnerOnlyDir, realAclTool } from "./owner-only.ts";
 import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
@@ -222,6 +223,20 @@ const bootTrust = await trustStore.load();
 // before anything else is wired, and a store written into a directory that does not exist yet is a
 // boot that fails for the wrong reason.
 await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
+
+// On Windows the mode above does nothing: NTFS keeps an access list, not mode bits (M43 spec 04). So
+// the state dir and the config dir get a protected owner-only list here, once per start, and every
+// file a store writes into them later inherits it from its birth. A folder that is already like
+// that costs one `icacls` read; a loose one is repaired, and the line says "made it owner-only" only
+// after a second read confirms it. A config dir nobody created is left uncreated.
+if (HOST.platform === "win32") {
+  const configDir = resolveConfigDir();
+  for (const dir of existsSync(configDir) ? [cfg.stateDir, configDir] : [cfg.stateDir]) {
+    const outcome = ensureOwnerOnlyDir(dir, HOST);
+    const line = dirOutcomeLine(dir, outcome, outcome?.state === "loose" ? currentUserSid(realAclTool) : null);
+    if (line !== null) console.warn(line);
+  }
+}
 
 // Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
 // inside record() so it can never break the user action it's auditing.

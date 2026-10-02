@@ -4,6 +4,8 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "./host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly } from "./owner-only.ts";
 import {
   addDevice,
   bearerToken,
@@ -582,13 +584,16 @@ describe("pairing never crosses the crew seam", () => {
 describe("filePairingIo", () => {
   test("writes are owner-only and land under the state dir", async () => {
     const stateDir = join(await tempStateDir(), "nested");
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
+    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST);
     const io = filePairingIo(stateDir);
     await io.writePending(newPending("ABCD2345", 0));
     await io.writeRegistry({ devices: [{ label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1 }] });
     for (const name of [PENDING_FILENAME, DEVICES_FILENAME]) {
-      // NTFS has no 0600 mode bits (stat() says 0o666), so only the existence of the file is checked there.
+      // NTFS has no 0600 mode bits (stat() says 0o666), so Windows reads the access list instead.
       const { mode } = await stat(join(stateDir, name));
       if (process.platform !== "win32") expect(mode & 0o777).toBe(0o600);
+      else expect(isOwnerOnly(join(stateDir, name), HOST)).toEqual({ state: "private" });
     }
     expect(JSON.parse(await readFile(join(stateDir, DEVICES_FILENAME), "utf8")).devices).toHaveLength(1);
   });
