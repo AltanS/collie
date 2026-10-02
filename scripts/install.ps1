@@ -424,9 +424,16 @@ function Invoke-CollieInstall {
     if ($hasVersions -and -not $isGit -and $pin -ne '') {
       $rescue = $true
     } elseif ($isGit -or $hasVersions) {
-      Write-CollieLine "Collie is already installed at $dir. Leaving it alone."
-      Write-CollieLine "To move it forward, run:  collie update"
-      Write-CollieLine "To put one specific version there instead, run this script again with COLLIE_TAG=vX.Y.Z"
+      # A rerun is not an update: `collie update` owns that, so a working `current` is never moved
+      # from here without a pin, and nothing is changed or downloaded.
+      $installed = "Collie"
+      if ($isGit) { $installed = "Collie (a git checkout)" }
+      else {
+        $target = Get-CollieLinkTarget (Join-Path $dir "current")
+        if ($null -ne $target) { $installed = "Collie " + [System.IO.Path]::GetFileName($target.TrimEnd('\')) }
+      }
+      Write-CollieLine "$installed is already installed in $dir. To update, run: collie update"
+      Write-CollieLine "To lay one exact version beside it instead, set COLLIE_TAG (for example `$env:COLLIE_TAG = 'v1.16.0') and run the installer again."
       return
     } else {
       $other = @(Get-ChildItem -LiteralPath $dir -Force | Where-Object { $_.Name -ne ".staging" })
@@ -514,7 +521,7 @@ function Invoke-CollieInstall {
 
   # Download, and verify before anything is unpacked. The scratch folder is inside COLLIE_DIR, and
   # it is removed on every way out.
-  if ($rescue) { Write-CollieLine "Collie is already installed at $dir. Laying $pin down beside it, and pointing current at it." }
+  if ($rescue) { Write-CollieLine "Collie is already installed in $dir. Laying $pin down beside it, and pointing current at it." }
   $createdDir = -not (Test-Path -LiteralPath $dir)
   $staging = Join-Path $dir ".staging"
   $work = Join-Path $staging "install-$PID"

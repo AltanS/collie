@@ -531,9 +531,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const before = snapshot(b);
     const again = await install(b, mirror);
     expect(again.code).toBe(0);
-    expect(again.out).toContain("Collie is already installed at");
-    expect(again.out).toContain("Leaving it alone.");
-    expect(again.out).toContain("collie update");
+    expect(again.out).toContain(`Collie ${v1} is already installed in ${b.dir}. To update, run: collie update`);
     expect(again.asked).toEqual([]);
     expect(snapshot(b)).toBe(before);
     // The same pinned tag again: still nothing changed, nothing downloaded.
@@ -877,7 +875,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     mkdirSync(join(git.dir, ".git"), { recursive: true });
     const g = await install(git, mirror);
     expect(g.code).toBe(0);
-    expect(g.out).toContain("Leaving it alone.");
+    expect(g.out).toContain(`Collie (a git checkout) is already installed in ${git.dir}. To update, run: collie update`);
     expect(g.asked).toEqual([]);
     const pinned = await install(git, mirror, { env: { COLLIE_TAG: `v${v1}` } });
     expectFailed(pinned);
