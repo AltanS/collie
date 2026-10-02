@@ -632,7 +632,7 @@ describe("preflight — the service check", () => {
     const running = harness({ answers: [[QUERY, { stdout: "Running\r\nC:\\WINDOWS\\system32\\conhost.exe\r\n--headless x _supervise\r\n" }]] });
     const live = byId(await preflight({ ...running.deps, host: hostFor("win32") }), "service");
     expect(live.verdict).toBe("green");
-    expect(live.reason).toBe("the Task Scheduler task herdr.collie is Running — the update can restart it");
+    expect(live.reason).toBe("the Task Scheduler task herdr.collie is Running, and the update can restart it");
     expect(running.exec.calls.some((c) => c.startsWith("systemctl --user is-active"))).toBe(false);
 
     const none = harness({ answers: [[QUERY, { code: 1 }]] });

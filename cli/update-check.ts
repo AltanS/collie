@@ -652,11 +652,11 @@ export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
     const name = agentLabel(deps.ctx.instance);
     const task = queryTask(deps.exec, name, deps.host);
     if (task === undefined) {
-      return amber("service", `Task Scheduler could not be asked about the task ${name} (no PowerShell) — the update will still try to restart it`);
+      return amber("service", `Task Scheduler could not be asked about the task ${name} (no PowerShell), and the update will still try to restart it`);
     }
     return task === null
-      ? red("service", `no Task Scheduler task ${name} — an update would have nothing to restart`, "collie start")
-      : green("service", `the Task Scheduler task ${name} is ${task.state} — the update can restart it`);
+      ? red("service", `no Task Scheduler task ${name}, so an update would have nothing to restart`, "collie start")
+      : green("service", `the Task Scheduler task ${name} is ${task.state}, and the update can restart it`);
   }
   if (tier === "unsupervised") {
     return amber(
