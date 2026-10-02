@@ -19,6 +19,16 @@ import { join, relative, sep } from "node:path";
 const ROOT = join(import.meta.dir, "..");
 /** Native path calls left in `cli/update.ts` on 2026-10-02. Only ever lowered. */
 const NATIVE_PATH_CALLS_IN_UPDATE = 24;
+/**
+ * Lines that read `process.platform` outside `bridge/host.ts`, per file, on 2026-10-03: 11 in all.
+ * Only ever lowered; a file not listed here may have none.
+ */
+const RAW_PLATFORM_READS: ReadonlyMap<string, number> = new Map([
+  ["bridge/dial.ts", 2],
+  ["bridge/index.ts", 2],
+  ["cli/doctor.ts", 2],
+  ["cli/sys.ts", 5],
+]);
 const SCANNED = ["bridge", "cli", "scripts"];
 
 const PATTERNS = {
@@ -150,5 +160,30 @@ describe("the host guard: platform-blind spellings in source Windows runs", () =
     const text = readFileSync(join(ROOT, "cli", "update.ts"), "utf8");
     const native = [...text.matchAll(/(?<![.\w])(?:join|dirname|basename)\(/g)].length;
     expect(native).toBeLessThanOrEqual(NATIVE_PATH_CALLS_IN_UPDATE);
+  });
+
+  // A second ratchet: a raw `process.platform` read decides for the machine it runs on, so a test
+  // cannot pin `hostFor("win32")` and reach the Windows branch on Linux. `bridge/host.ts` is the one
+  // place that reads it (`HOST`). A count may only go down; lower it here in the commit that converts
+  // a site, and drop the file at 0. The target is 0.
+  test("no file reads process.platform more often than it did", () => {
+    const reads = new Map<string, number>();
+    for (const top of SCANNED) {
+      for (const file of sourceFiles(join(ROOT, top))) {
+        const name = relative(ROOT, file).split(sep).join("/");
+        if (name === "bridge/host.ts") continue;
+        const lines = readFileSync(file, "utf8").split("\n");
+        const n = lines.filter((line) => !isCommentLine(line) && /\bprocess\.platform\b/.test(line)).length;
+        if (n > 0) reads.set(name, n);
+      }
+    }
+    const grown = [...reads]
+      .filter(([name, n]) => n > (RAW_PLATFORM_READS.get(name) ?? 0))
+      .map(
+        ([name, n]) =>
+          `${name}: ${n} lines read process.platform (allowed: ${RAW_PLATFORM_READS.get(name) ?? 0}). ` +
+          "Read the host instead: `host.platform` from bridge/host.ts, `HOST` at the edge and a `host` parameter below it.",
+      );
+    expect(grown).toEqual([]);
   });
 });
