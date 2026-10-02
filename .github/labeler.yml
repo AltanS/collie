@@ -104,6 +104,7 @@
           - cli/task-scheduler.test.ts
           - scripts/windows-suites.ps1
           - .github/workflows/windows.yml
+          - docs/windows.md
 
 # Narrow on purpose. `**/*.md` would tag every PR that grazes CHANGELOG.md, and the top-level
 # design docs (ARCHITECTURE, DESIGN, CREW_PROTOCOL, …) already carry their own `area:` label.

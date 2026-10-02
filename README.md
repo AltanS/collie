@@ -140,6 +140,7 @@ and that is the only way to install it on a phone.
 | | |
 | --- | --- |
 | [**Install**](./docs/install.md) | The front door you need, then the install for your system: Linux, Arch and Omarchy, Nix, macOS, Windows, or as a Herdr plugin. Covers first run, setup on an iPhone or Android phone, updates, and uninstallation |
+| [**Windows**](./docs/windows.md) | Windows 11 with Herdr: what is supported, installing with `install.ps1`, the unsigned binary, updating, long paths, and what is not tested |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device as the write credential |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |
 | [**Changes**](./docs/changes.md) | What an agent changed in its workspace: the changed files, their diffs and the last commit, from the pane or the dashboard. Read-only git, nested repos, and the two settings that decide how far it looks |
