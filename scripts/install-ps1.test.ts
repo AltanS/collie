@@ -461,7 +461,9 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
   const box = (): Box => newBox(scratch, `case-${++boxes}`);
 
   beforeAll(() => {
-    scratch = mkdtempSync(join(tmpdir(), "collie-install-ps1-"));
+    // The long spelling of the temp folder: on a Windows runner `tmpdir()` is an 8.3 short name
+    // (`RUNNER~1`), and the installer prints and resolves the real one (`runneradmin`).
+    scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "collie-install-ps1-")));
     a1 = buildZip(scratch, v1);
     a2 = buildZip(scratch, v2);
     mirror.start();
