@@ -983,6 +983,38 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     ]);
   }, 60_000);
 
+  test("this window's PATH gets the entry too, and the steps spell `collie` only when it finds this install", async () => {
+    const b = box();
+    const bin = join(b.root, "inst", "current", "bin");
+    mkdirSync(bin, { recursive: true });
+    copyFileSync(join(SYSTEM_ROOT, "System32", "cmd.exe"), join(bin, "collie.exe"));
+    const other = join(b.root, "other");
+    mkdirSync(other, { recursive: true });
+    writeFileSync(join(other, "collie.cmd"), "@echo off\r\n");
+    const r = await helpers(
+      b,
+      [
+        // The registry write is replaced: no test edits the real user PATH.
+        "function Set-CollieUserPath($Entry) { return $true }",
+        "Remove-Item Env:COLLIE_NO_PATH_EDIT",
+        `$env:Path = 'C:\\Windows\\System32'`,
+        `Publish-CollieName ${psQuote(join(b.root, "inst"))}`,
+        "'PATH ' + $env:Path",
+        `'NAME ' + (Get-CollieCommandName ${psQuote(join(bin, "collie.exe"))})`,
+        `Publish-CollieName ${psQuote(join(b.root, "inst"))} | Out-Null`,
+        "'ONCE ' + @($env:Path -split ';' | Where-Object { $_ -like '*current\\bin' }).Count",
+        `$env:Path = ${psQuote(other)} + ';' + $env:Path`,
+        `'SHADOWED ' + (Get-CollieCommandName ${psQuote(join(bin, "collie.exe"))})`,
+      ].join("\r\n"),
+    );
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Added ");
+    expect(r.out).toContain(`PATH C:\\Windows\\System32;${bin}`);
+    expect(r.out).toContain("NAME collie\r\n");
+    expect(r.out).toContain("ONCE 1");
+    expect(r.out).toContain(`SHADOWED ${join(bin, "collie.exe")}`);
+  }, 60_000);
+
   test("refuses a machine that is not x64 or is older than build 19041", async () => {
     const b = box();
     const r = await helpers(

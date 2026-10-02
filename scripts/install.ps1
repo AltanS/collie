@@ -372,8 +372,20 @@ function Publish-CollieName([string]$Dir) {
   if ($env:COLLIE_NO_PATH_EDIT -eq "1") {
     return "COLLIE_NO_PATH_EDIT=1 is set, so your PATH was not changed. Run Collie as $bin\collie.exe."
   }
-  if (Set-CollieUserPath $bin) { return "Added $bin to your user PATH." }
+  $added = Set-CollieUserPath $bin
+  # This window too, so the steps below work here without a new terminal. Appended, like the user PATH.
+  $here = Add-CollieUserPathEntry $env:Path $bin
+  if ($null -ne $here) { $env:Path = $here }
+  if ($added) { return "Added $bin to your user PATH." }
   return "$bin is on your user PATH already."
+}
+
+# How to spell Collie in the printed steps: `collie` when that name finds THIS install's collie.exe,
+# else the full path (no PATH edit, or another `collie` comes first on PATH).
+function Get-CollieCommandName([string]$Exe) {
+  $found = Get-Command collie -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($null -ne $found -and [string]::Equals($found.Source, $Exe, [StringComparison]::OrdinalIgnoreCase)) { return "collie" }
+  return $Exe
 }
 
 function Invoke-CollieInstall {
@@ -606,7 +618,7 @@ function Invoke-CollieInstall {
     Write-CollieLine $published
     Stop-CollieBlocked $dir $exe $blocked
   }
-  $collie = if ($env:COLLIE_NO_PATH_EDIT -eq "1") { "$current\bin\collie.exe" } else { "collie" }
+  $collie = Get-CollieCommandName $exe
   $herdr = Get-Command herdr -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 
   # What is left is yours.
