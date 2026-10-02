@@ -23,6 +23,7 @@ local:
   skipped: integration-hermes    this Herdr build does not list hermes — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
   ✓        integration-opencode  installed and current
   ✓        integration-pi        installed and current
+  skipped: integration-omp       this Herdr build does not list omp — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
   ✓        hook-python3          /fake/python3
   skipped: agent-sessions        the bridge reports no agent panes → start an agent in a pane, then re-run `collie doctor`
   ✓        journal-roots         1 of 7 roots present — claude: /home/pat/.claude/projects (resolved from /home/pat; the BRIDGE resolves them from ITS OWN user's home)
@@ -60,6 +61,7 @@ local:
   skipped: integration-hermes    this Herdr build does not list hermes — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
   ✓        integration-opencode  installed and current
   ✓        integration-pi        installed and current
+  skipped: integration-omp       this Herdr build does not list omp — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
   ✓        hook-python3          /fake/python3
   skipped: agent-sessions        the bridge reports no agent panes → start an agent in a pane, then re-run `collie doctor`
   ✓        journal-roots         1 of 7 roots present — claude: /home/pat/.claude/projects (resolved from /home/pat; the BRIDGE resolves them from ITS OWN user's home)

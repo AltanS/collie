@@ -2187,7 +2187,7 @@ describe("POSIX parity (M43 spec 04)", () => {
     ),
   });
 
-  // The golden was written by this same block run at a0ab9e76, the commit before spec 04 (the
+  // The golden was written by this same block run before spec 04, then gained the integration-omp row from main (the
   // healthy solo fixture, then a config.toml secret the mode rule could not tighten). The
   // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
   test("the plain doctor output on a POSIX host is byte-identical to the one before spec 04", async () => {
