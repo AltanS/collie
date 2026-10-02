@@ -12,7 +12,8 @@ concurrency:
 
 # The Windows suites (M43 spec 02): `bun test` over bridge, cli and scripts. The commands live in `scripts/windows-suites.ps1`, the same file the Windows VM runs
 # (`make win-test` in the workspace), so CI and the VM cannot drift. The script also fails when
-# more tests are skipped than its `-MaxSkips` allows, so no test is skipped just to get green.
+# a suite skips more tests than its own budget (`-MaxSkipsBridge`, `-MaxSkipsCli`,
+# `-MaxSkipsScripts`) allows, so no test is skipped just to get green.
 #
 # ITS OWN WORKFLOW, not a job in ci.yml. `release.yml`'s gate reads the conclusion of the whole
 # `ci.yml` run, so a red Windows job inside it would stop a Linux hotfix. Here a Windows break shows
@@ -35,7 +36,11 @@ jobs:
       - name: No line-ending rewrite
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
+      # The Bun flake.nix builds with (`bunVersion`), so this check runs what the release ships.
+      # scripts/check-flake-bun.test.ts fails when the two drift apart.
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
       - name: Install (root)
         run: bun install --frozen-lockfile
 

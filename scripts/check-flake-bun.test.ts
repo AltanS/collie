@@ -89,3 +89,23 @@ describe("flake.nix and MIN_BUN", () => {
     expect(compare("1.4", "1.4.0")).toBe(0);
   });
 });
+
+describe("the Windows check runs the flake's Bun", () => {
+  test("windows.yml pins setup-bun to flake.nix's bunVersion", () => {
+    const workflow = readFileSync(join(ROOT, ".github", "workflows", "windows.yml"), "utf8");
+    // SAFETY: `Bun.YAML.parse` answers plain data; the one field read is compared against a string.
+    const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { steps: { uses?: string; with?: Record<string, string> }[] }> };
+    const steps = Object.values(parsed.jobs).flatMap((j) => j.steps);
+    const setup = steps.filter((s) => s.uses?.startsWith("oven-sh/setup-bun@") === true);
+    expect(setup).toHaveLength(1);
+    expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
+  });
+
+  test("windows-suites.ps1 gives each suite its own skip budget, 24 in all as measured", () => {
+    const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
+    const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([0, 1, 23]);
+    expect(script).not.toContain("[int]$MaxSkips = ");
+    expect(script).toContain("if ($skip -gt $skipBudget[$name])");
+  });
+});
