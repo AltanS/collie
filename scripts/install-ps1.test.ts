@@ -486,17 +486,19 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const b = box();
     const r = await install(b, mirror);
     expect(r.code).toBe(0);
-    const tail = r.out.trimEnd().split(/\r?\n/).slice(-14).join("\n");
-    expect(tail).toContain("1. Open a new terminal");
-    expect(tail).toContain("2. Start Herdr");
-    expect(tail).toContain(`${b.dir}\\current\\bin\\collie.exe start`);
-    expect(tail).toContain(`${b.dir}\\current\\bin\\collie.exe url`);
-    expect(tail).toContain("cannot join a crew in this release");
-    expect(tail).toContain("Smart App Control");
+    const exe = `${b.dir}\\current\\bin\\collie.exe`;
+    const tail = r.out.trimEnd().split(/\r?\n/).slice(-20).join("\n");
+    expect(tail).toContain("Next steps. This script does not take them for you:");
+    expect(tail).toContain("1. Open a NEW terminal window.");
+    expect(tail).toContain("2. Start Herdr in another terminal window, and leave it running.");
+    expect(tail).toContain("Get Herdr at https://herdr.dev");
+    expect(tail).toContain(`${exe} start`);
+    expect(tail).toContain(`${exe} url`);
+    expect(tail).toContain("Linking several machines (crew) does not work on Windows yet. Collie on one machine works fine.");
+    expect(tail).toContain("collie.exe is unsigned: Windows does not know the publisher of this file.");
     expect(r.out).toContain("COLLIE_NO_PATH_EDIT=1 is set, so your PATH was not changed.");
-    // No herdr on this PATH: the script says where Herdr comes from, and goes on.
-    expect(r.out).toContain("herdr is not on your PATH");
-    expect(r.out).toContain("https://herdr.dev");
+    // No herdr on this PATH: the PATH check says so, and the install goes on.
+    expect(r.out).toContain("Herdr not found on your PATH.");
     // The `collie` on PATH leaves a mark when run. There is none.
     expect(existsSync(join(b.root, "collie-ran.txt"))).toBe(false);
   }, 60_000);
@@ -505,7 +507,8 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const b = box();
     const r = await install(b, mirror, { herdr: true });
     expect(r.code).toBe(0);
-    expect(r.out).not.toContain("herdr is not on your PATH");
+    expect(r.out).toContain(`Herdr found: ${join(b.fakeBin, "herdr.cmd")}`);
+    expect(r.out).not.toContain("Herdr not found");
   }, 60_000);
 
   test("writes nothing outside COLLIE_DIR, and leaves no scratch folder in it", async () => {

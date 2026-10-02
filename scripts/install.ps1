@@ -5,9 +5,14 @@
 #
 #   irm https://colliepwa.dev/install.ps1 | iex
 #
-# You can also download this file, read it, and run it:
+# You can also download this file, read it, and run it by hand:
 #
-#   powershell -ExecutionPolicy Bypass -File install.ps1
+#   powershell -ExecutionPolicy Bypass -File .\install.ps1
+#
+# Windows marks a file that a browser downloaded (the Mark of the Web), and a RemoteSigned policy then
+# refuses it as "not digitally signed". After you have read it, clear the mark with:
+#
+#   Unblock-File .\install.ps1
 #
 # This file is one page with no helpers to fetch, so you can read all of it before you run it.
 # What it will never do:
@@ -626,26 +631,27 @@ function Invoke-CollieInstall {
   Write-CollieLine "OK  Collie $version is installed in $dir. Nothing is running yet."
   Write-CollieLine "    The download matches the checksum published with the release, and collie.exe runs."
   Write-CollieLine $published
-  if ($null -eq $herdr) {
-    Write-CollieLine "note: herdr is not on your PATH. Collie on Windows needs Herdr. Get it from https://herdr.dev"
-    Write-CollieLine "      Herdr's own installer:  irm https://herdr.dev/install.ps1 | iex"
-  }
+  if ($null -eq $herdr) { Write-CollieLine "Herdr not found on your PATH. Collie on Windows needs it (step 2)." }
+  else { Write-CollieLine "Herdr found: $($herdr.Source)" }
   Write-CollieLine ""
-  Write-CollieLine "Three steps are left. Each one is yours to take:"
+  Write-CollieLine "Next steps. This script does not take them for you:"
   Write-CollieLine ""
-  if ($env:COLLIE_NO_PATH_EDIT -eq "1") { Write-CollieLine "  1. Open a new terminal." }
-  else { Write-CollieLine "  1. Open a new terminal, so that it reads the new PATH." }
+  if ($env:COLLIE_NO_PATH_EDIT -eq "1") { Write-CollieLine "  1. Open a NEW terminal window." }
+  else { Write-CollieLine "  1. Open a NEW terminal window. Windows gives the new PATH only to windows opened after this install." }
   Write-CollieLine ""
-  Write-CollieLine "  2. Start Herdr in a terminal of its own, and keep it open:"
+  Write-CollieLine "  2. Start Herdr in another terminal window, and leave it running. Collie needs it before it starts."
+  Write-CollieLine "     Get Herdr at https://herdr.dev (its installer: irm https://herdr.dev/install.ps1 | iex). Then run:"
   Write-CollieLine "       herdr"
   Write-CollieLine ""
-  Write-CollieLine "  3. Start Collie, then print the address to open on your phone:"
+  Write-CollieLine "  3. Start Collie, then print its address:"
   Write-CollieLine "       $collie start"
   Write-CollieLine "       $collie url"
+  Write-CollieLine "     On Windows, Collie listens on this machine only. To open it on your phone, reach it through"
+  Write-CollieLine "     your Tailscale network: $current\docs\deployment.md"
   Write-CollieLine ""
-  Write-CollieLine "Collie on Windows is experimental. A Windows machine cannot join a crew in this release."
-  Write-CollieLine "collie.exe is not signed. Windows 11 Smart App Control can block it, and you cannot override that."
-  Write-CollieLine "Read $current\docs\security.md before you open the URL on a phone. Collie gives remote shell access to this machine, by design."
+  Write-CollieLine "Linking several machines (crew) does not work on Windows yet. Collie on one machine works fine."
+  Write-CollieLine "collie.exe is unsigned: Windows does not know the publisher of this file. If Windows blocks it later, run  `"$exe`" version  to see why."
+  Write-CollieLine "Read $current\docs\security.md before you open Collie on a phone. Collie gives remote shell access to this machine, by design."
 }
 
 # Print a failure: what happened, then "Install failed." and the one fix, as the last line.
