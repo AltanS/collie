@@ -1333,6 +1333,41 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
 }
 
 /**
+ * {@link binaryHarness} on a Windows host: the binary is `collie.exe`, and a rename moves the junction
+ * the link seam holds, as `rename(2)` moves a link on a real disk (see `legacyClone` below).
+ */
+function windowsBinaryHarness(over: BinaryOptions = {}): Harness {
+  const exe = (at: string, rest: string): string => `${at}/bin/collie.exe ${rest}`;
+  const h = binaryHarness({
+    ...over,
+    answers: [
+      [exe(`${INST}/versions/${NEW}`, "version"), { stdout: `${NEW}\n` }],
+      [exe(`${INST}/current`, "version"), { stdout: `${over.currentSays ?? "0.9.0"}\n` }],
+      [exe(`${INST}/current`, "hooks status --check"), { code: EXIT.OK }],
+      ...(over.answers ?? []),
+    ],
+  });
+  h.deps.host = hostFor("win32");
+  for (const v of over.others ?? []) h.files.write(`${INST}/versions/${v}/bin/collie.exe`, "OLDER BINARY");
+  h.files.write(`${BROOT}/bin/collie.exe`, "OLD BINARY");
+  const rename = h.files.rename;
+  h.files.rename = (from, to) => {
+    rename(from, to);
+    const moved = h.link.entries.get(from);
+    if (moved === undefined) return;
+    h.link.entries.delete(from);
+    h.link.entries.set(to, moved);
+  };
+  return h;
+}
+
+/** What `current` names in the link seam, in the POSIX spelling the fixtures use. */
+const currentTarget = (h: Harness): string | null => {
+  const probe = h.link.entries.get(`${INST}/current`);
+  return probe?.kind === "symlink" ? posixKey(probe.target) : null;
+};
+
+/**
  * The DETACHED RUNNER, driven directly — `collie update` stages and hands off to exactly this
  * (M15/04), so the flip, the restart, the health gate and the rollback are all proved here rather
  * than through the verb that no longer performs them.
@@ -1408,6 +1443,51 @@ describe("collie update on a binary install", () => {
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain(`${INST}$ ${exe("restart")}`);
     expect(h.exec.calls.join("\n")).not.toContain(`${INST}/current/bin/collie restart`);
+  });
+
+  test("Windows: the runner makes `current` a junction beside the old one, removes the old one, then renames", async () => {
+    const h = windowsBinaryHarness();
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    // A junction names an absolute folder, and a rename onto a junction fails, so the order is fixed.
+    expect(h.link.ops.slice(0, 3)).toEqual([
+      `rm ${INST}/.current.new`,
+      `junction ${INST}/versions/${NEW} ${INST}/.current.new`,
+      `rm ${INST}/current`,
+    ]);
+    expect(h.files.ops).toContain(`mv ${INST}/.current.new ${INST}/current`);
+    expect(h.link.ops.some((op) => op.startsWith("symlink"))).toBe(false);
+    expect(currentTarget(h)).toBe(`${INST}/versions/${NEW}`);
+  });
+
+  test("Windows: a rename that fails puts the old junction back, so `current` still names the old version", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    const rename = h.files.rename;
+    h.files.rename = (from, to) => {
+      if (posixKey(to) === `${INST}/current`) throw new Error("EBUSY: resource busy");
+      rename(from, to);
+    };
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(currentTarget(h)).toBe(BROOT);
+    expect(h.link.ops).toContain(`junction ${BROOT} ${INST}/current`);
+    expect(h.io.stderr.join("\n")).toContain("EBUSY");
+    expect(h.io.stderr.join("\n")).toContain(`still names ${BROOT}. Nothing was changed.`);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("Windows: a real folder named `current` is refused and never removed", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    h.link.entries.set(`${INST}/current`, { kind: "other", what: "a directory" });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(h.link.ops).not.toContain(`rm ${INST}/current`);
+    expect(h.io.stderr.join("\n")).toContain("it is a directory, not a junction");
+  });
+
+  test("Windows: a rollback flips the junction back and restarts", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(h.link.ops).toContain(`junction ${INST}/versions/0.9.0 ${INST}/.current.new`);
+    expect(currentTarget(h)).toBe(`${INST}/versions/0.9.0`);
+    expect(h.restarts).toBe(1);
   });
 
   test("a staged payload gets its mode set on the binary this host names", async () => {

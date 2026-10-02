@@ -390,7 +390,7 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
 export interface FakeLinkFs extends LinkWriter {
   /** The destination, as this fake models it: absolute path → what is there. */
   entries: Map<string, LinkProbe>;
-  /** `mkdirp <p>` / `symlink <target> <at>` / `rm <at>`, in order. */
+  /** `mkdirp <p>` / `symlink <target> <at>` / `rm <at>` / `junction <target> <at>`, in order. */
   ops: string[];
   /** Paths whose write fails — the `~/.local/bin` an operator cannot write to. */
   readonly: Set<string>;
@@ -424,6 +424,11 @@ export function fakeLinkFs(seed: Record<string, LinkProbe> = {}): FakeLinkFs {
       ops.push(`rm ${posixKey(at)}`);
       if (readonlyPaths.has(at)) throw new Error("EACCES: permission denied");
       entries.delete(at);
+    },
+    junction(target, at) {
+      ops.push(`junction ${posixKey(target)} ${posixKey(at)}`);
+      if (readonlyPaths.has(at)) throw new Error("EACCES: permission denied");
+      entries.set(at, { kind: "symlink", target });
     },
   };
 }

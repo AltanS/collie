@@ -1,7 +1,7 @@
 import { lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 
-import { binaryName, HOST, type Host } from "../bridge/host.ts";
+import { binaryName, dropExtendedPrefix, HOST, type Host } from "../bridge/host.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Files } from "./sys.ts";
@@ -131,11 +131,19 @@ export interface LinkReader {
   probe(p: string): LinkProbe;
 }
 
-/** Reading it, and the three writes `link`/`unlink` need. */
+/** Reading it, the three writes `link`/`unlink` need, and the junction `current` is on Windows. */
 export interface LinkWriter extends LinkReader {
   mkdirp(p: string): void;
   symlink(target: string, at: string): void;
   remove(at: string): void;
+  /**
+   * Windows only: a directory junction at `at` that names the ABSOLUTE folder `target`. `current` is
+   * a junction there, because a plain user cannot make a symlink without Developer Mode and a junction
+   * needs no privilege at all (Windows 11 VM, 2026-10-02: a standard user got EPERM for every symlink
+   * and made the junction). `probe` reads a junction as a `symlink`, and `remove` deletes the junction
+   * and never the folder it names.
+   */
+  junction(target: string, at: string): void;
 }
 
 export interface LinkDeps {
@@ -237,7 +245,9 @@ export const realLinkFs: LinkWriter = {
     }
     if (stat.isSymbolicLink()) {
       try {
-        return { kind: "symlink", target: resolveLinkTarget(p, readlinkSync(p)) };
+        // A junction reads as a symlink here, and Windows may spell its target `\\?\C:\...`.
+        const raw = readlinkSync(p);
+        return { kind: "symlink", target: resolveLinkTarget(p, HOST.platform === "win32" ? dropExtendedPrefix(raw) : raw) };
       } catch {
         // It was a symlink a moment ago and now cannot be read: report it as occupied rather than
         // absent, so nothing is replaced on the strength of a race.
@@ -249,4 +259,5 @@ export const realLinkFs: LinkWriter = {
   mkdirp: (p) => void mkdirSync(p, { recursive: true }),
   symlink: (target, at) => symlinkSync(target, at),
   remove: (at) => rmSync(at, { force: true }),
+  junction: (target, at) => symlinkSync(target, at, "junction"),
 };

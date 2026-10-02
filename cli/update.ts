@@ -1113,7 +1113,9 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
 // manifest, `package.json`, `.env.example`, `docs/`), and `<root>/current` is a RELATIVE symlink at
 // exactly one of them. An update lays a new version down beside the old one and flips that symlink;
 // two atomic renames, and the previous version is still on disk afterwards, which is what makes
-// `--rollback` almost free.
+// `--rollback` almost free. On Windows `current` is a directory junction with an absolute target
+// instead, flipped by `flipJunction`; Bun resolves `process.execPath` through it there too (Windows
+// 11 VM, 2026-10-02), so the paragraph below holds on every host.
 //
 // The running bridge is pinned to the version directory it was started from — `process.execPath` is
 // realpath-resolved, so `resolvePluginRoot` returns `versions/X.Y.Z`, never `current` — so it keeps
@@ -1269,6 +1271,7 @@ export function currentVersionDir(deps: { readonly link: LinkReader }, layout: B
  * implementation would be a second thing to get atomic.
  */
 function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): boolean {
+  if (deps.host.platform === "win32") return flipJunction(deps, layout, version);
   const staged = deps.host.path.join(layout.installRoot, ".current.new");
   try {
     deps.link.remove(staged);
@@ -1277,6 +1280,55 @@ function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): b
     return true;
   } catch (err) {
     deps.io.err(`error: could not point ${layout.currentLink} at versions/${version} — ${String(err)}`);
+    return false;
+  }
+}
+
+/**
+ * The Windows flip. `current` is a directory junction there (`LinkWriter.junction`), and two facts
+ * measured on the Windows 11 VM on 2026-10-02 change the steps: a rename onto an existing junction
+ * fails with EPERM, so the one atomic rename above is not possible; and removing a junction never
+ * touches the folder it names. So the new junction is built beside `current` first, which proves the
+ * folder can be named before anything moves; then the old junction goes and the new one is renamed
+ * into its place. The time without a `current` is that one rename. When the rename fails, the old
+ * junction is put back, so a failure leaves `current` on the version it named before.
+ *
+ * A junction names an ABSOLUTE folder, so the install root is not movable on Windows the way the
+ * relative symlink keeps it movable elsewhere.
+ */
+function flipJunction(deps: UpdateDeps, layout: BinaryLayout, version: string): boolean {
+  const staged = deps.host.path.join(layout.installRoot, ".current.new");
+  const target = deps.host.path.join(layout.versionsDir, version);
+  const said = (why: string): void =>
+    deps.io.err(`error: could not point ${layout.currentLink} at versions/${version} — ${why}`);
+  const before = deps.link.probe(layout.currentLink);
+  if (before.kind === "other") {
+    // A real folder or a file has the name: it is not Collie's link, so it is not Collie's to remove.
+    said(`it is ${before.what}, not a junction`);
+    return false;
+  }
+  try {
+    deps.link.remove(staged);
+    deps.link.junction(target, staged);
+  } catch (err) {
+    said(String(err));
+    return false;
+  }
+  try {
+    if (before.kind === "symlink") deps.link.remove(layout.currentLink);
+    deps.files.rename(staged, layout.currentLink);
+    return true;
+  } catch (err) {
+    said(String(err));
+    if (before.kind === "symlink" && deps.link.probe(layout.currentLink).kind === "absent") {
+      try {
+        deps.link.junction(before.target, layout.currentLink);
+        deps.io.err(`       ${layout.currentLink} still names ${before.target}. Nothing was changed.`);
+      } catch (again) {
+        deps.io.err(`       ${layout.currentLink} is missing now, and putting it back failed too — ${String(again)}`);
+        deps.io.err(`       Make it again by hand: mklink /J "${layout.currentLink}" "${before.target}"`);
+      }
+    }
     return false;
   }
 }
