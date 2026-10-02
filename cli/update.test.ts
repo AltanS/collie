@@ -1700,7 +1700,8 @@ describe("collie update on a binary install", () => {
     test("a complete folder is used as it is, with a note, and the update goes on", async () => {
       const h = held(true);
       expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-      expect(h.io.stdout.join("\n")).toContain(`note: ${laid} is in use and could not be moved aside (`);
+      // POSIX keys: on a real Windows run the native `join` spells the folder with backslashes.
+      expect(posixKey(h.io.stdout.join("\n"))).toContain(`note: ${laid} is in use and could not be moved aside (`);
       expect(h.io.stdout.join("\n")).toContain("this update uses it as it is");
       // The new payload never replaced it, and the staging folder is gone.
       expect(h.files.ops).not.toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${laid}`);
@@ -1711,7 +1712,7 @@ describe("collie update on a binary install", () => {
     test("a partial one fails the update cleanly, before the flip, and says how to free it", async () => {
       const h = held(false);
       expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
-      const err = h.io.stderr.join("\n");
+      const err = posixKey(h.io.stderr.join("\n"));
       expect(err).toContain(`${laid} is there already, is not complete (missing web/dist/index.html, herdr-plugin.toml, package.json)`);
       expect(err).toContain("Run `collie stop`, then `collie start`, and update again.");
       expect(h.link.ops).toEqual([]);

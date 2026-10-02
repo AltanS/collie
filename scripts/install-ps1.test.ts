@@ -132,7 +132,9 @@ describe("scripts/install.ps1, read as text", () => {
   });
 
   test("a `collie.exe version` that hangs is stopped with its whole tree, not only cmd.exe", () => {
-    const run = TEXT.slice(TEXT.indexOf("function Test-CollieRuns"), TEXT.indexOf("function Stop-CollieBlocked"));
+    // LF here: a Windows checkout may hand the script over with CRLF.
+    const lf = TEXT.replaceAll("\r\n", "\n");
+    const run = lf.slice(lf.indexOf("function Test-CollieRuns"), lf.indexOf("function Stop-CollieBlocked"));
     expect(run).toContain("if (-not $run.WaitForExit(30000)) {\n    Stop-CollieTree $run.Id");
     expect(run).not.toContain("$run.Kill()");
     const tree = TEXT.slice(TEXT.indexOf("function Stop-CollieTree"), TEXT.indexOf("function Test-CollieRuns"));
