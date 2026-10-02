@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { Push, topicIsSendable } from "./push.ts";
 import type { PushSender, PushSubscription } from "./push.ts";
 import { loadConfig } from "./config.ts";
+import { HOST } from "./host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 
 // The broadcast prune-vs-log logic and the on-disk persistence are the untested-by-Bun.serve parts.
 // We inject a fake sender so the 404/410-prune path is exercised without the real web-push library,
@@ -239,16 +241,21 @@ describe("Push — eviction of persistently-failing subscriptions", () => {
 });
 
 describe("Push — persistence", () => {
-  // NTFS has no 0600 mode bits: stat() reports 0o666 for a writable file, so the assertion has no meaning there.
-  // What protects the file on Windows is M43 spec 04's question, not this test's.
-  test.skipIf(process.platform === "win32")("addSubscription persists with owner-only (0600) permissions", async () => {
+  // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04), and the
+  // file the store writes inherits it. NTFS has no 0600, so the check reads that list instead.
+  test("addSubscription persists with owner-only (0600) permissions", async () => {
     const cfg = await tempCfg();
+    if (process.platform === "win32") ensureOwnerOnlyDir(cfg.stateDir, HOST, { root: privateRoot("state"), repair: true });
     const push = new Push(cfg, () => Promise.resolve());
     enable(push, []);
 
     await push.addSubscription(sub("one"));
 
     expect(await fileEndpoints(cfg.stateDir)).toEqual(["one"]);
+    if (process.platform === "win32") {
+      expect(isOwnerOnly(join(cfg.stateDir, "push-subscriptions.json"), HOST)).toEqual({ state: "private" });
+      return;
+    }
     const mode = (await stat(join(cfg.stateDir, "push-subscriptions.json"))).mode & 0o777;
     expect(mode).toBe(0o600);
   });

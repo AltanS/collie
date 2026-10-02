@@ -1,0 +1,75 @@
+collie doctor — 1.0.0-alpha.12 · mode solo
+
+local:
+  ✓        collie                v1.0.0-alpha.12 · <platform>
+  skipped: config-file           home /home/pat/.collie/config.toml (absent) · instance /cfg/config.toml (absent) — no config file, the env decides everything → `collie config init`
+  ✓        web-dist              3 entries, index.html present
+  ✓        path-link             not linked — `collie link` would publish /home/pat/.local/bin/collie → /opt/collie/bin/collie
+  ✓        install               linked clone at /opt/collie (branch main, origin AltanS/collie)
+  ✓        versions              in place at /opt/collie — no versions/ layout yet; the next `collie update` stages one
+  ✓        update-source         github.com/AltanS/collie
+  ✓        herdr-socket          /home/pat/.config/herdr/herdr.sock
+  ✓        bind                  127.0.0.1 (mode solo)
+  ✓        bind-wildcard         bound to one address
+  ✓        acl                   inbound packet filter is non-empty — can't disprove reachability; non-empty proves nothing
+  ✓        front-door            laptop.tail.ts.net:443 → http://127.0.0.1:8787 (recorded and live)
+  ✓        mux                   herdr — see herdr-socket · no COLLIE_MUX, so `start` picks it: a Herdr socket at /home/pat/.config/herdr/herdr.sock
+  ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`, which herdr does not need — it reports agents itself
+  skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`
+  ✓        herdr-version         herdr 0.9.3
+  ✓        integration-claude    installed and current
+  ✓        integration-codex     installed and current
+  ✓        integration-grok      installed and current
+  skipped: integration-hermes    this Herdr build does not list hermes — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
+  ✓        integration-opencode  installed and current
+  ✓        integration-pi        installed and current
+  skipped: integration-omp       this Herdr build does not list omp — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
+  ✓        hook-python3          /fake/python3
+  skipped: agent-sessions        the bridge reports no agent panes → start an agent in a pane, then re-run `collie doctor`
+  ✓        journal-roots         1 of 7 roots present — claude: /home/pat/.claude/projects (resolved from /home/pat; the BRIDGE resolves them from ITS OWN user's home)
+  ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked 39 days ago
+  ✓        cache-rules           no /cfg/cache-rules.toml — every TTL is the shipped rule
+  ✓        cache-env             no Claude Code cache variable is set in this shell
+  skipped: restart-pending       the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and roster, and nothing names the code it is executing → `collie restart` after any build if in doubt; `collie logs` dates the running process
+  skipped: clock                 solo — there is no far side to compare against, and inventing a reference clock is worse than silence → re-run `collie doctor` once this collie is in a crew
+
+crew: none — this collie is not in a crew.
+  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.
+---
+collie doctor — 1.0.0-alpha.12 · mode solo
+
+local:
+  ✓        collie                v1.0.0-alpha.12 · <platform>
+  error:   config-file           home /home/pat/.collie/config.toml (present) · instance /cfg/config.toml (absent) — dropped COLLIE_VAPID_PRIVATE: the file holding them is not owner-only → `chmod 600` that file, then `collie restart`
+  ✓        web-dist              3 entries, index.html present
+  ✓        path-link             not linked — `collie link` would publish /home/pat/.local/bin/collie → /opt/collie/bin/collie
+  ✓        install               linked clone at /opt/collie (branch main, origin AltanS/collie)
+  ✓        versions              in place at /opt/collie — no versions/ layout yet; the next `collie update` stages one
+  ✓        update-source         github.com/AltanS/collie
+  ✓        herdr-socket          /home/pat/.config/herdr/herdr.sock
+  ✓        bind                  127.0.0.1 (mode solo)
+  ✓        bind-wildcard         bound to one address
+  ✓        acl                   inbound packet filter is non-empty — can't disprove reachability; non-empty proves nothing
+  ✓        front-door            laptop.tail.ts.net:443 → http://127.0.0.1:8787 (recorded and live)
+  ✓        mux                   herdr — see herdr-socket · no COLLIE_MUX, so `start` picks it: a Herdr socket at /home/pat/.config/herdr/herdr.sock
+  ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`, which herdr does not need — it reports agents itself
+  skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`
+  ✓        herdr-version         herdr 0.9.3
+  ✓        integration-claude    installed and current
+  ✓        integration-codex     installed and current
+  ✓        integration-grok      installed and current
+  skipped: integration-hermes    this Herdr build does not list hermes — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
+  ✓        integration-opencode  installed and current
+  ✓        integration-pi        installed and current
+  skipped: integration-omp       this Herdr build does not list omp — Collie can read its journal, Herdr has no hook for it → upgrade Herdr (`herdr --version` names this build), or read that pane's history from the agent's own log
+  ✓        hook-python3          /fake/python3
+  skipped: agent-sessions        the bridge reports no agent panes → start an agent in a pane, then re-run `collie doctor`
+  ✓        journal-roots         1 of 7 roots present — claude: /home/pat/.claude/projects (resolved from /home/pat; the BRIDGE resolves them from ITS OWN user's home)
+  ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked 39 days ago
+  ✓        cache-rules           no /cfg/cache-rules.toml — every TTL is the shipped rule
+  ✓        cache-env             no Claude Code cache variable is set in this shell
+  skipped: restart-pending       the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and roster, and nothing names the code it is executing → `collie restart` after any build if in doubt; `collie logs` dates the running process
+  skipped: clock                 solo — there is no far side to compare against, and inventing a reference clock is worse than silence → re-run `collie doctor` once this collie is in a crew
+
+crew: none — this collie is not in a crew.
+  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.

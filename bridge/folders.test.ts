@@ -3,6 +3,8 @@ import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "./host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 import {
   coerceFolderLists,
   FolderStore,
@@ -195,11 +197,14 @@ describe("FolderStore — the file", () => {
 
   test("a write is atomic and owner-only: no temp file left, mode 0600", async () => {
     await withStateDir(async (dir) => {
+      // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
+      if (process.platform === "win32") ensureOwnerOnlyDir(dir, HOST, { root: privateRoot("state"), repair: true });
       const store = new FolderStore({ stateDir: dir }, HOME);
       await store.recordRecent("/srv/a");
       expect(await readdir(dir)).toEqual(["folders.json"]);
-      // NTFS has no 0600 mode bits (stat reports 0666), so only the temp-file half runs there.
+      // NTFS has no 0600 mode bits (stat reports 0666), so Windows reads the access list instead.
       if (process.platform !== "win32") expect((await stat(join(dir, "folders.json"))).mode & 0o777).toBe(0o600);
+      else expect(isOwnerOnly(join(dir, "folders.json"), HOST)).toEqual({ state: "private" });
     });
   });
 

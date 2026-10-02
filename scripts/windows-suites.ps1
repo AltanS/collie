@@ -10,10 +10,11 @@
 #   -Out       where the logs go: <suite>.log and <suite>.fails per suite (one failing name per line)
 #   -MaxSkips  the most skipped tests that still count as green. A test must not be skipped just to
 #              get green, so a higher count is a failure. Raise this number only with a reason.
-#              Measured 2026-10-02 on the Windows 11 VM: bridge 2, cli 1, scripts 23 (26 in all).
+#              Measured 2026-10-02 on the Windows 11 VM: bridge 0, cli 1, scripts 23 (24 in all).
+#              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkips = 26
+  [int]$MaxSkips = 24
 )
 $ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"

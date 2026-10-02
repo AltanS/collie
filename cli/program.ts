@@ -270,15 +270,16 @@ function lifecycleCommand(
   name: string,
   summary: string,
   body: (deps: LifecycleDeps, args: readonly string[]) => number | Promise<number>,
-  opts: { internal?: boolean; rich?: boolean } = {},
+  opts: { internal?: boolean; rich?: boolean; repairAcl?: boolean } = {},
 ): Command {
   return {
     name,
     summary,
     internal: opts.internal === true,
     // `rich` is what marks a verb as having a terminal surface. Without it the renderer is never
-    // even loaded — see `Session.ui`.
-    run: async (args, s) => body(lifecycleDeps(s.io, opts.rich === true ? await s.ui() : null), args),
+    // even loaded — see `Session.ui`. `repairAcl` is the bridge process's alone (M43 spec 04).
+    run: async (args, s) =>
+      body(lifecycleDeps(s.io, opts.rich === true ? await s.ui() : null, { repairAcl: opts.repairAcl === true }), args),
   };
 }
 
@@ -439,7 +440,8 @@ export const COMMANDS: readonly Command[] = [
     "_exec-bridge",
     "internal: the process the supervisor watches",
     cmdExecBridge,
-    { internal: true },
+    // The bridge itself: the one process that may repair a secret file's access list on Windows.
+    { internal: true, repairAcl: true },
   ),
   // The Windows launcher (cli/task-scheduler.ts): Task Scheduler runs it, and it runs and relaunches
   // `_exec-bridge`. Not a lifecycle command: everything it needs is on its own command line, so it

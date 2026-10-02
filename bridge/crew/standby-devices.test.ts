@@ -3,6 +3,8 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { EMPTY_REGISTRY, sha256Hex, type PairedRegistry } from "../pairing.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { T0 } from "./fixtures.ts";
@@ -266,16 +268,21 @@ describe("the file", () => {
   test("it is 0600 in a 0700 directory, and it is NOT paired-devices.json", async () => {
     const stateDir = join(await mkdtemp(join(tmpdir(), "collie-standby-")), "nested");
     try {
+      // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
+      if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
       const store = new StandbyDeviceStore(stateDir);
       expect(await store.load()).toBeNull();
       const next = { ...noStandbyDevices("crew-1", "desk"), syncedAt: T0, devices: devices(device("phone", HASH_A)) };
       await store.replace(next);
       expect(standbyDevicesPath(stateDir)).toBe(join(stateDir, STANDBY_DEVICES_FILENAME));
       expect(STANDBY_DEVICES_FILENAME).not.toBe("paired-devices.json");
-      // NTFS has no 0600/0700 mode bits (stat() says 0o666 and 0o777), so the content checks below are all that run there.
+      // NTFS has no 0600/0700 mode bits (stat() says 0o666 and 0o777), so Windows reads the access list instead.
       if (process.platform !== "win32") {
         expect((await stat(standbyDevicesPath(stateDir))).mode & 0o777).toBe(0o600);
         expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+      } else {
+        expect(isOwnerOnly(standbyDevicesPath(stateDir), HOST)).toEqual({ state: "private" });
+        expect(isOwnerOnly(stateDir, HOST)).toEqual({ state: "private" });
       }
       // Re-read from disk by a fresh store: this is the file the door will authenticate against.
       expect(await new StandbyDeviceStore(stateDir).load()).toEqual(next);

@@ -7,7 +7,7 @@ import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
-import { collieBinary as collieBinaryOf } from "./host.ts";
+import { collieBinary as collieBinaryOf, HOST } from "./host.ts";
 import { ActivityLedger } from "./activity.ts";
 import { trackActivity } from "./activity-tracking.ts";
 import { CacheTracker } from "./cache/tracker.ts";
@@ -22,6 +22,14 @@ import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
+import {
+  aclRepairAllowed,
+  dirOutcomeLine,
+  ensureOwnerOnlyDir,
+  flushAclBackups,
+  privateRoot,
+  type PrivateRoot,
+} from "./owner-only.ts";
 import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
@@ -183,7 +191,18 @@ const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // environment — the crew budgets, the standby door, the update lane, speech-to-text — sees the file
 // without learning about it. A broken file warns and the bridge still starts; that is the whole
 // posture, and it is why nothing here can throw.
-const configLayer = await loadConfigLayer(process.env, undefined, (line) => console.warn(line));
+//
+// Windows only (M43 spec 04): the config folder is made private FIRST, so the files read next are
+// already behind its list. The bridge is the one process that may change an access list, and only
+// in Collie's own folders (`bridge/acl-policy.ts`); `COLLIE_NO_ACL_REPAIR=1` leaves every list as it
+// is and still warns.
+const aclRepair = HOST.platform === "win32" && aclRepairAllowed(process.env);
+const securePrivateRoot = (dir: string, id: PrivateRoot["id"], createdNow: boolean): void => {
+  const line = dirOutcomeLine(dir, ensureOwnerOnlyDir(dir, HOST, { root: privateRoot(id), repair: aclRepair, createdNow }));
+  if (line !== null) console.warn(line);
+};
+if (HOST.platform === "win32" && existsSync(resolveConfigDir())) securePrivateRoot(resolveConfigDir(), "config", false);
+const configLayer = await loadConfigLayer(process.env, undefined, (line) => console.warn(line), aclRepair);
 applyConfigLayer(configLayer);
 
 // loadConfig throws on config it cannot parse at all. Print the reason alone — a stack trace here
@@ -221,7 +240,18 @@ const bootTrust = await trustStore.load();
 // Moved AHEAD of the mode resolution by §18.11's boot gate: that gate may rewrite the trust store
 // before anything else is wired, and a store written into a directory that does not exist yet is a
 // boot that fails for the wrong reason.
+const stateDirExisted = HOST.platform === "win32" ? existsSync(cfg.stateDir) : true;
 await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
+
+// On Windows the mode above does nothing: NTFS keeps an access list, not mode bits (M43 spec 04). So
+// the state folder gets a private list here, once per start, and every file a store writes into it
+// later inherits it from its birth. A folder that is already private costs one `icacls` read per
+// secret file; a loose one is repaired when it is Collie's own, and the line says so only after a
+// second read confirms it. The old lists of anything changed are saved into the state folder.
+if (HOST.platform === "win32") {
+  securePrivateRoot(cfg.stateDir, "state", !stateDirExisted);
+  for (const line of flushAclBackups(cfg.stateDir)) console.warn(line);
+}
 
 // Append-only audit trail of write-level actions (see audit.ts). A write failure here is swallowed
 // inside record() so it can never break the user action it's auditing.

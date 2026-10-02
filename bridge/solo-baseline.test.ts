@@ -889,6 +889,10 @@ describe("solo zero-tax — config", () => {
 
 /** Every `<stateDir>/…` path any bridge module names. `uploads` is a directory, the rest are files. */
 const STATE_DIR_ENTRIES = [
+  // Windows only (M43 spec 04): the access lists Collie saved before it changed one, so the change can
+  // be undone with `icacls /restore`. Absent until the bridge actually repaired a loose folder or file;
+  // never on Linux or macOS, and never on a Windows install whose folders were private already.
+  "acl-backups",
   "activity.json",
   "audit.log",
   // Agent beacons (M11/01) — a directory, and one no bridge module ever writes: the bridge only ever

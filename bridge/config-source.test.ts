@@ -15,6 +15,7 @@ import {
   type ConfigFilePath,
   type Environment,
   type FilePerms,
+  type PrivateFileVerdict,
 } from "./config-source.ts";
 import { settingByEnv } from "./config-schema.ts";
 import { hostFor } from "./host.ts";
@@ -317,21 +318,50 @@ describe("a secret in the file is held to 0600", () => {
 
   // NTFS has no mode bits: `stat` says 666 for every file and `chmod` only flips read-only, so the
   // old line "tightened it to 600" was false on every Windows command. M43 spec 04 reads the ACL.
-  test("on Windows the rule says nothing and touches nothing; elsewhere it is unchanged", () => {
+  test("on Windows the access-list verdict decides and the mode is never asked; elsewhere it is unchanged", () => {
     let tightened = 0;
+    let asked = 0;
     const loose = {
-      mode: () => 0o666,
+      mode: () => {
+        asked++;
+        return 0o666;
+      },
       tighten: () => {
         tightened++;
         return true;
       },
     };
-    expect(tightenPrivateFile("C:\\cfg\\.env", hostFilePerms(hostFor("win32"), loose))).toEqual({ ok: true, warning: null });
+    const acl: string[] = [];
+    const windows = (path: string): PrivateFileVerdict => {
+      acl.push(path);
+      return { ok: false, warning: `warn: ${path} is readable by Users (S-1-5-32-545) and could not be made owner-only` };
+    };
+    expect(tightenPrivateFile("C:\\cfg\\.env", hostFilePerms(hostFor("win32"), loose, windows))).toEqual({
+      ok: false,
+      warning: "warn: C:\\cfg\\.env is readable by Users (S-1-5-32-545) and could not be made owner-only",
+    });
+    expect(acl).toEqual(["C:\\cfg\\.env"]);
     expect(tightened).toBe(0);
+    expect(asked).toBe(0);
     for (const platform of ["linux", "darwin"]) {
-      expect(hostFilePerms(hostFor(platform), loose)).toBe(loose);
+      expect(hostFilePerms(hostFor(platform), loose, windows)).toBe(loose);
     }
-    expect(tightenPrivateFile("/x", hostFilePerms(hostFor("linux"), loose)).warning).toContain("tightened it to 600");
+    expect(tightenPrivateFile("/x", hostFilePerms(hostFor("linux"), loose, windows)).warning).toContain("tightened it to 600");
+    expect(acl).toHaveLength(1);
+  });
+
+  test("a config.toml secret is withheld on Windows when the access list cannot be repaired", async () => {
+    const windows = (path: string): PrivateFileVerdict => ({ ok: false, warning: `warn: ${path} could not be made owner-only` });
+    const lines: string[] = [];
+    const layer = await readConfigFiles(
+      fakeIo({ [HOME_FILE]: '[push]\nvapid_private = "k"\n' }),
+      paths,
+      (l) => lines.push(l),
+      { home: HOME, perms: hostFilePerms(hostFor("win32"), loosePerms(true), windows) },
+    );
+    expect(layer.blocked).toEqual(["COLLIE_VAPID_PRIVATE"]);
+    expect(layer.env.COLLIE_VAPID_PRIVATE).toBeUndefined();
+    expect(lines[0]).toBe(`warn: ${HOME_FILE} could not be made owner-only`);
   });
 });
 

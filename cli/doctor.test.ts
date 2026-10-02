@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
@@ -11,7 +12,17 @@ import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
-import { cmdDoctor, type DoctorDeps, type Finding, LONG_PATHS_KEY, windowsLongPaths, windowsTask } from "./doctor.ts";
+import {
+  cmdDoctor,
+  type DoctorDeps,
+  type Finding,
+  LONG_PATHS_KEY,
+  secretsPrivate,
+  windowsLongPaths,
+  windowsTask,
+} from "./doctor.ts";
+import type { AclTool, SaveResult } from "../bridge/icacls.ts";
+import type { OwnerOnlyDeps } from "../bridge/owner-only.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
@@ -130,6 +141,53 @@ function healthyFiles(): SeededFiles {
   };
 }
 
+/**
+ * The owner-only seams with no disk and no `icacls`. `trees[path]` is what `icacls /save /T` wrote
+ * for that folder (lines captured on the VM); a folder not named reads as a private profile folder.
+ * `absent` paths do not exist; a name ending in `.env`, `.json` or `.toml` is a file. `owners` is
+ * what one `Get-Acl` would answer. The repair and mkdir seams throw: doctor changes nothing.
+ */
+/** A `/save` that ran out of time, as the fake's answer for a folder. */
+const ACL_TIMED_OUT = "\u0000timed-out";
+/** A `/save` that wrote no list (FAT, exFAT, a share: simulated). */
+const ACL_NO_LIST = "\u0000no-list";
+
+function fakeOwnerOnly(
+  trees: Record<string, string>,
+  over: { absent?: readonly string[]; owners?: Record<string, string>; lists?: Record<string, string[]> } = {},
+): OwnerOnlyDeps {
+  const fail = (): never => {
+    throw new Error("doctor must never change an access list");
+  };
+  const acl: AclTool = {
+    save: (path) => {
+      const answer = trees[path] ?? `x\r\nD:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;${WIN_SID})\r\n`;
+      if (answer === ACL_TIMED_OUT) return { kind: "timed-out" } satisfies SaveResult;
+      return { kind: "ok", code: answer === ACL_NO_LIST ? 1 : 0, text: answer === ACL_NO_LIST ? "" : answer } satisfies SaveResult;
+    },
+    icacls: fail,
+    reset: fail,
+    whoami: () => ({ code: 0, stdout: `"pc\\pat","${WIN_SID}"\r\n`, timedOut: false }),
+    descriptors: (paths) => new Map(paths.flatMap((p) => (over.owners?.[p] === undefined ? [] : [[p, over.owners[p]!] as const]))),
+  };
+  return {
+    acl,
+    stat: (path) => ((over.absent ?? []).includes(path) ? null : { dir: !/(\.env|\.json|\.toml)$/.test(path), mode: 0o600, nlink: 1 }),
+    isLink: () => false,
+    realpath: (path) => path,
+    list: (path) => over.lists?.[path] ?? [],
+    mkdir: fail,
+    writeBackup: fail,
+    removeFile: fail,
+    env: { USERPROFILE: WIN_HOME, APPDATA: `${WIN_HOME}\\AppData\\Roaming`, LOCALAPPDATA: `${WIN_HOME}\\AppData\\Local`, SystemRoot: "C:\\Windows" },
+    home: WIN_HOME,
+    now: () => T0,
+  };
+}
+
+const WIN_HOME = "C:\\Users\\Rehearse Ünal";
+const WIN_SID = "S-1-5-21-1678274354-1849132225-3673151578-1000";
+
 interface Harness {
   deps: DoctorDeps;
   io: ReturnType<typeof capture>;
@@ -232,6 +290,8 @@ function harness(
       // and — the point of the seam — nothing `doctor` could write even if it tried.
       beacons: fakeBeaconReader(over.beacons ?? []),
       now: () => T0,
+      // Every secret path present and owner-only. The `secrets-private` cases build their own.
+      ownerOnly: fakeOwnerOnly({}),
     },
     io: out,
     files,
@@ -317,7 +377,7 @@ describe("collie doctor — the contract", () => {
       "front-door",
       "mux",
       // Windows only, and this suite runs on the real host.
-      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "beacons",
       "herdr-version",
@@ -1391,7 +1451,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "acl",
       "front-door",
       "mux",
-      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "beacons",
       "agent-sessions",
@@ -1855,11 +1915,12 @@ describe("the config-file finding", () => {
   });
 
   test("config-file is bad when a secret was dropped for permissions", async () => {
-    const { code, byCheck } = await findings(
-      harness(null, [], {
-        configLayer: layer({ [HOME_FILE]: '[push]\nvapid_private = "x"\n' }, false),
-      }),
-    );
+    const h = harness(null, [], {
+      configLayer: layer({ [HOME_FILE]: '[push]\nvapid_private = "x"\n' }, false),
+    });
+    // The POSIX remedy, pinned: on a Windows test host the line below would name icacls instead.
+    h.deps = { ...h.deps, host: hostFor("linux") };
+    const { code, byCheck } = await findings(h);
     const f = byCheck.get("config-file")!;
     expect(f.status).toBe("error");
     expect(f.detail).toContain("COLLIE_VAPID_PRIVATE");
@@ -1867,6 +1928,16 @@ describe("the config-file finding", () => {
     expect(f.remedy).toContain("chmod 600");
     // A dropped secret is a real failure, so the verb's exit code says so.
     expect(code).not.toBe(EXIT.OK);
+  });
+
+  test("on Windows the dropped-secret remedy names icacls, never chmod (M43 spec 04)", async () => {
+    const h = harness(null, [], {
+      configLayer: layer({ [HOME_FILE]: '[push]\nvapid_private = "x"\n' }, false),
+    });
+    h.deps = { ...h.deps, host: hostFor("win32") };
+    const f = (await findings(h)).byCheck.get("config-file")!;
+    expect(f.status).toBe("error");
+    expect(f.remedy).toBe("run the `icacls` line the warning above names for that file, then `collie restart`");
   });
 
   test("a typo'd COLLIE_CONFIG shows as an absent path rather than as silence", async () => {
@@ -1946,6 +2017,95 @@ describe("windows-long-paths", () => {
   });
 });
 
+describe("secrets-private (M43 spec 04)", () => {
+  const WIN = hostFor("win32");
+  const WIN_STATE = `${WIN_HOME}\\.local\\state\\collie`;
+  const WIN_CONFIG = `${WIN_HOME}\\AppData\\Roaming\\herdr\\plugins\\config\\herdr.collie`;
+  const ENV = `${WIN_CONFIG}\\.env`;
+  // A folder made under C:\ (VM): Users read it, Authenticated Users change it.
+  const DRIVE = (name: string) =>
+    `${name}\r\nD:AI(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)\r\n`;
+  const PRIVATE = (name: string) => `${name}\r\nD:PAI(A;OICI;FA;;;${WIN_SID})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)\r\n`;
+  const run = (trees: Record<string, string>, over: Parameters<typeof fakeOwnerOnly>[1] = {}, stateDir = WIN_STATE) =>
+    secretsPrivate({ ctx: context({}, { stateDir, configDir: WIN_CONFIG }), host: WIN, ownerOnly: fakeOwnerOnly(trees, over) });
+
+  test("ok: both folders private, in the words a person reads", () => {
+    const f = run({});
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe("the Collie state folder and the Collie config folder are private to your account, SYSTEM and Administrators");
+  });
+
+  test("a loose state folder is an error: who, the path on its own line, and the fix", () => {
+    const f = run({ [WIN_STATE]: DRIVE("collie") });
+    expect(f.status).toBe("error");
+    expect(f.detail).toBe(
+      `the Collie state folder can be read by other accounts (Users [S-1-5-32-545], Authenticated Users [S-1-5-11]).\n${WIN_STATE}`,
+    );
+    expect(f.remedy).toBe(
+      `Fix: restart Collie, or run: icacls "${WIN_STATE}" /grant:r "*${WIN_SID}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" ` +
+        `"*S-1-5-32-544:(OI)(CI)F" /inheritance:r /remove:g *S-1-5-32-545 *S-1-5-11`,
+    );
+  });
+
+  test("an Everyone grant on .env names the file inside the folder, and the one reset that fixes it", () => {
+    const tree = `${PRIVATE("herdr.collie")}herdr.collie\\.env\r\nD:AI(A;;FR;;;WD)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;FA;;;${WIN_SID})\r\n`;
+    const f = run({ [WIN_CONFIG]: tree });
+    expect(f.status).toBe("error");
+    expect(f.detail).toBe(`the Collie config folder holds files other accounts can read (Everyone [S-1-1-0]): .env.\n${WIN_CONFIG}`);
+    expect(f.remedy).toBe(`Fix: restart Collie, or run: icacls "${ENV}" /reset`);
+  });
+
+  test("a custom folder Collie does not own: the fix is the icacls line alone, never 'restart'", () => {
+    const custom = "D:\\Projects";
+    const f = run({ [custom]: DRIVE("Projects") }, { lists: { [custom]: ["src", "crew-trust.json"] } }, custom);
+    expect(f.status).toBe("error");
+    expect(f.remedy).toStartWith(`Fix: run: icacls "${custom}" /grant:r`);
+  });
+
+  test("a folder that cannot be checked is a warning, 'cannot confirm', never ok and never an error", () => {
+    const f = run({ [WIN_STATE]: ACL_TIMED_OUT });
+    expect(f.status).toBe("warn");
+    expect(f.detail).toBe(
+      `cannot confirm who can read the Collie state folder: icacls did not answer within 10 seconds\n${WIN_STATE}`,
+    );
+    // FAT, exFAT or a share (simulated: icacls writes no list there).
+    expect(run({ [WIN_STATE]: ACL_NO_LIST }).detail).toContain("FAT, exFAT and network drives have none");
+  });
+
+  test("a foreign owner is an error even when the list is private: an owner can always change it", () => {
+    const f = run({}, { owners: { [`${WIN_STATE}\\crew-trust.json`]: "O:S-1-5-21-1-2-3-1002G:S-1-5-21-1-2-3-513D:(A;;FA;;;SY)" } });
+    expect(f.status).toBe("error");
+    expect(f.detail).toBe(
+      `crew-trust.json is owned by another account [S-1-5-21-1-2-3-1002], who can always change its permissions.\n${WIN_STATE}\\crew-trust.json`,
+    );
+    expect(f.remedy).toBe(`Fix: in an Administrator PowerShell, icacls "${WIN_STATE}\\crew-trust.json" /setowner "*${WIN_SID}"`);
+  });
+
+  test("nothing there yet is skipped", () => {
+    expect(run({}, { absent: [WIN_STATE, WIN_CONFIG] }).status).toBe("skipped");
+  });
+
+  test("is a line on Windows only, with the path printed on its own line", async () => {
+    const win = harness(null);
+    win.deps = { ...win.deps, host: WIN };
+    expect((await findings(win)).byCheck.get("secrets-private")?.status).toBe("ok");
+    const linux = harness(null);
+    linux.deps = { ...linux.deps, host: hostFor("linux") };
+    expect((await findings(linux)).byCheck.has("secrets-private")).toBe(false);
+    const loose = harness(null);
+    loose.deps = {
+      ...loose.deps,
+      host: WIN,
+      ctx: { ...loose.deps.ctx, stateDir: WIN_STATE, configDir: WIN_CONFIG },
+      ownerOnly: fakeOwnerOnly({ [WIN_STATE]: DRIVE("collie") }),
+    };
+    await cmdDoctor(loose.deps, []);
+    const out = loose.io.stdout.join("\n");
+    expect(out).toContain(`secrets-private       the Collie state folder can be read by other accounts`);
+    expect(out).toContain(`\n${" ".repeat(33)}${WIN_STATE} → Fix: restart Collie, or run: icacls`);
+  });
+});
+
 describe("windows-task", () => {
   const WIN = hostFor("win32");
   // The query opens with the UTF-8 line (`POWERSHELL_UTF8`), so a non-ASCII path comes back whole.
@@ -2004,5 +2164,40 @@ describe("windows-task", () => {
     expect(other.detail).toContain("D:\\other\\bin\\collie.exe, another Collie install");
     expect(run([[QUERY, { code: 1 }]]).status).toBe("skipped");
     expect(run([], ["powershell"]).status).toBe("skipped");
+  });
+});
+
+// ── POSIX parity (M43 spec 04) ──────────────────────────────────────────────
+describe("POSIX parity (M43 spec 04)", () => {
+  const GOLDEN = join(import.meta.dir, "testdata", "doctor-posix.golden.txt");
+  // The identity line names the machine the suite runs on, so it is the one line normalised.
+  const render = async (over: Parameters<typeof harness>[2] = {}): Promise<string> => {
+    const h = harness(null, [], over);
+    h.deps = { ...h.deps, host: hostFor("linux") };
+    await cmdDoctor(h.deps, []);
+    return `${h.io.stdout.join("\n").replace(/ · [a-z0-9]+-[a-z0-9]+$/m, " · <platform>")}\n`;
+  };
+  // A config.toml secret that could not be made private: the POSIX `config-file` remedy is pinned too.
+  const blocked = (): Parameters<typeof harness>[2] => ({
+    configLayer: readConfigFilesSync(
+      { read: (p) => ({ text: p === join(HOME, ".collie", "config.toml") ? '[push]\nvapid_private = "x"\n' : null, error: null }) },
+      configFilePaths({}, HOME, CONFIG),
+      () => {},
+      { home: HOME, perms: { mode: () => 0o644, tighten: () => false } },
+    ),
+  });
+
+  // The golden was written by this same block run before spec 04, then gained the integration-omp row from main (the
+  // healthy solo fixture, then a config.toml secret the mode rule could not tighten). The
+  // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
+  test("the plain doctor output on a POSIX host is byte-identical to the one before spec 04", async () => {
+    const out = `${await render()}---\n${await render(blocked())}`;
+    const golden = readFileSync(GOLDEN, "utf8");
+    // Paths in the output are joined with the machine's own separator, so the byte comparison runs
+    // where the golden was made (POSIX). Windows compares the check ids and statuses line by line.
+    if (process.platform !== "win32") expect(out).toBe(golden);
+    const ids = (text: string) => text.split("\n").map((l) => /^\s+(\S+)\s+(\S+)/.exec(l)?.slice(1, 3).join(" ")).filter(Boolean);
+    expect(ids(out)).toEqual(ids(golden));
+    expect(out).not.toContain("secrets-private");
   });
 });
