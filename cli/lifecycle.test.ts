@@ -19,7 +19,7 @@ import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { hostFor, type Host } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
-import { PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
+import { POWERSHELL_UTF8, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import { collieBinary, taskFilePath } from "./unit.ts";
 
 // The binary, spelled the way the code under test spells it. `collieBinary` joins with the host
@@ -43,6 +43,7 @@ import {
   cmdUninstall,
   cmdUrl,
   isOurBridge,
+  KILL_SETTLE_MS,
   type LifecycleDeps,
   serviceDescription,
   statusBanner,
@@ -528,7 +529,8 @@ describe("the Task Scheduler tier (Windows)", () => {
   const OLD_BRIDGE = `C:\\Users\\pat\\.bun\\bin\\bun.exe run "${ROOT}/bridge/index.ts"`;
   const V2 = (launcher: number, bridge: number): string => formatTaskRecord(launcher, bridge);
   // What `Get-ScheduledTask` prints for a registered task: the state, the command, the arguments.
-  const QUERY = "powershell -NoProfile -NonInteractive -Command $t = Get-ScheduledTask";
+  // The query opens with the UTF-8 line (`POWERSHELL_UTF8`), so a non-ASCII path comes back whole.
+  const QUERY = `powershell -NoProfile -NonInteractive -Command ${POWERSHELL_UTF8}$t = Get-ScheduledTask`;
   const CONHOST = "C:\\WINDOWS\\system32\\conhost.exe";
   const OUR_TASK_ARGS = `--headless ${WIN_BINARY} _supervise HERDR_SOCKET_PATH=\\\\.\\pipe\\herdr COLLIE_PORT=8787`;
   const OLD_TASK_ARGS = `--headless "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -File "${ROOT}\\contrib\\windows\\collie-ctl.ps1" -TaskConfigDir "C:\\cfg" _exec-bridge`;
@@ -995,6 +997,75 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
       expect(h.exec.killed).toEqual([]);
       expect(schtasks(h)).toEqual([]);
+      // The marker still goes down, so a launcher in a long pause relaunches now.
+      expect(h.files.exists(taskRestartPath(CONFIG, null, WIN))).toBe(true);
+    });
+
+    test("a recorded bridge that has exited already is not a stranger: no kill, the marker, the wait", async () => {
+      const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER } });
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(h.files.exists(taskRestartPath(CONFIG, null, WIN))).toBe(true);
+      expect(h.io.stdout.join("\n")).toContain("the recorded bridge (pid 7200) has exited already");
+      expect(h.io.stderr.join("\n")).not.toContain("not this checkout's bridge");
+    });
+
+    test("a process table that does not answer stops nothing, and says so in its own words", async () => {
+      // The launcher's query, then the bridge's: either one unanswered is the same refusal.
+      for (const psUnknown of [[7100], [7200]]) {
+        const h = running({ psUnknown });
+        expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+        expect(h.exec.killed).toEqual([]);
+        expect(schtasks(h)).toEqual([]);
+        expect(h.files.exists(taskRestartPath(CONFIG, null, WIN))).toBe(false);
+        const said = h.io.stderr.join("\n");
+        expect(said).toContain("could not read the Windows process table (PowerShell did not answer within 60s); nothing was stopped");
+        // Not the stranger's sentence, and not the wait's.
+        expect(said).not.toContain("not this checkout's bridge");
+        expect(said).not.toContain("did not answer on");
+      }
+    });
+
+    test("the first probe comes only after the killed bridge had a second to go", async () => {
+      const h = running();
+      const order: string[] = [];
+      const kill = h.exec.kill.bind(h.exec);
+      h.exec.kill = (pid) => {
+        order.push(`kill ${pid}`);
+        kill(pid);
+      };
+      h.deps.sleep = (ms) => {
+        order.push(`sleep ${ms}`);
+        return Promise.resolve();
+      };
+      h.deps.ready = () => {
+        order.push("probe");
+        return Promise.resolve(true);
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      expect(order.slice(0, 3)).toEqual(["kill 7200", `sleep ${KILL_SETTLE_MS}`, "probe"]);
+    });
+
+    test("a stale record and a live bridge: the bridge goes only with a `start` right behind it", async () => {
+      // The launcher died (a recycled pid now), so nothing would relaunch a bridge killed on its own.
+      const h = windows({
+        files: { [RECORD]: V2(7100, 7200) },
+        ps: { 7100: "C:\\Windows\\notepad.exe", 7200: OUR_BRIDGE },
+      });
+      const order: string[] = [];
+      const kill = h.exec.kill.bind(h.exec);
+      h.exec.kill = (pid) => {
+        order.push(`kill ${pid}`);
+        kill(pid);
+      };
+      const ask = h.exec.capture.bind(h.exec);
+      h.exec.capture = (tool, args, ...rest) => {
+        if (tool === "schtasks") order.push(`schtasks ${args[0]}`);
+        return ask(tool, args, ...rest);
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      expect(order).toEqual(["schtasks /Change", "schtasks /End", "kill 7200", "schtasks /Create", "schtasks /Run"]);
+      expect(h.exec.killed).not.toContain(7100);
     });
 
     test("a torn or foreign record is no record: restart takes stop + start and kills by the table only", async () => {
@@ -1078,8 +1149,10 @@ describe("the Task Scheduler tier (Windows)", () => {
     test("a probe that throws reads as no answer, not as a crashed restart", async () => {
       const h = running();
       let probes = 0;
+      // Every probe of the wait throws: 29 of them, because the first second is the pause after the
+      // kill. The banner's own probe after the wait answers no.
       h.deps.ready = () => {
-        if (++probes <= 30) throw new Error("connect refused");
+        if (++probes <= 29) throw new Error("connect refused");
         return Promise.resolve(false);
       };
       expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);

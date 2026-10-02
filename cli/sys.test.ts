@@ -15,6 +15,9 @@ import {
   withoutGitRelocators,
   withPathPrefix,
   parseProcessRows,
+  parseWindowsProcessAnswer,
+  POWERSHELL_UTF8,
+  windowsProcessScript,
 } from "./sys.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
@@ -491,5 +494,27 @@ describe("parseProcessRows", () => {
       { pid: 45, command: "/usr/bin/bun run x" },
     ]);
     expect(parseProcessRows("")).toEqual([]);
+  });
+});
+
+describe("the Windows process query", () => {
+  test("asks for UTF-8 first, so a user name outside ASCII comes back as it is on disk", () => {
+    const script = windowsProcessScript(4242);
+    expect(script).toStartWith(POWERSHELL_UTF8);
+    expect(POWERSHELL_UTF8).toContain("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8");
+    expect(script).toContain("-Filter 'ProcessId = 4242'");
+  });
+
+  test("three answers: running with its command line, gone, and anything else unknown", () => {
+    expect(parseWindowsProcessAnswer('running\r\n"C:\\Users\\Jürgen Ö\\collie\\bin\\collie.exe" _exec-bridge\r\n')).toEqual({
+      kind: "running",
+      command: '"C:\\Users\\Jürgen Ö\\collie\\bin\\collie.exe" _exec-bridge',
+    });
+    // A process whose command line Windows does not show still runs: it is not taken for gone.
+    expect(parseWindowsProcessAnswer("running\r\n\r\n")).toEqual({ kind: "running", command: "" });
+    expect(parseWindowsProcessAnswer("gone\r\n")).toEqual({ kind: "gone" });
+    for (const nothing of ["", "Get-CimInstance : Access denied\r\n"]) {
+      expect(parseWindowsProcessAnswer(nothing).kind).toBe("unknown");
+    }
   });
 });

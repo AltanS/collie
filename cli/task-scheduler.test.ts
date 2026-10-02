@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { collieBinary, hostFor } from "../bridge/host.ts";
 import { capture, fakeFiles, fakeLinkFs } from "./fakes.ts";
+import { POWERSHELL_UTF8 } from "./sys.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdSupervise,
@@ -283,6 +284,39 @@ describe("_supervise, the loop", () => {
     expect(l.files.exists(marker)).toBe(false);
   });
 
+  test("a `collie restart` during a long pause relaunches at the next step and starts the ladder again", async () => {
+    // Four crashes put the launcher in a 40 s pause. An update's rollback then runs `collie restart`,
+    // which finds no bridge to kill and writes only the marker. Its health check waits 30 s.
+    const l = launcher([1, 1, 1, 1, 1, 0]);
+    l.deps = { ...l.deps, pauseStepMs: 500 };
+    const marker = taskRestartPath(CONFIG, null, WIN);
+    const sleep = l.deps.sleep;
+    let total = 0;
+    l.deps.sleep = (ms) => {
+      total += ms;
+      // 5 + 10 + 20 s of earlier pauses, then 2 s into the fourth one.
+      if (total === 37_000) l.files.write(marker, formatRestartMarker(l.deps.now()));
+      return sleep(ms);
+    };
+    expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+    expect(l.launched).toHaveLength(6);
+    const steps: number[] = [];
+    for (const ms of l.slept) steps.push((steps.at(-1) ?? 0) + ms);
+    // The fourth pause ends 2 s in, not after 40 s; the fifth starts again at 5 s.
+    expect(steps).toContain(37_000);
+    expect(steps.at(-1)).toBe(37_000 + 5_000);
+    expect(l.notes.join("\n")).toContain("asked for a relaunch during the pause; relaunching now");
+    expect(l.files.exists(marker)).toBe(false);
+  });
+
+  test("before every launch, the asides of the binary it launches are swept", async () => {
+    const l = launcher([0]);
+    const aside = `${BINARY}.old-41-a`;
+    l.files.write(aside, "an old binary nothing runs");
+    expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+    expect(l.files.exists(aside)).toBe(false);
+  });
+
   test("a marker that is too old, or not a time, is consumed and the exit counts as a crash", async () => {
     const marker = taskRestartPath(CONFIG, null, WIN);
     for (const text of [formatRestartMarker(1_000_000 - RESTART_MARKER_TTL_MS - 1), "garbage\n"]) {
@@ -460,7 +494,9 @@ describe("_supervise, the loop", () => {
 describe("the registered task, read back", () => {
   const CONHOST = "C:\\WINDOWS\\system32\\conhost.exe";
   test("the query is one PowerShell line, the task name quoted for it", () => {
-    expect(taskQueryScript("herdr.collie")).toStartWith("$t = Get-ScheduledTask -TaskName 'herdr.collie' -ErrorAction Stop;");
+    expect(taskQueryScript("herdr.collie")).toStartWith(
+      `${POWERSHELL_UTF8}$t = Get-ScheduledTask -TaskName 'herdr.collie' -ErrorAction Stop;`,
+    );
     expect(taskQueryScript("it's")).toContain("-TaskName 'it''s'");
   });
 

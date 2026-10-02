@@ -29,6 +29,7 @@ import {
   STATE,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import { POWERSHELL_UTF8 } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 import {
   configFilePaths,
@@ -1884,7 +1885,8 @@ describe("the config-file finding", () => {
 
 describe("windows-task", () => {
   const WIN = hostFor("win32");
-  const QUERY = "powershell -NoProfile -NonInteractive -Command $t = Get-ScheduledTask";
+  // The query opens with the UTF-8 line (`POWERSHELL_UTF8`), so a non-ASCII path comes back whole.
+  const QUERY = `powershell -NoProfile -NonInteractive -Command ${POWERSHELL_UTF8}$t = Get-ScheduledTask`;
   const BIN = collieBinary(ROOT, WIN);
   const answer = (args: string): Scripted["answers"] => [
     [QUERY, { stdout: `Running\r\nC:\\WINDOWS\\system32\\conhost.exe\r\n${args}\r\n` }],

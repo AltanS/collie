@@ -172,6 +172,13 @@ export interface Exec {
    */
   processCommand(pid: number, timeoutMs?: number): string | null;
   /**
+   * {@link Exec.processCommand} with its three answers kept apart: the process runs (with its
+   * command line, `""` when the table does not show it), there is no such process, or the table
+   * could not be read in time. The Windows restart needs the third: a slow PowerShell is neither a
+   * process that is gone nor a stranger, and each of the three gets its own sentence.
+   */
+  processLookup(pid: number, timeoutMs?: number): ProcessLookup;
+  /**
    * Every running process whose executable is one of `names` (`collie.exe`, `bun.exe`), with its
    * command line, in one query: `Win32_Process` on Windows, `ps` elsewhere. `null` when the process
    * table cannot be read at all. Added for the Task Scheduler tier's `stop`, whose last step makes
@@ -180,6 +187,12 @@ export interface Exec {
   listProcesses(names: readonly string[], timeoutMs?: number): ProcessRow[] | null;
   kill(pid: number): void;
 }
+
+/** {@link Exec.processLookup}'s answer. */
+export type ProcessLookup =
+  | { readonly kind: "running"; readonly command: string }
+  | { readonly kind: "gone" }
+  | { readonly kind: "unknown"; readonly why: string };
 
 /** One row of {@link Exec.listProcesses}. */
 export interface ProcessRow {
@@ -573,7 +586,8 @@ export function realExec(rawEnv: Environment, home: string): Exec {
     },
     processCommand(pid, timeoutMs = PROCESS_QUERY_TIMEOUT_MS) {
       if (process.platform === "win32") {
-        return windowsProcessCommand(resolve("powershell"), pid, env, timeoutMs);
+        const found = windowsProcessLookup(resolve("powershell"), pid, env, timeoutMs);
+        return found.kind === "running" && found.command !== "" ? found.command : null;
       }
       const bin = resolve("ps");
       if (bin === null) return null;
@@ -584,12 +598,20 @@ export function realExec(rawEnv: Environment, home: string): Exec {
       const out = r.stdout.toString().trim();
       return out === "" ? null : out;
     },
+    processLookup(pid, timeoutMs = PROCESS_QUERY_TIMEOUT_MS) {
+      if (process.platform === "win32") return windowsProcessLookup(resolve("powershell"), pid, env, timeoutMs);
+      const bin = resolve("ps");
+      if (bin === null) return { kind: "unknown", why: "ps is not installed" };
+      const r = Bun.spawnSync([bin, "-p", String(pid), "-o", "command="], { env });
+      if (r.exitCode !== 0) return { kind: "gone" };
+      return { kind: "running", command: r.stdout.toString().trim() };
+    },
     listProcesses(names, timeoutMs = PROCESS_QUERY_TIMEOUT_MS) {
       if (process.platform === "win32") {
         const powershell = resolve("powershell");
         if (powershell === null) return null;
         const list = names.map((n) => `'${n.replaceAll("'", "''")}'`).join(",");
-        const query = `Get-CimInstance Win32_Process | Where-Object { @(${list}) -contains $_.Name } | ForEach-Object { [string]$_.ProcessId + ' ' + $_.CommandLine }`;
+        const query = `${POWERSHELL_UTF8}Get-CimInstance Win32_Process | Where-Object { @(${list}) -contains $_.Name } | ForEach-Object { [string]$_.ProcessId + ' ' + $_.CommandLine }`;
         const r = Bun.spawnSync([powershell, "-NoProfile", "-NonInteractive", "-Command", query], { env, timeout: timeoutMs });
         return r.exitCode === 0 ? parseProcessRows(r.stdout.toString()) : null;
       }
@@ -611,27 +633,54 @@ export function realExec(rawEnv: Environment, home: string): Exec {
 }
 
 /**
- * {@link Exec.processCommand} on Windows, where there is no `ps` that takes `-o` (Git's MSYS `ps`
- * does not), so the answer was always null and no recorded pid could ever be recognised. Asked
- * through `Win32_Process`, as the community Windows script asked it. Windows PowerShell can
- * take tens of seconds to start under Task Scheduler, so the caller picks the bound: see
- * {@link Exec.processCommand}.
+ * The first statement of every PowerShell query whose output Collie reads back. Windows PowerShell
+ * writes to a pipe in the OEM code page, so a path with a letter outside ASCII (a user name such as
+ * `Jürgen`) came back changed, and the identity check then failed on this install's own process.
+ * UTF-8 is what Bun decodes. In a `try`: a PowerShell with no console at all refuses the setting,
+ * and its answer is then no worse than before.
  */
-function windowsProcessCommand(
+export const POWERSHELL_UTF8 = "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}; ";
+
+/**
+ * The PowerShell that asks `Win32_Process` about one pid. The first line is `running` or `gone`, so a
+ * process whose command line Windows does not show is not taken for one that has exited; the
+ * command line follows on the second line.
+ */
+export function windowsProcessScript(pid: number): string {
+  return `${POWERSHELL_UTF8}$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}'; if ($null -eq $p) { 'gone' } else { 'running'; [string]$p.CommandLine }`;
+}
+
+/** {@link windowsProcessScript}'s output, read back. Anything else is `unknown`, never a guess. */
+export function parseWindowsProcessAnswer(stdout: string): ProcessLookup {
+  const [first = "", ...rest] = stdout.split(/\r?\n/);
+  if (first.trim() === "gone") return { kind: "gone" };
+  if (first.trim() === "running") return { kind: "running", command: rest.join(" ").trim() };
+  return { kind: "unknown", why: "the process query printed no answer" };
+}
+
+/**
+ * {@link Exec.processLookup} on Windows, where there is no `ps` that takes `-o` (Git's MSYS `ps`
+ * does not). Asked through `Win32_Process`, as the community Windows script asked it. Windows
+ * PowerShell can take tens of seconds to start under Task Scheduler, so the caller picks the bound,
+ * and a query past it is `unknown`, never `gone`: see {@link Exec.processCommand}.
+ */
+function windowsProcessLookup(
   powershell: string | null,
   pid: number,
   env: Environment,
   timeoutMs: number,
-): string | null {
-  if (powershell === null || !Number.isInteger(pid) || pid <= 0) return null;
-  const query = `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`;
-  const r = Bun.spawnSync([powershell, "-NoProfile", "-NonInteractive", "-Command", query], {
+): ProcessLookup {
+  if (!Number.isInteger(pid) || pid <= 0) return { kind: "gone" };
+  if (powershell === null) return { kind: "unknown", why: "PowerShell is not on PATH" };
+  const r = Bun.spawnSync([powershell, "-NoProfile", "-NonInteractive", "-Command", windowsProcessScript(pid)], {
     env,
     timeout: timeoutMs,
   });
-  if (r.exitCode !== 0) return null;
-  const out = r.stdout.toString().trim();
-  return out === "" ? null : out;
+  if (r.exitedDueToTimeout === true) {
+    return { kind: "unknown", why: `PowerShell did not answer within ${Math.round(timeoutMs / 1000)}s` };
+  }
+  if (r.exitCode !== 0) return { kind: "unknown", why: `PowerShell exited ${r.exitCode ?? "on a signal"}` };
+  return parseWindowsProcessAnswer(r.stdout.toString());
 }
 
 /**

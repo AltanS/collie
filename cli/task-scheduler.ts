@@ -2,10 +2,11 @@ import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
+import { sweepAsides } from "./build.ts";
 import { instanceSuffix } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
-import { type Exec, type Files, PROCESS_QUERY_TIMEOUT_MS } from "./sys.ts";
+import { type Exec, type Files, POWERSHELL_UTF8, PROCESS_QUERY_TIMEOUT_MS } from "./sys.ts";
 import { logFileName } from "./unit.ts";
 
 // WINDOWS: THE TASK SCHEDULER SUPERVISOR'S OWN PIECES (M43 spec 05).
@@ -210,9 +211,9 @@ export interface TaskQuery {
 /** Who the registered task belongs to. */
 export type TaskOwner = "collie" | "legacy" | "foreign";
 
-/** The PowerShell that reads one task: three lines, state, command, arguments. */
+/** The PowerShell that reads one task: three lines, state, command, arguments, in UTF-8 (see {@link POWERSHELL_UTF8}). */
 export function taskQueryScript(name: string): string {
-  return `$t = Get-ScheduledTask -TaskName '${name.replaceAll("'", "''")}' -ErrorAction Stop; $a = @($t.Actions)[0]; [string]$t.State; [string]$a.Execute; [string]$a.Arguments`;
+  return `${POWERSHELL_UTF8}$t = Get-ScheduledTask -TaskName '${name.replaceAll("'", "''")}' -ErrorAction Stop; $a = @($t.Actions)[0]; [string]$t.State; [string]$a.Execute; [string]$a.Arguments`;
 }
 
 /** The three lines {@link taskQueryScript} prints, read back. `null` when there is no state line. */
@@ -260,6 +261,8 @@ export const RELAUNCH_DELAY_MIN_MS = 5_000;
 export const RELAUNCH_DELAY_MAX_MS = 60_000;
 /** How long a bridge must have lived for its failure to count as a fresh one, not part of a crash loop. */
 export const HEALTHY_RUN_MS = 60_000;
+/** The step the real launcher sleeps its pause in, so a restart marker is seen within half a second. */
+export const PAUSE_STEP_MS = 500;
 
 /** One bridge the launcher started. */
 export interface LaunchedBridge {
@@ -278,6 +281,11 @@ export interface SuperviseDeps {
   readonly pid: number;
   readonly env: Readonly<Record<string, string>>;
   sleep(ms: number): Promise<void>;
+  /**
+   * The pause before a relaunch is slept in steps of this many milliseconds, and the restart marker is
+   * read after each one (see {@link cmdSupervise}). Absent: one sleep for the whole pause.
+   */
+  readonly pauseStepMs?: number;
   /** Milliseconds since the epoch: how long a bridge lived decides the next pause. */
   now(): number;
   /** Start the bridge, both streams appended to `logPath`. `null` when it never started. */
@@ -435,15 +443,32 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   const logPath = deps.host.path.join(configDir, logFileName(instance));
 
   let delay = RELAUNCH_DELAY_MIN_MS;
+  // The pause is slept in steps, and the restart marker is read after each one. A `collie restart`
+  // that arrives during a long pause then relaunches at once and starts the ladder again. Without
+  // this, an update that rolls back from a bridge that crashed on start found the launcher in a pause
+  // of up to a minute, longer than the rollback's own health check waits.
   const pause = async (): Promise<void> => {
-    await deps.sleep(delay);
+    let left = delay;
     delay = Math.min(delay * 2, RELAUNCH_DELAY_MAX_MS);
+    while (left > 0) {
+      const step = Math.min(deps.pauseStepMs ?? left, left);
+      await deps.sleep(step);
+      left -= step;
+      if (restartRequested(deps, restartMarker)) {
+        delay = RELAUNCH_DELAY_MIN_MS;
+        deps.note(logPath, "`collie restart` asked for a relaunch during the pause; relaunching now");
+        return;
+      }
+    }
   };
   for (;;) {
     await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, 0));
     const healed = healCurrent(root, deps);
     if (healed !== null) deps.note(logPath, healed);
     const at = launchRoot(root, deps.link, deps.host);
+    // A rebuilt checkout leaves its old binary aside while an old process still runs it
+    // (`swapBinary`). The bridge that ran it is gone by now, so its aside goes before the next launch.
+    sweepAsides(deps.files, collieBinary(at, deps.host), deps.host);
     const command = [collieBinary(at, deps.host), "_exec-bridge", ...(instance === null ? [] : ["--instance", instance])];
     const env = { ...deps.env, ...parsed.env, COLLIE_PLUGIN_ROOT: at };
     // The exact program, every time: on a binary install the path names a version folder, and this
@@ -490,6 +515,7 @@ export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" 
     pid: process.pid,
     env,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    pauseStepMs: PAUSE_STEP_MS,
     now: () => Date.now(),
     launch(command, opts) {
       const [program, ...rest] = command;

@@ -111,6 +111,8 @@ export interface Scripted {
   answers?: [prefix: string, answer: Partial<ExecResult> | PerCallAnswer][];
   /** The process table, for `ps -p <pid> -o command=`. */
   ps?: Record<number, string>;
+  /** Pids whose {@link Exec.processLookup} cannot be answered: a process table that did not answer in time. */
+  psUnknown?: number[];
   /** pid handed back by a detached spawn. */
   spawnPid?: number | null;
   /**
@@ -213,6 +215,14 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
     processCommand: (pid, timeoutMs) => {
       probed.push(timeoutMs === undefined ? { pid } : { pid, timeoutMs });
       return scripted.ps?.[pid] ?? null;
+    },
+    // The same table, three answers: a scripted row runs, a `psUnknown` pid cannot be asked about,
+    // and anything else is gone. Recorded in `probed` like `processCommand`, for the same bound checks.
+    processLookup: (pid, timeoutMs) => {
+      probed.push(timeoutMs === undefined ? { pid } : { pid, timeoutMs });
+      if (scripted.psUnknown?.includes(pid) === true) return { kind: "unknown", why: "PowerShell did not answer within 60s" };
+      const command = scripted.ps?.[pid];
+      return command === undefined ? { kind: "gone" } : { kind: "running", command };
     },
     // The scripted process table, minus what this fake has killed, and only the rows whose command
     // names one of the executables asked for: a killed process is gone from the next listing.

@@ -635,6 +635,19 @@ function removeTaskScheduler(deps: LifecycleDeps): void {
   deps.files.remove(taskRecordPath(deps.ctx.configDir, deps.ctx.instance, deps.host));
 }
 
+/** How long `restart` lets a killed bridge go before it asks whether the new one answers. */
+export const KILL_SETTLE_MS = 1_000;
+
+/**
+ * The process table did not answer, so nothing can be identified, and nothing is stopped. Its own
+ * sentence: neither "not this checkout's bridge" nor "did not answer on the port" is true here.
+ */
+function tableUnreadable(deps: LifecycleDeps, why: string): number {
+  deps.io.err(`error: could not read the Windows process table (${why}); nothing was stopped`);
+  deps.io.err("       run `collie restart` again in a minute");
+  return EXIT.FAIL;
+}
+
 /**
  * Restart the bridge the launcher supervises, by killing the bridge process ALONE and letting the
  * launcher's loop relaunch it from this install. Ending the task, or killing the launcher with its
@@ -655,25 +668,43 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
     return null;
   }
   const { root, instance } = deps.ctx;
-  const launcher = recordedCommand(deps, record.launcher);
-  if (launcher === null || !isTaskLauncher(launcher, record.format, root, instance, deps.host)) return null;
+  // The launcher must be alive and this install's before anything is killed: it is what brings the
+  // bridge back. A dead or foreign one sends the caller to `stop` + `start`, which registers the task
+  // and starts it, so a stale record never leaves the machine with no bridge at all.
+  const launcher = deps.exec.processLookup(record.launcher, PROCESS_QUERY_SLOW_START_MS);
+  if (launcher.kind === "unknown") return tableUnreadable(deps, launcher.why);
+  if (launcher.kind === "gone" || !isTaskLauncher(launcher.command, record.format, root, instance, deps.host)) return null;
   if (record.format === 1 && registerTask(deps)) {
     deps.io.out("the task now runs Collie's own launcher from the next logon; until then the old one keeps the bridge up");
   }
 
+  // Said to the launcher before the kill: a killed bridge reads as a crash on Windows, and a crash
+  // backs off. Written when no bridge is killed too, so a launcher in its pause relaunches now.
+  const tellLauncher = (): void =>
+    deps.files.write(taskRestartPath(deps.ctx.configDir, deps.ctx.instance, deps.host), formatRestartMarker(Date.now()));
+  let settled = false;
   if (record.bridge > 1) {
-    const bridge = recordedCommand(deps, record.bridge);
-    if (bridge === null || !isTaskBridge(bridge, root, instance, deps.host)) {
+    const bridge = deps.exec.processLookup(record.bridge, PROCESS_QUERY_SLOW_START_MS);
+    if (bridge.kind === "unknown") return tableUnreadable(deps, bridge.why);
+    if (bridge.kind === "running" && !isTaskBridge(bridge.command, root, instance, deps.host)) {
       deps.io.err(`error: the recorded bridge (pid ${record.bridge}) is not this checkout's bridge — not stopping it`);
       deps.io.err("       run `collie stop`, then `collie start`");
       return EXIT.FAIL;
     }
-    // Said to the launcher first: a killed bridge reads as a crash on Windows, and a crash backs off.
-    deps.files.write(taskRestartPath(deps.ctx.configDir, deps.ctx.instance, deps.host), formatRestartMarker(Date.now()));
-    deps.exec.kill(record.bridge);
-    deps.io.out(`bridge stopped (pid ${record.bridge}); the Task Scheduler supervisor relaunches it`);
+    tellLauncher();
+    if (bridge.kind === "running") {
+      deps.exec.kill(record.bridge);
+      deps.io.out(`bridge stopped (pid ${record.bridge}); the Task Scheduler supervisor relaunches it`);
+      // The killed bridge can answer one more probe while Windows tears it down, and that answer
+      // would be taken for the new bridge. This pause is the first second of the wait below.
+      await deps.sleep(KILL_SETTLE_MS);
+      settled = true;
+    } else {
+      deps.io.out(`the recorded bridge (pid ${record.bridge}) has exited already; the Task Scheduler supervisor relaunches it`);
+    }
   } else {
     // `0` is the loop between two launches: the next one already reads this install.
+    tellLauncher();
     deps.io.out("the Task Scheduler supervisor is already relaunching the bridge");
   }
 
@@ -683,7 +714,7 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
   // is waited for here too, and both call the same silence a failure.
   const waitS = Math.max(1, Math.ceil(healthTimeoutMs(deps.ctx.env) / 1000));
   let answered = false;
-  for (let attempt = 0; attempt < waitS && !answered; attempt++) {
+  for (let attempt = settled ? 1 : 0; attempt < waitS && !answered; attempt++) {
     try {
       answered = await deps.ready(deps.ctx.port, dialableBridgeHost(deps.ctx.env));
     } catch {
