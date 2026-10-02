@@ -340,7 +340,7 @@ describe("the Task Scheduler task (Windows)", () => {
     expect(xml).toContain("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>");
     expect(xml).toContain("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>");
     expect(xml).toContain("<StartWhenAvailable>true</StartWhenAvailable>");
-    // The outer net, for the launcher alone: the launcher's loop owns the bridge.
+    // The outer net for a task that fails to start; the launcher's loop owns the bridge.
     expect(xml).toContain("<RestartOnFailure>\n      <Interval>PT1M</Interval>\n      <Count>999</Count>");
   });
 

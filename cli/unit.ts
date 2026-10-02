@@ -239,8 +239,12 @@ ${envEntries}
 // that failed to START, not a program that exits: something Collie owns has to watch the bridge.
 //
 // TWO RESTART LAYERS, AND WHICH ONE WINS. The launcher's loop owns relaunching the bridge: it sees
-// every exit and backs off on its own clock. `RestartOnFailure` (999 tries, one minute apart) is
-// only the outer net, for when the LAUNCHER itself dies or fails to start; it never sees the bridge.
+// every exit and backs off on its own clock. `RestartOnFailure` (999 tries, one minute apart) never
+// sees the bridge, and it is a narrower net than it looks. Measured on the Windows 11 VM on
+// 2026-10-02: a launcher killed by hand takes its bridge with it (a child that is not detached dies
+// with its parent), `conhost` then exits 0, the task reads Ready with result 0, and nothing restarts
+// it in 160 s. So it covers a task that fails to START, not a launcher that dies; that case comes back
+// at the next logon, or with `collie restart` (which sees no live launcher and takes stop + start).
 //
 // THE SETTINGS THAT ARE NOT DEFAULTS, each pinned by `cli/unit.test.ts`:
 //   ExecutionTimeLimit PT0S        the default is 72 hours, after which Task Scheduler silently ends
