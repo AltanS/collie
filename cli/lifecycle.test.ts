@@ -890,6 +890,25 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.io.stdout.join("\n")).toContain("✓ uninstalled");
     });
 
+    test("a binary install prints how to remove its folder and its PATH entry; a checkout does not", async () => {
+      const install = "C:\\Users\\o'neil\\AppData\\Local\\collie";
+      const root = `${install}\\versions\\1.16.0`;
+      const h = windows({ answers: [["schtasks", { code: 1, stderr: "ERROR: The system cannot find the file specified." }]] });
+      h.deps.ctx = { ...h.deps.ctx, root };
+      h.deps.link = fakeLinkFs({ [`${install}\\current`]: { kind: "symlink", target: root } });
+      expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.slice(-3)).toEqual([
+        "  To remove Collie itself too, run these two lines in PowerShell:",
+        `    cmd /c rmdir /s /q "${install}"`,
+        "    $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); $k.SetValue('Path', (($k.GetValue('Path', '', 'DoNotExpandEnvironmentNames') -split ';' | Where-Object { $_.TrimEnd('\\') -ne 'C:\\Users\\o''neil\\AppData\\Local\\collie\\current\\bin' }) -join ';'), $k.GetValueKind('Path')); $k.Close()",
+      ]);
+
+      const checkout = windows({ answers: [["schtasks", { code: 1, stderr: "ERROR: The system cannot find the file specified." }]] });
+      checkout.deps.link = fakeLinkFs();
+      expect(await cmdUninstall(checkout.deps)).toBe(EXIT.OK);
+      expect(checkout.io.stdout.join("\n")).not.toContain("rmdir");
+    });
+
     test("an install that never registered a task still uninstalls cleanly", async () => {
       const h = windows({ answers: [["schtasks", { code: 1, stderr: "ERROR: The system cannot find the file specified." }]] });
       expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
@@ -1424,6 +1443,25 @@ describe("uninstall", () => {
     expect(h.files.exists(`${CONFIG}/.env`)).toBe(true);
     expect(h.io.stdout.join("\n")).toContain("✓ uninstalled:");
     expect(h.io.stdout.join("\n")).toContain(`kept: ${join(CONFIG, ".env")} and the checkout`);
+  });
+
+  test("on Linux and macOS a binary install's uninstall output is exactly what it was", async () => {
+    for (const host of [hostFor("linux"), hostFor("darwin")]) {
+      const run = async (binary: boolean): Promise<string[]> => {
+        const h = harness({ answers: host.platform === "darwin" ? NO_SYSTEMD : [], host });
+        if (binary) {
+          const root = "/home/pat/.local/share/collie/versions/1.16.0";
+          h.deps.ctx = { ...h.deps.ctx, root };
+          h.deps.link = fakeLinkFs({ "/home/pat/.local/share/collie/current": { kind: "symlink", target: "versions/1.16.0" } });
+        }
+        expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
+        return h.io.stdout.map((l) => l.replace(/\/home\/pat\/\.local\/share\/collie\/versions\/1\.16\.0/g, "<root>"));
+      };
+      const plain = await run(false);
+      expect(await run(true)).toEqual(plain);
+      expect(plain.at(-1)).toContain("kept: ");
+      expect(plain.join("\n")).not.toContain("rmdir");
+    }
   });
 
   test("on launchd: the plist goes, then `enable` clears the disable record a reinstall would inherit", async () => {

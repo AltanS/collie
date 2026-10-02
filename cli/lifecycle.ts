@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Host } from "../bridge/host.ts";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
-import { publishedRoot } from "./install-kind.ts";
+import { binaryLayout, publishedRoot } from "./install-kind.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
 import { ensureMuxChosen } from "./mux.ts";
@@ -914,7 +914,31 @@ export async function cmdUninstall(deps: LifecycleDeps): Promise<number> {
   deps.io.out(
     `  kept: ${join(deps.ctx.configDir, ".env")} and the checkout — delete those to remove every trace`,
   );
+  for (const line of windowsBinaryRemoval(deps)) deps.io.out(line);
   return EXIT.OK;
+}
+
+/**
+ * A Windows binary install (`scripts/install.ps1`) keeps its folder and its user PATH entry after
+ * `uninstall`, as every install keeps its files. These lines say how to remove both, and are printed
+ * there only: anywhere else the list is empty, so the Linux and macOS output stays as it was.
+ *
+ * The folder goes with `rmdir /s`, which removes the `current` junction by itself and never walks
+ * through it. The PATH entry goes through the registry, so the value keeps its type
+ * (REG_EXPAND_SZ) and every other entry byte for byte; `[Environment]::SetEnvironmentVariable`
+ * would store REG_SZ and expand the rest.
+ */
+export function windowsBinaryRemoval(deps: Pick<LifecycleDeps, "ctx" | "host" | "link">): string[] {
+  if (deps.host.platform !== "win32" || deps.link === undefined) return [];
+  if (publishedRoot(deps.ctx.root, deps.link, deps.host) === deps.ctx.root) return [];
+  const installRoot = binaryLayout(deps.ctx.root, deps.host).installRoot;
+  const bin = deps.host.path.join(installRoot, "current", "bin");
+  const quoted = bin.replaceAll("'", "''");
+  return [
+    "  To remove Collie itself too, run these two lines in PowerShell:",
+    `    cmd /c rmdir /s /q "${installRoot}"`,
+    `    $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); $k.SetValue('Path', (($k.GetValue('Path', '', 'DoNotExpandEnvironmentNames') -split ';' | Where-Object { $_.TrimEnd('\\') -ne '${quoted}' }) -join ';'), $k.GetValueKind('Path')); $k.Close()`,
+  ];
 }
 
 export async function cmdRestart(deps: LifecycleDeps): Promise<number> {
