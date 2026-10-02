@@ -878,7 +878,9 @@ describe("resolveBlobPath", () => {
     await Bun.write(blobFile, "pretend image data");
 
     const resolved = await resolveBlobPath(hash, [sessionsDir]);
-    expect(resolved).toBe(blobFile);
+    // The resolver answers with the real path. On a Windows runner `tmpdir()` is an 8.3 short name
+    // (`RUNNER~1`), so the expected value has to be the real path too.
+    expect(resolved).toBe(await realpath(blobFile));
 
     // Refuses when not present
     const otherHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
