@@ -1,4 +1,5 @@
 import { normaliseBasePath } from "../bridge/config.ts";
+import type { Host } from "../bridge/host.ts";
 import { type OpsRecord, CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { emptyConfigLayer } from "../bridge/config-source.ts";
 import type { CliContext, Environment } from "./context.ts";
@@ -24,10 +25,12 @@ export const STATE = "/state";
 /**
  * The key a fake filesystem stores a path under: POSIX, no drive. On Windows `join` and `resolve`
  * return `C:\opt\collie\bin\collie`; the fakes model a POSIX box, so that folds back to
- * `/opt/collie/bin/collie`. The platform is a parameter so Linux CI pins the Windows branch.
+ * `/opt/collie/bin/collie`. Without a host the fold always runs, because a test that pins a Windows
+ * host on Linux hands the fakes Windows spellings too. Pass a host to ask what that host would do:
+ * only `win32` folds.
  */
-export function posixKey(p: string, platform: NodeJS.Platform = process.platform): string {
-  return platform === "win32" ? p.replace(/^[A-Za-z]:/, "").replaceAll("\\", "/") : p;
+export function posixKey(p: string, host?: Host): string {
+  return host === undefined || host.platform === "win32" ? p.replace(/^[A-Za-z]:/, "").replaceAll("\\", "/") : p;
 }
 
 /** A map that folds its keys with {@link posixKey}, so a test may name a path in either spelling. */

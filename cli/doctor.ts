@@ -10,6 +10,7 @@ import {
   resolveHookCommand,
   type HookTarget,
 } from "./hooks.ts";
+import { HOST, type Host } from "../bridge/host.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
 import { DEFAULT_PORT, envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
@@ -127,6 +128,8 @@ export interface DoctorDeps {
    */
   readonly beacons: BeaconSweepDeps;
   readonly now: () => number;
+  /** The path rules and binary name this run judges the install by (`bridge/host.ts`). */
+  readonly host: Host;
   /**
    * The terminal renderer, when this run landed on one (`cli/render.ts`). Absent — which is what
    * every test and every piped run sees — means the plain lines below, unchanged.
@@ -431,7 +434,7 @@ function webDist(deps: DoctorDeps): Finding {
  */
 function pathLink(deps: DoctorDeps): Finding {
   const at = linkPath(deps.ctx.home);
-  const own = publishedBinary(deps.ctx.root, deps.link);
+  const own = publishedBinary(deps.ctx.root, deps.link, deps.host);
   const verdict = classifyLink(deps.link.probe(at), own);
   switch (verdict.action) {
     case "create":
@@ -477,7 +480,7 @@ function pathLink(deps: DoctorDeps): Finding {
  * as "no PATH name points at it" rather than claimed.
  */
 function packageSymlink(deps: DoctorDeps): string | null {
-  const own = collieBinary(deps.ctx.root);
+  const own = collieBinary(deps.ctx.root, deps.host);
   const candidates = ["/usr/bin/collie", "/usr/local/bin/collie", "/opt/homebrew/bin/collie", linkPath(deps.ctx.home)];
   for (const at of candidates) {
     const probe = deps.link.probe(at);
@@ -491,7 +494,7 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
   const version = collieVersionBare(root, (p) => deps.files.read(p));
   switch (install.kind) {
     case "binary": {
-      const layout = binaryLayout(root);
+      const layout = binaryLayout(root, deps.host);
       const kept = deps.files.list(layout.versionsDir).filter((v) => v !== layout.version).length;
       return ok(
         "install",
@@ -503,7 +506,7 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
       if (isStagedCheckout(deps, root)) {
         // The normal shape since M15/02: a git WORKTREE of a release tag, under this install's own
         // `versions/`, with `current` beside it. Both signals are true here on purpose.
-        const layout = binaryLayout(root);
+        const layout = binaryLayout(root, deps.host);
         return ok(
           "install",
           `staged checkout, version ${layout.version} at ${layout.installRoot} (worktree of ${root})`,
@@ -546,7 +549,7 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
       if (install.why === "orphan-layout") {
         return warn(
           "install",
-          `binary layout with no \`current\` symlink (${binaryLayout(root).installRoot})`,
+          `binary layout with no \`current\` symlink (${binaryLayout(root, deps.host).installRoot})`,
           "reinstall: curl -fsSL https://colliepwa.dev/install.sh | sh",
         );
       }
@@ -614,7 +617,7 @@ function versionsLayout(deps: DoctorDeps, install: InstallKind): Finding {
     return ok("versions", `in place at ${root} — no versions/ layout yet; the next \`collie update\` stages one`);
   }
   const kind = staged ? "checkout" : "binary";
-  const layout = binaryLayout(root);
+  const layout = binaryLayout(root, deps.host);
   const versions = listVersions(deps, layout, kind);
   const at = currentVersionDir(deps, layout);
   const live = versions.find((v) => v.dir === at);
@@ -721,7 +724,7 @@ function updateSource(deps: DoctorDeps, install: InstallKind): Finding {
 function quarantine(deps: DoctorDeps, install: InstallKind): Finding[] {
   if (install.kind !== "binary") return [];
   if (deps.exec.which("xattr") === null) return [];
-  const binary = join(binaryLayout(deps.ctx.root).currentLink, "bin", "collie");
+  const binary = collieBinary(binaryLayout(deps.ctx.root, deps.host).currentLink, deps.host);
   const r = deps.exec.capture("xattr", ["-p", "com.apple.quarantine", binary]);
   if (!r.found || r.code !== 0) return [];
   return [
@@ -1139,7 +1142,7 @@ function restartPending(
   }
   const own = bridgeRestartVerdict(read);
   if (own !== null) {
-    const binary = collieBinary(deps.ctx.root);
+    const binary = collieBinary(deps.ctx.root, deps.host);
     if (own.restartNeeded) {
       return warn(
         "restart-pending",
@@ -1161,7 +1164,7 @@ function restartPending(
   }
   const pid = bridgePid(deps, marker);
   const evidence = exeEvidence(deps, pid, marker);
-  const installed = exePathOf(evidence.exeLink) ?? collieBinary(deps.ctx.root);
+  const installed = exePathOf(evidence.exeLink) ?? collieBinary(deps.ctx.root, deps.host);
   switch (classifyExe(evidence)) {
     case "replaced":
       return warn(
@@ -1224,7 +1227,7 @@ function exeEvidence(deps: DoctorDeps, pid: number | null, marker: CrewRuntimeMa
   }
   const procExe = `/proc/${String(pid)}/exe`;
   const exeLink = deps.files.readlink(procExe);
-  const installedPath = exePathOf(exeLink) ?? collieBinary(deps.ctx.root);
+  const installedPath = exePathOf(exeLink) ?? collieBinary(deps.ctx.root, deps.host);
   const installed = deps.files.stat(installedPath);
   return {
     exeLink,
@@ -1892,8 +1895,10 @@ export function doctorDeps(base: {
   exec: Exec;
   files: Files;
   ui?: Ui | null;
+  host?: Host;
 }): DoctorDeps {
   return {
+    host: HOST,
     ...base,
     link: realLinkFs,
     store: new TrustStore(base.ctx.stateDir),

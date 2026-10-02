@@ -3,6 +3,7 @@ import { delimiter, join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
+import { HOST } from "../bridge/host.ts";
 import { markerFor } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
@@ -210,6 +211,7 @@ function harness(
       // As in cli/crew.test.ts: the peer client races the fake fetch against a REAL timer, so the
       // budget is set far above anything this process could stall for.
       ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...over.env }, contextOver(over)),
+      host: HOST,
       io: out,
       exec,
       files,

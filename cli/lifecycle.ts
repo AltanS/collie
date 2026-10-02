@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import type { Host } from "../bridge/host.ts";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -49,7 +50,7 @@ export interface LifecycleDeps extends ServeDeps {
   ready: (port: number, host: string) => Promise<boolean>;
   sleep: (ms: number) => Promise<void>;
   uid: () => number;
-  platform: NodeJS.Platform;
+  host: Host;
   /**
    * Publish the front door — `cmdServe` in production (wired in cli/main.ts). It stays a seam
    * because what `start` is asserted on here is its TOLERANCE of a front door that won't come up
@@ -132,14 +133,14 @@ export function systemdUserReachable(exec: Exec, env: Environment = {}): boolean
  */
 export function supervisionTier(
   exec: Exec,
-  platform: NodeJS.Platform,
+  host: Host,
   env: Environment = {},
 ): Tier {
   const pinned = env.COLLIE_SUPERVISOR?.trim();
   const named = TIERS.find((tier) => tier === pinned);
   if (named !== undefined) return named;
   if (systemdUserReachable(exec, env)) return "systemd";
-  if (platform === "darwin" && exec.which("launchctl") !== null) return "launchd";
+  if (host.platform === "darwin" && exec.which("launchctl") !== null) return "launchd";
   return "unsupervised";
 }
 
@@ -221,7 +222,7 @@ export function stopPidfileProcess(deps: LifecycleDeps): void {
     const pid = Number(text);
     if (pid > 1) {
       const command = deps.exec.processCommand(pid);
-      if (command !== null && isOurBridge(command, collieBinary(deps.ctx.root, deps.platform), deps.ctx.instance)) {
+      if (command !== null && isOurBridge(command, collieBinary(deps.ctx.root, deps.host), deps.ctx.instance)) {
         deps.exec.kill(pid);
       }
     }
@@ -257,7 +258,7 @@ const windowsPathKey = (s: string): string => s.replaceAll("\\", "/").toLowerCas
  * host without the community lifecycle behaves exactly as before.
  */
 export async function restartWindowsSupervised(deps: LifecycleDeps): Promise<number | null> {
-  if (deps.platform !== "win32") return null;
+  if (deps.host.platform !== "win32") return null;
   const raw = deps.files.read(windowsProcessRecordPath(deps.ctx.configDir));
   if (raw === null) return null;
 
@@ -320,7 +321,7 @@ export async function restartWindowsSupervised(deps: LifecycleDeps): Promise<num
  * contract: say so, and exit non-zero, rather than installing a unit that can never start.
  */
 function requireBinary(deps: LifecycleDeps): boolean {
-  const binary = collieBinary(deps.ctx.root, deps.platform);
+  const binary = collieBinary(deps.ctx.root, deps.host);
   if (deps.files.exists(binary)) return true;
   deps.io.err(`error: no collie binary at ${binary} — build one with \`bun run build:cli\``);
   return false;
@@ -368,7 +369,7 @@ export function resolveTailscaleHosts(deps: LifecycleDeps): string {
 
 export function writeUnit(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.host);
   deps.files.mkdirp(deps.ctx.configDir);
   deps.files.write(unitFilePath(deps.ctx.home, deps.ctx.instance), systemdUnit(spec));
   deps.exec.capture("systemctl", ["--user", "daemon-reload"]);
@@ -377,7 +378,7 @@ export function writeUnit(deps: LifecycleDeps): boolean {
 
 export function writeAgent(deps: LifecycleDeps): boolean {
   if (!requireBinary(deps)) return false;
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.host);
   deps.files.mkdirp(deps.ctx.configDir);
   deps.files.write(
     agentFilePath(deps.ctx.home, deps.ctx.instance),
@@ -397,7 +398,7 @@ export function writeAgent(deps: LifecycleDeps): boolean {
  */
 export function startUnsupervised(deps: LifecycleDeps): number {
   if (!requireBinary(deps)) return EXIT.FAIL;
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.host);
   deps.files.mkdirp(deps.ctx.configDir);
   const pid = deps.exec.spawnDetached(bridgeCommand(spec), {
     cwd: deps.ctx.root,
@@ -481,7 +482,7 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
   // The lazy first build. It warns rather than fails: a host whose UI won't build still gets its
   // API, and the 503 is legible where a refused `start` is not.
   ensureBuild(deps);
-  const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
+  const tier = supervisionTier(deps.exec, deps.host, deps.ctx.env);
   const started =
     tier === "systemd"
       ? startSystemd(deps)
@@ -503,7 +504,7 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
 }
 
 export function cmdStop(deps: LifecycleDeps): number {
-  const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
+  const tier = supervisionTier(deps.exec, deps.host, deps.ctx.env);
   if (tier === "systemd") {
     deps.exec.capture("systemctl", ["--user", "disable", "--now", unitName(deps.ctx.instance)]);
   } else if (tier === "launchd") {
@@ -537,7 +538,7 @@ export function cmdUninstall(deps: LifecycleDeps): number {
   const unserved = cmdUnserve(deps);
   if (unserved !== EXIT.OK) return unserved;
 
-  const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
+  const tier = supervisionTier(deps.exec, deps.host, deps.ctx.env);
   if (tier === "systemd") {
     deps.files.remove(unitFilePath(deps.ctx.home, deps.ctx.instance));
     deps.exec.capture("systemctl", ["--user", "daemon-reload"]);
@@ -604,7 +605,7 @@ export function cmdUrl(deps: LifecycleDeps): number {
 export function cmdLogs(deps: LifecycleDeps, args: readonly string[]): number {
   const raw = args[0];
   const lines = raw !== undefined && /^\d+$/.test(raw) ? Number(raw) : 50;
-  if (supervisionTier(deps.exec, deps.platform, deps.ctx.env) === "systemd") {
+  if (supervisionTier(deps.exec, deps.host, deps.ctx.env) === "systemd") {
     const r = deps.exec.inherit("journalctl", [
       "--user",
       "-u",
@@ -643,7 +644,7 @@ export function cmdLogs(deps: LifecycleDeps, args: readonly string[]): number {
 export async function cmdExecBridge(deps: LifecycleDeps): Promise<number> {
   // Discovered here as well as at write time: an unsupervised or hand-written unit carries no baked
   // allowlist, and a MagicDNS name can change under a unit that was written months ago.
-  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.platform);
+  const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.host);
   const env = { ...stringEnv(deps.ctx.env), ...bridgeEnvironment(spec) };
   for (const [k, v] of Object.entries(env)) process.env[k] = v;
   await import("../bridge/index.ts");
@@ -672,7 +673,7 @@ function launchdServiceDescriptions(deps: LifecycleDeps): string[] {
 
 /** How the bridge is supervised right now, as the banner's `service` line says it. */
 export function serviceDescription(deps: LifecycleDeps): string {
-  const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
+  const tier = supervisionTier(deps.exec, deps.host, deps.ctx.env);
   if (tier === "systemd") {
     const unit = unitName(deps.ctx.instance);
     const r = deps.exec.capture("systemctl", ["--user", "is-active", unit]);

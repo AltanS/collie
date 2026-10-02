@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import type { CliContext, EnvVars } from "./context.ts";
 import { instanceSuffix, PLUGIN_ID } from "./context.ts";
 
@@ -58,25 +59,17 @@ export interface ServiceSpec {
 }
 
 /**
- * Where the compiled binary lives relative to its checkout — the one place that layout is written
- * down. The bridge imports it too, because it gates and spawns the update action on the same file.
- *
- * On Windows the file is `bin/collie.exe`: Bun's compiler appends the extension, and an existence
- * check on the bare name is never true there. That failed `requireBinary()` on every restart, made
- * `installIsIntact()` rebuild on every update, and kept the bridge's update action (and so the
- * phone's Update button) off. Spawning the bare name still resolves, so the callers that only
- * launch it never noticed. `platform` defaults to the host's and is injected in tests, so the
- * Windows spelling is pinned on Linux CI.
+ * Where the compiled binary lives relative to its checkout: `bin/collie`, and `bin/collie.exe` on
+ * Windows. The layout is written once, in `bridge/host.ts`, and the bridge imports it too, because it
+ * gates and spawns the update action on the same file.
  */
-export function collieBinary(root: string, platform: string = process.platform): string {
-  return join(root, "bin", platform === "win32" ? "collie.exe" : "collie");
-}
+export { collieBinary };
 
-export function serviceSpec(ctx: CliContext, tailscaleHosts = "", platform: string = process.platform): ServiceSpec {
+export function serviceSpec(ctx: CliContext, tailscaleHosts = "", host: Host = HOST): ServiceSpec {
   return {
     root: ctx.root,
     instance: ctx.instance,
-    binary: collieBinary(ctx.root, platform),
+    binary: collieBinary(ctx.root, host),
     configDir: ctx.configDir,
     socket: ctx.socket,
     port: ctx.port,

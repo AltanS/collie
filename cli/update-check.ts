@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { HOST, type Host } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
@@ -132,7 +133,7 @@ export interface UpdateCheckDeps {
   readonly link: LinkReader;
   /** The one anonymous HTTPS GET the binary path makes (the tags endpoint). No test reaches it. */
   readonly net: Net;
-  readonly platform: NodeJS.Platform;
+  readonly host: Host;
   /**
    * The trust store, narrowed to the ONE method this verb calls. A `TrustStore` is assignable, and
    * nothing wider is — so the read-only contract is a type here rather than a promise in a comment.
@@ -317,8 +318,8 @@ export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck
 }
 
 /** The directory whose free space matters — the install root on a binary install, else the checkout. */
-export function diskRoot(ctx: CliContext, install: InstallKind): string {
-  return install.kind === "binary" ? binaryLayout(ctx.root).installRoot : ctx.root;
+export function diskRoot(ctx: CliContext, install: InstallKind, host: Host = HOST): string {
+  return install.kind === "binary" ? binaryLayout(ctx.root, host).installRoot : ctx.root;
 }
 
 /**
@@ -341,7 +342,7 @@ const gib = (kb: number): string => `${(kb / 1024 / 1024).toFixed(1)} GB`;
 
 /** Free space at the install root, against the floor a staged build needs. */
 export function diskCheck(deps: UpdateCheckDeps, install: InstallKind): PreflightCheck {
-  const dir = diskRoot(deps.ctx, install);
+  const dir = diskRoot(deps.ctx, install, deps.host);
   const r = deps.exec.capture("df", ["-Pk", dir]);
   const kb = r.found && r.code === 0 ? parseDfAvailableKb(r.stdout) : null;
   if (kb === null) {
@@ -621,7 +622,7 @@ async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: strin
  * unit restarts fine — it is "is there something here for the restart to act on".
  */
 export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
-  const tier = supervisionTier(deps.exec, deps.platform, deps.ctx.env);
+  const tier = supervisionTier(deps.exec, deps.host, deps.ctx.env);
   if (tier === "launchd") {
     const plist = agentFilePath(deps.ctx.home, deps.ctx.instance);
     return deps.files.exists(plist)
@@ -1050,7 +1051,7 @@ export function updateCheckDeps(io: Io): UpdateCheckDeps {
     files: realFiles,
     link: realLinkFs,
     net: realNet(githubCredential(ctx.env)),
-    platform: process.platform,
+    host: HOST,
     store: new TrustStore(ctx.stateDir),
     ops: new CrewOpsStore(ctx.stateDir),
     remote: (host) => sshRunner(host, ctx.env, ctx.home),

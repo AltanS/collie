@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { DEFAULT_PORT, defaultSocketPath, normaliseBasePath, resolveStateDir } from "../bridge/config.ts";
+import { HOST } from "../bridge/host.ts";
 import {
   configFilePaths,
   overlayConfig,
@@ -367,7 +368,7 @@ export function deriveSettings(
     serveMode: mode === "http" ? "http" : "https",
     servePort: effectiveServePort(env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
-    socket: env.HERDR_SOCKET_PATH?.trim() || defaultSocketPath(process.platform, env, home),
+    socket: env.HERDR_SOCKET_PATH?.trim() || defaultSocketPath(HOST, env, home),
   };
 }
 

@@ -1,5 +1,7 @@
 import { accessSync, constants } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
+
+import { HOST, type Host } from "./host.ts";
 
 // Finding an external tool (`herdr`, `git`, `systemctl`, `tailscale`, `journalctl`) when there may
 // be no PATH at all.
@@ -36,25 +38,25 @@ export function fallbackDirs(home: string): string[] {
 /**
  * The full search list: absolute PATH entries first (if any), then {@link fallbackDirs}.
  *
- * The separator comes from `platform`, not from a literal `":"` — Windows separates PATH with `;`,
+ * The separator comes from `host`, not from a literal `":"` — Windows separates PATH with `;`,
  * and a `:` split there does not merely miss entries, it shreds every one of them at its drive
  * letter (`C:\Program Files\Git\cmd` becomes `C` and `\Program Files\Git\cmd`), so the
  * absolute-only filter below drops the lot and PATH contributes nothing at all.
  *
- * `platform` is a parameter defaulting to `process.platform` rather than a read of it, the way
- * `bridge/config.ts`'s `defaultSocketPath` takes its own: it makes the Windows branch reachable
- * from a test on any host. We do not test on Windows hardware, so an injected platform is the only
- * way this branch is ever exercised.
+ * `host` is a parameter defaulting to the running machine's rather than a read of it, the way
+ * `bridge/config.ts`'s `defaultSocketPath` takes its own platform: it makes the Windows branch
+ * reachable from a test on any machine. We do not test on Windows hardware, so an injected host is
+ * the only way this branch is ever exercised.
  */
 export function searchDirs(
   path: string | undefined,
   home: string,
-  platform: NodeJS.Platform = process.platform,
+  host: Host = HOST,
 ): string[] {
   const fromPath = (path ?? "")
-    .split(platform === "win32" ? ";" : ":")
+    .split(host.path.delimiter)
     .map((d) => d.trim())
-    .filter((d) => d.length > 0 && isAbsolute(d));
+    .filter((d) => d.length > 0 && host.path.isAbsolute(d));
   const seen = new Set<string>();
   return [...fromPath, ...fallbackDirs(home)].filter((d) => {
     if (seen.has(d)) return false;
@@ -77,9 +79,9 @@ export function searchDirs(
 function envGet(
   env: Record<string, string | undefined>,
   name: string,
-  platform: NodeJS.Platform,
+  host: Host,
 ): string | undefined {
-  return env[envKey(env, name, platform)];
+  return env[envKey(env, name, host)];
 }
 
 /**
@@ -91,9 +93,9 @@ function envGet(
 export function envKey(
   env: Record<string, string | undefined>,
   name: string,
-  platform: NodeJS.Platform = process.platform,
+  host: Host = HOST,
 ): string {
-  if (env[name] !== undefined || platform !== "win32") return name;
+  if (env[name] !== undefined || !host.caseInsensitive) return name;
   const wanted = name.toLowerCase();
   for (const key of Object.keys(env)) {
     if (key.toLowerCase() === wanted) return key;
@@ -109,10 +111,10 @@ export function envKey(
  */
 export function toolExts(
   env: Record<string, string | undefined>,
-  platform: NodeJS.Platform = process.platform,
+  host: Host = HOST,
 ): string[] {
-  if (platform !== "win32") return [""];
-  const raw = envGet(env, "PATHEXT", platform) ?? ".COM;.EXE;.BAT;.CMD";
+  if (host.exeSuffix === "") return [""];
+  const raw = envGet(env, "PATHEXT", host) ?? ".COM;.EXE;.BAT;.CMD";
   const ext = raw.split(";").map((e) => e.trim()).filter((e) => e !== "");
   return ["", ...ext];
 }
@@ -160,17 +162,17 @@ export function findTool(
   name: string,
   env: Record<string, string | undefined>,
   home: string,
-  platform: NodeJS.Platform = process.platform,
+  host: Host = HOST,
 ): string | null {
-  if (isAbsolute(name)) {
+  if (host.path.isAbsolute(name)) {
     // Bun writes `collie.exe`; a caller holding the bare absolute path still means that file.
-    const ext = toolExts(env, platform).find((e) => isExecutableFile(name + e));
+    const ext = toolExts(env, host).find((e) => isExecutableFile(name + e));
     return ext === undefined ? null : name + ext;
   }
   return findIn(
     name,
-    searchDirs(envGet(env, "PATH", platform), home, platform),
+    searchDirs(envGet(env, "PATH", host), home, host),
     isExecutableFile,
-    toolExts(env, platform),
+    toolExts(env, host),
   );
 }

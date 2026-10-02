@@ -21,6 +21,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { connect } from "node:net";
+import { HOST, type Host } from "../bridge/host.ts";
 
 import type { Environment } from "./context.ts";
 import { envKey, findTool } from "./tools.ts";
@@ -388,11 +389,11 @@ export function realNet(credential: GithubCredential | null = null): Net {
 export function withPathPrefix(
   env: Environment,
   dir: string | undefined,
-  platform: NodeJS.Platform = process.platform,
+  host: Host = HOST,
 ): Environment {
   if (dir === undefined || dir === "") return env;
-  const key = envKey(env, "PATH", platform);
-  const sep = platform === "win32" ? ";" : ":";
+  const key = envKey(env, "PATH", host);
+  const sep = host.path.delimiter;
   const path = env[key] ?? "";
   if (path.split(sep).includes(dir)) return env;
   return { ...env, [key]: path === "" ? dir : `${dir}${sep}${path}` };

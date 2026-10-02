@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { hostFor } from "../bridge/host.ts";
 import {
   AGENT_FILE_MODE,
   agentFilePath,
@@ -184,14 +185,14 @@ describe("the launchd agent", () => {
 
 describe("paths and escaping", () => {
   test("the binary lives at <checkout>/bin/collie", () => {
-    expect(collieBinary("/opt/collie", "linux")).toBe(join("/opt/collie", "bin", "collie"));
-    expect(collieBinary("/opt/collie", "darwin")).toBe(join("/opt/collie", "bin", "collie"));
+    // A pinned host joins with its own separator, never the machine's, so the answer is a literal.
+    expect(collieBinary("/opt/collie", hostFor("linux"))).toBe("/opt/collie/bin/collie");
+    expect(collieBinary("/opt/collie", hostFor("darwin"))).toBe("/opt/collie/bin/collie");
     expect(bridgeCommand(SPEC)).toEqual(["/opt/collie/bin/collie", "_exec-bridge"]);
   });
 
   test("on Windows it is bin/collie.exe, the file Bun's compiler writes and an existence check can find", () => {
-    // `collieBinary` joins with the host's separator, so the expectation joins the same way.
-    expect(collieBinary("/opt/collie", "win32")).toBe(join("/opt/collie", "bin", "collie.exe"));
+    expect(collieBinary("C:\\opt\\collie", hostFor("win32"))).toBe("C:\\opt\\collie\\bin\\collie.exe");
   });
 
   test("unit and agent land where the supervisors look", () => {

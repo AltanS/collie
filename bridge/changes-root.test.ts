@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, posix, win32 } from "node:path";
+import { basename, join } from "node:path";
 
 import {
   commonAncestor,
   isAbsoluteFolder,
-  isInside,
   rootOfWorkspace,
   withinBound,
   workspaceRoot,
@@ -14,6 +13,7 @@ import {
   type WorkspaceRootInput,
 } from "./changes-root.ts";
 import { gitEnv } from "./changes.ts";
+import { hostFor, isInside } from "./host.ts";
 import { paneChanges, workspaceChanges } from "./server.ts";
 import type { AgentView, WorkspaceView } from "./types.ts";
 
@@ -45,7 +45,7 @@ const legacyWithinBound = (path: string, home: string): boolean => {
   if (h === null || h === "/") return true;
   return path !== h && !h.startsWith(`${path}/`);
 };
-const legacyWorkspaceRoot = (input: Omit<WorkspaceRootInput, "pathApi">): string | null => {
+const legacyWorkspaceRoot = (input: Omit<WorkspaceRootInput, "host">): string | null => {
   const folder = legacyNormalize(input.folder);
   if (folder !== null && legacyWithinBound(folder, input.home)) return folder;
   const cwds = input.cwds.map(legacyNormalize).filter((c): c is string => c !== null);
@@ -66,7 +66,7 @@ describe("the POSIX answers are the ones the string rules gave", () => {
       for (const f of folders) {
         const path = legacyNormalize(f);
         if (path === null) continue;
-        expect(withinBound(path, home, posix)).toBe(legacyWithinBound(path, home));
+        expect(withinBound(path, home, hostFor("linux"))).toBe(legacyWithinBound(path, home));
       }
     }
   });
@@ -75,11 +75,11 @@ describe("the POSIX answers are the ones the string rules gave", () => {
     const clean = folders.map(legacyNormalize).filter((f): f is string => f !== null);
     for (const a of clean) {
       for (const b of clean) {
-        expect(commonAncestor([a, b], posix)).toBe(legacyCommonAncestor([a, b]));
-        expect(commonAncestor([a, b, "/home/dev/a"], posix)).toBe(legacyCommonAncestor([a, b, "/home/dev/a"]));
+        expect(commonAncestor([a, b], hostFor("linux"))).toBe(legacyCommonAncestor([a, b]));
+        expect(commonAncestor([a, b, "/home/dev/a"], hostFor("linux"))).toBe(legacyCommonAncestor([a, b, "/home/dev/a"]));
       }
     }
-    expect(commonAncestor([], posix)).toBeNull();
+    expect(commonAncestor([], hostFor("linux"))).toBeNull();
   });
 
   test("workspaceRoot agrees on every mux folder and pane set against every home", () => {
@@ -95,9 +95,10 @@ describe("the POSIX answers are the ones the string rules gave", () => {
   });
 });
 
-// These rules mean POSIX paths, so they pin path.posix: the default is the host's own flavour, which
+// These rules mean POSIX paths, so they pin a POSIX host: the default is the machine's own flavour, which
 // on Windows reads `/home/dev/...` as a drive-relative path.
-const posixRoot = (input: Omit<WorkspaceRootInput, "pathApi">): string | null => workspaceRoot({ ...input, pathApi: posix });
+const posixRoot = (input: Omit<WorkspaceRootInput, "host">): string | null =>
+  workspaceRoot({ ...input, host: hostFor("linux") });
 
 describe("workspaceRoot — which folder a workspace's Changes list reads", () => {
   test("the mux's own folder wins (herdr worktree checkout, tmux session_path)", () => {
@@ -149,33 +150,33 @@ describe("workspaceRoot — which folder a workspace's Changes list reads", () =
 
   test("a folder outside home is fine", () => {
     expect(posixRoot({ cwds: ["/srv/app/a", "/srv/app/b"], home: HOME })).toBe("/srv/app");
-    expect(withinBound("/tmp/x", HOME, posix)).toBe(true);
+    expect(withinBound("/tmp/x", HOME, hostFor("linux"))).toBe(true);
   });
 
   test("commonAncestor", () => {
-    expect(commonAncestor([], posix)).toBeNull();
-    expect(commonAncestor(["/a/b/c", "/a/b"], posix)).toBe("/a/b");
-    expect(commonAncestor(["/a", "/b"], posix)).toBe("/");
+    expect(commonAncestor([], hostFor("linux"))).toBeNull();
+    expect(commonAncestor(["/a/b/c", "/a/b"], hostFor("linux"))).toBe("/a/b");
+    expect(commonAncestor(["/a", "/b"], hostFor("linux"))).toBe("/");
   });
 });
 
 // ── The same rules on Windows paths, pinned with path.win32 so Linux CI runs them ───────────────
 
 describe("the root rules on Windows paths (path.win32)", () => {
-  const pathApi = win32;
+  const host = hostFor("win32");
   const WIN_HOME = "C:\\Users\\pat";
 
   test("a drive-letter or UNC path is absolute; a relative or blank one is not", () => {
-    expect(isAbsoluteFolder("C:\\Users\\pat\\repo", pathApi)).toBe(true);
-    expect(isAbsoluteFolder("c:/Users/pat", pathApi)).toBe(true);
-    expect(isAbsoluteFolder("\\\\srv\\share\\x", pathApi)).toBe(true);
-    expect(isAbsoluteFolder("repo\\sub", pathApi)).toBe(false);
-    expect(isAbsoluteFolder("C:repo", pathApi)).toBe(false);
-    expect(isAbsoluteFolder("  ", pathApi)).toBe(false);
+    expect(isAbsoluteFolder("C:\\Users\\pat\\repo", host)).toBe(true);
+    expect(isAbsoluteFolder("c:/Users/pat", host)).toBe(true);
+    expect(isAbsoluteFolder("\\\\srv\\share\\x", host)).toBe(true);
+    expect(isAbsoluteFolder("repo\\sub", host)).toBe(false);
+    expect(isAbsoluteFolder("C:repo", host)).toBe(false);
+    expect(isAbsoluteFolder("  ", host)).toBe(false);
   });
 
   test("isInside: the folder itself and below, never a sibling that shares a name prefix", () => {
-    const inside = (folder: string, parent: string) => isInside({ folder, parent, pathApi });
+    const inside = (folder: string, parent: string) => isInside(host, folder, parent);
     expect(inside("C:\\Users\\pat\\repo", "C:\\Users\\pat\\repo")).toBe(true);
     expect(inside("C:\\Users\\pat\\repo\\sub\\deep", "C:\\Users\\pat\\repo")).toBe(true);
     expect(inside("C:\\Users\\pat\\repo2", "C:\\Users\\pat\\repo")).toBe(false);
@@ -190,38 +191,38 @@ describe("the root rules on Windows paths (path.win32)", () => {
   });
 
   test("a folder inside home, outside home, or on another drive is within the bound", () => {
-    expect(withinBound("C:\\Users\\pat\\repo", WIN_HOME, pathApi)).toBe(true);
-    expect(withinBound("D:\\work\\repo", WIN_HOME, pathApi)).toBe(true);
-    expect(withinBound("C:\\srv\\app", WIN_HOME, pathApi)).toBe(true);
-    expect(withinBound("\\\\srv\\share\\repo", WIN_HOME, pathApi)).toBe(true);
+    expect(withinBound("C:\\Users\\pat\\repo", WIN_HOME, host)).toBe(true);
+    expect(withinBound("D:\\work\\repo", WIN_HOME, host)).toBe(true);
+    expect(withinBound("C:\\srv\\app", WIN_HOME, host)).toBe(true);
+    expect(withinBound("\\\\srv\\share\\repo", WIN_HOME, host)).toBe(true);
   });
 
   test("a drive root, home itself and every folder above home are not, whatever the case", () => {
-    expect(withinBound("C:\\", WIN_HOME, pathApi)).toBe(false);
-    expect(withinBound("D:\\", WIN_HOME, pathApi)).toBe(false);
-    expect(withinBound("\\\\srv\\share\\", WIN_HOME, pathApi)).toBe(false);
-    expect(withinBound("C:\\Users", WIN_HOME, pathApi)).toBe(false);
-    expect(withinBound("C:\\Users\\pat", WIN_HOME, pathApi)).toBe(false);
-    expect(withinBound("c:\\users\\PAT", WIN_HOME, pathApi)).toBe(false);
-    expect(withinBound("C:\\Users\\pat", "c:/users/pat/", pathApi)).toBe(false);
-    expect(withinBound("\\\\?\\C:\\Users\\pat", WIN_HOME, pathApi)).toBe(false);
+    expect(withinBound("C:\\", WIN_HOME, host)).toBe(false);
+    expect(withinBound("D:\\", WIN_HOME, host)).toBe(false);
+    expect(withinBound("\\\\srv\\share\\", WIN_HOME, host)).toBe(false);
+    expect(withinBound("C:\\Users", WIN_HOME, host)).toBe(false);
+    expect(withinBound("C:\\Users\\pat", WIN_HOME, host)).toBe(false);
+    expect(withinBound("c:\\users\\PAT", WIN_HOME, host)).toBe(false);
+    expect(withinBound("C:\\Users\\pat", "c:/users/pat/", host)).toBe(false);
+    expect(withinBound("\\\\?\\C:\\Users\\pat", WIN_HOME, host)).toBe(false);
     // A home that is a drive root bounds nothing.
-    expect(withinBound("D:\\work", "C:\\", pathApi)).toBe(true);
+    expect(withinBound("D:\\work", "C:\\", host)).toBe(true);
   });
 
   test("commonAncestor keeps the first spelling, folds case, and finds nothing across drives", () => {
-    expect(commonAncestor(["C:\\Users\\pat\\repo", "C:\\Users\\pat\\repo\\sub"], pathApi)).toBe("C:\\Users\\pat\\repo");
+    expect(commonAncestor(["C:\\Users\\pat\\repo", "C:\\Users\\pat\\repo\\sub"], host)).toBe("C:\\Users\\pat\\repo");
     // A shared name prefix is not a shared folder.
-    expect(commonAncestor(["C:\\Users\\pat\\repo", "C:\\Users\\pat\\repo2"], pathApi)).toBe("C:\\Users\\pat");
-    expect(commonAncestor(["C:\\Users\\pat\\Repo", "c:/users/pat/repo/sub"], pathApi)).toBe("C:\\Users\\pat\\Repo");
-    expect(commonAncestor(["C:\\a", "C:\\b"], pathApi)).toBe("C:\\");
-    expect(commonAncestor(["C:\\Users\\pat\\repo", "D:\\Users\\pat\\repo"], pathApi)).toBeNull();
-    expect(commonAncestor(["C:\\Users\\pat\\repo", "\\\\srv\\share\\repo"], pathApi)).toBeNull();
-    expect(commonAncestor([], pathApi)).toBeNull();
+    expect(commonAncestor(["C:\\Users\\pat\\repo", "C:\\Users\\pat\\repo2"], host)).toBe("C:\\Users\\pat");
+    expect(commonAncestor(["C:\\Users\\pat\\Repo", "c:/users/pat/repo/sub"], host)).toBe("C:\\Users\\pat\\Repo");
+    expect(commonAncestor(["C:\\a", "C:\\b"], host)).toBe("C:\\");
+    expect(commonAncestor(["C:\\Users\\pat\\repo", "D:\\Users\\pat\\repo"], host)).toBeNull();
+    expect(commonAncestor(["C:\\Users\\pat\\repo", "\\\\srv\\share\\repo"], host)).toBeNull();
+    expect(commonAncestor([], host)).toBeNull();
   });
 
   test("workspaceRoot: the mux folder, else the panes' common folder, bounded by home", () => {
-    const root = (input: { folder?: string; cwds: string[] }) => workspaceRoot({ ...input, home: WIN_HOME, pathApi });
+    const root = (input: { folder?: string; cwds: string[] }) => workspaceRoot({ ...input, home: WIN_HOME, host });
     expect(root({ folder: "C:\\Users\\pat\\ws\\", cwds: ["C:\\Users\\pat\\ws\\one"] })).toBe("C:\\Users\\pat\\ws");
     expect(root({ cwds: ["C:\\Users\\pat\\ws\\one", "C:\\Users\\pat\\ws\\two\\src"] })).toBe("C:\\Users\\pat\\ws");
     expect(root({ cwds: ["", "relative\\x", "D:\\work\\a"] })).toBe("D:\\work\\a");
@@ -235,11 +236,22 @@ describe("the root rules on Windows paths (path.win32)", () => {
     expect(root({ folder: "C:\\", cwds: [] })).toBeNull();
   });
 
+  test("workspaceRoot returns one spelling of a folder, the host's own, whichever the input used", () => {
+    const root = (input: { folder?: string; cwds: string[] }) => workspaceRoot({ ...input, home: WIN_HOME, host });
+    expect(root({ folder: "C:/Users/pat/ws" , cwds: [] })).toBe("C:\\Users\\pat\\ws");
+    expect(root({ folder: "C:\\Users\\pat\\ws", cwds: [] })).toBe("C:\\Users\\pat\\ws");
+    expect(root({ folder: "\\\\?\\C:\\Users\\pat\\ws", cwds: [] })).toBe("C:\\Users\\pat\\ws");
+    expect(root({ folder: "//srv/share/ws/", cwds: [] })).toBe("\\\\srv\\share\\ws");
+    // The pane folders, mixed spellings of one place, meet at one native folder.
+    expect(root({ cwds: ["C:/Users/pat/ws/one", "C:\\Users\\pat\\ws\\two"] })).toBe("C:\\Users\\pat\\ws");
+    expect(root({ cwds: ["D:/work/a"] })).toBe("D:\\work\\a");
+  });
+
   test("path.posix pinned on any host keeps the POSIX answers", () => {
-    const pinned = { pathApi: posix };
+    const pinned = { host: hostFor("linux") };
     expect(workspaceRoot({ cwds: ["/srv/app/a", "/srv/app/b"], home: HOME, ...pinned })).toBe("/srv/app");
     expect(workspaceRoot({ cwds: ["C:\\x"], home: HOME, ...pinned })).toBeNull();
-    expect(isInside({ folder: "/a/B", parent: "/a/b", ...pinned })).toBe(false);
+    expect(isInside(pinned.host, "/a/B", "/a/b")).toBe(false);
   });
 });
 

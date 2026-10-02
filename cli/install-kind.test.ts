@@ -1,17 +1,19 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
+import { hostFor } from "../bridge/host.ts";
 import { resolvePluginRoot } from "../bridge/root.ts";
 import { fakeExec, fakeFiles, fakeLinkFs, HOME, posixKey } from "./fakes.ts";
 import { realExec, realFiles } from "./sys.ts";
 import {
+  binaryLayout,
   classifyInstall,
   detectInstall,
   isGitCheckout,
-  isInside,
-  isSameOrInside,
+  isSameOrUnder,
+  isUnder,
   type InstallProbe,
   originMatches,
   originOf,
@@ -161,37 +163,126 @@ describe("publishedBinary — the PATH name is a pointer (ADR 0021)", () => {
 });
 
 // The layout checks ran on `startsWith(`${dir}/`)`, which a backslash path can never satisfy. These
-// pin the Windows answer from Linux with the `platform` argument, so CI sees what a Windows host sees.
-describe("isInside / isSameOrInside — a path test that holds on both separators", () => {
+// pin the Windows answer from Linux with the `host` argument, so CI sees what a Windows host sees.
+describe("isUnder / isSameOrUnder — a path test that holds on both separators", () => {
   const VERSIONS = "C:\\Users\\pat\\.collie\\versions";
 
   test("a Windows path below the directory is inside, whichever slash it is spelled with", () => {
-    expect(isInside(VERSIONS, `${VERSIONS}\\1.2.3`, "win32")).toBe(true);
-    expect(isInside(VERSIONS, `${VERSIONS}\\1.2.3\\bin\\collie.exe`, "win32")).toBe(true);
-    expect(isInside("C:/Users/pat/.collie/versions", `${VERSIONS}\\1.2.3`, "win32")).toBe(true);
+    expect(isUnder(hostFor("win32"), VERSIONS, `${VERSIONS}\\1.2.3`)).toBe(true);
+    expect(isUnder(hostFor("win32"), VERSIONS, `${VERSIONS}\\1.2.3\\bin\\collie.exe`)).toBe(true);
+    expect(isUnder(hostFor("win32"), "C:/Users/pat/.collie/versions", `${VERSIONS}\\1.2.3`)).toBe(true);
     // The drive letter and the case are not part of a Windows path's identity.
-    expect(isInside("c:\\users\\PAT\\.collie\\versions", `${VERSIONS}\\1.2.3`, "win32")).toBe(true);
+    expect(isUnder(hostFor("win32"), "c:\\users\\PAT\\.collie\\versions", `${VERSIONS}\\1.2.3`)).toBe(true);
   });
 
   test("the directory itself is the same, not inside; a sibling or another drive is outside", () => {
-    expect(isInside(VERSIONS, VERSIONS, "win32")).toBe(false);
-    expect(isSameOrInside(VERSIONS, VERSIONS, "win32")).toBe(true);
-    expect(isSameOrInside(VERSIONS, `${VERSIONS}-old\\1.2.3`, "win32")).toBe(false);
-    expect(isSameOrInside(VERSIONS, "C:\\Users\\pat\\.collie", "win32")).toBe(false);
-    expect(isSameOrInside(VERSIONS, "D:\\Users\\pat\\.collie\\versions\\1.2.3", "win32")).toBe(false);
+    expect(isUnder(hostFor("win32"), VERSIONS, VERSIONS)).toBe(false);
+    expect(isSameOrUnder(hostFor("win32"), VERSIONS, VERSIONS)).toBe(true);
+    expect(isSameOrUnder(hostFor("win32"), VERSIONS, `${VERSIONS}-old\\1.2.3`)).toBe(false);
+    expect(isSameOrUnder(hostFor("win32"), VERSIONS, "C:\\Users\\pat\\.collie")).toBe(false);
+    expect(isSameOrUnder(hostFor("win32"), VERSIONS, "D:\\Users\\pat\\.collie\\versions\\1.2.3")).toBe(false);
   });
 
   test("a name that merely starts with two dots is inside, not an escape", () => {
-    expect(isInside(VERSIONS, `${VERSIONS}\\..hidden`, "win32")).toBe(true);
+    expect(isUnder(hostFor("win32"), VERSIONS, `${VERSIONS}\\..hidden`)).toBe(true);
   });
 
   test("POSIX answers are the ones the string prefix gave: case counts, a longer sibling name is outside", () => {
-    expect(isInside("/inst/versions", "/inst/versions/1.2.3", "linux")).toBe(true);
-    expect(isSameOrInside("/inst/versions", "/inst/versions", "linux")).toBe(true);
-    expect(isInside("/inst/versions", "/inst/versions", "linux")).toBe(false);
-    expect(isSameOrInside("/inst/versions", "/inst/versions-old/1.2.3", "linux")).toBe(false);
-    expect(isSameOrInside("/inst/Versions", "/inst/versions/1.2.3", "linux")).toBe(false);
-    expect(isInside("/home/pat", "/home/patrick/x", "darwin")).toBe(false);
+    expect(isUnder(hostFor("linux"), "/inst/versions", "/inst/versions/1.2.3")).toBe(true);
+    expect(isSameOrUnder(hostFor("linux"), "/inst/versions", "/inst/versions")).toBe(true);
+    expect(isUnder(hostFor("linux"), "/inst/versions", "/inst/versions")).toBe(false);
+    expect(isSameOrUnder(hostFor("linux"), "/inst/versions", "/inst/versions-old/1.2.3")).toBe(false);
+    expect(isSameOrUnder(hostFor("linux"), "/inst/Versions", "/inst/versions/1.2.3")).toBe(false);
+    expect(isUnder(hostFor("darwin"), "/home/pat", "/home/patrick/x")).toBe(false);
+  });
+});
+
+// The two `isInside` helpers became one in `bridge/host.ts` (M43 spec 11). This one answered with
+// `path.relative`, and these are its old rules kept as a reference: for every POSIX pair below the
+// new answer must be the same. The table has equal paths, a trailing slash, `..` and `.` segments,
+// a sibling that shares a prefix, the root, and a relative path.
+describe("the POSIX answers are the ones `path.relative` gave", () => {
+  const legacy = (parent: string, child: string): "same" | "inside" | "outside" => {
+    const rel = posix.relative(parent, child);
+    if (rel === "") return "same";
+    const escapes = rel === ".." || rel.startsWith(`..${posix.sep}`) || posix.isAbsolute(rel);
+    return escapes ? "outside" : "inside";
+  };
+  const legacyIsInside = (parent: string, child: string): boolean => legacy(parent, child) === "inside";
+  const legacyIsSameOrInside = (parent: string, child: string): boolean => legacy(parent, child) !== "outside";
+
+  const PATHS = [
+    "/",
+    "/a",
+    "/a/",
+    "/a/b",
+    "/a/b/",
+    "/a//b",
+    "/a/bc",
+    "/a/b/c",
+    "/a/b/c/d",
+    "/a/b/..",
+    "/a/b/../c",
+    "/a/./b",
+    "/a/b/.",
+    "/a/..b",
+    "/A/b",
+    "/home/pat",
+    "/home/patrick/x",
+    "/a/b/c/../..",
+    "/..",
+    "a/b",
+    "a",
+  ];
+
+  test("isUnder and isSameOrUnder agree with the old rules on every pair", () => {
+    const linux = hostFor("linux");
+    for (const parent of PATHS) {
+      for (const child of PATHS) {
+        expect([parent, child, isUnder(linux, parent, child)]).toEqual([parent, child, legacyIsInside(parent, child)]);
+        expect([parent, child, isSameOrUnder(linux, parent, child)]).toEqual([
+          parent,
+          child,
+          legacyIsSameOrInside(parent, child),
+        ]);
+      }
+    }
+  });
+
+  test("darwin reads the same POSIX rules", () => {
+    const darwin = hostFor("darwin");
+    for (const parent of PATHS) {
+      for (const child of PATHS) {
+        expect(isSameOrUnder(darwin, parent, child)).toBe(legacyIsSameOrInside(parent, child));
+      }
+    }
+  });
+});
+
+describe("binaryLayout reads the path rules of the host it is given", () => {
+  test("a Windows version directory splits at backslashes, whatever the machine", () => {
+    const layout = binaryLayout("C:\\Users\\x\\.local\\share\\collie\\versions\\1.0.0", hostFor("win32"));
+    expect(layout).toEqual({
+      installRoot: "C:\\Users\\x\\.local\\share\\collie",
+      versionsDir: "C:\\Users\\x\\.local\\share\\collie\\versions",
+      currentLink: "C:\\Users\\x\\.local\\share\\collie\\current",
+      stagingDir: "C:\\Users\\x\\.local\\share\\collie\\.staging",
+      trashDir: "C:\\Users\\x\\.local\\share\\collie\\.trash",
+      version: "1.0.0",
+    });
+  });
+
+  test("a Windows layout publishes `current\\bin\\collie.exe`", () => {
+    const root = "C:\\Users\\x\\collie\\versions\\1.0.0";
+    const link = fakeLinkFs({
+      "C:\\Users\\x\\collie\\current": { kind: "symlink", target: "C:\\Users\\x\\collie\\versions\\1.0.0" },
+    });
+    expect(publishedBinary(root, link, hostFor("win32"))).toBe("C:\\Users\\x\\collie\\current\\bin\\collie.exe");
+  });
+
+  test("a POSIX pin does not split a Windows path", () => {
+    expect(binaryLayout("/inst/versions/1.0.0", hostFor("linux")).installRoot).toBe("/inst");
+    expect(binaryLayout("C:\\inst\\versions\\1.0.0", hostFor("linux")).version).toBe("C:\\inst\\versions\\1.0.0");
   });
 });
 
@@ -199,14 +290,14 @@ describe("publishedBinary on win32, from a host that is not Windows", () => {
   test("a binary install publishes `current/bin/collie.exe`, the name Bun's compiler writes", () => {
     const root = "/inst/versions/1.1.0";
     const link = fakeLinkFs({ "/inst/current": { kind: "symlink", target: root } });
-    expect(posixKey(publishedBinary(root, link, "win32"))).toBe("/inst/current/bin/collie.exe");
-    expect(posixKey(publishedBinary(root, link, "linux"))).toBe("/inst/current/bin/collie");
+    expect(posixKey(publishedBinary(root, link, hostFor("win32")))).toBe("/inst/current/bin/collie.exe");
+    expect(posixKey(publishedBinary(root, link, hostFor("linux")))).toBe("/inst/current/bin/collie");
   });
 
   test("a checkout, or a `current` that points elsewhere, publishes its own `bin/collie.exe`", () => {
-    expect(posixKey(publishedBinary("/src/collie", fakeLinkFs(), "win32"))).toBe("/src/collie/bin/collie.exe");
+    expect(posixKey(publishedBinary("/src/collie", fakeLinkFs(), hostFor("win32")))).toBe("/src/collie/bin/collie.exe");
     const elsewhere = fakeLinkFs({ "/inst/current": { kind: "symlink", target: "/somewhere/else" } });
-    expect(posixKey(publishedBinary("/inst/versions/1.1.0", elsewhere, "win32"))).toBe("/inst/versions/1.1.0/bin/collie.exe");
+    expect(posixKey(publishedBinary("/inst/versions/1.1.0", elsewhere, hostFor("win32")))).toBe("/inst/versions/1.1.0/bin/collie.exe");
   });
 });
 

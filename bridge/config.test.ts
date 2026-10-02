@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { hostFor } from "./host.ts";
 import {
   defaultSocketPath,
   envBool,
@@ -422,19 +423,19 @@ describe("isLoopbackBindHost", () => {
 
 describe("defaultSocketPath", () => {
   test("unix default lives under ~/.config/herdr", () => {
-    expect(defaultSocketPath("linux", {}, "/home/u")).toBe(join("/home/u", ".config", "herdr", "herdr.sock"));
-    expect(defaultSocketPath("darwin", {}, "/Users/u")).toBe(join("/Users/u", ".config", "herdr", "herdr.sock"));
+    expect(defaultSocketPath(hostFor("linux"), {}, "/home/u")).toBe("/home/u/.config/herdr/herdr.sock");
+    expect(defaultSocketPath(hostFor("darwin"), {}, "/Users/u")).toBe("/Users/u/.config/herdr/herdr.sock");
   });
 
   test("win32 default honours APPDATA", () => {
-    expect(defaultSocketPath("win32", { APPDATA: "C:\\Users\\u\\AppData\\Roaming" }, "C:\\Users\\u")).toBe(
-      join("C:\\Users\\u\\AppData\\Roaming", "herdr", "herdr.sock"),
+    expect(defaultSocketPath(hostFor("win32"), { APPDATA: "C:\\Users\\u\\AppData\\Roaming" }, "C:\\Users\\u")).toBe(
+      "C:\\Users\\u\\AppData\\Roaming\\herdr\\herdr.sock",
     );
   });
 
   test("win32 falls back to <home>/AppData/Roaming when APPDATA is unset", () => {
-    expect(defaultSocketPath("win32", {}, "C:\\Users\\u")).toBe(
-      join("C:\\Users\\u", "AppData", "Roaming", "herdr", "herdr.sock"),
+    expect(defaultSocketPath(hostFor("win32"), {}, "C:\\Users\\u")).toBe(
+      "C:\\Users\\u\\AppData\\Roaming\\herdr\\herdr.sock",
     );
   });
 });

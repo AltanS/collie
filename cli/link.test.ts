@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { delimiter, join, resolve } from "node:path";
 
+import { hostFor } from "../bridge/host.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
@@ -67,12 +68,12 @@ describe("the published name", () => {
   });
 
   test("on win32 the `collie.exe` that Bun's compiler writes is recognised, on either separator", () => {
-    expect(isCollieBinaryPath("C:\\Users\\pat\\.collie\\versions\\1.2.3\\bin\\collie.exe", "win32")).toBe(true);
-    expect(isCollieBinaryPath("C:/src/collie/bin/collie.exe", "win32")).toBe(true);
-    expect(isCollieBinaryPath("C:\\src\\collie\\bin\\collie", "win32")).toBe(true);
-    expect(isCollieBinaryPath("C:\\src\\collie\\bin\\collie.exe.bak", "win32")).toBe(false);
+    expect(isCollieBinaryPath("C:\\Users\\pat\\.collie\\versions\\1.2.3\\bin\\collie.exe", hostFor("win32"))).toBe(true);
+    expect(isCollieBinaryPath("C:/src/collie/bin/collie.exe", hostFor("win32"))).toBe(true);
+    expect(isCollieBinaryPath("C:\\src\\collie\\bin\\collie", hostFor("win32"))).toBe(true);
+    expect(isCollieBinaryPath("C:\\src\\collie\\bin\\collie.exe.bak", hostFor("win32"))).toBe(false);
     // Elsewhere the `.exe` spelling is not a name Collie publishes.
-    expect(isCollieBinaryPath("/opt/collie/bin/collie.exe", "linux")).toBe(false);
+    expect(isCollieBinaryPath("/opt/collie/bin/collie.exe", hostFor("linux"))).toBe(false);
   });
 
   test("this platform's own binary name is recognised", () => {

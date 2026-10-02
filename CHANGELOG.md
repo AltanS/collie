@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- **Platform checks share one host object.** The code that picks a path flavour or a binary name for the host now reads one object. Nothing changes on Linux or macOS, and `collie update` on Windows now names `collie.exe`.
+
 ## [1.15.3] - 2026-10-02
 
 ### Fixed

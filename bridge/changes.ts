@@ -56,7 +56,8 @@
 import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
-import { isAbsoluteFolder, isInside } from "./changes-root.ts";
+import { isAbsoluteFolder } from "./changes-root.ts";
+import { HOST, isInside } from "./host.ts";
 import { containedRealpath } from "./journal/files.ts";
 import type {
   ChangeCommit,
@@ -738,7 +739,7 @@ export async function repoOfFolder(
   let best: { relPath: string; length: number } | undefined;
   for (const repo of repos) {
     const dir = resolve(realRoot, repo.relPath);
-    const inside = isInside({ folder: real, parent: dir });
+    const inside = isInside(HOST, real, dir);
     if (inside && (best === undefined || dir.length > best.length)) best = { relPath: repo.relPath, length: dir.length };
   }
   return best?.relPath;

@@ -1,9 +1,9 @@
 import { basename, dirname, join, resolve } from "node:path";
 
+import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
-import { collieBinary } from "./unit.ts";
 
 // `build` and the lazy `ensure_build`, ported from the pre-shim `collie-ctl.sh`. The five ordered
 // steps and their reasons come along with the code, because every one of them is a production
@@ -31,8 +31,8 @@ export interface BuildDeps {
   io: Io;
   exec: Exec;
   files: Files;
-  /** Defaults to `process.platform`; injected so the Windows swap is testable on any host. */
-  platform?: string;
+  /** Defaults to the running host; injected so the Windows swap is testable on any host. */
+  host?: Host;
 }
 
 /** The narrow seam shared by the full build and `bun run build:cli`. */
@@ -42,8 +42,8 @@ export interface CliCompileDeps {
   io: Io;
   exec: Exec;
   files: Files;
-  /** Defaults to `process.platform`; injected so the Windows swap is testable on any host. */
-  platform?: string;
+  /** Defaults to the running host; injected so the Windows swap is testable on any host. */
+  host?: Host;
 }
 
 /** Optional release inputs; ordinary source builds use the local Bun, target and live binary. */
@@ -75,9 +75,9 @@ export const collieBinaryStaging = (root: string): string => join(root, "bin", "
  * `bin/collie.exe` for the same reason, and that is also the file `bin/collie` resolves to when
  * Windows spawns it. Everywhere else the path is returned unchanged.
  */
-export function compiledPath(outfile: string, platform: string = process.platform): string {
-  if (platform !== "win32" || outfile.toLowerCase().endsWith(".exe")) return outfile;
-  return `${outfile}.exe`;
+export function compiledPath(outfile: string, host: Host = HOST): string {
+  if (host.exeSuffix === "" || outfile.toLowerCase().endsWith(host.exeSuffix)) return outfile;
+  return `${outfile}${host.exeSuffix}`;
 }
 
 /**
@@ -98,9 +98,9 @@ export function swapBinary(
   files: Files,
   staged: string,
   live: string,
-  platform: string = process.platform,
+  host: Host = HOST,
 ): void {
-  if (platform !== "win32" || !files.exists(live) || !files.exists(staged)) {
+  if (host.platform !== "win32" || !files.exists(live) || !files.exists(staged)) {
     files.rename(staged, live);
     return;
   }
@@ -278,7 +278,7 @@ export function compileCli(deps: CliCompileDeps, options: CliCompileOptions = {}
 
   const bun = options.bun ?? "bun";
   const target = options.target ?? "bun";
-  const output = resolve(options.outfile ?? collieBinary(paths.root, deps.platform));
+  const output = resolve(options.outfile ?? collieBinary(paths.root, deps.host));
   let compiled = false;
   try {
     compiled = step(
@@ -326,8 +326,8 @@ export function compileCliToLive(
   }
 
   try {
-    const live = collieBinary(paths.root, deps.platform);
-    swapBinary(deps.files, compiledPath(output, deps.platform), live, deps.platform);
+    const live = collieBinary(paths.root, deps.host);
+    swapBinary(deps.files, compiledPath(output, deps.host), live, deps.host);
   } catch (err) {
     deps.io.err(`error: could not publish the compiled collie binary (${String(err)})`);
     cleanOwnedDirectory(deps, staging, "CLI output staging directory");
@@ -390,11 +390,11 @@ export function cmdBuild(deps: BuildDeps): number {
   // 4. The CLI, into its staging path. `compileCli` also serves `bun run build:cli`, so neither
   // supported route can run Bun from the checkout root before Vite samples its Git identity.
   const binaryStaging = collieBinaryStaging(root);
-  const binaryWritten = compiledPath(binaryStaging, deps.platform);
+  const binaryWritten = compiledPath(binaryStaging, deps.host);
   deps.files.remove(binaryWritten);
   if (
     !compileCli(
-      { root, io: deps.io, exec: deps.exec, files: deps.files, platform: deps.platform },
+      { root, io: deps.io, exec: deps.exec, files: deps.files, host: deps.host },
       { outfile: binaryStaging },
     )
   ) {
@@ -420,7 +420,7 @@ export function cmdBuild(deps: BuildDeps): number {
   }
 
   // 6. The swaps, last. The binary first because it is the smaller window, then the served bundle.
-  swapBinary(deps.files, binaryWritten, collieBinary(root, deps.platform), deps.platform);
+  swapBinary(deps.files, binaryWritten, collieBinary(root, deps.host), deps.host);
   deps.files.removeTree(webDist(root));
   deps.files.rename(staging, webDist(root));
   return EXIT.OK;

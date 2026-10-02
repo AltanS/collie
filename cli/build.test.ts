@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { hostFor } from "../bridge/host.ts";
 import {
   type BuildDeps,
   bunCompileSandboxPrefix,
@@ -95,7 +96,7 @@ function harness(
   });
   // The platform is pinned, not read from the host: these cases are about a Linux box (`bin/collie`,
   // one rename); the Windows swap has its own cases that pass "win32" and pass on every host.
-  return { deps: { ctx: context(over.env ?? {}), io, exec, files, platform: "linux" }, io, exec, files };
+  return { deps: { ctx: context(over.env ?? {}), io, exec, files, host: hostFor("linux") }, io, exec, files };
 }
 
 /** Every command the fake exec recorded, folded to the POSIX spelling (see {@link posix}). */
@@ -369,7 +370,7 @@ describe("build: the ordered steps", () => {
     // `bun build --compile --outfile bin/collie.new` writes `bin/collie.new.exe` on Windows. Renaming
     // the bare name died with ENOENT after the web bundle had already built, so neither swap landed.
     const h = harness({ files: { [`${STAGING}/index.html`]: "<!doctype html>NEW" } });
-    h.deps.platform = "win32";
+    h.deps.host = hostFor("win32");
     expect(cmdBuild(h.deps)).toBe(EXIT.OK);
     expect(calls(h).find(compilerCall)).toEndWith(`--outfile ${posix(BINARY_NEW)}`);
     expect(h.files.ops.slice(-4)).toEqual(
@@ -433,7 +434,7 @@ describe("swapBinary on Windows", () => {
 
   test("the live collie.exe steps aside, the new one lands, and the old one is cleared", () => {
     const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
-    swapBinary(files, STAGED, LIVE, "win32");
+    swapBinary(files, STAGED, LIVE, hostFor("win32"));
     expect(moves(files)).toEqual([posix(`mv ${LIVE} ${LIVE}.old`), posix(`mv ${STAGED} ${LIVE}`)]);
     expect(files.read(LIVE)).toBe("NEW");
     // Nothing runs the old file in this fake, so it is cleared at once.
@@ -442,7 +443,7 @@ describe("swapBinary on Windows", () => {
 
   test("a staged file that is not there never moves the one working binary", () => {
     const files = fakeFiles({ [LIVE]: "OLD" });
-    swapBinary(files, STAGED, LIVE, "win32");
+    swapBinary(files, STAGED, LIVE, hostFor("win32"));
     expect(moves(files)).toEqual([posix(`mv ${STAGED} ${LIVE}`)]);
     expect(files.read(LIVE)).toBe("OLD");
   });
@@ -450,7 +451,7 @@ describe("swapBinary on Windows", () => {
   test("a staged file that cannot take its place puts the old binary back, and the failure rises", () => {
     const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
     files.unrenamable.add(STAGED);
-    expect(() => swapBinary(files, STAGED, LIVE, "win32")).toThrow();
+    expect(() => swapBinary(files, STAGED, LIVE, hostFor("win32"))).toThrow();
     expect(moves(files).at(-1)).toBe(posix(`mv ${LIVE}.old ${LIVE}`));
     expect(files.read(LIVE)).toBe("OLD");
   });
@@ -458,13 +459,13 @@ describe("swapBinary on Windows", () => {
 
 describe("compiledPath: the file Bun's compiler actually writes", () => {
   test("Windows gains `.exe`; an outfile that already has one is left alone", () => {
-    expect(compiledPath("C:\\c\\bin\\collie.new", "win32")).toBe("C:\\c\\bin\\collie.new.exe");
-    expect(compiledPath("C:\\c\\bin\\collie.EXE", "win32")).toBe("C:\\c\\bin\\collie.EXE");
+    expect(compiledPath("C:\\c\\bin\\collie.new", hostFor("win32"))).toBe("C:\\c\\bin\\collie.new.exe");
+    expect(compiledPath("C:\\c\\bin\\collie.EXE", hostFor("win32"))).toBe("C:\\c\\bin\\collie.EXE");
   });
 
   test("everywhere else the outfile is the file", () => {
     for (const platform of ["linux", "darwin"] as const) {
-      expect(compiledPath("/c/bin/collie.new", platform)).toBe("/c/bin/collie.new");
+      expect(compiledPath("/c/bin/collie.new", hostFor(platform))).toBe("/c/bin/collie.new");
     }
   });
 });
@@ -474,7 +475,7 @@ describe("build: CLI-only compiler", () => {
     const io = capture();
     const files = fakeFiles({ [`${ROOT}/cli/main.ts`]: "export {};" });
 
-    expect(compileCli({ root: ROOT, io, exec: fakeExec(), files, platform: "linux" })).toBe(true);
+    expect(compileCli({ root: ROOT, io, exec: fakeExec(), files, host: hostFor("linux") })).toBe(true);
     expect(files.entryType(`${ROOT}/bin`)).toBe("directory");
   });
 
@@ -487,7 +488,7 @@ describe("build: CLI-only compiler", () => {
       return result;
     };
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") })).toBe(true);
     const compile = calls(h).find(compilerCall)!;
     const sandbox = compilerCwd(compile);
     expect(sandbox).toStartWith(posix(SANDBOX_PREFIX));
@@ -501,7 +502,7 @@ describe("build: CLI-only compiler", () => {
 
     expect(
       compileCli(
-        { root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" },
+        { root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") },
         {
           bun: "/tool/upstream-bun",
           target: "bun-linux-x64-baseline",
@@ -526,7 +527,7 @@ describe("build: CLI-only compiler", () => {
       return { ...result, code: 1 };
     };
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(false);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") })).toBe(false);
     const sandbox = compilerCwd(calls(h).find(compilerCall)!);
     expect(h.files.exists(sandbox)).toBe(false);
     expect(h.files.entries.has(`${ROOT}/${SIDECAR}`)).toBe(false);
@@ -537,15 +538,15 @@ describe("build: CLI-only compiler", () => {
     const sentinel = join(fixed, "sentinel");
     const h = harness({ files: { [sentinel]: "UNOWNED" } });
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") })).toBe(true);
     expect(h.files.entries.get(sentinel)?.text).toBe("UNOWNED");
     expect(h.files.ops).not.toContain(posix(`rm -rf ${fixed}`));
   });
 
   test("gives overlapping compiler calls separate sandboxes", () => {
     const h = harness();
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(true);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") })).toBe(true);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") })).toBe(true);
 
     const sandboxes = calls(h).filter(compilerCall).map(compilerCwd);
     expect(sandboxes).toHaveLength(2);
@@ -557,7 +558,7 @@ describe("build: CLI-only compiler", () => {
     const h = harness();
     h.files.unlistable.add(ROOT);
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(false);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") })).toBe(false);
     expect(h.exec.calls).toEqual([]);
     expect(h.io.stderr.join("\n")).toContain("could not list the checkout root");
   });
@@ -566,7 +567,7 @@ describe("build: CLI-only compiler", () => {
     const h = harness({ files: { ["/external/bin/.bun-compile/sentinel"]: "EXTERNAL" } });
     h.files.realPaths.set(`${ROOT}/bin`, "/external/bin");
 
-    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, platform: "linux" })).toBe(false);
+    expect(compileCli({ root: ROOT, io: h.io, exec: h.exec, files: h.files, host: hostFor("linux") })).toBe(false);
     expect(h.files.entries.get("/external/bin/.bun-compile/sentinel")?.text).toBe("EXTERNAL");
     expect(h.exec.calls).toEqual([]);
     expect(h.io.stderr.join("\n")).toContain("resolves outside its canonical path");

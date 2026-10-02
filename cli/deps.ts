@@ -1,3 +1,4 @@
+import { HOST } from "../bridge/host.ts";
 import { cmdRestart, type LifecycleDeps } from "./lifecycle.ts";
 import type { Io } from "./io.ts";
 import { loadContext } from "./context.ts";
@@ -29,7 +30,7 @@ export function lifecycleDeps(io: Io, ui: Ui | null = null): LifecycleDeps {
     ready: (port, host) => waitReady(port, host),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     uid: () => process.getuid?.() ?? 0,
-    platform: process.platform,
+    host: HOST,
     // The first-run multiplexer question (`cli/mux.ts`), asked through Bun's built-in behind a tty
     // check exactly as `stt setup` and `crew add` guard theirs: a question nobody can answer must
     // refuse legibly rather than read EOF as an answer.
@@ -58,7 +59,6 @@ export function updateDeps(io: Io): UpdateDeps {
     // running platform the artifact is chosen by.
     link: realLinkFs,
     net: realNet(githubCredential(deps.ctx.env)),
-    platform: process.platform,
     arch: process.arch,
     // The detached updater's clock, wait and identity (M15/04). Real here; `cli/update.test.ts`
     // drives a 30 s health budget in no time at all by handing over fakes.

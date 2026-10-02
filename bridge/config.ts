@@ -9,6 +9,7 @@ import {
   type Environment,
   type FilePerms,
 } from "./config-source.ts";
+import { HOST, type Host } from "./host.ts";
 import { diskIo } from "./operator-file.ts";
 import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
@@ -445,15 +446,15 @@ export function nonLoopbackBindRefusal(
  * are unit-testable on any platform.
  */
 export function defaultSocketPath(
-  platform: NodeJS.Platform = process.platform,
+  host: Host = HOST,
   env: Environment = process.env,
   home: string = homedir(),
 ): string {
-  if (platform === "win32") {
-    const appData = env.APPDATA ?? join(home, "AppData", "Roaming");
-    return join(appData, "herdr", "herdr.sock");
+  if (host.platform === "win32") {
+    const appData = env.APPDATA ?? host.path.join(home, "AppData", "Roaming");
+    return host.path.join(appData, "herdr", "herdr.sock");
   }
-  return join(home, ".config", "herdr", "herdr.sock");
+  return host.path.join(home, ".config", "herdr", "herdr.sock");
 }
 
 /**
@@ -596,7 +597,7 @@ export function loadConfig(env: Environment = process.env): Config {
   const configDir = resolveConfigDir(env);
 
   const mux = (env.COLLIE_MUX ?? "").trim() || DEFAULT_MUX;
-  const socketPath = env.HERDR_SOCKET_PATH ?? defaultSocketPath(process.platform, env);
+  const socketPath = env.HERDR_SOCKET_PATH ?? defaultSocketPath(HOST, env);
 
   return {
     mux,

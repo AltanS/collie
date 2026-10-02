@@ -1,6 +1,7 @@
 import { lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 
+import { binaryName, HOST, type Host } from "../bridge/host.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Files } from "./sys.ts";
@@ -56,9 +57,12 @@ export function resolveLinkTarget(linkAt: string, rawTarget: string): string {
  * is what makes a destination one Collie published and may therefore replace. Both separators are
  * accepted because the CLI runs on Windows too, and `collie.exe` there.
  */
-export function isCollieBinaryPath(target: string, platform: string = process.platform): boolean {
+export function isCollieBinaryPath(target: string, host: Host = HOST): boolean {
   // `collieBinary` spells `bin/collie.exe` on Windows, so the bare name alone would reject our own.
-  return (platform === "win32" ? /[/\\]bin[/\\]collie(?:\.exe)?$/ : /[/\\]bin[/\\]collie$/).test(target);
+  const names = [binaryName(host), binaryName({ ...host, exeSuffix: "" })];
+  const parts = target.split(/[/\\]/);
+  // Something must sit before `bin`, even if only the empty string of a leading slash.
+  return parts.length >= 3 && parts.at(-2) === "bin" && names.includes(parts.at(-1)!);
 }
 
 export type LinkVerdict =

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { hostFor } from "../bridge/host.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import type { TrustStoreData } from "../bridge/crew/trust-store.ts";
@@ -177,7 +178,7 @@ function harness(
     files,
     link: fakeLinkFs(),
     net: over.net ?? deadNet,
-    platform: "linux",
+    host: hostFor("linux"),
     store: { load: () => Promise.resolve(over.store ?? null) },
     ops: { get: (id) => Promise.resolve(over.ops?.[id] ?? null) },
     remote: (host) => {
@@ -618,7 +619,7 @@ describe("preflight — the service check", () => {
 
   test("on macOS the LaunchAgent is what is asked about", async () => {
     const h = harness({ answers: [["systemctl --user show-environment", { code: 1 }]] });
-    const deps: UpdateCheckDeps = { ...h.deps, platform: "darwin" };
+    const deps: UpdateCheckDeps = { ...h.deps, host: hostFor("darwin") };
     const check = byId(await preflight(deps), "service");
     expect(check.verdict).toBe("red");
     expect(check.reason).toContain("LaunchAgent");

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { hostFor } from "../bridge/host.ts";
+
 import {
   BINARY,
   capture,
@@ -209,7 +211,7 @@ function harness(
       files,
       link,
       net: { ...deadNet, getJson: (url) => (url.includes("/api/health") ? health() : deadNet.getJson(url)) },
-      platform: "linux",
+      host: hostFor("linux"),
       arch: "x64",
       restart: () => {
         h.restarts++;
@@ -969,7 +971,7 @@ describe("update", () => {
   // every update rebuilt, even one with nothing to take.
   test("Windows: an intact install is found at bin/collie.exe, so nothing to take builds nothing", async () => {
     const h = noop();
-    h.deps.platform = "win32";
+    h.deps.host = hostFor("win32");
     stamp(h, "0.32.0");
     h.files.entries.delete(BINARY);
     h.files.entries.set(`${BINARY}.exe`, { text: "" });
@@ -980,7 +982,7 @@ describe("update", () => {
 
   test("Windows: an extensionless bin/collie is not an install there, so it still builds", async () => {
     const h = noop();
-    h.deps.platform = "win32";
+    h.deps.host = hostFor("win32");
     stamp(h, "0.32.0");
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     expect(built(h)).toBe(true);
@@ -1318,7 +1320,7 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
       files,
       link,
       net,
-      platform: "linux",
+      host: hostFor("linux"),
       arch: "x64",
       restart: () => {
         h.restarts++;
@@ -1391,6 +1393,27 @@ describe("collie update on a binary install", () => {
     // GC: `current` plus one older is kept, so 0.9.0 goes and 1.0.0 stays.
     expect(h.files.ops.join("\n")).toContain(`${INST}/.trash/0.9.0.`);
     expect(h.files.ops.join("\n")).not.toContain(`${INST}/versions/1.0.0 ${INST}/.trash`);
+  });
+
+  test("Windows: the runner restarts through `current/bin/collie.exe`, the name this host's binary has", async () => {
+    const exe = (rest: string): string => `${INST}/current/bin/collie.exe ${rest}`;
+    const h = binaryHarness({
+      answers: [
+        [`/inst/versions/${NEW}/bin/collie.exe version`, { stdout: `${NEW}\n` }],
+        [exe("version"), { stdout: `${NEW}\n` }],
+        [exe("hooks status --check"), { code: EXIT.OK }],
+      ],
+    });
+    h.deps.host = hostFor("win32");
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`${INST}$ ${exe("restart")}`);
+    expect(h.exec.calls.join("\n")).not.toContain(`${INST}/current/bin/collie restart`);
+  });
+
+  test("a staged payload gets its mode set on the binary this host names", async () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`chmod 0755 ${INST}/.staging/x/${PAYLOAD}/bin/collie`);
   });
 
   test("a checksum mismatch changes nothing — no version directory, no flip", async () => {
@@ -1588,7 +1611,7 @@ describe("the hooks nudge", () => {
 
   test("the checkout path asks the binary `build` just wrote, for the same reason", async () => {
     // `nudgeHooks` names the binary by the injected platform's spelling, the harness's pinned "linux".
-    const built = posixKey(collieBinary(ROOT, "linux"));
+    const built = posixKey(collieBinary(ROOT, hostFor("linux")));
     const h = harness({
       answers: [...LINKED, ...SHALLOW, [`${built} hooks status --check`, { code: EXIT.STATE }]],
     });
@@ -1693,7 +1716,7 @@ function stagedHarness(over: StagedOptions = {}): Harness {
       files,
       link,
       net: { ...deadNet, getJson: (url) => (url.includes("/api/health") ? health() : deadNet.getJson(url)) },
-      platform: "linux",
+      host: hostFor("linux"),
       arch: "x64",
       restart: () => {
         h.restarts++;
@@ -2147,7 +2170,7 @@ describe("the detached updater's launch seam", () => {
   const base = { binary: "/inst/current/bin/collie", args: ["_apply-update", "--to", "1.1.0"], unit: "collie", stamp: "abc" };
 
   test("linux launches the runner with systemd-run --user --collect and a transient unit name", () => {
-    const plan = launchPlan({ ...base, platform: "linux", hasSystemdRun: true, hasSetsid: true });
+    const plan = launchPlan({ ...base, host: hostFor("linux"), hasSystemdRun: true, hasSetsid: true });
     expect(plan.kind).toBe("systemd-run");
     expect(plan.command.slice(0, 5)).toEqual(["systemd-run", "--user", "--collect", "--unit", "collie-update-abc"]);
     expect(plan.command.slice(5)).toEqual([base.binary, ...base.args]);
@@ -2156,7 +2179,7 @@ describe("the detached updater's launch seam", () => {
   });
 
   test("macOS launches a setsid double-forked child instead — there is no systemd-run there", () => {
-    const plan = launchPlan({ ...base, platform: "darwin", hasSystemdRun: false, hasSetsid: true });
+    const plan = launchPlan({ ...base, host: hostFor("darwin"), hasSystemdRun: false, hasSetsid: true });
     expect(plan.kind).toBe("setsid");
     expect(plan.command).toEqual(["setsid", base.binary, ...base.args]);
     // There is no manager to ask, and the child is the runner itself rather than a client of one.
@@ -2164,9 +2187,9 @@ describe("the detached updater's launch seam", () => {
   });
 
   test("linux with no systemd-run falls back to the same setsid child and says so", () => {
-    const plan = launchPlan({ ...base, platform: "linux", hasSystemdRun: false, hasSetsid: true });
+    const plan = launchPlan({ ...base, host: hostFor("linux"), hasSystemdRun: false, hasSetsid: true });
     expect(plan.kind).toBe("setsid");
-    const bare = launchPlan({ ...base, platform: "linux", hasSystemdRun: false, hasSetsid: false });
+    const bare = launchPlan({ ...base, host: hostFor("linux"), hasSystemdRun: false, hasSetsid: false });
     expect(bare.kind).toBe("fork");
     expect(bare.command).toEqual([base.binary, ...base.args]);
     expect(bare.note).toContain("neither systemd-run nor setsid");
@@ -2675,20 +2698,20 @@ describe("#283: another install's collie runs under its own root", () => {
 
   test("the smoke runs the binary under the injected platform's name, `collie.exe` on Windows", () => {
     const exec = posixExec();
-    expect(smoke({ exec, platform: "win32" }, "/c", NEW).ok).toBe(false);
-    expect(smoke({ exec, platform: "linux" }, "/c", NEW).ok).toBe(false);
+    expect(smoke({ exec, host: hostFor("win32") }, "/c", NEW).ok).toBe(false);
+    expect(smoke({ exec, host: hostFor("linux") }, "/c", NEW).ok).toBe(false);
     expect(exec.calls).toEqual(["/c/bin/collie.exe version", "/c/bin/collie version"]);
   });
 
   test("a signal and a hang are named as such, not as an exit code", () => {
     const killed = smoke(
-      { exec: posixExec({ answers: [["/c/bin/collie version", { code: 124, signal: "SIGKILL" }]] }), platform: "linux" },
+      { exec: posixExec({ answers: [["/c/bin/collie version", { code: 124, signal: "SIGKILL" }]] }), host: hostFor("linux") },
       "/c",
       NEW,
     );
     expect(killed.ok || smokeReason(killed)).toBe("the new version did not start here (killed by SIGKILL)");
     const hung = smoke(
-      { exec: posixExec({ answers: [["/c/bin/collie version", { code: 124 }]] }), platform: "linux" },
+      { exec: posixExec({ answers: [["/c/bin/collie version", { code: 124 }]] }), host: hostFor("linux") },
       "/c",
       NEW,
     );

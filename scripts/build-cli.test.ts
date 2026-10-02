@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { hostFor } from "../bridge/host.ts";
 import { collieBinaryStaging } from "../cli/build.ts";
 import { BINARY, capture, fakeExec, fakeFiles, posixKey, ROOT } from "../cli/fakes.ts";
 
@@ -73,9 +74,9 @@ function cliHarness() {
     return result;
   };
   // The platform is pinned to the POSIX publication path (one rename onto `bin/collie`) this suite
-  // asserts. The Windows `.exe` and step-aside swap is the same code with `platform: "win32"`, and
-  // its own tests inject that platform; the host's `process.platform` must not choose which one runs.
-  return { deps: { root: ROOT, io, exec, files, platform: "linux" }, io, exec, files };
+  // asserts. The Windows `.exe` and step-aside swap is the same code with `host: hostFor("win32")`, and
+  // its own tests inject that host; the machine's `process.platform` must not choose which one runs.
+  return { deps: { root: ROOT, io, exec, files, host: hostFor("linux") }, io, exec, files };
 }
 
 const compilerOutfiles = (calls: readonly string[]): string[] =>

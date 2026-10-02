@@ -1,3 +1,4 @@
+import { type Host } from "../bridge/host.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import {
   inFlight,
@@ -516,11 +517,11 @@ export function boundTail(text: string): string {
  * says what went wrong, and must never be what stops a rollback.
  */
 export function serviceLogTail(
-  deps: { readonly exec: Exec; readonly files: Files; readonly platform: string },
+  deps: { readonly exec: Exec; readonly files: Files; readonly host: Host },
   unit: string,
   logPath: string,
 ): string {
-  if (deps.platform === "linux" && deps.exec.which("journalctl") !== null) {
+  if (deps.host.platform === "linux" && deps.exec.which("journalctl") !== null) {
     const r = deps.exec.capture("journalctl", [
       "--user",
       "-u",
@@ -582,7 +583,7 @@ export interface LaunchPlan {
  * misconfiguration to refuse.
  */
 export function launchPlan(a: {
-  readonly platform: string;
+  readonly host: Host;
   readonly binary: string;
   readonly args: readonly string[];
   readonly unit: string;
@@ -590,7 +591,7 @@ export function launchPlan(a: {
   readonly hasSystemdRun: boolean;
   readonly hasSetsid: boolean;
 }): LaunchPlan {
-  if (a.platform === "linux" && a.hasSystemdRun) {
+  if (a.host.platform === "linux" && a.hasSystemdRun) {
     return {
       kind: "systemd-run",
       command: [
