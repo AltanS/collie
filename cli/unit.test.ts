@@ -15,6 +15,7 @@ import {
   superviseArgs,
   systemdUnit,
   taskAction,
+  taskPercentPath,
   taskFilePath,
   taskXml,
   taskWorkingDirectory,
@@ -422,6 +423,16 @@ describe("the Task Scheduler task (Windows)", () => {
     expect(v1).toContain("<Description>Collie (instance v1)</Description>");
     expect(v1).toContain("_supervise --instance v1 HERDR_SOCKET_PATH=");
     expect(v1).toContain("COLLIE_INSTANCE=v1");
+  });
+
+  test("a '%' anywhere the task carries a path is named, because Task Scheduler expands %NAME% there", () => {
+    expect(taskPercentPath(WIN_SPEC, CONHOST)).toBeNull();
+    expect(taskPercentPath({ ...WIN_SPEC, root: "C:\\pct%TEMP%dir", binary: "C:\\pct%TEMP%dir\\bin\\collie.exe" }, CONHOST)).toBe(
+      "C:\\pct%TEMP%dir\\bin\\collie.exe",
+    );
+    expect(taskPercentPath({ ...WIN_SPEC, configDir: "D:\\100%\\cfg" }, CONHOST)).toBe("D:\\100%\\cfg");
+    // The working folder of a binary install is the install root, above `current`.
+    expect(taskPercentPath({ ...WIN_SPEC, root: "C:\\a%b\\current", binary: "C:\\x\\collie.exe" }, null)).toBe("C:\\a%b");
   });
 
   test("without conhost the task runs the binary itself", () => {

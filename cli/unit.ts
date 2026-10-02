@@ -333,6 +333,18 @@ export function taskAction(spec: ServiceSpec, conhost: string | null): TaskActio
 }
 
 /**
+ * The first value the task would carry with a `%` in it, or `null`. Task Scheduler expands `%NAME%`
+ * in a task's command, arguments and working folder when it runs it, and there is no escape for a
+ * literal `%`. Measured on the Windows 11 VM, 2026-10-03: the argument `C:\pct%TEMP%dir` reached the
+ * program as `C:\pctC:\Users\collie\AppData\Local\Tempdir`, and the same working folder failed the
+ * task with "The directory name is invalid". So such a path is refused, never written into a task.
+ */
+export function taskPercentPath(spec: ServiceSpec, conhost: string | null): string | null {
+  const values = [spec.binary, taskWorkingDirectory(spec.root), ...Object.values(bridgeEnvironment(spec)), conhost ?? ""];
+  return values.find((v) => v.includes("%")) ?? null;
+}
+
+/**
  * XML character data in plain ASCII: {@link xmlEscape}, and every other character as a numeric
  * reference. `schtasks /XML` reads a file with no encoding declaration as UTF-8 and refuses the
  * declaration itself ("unable to switch the encoding", Windows 11, 2026-10-02), so a pure-ASCII

@@ -46,6 +46,7 @@ import {
   systemdUnit,
   taskFilePath,
   type TaskOptions,
+  taskPercentPath,
   taskXml,
   unitFilePath,
   unitName,
@@ -522,9 +523,16 @@ function registerTask(deps: LifecycleDeps): boolean {
     return false;
   }
   const spec = taskServiceSpec(deps, resolveTailscaleHosts(deps));
+  const conhost = deps.exec.which("conhost");
+  const percent = taskPercentPath(spec, conhost);
+  if (percent !== null) {
+    deps.io.err(`error: ${percent} holds a '%', and Task Scheduler would read %NAME% in it as an environment variable`);
+    deps.io.err("       Move Collie and its config folder to paths without '%', then run: collie start");
+    return false;
+  }
   const file = taskFilePath(deps.ctx.configDir, deps.ctx.instance, deps.host);
   deps.files.mkdirp(deps.ctx.configDir);
-  deps.files.write(file, taskXml(spec, { user, runLevel, conhost: deps.exec.which("conhost") }));
+  deps.files.write(file, taskXml(spec, { user, runLevel, conhost }));
   const name = taskName(deps);
   const r = deps.exec.capture("schtasks", ["/Create", "/TN", name, "/XML", file, "/F"]);
   if (r.found && r.code === 0) return true;

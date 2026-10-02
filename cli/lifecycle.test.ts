@@ -592,6 +592,18 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.io.stdout.join("\n")).toContain("note: Collie publishes no front door here");
     });
 
+    test("a path with a '%' is refused before the task is written: Task Scheduler would expand it", async () => {
+      const h = windows();
+      h.deps.ctx = { ...h.deps.ctx, configDir: "C:\\cfg%TEMP%x" };
+      expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(h)).toEqual([]);
+      expect(h.files.exists(taskFilePath("C:\\cfg%TEMP%x", null, WIN))).toBe(false);
+      expect(h.io.stderr.slice(-2)).toEqual([
+        "error: C:\\cfg%TEMP%x holds a '%', and Task Scheduler would read %NAME% in it as an environment variable",
+        "       Move Collie and its config folder to paths without '%', then run: collie start",
+      ]);
+    });
+
     test("no secret from the environment reaches the task file", async () => {
       const h = windows({ env: { COLLIE_VAPID_PRIVATE: "s3cret-vapid", COLLIE_TRUSTED_USER: "pat@example.com" } });
       expect(await cmdStart(h.deps)).toBe(EXIT.OK);
