@@ -29,6 +29,7 @@ import {
   originOf,
   probeInstall,
   updateRepoOf,
+  WINDOWS_CHECKOUT_SENTENCE,
 } from "./install-kind.ts";
 import { packageCommand } from "./package-command.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -685,6 +686,9 @@ export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
 }
 
 /** Every instance check, in the order they print. */
+/** The preflight check that refuses a source checkout on Windows. */
+export const WINDOWS_CHECKOUT_CHECK_ID = "windows-checkout";
+
 export async function instanceChecks(
   deps: UpdateCheckDeps,
   toTag: string | null = null,
@@ -704,6 +708,11 @@ export async function instanceChecks(
       packagedRemedy(await upstreamCheck(deps, install, toTag), deps.ctx.root),
       serviceCheck(deps),
     ];
+  }
+  if (isCheckout(install) && deps.host.platform === "win32") {
+    // One red and nothing else: no build, tree or upstream check can make this update possible, and
+    // the phone's button prints this check's own sentence.
+    return [red(WINDOWS_CHECKOUT_CHECK_ID, WINDOWS_CHECKOUT_SENTENCE, "install the release zip with install.ps1")];
   }
   const checks: PreflightCheck[] = [await doctorCheck(deps), diskCheck(deps, install)];
   if (buildsFromSource(install)) checks.push(bunCheck(deps));

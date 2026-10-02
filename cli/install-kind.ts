@@ -206,6 +206,15 @@ export function classifyInstall(p: InstallProbe): InstallKind {
  */
 export const PACKAGED_SENTENCE = "updates come from your package manager";
 
+/**
+ * The one sentence for a source checkout on Windows (M43 spec 08). There `collie update` takes a
+ * release install only: a checkout's update needs `bash` to build (spec 03), and its task runs the
+ * clone's own `bin\collie.exe`, so the restart after a staged update relaunched the old build (VM,
+ * 2026-10-02). `collie update` and its preflight (so the phone's button) print exactly this.
+ */
+export const WINDOWS_CHECKOUT_SENTENCE =
+  "On Windows, collie updates a release install. A source checkout is not supported for updates; install the release zip with install.ps1.";
+
 // ── The probe, and what a binary install's paths are ─────────────────────────
 
 /** The paths of a binary install, all derived from the version directory the process runs from. */

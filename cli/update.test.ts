@@ -36,6 +36,7 @@ import {
   scrubSecrets,
 } from "./update-run.ts";
 import { EXIT } from "./io.ts";
+import { WINDOWS_CHECKOUT_SENTENCE } from "./install-kind.ts";
 import { stagingLogPath, tailOf } from "../bridge/staging-log.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { latestUpdateInMajor, parseReleaseManifest } from "../bridge/update.ts";
@@ -967,25 +968,24 @@ describe("update", () => {
     expect(built(h)).toBe(true);
   });
 
-  // On Windows the binary is `bin/collie.exe`, so a check for the bare name was never true there and
-  // every update rebuilt, even one with nothing to take.
-  test("Windows: an intact install is found at bin/collie.exe, so nothing to take builds nothing", async () => {
-    const h = noop();
-    h.deps.host = hostFor("win32");
-    stamp(h, "0.32.0");
-    h.files.entries.delete(BINARY);
-    h.files.entries.set(`${BINARY}.exe`, { text: "" });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(built(h)).toBe(false);
-    expect(h.restarts).toBe(0);
-  });
-
-  test("Windows: an extensionless bin/collie is not an install there, so it still builds", async () => {
-    const h = noop();
-    h.deps.host = hostFor("win32");
-    stamp(h, "0.32.0");
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(built(h)).toBe(true);
+  // On Windows a checkout's update is refused before anything else since M43 spec 08 (it needs bash
+  // to build, and its task relaunched the clone's own build after a staged update). These two cases
+  // pinned that the intact-install check named `bin/collie.exe` there; the refusal comes first now,
+  // whatever is on disk, and builds nothing.
+  test("Windows: a checkout is refused before the intact-install check, whichever binary is there", async () => {
+    for (const exe of [true, false]) {
+      const h = noop();
+      h.deps.host = hostFor("win32");
+      stamp(h, "0.32.0");
+      if (exe) {
+        h.files.entries.delete(BINARY);
+        h.files.entries.set(`${BINARY}.exe`, { text: "" });
+      }
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      expect(built(h)).toBe(false);
+      expect(h.restarts).toBe(0);
+      expect(h.io.stderr).toEqual([`error: ${WINDOWS_CHECKOUT_SENTENCE}`]);
+    }
   });
 
   test("nothing to take but the bundle is of another version: build anyway", async () => {
@@ -3088,5 +3088,36 @@ describe("#283: another install's collie runs under its own root", () => {
     const h = legacyClone();
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     expect(overrideOf(h.exec, `${WT("v0.32.0")}/cli/main.ts build`)).toEqual(OWN_ROOT);
+  });
+});
+
+describe("a source checkout on Windows (M43 spec 08)", () => {
+  test("`collie update` refuses at once, with one sentence, and changes nothing on disk", async () => {
+    for (const args of [[], ["--rollback"], ["--to-tag", "v0.32.0"], ["--major"]]) {
+      const h = legacyClone();
+      h.deps.host = hostFor("win32");
+      expect(await cmdUpdate(h.deps, args)).toBe(EXIT.FAIL);
+      expect(h.io.stderr).toEqual([`error: ${WINDOWS_CHECKOUT_SENTENCE}`]);
+      expect(h.io.stdout).toEqual([]);
+      expect(h.files.ops).toEqual([]);
+      expect(h.link.ops).toEqual([]);
+      expect(h.exec.ran).toEqual([]);
+      expect(h.exec.spawned).toEqual([]);
+      expect(h.exec.calls.some((c) => /fetch|worktree|ls-remote| build|install/.test(c))).toBe(false);
+      expect(h.files.exists(`${STATE}/update.json`)).toBe(false);
+      expect(h.restarts).toBe(0);
+    }
+  });
+
+  test("the sentence is the one the operator reads, word for word", () => {
+    expect(WINDOWS_CHECKOUT_SENTENCE).toBe(
+      "On Windows, collie updates a release install. A source checkout is not supported for updates; install the release zip with install.ps1.",
+    );
+  });
+
+  test("off Windows the same checkout is not refused", async () => {
+    const h = legacyClone();
+    await cmdUpdate(h.deps, []);
+    expect(h.io.stderr.join("\n")).not.toContain("On Windows");
   });
 });

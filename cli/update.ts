@@ -36,6 +36,7 @@ import {
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
   PACKAGED_SENTENCE,
+  WINDOWS_CHECKOUT_SENTENCE,
 } from "./install-kind.ts";
 import { packageCommand } from "./package-command.ts";
 import { herdrActionCommand, type Environment, type EnvVars } from "./context.ts";
@@ -1026,6 +1027,12 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   // The record, not the act — `--status` reads `<state dir>/update.json` and touches nothing, so it
   // is answered before the lock, before the install kind matters and before any network call.
   if (wantsStatus(args)) return cmdUpdateStatus(deps, args);
+  // Windows takes a release install only. Refused here, before the lock, the record or any fetch,
+  // so nothing on disk changes (WINDOWS_CHECKOUT_SENTENCE says why).
+  if (isCheckout && deps.host.platform === "win32") {
+    deps.io.err(`error: ${WINDOWS_CHECKOUT_SENTENCE}`);
+    return EXIT.FAIL;
+  }
   if (args.includes("--rollback")) {
     if (install.kind === "binary") return await rollbackBinary(deps);
     if (install.kind === "packaged") {

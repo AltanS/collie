@@ -35,6 +35,7 @@ import {
   parseDfAvailableKb,
   parseReport,
   preflight,
+  serviceCheck,
   PREFLIGHT_SCHEMA,
   PROTOCOL_FLOOR_VERSION,
   type PreflightCheck,
@@ -596,6 +597,30 @@ describe("preflight — the upstream check", () => {
   });
 });
 
+describe("preflight — a source checkout on Windows (M43 spec 08)", () => {
+  test("one red check with the one sentence, and nothing else is asked", async () => {
+    const h = harness();
+    const report = await preflight({ ...h.deps, host: hostFor("win32") });
+    expect(report.verdict).toBe("red");
+    expect(report.checks).toEqual([
+      {
+        id: "windows-checkout",
+        verdict: "red",
+        reason:
+          "On Windows, collie updates a release install. A source checkout is not supported for updates; install the release zip with install.ps1.",
+        remedy: "install the release zip with install.ps1",
+      },
+    ]);
+    // No fetch, no build tool, no git: nothing it says could change the answer.
+    expect(h.exec.calls.some((c) => c.includes("ls-remote") || c.includes("bun"))).toBe(false);
+  });
+
+  test("off Windows the checkout's checks are the ones they were", async () => {
+    const report = await preflight(harness().deps);
+    expect(report.checks.some((c) => c.id === "windows-checkout")).toBe(false);
+  });
+});
+
 describe("preflight — the service check", () => {
   test("green when the unit exists and is restartable", async () => {
     const check = byId(await preflight(harness().deps), "service");
@@ -626,23 +651,23 @@ describe("preflight — the service check", () => {
     expect(check.reason).toContain(join("Library", "LaunchAgents"));
   });
 
-  test("on Windows the Task Scheduler task is what is asked about, never a systemd unit", async () => {
+  test("on Windows the Task Scheduler task is what is asked about, never a systemd unit", () => {
     // The rehearsal found the phone's Update refused on Windows with "no systemd user unit".
     const QUERY = "powershell -NoProfile -NonInteractive -Command";
     const running = harness({ answers: [[QUERY, { stdout: "Running\r\nC:\\WINDOWS\\system32\\conhost.exe\r\n--headless x _supervise\r\n" }]] });
-    const live = byId(await preflight({ ...running.deps, host: hostFor("win32") }), "service");
+    const live = serviceCheck({ ...running.deps, host: hostFor("win32") });
     expect(live.verdict).toBe("green");
     expect(live.reason).toBe("the Task Scheduler task herdr.collie is Running, and the update can restart it");
     expect(running.exec.calls.some((c) => c.startsWith("systemctl --user is-active"))).toBe(false);
 
     const none = harness({ answers: [[QUERY, { code: 1 }]] });
-    const missing = byId(await preflight({ ...none.deps, host: hostFor("win32") }), "service");
+    const missing = serviceCheck({ ...none.deps, host: hostFor("win32") });
     expect(missing.verdict).toBe("red");
     expect(missing.reason).toContain("no Task Scheduler task herdr.collie");
     expect(missing.remedy).toBe("collie start");
 
     const blind = harness({ absent: ["powershell"] });
-    expect(byId(await preflight({ ...blind.deps, host: hostFor("win32") }), "service").verdict).toBe("amber");
+    expect(serviceCheck({ ...blind.deps, host: hostFor("win32") }).verdict).toBe("amber");
   });
 });
 
