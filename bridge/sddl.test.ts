@@ -65,6 +65,14 @@ describe("the allowlist", () => {
     expect(grantsOf(`D:(A;;FA;;;${SID})`, "S-1-5-21-1-2-3-1002")).toEqual([{ sid: SID, what: "full control" }]);
   });
 
+  test("the built-in Administrator account is written LA: the account itself when it runs Collie, a stranger otherwise", () => {
+    const admin = "S-1-5-21-1678274354-1849132225-3673151578-500";
+    expect(grantsOf("D:(A;OICI;FA;;;LA)(A;OICI;FA;;;SY)", admin)).toEqual([]);
+    expect(grantsOf("D:(A;OICI;FA;;;LA)", SID)).toEqual([{ sid: "LA", what: "full control" }]);
+    expect(foreignOwner(parseSddl("O:LAD:"), admin)).toBeNull();
+    expect(foreignOwner(parseSddl("O:LAD:"), SID)).toBe("LA");
+  });
+
   test("a deny-only case: a deny for Everyone is no leak, and a protected private list passes", () => {
     expect(grantsOf("D:PAI(D;;FR;;;WD)(A;;FA;;;BA)(A;;FA;;;SY)")).toEqual([]);
   });

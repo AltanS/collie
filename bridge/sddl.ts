@@ -290,6 +290,15 @@ function describe(mask: number | null): string {
 }
 
 /**
+ * Whether `sid` is the account that runs Collie. icacls writes the built-in Administrator account
+ * (RID 500) as the alias `LA` and not as its SID, and a hosted CI runner and many home machines run
+ * as exactly that account.
+ */
+function isUser(sid: string, user: string): boolean {
+  return sid === user || (sid === "LA" && user.endsWith("-500"));
+}
+
+/**
  * The principals outside the allowlist that `dacl` lets in, one entry per SID (the widest right
  * wins). `user` is the account that runs Collie. Empty means private.
  */
@@ -297,7 +306,7 @@ export function foreignGrants(dacl: Dacl, user: string): ForeignGrant[] {
   if (dacl.aces === null) return [{ sid: "S-1-1-0", what: "full control, no access list at all" }];
   const found = new Map<string, ForeignGrant>();
   for (const ace of dacl.aces) {
-    if (!ALLOW_TYPES.has(ace.type) || ace.sid === user || ALLOWED_SIDS.has(ace.sid)) continue;
+    if (!ALLOW_TYPES.has(ace.type) || isUser(ace.sid, user) || ALLOWED_SIDS.has(ace.sid)) continue;
     if (ace.mask !== null && (ace.mask & ~HARMLESS) === 0) continue;
     const inheritOnly = ace.flags.includes("IO");
     // An inherit-only entry that passes to nothing applies to nothing.
@@ -312,7 +321,7 @@ export function foreignGrants(dacl: Dacl, user: string): ForeignGrant[] {
 
 /** The owner when it is someone other than the account, SYSTEM, Administrators or TrustedInstaller. */
 export function foreignOwner(sd: SecurityDescriptor, user: string): string | null {
-  if (sd.owner === null || sd.owner === user || ALLOWED_SIDS.has(sd.owner)) return null;
+  if (sd.owner === null || isUser(sd.owner, user) || ALLOWED_SIDS.has(sd.owner)) return null;
   return sd.owner;
 }
 
