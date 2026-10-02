@@ -190,32 +190,30 @@ isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the r
 - **[D — off-host identity proxy over the tailnet](./docs/deployment.md#variant-d--off-host-identity-proxy-over-the-tailnet)** — one central ingress node fronting Collie among your other services.
 - **[E — any other mesh or tunnel](./docs/deployment.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)** — NetBird, ZeroTier, Cloudflare Tunnel: you own the ingress, Collie publishes nothing.
 
-## Windows (experimental)
+## Windows
 
-The **bridge** runs on Windows against the Herdr Windows beta; the **launcher** does not. Herdr on
-Windows exposes its control socket as a named pipe derived from the full socket path instead of an
-AF_UNIX socket. Collie connects via `node:net` rather than `Bun.connect` using a single shim,
-[`bridge/dial.ts`](./bridge/dial.ts), which documents the path mapping.
+Windows 11 on x64 with Herdr is a supported host, and it stays marked experimental until
+`install.ps1` is published on colliepwa.dev. [**docs/windows.md**](./docs/windows.md) has the
+install, the update, and what is not tested. In short:
 
-Operational details:
+- **Tested.** The `windows.yml` workflow runs the bridge, cli and scripts tests on every push, and
+  a Windows 11 VM rehearses an install, an update and a rollback before each release tag.
+  ([ADR 0075](./.adr/0075-windows-is-a-supported-host.md))
+- **Installed without a toolchain.** Each release builds `collie-<version>-windows-x64.zip`, and
+  `scripts/install.ps1` installs it. The binary is unsigned, and Smart App Control can block it.
+- **Run by Task Scheduler.** `collie start`, `stop`, `restart`, `status` and `uninstall` work as they
+  do elsewhere. The task is named `herdr.collie` and starts at your logon.
+- **Not covered.** tmux and zellij (neither has a Windows build), Windows 10, Windows on ARM,
+  a Windows machine joining a crew, and a managed front door: Collie does not run `tailscale serve`
+  on Windows, so bring your own,
+  [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
+  Herdr's action buttons need `bash`, so the manifest lists only `linux` and `macos`.
 
-- **Run the bridge directly** with `bun run bridge/index.ts`. There is no systemd unit. Herdr action
-  buttons invoke `bash`, requiring Git Bash on `PATH`. The manifest lists only `linux` and `macos`
-  support to avoid exposing actions that might fail silently.
-- **`tailscale serve` integration is unavailable on Windows.** Follow
-  [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale): bind to
-  loopback, place your own ingress in front, and set `COLLIE_PUBLIC_HOSTS`. The rules in
-  [§Security](./docs/security.md) still apply.
-- **Set `COLLIE_MULTI_SESSION=off`**, as session discovery relies on POSIX paths.
-- The socket path defaults to `%APPDATA%\herdr\herdr.sock`. Override it with `HERDR_SOCKET_PATH`.
-  Explicit `\\.\pipe\…` values pass through directly.
-
-**Lifecycle management:** The bridge added named pipe support in 0.15.0. `collie start`, `stop`,
-`restart`, `status` and `uninstall` run it under Task Scheduler (experimental). They replace the
-community script that lived in `contrib/windows/`.
-
-**Verification:** The bridge logs `[events] stream up` on startup. Event streaming runs over the
-pipe, providing real-time updates without falling back to polling.
+Herdr on Windows exposes its control socket as a named pipe derived from the full socket path instead
+of an AF_UNIX socket. Collie connects through `node:net` rather than `Bun.connect`, with a single shim,
+[`bridge/dial.ts`](./bridge/dial.ts), which documents the path mapping. The socket path defaults to
+`%APPDATA%\herdr\herdr.sock`; override it with `HERDR_SOCKET_PATH`. Explicit `\\.\pipe\...` values pass
+through directly. The bridge logs `[events] stream up` on startup when event streaming runs over the pipe.
 
 `COLLIE_HERDR_DIAL=net` forces the `node:net` dialer on Linux and macOS. This allows testing the
 Windows connection path without a Windows environment; `bridge/dial.test.ts` relies on it.
