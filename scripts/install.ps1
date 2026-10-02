@@ -345,9 +345,21 @@ function Set-CollieCurrent([string]$Dir, [string]$Target) {
   Stop-CollieInstall "could not point $current at $Target ($why). $current still names $old. Nothing was changed." "Close every program that runs Collie from $Dir, then run the installer again."
 }
 
+# Stop a process and every process below it, children first, so none is left without a parent to
+# be found by. Windows PowerShell 5.1 has no Kill(entireProcessTree), and taskkill would be a second
+# program this script runs.
+function Stop-CollieTree([int]$Id) {
+  foreach ($child in @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $Id" -ErrorAction SilentlyContinue)) {
+    Stop-CollieTree ([int]$child.ProcessId)
+  }
+  Stop-Process -Id $Id -Force -ErrorAction SilentlyContinue
+}
+
 # Run Exe once, as `Exe version`, and wait up to 30 seconds. Returns $null when it ran and exited 0,
 # or what went wrong. cmd.exe writes its output to Log, a file: nothing is read through a pipe, which
-# a program left running could hold open. Its input is NUL, so nothing waits for a key.
+# a program left running could hold open. Its input is NUL, so nothing waits for a key. On the
+# timeout the whole tree goes (Stop-CollieTree): killing cmd.exe alone left a hung collie.exe
+# running, and it held the version folder open.
 function Test-CollieRuns([string]$Exe, [string]$Log) {
   if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { return "$Exe is missing" }
   $start = New-Object System.Diagnostics.ProcessStartInfo
@@ -356,7 +368,8 @@ function Test-CollieRuns([string]$Exe, [string]$Log) {
   $start.UseShellExecute = $false
   $run = [System.Diagnostics.Process]::Start($start)
   if (-not $run.WaitForExit(30000)) {
-    try { $run.Kill() } catch { }
+    Stop-CollieTree $run.Id
+    [void]$run.WaitForExit(5000)
     return "collie.exe version did not finish in 30 seconds"
   }
   if ($run.ExitCode -eq 0) { return $null }
@@ -627,6 +640,17 @@ function Invoke-CollieInstall {
   }
   $collie = Get-CollieCommandName $exe
   $herdr = Get-Command herdr -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+
+  # A pinned run over an install: Collie may be running already, so the next step is a restart,
+  # as for a rescue that found the version on disk, never a first start.
+  if ($rescue) {
+    Write-CollieLine ""
+    Write-CollieLine "OK  Collie $version is installed in $dir, and current names it."
+    Write-CollieLine "    The download matches the checksum published with the release, and collie.exe runs."
+    Write-CollieLine $published
+    Write-CollieLine "If Collie is running, run  $collie restart  to start this version."
+    return
+  }
 
   # What is left is yours.
   Write-CollieLine ""

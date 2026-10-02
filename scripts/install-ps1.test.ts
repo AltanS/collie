@@ -131,6 +131,16 @@ describe("scripts/install.ps1, read as text", () => {
     expect(offending(/(^|[\s(;])&\s/)).toEqual([]);
   });
 
+  test("a `collie.exe version` that hangs is stopped with its whole tree, not only cmd.exe", () => {
+    const run = TEXT.slice(TEXT.indexOf("function Test-CollieRuns"), TEXT.indexOf("function Stop-CollieBlocked"));
+    expect(run).toContain("if (-not $run.WaitForExit(30000)) {\n    Stop-CollieTree $run.Id");
+    expect(run).not.toContain("$run.Kill()");
+    const tree = TEXT.slice(TEXT.indexOf("function Stop-CollieTree"), TEXT.indexOf("function Test-CollieRuns"));
+    expect(tree).toContain('Get-CimInstance Win32_Process -Filter "ParentProcessId = $Id"');
+    expect(tree).toContain("Stop-CollieTree ([int]$child.ProcessId)");
+    expect(tree).toContain("Stop-Process -Id $Id -Force");
+  });
+
   test("a junction is removed by itself, never through a recursive delete", () => {
     // `Remove-Item -Recurse` walks into a junction in Windows PowerShell 5.1. None is left.
     expect(offending(/-Recurse/)).toEqual([]);
@@ -570,6 +580,11 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(currentTarget(b)).toBe(versionDir(b, v2));
     expect(r.asked.some((p) => p.includes("/tags"))).toBe(false);
     expect(existsSync(join(b.dir, ".current.new"))).toBe(false);
+    // Collie may be running already: the next step is a restart, never "start" and "nothing is running".
+    expect(r.out).toContain(`OK  Collie ${v2} is installed in ${b.dir}, and current names it.`);
+    expect(r.out).toMatch(/If Collie is running, run {2}\S*collie(\.exe)? restart {2}to start this version\./);
+    expect(r.out).not.toContain("Nothing is running yet");
+    expect(r.out).not.toContain(" start\n");
     // Back to v1, which is on disk: a junction flip, and nothing is downloaded.
     const back = await install(b, mirror, { env: { COLLIE_TAG: `v${v1}` } });
     expect(back.code).toBe(0);
