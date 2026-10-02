@@ -433,7 +433,7 @@ export function ensureOwnerOnlyDir(
   const leaks = before.verdict.state === "loose" ? before.verdict.leaks : [];
   if (!opts.repair) {
     if (leaks.length === 0) return { state: "private" };
-    return { state: "left-loose", leaks, why: `${NO_ACL_REPAIR_ENV}=1 turns the repair off` };
+    return { state: "left-loose", leaks, why: `${NO_ACL_REPAIR_ENV}=1 is set` };
   }
   const scope = scopeOf(dir, opts.createdNow === true, host, deps);
   if (!scope.allowed) {
@@ -489,7 +489,7 @@ export function dirOutcomeLine(dir: string, outcome: DirOutcome | null, deps: Ow
     case "left-loose":
       return (
         `[secrets] ${dir} can be read by other accounts on this PC (${whoCanRead(outcome.leaks)}). ` +
-        `Collie did not change it: ${outcome.why}.` +
+        `Collie did not change it, because ${outcome.why}.` +
         (user === null ? "" : ` To make it private, run: ${privateCommand(dir, user, true, outcome.leaks)}`)
       );
     case "repair-failed":
@@ -536,7 +536,8 @@ export function secretFileVerdict(
   const folder = host.path.dirname(path);
   const scope = opts.repair && aclRepairAllowed(deps.env) ? scopeOf(folder, false, host, deps) : null;
   if (scope === null || !scope.allowed || user === null) {
-    const reason = scope === null ? "Restart Collie to repair it" : `Collie does not change it here (${scope.allowed ? "whoami failed" : scope.why})`;
+    const reason =
+      scope === null ? "Restart Collie to repair it" : `Collie did not change it, because ${scope.allowed ? "whoami did not answer" : scope.why}. Fix it yourself`;
     return { ok: false, warning: `warn: ${path} can be read by other accounts on this PC (${who}). ${reason}, or run: ${fix}` };
   }
   backUp(path, folder, host, deps);

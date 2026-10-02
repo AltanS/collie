@@ -93,7 +93,7 @@ describe("the repair scope", () => {
 
   test("any other existing folder is checked only, and the reason names what is not Collie's", () => {
     const s = scope("D:\\Projects", ["crew-trust.json", "src", "README.md", "package.json", "x"]);
-    expect(s).toEqual({ allowed: false, why: "it is not only Collie's: it also holds src, README.md, package.json and more" });
+    expect(s).toEqual({ allowed: false, why: "it also holds files that are not Collie's (src, README.md, package.json and more)" });
     expect(scope("D:\\Projects", null).allowed).toBe(false);
   });
 
@@ -102,7 +102,7 @@ describe("the repair scope", () => {
     expect(scope("\\\\nas\\share\\collie", [], true).allowed).toBe(false);
     expect(scope("C:\\PROGRA~1\\collie", [], true)).toEqual({
       allowed: false,
-      why: "Collie never changes it: it is inside C:\\Program Files",
+      why: "it is inside C:\\Program Files, and Collie never changes such a folder",
     });
   });
 });

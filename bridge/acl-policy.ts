@@ -223,7 +223,10 @@ export interface ScopeFacts {
   readonly names: readonly string[] | null;
 }
 
-/** May Collie change this folder's list? `allowed: false` carries the reason for the warning. */
+/**
+ * May Collie change this folder's list? `allowed: false` carries the reason, worded to follow
+ * "because" in a sentence.
+ */
 export type Scope = { readonly allowed: true } | { readonly allowed: false; readonly why: string };
 
 export function repairScope(
@@ -234,13 +237,13 @@ export function repairScope(
 ): Scope {
   if (facts.realPath === null) return { allowed: false, why: "its real path could not be read" };
   const never = neverTouch(facts.realPath, host, places);
-  if (never !== null) return { allowed: false, why: `Collie never changes it: ${never}` };
+  if (never !== null) return { allowed: false, why: `${never}, and Collie never changes such a folder` };
   if (facts.createdNow || isDefaultLocation(facts.realPath, host, defaults)) return { allowed: true };
-  if (facts.names === null) return { allowed: false, why: "it could not be listed" };
+  if (facts.names === null) return { allowed: false, why: "its contents could not be listed" };
   const foreign = facts.names.filter((n) => !isCollieName(n));
   if (foreign.length === 0) return { allowed: true };
   return {
     allowed: false,
-    why: `it is not only Collie's: it also holds ${foreign.slice(0, 3).join(", ")}${foreign.length > 3 ? " and more" : ""}`,
+    why: `it also holds files that are not Collie's (${foreign.slice(0, 3).join(", ")}${foreign.length > 3 ? " and more" : ""})`,
   };
 }

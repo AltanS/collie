@@ -228,13 +228,13 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
         { path: dir, sid: "S-1-5-32-545", what: "read" },
         { path: dir, sid: "S-1-5-11", what: "change" },
       ],
-      why: "it is not only Collie's: it also holds src, package.json",
+      why: "it also holds files that are not Collie's (src, package.json)",
     });
     expect(f.restores).toEqual([]);
     expect(f.resets).toEqual([]);
     expect(dirOutcomeLine(dir, outcome, f.deps)).toBe(
       `[secrets] ${dir} can be read by other accounts on this PC (Users [S-1-5-32-545], Authenticated Users [S-1-5-11]). ` +
-        "Collie did not change it: it is not only Collie's: it also holds src, package.json. To make it private, run: " +
+        "Collie did not change it, because it also holds files that are not Collie's (src, package.json). To make it private, run: " +
         `icacls "${dir}" /grant:r "*${SID}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /inheritance:r /remove:g *S-1-5-32-545 *S-1-5-11`,
     );
   });
@@ -243,7 +243,7 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
     const f = fake({ saves: { [STATE]: [DRIVE_DIR("collie")] }, files: { [STATE]: { dir: true } } });
     const outcome = ensureOwnerOnlyDir(STATE, WIN, { root: STATE_ROOT, repair: false }, f.deps);
     expect(outcome?.state).toBe("left-loose");
-    if (outcome?.state === "left-loose") expect(outcome.why).toBe("COLLIE_NO_ACL_REPAIR=1 turns the repair off");
+    if (outcome?.state === "left-loose") expect(outcome.why).toBe("COLLIE_NO_ACL_REPAIR=1 is set");
     expect(f.restores).toEqual([]);
   });
 
@@ -365,7 +365,7 @@ describe("secretFileVerdict", () => {
     const f = fake({ saves: { [toml]: [EVERYONE_FILE("config.toml")] }, files: { [toml]: {} }, lists: { "D:\\shared": ["config.toml", "notes.txt"] } });
     const v = secretFileVerdict(toml, { repair: true }, f.deps);
     expect(v.ok).toBe(false);
-    expect(v.warning).toContain("Collie does not change it here (it is not only Collie's: it also holds notes.txt)");
+    expect(v.warning).toContain("Collie did not change it, because it also holds files that are not Collie's (notes.txt). Fix it yourself, or run: icacls");
     expect(f.restores).toEqual([]);
   });
 
