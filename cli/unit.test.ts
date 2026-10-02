@@ -278,7 +278,7 @@ describe("the Task Scheduler task (Windows)", () => {
   };
   const CONHOST = "C:\\WINDOWS\\system32\\conhost.exe";
 
-  test("is exactly this text: logon trigger, limited token, no time limit, the launcher under conhost", () => {
+  test("is exactly this text: logon trigger, a 5-minute revive trigger, limited token, no time limit, IgnoreNew, the launcher under conhost", () => {
     expect(taskXml(WIN_SPEC, { user: "desk\\pat", runLevel: "LeastPrivilege", conhost: CONHOST })).toBe(
       `<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -289,6 +289,14 @@ describe("the Task Scheduler task (Windows)", () => {
       <Enabled>true</Enabled>
       <UserId>desk\\pat</UserId>
     </LogonTrigger>
+    <TimeTrigger>
+      <Repetition>
+        <Interval>PT5M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">

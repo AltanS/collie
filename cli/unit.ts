@@ -243,8 +243,9 @@ ${envEntries}
 // sees the bridge, and it is a narrower net than it looks. Measured on the Windows 11 VM on
 // 2026-10-02: a launcher killed by hand takes its bridge with it (a child that is not detached dies
 // with its parent), `conhost` then exits 0, the task reads Ready with result 0, and nothing restarts
-// it in 160 s. So it covers a task that fails to START, not a launcher that dies; that case comes back
-// at the next logon, or with `collie restart` (which sees no live launcher and takes stop + start).
+// it in 160 s. So it covers a task that fails to START, not a launcher that dies. A dead launcher comes
+// back with the 5-minute time trigger below, at the next logon, or with `collie restart` (which sees
+// no live launcher and takes stop + start).
 //
 // THE SETTINGS THAT ARE NOT DEFAULTS, each pinned by `cli/unit.test.ts`:
 //   ExecutionTimeLimit PT0S        the default is 72 hours, after which Task Scheduler silently ends
@@ -252,10 +253,19 @@ ${envEntries}
 //   MultipleInstancesPolicy IgnoreNew  a second `/Run` while one runs is a no-op, never a second launcher
 //   DisallowStartIfOnBatteries false, StopIfGoingOnBatteries false  a laptop on battery keeps its bridge
 //   StartWhenAvailable true        a logon that was missed (the task disabled at the time) runs later
+//   TimeTrigger every 5 minutes    a launcher killed by hand comes back within 5 minutes. With
+//                                  IgnoreNew the trigger does nothing while the launcher runs, and
+//                                  `collie stop` disables the task, so a stopped Collie stays stopped
 // No analogue: NoNewPrivileges and PrivateTmp. The task runs with the user's limited token unless
 // the operator asks for `COLLIE_TASK_RUN_LEVEL=highest` (see `taskRunLevel` in cli/lifecycle.ts).
 //
 // First written by @Pimpmuckl as `contrib/windows/collie-ctl.ps1` (#71), which this replaces.
+
+/**
+ * How often the task's time trigger fires: an ISO 8601 duration. No `Duration` goes with it, so it
+ * repeats for as long as the task exists. It revives a launcher that died; see the settings above.
+ */
+export const TASK_REVIVE_INTERVAL = "PT5M";
 
 /** What the task XML needs that the {@link ServiceSpec} does not carry. */
 export interface TaskOptions {
@@ -355,6 +365,14 @@ export function taskXml(spec: ServiceSpec, opts: TaskOptions): string {
       <Enabled>true</Enabled>
       <UserId>${xmlAscii(opts.user)}</UserId>
     </LogonTrigger>
+    <TimeTrigger>
+      <Repetition>
+        <Interval>${TASK_REVIVE_INTERVAL}</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
