@@ -1188,7 +1188,12 @@ function asRecord(value: JsonValue | undefined): JsonObject | null {
  */
 function errorReason<T>(err: T): string {
   if (!(err instanceof Error)) return "request failed";
-  return operatorReason(err.message === "" ? err.name : err.message);
+  // Node's TLS errors and Bun's say WHICH way a handshake failed in `code` (`DEPTH_ZERO_SELF_SIGNED_CERT`,
+  // `ERR_TLS_CERT_ALTNAME_INVALID`, `CERT_HAS_EXPIRED`), and the message is often the same short phrase
+  // for all of them. Only the three TLS rows read it; every other row, and the pass-through, see the
+  // message alone, because Bun's own codes (`FailedToOpenSocket`) say nothing the message does not.
+  const code = "code" in err && typeof err.code === "string" ? err.code : undefined;
+  return operatorReason(err.message === "" ? err.name : err.message, code);
 }
 
 /**
@@ -1197,17 +1202,49 @@ function errorReason<T>(err: T): string {
  * Each entry says what the far side DID, in the fewest words that still distinguish it from the
  * others — because that distinction is the whole diagnostic value of this line. "Nothing accepted a
  * connection" sends the operator to the service; "does not resolve" sends them to the address;
- * "certificate was not accepted" sends them to the pin or the front door. Deliberately none of them
+ * "certificate was not accepted" sends them to the pin or the front door (what is left of it once the
+ * three sharper TLS rows have had their turn). Deliberately none of them
  * guesses a remedy: this string is rendered under a member row that already carries the address, the
  * role and the pin, and the surfaces that own a remedy print their own.
  */
-export function operatorReason(raw: string): string {
+export function operatorReason(raw: string, code?: string): string {
+  // The code is offered to the TLS rows ONLY. Offered to the rest, Bun's `FailedToOpenSocket` (an
+  // address it cannot use at all) would match /socket/ and be reported as a closed connection.
+  const withCode = `${code ?? ""} ${raw}`.toLowerCase();
+  for (const [pattern, reason] of TLS_REASONS) {
+    if (pattern.test(withCode)) return reason;
+  }
   const text = raw.toLowerCase();
   for (const [pattern, reason] of TRANSPORT_REASONS) {
     if (pattern.test(text)) return reason;
   }
   return raw;
 }
+
+const TLS_REASONS: readonly (readonly [RegExp, string])[] = [
+  // The three TLS failures that used to share one sentence, read FIRST, against code plus
+  // message. The altname row has to sit above the DNS row of {@link TRANSPORT_REASONS}: Node's message
+  // for it lists the certificate's names as "DNS:host", and the lowercased text would otherwise be read
+  // as a resolution failure. None of the three can match the "unknown certificate verification"
+  // catch-all there, which says nothing about a certificate.
+  //
+  // A dial pins the member's own certificate as its only trust anchor (§8.1). So a certificate that
+  // does not chain to it, whether self-signed, issued by nobody the dial knows, or simply not the one
+  // pinned, reads the same: what answered was not the pinned member. That is the symptom of a wrong
+  // port (issue 334: a portless address dials :443) as much as of a member whose certificate changed.
+  [
+    /err_tls_cert_altname_invalid|altnames?|does not match certificate/,
+    "the certificate does not match the name dialled",
+  ],
+  [
+    /cert_has_expired|cert_not_yet_valid|certificate has expired|not yet valid/,
+    "the certificate is expired or not yet valid, check the clocks on both machines",
+  ],
+  [
+    /depth_zero_self_signed_cert|self.signed certificate|unable to verify the first certificate|unable to get local issuer certificate/,
+    "something other than the pinned member answered at this address (wrong port, another service, or a changed certificate)",
+  ],
+];
 
 const TRANSPORT_REASONS: readonly (readonly [RegExp, string])[] = [
   // Bun's browser-voiced default, plus the platform spellings of the same event.

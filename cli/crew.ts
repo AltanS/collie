@@ -300,7 +300,8 @@ export function failureLine(outcome: PeerOutcome<unknown>): string {
  * - `"crew-listener"`: the `/crew/v1/*` prefix on this collie's OWN listener, `COLLIE_HOST:COLLIE_PORT`.
  *   A peer publishes no front door (§3, ADR 0013), so this is the only thing that answers on it.
  * - `"front-door"`: the one managed ingress a lead holds — `tailscale serve` on :443 in https mode
- *   (ADR 0001), which is also the URL a phone opens.
+ *   (ADR 0001), which is also the URL a phone opens. Derived on 443 it is `https://<name>`, so a
+ *   joiner dials 443 and not the listener port (`leadOrigin` reads a bare host as `:8787`).
  */
 export type SelfAddressKind = "crew-listener" | "front-door";
 
@@ -332,13 +333,16 @@ export type SelfAddressKind = "crew-listener" | "front-door";
  * banner are unchanged; this adds a reader, it moves nothing.
  *
  * **A derived `crew-listener` address always carries an explicit port, and that is the whole reason
- * `kind` exists.** A bare host dials :443 (`crewUrl`/`enrollUrl` assume `https://`) — which is right
+ * `kind` exists.** A bare host dials :443 through `crewUrl` (which assumes `https://`) — which is right
  * for a lead, whose crew surface rides the front door, and silently wrong for a peer, whose listener
  * is `COLLIE_PORT` and nothing else. Left portless, a hand-typed `collie join` on a default-configured
  * machine hands the lead an address it will dial forever at a port nothing listens on, and the member
  * simply stays provisional with no line naming the cause. So the peer direction appends this
- * instance's own port — the same `COLLIE_PORT`/default the bridge binds — and the front-door direction
- * keeps 443 implicit, because that is the port it is actually published on.
+ * instance's own port — the same `COLLIE_PORT`/default the bridge binds. The front-door direction
+ * spells 443 as `https://<name>`, never as a bare `<name>`: `collie crew join` reads a bare host as
+ * the lead's own listener on :8787 ({@link leadOrigin}), so a portless front door would be dialled
+ * at a port a lead behind `tailscale serve` does not listen on. The scheme makes the 443 explicit,
+ * and it is the same origin a joiner stores once it has dialled (`https://<name>`).
  *
  * Nothing here rewrites an address already stored on either side: a record minted before this
  * distinction is repaired by `collie reconnect`, which is the verb for exactly that.
@@ -380,12 +384,22 @@ export function resolveSelfAddress(
   if (name === null) return null;
   // http mode publishes no TLS front door at all, so both kinds are the bridge port there.
   if (kind === "front-door" && deps.ctx.serveMode === "https") {
-    // Portless only on 443, which is what a bare host dials. A front door moved by
-    // `COLLIE_SERVE_PORT` must carry its port, or every peer would dial :443 and find nothing.
-    const address = deps.ctx.servePort === DEFAULT_SERVE_PORT ? name : `${name}:${deps.ctx.servePort}`;
-    return { address, source: "derived" };
+    return { address: derivedFrontDoor(deps, name), source: "derived" };
   }
   return { address: `${name}:${deps.ctx.port}`, source: "derived" };
+}
+
+/**
+ * The tailnet front door in https mode, spelled so that `collie crew join` dials it where it is.
+ *
+ * On 443 it is an https URL, never a bare host: `leadOrigin` reads a portless, schemeless address as
+ * the lead's own listener, `https://<host>:8787`, which a lead behind `tailscale serve` does not
+ * answer on (issue 334). A front door moved by `COLLIE_SERVE_PORT` keeps `name:port`, which already
+ * dials exactly where it says. Shared by {@link resolveSelfAddress} and {@link joinHost}, so what
+ * `crew add` hands a peer and what `crew invite` prints can never be two different doors.
+ */
+function derivedFrontDoor(deps: CrewDeps, name: string): string {
+  return deps.ctx.servePort === DEFAULT_SERVE_PORT ? `https://${name}` : `${name}:${deps.ctx.servePort}`;
 }
 
 /**
@@ -415,13 +429,19 @@ function publicFrontDoor(deps: CrewDeps): string | null {
 /**
  * The host an operator types after `collie crew join`, on the machine that is joining.
  *
- * This is NOT {@link selfAddress}'s front door, and the difference is the point. A front door is
- * `https://<name>` on :443, and a joiner that dials it enrolls through whatever terminates that TLS.
- * The crew surface a lead answers on directly is its OWN listener, `COLLIE_PORT`, and 8787 is what
- * `collie crew join <host>` assumes — so the banner prints a bare host on the default port and
- * appends `:<port>` only when this lead moved off it. `COLLIE_PUBLIC_URL` still wins, because it is
- * the operator telling Collie which ingress this machine actually publishes; its port is made
- * explicit (443 for https, 80 for http) so the joiner dials the door that is really there.
+ * **In https mode it is the front door, the same string `crew add` hands a peer** ({@link
+ * derivedFrontDoor}): `https://<full-tailnet-name>`, or `<name>:<port>` when `COLLIE_SERVE_PORT`
+ * moved it. A default https lead binds loopback and publishes only the front door, so the listener
+ * port (8787) is not reachable from another machine, and a bare `bluefin` would be dialled there
+ * (issue 334). The FULL name, not the short one: the certificate `tailscale serve` obtains names only
+ * the full MagicDNS name, so the short form would fail the TLS check even where it resolves.
+ *
+ * **In http mode there is no TLS front door at all**, and the lead's own listener is what answers, so
+ * the banner keeps the short MagicDNS name (`bluefin` resolves from any node through the search
+ * domain, and is what a person can retype) on the default port, and appends `:<port>` only when this
+ * lead moved off 8787. `COLLIE_PUBLIC_URL` wins over both, because it is the operator telling Collie
+ * which ingress this machine actually publishes; its port is made explicit (443 for https, 80 for
+ * http) so the joiner dials the door that is really there.
  *
  * `null` when this node has no Tailscale name and no configured URL — the caller prints a
  * placeholder, exactly as it did before.
@@ -435,10 +455,10 @@ export function joinHost(deps: CrewDeps): string | null {
   }
   const name = tailnetName(deps.exec);
   if (name === null) return null;
+  if (deps.ctx.serveMode === "https") return derivedFrontDoor(deps, name);
   // The SHORT MagicDNS name: `bluefin`, not `bluefin.tail1234.ts.net`. MagicDNS puts the tailnet
-  // suffix in every node's search domain, so the short name resolves from any other node — and it is
-  // the thing an operator can retype without reading it off a screen. If there is no suffix to
-  // strip, the name is already as short as it gets.
+  // suffix in every node's search domain, so the short name resolves from any other node. If there is
+  // no suffix to strip, the name is already as short as it gets.
   const short = name.split(".")[0];
   const host = short === undefined || short === "" ? name : short;
   return deps.ctx.port === DEFAULT_PORT ? host : `${host}:${deps.ctx.port}`;
@@ -791,6 +811,20 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
     deps.io.err(JOIN_USAGE);
     deps.io.err("       Mint the token on the lead with `collie crew invite`; it is single-use and lasts 10 minutes.");
     return EXIT.USAGE;
+  }
+
+  // An operator-typed `--address` is taken verbatim (`selfAddress`), which let a portless one through:
+  // the lead then dials it at :443, and whatever answers there turns the failure into a TLS sentence
+  // that names nothing (issue 334). A derived address always carries the port, so only the override
+  // is checked, by the same rule `crew set-address` applies to the same value on the lead. It runs
+  // first, before the token is read or a store is created: a refusal here costs nothing.
+  if (flags.address !== undefined && flags.address !== "") {
+    const refusal = crewAddressRefusal(flags.address);
+    if (refusal !== null) {
+      deps.io.err(`error: --address "${flags.address}" is not one the lead can dial this machine at: ${refusal}.`);
+      deps.io.err(`       This machine listens on port ${deps.ctx.port}: try --address <host>:${deps.ctx.port}`);
+      return EXIT.USAGE;
+    }
   }
 
   const existing = await deps.store.load();
@@ -1885,11 +1919,15 @@ function unreachableLeadLines(m: Pick<TrustedMember, "role" | "address">): Toned
 }
 
 /**
- * The hint `crew status` appends to an unreachable member whose stored address carries a scheme.
+ * The hint `crew status` appends to an unreachable member whose stored address is one the crew could
+ * not dial — a scheme first, and since 1.15.3 every other {@link crewAddressRefusal} reason too, "no
+ * port" above all (`crew status` only: `doctor`'s `member-reach` never carried the scheme hint and
+ * still does not).
  *
- * Render-only, and deliberately conditional on THREE facts. Two are about the address: a scheme'd
- * address that is answering is somebody's working reverse-proxy front door, and telling them to
- * change it would be wrong. The third is about the ROLE, and it is the one this hint got wrong.
+ * Render-only, and deliberately conditional on THREE facts. Two are about the address: an address
+ * that is answering is somebody's working setup (a scheme'd one is a reverse-proxy front door), and
+ * telling them to change it would be wrong. The third is about the ROLE, and it is the one this hint
+ * got wrong.
  *
  * **Never for the LEAD entry.** A lead's address is its front door (§4, ADR 0001), so a scheme
  * there is not a symptom — it is the correct value, and it is what `crew add` and `join` write.
@@ -1906,11 +1944,31 @@ function unreachableLeadLines(m: Pick<TrustedMember, "role" | "address">): Toned
  */
 export function schemedAddressLines(memberId: string, address: string, role: TrustedMember["role"]): TonedLine[] {
   if (role === "lead") return [];
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(address)) return [];
-  return [
-    { text: "            an address with a scheme is a front door's, not a crew listener's —", tone: "dim" },
-    { text: `            \`collie crew set-address ${memberId} <host:port>\``, tone: "dim" },
-  ];
+  const remedy: TonedLine = { text: `            \`collie crew set-address ${memberId} <host:port>\``, tone: "dim" };
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(address)) {
+    return [
+      { text: "            an address with a scheme is a front door's, not a crew listener's —", tone: "dim" },
+      remedy,
+    ];
+  }
+  // Every other way a peer's row can be undialable, said in `crewAddressRefusal`'s own words so this
+  // hint and `set-address`'s refusal can never disagree. The one that bites in the field is "no
+  // port": a portless peer row dials :443 on a machine whose listener is COLLIE_PORT, and the link
+  // reads as a TLS failure (issue 334).
+  const refusal = crewAddressRefusal(address);
+  if (refusal === null) return [];
+  const why: TonedLine = { text: `            this address is not one a crew link can dial: ${refusal}`, tone: "dim" };
+  // The exact repair, when the only thing missing is the port: the default one, which is what a
+  // member answers on unless it set COLLIE_PORT. Not for an IPv6 literal, where appending `:8787`
+  // to a bare literal would change the address rather than complete it.
+  if (refusal.startsWith("there is no port") && !address.includes(":")) {
+    return [
+      why,
+      { text: `            \`collie crew set-address ${memberId} ${address}:${DEFAULT_PORT}\``, tone: "dim" },
+      { text: `            (${DEFAULT_PORT} unless that machine set COLLIE_PORT)`, tone: "dim" },
+    ];
+  }
+  return [why, remedy];
 }
 
 /**

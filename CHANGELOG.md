@@ -36,6 +36,23 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   started with `/`, so every Windows folder was refused. It now reads a path the way the host does, and
   the install check, the link check and the update smoke test find `collie.exe` instead of a bare
   `collie`. Nothing changes on Linux or macOS.
+- **A lead behind `tailscale serve` now tells a new member to dial port 443.** `crew add` and
+  `crew invite` handed the member the bare tailnet name, and `collie join` reads a bare host as the
+  lead's own listener on port 8787. A default HTTPS lead listens on loopback and publishes only 443,
+  so the member saw "Unable to connect". Both now give `https://<full-tailnet-name>`, or
+  `<name>:<port>` when `COLLIE_SERVE_PORT` moved the front door. With `COLLIE_SERVE_MODE=http`,
+  `invite` keeps the short name. Thanks @sbakhour (#334).
+- **`collie crew join --address` now needs a port.** A portless `--address` made the lead dial port 443 on the member, so a member whose
+  address had no port stayed unreachable with nothing naming the cause. `join` now refuses it and
+  suggests `--address <host>:<port>`. An address with a scheme, such as `--address
+  https://host:8787`, used to dial correctly and is now refused too: write `host:8787`. For a
+  peer row that cannot be dialled, `crew status` now names `collie crew set-address <member>
+  <host:port>`. `crew status` and `doctor` print the exact `set-address` command for a stored
+  address without a port.
+- **A failed TLS dial now says which way it failed.** Every TLS failure read "the TLS certificate
+  was not accepted". A certificate that is not the pinned one now reads "something other than the
+  pinned member answered at this address", which is what a wrong port looks like. A name mismatch
+  and an expired or not yet valid certificate each get their own sentence.
 
 ## [1.15.2] - 2026-10-02
 

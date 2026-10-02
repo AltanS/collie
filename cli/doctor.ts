@@ -12,7 +12,7 @@ import {
 } from "./hooks.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
-import { envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
+import { DEFAULT_PORT, envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import { configFilePaths } from "../bridge/config-source.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
 import {
@@ -1746,6 +1746,18 @@ function secretGeneration(data: TrustStoreData, members: readonly TrustedMember[
 }
 
 /**
+ * ` → \`collie crew set-address <member> <address>:8787\``, for a silent PEER row on a lead whose
+ * stored address has no port and no scheme: the one repair that can be named exactly, because the
+ * default port is what a member answers on unless it set `COLLIE_PORT`. Empty for everything else,
+ * and for an address with any `:` in it, which may be an IPv6 literal that `:8787` would change.
+ */
+function portlessRepair(data: TrustStoreData, m: TrustedMember): string {
+  if (data.lead !== null || m.role === "lead" || m.address === "" || m.address.includes(":")) return "";
+  if (m.address.includes("/")) return "";
+  return ` → \`collie crew set-address ${m.memberId} ${m.address}:${DEFAULT_PORT}\` (${DEFAULT_PORT} unless that machine set COLLIE_PORT)`;
+}
+
+/**
  * The link, not the machine: `member-reach` on a lead, `lead-reach` on a peer.
  *
  * **Both halves of {@link MemberReach}, because `hello` alone was a lie.** The verdict probe runs on
@@ -1774,7 +1786,7 @@ function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches:
       continue;
     }
     if (!answered.hello.ok) {
-      silent.push(`${m.memberId} at ${m.address} — ${failureLine(answered.hello)}`);
+      silent.push(`${m.memberId} at ${m.address} — ${failureLine(answered.hello)}${portlessRepair(data, m)}`);
       continue;
     }
     // F21: on a peer the one enrolled member is the LEAD, and a peer asks its lead for no snapshot —
@@ -1793,7 +1805,12 @@ function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches:
     return bad(
       check,
       `${silent.length} of ${enrolled.length} did not answer: ${silent.join("; ")}${note}`,
-      "`collie reconnect <member> <address>` if the address moved; otherwise `collie restart` on that machine",
+      // On a lead every row is a PEER, and `set-address` refuses an address a crew link cannot dial
+      // where `reconnect` takes anything (a portless one included). A peer's one row is its lead, and
+      // `set-address` is the lead's verb, so there `reconnect` stays.
+      (data.lead === null
+        ? "`collie crew set-address <member> <host:port>` if the address is wrong or moved"
+        : "`collie reconnect <address>` if the address moved") + "; otherwise `collie restart` on that machine",
     );
   }
   if (starved.length > 0) {

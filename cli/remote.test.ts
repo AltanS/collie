@@ -23,7 +23,7 @@ import { sshResolveArgs } from "./candidates.ts";
 import type { Environment } from "./context.ts";
 import type { InstallKind } from "./install-kind.ts";
 import { EXIT } from "./io.ts";
-import { cmdCrew, type CrewDeps } from "./crew.ts";
+import { cmdCrew, enrollUrl, type CrewDeps } from "./crew.ts";
 import {
   bindOverwriteConfirmation,
   cmdCrewAdd,
@@ -182,6 +182,8 @@ interface HarnessOptions {
   resolve?: Readonly<Record<string, string>>;
   /** This lead's install kind. Absent ⇒ a linked clone, the kind every earlier test assumed. */
   installKind?: InstallKind;
+  /** `COLLIE_SERVE_PORT`'s resolved value — the front door's port, when it is not 443. */
+  servePort?: number;
 }
 
 function harness(opts: HarnessOptions = {}): Harness {
@@ -225,7 +227,10 @@ function harness(opts: HarnessOptions = {}): Harness {
   const deps: CrewAddDeps = {
     // The same reason `cli/crew.test.ts` sets this: the real `setTimeout` in `PeerClient` must never
     // fire and report a fake peer as unreachable.
-    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...opts.env }),
+    ctx: context(
+      { COLLIE_CREW_TIMEOUT_MS: "60000", ...opts.env },
+      opts.servePort === undefined ? {} : { servePort: opts.servePort },
+    ),
     io: out,
     exec,
     files: fakeFiles(seeded),
@@ -867,6 +872,27 @@ describe("collie crew add", () => {
     expect(text(h.io)).toContain("lead address https://collie.example.com (from COLLIE_PUBLIC_URL)");
     // …and it is what the peer is actually told to dial, not just what was printed.
     expect(h.calls.find((c) => c.leg === "enroll")!.script).toContain("'https://collie.example.com'");
+  });
+
+  // Issue 334: the derived front door was the BARE tailnet name, which `collie join` reads as the lead's
+  // own listener (`https://<name>:8787`). A lead behind `tailscale serve` is on 127.0.0.1 there, so the
+  // peer saw "Unable to connect". The string handed to the remote join must dial 443 on its own.
+  test("the lead address handed to the remote join dials 443, not the listener port", async () => {
+    const h = harness();
+    expect(await run(h)).toBe(EXIT.OK);
+    const script = h.calls.find((c) => c.leg === "enroll")!.script;
+    expect(script).toContain("'https://desk.tail.ts.net'");
+    expect(script).not.toContain("'desk.tail.ts.net'");
+    // What `join` actually dials for that string: no :8787 anywhere.
+    expect(enrollUrl("https://desk.tail.ts.net")).toBe("https://desk.tail.ts.net/crew/v1/enroll");
+  });
+
+  test("a front door moved off 443 keeps its port, and the scheme stays out of it", async () => {
+    const h = harness({ servePort: 8443 });
+    expect(await run(h)).toBe(EXIT.OK);
+    const script = h.calls.find((c) => c.leg === "enroll")!.script;
+    expect(script).toContain("'desk.tail.ts.net:8443'");
+    expect(enrollUrl("desk.tail.ts.net:8443")).toBe("https://desk.tail.ts.net:8443/crew/v1/enroll");
   });
 
   test("the control socket is torn down on every exit path, including a failure", async () => {

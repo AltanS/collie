@@ -86,14 +86,18 @@ Collie installed and running.
 1. On the lead, mint the token.
 
    ```bash
-   collie crew invite        # prints one line: <token>.<lead-fingerprint>
+   collie crew invite        # prints the token, then the join command to run
    ```
+
+   The token is one line: `<token>.<lead-fingerprint>`.
 
 2. On the joining machine, join the crew and paste the token when it asks.
 
    ```bash
-   collie crew join lead
+   collie crew join https://lead.tail1234.ts.net
    ```
+
+   Copy the address from the `invite` output. It is your lead's own, not this example.
 
 3. On the lead, restart it so the running process picks up the new member.
 
@@ -119,7 +123,7 @@ In an interactive terminal, `join` prompts for the token. In a script, pass `-` 
 token on stdin:
 
 ```bash
-collie crew join lead.tail1234.ts.net -   # paste the token on stdin
+collie crew join https://lead.tail1234.ts.net -   # paste the token on stdin
 ```
 
 Pass `@<file>` instead to read the token from disk. Passing raw tokens directly as arguments
@@ -127,11 +131,22 @@ prints a warning, because process listings expose arguments to all local users
 ([`CREW_PROTOCOL.md` §8.3](../CREW_PROTOCOL.md)).
 
 Set the lead address to any hostname or `host:port` reachable from this node. An address without a
-scheme and port resolves to `https://<host>:8787`, the default port Collie binds. The `crew invite`
-output specifies the port if the lead changed it. A default install answers on port 8787 over plain
-HTTP, with TLS on port 443 in front of it, so `join` may find no TLS on 8787. It prompts once before
-sending the token over plain HTTP; `--insecure` confirms this automatically. An explicit `http://`
-address still requires `--insecure` and prompts for nothing.
+scheme and port resolves to `https://<host>:8787`, the port Collie's own listener binds.
+
+What `crew invite` prints depends on how the lead is published. In the default HTTPS mode, the lead
+listens on loopback and `tailscale serve` publishes it on port 443. So `invite` prints
+`https://<full-tailnet-name>`, which dials port 443. If you moved the front door with
+`COLLIE_SERVE_PORT`, it prints `<name>:<port>`. With `COLLIE_SERVE_MODE=http` the lead's own
+listener answers on port 8787 over plain HTTP, and `invite` prints the short name, with the port
+only if you changed it. `join` prompts once before sending the token over plain HTTP, and
+`--insecure` confirms this automatically. An explicit `http://` address still requires `--insecure`
+and prompts for nothing.
+
+`crew add` hands the member the same front door, so the member dials port 443 too. A bare name
+would mean port 8787, which a lead behind `tailscale serve` does not open to the tailnet.
+
+`--address` on `crew join` is the address the lead dials this machine at, and it needs a port:
+`--address <host>:8787`. `join` refuses one without a port, because the lead would dial port 443.
 
 **Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in that node's own `.env`,
 at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir on a Herdr install.

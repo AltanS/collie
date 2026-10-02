@@ -1029,8 +1029,58 @@ describe("a forwarded write's own budget (§10.1)", () => {
 
 // ── F18: the runtime's voice never reaches an operator ───────────────────────
 
+const WRONG_ANSWERER =
+  "something other than the pinned member answered at this address (wrong port, another service, or a changed certificate)";
+
 describe("operatorReason — one runtime failure, said once, in Collie's words", () => {
   const BUN_CONNECT = "Unable to connect. Is the computer able to access the url?";
+
+  test("a certificate that is not the pinned one says so, by message or by code", () => {
+    // Issue 334: a portless address made the lead dial :443, where another service answered. Every
+    // one of these used to read "the TLS certificate was not accepted" and sent the operator to the pin.
+    for (const message of [
+      "self signed certificate",
+      "self signed certificate in certificate chain",
+      "unable to verify the first certificate",
+      "unable to get local issuer certificate",
+    ]) {
+      expect(operatorReason(message)).toBe(WRONG_ANSWERER);
+    }
+    expect(operatorReason("certificate verify failed", "DEPTH_ZERO_SELF_SIGNED_CERT")).toBe(WRONG_ANSWERER);
+    expect(WRONG_ANSWERER).not.toContain("—");
+  });
+
+  test("a certificate for another name is its own sentence, and is not read as a DNS failure", () => {
+    // Node lists the certificate's names as `DNS:host`, which the resolution row would otherwise eat.
+    const altname = "Hostname/IP does not match certificate's altnames: Host: 10.0.0.2. is not in the cert's altnames: DNS:laptop.ts.net";
+    expect(operatorReason(altname)).toBe("the certificate does not match the name dialled");
+    expect(operatorReason("anything", "ERR_TLS_CERT_ALTNAME_INVALID")).toBe(
+      "the certificate does not match the name dialled",
+    );
+  });
+
+  test("an expired or not-yet-valid certificate names the clocks", () => {
+    const clocks = "the certificate is expired or not yet valid, check the clocks on both machines";
+    expect(operatorReason("certificate has expired")).toBe(clocks);
+    expect(operatorReason("whatever", "CERT_HAS_EXPIRED")).toBe(clocks);
+    expect(operatorReason("whatever", "CERT_NOT_YET_VALID")).toBe(clocks);
+  });
+
+  test("the code is read for the match only: an unmapped error still passes through as its message", () => {
+    expect(operatorReason("something nobody has seen yet", "E_NEW")).toBe("something nobody has seen yet");
+  });
+
+  test("the code reaches the TLS rows alone: Bun's FailedToOpenSocket is not 'the connection closed'", async () => {
+    // Bun throws this for an address it cannot use at all (fe80::1, a broadcast address). Its own
+    // message names the typo; matching the CODE against /socket/ would have replaced that with a
+    // false claim about a closed connection.
+    const message = "Was there a typo in the url or port?";
+    expect(operatorReason(message, "FailedToOpenSocket")).toBe(message);
+    const err = new Error(message);
+    Object.defineProperty(err, "code", { value: "FailedToOpenSocket" });
+    const outcome = await client(() => Promise.reject(err)).hello(laptop);
+    expect(outcome.ok === false && outcome.reason).toBe(`hello: ${message}`);
+  });
 
   test("Bun's browser-voiced connection error becomes a statement about the far side", () => {
     // "the computer", "the url", and a question — a browser console's words, in a CLI that
@@ -1044,7 +1094,10 @@ describe("operatorReason — one runtime failure, said once, in Collie's words",
     // Each answer sends them somewhere different: the service, the address, the pin, the network.
     expect(operatorReason("connect ECONNREFUSED 10.0.0.2:8787")).toBe("nothing accepted a connection at this address");
     expect(operatorReason("getaddrinfo ENOTFOUND nas.example")).toBe("this address does not resolve");
-    expect(operatorReason("unable to verify the first certificate")).toBe("the TLS certificate was not accepted");
+    // The generic row still answers for a handshake that failed in some other way …
+    expect(operatorReason("tls handshake failed")).toBe("the TLS certificate was not accepted");
+    // … but a certificate that did not chain to the pin no longer hides behind it (issue 334).
+    expect(operatorReason("unable to verify the first certificate")).toBe(WRONG_ANSWERER);
     expect(operatorReason("connect EHOSTUNREACH")).toBe("there is no route to this address");
     expect(operatorReason("The socket connection was closed unexpectedly")).toBe(
       "the connection closed before an answer arrived",
@@ -1073,6 +1126,28 @@ describe("operatorReason — one runtime failure, said once, in Collie's words",
     );
     // The distinction is the whole point: neither sends the operator to the pin.
     expect(operatorReason("unknown certificate verification error")).not.toContain("certificate");
+  });
+});
+
+describe("a dial that fails in TLS reports the code's cause through the client", () => {
+  function tlsThrow(message: string, code: string): Error {
+    const err = new Error(message);
+    Object.defineProperty(err, "code", { value: code });
+    return err;
+  }
+
+  test("DEPTH_ZERO_SELF_SIGNED_CERT reads as the wrong answerer, not as a rejected pin", async () => {
+    const fetch: CrewFetch = () => Promise.reject(tlsThrow("certificate verify failed", "DEPTH_ZERO_SELF_SIGNED_CERT"));
+    const outcome = await client(fetch).hello(laptop);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.state).toBe("unreachable");
+    expect(outcome.ok === false && outcome.reason).toBe(`hello: ${WRONG_ANSWERER}`);
+  });
+
+  test("CERT_HAS_EXPIRED names the clocks", async () => {
+    const fetch: CrewFetch = () => Promise.reject(tlsThrow("certificate verify failed", "CERT_HAS_EXPIRED"));
+    const outcome = await client(fetch).hello(laptop);
+    expect(outcome.ok === false && outcome.reason).toContain("check the clocks");
   });
 });
 

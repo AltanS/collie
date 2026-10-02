@@ -998,15 +998,55 @@ describe("collie doctor — the crew checks", () => {
     expect(CREW.secretGeneration).toBe(1);
   });
 
-  test("member-reach: an unreachable member is an error naming `collie reconnect`", async () => {
+  test("member-reach: an unreachable member is an error naming `collie crew set-address`", async () => {
     const { code, byCheck } = await findings(
       harness(LEAD, [new Error("connection refused")], { files: { ...healthyFiles(), ...markerFile(LEAD) } }),
     );
     const f = byCheck.get("member-reach");
     expect(f?.status).toBe("error");
     expect(f?.detail).toContain("laptop");
-    expect(f?.remedy).toContain("collie reconnect");
+    // The lead's verb: it refuses an address the crew cannot dial, where `reconnect` takes anything.
+    expect(f?.remedy).toContain("collie crew set-address <member> <host:port>");
+    expect(f?.remedy).not.toContain("collie reconnect");
     expect(code).toBe(EXIT.FAIL);
+  });
+
+  test("member-reach: a silent peer with a portless address gets the exact set-address command", async () => {
+    const portless = leadStore({ peers: [member({ memberId: "laptop", address: "100.64.0.9" })] });
+    const { byCheck } = await findings(
+      harness(portless, [new Error("connection refused")], { files: { ...healthyFiles(), ...markerFile(portless) } }),
+    );
+    const f = byCheck.get("member-reach");
+    expect(f?.detail).toContain(
+      "laptop at 100.64.0.9 — ",
+    );
+    expect(f?.detail).toContain("→ `collie crew set-address laptop 100.64.0.9:8787` (8787 unless that machine set COLLIE_PORT)");
+    // The generic remedy is still there for the rest.
+    expect(f?.remedy).toContain("collie crew set-address <member> <host:port>");
+  });
+
+  test("member-reach: a silent peer at host:port, with a scheme or an IPv6 literal gets no suggestion", async () => {
+    for (const address of ["laptop.example:8787", "https://laptop.example", "fd7a:115c::9"]) {
+      const store = leadStore({ peers: [member({ memberId: "laptop", address })] });
+      const { byCheck } = await findings(
+        harness(store, [new Error("connection refused")], { files: { ...healthyFiles(), ...markerFile(store) } }),
+      );
+      expect(byCheck.get("member-reach")?.detail).not.toContain("→");
+    }
+  });
+
+  test("lead-reach: an unreachable lead keeps `collie reconnect`, the verb that runs on a peer", async () => {
+    const peer = peerStore();
+    const { byCheck } = await findings(
+      harness(peer, [new Error("connection refused")], {
+        env: { COLLIE_HOST: "laptop.tail.ts.net" },
+        files: without({ ...healthyFiles(), ...markerFile(peer) }, HANDLER),
+      }),
+    );
+    const f = byCheck.get("lead-reach");
+    expect(f?.status).toBe("error");
+    expect(f?.remedy).toContain("collie reconnect <address>");
+    expect(f?.remedy).not.toContain("set-address");
   });
 
   test("member-reach: a member that answers `hello` and then starves is an error about the BUDGET", async () => {

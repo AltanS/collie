@@ -800,6 +800,12 @@ There is no discovery, no enumeration, and no overlay-network integration — ev
 > from a peer under a one-way tailnet ACL, and nothing in the enrollment names that as the cause. **A peer's
 > own listener address is never taken from `COLLIE_PUBLIC_URL`**: a peer publishes no front door (§3,
 > ADR 0013), and a public URL is a front door by definition.
+>
+> **Amended 2026-10-02.** The derived front door is spelled `https://<name>` when it is published on 443,
+> never the bare name: `collie join` reads a portless, schemeless address as the lead's own listener,
+> `https://<host>:8787`, which a lead behind `tailscale serve` does not answer on. A front door on another
+> port stays `<name>:<port>`. A joiner's `--address` is the other direction and is checked: it must be
+> `host:port` (the same rule `collie crew set-address` applies), because a portless one is dialled on 443.
 
 > **Amended 2026-08-07 — what actually authenticates an enrollment, stated rather than implied.**
 >
