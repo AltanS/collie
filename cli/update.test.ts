@@ -1660,6 +1660,84 @@ describe("collie update on a binary install", () => {
     expect(always.link.ops).toEqual([]);
   });
 
+  describe("Windows: a folder of the target version is already there and in use (rollback, then update again)", () => {
+    const zipManifest = manifestDoc({
+      artifacts: [{ name: `${PAYLOAD}.zip`, platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: PAYLOAD }],
+    });
+    const laid = `${INST}/versions/${NEW}`;
+    const EBUSY = (): Error => Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+    /** The target's folder laid down by an earlier update; `whole` lays all four files the payload needs. */
+    const held = (whole: boolean, refuse: "rename" | "delete" | "none" = "rename") => {
+      const h = windowsBinaryHarness({ manifest: zipManifest });
+      const download = h.deps.net.download;
+      h.deps.net = {
+        ...h.deps.net,
+        download: async (url, dest) => {
+          const got = await download(url, dest);
+          h.files.write(`${INST}/.staging/x/${PAYLOAD}/bin/collie.exe`, "NEW BINARY");
+          return got;
+        },
+      };
+      h.files.write(`${laid}/bin/collie.exe`, "NEW BINARY, laid before");
+      if (whole) {
+        h.files.write(`${laid}/web/dist/index.html`, "NEW");
+        h.files.write(`${laid}/herdr-plugin.toml`, `version = "${NEW}"\n`);
+        h.files.write(`${laid}/package.json`, `{"version":"${NEW}"}`);
+      }
+      const rename = h.files.rename;
+      h.files.rename = (from, to) => {
+        if (refuse === "rename" && posixKey(from) === laid) throw EBUSY();
+        rename(from, to);
+      };
+      const removeTree = h.files.removeTree;
+      h.files.removeTree = (p) => {
+        if (refuse === "delete" && posixKey(p).startsWith(`${INST}/.trash/${NEW}.`)) throw EBUSY();
+        removeTree(p);
+      };
+      return h;
+    };
+
+    test("a complete folder is used as it is, with a note, and the update goes on", async () => {
+      const h = held(true);
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.join("\n")).toContain(`note: ${laid} is in use and could not be moved aside (`);
+      expect(h.io.stdout.join("\n")).toContain("this update uses it as it is");
+      // The new payload never replaced it, and the staging folder is gone.
+      expect(h.files.ops).not.toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${laid}`);
+      expect(h.files.read(`${laid}/bin/collie.exe`)).toBe("NEW BINARY, laid before");
+      expect(h.files.exists(`${INST}/.staging`)).toBe(false);
+    });
+
+    test("a partial one fails the update cleanly, before the flip, and says how to free it", async () => {
+      const h = held(false);
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      const err = h.io.stderr.join("\n");
+      expect(err).toContain(`${laid} is there already, is not complete (missing web/dist/index.html, herdr-plugin.toml, package.json)`);
+      expect(err).toContain("Run `collie stop`, then `collie start`, and update again.");
+      expect(h.link.ops).toEqual([]);
+      expect(h.files.exists(`${INST}/.staging`)).toBe(false);
+    });
+
+    test("a folder that moves but cannot be deleted yet stays in .trash with a note", async () => {
+      const h = held(true, "delete");
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.some((l) => posixKey(l).includes(`${INST}/.trash/${NEW}.`) && l.includes("a later update removes it"))).toBe(true);
+      expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${laid}`);
+    });
+
+    test("off Windows a busy partial folder fails cleanly too, and nothing throws", async () => {
+      const h = binaryHarness();
+      h.files.write(`${INST}/versions/${NEW}/bin/collie`, "old");
+      const rename = h.files.rename;
+      h.files.rename = (from, to) => {
+        if (posixKey(from) === `${INST}/versions/${NEW}`) throw EBUSY();
+        rename(from, to);
+      };
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      expect(h.io.stderr.join("\n")).toContain("could not be moved aside");
+    });
+  });
+
   test("a version folder a live launcher holds cannot be pruned, and the update still succeeds", async () => {
     // Windows: the launcher keeps its own version folder open, so the prune's rename fails with
     // EBUSY. It is a note, never a failure and never a rollback.

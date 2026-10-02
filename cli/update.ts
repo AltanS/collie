@@ -1281,6 +1281,26 @@ function toTrash(deps: UpdateDeps, layout: BinaryLayout, version: string): void 
   deps.files.removeTree(held);
 }
 
+/**
+ * {@link toTrash} for the update itself, which must not die on a busy folder. On Windows a version
+ * folder is held while a process runs from it (the launcher, an old bridge): after a rollback, the
+ * next update to the same version finds that folder and its `collie.exe` in use. The move is retried
+ * like every rename here ({@link renameSettled}); a tree that moved but cannot be deleted yet stays in
+ * `.trash` with a note ({@link clearScratch}), and a later update clears it. `null` when the folder
+ * left `versions`, else why it could not.
+ */
+async function moveVersionAside(deps: UpdateDeps, layout: BinaryLayout, version: string): Promise<string | null> {
+  deps.files.mkdirp(layout.trashDir);
+  const held = deps.host.path.join(layout.trashDir, `${version}.${Date.now().toString(36)}`);
+  try {
+    await renameSettled(deps, deps.host.path.join(layout.versionsDir, version), held);
+  } catch (err) {
+    return String(err);
+  }
+  clearScratch(deps, held);
+  return null;
+}
+
 /** The versions on disk that are actually installable — a readable version name AND a binary. */
 function installedVersions(deps: UpdateDeps, layout: BinaryLayout): string[] {
   return listVersions(deps, layout, "binary")
@@ -1663,7 +1683,8 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   }
   const payload = join(unpacked, artifact.payloadRoot);
   const required = [`bin/${binaryName(deps.host)}`, "web/dist/index.html", "herdr-plugin.toml", "package.json"];
-  const missing = required.filter((rel) => !deps.files.exists(join(payload, ...rel.split("/"))));
+  const missingIn = (dir: string): string[] => required.filter((rel) => !deps.files.exists(join(dir, ...rel.split("/"))));
+  const missing = missingIn(payload);
   if (missing.length > 0) {
     deps.files.removeTree(layout.stagingDir);
     deps.io.err(`error: ${artifact.name} is not a complete Collie payload (missing ${missing.join(", ")}).`);
@@ -1675,16 +1696,35 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   // no mode bit, so Windows skips it.
   if (deps.host.platform !== "win32") deps.exec.capture("chmod", ["0755", collieBinary(payload, deps.host)]);
   const laid = join(layout.versionsDir, target.version);
-  if (deps.files.exists(laid)) toTrash(deps, layout, target.version);
-  deps.files.mkdirp(layout.versionsDir);
-  try {
-    await renameSettled(deps, payload, laid);
-  } catch (err) {
-    deps.files.removeTree(layout.stagingDir);
-    deps.io.err(`error: could not move ${artifact.payloadRoot} into ${layout.versionsDir} (${String(err)}).`);
-    deps.io.err("       Nothing was changed. Try again in a minute.");
-    abandonStaging(deps, `the unpacked ${target.version} could not be moved into versions`);
-    return EXIT.FAIL;
+  // A folder of this version is there already: a rollback left it, or an update stopped half way.
+  const stuck = deps.files.exists(laid) ? await moveVersionAside(deps, layout, target.version) : null;
+  if (stuck !== null) {
+    // On Windows the launcher keeps running from the version it started with, through a rollback and
+    // a `collie restart`, so the folder of the version rolled away from stays in use until the next
+    // `collie stop` or logon. A COMPLETE folder of this very version is used as it is: the smoke below
+    // still checks that it runs and names this version. A partial one is not.
+    const incomplete = missingIn(laid);
+    if (incomplete.length > 0) {
+      deps.files.removeTree(layout.stagingDir);
+      deps.io.err(`error: ${laid} is there already, is not complete (missing ${incomplete.join(", ")}), and could not be moved aside (${stuck}).`);
+      deps.io.err("       Something still runs from it. Nothing was changed. Run `collie stop`, then `collie start`, and update again.");
+      abandonStaging(deps, `the old ${target.version} folder could not be moved aside`);
+      return EXIT.FAIL;
+    }
+    const said = `${laid} is in use and could not be moved aside (${stuck}); this update uses it as it is`;
+    deps.io.out(`note: ${said}`);
+    progress.note(said);
+  } else {
+    deps.files.mkdirp(layout.versionsDir);
+    try {
+      await renameSettled(deps, payload, laid);
+    } catch (err) {
+      deps.files.removeTree(layout.stagingDir);
+      deps.io.err(`error: could not move ${artifact.payloadRoot} into ${layout.versionsDir} (${String(err)}).`);
+      deps.io.err("       Nothing was changed. Try again in a minute.");
+      abandonStaging(deps, `the unpacked ${target.version} could not be moved into versions`);
+      return EXIT.FAIL;
+    }
   }
   deps.files.removeTree(layout.stagingDir);
 
@@ -1692,7 +1732,13 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   progress.note(`checking that ${target.version} runs here`);
   const smoked = smoke(deps, laid, target.version);
   if (!smoked.ok) {
-    toTrash(deps, layout, target.version);
+    // The failure below is the news; a folder that cannot leave yet is one more note under it.
+    const stuckAfterSmoke = await moveVersionAside(deps, layout, target.version);
+    if (stuckAfterSmoke !== null) {
+      const said = `${laid} stays for now (${stuckAfterSmoke}); a later update replaces it`;
+      deps.io.out(`note: ${said}`);
+      progress.note(said);
+    }
     const reason = smokeReason(smoked);
     // The child's own lines go to the staging log and the terminal (the runner log, on a phone's
     // run): the reason in the record is one capped line, and this is the rest of it.
