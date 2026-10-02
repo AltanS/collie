@@ -1536,6 +1536,29 @@ describe("collie update on a binary install", () => {
     expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${payload} ${INST}/versions/${NEW}`);
   });
 
+  test("Windows: a version the launcher still runs, left in .trash, is a note and not a failed update", async () => {
+    // A pruned version whose collie.exe the launcher still executes: Windows refuses to delete it.
+    const held = `${INST}/.trash/0.9.0.abc`;
+    const h = windowsBinaryHarness({ env: { SystemRoot: "C:\\Windows" } });
+    h.files.write(`${held}/bin/collie.exe`, "OLD");
+    const removeTree = h.files.removeTree;
+    h.files.removeTree = (p) => {
+      if (posixKey(p) === held) throw Object.assign(new Error("EPERM: operation not permitted, unlink"), { code: "EPERM" });
+      removeTree(p);
+    };
+    // The update goes on past the sweep to the release check (this fixture's release has no zip).
+    await cmdUpdate(h.deps);
+    expect(h.io.stderr.join("\n")).toContain("has no Windows build");
+    expect(h.io.stdout.some((l) => l.includes("0.9.0.abc") && l.includes("is still in use") && l.includes("a later update removes it"))).toBe(true);
+
+    // Off Windows the same failure still stops the update, as it always did.
+    const linux = binaryHarness();
+    linux.files.removeTree = (p) => {
+      if (p.includes(".staging")) throw new Error("EACCES");
+    };
+    await expect(cmdUpdate(linux.deps)).rejects.toThrow("EACCES");
+  });
+
   test("Windows: a zip whose sha256 differs is thrown away, and nothing is unpacked", async () => {
     const h = windowsBinaryHarness({
       digest: "9c1a04".padEnd(64, "0"),

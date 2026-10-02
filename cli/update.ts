@@ -1238,9 +1238,29 @@ function netError(deps: UpdateDeps, what: string, url: string, failure: NetFailu
 /** Everything under `.staging`, and everything in `.trash`. A killed update leaves scratch; entering
  *  with a clean one costs nothing and removes a class of half-state. */
 function sweepScratch(deps: UpdateDeps, layout: BinaryLayout): void {
-  deps.files.removeTree(layout.stagingDir);
+  clearScratch(deps, layout.stagingDir);
   for (const entry of deps.files.list(layout.trashDir)) {
-    deps.files.removeTree(join(layout.trashDir, entry));
+    clearScratch(deps, join(layout.trashDir, entry));
+  }
+}
+
+/**
+ * Remove one scratch tree. On Windows a file that a running process executes cannot be deleted: the
+ * Task Scheduler launcher runs the `collie.exe` of the version it started from until the next
+ * `collie stop` or logon, so when an update prunes that version, its `collie.exe` stays behind in
+ * `.trash`. The next update then died on that file before it asked for a release (M43 spec 08
+ * rehearsal, 2026-10-02). There it is a note, and a later update clears it. Elsewhere a failure still
+ * stops the update, as before.
+ */
+function clearScratch(deps: UpdateDeps, path: string): void {
+  if (deps.host.platform !== "win32") {
+    deps.files.removeTree(path);
+    return;
+  }
+  try {
+    deps.files.removeTree(path);
+  } catch (err) {
+    deps.io.out(`note: ${path} is still in use (${String(err)}); a later update removes it.`);
   }
 }
 
