@@ -324,9 +324,17 @@ export type NetDownload =
  * `download` hashes while it writes rather than handing bytes back, so a ~100 MB artifact never
  * exists in memory and the verification in `cli/update.ts` stays a string comparison.
  */
+/**
+ * Options for one request. `redirect: "error"` is what a request to a rehearsal mirror carries
+ * (`MIRROR_FETCH` in `bridge/update.ts`); absent, the request is the one it always was.
+ */
+export interface NetOptions {
+  readonly redirect?: "error";
+}
+
 export interface Net {
-  getJson(url: string): Promise<NetJson>;
-  download(url: string, dest: string): Promise<NetDownload>;
+  getJson(url: string, opts?: NetOptions): Promise<NetJson>;
+  download(url: string, dest: string, opts?: NetOptions): Promise<NetDownload>;
   /**
    * `GET url`, answered **whatever the status is**, with one response header read off it.
    *
@@ -355,12 +363,14 @@ const netFailure = (message: string): NetFailure => ({ status: null, message });
  */
 export function realNet(credential: GithubCredential | null = null): Net {
   return {
-    async getJson(url) {
+    async getJson(url, opts) {
       try {
-        const res = await fetch(url, {
+        const init: RequestInit = {
           headers: githubHeaders(url, credential, { accept: "application/json", "user-agent": "collie-update" }),
           signal: AbortSignal.timeout(NET_TIMEOUT_MS),
-        });
+        };
+        if (opts?.redirect !== undefined) init.redirect = opts.redirect;
+        const res = await fetch(url, init);
         if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
         return { ok: true, value: await res.json() };
       } catch (err) {
@@ -381,12 +391,11 @@ export function realNet(credential: GithubCredential | null = null): Net {
         return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
       }
     },
-    async download(url, dest) {
+    async download(url, dest, opts) {
       try {
-        const res = await fetch(url, {
-          headers: { "user-agent": "collie-update" },
-          signal: AbortSignal.timeout(NET_TIMEOUT_MS),
-        });
+        const init: RequestInit = { headers: { "user-agent": "collie-update" }, signal: AbortSignal.timeout(NET_TIMEOUT_MS) };
+        if (opts?.redirect !== undefined) init.redirect = opts.redirect;
+        const res = await fetch(url, init);
         if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
         if (res.body === null) return { ok: false, failure: { status: res.status, message: "empty response" } };
         mkdirSync(dirname(dest), { recursive: true });

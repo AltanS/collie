@@ -10,6 +10,7 @@ import {
   compareSemver,
   githubCredential,
   githubTagsUrl,
+  MIRROR_FETCH,
   mirrorRefusal,
   parseTagsResponse,
   UPDATE_MIRROR_ENV,
@@ -593,7 +594,7 @@ async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: strin
   const mirror = updateMirror(deps.ctx.env);
   if (!mirror.ok) return { ok: false, reason: mirrorRefusal(mirror.value), remedy: `unset ${UPDATE_MIRROR_ENV}` };
   const credential = githubCredential(deps.ctx.env);
-  const response = await deps.net.getJson(githubTagsUrl(repo, mirror.base));
+  const response = await deps.net.getJson(githubTagsUrl(repo, mirror.base), mirror.base === null ? undefined : MIRROR_FETCH);
   if (!response.ok) {
     const status = response.failure.status;
     // The token is named by the variable it came from, never by value (#254). A 401 without one is

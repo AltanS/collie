@@ -469,8 +469,14 @@ export function updateMirror(
   const value = env[UPDATE_MIRROR_ENV]?.trim() ?? "";
   if (value === "") return { ok: true, base: null };
   const base = value.replace(/\/+$/, "");
-  return LOOPBACK_MIRROR.test(base) ? { ok: true, base } : { ok: false, value };
+  // A `.` or `..` path segment is refused as well: the base is joined with more path, and a client
+  // or a proxy that folds `..` would leave the base the pattern checked.
+  const dotted = /\/\.{1,2}(\/|$)/.test(base.slice("http://".length));
+  return LOOPBACK_MIRROR.test(base) && !dotted ? { ok: true, base } : { ok: false, value };
 }
+
+/** What every request to a mirror carries: a loopback server may not send the client to another host. */
+export const MIRROR_FETCH = { redirect: "error" } as const;
 
 /** The line every surface prints while a mirror is in use. */
 export const mirrorWarning = (base: string): string =>
@@ -479,6 +485,42 @@ export const mirrorWarning = (base: string): string =>
 /** The line for a mirror value that is not loopback. */
 export const mirrorRefusal = (value: string): string =>
   `${UPDATE_MIRROR_ENV}='${value}' is not an http://127.0.0.1 or http://localhost URL. It is a test seam for rehearsals, never a download source.`;
+
+/**
+ * The bridge's two release reads, with the mirror decided ONCE, here, from `env`. Unset: GitHub, as
+ * always. A loopback mirror: that mirror, and `warning` to log once. A value that is set and not
+ * loopback: REFUSED, never GitHub in its place, because an operator who set it meant not to ask
+ * GitHub. The release check then fails with the refusal, and the phone shows no new version.
+ */
+export interface ReleaseFetchers {
+  readonly fetchTags: () => Promise<ApiTag[]>;
+  readonly fetchReleaseReading: (version: string) => Promise<ReleaseReadingResult>;
+  /** The one line to log at boot, or null when there is nothing to say. */
+  readonly warning: string | null;
+}
+
+export function releaseFetchers(repo: string, env: Readonly<Record<string, string | undefined>>): ReleaseFetchers {
+  const mirror = updateMirror(env);
+  if (!mirror.ok) {
+    const said = mirrorRefusal(mirror.value);
+    return {
+      fetchTags: () => Promise.reject(new Error(said)),
+      fetchReleaseReading: () => Promise.resolve(null),
+      warning: `${said} The release check is off until it is fixed or unset.`,
+    };
+  }
+  return {
+    fetchTags: githubTagsFetcher(repo, githubCredential(env), mirror.base),
+    fetchReleaseReading: releaseReadingFetcher(repo, mirror.base),
+    warning: mirror.base === null ? null : mirrorWarning(mirror.base),
+  };
+}
+
+/** The raw mirror value to hand a child that starts with a bare environment, or null when unset. */
+export const mirrorValue = (env: Readonly<Record<string, string | undefined>>): string | null => {
+  const value = env[UPDATE_MIRROR_ENV]?.trim() ?? "";
+  return value === "" ? null : value;
+};
 
 // ── The GitHub credential (#254) ─────────────────────────────────────────────
 // GitHub allows an anonymous caller 60 API calls an hour, counted per network address, so every
@@ -558,13 +600,15 @@ export function githubTagsFetcher(
   const url = githubTagsUrl(repo, mirror);
   let refusedSaid = false;
   return async () => {
-    const res = await fetch(url, {
+    const init: RequestInit = {
       headers: githubHeaders(url, credential, {
         accept: "application/vnd.github+json",
         "user-agent": "collie-update-check",
       }),
       signal: AbortSignal.timeout(TAGS_TIMEOUT_MS),
-    });
+    };
+    if (mirror !== null) init.redirect = MIRROR_FETCH.redirect;
+    const res = await fetch(url, init);
     // Once, not every tick: the check runs for the life of the process, and a line an hour is the
     // sort of log nobody reads. The price is that a token revoked later is said once and then only
     // shows as a banner that stops moving; `collie update --check` names it any time it is asked.
@@ -672,10 +716,12 @@ export function releaseReadingFetcher(
 ): (version: string) => Promise<ReleaseReadingResult> {
   return async (version) => {
     try {
-      const res = await fetch(releaseReadingUrl(repo, version, mirror), {
+      const init: RequestInit = {
         headers: { accept: "application/json", "user-agent": "collie-update-check" },
         signal: AbortSignal.timeout(RELEASE_READING_TIMEOUT_MS),
-      });
+      };
+      if (mirror !== null) init.redirect = MIRROR_FETCH.redirect;
+      const res = await fetch(releaseReadingUrl(repo, version, mirror), init);
       // 404 is the ordinary answer for every release before 1.8.0, and it is DEFINITE: that release
       // is published and will never grow the asset. Every other bad status is this minute's problem.
       if (res.status === 404) return "absent";

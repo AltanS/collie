@@ -12,6 +12,7 @@ import {
   isGithubApiUrl,
   majorOf,
   MANIFEST_SCHEMA_VERSION,
+  MIRROR_FETCH,
   mirrorRefusal,
   mirrorWarning,
   updateMirror,
@@ -1183,7 +1184,7 @@ export function windowsTar(env: Environment, host: Host): string {
 export const manifestAssetName = (version: string): string => `collie-${version}.manifest.json`;
 
 /** A release asset's URL, built from (repo, tag, name) alone — see `parseReleaseManifest`'s header
- *  on why the manifest carries no URLs of its own. With a rehearsal mirror (`COLLIE_UPDATE_MIRROR`,
+ *  on why the manifest carries no URLs of its own. With a rehearsal mirror (`updateMirror`,
  *  a loopback-only test seam, `bridge/update.ts`), the same path on that mirror. */
 export const releaseAssetUrl = (repo: string, tag: string, name: string, mirror: string | null = null): string =>
   `${mirror ?? "https://github.com"}/${repo}/releases/download/${tag}/${name}`;
@@ -1523,7 +1524,9 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
 
   // 3. One HTTPS GET. Never a second endpoint, never a guessed version.
   const tagsUrl = githubTagsUrl(repo, mirror.base);
-  const tagsResponse = await deps.net.getJson(tagsUrl);
+  // Every request to a mirror refuses a redirect; with no mirror the requests are the ones they were.
+  const via = mirror.base === null ? undefined : MIRROR_FETCH;
+  const tagsResponse = await deps.net.getJson(tagsUrl, via);
   if (!tagsResponse.ok) {
     netError(deps, "the release check", tagsUrl, tagsResponse.failure);
     return EXIT.FAIL;
@@ -1587,7 +1590,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
 
   // 5. The manifest, and this platform's artifact inside it.
   const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version), mirror.base);
-  const manifestResponse = await deps.net.getJson(manifestUrl);
+  const manifestResponse = await deps.net.getJson(manifestUrl, via);
   if (!manifestResponse.ok) {
     netError(deps, `the release manifest for ${target.version}`, manifestUrl, manifestResponse.failure);
     return EXIT.FAIL;
@@ -1625,7 +1628,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   const tarball = join(layout.stagingDir, artifact.name);
   deps.files.mkdirp(layout.stagingDir);
   const tarballUrl = releaseAssetUrl(repo, target.tag, artifact.name, mirror.base);
-  const got = await deps.net.download(tarballUrl, tarball);
+  const got = await deps.net.download(tarballUrl, tarball, via);
   if (!got.ok) {
     deps.files.removeTree(layout.stagingDir);
     netError(deps, `downloading ${artifact.name}`, tarballUrl, got.failure);

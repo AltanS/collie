@@ -17,8 +17,10 @@ import {
   parseProcessRows,
   parseWindowsProcessAnswer,
   POWERSHELL_UTF8,
+  realNet,
   windowsProcessScript,
 } from "./sys.ts";
+import { MIRROR_FETCH } from "../bridge/update.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
 //
@@ -515,6 +517,38 @@ describe("the Windows process query", () => {
     expect(parseWindowsProcessAnswer("gone\r\n")).toEqual({ kind: "gone" });
     for (const nothing of ["", "Get-CimInstance : Access denied\r\n"]) {
       expect(parseWindowsProcessAnswer(nothing).kind).toBe("unknown");
+    }
+  });
+});
+
+describe("realNet and a rehearsal mirror (a local server, no network)", () => {
+  test("no token reaches the mirror, and a redirect from it is refused; without the option it is followed", async () => {
+    const seen: (string | null)[] = [];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(req) {
+        seen.push(req.headers.get("authorization"));
+        if (new URL(req.url).pathname === "/hop") {
+          return new Response(null, { status: 302, headers: { location: new URL("/tags", req.url).toString() } });
+        }
+        return Response.json([{ name: "v1.0.0", commit: { sha: "abc" } }]);
+      },
+    });
+    const dir = mkdtempSync(join(tmpdir(), "collie-mirror-"));
+    try {
+      const net = realNet({ token: "a-secret", source: "GH_TOKEN" });
+      const base = `http://127.0.0.1:${server.port}`;
+      expect((await net.getJson(`${base}/repos/AltanS/collie/tags?per_page=100`, MIRROR_FETCH)).ok).toBe(true);
+      expect((await net.getJson(`${base}/hop`, MIRROR_FETCH)).ok).toBe(false);
+      expect((await net.download(`${base}/hop`, join(dir, "x.zip"), MIRROR_FETCH)).ok).toBe(false);
+      // The GitHub download path follows GitHub's own redirect to its file host, and still does.
+      expect((await net.getJson(`${base}/hop`)).ok).toBe(true);
+      expect(seen.length).toBeGreaterThanOrEqual(4);
+      expect(seen.every((h) => h === null)).toBe(true);
+    } finally {
+      server.stop(true);
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });

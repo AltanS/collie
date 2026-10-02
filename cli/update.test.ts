@@ -1434,6 +1434,55 @@ describe("collie update on a binary install", () => {
     expect(h.io.stderr.join("\n")).toContain(`WARNING: COLLIE_UPDATE_MIRROR is set. This is a test seam: releases come from ${base}`);
   });
 
+  test("every request to the mirror refuses a redirect; with no mirror the requests are the ones they were", async () => {
+    const record = (h: Harness) => {
+      const seen: { url: string; opts: unknown }[] = [];
+      const { getJson, download } = h.deps.net;
+      h.deps.net = {
+        ...h.deps.net,
+        getJson: (url, opts) => {
+          seen.push({ url, opts });
+          return url.includes("/repos/") && !url.includes("api.github.com")
+            ? Promise.resolve({ ok: true as const, value: apiTags("v1.0.0", `v${NEW}`) })
+            : getJson(url, opts);
+        },
+        download: (url, dest, opts) => {
+          seen.push({ url, opts });
+          return download(url, dest, opts);
+        },
+      };
+      return seen;
+    };
+    const mirrored = binaryHarness({ others: ["0.9.0"], env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899" } });
+    const viaMirror = record(mirrored);
+    expect(await cmdUpdate(mirrored.deps)).toBe(EXIT.OK);
+    expect(viaMirror.map((r) => r.opts)).toEqual([{ redirect: "error" }, { redirect: "error" }, { redirect: "error" }]);
+
+    // Unset: the same three URLs as always, and no options at all, so `fetch` gets what it always got.
+    const plain = binaryHarness({ others: ["0.9.0"] });
+    const viaGithub = record(plain);
+    expect(await cmdUpdate(plain.deps)).toBe(EXIT.OK);
+    expect(viaGithub).toEqual([
+      { url: "https://api.github.com/repos/AltanS/collie/tags?per_page=100", opts: undefined },
+      { url: `https://github.com/AltanS/collie/releases/download/v${NEW}/collie-${NEW}.manifest.json`, opts: undefined },
+      { url: `https://github.com/AltanS/collie/releases/download/v${NEW}/${PAYLOAD}.tar.gz`, opts: undefined },
+    ]);
+  });
+
+  test("the checksum is checked on the mirror path too: a mismatch lays nothing down", async () => {
+    const h = binaryHarness({ env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899" }, digest: "9c1a04".padEnd(64, "0") });
+    const { getJson } = h.deps.net;
+    h.deps.net = {
+      ...h.deps.net,
+      getJson: (url, opts) =>
+        url.includes("/repos/") ? Promise.resolve({ ok: true as const, value: apiTags("v1.0.0", `v${NEW}`) }) : getJson(url, opts),
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain(`checksum mismatch for ${PAYLOAD}.tar.gz`);
+    expect(h.files.ops.some((op) => op.includes(`${INST}/versions/${NEW}`))).toBe(false);
+    expect(h.link.ops).toEqual([]);
+  });
+
   test("a mirror that is not this machine's loopback stops the update before any request", async () => {
     for (const value of [
       "http://10.0.0.5:8899",
