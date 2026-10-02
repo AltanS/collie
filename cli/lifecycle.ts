@@ -66,7 +66,10 @@ export interface LifecycleDeps extends ServeDeps {
   /** Readiness with the full ~5s budget. Injected so tests don't pay for it. */
   ready: (port: number, host: string) => Promise<boolean>;
   sleep: (ms: number) => Promise<void>;
-  /** Milliseconds since the epoch. Absent: `Date.now`. Bounds the Windows restart's wait by the clock. */
+  /**
+   * A clock in milliseconds that only moves forward. Absent: `performance.now`, which a change of the
+   * system time does not move. Bounds the Windows restart's wait.
+   */
   now?: () => number;
   uid: () => number;
   host: Host;
@@ -637,6 +640,19 @@ function removeTaskScheduler(deps: LifecycleDeps): void {
   deps.files.remove(taskRecordPath(deps.ctx.configDir, deps.ctx.instance, deps.host));
 }
 
+/** `probe`'s answer, or `false` once `ms` have passed without one. */
+async function within(probe: Promise<boolean>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), Math.max(0, ms));
+  });
+  try {
+    return await Promise.race([probe, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** How long `restart` lets a killed bridge go before it asks whether the new one answers. */
 export const KILL_SETTLE_MS = 1_000;
 
@@ -718,12 +734,13 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
   // seconds, so thirty of them waited three minutes, not thirty seconds (M43 spec 08 rehearsal: a
   // broken update took 221 s to roll back). The kill's pause counts as part of the wait.
   const waitS = Math.max(1, Math.ceil(healthTimeoutMs(deps.ctx.env) / 1000));
-  const now = deps.now ?? Date.now;
+  const now = deps.now ?? ((): number => performance.now());
   const deadline = now() + waitS * 1000 - (settled ? KILL_SETTLE_MS : 0);
   let answered = false;
   for (let attempt = settled ? 1 : 0; attempt < waitS && !answered; attempt++) {
     try {
-      answered = await deps.ready(deps.ctx.port, dialableBridgeHost(deps.ctx.env));
+      // Each probe gets what is left of the budget and no more, so the worst case is the budget.
+      answered = await within(deps.ready(deps.ctx.port, dialableBridgeHost(deps.ctx.env)), deadline - now());
     } catch {
       answered = false; // a probe that throws is a bridge that did not answer, not a crashed restart
     }

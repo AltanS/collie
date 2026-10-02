@@ -1170,6 +1170,37 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.io.stderr.join("\n")).toContain("within 30s");
     });
 
+    test("a probe that never answers is cut off at the budget: the worst case is the budget", async () => {
+      // A 2 s budget, the first second spent after the kill: the one probe left gets one second.
+      const h = running({ env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "2000" } });
+      let calls = 0;
+      h.deps.ready = () => (++calls === 1 ? new Promise<boolean>(() => {}) : Promise.resolve(false));
+      const started = performance.now();
+      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+      expect(performance.now() - started).toBeLessThan(1_800);
+      expect(h.io.stderr.join("\n")).toContain("within 2s");
+    });
+
+    test("the default clock is performance.now, which a change of the wall clock does not move", async () => {
+      const h = running({ ready: false });
+      let slept = 0;
+      h.deps.sleep = () => {
+        slept++;
+        return Promise.resolve();
+      };
+      const real = performance.now.bind(performance);
+      let calls = 0;
+      // The monotonic clock passes the whole budget after the first probe; only it can end the wait early.
+      performance.now = () => real() + (++calls > 1 ? 60_000 : 0);
+      try {
+        expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+      } finally {
+        performance.now = real;
+      }
+      // The second after the kill, then no further pause: the deadline had passed.
+      expect(slept).toBe(1);
+    });
+
     test("a probe that throws reads as no answer, not as a crashed restart", async () => {
       const h = running();
       let probes = 0;
@@ -1699,5 +1730,72 @@ describe("the COLLIE_INSTANCE knob", () => {
     // v1's handler record is `…-v1`, so the solo instance's front-door record survives untouched.
     expect(h.files.read(`${CONFIG}/tailscale-managed-handler`)).toContain("http://127.0.0.1:8787");
     expect(h.exec.calls).toContain("systemctl --user reset-failed collie-v1");
+  });
+});
+
+// GOLDEN: the POSIX restart, whole, as it was before the Windows work of M43 spec 08. The Windows
+// tier's restart has its own loop, its own clock and its own messages; none of that may reach these.
+describe("restart off Windows, golden", () => {
+  // The fakes model a POSIX box. Run on Windows, `join` and `resolve` spell those paths with `\` and
+  // a drive; folded back, the transcript must be the same one.
+  const fold = (lines: readonly string[]): string[] =>
+    lines.map((l) => (process.platform === "win32" ? l.replace(/\b[A-Za-z]:(?=[\\/])/g, "").replaceAll("\\", "/") : l));
+  const BUILD = [
+    "/opt/collie$ bash /opt/collie/scripts/check-version.sh",
+    "/opt/collie$ bun install",
+    "/opt/collie/web$ bun install",
+    "/opt/collie$ bun run typecheck",
+    "/opt/collie/web$ bun run typecheck",
+    "/opt/collie/bin/.bun-compile-1$ bun build --compile --target=bun /opt/collie/cli/main.ts --outfile /opt/collie/bin/collie.new",
+    "/opt/collie/web$ bun run build -- --outDir dist-staging --emptyOutDir",
+  ];
+  const ENV = "systemctl --user show-environment";
+  const banner = (service: string): string[] => [
+    "",
+    "  ✓ Collie is running  ·  vunknown",
+    `    service   ${service}`,
+    "    local     http://127.0.0.1:8787",
+    "    tailnet   http://127.0.0.1:8787 (Tailscale name unavailable)",
+    "",
+  ];
+  const head = ["took COLLIE_MUX=herdr from your environment; wrote COLLIE_MUX=herdr to /cfg/.env", "bridge stopped", "building web UI (first run)…"];
+  const noTailnet = [
+    "error: 'tailscale status' named no host for this node — the allowlist was not discovered.",
+    "       no allowlist is set, so the Host gate will refuse every request. Set",
+    "       COLLIE_TAILSCALE_HOSTS (or COLLIE_PUBLIC_HOSTS) in .env, or fix Tailscale and retry.",
+  ];
+
+  test("systemd: disable --now, build, enable --now, the banner", async () => {
+    const h = harness();
+    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+    expect(fold(h.exec.calls)).toEqual([
+      ENV, ENV, "systemctl --user disable --now collie", ...BUILD, ENV, "tailscale status --json",
+      "systemctl --user daemon-reload", "systemctl --user enable --now collie", ENV,
+      "systemctl --user is-active collie", "tailscale status --json",
+    ]);
+    expect(fold(h.io.stdout)).toEqual([...head, "bridge started (systemd --user: collie)", ...banner("systemd --user (collie) · unknown")]);
+    expect(fold(h.io.stderr)).toEqual(noTailnet);
+    expect(h.exec.killed).toEqual([]);
+  });
+
+  test("launchd: bootout, build, bootstrap, the banner", async () => {
+    const h = harness({ host: hostFor("darwin"), answers: NO_SYSTEMD });
+    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+    expect(fold(h.exec.calls)).toEqual([
+      ENV, ENV, ENV, ENV, "launchctl disable gui/501/herdr.collie", "launchctl bootout gui/501/herdr.collie", ...BUILD,
+      ENV, ENV, "tailscale status --json", "launchctl bootout gui/501/herdr.collie", "launchctl enable gui/501/herdr.collie",
+      "launchctl bootstrap gui/501 /home/pat/Library/LaunchAgents/herdr.collie.plist", ENV, ENV,
+      "launchctl print gui/501/herdr.collie", "launchctl print user/501/herdr.collie", "tailscale status --json",
+    ]);
+    expect(fold(h.io.stdout)).toEqual([...head, "bridge started (launchd: herdr.collie)", ...banner("launchd (herdr.collie) · not loaded")]);
+    expect(fold(h.io.stderr)).toEqual(noTailnet);
+  });
+
+  test("unsupervised: a detached bridge, the banner", async () => {
+    const h = harness({ answers: NO_SYSTEMD });
+    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+    expect(fold(h.exec.calls)).toEqual([ENV, ENV, ENV, ENV, ...BUILD, ENV, ENV, "tailscale status --json", ENV, ENV, "tailscale status --json"]);
+    expect(fold(h.io.stdout)).toEqual([...head, "bridge started (pid 4242, unsupervised)", ...banner("pid 4242 (unsupervised)")]);
+    expect(h.exec.spawned.map((x) => fold(x.command))).toEqual([["/opt/collie/bin/collie", "_exec-bridge"]]);
   });
 });
