@@ -17,15 +17,13 @@ function fakeRunner(answers: (RunResult | null)[] = [{ code: 0, stdout: "", time
 
 /** A scratch folder in memory: what `/save` would have written, and what `/restore` was given. */
 function fakeScratch(saved: string | null = null) {
-  const written: string[] = [];
   const removed: string[] = [];
   const scratch: Scratch = {
     file: () => "C:\\Users\\pat\\AppData\\Local\\Temp\\collie-acl-1.txt",
     readUtf16: () => saved,
-    writeUtf16: (_path, text) => void written.push(text),
     remove: (path) => void removed.push(path),
   };
-  return { scratch, written, removed };
+  return { scratch, removed };
 }
 
 const ENV = { SystemRoot: "D:\\Win" };
@@ -51,16 +49,14 @@ describe("every tool runs by its absolute path under SystemRoot", () => {
     expect(removed).toHaveLength(2);
   });
 
-  test("restore writes the exact lists and sets them in one call; reset never takes /T and passes /L", () => {
+  test("the repair is the icacls call it is given; reset never takes /T and passes /L", () => {
     const { runner, calls } = fakeRunner();
-    const { scratch, written } = fakeScratch();
-    const tool = aclTool(runner, ENV, scratch);
-    tool.restore("C:\\x", [{ name: "state", sddl: "D:PAI(A;OICI;FA;;;SY)" }]);
+    const tool = aclTool(runner, ENV, fakeScratch().scratch);
+    tool.icacls(["C:\\x\\state", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/inheritance:r"]);
     tool.reset("C:\\x\\state\\a.json");
     tool.whoami();
-    expect(written).toEqual(["state\r\nD:PAI(A;OICI;FA;;;SY)\r\n"]);
     expect(calls.map((c) => c.argv)).toEqual([
-      ["D:\\Win\\System32\\icacls.exe", "C:\\x", "/restore", "C:\\Users\\pat\\AppData\\Local\\Temp\\collie-acl-1.txt", "/C", "/Q"],
+      ["D:\\Win\\System32\\icacls.exe", "C:\\x\\state", "/grant:r", "*S-1-5-18:(OI)(CI)F", "/inheritance:r"],
       ["D:\\Win\\System32\\icacls.exe", "C:\\x\\state\\a.json", "/reset", "/L", "/C", "/Q"],
       ["D:\\Win\\System32\\whoami.exe", "/user", "/fo", "csv", "/nh"],
     ]);

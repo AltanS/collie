@@ -165,7 +165,7 @@ function fakeOwnerOnly(
       if (answer === ACL_TIMED_OUT) return { kind: "timed-out" } satisfies SaveResult;
       return { kind: "ok", code: answer === ACL_NO_LIST ? 1 : 0, text: answer === ACL_NO_LIST ? "" : answer } satisfies SaveResult;
     },
-    restore: fail,
+    icacls: fail,
     reset: fail,
     whoami: () => ({ code: 0, stdout: `"pc\\pat","${WIN_SID}"\r\n`, timedOut: false }),
     descriptors: (paths) => new Map(paths.flatMap((p) => (over.owners?.[p] === undefined ? [] : [[p, over.owners[p]!] as const]))),

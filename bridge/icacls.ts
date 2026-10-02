@@ -12,11 +12,9 @@
 // `timedOut`, which the caller treats as "not checked", never as "loose".
 
 import { randomUUID } from "node:crypto";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
-
-import { formatSaved, type SavedAcl } from "./sddl.ts";
 
 /** The bound on one call. Ten seconds is far past the 10 to 60 ms a healthy call takes. */
 export const ACL_TIMEOUT_MS = 10_000;
@@ -33,11 +31,10 @@ export interface Runner {
   run(argv: readonly string[], timeoutMs: number): RunResult | null;
 }
 
-/** The temp file `icacls /save` and `/restore` need, in the user's own temp folder. */
+/** The temp file `icacls /save` writes, in the user's own temp folder. */
 export interface Scratch {
   file(): string;
   readUtf16(path: string): string | null;
-  writeUtf16(path: string, text: string): void;
   remove(path: string): void;
 }
 
@@ -50,8 +47,11 @@ export type SaveResult =
 export interface AclTool {
   /** `icacls <path> /save <temp> [/T] /C /Q`, and the file read back. */
   save(path: string, tree: boolean): SaveResult;
-  /** `icacls <parent> /restore <temp> /C /Q` with these entries: one exact list per entry, set at once. */
-  restore(parent: string, entries: readonly SavedAcl[]): RunResult | null;
+  /**
+   * `icacls <args…>`: the repair, one call. Not `/restore`: that needs the Restore privilege, which a
+   * standard user does not hold (VM, 2026-10-02: error 1300).
+   */
+  icacls(args: readonly string[]): RunResult | null;
   /** `icacls <path> /reset /L /C /Q`: the entry inherits from its folder and keeps nothing of its own. */
   reset(path: string): RunResult | null;
   /** `whoami /user /fo csv /nh`. */
@@ -92,14 +92,8 @@ export function aclTool(
         scratch.remove(file);
       }
     },
-    restore(parent, entries) {
-      const file = scratch.file();
-      try {
-        scratch.writeUtf16(file, formatSaved(entries));
-        return runner.run([icacls, parent, "/restore", file, "/C", "/Q"], ACL_TIMEOUT_MS);
-      } finally {
-        scratch.remove(file);
-      }
+    icacls(args) {
+      return runner.run([icacls, ...args], ACL_TIMEOUT_MS);
     },
     reset(path) {
       return runner.run([icacls, path, "/reset", "/L", "/C", "/Q"], ACL_TIMEOUT_MS);
@@ -153,9 +147,6 @@ export const realScratch: Scratch = {
     } catch {
       return null;
     }
-  },
-  writeUtf16(path, text) {
-    writeFileSync(path, Buffer.from(text, "utf16le"));
   },
   remove(path) {
     rmSync(path, { force: true });

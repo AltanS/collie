@@ -112,7 +112,8 @@ folder with `COLLIE_STATE_DIR` or another setting.
 
 At start, the bridge checks both folders and their secret files. If other accounts can read one,
 the bridge repairs it, but only in Collie's own folders. It saves the old list first, in
-`acl-backups` in the state folder, and prints the `icacls /restore` command that puts it back. A
+`acl-backups` in the state folder, and prints the `icacls /restore` command that puts it back.
+Run that command in a terminal run as administrator. A
 folder that also holds other files is checked, not changed: Collie prints the `icacls` command
 for you to run. Other commands, such as `collie version`, only check and warn.
 

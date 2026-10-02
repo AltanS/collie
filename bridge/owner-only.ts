@@ -16,11 +16,13 @@
 // only `loose` can make the config loader withhold a secret.
 //
 // THE REPAIR runs in the bridge process at start and nowhere else (a CLI command only verifies and
-// warns), only on a folder `acl-policy.ts` calls Collie's own, and never with `/T`. It sets the
-// folder's whole list in one `icacls /restore` (grants and protection together, so the list is
-// never empty for a moment), then resets to "inherit" only the entries a second check still finds
-// loose, after a fresh `lstat` of each (no link, no hard link). The old lists are saved first, and
-// the line to put them back is printed. `COLLIE_NO_ACL_REPAIR=1` turns every change off; the check
+// warns), only on a folder `acl-policy.ts` calls Collie's own, and never with `/T`. It changes the
+// folder in ONE `icacls` call, grants first and the end of inheritance after (so the list is never
+// empty for a moment: proven on the VM with a reader in another process, 0 failed reads), then
+// resets to "inherit" only the entries a second check still finds loose, after a fresh `lstat` of
+// each (no link, no hard link). The old lists are saved first, and the line to put them back is
+// printed. Not `icacls /restore` for the change: it needs the Restore privilege, which a standard
+// user does not hold (VM, 2026-10-02: error 1300). `COLLIE_NO_ACL_REPAIR=1` turns every change off; the check
 // still runs and still warns.
 
 import { lstatSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -44,6 +46,7 @@ import {
   parseSaved,
   parseSddl,
   parseWhoamiSid,
+  formatSaved,
   type SavedAcl,
   sidName,
   SYSTEM_SID,
@@ -287,24 +290,33 @@ export function whoCanRead(leaks: readonly Leak[]): string {
 }
 
 /**
- * The repair as one line an operator can paste into PowerShell or cmd: the grants first, then the
- * end of inheritance, then every named stranger removed. Quoted path, the account by SID, no
- * placeholder. A domain alias with no fixed SID (`DU`) cannot be named on a command line; the
- * `/inheritance:r` still drops it when it was inherited.
+ * The repair, as `icacls` arguments: the three grants first, then the end of inheritance, then every
+ * named stranger removed, in ONE call. The account and the strangers by SID, so no name in any
+ * language can break it. A domain alias with no fixed SID (`DU`) cannot be named on a command line;
+ * `/inheritance:r` still drops it when it was inherited, and the second check names it otherwise.
  */
-export function privateCommand(path: string, userSid: string, folder: boolean, leaks: readonly Leak[] = []): string {
+export function privateArgs(path: string, userSid: string, folder: boolean, leaks: readonly Leak[] = []): string[] {
   const inherit = folder ? "(OI)(CI)" : "";
-  const grants = [userSid, SYSTEM_SID, ADMINISTRATORS_SID].map((sid) => `"*${sid}:${inherit}F"`).join(" ");
+  const grants = [userSid, SYSTEM_SID, ADMINISTRATORS_SID].map((sid) => `*${sid}:${inherit}F`);
   const strangers = [...new Set(leaks.map((l) => l.sid).filter((sid) => sid.startsWith("S-")))].map((sid) => `*${sid}`);
-  return `icacls "${path}" /grant:r ${grants} /inheritance:r${strangers.length > 0 ? ` /remove:g ${strangers.join(" ")}` : ""}`;
+  return [path, "/grant:r", ...grants, "/inheritance:r", ...(strangers.length > 0 ? ["/remove:g", ...strangers] : [])];
 }
 
-// ── The repair ───────────────────────────────────────────────────────────────
+/**
+ * The same repair as one line an operator can paste into PowerShell or cmd: the path and the grants
+ * quoted (PowerShell reads a bare `(OI)` as an expression), no placeholder.
+ */
+export function privateCommand(path: string, userSid: string, folder: boolean, leaks: readonly Leak[] = []): string {
+  const [first, ...rest] = privateArgs(path, userSid, folder, leaks);
+  return `icacls "${first!}" ${rest.map((a) => (a.includes("(") ? `"${a}"` : a.startsWith("*S-") && a.includes(":") ? `"${a}"` : a)).join(" ")}`;
+}
 
-/** The exact list a private folder (or file) gets: three principals, nothing inherited. */
-function privateSddl(userSid: string, folder: boolean): string {
-  const inherit = folder ? "OICI" : "";
-  return `D:PAI(A;${inherit};FA;;;${userSid})(A;${inherit};FA;;;${SYSTEM_SID})(A;${inherit};FA;;;BA)`;
+/** Run the repair. `null` when it went through, else why not. */
+function applyPrivate(path: string, user: string, folder: boolean, leaks: readonly Leak[], deps: OwnerOnlyDeps): string | null {
+  const run = deps.acl.icacls([...privateArgs(path, user, folder, leaks), "/C", "/Q"]);
+  if (run === null) return "icacls did not start";
+  if (run.timedOut) return "icacls did not answer within 10 seconds";
+  return run.code === 0 ? null : `icacls exited ${String(run.code)}`;
 }
 
 /** Saved lists waiting for the state folder: `/restore` takes one parent per file. */
@@ -342,9 +354,10 @@ export function flushAclBackups(stateDir: string, host: Host = WINDOWS, deps: Ow
   let n = 0;
   for (const [parent, entries] of pendingBackups) {
     const file = host.path.join(folder, `acl-backup-${stamp}-${String(++n)}.sddl`);
-    const text = entries.map((e) => `${e.name}\r\n${e.sddl}\r\n`).join("");
+    const text = formatSaved(entries);
     if (deps.writeBackup(file, text)) {
-      lines.push(`[secrets] the old permissions are saved. To put them back: icacls "${parent}" /restore "${file}"`);
+      // `/restore` needs the Restore privilege: an administrator's terminal, for any account.
+      lines.push(`[secrets] the old permissions are saved. To put them back, in a terminal run as administrator: icacls "${parent}" /restore "${file}"`);
     }
   }
   pendingBackups.clear();
@@ -414,8 +427,8 @@ export function scopeOf(dir: string, createdNow: boolean, host: Host, deps: Owne
  * POSIX: `mkdir -p` with mode 0700 and nothing else, as before; returns `null`, nothing checked.
  *
  * Windows: read the folder and its secret files (one `icacls` each, no `/T`). Private and protected:
- * done. Otherwise, when `repair` is on and {@link scopeOf} allows it: save the old lists, set the
- * folder's whole list in one `icacls /restore`, read again, reset each secret file a fresh `lstat`
+ * done. Otherwise, when `repair` is on and {@link scopeOf} allows it: save the old lists, change the
+ * folder in one grant-first `icacls` call ({@link privateArgs}), read again, reset each secret file a fresh `lstat`
  * still clears ({@link safeToReset}), read a last time. `made-private` only when that last read
  * passes. When Collie may not change it, `left-loose` with the reason, and nothing changed.
  */
@@ -447,11 +460,8 @@ export function ensureOwnerOnlyDir(
     backUp(dir, parent, host, deps);
     for (const entry of before.looseBelow) backUp(entry, parent, host, deps);
   }
-  const set = deps.acl.restore(parent, [{ name: host.path.basename(dir), sddl: privateSddl(user, true) }]);
-  if (set === null || set.timedOut || set.code !== 0) {
-    const why = set === null ? "icacls did not start" : set.timedOut ? "icacls did not answer" : `icacls exited ${String(set.code)}`;
-    return { state: "repair-failed", leaks, why };
-  }
+  const failed = applyPrivate(dir, user, true, leaks, deps);
+  if (failed !== null) return { state: "repair-failed", leaks, why: failed };
   let after = readRoot(dir, opts.root, host, deps);
   if (after.looseBelow.length > 0) {
     for (const entry of after.looseBelow) if (safeToReset(entry, dir, host, deps)) deps.acl.reset(entry);
@@ -472,7 +482,7 @@ export function createPrivateDir(dir: string, host: Host, deps: OwnerOnlyDeps = 
   if (host.platform !== "win32" || !aclRepairAllowed(deps.env)) return;
   const user = currentUserSid(deps.acl);
   if (user === null) return;
-  deps.acl.restore(host.path.dirname(dir), [{ name: host.path.basename(dir), sddl: privateSddl(user, true) }]);
+  applyPrivate(dir, user, true, [], deps);
 }
 
 /** The line the bridge prints for an outcome, or `null` when there is nothing to say. */
@@ -515,7 +525,7 @@ const toldNotChecked = new Set<string>();
  * `repair` off (every CLI command): a warning that says how to fix it, and `ok: false`, so the
  * loader withholds a `config.toml` secret exactly as POSIX does for a file it could not tighten.
  * Loose and `repair` on (the bridge at start), when the file's folder is Collie's own: the old list
- * saved, the file's whole list set in one call, and "private" said only when a second read passes.
+ * saved, the file changed in one grant-first call, and "private" said only when a second read passes.
  */
 export function secretFileVerdict(
   path: string,
@@ -541,8 +551,7 @@ export function secretFileVerdict(
     return { ok: false, warning: `warn: ${path} can be read by other accounts on this PC (${who}). ${reason}, or run: ${fix}` };
   }
   backUp(path, folder, host, deps);
-  const set = deps.acl.restore(folder, [{ name: host.path.basename(path), sddl: privateSddl(user, false) }]);
-  const after = set !== null && !set.timedOut && set.code === 0 ? readPath(path, false, host, deps).verdict : before;
+  const after = applyPrivate(path, user, false, before.leaks, deps) === null ? readPath(path, false, host, deps).verdict : before;
   if (after.state === "private") {
     return {
       ok: true,

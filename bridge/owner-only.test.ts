@@ -55,12 +55,13 @@ interface World {
   lists?: Record<string, string[]>;
   env?: Record<string, string>;
   whoami?: string | null;
-  restoreCode?: number;
+  repairCode?: number;
 }
 
 function fake(world: World) {
   const calls: string[] = [];
-  const restores: { parent: string; name: string; sddl: string }[] = [];
+  /** Every repair call, as its icacls arguments. */
+  const sets: string[][] = [];
   const resets: string[] = [];
   const backups: Record<string, string> = {};
   const seen = new Map<string, number>();
@@ -75,10 +76,10 @@ function fake(world: World) {
       seen.set(key, n + 1);
       return saveAnswer(list[Math.min(n, list.length - 1)]!);
     },
-    restore(parent, entries) {
-      calls.push(`restore ${parent}`);
-      for (const e of entries) restores.push({ parent, name: e.name, sddl: e.sddl });
-      return { code: world.restoreCode ?? 0, stdout: "", timedOut: false };
+    icacls(args) {
+      calls.push(`icacls ${args[0]!}`);
+      sets.push([...args]);
+      return { code: world.repairCode ?? 0, stdout: "", timedOut: false };
     },
     reset(path) {
       calls.push(`reset ${path}`);
@@ -109,7 +110,7 @@ function fake(world: World) {
     home: HOME,
     now: () => Date.UTC(2026, 9, 2, 20, 0, 0),
   };
-  return { deps, calls, restores, resets, backups, links };
+  return { deps, calls, sets, resets, backups, links };
 }
 
 afterEach(() => resetOwnerOnlyState());
@@ -187,7 +188,7 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
     expect(f.calls).toEqual([`mkdir ${STATE}`, `save ${STATE}`, `save ${STATE}\\crew-trust.json`, `save ${STATE}\\paired-devices.json`]);
   });
 
-  test("a default location: old list saved first, then the whole list set in one restore, then confirmed", () => {
+  test("a default location: old list saved first, then one grant-first icacls call, then confirmed", () => {
     const f = fake({
       saves: {
         [STATE]: [DRIVE_DIR("collie"), DRIVE_DIR("collie"), PROTECTED_DIR("collie")],
@@ -198,11 +199,23 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
     });
     const outcome = ensureOwnerOnlyDir(STATE, WIN, { root: STATE_ROOT, repair: true }, f.deps);
     expect(outcome?.state).toBe("made-private");
-    expect(f.restores).toEqual([
-      { parent: `${HOME}\\.local\\state`, name: "collie", sddl: `D:PAI(A;OICI;FA;;;${SID})(A;OICI;FA;;;S-1-5-18)(A;OICI;FA;;;BA)` },
+    expect(f.sets).toEqual([
+      [
+        STATE,
+        "/grant:r",
+        `*${SID}:(OI)(CI)F`,
+        "*S-1-5-18:(OI)(CI)F",
+        "*S-1-5-32-544:(OI)(CI)F",
+        "/inheritance:r",
+        "/remove:g",
+        "*S-1-5-32-545",
+        "*S-1-5-11",
+        "/C",
+        "/Q",
+      ],
     ]);
     // The backup read comes before the change.
-    expect(f.calls.indexOf(`save ${STATE}`)).toBeLessThan(f.calls.indexOf(`restore ${HOME}\\.local\\state`));
+    expect(f.calls.indexOf(`save ${STATE}`)).toBeLessThan(f.calls.indexOf(`icacls ${STATE}`));
     expect(dirOutcomeLine(STATE, outcome, f.deps)).toBe(
       `[secrets] ${STATE} could be read by other accounts on this PC (Users [S-1-5-32-545], Authenticated Users [S-1-5-11]). ` +
         "Collie restricted it to your account, SYSTEM and Administrators. Nothing for you to do. If this repeats on every start, " +
@@ -210,7 +223,9 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
     );
     const lines = flushAclBackups(STATE, WIN, f.deps);
     const file = `${STATE}\\acl-backups\\acl-backup-2026-10-02T20-00-00-000Z-1.sddl`;
-    expect(lines).toEqual([`[secrets] the old permissions are saved. To put them back: icacls "${HOME}\\.local\\state" /restore "${file}"`]);
+    expect(lines).toEqual([
+      `[secrets] the old permissions are saved. To put them back, in a terminal run as administrator: icacls "${HOME}\\.local\\state" /restore "${file}"`,
+    ]);
     expect(f.backups[file]).toBe(DRIVE_DIR("collie"));
   });
 
@@ -230,7 +245,7 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
       ],
       why: "it also holds files that are not Collie's (src, package.json)",
     });
-    expect(f.restores).toEqual([]);
+    expect(f.sets).toEqual([]);
     expect(f.resets).toEqual([]);
     expect(dirOutcomeLine(dir, outcome, f.deps)).toBe(
       `[secrets] ${dir} can be read by other accounts on this PC (Users [S-1-5-32-545], Authenticated Users [S-1-5-11]). ` +
@@ -244,7 +259,7 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
     const outcome = ensureOwnerOnlyDir(STATE, WIN, { root: STATE_ROOT, repair: false }, f.deps);
     expect(outcome?.state).toBe("left-loose");
     if (outcome?.state === "left-loose") expect(outcome.why).toBe("COLLIE_NO_ACL_REPAIR=1 is set");
-    expect(f.restores).toEqual([]);
+    expect(f.sets).toEqual([]);
   });
 
   test("a secret file with its own grant: reset after a fresh lstat, then confirmed", () => {
@@ -272,9 +287,9 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
       isLink: (p) => swapped && p === trust,
       acl: {
         ...f.deps.acl,
-        restore: (parent, entries) => {
+        icacls: (args) => {
           swapped = true;
-          return f.deps.acl.restore(parent, entries);
+          return f.deps.acl.icacls(args);
         },
       },
     };
@@ -299,7 +314,7 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
     for (const dir of ["C:\\", "\\\\nas\\s\\collie", HOME]) {
       const f = fake({ saves: { [dir]: [DRIVE_DIR("x")] }, files: { [dir]: { dir: true } } });
       const outcome = ensureOwnerOnlyDir(dir, WIN, { root: STATE_ROOT, repair: true }, f.deps);
-      expect(f.restores).toEqual([]);
+      expect(f.sets).toEqual([]);
       expect(["left-loose", "not-checked"]).toContain(outcome!.state);
     }
   });
@@ -340,7 +355,7 @@ describe("secretFileVerdict", () => {
         `warn: ${ENV} can be read by other accounts on this PC (Everyone [S-1-1-0]). Restart Collie to repair it, or run: ` +
         `icacls "${ENV}" /grant:r "*${SID}:F" "*S-1-5-18:F" "*S-1-5-32-544:F" /inheritance:r /remove:g *S-1-1-0`,
     });
-    expect(f.restores).toEqual([]);
+    expect(f.sets).toEqual([]);
     expect(f.resets).toEqual([]);
   });
 
@@ -351,13 +366,15 @@ describe("secretFileVerdict", () => {
     expect(v.warning).toBe(
       `warn: ${ENV} could be read by other accounts on this PC (Everyone [S-1-1-0]). Collie restricted it to your account, SYSTEM and Administrators.`,
     );
-    expect(f.restores).toEqual([{ parent: CONFIG, name: ".env", sddl: `D:PAI(A;;FA;;;${SID})(A;;FA;;;S-1-5-18)(A;;FA;;;BA)` }]);
+    expect(f.sets).toEqual([
+      [ENV, "/grant:r", `*${SID}:F`, "*S-1-5-18:F", "*S-1-5-32-544:F", "/inheritance:r", "/remove:g", "*S-1-1-0", "/C", "/Q"],
+    ]);
   });
 
   test("the bridge with COLLIE_NO_ACL_REPAIR=1: a warning, no change", () => {
     const f = fake({ saves: { [ENV]: [EVERYONE_FILE(".env")] }, files: { [ENV]: {} }, env: { [`COLLIE_NO_ACL_REPAIR`]: "1", USERPROFILE: HOME } });
     expect(secretFileVerdict(ENV, { repair: true }, f.deps).ok).toBe(false);
-    expect(f.restores).toEqual([]);
+    expect(f.sets).toEqual([]);
   });
 
   test("a secret in a folder that is not Collie's: checked, not changed, and withheld", () => {
@@ -366,7 +383,7 @@ describe("secretFileVerdict", () => {
     const v = secretFileVerdict(toml, { repair: true }, f.deps);
     expect(v.ok).toBe(false);
     expect(v.warning).toContain("Collie did not change it, because it also holds files that are not Collie's (notes.txt). Fix it yourself, or run: icacls");
-    expect(f.restores).toEqual([]);
+    expect(f.sets).toEqual([]);
   });
 
   test("not checked: no claim, the secret is used, and it is said once per process", () => {
@@ -383,10 +400,10 @@ describe("the rest", () => {
   test("createPrivateDir: a folder born now gets the private list; off with the switch; nothing off Windows", () => {
     const f = fake({ saves: {}, files: {} });
     createPrivateDir(STATE, WIN, f.deps);
-    expect(f.restores.map((r) => r.name)).toEqual(["collie"]);
+    expect(f.sets.map((r) => r[0])).toEqual([STATE]);
     const off = fake({ saves: {}, files: {}, env: { COLLIE_NO_ACL_REPAIR: "1" } });
     createPrivateDir(STATE, WIN, off.deps);
-    expect(off.restores).toEqual([]);
+    expect(off.sets).toEqual([]);
     const posix = fake({ saves: {}, files: {} });
     createPrivateDir("/s", LINUX, posix.deps);
     expect(posix.calls).toEqual(["mkdir /s"]);
