@@ -625,6 +625,25 @@ describe("preflight — the service check", () => {
     expect(check.reason).toContain("LaunchAgent");
     expect(check.reason).toContain(join("Library", "LaunchAgents"));
   });
+
+  test("on Windows the Task Scheduler task is what is asked about, never a systemd unit", async () => {
+    // The rehearsal found the phone's Update refused on Windows with "no systemd user unit".
+    const QUERY = "powershell -NoProfile -NonInteractive -Command";
+    const running = harness({ answers: [[QUERY, { stdout: "Running\r\nC:\\WINDOWS\\system32\\conhost.exe\r\n--headless x _supervise\r\n" }]] });
+    const live = byId(await preflight({ ...running.deps, host: hostFor("win32") }), "service");
+    expect(live.verdict).toBe("green");
+    expect(live.reason).toBe("the Task Scheduler task herdr.collie is Running — the update can restart it");
+    expect(running.exec.calls.some((c) => c.startsWith("systemctl --user is-active"))).toBe(false);
+
+    const none = harness({ answers: [[QUERY, { code: 1 }]] });
+    const missing = byId(await preflight({ ...none.deps, host: hostFor("win32") }), "service");
+    expect(missing.verdict).toBe("red");
+    expect(missing.reason).toContain("no Task Scheduler task herdr.collie");
+    expect(missing.remedy).toBe("collie start");
+
+    const blind = harness({ absent: ["powershell"] });
+    expect(byId(await preflight({ ...blind.deps, host: hostFor("win32") }), "service").verdict).toBe("amber");
+  });
 });
 
 describe("preflight crew — the members of a lead", () => {

@@ -33,8 +33,9 @@ import {
 import { packageCommand } from "./package-command.ts";
 import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
-import { agentFilePath, unitFilePath, unitName } from "./unit.ts";
+import { agentFilePath, agentLabel, unitFilePath, unitName } from "./unit.ts";
 import { supervisionTier } from "./lifecycle.ts";
+import { queryTask } from "./task-scheduler.ts";
 import {
   type RemoteResult,
   type RemoteRunner,
@@ -643,6 +644,19 @@ export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
           `no LaunchAgent at ${plist} — an update would have nothing to restart`,
           "collie start",
         );
+  }
+  if (tier === "taskscheduler") {
+    // Windows. The update restarts the bridge through the task's launcher, so the task is what must
+    // be there. This branch was missing, and the systemd one below refused every update from the
+    // phone with "no systemd user unit" (M43 spec 08 rehearsal, 2026-10-02).
+    const name = agentLabel(deps.ctx.instance);
+    const task = queryTask(deps.exec, name, deps.host);
+    if (task === undefined) {
+      return amber("service", `Task Scheduler could not be asked about the task ${name} (no PowerShell) — the update will still try to restart it`);
+    }
+    return task === null
+      ? red("service", `no Task Scheduler task ${name} — an update would have nothing to restart`, "collie start")
+      : green("service", `the Task Scheduler task ${name} is ${task.state} — the update can restart it`);
   }
   if (tier === "unsupervised") {
     return amber(
