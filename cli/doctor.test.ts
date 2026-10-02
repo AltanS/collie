@@ -317,7 +317,7 @@ describe("collie doctor — the contract", () => {
       "front-door",
       "mux",
       // Windows only, and this suite runs on the real host.
-      ...(HOST.platform === "win32" ? ["windows-task"] : []),
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
       "beacon-hooks-claude",
       "beacons",
       "herdr-version",
@@ -327,7 +327,8 @@ describe("collie doctor — the contract", () => {
       "integration-hermes",
       "integration-opencode",
       "integration-pi",
-      "hook-python3",
+      // Not on Windows: Herdr's hooks there are PowerShell (M43 spec 08).
+      ...(HOST.platform === "win32" ? [] : ["hook-python3"]),
       "agent-sessions",
       "journal-roots",
       "cache-claims",
@@ -1389,7 +1390,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "acl",
       "front-door",
       "mux",
-      ...(HOST.platform === "win32" ? ["windows-task"] : []),
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
       "beacon-hooks-claude",
       "beacons",
       "agent-sessions",
@@ -1454,7 +1455,8 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
     expect(byCheck.get("herdr-socket")?.status).toBe("error");
     expect(byCheck.get("herdr-version")).toBeDefined();
     expect(byCheck.get("integration-claude")).toBeDefined();
-    expect(byCheck.get("hook-python3")).toBeDefined();
+    // Not on Windows: Herdr's hooks there are PowerShell (M43 spec 08), and this suite runs on the real host.
+    if (HOST.platform !== "win32") expect(byCheck.get("hook-python3")).toBeDefined();
     expect(code).toBe(EXIT.FAIL);
   });
 });
@@ -1894,6 +1896,7 @@ describe("hook-python3 on Windows (M43 spec 08)", () => {
     expect(byCheck.has("windows-long-paths")).toBe(true);
 
     const linux = harness(null, [], { absent: ["python3"] });
+    linux.deps = { ...linux.deps, host: hostFor("linux") };
     const { byCheck: onLinux, code } = await findings(linux);
     expect(onLinux.get("hook-python3")?.status).toBe("error");
     expect(onLinux.has("windows-long-paths")).toBe(false);
