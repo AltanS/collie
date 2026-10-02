@@ -1771,12 +1771,13 @@ describe("the staged checkout path", () => {
   test("migrates a legacy in-place checkout with no manual step, and says it has no rollback target", async () => {
     const h = legacyClone();
     // The name on PATH was published at the clone's own binary before the migration (ADR 0021).
-    // A link target is compared as a string against the path the code built, so it is spelled that way.
-    h.link.entries.set(`${HOME}/.local/bin/collie`, { kind: "symlink", target: collieBinary(ROOT) });
+    // A link target is compared as a string against the path the code built (from the context's root and
+    // the harness host), so it is spelled that way.
+    h.link.entries.set(`${HOME}/.local/bin/collie`, { kind: "symlink", target: collieBinary(h.deps.ctx.root, h.deps.host) });
     // The flip is what makes this path resolve; the fake filesystem is flat, so it is seeded. `link`
-    // names the binary by the host's spelling (`collie.exe` on Windows), so that is the file it looks for.
+    // names the binary by the harness host's spelling (the pinned Linux host: `collie`), so that is the file it looks for.
     h.files.entries.set(`${CURRENT}/bin/collie`, { text: "NEW BINARY" });
-    h.files.entries.set(collieBinary(CURRENT), { text: "NEW BINARY" });
+    h.files.entries.set(collieBinary(CURRENT, hostFor("linux")), { text: "NEW BINARY" });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     const said = h.io.stdout.join("\n");
     expect(said).toContain(`${join(VERSIONS)} and ${join(CURRENT)} are created now`);
@@ -1787,7 +1788,7 @@ describe("the staged checkout path", () => {
     expect(
       await runner(h, { to: "v0.32.0", from: null, version: "0.32.0", commit: "b2peeled", kind: "checkout" }),
     ).toBe(EXIT.OK);
-    expect(h.link.ops).toContain(`symlink ${posixKey(collieBinary(CURRENT))} ${HOME}/.local/bin/collie`);
+    expect(h.link.ops).toContain(`symlink ${posixKey(collieBinary(CURRENT, hostFor("linux")))} ${HOME}/.local/bin/collie`);
     // And Herdr is re-registered at `current`, so a plugin action runs whatever is live.
     expect(h.exec.calls).toContain(`herdr plugin link ${CURRENT}`);
   });
@@ -2145,7 +2146,7 @@ describe("the detached updater's health gate", () => {
     const run = parseUpdateRun(h.files.read(RUN_FILE));
     expect(run?.state).toBe("stuck");
     // The recovery command is a string the code built with `join`, so it carries the host's separators.
-    expect(run?.recovery).toBe(`${join(INST, "versions", "1.0.0", "bin", "collie")} update --rollback`);
+    expect(run?.recovery).toBe(`${collieBinary(join(INST, "versions", "1.0.0"), hostFor("linux"))} update --rollback`);
     // Two restarts and no more: forward, then the one rollback.
     expect(h.exec.calls.filter((c) => c.endsWith("current/bin/collie restart")).length).toBe(2);
     expect(h.io.stderr.join("\n")).toContain("Nothing will restart again");
