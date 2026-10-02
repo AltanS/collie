@@ -452,7 +452,7 @@ export function nonLoopbackBindRefusal(
 
 /**
  * herdr's default socket location: `~/.config/herdr/herdr.sock` on Unix, `%APPDATA%\herdr\herdr.sock`
- * on Windows (the Windows beta keeps its config root under AppData\Roaming). Pure so both branches
+ * on Windows (herdr for Windows keeps its config root under AppData\Roaming). Pure so both branches
  * are unit-testable on any platform.
  */
 export function defaultSocketPath(

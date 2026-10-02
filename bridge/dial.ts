@@ -1,5 +1,5 @@
 // Platform dial shim. On Unix the herdr API socket is a real AF_UNIX socket and Bun.connect
-// handles it. On Windows (herdr Windows beta) the ".sock" path is a pointer file — the actual
+// handles it. On Windows (herdr for Windows) the ".sock" path is a pointer file — the actual
 // transport is a named pipe whose name is the full socket path (\\.\pipe\C:\...\herdr.sock).
 // Bun.connect({unix}) cannot open named pipes, but Bun's node:net can, so we adapt it to the
 // same handler shape the two call sites in mux/herdr/client.ts use (write/flush/end only).
@@ -70,7 +70,7 @@ export type DialHandlers = {
 export type DialMode = "auto" | "net" | "bun";
 
 /**
- * herdr's Windows beta names its pipe after the full socket path. Pass through a value that is
+ * herdr for Windows names its pipe after the full socket path. Pass through a value that is
  * already a pipe name (either slash direction) so an explicit HERDR_SOCKET_PATH=\\.\pipe\… works.
  */
 export function toPipeName(socketPath: string): string {
