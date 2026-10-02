@@ -38,12 +38,13 @@
 // the legacy one-shot send: type AND submit in a single call. A phone reply sent while any modal owned
 // the keyboard therefore fired the submit key at that modal, which confirms whatever row it had
 // highlighted. Registering ANY adapter swaps that for type-then-verify — the submit key waits until
-// `extractInputDraft` can see the text in the composer — boxed or rule-shaped — while
-// `composerReady` adds the pre-flight on top, reading the pane once BEFORE typing. It definitively
-// answers `false` on every capture in this corpus where a modal is up (harness/omp.test.ts), so
-// the message never reaches the modal either. Two honest edges: a failed pre-flight read falls through
-// rather than blocking a send, and the user's deliberate `force` retry skips the pre-flight — in both
-// cases type-then-verify is still what stands between the send and the submit key.
+// `extractInputDraft` can see the text in the input — the composer, boxed or rule-shaped, or the
+// `ask` tool's answer editor — while `composerReady` adds the pre-flight on top, reading the pane
+// once BEFORE typing. It definitively answers `false` on every capture in this corpus where a modal
+// is up (harness/omp.test.ts), so the message never reaches the modal either. Two honest edges: a
+// failed pre-flight read falls through rather than blocking a send, and the user's deliberate `force`
+// retry skips the pre-flight — in both cases type-then-verify is still what stands between the send
+// and the submit key.
 //
 // How much of "every other screen stays raw" is TESTED versus STRUCTURAL, because the two are not the
 // same guarantee:
@@ -52,16 +53,17 @@
 //     detector, and it is fail-closed on a whole layout's worth of evidence (resume.ts). There is no
 //     other detector to mis-fire, so no other screen, captured or not, can be up-levelled. That
 //     covers the tool-approval dialog by construction.
-//   - TESTED, for the 42 screens in this corpus: 19 composer states, the `/model` and `/settings`
-//     pickers (each in the 17.x/18.1 form with a moved-selection twin, and in the 18.4 form), the
-//     `/tree` picker in both versions, the Ask tool's five screens, three tool-approval screens, and
-//     the `/resume` picker in both layouts. harness/omp.test.ts asserts that the `/resume` captures
-//     with at least one session lift as a `prompt-select` list, that the 18.4 no-match screen and
-//     every other capture build only `raw` blocks, and that `composerReady === false` on every modal.
+//   - TESTED, for the 50 screens in this corpus: 19 composer states, five answer-editor states, the
+//     `/model` and `/settings` pickers (each in the 17.x/18.1 form with a moved-selection twin, and in
+//     the 18.4 form), the `/tree` picker in both versions, the Ask tool's seven screens, three
+//     tool-approval screens, and the `/resume` picker in both layouts. harness/omp.test.ts asserts that
+//     the `/resume` captures with at least one session lift as a `prompt-select` list, that the 18.4
+//     no-match screen and every other capture build only `raw` blocks, and that `composerReady ===
+//     false` on every modal that is not the answer editor (which is an input, so it answers `true`).
 //     Each screen that stays raw is declined because it is out of scope above, or a widget whose
-//     `handleInput` we have not read, or one whose options include a free-text row that would strand
-//     a phone user — the fail-closed contract says a detector returns null on anything it does not
-//     confidently recognise.
+//     selection `handleInput` we have not read, or one whose `Other` row opens a second screen a lift
+//     would have to drive — the fail-closed contract says a detector returns null on anything it does
+//     not confidently recognise.
 //
 // THE WAY OUT OF A MODAL WE DID NOT LIFT. omp now declares `cancelKey: "Escape"` and
 // `modalOnScreen: ompModalOnScreen` (.adr/0053, .adr/0076), so an omp modal that stays raw gets the
@@ -103,6 +105,7 @@ import {
   ruleComposerPrompt,
   stripRuleChrome,
 } from "./rule";
+import { answerEditorDraft, answerEditorPrompt, locateAnswerEditor } from "./answer-editor";
 import { decorateOmpDisplay } from "./display";
 import { ompModalOnScreen } from "./modal";
 import { detectResumePickerRegion } from "./resume";
@@ -172,16 +175,22 @@ export function composerPrompt(lines: StyledLine[]): string | null {
   return rule === null ? boxComposerPrompt(lines) : ruleComposerPrompt(lines, rule);
 }
 
+// Two inputs a phone reply can land in: the composer (boxed, rule or pi-shaped), and the `ask` tool's
+// answer editor (the box `Other (type your own)` and `n note` open, omp/answer-editor.ts). They never
+// share a screen: omp swaps its composer out for the editor while the editor is open. So each reply
+// probe asks the composer first and the editor second. The editor is not a modal and not a lift:
+// `buildBlocks` still leaves it raw, and nothing here originates a keystroke.
 export const ompAdapter: HarnessAdapter = {
   replyChunks: ompReplyChunks,
   draftIsOpaque: ompOpaqueDraft,
   agent: "omp",
   buildBlocks: ompBuildBlocks,
   extractStatusLines,
-  extractInputDraft,
-  // The reply path's pre-flight. omp's composer is exactly what `hasComposer` finds, and its absence
-  // is exactly the condition under which typing would land in a modal instead.
-  composerReady: hasComposer,
+  extractInputDraft: (lines) => (hasComposer(lines) ? extractInputDraft(lines) : answerEditorDraft(lines)),
+  // The reply path's pre-flight. Either input is a place typing belongs; their absence is exactly the
+  // condition under which typing would land in a modal instead. The `ask` answer editor is an input,
+  // so it answers `true` here and never draws the unread-dialog card below.
+  composerReady: (lines) => hasComposer(lines) || locateAnswerEditor(lines) !== null,
   // The way OUT of an omp modal, for the unread-dialog card (.adr/0053, .adr/0076): omp's own footers
   // print it as `⎋ cancel` / `⎋ close` / `⎋ to close` (omp 18.4, `omp--v18-4-menu-model.txt`,
   // `omp--v18-4-menu-settings.txt`, `omp--v18-4-resume.txt`) and as `Esc cancel` / `Esc close` /
@@ -200,7 +209,10 @@ export const ompAdapter: HarnessAdapter = {
   // …and the exact on-screen draft region the destructive pre-clear is bound to on the wire: the
   // box's bottom prompt row or all of the rule composer's prompt rows. The box scanner declines when
   // a long palette pushes that row out of range; the rule region ends one status row from the tail.
-  composerPrompt,
+  // The answer editor's region is its last answer row, four rows above the tail.
+  composerPrompt: (lines) => (hasComposer(lines) ? composerPrompt(lines) : answerEditorPrompt(lines)),
+  // The composer inserts a raw newline; the answer editor SUBMITS on one (answer-editor.ts).
+  newlineSubmits: (lines) => !hasComposer(lines) && locateAnswerEditor(lines) !== null,
   // Numbered paste chips contain no content evidence. Keep literal verification
   // by sending small, independently checked transport pastes instead.
 };

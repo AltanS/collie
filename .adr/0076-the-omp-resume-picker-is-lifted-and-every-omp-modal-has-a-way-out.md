@@ -134,6 +134,11 @@ each clears the Tier-2 bar on its own.
   take the same card, and that has a cost: the transcript above those dialogs is now in a mirror that
   does not wrap, so a long line pans instead of wrapping. `table-run.test.ts` lists fewer omp screens
   accordingly.
+- **The `ask` tool's answer editor never gets the card.** `Other (type your own)` and `n note` open a
+  free-text box in place of the composer. omp's adapter reads it as an input (`composerReady` answers
+  `true`, PR 336), so the card's gate, which needs a definite `false`, is shut, and its hint row ends
+  on `external editor`, not on a way out, so `modalOnScreen` is false as well. Both are tested on the
+  five captures of that box.
 - **A very large pane declines.** The box fills the pane, so the region is about rows times columns,
   and the 109 by 59 capture is 6,489 characters. The cap is 32768 at the bridge and 32000 here, which
   is about 550 columns at 59 rows. The bridge cap was 8192 when the grammar was first written, and

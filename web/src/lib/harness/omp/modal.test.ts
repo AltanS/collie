@@ -34,6 +34,8 @@ const MODALS_WITH_A_WAY_OUT = [
   "omp--menu-settings-moved.txt",
   "omp--menu-settings.txt",
   "omp--select-menu-moved.txt",
+  "omp--select-menu-noted.txt",
+  "omp--select-menu-other.txt",
   "omp--select-menu.txt",
   "omp--select-multi-checked.txt",
   "omp--select-multi-review.txt",
