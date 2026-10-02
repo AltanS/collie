@@ -17,6 +17,7 @@ import {
   taskAction,
   taskFilePath,
   taskXml,
+  taskWorkingDirectory,
   unitDirectives,
   unitFilePath,
   windowsArg,
@@ -330,6 +331,16 @@ describe("the Task Scheduler task (Windows)", () => {
     // A path with a blank is quoted for the launcher's argv, and the quote survives the XML.
     expect(xml).toContain('--headless "C:\\Users\\Zo&#xeb;\\collie &amp; co\\bin\\collie.exe" _supervise');
     expect(xmlAscii("a\u{1F600}b")).toBe("a&#x1f600;b");
+  });
+
+  test("a binary install's launcher runs in the install root, never in the `current` junction", () => {
+    expect(taskWorkingDirectory("C:\\Users\\pat\\AppData\\Local\\collie\\current")).toBe(
+      "C:\\Users\\pat\\AppData\\Local\\collie",
+    );
+    expect(taskWorkingDirectory("C:\\Users\\pat\\collie")).toBe("C:\\Users\\pat\\collie");
+    const spec = { ...WIN_SPEC, root: "C:\\Users\\pat\\.collie\\current" };
+    const xml = taskXml(spec, { user: "desk\\pat", runLevel: "LeastPrivilege", conhost: CONHOST });
+    expect(xml).toContain("<WorkingDirectory>C:\\Users\\pat\\.collie</WorkingDirectory>");
   });
 
   test("pins every setting that is not Task Scheduler's default", () => {

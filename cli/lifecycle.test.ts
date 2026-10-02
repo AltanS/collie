@@ -641,7 +641,9 @@ describe("the Task Scheduler tier (Windows)", () => {
       const xml = h.files.read(TASK_FILE) ?? "";
       expect(xml).toContain(`<Arguments>--headless ${current}\\bin\\collie.exe _supervise `);
       expect(xml).toContain(`COLLIE_PLUGIN_ROOT=${current}</Arguments>`);
-      expect(xml).toContain(`<WorkingDirectory>${current}</WorkingDirectory>`);
+      // The launcher runs in the install root, not in `current`: a process that runs in the junction
+      // holds the version folder behind it, and no update could then remove that version.
+      expect(xml).toContain(`<WorkingDirectory>${install}</WorkingDirectory>`);
       expect(xml).not.toContain("versions");
 
       // Registered again while that task runs: it is this install's own task, not another's.

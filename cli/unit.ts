@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import type { CliContext, EnvVars } from "./context.ts";
@@ -332,6 +332,17 @@ export function xmlAscii(value: string): string {
   return xmlEscape(value).replace(/[^\x20-\x7e]/gu, (ch) => `&#x${ch.codePointAt(0)!.toString(16)};`);
 }
 
+/**
+ * The folder the launcher runs in. On a binary install the task names `<install-root>\current`, a
+ * junction, and a process that runs in it holds the version folder behind it open: `collie update`
+ * could then never remove that version (Windows 11 VM, 2026-10-02). So the launcher runs in the
+ * install root, which no update moves; the bridge still runs in its version folder (`launchRoot`).
+ * A checkout keeps its own root.
+ */
+export function taskWorkingDirectory(root: string): string {
+  return win32.basename(root).toLowerCase() === "current" ? win32.dirname(root) : root;
+}
+
 /** The Task Scheduler definition, as `schtasks /Create /XML` reads it. No XML declaration: see {@link xmlAscii}. */
 export function taskXml(spec: ServiceSpec, opts: TaskOptions): string {
   const action = taskAction(spec, opts.conhost);
@@ -368,7 +379,7 @@ export function taskXml(spec: ServiceSpec, opts: TaskOptions): string {
     <Exec>
       <Command>${xmlAscii(action.command)}</Command>
       <Arguments>${xmlAscii(action.arguments)}</Arguments>
-      <WorkingDirectory>${xmlAscii(spec.root)}</WorkingDirectory>
+      <WorkingDirectory>${xmlAscii(taskWorkingDirectory(spec.root))}</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>
