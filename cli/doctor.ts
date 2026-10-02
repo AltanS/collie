@@ -38,7 +38,20 @@ import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
 import type { HelloResult, CrewFetch, PeerOutcome } from "../bridge/crew/peer-client.ts";
 import { crewRuntimePath, parseMarker, rosterDrift, type CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
-import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
+import {
+  enrollmentOf,
+  TRUST_STORE_FILENAME,
+  TrustStore,
+  type TrustedMember,
+  type TrustStoreData,
+} from "../bridge/crew/trust-store.ts";
+import {
+  currentUserSid,
+  isOwnerOnly,
+  ownerOnlyCommand,
+  type OwnerOnlyDeps,
+  realOwnerOnlyDeps,
+} from "../bridge/owner-only.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
@@ -132,6 +145,13 @@ export interface DoctorDeps {
   /** The path rules and binary name this run judges the install by (`bridge/host.ts`). */
   readonly host: Host;
   /**
+   * The owner-only check's seams (`bridge/owner-only.ts`): a `stat`, and on Windows the `icacls` and
+   * `whoami` reads. `doctor` calls `isOwnerOnly` and `currentUserSid` only, which read; the repair
+   * functions are never called from here. A read writes `icacls /save`'s answer to a file in the
+   * user's temp folder and removes it at once: that file is the tool's output, not Collie's state.
+   */
+  readonly ownerOnly: OwnerOnlyDeps;
+  /**
    * The terminal renderer, when this run landed on one (`cli/render.ts`). Absent — which is what
    * every test and every piped run sees — means the plain lines below, unchanged.
    */
@@ -203,8 +223,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     acl(deps),
     frontDoor(deps, mode),
     mux(deps),
-    // Windows only: who the Task Scheduler task belongs to (M43 spec 05). No line elsewhere.
-    ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps)] : []),
+    // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
+    // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
+    // on POSIX the mode bits are checked where the files are read, as before.
+    ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps), secretsPrivate(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
     // Why a pane's History link is not there (issue #137) — its own module, because the chain it
@@ -414,7 +436,11 @@ function configFile(deps: DoctorDeps): Finding {
     return bad(
       "config-file",
       `${where} — dropped ${layer.blocked.join(", ")}: the file holding them is not owner-only`,
-      "`chmod 600` that file, then `collie restart`",
+      // Windows has no `chmod 600`: the loader's own warning above carries the `icacls` line for
+      // that file (M43 spec 04), and on POSIX the remedy is what it always was.
+      deps.host.platform === "win32"
+        ? "run the `icacls` line the warning above names for that file, then `collie restart`"
+        : "`chmod 600` that file, then `collie restart`",
     );
   }
   if (layer.problems.length > 0) {
@@ -1453,6 +1479,97 @@ export function windowsLongPaths(deps: Pick<DoctorDeps, "ctx" | "exec">): Findin
 }
 
 /**
+ * `secrets-private`: Windows only (M43 spec 04). The state dir, the config dir, `.env` and the trust
+ * store, each read by its access list (`bridge/owner-only.ts`'s `isOwnerOnly`): a folder with
+ * everything below it, a file with its own folder. One that Everyone, Users, Authenticated Users or
+ * Guests can read is an `error`, the same severity a `config.toml` secret dropped for a loose mode
+ * gets on POSIX (`config-file`), and the line names the path and the fix. A list that cannot be read
+ * is `skipped` with the reason: no claim about a file this process could not see.
+ *
+ * `doctor` repairs nothing (the contract at the top of this file). The bridge's start repairs both
+ * folders, so `collie restart` is the first fix; the `icacls` line is the same repair by hand.
+ */
+export function secretsPrivate(deps: Pick<DoctorDeps, "ctx" | "host" | "ownerOnly">): Finding {
+  const check = "secrets-private";
+  const { path } = deps.host;
+  const targets = [
+    { label: "state dir", file: deps.ctx.stateDir, folder: true },
+    { label: "config dir", file: deps.ctx.configDir, folder: true },
+    { label: ".env", file: path.join(deps.ctx.configDir, ".env"), folder: false },
+    { label: "trust store", file: path.join(deps.ctx.stateDir, TRUST_STORE_FILENAME), folder: false },
+  ].filter((t) => deps.ownerOnly.stat(t.file) !== null);
+  if (targets.length === 0) {
+    return skipped(check, "no state dir, config dir, .env or trust store yet", "`collie start` creates the state dir owner-only");
+  }
+  const loose: LooseFinding[] = [];
+  const unknown: string[] = [];
+  for (const t of targets) {
+    const verdict = isOwnerOnly(t.file, deps.host, deps.ownerOnly);
+    if (verdict.state === "loose") loose.push(looseFinding(t, verdict.principals, verdict.where, path));
+    else if (verdict.state === "unknown") unknown.push(`${t.label} ${t.file} (${verdict.why})`);
+  }
+  if (loose.length > 0) {
+    const first = loose[0]!;
+    const sid = currentUserSid(deps.ownerOnly.acl);
+    // A folder: the bridge's start repairs it, and the by-hand line is that same repair. A file
+    // with a grant of its own: that one file, made owner-only where it is.
+    const byHand = first.below !== null ? `icacls "${first.below}" /reset` : ownerOnlyCommand(first.file, sid, first.folder);
+    return bad(
+      check,
+      loose.map((l) => l.detail).join("; "),
+      first.folder ? `\`collie restart\` repairs it at start, or by hand: ${byHand}` : `run: ${byHand}`,
+    );
+  }
+  if (unknown.length > 0) {
+    return skipped(
+      check,
+      `could not read the access list of ${unknown.join(", ")}; Collie cannot say who can read it`,
+      "run `collie doctor` as the user Collie runs as",
+    );
+  }
+  return ok(check, `${targets.map((t) => t.label).join(", ")} are owner-only: only you, SYSTEM and Administrators can read them`);
+}
+
+/** One loose target, in words, with what the remedy needs. */
+interface LooseFinding {
+  readonly file: string;
+  readonly folder: boolean;
+  readonly detail: string;
+  /** The first loose entry below a folder whose own list is fine, as a full path, else `null`. */
+  readonly below: string | null;
+}
+
+/**
+ * Where the leak is, in words: the path itself, the folder a file sits in, or files inside a folder
+ * (as `icacls` names them, the first three). A file whose own list is private but whose folder is
+ * loose must not read "is not owner-only": the loader may have just made that file owner-only.
+ */
+function looseFinding(
+  t: { label: string; file: string; folder: boolean },
+  principals: readonly string[],
+  where: readonly string[],
+  path: Host["path"],
+): LooseFinding {
+  const who = principals.join(", ");
+  if (!t.folder) {
+    const detail = where.includes(t.file)
+      ? `${t.label} ${t.file} is not owner-only: ${who} can read it`
+      : `${t.label} ${t.file} sits in a folder that ${who} can read`;
+    return { file: t.file, folder: false, detail, below: null };
+  }
+  const inside = where.filter((w) => w !== path.basename(t.file));
+  if (inside.length < where.length) {
+    return { file: t.file, folder: true, detail: `${t.label} ${t.file} is not owner-only: ${who} can read it`, below: null };
+  }
+  return {
+    file: t.file,
+    folder: true,
+    detail: `${t.label} ${t.file} holds files that ${who} can read (${inside.slice(0, 3).join(", ")})`,
+    below: path.join(path.dirname(t.file), inside[0]!),
+  };
+}
+
+/**
  * `windows-task`: the Task Scheduler task this install registers, read back. The failure it exists
  * for is silent: a task that still runs `contrib\windows\collie-ctl.ps1` after an update deleted that
  * file keeps the old loop alive until the next logon, and then starts nothing at all.
@@ -1999,5 +2116,6 @@ export function doctorDeps(base: {
     // running bridge counts. Both of its seams are reads; neither can create the directory.
     beacons: beaconReader(base.ctx.stateDir),
     now: () => Date.now(),
+    ownerOnly: realOwnerOnlyDeps,
   };
 }

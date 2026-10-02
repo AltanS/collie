@@ -11,7 +11,16 @@ import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
-import { cmdDoctor, type DoctorDeps, type Finding, LONG_PATHS_KEY, windowsLongPaths, windowsTask } from "./doctor.ts";
+import {
+  cmdDoctor,
+  type DoctorDeps,
+  type Finding,
+  LONG_PATHS_KEY,
+  secretsPrivate,
+  windowsLongPaths,
+  windowsTask,
+} from "./doctor.ts";
+import type { AclTool, OwnerOnlyDeps } from "../bridge/owner-only.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
@@ -130,6 +139,36 @@ function healthyFiles(): SeededFiles {
   };
 }
 
+/**
+ * The owner-only seams with no disk and no `icacls`. `saved[path]` is what `icacls /save` wrote for
+ * that path (captured on the VM); a path not named reads as an owner-only profile folder. `absent`
+ * paths do not exist; a path ending in a known file name is a file, anything else a folder.
+ */
+function fakeOwnerOnly(saved: Record<string, string>, absent: readonly string[] = []): OwnerOnlyDeps {
+  const acl: AclTool = {
+    // Without `/T` icacls writes the path's own entry only: the first name and list of the tree.
+    save: (path, tree) => {
+      const text = saved[path] ?? `x\r\nD:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;${WIN_SID})\r\n`;
+      return { code: 0, text: tree ? text : text.split("\r\n").slice(0, 2).join("\r\n") };
+    },
+    icacls: () => {
+      throw new Error("doctor must never repair an access list");
+    },
+    whoami: () => ({ code: 0, stdout: `"pc\\pat","${WIN_SID}"\r\n` }),
+  };
+  return {
+    acl,
+    stat: (path) => (absent.includes(path) ? null : { dir: !/(\.env|\.json)$/.test(path), mode: 0o600 }),
+    mkdir: () => {
+      throw new Error("doctor must never create a folder");
+    },
+    systemPlaces: [],
+    isLink: () => false,
+  };
+}
+
+const WIN_SID = "S-1-5-21-1678274354-1849132225-3673151578-1000";
+
 interface Harness {
   deps: DoctorDeps;
   io: ReturnType<typeof capture>;
@@ -232,6 +271,8 @@ function harness(
       // and — the point of the seam — nothing `doctor` could write even if it tried.
       beacons: fakeBeaconReader(over.beacons ?? []),
       now: () => T0,
+      // Every secret path present and owner-only. The `secrets-private` cases build their own.
+      ownerOnly: fakeOwnerOnly({}),
     },
     io: out,
     files,
@@ -317,7 +358,7 @@ describe("collie doctor — the contract", () => {
       "front-door",
       "mux",
       // Windows only, and this suite runs on the real host.
-      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "beacons",
       "herdr-version",
@@ -1391,7 +1432,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "acl",
       "front-door",
       "mux",
-      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "beacons",
       "agent-sessions",
@@ -1855,11 +1896,12 @@ describe("the config-file finding", () => {
   });
 
   test("config-file is bad when a secret was dropped for permissions", async () => {
-    const { code, byCheck } = await findings(
-      harness(null, [], {
-        configLayer: layer({ [HOME_FILE]: '[push]\nvapid_private = "x"\n' }, false),
-      }),
-    );
+    const h = harness(null, [], {
+      configLayer: layer({ [HOME_FILE]: '[push]\nvapid_private = "x"\n' }, false),
+    });
+    // The POSIX remedy, pinned: on a Windows test host the line below would name icacls instead.
+    h.deps = { ...h.deps, host: hostFor("linux") };
+    const { code, byCheck } = await findings(h);
     const f = byCheck.get("config-file")!;
     expect(f.status).toBe("error");
     expect(f.detail).toContain("COLLIE_VAPID_PRIVATE");
@@ -1867,6 +1909,16 @@ describe("the config-file finding", () => {
     expect(f.remedy).toContain("chmod 600");
     // A dropped secret is a real failure, so the verb's exit code says so.
     expect(code).not.toBe(EXIT.OK);
+  });
+
+  test("on Windows the dropped-secret remedy names icacls, never chmod (M43 spec 04)", async () => {
+    const h = harness(null, [], {
+      configLayer: layer({ [HOME_FILE]: '[push]\nvapid_private = "x"\n' }, false),
+    });
+    h.deps = { ...h.deps, host: hostFor("win32") };
+    const f = (await findings(h)).byCheck.get("config-file")!;
+    expect(f.status).toBe("error");
+    expect(f.remedy).toBe("run the `icacls` line the warning above names for that file, then `collie restart`");
   });
 
   test("a typo'd COLLIE_CONFIG shows as an absent path rather than as silence", async () => {
@@ -1943,6 +1995,90 @@ describe("windows-long-paths", () => {
 
   test("a value it cannot read is skipped, never a failure", () => {
     expect(run(null).status).toBe("skipped");
+  });
+});
+
+describe("secrets-private (M43 spec 04)", () => {
+  const WIN = hostFor("win32");
+  const WIN_STATE = "C:\\Users\\Rehearse Ünal\\.local\\state\\collie";
+  const WIN_CONFIG = "C:\\Users\\Rehearse Ünal\\AppData\\Roaming\\herdr\\plugins\\config\\herdr.collie";
+  const ENV = `${WIN_CONFIG}\\.env`;
+  const TRUST = `${WIN_STATE}\\crew-trust.json`;
+  // `.env` after `icacls .env /grant Everyone:R` in an owner-only folder (VM, 2026-10-02).
+  const ENV_EVERYONE = `.env\r\nD:AI(A;;FR;;;WD)(A;ID;FA;;;BA)(A;ID;FA;;;SY)(A;ID;FA;;;${WIN_SID})\r\n`;
+  // A folder made under C:\ (VM): Users read it, Authenticated Users change it.
+  const DRIVE_ROOT =
+    "collie\r\nD:AI(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;0x1200a9;;;BU)(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)\r\n";
+  const run = (saved: Record<string, string>, absent: string[] = []) =>
+    secretsPrivate({
+      ctx: context({}, { stateDir: WIN_STATE, configDir: WIN_CONFIG }),
+      host: WIN,
+      ownerOnly: fakeOwnerOnly(saved, absent),
+    });
+
+  test("ok when all four are owner-only, and says who may read them", () => {
+    const f = run({});
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(
+      "state dir, config dir, .env, trust store are owner-only: only you, SYSTEM and Administrators can read them",
+    );
+  });
+
+  test("an Everyone grant on .env is an error that names the path, who can read it, and the fix", () => {
+    const f = run({ [ENV]: ENV_EVERYONE });
+    expect(f.status).toBe("error");
+    expect(f.detail).toBe(`.env ${ENV} is not owner-only: Everyone (S-1-1-0) can read it`);
+    expect(f.remedy).toBe(
+      `run: icacls "${ENV}" /inheritance:r /grant:r *${WIN_SID}:F *S-1-5-18:F *S-1-5-32-544:F ` +
+        "/remove:g *S-1-1-0 *S-1-5-32-545 *S-1-5-11 *S-1-5-32-546",
+    );
+  });
+
+  test("a loose state dir is an error too; the fix is a restart, or the folder line and the reset of its children", () => {
+    const f = run({ [WIN_STATE]: DRIVE_ROOT });
+    expect(f.status).toBe("error");
+    // The trust store inside it is named too, by where the leak is: its folder, not its own list.
+    expect(f.detail).toBe(
+      `state dir ${WIN_STATE} is not owner-only: Users (S-1-5-32-545), Authenticated Users (S-1-5-11) can read it; ` +
+        `trust store ${TRUST} sits in a folder that Users (S-1-5-32-545), Authenticated Users (S-1-5-11) can read`,
+    );
+    expect(f.remedy).toBe(
+      `\`collie restart\` repairs it at start, or by hand: icacls "${WIN_STATE}" /inheritance:r /grant:r ` +
+        `"*${WIN_SID}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /remove:g *S-1-1-0 *S-1-5-32-545 *S-1-5-11 *S-1-5-32-546`,
+    );
+  });
+
+  test("a loose file inside a private folder is named by the folder line, as icacls names it", () => {
+    const tree = `collie\r\nD:PAI(A;OICI;FA;;;${WIN_SID})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)\r\ncollie\\paired-devices.json\r\nD:AI(A;;FR;;;WD)(A;ID;FA;;;SY)\r\n`;
+    const f = run({ [WIN_STATE]: tree });
+    expect(f.status).toBe("error");
+    expect(f.detail).toBe(`state dir ${WIN_STATE} holds files that Everyone (S-1-1-0) can read (collie\\paired-devices.json)`);
+    // The one entry, by its full path: never a reset of the whole folder.
+    expect(f.remedy).toBe(`\`collie restart\` repairs it at start, or by hand: icacls "${WIN_STATE}\\paired-devices.json" /reset`);
+  });
+
+  test("a list it cannot read is skipped with the reason, never called loose", () => {
+    const deps = fakeOwnerOnly({});
+    const unreadable: OwnerOnlyDeps = { ...deps, acl: { ...deps.acl, save: () => ({ code: 5, text: "" }) } };
+    const f = secretsPrivate({ ctx: context({}, { stateDir: WIN_STATE, configDir: WIN_CONFIG }), host: WIN, ownerOnly: unreadable });
+    expect(f.status).toBe("skipped");
+    expect(f.detail).toContain("could not read the access list of state dir");
+    expect(f.detail).toContain("Collie cannot say who can read it");
+    expect(f.detail).not.toContain("not owner-only");
+  });
+
+  test("only what exists is checked; nothing at all is skipped", () => {
+    expect(run({}, [TRUST, ENV]).detail).toStartWith("state dir, config dir are owner-only");
+    expect(run({}, [WIN_STATE, WIN_CONFIG, ENV, TRUST]).status).toBe("skipped");
+  });
+
+  test("is a line on Windows only", async () => {
+    const win = harness(null);
+    win.deps = { ...win.deps, host: WIN };
+    expect((await findings(win)).byCheck.get("secrets-private")?.status).toBe("ok");
+    const linux = harness(null);
+    linux.deps = { ...linux.deps, host: hostFor("linux") };
+    expect((await findings(linux)).byCheck.has("secrets-private")).toBe(false);
   });
 });
 
