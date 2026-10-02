@@ -204,7 +204,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     frontDoor(deps, mode),
     mux(deps),
     // Windows only: who the Task Scheduler task belongs to (M43 spec 05). No line elsewhere.
-    ...(deps.host.platform === "win32" ? [windowsTask(deps)] : []),
+    ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
     // Why a pane's History link is not there (issue #137) — its own module, because the chain it
@@ -1415,6 +1415,43 @@ function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null 
  * Collie with no panes at all, and the symptom an operator sees first is an empty home screen or the
  * disconnected banner — neither of which names the socket, the session or the binary.
  */
+/** Where Windows keeps the long-path switch, and the value `reg query` reads. */
+export const LONG_PATHS_KEY = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem";
+/** An install folder longer than this leaves little room under 260 characters for what sits inside it. */
+export const LONG_INSTALL_PATH = 200;
+const PANE_PATH_LIMIT =
+  "Herdr cannot start a pane in a folder whose path is longer than 260 characters (os error 267). Keep your work folders short.";
+
+/**
+ * `windows-long-paths`: Windows only, and never more than a warning. Measured on the VM on 2026-10-02:
+ * with `LongPathsEnabled` 0, a pane asked for in a 280-character folder fails inside Herdr with
+ * `CreateProcessW ... The directory name is invalid (os error 267)`. Read with `reg query`, which
+ * needs no administrator.
+ */
+export function windowsLongPaths(deps: Pick<DoctorDeps, "ctx" | "exec">): Finding {
+  const check = "windows-long-paths";
+  const r = deps.exec.capture("reg", ["query", LONG_PATHS_KEY, "/v", "LongPathsEnabled"]);
+  const value = /LongPathsEnabled\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(r.stdout)?.[1];
+  const enabled = value === undefined ? null : Number.parseInt(value, 16) !== 0;
+  const long = deps.ctx.root.length > LONG_INSTALL_PATH;
+  if (long) {
+    return warn(
+      check,
+      `${PANE_PATH_LIMIT} The install folder ${deps.ctx.root} is ${String(deps.ctx.root.length)} characters long.`,
+      "install Collie in a shorter folder: set COLLIE_DIR to a short path, then run install.ps1 again",
+    );
+  }
+  if (enabled === false) {
+    return warn(
+      check,
+      `${PANE_PATH_LIMIT} LongPathsEnabled is 0 on this machine.`,
+      `in an Administrator PowerShell: Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' -Name LongPathsEnabled -Value 1`,
+    );
+  }
+  if (enabled === null) return skipped(check, "`reg query` could not read LongPathsEnabled", "run `collie doctor` from a PowerShell");
+  return ok(check, `LongPathsEnabled is 1, and the install folder is ${String(deps.ctx.root.length)} characters long`);
+}
+
 /**
  * `windows-task`: the Task Scheduler task this install registers, read back. The failure it exists
  * for is silent: a task that still runs `contrib\windows\collie-ctl.ps1` after an update deleted that

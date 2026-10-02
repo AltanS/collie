@@ -11,7 +11,7 @@ import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
-import { cmdDoctor, type DoctorDeps, type Finding, windowsTask } from "./doctor.ts";
+import { cmdDoctor, type DoctorDeps, type Finding, LONG_PATHS_KEY, windowsLongPaths, windowsTask } from "./doctor.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
@@ -1891,11 +1891,54 @@ describe("hook-python3 on Windows (M43 spec 08)", () => {
     win.deps = { ...win.deps, host: hostFor("win32") };
     const { byCheck } = await findings(win);
     expect(byCheck.has("hook-python3")).toBe(false);
+    expect(byCheck.has("windows-long-paths")).toBe(true);
 
     const linux = harness(null, [], { absent: ["python3"] });
     const { byCheck: onLinux, code } = await findings(linux);
     expect(onLinux.get("hook-python3")?.status).toBe("error");
+    expect(onLinux.has("windows-long-paths")).toBe(false);
     expect(code).toBe(EXIT.FAIL);
+  });
+});
+
+describe("windows-long-paths", () => {
+  const reg = (value: string | null): Scripted["answers"] => [
+    [
+      `reg query ${LONG_PATHS_KEY} /v LongPathsEnabled`,
+      value === null
+        ? { code: 1, stderr: "ERROR: The system was unable to find the specified registry key or value." }
+        : { stdout: `\r\n${LONG_PATHS_KEY}\r\n    LongPathsEnabled    REG_DWORD    ${value}\r\n\r\n` },
+    ],
+  ];
+  const SHORT = "C:\\Users\\pat\\AppData\\Local\\collie\\versions\\1.16.0";
+  const run = (value: string | null, root = SHORT) =>
+    windowsLongPaths({ ctx: context({}, { root }), exec: fakeExec({ answers: reg(value) }) });
+
+  test("ok when long paths are on and the install folder is short", () => {
+    const f = run("0x1");
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(`LongPathsEnabled is 1, and the install folder is ${SHORT.length} characters long`);
+  });
+
+  test("warns, never errors, when long paths are off, with the one line that turns them on", () => {
+    const f = run("0x0");
+    expect(f.status).toBe("warn");
+    expect(f.detail).toBe(
+      "Herdr cannot start a pane in a folder whose path is longer than 260 characters (os error 267). Keep your work folders short. LongPathsEnabled is 0 on this machine.",
+    );
+    expect(f.remedy).toContain("Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' -Name LongPathsEnabled -Value 1");
+  });
+
+  test("warns when the install folder itself is long, whatever the switch says", () => {
+    const deep = `C:\\${"a".repeat(210)}\\versions\\1.16.0`;
+    const f = run("0x1", deep);
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain(`is ${deep.length} characters long`);
+    expect(f.remedy).toContain("COLLIE_DIR");
+  });
+
+  test("a value it cannot read is skipped, never a failure", () => {
+    expect(run(null).status).toBe("skipped");
   });
 });
 
