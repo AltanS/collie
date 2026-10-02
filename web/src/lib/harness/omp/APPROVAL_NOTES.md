@@ -153,9 +153,12 @@ which omp also reads as a denial.
   pointer on `Deny` (Down clamps) and Deny with the pointer on `Approve` each denied, and the file
   stayed absent. Approve with the pointer moved to `Deny` at the desk wrote the file (`Up`, `Enter`).
   A ten-line write showed six content rows and `… +4` on the card (the cut was dropped afterwards, so
-  the card now shows all rows). Cancel denied, and the file stayed absent. A desk move followed at once by a Deny tap ended in a denial. That does not prove the guard
-  refused the tap, because a tap that landed would also deny: the refusal is pinned by the bridge's
-  `expected_prompt` tests and by `approval.test.ts`. Not probed: `Down` on `Deny` and `Up` on
+  the card now shows all rows). Cancel denied, and the file stayed absent. A desk move followed at once by a Deny tap
+  ended in a denial, which proves nothing about the guard. The guard was proven separately the same day
+  through the bridge: with the dialog up and the pointer on `Approve`, `POST /api/pane/<id>/keys` with
+  `Enter` and the signature of the same box with the pointer on `Deny` answered 409 `prompt_changed`
+  and sent nothing (the dialog stayed up, the file stayed absent); the same call with the current
+  signature and `Down`, `Enter` answered 200 and denied. Not probed: `Down` on `Deny` and `Up` on
   `Approve` read back on screen (the clamp is read from source, and the Deny-on-Deny tap above shows
   it), the 18.1.17 `nerd` preset, and a tool other than `bash` and `write`.
 - **A body taller than the pane.** omp gives an overlay at most part of the terminal. Whether a very

@@ -118,8 +118,8 @@ key sequence, the card carries the subject, and every uncaptured shape declines.
 - **Live verification, 2026-10-02 (omp 18.4.10).** Approve from both pointer rows, Deny from both
   pointer rows and Cancel behaved as designed against a real pane; no denied file was written. The
   six-row cut that the run also exercised was dropped afterwards (point 5), so the card now shows
-  all of a ten-line write. The 18.1.17 captures lift from fixtures alone and were not probed live. The desk-move race ended in a denial, which the
-  design allows but which does not prove the guard refused the tap. APPROVAL_NOTES.md records the
+  all of a ten-line write. The 18.1.17 captures lift from fixtures alone and were not probed live. The stale-tap refusal was proven through the bridge: a stale
+  signature got 409 `prompt_changed` and no key was sent, and the current one got 200. APPROVAL_NOTES.md records the
   detail and what was not probed.
 - **What the card cannot show.** It shows what omp's dialog prints. Any argument the dialog leaves
   out (a working directory, an environment, a timeout) is not on the card either.
