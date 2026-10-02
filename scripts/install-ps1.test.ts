@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import {
   closeSync,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -44,7 +45,7 @@ describe("scripts/install.ps1, read as text", () => {
   test("the header states what it will never do, as install.sh does", () => {
     expect(HEADER).toMatch(/never asks for admin rights/);
     expect(HEADER).toMatch(/never writes outside COLLIE_DIR, except one entry in your user PATH/);
-    expect(HEADER).toMatch(/never starts a service, a task or a program/);
+    expect(HEADER).toMatch(/never starts a service or a task\. It runs one program once: the new collie\.exe/);
     expect(HEADER).toMatch(/never sends anything anywhere/);
     expect(HEADER).toMatch(/never installs a download whose sha256 does not match/);
     expect(HEADER).toMatch(/ends by PRINTING the next steps/);
@@ -108,6 +109,9 @@ describe("scripts/install.ps1, read as text", () => {
   test("runs nothing it downloads, starts nothing, and asks for no admin", () => {
     expect(offending(/Invoke-Expression|\biex\b/)).toEqual([]);
     expect(offending(/Start-Process|Start-ScheduledTask|Register-ScheduledTask|schtasks|Start-Service|New-Service/i)).toEqual([]);
+    // The one program it runs: `collie.exe version`, through cmd.exe, from one function.
+    expect(offending(/Diagnostics\.Process\]::Start/)).toHaveLength(1);
+    expect(TEXT).toContain('version < NUL > ');
     expect(offending(/RunAs|HKLM|LocalMachine|SymbolicLink/i)).toEqual([]);
     // "Machine" is a string, so it is looked for in the code with its strings left in.
     expect(CODE.filter((l) => /"Machine"|'Machine'/.test(l))).toEqual([]);
@@ -135,6 +139,11 @@ describe("scripts/install.ps1, read as text", () => {
     expect(offending(/Expand-Archive/)).toEqual([]);
     expect(TEXT).toContain("[System.IO.Compression.ZipFile]::OpenRead($Zip)");
     expect(offending(/Add-Type(?! -AssemblyName)/)).toEqual([]);
+  });
+
+  test("never says 'verified': the checksum comes from the same place as the zip", () => {
+    expect(CODE.filter((l) => /\bverified\b/i.test(l))).toEqual([]);
+    expect(TEXT).toContain("matches the checksum published with the release");
   });
 
   test("stops on a missing sidecar and on a digest that does not match", () => {
@@ -228,15 +237,17 @@ class Mirror {
 
 const sha256 = (bytes: Uint8Array): string => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 
-/** A zip shaped like the real one: one folder `collie-<v>-windows-x64` with `bin\collie.exe` in it.
- *  The exe is a stub: nothing in the installer runs it, and a case below proves that. */
-function buildZip(scratch: string, version: string): Asset {
+/** A zip shaped like the real one: one folder `collie-<v>-windows-x64` with `bin\collie.exe` in it. */
+function buildZip(scratch: string, version: string, stub = false): Asset {
   const root = `collie-${version}-${PLATFORM}`;
   const stage = join(scratch, `stage-${version}`);
   mkdirSync(join(stage, root, "bin"), { recursive: true });
   mkdirSync(join(stage, root, "web", "dist"), { recursive: true });
   mkdirSync(join(stage, root, "docs"), { recursive: true });
-  writeFileSync(join(stage, root, "bin", "collie.exe"), `stub collie ${version}\n`);
+  // A real program, because the installer runs `collie.exe version` once: a copy of cmd.exe, which
+  // starts, reads NUL as its input, and exits 0. `stub` swaps in a text file Windows will not run.
+  if (stub) writeFileSync(join(stage, root, "bin", "collie.exe"), `stub collie ${version}\n`);
+  else copyFileSync(join(SYSTEM_ROOT, "System32", "cmd.exe"), join(stage, root, "bin", "collie.exe"));
   writeFileSync(join(stage, root, "web", "dist", "index.html"), "<html></html>\n");
   writeFileSync(join(stage, root, "herdr-plugin.toml"), `version = "${version}"\n`);
   writeFileSync(join(stage, root, "package.json"), `{"version":"${version}"}\n`);
@@ -456,7 +467,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
   test("installs the newest strict release into versions\\<X.Y.Z> under a `current` junction", async () => {
     const b = box();
     const r = await install(b, mirror);
-    expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
+    expect(r.out).toContain(`Collie ${v1} is installed in ${b.dir}`);
     expect(r.code).toBe(0);
     expect(existsSync(join(b.dir, "versions", v1, "bin", "collie.exe"))).toBe(true);
     expect(lstatSync(join(b.dir, "current")).isSymbolicLink()).toBe(true);
@@ -610,7 +621,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     try {
       const r = await install(b, mirror);
       expect(r.code).toBe(0);
-      expect(r.out).toContain(`Collie v${v1} is installed`);
+      expect(r.out).toContain(`Collie ${v1} is installed`);
       expect(r.asked.filter((p) => p.includes("v9."))).toEqual([]);
       expect(readdirSync(join(b.dir, "versions"))).toEqual([v1]);
     } finally {
@@ -651,7 +662,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const b = box();
     const dir = join(b.root, "inst a&b \u00fc");
     const r = await install(b, mirror, { env: { COLLIE_DIR: dir } });
-    expect(r.out).toContain(`Collie v${v1} is installed at ${dir}`);
+    expect(r.out).toContain(`Collie ${v1} is installed in ${dir}`);
     expect(r.code).toBe(0);
     expect(norm(realpathSync(join(dir, "current")))).toBe(norm(realpathSync(join(dir, "versions", v1))));
   }, 60_000);
@@ -688,7 +699,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     }
     const url = `file:///${root.replace(/\\/g, "/")}`;
     const r = await install(b, mirror, { env: { COLLIE_INSTALL_MIRROR: url } });
-    expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
+    expect(r.out).toContain(`Collie ${v1} is installed in ${b.dir}`);
     expect(r.code).toBe(0);
     expect(r.asked).toEqual([]);
   }, 60_000);
@@ -702,7 +713,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
       expect(r.code).toBe(0);
       expect(r.out).toContain("v0.38.5 has no Windows build. Trying the next older release.");
       expect(r.out).toContain("v0.38.4 has no Windows build. Trying the next older release.");
-      expect(r.out).toContain(`Collie v${v1} is installed`);
+      expect(r.out).toContain(`Collie ${v1} is installed`);
       expect(r.asked.filter((p) => p.endsWith(".sha256"))).toEqual([
         `/${REPO}/releases/download/v0.38.5/collie-0.38.5-${PLATFORM}.zip.sha256`,
         `/${REPO}/releases/download/v0.38.4/collie-0.38.4-${PLATFORM}.zip.sha256`,
@@ -821,6 +832,22 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(existsSync(join(elsewhere, "bin", "collie.exe"))).toBe(true);
   }, 90_000);
 
+  test("a collie.exe Windows will not run stops the install with the causes, and no next steps", async () => {
+    const v = "0.43.0";
+    publish(mirror, buildZip(scratch, v, true), v);
+    const b = box();
+    const r = await install(b, mirror, { env: { COLLIE_TAG: `v${v}` } });
+    expectFailed(r);
+    for (const words of ["did not let collie.exe run", "Smart App Control", "Microsoft Defender", "whoever manages this computer", "safe to leave in place", "turning it off is permanent", "More info, then Run anyway"]) {
+      expect(r.out).toContain(words);
+    }
+    expect(lastLine(r.out)).toContain("https://github.com/AltanS/collie/issues");
+    expect(r.out).not.toContain("is installed in");
+    // The files stay: the install is safe to leave in place.
+    expect(existsSync(join(b.dir, "current", "bin", "collie.exe"))).toBe(true);
+    expect(existsSync(join(b.dir, ".collie-version-check.txt"))).toBe(false);
+  }, 60_000);
+
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
     const b = box();
     const r = await install(b, mirror, { env: { COLLIE_TAG: "1.0.0" } });
@@ -874,7 +901,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
       "exit $code",
     ].join("; ");
     const r = await runPowerShell(b, ["-Command", command], childEnv(b, mirror, {}, false));
-    expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
+    expect(r.out).toContain(`Collie ${v1} is installed in ${b.dir}`);
     expect(r.code).toBe(0);
     expect(currentTarget(b)).toBe(versionDir(b, v1));
     expect(r.out).toContain("LEAK functions=0 eap=True progress=True tls=True");
@@ -898,7 +925,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const b = box();
     const wow = join(SYSTEM_ROOT, "SysWOW64", "WindowsPowerShell", "v1.0", "powershell.exe");
     const r = await runPowerShell(b, ["-Command", `& ${psQuote(SCRIPT)}; exit $LASTEXITCODE`], childEnv(b, mirror, {}, false), wow);
-    expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
+    expect(r.out).toContain(`Collie ${v1} is installed in ${b.dir}`);
     expect(r.code).toBe(0);
   }, 60_000);
 

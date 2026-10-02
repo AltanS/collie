@@ -13,7 +13,8 @@
 # What it will never do:
 #   - It never asks for admin rights.
 #   - It never writes outside COLLIE_DIR, except one entry in your user PATH.
-#   - It never starts a service, a task or a program.
+#   - It never starts a service or a task. It runs one program once: the new collie.exe, as
+#     `collie.exe version`, to check that Windows lets it run.
 #   - It never sends anything anywhere. It only downloads the release files.
 #   - It never installs a download whose sha256 does not match. There is no flag to skip the check.
 # It ends by PRINTING the next steps. It never takes them for you.
@@ -337,6 +338,34 @@ function Set-CollieCurrent([string]$Dir, [string]$Target) {
   Stop-CollieInstall "could not point $current at $Target ($why). $current still names $old. Nothing was changed." "Close every program that runs Collie from $Dir, then run the installer again."
 }
 
+# Run Exe once, as `Exe version`, and wait up to 30 seconds. Returns $null when it ran and exited 0,
+# or what went wrong. cmd.exe writes its output to Log, a file: nothing is read through a pipe, which
+# a program left running could hold open. Its input is NUL, so nothing waits for a key.
+function Test-CollieRuns([string]$Exe, [string]$Log) {
+  if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { return "$Exe is missing" }
+  $start = New-Object System.Diagnostics.ProcessStartInfo
+  $start.FileName = Join-Path ([Environment]::SystemDirectory) "cmd.exe"
+  $start.Arguments = "/d /s /c `"`"$Exe`" version < NUL > `"$Log`" 2>&1`""
+  $start.UseShellExecute = $false
+  $run = [System.Diagnostics.Process]::Start($start)
+  if (-not $run.WaitForExit(30000)) {
+    try { $run.Kill() } catch { }
+    return "collie.exe version did not finish in 30 seconds"
+  }
+  if ($run.ExitCode -eq 0) { return $null }
+  $said = ""
+  if (Test-Path -LiteralPath $Log) { $said = "$(@([System.IO.File]::ReadAllLines($Log) | Where-Object { $_.Trim() -ne '' })[0])".Trim() }
+  return "collie.exe version stopped with exit code $($run.ExitCode): $said"
+}
+
+# The one message for a collie.exe that Windows did not let run. The files stay where they are.
+function Stop-CollieBlocked([string]$Dir, [string]$Exe, [string]$Why) {
+  Stop-CollieInstall ("Collie was installed in $Dir, but Windows did not let collie.exe run ($Why). " +
+    "The usual causes are Smart App Control, Microsoft Defender (it may have quarantined the file), or a policy set by whoever manages this computer. " +
+    "The install is safe to leave in place. Smart App Control cannot be overridden for one program, and turning it off is permanent, so decide that first. " +
+    "If you saw 'Windows protected your PC' (SmartScreen), choose More info, then Run anyway.") "Fix the cause, then run  `"$Exe`" version  to check. If you are stuck, report it at https://github.com/AltanS/collie/issues"
+}
+
 # Add the PATH entry, unless COLLIE_NO_PATH_EDIT says no. Returns one line that says what happened.
 function Publish-CollieName([string]$Dir) {
   $bin = Join-Path $Dir "current\bin"
@@ -475,6 +504,9 @@ function Invoke-CollieInstall {
     }
     Set-CollieCurrent $dir $versionDir
     Write-CollieLine (Publish-CollieName $dir)
+    $blocked = Test-CollieRuns (Join-Path $current "bin\collie.exe") (Join-Path $dir ".collie-version-check.txt")
+    Remove-Item -LiteralPath (Join-Path $dir ".collie-version-check.txt") -Force -ErrorAction SilentlyContinue
+    if ($null -ne $blocked) { Stop-CollieBlocked $dir (Join-Path $current "bin\collie.exe") $blocked }
     Write-CollieLine "OK  Collie $tag was already at $versionDir. current now names it, and nothing was downloaded."
     Write-CollieLine "If Collie is running, run  collie restart  to start this version."
     return
@@ -558,12 +590,22 @@ function Invoke-CollieInstall {
   }
 
   $published = Publish-CollieName $dir
+  $exe = Join-Path $current "bin\collie.exe"
+  # The check file sits in COLLIE_DIR, like everything else this script writes.
+  $check = Join-Path $dir ".collie-version-check.txt"
+  $blocked = Test-CollieRuns $exe $check
+  Remove-Item -LiteralPath $check -Force -ErrorAction SilentlyContinue
+  if ($null -ne $blocked) {
+    Write-CollieLine $published
+    Stop-CollieBlocked $dir $exe $blocked
+  }
   $collie = if ($env:COLLIE_NO_PATH_EDIT -eq "1") { "$current\bin\collie.exe" } else { "collie" }
   $herdr = Get-Command herdr -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 
   # What is left is yours.
   Write-CollieLine ""
-  Write-CollieLine "OK  Collie $tag is installed at $dir. Nothing is running yet."
+  Write-CollieLine "OK  Collie $version is installed in $dir. Nothing is running yet."
+  Write-CollieLine "    The download matches the checksum published with the release, and collie.exe runs."
   Write-CollieLine $published
   if ($null -eq $herdr) {
     Write-CollieLine "note: herdr is not on your PATH. Collie on Windows needs Herdr. Get it from https://herdr.dev"
