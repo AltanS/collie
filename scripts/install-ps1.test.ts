@@ -1008,15 +1008,20 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
         "Show (Add-CollieUserPathEntry 'C:\\a;c:\\users\\U\\appdata\\local\\COLLIE\\current\\bin\\;C:\\b' $e)",
         "$env:SPEC07_HOME = 'C:\\Users\\u\\AppData\\Local'",
         "Show (Add-CollieUserPathEntry 'C:\\a;%SPEC07_HOME%\\collie\\current\\bin' $e)",
+        // The line `collie uninstall` prints removes the entry again: the value comes back byte for byte.
+        "foreach ($v in @('C:\\a;', 'C:\\a', '%USERPROFILE%\\x;C:\\b;')) { $n = Add-CollieUserPathEntry $v $e; 'ROUNDTRIP ' + (((($n -split ';') | Where-Object { $_.TrimEnd('\\') -ne $e }) -join ';') -ceq $v) }",
       ].join("\r\n"),
     );
     expect(r.code).toBe(0);
     expect(r.out.trim().split(/\r?\n/)).toEqual([
       "VALUE C:\\a;%USERPROFILE%\\b;C:\\Users\\u\\AppData\\Local\\collie\\current\\bin",
-      "VALUE C:\\a;C:\\Users\\u\\AppData\\Local\\collie\\current\\bin",
+      "VALUE C:\\a;C:\\Users\\u\\AppData\\Local\\collie\\current\\bin;",
       "VALUE C:\\Users\\u\\AppData\\Local\\collie\\current\\bin",
       "NULL",
       "NULL",
+      "ROUNDTRIP True",
+      "ROUNDTRIP True",
+      "ROUNDTRIP True",
     ]);
   }, 60_000);
 

@@ -142,7 +142,9 @@ function Add-CollieUserPathEntry([string]$PathValue, [string]$Entry) {
     if ($part.TrimEnd('\') -eq $want -or $expanded -eq $want) { return $null }
   }
   if ("$PathValue" -eq '') { return $Entry }
-  if ("$PathValue".EndsWith(';')) { return "$PathValue$Entry" }
+  # A value that ends in ';' keeps ending in ';', so removing the entry again (the line `collie
+  # uninstall` prints) gives back the exact value it had before.
+  if ("$PathValue".EndsWith(';')) { return "$PathValue$Entry;" }
   return "$PathValue;$Entry"
 }
 
