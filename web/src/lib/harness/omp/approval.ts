@@ -140,16 +140,32 @@ const FRAME_START = /^[│╭╰├┌└]/;
  *  wrap anywhere inside it still matches. */
 const OMP_ELISION = /\[…\d+chelided…\]/;
 const SAFETY_SECTION = "Provider safety checks:";
-/** Characters that change how a line reads without being seen: zero-width and directional marks, the
- *  bidi embeddings, overrides and isolates, the word joiner and the byte-order mark. A body that
- *  carries one is not shown as a card, because the card is what someone approves from. */
-const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u;
-
-/** A C0 or C1 control character, found by code so the pattern stays free of raw control escapes. */
-function hasControl(row: string): boolean {
-  for (let i = 0; i < row.length; i++) {
-    const code = row.charCodeAt(i);
-    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+/** Characters that change how a line reads without being seen: the soft hyphen, the Arabic letter mark,
+ *  zero-width and directional marks, the line and paragraph separators, the bidi embeddings, overrides
+ *  and isolates, the invisible operators, variation selectors, the byte-order mark and the tag
+ *  characters, plus every C0 or C1 control. A body that carries one is not shown as a card, because
+ *  the card is what someone approves from. Found by code point, so no pattern holds a raw control or
+ *  combining character. */
+function hasHiddenCharacter(row: string): boolean {
+  for (const ch of row) {
+    const code = ch.codePointAt(0)!;
+    if (
+      code < 0x20 ||
+      (code >= 0x7f && code <= 0x9f) ||
+      code === 0xad ||
+      code === 0x61c ||
+      code === 0x180e ||
+      (code >= 0x200b && code <= 0x200f) ||
+      code === 0x2028 ||
+      code === 0x2029 ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2060 && code <= 0x206f) ||
+      (code >= 0xfe00 && code <= 0xfe0f) ||
+      code === 0xfeff ||
+      (code >= 0xe0000 && code <= 0xe007f)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -185,7 +201,7 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
   // A row under the border is the operator's statusline, and only the 18.1.17 captures hold one. A box
   // that omp left behind on a pane that is now a shell would pass for it, and `Up`, `Enter` in a shell
   // runs the last command, so a preset whose captures carry none accepts none.
-  if (bottom !== end && !preset.strip) return null;
+  if (bottom !== end && !(preset.strip && looksLikeUsageStrip(texts[end]!))) return null;
   const approveAt = bottom - 5;
   const approve = readOption(texts[approveAt]!, preset);
   const deny = readOption(texts[bottom - 4]!, preset);
@@ -268,7 +284,7 @@ function bodyText(row: string): string {
 function summarise(tool: string, body: string[]): string[] | null {
   if (OMP_ELISION.test(body.join("").replace(/\s+/g, ""))) return null;
   if (body.some((row) => row === SAFETY_SECTION)) return null;
-  if (body.some((row) => INVISIBLE.test(row) || hasControl(row))) return null;
+  if (body.some(hasHiddenCharacter)) return null;
   const first = body[0]!.startsWith("Reason: ") ? 1 : 0;
   if (first >= body.length) return null;
 
@@ -283,6 +299,12 @@ function summarise(tool: string, body: string[]): string[] | null {
   if (contentAt < 0) return null;
   const content = body.slice(contentAt + 1);
   return content.length <= MAX_CONTENT_ROWS ? body : null;
+}
+
+/** The operator's usage strip as the 18.1.17 captures print it: many ` · ` separated segments. A shell
+ *  prompt, a path or one line of output is not one, and `Up`, `Enter` into a shell runs history. */
+function looksLikeUsageStrip(row: string): boolean {
+  return (row.match(/ · /g)?.length ?? 0) >= 3;
 }
 
 /** An option row: the pointer column (the preset's pointer or a space), a space and the label. */

@@ -477,7 +477,7 @@ describe("sendGuardedReply", () => {
         ...instant,
       });
 
-      expect(out).toMatchObject({ status: "error", error: expect.stringMatching(/one line/i), textDelivered: true });
+      expect(out).toMatchObject({ status: "error", error: expect.stringMatching(/already in the pane/i), textDelivered: true });
       expect(calls).toHaveLength(1);
       expect(calls[0]).toMatchObject({ submit: false });
     });

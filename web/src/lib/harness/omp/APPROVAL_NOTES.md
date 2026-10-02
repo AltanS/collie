@@ -8,7 +8,7 @@ claim below names its evidence.
 Corpus: `omp--approval-bash.txt`, `omp--approval-write.txt`, `omp--approval-write--deny.txt` (omp
 18.1.17, 2026-09-10, Nerd Font symbol preset) and `omp--v18-4-approval-*.txt` (omp 18.4.10,
 2026-10-02, the default `unicode` preset: `bash` and `write` in both selection states, and a
-fourteen-row `write`). Source, read in the published omp 18.4.10 packages: `tools/approval.ts`
+fourteen-row `write`). Source, read in the published omp 18.4.10 packages (and, for the clamp and the missing timeout, `modes/components/hook-selector.ts` and `wrapper.ts` of 18.1.17 too): `tools/approval.ts`
 (`formatApprovalPrompt`, `truncateForPrompt`), `extensibility/extensions/wrapper.ts` (the call),
 `tools/bash.ts` and `tools/write.ts` (`formatApprovalDetails`), and pi-tui's
 `overlays/hook-selector.ts` (the box, the keys).

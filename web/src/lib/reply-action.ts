@@ -319,7 +319,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
         // A screen that changed under the send must not unlock a later chunk carrying a `\n` into
         // an input that submits on it. The earlier chunks are already in the pane, so say so.
         if (newlineRefusal(adapter, args.text, lines) !== null) {
-          return { status: "error", error: t("reply.refused.multiline"), textDelivered: true };
+          return { status: "error", error: t("reply.refused.multilineMidway"), textDelivered: true };
         }
         const draft = adapter.extractInputDraft(lines);
         if (draft !== previousDraft && adapter.composerReady?.(lines) && draftCarriesSend(delivered, draft) && carriesReplyTail(delivered, draft)) {

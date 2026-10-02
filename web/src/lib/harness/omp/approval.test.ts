@@ -420,6 +420,11 @@ describe("a body the agent wrote cannot pass for the dialog, or read differently
     ["a bidi isolate", "Command: echo \u2066hi\u2069"],
     ["a byte-order mark", "Command: \uFEFFls"],
     ["a control character", "Command: ls\u0007"],
+    ["an Arabic letter mark", "Command: echo \u061Chi"],
+    ["a line separator", "Command: echo \u2028hi"],
+    ["a soft hyphen", "Command: r\u00ADm -rf x"],
+    ["a tag character", "Command: echo \u{E0041}hi"],
+    ["a variation selector", "Command: ls\uFE0F"],
   ])("%s in the command declines", (_name, command) => {
     expect(detectApproval(fromTexts(dialog({ body: [command] })))).toBeNull();
     expect(detectApproval(fromTexts(dialog({ body: ["Command: ls"] })))).not.toBeNull();
@@ -485,6 +490,14 @@ describe("tail anchoring", () => {
     expect(detectApproval(shell)).toBeNull();
     // The 18.1.17 captures carry the operator's usage strip, and still lift with it.
     expect(detectApproval(load("omp--approval-bash.txt"))).not.toBeNull();
+  });
+
+  it("a row under an 18.1.17 box declines unless it is shaped like the usage strip", () => {
+    const nerd = textsOf("omp--approval-bash.txt");
+    const boxEnd = nerd.length - 2;
+    for (const prompt of ["user@host:~/src$ ", "~/projects/collie > ", "$ ", "● Wrote the file · done"]) {
+      expect(detectApproval(fromTexts([...nerd.slice(0, boxEnd + 1), prompt]))).toBeNull();
+    }
   });
 
   it("trailing blank rows below the border do not move the tail", () => {

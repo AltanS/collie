@@ -928,6 +928,8 @@ export const en = {
     "The agent's input box left the screen while its input line was being cleared — a menu or dialog is probably up. Your message wasn't typed.",
   "reply.refused.multiline":
     "This input submits on a new line, so a multi-line message would be cut at the first break. Put it on one line. Nothing was typed.",
+  "reply.refused.multilineMidway":
+    "This input submits on a new line, so a multi-line message was cut at its first break. The part before it is already in the pane. Put the message on one line.",
   "reply.stalled.noEcho":
     "That's a password prompt — it shows nothing as you type, so the text can't be confirmed and nothing was submitted. What you typed is already in the pane.",
   "reply.stalled.generic":

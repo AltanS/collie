@@ -863,6 +863,8 @@ export const de: Dictionary = {
     "Das Eingabefeld des Agenten wurde während des Löschens der Zeile geschlossen. Vermutlich ist ein Menü oder Dialog aktiv. Die Nachricht wurde nicht eingegeben.",
   "reply.refused.multiline":
     "Dieses Eingabefeld sendet bei einem Zeilenumbruch ab. Eine mehrzeilige Nachricht würde beim ersten Umbruch abgeschnitten. Schreiben Sie sie in eine Zeile. Es wurde nichts eingegeben.",
+  "reply.refused.multilineMidway":
+    "Dieses Eingabefeld sendet bei einem Zeilenumbruch ab, daher wurde eine mehrzeilige Nachricht am ersten Umbruch abgeschnitten. Der Teil davor steht bereits im Terminal. Schreiben Sie die Nachricht in eine Zeile.",
   "reply.stalled.noEcho":
     "Dies ist eine Passwortabfrage ohne Zeichenecho. Der Text konnte nicht bestätigt und daher nicht übermittelt werden. Die Eingabe steht bereits im Pane.",
   "reply.stalled.generic":

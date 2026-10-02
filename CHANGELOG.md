@@ -74,12 +74,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **On Windows (experimental): `collie restart` says what it found and stops waiting after 30 seconds.** It says whether the bridge was running, gone, or whether the process list did not answer. It used to wait about 3 minutes for a bridge that did not come back, so a broken update took 221 seconds to roll back; now about 75. A launcher killed by hand comes back within 5 minutes.
 - **On Windows (experimental): an old version folder that is still in use no longer fails the next update.** The update prints a note, and a later update removes the folder once nothing uses it.
 
-### Fixed
-
 - **A phone reply reaches omp's `ask` answer box.** Picking `Other (type your own)` or adding a note
   opens a box Collie did not recognise, so Send refused with "input box isn't on screen". Send now
   types, checks and submits there. A multi-line message is refused on that box, because a newline
   submits it. Thanks @enieuwy (#336).
+- **A refused multi-line reply says when part of it was already typed.** On an input that submits on
+  a newline, a long message sent in several parts could be refused after the first part landed, and
+  the notice still said nothing was typed. It now says the earlier part is in the pane. Thanks
+  @enieuwy (#336).
 
 ## [1.15.3] - 2026-10-02
 
