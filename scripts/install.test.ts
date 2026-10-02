@@ -237,7 +237,9 @@ function run(opts: Options = {}): Run {
     linkSystemTools(bin, opts.without ?? []);
     if (!(opts.without ?? []).includes("curl")) fakeBin(bin, "curl", FAKE_CURL);
     (opts.release ?? ((d: string) => {
-      stageRelease(d, { version: VERSION });
+      // The default release lists a `windows-x64` entry FIRST, as every release does from M43 spec 06
+      // on, so every case below also proves that install.sh ignores it.
+      stageRelease(d, { version: VERSION, windows: true });
       stageRelease(d, { version: BETA_VERSION });
       writeFileSync(
         join(d, "tags.json"),
@@ -358,6 +360,9 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     expect(r.code).toBe(0);
     expect(r.out).toContain(`Collie v${VERSION}`);
     expect(r.out).not.toContain("beta");
+    // The manifest's `windows-x64` entry is never fetched: this platform's tarball is.
+    expect(r.curl).toContain(`collie-${VERSION}-${PLATFORM}.tar.gz`);
+    expect(r.curl).not.toContain("windows");
   });
 
   test("--beta is the opt-in, and it takes the newest prerelease by semver, not by string", () => {
@@ -401,19 +406,6 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("from source");
     expect(r.installed).toBe(false);
-  });
-
-  test("a manifest that also lists `windows-x64` installs this platform's tarball, exactly as before", () => {
-    const r = run({
-      release: (d) => {
-        stageRelease(d, { version: VERSION, windows: true });
-        writeFileSync(join(d, "tags.json"), JSON.stringify([{ name: `v${VERSION}`, commit: { sha: "x" } }]));
-      },
-    });
-    expect(r.code).toBe(0);
-    expect(r.out).toContain(`Collie v${VERSION}`);
-    expect(r.curl).toContain(`collie-${VERSION}-${PLATFORM}.tar.gz`);
-    expect(r.curl).not.toContain("windows");
   });
 
   test("lays the payload into versions/<X.Y.Z> under a relative `current` symlink", () => {
