@@ -65,8 +65,10 @@ $bunCmd = Get-Command bun -ErrorAction SilentlyContinue
 if ($null -eq $bunCmd) { Fail "bun is not on PATH" }
 $bun = $bunCmd.Source
 $bunVersion = ((& $bun --version) | Out-String).Trim()
+Need-Exit0 "bun --version"
 $pinLine = Select-String -LiteralPath (Join-Path $repo "flake.nix") -Pattern 'bunVersion\s*=\s*"([^"]+)"' | Select-Object -First 1
 $pinned = if ($null -eq $pinLine) { "" } else { $pinLine.Matches[0].Groups[1].Value }
+if ($pinned -notmatch '^\d+\.\d+\.\d+$') { Fail "flake.nix pins bunVersion '$pinned', which is not X.Y.Z" }
 Write-Output "bun      $bunVersion at $bun (flake.nix pins $pinned)"
 if ($bunVersion -ne $pinned) {
   if ($StrictBun) { Fail "bun.exe is $bunVersion, and flake.nix pins $pinned; the Windows binary must be built on the pinned Bun" }
@@ -118,6 +120,22 @@ Copy-Item -Recurse -LiteralPath (Join-Path $repo "docs") -Destination (Join-Path
 # and the shim travels anyway, so every payload has one layout.
 Copy-Item -LiteralPath (Join-Path $repo "scripts\collie-ctl.sh") -Destination (Join-Path $stage "scripts\collie-ctl.sh")
 
+# The one file the Windows payload has and the others do not: what an operator must know before
+# running an unsigned, experimental exe. Twelve lines at most, plain words, CRLF for Notepad.
+$utf8 = New-Object System.Text.UTF8Encoding $false
+$readme = @(
+  "Collie $Version for Windows (experimental, for testing only)",
+  "",
+  "There is no installer yet. This whole folder is the install: bin\collie.exe needs web\dist beside it.",
+  "Start here: open PowerShell in this folder and run  bin\collie.exe --help",
+  "collie.exe is not signed. Windows 11 Smart App Control can block an unsigned program, and you cannot override it.",
+  "The .sha256 file beside the zip guards against a bad download. It is not a signature.",
+  "Check the zip: (Get-FileHash -Algorithm SHA256 $payloadRoot.zip).Hash.ToLower()",
+  "The result must equal the first word in $payloadRoot.zip.sha256.",
+  "On Windows, Collie works with Herdr only. A Windows machine cannot join a crew in this release."
+) -join "`r`n"
+[IO.File]::WriteAllText((Join-Path $stage "README-WINDOWS.txt"), "$readme`r`n", $utf8)
+
 # --- Check the binary an operator gets, then seal the zip
 # The loader check of the Linux rows (scripts/check-payload-links.sh) looks for a Nix store path in
 # the binary. No Nix ran here, so there is nothing for it to find.
@@ -144,17 +162,25 @@ if (Test-Path -LiteralPath $zip) { Remove-Item -Force -LiteralPath $zip }
 Need-Exit0 "writing $name"
 $listed = @(& $tar -tf $zip)
 Need-Exit0 "listing $name"
-foreach ($want in "$payloadRoot/bin/collie.exe", "$payloadRoot/web/dist/index.html", "$payloadRoot/herdr-plugin.toml", "$payloadRoot/package.json") {
+foreach ($want in "$payloadRoot/bin/collie.exe", "$payloadRoot/web/dist/index.html", "$payloadRoot/herdr-plugin.toml", "$payloadRoot/package.json", "$payloadRoot/README-WINDOWS.txt") {
   if ($listed -notcontains $want) { Fail "$name does not list $want" }
 }
+# A `\` in an entry name is a file NAMED with a backslash for every unzip off Windows, and for some
+# on it (Compress-Archive in Windows PowerShell 5.1 writes such names). None may get out.
+$backslashed = @($listed | Where-Object { $_ -like '*\*' })
+if ($backslashed.Count -gt 0) { Fail "$name has entry names with a backslash, for example $($backslashed[0])" }
 Write-Output "ok       $name lists $($listed.Count) entries"
 
 # --- The sidecar and the manifest entry
 $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
 if ($sha.Length -ne 64) { Fail "no usable sha256 for $name" }
 $size = (Get-Item -LiteralPath $zip).Length
-$utf8 = New-Object System.Text.UTF8Encoding $false
 [IO.File]::WriteAllText("$zip.sha256", "$sha  $name`n", $utf8)
+# Read back as bytes: the line `sha256sum -c` reads, with no byte-order mark and no CR.
+$sidecar = [IO.File]::ReadAllBytes("$zip.sha256")
+$sidecarText = [Text.Encoding]::ASCII.GetString($sidecar)
+if ($sidecar.Length -ge 3 -and $sidecar[0] -eq 0xEF -and $sidecar[1] -eq 0xBB -and $sidecar[2] -eq 0xBF) { Fail "$name.sha256 starts with a byte-order mark" }
+if ($sidecarText -cnotmatch "^[0-9a-f]{64}  $([regex]::Escape($name))`n$") { Fail "$name.sha256 is not one '<lowercase sha256>  <name>' line ending in LF" }
 
 # One entry of the manifest's `artifacts[]`, in the shape and indent the Linux rows write, so the
 # release job merges it with the same loop. `signed: false` says what the macOS row's `codesign`
@@ -174,7 +200,14 @@ $entry = @(
   "  `"signed`": false",
   "}"
 ) -join "`n"
-[IO.File]::WriteAllText((Join-Path $Out "$Platform.artifact.json"), "$entry`n", $utf8)
+$entryPath = Join-Path $Out "$Platform.artifact.json"
+[IO.File]::WriteAllText($entryPath, "$entry`n", $utf8)
+# Written by hand, in the Linux rows' heredoc shape, so the release job's merge indents it the same.
+# Parsed back here, so a typo in it fails the build and not the release.
+$parsed = Get-Content -Raw -LiteralPath $entryPath | ConvertFrom-Json
+if ($parsed.name -ne $name -or $parsed.platform -ne $Platform -or $parsed.sha256 -ne $sha -or $parsed.size -ne $size -or $parsed.payloadRoot -ne $payloadRoot) {
+  Fail "$Platform.artifact.json does not read back as written"
+}
 
 Write-Output "ok       $name  $size bytes  sha256 $sha"
 exit 0
