@@ -67,7 +67,10 @@ describe("a real unread modal gets the card", () => {
     ["grok", "grok--ask-multi.txt", "ctrl+c"],
     ["muse", "muse--ask-color-notes-open.txt", "Escape"],
     ["opencode", "oc--agents-picker.txt", "Escape"],
-    ["omp", "omp--select-menu.txt", "Escape"],
+    // The Ask tool's multi-select, which no grammar lifts (.adr/0077); its single-select twin is a card
+    // of its own now.
+    ["omp", "omp--select-multi.txt", "Escape"],
+    ["omp", "omp--v18-4-ask-multi.txt", "Escape"],
     ["omp", "omp--v18-4-menu-model.txt", "Escape"],
   ])("%s gets the card on %s", (agent, fixture, key) => {
     const lines = fixtureLines(fixture);
@@ -272,9 +275,11 @@ const CARD_FIXTURES = {
     notModals: [],
   },
   // Every omp modal that prints its own way out (omp/modal.ts) and that no grammar lifts: the Ask
-  // tool's five screens, the `/model` and `/settings` pickers in both versions, the three tool-approval
-  // screens and the `/resume` picker with no session to list. The `/resume` pickers that DO list a
-  // session lift as a prompt-select and get no card, and `/tree` prints no way out, so neither is here.
+  // tool's multi-select screens in both versions and its review screen, the `/model` and `/settings`
+  // pickers in both versions, the three tool-approval screens and the `/resume` picker with no session
+  // to list. The `/resume` pickers that DO list a session and the Ask tool's one-question single-select
+  // dialogs lift as a prompt-select and get no card, `/tree` prints no way out, and the note editor is
+  // an input, so none of those is here.
   omp: {
     modals: [
       "omp--approval-bash.txt",
@@ -284,13 +289,11 @@ const CARD_FIXTURES = {
       "omp--menu-model.txt",
       "omp--menu-settings-moved.txt",
       "omp--menu-settings.txt",
-      "omp--select-menu-moved.txt",
-      "omp--select-menu-noted.txt",
-      "omp--select-menu-other.txt",
-      "omp--select-menu.txt",
       "omp--select-multi-checked.txt",
       "omp--select-multi-review.txt",
       "omp--select-multi.txt",
+      "omp--v18-4-ask-multi-checked.txt",
+      "omp--v18-4-ask-multi.txt",
       "omp--v18-4-menu-model.txt",
       "omp--v18-4-menu-settings.txt",
       "omp--v18-4-resume-nomatch.txt",

@@ -727,9 +727,9 @@ all. It does, and the captures below measure it.
 | `omp--menu-dismissed.txt` | The welcome panel (a 100-cell `╭───┴───╮` box) plus an MCP failure notice above an empty composer. Negative control: a second, narrower box on screen must not be spliced into the composer's geometry | `idle` |
 | `omp--slash-palette.txt` | `/` typed: the autocomplete renders BELOW the box, at the box's own width, with one wrapped entry (3 rows) — a `skill:…` row, which omp assembles from the capturing machine and which is therefore NOT an omp built-in. `extractInputDraft` reads `"/"` | `idle` |
 | `omp--slash-palette--filtered.txt` | `/new` typed: five palette rows below the box, all omp built-ins — but note they are everything omp fuzzy-matched for `new`, an accident of one search rather than a curated set. One of three sources for `lib/agent-commands.ts`'s `omp` catalog (collie draws its own palette for an omp pane, because the chrome strip takes omp's); the other two are the tip line and this table — see below | `idle` |
-| `omp--select-menu.txt` | The `ask` tool's single-choice dialog (`╭─ Ask ─╮` box, `❯ ○ Red` rows, an `○ Other (type your own)` free-text escape). **Declined** — a different widget whose `handleInput` is unread, and whose escape row would strand a phone user in a free-text input | `blocked` |
-| `omp--select-menu-moved.txt` | The same dialog with the pointer moved | `blocked` |
-| `omp--select-multi.txt` | The `ask` tool's multi-select (`☐ Cheese` rows under a `toppings / Submit` chip row). **Declined** — same reasons, plus omp never numbers its options, so the shared multi-select model's `String(o.n)` walk has nothing to read | `blocked` |
+| `omp--select-menu.txt` | The `ask` tool's single-choice dialog (`╭─ Ask ─╮` box, `❯ ○ Red` rows, an `○ Other (type your own)` free-text escape), footer `Enter select · n note · ↑/↓ move · Esc cancel`. Declined until 2026-10-02; **lifted** since [ADR 0077](../../../../.adr/0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md) as a pointed list (`omp/ask.ts`), `Other` included, because the screen it opens is the answer editor the phone already reads | `blocked` |
+| `omp--select-menu-moved.txt` | The same dialog with the pointer moved to Blue. Lifted: Red walks `Up` twice | `blocked` |
+| `omp--select-multi.txt` | The `ask` tool's multi-select (`☐ Cheese` rows under a `toppings / Submit` chip row), footer `Space/Enter toggle · n note · ↑/↓ move · Tab/←/→ · Esc cancel`. **Declined** ([ADR 0077](../../../../.adr/0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md)): Enter toggles here and submits in 18.4.10, and omp never numbers its options, so neither shared toggle recipe (a digit, or a digit-jump then Enter) can drive it | `blocked` |
 | `omp--select-multi-checked.txt` | The same dialog mid-selection (`☑ Cheese`) | `blocked` |
 | `omp--select-multi-review.txt` | Its review screen — whose body is `1. toppings: Cheese, Olives`, a NUMBERED SUMMARY rather than a numbered menu. The exact digit trap [`.adr/0009`](../../../../.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md) exists for | `blocked` |
 | `omp--menu-model.txt` | `/model`: a two-pane provider/model picker, footer `Enter assign roles · ↑/↓ providers · → models · type to search · Esc close`. **Declined** — `parseKeyHintFooter` returns `[]` for it (omp writes `<key> <verb>`, not `<key> to <verb>`) | `idle` |
@@ -944,7 +944,7 @@ half of that test: exactly one styled row with more than one segment.
 
 ## OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)
 
-Nine captures from omp 18.4.10, byte-faithful but for the sanitization pass below, taken to lift `/resume` and to give every other omp modal a declared way out ([ADR 0076](../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)).
+Nine captures from omp 18.4.10 (five more for the `ask` tool follow below), byte-faithful but for the sanitization pass below, taken to lift `/resume` and to give every other omp modal a declared way out ([ADR 0076](../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)).
 omp 18.4 draws its pickers as a rounded box that fills the pane (59 rows by 109 columns here) and prints **glyph keycaps** in the footer: `⏎` for Enter, `⌦/⌫` for delete, `⇥` for Tab, `⎋` for Escape. omp 17.x to 18.1 printed the same keys as words (`Enter`, `Del/⌫`, `Tab`, `Esc`), so the corpus now holds both dialects of the footer, and `omp/modal.ts` accepts exactly the six spellings of the way out (`⎋ cancel`, `⎋ close`, `⎋ to close`, `Esc cancel`, `Esc close`, `Esc to close`).
 
 The `/resume` captures are the boxed layout of that picker: a titled top border (`╭─ Resume Session (current folder) ─…╮`), a `│ > <typed text> │` search row, sessions as blank-separated groups of three rows (title, first prompt, meta), and a bracketed footer, then the bottom border. The meta row reads `<age> ago · <size> · [current ·] ✔ done|⚠ interrupted · [⑂ fork] · [<cwd>]`, with a double space on each side of every `·`. Both sessions in these captures share one title, so the meta row is what tells them apart on the card. `omp--v18-4-resume-nomatch.txt` is the state with no row to point at: the grammar declines it, and the unread-dialog card with its Escape button stands over the raw mirror.
@@ -966,6 +966,24 @@ print, and the `/model` catalogue. The whole-corpus check after the pass: a UUID
 the zero id, and `/home/`, `/Users/`, an email, an `sk-`/`ghp_`/`AKIA`-shaped string, an OSC escape
 and `collie-workspace` match nothing.
 
+**Five more, the same day, for the `ask` tool** ([ADR 0077](../../../../.adr/0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md)),
+from the lead's own pane at 108 columns by 210 and 284 rows. Each prompt asked omp to call `ask`
+exactly once (`Pick a color` with Red, Green, Blue; then `Pick toppings` with Cheese, Olives, Basil and
+`multi=true`). The moved, note and checked states are one `Down`, one `n` and one `Space` from the
+dialog as it opened. The dialog replaces the composer, so no statusline and no cwd is on screen; above the
+box is the session's own transcript (the same `Render Fancy Content in Terminal` session as the
+captures above, its welcome splash, its earlier answered and cancelled `ask` calls) and a working row
+(`⎋ Choosing a color`). **No sanitization pass was needed**, and that is checked rather than
+assumed: a UUID pattern, `/home/`, `/Users/`, `/tmp`, an email, an `sk-`/`ghp_`/`AKIA`-shaped string,
+an OSC escape, a host name and `collie-workspace` match nothing in the five files. All five are CRLF
+with no trailing newline; `wc -l` is 209 for the three single-question color captures and 283 for the
+two toppings captures.
+
+The two footers are the version drift the grammar is built around. The single-select footer is the
+17.2.12 one in glyph keycaps, `⏎ select · n note · ↑/↓ move · ⎋ cancel`. The multi-select footer
+CHANGED MEANING: 17.2.12 printed `Space/Enter toggle`, 18.4.10 prints `␣ toggle · ⏎ submit`, and
+omp 18.4.10's source confirms that Enter on an option there submits the checked set at once.
+
 `omp--v18-4-tree.txt` is the one capture here without a way out: neither it nor `omp--tree.txt` prints an Esc segment (the hint row is clipped), so `ompModalOnScreen` answers false on it and it keeps no card.
 
 | Fixture | State / what's in it | Herdr status |
@@ -980,6 +998,11 @@ and `collie-workspace` match nothing.
 | `omp--v18-4-resume-search.txt` | `ab` typed in the search row: both sessions still match, in the other order, the pointer on the first | not recorded |
 | `omp--v18-4-resume-all-projects.txt` | After `⇥`: the title reads `(all projects)`, every meta row ends in the session's cwd, and the footer offers `⇥ current folder` | not recorded |
 | `omp--v18-4-resume-nomatch.txt` | `abzzzzqq` typed: `No sessions in current folder. Press ⇥ to view all.` and no session row. The grammar declines, the card stands | not recorded |
+| `omp--v18-4-ask-single.txt` | The `ask` tool's one-question single-select dialog: `╭─ Ask ─╮`, `Pick a color`, `❯ ○ Red`, `○ Green`, `○ Blue`, `○ Other (type your own)`, two blank body rows, footer `⏎ select · n note · ↑/↓ move · ⎋ cancel`. Lifts as a `prompt-select` (`omp/ask.ts`): Enter, then one more `Down` per row, then Cancel | not recorded |
+| `omp--v18-4-ask-single-moved.txt` | The same dialog after one `Down`: the pointer on Green. Red walks `Up` | not recorded |
+| `omp--v18-4-ask-note-editor.txt` | `n` on Green: the prompt-style answer editor titled `Note for Green: Pick a color`, an empty `│ > ` row, hint `⏎ or Ctrl+Q submit  ⎋ cancel  Ctrl+G external editor`. An input: `composerReady` true, no card | not recorded |
+| `omp--v18-4-ask-multi.txt` | The multi-select dialog: the tab strip `toppings    Submit`, `Pick toppings`, `❯ ☐ Cheese`, `☐ Olives`, `☐ Basil`, `☐ Other (type your own)`, footer `␣ toggle · ⏎ submit · ↑/↓ move · ⇥/←/→ · ⎋ cancel`. Stays raw, gets the card | not recorded |
+| `omp--v18-4-ask-multi-checked.txt` | The same dialog after one `Space`: `❯ ☑ Cheese`. Stays raw, gets the card | not recorded |
 
 ## OMP `ask` answer editor (captured 2026-10-01, oh-my-pi `omp` v18.4.4, herdr 0.9.3, throwaway Herdr pane)
 
@@ -1012,8 +1035,8 @@ box covers the statusline. Every row above the box is the sandbox session's own 
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
-| `omp--select-menu-other.txt` | omp 18's single-choice Ask dialog with the pointer on `Other (type your own)`; footer `<enter> select · n note · ↑/↓ move · <esc> cancel`. A modal: `composerReady` false | `working` |
-| `omp--select-menu-noted.txt` | Back on the Ask dialog after a note was submitted with `Enter`: `Blue  ✎ note`. A modal: `composerReady` false | `working` |
+| `omp--select-menu-other.txt` | omp 18's single-choice Ask dialog with the pointer on `Other (type your own)`; footer `<enter> select · n note · ↑/↓ move · <esc> cancel`, in the Nerd Font preset (U+F0311, U+F12B7; pointer U+F054, radio U+F10C). A modal: `composerReady` false. Lifted since ADR 0077, the Nerd Font preset read from this capture | `working` |
+| `omp--select-menu-noted.txt` | Back on the Ask dialog after a note was submitted with `Enter`: `Blue  ✎ note`. A modal: `composerReady` false. Lifted since ADR 0077, `✎ note` becoming Blue's description | `working` |
 | `omp--answer-editor-empty.txt` | `Enter` on `Other`: `╭─ Custom answer: Pick a colour ─╮`, an empty `│ > ` row, the prompt-style hint | `working` |
 | `omp--answer-editor-typed.txt` | The same editor holding `a deep teal, like the sea at dusk` | `working` |
 | `omp--answer-editor-wrapped.txt` | A longer answer soft-wrapped onto a second row | `working` |

@@ -11,14 +11,16 @@ import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
 import { decorateOmpDisplay } from "./omp/display";
 
-// The omp adapter's CI gate. This adapter is Tier 1 everywhere EXCEPT ONE SCREEN: it lifts the `/resume`
-// session picker (omp/resume.ts, .adr/0076) and nothing else. So `ownFixtures` is exactly the resume
-// captures that list at least one session, and every other capture is a NEUTRAL fixture the adapter
-// must leave raw. That is still not a weaker gate than Claude's: the neutral cohort is asserted over
-// the entire rest of the corpus rather than over a chosen subset, so no interactive block kind is ever
-// constructed from a `/model`, `/settings`, `/tree`, Ask-tool or tool-approval screen; the only key a
-// tap can send there is the unread-dialog card's declared Escape, which this adapter does not build
-// (unread-dialog.test.ts pins it). See harness/omp/index.ts for why each of those is a later PR.
+// The omp adapter's CI gate. This adapter is Tier 1 everywhere EXCEPT TWO SCREENS: it lifts the
+// `/resume` session picker (omp/resume.ts, .adr/0076) and the `ask` tool's one-question single-select
+// dialog (omp/ask.ts, .adr/0077), and nothing else. So `ownFixtures` is exactly the resume captures that
+// list at least one session plus the single-select Ask captures, and every other capture is a NEUTRAL
+// fixture the adapter must leave raw. That is still not a weaker gate than Claude's: the neutral cohort
+// is asserted over the entire rest of the corpus rather than over a chosen subset, so no interactive
+// block kind is ever constructed from a `/model`, `/settings`, `/tree`, Ask multi-select or
+// tool-approval screen; the only key a tap can send there is the unread-dialog card's declared Escape,
+// which this adapter does not build (unread-dialog.test.ts pins it). See harness/omp/index.ts for why
+// each of those is a later PR.
 //
 // The FOREIGN cohort is every claude, codex and grok capture, which pins the cross-adapter fail-closed
 // leg. The other directions of that loop live in conformance.test.ts (Claude's leg takes omp--* +
@@ -51,8 +53,10 @@ const allOmpModalFixtures = allOmpFixtures.filter(
     name === "omp--tree.txt",
 );
 
-// The `/resume` captures that list at least one session: the only screens this adapter lifts. Seven of
-// the eight resume captures; `omp--v18-4-resume-nomatch.txt` has no rows and stays raw (below).
+// The screens this adapter lifts. The `/resume` captures that list at least one session, seven of the
+// eight (`omp--v18-4-resume-nomatch.txt` has no rows and stays raw, below), and the Ask tool's
+// one-question single-select dialog in all three keycap dialects: text (17.2.12), Nerd Font (18.4.4)
+// and glyph (18.4.10).
 const LIFTED = new Set([
   "omp--menu-resume-moved.txt",
   "omp--menu-resume.txt",
@@ -61,13 +65,19 @@ const LIFTED = new Set([
   "omp--v18-4-resume-search.txt",
   "omp--v18-4-resume-untitled-dated.txt",
   "omp--v18-4-resume.txt",
+  "omp--select-menu-moved.txt",
+  "omp--select-menu-noted.txt",
+  "omp--select-menu-other.txt",
+  "omp--select-menu.txt",
+  "omp--v18-4-ask-single-moved.txt",
+  "omp--v18-4-ask-single.txt",
 ]);
 
 // Every omp screen this adapter DECLINES, which is every screen IN THIS CORPUS bar the lifted resume
-// pickers, not every screen omp can draw. These are NOT "neutral output" in the plain sense: twenty-two of
-// them are live modals with the keyboard, and the conformance assertion (raw-only) is exactly the
+// pickers and Ask single-selects, not every screen omp can draw. These are NOT "neutral output" in the
+// plain sense: seventeen of them are live modals with the keyboard, and the conformance assertion (raw-only) is exactly the
 // promise worth pinning, because it is a promise about a screen where being wrong would type a
-// keystroke. The tool-approval dialog, once this corpus's one known gap, is three of those twenty-two.
+// keystroke. The tool-approval dialog, once this corpus's one known gap, is three of those seventeen.
 // One reason per line.
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
@@ -94,18 +104,16 @@ const DECLINED = new Set([
   //   (lib/agent-commands.ts's `omp` catalog), not a lifted block.
   "omp--slash-palette--filtered.txt",
   "omp--slash-palette.txt",
-  // — The `ask` tool's dialogs. A boxed widget whose selection `handleInput` we have not read; its
-  //   `Other (type your own)` and `n note` rows open the answer editor below, a second screen a lift
-  //   would have to drive; and `omp--select-multi-review.txt` renders a NUMBERED summary
-  //   (`1. toppings: …`), the exact digit trap .adr/0009 exists for. Fail-closed: raw. omp 18.4.4
-  //   adds the pointer on `Other` and the `✎ note` marker a saved note leaves on its row.
-  "omp--select-menu-moved.txt",
-  "omp--select-menu-noted.txt",
-  "omp--select-menu-other.txt",
-  "omp--select-menu.txt",
+  // - The `ask` tool's MULTI-select dialog, in both footer dialects, and its review screen. Its toggle
+  //   is an arrow walk then Space, a recipe no shared model carries, and its Enter TOGGLES before omp
+  //   18.4 (`Space/Enter toggle`) and SUBMITS in 18.4.10 (`␣ toggle · ⏎ submit`); the review screen
+  //   renders a NUMBERED summary (`1. toppings: …`), the exact digit trap .adr/0009 exists for.
+  //   Fail-closed: raw, with the Escape card (.adr/0077). The single-select dialog is lifted, above.
   "omp--select-multi-checked.txt",
   "omp--select-multi-review.txt",
   "omp--select-multi.txt",
+  "omp--v18-4-ask-multi-checked.txt",
+  "omp--v18-4-ask-multi.txt",
   // — The answer editor `Other` and `n note` open. A free-text input, never a dialog block: the
   //   phone's composer types into it (omp/answer-editor.ts), and the mirror keeps it visible.
   "omp--answer-editor-empty.txt",
@@ -113,6 +121,7 @@ const DECLINED = new Set([
   "omp--answer-editor-note.txt",
   "omp--answer-editor-typed.txt",
   "omp--answer-editor-wrapped.txt",
+  "omp--v18-4-ask-note-editor.txt",
   // — The full-screen pickers. No `menu` block for these: `parseKeyHintFooter` (the shared, pinned
   //   key-hint grammar) returns [] for the `/model` and `/resume` footers, and for `/settings` it
   //   yields only {Jump sections, [Tab]} + {Close, [Escape]} because `menuKeyFor` rejects the
@@ -147,11 +156,11 @@ const DECLINED = new Set([
   "omp--v18-4-resume-nomatch.txt",
 ]);
 
-// The own cohort is the seven lifted `/resume` captures, so every conformance leg that needs one runs on
-// them for real: each lifts, none lifts once output scrolls below it, every key is send_keys-valid, and
-// each model signs itself and fails the committing check when a row of it changes. The neutral cohort
-// still carries the leg that matters most here: raw-only on the other 43 omp captures and on every
-// foreign harness capture.
+// The own cohort is the thirteen lifted captures, so every conformance leg that needs one runs on them
+// for real: each lifts, none lifts once output scrolls below it, every key is send_keys-valid, and each
+// model signs itself and fails the committing check when a row of it changes. The neutral cohort still
+// carries the leg that matters most here: raw-only on the other 42 omp captures and on every foreign
+// harness capture.
 const ownFixtures = allOmpFixtures.filter((f) => LIFTED.has(f));
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
@@ -200,6 +209,11 @@ describe("the omp corpus", () => {
     "omp--slash-palette--filtered.txt",
     "omp--slash-palette.txt",
     "omp--tree.txt",
+    "omp--v18-4-ask-multi-checked.txt",
+    "omp--v18-4-ask-multi.txt",
+    "omp--v18-4-ask-note-editor.txt",
+    "omp--v18-4-ask-single-moved.txt",
+    "omp--v18-4-ask-single.txt",
     "omp--v18-4-composer-idle.txt",
     "omp--v18-4-menu-model.txt",
     "omp--v18-4-menu-settings.txt",
@@ -218,11 +232,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 50 captures this adapter was developed against", () => {
+  it("is exactly the 55 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("lifts the seven `/resume` captures that list a session and declines the other forty-three", () => {
+  it("lifts the thirteen `/resume` and Ask single-select captures and declines the other forty-two", () => {
     expect(ownFixtures).toEqual([...LIFTED].toSorted());
     expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
     expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);
@@ -231,11 +245,11 @@ describe("the omp corpus", () => {
 
 // The structural version of the same promise, and the one that survives a refactor of the cohort
 // lists above: walk the adapter's OWN output and assert that the only interactive block it can build is
-// the `/resume` picker's `prompt-select`, on the lifted captures and nowhere else.
-// `describeAdapterConformance` checks this per fixture through its own kind-agnostic filter; asserting
-// the kinds directly here is what makes the claim in omp/index.ts's header, "no interactive kind but
-// the resume picker", a test rather than a comment.
-describe("ompBuildBlocks emits nothing but raw, bar the /resume picker", () => {
+// the `prompt-select` of the `/resume` picker or the Ask single-select, on the lifted captures and
+// nowhere else. `describeAdapterConformance` checks this per fixture through its own kind-agnostic
+// filter; asserting the kinds directly here is what makes the claim in omp/index.ts's header, "no
+// interactive kind but those two lists", a test rather than a comment.
+describe("ompBuildBlocks emits nothing but raw, bar the /resume picker and the Ask single-select", () => {
   it.each(allOmpFixtures.filter((f) => !LIFTED.has(f)))("%s builds only raw blocks", (name) => {
     const blocks = ompAdapter.buildBlocks(fixtureLines(name));
     expect(blocks.length).toBeGreaterThan(0);
@@ -256,7 +270,7 @@ describe("ompBuildBlocks emits nothing but raw, bar the /resume picker", () => {
     expect(Object.keys(ompAdapter).toSorted()).toEqual(
       [
         "agent", // the registry key
-        "buildBlocks", // raw-only except the /resume picker, asserted above
+        "buildBlocks", // raw-only except the /resume picker and the Ask single-select, asserted above
         "cancelKey", // the unread-dialog card's one key, a declaration (.adr/0053, .adr/0076)
         "composerPrompt", // the row a destructive write BINDS to; it sends nothing itself
         "composerReady", // the pre-flight's refusal
@@ -281,6 +295,8 @@ const ANSWER_EDITOR_FIXTURES = [
   "omp--answer-editor-note.txt",
   "omp--answer-editor-typed.txt",
   "omp--answer-editor-wrapped.txt",
+  // omp 18.4.10's note editor, opened with `n` on Green: the same prompt-style box.
+  "omp--v18-4-ask-note-editor.txt",
 ];
 const COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
@@ -326,6 +342,7 @@ describe("composerReady — the gate the reply path pre-flights on", () => {
   it("reads the answer as the draft, so the reply guard can verify it", () => {
     const draft = (name: string) => ompAdapter.extractInputDraft(fixtureLines(name));
     expect(draft("omp--answer-editor-empty.txt")).toBeNull();
+    expect(draft("omp--v18-4-ask-note-editor.txt")).toBeNull();
     expect(draft("omp--answer-editor-typed.txt")).toBe("a deep teal, like the sea at dusk");
     expect(draft("omp--answer-editor-note.txt")).toBe("only if it is a warm blue");
     expect(draft("omp--answer-editor-wrapped.txt")).toBe(
@@ -466,6 +483,10 @@ describe("the shared menu grammar finds nothing to lift in omp's modals", () => 
     { fixture: "omp--v18-4-menu-settings.txt", row: 57 },
     { fixture: "omp--v18-4-resume.txt", row: 56 },
     { fixture: "omp--v18-4-resume-all-projects.txt", row: 56 },
+    // The Ask tool's 18.4.10 footers: the single-select one ask.ts reads with its own exact comparison,
+    // and the multi-select one nothing lifts.
+    { fixture: "omp--v18-4-ask-single.txt", row: 208 },
+    { fixture: "omp--v18-4-ask-multi.txt", row: 282 },
   ];
 
   it.each(FOOTERS)("$fixture: its footer yields no menu action at all", ({ fixture, row }) => {

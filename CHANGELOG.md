@@ -41,6 +41,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   line of its own in `agent-sessions`, so its missing Chat and History went unexplained. The doctor
   now names the pane and the `integration-omp` line, which says to run
   `herdr integration install omp` and restart the agent.
+- **Oh My Pi's Ask questions with one answer are buttons on the phone.** Tap an answer and Collie
+  moves the pointer to it and presses Enter, so the agent gets the answer at once. `Other (type your
+  own)` opens omp's answer box, and the phone's composer types into it. A question where you pick
+  several answers, several questions in one call, options with descriptions, or a long list still
+  show the terminal text with an Escape button.
 
 ### Changed
 
@@ -55,7 +60,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A phone reply reaches omp's `ask` answer box.** Picking `Other (type your own)` or adding a note
   opens a box Collie did not recognise, so Send refused with "input box isn't on screen". Send now
   types, checks and submits there. A multi-line message is refused on that box, because a newline
-  submits it.
+  submits it. Thanks @enieuwy (#336).
 
 ## [1.15.3] - 2026-10-02
 

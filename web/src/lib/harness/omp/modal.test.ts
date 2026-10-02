@@ -40,6 +40,13 @@ const MODALS_WITH_A_WAY_OUT = [
   "omp--select-multi-checked.txt",
   "omp--select-multi-review.txt",
   "omp--select-multi.txt",
+  // The Ask tool in omp 18.4.10. The single-select pair is LIFTED (omp/ask.ts) and draws no card, but
+  // the gate still sees a modal on it, which is the honest answer; the multi-select pair stays raw and
+  // takes the card. The note editor `n` opens ends its hint row on `external editor`, so it is not here.
+  "omp--v18-4-ask-multi-checked.txt",
+  "omp--v18-4-ask-multi.txt",
+  "omp--v18-4-ask-single-moved.txt",
+  "omp--v18-4-ask-single.txt",
   "omp--v18-4-menu-model.txt",
   "omp--v18-4-menu-settings.txt",
   "omp--v18-4-resume-all-projects.txt",
