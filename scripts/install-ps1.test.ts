@@ -19,6 +19,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { hostFor } from "../bridge/host.ts";
+import { binaryLayout, classifyInstall, probeInstall, publishedBinary } from "../cli/install-kind.ts";
+import { realLinkFs } from "../cli/link.ts";
+import { realExec, realFiles } from "../cli/sys.ts";
+import { currentVersionDir } from "../cli/update.ts";
+
 // The Windows installer, scripts/install.ps1 (M43 spec 07).
 //
 // Two halves. The first reads the script as TEXT, so it runs on every host, Linux CI included: the
@@ -847,6 +853,34 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     // The files stay: the install is safe to leave in place.
     expect(existsSync(join(b.dir, "current", "bin", "collie.exe"))).toBe(true);
     expect(existsSync(join(b.dir, ".collie-version-check.txt"))).toBe(false);
+  }, 60_000);
+
+  // THE DRIFT CONTRACT. install.ps1 and the CLI describe one layout in two languages. A tree the
+  // script lays down is read here by the CLI's own helpers, on the real filesystem, as a binary
+  // install would read itself (its process root is versions\<v>: Bun resolves execPath through the
+  // junction). install.sh writes no marker file, and neither does install.ps1: `classifyInstall`
+  // reads a binary install from the `versions` parent and the `current` link alone.
+  test("the tree it lays down is the binary install `collie` reads, path for path", async () => {
+    const b = box();
+    const r = await install(b, mirror);
+    expect(r.code).toBe(0);
+    const host = hostFor("win32");
+    const root = join(b.dir, "versions", v1);
+    const deps = {
+      ctx: { home: b.profile },
+      exec: realExec(process.env, b.profile),
+      files: realFiles,
+      link: realLinkFs,
+      host,
+    };
+    expect(classifyInstall(probeInstall(deps, root))).toEqual({ kind: "binary" });
+    const layout = binaryLayout(root, host);
+    expect(layout.installRoot).toBe(b.dir);
+    expect(layout.versionsDir).toBe(join(b.dir, "versions"));
+    expect(layout.currentLink).toBe(join(b.dir, "current"));
+    expect(layout.version).toBe(v1);
+    expect(currentVersionDir({ link: realLinkFs }, layout)).toBe(v1);
+    expect(publishedBinary(root, realLinkFs, host)).toBe(join(b.dir, "current", "bin", "collie.exe"));
   }, 60_000);
 
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
