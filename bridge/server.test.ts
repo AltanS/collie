@@ -642,6 +642,17 @@ describe("pane write prompt binding", () => {
     });
   });
 
+  test("a bound region as wide as a full-screen picker on a wide pane is accepted", async () => {
+    const client = new FakePaneClient();
+    // 59 rows of 220 columns: 12,980 characters, over the old 8192 cap and inside the new one.
+    const expected = Array.from({ length: 59 }, (_, index) => `${String(index).padStart(2, "0")}`.padEnd(220, "x")).join("\n");
+    client.text = expected;
+    const { audit } = auditEntries();
+    const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["Enter"], expected_prompt: expected }), audit, null, "default");
+    expect(res.status).toBe(200);
+    expect(client.keys).toEqual([["w1:p1", ["Enter"]]]);
+  });
+
   test("binding read depth grows beyond a small configured window to contain the expectation", async () => {
     const client = new FakePaneClient();
     const expected = Array.from({ length: 32 }, (_, index) => `prompt line ${index + 1}`).join("\n");
@@ -774,7 +785,7 @@ describe("pane write prompt binding", () => {
   });
 
   test("rejects oversized and non-string expected_prompt before a keys write", async () => {
-    for (const expected_prompt of ["x".repeat(8193), 42]) {
+    for (const expected_prompt of ["x".repeat(32_769), 42]) {
       const client = new FakePaneClient();
       const { audit } = auditEntries();
       const res = await keysPane(
@@ -794,7 +805,7 @@ describe("pane write prompt binding", () => {
   });
 
   test("rejects oversized and non-string expected_prompt before a reply write", async () => {
-    for (const expected_prompt of ["x".repeat(8193), null]) {
+    for (const expected_prompt of ["x".repeat(32_769), null]) {
       const client = new FakePaneClient();
       const { audit } = auditEntries();
       const res = await replyPane(

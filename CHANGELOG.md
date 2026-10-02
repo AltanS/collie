@@ -39,6 +39,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Changed
 
+- **A tap on a dialog card can bind a larger screen region.** The bridge accepted at most 8 KiB of the
+  screen a card drew when it checked a tap, which a full-screen picker on a pane wider than about 134
+  columns exceeds. The limit is now 32 KiB. A phone newer than its bridge still gets the old refusal on
+  such a pane and no key is sent, so update the lead and its crew together.
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
 
 ## [1.15.3] - 2026-10-02

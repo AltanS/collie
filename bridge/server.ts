@@ -136,7 +136,10 @@ export function requestBodyCap(cfg: Config): number {
 }
 // Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
 const MAX_READ_LINES = 10_000;
-const MAX_EXPECTED_PROMPT_CHARS = 8192;
+// A bound region is whatever a dialog card covers, and a full-screen picker covers the whole pane:
+// about rows times columns, so 8192 refused a pane wider than ~134 columns at 59 rows. 32 KiB takes
+// a 220-column pane. A phone newer than this bridge gets the old 400 on such a pane and no key is sent.
+const MAX_EXPECTED_PROMPT_CHARS = 32_768;
 const PROMPT_BINDING_BLANK_LINE_HEADROOM = 6;
 // How long `GET /api/update/check` waits for an on-demand poll before answering with what it has.
 // Only paid once per boot: it fires exactly while `latest` is still null (the monitor's deliberate
