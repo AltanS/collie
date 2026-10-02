@@ -19,7 +19,7 @@ import { hostFor, type Host } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 import { PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
-import { collieBinary } from "./unit.ts";
+import { collieBinary, taskFilePath } from "./unit.ts";
 
 // The binary, spelled the way the code under test spells it. `collieBinary` joins with the host
 // separator, so a POSIX literal like `/opt/collie/bin/collie` never matches on a Windows host, and it
@@ -49,9 +49,9 @@ import {
   resolveTailscaleHosts,
   supervisionTier,
   systemdUserReachable,
-  windowsProcessRecordPath,
   writeUnit,
 } from "./lifecycle.ts";
+import { formatTaskRecord, taskRecordPath } from "./task-scheduler.ts";
 
 // The lifecycle, driven end to end against fakes for the two seams (cli/fakes.ts). The shell could
 // only reach this coverage by `source`-ing itself and redefining functions in a heredoc; here
@@ -512,161 +512,428 @@ describe("the first-run multiplexer gate", () => {
   });
 });
 
-// On Windows the bridge is supervised by `contrib/windows/collie-ctl.ps1` from Task Scheduler, which
-// records `<launcher pid>|<bridge pid>` in `collie-processes`. `restart` stops that bridge ALONE and
-// lets the script's loop relaunch it: stopping the task could take the phone's detached `collie
-// update` down with it, half way through its own restart (#213 on macOS).
-describe("restart, under the Windows community supervisor", () => {
-  const RECORD = windowsProcessRecordPath(CONFIG);
-  const BRIDGE_CMD = `C:\\Users\\pat\\.bun\\bin\\bun.exe run "${ROOT}/bridge/index.ts"`;
+// On Windows the bridge runs under Task Scheduler: the task runs `collie _supervise`, which runs the
+// bridge and records both pids in `collie-processes` (cli/task-scheduler.ts). These cases drive that
+// tier with `hostFor("win32")` and fakes: they prove the logic, and the Windows VM proves Windows.
+describe("the Task Scheduler tier (Windows)", () => {
+  const WIN = hostFor("win32");
+  const WIN_BINARY = binaryOn("win32");
+  const RECORD = taskRecordPath(CONFIG, null, WIN);
+  const TASK_FILE = taskFilePath(CONFIG, null, WIN);
+  const OUR_LAUNCHER = `"C:${WIN_BINARY}" _supervise "COLLIE_PLUGIN_ROOT=C:${ROOT}"`;
+  const OUR_BRIDGE = `"C:${WIN_BINARY}" _exec-bridge`;
+  const OLD_LAUNCHER = `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:${ROOT}\\contrib\\windows\\collie-ctl.ps1" -TaskConfigDir "C:\\cfg" _exec-bridge`;
+  const OLD_BRIDGE = `C:\\Users\\pat\\.bun\\bin\\bun.exe run "${ROOT}/bridge/index.ts"`;
+  const V2 = (launcher: number, bridge: number): string => formatTaskRecord(launcher, bridge);
+  const WHOAMI: Scripted["answers"] = [
+    ["whoami /groups", { stdout: "Mandatory Label\\Medium Mandatory Level Label S-1-16-8192\n" }],
+    ["whoami", { stdout: "desk\\pat\r\n" }],
+    ["powershell -NoProfile -NonInteractive -Command (Get-ScheduledTask", { stdout: "Running\r\n" }],
+  ];
   const windows = (over: HarnessOptions = {}): Harness =>
     harness({
       ...over,
-      host: hostFor("win32"),
-      answers: [...NO_SYSTEMD, ...(over.answers ?? [])],
-      files: { [binaryOn("win32")]: "", ...over.files },
+      host: WIN,
+      answers: [...(over.answers ?? []), ...WHOAMI],
+      files: { [WIN_BINARY]: "", ...over.files },
+    });
+  const schtasks = (h: Harness): string[] => h.exec.calls.filter((c) => c.startsWith("schtasks"));
+
+  describe("the tier", () => {
+    test("Windows is Task Scheduler, and asks systemd nothing", () => {
+      const exec = fakeExec();
+      expect(supervisionTier(exec, WIN)).toBe("taskscheduler");
+      expect(exec.calls.some((c) => c.startsWith("systemctl"))).toBe(false);
+      expect(supervisionTier(fakeExec({ absent: ["schtasks"] }), WIN)).toBe("unsupervised");
+      expect(supervisionTier(fakeExec(), WIN, { COLLIE_SUPERVISOR: "unsupervised" })).toBe("unsupervised");
+      // Never chosen off Windows, and pinnable for a test like every other tier.
+      expect(supervisionTier(fakeExec({ answers: NO_SYSTEMD }), hostFor("linux"))).toBe("unsupervised");
+      expect(supervisionTier(fakeExec(), hostFor("linux"), { COLLIE_SUPERVISOR: "taskscheduler" })).toBe("taskscheduler");
+    });
+  });
+
+  describe("start", () => {
+    test("writes the task, registers it under herdr.collie, and runs it", async () => {
+      let served = 0;
+      const h = windows({
+        serve: () => {
+          served++;
+          return Promise.resolve(EXIT.OK);
+        },
+      });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(schtasks(h)).toEqual([
+        `schtasks /Create /TN herdr.collie /XML ${TASK_FILE} /F`,
+        "schtasks /Run /TN herdr.collie",
+      ]);
+      const xml = h.files.read(TASK_FILE) ?? "";
+      expect(xml).toContain("<UserId>desk\\pat</UserId>");
+      expect(xml).toContain("<RunLevel>LeastPrivilege</RunLevel>");
+      expect(xml).toContain("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>");
+      expect(xml).toContain("<Count>999</Count>");
+      expect(xml).toContain("<Command>/fake/conhost</Command>");
+      expect(xml).toContain(`<Arguments>--headless ${WIN_BINARY} _supervise HERDR_SOCKET_PATH=`);
+      expect(xml).toContain(`HERDR_PLUGIN_CONFIG_DIR=${CONFIG}`);
+      expect(xml).toContain(`<WorkingDirectory>${ROOT}</WorkingDirectory>`);
+      expect(h.io.stdout).toContain("bridge started (Task Scheduler: herdr.collie)");
+      // No unsupervised bridge beside the task, and no front door: Collie publishes none on Windows.
+      expect(h.exec.spawned).toHaveLength(0);
+      expect(served).toBe(0);
+      expect(h.io.stdout.join("\n")).toContain("note: Collie publishes no front door here");
     });
 
-  test("kills the recorded bridge and nothing else, then leaves the relaunch to the supervisor", async () => {
-    const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7200: BRIDGE_CMD } });
-    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
-    // The bridge only: the launcher (7100) is the loop that brings it back.
-    expect(h.exec.killed).toEqual([7200]);
-    // The restart can wait out a slow PowerShell start; the liveness probes keep the short default.
-    expect(h.exec.probed).toEqual([{ pid: 7200, timeoutMs: PROCESS_QUERY_SLOW_START_MS }]);
-    // No second bridge beside the supervised one, and no service manager asked.
-    expect(h.exec.spawned).toHaveLength(0);
-    expect(h.exec.calls.some((c) => c.startsWith("systemctl --user enable"))).toBe(false);
-    expect(h.io.stdout.join("\n")).toContain("the Task Scheduler supervisor relaunches it");
-    // The record is the script's, not ours to drop.
-    expect(h.files.exists(RECORD)).toBe(true);
+    test("without conhost the task runs the launcher straight", async () => {
+      const h = windows({ absent: ["conhost"] });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.files.read(TASK_FILE)).toContain(`<Command>${WIN_BINARY}</Command>`);
+    });
+
+    test("refuses to register a task pointing at a binary that isn't there", async () => {
+      const h = windows();
+      h.files.remove(WIN_BINARY);
+      expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(h)).toEqual([]);
+      expect(h.io.stderr.join("\n")).toContain("no collie binary");
+    });
+
+    test("a refused registration fails start, and nothing is run", async () => {
+      const h = windows({ answers: [["schtasks /Create", { code: 1, stderr: "ERROR: Access is denied." }]] });
+      expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(h)).toHaveLength(1);
+      expect(h.io.stderr.join("\n")).toContain("Access is denied.");
+      expect(h.io.stderr.join("\n")).toContain("schtasks /Create /TN herdr.collie failed");
+    });
+
+    test("COLLIE_TASK_RUN_LEVEL=highest registers an elevated task only from an elevated shell", async () => {
+      const elevated = windows({
+        env: { COLLIE_TASK_RUN_LEVEL: "highest" },
+        answers: [["whoami /groups", { stdout: "Mandatory Label\\High Mandatory Level Label S-1-16-12288\n" }]],
+      });
+      expect(await cmdStart(elevated.deps)).toBe(EXIT.OK);
+      expect(elevated.files.read(TASK_FILE)).toContain("<RunLevel>HighestAvailable</RunLevel>");
+
+      const limited = windows({ env: { COLLIE_TASK_RUN_LEVEL: "highest" } });
+      expect(await cmdStart(limited.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(limited)).toEqual([]);
+      expect(limited.io.stderr.join("\n")).toContain("needs an elevated (Administrator) shell");
+
+      // A privilege knob fails closed on a typo.
+      const typo = windows({ env: { COLLIE_TASK_RUN_LEVEL: "hihgest" } });
+      expect(await cmdStart(typo.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(typo)).toEqual([]);
+      expect(typo.io.stderr.join("\n")).toContain("must be 'limited' or 'highest'");
+
+      const explicit = windows({ env: { COLLIE_TASK_RUN_LEVEL: "Limited" } });
+      expect(await cmdStart(explicit.deps)).toBe(EXIT.OK);
+      expect(explicit.files.read(TASK_FILE)).toContain("<RunLevel>LeastPrivilege</RunLevel>");
+    });
+
+    test("adopts the community script: same task name, its launcher and bridge replaced", async () => {
+      const h = windows({
+        files: { [RECORD]: "7100|7200" },
+        ps: { 7100: OLD_LAUNCHER, 7200: OLD_BRIDGE },
+      });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      // Registered over the old task (`/F`), never a second task beside it.
+      expect(schtasks(h)).toEqual([
+        `schtasks /Create /TN herdr.collie /XML ${TASK_FILE} /F`,
+        "schtasks /End /TN herdr.collie",
+        "schtasks /Run /TN herdr.collie",
+      ]);
+      // The launcher first, so it cannot relaunch the bridge in between.
+      expect(h.exec.killed).toEqual([7100, 7200]);
+      expect(h.files.exists(RECORD)).toBe(false);
+      expect(h.io.stdout.join("\n")).toContain("replaced the contrib\\windows\\collie-ctl.ps1 launcher");
+    });
+
+    test("a community record left by a reboot is dropped quietly, and nothing is killed", async () => {
+      const h = windows({ files: { [RECORD]: "1|5112" } });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(h.files.exists(RECORD)).toBe(false);
+      expect(h.io.stdout.join("\n")).not.toContain("replaced");
+      expect(h.io.stdout).toContain("bridge started (Task Scheduler: herdr.collie)");
+    });
+
+    test("leaves a launcher of its own running: start is idempotent", async () => {
+      const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE } });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(schtasks(h)).toContain("schtasks /Run /TN herdr.collie");
+      expect(h.files.exists(RECORD)).toBe(true);
+    });
+
+    test("releases the port from a bridge the unsupervised tier started before", async () => {
+      const h = windows({
+        files: { [`${CONFIG}/collie.pid`]: "4242\n" },
+        ps: { 4242: `${WIN_BINARY} _exec-bridge` },
+      });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([4242]);
+    });
+
+    test("a second instance gets its own task, record and launcher marker", async () => {
+      const h = windows({ instance: "v1" });
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      const file = taskFilePath(CONFIG, "v1", WIN);
+      expect(schtasks(h)).toEqual([
+        `schtasks /Create /TN herdr.collie-v1 /XML ${file} /F`,
+        "schtasks /Run /TN herdr.collie-v1",
+      ]);
+      expect(h.files.read(file)).toContain("_supervise --instance v1 ");
+    });
   });
 
-  test("matches the checkout's bridge whatever the case or separators Windows reports", async () => {
-    const reported = `bun.exe run "${ROOT.toUpperCase().replaceAll("/", "\\")}\\BRIDGE\\index.ts"`;
-    const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7200: reported } });
-    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.killed).toEqual([7200]);
+  describe("stop", () => {
+    test("disables, ends, and kills the recorded launcher then bridge", () => {
+      const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE } });
+      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(schtasks(h)).toEqual(["schtasks /Change /TN herdr.collie /DISABLE", "schtasks /End /TN herdr.collie"]);
+      expect(h.exec.killed).toEqual([7100, 7200]);
+      expect(h.files.exists(RECORD)).toBe(false);
+      expect(h.io.stdout).toContain("bridge stopped");
+    });
+
+    test("stops the community script's processes too", () => {
+      const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7100: OLD_LAUNCHER, 7200: OLD_BRIDGE } });
+      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([7100, 7200]);
+    });
+
+    test("never kills a recorded pid that is somebody else now, and still drops the record", () => {
+      const h = windows({
+        files: { [RECORD]: V2(7100, 7200) },
+        ps: { 7100: "C:\\Windows\\notepad.exe", 7200: 'bun.exe run "D:\\other\\bridge\\index.ts"' },
+      });
+      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(h.files.exists(RECORD)).toBe(false);
+    });
+
+    test("an unreadable record is dropped with a warning, and stop still succeeds", () => {
+      const h = windows({ files: { [RECORD]: "not a record" } });
+      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(h.files.exists(RECORD)).toBe(false);
+      expect(h.io.stderr.join("\n")).toContain("names no process");
+    });
+
+    test("a stale launcher record (the script's `$PID|0`) is cleared", () => {
+      const h = windows({ files: { [RECORD]: "7100|0" } });
+      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(h.files.exists(RECORD)).toBe(false);
+    });
   });
 
-  test("never kills a recorded pid that is no longer this checkout's bridge", async () => {
-    const strangers: Record<number, string>[] = [
-      { 7200: "C:\\Windows\\notepad.exe" },
-      { 7200: 'bun.exe run "D:\\other\\bridge\\index.ts"' },
-      // The pid is gone: no command line at all.
-      {},
-    ];
-    for (const ps of strangers) {
-      const h = windows({ files: { [RECORD]: "7100|7200" }, ps });
+  describe("uninstall", () => {
+    test("stops, deletes the task and its file and record, and exits 0", () => {
+      const h = windows({
+        files: { [RECORD]: V2(7100, 7200), [TASK_FILE]: "<Task/>" },
+        ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE },
+      });
+      expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(schtasks(h)).toEqual([
+        "schtasks /Change /TN herdr.collie /DISABLE",
+        "schtasks /End /TN herdr.collie",
+        "schtasks /Delete /TN herdr.collie /F",
+      ]);
+      expect(h.files.exists(TASK_FILE)).toBe(false);
+      expect(h.files.exists(RECORD)).toBe(false);
+      expect(h.io.stdout.join("\n")).toContain("✓ uninstalled");
+    });
+
+    test("an install that never registered a task still uninstalls cleanly", () => {
+      const h = windows({ answers: [["schtasks", { code: 1, stderr: "ERROR: The system cannot find the file specified." }]] });
+      expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+    });
+  });
+
+  describe("restart", () => {
+    const running = (over: HarnessOptions = {}): Harness =>
+      windows({
+        ...over,
+        files: { [RECORD]: V2(7100, 7200), ...over.files },
+        ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE, ...over.ps },
+      });
+
+    test("kills the recorded bridge and nothing else, then leaves the relaunch to the launcher", async () => {
+      const h = running();
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      // The bridge only: the launcher (7100) is the loop that brings it back.
+      expect(h.exec.killed).toEqual([7200]);
+      // The restart can wait out a slow PowerShell start, for both pids.
+      expect(h.exec.probed).toEqual([
+        { pid: 7100, timeoutMs: PROCESS_QUERY_SLOW_START_MS },
+        { pid: 7200, timeoutMs: PROCESS_QUERY_SLOW_START_MS },
+      ]);
+      // No second bridge, no task touched: ending the task could take the phone's update with it.
+      expect(h.exec.spawned).toHaveLength(0);
+      expect(schtasks(h)).toEqual([]);
+      expect(h.io.stdout.join("\n")).toContain("the Task Scheduler supervisor relaunches it");
+      expect(h.files.exists(RECORD)).toBe(true);
+    });
+
+    test("over the community script: registers the task again and restarts its bridge alone", async () => {
+      const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7100: OLD_LAUNCHER, 7200: OLD_BRIDGE } });
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      // The next logon runs Collie's launcher, not a script this release deleted.
+      expect(schtasks(h)).toEqual([`schtasks /Create /TN herdr.collie /XML ${TASK_FILE} /F`]);
+      expect(h.exec.killed).toEqual([7200]);
+      expect(h.io.stdout.join("\n")).toContain("from the next logon");
+    });
+
+    test("recognises a `collie.exe` install's bridge and a source checkout's bun bridge", async () => {
+      for (const bridge of [OUR_BRIDGE, OLD_BRIDGE, `bun.exe run "${ROOT.toUpperCase()}\\BRIDGE\\index.ts"`]) {
+        const h = running({ ps: { 7200: bridge } });
+        expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+        expect(h.exec.killed).toEqual([7200]);
+      }
+    });
+
+    test("never kills a recorded bridge that is no longer this checkout's", async () => {
+      const strangers: Record<number, string>[] = [
+        { 7200: "C:\\Windows\\notepad.exe" },
+        { 7200: 'bun.exe run "D:\\other\\bridge\\index.ts"' },
+        { 7200: `"C:${WIN_BINARY}" _exec-bridge --instance v2` },
+      ];
+      for (const ps of strangers) {
+        const h = running({ ps });
+        expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+        expect(h.exec.killed).toEqual([]);
+        expect(h.exec.spawned).toHaveLength(0);
+        expect(h.io.stderr.join("\n")).toContain("not this checkout's bridge");
+      }
+    });
+
+    test("a bridge the loop is already relaunching is left to it", async () => {
+      const h = running({ files: { [RECORD]: V2(7100, 0) } });
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(schtasks(h)).toEqual([]);
+    });
+
+    test("an unreadable record fails without killing or starting anything", async () => {
+      const h = windows({ files: { [RECORD]: "not a record" } });
       expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
       expect(h.exec.killed).toEqual([]);
+      expect(schtasks(h)).toEqual([]);
+      expect(h.io.stderr.join("\n")).toContain("run `collie stop`, then `collie start`");
+    });
+
+    test("with no live launcher, restart is stop + start: the task comes back, never an unsupervised bridge", async () => {
+      // No record at all (a fresh host), a record whose launcher died (a reboot before logon),
+      // and a recycled launcher pid.
+      const cases: HarnessOptions[] = [
+        {},
+        { files: { [RECORD]: V2(7100, 0) } },
+        { files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: "C:\\Windows\\notepad.exe", 7200: OUR_BRIDGE } },
+      ];
+      for (const over of cases) {
+        const h = windows(over);
+        expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+        expect(h.exec.spawned).toHaveLength(0);
+        expect(schtasks(h)).toEqual([
+          "schtasks /Change /TN herdr.collie /DISABLE",
+          "schtasks /End /TN herdr.collie",
+          `schtasks /Create /TN herdr.collie /XML ${TASK_FILE} /F`,
+          "schtasks /Run /TN herdr.collie",
+        ]);
+        expect(h.io.stdout).toContain("bridge started (Task Scheduler: herdr.collie)");
+      }
+    });
+
+    test("waits for the relaunched bridge before it reports", async () => {
+      const h = running();
+      let probes = 0;
+      h.deps.ready = () => Promise.resolve(++probes >= 4);
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      // Three misses, then the answer; the banner's own probe comes after.
+      expect(probes).toBeGreaterThanOrEqual(4);
+    });
+
+    // The in-place update stops on this code, so a dead bridge must not read as `✓ update complete`.
+    // The detached runner ignores it and polls its own gate (pinned in cli/update.test.ts).
+    test("a relaunched bridge that never answers is a failure, after the whole wait", async () => {
+      const h = running({ ready: false });
+      let slept = 0;
+      h.deps.sleep = () => {
+        slept++;
+        return Promise.resolve();
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+      expect(h.exec.killed).toEqual([7200]);
+      expect(slept).toBe(30);
+      expect(h.io.stderr.join("\n")).toContain("did not answer on 127.0.0.1:8787 within 30s; it may still be starting");
+      expect(h.io.stderr.join("\n")).toContain("`collie status`");
+      expect(h.io.stderr.at(-1)).toContain("collie logs");
       expect(h.exec.spawned).toHaveLength(0);
-      expect(h.io.stderr.join("\n")).toContain("not this checkout's bridge");
-    }
-  });
-
-  test("a bridge the loop is already relaunching is left to it", async () => {
-    const h = windows({ files: { [RECORD]: "7100|0" } });
-    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.killed).toEqual([]);
-    expect(h.exec.spawned).toHaveLength(0);
-  });
-
-  test("an unreadable record fails without killing or starting anything", async () => {
-    const h = windows({ files: { [RECORD]: "not a record" } });
-    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
-    expect(h.exec.killed).toEqual([]);
-    expect(h.exec.spawned).toHaveLength(0);
-  });
-
-  test("waits for the relaunched bridge before it reports", async () => {
-    const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7200: BRIDGE_CMD } });
-    let probes = 0;
-    h.deps.ready = () => Promise.resolve(++probes >= 4);
-    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
-    // Three misses, then the answer; the banner's own probe comes after.
-    expect(probes).toBeGreaterThanOrEqual(4);
-  });
-
-  // The in-place update stops on this code, so a dead bridge must not read as `✓ update complete`.
-  // The detached runner ignores it and polls its own gate (pinned in cli/update.test.ts).
-  test("a relaunched bridge that never answers is a failure, after the whole wait", async () => {
-    const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7200: BRIDGE_CMD }, ready: false });
-    let slept = 0;
-    h.deps.sleep = () => {
-      slept++;
-      return Promise.resolve();
-    };
-    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
-    expect(h.exec.killed).toEqual([7200]);
-    expect(slept).toBe(30);
-    // The banner still prints what it sees, and the error comes last, naming where to look.
-    expect(h.io.stderr.join("\n")).toContain("did not answer on 127.0.0.1:8787 within 30s; it may still be starting");
-    expect(h.io.stderr.join("\n")).toContain("`collie status`");
-    expect(h.io.stderr.at(-1)).toContain("collie-ctl.ps1 logs");
-    // Still no second bridge started beside the supervised one.
-    expect(h.exec.spawned).toHaveLength(0);
-  });
-
-  test("the wait follows COLLIE_UPDATE_HEALTH_TIMEOUT_MS, the update gate's own budget", async () => {
-    const h = windows({
-      files: { [RECORD]: "7100|7200" },
-      ps: { 7200: BRIDGE_CMD },
-      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "3000" },
-      ready: false,
     });
-    let slept = 0;
-    h.deps.sleep = () => {
-      slept++;
-      return Promise.resolve();
-    };
-    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
-    expect(slept).toBe(3);
-    expect(h.io.stderr.join("\n")).toContain("within 3s");
 
-    // A slow bridge that answers inside the raised budget is a success, and the wait stops there.
-    const late = windows({
-      files: { [RECORD]: "7100|7200" },
-      ps: { 7200: BRIDGE_CMD },
-      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "60000" },
+    test("the wait follows COLLIE_UPDATE_HEALTH_TIMEOUT_MS, the update gate's own budget", async () => {
+      const h = running({ env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "3000" }, ready: false });
+      let slept = 0;
+      h.deps.sleep = () => {
+        slept++;
+        return Promise.resolve();
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+      expect(slept).toBe(3);
+      expect(h.io.stderr.join("\n")).toContain("within 3s");
+
+      // A slow bridge that answers inside the raised budget is a success, and the wait stops there.
+      const late = running({ env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "60000" } });
+      let probes = 0;
+      late.deps.ready = () => Promise.resolve(++probes >= 35);
+      expect(await cmdRestart(late.deps)).toBe(EXIT.OK);
+      expect(probes).toBeGreaterThanOrEqual(35);
     });
-    let probes = 0;
-    late.deps.ready = () => Promise.resolve(++probes >= 35);
-    expect(await cmdRestart(late.deps)).toBe(EXIT.OK);
-    expect(probes).toBeGreaterThanOrEqual(35);
-  });
 
-  test("a probe that throws reads as no answer, not as a crashed restart", async () => {
-    const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7200: BRIDGE_CMD } });
-    h.deps.sleep = () => Promise.resolve();
-    // Throws on every probe of the wait; the banner's own probe afterwards just answers no.
-    let probes = 0;
-    h.deps.ready = () => {
-      if (++probes <= 30) throw new Error("connect refused");
-      return Promise.resolve(false);
-    };
-    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
-    expect(h.io.stderr.join("\n")).toContain("did not answer");
-  });
-
-  test("with no record, restart keeps the path it had, and finds bin/collie.exe", async () => {
-    const h = windows();
-    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.killed).toEqual([]);
-    // The unsupervised tier, as before — which now finds the Windows binary instead of refusing.
-    expect(h.exec.spawned).toHaveLength(1);
-    expect(h.io.stderr.join("\n")).not.toContain("no collie binary");
-  });
-
-  test("off Windows the record means nothing, and restart is untouched", async () => {
-    const h = harness({
-      answers: NO_SYSTEMD,
-      files: { [RECORD]: "7100|7200" },
-      ps: { 7200: BRIDGE_CMD },
+    test("a probe that throws reads as no answer, not as a crashed restart", async () => {
+      const h = running();
+      let probes = 0;
+      h.deps.ready = () => {
+        if (++probes <= 30) throw new Error("connect refused");
+        return Promise.resolve(false);
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+      expect(h.io.stderr.join("\n")).toContain("did not answer");
     });
-    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.killed).toEqual([]);
-    expect(h.exec.spawned).toHaveLength(1);
+
+    test("off Windows the record means nothing, and restart is untouched", async () => {
+      const h = harness({
+        answers: NO_SYSTEMD,
+        files: { [RECORD]: "7100|7200" },
+        ps: { 7100: OLD_LAUNCHER, 7200: OLD_BRIDGE },
+      });
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([]);
+      expect(h.exec.spawned).toHaveLength(1);
+    });
+  });
+
+  describe("status", () => {
+    test("names the task and its state as a supervised service", async () => {
+      const h = windows();
+      expect(serviceDescription(h.deps)).toBe("Task Scheduler (herdr.collie) · Running");
+      const banner = (await statusBanner(h.deps)).join("\n");
+      expect(banner).toContain("service   Task Scheduler (herdr.collie) · Running");
+      expect(banner).not.toContain("not supervised");
+    });
+
+    test("an unregistered task says so, and the community launcher is named until start replaces it", () => {
+      const none = windows({ answers: [["powershell -NoProfile -NonInteractive -Command (Get-ScheduledTask", { code: 1 }]] });
+      expect(serviceDescription(none.deps)).toBe("Task Scheduler (herdr.collie) · not registered");
+      const legacy = windows({ files: { [RECORD]: "7100|7200" } });
+      expect(serviceDescription(legacy.deps)).toContain("· Running · launcher contrib\\windows\\collie-ctl.ps1");
+    });
+
+    test("logs reads the log file the launcher appends to", () => {
+      const h = windows({ files: { [`${CONFIG}/collie.log`]: "one\ntwo\nthree\n" } });
+      expect(cmdLogs(h.deps, ["2"])).toBe(EXIT.OK);
+      expect(h.io.stdout).toEqual(["two", "three"]);
+      expect(h.exec.calls.some((c) => c.startsWith("journalctl"))).toBe(false);
+    });
   });
 });
 

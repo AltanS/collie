@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **`collie start`, `stop`, `restart`, `status` and `uninstall` supervise the bridge on Windows through Task Scheduler.** (experimental; there is no Windows release asset yet) `start` registers the task `herdr.collie` at your logon with a limited token and runs a launcher Collie owns, which relaunches a bridge that exits with an error. `status` names the task and its state, `restart` restarts the bridge alone, and an install of the community script is taken over under the same task name. The first supervisor was written by @Pimpmuckl in contrib/windows, and the restart path by @mqmalagris (PR 309).
+
 ### Changed
 
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.

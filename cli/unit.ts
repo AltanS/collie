@@ -14,7 +14,7 @@ import { instanceSuffix, PLUGIN_ID } from "./context.ts";
 //   RestartSec=5            -> ThrottleInterval   WorkingDirectory   -> WorkingDirectory
 // No analogue on launchd: StartLimitIntervalSec (it has no start limit), NoNewPrivileges,
 // PrivateTmp — the agent is simply less confined. No ProcessType either: Background throttles CPU
-// and I/O, and the bridge answers a phone.
+// and I/O, and the bridge answers a phone. The Windows task is the third, further down.
 
 /** The systemd `--user` unit name, and the launchd label (the plugin id, so `launchctl print` names the job as `herdr plugin list` names the plugin). */
 export const UNIT_NAME = "collie";
@@ -227,6 +227,137 @@ ${envEntries}
     <string>${xmlEscape(join(spec.configDir, logFileName(spec.instance)))}</string>
 </dict>
 </plist>
+`;
+}
+
+// ── Windows: the Task Scheduler task ─────────────────────────────────────────
+//
+// The third service definition, kept parallel to the two above so all three describe ONE service:
+//   WantedBy=default.target -> LogonTrigger (this user)    Restart=on-failure -> the launcher's loop
+//   RestartSec=5            -> the launcher's 5 s pause     WorkingDirectory   -> WorkingDirectory
+// The launcher is `collie _supervise` (cli/task-scheduler.ts), because Task Scheduler restarts a task
+// that failed to START, not a program that exits: something Collie owns has to watch the bridge.
+// `RestartOnFailure` stays as a second line behind the launcher, as the community script set it.
+// No analogue: NoNewPrivileges and PrivateTmp. The task runs with the user's limited token unless
+// the operator asks for `COLLIE_TASK_RUN_LEVEL=highest` (see `taskRunLevel` in cli/lifecycle.ts).
+//
+// First written by @Pimpmuckl as `contrib/windows/collie-ctl.ps1` (#71), which this replaces.
+
+/** What the task XML needs that the {@link ServiceSpec} does not carry. */
+export interface TaskOptions {
+  /** `DOMAIN\user`, as `whoami` prints it. The task starts at THIS user's logon and runs as them. */
+  user: string;
+  /** `LeastPrivilege` unless the operator asked for an elevated task. */
+  runLevel: "LeastPrivilege" | "HighestAvailable";
+  /**
+   * `conhost.exe`, or null when it is not there. The task runs the launcher through
+   * `conhost --headless`, so the bridge gets a pseudoconsole and no window: a console program started
+   * straight from a logon task opens a Windows Terminal tab on Windows 11, and closing that tab kills
+   * the bridge.
+   */
+  conhost: string | null;
+}
+
+/** The task file Collie registers from, kept beside `.env` like the unit beside the user units. */
+export function taskFilePath(configDir: string, instance: string | null, host: Host = HOST): string {
+  return host.path.join(configDir, `${agentLabel(instance)}.task.xml`);
+}
+
+/**
+ * The launcher's argv after the binary. Paths only, like {@link bridgeEnvironment}, because Task
+ * Scheduler has no per-task environment: the values travel as `KEY=value` words that `_supervise`
+ * hands to the bridge. `--instance <name>` comes first for the same reason {@link bridgeCommand}
+ * carries it: two instances out of one checkout must be told apart by their command lines.
+ */
+export function superviseArgs(spec: ServiceSpec): string[] {
+  const argv = ["_supervise"];
+  if (spec.instance !== null) argv.push("--instance", spec.instance);
+  for (const [k, v] of Object.entries(bridgeEnvironment(spec))) argv.push(`${k}=${v}`);
+  return argv;
+}
+
+/**
+ * Quote one argument so a Windows program reads it back as one word (the MSVCRT rules every Bun and
+ * Node program parses with): a backslash is literal unless a run of them ends at a quote, and then
+ * each doubles. A word with no blank and no quote is left bare, so the common case stays readable.
+ */
+export function windowsArg(arg: string): string {
+  if (arg !== "" && !/[\s"]/.test(arg)) return arg;
+  let out = '"';
+  let slashes = 0;
+  for (const ch of arg) {
+    if (ch === "\\") {
+      slashes++;
+      continue;
+    }
+    out += ch === '"' ? `${"\\".repeat(slashes * 2 + 1)}"` : `${"\\".repeat(slashes)}${ch}`;
+    slashes = 0;
+  }
+  return `${out}${"\\".repeat(slashes * 2)}"`;
+}
+
+/** The program the task starts and its argument string. */
+export interface TaskAction {
+  command: string;
+  arguments: string;
+}
+
+export function taskAction(spec: ServiceSpec, conhost: string | null): TaskAction {
+  const words = superviseArgs(spec).map(windowsArg).join(" ");
+  if (conhost === null) return { command: spec.binary, arguments: words };
+  return { command: conhost, arguments: `--headless ${windowsArg(spec.binary)} ${words}` };
+}
+
+/**
+ * XML character data in plain ASCII: {@link xmlEscape}, and every other character as a numeric
+ * reference. `schtasks /XML` reads a file with no encoding declaration as UTF-8 and refuses the
+ * declaration itself ("unable to switch the encoding", Windows 11, 2026-10-02), so a pure-ASCII
+ * file is the one shape that keeps a non-ASCII user or folder name intact.
+ */
+export function xmlAscii(value: string): string {
+  return xmlEscape(value).replace(/[^\x20-\x7e]/gu, (ch) => `&#x${ch.codePointAt(0)!.toString(16)};`);
+}
+
+/** The Task Scheduler definition, as `schtasks /Create /XML` reads it. No XML declaration: see {@link xmlAscii}. */
+export function taskXml(spec: ServiceSpec, opts: TaskOptions): string {
+  const action = taskAction(spec, opts.conhost);
+  return `<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Collie${spec.instance === null ? "" : ` (instance ${xmlAscii(spec.instance)})`}</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>${xmlAscii(opts.user)}</UserId>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>${xmlAscii(opts.user)}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>${opts.runLevel}</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>999</Count>
+    </RestartOnFailure>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>${xmlAscii(action.command)}</Command>
+      <Arguments>${xmlAscii(action.arguments)}</Arguments>
+      <WorkingDirectory>${xmlAscii(spec.root)}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
 `;
 }
 

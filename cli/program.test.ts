@@ -37,6 +37,9 @@ const SHELL_VERBS = [
   // it on the member it has just installed (cli/mux-probe.ts).
   "_mux-probe",
   "_exec-bridge",
+  // The Windows launcher has no shell ancestor: it is the Task Scheduler half of what the community
+  // Windows script did, and it sits beside the process it launches (M43 spec 05).
+  "_supervise",
   "build",
   "serve",
   "unserve",
@@ -118,6 +121,7 @@ describe("the verb table", () => {
       "_apply-update",
       "_mux-probe",
       "_exec-bridge",
+      "_supervise",
       // The emitter is spelled by a hook, never typed — see cli/beacon.ts.
       "beacon",
       // The `crew` alias. Dispatchable, but never named in the usage line (ADR 0038).
@@ -353,6 +357,9 @@ describe("exit codes", () => {
       // against the developer's own servers. cli/mux.test.ts drives it against fakes.
       "_mux-probe",
       "_exec-bridge",
+      // The Windows launcher writes a record into the config dir and runs a bridge until one exits 0.
+      // cli/task-scheduler.test.ts drives its loop against fakes.
+      "_supervise",
       "build",
       "serve",
       "unserve",

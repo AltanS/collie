@@ -171,6 +171,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "notifyDelayMs",
   },
   {
+    key: "task_run_level",
+    env: "COLLIE_TASK_RUN_LEVEL",
+    section: "bridge",
+    kind: "enum",
+    values: ["limited", "highest"],
+    default: "limited",
+    doc: "Windows only: the privilege of the Task Scheduler task. highest needs an elevated shell at start.",
+  },
+  {
     key: "read_lines",
     env: "COLLIE_READ_LINES",
     section: "bridge",

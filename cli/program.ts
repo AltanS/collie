@@ -87,6 +87,7 @@ import {
   type SttDeps,
 } from "./stt.ts";
 import { realExec, realFiles } from "./sys.ts";
+import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 
@@ -440,6 +441,15 @@ export const COMMANDS: readonly Command[] = [
     cmdExecBridge,
     { internal: true },
   ),
+  // The Windows launcher (cli/task-scheduler.ts): Task Scheduler runs it, and it runs and relaunches
+  // `_exec-bridge`. Not a lifecycle command: everything it needs is on its own command line, so it
+  // resolves no context, reads no `.env` and asks Herdr nothing at logon, before Herdr is up.
+  {
+    name: "_supervise",
+    summary: "internal: the Windows launcher Task Scheduler runs",
+    internal: true,
+    run: (args, s) => cmdSupervise(realSuperviseDeps(s.io, realFiles), args),
+  },
   lifecycleCommand(
     "build",
     "typecheck both sides, compile the binary and build the PWA (staged, atomic swap)",
