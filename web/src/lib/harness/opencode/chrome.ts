@@ -99,13 +99,15 @@ function isEdgeOnly(text: string): boolean {
 }
 
 // A panel's bottom border sharing its row with typed text (`┃  hello  └───┘`): cut the
-// trailing border run, keeping the words. The suffix must contain a corner, junction,
-// vertical or rule-block somewhere inside it — a run of bare horizontals never strips, so
-// a typed rule (`───`) or divider survives. The strip applies only when words remain;
-// a border-only row keeps its text for the isPanelBorder join below to refuse. The walk
-// still owns row-level stops — this owns suffixes in kept rows.
+// trailing border run, keeping the words. The run must hold a corner or junction: `│`, `┃`
+// and rule-blocks alone never strip, because a table row (`│ a │ b │`) ends in one and
+// cutting it breaks the reply guard's contiguity check — the stripped run is gone from the
+// draft but still in what was sent, so verification can never match. A typed rule (`───`)
+// never strips for the same reason. The strip applies only when words remain; a border-only
+// row keeps its text for the isPanelBorder join below to refuse. The walk still owns
+// row-level stops — this owns suffixes in kept rows.
 const OVERLAY_SUFFIX =
-  /[ \t]*[─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*[┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬│┃╹▀][─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*$/u;
+  /[ \t]*[─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*[┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬][─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*$/u;
 
 function stripOverlaySuffix(text: string): string {
   const cut = text.replace(OVERLAY_SUFFIX, "");

@@ -376,15 +376,17 @@ describe("opencode composer chrome", () => {
     expect(draft).toBe("stell mir eine Frage mit dem Frage tool");
     expect(draftCarriesSend("stell mir eine Frage mit dem Frage tool", draft)).toBe(true);
   });
-  it("a pasted tree sharing rows with overlay chrome keeps its words verbatim", () => {
-    // Same suffix strip, opposite risk: the overlay suffix goes, the pasted words stay —
-    // stripping must never eat content to satisfy chrome.
+  it("a pasted tree sharing a row with an overlay border keeps its words", () => {
+    // Suffix strip, opposite risk: the overlay corner run goes, the pasted words stay.
+    // A lone trailing `│` after words is deliberately NOT stripped — textually identical
+    // to a table cell divider, only geometry could tell them apart (needs a column-aware
+    // strip, out of scope) — so such a row keeps its edge and fails safe.
     const lines = splitLines(
       parseAnsi(
         [
           "some transcript above",
-          "  ┃  ├── src                                                                                                                          │",
-          "  ┃  └── leaf                                                                                                                        └─┘",
+          "  ┃  ├── src",
+          "  ┃  └── leaf └─┘",
           "  ┃",
           "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen                                                                     ~/repos/omarchy",
           "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
