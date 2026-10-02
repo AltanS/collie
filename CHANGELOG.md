@@ -492,7 +492,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   unchanged. Thanks @mavam (#314). ([623401a6](https://github.com/AltanS/collie/commit/623401a6))
 
 - **A URL an agent typed as itself is now a link you can tap.** Agents write a bare address
-  constantly, a server they started or a pull request they opened, and only a `[text](url)` link ever
+  constantly, a server they started or a pull request they opened, and only a Markdown link ever
   became an anchor. A bare `http://`, `https://` or `mailto:` is now one too, in History and in Chat.
   It keeps the sentence punctuation it ended on, so a URL at the end of a sentence does not swallow
   the full stop, and a URL inside backticks stays code. ([8ab22bcc](https://github.com/AltanS/collie/commit/8ab22bcc))
