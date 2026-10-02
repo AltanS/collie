@@ -100,6 +100,15 @@ Key security boundaries and risks:
 Restrict access further with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, without
 warranty.
 
+On Windows (experimental), Collie keeps its state and config folders owner-only with an access
+control list (ACL). Only you, SYSTEM and Administrators can open them, and each file that Collie
+writes there gets the same list. NTFS has no `0600` mode, so Collie reads the list instead. At
+start, the bridge repairs a folder that Everyone, Users, Authenticated Users or Guests can read. It
+says `made it owner-only` only after a second read confirms the repair. `collie doctor` reports a
+loose folder, `.env` or trust store as a `secrets-private` error, with the `icacls` command that
+fixes it. Collie checks a secret file outside these folders and makes it owner-only where it is,
+but it does not move the file or change its folder.
+
 ## What leaves your machine
 
 Nothing, by default and by policy. Collie sends no install events, no usage statistics, no crash
