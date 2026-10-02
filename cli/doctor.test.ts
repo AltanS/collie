@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
@@ -2163,5 +2164,40 @@ describe("windows-task", () => {
     expect(other.detail).toContain("D:\\other\\bin\\collie.exe, another Collie install");
     expect(run([[QUERY, { code: 1 }]]).status).toBe("skipped");
     expect(run([], ["powershell"]).status).toBe("skipped");
+  });
+});
+
+// ── POSIX parity (M43 spec 04) ──────────────────────────────────────────────
+describe("POSIX parity (M43 spec 04)", () => {
+  const GOLDEN = join(import.meta.dir, "testdata", "doctor-posix.golden.txt");
+  // The identity line names the machine the suite runs on, so it is the one line normalised.
+  const render = async (over: Parameters<typeof harness>[2] = {}): Promise<string> => {
+    const h = harness(null, [], over);
+    h.deps = { ...h.deps, host: hostFor("linux") };
+    await cmdDoctor(h.deps, []);
+    return `${h.io.stdout.join("\n").replace(/ · [a-z0-9]+-[a-z0-9]+$/m, " · <platform>")}\n`;
+  };
+  // A config.toml secret that could not be made private: the POSIX `config-file` remedy is pinned too.
+  const blocked = (): Parameters<typeof harness>[2] => ({
+    configLayer: readConfigFilesSync(
+      { read: (p) => ({ text: p === join(HOME, ".collie", "config.toml") ? '[push]\nvapid_private = "x"\n' : null, error: null }) },
+      configFilePaths({}, HOME, CONFIG),
+      () => {},
+      { home: HOME, perms: { mode: () => 0o644, tighten: () => false } },
+    ),
+  });
+
+  // The golden was written by this same block run at a0ab9e76, the commit before spec 04 (the
+  // healthy solo fixture, then a config.toml secret the mode rule could not tighten). The
+  // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
+  test("the plain doctor output on a POSIX host is byte-identical to the one before spec 04", async () => {
+    const out = `${await render()}---\n${await render(blocked())}`;
+    const golden = readFileSync(GOLDEN, "utf8");
+    // Paths in the output are joined with the machine's own separator, so the byte comparison runs
+    // where the golden was made (POSIX). Windows compares the check ids and statuses line by line.
+    if (process.platform !== "win32") expect(out).toBe(golden);
+    const ids = (text: string) => text.split("\n").map((l) => /^\s+(\S+)\s+(\S+)/.exec(l)?.slice(1, 3).join(" ")).filter(Boolean);
+    expect(ids(out)).toEqual(ids(golden));
+    expect(out).not.toContain("secrets-private");
   });
 });
