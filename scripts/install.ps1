@@ -76,9 +76,35 @@ function Get-CollieArch {
   return $env:PROCESSOR_ARCHITECTURE
 }
 
+# Every value that becomes part of a URL or a path is checked here first, case-sensitively and
+# anchored at both ends (\A and \z: `$` would let a trailing newline through). A tag the API or a
+# mirror returns is checked the same way as one you typed, so a hostile answer such as
+# `v1.0.0\..\..\x` never reaches a path.
+function Test-CollieTag([string]$Tag, [switch]$AllowPrerelease) {
+  if ($AllowPrerelease) { return $Tag -cmatch '\Av[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?\z' }
+  return $Tag -cmatch '\Av[0-9]+\.[0-9]+\.[0-9]+\z'
+}
+
+# owner/name, each part from [A-Za-z0-9._-] and not made of dots alone.
+function Test-CollieRepo([string]$Repo) {
+  if ($Repo -cnotmatch '\A([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)\z') { return $false }
+  return ($Matches[1] -cnotmatch '\A\.+\z') -and ($Matches[2] -cnotmatch '\A\.+\z')
+}
+
+# Why Path cannot be the install folder, or $null. It must be a full path on a drive, not a share and
+# not the drive itself, and hold no `;` or `%`: the folder goes into your PATH, where `;` splits an
+# entry and `%` starts a variable. A space, `&` or a non-ASCII letter is fine.
+function Get-CollieDirProblem([string]$Path) {
+  if ($Path -cnotmatch '\A[A-Za-z]:[\\/]') { return "COLLIE_DIR='$Path' is not a full path on a drive, such as C:\Users\you\collie" }
+  if ($Path.Contains(';') -or $Path.Contains('%')) { return "COLLIE_DIR='$Path' holds a ';' or a '%', which would break your PATH" }
+  $full = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+  if ($full -cmatch '\A[A-Za-z]:\z') { return "COLLIE_DIR='$Path' is the root of a drive" }
+  return $null
+}
+
 # The newest strict release tag (vX.Y.Z), compared by number. A prerelease is never picked: pin it.
 function Select-CollieNewestTag([string[]]$Names) {
-  $strict = @($Names | Where-Object { $_ -cmatch '^v[0-9]+\.[0-9]+\.[0-9]+$' })
+  $strict = @($Names | Where-Object { Test-CollieTag $_ })
   if ($strict.Count -eq 0) { return $null }
   return @($strict | Sort-Object { [version]$_.Substring(1) })[-1]
 }
@@ -86,7 +112,7 @@ function Select-CollieNewestTag([string[]]$Names) {
 # Check a downloaded file against its sidecar line "<sha256>  <name>". Returns the problem, or $null.
 function Get-CollieDigestProblem([string]$Sidecar, [string]$Name, [string]$Actual) {
   $words = @("$Sidecar".Trim() -split '\s+')
-  if ($words.Count -lt 2 -or $words[0] -notmatch '^[0-9a-fA-F]{64}$') {
+  if ($words.Count -lt 2 -or $words[0] -cnotmatch '\A[0-9a-fA-F]{64}\z') {
     return "$Name.sha256 is not one '<sha256>  <name>' line"
   }
   if ($words[1].TrimStart('*') -ne $Name) { return "$Name.sha256 names $($words[1]), not $Name" }
@@ -243,20 +269,28 @@ function Publish-CollieName([string]$Dir) {
 function Invoke-CollieInstall {
   $repo = "$env:COLLIE_UPDATE_REPO".Trim()
   if ($repo -eq '') { $repo = "AltanS/collie" }
+  if (-not (Test-CollieRepo $repo)) {
+    Stop-CollieInstall "COLLIE_UPDATE_REPO='$repo' is not a GitHub repository name like AltanS/collie." "Set COLLIE_UPDATE_REPO to owner/name, or remove it to take Collie's own releases."
+  }
+  if ($repo -cne "AltanS/collie") {
+    Write-CollieLine "WARNING: COLLIE_UPDATE_REPO is set. This installs Collie from github.com/$repo, not from AltanS/collie."
+  }
   $dir = "$env:COLLIE_DIR".Trim()
   if ($dir -eq '') {
     if ("$env:LOCALAPPDATA" -eq '') { Stop-CollieInstall "LOCALAPPDATA is not set." "Set COLLIE_DIR to the folder to install into, then run the installer again." }
     $dir = Join-Path $env:LOCALAPPDATA "collie"
   }
-  $dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($dir).TrimEnd('\')
+  $problem = Get-CollieDirProblem $dir
+  if ($null -ne $problem) { Stop-CollieInstall "$problem." "Set COLLIE_DIR to a full folder path such as C:\Users\you\collie, then run the installer again." }
+  $dir = [System.IO.Path]::GetFullPath($dir).TrimEnd('\')
   $mirror = "$env:COLLIE_INSTALL_MIRROR".Trim().TrimEnd('/')
-  if ($mirror -ne '' -and $mirror -notmatch '^https?://') {
+  if ($mirror -ne '' -and $mirror -cnotmatch '\Ahttps?://') {
     Stop-CollieInstall "COLLIE_INSTALL_MIRROR='$mirror' is not an http or https URL."
   }
 
   # A pinned tag is checked before anything is fetched or touched.
   $pin = "$env:COLLIE_TAG".Trim()
-  if ($pin -ne '' -and $pin -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') {
+  if ($pin -ne '' -and -not (Test-CollieTag $pin -AllowPrerelease)) {
     Stop-CollieInstall "COLLIE_TAG='$pin' is not a release tag." "Set COLLIE_TAG to a tag like v1.16.0 (or v1.16.0-rc.1), or remove it to take the newest release."
   }
 

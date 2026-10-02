@@ -85,6 +85,17 @@ describe("scripts/install.ps1, read as text", () => {
     expect(entry.indexOf("LanguageMode")).toBeLessThan(entry.indexOf("ServicePointManager"));
   });
 
+  test("every regex is case-sensitive and anchored with \\A and \\z, never ^ and $", () => {
+    // `-match` ignores case, and `$` lets a trailing newline through.
+    expect(offending(/-(not)?match\b|-imatch|-inotmatch/)).toEqual([]);
+    const patterns = CODE.join("\n").match(/-c(not)?match '[^']*'/g) ?? [];
+    expect(patterns.length).toBeGreaterThan(5);
+    for (const p of patterns) {
+      expect(p).toContain("'\\A");
+      expect(p).not.toMatch(/'\^|\$'/);
+    }
+  });
+
   test("every web call works in Windows PowerShell 5.1: basic parsing, TLS 1.2, no progress bar", () => {
     const calls = BARE.filter((l) => /Invoke-WebRequest|Invoke-RestMethod|\birm\b/.test(l));
     expect(calls.length).toBeGreaterThan(0);
@@ -163,13 +174,14 @@ class Mirror {
       fetch: (req) => {
         const path = new URL(req.url).pathname;
         this.requests.push(path);
-        if (path === `/repos/${REPO}/tags`) {
+        if (/^\/repos\/[^/]+\/[^/]+\/tags$/.test(path)) {
           return new Response(JSON.stringify(this.tags.map((name) => ({ name, commit: { sha: `sha-${name}` } }))), {
             headers: { "content-type": "application/json; charset=utf-8" },
           });
         }
-        const prefix = `/${REPO}/releases/download/`;
-        const body = path.startsWith(prefix) ? this.files.get(path.slice(prefix.length)) : undefined;
+        // Any owner/name, so a case can steer COLLIE_UPDATE_REPO at it too.
+        const download = /^\/[^/]+\/[^/]+\/releases\/download\/(.+)$/.exec(path);
+        const body = download?.[1] === undefined ? undefined : this.files.get(download[1]);
         if (body === undefined) return new Response("Not Found", { status: 404 });
         return new Response(body, { headers: { "content-type": "application/octet-stream" } });
       },
@@ -543,6 +555,67 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expectFailed(r);
     expect(r.out).toContain(`release v0.35.0 has no ${PLATFORM} artifact (HTTP 404)`);
     expect(existsSync(b.dir)).toBe(false);
+  }, 60_000);
+
+  test("a tag the API returns is checked like a typed one: a hostile tag never reaches a path", async () => {
+    const b = box();
+    const saved = mirror.tags;
+    mirror.tags = ["v9.9.9\\..\\..\\x", "v9.9.10\n", "V9.9.11", "v9.9.12/../x", `v${v1}`];
+    try {
+      const r = await install(b, mirror);
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(`Collie v${v1} is installed`);
+      expect(r.asked.filter((p) => p.includes("v9."))).toEqual([]);
+      expect(readdirSync(join(b.dir, "versions"))).toEqual([v1]);
+    } finally {
+      mirror.tags = saved;
+    }
+  }, 60_000);
+
+  test("a hostile COLLIE_TAG or COLLIE_UPDATE_REPO stops before any request", async () => {
+    for (const env of [
+      { COLLIE_TAG: "v1.0.0/../x" },
+      { COLLIE_TAG: "v1.0.0-..x" },
+      { COLLIE_TAG: "v1.0.0\\..\\x" },
+      { COLLIE_UPDATE_REPO: "AltanS/collie/../x" },
+      { COLLIE_UPDATE_REPO: "../.." },
+      { COLLIE_UPDATE_REPO: "AltanS/.." },
+      { COLLIE_UPDATE_REPO: "a b/c" },
+    ]) {
+      const b = box();
+      const r = await install(b, mirror, { env });
+      expectFailed(r);
+      expect(r.asked).toEqual([]);
+      expect(existsSync(b.dir)).toBe(false);
+    }
+  }, 120_000);
+
+  test("COLLIE_DIR must be a full path on a drive, not a share, not a drive root, with no ';' or '%'", async () => {
+    const b = box();
+    for (const dir of ["install", "\\\\server\\share\\collie", "C:\\", `${b.root}\\a;b`, `${b.root}\\a%b%`]) {
+      const r = await install(b, mirror, { env: { COLLIE_DIR: dir } });
+      expectFailed(r);
+      expect(r.out).toContain("COLLIE_DIR=");
+      expect(r.asked).toEqual([]);
+    }
+    expect(existsSync(join(b.root, "install"))).toBe(false);
+  }, 120_000);
+
+  test("a folder with a space, an '&' and a non-ASCII letter installs", async () => {
+    const b = box();
+    const dir = join(b.root, "inst a&b \u00fc");
+    const r = await install(b, mirror, { env: { COLLIE_DIR: dir } });
+    expect(r.out).toContain(`Collie v${v1} is installed at ${dir}`);
+    expect(r.code).toBe(0);
+    expect(norm(realpathSync(join(dir, "current")))).toBe(norm(realpathSync(join(dir, "versions", v1))));
+  }, 60_000);
+
+  test("a repository other than AltanS/collie is named in a loud line", async () => {
+    const b = box();
+    const r = await install(b, mirror, { env: { COLLIE_UPDATE_REPO: "someone/collie-fork" } });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("WARNING: COLLIE_UPDATE_REPO is set. This installs Collie from github.com/someone/collie-fork");
+    expect(r.asked[0]).toBe("/repos/someone/collie-fork/tags");
   }, 60_000);
 
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
