@@ -39,6 +39,9 @@ sentence below has a gate or a rehearsal under it.
 **Windows 11 x64 with the Herdr backend is a supported host.** Support means the maintainer owns the
 code and a test keeps it true.
 
+This decision supersedes the contrib-only decisions on PR #71 and PR #298 and the 2026-09-27 rule
+against a Task Scheduler tier (point 4). The older decisions stand only as history.
+
 1. **The boundary.** Windows 11 on x64, with Herdr as the backend. Herdr's Windows build is the only
    multiplexer there. Windows 10, Windows Server and Windows on ARM are best effort, as before.
    WSL is not Windows for this purpose: a WSL operator runs the Linux setup.
