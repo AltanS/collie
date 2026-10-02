@@ -39,6 +39,28 @@ describe("the record", () => {
     expect(parseTaskRecord(line)).toEqual({ format: 2, launcher: 7100, bridge: 7200 });
   });
 
+  test("reads through a byte-order mark, CRLF and padding, and keeps bridge=0 as a record", () => {
+    expect(parseTaskRecord("\uFEFFversion=2 launcher=7100 bridge=7200\r\n")).toEqual({ format: 2, launcher: 7100, bridge: 7200 });
+    expect(parseTaskRecord("\uFEFF7100|7200\r\n")).toEqual({ format: 1, launcher: 7100, bridge: 7200 });
+    expect(parseTaskRecord("  version=2 launcher=7100 bridge=0  \n")).toEqual({ format: 2, launcher: 7100, bridge: 0 });
+  });
+
+  test("an empty file, a torn write, an unknown version, two lines or UTF-16 are no record, never a throw", () => {
+    for (const bad of [
+      "",
+      "\uFEFF",
+      " \r\n",
+      "version=2 launcher=71",
+      "version=2 launcher=7100 bri",
+      "version=3 launcher=7100 bridge=7200",
+      "version=2 launcher=7100 bridge=7200\nversion=2 launcher=7100 bridge=7300",
+      "\u0000v\u0000e\u0000r\u0000s\u0000i\u0000o\u0000n\u0000",
+      "71\u0000|7200",
+    ]) {
+      expect(parseTaskRecord(bad)).toBeNull();
+    }
+  });
+
   test("anything else says nothing", () => {
     for (const bad of [
       "",
@@ -135,7 +157,7 @@ describe("_supervise, the loop", () => {
    * A launcher whose bridges exit with `codes` in turn; `null` is a launch that failed outright. A
    * `[code, ms]` pair is a bridge that lived `ms` before it exited; a bare code lived no time at all.
    */
-  function launcher(codes: (number | null | [number, number])[]) {
+  function launcher(codes: (number | null | [number, number])[], renameFailures: string[] = []) {
     const io = capture();
     const files = fakeFiles();
     const writes: string[] = [];
@@ -147,9 +169,14 @@ describe("_supervise, the loop", () => {
     const deps: SuperviseDeps = {
       io,
       files: {
-        write(p, text) {
-          writes.push(text);
-          files.write(p, text);
+        write: (p, text) => files.write(p, text),
+        // `writes` is what a reader of the record could ever see: only what was renamed into place.
+        rename(from, to) {
+          const failure = renameFailures.shift();
+          if (failure !== undefined) throw Object.assign(new Error(`${failure}: rename refused`), { code: failure });
+          const text = files.read(from);
+          files.rename(from, to);
+          if (text !== null) writes.push(text);
         },
         remove: (p) => files.remove(p),
       },
@@ -173,7 +200,7 @@ describe("_supervise, the loop", () => {
       },
       note: (_p, line) => void notes.push(line),
     };
-    return { deps, io, files, writes, launched, notes, slept };
+    return { deps, io, files, writes, launched, notes, slept, renameFailures };
   }
 
   test("relaunches a bridge that fails, after the pause, and stops with one that exits 0", async () => {
@@ -211,6 +238,39 @@ describe("_supervise, the loop", () => {
       // One that lived just under a minute is still part of the loop.
       20_000,
     ]);
+  });
+
+  test("writes the record through a temporary file and a rename, leaving no temporary file behind", async () => {
+    const l = launcher([1, 0]);
+    await cmdSupervise(l.deps, ARGS);
+    expect(l.writes).toEqual([
+      formatTaskRecord(7100, 0),
+      formatTaskRecord(7100, 9001),
+      formatTaskRecord(7100, 0),
+      formatTaskRecord(7100, 0),
+      formatTaskRecord(7100, 9002),
+    ]);
+    expect([...l.files.entries.keys()].filter((k) => k.endsWith(".tmp"))).toEqual([]);
+  });
+
+  test("a record Windows holds open is retried, and one that never frees up is skipped, not fatal", async () => {
+    const busy = launcher([0], ["EBUSY", "EPERM"]);
+    expect(await cmdSupervise(busy.deps, ARGS)).toBe(EXIT.OK);
+    expect(busy.slept).toEqual([50, 100]);
+    expect(busy.writes[0]).toBe(formatTaskRecord(7100, 0));
+
+    const stuck = launcher([0], ["EBUSY", "EBUSY", "EBUSY", "EBUSY", "EBUSY"]);
+    expect(await cmdSupervise(stuck.deps, ARGS)).toBe(EXIT.OK);
+    // The bridge was still launched: a record that cannot be written costs a log line, not the bridge.
+    expect(stuck.launched).toHaveLength(1);
+    expect(stuck.notes.join("\n")).toContain("could not write");
+    expect([...stuck.files.entries.keys()].filter((k) => k.endsWith(".tmp"))).toEqual([]);
+
+    // Any other failure is not waited on.
+    const gone = launcher([0], ["ENOENT"]);
+    expect(await cmdSupervise(gone.deps, ARGS)).toBe(EXIT.OK);
+    expect(gone.slept).toEqual([]);
+    expect(gone.notes.join("\n")).toContain("could not write");
   });
 
   test("runs the same bridge every supervisor runs, from the checkout, with its env on top", async () => {

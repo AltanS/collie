@@ -611,9 +611,9 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
   const { path, raw, record } = readTaskRecord(deps);
   if (raw === null) return null;
   if (record === null) {
-    deps.io.err(`error: unreadable bridge record in ${path}: ${raw.trim()}`);
-    deps.io.err("       run `collie stop`, then `collie start`");
-    return EXIT.FAIL;
+    // A torn or foreign record is no record: `stop` + `start` find the processes by the table.
+    deps.io.err(`warn: ${path} names no process (${raw.trim()}); restarting through stop and start`);
+    return null;
   }
   const { root, instance } = deps.ctx;
   const launcher = recordedCommand(deps, record.launcher);

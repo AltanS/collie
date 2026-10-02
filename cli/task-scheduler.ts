@@ -56,9 +56,14 @@ export function formatTaskRecord(launcher: number, bridge: number): string {
   return `version=${TASK_RECORD_VERSION} launcher=${launcher} bridge=${bridge}\n`;
 }
 
-/** Either format, or `null` when the text is neither. */
+/**
+ * Either format, or `null` when the text is neither. Never throws: a byte-order mark, CRLF and blank
+ * padding are read through (PowerShell writes the first two); an empty file, a torn write, an unknown
+ * `version=3`, two lines or a UTF-16 file are all `null`, "no record", and every caller then trusts
+ * only the process table. `bridge=0` is a record: the launcher between two launches.
+ */
 export function parseTaskRecord(text: string): TaskRecord | null {
-  const trimmed = text.trim();
+  const trimmed = text.replace(/^\uFEFF/, "").trim();
   const legacy = /^(\d+)\|(\d+)$/.exec(trimmed);
   if (legacy !== null) return { format: 1, launcher: Number(legacy[1]), bridge: Number(legacy[2]) };
   const own = /^version=2 launcher=(\d+) bridge=(\d+)$/.exec(trimmed);
@@ -194,7 +199,7 @@ export interface LaunchedBridge {
 
 export interface SuperviseDeps {
   readonly io: Io;
-  readonly files: Pick<Files, "write" | "remove">;
+  readonly files: Pick<Files, "write" | "remove" | "rename">;
   readonly host: Host;
   /** This process's pid: the launcher half of the record. */
   readonly pid: number;
@@ -206,6 +211,39 @@ export interface SuperviseDeps {
   launch(command: readonly string[], opts: { cwd: string; env: Record<string, string>; logPath: string }): LaunchedBridge | null;
   /** Append one line of the launcher's own to the log the operator reads with `collie logs`. */
   note(logPath: string, line: string): void;
+}
+
+/** How many times a record write is tried when Windows holds the file open (`EBUSY`, `EPERM`). */
+export const RECORD_WRITE_TRIES = 5;
+
+/**
+ * Write the record ATOMICALLY: the whole line to a temporary file beside it, then a rename over the
+ * record. A reader (`collie stop`, `restart`, `status`) therefore sees the old line or the new one,
+ * never half of one. On Windows the rename fails while another process holds the record open without
+ * delete sharing (PowerShell's `Get-Content` does), so a busy answer is retried with a short pause. A
+ * record that still cannot be written is noted and skipped: the bridge keeps running, and the
+ * readers fall back on the process table.
+ */
+async function writeRecord(deps: SuperviseDeps, path: string, logPath: string, text: string): Promise<void> {
+  const temp = `${path}.${deps.pid}.tmp`;
+  deps.files.write(temp, text);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      deps.files.rename(temp, path);
+      return;
+    } catch (e) {
+      // SAFETY: the assertion asserts nothing. `catch` binds `unknown`; a Node errno error carries a
+      // string `code`, and any other value reads `undefined` here, which is the "not busy" answer.
+      const code = (e as { code?: string }).code;
+      const busy = code === "EBUSY" || code === "EPERM" || code === "EACCES";
+      if (!busy || attempt >= RECORD_WRITE_TRIES) {
+        deps.files.remove(temp);
+        deps.note(logPath, `could not write ${path} (${code ?? "error"}); the record is stale until the next launch`);
+        return;
+      }
+      await deps.sleep(50 * attempt);
+    }
+  }
 }
 
 /** What `_supervise` was told on its command line. */
@@ -264,7 +302,7 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
     delay = Math.min(delay * 2, RELAUNCH_DELAY_MAX_MS);
   };
   for (;;) {
-    deps.files.write(record, formatTaskRecord(deps.pid, 0));
+    await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, 0));
     const started = deps.now();
     const bridge = deps.launch(command, { cwd: root, env, logPath });
     if (bridge === null) {
@@ -272,7 +310,7 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
       await pause();
       continue;
     }
-    deps.files.write(record, formatTaskRecord(deps.pid, bridge.pid));
+    await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, bridge.pid));
     const code = await bridge.exited;
     if (code === 0) {
       // Nothing left to own: a record naming two dead pids would only be re-examined by every verb.
@@ -280,14 +318,14 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
       return EXIT.OK;
     }
     if (deps.now() - started >= HEALTHY_RUN_MS) delay = RELAUNCH_DELAY_MIN_MS;
-    deps.files.write(record, formatTaskRecord(deps.pid, 0));
+    await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, 0));
     deps.note(logPath, `the bridge (pid ${bridge.pid}) exited ${code}; relaunching in ${delay / 1000}s`);
     await pause();
   }
 }
 
 /** The launcher's real seams: Node's spawn, the real filesystem, the real clock. */
-export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove">): SuperviseDeps {
+export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" | "rename">): SuperviseDeps {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
   return {

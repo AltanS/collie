@@ -892,12 +892,14 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(schtasks(h)).toEqual([]);
     });
 
-    test("an unreadable record fails without killing or starting anything", async () => {
-      const h = windows({ files: { [RECORD]: "not a record" } });
-      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
-      expect(h.exec.killed).toEqual([]);
-      expect(schtasks(h)).toEqual([]);
-      expect(h.io.stderr.join("\n")).toContain("run `collie stop`, then `collie start`");
+    test("a torn or foreign record is no record: restart takes stop + start and kills by the table only", async () => {
+      for (const torn of ["not a record", "", "version=2 launcher=71", "version=3 launcher=7100 bridge=7200"]) {
+        const h = windows({ files: { [RECORD]: torn }, ps: { 7200: '"D:\\other\\bin\\collie.exe" _exec-bridge' } });
+        expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+        expect(h.exec.killed).toEqual([]);
+        expect(schtasks(h)).toContain("schtasks /Run /TN herdr.collie");
+        expect(h.io.stderr.join("\n")).toContain("names no process");
+      }
     });
 
     test("with no live launcher, restart is stop + start: the task comes back, never an unsupervised bridge", async () => {
