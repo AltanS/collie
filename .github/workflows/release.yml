@@ -1,9 +1,10 @@
 name: Release
 
 # Every pushed vX.Y.Z tag becomes a GitHub Release carrying, for each supported platform, a tarball
-# of `bin/collie` + `web/dist` + the files the bridge reads at boot; a per-release integrity manifest
-# listing every asset and its sha256; and a `.sha256` sidecar beside every one of them so a user can
-# verify a download by hand with `sha256sum -c`. The in-app update banner links here, and
+# of `bin/collie` + `web/dist` + the files the bridge reads at boot (on Windows a zip, with
+# `bin\collie.exe`); a per-release integrity manifest listing every asset and its sha256; and a
+# `.sha256` sidecar beside every one of them so a user can verify a download by hand with
+# `sha256sum -c`. The in-app update banner links here, and
 # `scripts/install.sh` and `collie update`'s binary path both read these assets — over constructed
 # URLs only, so nothing here may ever emit a download URL into a document (M14/01 §2.1).
 on:
@@ -307,9 +308,66 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # ── The Windows payload (M43 spec 06) ─────────────────────────────────────
+  # ITS OWN JOB, never a row of the matrix above. `payload` keeps `fail-fast: true` for its rows, and
+  # a Windows hang or failure must not cancel them. `release` runs when this job failed or was
+  # skipped, and says so in a warning: for one release cycle a missing Windows asset is a warning,
+  # not a failed tag (M43, 2026-10-02). A tag is never cut to test this job; it was tried on a
+  # throwaway branch.
+  #
+  # NO NIX: there is none on Windows. setup-bun unpacks the upstream BASELINE archive of the Bun
+  # flake.nix pins, so the compile copies the same Bun the other rows take, and the target is the
+  # baseline one for the reason linux-x64's is. scripts/build-windows-payload.ps1 holds the whole
+  # build, the checks and the manifest entry; the Windows VM runs the same file. The binary is not
+  # signed (M43, 2026-10-01).
+  payload-windows:
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      # BEFORE the checkout, so the files keep the LF endings they have in git, as on Linux.
+      - name: No line-ending rewrite
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Read the Bun version flake.nix pins
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="$(sed -n 's/^[[:space:]]*bunVersion[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' flake.nix | head -1)"
+          [ -n "$v" ] || { echo "flake.nix names no bunVersion" >&2; exit 1; }
+          echo "bun=$v" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-download-url: https://github.com/oven-sh/bun/releases/download/bun-v${{ steps.pin.outputs.bun }}/bun-windows-x64-baseline.zip
+      # Windows PowerShell 5.1, the shell family the VM uses. -StrictBun: a Bun other than the pinned
+      # one fails the build here.
+      - name: Build, check and seal the payload
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-windows-payload.ps1 -Out "$env:RUNNER_TEMP\out" -StrictBun; exit $LASTEXITCODE
+      # Named like the other rows, so `release` takes it with the same `payload-*` pattern.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-${{ matrix.platform }}
+          path: ${{ runner.temp }}\out\*
+          if-no-files-found: error
+          retention-days: 1
+
   # ── The release ────────────────────────────────────────────────────────────
   release:
-    needs: payload
+    # `payload-windows` is a need so that its artifact is here when it exists, and it is NOT a
+    # condition. A failed need skips the job that needs it unless its `if` says otherwise, so the
+    # `if` keeps the old rule by name: the `payload` rows must all be green. `!cancelled()` lets this
+    # job run after `payload-windows` failed or was skipped; a cancelled run publishes nothing.
+    needs: [payload, payload-windows]
+    if: ${{ !cancelled() && needs.payload.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -329,6 +387,31 @@ jobs:
           pattern: payload-*
           merge-multiple: true
           path: ${{ runner.temp }}/assets
+
+      # A WARNING, NEVER AN ERROR, for one release cycle (M43, 2026-10-02): a release with no Windows
+      # asset still publishes Linux and macOS. The manifest then has no `windows-x64` entry, and
+      # `collie update` on Windows says the release publishes no artifact for it. A part of the
+      # Windows set without the rest is removed, so the manifest never names a file that is not here.
+      - name: Check for the Windows asset
+        env:
+          WINDOWS_RESULT: ${{ needs.payload-windows.result }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          zip="collie-$version-windows-x64.zip"
+          cd "$RUNNER_TEMP/assets"
+          if [ -e "$zip" ] && [ -e "$zip.sha256" ] && [ -e windows-x64.artifact.json ]; then
+            echo "✓ $zip is here (payload-windows: $WINDOWS_RESULT)"
+            exit 0
+          fi
+          rm -f "$zip" "$zip.sha256" windows-x64.artifact.json
+          echo "::warning title=No Windows asset::$zip is not in this release (payload-windows: $WINDOWS_RESULT). Linux and macOS publish as usual."
+          {
+            echo "### No Windows asset"
+            echo
+            echo "\`payload-windows\` ended \`$WINDOWS_RESULT\`, so this release has no \`$zip\`."
+            echo "Linux and macOS are published. Windows users keep their version until the next release."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The built frontend, published as an asset. It is what colliepwa.dev's demo runs: a pinned
       # release bundle whose network calls are answered in the browser, so the demo shows the real
@@ -506,7 +589,9 @@ jobs:
     runs-on: ubuntu-latest
     # A prerelease does not move the site, because the site only ever quotes a released line. Same
     # hyphen rule the release job above uses to set `--prerelease`, so the two cannot drift.
-    if: ${{ !contains(github.ref_name, '-') }}
+    # `needs.release.result` by name, not the default `success()`: that one also reads the jobs
+    # BEFORE `release`, so a failed `payload-windows` would skip this job after a good release.
+    if: ${{ !cancelled() && needs.release.result == 'success' && !contains(github.ref_name, '-') }}
     steps:
       - name: Ask colliepwa.dev to re-quote the docs
         env:
@@ -538,8 +623,9 @@ jobs:
       pull-requests: write
     # A prerelease is skipped. Somebody following `collie-bin` on the AUR did not sign up for a
     # beta. Same hyphen rule the release job uses to set `--prerelease` and notify-website uses to
-    # stay home, so the three cannot drift apart.
-    if: ${{ !contains(github.ref_name, '-') }}
+    # stay home, so the three cannot drift apart. `needs.release.result` by name, for the reason
+    # notify-website gives.
+    if: ${{ !cancelled() && needs.release.result == 'success' && !contains(github.ref_name, '-') }}
     steps:
       # `main`, not the tag: the pull request this job opens has to branch off the line it targets.
       # The manifest is fetched from the release, so nothing here depends on the tagged tree.
