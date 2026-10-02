@@ -415,22 +415,21 @@ jobs:
 
       # The Windows set (zip, sidecar, manifest entry) is all or nothing, and `scripts/windows-asset.ts`
       # decides; its header holds the rules. In short: a `payload-windows` that SUCCEEDED and left no
-      # asset is a bug and fails the release; a failed, skipped or cancelled one WARNS while
-      # WINDOWS_ASSET_OPTIONAL is "true", and fails it when "false". A partial set is removed, so the
+      # asset is a bug and fails the release; a failed, skipped or cancelled one warns while the
+      # tolerance is open, and fails the release once it is closed. A partial set is removed, so the
       # manifest never names a file that is not published.
       #
-      # THE TOLERANCE ENDS after the first release that carries a Windows asset, or on 2026-11-15,
-      # whichever comes first (M43, decided 2026-10-02). Altan or the next Windows spec flips it to
-      # "false"; from then on a missing Windows asset stops the release like any other row.
+      # The script also decides when the tolerance closes, and this file holds no copy of that rule.
+      # It asks the releases API for earlier releases with `gh`, so it needs the token below.
       - name: Check for the Windows asset
         id: windows
         env:
           WINDOWS_RESULT: ${{ needs.payload-windows.result }}
-          WINDOWS_ASSET_OPTIONAL: "true"
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           nix develop --command bun scripts/windows-asset.ts --dir "$RUNNER_TEMP/assets" \
-            --version "${GITHUB_REF_NAME#v}" --result "$WINDOWS_RESULT" --optional "$WINDOWS_ASSET_OPTIONAL"
+            --version "${GITHUB_REF_NAME#v}" --result "$WINDOWS_RESULT" --repo "$GITHUB_REPOSITORY"
 
       # The built frontend, published as an asset. It is what colliepwa.dev's demo runs: a pinned
       # release bundle whose network calls are answered in the browser, so the demo shows the real

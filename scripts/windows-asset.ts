@@ -6,7 +6,7 @@ import { join } from "node:path";
 // `.sha256` sidecar and `windows-x64.artifact.json`, the zip's manifest entry. It is all or nothing.
 //
 //   bun scripts/windows-asset.ts --dir <assets> --version <X.Y.Z> --result <payload-windows result> \
-//     --optional <true|false>
+//     --repo <owner/name> [--now <ISO date, tests only>]
 //       decides, removes a partial set, prints a GitHub `::warning::` or `::error::`, writes
 //       `present=true|false` to $GITHUB_OUTPUT, and exits 1 only on a failure
 //   bun scripts/windows-asset.ts --notes <true|false>
@@ -17,8 +17,17 @@ import { join } from "node:path";
 //   * all three there, and a digest disagrees: FAIL, the set is corrupt;
 //   * not all there, and `payload-windows` SUCCEEDED: FAIL, a job that built the zip and lost it is
 //     a bug in this pipeline, never a Windows build problem;
-//   * not all there, and the tolerance is off: FAIL;
+//   * not all there, and the tolerance is closed: FAIL;
 //   * not all there otherwise (failure, skipped, cancelled): a WARNING, and the release ships without it.
+//
+// THE TOLERANCE CLOSES ON ITS OWN (M43, decided 2026-10-02). It is closed, so a missing Windows asset
+// stops the release like any other row, from the first of these two:
+//   * the day {@link WINDOWS_ASSET_MANDATORY_FROM}, read in UTC;
+//   * an earlier release, neither a draft nor a prerelease, that carries a `collie-*-windows-x64.zip`.
+//     The script asks the releases API with `gh` and the job's `GH_TOKEN`, as the gate job does. A
+//     prerelease does not count, so an rc rehearsal that ships the zip leaves the next rehearsal free
+//     to test the failure. When the API does not answer, the date alone decides, and the log says so.
+// No YAML holds a copy of either rule; release.yml only runs this file.
 
 /** What is on disk, read by {@link readSet} or written by a test. `null` is a missing file. */
 export interface WindowsSet {
@@ -45,7 +54,7 @@ export function windowsVerdict(set: WindowsSet, result: string, optional: boolea
     return { kind: "fail", reason: `payload-windows succeeded, and ${zipName} or its sidecar or its manifest entry is missing; that is a bug in this pipeline` };
   }
   if (!optional) {
-    return { kind: "fail", reason: `${zipName} is missing (payload-windows: ${result}), and WINDOWS_ASSET_OPTIONAL is not true` };
+    return { kind: "fail", reason: `${zipName} is missing (payload-windows: ${result}), and the Windows asset is no longer optional` };
   }
   return { kind: "warn", reason: `${zipName} is not in this release (payload-windows: ${result}). Linux and macOS publish as usual.` };
 }
@@ -55,6 +64,118 @@ export function windowsNotes(present: boolean): string {
   return present
     ? "Windows zip: experimental, unsigned, for testing only. There is no installer yet. Windows 11 Smart App Control may block it and that cannot be overridden. Linux and macOS are not affected."
     : "The Windows zip was not built for this release.";
+}
+
+// ── The tolerance ────────────────────────────────────────────────────────────
+
+/** From this UTC day on, a release without the Windows zip fails. The one place the date is written. */
+export const WINDOWS_ASSET_MANDATORY_FROM = "2026-11-15";
+
+/** What the releases API says about earlier releases. `unknown` is an API that did not answer. */
+export type PriorWindowsRelease =
+  | { readonly kind: "found"; readonly tag: string }
+  | { readonly kind: "none" }
+  | { readonly kind: "unknown"; readonly reason: string };
+
+export interface Tolerance {
+  /** True while a missing Windows asset only warns. */
+  readonly optional: boolean;
+  /** One clause for the log: why the tolerance is open or closed. */
+  readonly why: string;
+  /** True when the API did not answer and the date alone decided. */
+  readonly dateOnly: boolean;
+}
+
+/**
+ * Whether a missing Windows asset is still tolerated. `now` is the clock, `ask` asks GitHub about
+ * earlier releases. `ask` runs only before the date: from the date on the answer cannot change it.
+ */
+export function windowsTolerance(now: Date, ask: () => PriorWindowsRelease): Tolerance {
+  const today = now.toISOString().slice(0, 10);
+  if (today >= WINDOWS_ASSET_MANDATORY_FROM) {
+    return { optional: false, why: `it is ${today}, on or after ${WINDOWS_ASSET_MANDATORY_FROM}`, dateOnly: false };
+  }
+  const prior = ask();
+  if (prior.kind === "found") {
+    return { optional: false, why: `release ${prior.tag} already carries the Windows zip`, dateOnly: false };
+  }
+  if (prior.kind === "unknown") {
+    return {
+      optional: true,
+      why: `the releases API did not answer (${prior.reason}), so the date rule alone decides, and it is ${today}, before ${WINDOWS_ASSET_MANDATORY_FROM}`,
+      dateOnly: true,
+    };
+  }
+  return {
+    optional: true,
+    why: `no earlier release carries the Windows zip, and it is ${today}, before ${WINDOWS_ASSET_MANDATORY_FROM}`,
+    dateOnly: false,
+  };
+}
+
+/** The asset name of a Windows zip, in any version. */
+const WINDOWS_ZIP = /^collie-.+-windows-x64\.zip$/;
+
+/**
+ * The jq filter `gh api` runs over each page: one tab-separated line per release, the tag, `draft`,
+ * `prerelease` and the asset names joined by commas. `--paginate` prints page after page, so a line
+ * per release is what keeps more than one page readable. Tags and asset names carry no tab or comma.
+ */
+export const RELEASES_JQ = '.[] | [.tag_name, (.draft | tostring), (.prerelease | tostring), ([.assets[].name] | join(","))] | @tsv';
+
+/** `true` or `false` as jq's `tostring` spells them; anything else is `null`. */
+function flag(word: string | undefined): boolean | null {
+  if (word === "true") return true;
+  if (word === "false") return false;
+  return null;
+}
+
+/**
+ * The first earlier release in the API's answer that carries the Windows zip. Drafts, prereleases and
+ * the tag being released now do not count. A line that is not what {@link RELEASES_JQ} prints makes
+ * the whole answer `unknown`: a half-read list must not decide.
+ */
+export function priorWindowsRelease(lines: string, currentTag: string): PriorWindowsRelease {
+  for (const line of lines.split("\n")) {
+    if (line.trim() === "") continue;
+    const [tag, draftWord, prereleaseWord, assetList, ...rest] = line.split("\t");
+    const draft = flag(draftWord);
+    const prerelease = flag(prereleaseWord);
+    if (tag === undefined || tag === "" || draft === null || prerelease === null || assetList === undefined || rest.length > 0) {
+      return { kind: "unknown", reason: "a line of the answer was not tag, draft, prerelease and assets" };
+    }
+    if (draft || prerelease || tag === currentTag) continue;
+    if (assetList.split(",").some((name) => WINDOWS_ZIP.test(name))) return { kind: "found", tag };
+  }
+  return { kind: "none" };
+}
+
+/** One `gh` run: its exit code and output. A spawn that could not start throws. */
+export interface GhResult {
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+export type GhRunner = (args: readonly string[]) => GhResult;
+
+const runGh: GhRunner = (args) => {
+  const p = Bun.spawnSync(["gh", ...args], { stdout: "pipe", stderr: "pipe", timeout: 60_000 });
+  return { code: p.exitCode, stdout: p.stdout.toString(), stderr: p.stderr.toString() };
+};
+
+/** Ask the releases API, through `gh`, for an earlier release with the Windows zip. Never throws. */
+export function lookupPriorWindowsRelease(repo: string, currentTag: string, gh: GhRunner = runGh): PriorWindowsRelease {
+  let result: GhResult;
+  try {
+    result = gh(["api", "--paginate", `repos/${repo}/releases?per_page=100`, "--jq", RELEASES_JQ]);
+  } catch (err) {
+    return { kind: "unknown", reason: `gh did not start: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  if (result.code !== 0) {
+    const said = result.stderr.trim().split("\n")[0] ?? "";
+    return { kind: "unknown", reason: `gh api exited ${result.code ?? "on a signal or timeout"}${said === "" ? "" : `: ${said}`}` };
+  }
+  return priorWindowsRelease(result.stdout, currentTag);
 }
 
 /** The three file names of the set for one version. */
@@ -100,13 +221,22 @@ function main(args: readonly string[]): number {
   const dir = arg(args, "--dir");
   const version = arg(args, "--version");
   const result = arg(args, "--result");
-  const optional = arg(args, "--optional");
-  if (dir === null || version === null || result === null || (optional !== "true" && optional !== "false")) {
-    process.stderr.write("usage: windows-asset.ts --dir <assets> --version <X.Y.Z> --result <result> --optional true|false\n");
+  const repo = arg(args, "--repo");
+  const nowArg = arg(args, "--now");
+  const now = nowArg === null ? new Date() : new Date(nowArg);
+  if (dir === null || version === null || result === null || Number.isNaN(now.getTime())) {
+    process.stderr.write(
+      "usage: windows-asset.ts --dir <assets> --version <X.Y.Z> --result <result> --repo <owner/name> [--now <ISO date>]\n",
+    );
     return 2;
   }
   const files = windowsFiles(version);
-  const verdict = windowsVerdict(readSet(dir, version), result, optional === "true", files.zip);
+  const tolerance = windowsTolerance(now, () =>
+    repo === null ? { kind: "unknown", reason: "no --repo was given" } : lookupPriorWindowsRelease(repo, `v${version}`),
+  );
+  if (tolerance.dateOnly) process.stdout.write(`::notice title=Windows asset tolerance::${tolerance.why}\n`);
+  process.stdout.write(`Windows asset ${tolerance.optional ? "optional" : "mandatory"}: ${tolerance.why}.\n`);
+  const verdict = windowsVerdict(readSet(dir, version), result, tolerance.optional, files.zip);
   const output = process.env.GITHUB_OUTPUT;
   if (output) appendFileSync(output, `present=${verdict.kind === "present"}\n`);
   if (verdict.kind === "present") {

@@ -95,17 +95,21 @@ describe("release.yml: a Windows failure never stops a release", () => {
     expect(release.if).toBe("${{ !cancelled() && needs.payload.result == 'success' }}");
   });
 
-  test("the asset check runs the tested script, with the tolerance on and its end date beside it", () => {
+  test("the asset check runs the tested script, which alone decides when the tolerance closes", () => {
     // The verdicts themselves (warn on failure/skipped/cancelled, fail on a lost asset after
-    // success, fail with the tolerance off) are pinned in scripts/windows-asset.test.ts.
+    // success, fail with the tolerance closed) and the closing rule (the date, or an earlier release
+    // with the zip) are pinned in scripts/windows-asset.test.ts.
     const step = (job("release").steps ?? []).find((s) => s.name === "Check for the Windows asset");
     expect(step?.id).toBe("windows");
     expect(step?.run).toContain("bun scripts/windows-asset.ts --dir");
-    expect(step?.run).toContain('--result "$WINDOWS_RESULT" --optional "$WINDOWS_ASSET_OPTIONAL"');
+    expect(step?.run).toContain('--result "$WINDOWS_RESULT" --repo "$GITHUB_REPOSITORY"');
     expect(step?.env?.WINDOWS_RESULT).toBe("${{ needs.payload-windows.result }}");
-    expect(step?.env?.WINDOWS_ASSET_OPTIONAL).toBe("true");
-    expect(text).toContain("whichever comes first (M43, decided 2026-10-02). Altan or the next Windows spec flips it to");
-    expect(text).toContain("2026-11-15");
+    // The same token the gate job hands `gh`; the script asks the releases API with it.
+    expect(step?.env?.GH_TOKEN).toBe("${{ github.token }}");
+    // No second copy of the rule: no switch, no date, no `--optional`.
+    expect(text).not.toContain("WINDOWS_ASSET_OPTIONAL");
+    expect(text).not.toContain("--optional");
+    expect(text).not.toContain("2026-11-15");
   });
 
   test("the release notes keep the script's whole body and only append the Windows block", () => {
