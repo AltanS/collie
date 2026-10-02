@@ -1883,6 +1883,22 @@ describe("the config-file finding", () => {
 
 // ── Windows: who the Task Scheduler task belongs to (M43 spec 05) ─────────────
 
+describe("hook-python3 on Windows (M43 spec 08)", () => {
+  // The rehearsal found `collie doctor` exiting 1 on every fresh Windows install without Python, and
+  // `collie update --check` red with it, which turned the phone's Update button off.
+  test("is no finding at all on Windows, where Herdr's hooks are PowerShell; elsewhere still an error", async () => {
+    const win = harness(null, [], { absent: ["python3"] });
+    win.deps = { ...win.deps, host: hostFor("win32") };
+    const { byCheck } = await findings(win);
+    expect(byCheck.has("hook-python3")).toBe(false);
+
+    const linux = harness(null, [], { absent: ["python3"] });
+    const { byCheck: onLinux, code } = await findings(linux);
+    expect(onLinux.get("hook-python3")?.status).toBe("error");
+    expect(code).toBe(EXIT.FAIL);
+  });
+});
+
 describe("windows-task", () => {
   const WIN = hostFor("win32");
   // The query opens with the UTF-8 line (`POWERSHELL_UTF8`), so a non-ASCII path comes back whole.

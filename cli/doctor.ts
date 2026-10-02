@@ -230,7 +230,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // about nobody, and carries no stamp. Together with `store-drift` below this is the rule: these
     // two arrays are RENDER SECTIONS, and `aboutCrew` is applied per finding on its own merit.
     inCrew ? aboutCrew(clock(inCrew, probes)) : clock(inCrew, probes),
-  ].filter((f) => appliesToMux(f.check, chosen.name));
+  ].filter((f) => appliesToMux(f.check, chosen.name) && appliesToHost(f.check, deps.host));
   // STAMPED `scope: "crew"`, every one of them (ADR 0050). These four describe the crew's health,
   // never this machine's readiness to take a new version, and `collie update --check` is the reader
   // that must not confuse the two: a laptop asleep in another room is not a reason this desktop
@@ -308,6 +308,20 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
 const HERDR_ONLY_CHECKS = new Set(["herdr-socket", "herdr-version", "hook-python3"]);
 /** `integration-<agent>`: every one of them is a line of `herdr integration status` (cli/history.ts). */
 const HERDR_ONLY_PREFIX = "integration-";
+
+// ── The finding set is scoped by the HOST too ───────────────────────────────
+// `hook-python3` hunts for the interpreter Herdr's shell-flavoured hooks run under. On Windows Herdr
+// installs PowerShell hooks instead (`herdr-agent-state.ps1` for claude, codex and grok, as
+// `herdr integration status` names them on the VM, 2026-10-02), so a missing `python3` costs a
+// Windows host nothing. It reported `error` there, which failed `collie doctor` on every healthy
+// Windows install without Python, and through `collie update --check` turned the phone's Update
+// button off (M43 spec 08). Dropped on Windows, the same way the multiplexer scoping above drops it.
+const NOT_ON_WINDOWS = new Set(["hook-python3"]);
+
+/** Whether a check has anything to say on this host. */
+function appliesToHost(check: string, host: Host): boolean {
+  return host.platform !== "win32" || !NOT_ON_WINDOWS.has(check);
+}
 
 /** Whether a check has anything to say on an install driving `chosenMux`. */
 function appliesToMux(check: string, chosenMux: string): boolean {
