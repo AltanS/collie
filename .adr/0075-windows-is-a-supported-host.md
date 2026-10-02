@@ -1,6 +1,7 @@
 # 0075: Windows is a supported host
 
-- **Status:** Accepted
+- **Status:** Accepted. The public label stays experimental until a release carries the Windows zip,
+  `install.ps1` is on colliepwa.dev, and one install and one update have run against a real release.
 - **Date:** 2026-10-03
 - **Shipped in:** pending (M43)
 - **Supersedes:** the contrib-only decisions on PR #71 (2026-08-11) and PR #298 (2026-09-26), which
@@ -47,19 +48,27 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
    WSL is not Windows for this purpose: a WSL operator runs the Linux setup.
 
 2. **What supported promises.**
-   - **A gate.** The `windows.yml` workflow runs the bridge, cli and scripts suites on
-     `windows-latest` for every push. It is its own workflow, not a job in `ci.yml`, so a red
-     Windows run can never stop a Linux hotfix. It is not yet a required check. I will promote it
-     after about ten consecutive green runs on `main`, and then `release.yml`'s gate reads it too.
+   - **A CI run.** The `windows.yml` workflow runs the bridge, cli and scripts suites on
+     `windows-latest` on every push and every pull request. That runner is Windows Server, so the
+     Windows 11 VM stays the second truth. It is its own workflow, not a job in `ci.yml`, so a red
+     Windows run can never stop a Linux hotfix. It blocks nothing today. At promotion, after about
+     ten consecutive green runs on `main`, it becomes a required check, and `release.yml`'s gate
+     reads it too.
    - **A release asset.** Each release builds `collie-<v>-windows-x64.zip` with a lowercase
      `.sha256` and a manifest entry, in its own job. While `WINDOWS_ASSET_OPTIONAL` is on, a
      failed Windows job warns instead of failing the release. It ends after the first release
      with a Windows asset, or on 2026-11-15. A Windows job that succeeds but leaves no asset always
      fails the release.
+   - **What a missing zip means.** `install.ps1` tries the newest five releases, says `<tag> has no
+     Windows build` for each, ends with `none of the newest 5 releases ... carries a Windows build
+     yet. Nothing was installed.` and changes nothing. `collie update` on a Windows install says
+     `release <version> has no Windows build; try again after the next release. Nothing was
+     changed.` Both are plain lines, not stack traces.
    - **A rehearsal before each tag.** `make win-rehearse` throws away the Windows VM's disk,
      installs a release with `install.ps1` from a local mirror, updates from the terminal and
      from the phone's endpoint, forces a failed health check and shows the rollback. I run it
-     before every release tag.
+     before every release tag. If the Windows VM is unavailable, the tag waits. No rehearsal means
+     no tag.
    - **One lifecycle.** `collie start`, `stop`, `restart`, `status`, `uninstall` and
      `doctor` exist on Windows with the exit codes they have elsewhere.
 
@@ -74,6 +83,9 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
      do. Smart App Control can block it. Signing is a later option, not a gate.
    - winget or MSI. A package-managed install must not update itself, and packages wait for the
      maintainer's accounts.
+   - Herdr older than 0.9.3. That is the tested minimum, and `collie doctor` warns below it.
+     Herdr's own Windows build is an upstream dependency that the Herdr project makes, so a defect
+     in it is not Collie's to fix.
    - Herdr's action buttons. `herdr-plugin.toml` stays `linux` and `macos` because its actions
      run `bash`.
 
@@ -94,7 +106,7 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
    the `icacls /restore` line. `COLLIE_NO_ACL_REPAIR=1` turns every change off. A network share or a
    FAT volume is "not checked", because a list that does not exist cannot be read.
 
-6. **Who owns the code.** The maintainer. It is tested on the Windows 11 VM on minibuch and by
+6. **Who owns the code.** The maintainer. It is tested on the Windows 11 test VM and by
    `windows.yml`, not on contributors' machines. A contributor's Windows PR is checked on both before it
    merges, the same as any other.
 
@@ -108,10 +120,15 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
 
 - **The public pages say what is tested.** The README, `docs/install.md` and `docs/windows.md` name
   the boundary and the limits above. The word "experimental" stays on them until a release
-  carries the Windows zip and `install.ps1` is published on colliepwa.dev, because until then the
-  front door is the zip on the release page.
-- **A Windows break now fails a check.** The check is not a required one yet, so the first ten
-  green runs are a promise I keep by reading the runs, not a rule GitHub enforces.
+  carries the Windows zip, `install.ps1` is published on colliepwa.dev, and one install and one
+  update have run against a real release. Until then the install route is a script saved from the
+  repository, and no release has the zip it downloads.
+- **A Windows break now shows red on its own check.** The check is not a required one yet, so the
+  first ten green runs are a promise I keep by reading the runs, not a rule GitHub enforces.
+- **Each Windows check is a partial proxy for the supported target.** The `windows-latest` runner
+  (Windows Server) found bugs the Windows 11 VM could not: 8.3 short temp paths, and the built-in
+  Administrator account that icacls writes as the SDDL alias `LA`. The VM sees what the runner
+  cannot, and neither is a real user's machine.
 - **A release waits for the Windows job.** `release` needs `payload-windows`, which costs up to
   fifteen minutes and the runner queue. I accepted that on purpose.
 - **Users on 1.15.0 or older update by hand once.** The second half of `collie update` runs the code
