@@ -907,8 +907,8 @@ cwd. The session had no provider signed in, so there is no vendor account state 
 
 ## OMP empty-editor key hint (captured 2026-09-30, oh-my-pi `omp` v18.4.4, herdr 0.9.2, throwaway Herdr panes)
 
-Three byte-faithful `pane.read format:ansi` captures, taken with `scripts/capture-fixture.sh` from
-fresh omp sessions in `/tmp`, one per composer shape. The rule and pi shapes ran under a
+Four byte-faithful `pane.read format:ansi` captures, taken with `scripts/capture-fixture.sh`. The
+first three come from fresh omp sessions in `/tmp`, one per composer shape. The rule and pi shapes ran under a
 `--config` overlay that set only `composer.shape`. omp 18.4 paints a key hint into an EMPTY editor:
 the Shift+Tab key glyphs in the accent colour, one space, then `to change thinking effort` in dim
 italic, right-aligned in the draft row. The hint is not in the input buffer and goes away with the
@@ -916,15 +916,31 @@ first typed character. Read as text, the row was a draft of the two key glyphs, 
 session showed "Draft in terminal". `draftPlaceholder` (`harness/omp/markers.ts`) now recognises
 the hint by the renderer's shape.
 
-The operator's statusline template shows only the model and the context meter, so no cwd, branch,
-host or account appears. **No sanitization pass was needed.** All three are CRLF with no trailing
-newline; their `wc -l` counts are 2, 4 and 4.
+omp's `composer-hints.ts` builds a second hint from the same parts, and it wins over the effort
+hint: `← ← to see N running agents`, painted while a background subagent runs. Its key run is two
+glyphs with a space between them, which the effort hint never tests. `omp--fresh-agents-hint.txt`
+pins it in the boxed shape. It was captured 2026-10-02 on omp v18.4.10 and herdr 0.9.3, after one
+`task` subagent was started in the background. omp retires a hint after its gesture is used three
+times, and the capturing operator's own count had retired it, so this session ran on a copy of the
+agent directory (`PI_CODING_AGENT_DIR`) with the hint counter cleared.
+
+The operator's statusline template shows the model and the context meter, plus the subagent count
+and git branch when there are any. The agents capture ran in a fresh `git init` sandbox, so its row
+shows `1` and `main`. No cwd, host or account appears. **No sanitization pass was needed.** All four are CRLF with no trailing
+newline; their `wc -l` counts are 2, 4, 4 and 2.
+
+**The two boxed captures are deliberately outside the `extractStatusLines` content assertion.**
+Every other boxed fixture is held to a status row that starts with `π`, ends with `▶` and names the
+branch (`chrome.test.ts`). That is the default powerline template the rest of the corpus carries.
+These two carry the operator's own template, which is neither, so they are held only to the shape
+half of that test: exactly one styled row with more than one segment.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `omp--fresh-effort-hint.txt` | Boxed composer on a fresh session: the hint right-aligned in the `╰─ … ─╯` bottom border | `idle` |
 | `omp--v18-rule-effort-hint.txt` | `rule` composer: the hint right-aligned on the empty `❯` row, then the blank gap and the status row | `idle` |
 | `omp--v18-pi-effort-hint.txt` | `pi` composer: the hint right-aligned on the single draft row between the two rules, status row below | `idle` |
+| `omp--fresh-agents-hint.txt` | Boxed composer with a background subagent running: `← ← to see 1 running agent` right-aligned in the bottom border | `idle` |
 
 ## Lessons already encoded here (don't re-learn them)
 

@@ -46,10 +46,10 @@
 //   - STRUCTURAL, for every screen omp can draw: `ompBuildBlocks` returns one `raw` block
 //     unconditionally. There is no detector to mis-fire, so no screen — captured or not — can be
 //     up-levelled. That covers the tool-approval dialog by construction.
-//   - TESTED, for the 32 screens in this corpus: 17 composer states, six picker screens
+//   - TESTED, for the 33 screens in this corpus: 18 composer states, six picker screens
 //     (`/model`, `/settings`, `/resume`, each with a moved-selection twin), the `/tree` picker, five
 //     Ask-tool screens and three tool-approval screens. harness/omp.test.ts asserts raw-only over
-//     all 32 and `composerReady === false` over the fifteen modals, so the declining is a test
+//     all 33 and `composerReady === false` over the fifteen modals, so the declining is a test
 //     result rather than an accident. Each is declined because it is out of scope above, or a widget whose
 //     `handleInput` we have not read, or one whose options include a free-text row that would strand
 //     a phone user — the fail-closed contract says a detector returns null on anything it does not

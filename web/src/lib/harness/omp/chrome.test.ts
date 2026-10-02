@@ -54,6 +54,7 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--draft-ghost-suggestion-busy.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
+  "omp--fresh-agents-hint.txt",
   "omp--fresh-effort-hint.txt",
   "omp--fresh-idle.txt",
   "omp--menu-dismissed.txt",
@@ -74,6 +75,9 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     // omp 18.4's empty-composer hint (`⇧⇥ to change thinking effort`) sits right-aligned in the
     // bottom border: it changes what the row SAYS, never where the box is.
     { fixture: "omp--fresh-effort-hint.txt", top: 1, bottom: 2, suggestEnd: 3 },
+    // The same border with the higher-priority hint, `← ← to see 1 running agent`: a background
+    // subagent was running. Its key run is two glyphs with a space between them.
+    { fixture: "omp--fresh-agents-hint.txt", top: 1, bottom: 2, suggestEnd: 3 },
     { fixture: "omp--draft-single.txt", top: 26, bottom: 27, suggestEnd: 28 },
     // The same screen with omp's inline suggestion painted after the draft: the ghost changes what
     // the row SAYS, never where the box is.
@@ -152,6 +156,7 @@ describe("extractInputDraft", () => {
     // Reading it as one showed "Draft in terminal" on every fresh session (markers.ts
     // `draftPlaceholder`).
     { fixture: "omp--fresh-effort-hint.txt", draft: null },
+    { fixture: "omp--fresh-agents-hint.txt", draft: null },
     { fixture: "omp--fresh-idle.txt", draft: null },
     { fixture: "omp--done.txt", draft: null },
     { fixture: "omp--done--tool-result.txt", draft: null },
@@ -177,9 +182,13 @@ describe("extractStatusLines", () => {
     expect(rows[0]!.segments.length).toBeGreaterThan(1);
   });
 
-  // omp--fresh-effort-hint.txt carries the capturing operator's own statusline template, not the
-  // `π … ▶` powerline these assertions read.
-  it.each(BOX_COMPOSER_FIXTURES.filter((f) => f !== "omp--done.txt" && f !== "omp--fresh-effort-hint.txt"))(
+  // The two omp 18.4 hint captures carry the capturing operator's own statusline template, not
+  // the `π … ▶` powerline these assertions read.
+  it.each(
+    BOX_COMPOSER_FIXTURES.filter(
+      (f) => f !== "omp--done.txt" && f !== "omp--fresh-effort-hint.txt" && f !== "omp--fresh-agents-hint.txt",
+    ),
+  )(
     "%s: trims the border glyphs off both ends, keeping the whole powerline",
     (name) => {
       const text = lineText(extractStatusLines(fixtureLines(name))[0]!);
