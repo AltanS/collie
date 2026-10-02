@@ -212,6 +212,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       exec: deps.exec,
       files: deps.files,
       snapshot: ownRead,
+      host: deps.host,
     })),
     // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same

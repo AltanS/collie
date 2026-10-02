@@ -6,6 +6,7 @@ import { DEFAULT_PORT, defaultSocketPath, normaliseBasePath, resolveStateDir } f
 import { HOST } from "../bridge/host.ts";
 import {
   configFilePaths,
+  hostFilePerms,
   overlayConfig,
   readConfigFilesSync,
   tightenPrivateFile,
@@ -303,8 +304,11 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
 // caller keeps importing it from here.
 export { collieVersion, collieVersionBare, collieVersionFrom } from "../bridge/version.ts";
 
-/** {@link EnvFilePerms} against the real filesystem. */
-const diskEnvPerms: EnvFilePerms = {
+/**
+ * {@link EnvFilePerms} against the real filesystem. On Windows the mode check says nothing, rather
+ * than the false `.env was mode 666; tightened it to 600` on every command ({@link hostFilePerms}).
+ */
+const diskEnvPerms: EnvFilePerms = hostFilePerms(HOST, {
   mode(path) {
     try {
       return statSync(path).mode & 0o777;
@@ -320,7 +324,7 @@ const diskEnvPerms: EnvFilePerms = {
       return false;
     }
   },
-};
+});
 
 /** File contents, or `null` when missing/unreadable. */
 function readIfPresent(p: string): string | null {

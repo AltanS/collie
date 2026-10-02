@@ -38,6 +38,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
 
+### Fixed
+
+- **Windows no longer prints a false `.env` mode warning, and `collie doctor` checks Herdr's version there.** NTFS has no mode bits, so the line saying `.env` was tightened to 600 was untrue on every command. Collie now says nothing about it on Windows until it can read the file's access list. `doctor` warns when Herdr on Windows is older than 0.9.3, the build Collie was checked with.
+
 ## [1.15.3] - 2026-10-02
 
 ### Fixed

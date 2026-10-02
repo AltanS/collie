@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import {
   configFilePaths,
+  hostFilePerms,
   readConfigFiles,
   type ConfigFileLayer,
   type Environment,
@@ -562,8 +563,11 @@ export function resolveConfigDir(
  * layer))` is the whole of how a `config.toml` reaches the bridge. Called with nothing it behaves
  * exactly as it always has, which is why no existing call site moved.
  */
-/** {@link FilePerms} against the real filesystem, for the secret-permission rule on `config.toml`. */
-const diskFilePerms: FilePerms = {
+/**
+ * {@link FilePerms} against the real filesystem, for the secret-permission rule on `config.toml`. On
+ * Windows the rule says nothing ({@link hostFilePerms}).
+ */
+const diskFilePerms: FilePerms = hostFilePerms(HOST, {
   mode(path) {
     try {
       return statSync(path).mode & 0o777;
@@ -579,7 +583,7 @@ const diskFilePerms: FilePerms = {
       return false;
     }
   },
-};
+});
 
 export function loadConfig(env: Environment = process.env): Config {
   const stateDir = resolveStateDir(env);

@@ -84,7 +84,9 @@ const INTEGRATION_OK = [
 ].join("\n");
 
 const HEALTHY_ANSWERS: Scripted["answers"] = [
-  ["herdr --version", { stdout: "herdr 0.8.2\n" }],
+  // At or above the Windows minimum (`HERDR_MIN_WINDOWS`), because this suite runs on the real host
+  // and a Windows run would otherwise warn on a healthy fixture.
+  ["herdr --version", { stdout: "herdr 0.9.3\n" }],
   // A healthy checkout can say where it came from: `update` asserts `origin` against the configured
   // update source before it fetches, so an origin-less checkout is a real (reported) problem.
   [`git -C ${ROOT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
