@@ -12,6 +12,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -115,10 +116,11 @@ describe("scripts/install.ps1, read as text", () => {
   });
 
   test("a junction is removed by itself, never through a recursive delete", () => {
-    for (const line of CODE.filter((l) => l.includes("-Recurse"))) {
-      expect(line).not.toMatch(/\$current|\$staged|current"/);
-    }
-    expect(TEXT).toContain("[System.IO.Directory]::Delete($Path, $false)");
+    // `Remove-Item -Recurse` walks into a junction in Windows PowerShell 5.1. None is left.
+    expect(offending(/-Recurse/)).toEqual([]);
+    const deletes = CODE.filter((l) => l.includes("Directory]::Delete("));
+    expect(deletes.length).toBeGreaterThan(0);
+    for (const line of deletes) expect(line).toContain(", $false)");
   });
 
   test("the token goes with the tags call alone, never with a download", () => {
@@ -762,6 +764,62 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
       expect(filesUnder(b.root).filter((f) => f.endsWith("evil.txt"))).toEqual([]);
     }
   }, 120_000);
+
+  test("a `.staging` left by a stopped run is emptied, and one that is a junction is removed by itself", async () => {
+    const left = box();
+    mkdirSync(join(left.dir, ".staging", "install-999", "unpacked"), { recursive: true });
+    writeFileSync(join(left.dir, ".staging", "install-999", "unpacked", "junk.txt"), "half\n");
+    const r = await install(left, mirror);
+    expect(r.code).toBe(0);
+    expect(existsSync(join(left.dir, ".staging"))).toBe(false);
+
+    const linked = box();
+    const precious = join(linked.root, "precious");
+    mkdirSync(precious, { recursive: true });
+    writeFileSync(join(precious, "sentinel.txt"), "keep\n");
+    mkdirSync(linked.dir, { recursive: true });
+    symlinkSync(precious, join(linked.dir, ".staging"), "junction");
+    const j = await install(linked, mirror);
+    expect(j.code).toBe(0);
+    expect(existsSync(join(linked.dir, ".staging"))).toBe(false);
+    expect(readdirSync(precious)).toEqual(["sentinel.txt"]);
+  }, 90_000);
+
+  test("a real folder named `current` stops a pinned run before any download, and is kept", async () => {
+    const b = box();
+    expect((await install(b, mirror)).code).toBe(0);
+    rmSync(join(b.dir, "current"));
+    mkdirSync(join(b.dir, "current"));
+    writeFileSync(join(b.dir, "current", "mine.txt"), "mine\n");
+    const r = await install(b, mirror, { env: { COLLIE_TAG: `v${v2}` } });
+    expectFailed(r);
+    expect(r.out).toContain("is a real folder or file, not a junction");
+    expect(r.asked).toEqual([]);
+    expect(readdirSync(join(b.dir, "current"))).toEqual(["mine.txt"]);
+    expect(readdirSync(join(b.dir, "versions"))).toEqual([v1]);
+  }, 90_000);
+
+  test("a half-moved version folder is not an install, and a junction in its place is refused", async () => {
+    const b = box();
+    expect((await install(b, mirror)).code).toBe(0);
+    mkdirSync(join(b.dir, "versions", v2, "web"), { recursive: true });
+    const half = await install(b, mirror, { env: { COLLIE_TAG: `v${v2}` } });
+    expectFailed(half);
+    expect(half.out).toContain("holds no bin\\collie.exe");
+    expect(currentTarget(b)).toBe(versionDir(b, v1));
+    expect(half.asked).toEqual([]);
+
+    rmSync(join(b.dir, "versions", v2), { recursive: true });
+    const elsewhere = join(b.root, "elsewhere");
+    mkdirSync(join(elsewhere, "bin"), { recursive: true });
+    writeFileSync(join(elsewhere, "bin", "collie.exe"), "not ours\n");
+    symlinkSync(elsewhere, join(b.dir, "versions", v2), "junction");
+    const linked = await install(b, mirror, { env: { COLLIE_TAG: `v${v2}` } });
+    expectFailed(linked);
+    expect(linked.out).toContain("is a junction or a link");
+    expect(currentTarget(b)).toBe(versionDir(b, v1));
+    expect(existsSync(join(elsewhere, "bin", "collie.exe"))).toBe(true);
+  }, 90_000);
 
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
     const b = box();

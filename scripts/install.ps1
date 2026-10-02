@@ -272,6 +272,30 @@ function New-CollieJunction([string]$Path, [string]$Target) {
 
 # Remove a junction ITSELF. A non-recursive delete never touches the folder the junction names.
 function Remove-CollieLink([string]$Path) {
+  if ([System.IO.File]::GetAttributes($Path) -band [System.IO.FileAttributes]::Directory) { [System.IO.Directory]::Delete($Path, $false) }
+  else { [System.IO.File]::Delete($Path) }
+}
+
+# Delete a folder this script made, and everything in it. It never follows a junction or a link: one
+# found anywhere in the tree is removed by itself, so the folder it names keeps every file. That is
+# why this script has no `Remove-Item -Recurse`, which in Windows PowerShell 5.1 walks into one.
+function Remove-CollieTree([string]$Path) {
+  $state = Get-CollieLinkState $Path
+  if ($state -eq "absent") { return }
+  if ($state -eq "link") { Remove-CollieLink $Path; return }
+  if (-not ([System.IO.File]::GetAttributes($Path) -band [System.IO.FileAttributes]::Directory)) {
+    [System.IO.File]::SetAttributes($Path, [System.IO.FileAttributes]::Normal)
+    [System.IO.File]::Delete($Path)
+    return
+  }
+  foreach ($child in [System.IO.Directory]::GetFileSystemEntries($Path)) { Remove-CollieTree $child }
+  [System.IO.Directory]::Delete($Path, $false)
+}
+
+# Delete Path only when it is an EMPTY real folder.
+function Remove-CollieEmptyFolder([string]$Path) {
+  if ((Get-CollieLinkState $Path) -ne "other") { return }
+  if (@([System.IO.Directory]::GetFileSystemEntries($Path)).Count -gt 0) { return }
   [System.IO.Directory]::Delete($Path, $false)
 }
 
@@ -428,7 +452,18 @@ function Invoke-CollieInstall {
     $tag = $pin
     $versionDir = Join-Path $dir "versions\$($tag.Substring(1))"
   }
+  if ($rescue) {
+    foreach ($folder in (Join-Path $dir "versions"), $versionDir) {
+      if ((Get-CollieLinkState $folder) -eq "link") {
+        Stop-CollieInstall "$folder is a junction or a link, not a folder this installer made." "Move $folder aside, then run the installer again."
+      }
+    }
+    if ((Get-CollieLinkState $current) -eq "other") {
+      Stop-CollieInstall "$current is a real folder or file, not a junction, so it is not Collie's to remove." "Move $current aside, then run the installer again."
+    }
+  }
   if ($rescue -and (Test-Path -LiteralPath $versionDir)) {
+    # A folder from a move that stopped half way is not an install: it must hold bin\collie.exe.
     if (-not (Test-Path -LiteralPath (Join-Path $versionDir "bin\collie.exe"))) {
       Stop-CollieInstall "$versionDir is there but holds no bin\collie.exe." "Move $versionDir aside, then run the installer again."
     }
@@ -452,7 +487,12 @@ function Invoke-CollieInstall {
   $staging = Join-Path $dir ".staging"
   $work = Join-Path $staging "install-$PID"
   try {
-    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    # A `.staging` left by a run that was stopped is emptied. One that is a junction is removed by
+    # itself (the folder it names is not touched), and a real folder takes its place.
+    switch (Get-CollieLinkState $staging) {
+      "link" { Remove-CollieLink $staging }
+      "other" { foreach ($leftover in [System.IO.Directory]::GetFileSystemEntries($staging)) { Remove-CollieTree $leftover } }
+    }
     New-Item -ItemType Directory -Force -Path $work | Out-Null
     # The checksum file first: it is small, and a release with no Windows build has none.
     $tag = $null
@@ -506,18 +546,15 @@ function Invoke-CollieInstall {
       Stop-CollieInstall "$zipName does not contain bin\collie.exe. Refusing to install it." "Report it at https://github.com/AltanS/collie/issues"
     }
     New-Item -ItemType Directory -Force -Path (Join-Path $dir "versions") | Out-Null
-    if (Test-Path -LiteralPath $versionDir) { Stop-CollieInstall "$versionDir exists already." "Move $versionDir aside, then run the installer again." }
+    if ((Get-CollieLinkState (Join-Path $dir "versions")) -ne "other") { Stop-CollieInstall "$dir\versions is a junction or a link, not a folder this installer made." "Move $dir\versions aside, then run the installer again." }
+    if ((Get-CollieLinkState $versionDir) -ne "absent") { Stop-CollieInstall "$versionDir exists already." "Move $versionDir aside, then run the installer again." }
     try { Move-CollieItem $payload $versionDir }
     catch { Stop-CollieInstall "could not move the payload into $versionDir ($($_.Exception.Message))." "Close programs that may hold files in $dir (an antivirus scan can), then run the installer again." }
     Set-CollieCurrent $dir $versionDir
   } finally {
-    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
-    if ((Test-Path -LiteralPath $staging) -and @(Get-ChildItem -LiteralPath $staging -Force).Count -eq 0) {
-      Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue
-    }
-    if ($createdDir -and (Test-Path -LiteralPath $dir) -and @(Get-ChildItem -LiteralPath $dir -Force).Count -eq 0) {
-      Remove-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
-    }
+    try { Remove-CollieTree $work } catch { }
+    try { Remove-CollieEmptyFolder $staging } catch { }
+    if ($createdDir) { try { Remove-CollieEmptyFolder $dir } catch { } }
   }
 
   $published = Publish-CollieName $dir
