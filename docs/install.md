@@ -164,7 +164,8 @@ macOS has no package yet. [mise](#mise) works on a Mac, as does the `aarch64-dar
 > download and cannot finish until the first release that does. The pieces below were tested as
 > described. Phone access needs a front door that you set up yourself, and it has not been tested on
 > Windows. "Supported" means the maintainer owns the code and tests it; "experimental" means the
-> install path and the phone path are not yet proven against a real release.
+> install path and the phone path are not yet proven against a real release, and it stays until the
+> conditions on the Windows page are all met.
 > [Collie on Windows](windows.md) has the whole page.
 
 Save `scripts/install.ps1` from the repository, read it, and run it. It needs no Bun, Git or
@@ -190,8 +191,9 @@ What to know before you start:
   [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
 - **A Windows machine cannot join a crew in this release.**
 - **A build from source needs Git for Windows' `bash`.** The zip needs no toolchain.
-- **Update by hand once if you are on 1.15.0 or older.** The older update code cannot swap
-  `collie.exe`. [Update](windows.md#update) says how, and `collie update` works after that.
+- **A source checkout never updates itself on Windows.** Moving to the zip install is a one-time
+  manual step: `collie uninstall`, then `install.ps1`. After that `collie update` works.
+  [Update](windows.md#update) has the detail.
 
 ### Standalone
 

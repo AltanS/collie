@@ -1,7 +1,11 @@
 # 0075: Windows is a supported host
 
-- **Status:** Accepted. The public label stays experimental until a release carries the Windows zip,
-  `install.ps1` is on colliepwa.dev, and one install and one update have run against a real release.
+- **Status:** Accepted. The public label stays experimental until all of these hold together: a
+  release carries the Windows zip, `install.ps1` is on colliepwa.dev, one install and one update have
+  run against a real release, the Windows check is a required check in branch protection,
+  `release.yml`'s gate reads the Windows workflow, and the tolerance for a missing Windows zip is off.
+  That tolerance closes itself: it is mandatory once any earlier release carries a Windows zip, or on
+  2026-11-15.
 - **Date:** 2026-10-03
 - **Shipped in:** pending (M43)
 - **Supersedes:** the contrib-only decisions on PR #71 (2026-08-11) and PR #298 (2026-09-26), which
@@ -69,6 +73,10 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
      from the phone's endpoint, forces a failed health check and shows the rollback. I run it
      before every release tag. If the Windows VM is unavailable, the tag waits. No rehearsal means
      no tag.
+   - **An exit condition for "experimental".** The word leaves only when every one of these holds
+     together: (a) the Windows check is a required check in branch protection, (b) `release.yml`'s
+     gate reads the Windows workflow, (c) the Windows-asset tolerance is off, and the earlier
+     conditions in the Status line are met. Until then the public pages keep the word.
    - **One lifecycle.** `collie start`, `stop`, `restart`, `status`, `uninstall` and
      `doctor` exist on Windows with the exit codes they have elsewhere.
 
@@ -119,9 +127,8 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
 ## Consequences
 
 - **The public pages say what is tested.** The README, `docs/install.md` and `docs/windows.md` name
-  the boundary and the limits above. The word "experimental" stays on them until a release
-  carries the Windows zip, `install.ps1` is published on colliepwa.dev, and one install and one
-  update have run against a real release. Until then the install route is a script saved from the
+  the boundary and the limits above. The word "experimental" stays on them until every condition in
+  the Status line holds together. Until then the install route is a script saved from the
   repository, and no release has the zip it downloads.
 - **A Windows break now shows red on its own check.** The check is not a required one yet, so the
   first ten green runs are a promise I keep by reading the runs, not a rule GitHub enforces.
@@ -131,9 +138,11 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
   cannot, and neither is a real user's machine.
 - **A release waits for the Windows job.** `release` needs `payload-windows`, which costs up to
   fifteen minutes and the runner queue. I accepted that on purpose.
-- **Users on 1.15.0 or older update by hand once.** The second half of `collie update` runs the code
-  of the release it fetched, and that older code swaps `collie.exe` the old way and fails with
-  `EPERM`. The first release that carries the fixed swap is the first one that updates itself.
+- **A source checkout never updates itself on Windows.** Every Windows install before the first
+  zip is a source checkout, and it refuses `collie update`. Moving to the zip install is a one-time
+  manual step: `collie uninstall`, then `install.ps1`. After that `collie update` works. This route
+  was not rehearsed. Separately, releases up to and including v1.15.0 cannot swap a running
+  `collie.exe` (fixed by PR #309 in v1.15.1).
 - **The first real tag is the first real test of the release job.** A rehearsal rc tag of the real
   `release.yml` has not run.
 - **Open follow-ups, none of them part of this decision:** a stable launcher outside `versions\`

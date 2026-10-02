@@ -15,7 +15,11 @@ Two words on this page have a fixed meaning:
   and a rehearsal on a Windows 11 virtual machine before each release tag
   ([ADR 0075](../.adr/0075-windows-is-a-supported-host.md)).
 - **Experimental** means the install path and the phone path are not yet proven against a real
-  release.
+  release. The word leaves only when all of these are true together: a release carries the Windows
+  zip, `install.ps1` is on colliepwa.dev, and one install and one update have run against a real
+  release; the Windows check is a required check in branch protection; the release gate reads the
+  Windows workflow; and the tolerance for a missing Windows zip is off. That tolerance closes
+  itself, as soon as any earlier release carries a Windows zip or on 2026-11-15.
 
 What you see today, before a release carries the zip:
 
@@ -163,25 +167,20 @@ VM against a local copy of the release files, not yet against a real GitHub rele
 An old version folder can stay in `versions\` until the launcher restarts, because Windows will
 not delete a folder a running program holds. The next update removes it.
 
-> **Caution.** This only affects you if you installed one of the releases up to and including
-> v1.15.0. Check with `collie version`. On those releases `collie update` fails on Windows with
-> `EPERM`: the second half of an update runs the code of the release it just fetched, and that
-> older code swaps `collie.exe` the old way. Update by hand once. After that, `collie update`
-> works. Neither route below was rehearsed.
+> **Caution.** A source checkout never updates itself on Windows: `collie update` and the phone
+> button say so in one sentence and change nothing. Every Windows install made before the first
+> zip is a source checkout. Moving to the zip install is a one-time manual step: run
+> `collie uninstall` to remove the old task, then run `install.ps1`. After that, `collie update`
+> works. This route was not rehearsed.
 
-The swap fix (PR 309) first shipped in v1.15.1. No release yet contains the later Windows update
-work: the phone's Update button on Windows, the restart wait and the cleanup of old folders. The
-rehearsal built its versions from the current code, so an update from a real v1.15.x release to
-the first Windows release has not been tried.
+Collie allows one install per Windows machine, and `collie start` refuses a task that runs
+another one, which is why the old task goes first. You can also stay on a source checkout and
+update it by hand: fetch the newer tag, run `bun run build`, then `collie restart`. The build
+needs Git for Windows' `bash`. That route was not rehearsed either.
 
-- **A source checkout:** fetch the newer tag, check it out, run `bun run build`, then
-  `collie restart`. The build needs Git for Windows' `bash`.
-- **To move to the binary install:** run `collie uninstall` on the old install first. Collie
-  allows one install per Windows machine, and `collie start` refuses a task that runs another
-  one. Then run `install.ps1`.
-
-A source checkout cannot update itself on Windows at all. `collie update` and the phone button
-say so in one sentence and change nothing.
+Releases up to and including v1.15.0 cannot swap a running `collie.exe` and fail with `EPERM`.
+The fix (PR 309) first shipped in v1.15.1. No release yet contains the later Windows update work,
+such as the phone's Update button on Windows.
 
 ## Long paths
 

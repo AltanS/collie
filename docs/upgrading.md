@@ -319,6 +319,22 @@ Expect the newest tag.
 within about a minute, and it holds that reload for the length of an update run. If you are mid-task
 it shows a "tap to update" banner and waits for your tap.
 
+### On Windows
+
+**A source checkout never updates itself on Windows; a zip install does.** `collie update` and
+the phone's Update button say so in one sentence on a source checkout and change nothing. Moving to
+the zip install is a one-time manual step:
+
+```powershell
+collie uninstall
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+After that, `collie update` works from the terminal and from the phone. That chain was rehearsed
+on a Windows 11 VM against a local copy of the release files, and the move itself was not.
+Releases up to and including v1.15.0 also could not swap a running `collie.exe`. See
+[Collie on Windows](windows.md#update).
+
 ### If the version did not move
 
 `collie update` asks GitHub directly on every run, `git ls-remote` for a checkout, the GitHub tags

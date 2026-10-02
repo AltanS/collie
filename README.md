@@ -198,7 +198,7 @@ access needs a front door that you set up yourself, and it has not been tested o
 
 Windows 11 on x64 with Herdr is a supported host: the maintainer owns the code and tests it. It stays
 marked experimental, because the install path and the phone path are not yet proven against a real
-release. [**docs/windows.md**](./docs/windows.md) has the install, the update, and what is not
+release. The conditions for dropping the word are on the Windows page. [**docs/windows.md**](./docs/windows.md) has the install, the update, and what is not
 tested. In short:
 
 - **Tested.** The `windows.yml` workflow runs the bridge, cli and scripts tests on every push, and
