@@ -65,6 +65,51 @@ export function parseTaskRecord(text: string): TaskRecord | null {
   return own === null ? null : { format: 2, launcher: Number(own[1]), bridge: Number(own[2]) };
 }
 
+// ── A Windows command line, read back ────────────────────────────────────────
+
+/**
+ * Split a Windows command line into words, by the rules `CommandLineToArgvW` and every MSVCRT program
+ * (Bun included) apply: blanks separate words outside quotes; `2n` backslashes before a quote are `n`
+ * backslashes and the quote toggles quoting; `2n+1` are `n` and a literal quote; a backslash anywhere
+ * else is literal. The inverse of `windowsArg` in `cli/unit.ts`, so a task's argument string can be
+ * read back the way the launcher will receive it.
+ */
+export function parseWindowsArgs(line: string): string[] {
+  const words: string[] = [];
+  let word = "";
+  let inWord = false;
+  let quoted = false;
+  let slashes = 0;
+  for (const ch of line) {
+    if (ch === "\\") {
+      slashes++;
+      inWord = true;
+      continue;
+    }
+    if (ch === '"') {
+      word += "\\".repeat(Math.floor(slashes / 2));
+      if (slashes % 2 === 1) word += '"';
+      else quoted = !quoted;
+      slashes = 0;
+      inWord = true;
+      continue;
+    }
+    word += "\\".repeat(slashes);
+    slashes = 0;
+    if ((ch === " " || ch === "\t") && !quoted) {
+      if (inWord) words.push(word);
+      word = "";
+      inWord = false;
+      continue;
+    }
+    word += ch;
+    inWord = true;
+  }
+  word += "\\".repeat(slashes);
+  if (inWord) words.push(word);
+  return words;
+}
+
 // ── Whose process is this? ───────────────────────────────────────────────────
 
 /** Windows paths compare without regard to case or separator, as the OS resolves them. */

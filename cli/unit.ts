@@ -237,7 +237,17 @@ ${envEntries}
 //   RestartSec=5            -> the launcher's 5 s pause     WorkingDirectory   -> WorkingDirectory
 // The launcher is `collie _supervise` (cli/task-scheduler.ts), because Task Scheduler restarts a task
 // that failed to START, not a program that exits: something Collie owns has to watch the bridge.
-// `RestartOnFailure` stays as a second line behind the launcher, as the community script set it.
+//
+// TWO RESTART LAYERS, AND WHICH ONE WINS. The launcher's loop owns relaunching the bridge: it sees
+// every exit and backs off on its own clock. `RestartOnFailure` (999 tries, one minute apart) is
+// only the outer net, for when the LAUNCHER itself dies or fails to start; it never sees the bridge.
+//
+// THE SETTINGS THAT ARE NOT DEFAULTS, each pinned by `cli/unit.test.ts`:
+//   ExecutionTimeLimit PT0S        the default is 72 hours, after which Task Scheduler silently ends
+//                                  the supervisor and the bridge stops being watched
+//   MultipleInstancesPolicy IgnoreNew  a second `/Run` while one runs is a no-op, never a second launcher
+//   DisallowStartIfOnBatteries false, StopIfGoingOnBatteries false  a laptop on battery keeps its bridge
+//   StartWhenAvailable true        a logon that was missed (the task disabled at the time) runs later
 // No analogue: NoNewPrivileges and PrivateTmp. The task runs with the user's limited token unless
 // the operator asks for `COLLIE_TASK_RUN_LEVEL=highest` (see `taskRunLevel` in cli/lifecycle.ts).
 //

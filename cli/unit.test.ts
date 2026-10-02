@@ -23,7 +23,7 @@ import {
   xmlAscii,
   xmlEscape,
 } from "./unit.ts";
-import { parseSuperviseArgs } from "./task-scheduler.ts";
+import { parseSuperviseArgs, parseWindowsArgs } from "./task-scheduler.ts";
 
 // The service definition is the one artifact an operator never sees us write and can't easily
 // inspect — it lands in ~/.config or ~/Library and is read by a daemon at login. So its full text
@@ -330,6 +330,58 @@ describe("the Task Scheduler task (Windows)", () => {
     // A path with a blank is quoted for the launcher's argv, and the quote survives the XML.
     expect(xml).toContain('--headless "C:\\Users\\Zo&#xeb;\\collie &amp; co\\bin\\collie.exe" _supervise');
     expect(xmlAscii("a\u{1F600}b")).toBe("a&#x1f600;b");
+  });
+
+  test("pins every setting that is not Task Scheduler's default", () => {
+    const xml = taskXml(WIN_SPEC, { user: "desk\\pat", runLevel: "LeastPrivilege", conhost: CONHOST });
+    // The 72 h default would silently end the supervisor three days after logon.
+    expect(xml).toContain("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>");
+    expect(xml).toContain("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>");
+    expect(xml).toContain("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>");
+    expect(xml).toContain("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>");
+    expect(xml).toContain("<StartWhenAvailable>true</StartWhenAvailable>");
+    // The outer net, for the launcher alone: the launcher's loop owns the bridge.
+    expect(xml).toContain("<RestartOnFailure>\n      <Interval>PT1M</Interval>\n      <Count>999</Count>");
+  });
+
+  // `&`, `'`, `<`, a blank and a character outside the Basic Multilingual Plane, in the user, the
+  // folder and a KEY=value word. The XML must carry each as itself (one reference per code point,
+  // never two surrogate halves), and the launcher must read back the exact words the task was given.
+  test("escapes a hostile path end to end: XML, then the launcher's command line", () => {
+    const odd = "C:\\Users\\O'Neil & <Co> \u{1F600}\\collie";
+    const spec: ServiceSpec = {
+      ...WIN_SPEC,
+      root: odd,
+      binary: `${odd}\\bin\\collie.exe`,
+      configDir: `${odd}\\cfg dir\\`,
+      tailscaleHosts: "desk.ts.net",
+    };
+    const user = "desk\\O'Neil & <Co> \u{1F600}";
+    const xml = taskXml(spec, { user, runLevel: "LeastPrivilege", conhost: CONHOST });
+    expect(xml).toContain("<UserId>desk\\O'Neil &amp; &lt;Co&gt; &#x1f600;</UserId>");
+    expect(xml).not.toMatch(/&#xd8[0-9a-f]{2};/);
+    expect([...xml].every((ch) => ch === "\n" || (ch >= " " && ch <= "~"))).toBe(true);
+
+    // What Task Scheduler hands conhost, decoded from the XML exactly as an XML reader would.
+    const encoded = /<Arguments>([^<]*)<\/Arguments>/.exec(xml)?.[1] ?? "";
+    const decoded = encoded
+      .replace(/&#x([0-9a-f]+);/g, (_m, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+      .replaceAll("&lt;", "<")
+      .replaceAll("&gt;", ">")
+      .replaceAll("&amp;", "&");
+    // conhost runs the rest of its line verbatim; the launcher splits it by CommandLineToArgvW.
+    const [headless, program, verb, ...words] = parseWindowsArgs(decoded);
+    expect(headless).toBe("--headless");
+    expect(program).toBe(spec.binary);
+    expect(verb).toBe("_supervise");
+    expect(parseSuperviseArgs(words)).toEqual({ instance: null, env: bridgeEnvironment(spec) });
+    expect(bridgeEnvironment(spec).HERDR_PLUGIN_CONFIG_DIR).toBe(`${odd}\\cfg dir\\`);
+  });
+
+  test("parseWindowsArgs reads back every word windowsArg writes", () => {
+    const words = ["plain", "", "a b", 'say "hi"', "C:\\with space\\", "a\\\\b", 'x\\"y z', "\\\\.\\pipe\\herdr"];
+    expect(parseWindowsArgs(words.map(windowsArg).join(" "))).toEqual(words);
+    expect(parseWindowsArgs('  one\ttwo  "three four" ')).toEqual(["one", "two", "three four"]);
   });
 
   test("the elevated task differs only in its run level, and a suffixed instance says so", () => {
