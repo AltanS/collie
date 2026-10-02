@@ -85,6 +85,33 @@ function isPanelBorder(text: string): boolean {
   return PANEL_JUNCTION.test(inside) && CHROME_ONLY.test(inside);
 }
 
+// A sidebar's vertical edge where it crosses the bar run: `│` and nothing else. It is
+// padding, not content — the trims below and the empty filter treat it the way they treat
+// a bare bar row. Deliberately NOT part of isPanelBorder: that predicate answers "border"
+// for the walk and the join together, and an edge-only row must stay walkable so typed
+// words below it still read (same reason the walk reads through a typed rule).
+function isBlankInterior(text: string): boolean {
+  return isEdgeOnly(interiorOf(text));
+}
+
+function isEdgeOnly(text: string): boolean {
+  return /^[\s│]*$/u.test(text);
+}
+
+// A panel's bottom border sharing its row with typed text (`┃  hello  └───┘`): cut the
+// trailing border run, keeping the words. The suffix must contain a corner, junction,
+// vertical or rule-block somewhere inside it — a run of bare horizontals never strips, so
+// a typed rule (`───`) or divider survives. The strip applies only when words remain;
+// a border-only row keeps its text for the isPanelBorder join below to refuse. The walk
+// still owns row-level stops — this owns suffixes in kept rows.
+const OVERLAY_SUFFIX =
+  /[ \t]*[─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*[┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬│┃╹▀][─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*$/u;
+
+function stripOverlaySuffix(text: string): string {
+  const cut = text.replace(OVERLAY_SUFFIX, "");
+  return cut.trim() === "" ? text : cut;
+}
+
 /** The composer tail located at the buffer's end. Every index is into the ORIGINAL `lines` array. */
 export interface ComposerTail {
   /** The FIRST row of the draft block — equal to `modelRow` when there is no draft (the strip then
@@ -179,8 +206,8 @@ export function locateComposer(lines: StyledLine[]): ComposerTail | null {
       top--;
     let first = top;
     let last = above - 1;
-    while (first <= last && interiorOf(texts[first]!) === "") first++;
-    while (last >= first && interiorOf(texts[last]!) === "") last--;
+    while (first <= last && isBlankInterior(texts[first]!)) first++;
+    while (last >= first && isBlankInterior(texts[last]!)) last--;
     if (first <= last) {
       draftStart = first;
       draftEnd = last;
@@ -251,7 +278,9 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
     // A bare bar row inside the block is a blank line of the draft.
     const text = isBareBar(texts[i]!) ? "" : barDraftText(texts[i]!);
     if (text === null) return null; // a non-gutter row inside the block — not a shape we claim
-    parts.push(text.trim());
+    const cleaned = stripOverlaySuffix(text);
+    const trimmed = cleaned.trim();
+    parts.push(isEdgeOnly(trimmed) ? "" : trimmed);
   }
   const draft = parts.filter((p) => p.length > 0).join(" ");
   if (draft.length === 0) return null;
