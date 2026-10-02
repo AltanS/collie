@@ -361,6 +361,9 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   };
   for (;;) {
     await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, 0));
+    // The exact program, every time: on a binary install the path names a version folder, and this
+    // line is how an operator sees which version the launcher really runs after an update.
+    deps.note(logPath, `launching ${command.join(" ")} in ${root}`);
     const started = deps.now();
     const bridge = deps.launch(command, { cwd: root, env, logPath });
     if (bridge === null) {

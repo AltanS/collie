@@ -61,7 +61,7 @@ import {
 import { packageCommand } from "./package-command.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
 import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced.ts";
-import { queryTask, taskOwner } from "./task-scheduler.ts";
+import { queryTask, taskOwner, windowsPathKey } from "./task-scheduler.ts";
 import { agentLabel, collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
 import type { Ui } from "./render.ts";
@@ -1421,8 +1421,20 @@ export function windowsTask(deps: Pick<DoctorDeps, "ctx" | "exec" | "host" | "li
         `Task ${name} runs ${query.program}, another Collie install; one Collie per Windows machine`,
         "run `collie uninstall` from that install, then `collie start` here",
       );
-    case "collie":
+    case "collie": {
+      // A binary install's task must run the binary `current` points at, or a restart after an update
+      // relaunches the version the task was registered from. Until M43 spec 06/08 registers the task
+      // on that path, say so rather than let an update look applied while the old version runs on.
+      const published = publishedBinary(deps.ctx.root, deps.link, deps.host);
+      if (windowsPathKey(query.program) !== windowsPathKey(published)) {
+        return warn(
+          check,
+          `Task ${name} runs ${query.program}, not ${published}; after an update moves \`current\`, it keeps relaunching the old version`,
+          "`collie start` after every update registers the task again",
+        );
+      }
       return ok(check, `Task ${name} runs ${query.program} (${query.state})`);
+    }
   }
 }
 

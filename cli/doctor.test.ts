@@ -1905,6 +1905,21 @@ describe("windows-task", () => {
     expect(f.remedy).toBe("Run: collie restart");
   });
 
+  // The gate for M43 spec 06/08: a binary install's task registered on a version folder keeps
+  // relaunching that version after an update moves `current`.
+  test("a binary install whose task runs a version folder, not `current`, is a warning", () => {
+    const install = "C:\\Users\\pat\\.collie";
+    const root = `${install}\\versions\\1.16.0`;
+    const link = fakeLinkFs({ [`${install}\\current`]: { kind: "symlink", target: `${install}\\versions\\1.16.0` } });
+    const exec = fakeExec({
+      answers: [[QUERY, { stdout: `Running\r\nC:\\conhost.exe\r\n--headless ${collieBinary(root, WIN)} _supervise\r\n` }]],
+    });
+    const f = windowsTask({ ctx: context({}, { root }), exec, host: WIN, link });
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain(`runs ${collieBinary(root, WIN)}, not ${install}\\current\\bin\\collie.exe`);
+    expect(f.remedy).toBe("`collie start` after every update registers the task again");
+  });
+
   test("another install's task is named, and no task or no PowerShell is a skip", () => {
     const other = run(answer('--headless "D:\\other\\bin\\collie.exe" _supervise'));
     expect(other.status).toBe("warn");

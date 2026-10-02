@@ -276,6 +276,16 @@ describe("_supervise, the loop", () => {
     expect(gone.notes.join("\n")).toContain("could not write");
   });
 
+  test("logs the exact program it launches, on every launch", async () => {
+    const l = launcher([1, null, 0]);
+    await cmdSupervise(l.deps, ARGS);
+    expect(l.notes.filter((n) => n.startsWith("launching "))).toEqual([
+      `launching ${BINARY} _exec-bridge in ${ROOT}`,
+      `launching ${BINARY} _exec-bridge in ${ROOT}`,
+      `launching ${BINARY} _exec-bridge in ${ROOT}`,
+    ]);
+  });
+
   test("runs the same bridge every supervisor runs, from the checkout, with its env on top", async () => {
     const l = launcher([0]);
     await cmdSupervise(l.deps, ARGS);
