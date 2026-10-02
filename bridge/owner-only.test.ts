@@ -233,7 +233,7 @@ describe("ensureOwnerOnlyDir at bridge start", () => {
     const dir = "D:\\Projects";
     const f = fake({
       saves: { [dir]: [DRIVE_DIR("Projects")] },
-      files: { [dir]: { dir: true } },
+      files: { [dir]: { dir: true }, [`${dir}\\src`]: { dir: true }, [`${dir}\\package.json`]: {}, [`${dir}\\crew-trust.json`]: {} },
       lists: { [dir]: ["src", "package.json", "crew-trust.json"] },
     });
     const outcome = ensureOwnerOnlyDir(dir, WIN, { root: STATE_ROOT, repair: true }, f.deps);

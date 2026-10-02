@@ -33,6 +33,7 @@ import {
   isNetworkPath,
   type PrivateRoot,
   repairScope,
+  type EntryKind,
   type Scope,
   systemPlaces,
 } from "./acl-policy.ts";
@@ -418,7 +419,14 @@ function readRoot(dir: string, root: PrivateRoot, host: Host, deps: OwnerOnlyDep
 export function scopeOf(dir: string, createdNow: boolean, host: Host, deps: OwnerOnlyDeps): Scope {
   const places = systemPlaces(deps.env, (p) => deps.realpath(p));
   const defaults = defaultLocations(host, deps.env, deps.home).map((d) => ({ parent: deps.realpath(d.parent) ?? d.parent, prefix: d.prefix }));
-  return repairScope({ realPath: deps.realpath(dir), createdNow, names: deps.list(dir) }, host, places, defaults);
+  const look = (rel: readonly string[]): EntryKind | null => {
+    const path = host.path.join(dir, ...rel);
+    if (deps.isLink(path)) return { kind: "link" };
+    const found = deps.stat(path);
+    if (found === null) return null;
+    return found.dir ? { kind: "folder", names: deps.list(path) } : { kind: "file" };
+  };
+  return repairScope({ realPath: deps.realpath(dir), createdNow, names: deps.list(dir), look }, host, places, defaults);
 }
 
 /**

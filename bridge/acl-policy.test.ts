@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   defaultLocations,
+  type EntryKind,
+  isCollieEntry,
   isCollieName,
   isNetworkPath,
   neverTouch,
@@ -36,8 +38,9 @@ const realpath = (p: string): string => {
 };
 const places = systemPlaces(ENV, realpath);
 const defaults = defaultLocations(WIN, ENV, HOME);
-const scope = (path: string, names: string[] | null = [], createdNow = false) =>
-  repairScope({ realPath: realpath(path), createdNow, names }, WIN, places, defaults);
+/** Every entry a plain file, unless `kinds` says otherwise (by the relative path, joined with `\\`). */
+const scope = (path: string, names: string[] | null = [], createdNow = false, kinds: Record<string, EntryKind> = {}) =>
+  repairScope({ realPath: realpath(path), createdNow, names, look: (rel) => kinds[rel.join("\\")] ?? { kind: "file" } }, WIN, places, defaults);
 
 describe("never touch", () => {
   test("the places come from the environment, not from a hard-coded C:", () => {
@@ -86,7 +89,8 @@ describe("the repair scope", () => {
 
   test("(c) an existing custom folder that is empty or holds only Collie's names", () => {
     expect(scope("D:\\data\\collie", [])).toEqual({ allowed: true });
-    expect(scope("D:\\data\\collie", ["crew-trust.json", "audit.log.1", "uploads", "acl-backup-2026-1.sddl", ".env"])).toEqual({
+    const uploads: EntryKind = { kind: "folder", names: [] };
+    expect(scope("D:\\data\\collie", ["crew-trust.json", "audit.log.1", "uploads", "acl-backup-2026-1.sddl", ".env"], false, { uploads })).toEqual({
       allowed: true,
     });
   });
@@ -113,9 +117,53 @@ describe("names", () => {
   });
 
   test("shapes and suffixes count; a stranger does not", () => {
-    for (const name of ["collie.log", "collie-next.pid", "collie-next-processes", "herdr.collie.task.xml", "tailscale-managed-handler-next", "update-staging-ab12", "crew-trust.json.tmp"]) {
+    for (const name of ["collie.log", "collie-next.pid", "collie-next-processes", "collie-restart", "herdr.collie.task.xml", "tailscale-managed-handler-next", "update-staging-ab12", "crew-trust.json.tmp"]) {
       expect(isCollieName(name)).toBe(true);
     }
     for (const name of ["notes.txt", "src", ".git", "envelope"]) expect(isCollieName(name)).toBe(false);
+  });
+
+  test("only Collie's own suffixes follow a Collie name: a rotation and its temporary files", () => {
+    for (const name of ["audit.log.1", "crew-trust.json.tmp", "collie-processes.4242.tmp", ".env.collie-tmp", ".env.push-keys.tmp"]) {
+      expect(isCollieName(name)).toBe(true);
+    }
+    for (const name of [".env.production", ".env.local", "audit.log.x", "config.toml.bak", "stt.json.old"]) expect(isCollieName(name)).toBe(false);
+  });
+
+  test("a folder is Collie's only by its name AND its contents, one level deep; a link never is", () => {
+    const at = (kinds: Record<string, EntryKind>) => (rel: readonly string[]) => kinds[rel.join("/")] ?? null;
+    const folder = (names: string[]): EntryKind => ({ kind: "folder", names });
+    const file: EntryKind = { kind: "file" };
+    // Empty, or holding only its own kind of file.
+    expect(isCollieEntry("fonts", at({ fonts: folder([]) }))).toBe(true);
+    expect(isCollieEntry("fonts", at({ fonts: folder(["departure.woff2"]), "fonts/departure.woff2": file }))).toBe(true);
+    expect(isCollieEntry("uploads", at({ uploads: folder(["p1_2-mf3x9q-0a1b2c3d.png"]), "uploads/p1_2-mf3x9q-0a1b2c3d.png": file }))).toBe(true);
+    expect(isCollieEntry("beacons", at({ beacons: folder(["w1.json"]), "beacons/w1.json": file }))).toBe(true);
+    expect(isCollieEntry("acl-backups", at({ "acl-backups": folder(["acl-backup-2026-1.sddl"]), "acl-backups/acl-backup-2026-1.sddl": file }))).toBe(true);
+    // The operator's own things under one of those names.
+    expect(isCollieEntry("fonts", at({ fonts: folder(["Arial.ttf"]), "fonts/Arial.ttf": file }))).toBe(false);
+    expect(isCollieEntry("uploads", at({ uploads: folder(["holiday.jpg"]), "uploads/holiday.jpg": file }))).toBe(false);
+    // A subfolder, even one with a Collie-looking name, is one level too deep.
+    expect(isCollieEntry("fonts", at({ fonts: folder(["x.woff2"]), "fonts/x.woff2": folder([]) }))).toBe(false);
+    // A folder that cannot be listed, a folder with a file's name, a file with a folder's name.
+    expect(isCollieEntry("uploads", at({ uploads: { kind: "folder", names: null } }))).toBe(false);
+    expect(isCollieEntry("audit.log", at({ "audit.log": folder([]) }))).toBe(false);
+    expect(isCollieEntry("uploads", at({ uploads: file }))).toBe(false);
+    // A junction named like Collie's folder, and a link named like Collie's file.
+    expect(isCollieEntry("uploads", at({ uploads: { kind: "link" } }))).toBe(false);
+    expect(isCollieEntry(".env", at({ ".env": { kind: "link" } }))).toBe(false);
+    // Unreadable.
+    expect(isCollieEntry("stt.json", at({}))).toBe(false);
+  });
+
+  test("rule (c) names the stranger: a `.env.production`, a `fonts` of photos, a junction", () => {
+    const shared = "D:\\work\\collie-cfg";
+    expect(scope(shared, [".env", ".env.production"])).toEqual({ allowed: false, why: "it also holds files that are not Collie's (.env.production)" });
+    expect(scope(shared, [".env", "fonts"], false, { fonts: { kind: "folder", names: ["me.jpg"] } })).toEqual({
+      allowed: false,
+      why: "it also holds files that are not Collie's (fonts)",
+    });
+    expect(scope(shared, [".env", "uploads"], false, { uploads: { kind: "link" } }).allowed).toBe(false);
+    expect(scope(shared, [".env", "audit.log.1", "fonts"], false, { fonts: { kind: "folder", names: [] } })).toEqual({ allowed: true });
   });
 });
