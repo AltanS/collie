@@ -1,6 +1,6 @@
 import { basename, dirname, join } from "node:path";
 
-import { binaryName, collieBinary, type Host } from "../bridge/host.ts";
+import { binaryName, collieBinary, HOST, type Host } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import {
   type ApiTag,
@@ -1017,7 +1017,7 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   // route every second update back into the in-place path it just left. A checkout that is not under
   // the layout stages only when it is a LINKED CLONE: a Herdr-managed checkout keeps ADR 0006's
   // in-place advancement for this milestone (see that ADR's 2026-09-03 amendment).
-  const staged = isCheckout && (underVersions(deps.ctx.root) || install.kind === "linked-clone");
+  const staged = isCheckout && (underVersions(deps.ctx.root, deps.host) || install.kind === "linked-clone");
   const layout = isCheckout ? layoutForCheckout(deps.ctx.root, deps.host) : null;
   // The record, not the act — `--status` reads `<state dir>/update.json` and touches nothing, so it
   // is answered before the lock, before the install kind matters and before any network call.
@@ -1269,10 +1269,10 @@ export function currentVersionDir(deps: { readonly link: LinkReader }, layout: B
  * implementation would be a second thing to get atomic.
  */
 function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): boolean {
-  const staged = join(layout.installRoot, ".current.new");
+  const staged = deps.host.path.join(layout.installRoot, ".current.new");
   try {
     deps.link.remove(staged);
-    deps.link.symlink(join("versions", version), staged);
+    deps.link.symlink(deps.host.path.join("versions", version), staged);
     deps.files.rename(staged, layout.currentLink);
     return true;
   } catch (err) {
@@ -1672,25 +1672,26 @@ export interface BuildMarker {
  * root. {@link binaryLayout} derives the same five paths from a version DIRECTORY, which is what the
  * running process sits in once the layout exists; this derives them from the root above it.
  */
-export function checkoutLayout(installRoot: string): BinaryLayout {
+export function checkoutLayout(installRoot: string, host: Host = HOST): BinaryLayout {
+  const at = (...parts: string[]): string => host.path.join(installRoot, ...parts);
   return {
     installRoot,
-    versionsDir: join(installRoot, "versions"),
-    currentLink: join(installRoot, "current"),
-    stagingDir: join(installRoot, ".staging"),
-    trashDir: join(installRoot, ".trash"),
+    versionsDir: at("versions"),
+    currentLink: at("current"),
+    stagingDir: at(".staging"),
+    trashDir: at(".trash"),
     version: "",
   };
 }
 
 /** Does `root` sit at `<install-root>/versions/<name>` — i.e. is this install already staged? */
-function underVersions(root: string): boolean {
-  return basename(dirname(root)) === "versions";
+function underVersions(root: string, host: Host = HOST): boolean {
+  return host.path.basename(host.path.dirname(root)) === "versions";
 }
 
 /** The layout a checkout at `root` updates under, whether it has been migrated yet or not. */
 function layoutForCheckout(root: string, host: Host): BinaryLayout {
-  return underVersions(root) ? binaryLayout(root, host) : checkoutLayout(root);
+  return underVersions(root, host) ? binaryLayout(root, host) : checkoutLayout(root, host);
 }
 
 /** `<dir>/.collie-build`. */
@@ -1883,7 +1884,7 @@ function republishName(deps: UpdateDeps, root: string, previousBinary: string): 
   const probe = deps.link.probe(at);
   if (probe.kind !== "symlink" || probe.target !== previousBinary) return;
   if (!isCollieBinaryPath(probe.target, deps.host)) return;
-  cmdLink({ ctx: { ...deps.ctx, root }, io: deps.io, files: deps.files, fs: deps.link });
+  cmdLink({ ctx: { ...deps.ctx, root }, io: deps.io, files: deps.files, fs: deps.link, host: deps.host });
 }
 
 /** Fetch one release tag and STORE it locally — the refspec `detachOnto` explains at length. */
@@ -1919,7 +1920,7 @@ async function updateStagedCheckout(
   // `ls-remote`, `fetch`, `worktree add` and `worktree prune` are all answered the same from any of
   // them — and using our own root means a migration and a re-stage spell it identically.
   const git = root;
-  const migrating = !underVersions(root);
+  const migrating = !underVersions(root, deps.host);
 
   if (!isGitCheckout(deps.exec, git)) {
     deps.io.err(`error: ${git} is not a git checkout — refresh it with:`);
@@ -2612,8 +2613,8 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
   if (run.state === "done") {
     // The two names that must follow a flip, and the nudge that must be asked of the NEW binary.
     if (a.kind === "checkout") {
-      if (!underVersions(deps.ctx.root)) {
-        republishName(deps, join(layout.versionsDir, a.to), collieBinary(deps.ctx.root, deps.host));
+      if (!underVersions(deps.ctx.root, deps.host)) {
+        republishName(deps, deps.host.path.join(layout.versionsDir, a.to), collieBinary(deps.ctx.root, deps.host));
       }
       refreshRegistry(deps, layout.currentLink);
     }

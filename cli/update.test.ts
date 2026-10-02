@@ -1780,7 +1780,8 @@ describe("the staged checkout path", () => {
     h.files.entries.set(collieBinary(CURRENT, hostFor("linux")), { text: "NEW BINARY" });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     const said = h.io.stdout.join("\n");
-    expect(said).toContain(`${join(VERSIONS)} and ${join(CURRENT)} are created now`);
+    // The layout is spelled by the injected host (the harness pins Linux), not by the machine's `join`.
+    expect(said).toContain(`${VERSIONS} and ${CURRENT} are created now`);
     // Nothing to fall back to yet, and the transcript says exactly that rather than implying one.
     expect(said).toContain("nothing to roll back to yet");
     // The pointer follows the flip — and the flip is the RUNNER's, so the republish is too.

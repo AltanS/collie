@@ -144,6 +144,8 @@ export interface LinkDeps {
   /** Only to answer "has this checkout been built yet?". */
   readonly files: Files;
   readonly fs: LinkWriter;
+  /** Names the binary (`collie.exe` on Windows); the running machine's when absent. */
+  readonly host?: Host;
 }
 
 /** The PATH warning, printed after a successful link. A fact and a hint — never a profile edit. */
@@ -154,7 +156,7 @@ function pathNote(deps: LinkDeps, dir: string): void {
 
 /** `collie link` — publish `~/.local/bin/collie` → this checkout's `bin/collie`. */
 export function cmdLink(deps: LinkDeps): number {
-  const own = publishedBinary(deps.ctx.root, deps.fs);
+  const own = publishedBinary(deps.ctx.root, deps.fs, deps.host);
   if (!deps.files.exists(own)) {
     deps.io.err(`error: no binary at ${own} — run the build first (\`bin/collie build\`).`);
     return EXIT.FAIL;
@@ -195,7 +197,7 @@ export function cmdLink(deps: LinkDeps): number {
 
 /** `collie unlink` — remove the published name, but only when it is this checkout's. */
 export function cmdUnlink(deps: LinkDeps): number {
-  const own = publishedBinary(deps.ctx.root, deps.fs);
+  const own = publishedBinary(deps.ctx.root, deps.fs, deps.host);
   const at = linkPath(deps.ctx.home);
   const verdict = classifyUnlink(deps.fs.probe(at), own);
 
