@@ -28,7 +28,9 @@
 // was not built against is a different footer, and the screen stays raw with the Escape card over it.
 //
 // WHAT A TAP SENDS. ADR 0055's walk: `Down` or `Up` from the pointed row to the tapped one, then `Enter`,
-// as one batch, a key the footer printed. In a one-question dialog Enter on an option answers the
+// a key the footer printed. The action layer walks, verifies, then commits (ADR 0080): the arrows go
+// first, bound to the tapped screen, and `Enter` goes only bound to a fresh read that shows the pointer
+// on the tapped row. In a one-question dialog Enter on an option answers the
 // question and closes the dialog (`#commitRow` → `#advanceAfterQuestion` → `#finishSubmit` in 18.4.10).
 // Enter on `Other (type your own)` opens the answer editor instead, which omp/answer-editor.ts reads as
 // an input, so the phone's composer types the answer there. That row is offered like any other, because

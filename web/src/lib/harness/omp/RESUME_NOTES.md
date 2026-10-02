@@ -43,8 +43,11 @@ Both footers print the commit key (`⏎ select`, `Enter select`) and the way out
 | a session above the pointer, `n` rows up | `Up` × n, then `Enter` |
 | the card's last row | `Escape` |
 
-One batch per tap (`pane.send_keys` takes the array), so no half-walked pointer is ever left behind.
-No digit anywhere, because the screen printed none. The arrow count is a claim about where the pointer
+The action layer does not send the plan as one batch. It walks, verifies, then commits
+([ADR 0080](../../../../../.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)): the arrows go
+first, bound to the tapped screen, and `Enter` goes only bound to a fresh read that shows the pointer on
+the tapped row. A timeout or a drift sends nothing, so a pointer left half-walked is read, never
+assumed. No digit anywhere, because the screen printed none. The arrow count is a claim about where the pointer
 was, which is why the signature carries the `❯` column verbatim: a pointer moved at the desk between the
 render and the tap refuses the tap (ADR 0055 point 6).
 
@@ -83,8 +86,11 @@ has nothing to point at and is declined.
   eight-session card (five hand-made copies of one session log): seven of eight resumed exactly the
   tapped session in both walk directions, and one did nothing, which is the guard's safe side. The
   card's Cancel and the generic card's `Esc` closed their pickers. Not probed: the pointed row's own
-  tap in a long list, a list longer than the pane, and a wider pane. The arrows and Enter go in one
-  `send_keys` call and the guard compares the screen before it, not between the keys.
+  tap in a long list, a list longer than the pane, and a wider pane. These taps were made with the
+  old one-batch plan: the arrows and Enter went in one `send_keys` call and the guard compared the
+  screen before it, not between the keys. The walk, verify, commit of
+  [ADR 0080](../../../../../.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md) has not been
+  probed live; its residual window is the bridge's own read-to-send gap.
 - A session list longer than the pane (a scroll counter, a `↓` marker) has no capture. The grammar
   declines on any unknown row, so such a list stays raw until it is captured.
 - The all-projects title in the unboxed layout has no capture and is declined rather than guessed.

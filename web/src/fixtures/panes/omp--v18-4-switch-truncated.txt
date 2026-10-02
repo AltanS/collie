@@ -1,0 +1,61 @@
+[0m[38;2;0;255;136m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;0;255;136m$ cat filler2.txt[0m                                                                                     
+                                                                                                       
+ [0m[38;2;156;163;176mgamma quartz beta gamma alpha beta orbit river orbit gamma orbit stone ember meadow cloud pixel       [0m
+ [0m[38;2;156;163;176mmeadow river meadow pixel harbor stone river pixel delta orbit delta beta cloud pixel gamma stone     [0m
+ [0m[38;2;156;163;176morbit orbit pixel alpha meadow harbor maple ember stone maple quartz cloud pixel alpha ember quartz   [0m
+ [0m[38;2;156;163;176mmeadow cloud lantern harbor quartz orbit gamma maple lantern ember beta …[0m                             
+ [0m[38;2;156;163;176mcloud pixel beta gamma orbit lantern ember meadow maple orbit river river cloud alpha meadow stone    [0m
+ [0m[38;2;156;163;176mdelta harbor meadow delta meadow orbit meadow gamma gamma orbit orbit river delta cloud delta lantern [0m
+ [0m[38;2;156;163;176member orbit river beta maple river orbit meadow quartz gamma cloud pixel gamma orbit quartz orbit     [0m
+ [0m[38;2;156;163;176mstone alpha beta quartz delta orbit river stone ember lantern river river beta river orbit maple      [0m
+ [0m[38;2;156;163;176mlantern maple orbit delta pixel ember lantern gamma pixel gamma delta gamma harbor meadow cloud stone [0m
+ [0m[38;2;156;163;176malpha pixel harbor beta orbit alpha beta meadow river delta lantern cloud stone meadow meadow ember   [0m
+ [0m[38;2;156;163;176malpha lantern lantern orbit ember cloud meadow cloud meadow alpha gamma orbit ember beta lantern beta [0m
+ [0m[38;2;156;163;176mquartz meadow gamma meadow stone quartz meadow orbit maple alpha …[0m                                    
+ [0m[38;2;156;163;176member alpha ember lantern lantern delta lantern cloud beta stone maple lantern meadow delta meadow    [0m
+ [0m[38;2;156;163;176mmeadow river lantern beta pixel pixel beta delta pixel pixel meadow stone quartz cloud delta beta     [0m
+ [0m[38;2;156;163;176malpha orbit maple ember delta beta orbit delta delta pixel quartz cloud orbit orbit alpha meadow      [0m
+ [0m[38;2;156;163;176mmeadow maple quartz beta orbit orbit quartz ember delta cloud maple river alpha stone alpha meadow    [0m
+ [0m[38;2;156;163;176mharbor quartz harbor maple maple pixel harbor cloud harbor river lantern river maple beta harbor      [0m
+ [0m[38;2;156;163;176mstone river gamma stone harbor cloud ember meadow quartz lantern ember orbit alpha pixel cloud cloud  [0m
+ [0m[38;2;156;163;176member quartz quartz river lantern meadow stone lantern stone ember orbit beta meadow beta cloud beta  [0m
+ [0m[38;2;156;163;176mgamma beta cloud beta quartz maple beta pixel beta beta orbit cloud orbit…[0m                            
+                                                                                                       
+ [0m[38;2;107;114;128m… 48 more lines (Ctrl+O to expand)[0m                                                                    
+ [0m[38;2;255;179;71mShowing lines 1-34 and 568-600 of 600; 533 middle lines (398.8KB) elided[0m                              
+[0m[38;2;0;255;136m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[38;2;0;255;136m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;0;255;136m$ cat filler2.txt[0m                                                                                     
+                                                                                                       
+ [0m[38;2;156;163;176mgamma quartz beta gamma alpha beta orbit river orbit gamma orbit stone ember meadow cloud pixel       [0m
+ [0m[38;2;156;163;176mmeadow river meadow pixel harbor stone river pixel delta orbit delta beta cloud pixel gamma stone     [0m
+ [0m[38;2;156;163;176morbit orbit pixel alpha meadow harbor maple ember stone maple quartz cloud pixel alpha ember quartz   [0m
+ [0m[38;2;156;163;176mmeadow cloud lantern harbor quartz orbit gamma maple lantern ember beta …[0m                             
+ [0m[38;2;156;163;176mcloud pixel beta gamma orbit lantern ember meadow maple orbit river river cloud alpha meadow stone    [0m
+ [0m[38;2;156;163;176mdelta harbor meadow delta meadow orbit meadow gamma gamma orbit orbit river delta cloud delta lantern [0m
+[0m[38;2;42;48;56m╭─[0m[1m[38;2;0;180;255m Switch Model [0m[38;2;42;48;56m──────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;156;163;176m Session-only switch — role models stay unchanged[0m                                                   [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m  [0m[38;2;0;180;255m🔍[0m > nemotron[0m[7m [0m                                                                                     [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m                                                                                                     [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;0;180;255m❯[0m [0m[38;2;107;114;128mopenrouter/nvidia/nemotron-nano-12b-v2-vl:free ⦸ context>128k                 128k ◫        free[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/nvidia/nemotron-nano-9b-v2 ⦸ context>131k                          131k ◫  $0.04/0.16[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/nvidia/nemotron-nano-9b-v2:free ⦸ context>128k                     128k ◫        free[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3.5-lightning                      [0m[38;2;107;114;128m🧠 24[0m  [0m[38;2;107;114;128m~286t/s[0m  [0m[38;2;107;114;128m262k ◫[0m  [0m[38;2;107;114;128m$0.06/0.16[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3.5-lightning:free                 [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m  1m ◫[0m  [0m[38;2;107;114;128m      free[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/nvidia/llama-3.3-nemotron-super-49b-v1.5 ⦸ contex…                 131k ◫    $0.4/0.4[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/nvidia/llama-3.1-nemotron-70b-instruct ⦸ context>…                 131k ◫    $1.2/1.2[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-nano-30b-a3b                     [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m262k ◫[0m  [0m[38;2;107;114;128m $0.05/0.2[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-nano-30b-a3b:free                [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m256k ◫[0m  [0m[38;2;107;114;128m      free[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m256k ◫[0m  [0m[38;2;107;114;128m      free[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-super-120b-a12b                  [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m262k ◫[0m  [0m[38;2;107;114;128m$0.08/0.45[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-super-120b-a12b:free             [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m262k ◫[0m  [0m[38;2;107;114;128m      free[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-ultra-550b-a55b                  [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m262k ◫[0m  [0m[38;2;107;114;128m  $0.6/2.4[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-ultra-550b-a55b:batch            [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m512k ◫[0m  [0m[38;2;107;114;128m  $0.6/3.6[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128mopenrouter/[0mnvidia/nemotron-3-ultra-550b-a55b:free             [0m[38;2;107;114;128m     [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m  1m ◫[0m  [0m[38;2;107;114;128m      free[0m  [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m                                                                                                     [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;156;163;176m  Nemotron Nano 12B 2 VL (free) · 128k ctx · 128k out · free per M · reasoning · vision[0m             [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;255;179;71m  ⦸ context 157k exceeds 128k limit · compacts with current model, then switches[0m                    [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;107;114;128m↑/↓ models · ⏎ use for this session · type to search · @ quick roles · ⎋ close · Alt+P task model[0m   [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m

@@ -91,6 +91,23 @@ export interface PromptModel {
   /** The dialog's inline free-text input row, when it has one. Absent on dialogs without one. */
   feedback?: PromptFeedback;
   /**
+   * The grammar's declared FACT that its pointed list clamps at both ends: Up on the first row and
+   * Down on the last row leave the pointer where it is. The action layer then commits an edge row
+   * with a sticky arrow (`["Up","Enter"]` on the first, `["Down","Enter"]` on the last, see
+   * {@link commitKeysFor}), so a desk arrow that lands between the bridge's re-read and its send
+   * cannot move the commit off the edge row (ADR 0080 point 6).
+   *
+   * Set ONLY by a grammar whose source or capture proves the clamp, never guessed, and never on a
+   * list that wraps (omp's `/switch` picker wraps; an extra arrow there would commit the opposite
+   * edge). The edges are the first and last ROW OF THE LIST AS THE ARROWS SEE IT, which is the
+   * first and last option whose plan is walk-class ({@link splitWalk}); options with any other plan
+   * (a `Cancel` that sends `Escape`) are not rows. A grammar that hides rows from `options` (omp's
+   * `/switch` hides over-context and current rows) or whose arrow list holds a row without a
+   * walk-class plan must therefore NOT set it: the visible edge would not be the real one.
+   * This is the one fact about its list a grammar may hand the action layer. It never shapes a plan.
+   */
+  clampedEnds?: true;
+  /**
    * The dialog's identity, independent of everything OUR OWN choreography changes: the `❯` pointer,
    * the feedback row's contents, and the row's HEIGHT (a long value wraps, which re-flows the screen
    * above it). Runs from the QUESTION — not `signature`'s wider lookback — with pointers normalised
@@ -154,13 +171,64 @@ export function promptsSameIdentity(a: PromptModel, b: PromptModel): boolean {
     a.feedback?.key === b.feedback?.key &&
     a.feedback?.purpose === b.feedback?.purpose &&
     a.options.length === b.options.length &&
-    a.options.every((o, i) => o.label === b.options[i]!.label && sameKeys(o.keys, b.options[i]!.keys))
+    // A declared fact about the list, not a state: a model that gained or lost it is another
+    // grammar's reading, and the commit batch the action layer builds from it would differ.
+    a.clampedEnds === b.clampedEnds &&
+    // The arrow COUNT of a pointer walk is not compared (ADR 0080): a walk is a claim about where
+    // the pointer stands, and the pointer is our own choreography's effect, which `coreSignature`
+    // already blanks. `promptsEqual` still compares the byte-faithful `signature`, which carries
+    // the pointer, so a stale tap is refused at entry; only the mid-flight identity polls, which
+    // watch the pointer arrive, stop caring where it stood.
+    a.options.every(
+      (o, i) => o.label === b.options[i]!.label && sameKeysModuloWalk(o.keys, b.options[i]!.keys),
+    )
   );
 }
 
 /** Exact keystroke-plan equality — a label can map to a different digit across hidden-row layouts. */
 export function sameKeys(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((k, i) => k === b[i]);
+}
+
+/**
+ * Split a keystroke plan into its pointer walk and its commit: non-null exactly when `keys` is
+ * `(Up|Down)* Enter` (the walk may be empty). Digits, `["y"]`, `["Escape"]` and `["1", "Enter"]` are
+ * not walks and give null. The action layer (lib/prompt-action.ts) sends the walk, verifies the
+ * pointer on the tapped row, and only then commits (ADR 0080).
+ */
+export function splitWalk(keys: string[]): { walk: string[]; commit: string[] } | null {
+  if (keys.length === 0 || keys[keys.length - 1] !== "Enter") return null;
+  const walk = keys.slice(0, -1);
+  if (!walk.every((k) => k === "Up" || k === "Down")) return null;
+  return { walk, commit: ["Enter"] };
+}
+
+/** {@link sameKeys}, except that two walk-class plans (per {@link splitWalk}) are equal whatever
+ *  their arrow counts or directions: the walk depends on where the pointer stood. */
+export function sameKeysModuloWalk(a: string[], b: string[]): boolean {
+  if (splitWalk(a) !== null && splitWalk(b) !== null) return true;
+  return sameKeys(a, b);
+}
+
+/**
+ * The keys of the COMMIT step for the walk-class option at `index` (ADR 0080 point 6): `["Enter"]`,
+ * except on a list the grammar declared `clampedEnds`, where the first row commits as
+ * `["Up","Enter"]` and the last as `["Down","Enter"]`. On a clamped list the extra arrow toward the
+ * edge changes nothing when the pointer is already on the edge row, and it pulls a pointer that a
+ * desk keystroke moved one row back onto it. The first row wins on a one-row list. Rows are the
+ * options whose plan is walk-class; any other option (Cancel) is not a row of the list. An `index`
+ * that is not a row gives `["Enter"]`.
+ */
+export function commitKeysFor(model: PromptModel, index: number): string[] {
+  if (model.clampedEnds !== true) return ["Enter"];
+  const rows: number[] = [];
+  model.options.forEach((o, i) => {
+    if (splitWalk(o.keys) !== null) rows.push(i);
+  });
+  if (rows.length === 0 || !rows.includes(index)) return ["Enter"];
+  if (index === rows[0]) return ["Up", "Enter"];
+  if (index === rows[rows.length - 1]) return ["Down", "Enter"];
+  return ["Enter"];
 }
 
 /** {@link sameKeys} for a plan a model may leave out: absent equals only absent. */

@@ -72,6 +72,9 @@ describe("a real unread modal gets the card", () => {
     ["omp", "omp--select-multi.txt", "Escape"],
     ["omp", "omp--v18-4-ask-multi.txt", "Escape"],
     ["omp", "omp--v18-4-menu-model.txt", "Escape"],
+    // The compact model picker in a state its grammar declines (.adr/0079): task mode, whose footer
+    // ends one segment past the way out.
+    ["omp", "omp--v18-4-switch-task.txt", "Escape"],
   ])("%s gets the card on %s", (agent, fixture, key) => {
     const lines = fixtureLines(fixture);
     const blocks = pass(agent, lines);
@@ -125,11 +128,12 @@ describe("a screen that does not get the card", () => {
     expect(cardOf(pass("claude", lines))).toBeNull();
   });
 
-  it("does not get the card on omp's `/tree`, which prints no way out", () => {
+  it("does not get the card on omp's `/tree` or a clipped model picker, which print no way out", () => {
     // Both of the other conditions hold: the screen is raw and `composerReady` says false. What is
     // missing is omp's positive modal evidence, because neither tree capture names a key that closes
-    // it (omp/modal.ts). No evidence, no card, and the raw mirror is what the operator already had.
-    for (const name of ["omp--tree.txt", "omp--v18-4-tree.txt"]) {
+    // it (omp/modal.ts), and on a 74-column pane omp clips the model picker's footer before its `⎋
+    // close`. No evidence, no card, and the raw mirror is what the operator already had.
+    for (const name of ["omp--tree.txt", "omp--v18-4-tree.txt", "omp--v18-4-switch-clipped.txt"]) {
       const lines = fixtureLines(name);
       const omp = adapterFor("omp")!;
       expect(omp.buildBlocks(lines).every((b) => b.kind === "raw"), name).toBe(true);
@@ -276,10 +280,12 @@ const CARD_FIXTURES = {
   },
   // Every omp modal that prints its own way out (omp/modal.ts) and that no grammar lifts: the Ask
   // tool's multi-select screens in both versions and its review screen, the `/model` and `/settings`
-  // pickers in both versions, and the `/resume` picker with no session to list. The `/resume` pickers
-  // that DO list a session, the Ask tool's one-question single-select dialogs and every captured
-  // tool-approval dialog (.adr/0078) lift as a prompt-select and get no card, `/tree` prints no way
-  // out, and the note editor is an input, so none of those is here.
+  // pickers in both versions, the `/resume` picker with no session to list, and the compact model
+  // picker in every state its grammar declines: task mode, the `@` quick roles, a search with no match
+  // and the Nerd Font preset (.adr/0079). The `/resume` pickers that DO list a session, the Ask tool's
+  // one-question single-select dialogs, every captured tool-approval dialog (.adr/0078) and the model
+  // picker's session state lift as a prompt-select and get no card, `/tree` and the 74-column model
+  // picker print no way out, and the note editor is an input, so none of those is here.
   omp: {
     modals: [
       "omp--menu-model-moved.txt",
@@ -294,6 +300,10 @@ const CARD_FIXTURES = {
       "omp--v18-4-menu-model.txt",
       "omp--v18-4-menu-settings.txt",
       "omp--v18-4-resume-nomatch.txt",
+      "omp--v18-4-switch-nerd.txt",
+      "omp--v18-4-switch-nomatch.txt",
+      "omp--v18-4-switch-quick-roles.txt",
+      "omp--v18-4-switch-task.txt",
     ],
     notModals: [],
   },
@@ -344,6 +354,7 @@ describe("the declaration tracks the harness", () => {
     // omp prints the key in text keycaps up to 18.1 and in glyph keycaps from 18.4.
     ["omp", "omp--select-menu.txt", "Esc cancel"],
     ["omp", "omp--v18-4-menu-model.txt", "⎋ close"],
+    ["omp", "omp--v18-4-switch-task.txt", "⎋ close · Alt+P session model"],
     // opencode's pickers print the key as a bare `esc` at the end of the title row.
     ["opencode", "oc--agents-picker.txt", "Select agent                                     esc"],
     // ...and its question dialog prints it as `esc dismiss` at the end of the footer.

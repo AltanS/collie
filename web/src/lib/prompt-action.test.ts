@@ -19,7 +19,10 @@ import { fetchPane, sendKeys, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectPromptSelect } from "./harness/claude/prompt-select";
+import { detectApproval } from "./harness/omp/approval";
 import { t } from "./i18n";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { FEEDBACK_MAX_LENGTH, submitPromptFeedback, submitPromptOption } from "./prompt-action";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -370,5 +373,267 @@ describe("submitPromptOption — an answer digit is refused while the input has 
       status: "sent",
     });
     expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"], undefined, m.signature]]);
+  });
+});
+
+// ADR 0080, "walk, verify, commit": a row of a POINTED list is answered `[Down × n, Enter]`, and that
+// plan is NOT one batch. The arrows go out bound to the screen the user tapped; Enter goes out only
+// after a fresh read shows the pointer on the tapped row, bound to THAT read. Every failure path
+// asserts what was NOT sent: a half-walked pointer with nothing committed is harmless, a committed
+// wrong row is not.
+describe("submitPromptOption — a pointed list is walked, verified, then confirmed", () => {
+  function pointed(on: 0 | 1, question = "Is this a project you created or one you trust?") {
+    const rows = ["Yes, I trust this folder", "No, exit"];
+    return [
+      " Accessing workspace:",
+      "",
+      " /tmp/m34-lab-untrusted",
+      "",
+      ` Quick safety check: ${question} (Like your own code).`,
+      "",
+      " Claude Code'll be able to read, edit, and execute files here.",
+      "",
+      " Security guide",
+      "",
+      ...rows.map((label, i) => ` ${i === on ? "❯" : " "} ${label}`),
+      "",
+      " Enter to confirm · Esc to cancel",
+    ].join("\n");
+  }
+  const pointedModel = (on: 0 | 1) => {
+    const m = detectPromptSelect(splitLines(parseAnsi(pointed(on))));
+    if (!m) throw new Error("synthetic pointed buffer did not detect");
+    return m;
+  };
+
+  it("sends the arrows bound to the tapped screen, then Enter bound to the FRESH read", async () => {
+    const m = pointedModel(0);
+    const tapped = m.options[1]!;
+    expect(tapped.keys).toEqual(["Down", "Enter"]);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(pointed(0))) // entry guard: the screen the user saw
+      .mockResolvedValue(paneWith(pointed(1))); // the poll and the pre-commit read: pointer arrived
+
+    expect(await submitPromptOption({ ...base, prompt: m, option: tapped })).toEqual({
+      status: "sent",
+    });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, m.signature],
+      ["w1:p1", ["Enter"], undefined, pointedModel(1).signature],
+    ]);
+    expect(pointedModel(1).signature).not.toBe(m.signature); // the Enter is bound to a different screen
+  });
+
+  it("sends NO Enter when the pointer never arrives on the tapped row", async () => {
+    const m = pointedModel(0);
+    mockFetchPane.mockResolvedValue(paneWith(pointed(0))); // every poll still shows the pointer elsewhere
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
+  });
+
+  it("sends NO Enter when the dialog vanishes after the walk", async () => {
+    const m = pointedModel(0);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(pointed(0)))
+      .mockResolvedValue(paneWith("● Working on it\n  ⎿  running"));
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
+  });
+
+  it("sends NO Enter when a different dialog replaces it mid-walk", async () => {
+    const m = pointedModel(0);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(pointed(0)))
+      .mockResolvedValue(paneWith(pointed(1, "Is this some other folder you trust?")));
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
+  });
+
+  it("sends NO Enter when the pointer moves again between the poll and the last read", async () => {
+    // A keystroke at the terminal after the poll saw the pointer arrive: the last read shows it
+    // elsewhere, so the Enter would confirm the wrong row. It is refused, not sent.
+    const m = pointedModel(0);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(pointed(0))) // entry
+      .mockResolvedValueOnce(paneWith(pointed(1))) // poll: arrived
+      .mockResolvedValue(paneWith(pointed(0))); // pre-commit read: moved away
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
+  });
+
+  it("stops after the walk when the bridge refuses it as prompt_changed", async () => {
+    const m = pointedModel(0);
+    mockFetchPane.mockResolvedValue(paneWith(pointed(0)));
+    mockSendKeys.mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" });
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports changed when the bridge refuses the bound Enter", async () => {
+    const m = pointedModel(0);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(pointed(0)))
+      .mockResolvedValue(paneWith(pointed(1)));
+    mockSendKeys
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" });
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys).toHaveBeenCalledTimes(2);
+  });
+
+  it("walks upward the same way", async () => {
+    const m = pointedModel(1);
+    const tapped = m.options[0]!;
+    expect(tapped.keys).toEqual(["Up", "Enter"]);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(pointed(1)))
+      .mockResolvedValue(paneWith(pointed(0)));
+    expect(await submitPromptOption({ ...base, prompt: m, option: tapped })).toEqual({
+      status: "sent",
+    });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Up"], ["Enter"]]);
+  });
+
+  it("a row already under the pointer (plan [Enter]) stays ONE bound write", async () => {
+    const m = pointedModel(0);
+    const tapped = m.options[0]!;
+    expect(tapped.keys).toEqual(["Enter"]);
+    mockFetchPane.mockResolvedValue(paneWith(pointed(0)));
+    expect(await submitPromptOption({ ...base, prompt: m, option: tapped })).toEqual({
+      status: "sent",
+    });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Enter"], undefined, m.signature]]);
+  });
+
+  it("refuses a stale tap at entry: the pointer moved since the render", async () => {
+    const m = pointedModel(0);
+    mockFetchPane.mockResolvedValue(paneWith(pointed(1))); // someone moved the pointer before the tap
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("leaves a digit plan alone: one bound write, no extra read", async () => {
+    const m = model();
+    mockFetchPane.mockResolvedValue(paneWith(buffer()));
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "sent",
+    });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"], undefined, m.signature]]);
+    expect(mockFetchPane).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ADR 0080 point 6: a list that declares `clampedEnds` commits an edge row with a sticky arrow. The
+// models come from omp's approval grammar (the real adapter, agent "omp"), which declares the clamp.
+describe("submitPromptOption — a clamped list commits an edge row with a sticky arrow", () => {
+  const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+  const ompScreen = (name: string) => readFileSync(join(PANES, name), "utf8");
+  const onApprove = ompScreen("omp--v18-4-approval-bash.txt");
+  const onDeny = ompScreen("omp--v18-4-approval-bash-moved.txt");
+  const ompModel = (screen: string) => {
+    const detected = detectApproval(splitLines(parseAnsi(screen)));
+    if (!detected) throw new Error("omp approval fixture did not detect");
+    return detected;
+  };
+  const omp = { ...base, agent: "omp" };
+
+  it("the omp approval model declares the clamp", () => {
+    expect(ompModel(onApprove).clampedEnds).toBe(true);
+  });
+
+  it("Deny tapped with the pointer on Deny: ONE call, Down+Enter, bound to the entry region", async () => {
+    const m = ompModel(onDeny);
+    const deny = m.options[1]!;
+    expect(deny.keys).toEqual(["Enter"]); // the plan is unchanged; only the sent batch differs
+    mockFetchPane.mockResolvedValue(paneWith(onDeny));
+    expect(await submitPromptOption({ ...omp, prompt: m, option: deny })).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Down", "Enter"], undefined, m.signature]]);
+  });
+
+  it("Approve tapped with the pointer on Approve: ONE call, Up+Enter", async () => {
+    const m = ompModel(onApprove);
+    mockFetchPane.mockResolvedValue(paneWith(onApprove));
+    expect(await submitPromptOption({ ...omp, prompt: m, option: m.options[0]! })).toEqual({
+      status: "sent",
+    });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Up", "Enter"], undefined, m.signature]]);
+  });
+
+  it("Deny tapped from Approve: walk Down bound to the tapped screen, then Down+Enter bound to the fresh read", async () => {
+    const m = ompModel(onApprove);
+    const deny = m.options[1]!;
+    expect(deny.keys).toEqual(["Down", "Enter"]);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(onApprove)) // entry guard
+      .mockResolvedValue(paneWith(onDeny)); // poll and pre-commit read: the pointer arrived
+    expect(await submitPromptOption({ ...omp, prompt: m, option: deny })).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, m.signature],
+      ["w1:p1", ["Down", "Enter"], undefined, ompModel(onDeny).signature],
+    ]);
+  });
+
+  it("Approve tapped from Deny: walk Up, then Up+Enter bound to the fresh read", async () => {
+    const m = ompModel(onDeny);
+    const approve = m.options[0]!;
+    expect(approve.keys).toEqual(["Up", "Enter"]);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(onDeny))
+      .mockResolvedValue(paneWith(onApprove));
+    expect(await submitPromptOption({ ...omp, prompt: m, option: approve })).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Up"], undefined, m.signature],
+      ["w1:p1", ["Up", "Enter"], undefined, ompModel(onApprove).signature],
+    ]);
+  });
+
+  it("sends nothing past the walk when the pointer never arrives, clamped or not", async () => {
+    const m = ompModel(onApprove);
+    mockFetchPane.mockResolvedValue(paneWith(onApprove));
+    expect(await submitPromptOption({ ...omp, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+    });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
+  });
+
+  it("an unclamped model keeps a bare Enter (a Claude pointed list)", async () => {
+    // Same two-row shape as the walk tests above, from a grammar that declares no clamp.
+    const text = [
+      " Accessing workspace:",
+      "",
+      " /tmp/m34-lab-untrusted",
+      "",
+      " Quick safety check: Is this a project you created or one you trust? (Like your own code).",
+      "",
+      " Claude Code'll be able to read, edit, and execute files here.",
+      "",
+      " Security guide",
+      "",
+      " ❯ Yes, I trust this folder",
+      "   No, exit",
+      "",
+      " Enter to confirm · Esc to cancel",
+    ].join("\n");
+    const m = detectPromptSelect(splitLines(parseAnsi(text)))!;
+    expect(m.clampedEnds).toBeUndefined();
+    mockFetchPane.mockResolvedValue(paneWith(text));
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[0]! })).toEqual({
+      status: "sent",
+    });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Enter"], undefined, m.signature]]);
   });
 });

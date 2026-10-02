@@ -11,11 +11,12 @@ import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
 import { decorateOmpDisplay } from "./omp/display";
 
-// The omp adapter's CI gate. This adapter is Tier 1 everywhere EXCEPT THREE SCREENS: it lifts the
+// The omp adapter's CI gate. This adapter is Tier 1 everywhere EXCEPT FOUR SCREENS: it lifts the
 // `/resume` session picker (omp/resume.ts, .adr/0076), the `ask` tool's one-question single-select
-// dialog (omp/ask.ts, .adr/0077) and the `bash` and `write` tool-approval dialog (omp/approval.ts,
-// .adr/0078), and nothing else. So `ownFixtures` is exactly the resume captures that list at least one
-// session, the single-select Ask captures and the approval captures, and every other capture is a
+// dialog (omp/ask.ts, .adr/0077), the `bash` and `write` tool-approval dialog (omp/approval.ts,
+// .adr/0078) and the compact model picker (omp/switch.ts, .adr/0079), and nothing else. So
+// `ownFixtures` is exactly the resume captures that list at least one session, the single-select Ask
+// captures, the approval captures and the model picker in its session state, and every other capture is a
 // NEUTRAL fixture the adapter must leave raw. That is still not a weaker gate than Claude's: the neutral
 // cohort is asserted over the entire rest of the corpus rather than over a chosen subset, so no
 // interactive block kind is ever constructed from a `/model`, `/settings`, `/tree` or Ask multi-select
@@ -59,7 +60,9 @@ const allOmpModalFixtures = allOmpFixtures.filter(
 // one-question single-select dialog in all three keycap dialects: text (17.2.12), Nerd Font (18.4.4)
 // and glyph (18.4.10), and the tool-approval dialog in both captured presets: `nerd` with text keycaps
 // (18.1.17, `bash` and `write`, the latter in both selection states) and `unicode` with glyph keycaps
-// (18.4.10, `bash` and `write` in both selection states, and a fourteen-row `write`).
+// (18.4.10, `bash` and `write` in both selection states, and a fourteen-row `write`), and the compact
+// model picker's session state (18.4.10, eighteen captures: the pointer moved, wrapped and at both
+// window edges, searches, over-context and truncated rows, role chips, and windows of 16, 15 and 5 rows).
 const LIFTED = new Set([
   "omp--menu-resume-moved.txt",
   "omp--menu-resume.txt",
@@ -82,13 +85,31 @@ const LIFTED = new Set([
   "omp--v18-4-approval-write-long.txt",
   "omp--v18-4-approval-write-moved.txt",
   "omp--v18-4-approval-write.txt",
+  "omp--v18-4-switch-moved-up.txt",
+  "omp--v18-4-switch-moved.txt",
+  "omp--v18-4-switch-narrow-moved.txt",
+  "omp--v18-4-switch-narrow.txt",
+  "omp--v18-4-switch-overcontext-moved.txt",
+  "omp--v18-4-switch-overcontext.txt",
+  "omp--v18-4-switch-roles-chips.txt",
+  "omp--v18-4-switch-search-short-moved.txt",
+  "omp--v18-4-switch-search-short.txt",
+  "omp--v18-4-switch-search.txt",
+  "omp--v18-4-switch-short-pane-scrolled.txt",
+  "omp--v18-4-switch-short-pane.txt",
+  "omp--v18-4-switch-top-edge.txt",
+  "omp--v18-4-switch-top.txt",
+  "omp--v18-4-switch-truncated-pointed.txt",
+  "omp--v18-4-switch-truncated.txt",
+  "omp--v18-4-switch-wrapped.txt",
+  "omp--v18-4-switch.txt",
 ]);
 
 // Every omp screen this adapter DECLINES, which is every screen IN THIS CORPUS bar the lifted resume
-// pickers, Ask single-selects and tool approvals, not every screen omp can draw. These are NOT "neutral
-// output" in the plain sense: fourteen of them are live modals with the keyboard, and the conformance
-// assertion (raw-only) is exactly the promise worth pinning, because it is a promise about a screen
-// where being wrong would type a keystroke. One reason per line.
+// pickers, Ask single-selects, tool approvals and model pickers, not every screen omp can draw. These
+// are NOT "neutral output" in the plain sense: nineteen of them are live modals with the keyboard, and
+// the conformance assertion (raw-only) is exactly the promise worth pinning, because it is a promise
+// about a screen where being wrong would type a keystroke. One reason per line.
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -155,12 +176,23 @@ const DECLINED = new Set([
   //   ⇥ to view all." The grammar needs a pointed row to walk from, so it declines, and what the
   //   operator gets is the raw mirror plus the unread-dialog card with its Escape button.
   "omp--v18-4-resume-nomatch.txt",
+  // - The compact model picker in every state but the session one (omp/switch.ts, .adr/0079). A search
+  //   with no match has no row to walk from. The `@` quick-roles state applies a role's model AND its
+  //   thinking level, and the task-model state (Alt+P) changes what spawned subagents run, two other
+  //   actions under other footers. The Nerd Font preset is uncaptured as a lift and its footer differs by
+  //   two glyphs. On a 74-column pane omp clips the footer, so the way out is not on screen at all and
+  //   even the Escape card stays off (omp/modal.test.ts).
+  "omp--v18-4-switch-clipped.txt",
+  "omp--v18-4-switch-nerd.txt",
+  "omp--v18-4-switch-nomatch.txt",
+  "omp--v18-4-switch-quick-roles.txt",
+  "omp--v18-4-switch-task.txt",
 ]);
 
-// The own cohort is the twenty-one lifted captures, so every conformance leg that needs one runs on them
+// The own cohort is the thirty-nine lifted captures, so every conformance leg that needs one runs on them
 // for real: each lifts, none lifts once output scrolls below it, every key is send_keys-valid, and each
 // model signs itself and fails the committing check when a row of it changes. The neutral cohort still
-// carries the leg that matters most here: raw-only on the other 39 omp captures and on every foreign
+// carries the leg that matters most here: raw-only on the other 44 omp captures and on every foreign
 // harness capture.
 const ownFixtures = allOmpFixtures.filter((f) => LIFTED.has(f));
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
@@ -229,6 +261,29 @@ describe("the omp corpus", () => {
     "omp--v18-4-resume-search.txt",
     "omp--v18-4-resume-untitled-dated.txt",
     "omp--v18-4-resume.txt",
+    "omp--v18-4-switch-clipped.txt",
+    "omp--v18-4-switch-moved-up.txt",
+    "omp--v18-4-switch-moved.txt",
+    "omp--v18-4-switch-narrow-moved.txt",
+    "omp--v18-4-switch-narrow.txt",
+    "omp--v18-4-switch-nerd.txt",
+    "omp--v18-4-switch-nomatch.txt",
+    "omp--v18-4-switch-overcontext-moved.txt",
+    "omp--v18-4-switch-overcontext.txt",
+    "omp--v18-4-switch-quick-roles.txt",
+    "omp--v18-4-switch-roles-chips.txt",
+    "omp--v18-4-switch-search-short-moved.txt",
+    "omp--v18-4-switch-search-short.txt",
+    "omp--v18-4-switch-search.txt",
+    "omp--v18-4-switch-short-pane-scrolled.txt",
+    "omp--v18-4-switch-short-pane.txt",
+    "omp--v18-4-switch-task.txt",
+    "omp--v18-4-switch-top-edge.txt",
+    "omp--v18-4-switch-top.txt",
+    "omp--v18-4-switch-truncated-pointed.txt",
+    "omp--v18-4-switch-truncated.txt",
+    "omp--v18-4-switch-wrapped.txt",
+    "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
     "omp--v18-pi-effort-hint.txt",
     "omp--v18-rule-draft.txt",
@@ -238,11 +293,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 60 captures this adapter was developed against", () => {
+  it("is exactly the 83 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("lifts the twenty-one `/resume`, Ask single-select and approval captures and declines the other thirty-nine", () => {
+  it("lifts the thirty-nine `/resume`, Ask single-select, approval and model picker captures and declines the other forty-four", () => {
     expect(ownFixtures).toEqual([...LIFTED].toSorted());
     expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
     expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);
@@ -251,11 +306,11 @@ describe("the omp corpus", () => {
 
 // The structural version of the same promise, and the one that survives a refactor of the cohort
 // lists above: walk the adapter's OWN output and assert that the only interactive block it can build is
-// the `prompt-select` of the `/resume` picker, the Ask single-select or the tool approval, on the lifted
-// captures and nowhere else. `describeAdapterConformance` checks this per fixture through its own
-// kind-agnostic filter; asserting the kinds directly here is what makes the claim in omp/index.ts's
-// header, "no interactive kind but those three lists", a test rather than a comment.
-describe("ompBuildBlocks emits nothing but raw, bar the /resume picker, the Ask single-select and the approval", () => {
+// the `prompt-select` of the `/resume` picker, the Ask single-select, the tool approval or the model
+// picker, on the lifted captures and nowhere else. `describeAdapterConformance` checks this per fixture
+// through its own kind-agnostic filter; asserting the kinds directly here is what makes the claim in
+// omp/index.ts's header, "no interactive kind but those four lists", a test rather than a comment.
+describe("ompBuildBlocks emits nothing but raw, bar the four lifted screens", () => {
   it.each(allOmpFixtures.filter((f) => !LIFTED.has(f)))("%s builds only raw blocks", (name) => {
     const blocks = ompAdapter.buildBlocks(fixtureLines(name));
     expect(blocks.length).toBeGreaterThan(0);
@@ -276,7 +331,7 @@ describe("ompBuildBlocks emits nothing but raw, bar the /resume picker, the Ask 
     expect(Object.keys(ompAdapter).toSorted()).toEqual(
       [
         "agent", // the registry key
-        "buildBlocks", // raw-only except /resume, the Ask single-select and the approval, asserted above
+        "buildBlocks", // raw-only except the four lifted screens, asserted above
         "cancelKey", // the unread-dialog card's one key, a declaration (.adr/0053, .adr/0076)
         "composerPrompt", // the row a destructive write BINDS to; it sends nothing itself
         "composerReady", // the pre-flight's refusal

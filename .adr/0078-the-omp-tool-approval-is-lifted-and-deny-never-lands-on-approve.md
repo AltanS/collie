@@ -18,6 +18,21 @@
   [ADR 0055](./0055-a-pointed-list-is-walked-then-confirmed.md) ·
   [ADR 0058](./0058-the-resume-picker-commits-with-enter.md)
 
+> **Amended 2026-10-02 by [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md):**
+> Deny is no longer a fixed `Down`, `Enter` plan. The model's plan is the plain walk,
+> `pointerWalk(pointedAt, 1)`: `Enter` when the pointer is on Deny, `Down`, `Enter` when it is on
+> Approve. Approve is unchanged (`Enter`, or `Up`, `Enter`). The action layer sends the arrows, reads
+> the pointer back, and sends the commit only bound to a fresh read that shows the pointer on the
+> tapped row; a pointer that moved sends nothing. The clamp is a fact about omp's list that the
+> model now declares as `clampedEnds`, and the action layer consumes it (ADR 0080 point 6): the
+> commit batch is `Up`, `Enter` for Approve and `Down`, `Enter` for Deny, so the guarantee in the
+> title, that a race never turns a Deny tap into an approval, is restored, now for Approve as well,
+> as a declared fact and a generic commit rule and not as a plan shape. The body below is the
+> decision as first written; point 2 and the two Consequences bullets that argue from the clamp
+> ("one keystroke more", "the tap batch is one request") are superseded by that rule: the verify
+> step adds one read and the walk is a separate call. The only window left is for a row that is not
+> an edge, which this two-row card does not have.
+
 ## Context
 
 **omp's tool approval blocks the agent until a human decides.** Under `--approval-mode always-ask`

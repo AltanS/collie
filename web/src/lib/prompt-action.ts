@@ -11,7 +11,16 @@
 //     is irreversible and it is the LAST thing sent, only after a fresh read shows our own words in
 //     the box — the same "never submit blind" rule as reply-action and submitPreviewNote.
 //
-// Both flows start with the same guard as their siblings: a FRESH pane read, the unconditional
+//   - Answering a row of a POINTED list is `[Down × n, Enter]` (ADR 0055's walk). The plan is split
+//     (`splitWalk`): the arrows go first, bound to the screen the user tapped; then a fresh read must
+//     show the pointer standing on the tapped row; only then does Enter go, bound to THAT read
+//     (ADR 0080, "walk, verify, commit"). A half-walked pointer with nothing committed is harmless;
+//     a committed wrong row is not. The only window left is the milliseconds between the bridge's own
+//     re-read and its send (see `checkPromptBinding` in bridge/server.ts). For an EDGE row of a list
+//     the grammar declared `clampedEnds`, even that gap is covered: the commit batch is `[Up, Enter]`
+//     on the first row and `[Down, Enter]` on the last (`commitKeysFor`, ADR 0080 point 6).
+//
+// All flows start with the same guard as their siblings: a FRESH pane read, the unconditional
 // revision check, and a re-derivation THROUGH THE PANE'S ADAPTER compared against what the user
 // tapped. The mid-flight polls re-derive the same way, against `promptsSameIdentity` — the feedback
 // flow moves the pointer and fills the input by design, so `promptsEqual` would reject its own work.
@@ -27,7 +36,7 @@ import {
   sendGuardedKeys,
   type DialogTarget,
 } from "./dialog-guard";
-import { promptsSameIdentity } from "./harness/prompt-model";
+import { commitKeysFor, promptsSameIdentity, sameKeys, splitWalk } from "./harness/prompt-model";
 import { t } from "./i18n";
 import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
 import type { Scope } from "./scope";
@@ -88,7 +97,70 @@ export async function submitPromptOption(
   args: GuardArgs & { option: PromptOption },
 ): Promise<PromptActionResult> {
   if (args.prompt.feedback?.focused) return { status: "changed" };
-  return sendGuardedKeys({ ...args, kind: "prompt-select", model: args.prompt }, args.option.keys);
+  const { option } = args;
+  const plan = splitWalk(option.keys);
+  if (plan === null) return sendGuardedKeys(target(args), option.keys);
+  if (plan.walk.length === 0) {
+    // The pointed row: one guarded write. On a clamped list an edge row carries its sticky arrow
+    // (ADR 0080 point 6), bound to the guarded region like the plain Enter.
+    const index = rowIndexOf(args.prompt, option);
+    const keys = index < 0 ? option.keys : commitKeysFor(args.prompt, index);
+    return sendGuardedKeys(target(args), keys);
+  }
+  return walkVerifyCommit(args, option, plan);
+}
+
+/** The tapped option's index in the model the user tapped: by identity, else by label and plan. */
+function rowIndexOf(prompt: PromptModel, option: PromptOption): number {
+  const index = prompt.options.indexOf(option);
+  if (index >= 0) return index;
+  return prompt.options.findIndex(
+    (o) => o.label === option.label && sameKeys(o.keys, option.keys),
+  );
+}
+
+/**
+ * ADR 0080, "walk, verify, commit", for a pointed list's row whose plan is `[Up|Down × n, Enter]`:
+ *
+ *   1. entry guard, then the arrows bound to the region the user tapped;
+ *   2. poll until a fresh read shows the SAME dialog with the pointer on the tapped row (that row's
+ *      plan is now just `Enter`). Drift or timeout sends nothing: the pointer may be anywhere, the
+ *      card re-derives on the next poll, and nothing was committed;
+ *   3. one more read, and Enter bound to THAT read's region — a keystroke at the terminal after it
+ *      makes the bridge refuse instead of confirming whatever the pointer now rests on.
+ */
+async function walkVerifyCommit(
+  args: GuardArgs & { option: PromptOption },
+  option: PromptOption,
+  plan: { walk: string[]; commit: string[] },
+): Promise<PromptActionResult> {
+  const index = rowIndexOf(args.prompt, option);
+  if (index < 0) return { status: "changed" };
+
+  const guarded = await guardDialog(target(args));
+  if (!guarded.ok) return guarded.result;
+  const walked = await sendBoundKeys(args, plan.walk, guarded.region);
+  if (walked.status !== "sent") return walked;
+
+  const landed = (m: PromptModel) => {
+    const row = m.options[index];
+    return (
+      promptsSameIdentity(m, args.prompt) &&
+      row !== undefined &&
+      row.label === option.label &&
+      sameKeys(row.keys, plan.commit)
+    );
+  };
+  try {
+    if ((await pollDialog(target(args), landed)) !== "ok") return { status: "changed" };
+    const fresh = await readDialog(target(args));
+    if (!fresh.model || !landed(fresh.model)) return { status: "changed" };
+    // The verified commit. On a clamped list an edge row carries a sticky arrow (ADR 0080 point 6)
+    // so a desk arrow landing in the last gap before the send cannot move the commit off the edge.
+    return sendBoundKeys(args, commitKeysFor(args.prompt, index), fresh.model.signature);
+  } catch (e) {
+    return { status: "error", error: describeThrownError(e) };
+  }
 }
 
 /**

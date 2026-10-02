@@ -289,7 +289,7 @@ describe("tableRuns — the whole pane corpus", () => {
       // grows up through the whole box.
       "claude--workflow-view.txt 8..59",
       // omp's welcome splash: the logo on the left, Tips / LSP servers / Recent sessions on the right.
-      // It sits in the scrollback of most omp captures, which is why it appears 25 times and always
+      // It sits in the scrollback of most omp captures, which is why it appears 40 times and always
       // at the same rows. The menus and dialogs BELOW it are not claimed, and that is the point: the
       // run stops where the box does.
       //
@@ -306,6 +306,13 @@ describe("tableRuns — the whole pane corpus", () => {
       // Back on this list since .adr/0078, for the same reason: the three omp 18.1.17 tool-approval
       // screens are a `prompt-select` card now. The five 18.4.10 approval captures are not here because
       // their splash has scrolled out of the buffer.
+      //
+      // Back on this list since .adr/0079, for the same reason again: the compact model picker's
+      // session state is a `prompt-select` card, so the splash above it is a raw block. Its splash is
+      // shorter (rows 2 to 14), drawn in the sandbox the picker was captured in. The 74-column capture
+      // is here although it is declined: omp clipped its footer, so no card stands over it either. The
+      // 103-column captures are absent because their splash has scrolled out, and the four declined
+      // states with a way out take the card.
       "omp--approval-bash.txt 2..20",
       "omp--approval-write--deny.txt 2..20",
       "omp--approval-write.txt 2..20",
@@ -326,6 +333,21 @@ describe("tableRuns — the whole pane corpus", () => {
       "omp--v18-4-ask-single-moved.txt 2..20",
       "omp--v18-4-ask-single.txt 2..20",
       "omp--v18-4-composer-idle.txt 2..20",
+      "omp--v18-4-switch-clipped.txt 2..14",
+      "omp--v18-4-switch-moved-up.txt 2..14",
+      "omp--v18-4-switch-moved.txt 2..14",
+      "omp--v18-4-switch-narrow-moved.txt 2..14",
+      "omp--v18-4-switch-narrow.txt 2..14",
+      "omp--v18-4-switch-overcontext-moved.txt 2..14",
+      "omp--v18-4-switch-overcontext.txt 2..14",
+      "omp--v18-4-switch-roles-chips.txt 2..14",
+      "omp--v18-4-switch-search-short-moved.txt 2..14",
+      "omp--v18-4-switch-search-short.txt 2..14",
+      "omp--v18-4-switch-search.txt 2..14",
+      "omp--v18-4-switch-top-edge.txt 2..14",
+      "omp--v18-4-switch-top.txt 2..14",
+      "omp--v18-4-switch-wrapped.txt 2..14",
+      "omp--v18-4-switch.txt 2..14",
       "omp--v18-4-tree.txt 2..20",
       "omp--v18-rule-draft.txt 2..20",
       "omp--v18-rule-idle.txt 2..20",

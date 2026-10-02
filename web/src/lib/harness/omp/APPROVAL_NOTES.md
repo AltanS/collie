@@ -71,21 +71,34 @@ nothing else: it is on `Approve` in four captures, on `Deny` in the other four, 
 
 ## What a tap sends
 
+Sent end to end by the action layer ([ADR 0080](../../../../../.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)).
+The model plans below are the plain walk `pointerWalk(pointedAt, i)`; the commit batch is the action
+layer's, built from `clampedEnds` (point 6).
+
 | Tap | Pointer on Approve | Pointer on Deny |
 |---|---|---|
-| Approve | `Enter` | `Up`, `Enter` |
-| Deny | `Down`, `Enter` | `Down`, `Enter` |
+| Approve | one call, bound to the tapped screen: `Up`, `Enter` | walk `Up` bound to the tapped screen; after the read-back, `Up`, `Enter` bound to the fresh read |
+| Deny | walk `Down` bound to the tapped screen; after the read-back, `Down`, `Enter` bound to the fresh read | one call, bound to the tapped screen: `Down`, `Enter` |
 | the card's last row, `Cancel` | `Escape` | `Escape` |
 
-One batch per tap. No digit anywhere: the screen printed none. The footer prints the arrows and
-Enter, so every key is one the screen named.
+The sticky arrow is the model's declared fact, `clampedEnds: true`, which omp's list earns (the clamp
+bullet below). `Approve` is the first row and `Deny` the last, so the commit batch is `Up`, `Enter` for
+Approve and `Down`, `Enter` for Deny whichever way the tap arrived. A walked row sends its arrows
+first (bound to the tapped screen), polls until a fresh read shows the pointer on the tapped row,
+and then sends the same sticky batch bound to that read. A timeout or a drift sends nothing. The
+pointed row has no arrows to walk: it is one guarded write of the sticky batch. No digit anywhere:
+the screen printed none. The footer prints the arrows and Enter, so every key is one the screen named.
 
 What each key does, from omp 18.4.10's `HookSelectorComponent.handleInput`:
 
 - `Up` and `Down` move the pointer through `MenuSelection.move(delta, false)`, which clamps at both
-  ends and never wraps. So `Down` on `Deny` leaves the pointer on `Deny`. That is why the Deny button
-  always sends `Down` first: whatever row the pointer is on when the keys land, the tap ends on
-  `Deny`. Every race between the guard's read and the keys therefore resolves toward a denial.
+  ends and never wraps. So `Down` on `Deny` leaves the pointer on `Deny`, and `Up` on `Approve` leaves
+  it on `Approve`. That is why the sticky arrow is safe: the extra `Down` before a Deny `Enter` is
+  a no-op when the pointer is already on `Deny`, and it pulls a pointer that a desk `Up` moved
+  in the last milliseconds back onto `Deny`. The same holds for `Up` before an Approve `Enter`.
+  So even the gap that [ADR 0080](../../../../../.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)'s
+  verify step leaves (between the bridge's re-read and its send) cannot turn a Deny tap into an
+  approval. The model declares the clamp as `clampedEnds`; the plans stay the plain walk.
 - `Enter` calls the select callback with the pointed label. The wrapper approves only on the exact
   string `Approve` and throws `Tool call denied by user: <tool>` on anything else.
 - `Escape` cancels. `select` resolves to `undefined`, which the wrapper treats as a denial.
@@ -149,8 +162,13 @@ which omp also reads as a denial.
 ## Not proven by the captures
 
 - **Probed live, 2026-10-02 (omp 18.4.10, Herdr, `tools.approvalMode: always-ask`, paired headless
-  browser).** Approve with the pointer on `Approve` ran `echo hello-approval-one`. Deny with the
-  pointer on `Deny` (Down clamps) and Deny with the pointer on `Approve` each denied, and the file
+  browser), with the old plans.** Deny was then always `Down`, `Enter` in one batch, which is
+  what the Deny tap sends again from the pointed row and from Approve (via the walk), so the
+  Deny-on-Deny probe is the evidence for `clampedEnds`. Approve was then `Enter` or `Up`, `Enter`;
+  it is now always `Up`, `Enter`, and the walk-verify-commit of ADR 0080 has not been probed
+  live with the new batches. Approve with
+  the pointer on `Approve` ran `echo hello-approval-one`. Deny with the pointer on `Deny` (Down
+  clamps) and Deny with the pointer on `Approve` each denied, and the file
   stayed absent. Approve with the pointer moved to `Deny` at the desk wrote the file (`Up`, `Enter`).
   A ten-line write showed six content rows and `… +4` on the card (the cut was dropped afterwards, so
   the card now shows all rows). Cancel denied, and the file stayed absent. A desk move followed at once by a Deny tap

@@ -42,7 +42,9 @@
 // WHY THIS IS NOT ADR 0058's EXCEPTION. ADR 0058 had to carve out an unprinted Enter for Claude's
 // picker, whose footer never names it. omp's does: `⏎ select` / `Enter select` is in the
 // footer of both layouts, and the `❯` is the row it takes. So a tap is the arrow walk from the pointed
-// row plus a key the screen printed, inside ADR 0009's rule, and no digit is invented (ADR 0055).
+// row plus a key the screen printed, inside ADR 0009's rule, and no digit is invented (ADR 0055). The
+// action layer does not send the plan as one batch: it walks, verifies, then commits (ADR 0080), so
+// `Enter` goes out only bound to a fresh read that shows the pointer on the tapped row.
 //
 // FAIL CLOSED. Every piece of evidence is required, and any one missing returns null, which leaves the
 // raw mirror and the unread-dialog card (omp/modal.ts) exactly as they were before this file:

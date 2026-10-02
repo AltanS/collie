@@ -35,13 +35,23 @@
 // preset's `>` is the most common glyph in a transcript and is not captured either.
 //
 // WHAT A TAP SENDS. The footer prints the arrows and Enter, so every key is one the screen named (ADR
-// 0009), and no digit is invented. `Approve` is ADR 0055's walk: `Enter` when the pointer is on it,
-// `Up` then `Enter` when the pointer is on Deny. `Deny` is ALWAYS `Down` then `Enter`, wherever the
-// pointer is: omp's list clamps at its ends (`MenuSelection.move(delta, false)`), so Down from Deny
-// stays on Deny. That one change from ADR 0055 makes every race resolve toward Deny: a pointer that
-// moves at the desk after the guard's read and before the keys land can turn an Approve tap into a
-// denial, never a Deny tap into an approval. The card's last row is the footer's way out in its own
-// words (`Cancel`), sending `Escape`, which omp also reports to the agent as a denial.
+// 0009), and no digit is invented. Both buttons are ADR 0055's plain walk from the pointed row,
+// `pointerWalk(pointedAt, i)`: `Approve` is `Enter` when the pointer is on it and `Up`, `Enter` when
+// it is on Deny; `Deny` is `Enter` when the pointer is on it and `Down`, `Enter` when it is on
+// Approve. The action layer splits the plan (ADR 0080): it sends the arrows bound to the tapped
+// screen, reads the pointer back, and sends `Enter` only bound to a fresh read that shows the pointer
+// on the tapped row. A pointer that moved at the desk makes the tap send nothing, never a different
+// choice. omp's list clamps at its ends (`HookSelectorComponent.handleInput` calls
+// `MenuSelection.move(delta, false)`; the live Deny-on-Deny probe of 2026-10-02 showed it), and the
+// model declares that as `clampedEnds`. That fact is load-bearing again, as a declared fact the
+// action layer consumes and not as a plan: the plans above stay the plain walk, and the commit batch
+// is the action layer's. `Approve` is the first row and `Deny` the last, so the commit goes out as
+// `Up, Enter` and `Enter` is never bare on an edge: a desk arrow landing in the gap between the
+// bridge's re-read and its send cannot turn a Deny tap into an approval, nor an Approve tap into a
+// denial that the user did not ask for (ADR 0078's guarantee, restored by ADR 0080 point 6).
+// `Cancel` sends `Escape` and is no row of the list. The card's last row
+// is the footer's way out in its own words (`Cancel`), sending `Escape`, which omp also reports to
+// the agent as a denial.
 //
 // WHAT THE CARD SHOWS, so nobody approves blind. The caption is the title (`Allow tool: bash`, the
 // tool's name). The Approve button's description is the body, row by row, rows joined by ` ↵ ` so a
@@ -77,6 +87,7 @@
 // Pure functions over `StyledLine[]`, tail-anchored like every other grammar.
 
 import type { StyledLine } from "../../blocks";
+import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
 import { readOmpHintList } from "./modal";
@@ -237,7 +248,8 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
   const region = texts.slice(titleAt, bottom + 1);
   const signature = region.join("\n");
   if (signature.length > MAX_REGION_CHARS) return null;
-  const pointedRow = approve.pointed ? approveAt : approveAt + 1;
+  const pointedAt = approve.pointed ? 0 : 1;
+  const pointedRow = approveAt + pointedAt;
   const coreSignature = region
     .map((row, i) => (titleAt + i === pointedRow ? row.replace(preset.pointer, " ") : row))
     .join("\n");
@@ -247,11 +259,11 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
     {
       label: "Approve",
       description: shown.join(ROW_BREAK),
-      keys: approve.pointed ? ["Enter"] : ["Up", "Enter"],
+      keys: pointerWalk(pointedAt, 0),
       keyLabel: approve.pointed ? POINTER_BADGE : "",
     },
-    // Down clamps on the last row, so this lands on Deny from either row. See the header.
-    { label: "Deny", keys: ["Down", "Enter"], keyLabel: deny.pointed ? POINTER_BADGE : "" },
+    // The plain walk, like Approve: the verified commit of ADR 0080 plus `clampedEnds` is the safety argument. See the header.
+    { label: "Deny", keys: pointerWalk(pointedAt, 1), keyLabel: deny.pointed ? POINTER_BADGE : "" },
     // The footer's own way out, in its own words (ADR 0058 point 5).
     { label: capitalise(footer.escapeVerb), keys: ["Escape"], keyLabel: "Esc" },
   ];
@@ -260,6 +272,8 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
     caption: title,
     options,
     family: "permission",
+    // omp 18.4.10 clamps at both ends (see the header); two rows, both visible, no hidden row.
+    clampedEnds: true,
     signature,
     coreSignature,
   };

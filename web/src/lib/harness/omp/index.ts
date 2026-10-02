@@ -2,27 +2,36 @@
 // Its boxed-composer scanner (chrome.ts), rule-composer scanner (rule.ts) and shared lexing primitives
 // (markers.ts) live alongside this file; this module composes them into the HarnessAdapter block and
 // chrome re-surfacing surfaces. The `/resume` picker grammar is resume.ts, the `ask` tool's
-// single-select grammar is ask.ts, the tool-approval grammar is approval.ts, and the modal gate that
-// lets the unread-dialog card stand over every other omp modal is modal.ts.
+// single-select grammar is ask.ts, the tool-approval grammar is approval.ts, the compact model picker
+// grammar is switch.ts, and the modal gate that lets the unread-dialog card stand over every other omp
+// modal is modal.ts.
 //
-// This adapter is TIER 1 EVERYWHERE EXCEPT THREE SCREENS. `ompBuildBlocks` lifts the `/resume` session
+// This adapter is TIER 1 EVERYWHERE EXCEPT FOUR SCREENS. `ompBuildBlocks` lifts the `/resume` session
 // picker (resume.ts, .adr/0076), the `ask` tool's one-question single-select dialog (ask.ts,
-// .adr/0077) and the `bash` and `write` tool-approval dialog (approval.ts, .adr/0078) as
-// `prompt-select` lists, and returns one `raw` block for every other screen. Each lift carries the
-// Tier-2 bar on its own (HARNESS_CONTRIBUTING.md): a dated corpus (`omp--menu-resume*.txt` and
-// `omp--select-menu*.txt`, 2026-08 against v17.2.12; `omp--approval-*.txt`, 2026-09-10 against
-// v18.1.17; `omp--select-menu-{noted,other}.txt`, 2026-10-01 against v18.4.4; `omp--v18-4-resume*.txt`,
-// `omp--v18-4-ask-*.txt` and `omp--v18-4-approval-*.txt`, 2026-10-02 against v18.4.10), a choreography
-// notes file (omp/RESUME_NOTES.md, omp/ASK_NOTES.md, omp/APPROVAL_NOTES.md), the conformance run, and
-// the maintainer's live verification against a real pane. `/resume`, the Ask dialog and the approval
-// dialog were verified live on 2026-10-02 (omp 18.4.10), which RESUME_NOTES.md, ASK_NOTES.md,
-// APPROVAL_NOTES.md and ADRs 0076 to 0078 record.
+// .adr/0077), the `bash` and `write` tool-approval dialog (approval.ts, .adr/0078) and the compact
+// session-only model picker that `/switch` and Alt+P open (switch.ts, .adr/0079) as `prompt-select`
+// lists, and returns one `raw` block for every other screen. Each lift carries the Tier-2 bar on its
+// own (HARNESS_CONTRIBUTING.md): a dated corpus (`omp--menu-resume*.txt` and `omp--select-menu*.txt`,
+// 2026-08 against v17.2.12; `omp--approval-*.txt`, 2026-09-10 against v18.1.17;
+// `omp--select-menu-{noted,other}.txt`, 2026-10-01 against v18.4.4; `omp--v18-4-resume*.txt`,
+// `omp--v18-4-ask-*.txt`, `omp--v18-4-approval-*.txt` and `omp--v18-4-switch*.txt`, 2026-10-02 against
+// v18.4.10), a choreography notes file (omp/RESUME_NOTES.md, omp/ASK_NOTES.md, omp/APPROVAL_NOTES.md,
+// omp/SWITCH_NOTES.md), the conformance run, and the maintainer's live verification against a real
+// pane. `/resume`, the Ask dialog and the approval dialog were verified live on 2026-10-02 (omp
+// 18.4.10), which RESUME_NOTES.md, ASK_NOTES.md, APPROVAL_NOTES.md and ADRs 0076 to 0078 record. The
+// model picker's walks were checked against a sandbox pane without Enter, with the one-batch plan; its
+// live tap verification is still the maintainer's (SWITCH_NOTES.md).
+// Every pointed list here (resume, Ask, approval, model picker) builds its plans with `pointerWalk`
+// and carries the pointer verbatim in `signature`, blank in `coreSignature`. A tap is walked, verified
+// and then confirmed, never sent as one batch (.adr/0080): the arrows go first, bound to the tapped
+// screen, and `Enter` goes only bound to a fresh read that shows the pointer on the tapped row. No
+// grammar bends a plan to survive a race.
 // Every other screen stays Tier 1: no `wizard`, `preview-select`, `multi-select` or `menu` is ever
 // emitted, so no tap on any of them sends a key this adapter derived, and a mis-parse there costs
 // cosmetics. The one key they can get is the unread-dialog card's declared Escape (below).
-// `/model`, `/settings`, `/tree`, the Ask tool's multi-select and multi-question dialogs, and every
-// approval the grammar declines (another tool, a third option row, a countdown, an uncaptured preset)
-// are the screens that stay raw; a later contribution lifts them one at a time, each clearing the bar
+// `/model`, `/settings`, `/tree`, the Ask tool's multi-select and multi-question dialogs, every
+// approval the grammar declines (another tool, a third option row, a countdown, an uncaptured preset),
+// and the model picker's `@` quick-roles and task-model states are the screens that stay raw; a later contribution lifts them one at a time, each clearing the bar
 // itself.
 //
 // Read the Tier-1 claim as one about `buildBlocks` ALONE, not one about the adapter. The chrome
@@ -34,7 +43,7 @@
 // definition). HARNESS_CONTRIBUTING.md's ladder is explicit about why the boundary sits where it does:
 // every existing interactive kind already HAS a live keystroke recipe in core, so emitting one goes hot
 // the moment detection matches. That is why the tool-approval lift (approval.ts) is the most
-// conservative of the three: Approve runs a command or writes a file, so the grammar declines every
+// conservative of the four: Approve runs a command or writes a file, so the grammar declines every
 // shape it was not built against, its Deny button cannot land on Approve, and the card carries the
 // command or the path it approves.
 //
@@ -57,17 +66,18 @@
 // same guarantee:
 //
 //   - STRUCTURAL: the only arms in `ompBuildBlocks` that can emit a non-raw block are the `/resume`,
-//     Ask single-select and tool-approval detectors, and each is fail-closed on a whole layout's worth
-//     of evidence (resume.ts, ask.ts, approval.ts). There is no other detector to mis-fire, so no other
-//     screen, captured or not, can be up-levelled.
-//   - TESTED, for the 60 screens in this corpus: 19 composer states, six answer-editor states, the
+//     Ask single-select, tool-approval and model-picker detectors, and each is fail-closed on a whole
+//     layout's worth of evidence (resume.ts, ask.ts, approval.ts, switch.ts). There is no other
+//     detector to mis-fire, so no other screen, captured or not, can be up-levelled.
+//   - TESTED, for the 83 screens in this corpus: 19 composer states, six answer-editor states, the
 //     `/model` and `/settings` pickers (each in the 17.x/18.1 form with a moved-selection twin, and in
 //     the 18.4 form), the `/tree` picker in both versions, the Ask tool's eleven screens, eight
-//     tool-approval screens, and the `/resume` picker in both layouts. harness/omp.test.ts asserts that
-//     the `/resume` captures with at least one session, the six one-question single-select Ask
-//     captures and the eight approval captures lift as a `prompt-select` list, that every other
-//     capture builds only `raw` blocks, and that `composerReady === false` on every modal that is not
-//     the answer editor (which is an input, so it answers `true`). Each screen that stays raw is
+//     tool-approval screens, the `/resume` picker in both layouts, and the compact model picker in 23
+//     states. harness/omp.test.ts asserts that the `/resume` captures with at least one session, the
+//     six one-question single-select Ask captures, the eight approval captures and the eighteen model
+//     picker captures of its session state lift as a `prompt-select` list, that every other capture
+//     builds only `raw` blocks, and that `composerReady === false` on every modal that is not the
+//     answer editor (which is an input, so it answers `true`). Each screen that stays raw is
 //     declined because it is out of scope above, or because its keys are a recipe no shared model
 //     carries (the Ask multi-select toggles with Space after an arrow walk, .adr/0077). The
 //     fail-closed contract says a detector returns null on anything it does not confidently recognise.
@@ -116,18 +126,20 @@ import { ompModalOnScreen } from "./modal";
 import { detectApprovalRegion } from "./approval";
 import { detectAskSelectRegion } from "./ask";
 import { detectResumePickerRegion } from "./resume";
+import { detectSwitchPickerRegion } from "./switch";
 
 /**
  * omp's block pipeline: the `/resume` session picker (resume.ts, .adr/0076), the `ask` tool's
- * one-question single-select dialog (ask.ts, .adr/0077) or the tool-approval dialog (approval.ts,
- * .adr/0078) as a `prompt-select` list when one is on screen at the tail, otherwise one raw block with
- * the composer chrome stripped off the tail. Those three arms are the ONLY dialog arms, and each is
- * fail-closed on a whole layout's worth of evidence, so everything else stays the universal Tier-0
- * shape plus a strip. The registry only ever hands this function an omp pane, so there is no per-agent
- * gate here.
+ * one-question single-select dialog (ask.ts, .adr/0077), the tool-approval dialog (approval.ts,
+ * .adr/0078) or the compact model picker (switch.ts, .adr/0079) as a `prompt-select` list when one is
+ * on screen at the tail, otherwise one raw block with the composer chrome stripped off the tail. Those
+ * four arms are the ONLY dialog arms, and each is fail-closed on a whole layout's worth of evidence, so
+ * everything else stays the universal Tier-0 shape plus a strip. The registry only ever hands this
+ * function an omp pane, so there is no per-agent gate here.
  *
  * Everything above the dialog's title stays raw, so no context is lost; the approval card starts at
- * its `Approve` row, so the title and the body it approves stay raw too. There is no composer to strip
+ * its `Approve` row, so the title and the body it approves stay raw too, and the model picker's card
+ * starts at its list, so its title, status sentence and typed search stay raw above it. There is no composer to strip
  * while a dialog is up: it owns the keyboard, and `composerReady` answers false on it.
  *
  * No generic `menu` arm, for a reason that is pinned by a test rather than asserted in prose
@@ -140,8 +152,12 @@ import { detectResumePickerRegion } from "./resume";
  * delivers the way out, and `composerReady` already delivers the safety half.
  */
 export function ompBuildBlocks(lines: StyledLine[]): Block[] {
-  // The three lifted screens never share a tail: each is anchored on its own bottom border and footer.
-  const lifted = detectResumePickerRegion(lines) ?? detectAskSelectRegion(lines) ?? detectApprovalRegion(lines);
+  // The four lifted screens never share a tail: each is anchored on its own bottom border and footer.
+  const lifted =
+    detectResumePickerRegion(lines) ??
+    detectAskSelectRegion(lines) ??
+    detectApprovalRegion(lines) ??
+    detectSwitchPickerRegion(lines);
   if (lifted !== null) {
     const before = trimTrailingBlank(lines.slice(0, lifted.startLine));
     const blocks: Block[] = [];

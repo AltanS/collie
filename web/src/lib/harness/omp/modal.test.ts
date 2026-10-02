@@ -62,11 +62,42 @@ const MODALS_WITH_A_WAY_OUT = [
   "omp--v18-4-resume-search.txt",
   "omp--v18-4-resume-untitled-dated.txt",
   "omp--v18-4-resume.txt",
+  // The compact model picker (`/switch`, Alt+P) in omp 18.4.10. Its footer ends `⎋ close · Alt+P task
+  // model`, one segment past the way out (modal.ts header). The session state is LIFTED (omp/switch.ts)
+  // and draws no card; the task-model state, the `@` quick-roles state, a search with no match and the
+  // Nerd Font preset stay raw and take the card.
+  "omp--v18-4-switch-moved-up.txt",
+  "omp--v18-4-switch-moved.txt",
+  "omp--v18-4-switch-narrow-moved.txt",
+  "omp--v18-4-switch-narrow.txt",
+  "omp--v18-4-switch-nerd.txt",
+  "omp--v18-4-switch-nomatch.txt",
+  "omp--v18-4-switch-overcontext-moved.txt",
+  "omp--v18-4-switch-overcontext.txt",
+  "omp--v18-4-switch-quick-roles.txt",
+  "omp--v18-4-switch-roles-chips.txt",
+  "omp--v18-4-switch-search-short-moved.txt",
+  "omp--v18-4-switch-search-short.txt",
+  "omp--v18-4-switch-search.txt",
+  "omp--v18-4-switch-short-pane-scrolled.txt",
+  "omp--v18-4-switch-short-pane.txt",
+  "omp--v18-4-switch-task.txt",
+  "omp--v18-4-switch-top-edge.txt",
+  "omp--v18-4-switch-top.txt",
+  "omp--v18-4-switch-truncated-pointed.txt",
+  "omp--v18-4-switch-truncated.txt",
+  "omp--v18-4-switch-wrapped.txt",
+  "omp--v18-4-switch.txt",
 ];
 
 // The `/tree` picker is a modal that prints NO way out: omp clips its hint row and neither capture
 // holds an Esc segment. It is the one omp modal this gate does not see, on purpose (modal.ts header).
 const TREE = ["omp--tree.txt", "omp--v18-4-tree.txt"];
+
+// The model picker on a 74-column pane: omp clips the footer to `… @ quick roles …`, so the way out is
+// gone from the screen. The gate cannot see it, the same honest gap as `/tree`.
+const CLIPPED = ["omp--v18-4-switch-clipped.txt"];
+const NO_WAY_OUT = [...TREE, ...CLIPPED];
 
 const OMP = ALL.filter((f) => f.startsWith("omp--"));
 const OMP_WITHOUT_A_MODAL = OMP.filter((f) => !MODALS_WITH_A_WAY_OUT.includes(f));
@@ -77,14 +108,14 @@ describe("ompModalOnScreen on the omp corpus", () => {
     expect(ompModalOnScreen(fixtureLines(name))).toBe(true);
   });
 
-  it.each(OMP_WITHOUT_A_MODAL.filter((f) => !TREE.includes(f)))(
+  it.each(OMP_WITHOUT_A_MODAL.filter((f) => !NO_WAY_OUT.includes(f)))(
     "%s: a composer, a working pane or an idle pane ⇒ false",
     (name) => {
       expect(ompModalOnScreen(fixtureLines(name))).toBe(false);
     },
   );
 
-  it.each(TREE)("%s: prints no way out, so the gate cannot see it ⇒ false", (name) => {
+  it.each(NO_WAY_OUT)("%s: prints no way out, so the gate cannot see it ⇒ false", (name) => {
     const lines = fixtureLines(name);
     expect(ompModalOnScreen(lines)).toBe(false);
     // The claim in the header, checked rather than recalled: no row of the capture names Esc or `⎋`
@@ -94,7 +125,9 @@ describe("ompModalOnScreen on the omp corpus", () => {
   });
 
   it("covers every omp capture exactly once", () => {
-    expect([...MODALS_WITH_A_WAY_OUT, ...TREE, ...OMP_WITHOUT_A_MODAL.filter((f) => !TREE.includes(f))].toSorted())
+    expect(
+      [...MODALS_WITH_A_WAY_OUT, ...NO_WAY_OUT, ...OMP_WITHOUT_A_MODAL.filter((f) => !NO_WAY_OUT.includes(f))].toSorted(),
+    )
       .toEqual(OMP);
   });
 
@@ -131,6 +164,9 @@ describe("the footer spellings", () => {
     "up/down navigate  enter select  esc cancel",
     // The Nerd Font symbol preset (omp 18.4.4, the `ask` tool): enter, then escape, as private-use glyphs.
     "\u{F0311} select · n note · ↑/↓ move · \u{F12B7} cancel",
+    // The model picker: one task-mode toggle may follow the way out, in either of its two modes.
+    "↑/↓ models · ⏎ use for this session · type to search · @ quick roles · ⎋ close · Alt+P task model",
+    "↑/↓ models · ⏎ use for Task subagents · type to search · ⎋ close · Alt+P session model",
   ])("%s ⇒ true", (inner) => {
     expect(ompModalOnScreen(boxed(inner))).toBe(true);
   });
@@ -145,6 +181,13 @@ describe("the footer spellings", () => {
     "Esc cancel · Enter select · ↑/↓ move",
     // A way out with nothing beside it is a sentence, not a hint list.
     "Esc cancel",
+    // The toggle is the only segment allowed after the way out, and only one of it.
+    "Enter select · ⎋ close · Alt+P task model · Alt+P session model",
+    "Enter select · ⎋ close · ↑/↓ move",
+    "Enter select · ⎋ close · Alt+P another model",
+    "Enter select · ⎋ close · alt+p Task Model",
+    // A toggle beside a bare way out is still a way out with nothing else beside it.
+    "⎋ close · Alt+P task model",
   ])("%s ⇒ false", (inner) => {
     expect(ompModalOnScreen(boxed(inner))).toBe(false);
   });
@@ -155,6 +198,10 @@ describe("the footer spellings", () => {
       escapeVerb: "cancel",
     });
     expect(readOmpHintList("⏎/␣ to change · ⎋ to close")?.escapeVerb).toBe("close");
+    expect(readOmpHintList("↑/↓ models · ⏎ use for this session · ⎋ close · Alt+P task model")).toEqual({
+      segments: ["↑/↓ models", "⏎ use for this session", "⎋ close", "Alt+P task model"],
+      escapeVerb: "close",
+    });
     expect(readOmpHintList("up/down navigate  enter select  esc cancel")?.segments).toEqual([
       "up/down navigate",
       "enter select",

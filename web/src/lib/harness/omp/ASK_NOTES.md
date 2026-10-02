@@ -46,7 +46,10 @@ A row with a saved note ends in `  ✎ note` (`omp--select-menu-noted.txt`).
 | `Other (type your own)` | the same walk, then `Enter` |
 | the card's last row | `Escape` |
 
-One batch per tap. No digit anywhere: the screen printed none, and the dialog ignores digits.
+The plan is not sent as one batch: the arrows go first, bound to the tapped screen, and `Enter` goes
+only bound to a fresh read that shows the pointer on the tapped row (walk, verify, commit,
+[ADR 0080](../../../../../.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)). No digit
+anywhere: the screen printed none, and the dialog ignores digits.
 
 What each key does, from omp 18.4.10's `handleInput`:
 
@@ -113,7 +116,8 @@ mirror and the Escape card. ADR 0077 says what a later slice needs.
 - **Probed live, 2026-10-02 (omp 18.4.10, Herdr, 109 by 59, paired headless browser).** A real Ask
   dialog (`Pick a color`: Red, Green, Blue, Other) drew the card with four option buttons and Cancel.
   Taps on Blue, Green, Red and Blue each answered the agent with that colour (the agent echoed it).
-  A tap on `Other` opened the answer editor. The multi-select dialog drew no option card, only the
+  A tap on `Other` opened the answer editor. These taps were made with the old one-batch plan; the
+  walk, verify, commit of ADR 0080 has not been probed live. The multi-select dialog drew no option card, only the
   Escape card, as designed. Not probed: a composer reply typed into the editor after the `Other` tap
   (PR 336 covers the editor itself), the Cancel row on this card, a pointer moved at the desk between
   the render and the tap, and the Nerd Font preset.

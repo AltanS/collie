@@ -444,15 +444,16 @@ describe("detectPromptSelect — the unnumbered folder-trust prompt", () => {
     expect(model!.options.map((o) => o.keyLabel)).toEqual([undefined, undefined]);
   });
 
-  it("a moved pointer is neither the same visible state nor the same dialog", () => {
+  it("a moved pointer is not the same visible state, though it is the same dialog", () => {
     // The arrow COUNT is measured from where the pointer was, so a pointer that moved between the
     // render and the tap must refuse the tap. `signature` is byte-faithful and carries the `❯`
-    // column, which is what `promptsEqual` (the COMMITTING comparison) checks; and the walk is baked
-    // into every option's `keys`, which `promptsSameIdentity` compares too.
+    // column, which is what `promptsEqual` (the COMMITTING, entry comparison) checks. The walk baked
+    // into every option's `keys` is NOT compared by `promptsSameIdentity` (ADR 0080): the pointer is
+    // our own choreography's effect, and the walk-verify poll watches it arrive.
     const here = detectPromptSelect(pointedScreen([" ❯ No, exit", "   Yes, I trust this folder"]))!;
     const moved = detectPromptSelect(pointedScreen(["   No, exit", " ❯ Yes, I trust this folder"]))!;
     expect(promptsEqual(here, moved)).toBe(false);
-    expect(promptsSameIdentity(here, moved)).toBe(false);
+    expect(promptsSameIdentity(here, moved)).toBe(true);
     expect(promptsEqual(here, here)).toBe(true);
   });
 });

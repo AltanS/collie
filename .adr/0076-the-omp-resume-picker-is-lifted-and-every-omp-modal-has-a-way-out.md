@@ -7,6 +7,16 @@
 - **Amended in scope by:** [ADR 0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md):
   the `bash` and `write` tool-approval dialog in its two captured presets is now lifted as a card, so
   it draws no Escape card. Every other approval and everything else below stand.
+- **Amended in scope by:** [ADR 0079](./0079-the-omp-model-picker-is-lifted-as-its-visible-window.md):
+  the compact model picker's session state is now lifted as a card, and the modal gate of point 1
+  accepts one segment after the way out, the picker's `Alt+P task model` or `Alt+P session model`.
+  Everything else below stands.
+- **Amended by:** [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md) (2026-10-02): a tap on a
+  pointed list is no longer sent as one batch. Point 4 below says "as one batch"; read it as the
+  action layer's walk, verify, commit: the arrows go first, bound to the tapped screen, and `Enter`
+  goes only bound to a fresh read that shows the pointer on the tapped row. The last Consequences
+  bullet ("the guard checks the screen before the batch") is superseded the same way. Nothing else
+  changes.
 - **Date:** 2026-10-02
 - **Shipped in:** pending
 - **Amends:** [ADR 0053](./0053-an-unread-dialog-still-has-a-way-out.md) and

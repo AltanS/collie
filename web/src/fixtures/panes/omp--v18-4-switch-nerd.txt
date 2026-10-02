@@ -1,0 +1,61 @@
+[0m[38;2;0;255;136m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;0;255;136m$ cat filler2.txt[0m                                                                                     
+                                                                                                       
+ [0m[38;2;156;163;176mgamma quartz beta gamma alpha beta orbit river orbit gamma orbit stone ember meadow cloud pixel       [0m
+ [0m[38;2;156;163;176mmeadow river meadow pixel harbor stone river pixel delta orbit delta beta cloud pixel gamma stone     [0m
+ [0m[38;2;156;163;176morbit orbit pixel alpha meadow harbor maple ember stone maple quartz cloud pixel alpha ember quartz   [0m
+ [0m[38;2;156;163;176mmeadow cloud lantern harbor quartz orbit gamma maple lantern ember beta …[0m                             
+ [0m[38;2;156;163;176mcloud pixel beta gamma orbit lantern ember meadow maple orbit river river cloud alpha meadow stone    [0m
+ [0m[38;2;156;163;176mdelta harbor meadow delta meadow orbit meadow gamma gamma orbit orbit river delta cloud delta lantern [0m
+ [0m[38;2;156;163;176member orbit river beta maple river orbit meadow quartz gamma cloud pixel gamma orbit quartz orbit     [0m
+ [0m[38;2;156;163;176mstone alpha beta quartz delta orbit river stone ember lantern river river beta river orbit maple      [0m
+ [0m[38;2;156;163;176mlantern maple orbit delta pixel ember lantern gamma pixel gamma delta gamma harbor meadow cloud stone [0m
+ [0m[38;2;156;163;176malpha pixel harbor beta orbit alpha beta meadow river delta lantern cloud stone meadow meadow ember   [0m
+ [0m[38;2;156;163;176malpha lantern lantern orbit ember cloud meadow cloud meadow alpha gamma orbit ember beta lantern beta [0m
+ [0m[38;2;156;163;176mquartz meadow gamma meadow stone quartz meadow orbit maple alpha …[0m                                    
+ [0m[38;2;156;163;176member alpha ember lantern lantern delta lantern cloud beta stone maple lantern meadow delta meadow    [0m
+ [0m[38;2;156;163;176mmeadow river lantern beta pixel pixel beta delta pixel pixel meadow stone quartz cloud delta beta     [0m
+ [0m[38;2;156;163;176malpha orbit maple ember delta beta orbit delta delta pixel quartz cloud orbit orbit alpha meadow      [0m
+ [0m[38;2;156;163;176mmeadow maple quartz beta orbit orbit quartz ember delta cloud maple river alpha stone alpha meadow    [0m
+ [0m[38;2;156;163;176mharbor quartz harbor maple maple pixel harbor cloud harbor river lantern river maple beta harbor      [0m
+ [0m[38;2;156;163;176mstone river gamma stone harbor cloud ember meadow quartz lantern ember orbit alpha pixel cloud cloud  [0m
+ [0m[38;2;156;163;176member quartz quartz river lantern meadow stone lantern stone ember orbit beta meadow beta cloud beta  [0m
+ [0m[38;2;156;163;176mgamma beta cloud beta quartz maple beta pixel beta beta orbit cloud orbit…[0m                            
+                                                                                                       
+ [0m[38;2;107;114;128m… 48 more lines (Ctrl+O to expand)[0m                                                                    
+ [0m[38;2;255;179;71mShowing lines 1-34 and 568-600 of 600; 533 middle lines (398.8KB) elided[0m                              
+[0m[38;2;0;255;136m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[38;2;0;255;136m───────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;0;255;136m$ cat filler2.txt[0m                                                                                     
+                                                                                                       
+ [0m[38;2;156;163;176mgamma quartz beta gamma alpha beta orbit river orbit gamma orbit stone ember meadow cloud pixel       [0m
+ [0m[38;2;156;163;176mmeadow river meadow pixel harbor stone river pixel delta orbit delta beta cloud pixel gamma stone     [0m
+ [0m[38;2;156;163;176morbit orbit pixel alpha meadow harbor maple ember stone maple quartz cloud pixel alpha ember quartz   [0m
+ [0m[38;2;156;163;176mmeadow cloud lantern harbor quartz orbit gamma maple lantern ember beta …[0m                             
+ [0m[38;2;156;163;176mcloud pixel beta gamma orbit lantern ember meadow maple orbit river river cloud alpha meadow stone    [0m
+ [0m[38;2;156;163;176mdelta harbor meadow delta meadow orbit meadow gamma gamma orbit orbit river delta cloud delta lantern [0m
+[0m[38;2;42;48;56m╭─[0m[1m[38;2;0;180;255m Switch Model [0m[38;2;42;48;56m──────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;156;163;176m Session-only switch — role models stay unchanged[0m                                                   [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m  [0m[38;2;0;180;255m[0m > [0m[7m [0m                                                                                              [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m                                                                                                     [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;0;180;255m[0m [0m[38;2;107;114;128manthropic/[0m[38;2;0;180;255mclaude-opus-5-5[0m [0m[38;2;0;255;136m[0m                                        [0m[38;2;107;114;128m 58[0m  [0m[38;2;107;114;128m ~95t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $4/20[0m[38;2;0;180;255m█[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-haiku-4-5                                         [0m[38;2;107;114;128m    [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m200k [0m  [0m[38;2;107;114;128m  $1/5[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-fable-5-1                                         [0m[38;2;107;114;128m 53[0m  [0m[38;2;107;114;128m ~68t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m$10/50[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-sonnet-5-5                                        [0m[38;2;107;114;128m 56[0m  [0m[38;2;107;114;128m~139t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $2/10[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;156;163;176m──────────────────────────────────────────────────────────────────────────────────────────────[0m  [0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-mythos-5-1                                        [0m[38;2;107;114;128m    [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m$10/50[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-fable-5                                           [0m[38;2;107;114;128m 50[0m  [0m[38;2;107;114;128m ~63t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m$10/50[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-mythos-5                                          [0m[38;2;107;114;128m    [0m  [0m[38;2;107;114;128m       [0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m$10/50[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-opus-5                                            [0m[38;2;107;114;128m 51[0m  [0m[38;2;107;114;128m ~60t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $5/25[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-sonnet-5                                          [0m[38;2;107;114;128m 38[0m  [0m[38;2;107;114;128m ~77t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $2/10[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-opus-4-8                                          [0m[38;2;107;114;128m 42[0m  [0m[38;2;107;114;128m ~53t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $5/25[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-opus-4-7                                          [0m[38;2;107;114;128m 41[0m  [0m[38;2;107;114;128m ~52t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $5/25[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-opus-4-6                                          [0m[38;2;107;114;128m 26[0m  [0m[38;2;107;114;128m ~38t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $5/25[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-sonnet-4-6                                        [0m[38;2;107;114;128m 25[0m  [0m[38;2;107;114;128m ~42t/s[0m  [0m[38;2;107;114;128m  1m [0m  [0m[38;2;107;114;128m $3/15[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;107;114;128manthropic/[0mclaude-opus-4-5-20251101                                 [0m[38;2;107;114;128m 24[0m  [0m[38;2;107;114;128m ~48t/s[0m  [0m[38;2;107;114;128m200k [0m  [0m[38;2;107;114;128m $5/25[0m[38;2;156;163;176m│[0m [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m                                                                                                     [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;156;163;176m  Claude Opus 5.5 · 1m ctx · 128k out · $4/20 per M · reasoning · vision ·  58 · ~95t/s[0m            [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m   [0m[38;2;0;255;136m current[0m[38;2;107;114;128m · [0m[38;2;0;255;136m default[0m [0m[38;2;107;114;128m󰪣[0m                                                                           [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m│[0m [0m[38;2;107;114;128m↑/↓ models · 󰌑 use for this session · type to search · @ quick roles · 󱊷 close · Alt+P task model[0m   [0m[38;2;42;48;56m│[0m
+[0m[38;2;42;48;56m╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m

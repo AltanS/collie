@@ -1,6 +1,6 @@
 # 0055 — A pointed list is walked, then confirmed
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended by [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md) (point 4)
 - **Date:** 2026-09-22
 - **Shipped in:** pending (target 1.12.0)
 - **Trail:** `web/src/lib/harness/claude/prompt-select.ts` (`collectPointedRows`, `pointerWalk`,

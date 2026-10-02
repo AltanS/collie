@@ -42,6 +42,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../ansi";
 import { lineText, splitLines, type Block, type MultiSelectModel, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
+import { sameKeys, splitWalk } from "./prompt-model";
 import {
   DIALOG_CONTRACT,
   dialogComparators,
@@ -676,6 +677,36 @@ export function describeAdapterConformance(
             ).toBe(false);
           });
         }
+      }
+    });
+
+    // The pointer-walk shape the action layer relies on (ADR 0080, lib/prompt-action.ts). It splits a
+    // plan with `splitWalk`, sends the arrows, and waits for the tapped row's plan to become exactly
+    // ["Enter"]. That only works if every walk-class plan is one direction of arrows then Enter (a
+    // mixed walk is not a walk of one pointer), and at most one row is the pointed one (two rows
+    // answering to a bare Enter means the pointer is ambiguous and the verify step could pass on the
+    // wrong row).
+    describe("pointer walks (walk, verify, commit)", () => {
+      for (const name of ownFixtures) {
+        const models = modelsOf(adapter, name, "prompt-select");
+        if (models.length === 0) continue;
+        it(`${name}: walk plans are one-direction arrows then Enter, and at most one row is pointed`, () => {
+          for (const model of models) {
+            for (const option of model.options) {
+              const plan = splitWalk(option.keys);
+              if (plan === null) continue;
+              expect(
+                new Set(plan.walk).size,
+                `${name}: "${option.label}" mixes Up and Down in ${JSON.stringify(option.keys)}`,
+              ).toBeLessThanOrEqual(1);
+            }
+            const pointed = model.options.filter((o) => sameKeys(o.keys, ["Enter"]));
+            expect(
+              pointed.length,
+              `${name}: ${pointed.length} rows carry the plan ["Enter"], the pointer is ambiguous`,
+            ).toBeLessThanOrEqual(1);
+          }
+        });
       }
     });
 

@@ -57,6 +57,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **Each release now tries to build an experimental Windows zip (unsigned `collie.exe`).** There is no published Windows installer yet, so do not expect a supported install path. Linux and macOS releases are unchanged. If the Windows build fails, the release still ships without it.
 - **`install.ps1` installs Collie on Windows without a toolchain.** (experimental; it is not on colliepwa.dev yet, and no release carries the Windows zip until the next one) `scripts/install.ps1` needs no Bun, Git or bash, and works in Windows PowerShell 5.1. It downloads a release's Windows zip, checks its sha256 and stops on a mismatch or a missing `.sha256`, lays it into `%LOCALAPPDATA%\collie\versions\<version>`, points the `current` junction at it, and adds `current\bin` to your user PATH. It never asks for admin and never starts Collie: it runs the new `collie.exe version` once to check that Windows lets it run, then prints the next steps. A second run changes nothing and points at `collie update`. `COLLIE_DIR`, `COLLIE_UPDATE_REPO` and `COLLIE_TAG` steer it, as they steer `install.sh`. Windows is not yet a supported host.
 - **`collie uninstall` on a Windows binary install prints how to remove the rest.** (experimental) It keeps the install folder and the user PATH entry, as every install keeps its files, and now ends with the two PowerShell lines that remove them: `rmdir /s` for the folder and a registry edit that drops only `current\bin` from your PATH. Linux and macOS print what they printed before.
+- **Oh My Pi's model picker is a list of models on the phone.** With omp 18.4.10, `/switch` and Alt+P
+  open omp's session-only model picker. The card lists the rows the picker shows right now, not the
+  whole catalog. Tap a model and Collie moves the pointer to it and presses Enter, which switches this
+  session's model and leaves your role models and config as they are. The current model is named on
+  the card but cannot be tapped. To reach a model that is not listed, type a search through Keys or
+  Type mode, and the card updates after about a second. A row omp cut short and a model the
+  conversation no longer fits (picking it compacts first) are left out. The `@` quick roles, the
+  task-model picker, narrow panes and the Nerd Font symbols stay terminal text with an Escape button.
 
 ### Changed
 
@@ -82,6 +90,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   a newline, a long message sent in several parts could be refused after the first part landed, and
   the notice still said nothing was typed. It now says the earlier part is in the pane. Thanks
   @enieuwy (#336).
+- **A tapped row is confirmed only after the pointer is seen on it.** A tap on a pointed list now sends the arrow keys first, reads the screen again, and sends Enter only when the pointer stands on the tapped row, bound to that very screen. A keystroke at the terminal in between, or a row that changed under the pointer, refuses the tap instead of confirming the wrong row. This covers every harness with a pointed list: Claude Code, Codex and Oh My Pi.
+- **The model picker's Close button says when it clears a search instead.** With a search typed, Oh My Pi's Escape clears the search and keeps the picker open, so the button now reads "Clear search" and only reads "Close" when a tap closes the picker.
 
 ## [1.15.3] - 2026-10-02
 

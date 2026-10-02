@@ -11,8 +11,9 @@ import { ompModalOnScreen } from "./modal";
 
 // omp's tool-approval dialog (.adr/0078). Approve runs a shell command or writes a file, so these tests
 // pin three things above all: what the card shows of the subject, that every key a tap sends is one the
-// footer printed and that Deny can never land on Approve, and that the grammar declines every shape it
-// was not built against. Two presets are lifted, each from its own captures: omp 18.4.10 `unicode`
+// footer printed and that both buttons are the plain walk from the pointed row (ADR 0080 carries the
+// guarantee that a moved pointer sends nothing, in the action layer), and that the grammar declines
+// every shape it was not built against. Two presets are lifted, each from its own captures: omp 18.4.10 `unicode`
 // (`omp--v18-4-approval-*.txt`) and omp 18.1.17 `nerd` (`omp--approval-*.txt`).
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
@@ -74,9 +75,9 @@ describe("omp 18.4.10 (`unicode` preset) lifts as Approve, Deny, Cancel", () => 
     ]);
   });
 
-  it("approval-bash-moved: the pointer on Deny, Approve walks Up, Deny still sends Down", () => {
+  it("approval-bash-moved: the pointer on Deny, Approve walks Up, Deny is a bare Enter", () => {
     const model = detectApproval(load("omp--v18-4-approval-bash-moved.txt"))!;
-    expect(model.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Down", "Enter"], ["Escape"]]);
+    expect(model.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Escape"]]);
     expect(model.options.map((o) => o.keyLabel)).toEqual(["", "❯", "Esc"]);
     expect(model.options[0]!.description).toBe("Command: echo hello-approval");
   });
@@ -89,7 +90,7 @@ describe("omp 18.4.10 (`unicode` preset) lifts as Approve, Deny, Cancel", () => 
     );
     expect(write.options.map((o) => o.keys)).toEqual([["Enter"], ["Down", "Enter"], ["Escape"]]);
     const moved = detectApproval(load("omp--v18-4-approval-write-moved.txt"))!;
-    expect(moved.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Down", "Enter"], ["Escape"]]);
+    expect(moved.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Escape"]]);
     expect(moved.options.map((o) => o.keyLabel)).toEqual(["", "❯", "Esc"]);
   });
 
@@ -139,7 +140,7 @@ describe("omp 18.1.17 (`nerd` preset) lifts the same way, read from its own glyp
     expect(write.options[0]!.description).toBe("Path: /tmp/collie-omp-sandbox/scratch.txt ↵ Content: ↵ hello");
     expect(write.options.map((o) => o.keyLabel)).toEqual(["❯", "", "Esc"]);
     expect(deny.options.map((o) => o.keyLabel)).toEqual(["", "❯", "Esc"]);
-    expect(deny.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Down", "Enter"], ["Escape"]]);
+    expect(deny.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Escape"]]);
   });
 
   it("a ticking usage strip leaves the tap valid", () => {
@@ -184,17 +185,34 @@ describe("the region, and what stays on screen above the card", () => {
   });
 });
 
-describe("every tap is a key the footer printed, and Deny never lands on Approve", () => {
-  it.each(LIFTED)("%s: Approve walks from the pointer, Deny is Down then Enter, Cancel is Escape", (name) => {
+describe("the model declares omp's clamp, and the plans stay the plain walk", () => {
+  it.each(LIFTED)("%s: clampedEnds is set and at most one option carries [Enter]", (name) => {
+    const model = detectApproval(load(name))!;
+    expect(model.clampedEnds).toBe(true);
+    expect(model.options.filter((o) => o.keys.length === 1 && o.keys[0] === "Enter")).toHaveLength(1);
+  });
+});
+
+describe("every tap is a key the footer printed, and both buttons are the plain walk", () => {
+  it("pins both plans in both pointer states (ADR 0080 splits them: arrows, read back, then Enter)", () => {
+    const plans = (name: string) => detectApproval(load(name))!.options.slice(0, 2).map((o) => [o.label, o.keys]);
+    // The pointer on Approve: Approve commits at once, Deny walks Down first.
+    expect(plans("omp--v18-4-approval-bash.txt")).toEqual([["Approve", ["Enter"]], ["Deny", ["Down", "Enter"]]]);
+    // The pointer on Deny: Approve walks Up first, Deny commits at once.
+    expect(plans("omp--v18-4-approval-bash-moved.txt")).toEqual([["Approve", ["Up", "Enter"]], ["Deny", ["Enter"]]]);
+  });
+
+  it.each(LIFTED)("%s: both buttons walk from the pointer, Cancel is Escape", (name) => {
     const model = detectApproval(load(name))!;
     const [approve, deny, cancel] = model.options;
     expect(model.options).toHaveLength(3);
     expect(approve!.label).toBe("Approve");
     expect(deny!.label).toBe("Deny");
     expect(cancel).toEqual({ label: "Cancel", keys: ["Escape"], keyLabel: "Esc" });
-    // Down clamps on the last of two rows, so this is Deny from either row.
-    expect(deny!.keys).toEqual(["Down", "Enter"]);
-    expect(approve!.keys).toEqual(approve!.keyLabel === "❯" ? ["Enter"] : ["Up", "Enter"]);
+    // The plain walk: nothing is bent to survive a race (ADR 0080 does that, in the action layer).
+    const approvePointed = approve!.keyLabel === "❯";
+    expect(approve!.keys).toEqual(approvePointed ? ["Enter"] : ["Up", "Enter"]);
+    expect(deny!.keys).toEqual(approvePointed ? ["Down", "Enter"] : ["Enter"]);
     // Exactly one badge marks where a bare Enter at the desk would land.
     expect([approve!.keyLabel, deny!.keyLabel].filter((b) => b === "❯")).toHaveLength(1);
     for (const option of model.options) {
@@ -437,7 +455,7 @@ describe("a body the agent wrote cannot pass for the dialog, or read differently
     });
     const model = detectApproval(fromTexts(forged))!;
     expect(model.options[0]!.keys).toEqual(["Up", "Enter"]);
-    expect(model.options[1]!.keys).toEqual(["Down", "Enter"]);
+    expect(model.options[1]!.keys).toEqual(["Enter"]);
   });
 
   it.each(["omp--fresh-idle.txt", "omp--v18-4-composer-idle.txt"])(

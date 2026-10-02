@@ -45,7 +45,7 @@
       "verified": "2026-10-02",
       "how": "capture",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md § \"OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)\", the boxed `/resume` picker in four states plus its no-match screen, `/model`, `/settings`, `/tree` and an idle composer; the Ask tool and tool-approval dialogs on 18.4.10 (`omp--v18-4-ask-*.txt`, `omp--v18-4-approval-*.txt`, probed live 2026-10-02) and, for the older text-keycap forms, 17.2.12 (§ \"omp corpus\") and 18.1.17 (§ \"OMP tool-approval corpus\")",
+      "evidence": "web/src/fixtures/panes/README.md § \"OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)\", the boxed `/resume` picker in four states plus its no-match screen, `/model`, `/settings`, `/tree` and an idle composer; the Ask tool and tool-approval dialogs on 18.4.10 (`omp--v18-4-ask-*.txt`, `omp--v18-4-approval-*.txt`, probed live 2026-10-02); the compact `/switch` model picker in 23 states (`omp--v18-4-switch*.txt`, walks probed live without Enter 2026-10-02) and, for the older text-keycap forms, 17.2.12 (§ \"omp corpus\") and 18.1.17 (§ \"OMP tool-approval corpus\")",
       "journal": {
         "version": "18.1.19",
         "verified": "2026-09-30",
