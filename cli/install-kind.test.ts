@@ -43,6 +43,9 @@ const probe = (over: Partial<InstallProbe> = {}): InstallProbe => ({
   ...over,
 });
 
+// A git process (and Defender on a Windows runner) can still hold a fresh repository for a moment
+// after the test, so a cleanup retries on EBUSY instead of failing a test that already passed.
+
 describe("classifyInstall", () => {
   test("a clone on a branch is a linked clone; a detached one is the Herdr-managed shape", () => {
     expect(classifyInstall(probe({ isGitCheckout: true }))).toEqual({ kind: "linked-clone", alsoLayout: false });
@@ -441,7 +444,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       symlinkSync(real, link);
       expect(isGitCheckout(exec, link)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -473,7 +476,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       // Its `.git` is a FILE pointing into the main repository, not a directory.
       expect(isGitCheckout(exec, linked)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -491,7 +494,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(add.exitCode).toBe(0);
       expect(isGitCheckout(exec, join(outer, "mod"))).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -505,7 +508,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(Bun.spawnSync(["git", "-C", repo, "config", "core.worktree", tree]).exitCode).toBe(0);
       expect(isGitCheckout(exec, repo)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -518,7 +521,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(Bun.spawnSync(["git", "init", "-q", "--bare", bare]).exitCode).toBe(0);
       expect(isGitCheckout(exec, bare)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -552,7 +555,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(probed.parentIsVersions).toBe(true);
       expect(classifyInstall(probed)).toEqual({ kind: "unknown", why: "broken-checkout" });
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
