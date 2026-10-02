@@ -11,6 +11,7 @@ import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
 import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import {
+  formatRestartMarker,
   isTaskBridge,
   isTaskLauncher,
   parseTaskRecord,
@@ -18,6 +19,7 @@ import {
   taskOwner,
   type TaskRecord,
   taskRecordPath,
+  taskRestartPath,
 } from "./task-scheduler.ts";
 import { healthTimeoutMs } from "./update-run.ts";
 import {
@@ -666,6 +668,8 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
       deps.io.err("       run `collie stop`, then `collie start`");
       return EXIT.FAIL;
     }
+    // Said to the launcher first: a killed bridge reads as a crash on Windows, and a crash backs off.
+    deps.files.write(taskRestartPath(deps.ctx.configDir, deps.ctx.instance, deps.host), formatRestartMarker(Date.now()));
     deps.exec.kill(record.bridge);
     deps.io.out(`bridge stopped (pid ${record.bridge}); the Task Scheduler supervisor relaunches it`);
   } else {

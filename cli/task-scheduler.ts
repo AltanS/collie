@@ -52,6 +52,21 @@ export function taskRecordPath(configDir: string, instance: string | null = null
   return host.path.join(configDir, `collie${instanceSuffix(instance)}-processes`);
 }
 
+/**
+ * `<configDir>\collie-restart`, suffixed per instance like the record. `collie restart` writes it
+ * just before it kills the bridge, and the launcher consumes it: a bridge that died with this file
+ * fresh beside it was stopped on purpose, not crashed (see {@link restartRequested}).
+ */
+export function taskRestartPath(configDir: string, instance: string | null = null, host: Host = HOST): string {
+  return host.path.join(configDir, `collie${instanceSuffix(instance)}-restart`);
+}
+
+/** How long a restart marker stays believable. A marker older than this was left by a kill that never happened. */
+export const RESTART_MARKER_TTL_MS = 60_000;
+
+/** The marker's text: when it was written, in milliseconds since the epoch. */
+export const formatRestartMarker = (now: number): string => `${now}\n`;
+
 /** The record as the launcher writes it: one line. */
 export function formatTaskRecord(launcher: number, bridge: number): string {
   return `version=${TASK_RECORD_VERSION} launcher=${launcher} bridge=${bridge}\n`;
@@ -255,7 +270,7 @@ export interface LaunchedBridge {
 
 export interface SuperviseDeps {
   readonly io: Io;
-  readonly files: Pick<Files, "write" | "remove" | "rename" | "list">;
+  readonly files: Pick<Files, "write" | "remove" | "rename" | "list" | "read">;
   readonly host: Host;
   /** Reads the `current` junction the task names, before every launch (see {@link launchRoot}). */
   readonly link: LinkReader;
@@ -349,6 +364,21 @@ export function healCurrent(root: string, deps: Pick<SuperviseDeps, "files" | "l
   );
 }
 
+/**
+ * Did `collie restart` stop this bridge? Reads the marker and removes it either way, so one marker
+ * answers one exit. Only a marker written in the last {@link RESTART_MARKER_TTL_MS} counts: an older
+ * one was left by a restart whose kill did not happen, and must not turn a later crash into a
+ * "restart".
+ */
+export function restartRequested(deps: Pick<SuperviseDeps, "files" | "now">, path: string): boolean {
+  const text = deps.files.read(path);
+  if (text === null) return false;
+  deps.files.remove(path);
+  const at = Number(text.trim());
+  const age = deps.now() - at;
+  return Number.isFinite(at) && age >= 0 && age <= RESTART_MARKER_TTL_MS;
+}
+
 /** What `_supervise` was told on its command line. */
 export interface SuperviseArgs {
   readonly instance: string | null;
@@ -401,6 +431,7 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   }
   const { instance } = parsed;
   const record = taskRecordPath(configDir, instance, deps.host);
+  const restartMarker = taskRestartPath(configDir, instance, deps.host);
   const logPath = deps.host.path.join(configDir, logFileName(instance));
 
   let delay = RELAUNCH_DELAY_MIN_MS;
@@ -432,15 +463,23 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
       deps.files.remove(record);
       return EXIT.OK;
     }
-    if (deps.now() - started >= HEALTHY_RUN_MS) delay = RELAUNCH_DELAY_MIN_MS;
     await writeRecord(deps, record, logPath, formatTaskRecord(deps.pid, 0));
+    // A kill on Windows reads as exit 1, the same as a crash. The marker tells them apart: a bridge
+    // `collie restart` stopped is relaunched at once and starts the ladder again, so the backoff can
+    // never eat the health check an update runs right after its restart.
+    if (restartRequested(deps, restartMarker)) {
+      delay = RELAUNCH_DELAY_MIN_MS;
+      deps.note(logPath, `the bridge (pid ${bridge.pid}) was stopped by \`collie restart\`; relaunching now`);
+      continue;
+    }
+    if (deps.now() - started >= HEALTHY_RUN_MS) delay = RELAUNCH_DELAY_MIN_MS;
     deps.note(logPath, `the bridge (pid ${bridge.pid}) exited ${code}; relaunching in ${delay / 1000}s`);
     await pause();
   }
 }
 
 /** The launcher's real seams: Node's spawn, the real filesystem, the real clock. */
-export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" | "rename" | "list">): SuperviseDeps {
+export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" | "rename" | "list" | "read">): SuperviseDeps {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
   return {

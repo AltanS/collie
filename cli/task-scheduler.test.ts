@@ -5,6 +5,7 @@ import { capture, fakeFiles, fakeLinkFs } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdSupervise,
+  formatRestartMarker,
   formatTaskRecord,
   isOwnWindowsProcess,
   isTaskBridge,
@@ -16,10 +17,12 @@ import {
   HEALTHY_RUN_MS,
   RELAUNCH_DELAY_MAX_MS,
   RELAUNCH_DELAY_MIN_MS,
+  RESTART_MARKER_TTL_MS,
   type SuperviseDeps,
   taskOwner,
   taskQueryScript,
   taskRecordPath,
+  taskRestartPath,
 } from "./task-scheduler.ts";
 
 // The Windows supervisor's own pieces, driven on Linux with `hostFor("win32")` and fakes. The VM
@@ -199,6 +202,7 @@ describe("_supervise, the loop", () => {
         },
         remove: (p) => files.remove(p),
         list: (p) => files.list(p),
+        read: (p) => files.read(p),
       },
       host: WIN,
       link,
@@ -259,6 +263,35 @@ describe("_supervise, the loop", () => {
       // One that lived just under a minute is still part of the loop.
       20_000,
     ]);
+  });
+
+  test("a bridge `collie restart` stopped is relaunched at once, three times in a row, with no backoff", async () => {
+    const l = launcher([1, 1, 1, 0]);
+    const marker = taskRestartPath(CONFIG, null, WIN);
+    const launch = l.deps.launch;
+    let killed = 0;
+    // `collie restart` writes the marker, then kills the bridge; here the first three are killed so.
+    l.deps.launch = (command, opts) => {
+      const bridge = launch(command, opts);
+      if (killed++ < 3) l.files.write(marker, formatRestartMarker(l.deps.now()));
+      return bridge;
+    };
+    expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+    expect(l.launched).toHaveLength(4);
+    expect(l.slept).toEqual([]);
+    expect(l.notes.filter((n) => n.includes("was stopped by `collie restart`; relaunching now"))).toHaveLength(3);
+    expect(l.files.exists(marker)).toBe(false);
+  });
+
+  test("a marker that is too old, or not a time, is consumed and the exit counts as a crash", async () => {
+    const marker = taskRestartPath(CONFIG, null, WIN);
+    for (const text of [formatRestartMarker(1_000_000 - RESTART_MARKER_TTL_MS - 1), "garbage\n"]) {
+      const l = launcher([1, 0]);
+      l.files.write(marker, text);
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.slept).toEqual([RELAUNCH_DELAY_MIN_MS]);
+      expect(l.files.exists(marker)).toBe(false);
+    }
   });
 
   test("writes the record through a temporary file and a rename, leaving no temporary file behind", async () => {

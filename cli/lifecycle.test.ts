@@ -53,7 +53,7 @@ import {
   systemdUserReachable,
   writeUnit,
 } from "./lifecycle.ts";
-import { formatTaskRecord, taskRecordPath } from "./task-scheduler.ts";
+import { formatTaskRecord, taskRecordPath, taskRestartPath } from "./task-scheduler.ts";
 
 // The lifecycle, driven end to end against fakes for the two seams (cli/fakes.ts). The shell could
 // only reach this coverage by `source`-ing itself and redefining functions in a heredoc; here
@@ -919,6 +919,24 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(schtasks(h)).toEqual([]);
       expect(h.io.stdout.join("\n")).toContain("the Task Scheduler supervisor relaunches it");
       expect(h.files.exists(RECORD)).toBe(true);
+    });
+
+    test("tells the launcher first, so the killed bridge is not taken for a crash", async () => {
+      const h = running();
+      const marker = taskRestartPath(CONFIG, null, WIN);
+      const before = Date.now();
+      // Written BEFORE the kill: the launcher reads it the moment its bridge exits.
+      const seenAtKill: boolean[] = [];
+      const kill = h.exec.kill.bind(h.exec);
+      h.exec.kill = (pid) => {
+        seenAtKill.push(h.files.exists(marker));
+        return kill(pid);
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+      expect(seenAtKill).toEqual([true]);
+      const at = Number((h.files.read(marker) ?? "").trim());
+      expect(at).toBeGreaterThanOrEqual(before);
+      expect(at).toBeLessThanOrEqual(Date.now());
     });
 
     test("over the community script: registers the task again and restarts its bridge alone", async () => {
