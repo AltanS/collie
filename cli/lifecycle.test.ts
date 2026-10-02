@@ -669,6 +669,26 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.files.read(TASK_FILE)).toContain(`<Command>${WIN_BINARY}</Command>`);
     });
 
+    test("a user without the batch logon right is told which right, where, and what to run after", async () => {
+      // Measured on the VM for a fresh standard user: 0x80070569, ERROR_LOGON_TYPE_NOT_GRANTED.
+      for (const said of [
+        "ERROR: Logon failure: the user has not been granted the requested logon type at this computer.",
+        "FEHLER: 0x80070569",
+      ]) {
+        const h = windows({ answers: [["schtasks /Create", { code: 1, stderr: said }]] });
+        expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+        const err = h.io.stderr.join("\n");
+        expect(err).toContain('lacks the right "Log on as a batch job"');
+        expect(err).toContain("Local Security Policy > Local Policies > User Rights Assignment");
+        expect(err).toContain("desk\\pat");
+        expect(h.io.stderr.at(-1)).toContain("Then run: collie start");
+      }
+      // Any other refusal says nothing about the right.
+      const other = windows({ answers: [["schtasks /Create", { code: 1, stderr: "ERROR: Access is denied." }]] });
+      expect(await cmdStart(other.deps)).toBe(EXIT.FAIL);
+      expect(other.io.stderr.join("\n")).not.toContain("batch job");
+    });
+
     test("refuses to register a task pointing at a binary that isn't there", async () => {
       const h = windows();
       h.files.remove(WIN_BINARY);

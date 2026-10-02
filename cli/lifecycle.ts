@@ -524,8 +524,16 @@ function registerTask(deps: LifecycleDeps): boolean {
   const said = `${r.stdout}${r.stderr}`.trim();
   if (said !== "") deps.io.err(said);
   deps.io.err(`error: schtasks /Create /TN ${name} failed`);
+  if (BATCH_LOGON_REFUSED.test(said)) {
+    deps.io.err(`       Windows did not let ${user} log on to run a task: that account lacks the right "Log on as a batch job".`);
+    deps.io.err("       An administrator grants it in Local Security Policy > Local Policies > User Rights Assignment >");
+    deps.io.err(`       "Log on as a batch job", by adding ${user}. Then run: collie start`);
+  }
   return false;
 }
+
+/** What Windows says when an account may not log on as a batch job: 0x80070569, in any language's text. */
+const BATCH_LOGON_REFUSED = /0x80070569|not been granted the requested logon type/i;
 
 /** The executables a launcher or bridge of either supervisor runs as. */
 const TASK_PROCESS_NAMES = ["collie.exe", "bun.exe", "powershell.exe"] as const;
