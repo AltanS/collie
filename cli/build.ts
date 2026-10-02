@@ -96,7 +96,9 @@ export function compiledPath(outfile: string, host: Host = HOST): string {
  *
  * The live binary is the one working copy, so it never steps aside for a staged file that is not
  * there (the rename then fails exactly as it always did, with the live binary untouched), and it
- * goes back into place if the staged file cannot take its place.
+ * goes back into place if the staged file cannot take its place. Each of the three renames on Windows
+ * is tried again on EPERM or EBUSY ({@link renameSoon}): Defender often holds a freshly written exe
+ * for a moment.
  */
 export function swapBinary(
   files: Files,
@@ -104,6 +106,7 @@ export function swapBinary(
   live: string,
   host: Host = HOST,
   tag: string = `${process.pid}-${Date.now().toString(36)}`,
+  pause: (ms: number) => void = pauseSync,
 ): void {
   if (host.platform !== "win32" || !files.exists(live) || !files.exists(staged)) {
     files.rename(staged, live);
@@ -111,14 +114,44 @@ export function swapBinary(
   }
   sweepAsides(files, live, host);
   const aside = asidePath(live, tag);
-  files.rename(live, aside);
+  renameSoon(files, live, aside, pause);
   try {
-    files.rename(staged, live);
+    renameSoon(files, staged, live, pause);
   } catch (err) {
-    files.rename(aside, live);
+    renameSoon(files, aside, live, pause);
     throw err;
   }
   tryRemove(files, aside);
+}
+
+/** The pauses between the tries of one Windows rename: five tries in about four seconds. */
+export const SWAP_RENAME_PAUSES_MS = [250, 500, 1_000, 2_000] as const;
+
+/**
+ * `rename`, tried again after each pause in {@link SWAP_RENAME_PAUSES_MS} while Windows answers EPERM,
+ * EBUSY or EACCES. Any other error, or the last one, is thrown. Windows only: the caller is the
+ * Windows branch of {@link swapBinary}.
+ */
+function renameSoon(files: Pick<Files, "rename">, from: string, to: string, pause: (ms: number) => void): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      files.rename(from, to);
+      return;
+    } catch (err) {
+      // SAFETY: the assertion asserts nothing. `catch` binds `unknown`; a Node errno error carries a
+      // string `code`, and any other value reads `undefined` here, which is the "not busy" answer.
+      const code = (err as { code?: string }).code;
+      const busy = code === "EPERM" || code === "EBUSY" || code === "EACCES";
+      const wait = SWAP_RENAME_PAUSES_MS[attempt];
+      if (!busy || wait === undefined) throw err;
+      pause(wait);
+    }
+  }
+}
+
+/** A synchronous pause: `build` is synchronous, and these waits are a few seconds at most. */
+function pauseSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 /** Where the live binary steps aside to for one swap. `tag` makes the name unique to that swap. */

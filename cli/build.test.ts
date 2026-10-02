@@ -455,6 +455,59 @@ describe("swapBinary on Windows", () => {
     expect(files.exists(`${LIVE}.old-42-b`)).toBe(false);
   });
 
+  /** `files.rename` that answers `code` for the first `times` calls matching `from -> to`. */
+  const busyOnce = (files: FakeFiles, from: string, to: string, code: string, times: number) => {
+    const rename = files.rename;
+    let left = times;
+    files.rename = (a, b) => {
+      if (posix(a).endsWith(posix(from)) && posix(b).endsWith(posix(to)) && left-- > 0) {
+        throw Object.assign(new Error(`${code}: operation not permitted, rename`), { code });
+      }
+      rename(a, b);
+    };
+  };
+
+  test("the order is: step aside, take the place; a busy rename is tried again with a pause", () => {
+    const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
+    busyOnce(files, STAGED, LIVE, "EBUSY", 2);
+    const paused: number[] = [];
+    swapBinary(files, STAGED, LIVE, hostFor("win32"), "41-a", (ms) => paused.push(ms));
+    expect(moves(files)).toEqual([posix(`mv ${LIVE} ${LIVE}.old-41-a`), posix(`mv ${STAGED} ${LIVE}`)]);
+    expect(paused).toEqual([250, 500]);
+    expect(files.read(LIVE)).toBe("NEW");
+  });
+
+  test("a place step that stays busy puts the old collie.exe back: the install always has one", () => {
+    const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
+    busyOnce(files, STAGED, LIVE, "EPERM", 99);
+    const paused: number[] = [];
+    expect(() => swapBinary(files, STAGED, LIVE, hostFor("win32"), "41-a", (ms) => paused.push(ms))).toThrow("EPERM");
+    // Five tries of the place step, then the aside goes back.
+    expect(paused).toEqual([250, 500, 1_000, 2_000]);
+    expect(moves(files).at(-1)).toBe(posix(`mv ${LIVE}.old-41-a ${LIVE}`));
+    expect(files.read(LIVE)).toBe("OLD");
+    expect(files.read(STAGED)).toBe("NEW");
+    expect(files.exists(`${LIVE}.old-41-a`)).toBe(false);
+  });
+
+  test("a busy restore is tried again too", () => {
+    const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
+    files.unrenamable.add(STAGED);
+    busyOnce(files, `${LIVE}.old-41-a`, LIVE, "EBUSY", 1);
+    const paused: number[] = [];
+    expect(() => swapBinary(files, STAGED, LIVE, hostFor("win32"), "41-a", (ms) => paused.push(ms))).toThrow();
+    expect(paused).toEqual([250]);
+    expect(files.read(LIVE)).toBe("OLD");
+  });
+
+  test("off Windows a busy rename is not tried again: one rename, as before", () => {
+    const files = fakeFiles({ [BINARY]: "OLD", [BINARY_NEW]: "NEW" });
+    busyOnce(files, BINARY_NEW, BINARY, "EBUSY", 1);
+    const paused: number[] = [];
+    expect(() => swapBinary(files, BINARY_NEW, BINARY, hostFor("linux"), "41-a", (ms) => paused.push(ms))).toThrow("EBUSY");
+    expect(paused).toEqual([]);
+  });
+
   test("the default aside name is unique to this process and this moment", () => {
     const files = fakeFiles({ [LIVE]: "OLD", [STAGED]: "NEW" });
     files.undeletable.add(`${LIVE}.old`);
