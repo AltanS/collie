@@ -100,14 +100,35 @@ Key security boundaries and risks:
 Restrict access further with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, without
 warranty.
 
-On Windows (experimental), Collie keeps its state and config folders owner-only with an access
-control list (ACL). Only you, SYSTEM and Administrators can open them, and each file that Collie
-writes there gets the same list. NTFS has no `0600` mode, so Collie reads the list instead. At
-start, the bridge repairs a folder that Everyone, Users, Authenticated Users or Guests can read. It
-says `made it owner-only` only after a second read confirms the repair. `collie doctor` reports a
-loose folder, `.env` or trust store as a `secrets-private` error, with the `icacls` command that
-fixes it. Collie checks a secret file outside these folders and makes it owner-only where it is,
-but it does not move the file or change its folder.
+## Secret files on Windows
+
+On Windows (experimental), Collie keeps its secret files private to your account, SYSTEM and
+Administrators. "Your account" is the Windows account that runs Collie.
+
+NTFS has no `0600` mode, so Collie uses the access control list (ACL) of its state folder and its
+config folder. Each file that Collie writes there gets the same list. The default folders in your
+user profile are already closed to other standard users. The check matters most when you move a
+folder with `COLLIE_STATE_DIR` or another setting.
+
+At start, the bridge checks both folders and their secret files. If other accounts can read one,
+the bridge repairs it, but only in Collie's own folders. It saves the old list first, in
+`acl-backups` in the state folder, and prints the `icacls /restore` command that puts it back. A
+folder that also holds other files is checked, not changed: Collie prints the `icacls` command
+for you to run. Other commands, such as `collie version`, only check and warn.
+
+`collie doctor` shows the result as `secrets-private`. A folder that other accounts can read is an
+error, with the fix. A folder that Collie cannot check is a warning: `cannot confirm`.
+
+| Case | What happens |
+| --- | --- |
+| You copy, restore or sync the folder (zip, `robocopy` without `/SEC`, OneDrive, File History, a USB drive) | The copy can lose the list. Collie checks again at the next start. |
+| Antivirus or Controlled folder access blocks the change | Collie says that it could not make the folder private, and gives the fix. |
+| The folder is on FAT, exFAT or a network share | There is no list that Collie can use. Collie says `cannot confirm`. Move the state folder to an NTFS drive on this PC. |
+| `COLLIE_NO_ACL_REPAIR=1` | Collie changes no list. It still checks and warns, and `doctor` still reports. |
+
+> **Note.** This is not protection from an administrator. Administrators can still read the files.
+> It also does not cover other programs that run as your account, hard links inside the folder,
+> agent backups in `~/.claude`, or a state folder inside OneDrive or Documents.
 
 ## What leaves your machine
 
