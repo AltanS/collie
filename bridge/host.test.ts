@@ -105,4 +105,13 @@ describe("isInside, isSameOrInside and isBelow", () => {
     expect(isBelow(WIN, "C:\\A", "c:\\a")).toBe(false);
     expect(isBelow(WIN, "C:\\A", "c:\\a\\b")).toBe(true);
   });
+
+  test("a host cannot be changed, so one test cannot poison the next", () => {
+    expect(Object.isFrozen(hostFor("win32"))).toBe(true);
+    expect(() => {
+      // SAFETY: the cast drops `readonly` on purpose, to prove the frozen object refuses the write.
+      (hostFor("linux") as { exeSuffix: string }).exeSuffix = ".exe";
+    }).toThrow();
+    expect(hostFor("linux").exeSuffix).toBe("");
+  });
 });

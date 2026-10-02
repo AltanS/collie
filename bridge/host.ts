@@ -8,6 +8,15 @@
 // A test pins a flavour with `hostFor("win32")`, so the Windows branch runs on Linux CI. That proves
 // the logic, not Windows: no spawn, no `.exe` lookup, no file lock. Production reads `HOST`.
 //
+// When to use which: production code reads `HOST` once, at the edge, and passes the object down as
+// `host`. Everything below takes it as a parameter, so a test can pin one. A pinned host changes the
+// string rules only: do not hand its paths to a real file call, because the machine's own `join`
+// and the pinned `host.path` then mix separators.
+//
+// `caseInsensitive` is true only for win32. macOS disks fold case too, but the checks never did, and
+// this change keeps every Linux and macOS answer as it was. A fold here is `toLowerCase`, which is
+// not NTFS's own rule for every character; it is a stable choice with that limit.
+//
 // Not here: the release artifact id (`linux-x64`, `macos-arm64`). That names a download, not the OS
 // the process runs on, and `cli/update.ts`'s `platformId` owns it.
 
@@ -45,12 +54,13 @@ export function hostFor(platform: NodeJS.Platform | string): Host {
   const win = platform === "win32";
   // SAFETY: `NodeJS.Platform` is a union of platform name strings. A name outside it is the POSIX
   // branch below and nothing reads it except an equality test, so the widening cannot misroute.
-  const host: Host = {
+  // Frozen: one test that changed a host would change it for every later test.
+  const host: Host = Object.freeze({
     platform: platform as NodeJS.Platform,
     path: win ? nodePath.win32 : nodePath.posix,
     exeSuffix: win ? ".exe" : "",
     caseInsensitive: win,
-  };
+  });
   built.set(platform, host);
   return host;
 }
@@ -99,7 +109,8 @@ export function splitPath(host: Host, path: string): SplitPath {
  * Whether `folder` is `parent` or sits anywhere below it. By folder names, so `/a/ab` is not inside
  * `/a/a`, and on Windows by case-folded names, so `c:\users\pat` is inside `C:\Users\Pat`. A path on
  * another drive or share is never inside. Pure: neither path has to exist, and neither is resolved,
- * so a `..` segment counts as a name.
+ * so a `..` segment counts as a name. Argument order: the folder first, the parent second, so
+ * `isInside(host, "/a/b/c", "/a/b")` is true and the swapped call is false.
  */
 export function isInside(host: Host, folder: string, parent: string): boolean {
   const child = splitPath(host, folder);

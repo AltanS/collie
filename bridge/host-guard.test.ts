@@ -17,6 +17,8 @@ import { join, relative, sep } from "node:path";
 // the test until its entry goes: the lists cannot rot into a blanket permission.
 
 const ROOT = join(import.meta.dir, "..");
+/** Native path calls left in `cli/update.ts` on 2026-10-02. Only ever lowered. */
+const NATIVE_PATH_CALLS_IN_UPDATE = 24;
 const SCANNED = ["bridge", "cli", "scripts"];
 
 const PATTERNS = {
@@ -139,5 +141,14 @@ describe("the host guard: platform-blind spellings in source Windows runs", () =
     expect(PATTERNS.binaryNameJoin.test('join(root, "bin", "collie")')).toBe(true);
     expect(PATTERNS.binaryNameJoin.test('join(root, "bin", "collie.new")')).toBe(false);
     expect(PATTERNS.startsWithSlash.test('p.startsWith("//")')).toBe(false);
+  });
+
+  // A ratchet: `cli/update.ts` still builds many paths with the machine's own `join`, `dirname` and
+  // `basename`. On a pinned host those mix separators with `host.path`. The count may only go down;
+  // lower it here in the commit that converts a site. The target is 0 (M43 spec 05 and spec 08).
+  test("cli/update.ts uses no more native path calls than it did", () => {
+    const text = readFileSync(join(ROOT, "cli", "update.ts"), "utf8");
+    const native = [...text.matchAll(/(?<![.\w])(?:join|dirname|basename)\(/g)].length;
+    expect(native).toBeLessThanOrEqual(NATIVE_PATH_CALLS_IN_UPDATE);
   });
 });
