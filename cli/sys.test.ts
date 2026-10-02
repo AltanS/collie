@@ -14,7 +14,13 @@ import {
   withEnvOverride,
   withoutGitRelocators,
   withPathPrefix,
+  parseProcessRows,
+  parseWindowsProcessAnswer,
+  POWERSHELL_UTF8,
+  realNet,
+  windowsProcessScript,
 } from "./sys.ts";
+import { MIRROR_FETCH } from "../bridge/update.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
 //
@@ -477,6 +483,72 @@ describe("a per-call override wins over the Exec's own environment (#283)", () =
       expect(r.signal).toBe("SIGKILL");
     } finally {
       rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parseProcessRows", () => {
+  test("reads `<pid> <command>` lines from either process table, and skips the rest", () => {
+    expect(
+      parseProcessRows('123 "C:\\x\\collie.exe" _exec-bridge\r\n\r\nnot a row\n   45 /usr/bin/bun run x \n'),
+    ).toEqual([
+      { pid: 123, command: '"C:\\x\\collie.exe" _exec-bridge' },
+      { pid: 45, command: "/usr/bin/bun run x" },
+    ]);
+    expect(parseProcessRows("")).toEqual([]);
+  });
+});
+
+describe("the Windows process query", () => {
+  test("asks for UTF-8 first, so a user name outside ASCII comes back as it is on disk", () => {
+    const script = windowsProcessScript(4242);
+    expect(script).toStartWith(POWERSHELL_UTF8);
+    expect(POWERSHELL_UTF8).toContain("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8");
+    expect(script).toContain("-Filter 'ProcessId = 4242'");
+  });
+
+  test("three answers: running with its command line, gone, and anything else unknown", () => {
+    expect(parseWindowsProcessAnswer('running\r\n"C:\\Users\\Jürgen Ö\\collie\\bin\\collie.exe" _exec-bridge\r\n')).toEqual({
+      kind: "running",
+      command: '"C:\\Users\\Jürgen Ö\\collie\\bin\\collie.exe" _exec-bridge',
+    });
+    // A process whose command line Windows does not show still runs: it is not taken for gone.
+    expect(parseWindowsProcessAnswer("running\r\n\r\n")).toEqual({ kind: "running", command: "" });
+    expect(parseWindowsProcessAnswer("gone\r\n")).toEqual({ kind: "gone" });
+    for (const nothing of ["", "Get-CimInstance : Access denied\r\n"]) {
+      expect(parseWindowsProcessAnswer(nothing).kind).toBe("unknown");
+    }
+  });
+});
+
+describe("realNet and a rehearsal mirror (a local server, no network)", () => {
+  test("no token reaches the mirror, and a redirect from it is refused; without the option it is followed", async () => {
+    const seen: (string | null)[] = [];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(req) {
+        seen.push(req.headers.get("authorization"));
+        if (new URL(req.url).pathname === "/hop") {
+          return new Response(null, { status: 302, headers: { location: new URL("/tags", req.url).toString() } });
+        }
+        return Response.json([{ name: "v1.0.0", commit: { sha: "abc" } }]);
+      },
+    });
+    const dir = mkdtempSync(join(tmpdir(), "collie-mirror-"));
+    try {
+      const net = realNet({ token: "a-secret", source: "GH_TOKEN" });
+      const base = `http://127.0.0.1:${server.port}`;
+      expect((await net.getJson(`${base}/repos/AltanS/collie/tags?per_page=100`, MIRROR_FETCH)).ok).toBe(true);
+      expect((await net.getJson(`${base}/hop`, MIRROR_FETCH)).ok).toBe(false);
+      expect((await net.download(`${base}/hop`, join(dir, "x.zip"), MIRROR_FETCH)).ok).toBe(false);
+      // The GitHub download path follows GitHub's own redirect to its file host, and still does.
+      expect((await net.getJson(`${base}/hop`)).ok).toBe(true);
+      expect(seen.length).toBeGreaterThanOrEqual(4);
+      expect(seen.every((h) => h === null)).toBe(true);
+    } finally {
+      server.stop(true);
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });

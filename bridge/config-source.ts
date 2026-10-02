@@ -7,6 +7,7 @@ import {
   type ConfigSetting,
   CONFIG_SECTIONS,
 } from "./config-schema.ts";
+import type { Host } from "./host.ts";
 import type { OperatorFileIo } from "./operator-file.ts";
 
 // ── THE CONFIG FILE, TURNED INTO AN ENVIRONMENT ──────────────────────────────
@@ -124,6 +125,18 @@ export interface FilePerms {
   mode(path: string): number | null;
   /** Tighten it to `0600`. `false` when the chmod failed — a file owned by someone else. */
   tighten(path: string): boolean;
+}
+
+/**
+ * {@link FilePerms} as `host` can answer them. Windows has no mode bits: NTFS keeps an access list,
+ * `stat` reports `666` (or `444`) for every file, and `chmod` flips only the read-only flag. So the
+ * rule cannot be stated there, and "tightened it to 600" would be a false line on every command.
+ * A `null` mode is the rule's own "nothing to say". The real Windows check reads the access list
+ * (M43 spec 04, not yet written); until then Windows says nothing rather than something untrue.
+ */
+export function hostFilePerms(host: Host, disk: FilePerms): FilePerms {
+  if (host.platform !== "win32") return disk;
+  return { mode: () => null, tighten: () => false };
 }
 
 /**

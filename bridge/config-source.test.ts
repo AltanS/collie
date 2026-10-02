@@ -9,6 +9,7 @@ import {
   overlayConfig,
   readConfigFiles,
   sourceOf,
+  hostFilePerms,
   tightenPrivateFile,
   type ConfigFileLayer,
   type ConfigFilePath,
@@ -16,6 +17,7 @@ import {
   type FilePerms,
 } from "./config-source.ts";
 import { settingByEnv } from "./config-schema.ts";
+import { hostFor } from "./host.ts";
 import type { OperatorFileIo } from "./operator-file.ts";
 
 const HOME = "/home/pat";
@@ -311,6 +313,25 @@ describe("a secret in the file is held to 0600", () => {
       warning: null,
     });
     expect(tightenPrivateFile("/x", { mode: () => null, tighten: () => false }).ok).toBe(true);
+  });
+
+  // NTFS has no mode bits: `stat` says 666 for every file and `chmod` only flips read-only, so the
+  // old line "tightened it to 600" was false on every Windows command. M43 spec 04 reads the ACL.
+  test("on Windows the rule says nothing and touches nothing; elsewhere it is unchanged", () => {
+    let tightened = 0;
+    const loose = {
+      mode: () => 0o666,
+      tighten: () => {
+        tightened++;
+        return true;
+      },
+    };
+    expect(tightenPrivateFile("C:\\cfg\\.env", hostFilePerms(hostFor("win32"), loose))).toEqual({ ok: true, warning: null });
+    expect(tightened).toBe(0);
+    for (const platform of ["linux", "darwin"]) {
+      expect(hostFilePerms(hostFor(platform), loose)).toBe(loose);
+    }
+    expect(tightenPrivateFile("/x", hostFilePerms(hostFor("linux"), loose)).warning).toContain("tightened it to 600");
   });
 });
 

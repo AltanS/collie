@@ -210,6 +210,25 @@ rc=$?
 check "an unmapped platform exits non-zero" "test $rc -ne 0"
 check "it names the unmapped platform" "grep -q 'linux-riscv' '$tmp/extra.log'"
 
+# The Windows zip is listed and deliberately not packaged (M43): it must not stop the job.
+cat > "$tmp/windows.json" <<JSON
+{
+  "schemaVersion": 1, "repo": "AltanS/collie", "tag": "v9.9.9", "version": "9.9.9",
+  "artifacts": [
+    { "name": "collie-9.9.9-linux-x64.tar.gz",   "platform": "linux-x64",   "sha256": "$X64_SHA" },
+    { "name": "collie-9.9.9-linux-arm64.tar.gz", "platform": "linux-arm64", "sha256": "$ARM_SHA" },
+    { "name": "collie-9.9.9-macos-arm64.tar.gz", "platform": "macos-arm64", "sha256": "$MAC_SHA" },
+    { "name": "collie-9.9.9-windows-x64.zip",    "platform": "windows-x64", "sha256": "$MAC_SHA" }
+  ]
+}
+JSON
+fresh_root "$tmp/root3"
+bun "$script" --manifest "$tmp/windows.json" --root "$tmp/root3" > "$tmp/windows.log" 2>&1
+rc=$?
+check "a windows-x64 entry, known and not packaged, passes" "test $rc -eq 0"
+check "the AUR hash still comes from linux-x64" \
+  "test \"\$(bash -c 'source \"\$1\"; printf %s \"\${sha256sums_x86_64[0]}\"' bash '$tmp/root3/packaging/aur/PKGBUILD')\" = '$X64_SHA'"
+
 # And the other direction: a payload the tables name that the release stopped shipping.
 cat > "$tmp/short.json" <<JSON
 {

@@ -1,9 +1,10 @@
 name: Release
 
 # Every pushed vX.Y.Z tag becomes a GitHub Release carrying, for each supported platform, a tarball
-# of `bin/collie` + `web/dist` + the files the bridge reads at boot; a per-release integrity manifest
-# listing every asset and its sha256; and a `.sha256` sidecar beside every one of them so a user can
-# verify a download by hand with `sha256sum -c`. The in-app update banner links here, and
+# of `bin/collie` + `web/dist` + the files the bridge reads at boot (on Windows a zip, with
+# `bin\collie.exe`); a per-release integrity manifest listing every asset and its sha256; and a
+# `.sha256` sidecar beside every one of them so a user can verify a download by hand with
+# `sha256sum -c`. The in-app update banner links here, and
 # `scripts/install.sh` and `collie update`'s binary path both read these assets — over constructed
 # URLs only, so nothing here may ever emit a download URL into a document (M14/01 §2.1).
 on:
@@ -307,9 +308,91 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # ── The Windows payload (M43 spec 06) ─────────────────────────────────────
+  # ITS OWN JOB, never a row of the matrix above. `payload` keeps `fail-fast: true` for its rows, and
+  # a Windows hang or failure must not cancel them. `release` runs when this job failed or was
+  # skipped, and says so in a warning: for one release cycle a missing Windows asset is a warning,
+  # not a failed tag (M43, 2026-10-02). A tag is never cut to test this job; it was tried on a
+  # throwaway branch.
+  #
+  # NO NIX: there is none on Windows. The job fetches the upstream BASELINE archive of the Bun
+  # flake.nix pins and checks it against Bun's SHASUMS256.txt, so the compile copies the same Bun
+  # the other rows take, and the target is the baseline one for the reason linux-x64's is.
+  # scripts/build-windows-payload.ps1 holds the whole build, the checks and the manifest entry; the
+  # Windows VM runs the same file. The binary is not signed (M43, 2026-10-01).
+  payload-windows:
+    needs: gate
+    # A matrix of one row today, because windows-arm64 is meant to be the second. `fail-fast: false`
+    # then keeps one Windows row from cancelling the other; with one row it changes nothing, and it
+    # is spelled now so the second row cannot arrive with the `payload` job's `true` by copy.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+    runs-on: windows-latest
+    # The trial run took 1.5 minutes. 15 bounds a hang without cutting a slow runner short.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # BEFORE the checkout, so the files keep the LF endings they have in git, as on Linux.
+      - name: No line-ending rewrite
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Read the Bun version flake.nix pins
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="$(sed -n 's/^[[:space:]]*bunVersion[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' flake.nix | head -1)"
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "flake.nix bunVersion '$v' is not X.Y.Z" >&2; exit 1; }
+          echo "bun=$v" >> "$GITHUB_OUTPUT"
+      # The upstream BASELINE archive of that version, checked against the SHASUMS256.txt of the same
+      # Bun release before anything runs it. No setup action: this job fetches one file and checks it.
+      - name: Fetch and check the pinned Bun
+        shell: powershell
+        env:
+          BUN_VERSION: ${{ steps.pin.outputs.bun }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+          $base = "https://github.com/oven-sh/bun/releases/download/bun-v$env:BUN_VERSION"
+          $dir = Join-Path $env:RUNNER_TEMP "bun"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $zip = Join-Path $dir "bun-windows-x64-baseline.zip"
+          Invoke-WebRequest -UseBasicParsing "$base/bun-windows-x64-baseline.zip" -OutFile $zip
+          Invoke-WebRequest -UseBasicParsing "$base/SHASUMS256.txt" -OutFile (Join-Path $dir "SHASUMS256.txt")
+          $want = @(Get-Content (Join-Path $dir "SHASUMS256.txt") | Where-Object { $_ -match '^[0-9a-fA-F]{64}\s+\*?bun-windows-x64-baseline\.zip$' } | ForEach-Object { ($_ -split '\s+')[0].ToLowerInvariant() })
+          $got = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if ($want.Count -ne 1 -or $want[0] -ne $got) { throw "bun-windows-x64-baseline.zip is $got; SHASUMS256.txt says '$($want -join ',')'" }
+          Expand-Archive $zip -DestinationPath $dir
+          $bin = Join-Path $dir "bun-windows-x64-baseline"
+          & (Join-Path $bin "bun.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "the fetched bun.exe does not run" }
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
+          Write-Output "bun $env:BUN_VERSION (baseline), sha256 $got, as SHASUMS256.txt says"
+      # Windows PowerShell 5.1, the shell family the VM uses. -StrictBun: a Bun other than the pinned
+      # one fails the build here.
+      - name: Build, check and seal the payload
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-windows-payload.ps1 -Out "$env:RUNNER_TEMP\out" -StrictBun; exit $LASTEXITCODE
+      # Named like the other rows, so `release` takes it with the same `payload-*` pattern.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-${{ matrix.platform }}
+          path: ${{ runner.temp }}\out\*
+          if-no-files-found: error
+          retention-days: 1
+
   # ── The release ────────────────────────────────────────────────────────────
   release:
-    needs: payload
+    # `payload-windows` is a need so that its artifact is here when it exists, and it is NOT a
+    # condition. A failed need skips the job that needs it unless its `if` says otherwise, so the
+    # `if` keeps the old rule by name: the `payload` rows must all be green. `!cancelled()` lets this
+    # job run after `payload-windows` failed or was skipped; a cancelled run publishes nothing.
+    needs: [payload, payload-windows]
+    if: ${{ !cancelled() && needs.payload.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -329,6 +412,25 @@ jobs:
           pattern: payload-*
           merge-multiple: true
           path: ${{ runner.temp }}/assets
+
+      # The Windows set (zip, sidecar, manifest entry) is all or nothing, and `scripts/windows-asset.ts`
+      # decides; its header holds the rules. In short: a `payload-windows` that SUCCEEDED and left no
+      # asset is a bug and fails the release; a failed, skipped or cancelled one WARNS while
+      # WINDOWS_ASSET_OPTIONAL is "true", and fails it when "false". A partial set is removed, so the
+      # manifest never names a file that is not published.
+      #
+      # THE TOLERANCE ENDS after the first release that carries a Windows asset, or on 2026-11-15,
+      # whichever comes first (M43, decided 2026-10-02). Altan or the next Windows spec flips it to
+      # "false"; from then on a missing Windows asset stops the release like any other row.
+      - name: Check for the Windows asset
+        id: windows
+        env:
+          WINDOWS_RESULT: ${{ needs.payload-windows.result }}
+          WINDOWS_ASSET_OPTIONAL: "true"
+        run: |
+          set -euo pipefail
+          nix develop --command bun scripts/windows-asset.ts --dir "$RUNNER_TEMP/assets" \
+            --version "${GITHUB_REF_NAME#v}" --result "$WINDOWS_RESULT" --optional "$WINDOWS_ASSET_OPTIONAL"
 
       # The built frontend, published as an asset. It is what colliepwa.dev's demo runs: a pinned
       # release bundle whose network calls are answered in the browser, so the demo shows the real
@@ -430,6 +532,8 @@ jobs:
 
       - name: Assemble release notes from CHANGELOG.md
         id: notes
+        env:
+          WINDOWS_PRESENT: ${{ steps.windows.outputs.present }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -465,6 +569,10 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --tag "$GITHUB_REF_NAME" \
             "${previous[@]}" > "$notes"
+          # The Windows block goes AFTER everything the script wrote, so the Linux and macOS part of
+          # the page is byte for byte what it was. No link: the Windows docs page does not exist yet.
+          printf '\n' >> "$notes"
+          nix develop --command bun scripts/windows-asset.ts --notes "$WINDOWS_PRESENT" >> "$notes"
           echo "file=$notes" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
@@ -506,7 +614,9 @@ jobs:
     runs-on: ubuntu-latest
     # A prerelease does not move the site, because the site only ever quotes a released line. Same
     # hyphen rule the release job above uses to set `--prerelease`, so the two cannot drift.
-    if: ${{ !contains(github.ref_name, '-') }}
+    # `needs.release.result` by name, not the default `success()`: that one also reads the jobs
+    # BEFORE `release`, so a failed `payload-windows` would skip this job after a good release.
+    if: ${{ !cancelled() && needs.release.result == 'success' && !contains(github.ref_name, '-') }}
     steps:
       - name: Ask colliepwa.dev to re-quote the docs
         env:
@@ -538,8 +648,9 @@ jobs:
       pull-requests: write
     # A prerelease is skipped. Somebody following `collie-bin` on the AUR did not sign up for a
     # beta. Same hyphen rule the release job uses to set `--prerelease` and notify-website uses to
-    # stay home, so the three cannot drift apart.
-    if: ${{ !contains(github.ref_name, '-') }}
+    # stay home, so the three cannot drift apart. `needs.release.result` by name, for the reason
+    # notify-website gives.
+    if: ${{ !cancelled() && needs.release.result == 'success' && !contains(github.ref_name, '-') }}
     steps:
       # `main`, not the tag: the pull request this job opens has to branch off the line it targets.
       # The manifest is fetched from the release, so nothing here depends on the tagged tree.

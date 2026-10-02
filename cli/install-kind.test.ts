@@ -20,6 +20,7 @@ import {
   parseGithubRemote,
   probeInstall,
   publishedBinary,
+  publishedRoot,
   updateRepoOf,
 } from "./install-kind.ts";
 import { context } from "./fakes.ts";
@@ -41,6 +42,9 @@ const probe = (over: Partial<InstallProbe> = {}): InstallProbe => ({
   rootOutsideHome: false,
   ...over,
 });
+
+// A git process (and Defender on a Windows runner) can still hold a fresh repository for a moment
+// after the test, so a cleanup retries on EBUSY instead of failing a test that already passed.
 
 describe("classifyInstall", () => {
   test("a clone on a branch is a linked clone; a detached one is the Herdr-managed shape", () => {
@@ -280,6 +284,16 @@ describe("binaryLayout reads the path rules of the host it is given", () => {
     expect(publishedBinary(root, link, hostFor("win32"))).toBe("C:\\Users\\x\\collie\\current\\bin\\collie.exe");
   });
 
+  test("the Windows task's folder is the one `publishedBinary` sits under: `current`, or the root itself", () => {
+    const root = "C:\\Users\\x\\collie\\versions\\1.0.0";
+    // A junction's target as Windows may spell it, with the extended prefix.
+    const link = fakeLinkFs({
+      "C:\\Users\\x\\collie\\current": { kind: "symlink", target: "\\\\?\\C:\\Users\\x\\collie\\versions\\1.0.0" },
+    });
+    expect(publishedRoot(root, link, hostFor("win32"))).toBe("C:\\Users\\x\\collie\\current");
+    expect(publishedRoot("C:\\src\\collie", link, hostFor("win32"))).toBe("C:\\src\\collie");
+  });
+
   test("a POSIX pin does not split a Windows path", () => {
     expect(binaryLayout("/inst/versions/1.0.0", hostFor("linux")).installRoot).toBe("/inst");
     expect(binaryLayout("C:\\inst\\versions\\1.0.0", hostFor("linux")).version).toBe("C:\\inst\\versions\\1.0.0");
@@ -430,7 +444,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       symlinkSync(real, link);
       expect(isGitCheckout(exec, link)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -462,7 +476,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       // Its `.git` is a FILE pointing into the main repository, not a directory.
       expect(isGitCheckout(exec, linked)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -480,7 +494,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(add.exitCode).toBe(0);
       expect(isGitCheckout(exec, join(outer, "mod"))).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -494,7 +508,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(Bun.spawnSync(["git", "-C", repo, "config", "core.worktree", tree]).exitCode).toBe(0);
       expect(isGitCheckout(exec, repo)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -507,7 +521,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(Bun.spawnSync(["git", "init", "-q", "--bare", bare]).exitCode).toBe(0);
       expect(isGitCheckout(exec, bare)).toBe(true);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 
@@ -541,7 +555,7 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       expect(probed.parentIsVersions).toBe(true);
       expect(classifyInstall(probed)).toEqual({ kind: "unknown", why: "broken-checkout" });
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 

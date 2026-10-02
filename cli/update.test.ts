@@ -36,9 +36,10 @@ import {
   scrubSecrets,
 } from "./update-run.ts";
 import { EXIT } from "./io.ts";
+import { WINDOWS_CHECKOUT_SENTENCE } from "./install-kind.ts";
 import { stagingLogPath, tailOf } from "../bridge/staging-log.ts";
 import type { JsonObject } from "../bridge/json.ts";
-import { latestUpdateInMajor } from "../bridge/update.ts";
+import { latestUpdateInMajor, parseReleaseManifest } from "../bridge/update.ts";
 import {
   type ApplyArgs,
   applyArgv,
@@ -967,25 +968,24 @@ describe("update", () => {
     expect(built(h)).toBe(true);
   });
 
-  // On Windows the binary is `bin/collie.exe`, so a check for the bare name was never true there and
-  // every update rebuilt, even one with nothing to take.
-  test("Windows: an intact install is found at bin/collie.exe, so nothing to take builds nothing", async () => {
-    const h = noop();
-    h.deps.host = hostFor("win32");
-    stamp(h, "0.32.0");
-    h.files.entries.delete(BINARY);
-    h.files.entries.set(`${BINARY}.exe`, { text: "" });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(built(h)).toBe(false);
-    expect(h.restarts).toBe(0);
-  });
-
-  test("Windows: an extensionless bin/collie is not an install there, so it still builds", async () => {
-    const h = noop();
-    h.deps.host = hostFor("win32");
-    stamp(h, "0.32.0");
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(built(h)).toBe(true);
+  // On Windows a checkout's update is refused before anything else since M43 spec 08 (it needs bash
+  // to build, and its task relaunched the clone's own build after a staged update). These two cases
+  // pinned that the intact-install check named `bin/collie.exe` there; the refusal comes first now,
+  // whatever is on disk, and builds nothing.
+  test("Windows: a checkout is refused before the intact-install check, whichever binary is there", async () => {
+    for (const exe of [true, false]) {
+      const h = noop();
+      h.deps.host = hostFor("win32");
+      stamp(h, "0.32.0");
+      if (exe) {
+        h.files.entries.delete(BINARY);
+        h.files.entries.set(`${BINARY}.exe`, { text: "" });
+      }
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      expect(built(h)).toBe(false);
+      expect(h.restarts).toBe(0);
+      expect(h.io.stderr).toEqual([`error: ${WINDOWS_CHECKOUT_SENTENCE}`]);
+    }
   });
 
   test("nothing to take but the bundle is of another version: build anyway", async () => {
@@ -1161,8 +1161,13 @@ describe("platformId", () => {
     expect(platformId("linux", "arm64")).toBe("linux-arm64");
     expect(platformId("darwin", "arm64")).toBe("macos-arm64");
     expect(platformId("darwin", "x64")).toBe("macos-x64");
-    expect(platformId("win32", "x64")).toBeNull();
     expect(platformId("linux", "riscv64")).toBeNull();
+  });
+
+  test("Windows is x64 only: Windows on ARM gets the honest refusal", () => {
+    expect(platformId("win32", "x64")).toBe("windows-x64");
+    expect(platformId("win32", "arm64")).toBeNull();
+    expect(platformId("win32", "ia32")).toBeNull();
   });
 });
 
@@ -1333,6 +1338,41 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
 }
 
 /**
+ * {@link binaryHarness} on a Windows host: the binary is `collie.exe`, and a rename moves the junction
+ * the link seam holds, as `rename(2)` moves a link on a real disk (see `legacyClone` below).
+ */
+function windowsBinaryHarness(over: BinaryOptions = {}): Harness {
+  const exe = (at: string, rest: string): string => `${at}/bin/collie.exe ${rest}`;
+  const h = binaryHarness({
+    ...over,
+    answers: [
+      [exe(`${INST}/versions/${NEW}`, "version"), { stdout: `${NEW}\n` }],
+      [exe(`${INST}/current`, "version"), { stdout: `${over.currentSays ?? "0.9.0"}\n` }],
+      [exe(`${INST}/current`, "hooks status --check"), { code: EXIT.OK }],
+      ...(over.answers ?? []),
+    ],
+  });
+  h.deps.host = hostFor("win32");
+  for (const v of over.others ?? []) h.files.write(`${INST}/versions/${v}/bin/collie.exe`, "OLDER BINARY");
+  h.files.write(`${BROOT}/bin/collie.exe`, "OLD BINARY");
+  const rename = h.files.rename;
+  h.files.rename = (from, to) => {
+    rename(from, to);
+    const moved = h.link.entries.get(from);
+    if (moved === undefined) return;
+    h.link.entries.delete(from);
+    h.link.entries.set(to, moved);
+  };
+  return h;
+}
+
+/** What `current` names in the link seam, in the POSIX spelling the fixtures use. */
+const currentTarget = (h: Harness): string | null => {
+  const probe = h.link.entries.get(`${INST}/current`);
+  return probe?.kind === "symlink" ? posixKey(probe.target) : null;
+};
+
+/**
  * The DETACHED RUNNER, driven directly — `collie update` stages and hands off to exactly this
  * (M15/04), so the flip, the restart, the health gate and the rollback are all proved here rather
  * than through the verb that no longer performs them.
@@ -1365,6 +1405,108 @@ describe("collie update on a binary install", () => {
     // The state file says `staging`, so a bridge that comes up now reports a run in flight.
     expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("staging");
     expect(h.exec.ran[0]?.command[0]).toBe("systemd-run");
+  });
+
+  test("a rehearsal mirror on loopback answers every release request, and the update says so", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899/", GH_TOKEN: "t" } });
+    const asked: string[] = [];
+    const { getJson, download } = h.deps.net;
+    h.deps.net = {
+      ...h.deps.net,
+      getJson: (url) => {
+        asked.push(url);
+        return url.includes("/repos/")
+          ? Promise.resolve({ ok: true as const, value: apiTags("v1.0.0", `v${NEW}`) })
+          : getJson(url);
+      },
+      download: (url, dest) => {
+        asked.push(url);
+        return download(url, dest);
+      },
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    const base = "http://127.0.0.1:8899";
+    expect(asked).toEqual([
+      `${base}/repos/AltanS/collie/tags?per_page=100`,
+      `${base}/AltanS/collie/releases/download/v${NEW}/collie-${NEW}.manifest.json`,
+      `${base}/AltanS/collie/releases/download/v${NEW}/${PAYLOAD}.tar.gz`,
+    ]);
+    expect(h.io.stderr.join("\n")).toContain(`WARNING: COLLIE_UPDATE_MIRROR is set. This is a test seam: releases come from ${base}`);
+  });
+
+  test("every request to the mirror refuses a redirect; with no mirror the requests are the ones they were", async () => {
+    const record = (h: Harness) => {
+      const seen: { url: string; opts: unknown }[] = [];
+      const { getJson, download } = h.deps.net;
+      h.deps.net = {
+        ...h.deps.net,
+        getJson: (url, opts) => {
+          seen.push({ url, opts });
+          return url.includes("/repos/") && !url.includes("api.github.com")
+            ? Promise.resolve({ ok: true as const, value: apiTags("v1.0.0", `v${NEW}`) })
+            : getJson(url, opts);
+        },
+        download: (url, dest, opts) => {
+          seen.push({ url, opts });
+          return download(url, dest, opts);
+        },
+      };
+      return seen;
+    };
+    const mirrored = binaryHarness({ others: ["0.9.0"], env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899" } });
+    const viaMirror = record(mirrored);
+    expect(await cmdUpdate(mirrored.deps)).toBe(EXIT.OK);
+    expect(viaMirror.map((r) => r.opts)).toEqual([{ redirect: "error" }, { redirect: "error" }, { redirect: "error" }]);
+
+    // Unset: the same three URLs as always, and no options at all, so `fetch` gets what it always got.
+    const plain = binaryHarness({ others: ["0.9.0"] });
+    const viaGithub = record(plain);
+    expect(await cmdUpdate(plain.deps)).toBe(EXIT.OK);
+    expect(viaGithub).toEqual([
+      { url: "https://api.github.com/repos/AltanS/collie/tags?per_page=100", opts: undefined },
+      { url: `https://github.com/AltanS/collie/releases/download/v${NEW}/collie-${NEW}.manifest.json`, opts: undefined },
+      { url: `https://github.com/AltanS/collie/releases/download/v${NEW}/${PAYLOAD}.tar.gz`, opts: undefined },
+    ]);
+  });
+
+  test("the checksum is checked on the mirror path too: a mismatch lays nothing down", async () => {
+    const h = binaryHarness({ env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899" }, digest: "9c1a04".padEnd(64, "0") });
+    const { getJson } = h.deps.net;
+    h.deps.net = {
+      ...h.deps.net,
+      getJson: (url, opts) =>
+        url.includes("/repos/") ? Promise.resolve({ ok: true as const, value: apiTags("v1.0.0", `v${NEW}`) }) : getJson(url, opts),
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain(`checksum mismatch for ${PAYLOAD}.tar.gz`);
+    expect(h.files.ops.some((op) => op.includes(`${INST}/versions/${NEW}`))).toBe(false);
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("a mirror that is not this machine's loopback stops the update before any request", async () => {
+    for (const value of [
+      "http://10.0.0.5:8899",
+      "https://127.0.0.1:8899",
+      "file:///C:/mirror",
+      "http://127.0.0.1.example.com",
+      "http://localhost@example.com",
+      "http://[::1]:8899",
+    ]) {
+      const h = binaryHarness({ env: { COLLIE_UPDATE_MIRROR: value } });
+      const asked: string[] = [];
+      const { getJson } = h.deps.net;
+      h.deps.net = {
+        ...h.deps.net,
+        getJson: (url) => {
+          asked.push(url);
+          return getJson(url);
+        },
+      };
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      expect(asked).toEqual([]);
+      expect(h.io.stderr.join("\n")).toContain(`COLLIE_UPDATE_MIRROR='${value}' is not an http://127.0.0.1 or http://localhost URL`);
+      expect(h.link.ops).toEqual([]);
+    }
   });
 
   test("a systemd-run binary with no reachable user bus falls back to setsid, not a doomed handoff", async () => {
@@ -1408,6 +1550,258 @@ describe("collie update on a binary install", () => {
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain(`${INST}$ ${exe("restart")}`);
     expect(h.exec.calls.join("\n")).not.toContain(`${INST}/current/bin/collie restart`);
+  });
+
+  test("Windows: takes the `windows-x64` zip, checks its sha256, unpacks it with Windows' own tar.exe", async () => {
+    const payload = `collie-${NEW}-windows-x64`;
+    const zip = `${payload}.zip`;
+    const h = windowsBinaryHarness({
+      env: { SystemRoot: "C:\\Windows" },
+      manifest: manifestDoc({
+        artifacts: [
+          { name: `${PAYLOAD}.tar.gz`, platform: "linux-x64", sha256: "0".repeat(64), size: 4, payloadRoot: PAYLOAD },
+          { name: zip, platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: payload },
+        ],
+      }),
+    });
+    const fetched: string[] = [];
+    h.deps.net = {
+      ...h.deps.net,
+      download: (url, dest) => {
+        fetched.push(url);
+        h.files.write(dest, "zip bytes");
+        const at = `${INST}/.staging/x/${payload}`;
+        h.files.write(`${at}/bin/collie.exe`, "NEW BINARY");
+        h.files.write(`${at}/web/dist/index.html`, "NEW");
+        h.files.write(`${at}/herdr-plugin.toml`, `version = "${NEW}"\n`);
+        h.files.write(`${at}/package.json`, `{"version":"${NEW}"}`);
+        return Promise.resolve({ ok: true as const, sha256: DIGEST, size: 4 });
+      },
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(fetched).toEqual([`https://github.com/AltanS/collie/releases/download/v${NEW}/${zip}`]);
+    expect(h.exec.calls).toContain(`/Windows/System32/tar.exe -xf ${INST}/.staging/${zip} -C ${INST}/.staging/x`);
+    expect(h.exec.calls.some((c) => c.startsWith("tar ") || c.startsWith("chmod "))).toBe(false);
+    expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${payload} ${INST}/versions/${NEW}`);
+  });
+
+  test("Windows: a version the launcher still runs, left in .trash, is a note and not a failed update", async () => {
+    // A pruned version whose collie.exe the launcher still executes: Windows refuses to delete it.
+    const held = `${INST}/.trash/0.9.0.abc`;
+    const h = windowsBinaryHarness({ env: { SystemRoot: "C:\\Windows" } });
+    h.files.write(`${held}/bin/collie.exe`, "OLD");
+    const removeTree = h.files.removeTree;
+    h.files.removeTree = (p) => {
+      if (posixKey(p) === held) throw Object.assign(new Error("EPERM: operation not permitted, unlink"), { code: "EPERM" });
+      removeTree(p);
+    };
+    // The update goes on past the sweep to the release check (this fixture's release has no zip).
+    await cmdUpdate(h.deps);
+    expect(h.io.stderr.join("\n")).toContain("has no Windows build");
+    expect(h.io.stdout.some((l) => l.includes("0.9.0.abc") && l.includes("is still in use") && l.includes("a later update removes it"))).toBe(true);
+
+    // Off Windows the same failure still stops the update, as it always did.
+    const linux = binaryHarness();
+    linux.files.removeTree = (p) => {
+      if (p.includes(".staging")) throw new Error("EACCES");
+    };
+    await expect(cmdUpdate(linux.deps)).rejects.toThrow("EACCES");
+  });
+
+  test("Windows: a zip whose sha256 differs is thrown away, and nothing is unpacked", async () => {
+    const h = windowsBinaryHarness({
+      digest: "9c1a04".padEnd(64, "0"),
+      manifest: manifestDoc({
+        artifacts: [{ name: "collie-1.1.0-windows-x64.zip", platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: "p" }],
+      }),
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("checksum mismatch for collie-1.1.0-windows-x64.zip");
+    expect(h.exec.calls.some((c) => c.includes("tar.exe"))).toBe(false);
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("Windows: a busy unpacked folder is moved after a retry, and one that stays busy changes nothing", async () => {
+    const zipManifest = (payload: string) =>
+      manifestDoc({
+        artifacts: [{ name: `${payload}.zip`, platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: PAYLOAD }],
+      });
+    const busy = (times: number) => {
+      const h = windowsBinaryHarness({ manifest: zipManifest(PAYLOAD) });
+      const download = h.deps.net.download;
+      h.deps.net = {
+        ...h.deps.net,
+        download: async (url, dest) => {
+          const got = await download(url, dest);
+          h.files.write(`${INST}/.staging/x/${PAYLOAD}/bin/collie.exe`, "NEW BINARY");
+          return got;
+        },
+      };
+      let left = times;
+      const rename = h.files.rename;
+      h.files.rename = (from, to) => {
+        if (posixKey(to) === `${INST}/versions/${NEW}` && left > 0) {
+          left--;
+          throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+        }
+        rename(from, to);
+      };
+      return h;
+    };
+    const twice = busy(2);
+    expect(await cmdUpdate(twice.deps)).toBe(EXIT.OK);
+    expect(twice.files.ops).toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${INST}/versions/${NEW}`);
+
+    const always = busy(99);
+    expect(await cmdUpdate(always.deps)).toBe(EXIT.FAIL);
+    expect(always.io.stderr.join("\n")).toContain("Nothing was changed. Try again in a minute.");
+    expect(always.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+    expect(always.files.exists(`${INST}/.staging`)).toBe(false);
+    expect(always.link.ops).toEqual([]);
+  });
+
+  test("a version folder a live launcher holds cannot be pruned, and the update still succeeds", async () => {
+    // Windows: the launcher keeps its own version folder open, so the prune's rename fails with
+    // EBUSY. It is a note, never a failure and never a rollback.
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    const rename = h.files.rename;
+    h.files.rename = (from, to) => {
+      if (posixKey(from) === `${INST}/versions/0.9.0`) throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      rename(from, to);
+    };
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("note: could not remove the old version 0.9.0");
+    expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
+    expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("done");
+    expect(currentTarget(h)).toBe(`${INST}/versions/${NEW}`);
+  });
+
+  test("Windows: a payload with no `bin\\collie.exe` is not a payload", async () => {
+    const h = windowsBinaryHarness({
+      manifest: manifestDoc({
+        artifacts: [{ name: `${PAYLOAD}.zip`, platform: "windows-x64", sha256: DIGEST, size: 4, payloadRoot: PAYLOAD }],
+      }),
+    });
+    // The fixture's download lays a POSIX payload down: `bin/collie`, no `.exe`.
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("missing bin/collie.exe");
+  });
+
+  test("a manifest with a `windows-x64` entry resolves Linux and macOS exactly as before", async () => {
+    const windows = {
+      name: `collie-${NEW}-windows-x64.zip`,
+      platform: "windows-x64",
+      sha256: "f".repeat(64),
+      size: 9,
+      payloadRoot: `collie-${NEW}-windows-x64`,
+      signed: false,
+    };
+    // The released parser keeps an entry it does not know and drops nothing else.
+    const parsed = parseReleaseManifest(manifestDoc({ artifacts: [windows, ...manifestDoc().artifacts] }));
+    expect(parsed.ok && parsed.manifest.artifacts.map((a) => a.platform)).toEqual(["windows-x64", "linux-x64"]);
+    // No platform but win32/x64 can ever name it.
+    for (const os of ["linux", "darwin", "freebsd", "win32"]) {
+      for (const arch of ["x64", "arm64", "ia32", "riscv64"]) {
+        expect(platformId(os, arch) === "windows-x64").toBe(os === "win32" && arch === "x64");
+      }
+    }
+    // The Linux update takes its own tarball, with the Windows entry listed first.
+    const h = binaryHarness({ manifest: manifestDoc({ artifacts: [windows, ...manifestDoc().artifacts] }) });
+    const fetched: string[] = [];
+    const download = h.deps.net.download;
+    h.deps.net = { ...h.deps.net, download: (url, dest) => (fetched.push(url), download(url, dest)) };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(fetched).toEqual([`https://github.com/AltanS/collie/releases/download/v${NEW}/${PAYLOAD}.tar.gz`]);
+  });
+
+  test("Windows: a release with no `windows-x64` entry says so plainly and changes nothing", async () => {
+    // The fixture's manifest lists linux-x64 only: a release whose Windows build failed.
+    const h = windowsBinaryHarness();
+    const fetched: string[] = [];
+    h.deps.net = { ...h.deps.net, download: (url) => (fetched.push(url), Promise.reject(new Error("no download expected"))) };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain(`error: release ${NEW} has no Windows build; try again after the next release. Nothing was changed.`);
+    expect(err).not.toContain("From source");
+    expect(fetched).toEqual([]);
+    expect(h.link.ops).toEqual([]);
+    expect(h.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+    expect(h.files.exists(`${INST}/.staging`)).toBe(false);
+    expect(currentTarget(h)).toBe(BROOT);
+    expect(h.exec.calls.some((c) => c.includes("tar"))).toBe(false);
+    // The phone reads the same sentence from the run record.
+    expect(h.files.read(`${STATE}/update.json`) ?? "").toContain("has no Windows build");
+  });
+
+  test("Linux still unpacks with `tar -xzf`, the exact vector it always ran", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`tar -xzf ${INST}/.staging/${PAYLOAD}.tar.gz -C ${INST}/.staging/x`);
+  });
+
+  test("Windows: the runner makes `current` a junction beside the old one, removes the old one, then renames", async () => {
+    const h = windowsBinaryHarness();
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    // A junction names an absolute folder, and a rename onto a junction fails, so the order is fixed.
+    expect(h.link.ops.slice(0, 3)).toEqual([
+      `rm ${INST}/.current.new`,
+      `junction ${INST}/versions/${NEW} ${INST}/.current.new`,
+      `rm ${INST}/current`,
+    ]);
+    expect(h.files.ops).toContain(`mv ${INST}/.current.new ${INST}/current`);
+    expect(h.link.ops.some((op) => op.startsWith("symlink"))).toBe(false);
+    expect(currentTarget(h)).toBe(`${INST}/versions/${NEW}`);
+  });
+
+  test("Windows: a rename that fails puts the old junction back, so `current` still names the old version", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    const rename = h.files.rename;
+    h.files.rename = (from, to) => {
+      if (posixKey(to) === `${INST}/current`) throw new Error("EBUSY: resource busy");
+      rename(from, to);
+    };
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(currentTarget(h)).toBe(BROOT);
+    expect(h.link.ops).toContain(`junction ${BROOT} ${INST}/current`);
+    expect(h.io.stderr.join("\n")).toContain("EBUSY");
+    expect(h.io.stderr.join("\n")).toContain(`still names ${BROOT}. Nothing was changed.`);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("Windows: when putting the old junction back fails too, the error prints the exact repair command", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    const rename = h.files.rename;
+    h.files.rename = (from, to) => {
+      if (posixKey(to) === `${INST}/current`) throw new Error("EBUSY: resource busy");
+      rename(from, to);
+    };
+    const junction = h.link.junction;
+    h.link.junction = (target, at) => {
+      if (posixKey(at) === `${INST}/current`) throw new Error("EPERM: operation not permitted");
+      junction(target, at);
+    };
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("is missing now, and putting it back failed too");
+    // The command an operator can paste into cmd or PowerShell, with both paths spelled out.
+    expect(err).toContain(`Make it again by hand: cmd /c mklink /J "\\inst\\current" "${BROOT}"`);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("Windows: a real folder named `current` is refused and never removed", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    h.link.entries.set(`${INST}/current`, { kind: "other", what: "a directory" });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(h.link.ops).not.toContain(`rm ${INST}/current`);
+    expect(h.io.stderr.join("\n")).toContain("it is a directory, not a junction");
+  });
+
+  test("Windows: a rollback flips the junction back and restarts", async () => {
+    const h = windowsBinaryHarness({ others: ["0.9.0"] });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(h.link.ops).toContain(`junction ${INST}/versions/0.9.0 ${INST}/.current.new`);
+    expect(currentTarget(h)).toBe(`${INST}/versions/0.9.0`);
+    expect(h.restarts).toBe(1);
   });
 
   test("a staged payload gets its mode set on the binary this host names", async () => {
@@ -2743,5 +3137,36 @@ describe("#283: another install's collie runs under its own root", () => {
     const h = legacyClone();
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     expect(overrideOf(h.exec, `${WT("v0.32.0")}/cli/main.ts build`)).toEqual(OWN_ROOT);
+  });
+});
+
+describe("a source checkout on Windows (M43 spec 08)", () => {
+  test("`collie update` refuses at once, with one sentence, and changes nothing on disk", async () => {
+    for (const args of [[], ["--rollback"], ["--to-tag", "v0.32.0"], ["--major"]]) {
+      const h = legacyClone();
+      h.deps.host = hostFor("win32");
+      expect(await cmdUpdate(h.deps, args)).toBe(EXIT.FAIL);
+      expect(h.io.stderr).toEqual([`error: ${WINDOWS_CHECKOUT_SENTENCE}`]);
+      expect(h.io.stdout).toEqual([]);
+      expect(h.files.ops).toEqual([]);
+      expect(h.link.ops).toEqual([]);
+      expect(h.exec.ran).toEqual([]);
+      expect(h.exec.spawned).toEqual([]);
+      expect(h.exec.calls.some((c) => /fetch|worktree|ls-remote| build|install/.test(c))).toBe(false);
+      expect(h.files.exists(`${STATE}/update.json`)).toBe(false);
+      expect(h.restarts).toBe(0);
+    }
+  });
+
+  test("the sentence is the one the operator reads, word for word", () => {
+    expect(WINDOWS_CHECKOUT_SENTENCE).toBe(
+      "On Windows, collie updates a release install. A source checkout is not supported for updates; install the release zip with install.ps1.",
+    );
+  });
+
+  test("off Windows the same checkout is not refused", async () => {
+    const h = legacyClone();
+    await cmdUpdate(h.deps, []);
+    expect(h.io.stderr.join("\n")).not.toContain("On Windows");
   });
 });

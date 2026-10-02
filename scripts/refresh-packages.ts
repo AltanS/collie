@@ -74,6 +74,14 @@ const NIX_PLATFORMS = [
   { key: "darwin-arm64", platform: "macos-arm64" },
 ] as const;
 
+/**
+ * Platforms the release ships that these packages deliberately do not carry. The AUR and Nix
+ * packages are Linux and macOS packages; `windows-x64` is a zip that `install.ps1` takes (M43). A
+ * platform here is known, so its entry never stops this job, and it is not required, so a release
+ * that has no Windows asset (a warning in release.yml for one cycle) passes too.
+ */
+const NOT_PACKAGED: ReadonlySet<string> = new Set(["windows-x64"]);
+
 interface NixPlatform {
   url: string;
   sha256: string;
@@ -152,7 +160,7 @@ function assertPlatformsMatch(manifest: Manifest): void {
   const known = new Set<string>([...AUR_ARCHES.map((a) => a.platform), ...NIX_PLATFORMS.map((r) => r.platform)]);
   const listed = new Set(manifest.artifacts.map((a) => String(a.platform)));
 
-  const unmapped = [...listed].filter((name) => !known.has(name)).toSorted();
+  const unmapped = [...listed].filter((name) => !known.has(name) && !NOT_PACKAGED.has(name)).toSorted();
   if (unmapped.length > 0) {
     throw new Error(
       `the manifest lists platform(s) this script does not map: ${unmapped.join(", ")}. ` +

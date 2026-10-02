@@ -3,7 +3,7 @@ import { delimiter, join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
-import { HOST } from "../bridge/host.ts";
+import { HOST, hostFor } from "../bridge/host.ts";
 import { markerFor } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
@@ -11,7 +11,7 @@ import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
-import { cmdDoctor, type DoctorDeps, type Finding } from "./doctor.ts";
+import { cmdDoctor, type DoctorDeps, type Finding, LONG_PATHS_KEY, windowsLongPaths, windowsTask } from "./doctor.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
 import type { DoctorView, Ui } from "./render.ts";
@@ -29,6 +29,7 @@ import {
   STATE,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import { POWERSHELL_UTF8 } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 import {
   configFilePaths,
@@ -84,7 +85,9 @@ const INTEGRATION_OK = [
 ].join("\n");
 
 const HEALTHY_ANSWERS: Scripted["answers"] = [
-  ["herdr --version", { stdout: "herdr 0.8.2\n" }],
+  // At or above the Windows minimum (`HERDR_MIN_WINDOWS`), because this suite runs on the real host
+  // and a Windows run would otherwise warn on a healthy fixture.
+  ["herdr --version", { stdout: "herdr 0.9.3\n" }],
   // A healthy checkout can say where it came from: `update` asserts `origin` against the configured
   // update source before it fetches, so an origin-less checkout is a real (reported) problem.
   [`git -C ${ROOT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
@@ -313,6 +316,8 @@ describe("collie doctor — the contract", () => {
       "acl",
       "front-door",
       "mux",
+      // Windows only, and this suite runs on the real host.
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
       "beacon-hooks-claude",
       "beacons",
       "herdr-version",
@@ -323,7 +328,8 @@ describe("collie doctor — the contract", () => {
       "integration-opencode",
       "integration-pi",
       "integration-omp",
-      "hook-python3",
+      // Not on Windows: Herdr's hooks there are PowerShell (M43 spec 08).
+      ...(HOST.platform === "win32" ? [] : ["hook-python3"]),
       "agent-sessions",
       "journal-roots",
       "cache-claims",
@@ -1385,6 +1391,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "acl",
       "front-door",
       "mux",
+      ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths"] : []),
       "beacon-hooks-claude",
       "beacons",
       "agent-sessions",
@@ -1449,7 +1456,8 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
     expect(byCheck.get("herdr-socket")?.status).toBe("error");
     expect(byCheck.get("herdr-version")).toBeDefined();
     expect(byCheck.get("integration-claude")).toBeDefined();
-    expect(byCheck.get("hook-python3")).toBeDefined();
+    // Not on Windows: Herdr's hooks there are PowerShell (M43 spec 08), and this suite runs on the real host.
+    if (HOST.platform !== "win32") expect(byCheck.get("hook-python3")).toBeDefined();
     expect(code).toBe(EXIT.FAIL);
   });
 });
@@ -1873,5 +1881,128 @@ describe("the config-file finding", () => {
       harness(null, [], { configLayer: typo, env: { COLLIE_CONFIG: "/etc/collie-tpyo.toml" } }),
     );
     expect(byCheck.get("config-file")!.detail).toContain("/etc/collie-tpyo.toml (absent)");
+  });
+});
+
+// ── Windows: who the Task Scheduler task belongs to (M43 spec 05) ─────────────
+
+describe("hook-python3 on Windows (M43 spec 08)", () => {
+  // The rehearsal found `collie doctor` exiting 1 on every fresh Windows install without Python, and
+  // `collie update --check` red with it, which turned the phone's Update button off.
+  test("is no finding at all on Windows, where Herdr's hooks are PowerShell; elsewhere still an error", async () => {
+    const win = harness(null, [], { absent: ["python3"] });
+    win.deps = { ...win.deps, host: hostFor("win32") };
+    const { byCheck } = await findings(win);
+    expect(byCheck.has("hook-python3")).toBe(false);
+    expect(byCheck.has("windows-long-paths")).toBe(true);
+
+    const linux = harness(null, [], { absent: ["python3"] });
+    linux.deps = { ...linux.deps, host: hostFor("linux") };
+    const { byCheck: onLinux, code } = await findings(linux);
+    expect(onLinux.get("hook-python3")?.status).toBe("error");
+    expect(onLinux.has("windows-long-paths")).toBe(false);
+    expect(code).toBe(EXIT.FAIL);
+  });
+});
+
+describe("windows-long-paths", () => {
+  const reg = (value: string | null): Scripted["answers"] => [
+    [
+      `reg query ${LONG_PATHS_KEY} /v LongPathsEnabled`,
+      value === null
+        ? { code: 1, stderr: "ERROR: The system was unable to find the specified registry key or value." }
+        : { stdout: `\r\n${LONG_PATHS_KEY}\r\n    LongPathsEnabled    REG_DWORD    ${value}\r\n\r\n` },
+    ],
+  ];
+  const SHORT = "C:\\Users\\pat\\AppData\\Local\\collie\\versions\\1.16.0";
+  const run = (value: string | null, root = SHORT) =>
+    windowsLongPaths({ ctx: context({}, { root }), exec: fakeExec({ answers: reg(value) }) });
+
+  test("ok when long paths are on and the install folder is short", () => {
+    const f = run("0x1");
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(`LongPathsEnabled is 1, and the install folder is ${SHORT.length} characters long`);
+  });
+
+  test("warns, never errors, when long paths are off, with the one line that turns them on", () => {
+    const f = run("0x0");
+    expect(f.status).toBe("warn");
+    expect(f.detail).toBe(
+      "Herdr cannot start a pane in a folder whose path is longer than 260 characters (os error 267). Keep your work folders short. LongPathsEnabled is 0 on this machine.",
+    );
+    expect(f.remedy).toContain("Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' -Name LongPathsEnabled -Value 1");
+  });
+
+  test("warns when the install folder itself is long, whatever the switch says", () => {
+    const deep = `C:\\${"a".repeat(210)}\\versions\\1.16.0`;
+    const f = run("0x1", deep);
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain(`is ${deep.length} characters long`);
+    expect(f.remedy).toContain("COLLIE_DIR");
+  });
+
+  test("a value it cannot read is skipped, never a failure", () => {
+    expect(run(null).status).toBe("skipped");
+  });
+});
+
+describe("windows-task", () => {
+  const WIN = hostFor("win32");
+  // The query opens with the UTF-8 line (`POWERSHELL_UTF8`), so a non-ASCII path comes back whole.
+  const QUERY = `powershell -NoProfile -NonInteractive -Command ${POWERSHELL_UTF8}$t = Get-ScheduledTask`;
+  const BIN = collieBinary(ROOT, WIN);
+  const answer = (args: string): Scripted["answers"] => [
+    [QUERY, { stdout: `Running\r\nC:\\WINDOWS\\system32\\conhost.exe\r\n${args}\r\n` }],
+  ];
+  const run = (answers: Scripted["answers"], absent: string[] = []) =>
+    windowsTask({ ctx: context(), exec: fakeExec({ answers, absent }), host: WIN, link: fakeLinkFs() });
+
+  test("names the program the task runs when it is this install's launcher", () => {
+    const f = run(answer(`--headless ${BIN} _supervise COLLIE_PORT=8787`));
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(`Task herdr.collie runs ${BIN} (Running)`);
+  });
+
+  test("a task that still runs the old script says so in one line, with the one command that fixes it", () => {
+    const f = run(answer(`--headless "C:\\ps\\powershell.exe" -File "${ROOT}\\contrib\\windows\\collie-ctl.ps1" _exec-bridge`));
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain("Task herdr.collie still runs the old script");
+    expect(f.remedy).toBe("Run: collie restart");
+  });
+
+  // The gate for M43 spec 06/08: a binary install's task registered on a version folder keeps
+  // relaunching that version after an update moves `current`.
+  test("a binary install whose task runs a version folder, not `current`, is a warning", () => {
+    const install = "C:\\Users\\pat\\.collie";
+    const root = `${install}\\versions\\1.16.0`;
+    const link = fakeLinkFs({ [`${install}\\current`]: { kind: "symlink", target: `${install}\\versions\\1.16.0` } });
+    const exec = fakeExec({
+      answers: [[QUERY, { stdout: `Running\r\nC:\\conhost.exe\r\n--headless ${collieBinary(root, WIN)} _supervise\r\n` }]],
+    });
+    const f = windowsTask({ ctx: context({}, { root }), exec, host: WIN, link });
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain(`runs ${collieBinary(root, WIN)}, not ${install}\\current\\bin\\collie.exe`);
+    expect(f.remedy).toBe("run `collie start` once: it registers the task on `current`");
+  });
+
+  test("a binary install whose task runs `current\\bin\\collie.exe` reads ok, whichever version runs", () => {
+    const install = "C:\\Users\\pat\\.collie";
+    const root = `${install}\\versions\\1.16.0`;
+    const link = fakeLinkFs({ [`${install}\\current`]: { kind: "symlink", target: `${install}\\versions\\1.16.0` } });
+    const program = `${install}\\current\\bin\\collie.exe`;
+    const exec = fakeExec({
+      answers: [[QUERY, { stdout: `Running\r\nC:\\conhost.exe\r\n--headless ${program} _supervise "COLLIE_PLUGIN_ROOT=${install}\\current"\r\n` }]],
+    });
+    const f = windowsTask({ ctx: context({}, { root }), exec, host: WIN, link });
+    expect(f.status).toBe("ok");
+    expect(f.detail).toBe(`Task herdr.collie runs ${program} (Running)`);
+  });
+
+  test("another install's task is named, and no task or no PowerShell is a skip", () => {
+    const other = run(answer('--headless "D:\\other\\bin\\collie.exe" _supervise'));
+    expect(other.status).toBe("warn");
+    expect(other.detail).toContain("D:\\other\\bin\\collie.exe, another Collie install");
+    expect(run([[QUERY, { code: 1 }]]).status).toBe("skipped");
+    expect(run([], ["powershell"]).status).toBe("skipped");
   });
 });

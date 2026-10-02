@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { hostFor } from "../bridge/host.ts";
 import { context, fakeExec, fakeFiles, HOME, type Scripted, type SeededFiles } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
 import {
+  HERDR_MIN_WINDOWS,
   historyFindings,
   JOURNAL_AGENT_NAMES,
   JOURNAL_AGENTS,
@@ -170,10 +172,13 @@ async function run(
     snapshot?: string | null;
     /** A read that is not a body: the bridge answered, and refused (issue #238). */
     refused?: number;
+    /** What `herdr --version` prints. */
+    herdr?: string;
+    platform?: string;
   } = {},
 ): Promise<Map<string, Finding>> {
   const answers: Scripted["answers"] = [
-    ["herdr --version", { stdout: "herdr 0.8.2\n" }],
+    ["herdr --version", { stdout: over.herdr ?? "herdr 0.8.2\n" }],
     ["herdr integration status", { stdout: over.status ?? HEALTHY_STATUS }],
   ];
   const findings = await historyFindings({
@@ -185,9 +190,29 @@ async function run(
       if (over.snapshot === null) return { kind: "silent" };
       return { kind: "body", text: over.snapshot ?? snapshotOf([]) };
     },
+    host: hostFor(over.platform ?? "linux"),
   });
   return new Map(findings.map((f) => [f.check, f]));
 }
+
+describe("the Herdr version on Windows", () => {
+  test(`is checked against ${HERDR_MIN_WINDOWS}, the build verified on the Windows VM`, async () => {
+    const old = (await run({ platform: "win32", herdr: "herdr 0.9.2\n" })).get("herdr-version");
+    expect(old?.status).toBe("warn");
+    expect(old?.detail).toContain(`older than ${HERDR_MIN_WINDOWS}`);
+    expect(old?.remedy).toBe(`update Herdr to ${HERDR_MIN_WINDOWS} or newer`);
+    for (const current of ["herdr 0.9.3\n", "herdr 0.10.0\n", "herdr 1.0.0\n"]) {
+      expect((await run({ platform: "win32", herdr: current })).get("herdr-version")?.status).toBe("ok");
+    }
+  });
+
+  test("Linux and macOS have no minimum, and a version nobody can read is not judged", async () => {
+    for (const platform of ["linux", "darwin"]) {
+      expect((await run({ platform, herdr: "herdr 0.5.0\n" })).get("herdr-version")?.status).toBe("ok");
+    }
+    expect((await run({ platform: "win32", herdr: "herdr dev-build\n" })).get("herdr-version")?.status).toBe("ok");
+  });
+});
 
 describe("the history section", () => {
   test("a host with current hooks and a readable root passes every line", async () => {

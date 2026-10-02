@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 
 import { binaryName, collieBinary, HOST, type Host } from "../bridge/host.ts";
+import { envGet } from "../bridge/tools.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import {
   type ApiTag,
@@ -11,6 +12,10 @@ import {
   isGithubApiUrl,
   majorOf,
   MANIFEST_SCHEMA_VERSION,
+  MIRROR_FETCH,
+  mirrorRefusal,
+  mirrorWarning,
+  updateMirror,
   parsePrereleaseTag,
   parseReleaseManifest,
   parseTagsResponse,
@@ -32,6 +37,7 @@ import {
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
   PACKAGED_SENTENCE,
+  WINDOWS_CHECKOUT_SENTENCE,
 } from "./install-kind.ts";
 import { packageCommand } from "./package-command.ts";
 import { herdrActionCommand, type Environment, type EnvVars } from "./context.ts";
@@ -1022,6 +1028,12 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   // The record, not the act — `--status` reads `<state dir>/update.json` and touches nothing, so it
   // is answered before the lock, before the install kind matters and before any network call.
   if (wantsStatus(args)) return cmdUpdateStatus(deps, args);
+  // Windows takes a release install only. Refused here, before the lock, the record or any fetch,
+  // so nothing on disk changes (WINDOWS_CHECKOUT_SENTENCE says why).
+  if (isCheckout && deps.host.platform === "win32") {
+    deps.io.err(`error: ${WINDOWS_CHECKOUT_SENTENCE}`);
+    return EXIT.FAIL;
+  }
   if (args.includes("--rollback")) {
     if (install.kind === "binary") return await rollbackBinary(deps);
     if (install.kind === "packaged") {
@@ -1113,7 +1125,9 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
 // manifest, `package.json`, `.env.example`, `docs/`), and `<root>/current` is a RELATIVE symlink at
 // exactly one of them. An update lays a new version down beside the old one and flips that symlink;
 // two atomic renames, and the previous version is still on disk afterwards, which is what makes
-// `--rollback` almost free.
+// `--rollback` almost free. On Windows `current` is a directory junction with an absolute target
+// instead, flipped by `flipJunction`; Bun resolves `process.execPath` through it there too (Windows
+// 11 VM, 2026-10-02), so the paragraph below holds on every host.
 //
 // The running bridge is pinned to the version directory it was started from — `process.execPath` is
 // realpath-resolved, so `resolvePluginRoot` returns `versions/X.Y.Z`, never `current` — so it keeps
@@ -1154,18 +1168,26 @@ export function parseApiTags(tags: readonly ApiTag[]): ReleaseTag[] {
  * so the baseline penalty is not observable here.
  */
 export function platformId(platform: string, arch: string): string | null {
+  // Windows ships x64 only (M43). Windows on ARM stays best effort, so it gets the honest refusal.
+  if (platform === "win32") return arch === "x64" ? "windows-x64" : null;
   const os = platform === "linux" ? "linux" : platform === "darwin" ? "macos" : null;
   const cpu = arch === "x64" ? "x64" : arch === "arm64" ? "arm64" : null;
   return os === null || cpu === null ? null : `${os}-${cpu}`;
+}
+
+/** `%SystemRoot%\System32\tar.exe`: the bsdtar Windows ships, which reads a zip. */
+export function windowsTar(env: Environment, host: Host): string {
+  return host.path.join(envGet(env, "SystemRoot", host) ?? "C:\\Windows", "System32", "tar.exe");
 }
 
 /** `collie-<version>.manifest.json` — CONSTRUCTED from the version, never read from a document. */
 export const manifestAssetName = (version: string): string => `collie-${version}.manifest.json`;
 
 /** A release asset's URL, built from (repo, tag, name) alone — see `parseReleaseManifest`'s header
- *  on why the manifest carries no URLs of its own. */
-export const releaseAssetUrl = (repo: string, tag: string, name: string): string =>
-  `https://github.com/${repo}/releases/download/${tag}/${name}`;
+ *  on why the manifest carries no URLs of its own. With a rehearsal mirror (`updateMirror`,
+ *  a loopback-only test seam, `bridge/update.ts`), the same path on that mirror. */
+export const releaseAssetUrl = (repo: string, tag: string, name: string, mirror: string | null = null): string =>
+  `${mirror ?? "https://github.com"}/${repo}/releases/download/${tag}/${name}`;
 
 /** The evidence line `doctor` and the refusal above both quote for an install we cannot name. */
 function unknownEvidence(
@@ -1224,9 +1246,29 @@ function netError(deps: UpdateDeps, what: string, url: string, failure: NetFailu
 /** Everything under `.staging`, and everything in `.trash`. A killed update leaves scratch; entering
  *  with a clean one costs nothing and removes a class of half-state. */
 function sweepScratch(deps: UpdateDeps, layout: BinaryLayout): void {
-  deps.files.removeTree(layout.stagingDir);
+  clearScratch(deps, layout.stagingDir);
   for (const entry of deps.files.list(layout.trashDir)) {
-    deps.files.removeTree(join(layout.trashDir, entry));
+    clearScratch(deps, join(layout.trashDir, entry));
+  }
+}
+
+/**
+ * Remove one scratch tree. On Windows a file that a running process executes cannot be deleted: the
+ * Task Scheduler launcher runs the `collie.exe` of the version it started from until the next
+ * `collie stop` or logon, so when an update prunes that version, its `collie.exe` stays behind in
+ * `.trash`. The next update then died on that file before it asked for a release (M43 spec 08
+ * rehearsal, 2026-10-02). There it is a note, and a later update clears it. Elsewhere a failure still
+ * stops the update, as before.
+ */
+function clearScratch(deps: UpdateDeps, path: string): void {
+  if (deps.host.platform !== "win32") {
+    deps.files.removeTree(path);
+    return;
+  }
+  try {
+    deps.files.removeTree(path);
+  } catch (err) {
+    deps.io.out(`note: ${path} is still in use (${String(err)}); a later update removes it.`);
   }
 }
 
@@ -1269,6 +1311,7 @@ export function currentVersionDir(deps: { readonly link: LinkReader }, layout: B
  * implementation would be a second thing to get atomic.
  */
 function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): boolean {
+  if (deps.host.platform === "win32") return flipJunction(deps, layout, version);
   const staged = deps.host.path.join(layout.installRoot, ".current.new");
   try {
     deps.link.remove(staged);
@@ -1278,6 +1321,83 @@ function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): b
   } catch (err) {
     deps.io.err(`error: could not point ${layout.currentLink} at versions/${version} — ${String(err)}`);
     return false;
+  }
+}
+
+/** The one command that makes a junction by hand, in a form both cmd and PowerShell accept. */
+export const junctionCommand = (at: string, target: string): string => `cmd /c mklink /J "${at}" "${target}"`;
+
+/**
+ * The Windows flip. `current` is a directory junction there (`LinkWriter.junction`), and two facts
+ * measured on the Windows 11 VM on 2026-10-02 change the steps: a rename onto an existing junction
+ * fails with EPERM, so the one atomic rename above is not possible; and removing a junction never
+ * touches the folder it names. So the new junction is built beside `current` first, which proves the
+ * folder can be named before anything moves; then the old junction goes and the new one is renamed
+ * into its place. The time without a `current` is that one rename. When the rename fails, the old
+ * junction is put back, so a failure leaves `current` on the version it named before.
+ *
+ * A junction names an ABSOLUTE folder, so the install root is not movable on Windows the way the
+ * relative symlink keeps it movable elsewhere.
+ */
+function flipJunction(deps: UpdateDeps, layout: BinaryLayout, version: string): boolean {
+  const staged = deps.host.path.join(layout.installRoot, ".current.new");
+  const target = deps.host.path.join(layout.versionsDir, version);
+  const said = (why: string): void =>
+    deps.io.err(`error: could not point ${layout.currentLink} at versions/${version} — ${why}`);
+  const before = deps.link.probe(layout.currentLink);
+  if (before.kind === "other") {
+    // A real folder or a file has the name: it is not Collie's link, so it is not Collie's to remove.
+    said(`it is ${before.what}, not a junction`);
+    return false;
+  }
+  try {
+    deps.link.remove(staged);
+    deps.link.junction(target, staged);
+  } catch (err) {
+    said(String(err));
+    return false;
+  }
+  try {
+    if (before.kind === "symlink") deps.link.remove(layout.currentLink);
+    deps.files.rename(staged, layout.currentLink);
+    return true;
+  } catch (err) {
+    said(String(err));
+    if (before.kind === "symlink" && deps.link.probe(layout.currentLink).kind === "absent") {
+      try {
+        deps.link.junction(before.target, layout.currentLink);
+        deps.io.err(`       ${layout.currentLink} still names ${before.target}. Nothing was changed.`);
+      } catch (again) {
+        deps.io.err(`       ${layout.currentLink} is missing now, and putting it back failed too — ${String(again)}`);
+        deps.io.err(`       Make it again by hand: ${junctionCommand(layout.currentLink, before.target)}`);
+      }
+    }
+    return false;
+  }
+}
+
+/** How many times a Windows rename is tried while the folder is busy, about five seconds in all. */
+export const RENAME_TRIES = 5;
+
+/**
+ * `rename`, tried again on Windows while the folder is busy. A freshly unpacked folder is often held
+ * for a moment by Defender or the search indexer, and the rename then fails with EBUSY or EPERM. The
+ * pauses grow by half a second (0.5 s, 1 s, 1.5 s, 2 s). Any other error, or any error off Windows,
+ * is thrown at once, exactly as before.
+ */
+async function renameSettled(deps: Pick<UpdateDeps, "files" | "host" | "sleep">, from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      deps.files.rename(from, to);
+      return;
+    } catch (err) {
+      // SAFETY: the assertion asserts nothing. `catch` binds `unknown`; a Node errno error carries a
+      // string `code`, and any other value reads `undefined` here, which is the "not busy" answer.
+      const code = (err as { code?: string }).code;
+      const busy = code === "EBUSY" || code === "EPERM" || code === "EACCES";
+      if (deps.host.platform !== "win32" || !busy || attempt >= RENAME_TRIES) throw err;
+      await deps.sleep(500 * attempt);
+    }
   }
 }
 
@@ -1392,12 +1512,21 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
     deps.io.err("       Update by pulling and rebuilding a checkout — see docs/install.md.");
     return EXIT.FAIL;
   }
+  // A rehearsal mirror is a test seam: it is said loudly, and a value that is not loopback stops here.
+  const mirror = updateMirror(deps.ctx.env);
+  if (!mirror.ok) {
+    deps.io.err(`error: ${mirrorRefusal(mirror.value)} Nothing was changed.`);
+    return EXIT.FAIL;
+  }
+  if (mirror.base !== null) deps.io.err(mirrorWarning(mirror.base));
   // 2. Sweep scratch before anything else.
   sweepScratch(deps, layout);
 
   // 3. One HTTPS GET. Never a second endpoint, never a guessed version.
-  const tagsUrl = githubTagsUrl(repo);
-  const tagsResponse = await deps.net.getJson(tagsUrl);
+  const tagsUrl = githubTagsUrl(repo, mirror.base);
+  // Every request to a mirror refuses a redirect; with no mirror the requests are the ones they were.
+  const via = mirror.base === null ? undefined : MIRROR_FETCH;
+  const tagsResponse = await deps.net.getJson(tagsUrl, via);
   if (!tagsResponse.ok) {
     netError(deps, "the release check", tagsUrl, tagsResponse.failure);
     return EXIT.FAIL;
@@ -1460,8 +1589,8 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   progress.note(`fetching ${target.version} for ${platform}`);
 
   // 5. The manifest, and this platform's artifact inside it.
-  const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version));
-  const manifestResponse = await deps.net.getJson(manifestUrl);
+  const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version), mirror.base);
+  const manifestResponse = await deps.net.getJson(manifestUrl, via);
   if (!manifestResponse.ok) {
     netError(deps, `the release manifest for ${target.version}`, manifestUrl, manifestResponse.failure);
     return EXIT.FAIL;
@@ -1481,6 +1610,14 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
     return EXIT.FAIL;
   }
   const artifact = verdict.manifest.artifacts.find((a) => a.platform === platform);
+  if (artifact === undefined && platform === "windows-x64") {
+    // For one release cycle a release may ship without its Windows zip (release.yml), and that must
+    // read as a pause, not as a reason to build from source on a machine with no toolchain.
+    const said = `release ${target.version} has no Windows build; try again after the next release`;
+    deps.io.err(`error: ${said}. Nothing was changed.`);
+    abandonStaging(deps, said);
+    return EXIT.FAIL;
+  }
   if (artifact === undefined) {
     deps.io.err(`error: release ${target.version} publishes no artifact for ${platform}.`);
     deps.io.err('       Build from source instead: docs/install.md → "From source". Nothing was changed.');
@@ -1490,8 +1627,8 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   // 6. Download into scratch — same filesystem as `versions/`, so every rename below is a real one.
   const tarball = join(layout.stagingDir, artifact.name);
   deps.files.mkdirp(layout.stagingDir);
-  const tarballUrl = releaseAssetUrl(repo, target.tag, artifact.name);
-  const got = await deps.net.download(tarballUrl, tarball);
+  const tarballUrl = releaseAssetUrl(repo, target.tag, artifact.name, mirror.base);
+  const got = await deps.net.download(tarballUrl, tarball, via);
   if (!got.ok) {
     deps.files.removeTree(layout.stagingDir);
     netError(deps, `downloading ${artifact.name}`, tarballUrl, got.failure);
@@ -1511,7 +1648,13 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   progress.note(`unpacking ${artifact.name}`);
   const unpacked = join(layout.stagingDir, "x");
   deps.files.mkdirp(unpacked);
-  const untar = deps.exec.capture("tar", ["-xzf", tarball, "-C", unpacked]);
+  // The Windows asset is a zip. Windows' own `tar.exe` (bsdtar, in System32 since Windows 10) reads
+  // it, and it is named by its full path because Git for Windows can put a GNU tar first on PATH,
+  // and GNU tar cannot read a zip. `Expand-Archive` reads it too, but needs PowerShell and is slow.
+  const untar =
+    deps.host.platform === "win32"
+      ? deps.exec.capture(windowsTar(deps.ctx.env, deps.host), ["-xf", tarball, "-C", unpacked])
+      : deps.exec.capture("tar", ["-xzf", tarball, "-C", unpacked]);
   if (!untar.found || untar.code !== 0) {
     deps.files.removeTree(layout.stagingDir);
     deps.io.err(`error: could not unpack ${artifact.name}${untar.found ? "" : " — tar is not installed"}.`);
@@ -1534,7 +1677,15 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   const laid = join(layout.versionsDir, target.version);
   if (deps.files.exists(laid)) toTrash(deps, layout, target.version);
   deps.files.mkdirp(layout.versionsDir);
-  deps.files.rename(payload, laid);
+  try {
+    await renameSettled(deps, payload, laid);
+  } catch (err) {
+    deps.files.removeTree(layout.stagingDir);
+    deps.io.err(`error: could not move ${artifact.payloadRoot} into ${layout.versionsDir} (${String(err)}).`);
+    deps.io.err("       Nothing was changed. Try again in a minute.");
+    abandonStaging(deps, `the unpacked ${target.version} could not be moved into versions`);
+    return EXIT.FAIL;
+  }
   deps.files.removeTree(layout.stagingDir);
 
   // 9. Smoke BEFORE the flip: nothing the operator can see has moved yet.

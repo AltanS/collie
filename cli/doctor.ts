@@ -61,7 +61,8 @@ import {
 import { packageCommand } from "./package-command.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
 import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced.ts";
-import { collieBinary, unitName } from "./unit.ts";
+import { queryTask, taskOwner, windowsPathKey } from "./task-scheduler.ts";
+import { agentLabel, collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parseCrewArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./crew.ts";
@@ -202,6 +203,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     acl(deps),
     frontDoor(deps, mode),
     mux(deps),
+    // Windows only: who the Task Scheduler task belongs to (M43 spec 05). No line elsewhere.
+    ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
     // Why a pane's History link is not there (issue #137) — its own module, because the chain it
@@ -212,6 +215,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       exec: deps.exec,
       files: deps.files,
       snapshot: ownRead,
+      host: deps.host,
     })),
     // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
@@ -226,7 +230,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // about nobody, and carries no stamp. Together with `store-drift` below this is the rule: these
     // two arrays are RENDER SECTIONS, and `aboutCrew` is applied per finding on its own merit.
     inCrew ? aboutCrew(clock(inCrew, probes)) : clock(inCrew, probes),
-  ].filter((f) => appliesToMux(f.check, chosen.name));
+  ].filter((f) => appliesToMux(f.check, chosen.name) && appliesToHost(f.check, deps.host));
   // STAMPED `scope: "crew"`, every one of them (ADR 0050). These four describe the crew's health,
   // never this machine's readiness to take a new version, and `collie update --check` is the reader
   // that must not confuse the two: a laptop asleep in another room is not a reason this desktop
@@ -304,6 +308,20 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
 const HERDR_ONLY_CHECKS = new Set(["herdr-socket", "herdr-version", "hook-python3"]);
 /** `integration-<agent>`: every one of them is a line of `herdr integration status` (cli/history.ts). */
 const HERDR_ONLY_PREFIX = "integration-";
+
+// ── The finding set is scoped by the HOST too ───────────────────────────────
+// `hook-python3` hunts for the interpreter Herdr's shell-flavoured hooks run under. On Windows Herdr
+// installs PowerShell hooks instead (`herdr-agent-state.ps1` for claude, codex and grok, as
+// `herdr integration status` names them on the VM, 2026-10-02), so a missing `python3` costs a
+// Windows host nothing. It reported `error` there, which failed `collie doctor` on every healthy
+// Windows install without Python, and through `collie update --check` turned the phone's Update
+// button off (M43 spec 08). Dropped on Windows, the same way the multiplexer scoping above drops it.
+const NOT_ON_WINDOWS = new Set(["hook-python3"]);
+
+/** Whether a check has anything to say on this host. */
+function appliesToHost(check: string, host: Host): boolean {
+  return host.platform !== "win32" || !NOT_ON_WINDOWS.has(check);
+}
 
 /** Whether a check has anything to say on an install driving `chosenMux`. */
 function appliesToMux(check: string, chosenMux: string): boolean {
@@ -1397,6 +1415,80 @@ function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null 
  * Collie with no panes at all, and the symptom an operator sees first is an empty home screen or the
  * disconnected banner — neither of which names the socket, the session or the binary.
  */
+/** Where Windows keeps the long-path switch, and the value `reg query` reads. */
+export const LONG_PATHS_KEY = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem";
+/** An install folder longer than this leaves little room under 260 characters for what sits inside it. */
+export const LONG_INSTALL_PATH = 200;
+const PANE_PATH_LIMIT =
+  "Herdr cannot start a pane in a folder whose path is longer than 260 characters (os error 267). Keep your work folders short.";
+
+/**
+ * `windows-long-paths`: Windows only, and never more than a warning. Measured on the VM on 2026-10-02:
+ * with `LongPathsEnabled` 0, a pane asked for in a 280-character folder fails inside Herdr with
+ * `CreateProcessW ... The directory name is invalid (os error 267)`. Read with `reg query`, which
+ * needs no administrator.
+ */
+export function windowsLongPaths(deps: Pick<DoctorDeps, "ctx" | "exec">): Finding {
+  const check = "windows-long-paths";
+  const r = deps.exec.capture("reg", ["query", LONG_PATHS_KEY, "/v", "LongPathsEnabled"]);
+  const value = /LongPathsEnabled\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(r.stdout)?.[1];
+  const enabled = value === undefined ? null : Number.parseInt(value, 16) !== 0;
+  const long = deps.ctx.root.length > LONG_INSTALL_PATH;
+  if (long) {
+    return warn(
+      check,
+      `${PANE_PATH_LIMIT} The install folder ${deps.ctx.root} is ${String(deps.ctx.root.length)} characters long.`,
+      "install Collie in a shorter folder: set COLLIE_DIR to a short path, then run install.ps1 again",
+    );
+  }
+  if (enabled === false) {
+    return warn(
+      check,
+      `${PANE_PATH_LIMIT} LongPathsEnabled is 0 on this machine.`,
+      `in an Administrator PowerShell: Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' -Name LongPathsEnabled -Value 1`,
+    );
+  }
+  if (enabled === null) return skipped(check, "`reg query` could not read LongPathsEnabled", "run `collie doctor` from a PowerShell");
+  return ok(check, `LongPathsEnabled is 1, and the install folder is ${String(deps.ctx.root.length)} characters long`);
+}
+
+/**
+ * `windows-task`: the Task Scheduler task this install registers, read back. The failure it exists
+ * for is silent: a task that still runs `contrib\windows\collie-ctl.ps1` after an update deleted that
+ * file keeps the old loop alive until the next logon, and then starts nothing at all.
+ */
+export function windowsTask(deps: Pick<DoctorDeps, "ctx" | "exec" | "host" | "link">): Finding {
+  const check = "windows-task";
+  const name = agentLabel(deps.ctx.instance);
+  const query = queryTask(deps.exec, name, deps.host);
+  if (query === undefined) return skipped(check, "no PowerShell to read Task Scheduler with", "run `collie status` from a PowerShell");
+  if (query === null) return skipped(check, `no task ${name} is registered`, "`collie start` registers it");
+  switch (taskOwner(query, deps.ctx.root, deps.host)) {
+    case "legacy":
+      return warn(check, `Task ${name} still runs the old script (contrib\\windows\\collie-ctl.ps1)`, "Run: collie restart");
+    case "foreign":
+      return warn(
+        check,
+        `Task ${name} runs ${query.program}, another Collie install; one Collie per Windows machine`,
+        "run `collie uninstall` from that install, then `collie start` here",
+      );
+    case "collie": {
+      // A binary install's task must run the binary `current` points at, or a restart after an update
+      // relaunches the version the task was registered from. `start` registers it there (M43 spec
+      // 06), so this reads ok for a task this release wrote and warns for one an older build wrote.
+      const published = publishedBinary(deps.ctx.root, deps.link, deps.host);
+      if (windowsPathKey(query.program) !== windowsPathKey(published)) {
+        return warn(
+          check,
+          `Task ${name} runs ${query.program}, not ${published}; after an update moves \`current\`, it keeps relaunching the old version`,
+          "run `collie start` once: it registers the task on `current`",
+        );
+      }
+      return ok(check, `Task ${name} runs ${query.program} (${query.state})`);
+    }
+  }
+}
+
 function mux(deps: DoctorDeps): Finding {
   const settings = muxSettings(deps);
   const registry = buildMuxRegistry();
