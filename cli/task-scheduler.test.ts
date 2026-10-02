@@ -8,6 +8,9 @@ import {
   cmdSupervise,
   formatRestartMarker,
   formatTaskRecord,
+  GUARD_RETRY_MS,
+  GUARD_TRIES,
+  type GuardAnswer,
   isOwnWindowsProcess,
   isTaskBridge,
   isTaskLauncher,
@@ -20,6 +23,7 @@ import {
   RELAUNCH_DELAY_MIN_MS,
   RESTART_MARKER_TTL_MS,
   type SuperviseDeps,
+  supervisePipeName,
   taskOwner,
   taskQueryScript,
   taskRecordPath,
@@ -189,6 +193,9 @@ describe("_supervise, the loop", () => {
     const slept: number[] = [];
     let next = 9000;
     let clock = 1_000_000;
+    /** Every guard asked for, and what each ask answers in turn; past the list it is `held`. */
+    const guards: string[] = [];
+    const guardAnswers: GuardAnswer[] = [];
     const deps: SuperviseDeps = {
       io,
       files: {
@@ -225,8 +232,12 @@ describe("_supervise, the loop", () => {
         return { pid: ++next, exited: Promise.resolve(code) };
       },
       note: (_p, line) => void notes.push(line),
+      holdGuard: (pipe) => {
+        guards.push(pipe);
+        return Promise.resolve(guardAnswers.shift() ?? { kind: "held" });
+      },
     };
-    return { deps, io, files, link, writes, launched, notes, slept, renameFailures };
+    return { deps, io, files, link, writes, launched, notes, slept, renameFailures, guards, guardAnswers };
   }
 
   test("relaunches a bridge that fails, after the pause, and stops with one that exits 0", async () => {
@@ -307,6 +318,55 @@ describe("_supervise, the loop", () => {
     expect(steps.at(-1)).toBe(37_000 + 5_000);
     expect(l.notes.join("\n")).toContain("asked for a relaunch during the pause; relaunching now");
     expect(l.files.exists(marker)).toBe(false);
+  });
+
+  describe("one launcher per instance", () => {
+    const taken: GuardAnswer = { kind: "taken" };
+
+    test("takes the guard first, named after the instance and the record's path", async () => {
+      const l = launcher([0]);
+      expect(await cmdSupervise(l.deps, [...ARGS, "--instance", "next"])).toBe(EXIT.OK);
+      const pipe = supervisePipeName(taskRecordPath(CONFIG, "next", WIN), "next");
+      expect(l.guards).toEqual([pipe]);
+      expect(pipe).toMatch(/^\\\\\.\\pipe\\collie-supervise-next-[0-9a-f]{12}$/);
+      // Another account's config folder, or the default instance, is another guard.
+      expect(supervisePipeName(taskRecordPath("C:\\Users\\kim\\cfg", "next", WIN), "next")).not.toBe(pipe);
+      expect(supervisePipeName(taskRecordPath(CONFIG, null, WIN), null)).toContain("collie-supervise-default-");
+      // Case does not make a second guard: Windows paths fold case.
+      expect(supervisePipeName(RECORD.toUpperCase(), null)).toBe(supervisePipeName(RECORD, null));
+    });
+
+    test("a second launcher exits 0 at once, quietly, and never touches the record or launches", async () => {
+      const l = launcher([]);
+      l.files.write(RECORD, formatTaskRecord(5000, 5001));
+      l.guardAnswers.push(...Array.from({ length: GUARD_TRIES }, () => taken));
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.guards).toHaveLength(GUARD_TRIES);
+      expect(l.slept).toEqual(Array.from({ length: GUARD_TRIES - 1 }, () => GUARD_RETRY_MS));
+      expect(l.launched).toEqual([]);
+      expect(l.writes).toEqual([]);
+      expect(l.files.read(RECORD)).toBe(formatTaskRecord(5000, 5001));
+      expect(l.notes).toEqual([]);
+      expect(l.io.stdout).toEqual([]);
+      expect(l.io.stderr).toEqual([]);
+    });
+
+    test("a guard a killed launcher still held a moment ago is taken on a later ask", async () => {
+      const l = launcher([0]);
+      l.guardAnswers.push(taken, taken);
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.guards).toHaveLength(3);
+      expect(l.slept).toEqual([GUARD_RETRY_MS, GUARD_RETRY_MS]);
+      expect(l.launched).toHaveLength(1);
+    });
+
+    test("a guard that cannot be made at all costs a log line, never the bridge", async () => {
+      const l = launcher([0]);
+      l.guardAnswers.push({ kind: "unguarded", why: "EINVAL: bad pipe" });
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.launched).toHaveLength(1);
+      expect(l.notes[0]).toBe("could not take the one-launcher guard (EINVAL: bad pipe); running without it");
+    });
   });
 
   test("before every launch, the asides of the binary it launches are swept", async () => {

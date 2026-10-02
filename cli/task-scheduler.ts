@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
+import { createServer } from "node:net";
 
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import { sweepAsides } from "./build.ts";
@@ -292,6 +294,41 @@ export interface SuperviseDeps {
   launch(command: readonly string[], opts: { cwd: string; env: Record<string, string>; logPath: string }): LaunchedBridge | null;
   /** Append one line of the launcher's own to the log the operator reads with `collie logs`. */
   note(logPath: string, line: string): void;
+  /**
+   * Take the one-launcher guard named `pipe` and hold it until this process ends (see
+   * {@link supervisePipeName}). `held`: it is ours now. `taken`: another live process holds it.
+   * `unguarded`: the guard could not be made at all, and `why` says how.
+   */
+  holdGuard(pipe: string): Promise<GuardAnswer>;
+}
+
+export type GuardAnswer = { readonly kind: "held" } | { readonly kind: "taken" } | { readonly kind: "unguarded"; readonly why: string };
+
+// ── One launcher per instance ────────────────────────────────────────────────
+//
+// Task Scheduler's `IgnoreNew` sees only the task's own process, `conhost.exe`. Ending the task kills
+// conhost alone, so the launcher and the bridge live on while the task reads `Ready`, and the
+// five-minute revive trigger then starts a second launcher. That one overwrote the record, so
+// `restart` and `update` acted on it while the first bridge kept the port and kept answering, and an
+// update rolled back for nothing. The launcher therefore holds a named pipe server for its whole
+// life. Windows lets one process create a pipe name first (`FILE_FLAG_FIRST_PIPE_INSTANCE`, which
+// libuv sets), so a second launcher's listen fails with `EADDRINUSE`, and the name is free again the
+// moment the holder dies, however it dies. Node's `fs` cannot open a file with an exclusive share
+// mode, so a lock file could not do this. Checked on the Windows 11 VM with Bun 1.4.2, 2026-10-03.
+
+/** How many times a launcher asks for the guard, {@link GUARD_RETRY_MS} apart, before it believes another holds it. */
+export const GUARD_TRIES = 10;
+/** The pause between two asks: `stop` + `start` can start this launcher while the killed one still dies. */
+export const GUARD_RETRY_MS = 300;
+
+/**
+ * `\\.\pipe\collie-supervise-<instance>-<hash>`. Pipe names are one namespace for the whole machine,
+ * every user and session, so the name also carries a hash of the record's path: another account's
+ * Collie, or another install of the same instance name, has its own guard.
+ */
+export function supervisePipeName(recordPath: string, instance: string | null): string {
+  const hash = createHash("sha256").update(recordPath.toLowerCase()).digest("hex").slice(0, 12);
+  return `\\\\.\\pipe\\collie-supervise-${instance ?? "default"}-${hash}`;
 }
 
 /** How many times a record write is tried when Windows holds the file open (`EBUSY`, `EPERM`). */
@@ -442,6 +479,13 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   const restartMarker = taskRestartPath(configDir, instance, deps.host);
   const logPath = deps.host.path.join(configDir, logFileName(instance));
 
+  // Before the record is touched: a second launcher must not overwrite the first one's pids. It exits
+  // 0 and says nothing, because the revive trigger starts one every five minutes while the task
+  // reads `Ready`, and a line each time would bury the log.
+  const guard = await takeGuard(deps, supervisePipeName(record, instance));
+  if (guard.kind === "taken") return EXIT.OK;
+  if (guard.kind === "unguarded") deps.note(logPath, `could not take the one-launcher guard (${guard.why}); running without it`);
+
   let delay = RELAUNCH_DELAY_MIN_MS;
   // The pause is slept in steps, and the restart marker is read after each one. A `collie restart`
   // that arrives during a long pause then relaunches at once and starts the ladder again. Without
@@ -503,6 +547,34 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   }
 }
 
+/** Ask for the guard up to {@link GUARD_TRIES} times: a launcher killed a moment ago may still hold it. */
+async function takeGuard(deps: SuperviseDeps, pipe: string): Promise<GuardAnswer> {
+  for (let attempt = 1; ; attempt++) {
+    const answer = await deps.holdGuard(pipe);
+    if (answer.kind !== "taken" || attempt >= GUARD_TRIES) return answer;
+    await deps.sleep(GUARD_RETRY_MS);
+  }
+}
+
+/** The real guard: a named pipe server, unreferenced, so it never keeps a finished launcher alive. */
+function holdPipe(pipe: string): Promise<GuardAnswer> {
+  return new Promise((resolve) => {
+    const server = createServer((socket) => socket.destroy());
+    server.once("error", (err) => {
+      // SAFETY: the assertion asserts nothing. A listen error is a Node errno error with a string
+      // `code`; any other value reads `undefined`, which is the "could not be made" answer.
+      const code = (err as { code?: string }).code;
+      // Only `EADDRINUSE` is "another launcher". Anything else must not keep the bridge down.
+      resolve(code === "EADDRINUSE" ? { kind: "taken" } : { kind: "unguarded", why: `${code ?? "error"}: ${err.message}` });
+    });
+    server.listen(pipe, () => {
+      // The runtime keeps a listening handle open until the process ends, unreferenced or not.
+      server.unref();
+      resolve({ kind: "held" });
+    });
+  });
+}
+
 /** The launcher's real seams: Node's spawn, the real filesystem, the real clock. */
 export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" | "rename" | "list" | "read">): SuperviseDeps {
   const env: Record<string, string> = {};
@@ -517,6 +589,7 @@ export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" 
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     pauseStepMs: PAUSE_STEP_MS,
     now: () => Date.now(),
+    holdGuard: holdPipe,
     launch(command, opts) {
       const [program, ...rest] = command;
       if (program === undefined) return null;
