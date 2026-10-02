@@ -22,6 +22,7 @@ import { cmdCrewDeputy } from "./crew-deputy.ts";
 import { leadDeputyLines } from "./crew-status-deputy.ts";
 import { cmdCrewStatus, failureLine } from "./crew.ts";
 import type { CrewAddDeps, RemoteResult } from "./remote.ts";
+import { hostFor } from "../bridge/host.ts";
 
 // `collie crew deputy` and the deputy half of `collie crew status`, against fakes for every seam.
 // NOTHING here spawns `ssh`, dials a network or touches a disk: the transport records `(host,
@@ -163,6 +164,7 @@ function harness(opts: HarnessOptions = {}) {
   const now = opts.now ?? T0;
 
   const deps: CrewAddDeps = {
+    host: hostFor("linux"),
     // The same reason every other crew suite sets it: `PeerClient`'s REAL `setTimeout` must never
     // fire and report a fake member as unreachable.
     ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...opts.env }),

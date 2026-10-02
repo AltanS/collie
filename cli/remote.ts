@@ -27,7 +27,7 @@ import { detectInstall, updateRepoOf, type InstallKind } from "./install-kind.ts
 import { INSTALLER_SH } from "./installer-embed.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realLinkFs } from "./link.ts";
-import { ensureStore, parseCrewArgs, probeMembers, resolveSelfAddress, type CrewDeps } from "./crew.ts";
+import { ensureStore, parseCrewArgs, probeMembers, refuseCrewOnWindows, resolveSelfAddress, type CrewDeps } from "./crew.ts";
 import { explicitMux } from "./mux.ts";
 import { parseMuxProbe, type MuxProbeReport, type MuxProbeSighting } from "./mux-probe.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
@@ -944,6 +944,8 @@ async function ask(deps: Wired, question: string): Promise<boolean | "aborted"> 
  * unreadable answer, or a member that is still provisional at the final check.
  */
 export async function cmdCrewAdd(deps: CrewAddDeps, args: readonly string[]): Promise<number> {
+  // Before the rich surface mounts, so the refusal is one plain line on the run's own stderr.
+  if (refuseCrewOnWindows(deps)) return EXIT.FAIL;
   const surface = deps.ui?.crewAdd?.() ?? null;
   if (surface === null) {
     // The plain path is unchanged in every byte: the events are replayed as the lines they always

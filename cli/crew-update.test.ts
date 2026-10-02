@@ -24,6 +24,7 @@ import {
   type PreflightOptions,
   type PreflightReport,
 } from "./update-check.ts";
+import { hostFor } from "../bridge/host.ts";
 
 // `collie crew update` against fakes for every seam. NOTHING here spawns `ssh`, dials a network or
 // touches a disk: the transport records `(host, script)` pairs and answers from a table, the one
@@ -163,6 +164,7 @@ function harness(opts: HarnessOptions = {}) {
   });
 
   const deps: CrewUpdateDeps = {
+    host: hostFor("linux"),
     // The same reason the other crew suites set it: `PeerClient`'s REAL `setTimeout` must never fire
     // and report a fake member as unreachable.
     ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }),

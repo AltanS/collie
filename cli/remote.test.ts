@@ -52,6 +52,7 @@ import {
 import { INSTALLER_SH } from "./installer-embed.ts";
 import type { MuxProbeReport } from "./mux-probe.ts";
 import { realExec } from "./sys.ts";
+import { hostFor } from "../bridge/host.ts";
 
 // `collie crew add` against fakes for every seam. **NOTHING here spawns `ssh` or reaches a network**:
 // the transport is a function that records `(script, stdin)` pairs and answers from a table, the
@@ -225,6 +226,7 @@ function harness(opts: HarnessOptions = {}): Harness {
   });
 
   const deps: CrewAddDeps = {
+    host: hostFor("linux"),
     // The same reason `cli/crew.test.ts` sets this: the real `setTimeout` in `PeerClient` must never
     // fire and report a fake peer as unreachable.
     ctx: context(
@@ -1751,6 +1753,7 @@ function gitEnv(): Environment {
 function minimalCrewDeps(root: string): RepoCrewDeps {
   const storeIo: TrustStoreIo = { read: async () => null, write: async () => {} };
   return {
+    host: hostFor("linux"),
     ctx: context(gitEnv(), { root }),
     io: capture(),
     exec: realExec(gitEnv(), root),

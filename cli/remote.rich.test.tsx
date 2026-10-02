@@ -10,6 +10,7 @@ import { EXIT, type Io } from "./io.ts";
 import type { AddSurface, Ui } from "./render.ts";
 import { cmdCrewAdd, type CrewAddDeps, type RemoteResult } from "./remote.ts";
 import { createAddStore, CrewAdd, type AddStore } from "./ui/crew-add.tsx";
+import { hostFor } from "../bridge/host.ts";
 
 // `crew add` on the RICH path: the same fake transport the plain suite uses, driven through a real
 // ink render.
@@ -134,6 +135,7 @@ function harness(opts: {
   const audit: AuditEntry[] = [];
 
   const deps: CrewAddDeps = {
+    host: hostFor("linux"),
     ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }),
     io: opts.io ?? forbiddenIo(),
     ui,
