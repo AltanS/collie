@@ -38,10 +38,17 @@
 # A symbolic link needs Developer Mode, so this uses none.
 #
 # Everything is inside functions, and the last line calls them. If the download of this file stops
-# half way, `iex` gets no last line, and nothing runs.
+# half way, `iex` gets no last line, and nothing runs. It never calls `exit`, because under
+# `irm | iex` that would close your window. It sets $LASTEXITCODE instead: 0 when it installed, 1
+# when it failed. A failed run ends with a line that starts "Install failed." and names one fix.
+# (So `powershell -File install.ps1` exits 0 either way. Read $LASTEXITCODE or the last line.)
 
-function Stop-CollieInstall([string]$Message) {
-  throw "collie install: $Message"
+# Stop the install. What happened, then the one thing to do about it. The entry function prints both,
+# with "Install failed." in front of the fix, as the last line.
+function Stop-CollieInstall([string]$What, [string]$Fix = "Fix the problem above, then run the installer again.") {
+  $failure = New-Object System.Exception $What
+  $failure.Data["CollieFix"] = $Fix
+  throw $failure
 }
 
 function Write-CollieLine([string]$Text) {
@@ -111,7 +118,7 @@ function Set-CollieUserPath([string]$Entry) {
     $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
     if ($null -ne $key.GetValue("Path")) { $kind = $key.GetValueKind("Path") }
     if ($kind -ne [Microsoft.Win32.RegistryValueKind]::String -and $kind -ne [Microsoft.Win32.RegistryValueKind]::ExpandString) {
-      Stop-CollieInstall "your user PATH is stored as $kind, which this script does not edit. Add $Entry to it by hand."
+      Stop-CollieInstall "your user PATH is stored as $kind, which this script does not edit." "Add $Entry to your user PATH by hand, or set COLLIE_NO_PATH_EDIT=1 and run the installer again."
     }
     $new = Add-CollieUserPathEntry $raw $Entry
     if ($null -eq $new) { return $false }
@@ -197,12 +204,12 @@ function Set-CollieCurrent([string]$Dir, [string]$Target) {
     return
   }
   if ($state -eq "other") {
-    Stop-CollieInstall "$current is a real folder or file, not a junction, so it is not Collie's to remove. Move it aside, then run this again."
+    Stop-CollieInstall "$current is a real folder or file, not a junction, so it is not Collie's to remove." "Move $current aside, then run the installer again."
   }
   $old = Get-CollieLinkTarget $current
   switch (Get-CollieLinkState $staged) {
     "link" { Remove-CollieLink $staged }
-    "other" { Stop-CollieInstall "$staged is in the way and is not a junction. Move it aside, then run this again." }
+    "other" { Stop-CollieInstall "$staged is in the way and is not a junction." "Move $staged aside, then run the installer again." }
   }
   New-CollieJunction $staged $Target
   try {
@@ -217,10 +224,10 @@ function Set-CollieCurrent([string]$Dir, [string]$Target) {
     try {
       New-CollieJunction $current $old
     } catch {
-      Stop-CollieInstall "could not point $current at $Target ($why). $current is missing now, and putting it back failed too. Make it again by hand:  cmd /c mklink /J `"$current`" `"$old`""
+      Stop-CollieInstall "could not point $current at $Target ($why). $current is missing now, and putting it back failed too." "Make it again by hand:  cmd /c mklink /J `"$current`" `"$old`""
     }
   }
-  Stop-CollieInstall "could not point $current at $Target ($why). $current still names $old. Nothing was changed."
+  Stop-CollieInstall "could not point $current at $Target ($why). $current still names $old. Nothing was changed." "Close every program that runs Collie from $Dir, then run the installer again."
 }
 
 # Add the PATH entry, unless COLLIE_NO_PATH_EDIT says no. Returns one line that says what happened.
@@ -234,13 +241,11 @@ function Publish-CollieName([string]$Dir) {
 }
 
 function Invoke-CollieInstall {
-  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-
   $repo = "$env:COLLIE_UPDATE_REPO".Trim()
   if ($repo -eq '') { $repo = "AltanS/collie" }
   $dir = "$env:COLLIE_DIR".Trim()
   if ($dir -eq '') {
-    if ("$env:LOCALAPPDATA" -eq '') { Stop-CollieInstall "LOCALAPPDATA is not set. Set COLLIE_DIR to the folder to install into." }
+    if ("$env:LOCALAPPDATA" -eq '') { Stop-CollieInstall "LOCALAPPDATA is not set." "Set COLLIE_DIR to the folder to install into, then run the installer again." }
     $dir = Join-Path $env:LOCALAPPDATA "collie"
   }
   $dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($dir).TrimEnd('\')
@@ -252,22 +257,22 @@ function Invoke-CollieInstall {
   # A pinned tag is checked before anything is fetched or touched.
   $pin = "$env:COLLIE_TAG".Trim()
   if ($pin -ne '' -and $pin -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') {
-    Stop-CollieInstall "COLLIE_TAG='$pin' is not a release tag. It has to look like v1.0.0, or v1.0.0-beta.49 for a prerelease."
+    Stop-CollieInstall "COLLIE_TAG='$pin' is not a release tag." "Set COLLIE_TAG to a tag like v1.16.0 (or v1.16.0-rc.1), or remove it to take the newest release."
   }
 
   $problem = Get-CollieHostProblem (Get-CollieArch) ([Environment]::OSVersion.Version.Build)
-  if ($null -ne $problem) { Stop-CollieInstall $problem }
+  if ($null -ne $problem) { Stop-CollieInstall $problem "Install Collie on an x64 machine with Windows 10 build 19041 or newer." }
 
   # Leave an existing install alone, unless a tag was pinned. A pin lays that version down BESIDE
   # what is there and points `current` at it. That is the way back when the installed version is
   # the broken one.
   $rescue = $false
   if (Test-Path -LiteralPath $dir) {
-    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { Stop-CollieInstall "$dir is a file. Move it aside, or set COLLIE_DIR to somewhere else." }
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { Stop-CollieInstall "$dir is a file." "Move $dir aside, or set COLLIE_DIR to another folder." }
     $isGit = Test-Path -LiteralPath (Join-Path $dir ".git")
     $hasVersions = Test-Path -LiteralPath (Join-Path $dir "versions") -PathType Container
     if ($isGit -and $pin -ne '') {
-      Stop-CollieInstall "$dir is a git checkout, and COLLIE_TAG only pins a binary install. Pin it with git instead:  git -C $dir checkout $pin"
+      Stop-CollieInstall "$dir is a git checkout, and COLLIE_TAG only pins a binary install." "Pin it with git instead:  git -C $dir checkout $pin"
     }
     if ($hasVersions -and -not $isGit -and $pin -ne '') {
       $rescue = $true
@@ -278,7 +283,7 @@ function Invoke-CollieInstall {
       return
     } else {
       $other = @(Get-ChildItem -LiteralPath $dir -Force | Where-Object { $_.Name -ne ".staging" })
-      if ($other.Count -gt 0) { Stop-CollieInstall "$dir already exists and is not a Collie install. Move it aside, or set COLLIE_DIR to somewhere else." }
+      if ($other.Count -gt 0) { Stop-CollieInstall "$dir already exists and is not a Collie install." "Move $dir aside, or set COLLIE_DIR to another folder." }
     }
   }
 
@@ -294,21 +299,21 @@ function Invoke-CollieInstall {
       if ("$value" -ne '') { $tokenFrom = $name; break }
     }
     if ($tokenFrom -ne '' -and $mirror -eq '') { $headers.Authorization = "Bearer " + [Environment]::GetEnvironmentVariable($tokenFrom) }
-    $later = "Try again later, or name the version you want and skip this call:  `$env:COLLIE_TAG = 'vX.Y.Z'"
+    $pinFix = "Name the version and skip this call:  `$env:COLLIE_TAG = 'vX.Y.Z'  (the tags are at https://github.com/$repo/releases)"
     try {
       $answer = Invoke-WebRequest -UseBasicParsing -Uri "$api/repos/$repo/tags?per_page=100" -Headers $headers -ErrorAction Stop
     } catch {
       $code = Get-CollieHttpCode $_
-      if ($code -eq 0) { Stop-CollieInstall "could not reach $api to list the releases. Check your network and try again." }
-      if ($code -eq 401 -and $headers.ContainsKey("Authorization")) { Stop-CollieInstall "GitHub refused the token in $tokenFrom (HTTP 401). Fix it or remove it, then run this again." }
+      if ($code -eq 0) { Stop-CollieInstall "could not reach $api to list the releases." "Check your network, or $pinFix" }
+      if ($code -eq 401 -and $headers.ContainsKey("Authorization")) { Stop-CollieInstall "GitHub refused the token in $tokenFrom (HTTP 401)." "Fix or remove $tokenFrom, then run the installer again." }
       if ($code -eq 403 -or $code -eq 429) {
-        Stop-CollieInstall "GitHub's API rate limit says no (HTTP $code). Without a token GitHub allows 60 calls an hour per network address. Set GH_TOKEN to a GitHub token with no scopes, wait an hour, or name the version you want:  `$env:COLLIE_TAG = 'vX.Y.Z'  (the tags are at https://github.com/$repo/releases)."
+        Stop-CollieInstall "GitHub's API rate limit says no (HTTP $code). Without a token GitHub allows 60 calls an hour per network address." "Wait an hour, set GH_TOKEN to a GitHub token with no scopes, or $pinFix"
       }
-      Stop-CollieInstall "$api answered HTTP $code when asked for the tags of $repo. $later"
+      Stop-CollieInstall "$api answered HTTP $code when asked for the tags of $repo." "Try again later, or $pinFix"
     }
     $names = @($answer.Content | ConvertFrom-Json | ForEach-Object { $_ } | ForEach-Object { "$($_.name)" })
     $tag = Select-CollieNewestTag $names
-    if ($null -eq $tag) { Stop-CollieInstall "no release tag found for $repo. Report this at https://github.com/$repo/issues." }
+    if ($null -eq $tag) { Stop-CollieInstall "no release tag found for $repo." "Pin a version with COLLIE_TAG, or report this at https://github.com/AltanS/collie/issues" }
   }
   $version = $tag.Substring(1)
   $platform = "windows-x64"
@@ -320,7 +325,7 @@ function Invoke-CollieInstall {
   # The pinned version may be on disk already: then the rescue is a junction flip and nothing more.
   if ($rescue -and (Test-Path -LiteralPath $versionDir)) {
     if (-not (Test-Path -LiteralPath (Join-Path $versionDir "bin\collie.exe"))) {
-      Stop-CollieInstall "$versionDir is there but holds no bin\collie.exe. Move it aside and run this again."
+      Stop-CollieInstall "$versionDir is there but holds no bin\collie.exe." "Move $versionDir aside, then run the installer again."
     }
     $now = Get-CollieLinkTarget $current
     if ($null -ne $now -and $now.TrimEnd('\') -eq $versionDir) {
@@ -348,40 +353,40 @@ function Invoke-CollieInstall {
     if ($mirror -ne '') { Write-CollieLine "Downloading Collie $tag for $platform from the mirror $mirror ..." }
     else { Write-CollieLine "Downloading Collie $tag for $platform ..." }
     $code = Get-CollieFile "$base/$zipName" $zip
-    if ($code -eq 0) { Stop-CollieInstall "could not reach the download for $zipName. Check your network and try again." }
+    if ($code -eq 0) { Stop-CollieInstall "could not reach the download for $zipName." "Check your network, then run the installer again." }
     if ($code -ne 200) {
-      Stop-CollieInstall "release $tag has no $platform artifact (HTTP $code). Either that tag does not exist, or it was published before Collie shipped a Windows zip. Check the tag against https://github.com/$repo/releases"
+      Stop-CollieInstall "release $tag has no $platform artifact (HTTP $code). Either that tag does not exist, or it was published before Collie shipped a Windows zip." "Check the tag against https://github.com/$repo/releases"
     }
     if ((Get-CollieFile "$base/$zipName.sha256" "$zip.sha256") -ne 200) {
-      Stop-CollieInstall "could not download $zipName.sha256. Refusing to install an unverified binary. Nothing was installed."
+      Stop-CollieInstall "could not download $zipName.sha256. Refusing to install an unverified binary. Nothing was installed." "Try again later. If it happens again, report it at https://github.com/AltanS/collie/issues"
     }
     $manifestPath = Join-Path $work "manifest.json"
     if ((Get-CollieFile "$base/collie-$version.manifest.json" $manifestPath) -ne 200) {
-      Stop-CollieInstall "could not download the release manifest for $version. Nothing was installed."
+      Stop-CollieInstall "could not download the release manifest for $version. Nothing was installed." "Try again later. If it happens again, report it at https://github.com/AltanS/collie/issues"
     }
     $manifest = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
     if ($manifest.schemaVersion -ne 1) {
-      Stop-CollieInstall "release $version uses a manifest this installer does not understand. Get a newer install.ps1 from https://colliepwa.dev/install.ps1"
+      Stop-CollieInstall "release $version uses a manifest this installer does not understand." "Report it at https://github.com/AltanS/collie/issues"
     }
     $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
     $problem = Get-CollieDigestProblem ([System.IO.File]::ReadAllText("$zip.sha256")) $zipName $digest
     if ($null -ne $problem) {
-      Stop-CollieInstall "$problem. The download was discarded and nothing was installed. Try again. If it happens again, report it at https://github.com/$repo/issues."
+      Stop-CollieInstall "$problem. The download was discarded and nothing was installed." "Run the installer again. If it happens again, report it at https://github.com/AltanS/collie/issues"
     }
     $entry = @($manifest.artifacts | Where-Object { $_.platform -eq $platform -and "$($_.sha256)" -eq $digest })
-    if ($entry.Count -eq 0) { Stop-CollieInstall "the digest of $zipName is not the one release $version's manifest names. Nothing was installed." }
+    if ($entry.Count -eq 0) { Stop-CollieInstall "the digest of $zipName is not the one release $version's manifest names. Nothing was installed." "Report it at https://github.com/AltanS/collie/issues" }
 
     # Lay it down: one complete payload per version, and `current` names one of them.
     $unpacked = Join-Path $work "unpacked"
     Expand-Archive -LiteralPath $zip -DestinationPath $unpacked -Force
     $payload = Join-Path $unpacked "collie-$version-$platform"
     if (-not (Test-Path -LiteralPath (Join-Path $payload "bin\collie.exe"))) {
-      Stop-CollieInstall "$zipName does not contain bin\collie.exe. Refusing to install it."
+      Stop-CollieInstall "$zipName does not contain bin\collie.exe. Refusing to install it." "Report it at https://github.com/AltanS/collie/issues"
     }
     New-Item -ItemType Directory -Force -Path (Join-Path $dir "versions") | Out-Null
-    if (Test-Path -LiteralPath $versionDir) { Stop-CollieInstall "$versionDir exists already. Move it aside and run this again." }
+    if (Test-Path -LiteralPath $versionDir) { Stop-CollieInstall "$versionDir exists already." "Move $versionDir aside, then run the installer again." }
     try { Move-CollieItem $payload $versionDir }
-    catch { Stop-CollieInstall "could not move the payload into $versionDir ($($_.Exception.Message))." }
+    catch { Stop-CollieInstall "could not move the payload into $versionDir ($($_.Exception.Message))." "Close programs that may hold files in $dir (an antivirus scan can), then run the installer again." }
     Set-CollieCurrent $dir $versionDir
   } finally {
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
@@ -423,18 +428,41 @@ function Invoke-CollieInstall {
   Write-CollieLine "Read $current\docs\security.md before you open the URL on a phone. Collie gives remote shell access to this machine, by design."
 }
 
-function Install-Collie([string]$ScriptPath, [object[]]$Arguments) {
-  $ErrorActionPreference = "Stop"
-  $ProgressPreference = "SilentlyContinue"
-  $code = 0
-  if (@($Arguments).Count -gt 0) {
-    [Console]::Error.WriteLine("collie install: unknown option '$(@($Arguments)[0])'. install.ps1 takes no options. Steer it with COLLIE_DIR, COLLIE_UPDATE_REPO and COLLIE_TAG.")
-    $code = 2
-  } else {
-    try { Invoke-CollieInstall } catch { [Console]::Error.WriteLine($_.Exception.Message); $code = 1 }
-  }
-  # From a file, the exit code tells the caller. From `irm | iex`, exit would close your window.
-  if ($code -ne 0 -and "$ScriptPath" -ne '') { exit $code }
+# Print a failure: what happened, then "Install failed." and the one fix, as the last line.
+function Write-CollieFailure([string]$What, [string]$Fix) {
+  Write-Host "collie install: $What" -ForegroundColor Red
+  Write-Host "Install failed. $Fix" -ForegroundColor Red
 }
 
-Install-Collie $MyInvocation.MyCommand.Path $args
+# The entry. It never calls `exit`: under `irm | iex` that would close your PowerShell window. It
+# sets $LASTEXITCODE instead (0 on success, 1 on a failure, 2 on an option), and it puts back the one
+# process-wide setting it changes (the TLS protocols), so nothing it did stays in your session.
+function Install-Collie([object[]]$Arguments) {
+  $ErrorActionPreference = "Stop"
+  $ProgressPreference = "SilentlyContinue"
+  if ($ExecutionContext.SessionState.LanguageMode -ne "FullLanguage") {
+    Write-CollieFailure "this PowerShell runs in $($ExecutionContext.SessionState.LanguageMode) mode, and the installer needs FullLanguage (a device policy sets this)." "Ask whoever manages this machine, or install by hand: https://github.com/AltanS/collie/blob/main/docs/install.md"
+    $global:LASTEXITCODE = 1
+    return
+  }
+  if (@($Arguments).Count -gt 0) {
+    Write-CollieFailure "install.ps1 takes no options, and got '$(@($Arguments)[0])'." "Run it with no options. Steer it with COLLIE_DIR, COLLIE_UPDATE_REPO and COLLIE_TAG."
+    $global:LASTEXITCODE = 2
+    return
+  }
+  $tls = [Net.ServicePointManager]::SecurityProtocol
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = $tls -bor [Net.SecurityProtocolType]::Tls12
+    Invoke-CollieInstall
+    $global:LASTEXITCODE = 0
+  } catch {
+    $fix = $_.Exception.Data["CollieFix"]
+    if ($null -eq $fix) { $fix = "Report it at https://github.com/AltanS/collie/issues with the lines above." }
+    Write-CollieFailure $_.Exception.Message $fix
+    $global:LASTEXITCODE = 1
+  } finally {
+    [Net.ServicePointManager]::SecurityProtocol = $tls
+  }
+}
+
+Install-Collie $args

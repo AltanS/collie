@@ -37,7 +37,7 @@ const CODE = LINES.filter((l) => !l.trimStart().startsWith("#"));
  *  `irm ... | iex` is not read as a call. A backtick escapes a quote in PowerShell. */
 const BARE = CODE.map((l) => l.replace(/"(?:[^"`]|`.)*"/g, '""'));
 const offending = (pattern: RegExp): string[] => BARE.filter((l) => pattern.test(l));
-const ENTRY = "Install-Collie $MyInvocation.MyCommand.Path $args";
+const ENTRY = "Install-Collie $args";
 
 describe("scripts/install.ps1, read as text", () => {
   test("the header states what it will never do, as install.sh does", () => {
@@ -72,6 +72,17 @@ describe("scripts/install.ps1, read as text", () => {
     const strays = topLevel.filter((l) => !/^function [A-Za-z-]+( *\(.*\))? *\{$/.test(l) && l !== "}" && l !== ENTRY);
     expect(strays).toEqual([]);
     expect(TEXT.split(ENTRY).length - 1).toBe(1);
+  });
+
+  test("never calls exit, which under `irm | iex` would close the terminal", () => {
+    expect(offending(/\bexit\b/i)).toEqual([]);
+    expect(TEXT).toContain("$global:LASTEXITCODE = 1");
+  });
+
+  test("puts back the TLS setting it changes, and refuses Constrained Language Mode first", () => {
+    expect(TEXT).toMatch(/finally \{\s*\[Net\.ServicePointManager\]::SecurityProtocol = \$tls\s*\}/);
+    const entry = TEXT.slice(TEXT.indexOf("function Install-Collie("));
+    expect(entry.indexOf("LanguageMode")).toBeLessThan(entry.indexOf("ServicePointManager"));
   });
 
   test("every web call works in Windows PowerShell 5.1: basic parsing, TLS 1.2, no progress bar", () => {
@@ -282,12 +293,30 @@ interface Result {
 
 let runs = 0;
 
+/** A PowerShell single-quoted string. */
+const psQuote = (s: string): string => `'${s.replace(/'/g, "''")}'`;
+
+/** The last line a run printed that is not blank. */
+const lastLine = (out: string): string => out.trimEnd().split(/\r?\n/).at(-1) ?? "";
+
+/** A failed run: the code the script set, and "Install failed." with one fix as the LAST line. */
+function expectFailed(r: { code: number; out: string }, code = 1): void {
+  expect(r.code).toBe(code);
+  expect(lastLine(r.out)).toMatch(/^Install failed\. \S/);
+  expect(r.out).not.toMatch(/Next steps|steps are left/);
+}
+
 /** Run a PowerShell command line and wait. Output goes to a log file through file handles. */
-async function runPowerShell(box: Box, args: readonly string[], env: Record<string, string>): Promise<{ code: number; out: string }> {
+async function runPowerShell(
+  box: Box,
+  args: readonly string[],
+  env: Record<string, string>,
+  shell: string = POWERSHELL,
+): Promise<{ code: number; out: string }> {
   const log = join(box.root, `run-${++runs}.log`);
   const fd = openSync(log, "w");
   try {
-    const child = spawn(POWERSHELL, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", ...args], {
+    const child = spawn(shell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", ...args], {
       cwd: box.root,
       env,
       stdio: ["ignore", fd, fd],
@@ -309,7 +338,10 @@ async function install(
   opts: { env?: Record<string, string | undefined>; args?: readonly string[]; herdr?: boolean } = {},
 ): Promise<Result> {
   const before = mirror.requests.length;
-  const r = await runPowerShell(box, ["-File", SCRIPT, ...(opts.args ?? [])], childEnv(box, mirror, opts.env ?? {}, opts.herdr ?? false));
+  // `& script; exit $LASTEXITCODE`: the script never calls `exit`, so `-File` would report 0 for a
+  // failed run (measured on the VM). $LASTEXITCODE is what the script sets for its caller.
+  const call = [`& ${psQuote(SCRIPT)}`, ...(opts.args ?? [])].join(" ");
+  const r = await runPowerShell(box, ["-Command", `${call}; exit $LASTEXITCODE`], childEnv(box, mirror, opts.env ?? {}, opts.herdr ?? false));
   return { ...r, asked: mirror.requests.slice(before) };
 }
 
@@ -475,7 +507,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     corrupt.set([(corrupt[at] ?? 0) ^ 0xff], at);
     mirror.put(`v${bad}`, `collie-${bad}-${PLATFORM}.zip`, corrupt);
     const r = await install(b, mirror, { env: { COLLIE_TAG: `v${bad}` } });
-    expect(r.code).toBe(1);
+    expectFailed(r);
     expect(r.out).toContain(`CHECKSUM MISMATCH for collie-${bad}-${PLATFORM}.zip`);
     expect(r.out).toContain("nothing was installed");
     expect(readdirSync(join(b.dir, "versions"))).toEqual([v1]);
@@ -489,7 +521,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     publish(mirror, buildZip(scratch, v), v);
     mirror.drop(`v${v}`, `collie-${v}-${PLATFORM}.zip.sha256`);
     const r = await install(b, mirror, { env: { COLLIE_TAG: `v${v}` } });
-    expect(r.code).toBe(1);
+    expectFailed(r);
     expect(r.out).toContain("Refusing to install an unverified binary");
     expect(existsSync(b.dir)).toBe(false);
   }, 60_000);
@@ -500,7 +532,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     publish(mirror, buildZip(scratch, v), v);
     mirror.put(`v${v}`, `collie-${v}.manifest.json`, manifest(v, "a".repeat(64)));
     const r = await install(b, mirror, { env: { COLLIE_TAG: `v${v}` } });
-    expect(r.code).toBe(1);
+    expectFailed(r);
     expect(r.out).toContain("is not the one release");
     expect(existsSync(b.dir)).toBe(false);
   }, 60_000);
@@ -508,7 +540,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
   test("a release with no Windows zip is a plain refusal", async () => {
     const b = box();
     const r = await install(b, mirror, { env: { COLLIE_TAG: "v0.35.0" } });
-    expect(r.code).toBe(1);
+    expectFailed(r);
     expect(r.out).toContain(`release v0.35.0 has no ${PLATFORM} artifact (HTTP 404)`);
     expect(existsSync(b.dir)).toBe(false);
   }, 60_000);
@@ -516,7 +548,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
   test("a COLLIE_TAG of the wrong shape dies before any request", async () => {
     const b = box();
     const r = await install(b, mirror, { env: { COLLIE_TAG: "1.0.0" } });
-    expect(r.code).toBe(1);
+    expectFailed(r);
     expect(r.out).toContain("is not a release tag");
     expect(r.asked).toEqual([]);
   }, 60_000);
@@ -524,7 +556,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
   test("refuses an option, since `irm | iex` cannot pass one", async () => {
     const b = box();
     const r = await install(b, mirror, { args: ["--beta"] });
-    expect(r.code).toBe(2);
+    expectFailed(r, 2);
     expect(r.out).toContain("install.ps1 takes no options");
     expect(r.asked).toEqual([]);
   }, 60_000);
@@ -534,7 +566,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     mkdirSync(other.dir, { recursive: true });
     writeFileSync(join(other.dir, "notes.txt"), "mine\n");
     const r = await install(other, mirror);
-    expect(r.code).toBe(1);
+    expectFailed(r);
     expect(r.out).toContain("is not a Collie install");
     expect(readdirSync(other.dir)).toEqual(["notes.txt"]);
 
@@ -545,18 +577,66 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     expect(g.out).toContain("Leaving it alone.");
     expect(g.asked).toEqual([]);
     const pinned = await install(git, mirror, { env: { COLLIE_TAG: `v${v1}` } });
-    expect(pinned.code).toBe(1);
+    expectFailed(pinned);
     expect(pinned.out).toContain(`git -C ${git.dir} checkout v${v1}`);
   }, 90_000);
 
-  test("runs through `irm <url> | iex`, the documented entry", async () => {
+  test("runs through `irm <url> | iex`, and leaves the session as it found it", async () => {
     const b = box();
     mirror.put("script", "install.ps1", new Uint8Array(readFileSync(SCRIPT)));
     const url = `${mirror.url}/${REPO}/releases/download/script/install.ps1`;
-    const r = await runPowerShell(b, ["-Command", `irm -UseBasicParsing ${url} | iex`], childEnv(b, mirror, {}, false));
+    // What the session had before, against what it has after: preferences, the TLS protocols, and
+    // every function whose name does not say Collie.
+    const command = [
+      "$fn = @(Get-ChildItem function: | Where-Object { $_.Name -notlike '*Collie*' } | ForEach-Object Name)",
+      "$eap = $ErrorActionPreference; $pp = $ProgressPreference; $tls = [Net.ServicePointManager]::SecurityProtocol",
+      `irm -UseBasicParsing ${url} | iex`,
+      "$code = $LASTEXITCODE",
+      // A module PowerShell loads on its own (Expand-Archive's) brings its functions; those are not the script's.
+      "$new = @(Get-ChildItem function: | Where-Object { $_.Name -notlike '*Collie*' -and -not $_.ModuleName -and $fn -notcontains $_.Name })",
+      "'LEAK functions=' + $new.Count + ' eap=' + ($eap -eq $ErrorActionPreference) + ' progress=' + ($pp -eq $ProgressPreference) + ' tls=' + ($tls -eq [Net.ServicePointManager]::SecurityProtocol)",
+      "exit $code",
+    ].join("; ");
+    const r = await runPowerShell(b, ["-Command", command], childEnv(b, mirror, {}, false));
     expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
     expect(r.code).toBe(0);
     expect(currentTarget(b)).toBe(versionDir(b, v1));
+    expect(r.out).toContain("LEAK functions=0 eap=True progress=True tls=True");
+  }, 60_000);
+
+  test("a failure under `irm | iex` returns to the prompt with $LASTEXITCODE 1, and keeps the window open", async () => {
+    const b = box();
+    mirror.put("script", "install.ps1", new Uint8Array(readFileSync(SCRIPT)));
+    const url = `${mirror.url}/${REPO}/releases/download/script/install.ps1`;
+    const r = await runPowerShell(
+      b,
+      ["-Command", `irm -UseBasicParsing ${url} | iex; 'STILL HERE ' + $LASTEXITCODE; exit $LASTEXITCODE`],
+      childEnv(b, mirror, { COLLIE_TAG: "v0.35.0" }, false),
+    );
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("Install failed.");
+    expect(lastLine(r.out)).toBe("STILL HERE 1");
+  }, 60_000);
+
+  test("a 32-bit PowerShell on 64-bit Windows installs, and is not refused as x86", async () => {
+    const b = box();
+    const wow = join(SYSTEM_ROOT, "SysWOW64", "WindowsPowerShell", "v1.0", "powershell.exe");
+    const r = await runPowerShell(b, ["-Command", `& ${psQuote(SCRIPT)}; exit $LASTEXITCODE`], childEnv(b, mirror, {}, false), wow);
+    expect(r.out).toContain(`Collie v${v1} is installed at ${b.dir}`);
+    expect(r.code).toBe(0);
+  }, 60_000);
+
+  test("refuses Constrained Language Mode with a plain message, before it touches anything", async () => {
+    const b = box();
+    // The text is read before the mode changes: a .NET call is what the mode forbids.
+    const r = await runPowerShell(
+      b,
+      ["-Command", `$text = [IO.File]::ReadAllText(${psQuote(SCRIPT)}); $ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; Invoke-Expression $text; exit $LASTEXITCODE`],
+      childEnv(b, mirror, {}, false),
+    );
+    expectFailed(r);
+    expect(r.out).toContain("ConstrainedLanguage mode");
+    expect(existsSync(b.dir)).toBe(false);
   }, 60_000);
 
   // ── The helpers, called one by one ──────────────────────────────────────────────────────────
@@ -660,11 +740,11 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
         `$dir = '${b.dir}'`,
         "New-CollieJunction \"$dir\\current\" \"$dir\\versions\\" + v1 + "\"",
         "function Move-CollieItem($From, $To) { throw 'simulated: the rename was refused' }",
-        "try { Set-CollieCurrent $dir \"$dir\\versions\\" + v2 + "\"; 'NO ERROR' } catch { 'ERR ' + $_.Exception.Message }",
+        "try { Set-CollieCurrent $dir \"$dir\\versions\\" + v2 + "\"; 'NO ERROR' } catch { 'ERR ' + $_.Exception.Message; 'FIX ' + $_.Exception.Data['CollieFix'] }",
       ].join("\r\n"),
     );
     expect(r.code).toBe(0);
-    expect(r.out).toContain("ERR collie install: could not point");
+    expect(r.out).toContain("ERR could not point");
     expect(r.out).toContain("simulated: the rename was refused");
     expect(r.out).toContain("still names");
     expect(r.out).toContain("Nothing was changed.");
@@ -684,12 +764,12 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
         "function Move-CollieItem($From, $To) { throw 'simulated: the rename was refused' }",
         "$real = ${function:New-CollieJunction}",
         "function New-CollieJunction($Path, $Target) { if ($Path.EndsWith('\\current')) { throw 'simulated: no junction' }; & $real $Path $Target }",
-        "try { Set-CollieCurrent $dir \"$dir\\versions\\" + v2 + "\"; 'NO ERROR' } catch { 'ERR ' + $_.Exception.Message }",
+        "try { Set-CollieCurrent $dir \"$dir\\versions\\" + v2 + "\"; 'NO ERROR' } catch { 'ERR ' + $_.Exception.Message; 'FIX ' + $_.Exception.Data['CollieFix'] }",
       ].join("\r\n"),
     );
     expect(r.code).toBe(0);
     expect(r.out).toContain("putting it back failed too");
-    expect(r.out).toContain(`cmd /c mklink /J "${b.dir}\\current" "${b.dir}\\versions\\${v1}"`);
+    expect(r.out).toContain(`FIX Make it again by hand:  cmd /c mklink /J "${b.dir}\\current" "${b.dir}\\versions\\${v1}"`);
     expect(existsSync(join(b.dir, "versions", v1, "bin", "sentinel.txt"))).toBe(true);
   }, 60_000);
 
@@ -700,7 +780,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     writeFileSync(join(b.dir, "current", "mine.txt"), "mine\n");
     const r = await helpers(
       b,
-      [`$dir = '${b.dir}'`, "try { Set-CollieCurrent $dir \"$dir\\versions\\" + v2 + "\"; 'NO ERROR' } catch { 'ERR ' + $_.Exception.Message }"].join(
+      [`$dir = '${b.dir}'`, "try { Set-CollieCurrent $dir \"$dir\\versions\\" + v2 + "\"; 'NO ERROR' } catch { 'ERR ' + $_.Exception.Message; 'FIX ' + $_.Exception.Data['CollieFix'] }"].join(
         "\r\n",
       ),
     );
