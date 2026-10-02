@@ -487,21 +487,70 @@ function registerTask(deps: LifecycleDeps): boolean {
   return false;
 }
 
+/** The executables a launcher or bridge of either supervisor runs as. */
+const TASK_PROCESS_NAMES = ["collie.exe", "bun.exe", "powershell.exe"] as const;
+
+/** How long `stop` lets a just-killed launcher's last spawn settle before its final sweep. */
+export const STOP_SETTLE_MS = 500;
+
+/** A launcher of this install, Collie's own or the community script's. */
+const isOurLauncher = (deps: LifecycleDeps, command: string): boolean =>
+  isTaskLauncher(command, 2, deps.ctx.root, deps.ctx.instance, deps.host) ||
+  isTaskLauncher(command, 1, deps.ctx.root, deps.ctx.instance, deps.host);
+
+const isOurBridgeOnWindows = (deps: LifecycleDeps, command: string): boolean =>
+  isTaskBridge(command, deps.ctx.root, deps.ctx.instance, deps.host);
+
 /**
- * Kill the recorded launcher, then the recorded bridge, each only when it is still ours. The launcher
- * goes first, so it cannot relaunch the bridge in between. Answers whether the launcher was alive.
+ * Stop the launcher and the bridge of this install, in the order that leaves nothing to relaunch:
+ *
+ *   1. the recorded LAUNCHER first, so its loop cannot start a bridge after we kill one;
+ *   2. the record READ AGAIN, because the launcher may have written a fresh bridge pid between our
+ *      first read and its death, then every recorded bridge (old and fresh);
+ *   3. after {@link STOP_SETTLE_MS}, one sweep of the process table: any launcher or bridge of this
+ *      checkout still there (a spawn that was in flight, a launcher the record never named) goes too.
+ *
+ * Every kill is justified by the process table, never by the record alone: pids are recycled. Either
+ * launcher shape is accepted, so the community script's loop dies here too and cannot respawn. The
+ * record does not carry start times: the command-line identity is the pid-reuse guard (a recycled pid
+ * would have to be another `collie.exe _exec-bridge` of this same checkout to be killed).
+ *
+ * Answers whether a launcher was alive.
  */
-function stopRecorded(deps: LifecycleDeps, record: TaskRecord): boolean {
-  const { root, instance } = deps.ctx;
-  const launcher = recordedCommand(deps, record.launcher);
-  const liveLauncher = launcher !== null && isTaskLauncher(launcher, record.format, root, instance, deps.host);
-  if (liveLauncher) deps.exec.kill(record.launcher);
-  const bridge = recordedCommand(deps, record.bridge);
-  if (bridge !== null && isTaskBridge(bridge, root, instance, deps.host)) deps.exec.kill(record.bridge);
-  return liveLauncher;
+async function stopTaskProcesses(deps: LifecycleDeps, first: TaskRecord | null): Promise<boolean> {
+  const killed = new Set<number>();
+  const kill = (pid: number): void => {
+    if (killed.has(pid)) return;
+    killed.add(pid);
+    deps.exec.kill(pid);
+  };
+  let launcherAlive = false;
+  if (first !== null) {
+    const launcher = recordedCommand(deps, first.launcher);
+    if (launcher !== null && isOurLauncher(deps, launcher)) {
+      kill(first.launcher);
+      launcherAlive = true;
+    }
+  }
+  const again = readTaskRecord(deps).record;
+  for (const pid of new Set([first?.bridge ?? 0, again?.bridge ?? 0])) {
+    if (pid <= 1) continue;
+    const bridge = recordedCommand(deps, pid);
+    if (bridge !== null && isOurBridgeOnWindows(deps, bridge)) kill(pid);
+  }
+  await deps.sleep(STOP_SETTLE_MS);
+  const left = deps.exec.listProcesses(TASK_PROCESS_NAMES, PROCESS_QUERY_SLOW_START_MS) ?? [];
+  for (const row of left) {
+    if (isOurLauncher(deps, row.command)) {
+      kill(row.pid);
+      launcherAlive = true;
+    }
+  }
+  for (const row of left) if (isOurBridgeOnWindows(deps, row.command)) kill(row.pid);
+  return launcherAlive;
 }
 
-function startTaskScheduler(deps: LifecycleDeps): number {
+async function startTaskScheduler(deps: LifecycleDeps): Promise<number> {
   if (!registerTask(deps)) return EXIT.FAIL;
   const name = taskName(deps);
   // Release the port if this host ran the unsupervised fallback before, as launchd's start does.
@@ -513,7 +562,7 @@ function startTaskScheduler(deps: LifecycleDeps): number {
   if (record?.format === 1) {
     deps.exec.capture("schtasks", ["/End", "/TN", name]);
     // Said only when there was a launcher to replace: a record left by a reboot names dead pids.
-    if (stopRecorded(deps, record)) deps.io.out("replaced the contrib\\windows\\collie-ctl.ps1 launcher with Collie's own");
+    if (await stopTaskProcesses(deps, record)) deps.io.out("replaced the contrib\\windows\\collie-ctl.ps1 launcher with Collie's own");
     deps.files.remove(path);
   }
   const r = deps.exec.capture("schtasks", ["/Run", "/TN", name]);
@@ -527,17 +576,17 @@ function startTaskScheduler(deps: LifecycleDeps): number {
   return EXIT.OK;
 }
 
-function stopTaskScheduler(deps: LifecycleDeps): void {
+async function stopTaskScheduler(deps: LifecycleDeps): Promise<void> {
   const name = taskName(deps);
   // Disabled FIRST: an ended task is one logon, or one RestartOnFailure, from running again. Together
   // with `/End` this is systemd's `disable --now`. Both fail on a task that is not there, which is fine.
   deps.exec.capture("schtasks", ["/Change", "/TN", name, "/DISABLE"]);
   deps.exec.capture("schtasks", ["/End", "/TN", name]);
   const { path, raw, record } = readTaskRecord(deps);
-  if (record !== null) stopRecorded(deps, record);
-  else if (raw !== null) deps.io.err(`warn: ${path} names no process (${raw.trim()}); nothing in it was stopped`);
+  if (record === null && raw !== null) deps.io.err(`warn: ${path} names no process (${raw.trim()}); nothing in it was stopped`);
+  await stopTaskProcesses(deps, record);
   // The record goes either way: it describes processes that are gone or were never ours.
-  if (raw !== null) deps.files.remove(path);
+  deps.files.remove(path);
   stopPidfileProcess(deps);
 }
 
@@ -645,7 +694,7 @@ export interface ServiceBackend {
   /** Write the service definition and start it. Prints its own `bridge started (…)` line. */
   start(deps: LifecycleDeps): number | Promise<number>;
   /** Stop the bridge, and keep it stopped across a login. */
-  stop(deps: LifecycleDeps): void;
+  stop(deps: LifecycleDeps): void | Promise<void>;
   /** After `stop`: remove the service definition and every record of it. */
   remove(deps: LifecycleDeps): void;
   /** The banner's `service` value. */
@@ -785,8 +834,8 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
   return EXIT.OK;
 }
 
-export function cmdStop(deps: LifecycleDeps): number {
-  serviceBackend(deps).stop(deps);
+export async function cmdStop(deps: LifecycleDeps): Promise<number> {
+  await serviceBackend(deps).stop(deps);
   deps.io.out("bridge stopped");
   return EXIT.OK;
 }
@@ -802,8 +851,8 @@ export function cmdStop(deps: LifecycleDeps): number {
  * `unserve` failing ABORTS: it failed by refusing to touch a mapping it could not prove is ours, and
  * carrying on would report a clean uninstall over a front door that is still published.
  */
-export function cmdUninstall(deps: LifecycleDeps): number {
-  const stopped = cmdStop(deps);
+export async function cmdUninstall(deps: LifecycleDeps): Promise<number> {
+  const stopped = await cmdStop(deps);
   if (stopped !== EXIT.OK) return stopped;
   const unserved = cmdUnserve(deps);
   if (unserved !== EXIT.OK) return unserved;
@@ -833,7 +882,7 @@ export async function cmdRestart(deps: LifecycleDeps): Promise<number> {
   const own = await serviceBackend(deps).restart?.(deps);
   if (own !== undefined && own !== null) return own;
 
-  const stopped = cmdStop(deps);
+  const stopped = await cmdStop(deps);
   if (stopped !== EXIT.OK) return stopped;
   return cmdStart(deps);
 }

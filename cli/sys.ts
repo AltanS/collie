@@ -171,8 +171,34 @@ export interface Exec {
    * PowerShell start asks for more. A query past its bound reads as null.
    */
   processCommand(pid: number, timeoutMs?: number): string | null;
+  /**
+   * Every running process whose executable is one of `names` (`collie.exe`, `bun.exe`), with its
+   * command line, in one query: `Win32_Process` on Windows, `ps` elsewhere. `null` when the process
+   * table cannot be read at all. Added for the Task Scheduler tier's `stop`, whose last step makes
+   * sure no launcher or bridge of this checkout is left (cli/lifecycle.ts).
+   */
+  listProcesses(names: readonly string[], timeoutMs?: number): ProcessRow[] | null;
   kill(pid: number): void;
 }
+
+/** One row of {@link Exec.listProcesses}. */
+export interface ProcessRow {
+  readonly pid: number;
+  readonly command: string;
+}
+
+/** `<pid> <command line>` lines, as both process-table queries print them. */
+export function parseProcessRows(text: string): ProcessRow[] {
+  const rows: ProcessRow[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*(\d+) (.+)$/.exec(line);
+    if (m !== null) rows.push({ pid: Number(m[1]), command: m[2]!.trim() });
+  }
+  return rows;
+}
+
+/** The executable's own name, without folders or `.exe`, folded: what `names` is matched against off Windows. */
+const stem = (name: string): string => (name.split(/[\\/]/).at(-1) ?? name).replace(/\.exe$/i, "").toLowerCase();
 
 export interface Files {
   exists(p: string): boolean;
@@ -557,6 +583,22 @@ export function realExec(rawEnv: Environment, home: string): Exec {
       if (r.exitCode !== 0) return null;
       const out = r.stdout.toString().trim();
       return out === "" ? null : out;
+    },
+    listProcesses(names, timeoutMs = PROCESS_QUERY_TIMEOUT_MS) {
+      if (process.platform === "win32") {
+        const powershell = resolve("powershell");
+        if (powershell === null) return null;
+        const list = names.map((n) => `'${n.replaceAll("'", "''")}'`).join(",");
+        const query = `Get-CimInstance Win32_Process | Where-Object { @(${list}) -contains $_.Name } | ForEach-Object { [string]$_.ProcessId + ' ' + $_.CommandLine }`;
+        const r = Bun.spawnSync([powershell, "-NoProfile", "-NonInteractive", "-Command", query], { env, timeout: timeoutMs });
+        return r.exitCode === 0 ? parseProcessRows(r.stdout.toString()) : null;
+      }
+      const bin = resolve("ps");
+      if (bin === null) return null;
+      const r = Bun.spawnSync([bin, "-eo", "pid=,args="], { env, timeout: timeoutMs });
+      if (r.exitCode !== 0) return null;
+      const wanted = new Set(names.map(stem));
+      return parseProcessRows(r.stdout.toString()).filter((row) => wanted.has(stem(row.command.split(" ")[0] ?? "")));
     },
     kill(pid) {
       try {

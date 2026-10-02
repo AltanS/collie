@@ -14,6 +14,7 @@ import {
   withEnvOverride,
   withoutGitRelocators,
   withPathPrefix,
+  parseProcessRows,
 } from "./sys.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
@@ -478,5 +479,17 @@ describe("a per-call override wins over the Exec's own environment (#283)", () =
     } finally {
       rmSync(d, { recursive: true, force: true });
     }
+  });
+});
+
+describe("parseProcessRows", () => {
+  test("reads `<pid> <command>` lines from either process table, and skips the rest", () => {
+    expect(
+      parseProcessRows('123 "C:\\x\\collie.exe" _exec-bridge\r\n\r\nnot a row\n   45 /usr/bin/bun run x \n'),
+    ).toEqual([
+      { pid: 123, command: '"C:\\x\\collie.exe" _exec-bridge' },
+      { pid: 45, command: "/usr/bin/bun run x" },
+    ]);
+    expect(parseProcessRows("")).toEqual([]);
   });
 });

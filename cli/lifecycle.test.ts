@@ -45,6 +45,7 @@ import {
   type LifecycleDeps,
   serviceDescription,
   statusBanner,
+  STOP_SETTLE_MS,
   stopPidfileProcess,
   resolveTailscaleHosts,
   supervisionTier,
@@ -694,54 +695,123 @@ describe("the Task Scheduler tier (Windows)", () => {
   });
 
   describe("stop", () => {
-    test("disables, ends, and kills the recorded launcher then bridge", () => {
+    test("disables, ends, and kills the recorded launcher then bridge", async () => {
       const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE } });
-      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
       expect(schtasks(h)).toEqual(["schtasks /Change /TN herdr.collie /DISABLE", "schtasks /End /TN herdr.collie"]);
       expect(h.exec.killed).toEqual([7100, 7200]);
       expect(h.files.exists(RECORD)).toBe(false);
       expect(h.io.stdout).toContain("bridge stopped");
     });
 
-    test("stops the community script's processes too", () => {
+    test("the order: disable, end, the launcher, then the bridge, then one sweep after a pause", async () => {
+      const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE } });
+      const timeline: string[] = [];
+      const kill = h.exec.kill;
+      h.exec.kill = (pid) => {
+        timeline.push(`kill ${pid}`);
+        kill(pid);
+      };
+      const realCapture = h.exec.capture;
+      h.exec.capture = (tool, args, ...rest) => {
+        if (tool === "schtasks") timeline.push(`schtasks ${args.join(" ")}`);
+        return realCapture(tool, args, ...rest);
+      };
+      h.deps.sleep = (ms) => {
+        timeline.push(`sleep ${ms}`);
+        return Promise.resolve();
+      };
+      const list = h.exec.listProcesses;
+      h.exec.listProcesses = (names, ms) => {
+        timeline.push("list");
+        return list(names, ms);
+      };
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(timeline).toEqual([
+        "schtasks /Change /TN herdr.collie /DISABLE",
+        "schtasks /End /TN herdr.collie",
+        "kill 7100",
+        "kill 7200",
+        `sleep ${STOP_SETTLE_MS}`,
+        "list",
+      ]);
+      expect(h.exec.listed).toEqual([["collie.exe", "bun.exe", "powershell.exe"]]);
+    });
+
+    test("a launcher that wrote a fresh bridge pid between the read and the kill loses that bridge too", async () => {
+      const ps: NonNullable<Scripted["ps"]> = { 7100: OUR_LAUNCHER };
+      const h = windows({ files: { [RECORD]: V2(7100, 0) }, ps });
+      const kill = h.exec.kill;
+      h.exec.kill = (pid) => {
+        // The race: the launcher had already spawned 7300 and written it down when it was killed.
+        if (pid === 7100) {
+          ps[7300] = OUR_BRIDGE;
+          h.files.write(RECORD, V2(7100, 7300));
+        }
+        kill(pid);
+      };
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.killed).toEqual([7100, 7300]);
+      expect(h.files.exists(RECORD)).toBe(false);
+    });
+
+    test("the sweep takes a launcher or bridge of this checkout that no record names, and nothing else", async () => {
+      const h = windows({
+        ps: {
+          7400: OUR_BRIDGE,
+          7500: OUR_LAUNCHER,
+          7600: OLD_LAUNCHER,
+          7700: OLD_BRIDGE,
+          // Not ours: another checkout's bridge, this checkout's CLI, another instance's bridge.
+          7800: '"D:\\other\\bin\\collie.exe" _exec-bridge',
+          7900: `"C:${WIN_BINARY}" status`,
+          8000: `"C:${WIN_BINARY}" _exec-bridge --instance v2`,
+        },
+      });
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
+      // Launchers before bridges, so neither loop can relaunch what the sweep just took.
+      expect(h.exec.killed).toEqual([7500, 7600, 7400, 7700]);
+    });
+
+    test("stops the community script's processes too", async () => {
       const h = windows({ files: { [RECORD]: "7100|7200" }, ps: { 7100: OLD_LAUNCHER, 7200: OLD_BRIDGE } });
-      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
       expect(h.exec.killed).toEqual([7100, 7200]);
     });
 
-    test("never kills a recorded pid that is somebody else now, and still drops the record", () => {
+    test("never kills a recorded pid that is somebody else now, and still drops the record", async () => {
       const h = windows({
         files: { [RECORD]: V2(7100, 7200) },
         ps: { 7100: "C:\\Windows\\notepad.exe", 7200: 'bun.exe run "D:\\other\\bridge\\index.ts"' },
       });
-      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
       expect(h.exec.killed).toEqual([]);
       expect(h.files.exists(RECORD)).toBe(false);
     });
 
-    test("an unreadable record is dropped with a warning, and stop still succeeds", () => {
+    test("an unreadable record is dropped with a warning, and stop still succeeds", async () => {
       const h = windows({ files: { [RECORD]: "not a record" } });
-      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
       expect(h.exec.killed).toEqual([]);
       expect(h.files.exists(RECORD)).toBe(false);
       expect(h.io.stderr.join("\n")).toContain("names no process");
     });
 
-    test("a stale launcher record (the script's `$PID|0`) is cleared", () => {
+    test("a stale launcher record (the script's `$PID|0`) is cleared", async () => {
       const h = windows({ files: { [RECORD]: "7100|0" } });
-      expect(cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
       expect(h.exec.killed).toEqual([]);
       expect(h.files.exists(RECORD)).toBe(false);
     });
   });
 
   describe("uninstall", () => {
-    test("stops, deletes the task and its file and record, and exits 0", () => {
+    test("stops, deletes the task and its file and record, and exits 0", async () => {
       const h = windows({
         files: { [RECORD]: V2(7100, 7200), [TASK_FILE]: "<Task/>" },
         ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE },
       });
-      expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
       expect(schtasks(h)).toEqual([
         "schtasks /Change /TN herdr.collie /DISABLE",
         "schtasks /End /TN herdr.collie",
@@ -752,9 +822,9 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(h.io.stdout.join("\n")).toContain("✓ uninstalled");
     });
 
-    test("an install that never registered a task still uninstalls cleanly", () => {
+    test("an install that never registered a task still uninstalls cleanly", async () => {
       const h = windows({ answers: [["schtasks", { code: 1, stderr: "ERROR: The system cannot find the file specified." }]] });
-      expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+      expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
     });
   });
 
@@ -947,27 +1017,27 @@ describe("the Task Scheduler tier (Windows)", () => {
 });
 
 describe("stop", () => {
-  test("systemd: disable --now, so it stays down across a login", () => {
+  test("systemd: disable --now, so it stays down across a login", async () => {
     const h = harness();
-    expect(cmdStop(h.deps)).toBe(EXIT.OK);
+    expect(await cmdStop(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain("systemctl --user disable --now collie");
     expect(h.io.stdout).toContain("bridge stopped");
   });
 
-  test("launchd: disable AND bootout — together they are `disable --now`", () => {
+  test("launchd: disable AND bootout — together they are `disable --now`", async () => {
     const h = harness({ host: hostFor("darwin"), answers: NO_SYSTEMD });
-    expect(cmdStop(h.deps)).toBe(EXIT.OK);
+    expect(await cmdStop(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain("launchctl disable gui/501/herdr.collie");
     expect(h.exec.calls).toContain("launchctl bootout gui/501/herdr.collie");
   });
 
-  test("unsupervised: the pidfile process, and nothing else", () => {
+  test("unsupervised: the pidfile process, and nothing else", async () => {
     const h = harness({
       answers: NO_SYSTEMD,
       files: { [`${CONFIG}/collie.pid`]: "4242\n" },
       ps: { 4242: `${BINARY} _exec-bridge` },
     });
-    expect(cmdStop(h.deps)).toBe(EXIT.OK);
+    expect(await cmdStop(h.deps)).toBe(EXIT.OK);
     expect(h.exec.killed).toEqual([4242]);
   });
 });
@@ -1236,7 +1306,7 @@ describe("uninstall", () => {
   const PLIST = `${HOME}/Library/LaunchAgents/herdr.collie.plist`;
   const OWNED = '{"TCP":{"443":{"HTTPS":true}},"Web":{"host.example:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8787"}}}}}';
 
-  test("on systemd: stops, unpublishes, removes the unit, and keeps .env and the checkout", () => {
+  test("on systemd: stops, unpublishes, removes the unit, and keeps .env and the checkout", async () => {
     const h = harness({
       answers: [["tailscale serve status --json", { stdout: OWNED }]],
       files: {
@@ -1246,7 +1316,7 @@ describe("uninstall", () => {
         [RECORD]: "https:443|host.example:443|http://127.0.0.1:8787\n",
       },
     });
-    expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+    expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain("systemctl --user disable --now collie");
     expect(h.exec.calls).toContain("systemctl --user daemon-reload");
     expect(h.exec.calls).toContain("systemctl --user reset-failed collie");
@@ -1260,13 +1330,13 @@ describe("uninstall", () => {
     expect(h.io.stdout.join("\n")).toContain(`kept: ${join(CONFIG, ".env")} and the checkout`);
   });
 
-  test("on launchd: the plist goes, then `enable` clears the disable record a reinstall would inherit", () => {
+  test("on launchd: the plist goes, then `enable` clears the disable record a reinstall would inherit", async () => {
     const h = harness({
       answers: NO_SYSTEMD,
       host: hostFor("darwin"),
       files: { [PLIST]: "<plist/>" },
     });
-    expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+    expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
     expect(h.files.exists(PLIST)).toBe(false);
     // `stop`'s disable outlives the plist; `enable` resets it. Order matters: plist first.
     const disable = h.exec.calls.indexOf("launchctl disable gui/501/herdr.collie");
@@ -1275,7 +1345,7 @@ describe("uninstall", () => {
     expect(enable).toBeGreaterThan(disable);
   });
 
-  test("a refused unserve aborts it — a clean report over a live front door would be a lie", () => {
+  test("a refused unserve aborts it — a clean report over a live front door would be a lie", async () => {
     const h = harness({
       // The recorded root was replaced out from under us: teardown refuses and keeps the record.
       answers: [
@@ -1292,7 +1362,7 @@ describe("uninstall", () => {
         [RECORD]: "https:443|host.example:443|http://127.0.0.1:8787\n",
       },
     });
-    expect(cmdUninstall(h.deps)).toBe(EXIT.FAIL);
+    expect(await cmdUninstall(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("refusing to remove");
     expect(h.files.exists(RECORD)).toBe(true);
     expect(h.files.exists(UNIT_FILE)).toBe(true);
@@ -1325,9 +1395,9 @@ describe("the COLLIE_INSTANCE knob", () => {
     expect(unit).toContain("Description=Collie (instance v1)");
   });
 
-  test("the launchd label, plist and target are the instance's own", () => {
+  test("the launchd label, plist and target are the instance's own", async () => {
     const h = harness({ instance: "v1", answers: NO_SYSTEMD, host: hostFor("darwin") });
-    expect(cmdStop(h.deps)).toBe(EXIT.OK);
+    expect(await cmdStop(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain("launchctl bootout gui/501/herdr.collie-v1");
     expect(h.exec.calls).not.toContain("launchctl bootout gui/501/herdr.collie");
   });
@@ -1385,14 +1455,14 @@ describe("the COLLIE_INSTANCE knob", () => {
     expect(serviceDescription(solo.deps)).toContain("(collie)");
   });
 
-  test("uninstalling one instance leaves the other's unit and ownership record alone", () => {
+  test("uninstalling one instance leaves the other's unit and ownership record alone", async () => {
     const SOLO_UNIT = `${HOME}/.config/systemd/user/collie.service`;
     const V1_UNIT = `${HOME}/.config/systemd/user/collie-v1.service`;
     const h = harness({
       instance: "v1",
       files: { [SOLO_UNIT]: "[Unit]\n", [V1_UNIT]: "[Unit]\n", [`${CONFIG}/tailscale-managed-handler`]: "https:443|host.example:443|http://127.0.0.1:8787\n" },
     });
-    expect(cmdUninstall(h.deps)).toBe(EXIT.OK);
+    expect(await cmdUninstall(h.deps)).toBe(EXIT.OK);
     expect(h.files.exists(V1_UNIT)).toBe(false);
     expect(h.files.exists(SOLO_UNIT)).toBe(true);
     // v1's handler record is `…-v1`, so the solo instance's front-door record survives untouched.
