@@ -13,9 +13,11 @@ import { describe, expect, test } from "bun:test";
 
 interface Step {
   readonly name?: string;
+  readonly id?: string;
   readonly uses?: string;
   readonly run?: string;
   readonly with?: Record<string, string>;
+  readonly env?: Record<string, string>;
 }
 
 interface Job {
@@ -58,11 +60,11 @@ describe("release.yml: the Linux and macOS rows", () => {
 });
 
 describe("release.yml: the Windows payload", () => {
-  test("is a job of its own, behind the gate, on windows-latest, bounded to 30 minutes", () => {
+  test("is a job of its own, behind the gate, on windows-latest, bounded to 15 minutes", () => {
     const windows = job("payload-windows");
     expect(windows.needs).toBe("gate");
     expect(windows["runs-on"]).toBe("windows-latest");
-    expect(windows["timeout-minutes"]).toBe(30);
+    expect(windows["timeout-minutes"]).toBe(15);
     expect(windows.strategy?.["fail-fast"]).toBe(false);
     expect(windows.strategy?.matrix?.include).toEqual([{ platform: "windows-x64" }]);
   });
@@ -74,6 +76,10 @@ describe("release.yml: the Windows payload", () => {
     expect(scripts(windows)).not.toMatch(/\bnix (develop|build)\b/);
     expect((windows.steps ?? []).some((s) => s.uses?.includes("nix-installer") === true)).toBe(false);
     expect(scripts(windows)).not.toContain("gh release");
+    // The pinned Bun is fetched and checked against its release's SHASUMS256.txt; no setup action.
+    expect(scripts(windows)).toContain("SHASUMS256.txt");
+    expect((windows.steps ?? []).some((s) => s.uses?.includes("setup-bun") === true)).toBe(false);
+    expect(scripts(windows)).toContain('[[ "$v" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]');
     const upload = (windows.steps ?? []).find((s) => s.uses?.startsWith("actions/upload-artifact@") === true);
     // The name the release job's `payload-*` pattern collects.
     expect(upload?.with?.name).toBe("payload-${{ matrix.platform }}");
@@ -89,11 +95,28 @@ describe("release.yml: a Windows failure never stops a release", () => {
     expect(release.if).toBe("${{ !cancelled() && needs.payload.result == 'success' }}");
   });
 
-  test("a missing Windows asset is a warning, never an error", () => {
+  test("the asset check runs the tested script, with the tolerance on and its end date beside it", () => {
+    // The verdicts themselves (warn on failure/skipped/cancelled, fail on a lost asset after
+    // success, fail with the tolerance off) are pinned in scripts/windows-asset.test.ts.
     const step = (job("release").steps ?? []).find((s) => s.name === "Check for the Windows asset");
-    expect(step?.run).toContain("::warning");
-    expect(step?.run).not.toContain("::error");
-    expect(step?.run).not.toContain("exit 1");
+    expect(step?.id).toBe("windows");
+    expect(step?.run).toContain("bun scripts/windows-asset.ts --dir");
+    expect(step?.run).toContain('--result "$WINDOWS_RESULT" --optional "$WINDOWS_ASSET_OPTIONAL"');
+    expect(step?.env?.WINDOWS_RESULT).toBe("${{ needs.payload-windows.result }}");
+    expect(step?.env?.WINDOWS_ASSET_OPTIONAL).toBe("true");
+    expect(text).toContain("whichever comes first (M43, decided 2026-10-02). Altan or the next Windows spec flips it to");
+    expect(text).toContain("2026-11-15");
+  });
+
+  test("the release notes keep the script's whole body and only append the Windows block", () => {
+    const step = (job("release").steps ?? []).find((s) => s.id === "notes");
+    const run = step?.run ?? "";
+    const body = run.indexOf('"${previous[@]}" > "$notes"');
+    const block = run.indexOf('bun scripts/windows-asset.ts --notes "$WINDOWS_PRESENT" >> "$notes"');
+    expect(run).toContain("nix develop --command bun scripts/release-notes.ts \\");
+    expect(body).toBeGreaterThan(0);
+    expect(block).toBeGreaterThan(body);
+    expect(step?.env?.WINDOWS_PRESENT).toBe("${{ steps.windows.outputs.present }}");
   });
 
   test("the jobs after `release` read its result by name, so a failed Windows job does not skip them", () => {
