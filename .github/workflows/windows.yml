@@ -1,0 +1,73 @@
+name: Windows
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Same rule as ci.yml: a new push supersedes the old run.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+# The Windows suites (M43 spec 02): `bun test` over bridge, cli and scripts, plus the supervisor
+# test. The commands live in `scripts/windows-suites.ps1`, the same file the Windows VM runs
+# (`make win-test` in the workspace), so CI and the VM cannot drift. The script also fails when
+# more tests are skipped than its `-MaxSkips` allows, so no test is skipped just to get green.
+#
+# ITS OWN WORKFLOW, not a job in ci.yml. `release.yml`'s gate reads the conclusion of the whole
+# `ci.yml` run, so a red Windows job inside it would stop a Linux hotfix. Here a Windows break shows
+# red on its own check and blocks nothing. The job is NEVER `continue-on-error`: it must be able to
+# be red. After about ten green runs in a row on main (no re-runs), promote it: make the check
+# required and let the release gate read this workflow too.
+#
+# `windows-latest` is Windows Server, not Windows 11. Defender, symlink privilege and long paths
+# differ. The VM stays the second truth. The image moves on its own; pin it (`windows-2025`) when
+# the check becomes required, so an image roll cannot turn a required check red.
+jobs:
+  windows:
+    name: windows (bridge, cli, scripts)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # BEFORE the checkout, so the files keep the LF endings they have in git, as on Linux.
+      - name: No line-ending rewrite
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+
+      # Windows PowerShell 5.1 (`shell: powershell`), the same shell family the VM uses.
+      - name: Windows suites
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows-suites.ps1 -Out "$env:RUNNER_TEMP\collie-suites"; exit $LASTEXITCODE
+
+      # What a contributor without Windows needs on the check page: the failing tests, and what to do.
+      - name: Say what failed
+        if: failure()
+        shell: powershell
+        run: |
+          $dir = "$env:RUNNER_TEMP\collie-suites"
+          $summary = @('### Windows suites failed', '',
+            'This check is not required yet. A maintainer can run the same suites on a Windows 11 VM (make win-test REF=pull/N/merge) and tell you whether the failure is yours.',
+            'Common causes: a path built with a slash or startsWith("/"), a mode bit, a file still open, a case-sensitive name. The full logs are in the artifact windows-suite-logs.', '')
+          foreach ($f in Get-ChildItem -Path $dir -Filter *.fails -ErrorAction SilentlyContinue) {
+            $names = @(Get-Content -LiteralPath $f.FullName)
+            if ($names.Count -gt 0) {
+              $summary += "**$($f.BaseName)**: $($names.Count) failing"
+              $summary += $names | Select-Object -First 40 | ForEach-Object { "- $_" }
+            }
+          }
+          $summary | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-suite-logs
+          path: ${{ runner.temp }}\collie-suites
+          retention-days: 7
+          if-no-files-found: warn
