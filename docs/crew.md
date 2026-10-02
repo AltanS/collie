@@ -147,6 +147,7 @@ would mean port 8787, which a lead behind `tailscale serve` does not open to the
 
 `--address` on `crew join` is the address the lead dials this machine at, and it needs a port:
 `--address <host>:8787`. `join` refuses one without a port, because the lead would dial port 443.
+An `https://host:8787` address is still accepted and stored as `host:8787`.
 
 **Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in that node's own `.env`,
 at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir on a Herdr install.

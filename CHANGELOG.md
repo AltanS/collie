@@ -44,8 +44,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   `invite` keeps the short name. Thanks @sbakhour (#334).
 - **`collie crew join --address` now needs a port.** A portless `--address` made the lead dial port 443 on the member, so a member whose
   address had no port stayed unreachable with nothing naming the cause. `join` now refuses it and
-  suggests `--address <host>:<port>`. An address with a scheme, such as `--address
-  https://host:8787`, used to dial correctly and is now refused too: write `host:8787`. For a
+  suggests `--address <host>:<port>`. An `https://host:8787` address is still accepted and stored
+  as `host:8787`, while `https://host` with no port and any `http://` address are refused. For a
   peer row that cannot be dialled, `crew status` now names `collie crew set-address <member>
   <host:port>`. `crew status` and `doctor` print the exact `set-address` command for a stored
   address without a port.

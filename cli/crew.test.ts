@@ -547,10 +547,31 @@ describe("collie join", () => {
     expect(text(h.io)).toContain("try --address <host>:9000");
   });
 
-  test("a scheme'd --address is refused too, as a crew listener's address never carries one", async () => {
-    const h = harness(null);
-    expect(await cmdJoin(h.deps, [...joinArgs, "--address", "https://nas.example:8787"])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain("a scheme");
+  test("`--address https://host:8787` still works, and the lead receives `host:8787`", async () => {
+    // It worked in 1.15.2, so a patch must not break it: the prefix (and one trailing slash) is
+    // stripped, and the scheme form is never stored or sent.
+    for (const given of ["https://100.64.0.9:8787", "https://100.64.0.9:8787/", "HTTPS://100.64.0.9:8787"]) {
+      const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+      expect(await cmdJoin(h.deps, [...joinArgs, "--address", given])).toBe(EXIT.OK);
+      expect(JSON.parse(h.requests[0]!.body).address).toBe("100.64.0.9:8787");
+    }
+  });
+
+  test("an https:// address with no port, a path, or an http:// scheme is refused", async () => {
+    for (const [given, why] of [
+      ["https://100.64.0.9", "there is no port"],
+      ["https://100.64.0.9/", "there is no port"],
+      ["https://100.64.0.9:8787/x", "never a path"],
+      ["http://100.64.0.9:8787", "a scheme"],
+      ["http://100.64.0.9", "a scheme"],
+    ] as const) {
+      const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+      expect(await cmdJoin(h.deps, [...joinArgs, "--address", given])).toBe(EXIT.USAGE);
+      expect(text(h.io)).toContain(why);
+      expect(text(h.io)).toContain("try --address <host>:8787");
+      expect(h.requests).toHaveLength(0);
+      expect(h.data()).toBeNull();
+    }
   });
 
   test("a host:port --address is accepted and handed to the lead as typed", async () => {

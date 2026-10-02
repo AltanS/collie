@@ -818,13 +818,20 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   // that names nothing (issue 334). A derived address always carries the port, so only the override
   // is checked, by the same rule `crew set-address` applies to the same value on the lead. It runs
   // first, before the token is read or a store is created: a refusal here costs nothing.
-  if (flags.address !== undefined && flags.address !== "") {
-    const refusal = crewAddressRefusal(flags.address);
+  //
+  // `https://host:8787` has worked as an override since before 1.15.3, so a patch must not break it:
+  // an `https://` prefix (and one trailing `/`) is stripped first, and only the `host:port` left is
+  // checked, stored and sent to the lead. Everything else, `http://` included, is judged as typed.
+  let override = flags.address;
+  if (override !== undefined && override !== "") {
+    const stripped = /^https:\/\//i.test(override) ? override.slice("https://".length).replace(/\/$/, "") : override;
+    const refusal = crewAddressRefusal(stripped);
     if (refusal !== null) {
-      deps.io.err(`error: --address "${flags.address}" is not one the lead can dial this machine at: ${refusal}.`);
+      deps.io.err(`error: --address "${override}" is not one the lead can dial this machine at: ${refusal}.`);
       deps.io.err(`       This machine listens on port ${deps.ctx.port}: try --address <host>:${deps.ctx.port}`);
       return EXIT.USAGE;
     }
+    override = stripped;
   }
 
   const existing = await deps.store.load();
@@ -863,7 +870,7 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   if (data === null) return EXIT.FAIL;
   // Joining makes this machine a peer, and a peer is dialled on its own crew listener — never on a
   // front door, because it is about to tear its own one down (§3).
-  const mine = selfAddress(deps, flags.address, "crew-listener");
+  const mine = selfAddress(deps, override, "crew-listener");
   if (mine === null) {
     deps.io.err("error: cannot work out an address the lead can dial this machine at.");
     deps.io.err("       Pass one: `collie crew join <lead-address> - --address <host-the-lead-can-reach>`.");
@@ -1868,9 +1875,11 @@ function leaveTheOtherSideLines(deps: CrewDeps, record: OpsRecord | null): strin
  * A crew address is **bare `host:port`**, and the two refusals below are the two ways a real roster
  * row has gone wrong:
  *
- *  - **A scheme.** The crew builds its own request from the address (`crewUrl`) and dials pinned
- *    mutual TLS itself (§8.1), so a `https://…` value is dialled as a *hostname* containing slashes
- *    and never resolves. Where such a row comes from is worth naming: a takeover ADOPTS the deposed
+ *  - **A scheme.** A scheme'd address is a front door's form, not a crew listener's: the crew builds
+ *    its own request from the address and dials pinned mutual TLS itself (§8.1), so a listener row
+ *    wants the bare `host:port`. (`crewUrl` does read a scheme, which is how a lead's front-door row
+ *    dials; a PEER row is where one is wrong.) `collie crew join --address` strips an `https://`
+ *    prefix before this check, because `https://host:8787` worked there before this rule. Where such a row comes from is worth naming: a takeover ADOPTS the deposed
  *    lead's roster, and that row holds the address the crew knew the old lead by — its FRONT DOOR
  *    URL. A peer publishes no front door (ADR 0013), so after the crown moves that value names a
  *    door that no longer exists, in a form that could not be dialled even if it did.

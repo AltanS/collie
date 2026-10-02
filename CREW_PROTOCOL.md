@@ -806,6 +806,7 @@ There is no discovery, no enumeration, and no overlay-network integration — ev
 > `https://<host>:8787`, which a lead behind `tailscale serve` does not answer on. A front door on another
 > port stays `<name>:<port>`. A joiner's `--address` is the other direction and is checked: it must be
 > `host:port` (the same rule `collie crew set-address` applies), because a portless one is dialled on 443.
+> An `https://host:port` override is accepted for compatibility and stored as `host:port`.
 
 > **Amended 2026-08-07 — what actually authenticates an enrollment, stated rather than implied.**
 >
