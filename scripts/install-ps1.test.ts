@@ -440,6 +440,7 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const pinned = await install(b, mirror, { env: { COLLIE_TAG: `v${v1}` } });
     expect(pinned.code).toBe(0);
     expect(pinned.out).toContain("Nothing was changed, and nothing was downloaded.");
+    expect(pinned.out).not.toContain("Laying");
     expect(pinned.asked).toEqual([]);
     expect(snapshot(b)).toBe(before);
   }, 90_000);

@@ -270,7 +270,6 @@ function Invoke-CollieInstall {
       Stop-CollieInstall "$dir is a git checkout, and COLLIE_TAG only pins a binary install. Pin it with git instead:  git -C $dir checkout $pin"
     }
     if ($hasVersions -and -not $isGit -and $pin -ne '') {
-      Write-CollieLine "Collie is already installed at $dir. Laying $pin down beside it, and pointing current at it."
       $rescue = $true
     } elseif ($isGit -or $hasVersions) {
       Write-CollieLine "Collie is already installed at $dir. Leaving it alone."
@@ -338,6 +337,7 @@ function Invoke-CollieInstall {
 
   # Download, and verify before anything is unpacked. The scratch folder is inside COLLIE_DIR, and
   # it is removed on every way out.
+  if ($rescue) { Write-CollieLine "Collie is already installed at $dir. Laying $tag down beside it, and pointing current at it." }
   $createdDir = -not (Test-Path -LiteralPath $dir)
   $staging = Join-Path $dir ".staging"
   $work = Join-Path $staging "install-$PID"
