@@ -66,6 +66,8 @@ export interface LifecycleDeps extends ServeDeps {
   /** Readiness with the full ~5s budget. Injected so tests don't pay for it. */
   ready: (port: number, host: string) => Promise<boolean>;
   sleep: (ms: number) => Promise<void>;
+  /** Milliseconds since the epoch. Absent: `Date.now`. Bounds the Windows restart's wait by the clock. */
+  now?: () => number;
   uid: () => number;
   host: Host;
   /**
@@ -712,7 +714,12 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
   // whether it did, rather than printing a banner over a bridge that is still starting.
   // The update health gate's own budget, so a slow machine that raised `COLLIE_UPDATE_HEALTH_TIMEOUT_MS`
   // is waited for here too, and both call the same silence a failure.
+  // Bounded by the clock as well as by the count: one `ready` probe is itself a poll of about five
+  // seconds, so thirty of them waited three minutes, not thirty seconds (M43 spec 08 rehearsal: a
+  // broken update took 221 s to roll back). The kill's pause counts as part of the wait.
   const waitS = Math.max(1, Math.ceil(healthTimeoutMs(deps.ctx.env) / 1000));
+  const now = deps.now ?? Date.now;
+  const deadline = now() + waitS * 1000 - (settled ? KILL_SETTLE_MS : 0);
   let answered = false;
   for (let attempt = settled ? 1 : 0; attempt < waitS && !answered; attempt++) {
     try {
@@ -720,7 +727,8 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
     } catch {
       answered = false; // a probe that throws is a bridge that did not answer, not a crashed restart
     }
-    if (!answered) await deps.sleep(1000);
+    if (answered || now() >= deadline) break;
+    await deps.sleep(1000);
   }
   await printStatusBanner(deps);
   if (answered) return EXIT.OK;

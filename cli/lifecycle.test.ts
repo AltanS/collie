@@ -1148,6 +1148,28 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(probes).toBeGreaterThanOrEqual(35);
     });
 
+    test("the wait is bounded by the clock too: a slow probe does not stretch 30 s into minutes", async () => {
+      // One real `ready` probe polls for about five seconds before it says no.
+      const h = running({ ready: false });
+      let clock = 1_000_000;
+      let probes = 0;
+      h.deps.now = () => clock;
+      h.deps.sleep = (ms) => {
+        clock += ms;
+        return Promise.resolve();
+      };
+      h.deps.ready = () => {
+        probes++;
+        clock += 5_000;
+        return Promise.resolve(false);
+      };
+      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+      // 1 s after the kill, then 6 s a round: the wait stops once 30 s have passed, not after 30 rounds.
+      expect(clock - 1_000_000).toBeLessThanOrEqual(30_000 + 6_000 + 5_000);
+      expect(probes).toBeLessThanOrEqual(7);
+      expect(h.io.stderr.join("\n")).toContain("within 30s");
+    });
+
     test("a probe that throws reads as no answer, not as a crashed restart", async () => {
       const h = running();
       let probes = 0;
