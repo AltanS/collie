@@ -160,8 +160,12 @@ macOS has no package yet. [mise](#mise) works on a Mac, as does the `aarch64-dar
 
 ### Windows support (experimental)
 
-> **Experimental.** Windows 11 on x64 with Herdr is a supported host, and the label stays until
-> `install.ps1` is published on colliepwa.dev. [Collie on Windows](windows.md) has the whole page.
+> **Experimental.** Today, no release carries the Windows zip yet, so `install.ps1` has nothing to
+> download and cannot finish until the first release that does. The pieces below were tested as
+> described. Phone access needs a front door that you set up yourself, and it has not been tested on
+> Windows. "Supported" means the maintainer owns the code and tests it; "experimental" means the
+> install path and the phone path are not yet proven against a real release.
+> [Collie on Windows](windows.md) has the whole page.
 
 Save `scripts/install.ps1` from the repository, read it, and run it. It needs no Bun, Git or
 `bash`:

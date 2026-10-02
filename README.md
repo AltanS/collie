@@ -192,9 +192,14 @@ isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the r
 
 ## Windows
 
-Windows 11 on x64 with Herdr is a supported host, and it stays marked experimental until
-`install.ps1` is published on colliepwa.dev. [**docs/windows.md**](./docs/windows.md) has the
-install, the update, and what is not tested. In short:
+**Today:** no release carries the Windows zip yet, so `install.ps1` has nothing to download and
+cannot finish until the first release that does. The pieces below were tested as described. Phone
+access needs a front door that you set up yourself, and it has not been tested on Windows.
+
+Windows 11 on x64 with Herdr is a supported host: the maintainer owns the code and tests it. It stays
+marked experimental, because the install path and the phone path are not yet proven against a real
+release. [**docs/windows.md**](./docs/windows.md) has the install, the update, and what is not
+tested. In short:
 
 - **Tested.** The `windows.yml` workflow runs the bridge, cli and scripts tests on every push, and
   a Windows 11 VM rehearses an install, an update and a rollback before each release tag.

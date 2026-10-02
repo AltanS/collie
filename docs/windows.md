@@ -4,14 +4,50 @@ What Windows support covers, how to install and update Collie there, and what Wi
 you on. Read [Security](security.md) first: Collie exposes remote shell access to your machine
 by design.
 
-> **Experimental.** Windows is a supported host with a small boundary, and the word stays until
-> a release carries the Windows zip and `install.ps1` is published on colliepwa.dev. The
-> maintainer owns the code and tests it on a Windows 11 virtual machine and on every push
-> ([ADR 0075](../.adr/0075-windows-is-a-supported-host.md)).
+> **Experimental.** Read this first, because it is the truth about today. No release carries the
+> Windows zip yet, so `install.ps1` has nothing to download and cannot finish until the first
+> release that does. The parts below were tested as this page describes them. Phone access needs
+> a front door that you set up yourself, and it has not been tested on Windows.
+
+Two words on this page have a fixed meaning:
+
+- **Supported** means the maintainer owns the Windows code and tests it: a CI run on every push,
+  and a rehearsal on a Windows 11 virtual machine before each release tag
+  ([ADR 0075](../.adr/0075-windows-is-a-supported-host.md)).
+- **Experimental** means the install path and the phone path are not yet proven against a real
+  release.
+
+What you see today, before a release carries the zip:
+
+- `install.ps1` looks at the newest five releases. For each one it prints
+  `<tag> has no Windows build. Trying the next older release.` Then it prints
+  `collie install: none of the newest 5 releases of AltanS/collie carries a Windows build yet.
+  Nothing was installed.` and ends with `Install failed.` and a line that tells you to pin a
+  release that has one. It changes nothing on your machine.
+- `collie update` on a Windows install says `error: release <version> has no Windows build; try
+  again after the next release. Nothing was changed.`
+
+To check, open the release page on GitHub and look for a file named
+`collie-<version>-windows-x64.zip`.
+
+## Zero to phone
+
+Five steps. Each links to its section.
+
+1. [Install Herdr for Windows](#what-is-supported), 0.9.3 or newer.
+2. [Install Collie](#install) with `install.ps1`. This needs a release that carries the zip.
+3. [Open a new terminal, start Herdr, then run `collie start`](#install).
+4. [Set up a front door](#reaching-it-from-your-phone). Not tested on Windows.
+5. [Pair your phone](security.md#pair-a-device--the-write-credential) with `collie pair`.
 
 ## What is supported
 
 One host: Windows 11 on x64, with Herdr as the multiplexer.
+
+[Herdr](https://herdr.dev) is the terminal multiplexer that Collie mirrors: a program that keeps
+your agents running in panes. A **crew** is several machines that each run a Collie, shown behind
+one URL ([Crews](crew.md)). A **front door** is the HTTPS address in front of Collie that your
+phone opens, because Collie itself listens on the machine it runs on and nowhere else.
 
 | | Supported | Not supported |
 | --- | --- | --- |
@@ -27,17 +63,42 @@ What the support rests on:
 - The `windows.yml` workflow runs the bridge, cli and scripts tests on `windows-latest` for every
   pull request and every push to `main`. It is not yet a required check. The maintainer plans to
   make it one after about ten green runs in a row.
-- Each release builds `collie-<version>-windows-x64.zip` with a `.sha256` file.
+- Each release is meant to build `collie-<version>-windows-x64.zip` with a `.sha256` file.
 - Before each release tag, `make win-rehearse` installs a release on a fresh Windows 11 VM,
   updates it from the terminal and from the phone's endpoint, forces a failed health check and
   checks the rollback.
+- Herdr's Windows build is made by the Herdr project. Collie depends on it and does not control it.
 
 WSL is not Windows here. Inside WSL, follow the Linux install.
+
+## Unsigned binary: SmartScreen and Smart App Control
+
+`collie.exe` is not signed, so Windows does not know who published it. Read this before you run
+the installer.
+
+Two Windows features can stop an unsigned program:
+
+- **SmartScreen** asks before it runs a program that came from the internet. For a file you
+  downloaded in a browser, click **More info**, then **Run anyway**.
+- **Smart App Control** has no per-file allow. If it is on and it blocks Collie, you cannot allow
+  that one file. `install.ps1` shows the block when it runs `collie.exe version`, and prints no
+  success line. Microsoft's documentation has said that turning Smart App Control off may not be
+  undone without resetting Windows, so check Microsoft's current page before you change it. The
+  other way out is a [build from source](#build-from-source), which makes `collie.exe` on your own
+  machine. That route has not been tested against Smart App Control.
+
+> **Note.** Smart App Control on the test VM is in evaluation mode, and neither feature has
+> blocked Collie there. This page describes what Windows documents, not a block that was seen.
+
+The sha256 check in `install.ps1` finds a damaged or swapped download. It does not say who
+published the file, because the hash sits beside the zip, and whoever can replace one can replace
+the other. Signing the binary is a possible later step, with no date.
 
 ## Install
 
 Run `install.ps1`. It needs no Bun, no Git and no `bash`. It downloads the Windows zip of the
-newest release, checks its sha256 and stops on a mismatch.
+newest release that has one, checks its sha256 and stops on a mismatch. Until a release carries
+the zip, it stops as [described above](#collie-on-windows).
 
 ```powershell
 irm https://colliepwa.dev/install.ps1 | iex
@@ -86,25 +147,6 @@ logon, with a limited token, and a launcher relaunches the bridge if it exits wi
 `collie status` names the task and its state. `collie stop` disables it. `collie restart`
 restarts the bridge alone.
 
-## Unsigned binary: SmartScreen and Smart App Control
-
-`collie.exe` is not signed, so Windows does not know who published it. The sha256 check in
-`install.ps1` is the only proof that the download is the file the release published.
-
-Two Windows features can stop an unsigned program:
-
-- **SmartScreen** asks before it runs a program that came from the internet. For a file you
-  downloaded in a browser, click **More info**, then **Run anyway**.
-- **Smart App Control** can block the program with no option to allow it once. If it is on and
-  blocks Collie, `install.ps1` shows the block when it runs `collie.exe version`, and prints no
-  success line. The setting is in Windows Security, under App and browser control. Turning it off
-  changes the whole PC, so that choice is yours.
-
-> **Note.** Smart App Control on the test VM is in evaluation mode, and neither feature has
-> blocked Collie there. This page describes what Windows documents, not a block that was seen.
-
-Signing the binary is a possible later step. It is not planned for a date.
-
 ## Update
 
 Update from the terminal or from the phone, the same as on Linux and macOS:
@@ -121,10 +163,16 @@ VM against a local copy of the release files, not yet against a real GitHub rele
 An old version folder can stay in `versions\` until the launcher restarts, because Windows will
 not delete a folder a running program holds. The next update removes it.
 
-> **Caution.** Collie 1.15.0 and older cannot update themselves on Windows. The second half of
-> `collie update` runs the code of the release it just fetched, and that older code swaps
-> `collie.exe` the old way, which fails with `EPERM`. Update by hand once. After that,
-> `collie update` works. Neither route below was rehearsed.
+> **Caution.** This only affects you if you installed one of the releases up to and including
+> v1.15.0. Check with `collie version`. On those releases `collie update` fails on Windows with
+> `EPERM`: the second half of an update runs the code of the release it just fetched, and that
+> older code swaps `collie.exe` the old way. Update by hand once. After that, `collie update`
+> works. Neither route below was rehearsed.
+
+The swap fix (PR 309) first shipped in v1.15.1. No release yet contains the later Windows update
+work: the phone's Update button on Windows, the restart wait and the cleanup of old folders. The
+rehearsal built its versions from the current code, so an update from a real v1.15.x release to
+the first Windows release has not been tried.
 
 - **A source checkout:** fetch the newer tag, check it out, run `bun run build`, then
   `collie restart`. The build needs Git for Windows' `bash`.
@@ -137,9 +185,11 @@ say so in one sentence and change nothing.
 
 ## Long paths
 
+**What you see:** a pane does not open, and Herdr says `The directory name is invalid (os error
+267)`. `collie doctor` warns first: `LongPathsEnabled is 0 on this machine`.
+
 Herdr cannot start a pane in a folder whose path is longer than 260 characters unless Windows
-long paths are on. The error is `os error 267`. `collie doctor` warns when `LongPathsEnabled` is
-0, and when the install folder itself is very long.
+long paths are on. `collie doctor` also warns when the install folder itself is very long.
 
 In a PowerShell run as administrator:
 
@@ -153,19 +203,29 @@ folders short in any case.
 
 ## Task Scheduler refuses a standard user
 
-A standard user account may lack the right to run a scheduled task, and `collie start` then
-fails. Windows reports `0x80070569`, and Collie prints that the account lacks the right "Log on
-as a batch job".
+**What you see:** `collie start` fails with `error: schtasks /Create /TN herdr.collie failed`,
+Windows reports `0x80070569`, and Collie says the account lacks the right "Log on as a batch job".
 
-An administrator grants it in Local Security Policy, under Local Policies, User Rights
-Assignment, **Log on as a batch job**, by adding the account. Then run `collie start` again.
-This was checked with a standard user, whose name held a space and a non-ASCII letter.
+This affects a standard user account that never had that right. An administrator account usually
+has it.
+
+An administrator grants the right:
+
+1. Run `secpol.msc`.
+2. Open Local Policies, then User Rights Assignment.
+3. Open **Log on as a batch job**, and add the account.
+4. Run `collie start` again.
+
+Windows Home does not ship `secpol.msc`, and this was not tried there. The route was checked with
+a standard user whose name held a space and a non-ASCII letter.
 
 ## Secret files
 
-Collie keeps its secret files private to your account, SYSTEM and Administrators, by the access
-list (ACL) of its state and config folders. Windows has no `0600` mode, so this is the Windows
-form of the same rule.
+**What you see:** `collie doctor` prints a `secrets-private` line, for example
+`can be read by other accounts`, with a fix.
+
+Collie limits who can read its secret files: your account, SYSTEM and Administrators. Windows has
+no `0600` mode, so Collie sets the access list (ACL) of its state and config folders.
 
 ```powershell
 collie doctor
@@ -187,8 +247,8 @@ folder in your user profile, or a folder that is empty or holds only Collie's ow
 folder is checked and warned about, with the `icacls` command that fixes it. `collie doctor` and
 other commands change nothing.
 
-Before a repair, the bridge saves the old list in `acl-backups` in the state folder and prints
-the undo line. Run it in a terminal run as administrator:
+To undo a repair: before it, the bridge saves the old list in `acl-backups` in the state folder
+and prints the undo line. Run it in a terminal run as administrator:
 
 ```powershell
 icacls <folder> /restore <backup file>
@@ -199,12 +259,18 @@ of the rules is in [Secret files on Windows](security.md#secret-files-on-windows
 
 ## Reaching it from your phone
 
-Collie listens on this machine only, and on Windows it publishes no front door. `collie start`
-does not run `tailscale serve` here. To use Collie from a phone, put your own front door in front
-of it, for example a reverse proxy, as in
-[Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale), and set
-`COLLIE_PUBLIC_HOSTS`. The first `collie start` raises no firewall prompt because the bind is
-loopback. A managed front door on Windows is planned and not built.
+Collie on Windows has no front door of its own, and a phone reaching a Windows machine has not
+been tested. `collie start` does not run `tailscale serve` here, and Collie listens on this
+machine only. You set the front door up yourself.
+
+[Deployment](deployment.md) describes the variants, for example
+[Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale), a
+reverse proxy, with `COLLIE_PUBLIC_HOSTS` set. Install to the home screen, Web Push and the
+microphone need HTTPS with a certificate the phone trusts. Over plain HTTP they stay off
+([Voice input and Web Push](voice-and-push.md)). The first `collie start` raises no firewall
+prompt, because Collie listens on this machine only.
+
+A front door on Windows that Collie manages is planned and not built.
 
 ## Crews
 
@@ -229,10 +295,10 @@ Plain list, so nothing here reads as a promise:
 
 - Windows 10, Windows Server, Windows on ARM, tmux, zellij and tuios on Windows.
 - A real Smart App Control block, and PowerShell 7 for `install.ps1`.
-- `install.ps1` against the real GitHub release endpoints, which no release can offer until one
-  carries the Windows zip.
+- `install.ps1` against a real release that carries the zip. None does yet.
 - An update from a real GitHub release. The rehearsal used a local copy of the release files.
 - A phone reaching a Windows machine through Tailscale or any proxy.
 - A FAT volume with real hardware. The "not checked" answer is covered by unit tests.
 - A second Collie's task being refused, covered by unit tests only.
 - Whether Explorer sees the new PATH without a sign-out, and a PATH edit by a standard user.
+- A build from source on a machine where Smart App Control is on.
