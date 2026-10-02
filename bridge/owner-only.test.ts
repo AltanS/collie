@@ -371,6 +371,22 @@ describe("secretFileVerdict", () => {
     ]);
   });
 
+  test("a hard link (nlink 2) or a link is never changed: a warning with the fix, the secret withheld", () => {
+    for (const world of [{ files: { [ENV]: { nlink: 2 }, [CONFIG]: { dir: true } } }, { files: { [ENV]: {}, [CONFIG]: { dir: true } }, links: new Set([ENV]) }]) {
+      const f = fake({ saves: { [ENV]: [EVERYONE_FILE(".env")] }, ...world });
+      const v = secretFileVerdict(ENV, { repair: true }, f.deps);
+      expect(v.ok).toBe(false);
+      expect(v.warning).toBe(
+        `warn: ${ENV} can be read by other accounts on this PC (Everyone [S-1-1-0]). Collie did not change it, because it is a link or has ` +
+          `a second name (a hard link), so the change would reach a file elsewhere. Fix it yourself, or run: ` +
+          `icacls "${ENV}" /grant:r "*${SID}:F" "*S-1-5-18:F" "*S-1-5-32-544:F" /inheritance:r /remove:g *S-1-1-0`,
+      );
+      expect(f.sets).toEqual([]);
+      expect(f.resets).toEqual([]);
+      expect(f.calls.filter((c) => c.startsWith("save ")).length).toBe(1);
+    }
+  });
+
   test("the bridge with COLLIE_NO_ACL_REPAIR=1: a warning, no change", () => {
     const f = fake({ saves: { [ENV]: [EVERYONE_FILE(".env")] }, files: { [ENV]: {} }, env: { [`COLLIE_NO_ACL_REPAIR`]: "1", USERPROFILE: HOME } });
     expect(secretFileVerdict(ENV, { repair: true }, f.deps).ok).toBe(false);

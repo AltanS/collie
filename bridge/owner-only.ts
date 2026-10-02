@@ -524,8 +524,9 @@ const toldNotChecked = new Set<string>();
  * The file's own list decides. Not checked: no claim, said once, and the secret is used. Loose and
  * `repair` off (every CLI command): a warning that says how to fix it, and `ok: false`, so the
  * loader withholds a `config.toml` secret exactly as POSIX does for a file it could not tighten.
- * Loose and `repair` on (the bridge at start), when the file's folder is Collie's own: the old list
- * saved, the file changed in one grant-first call, and "private" said only when a second read passes.
+ * Loose and `repair` on (the bridge at start), when the file's folder is Collie's own and the file is
+ * neither a link nor a hard link ({@link safeToReset}): the old list saved, the file changed in one
+ * grant-first call, and "private" said only when a second read passes.
  */
 export function secretFileVerdict(
   path: string,
@@ -549,6 +550,17 @@ export function secretFileVerdict(
     const reason =
       scope === null ? "Restart Collie to repair it" : `Collie did not change it, because ${scope.allowed ? "whoami did not answer" : scope.why}. Fix it yourself`;
     return { ok: false, warning: `warn: ${path} can be read by other accounts on this PC (${who}). ${reason}, or run: ${fix}` };
+  }
+  // The folder's scope says nothing about the file itself. A link, or a file with a second name (a
+  // hard link needs no privilege), would carry the new list to a file somewhere else: the same fresh
+  // `lstat` the folder repair runs before it resets an entry, run right before this change.
+  if (!safeToReset(path, folder, host, deps)) {
+    return {
+      ok: false,
+      warning:
+        `warn: ${path} can be read by other accounts on this PC (${who}). Collie did not change it, because it is a link or has ` +
+        `a second name (a hard link), so the change would reach a file elsewhere. Fix it yourself, or run: ${fix}`,
+    };
   }
   backUp(path, folder, host, deps);
   const after = applyPrivate(path, user, false, before.leaks, deps) === null ? readPath(path, false, host, deps).verdict : before;
