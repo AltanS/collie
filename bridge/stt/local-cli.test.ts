@@ -327,11 +327,19 @@ async function waitUntil(check: () => boolean, ms = 5_000, what = "condition"): 
   throw new Error(`timed out waiting for ${what}`);
 }
 
-/** A script body that starts a grandchild (a 30 s Bun sleep), records its pid, then runs `then`. */
+/**
+ * A script body that starts a grandchild (a 30 s Bun sleep), records its pid, then runs `then`.
+ *
+ * On Windows the grandchild is spawned `detached`. Without it, libuv puts every child Bun starts in
+ * a job object that kills it when the starting process dies (checked on the Windows 11 VM), so a Bun
+ * fixture would clean up after itself and prove nothing. A real engine started by a wrapper has no
+ * such job. Detached there keeps the parent pid, which is what the tree kill follows. On POSIX it
+ * stays in the group, which is what the group kill follows.
+ */
 function forker(pidFile: string, then: string): string {
   return `
 const kid = Bun.spawn([process.execPath, "-e", "await Bun.sleep(30_000)"], {
-  stdin: "ignore", stdout: "ignore", stderr: "ignore",
+  stdin: "ignore", stdout: "ignore", stderr: "ignore", detached: process.platform === "win32",
 });
 require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(kid.pid));
 ${then}

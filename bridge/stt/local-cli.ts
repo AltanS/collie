@@ -225,6 +225,9 @@ export function createLocalCliSttProvider(
         // SIGKILL is at once, or after a grace period for a child stuck in the kernel.
         if (child === null) release();
         else void Promise.race([child.exited, Bun.sleep(KILL_GRACE_MS)]).then(release, release);
+        // On Windows the command is killed after taskkill has walked its tree, a moment later, and
+        // a running process holds its working folder: wait for it (bounded) before the folder goes.
+        if (child !== null && host.platform === "win32") await Promise.race([child.exited, Bun.sleep(KILL_GRACE_MS)]);
         if (dir !== null) {
           await rm(dir, { recursive: true, force: true }).catch(() => {
             /* a temp dir that will not go is the OS temp cleaner's, not a failed transcription */
