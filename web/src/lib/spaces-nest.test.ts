@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nestWorktrees } from "./spaces";
+import { isolateSpaces, nestWorktrees } from "./spaces";
 import type { WorkspaceView } from "./types";
 
 // The grouping rules the spaces list leans on. Written against the shape a real herd produces:
@@ -63,5 +63,41 @@ describe("nestWorktrees", () => {
     const rows = nestWorktrees([parent, otherParent, child, otherChild]);
     expect(rows.map((r) => r.space.workspaceId)).toEqual(["w1", "w2", "w5", "w6"]);
     expect(rows.map((r) => r.depth)).toEqual([0, 1, 0, 1]);
+  });
+});
+
+describe("isolateSpaces (issue #338)", () => {
+  const key = (label: string, host = "") => `${host}\u0000\u0000${label}`;
+  const all = [parent, child, unrelated];
+
+  it("returns every space when nothing is isolated", () => {
+    expect(isolateSpaces(all, null)).toEqual(all);
+  });
+
+  it("keeps the isolated repo checkout and its worktrees, and drops the rest", () => {
+    expect(isolateSpaces(all, key("w1")).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
+  });
+
+  it("keeps a lone space that has no repo", () => {
+    expect(isolateSpaces(all, key("w3")).map((w) => w.workspaceId)).toEqual(["w3"]);
+  });
+
+  it("keeps only the worktree when a worktree is isolated", () => {
+    expect(isolateSpaces(all, key("w2")).map((w) => w.workspaceId)).toEqual(["w2"]);
+  });
+
+  it("does not pull in worktrees of another repo", () => {
+    const other = space("w5", { repoRoot: "/repo/infra", isWorktree: true });
+    expect(isolateSpaces([...all, other], key("w1")).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
+  });
+
+  it("matches on the machine too, so a same-named space elsewhere is not taken", () => {
+    const peer = space("w1", { host: "minibuch" });
+    expect(isolateSpaces([peer, unrelated], key("w1", "bluefin"))).toEqual([peer, unrelated]);
+    expect(isolateSpaces([peer, unrelated], key("w1", "minibuch"))).toEqual([peer]);
+  });
+
+  it("treats a stale key as no filter", () => {
+    expect(isolateSpaces(all, key("gone"))).toEqual(all);
   });
 });
