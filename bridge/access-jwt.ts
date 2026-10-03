@@ -38,12 +38,25 @@ export type AccessDecision = Response | null;
 export const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
 
 /**
- * Headers the Cloudflare edge stamps on every request it proxies. A request carrying none of them,
- * addressed to a loopback Host, did not come through the tunnel: it is a local process (`collie
- * doctor`, `curl`), and a local process can already reach the loopback port directly, so the gate
- * has nothing to protect there. The edge adds these itself; a remote client cannot strip them.
+ * Headers that say a request did not start on this machine. The Cloudflare edge stamps the `cf-*`
+ * ones on every request it proxies and `cloudflared` forwards them, so a request that came through
+ * Cloudflare cannot look local, even through a tunnel set to `httpHostHeader: localhost`. The
+ * forwarding headers are what every other proxy adds (`tailscale serve`, Caddy, nginx, Traefik), so
+ * a request through any front door is not local either. A request carrying none of them, addressed
+ * to a loopback Host, is a local process (`collie doctor`, `curl`): it can already reach the
+ * loopback port directly, so the gate has nothing to protect there, and pairing still guards it.
  */
-const EDGE_HEADERS = ["cf-ray", "cf-connecting-ip", "cf-visitor", ACCESS_JWT_HEADER] as const;
+const NOT_LOCAL_HEADERS = [
+  "cf-ray",
+  "cf-connecting-ip",
+  "cf-visitor",
+  ACCESS_JWT_HEADER,
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "forwarded",
+  "x-real-ip",
+] as const;
 
 const LOOPBACK_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i;
 
@@ -54,31 +67,39 @@ const REFRESH_MS = 60 * 60 * 1000;
 /** The fastest an unknown `kid` may trigger a refetch. Guards Cloudflare against a token spray. */
 const UNKNOWN_KID_REFETCH_MS = 30 * 1000;
 /** A certs fetch that has not answered by then has failed; a request may be waiting on it. */
-const FETCH_TIMEOUT_MS = 10_000;
-/** Retry ladder while no key was ever loaded. */
+const FETCH_TIMEOUT_MS = 5_000;
+/** The largest certs body read. Cloudflare's is about 4 KiB; anything far past it is not a key set. */
+const MAX_CERTS_BYTES = 64 * 1024;
+/**
+ * Retry ladder after a failed fetch. Before the first load, a request may also nudge a fetch, but
+ * no faster than the first rung: the 30 s unknown-kid window is for a gate that has keys.
+ */
 const FIRST_LOAD_RETRY_MS = [2_000, 5_000, 15_000, 30_000, 60_000] as const;
+
+/** One DNS label: letters, digits and inner hyphens, 1 to 63 characters. */
+const DNS_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+/** The three spellings of a team, anchored whole: no userinfo, port, path, query or other domain. */
+const TEAM_FORMS = [
+  new RegExp(`^(${DNS_LABEL})$`, "i"),
+  new RegExp(`^(${DNS_LABEL})\\.cloudflareaccess\\.com$`, "i"),
+  new RegExp(`^https://(${DNS_LABEL})\\.cloudflareaccess\\.com/?$`, "i"),
+] as const;
 
 /**
  * The issuer for a configured team, or null when the value cannot name one.
  *
- * `myteam` and `myteam.cloudflareaccess.com` both mean `https://myteam.cloudflareaccess.com`. A full
- * `https://` URL is taken as the issuer verbatim (minus a trailing slash). Plain `http://` is refused,
- * because the keys would then travel unauthenticated.
+ * `myteam`, `myteam.cloudflareaccess.com` and `https://myteam.cloudflareaccess.com` all mean
+ * `https://myteam.cloudflareaccess.com`, and nothing else is accepted. The issuer is also where the
+ * keys come from, so the host is always exactly `<label>.cloudflareaccess.com` over https: a value
+ * that could steer the fetch elsewhere (`evil.com/x?`, `a.cloudflareaccess.com.evil.com`, userinfo,
+ * a port, a path, plain http) names no issuer, and the gate then refuses everything (half config).
  */
 export function accessIssuer(team: string): string | null {
   const t = team.trim();
-  if (t === "") return null;
-  if (/^https:\/\//i.test(t)) {
-    try {
-      const u = new URL(t);
-      if (u.pathname !== "/" || u.search || u.hash || u.username || u.password) return null;
-      return `https://${u.host.toLowerCase()}`;
-    } catch {
-      return null;
-    }
+  for (const form of TEAM_FORMS) {
+    const label = form.exec(t)?.[1];
+    if (label !== undefined) return `https://${label.toLowerCase()}.cloudflareaccess.com`;
   }
-  if (/^[a-z0-9-]+$/i.test(t)) return `https://${t.toLowerCase()}.cloudflareaccess.com`;
-  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(t)) return `https://${t.toLowerCase()}`;
   return null;
 }
 
@@ -93,17 +114,33 @@ export function accessGateRequested(s: AccessGateSettings): boolean {
 }
 
 /**
+ * What is wrong with half a configuration, as one operator-facing sentence, or null when whole.
+ * Names the missing setting; never prints the audience tag.
+ */
+export function accessConfigProblem(s: AccessGateSettings): string | null {
+  const hasAud = s.accessAud.some((a) => a.trim() !== "");
+  if (s.accessTeam.trim() === "") return "COLLIE_ACCESS_AUD is set but COLLIE_ACCESS_TEAM is not";
+  if (!hasAud) return "COLLIE_ACCESS_TEAM is set but COLLIE_ACCESS_AUD is not";
+  if (accessIssuer(s.accessTeam) === null) {
+    return "COLLIE_ACCESS_TEAM is not a Cloudflare Access team (use myteam, myteam.cloudflareaccess.com or https://myteam.cloudflareaccess.com)";
+  }
+  return null;
+}
+
+/**
  * Whether this request is outside the gate's reach.
  *
  * `/api/health` is the one route the bridge has always left ungated (the updater polls it before any
  * browser exists, and it discloses only the version, which every response carries anyway). The rest
- * is a local caller: a loopback Host and no Cloudflare edge header.
+ * is a local caller: a loopback Host and none of {@link NOT_LOCAL_HEADERS}. Spoofing that takes a
+ * process that already reaches the loopback port with a crafted request, which is a local caller.
+ * The exemption reaches past this gate only; pairing still decides what the caller may do.
  */
 export function accessExempt(req: Request, pathname: string): boolean {
   if (pathname === "/api/health") return true;
   const host = req.headers.get("host") ?? "";
   if (!LOOPBACK_HOST.test(host)) return false;
-  return EDGE_HEADERS.every((h) => !req.headers.has(h));
+  return NOT_LOCAL_HEADERS.every((h) => !req.headers.has(h));
 }
 
 function b64urlBytes(s: string): Uint8Array<ArrayBuffer> | null {
@@ -136,6 +173,33 @@ export type TokenVerdict =
   | { ok: true }
   | { ok: false; reason: "malformed" | "alg" | "unknown-kid" | "signature" | "iss" | "aud" | "exp" | "nbf" };
 
+/** Read at most `max` bytes of a body as text, or throw. A lying Content-Length changes nothing. */
+async function boundedText(res: Response, max: number): Promise<string> {
+  const declared = Number(res.headers.get("content-length") ?? "0");
+  if (declared > max) throw new Error(`response larger than ${max} bytes`);
+  if (res.body === null) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      throw new Error(`response larger than ${max} bytes`);
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 /**
  * Verify one token against a key set. Pure apart from WebCrypto; exported for the tests.
  *
@@ -152,12 +216,15 @@ export async function verifyAccessToken(
   if (parts.length !== 3) return { ok: false, reason: "malformed" };
   const [h = "", p = "", s = ""] = parts;
   const header = b64urlJson(h);
+  if (header === null) return { ok: false, reason: "malformed" };
+  // The algorithm first, before the payload, the signature bytes or any key: `none` (with or
+  // without a signature), HS256 key confusion, RS512 and a missing `alg` all stop here.
+  if (header.alg !== "RS256") return { ok: false, reason: "alg" };
   const payload = b64urlJson(p);
   const sig = b64urlBytes(s);
-  if (header === null || payload === null || sig === null || sig.length === 0) {
-    return { ok: false, reason: "malformed" };
-  }
-  if (header.alg !== "RS256") return { ok: false, reason: "alg" };
+  if (payload === null || sig === null || sig.length === 0) return { ok: false, reason: "malformed" };
+  // The key is the one the `kid` names, exactly. No kid, or one the team does not publish, is
+  // refused; there is no fallback to the first or the only key.
   const kid = header.kid;
   const key = typeof kid === "string" ? keys.get(kid) : undefined;
   if (key === undefined) return { ok: false, reason: "unknown-kid" };
@@ -171,13 +238,17 @@ export async function verifyAccessToken(
   if (!auds.some((a) => expect.aud.includes(a))) return { ok: false, reason: "aud" };
   // `exp` is required: a token with no expiry is not one Cloudflare issues.
   if (typeof payload.exp !== "number" || payload.exp + SKEW_S <= expect.nowS) return { ok: false, reason: "exp" };
+  // `nbf` is optional; when present it is honoured with the same skew as `exp`.
   if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || payload.nbf - SKEW_S > expect.nowS)) {
     return { ok: false, reason: "nbf" };
   }
   return { ok: true };
 }
 
-/** Import every RS256-usable RSA key out of a JWKS body. Keys without a `kid` are skipped. */
+/**
+ * Import every RS256-usable RSA key out of a JWKS body. Keys without a `kid` are skipped. Only
+ * `keys` is read: the `public_cert` and `public_certs` fields Cloudflare also publishes are ignored.
+ */
 export async function importAccessKeys(body: JsonValue): Promise<Map<string, CryptoKey>> {
   const out = new Map<string, CryptoKey>();
   if (body === null || typeof body !== "object" || Array.isArray(body)) return out;
@@ -230,6 +301,8 @@ export class AccessGate {
   private lastFetchMs = Number.NEGATIVE_INFINITY;
   private inflight: Promise<boolean> | null = null;
   private retryStep = 0;
+  /** True while fetches keep failing, so a failure streak logs one line, not one per retry. */
+  private failing = false;
   private readonly fetchFn: (url: string, init?: RequestInit) => Promise<Response>;
   private readonly nowMs: () => number;
   private readonly log: (line: string) => void;
@@ -240,6 +313,8 @@ export class AccessGate {
     readonly issuer: string | null,
     readonly aud: readonly string[],
     deps: AccessGateDeps = {},
+    /** The operator-facing sentence for half a configuration; logged once at start. */
+    private readonly problem: string | null = null,
   ) {
     this.fetchFn = deps.fetch ?? ((url, init) => fetch(url, init));
     this.nowMs = deps.nowMs ?? Date.now;
@@ -260,8 +335,9 @@ export class AccessGate {
   /** Start the first key load and the refresh loop. Safe to call once. */
   start(): void {
     if (!this.configured) {
+      const why = this.problem ?? "set both COLLIE_ACCESS_TEAM and COLLIE_ACCESS_AUD";
       this.log(
-        "[bridge] ERROR: Cloudflare Access gate is half configured — set both COLLIE_ACCESS_TEAM and COLLIE_ACCESS_AUD. Every request through the tunnel is refused until then.",
+        `[bridge] ERROR: Cloudflare Access gate is half configured: ${why}. Every request that is not a local caller is refused (503) until both are set.`,
       );
       return;
     }
@@ -292,20 +368,31 @@ export class AccessGate {
       try {
         const res = await this.fetchFn(url, {
           headers: { accept: "application/json" },
+          // A redirect is a failure, never followed: the keys come from the team's host or nowhere.
           redirect: "error",
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        // SAFETY: `Response.json()` output IS a JsonValue by construction; the importer checks it.
-        const keys = await importAccessKeys((await res.json()) as JsonValue);
+        if (res.redirected || !res.ok) throw new Error(`HTTP ${res.status}${res.redirected ? " after a redirect" : ""}`);
+        const text = await boundedText(res, MAX_CERTS_BYTES);
+        // SAFETY: `JSON.parse` output IS a JsonValue by construction; the importer checks it.
+        const keys = await importAccessKeys(JSON.parse(text) as JsonValue);
         if (keys.size === 0) throw new Error("no usable RS256 key in the response");
         this.keys = keys;
-        if (!this.loadedOnce) this.log(`[bridge] Cloudflare Access gate armed: ${keys.size} key(s) from ${url}`);
+        if (!this.loadedOnce || this.failing) {
+          this.log(`[bridge] Cloudflare Access gate armed: ${keys.size} key(s) from ${url}`);
+        }
         this.loadedOnce = true;
+        this.failing = false;
         return true;
       } catch (err) {
-        const keep = this.loadedOnce ? "keeping the cached keys" : "refusing tunnel requests until it loads";
-        this.log(`[bridge] WARNING: Cloudflare Access keys from ${url} failed (${String(err)}), ${keep}`);
+        // One line per failure streak: the first failure names the cause, the retries stay quiet.
+        if (!this.failing) {
+          const msg = this.loadedOnce
+            ? `[bridge] WARNING: Cloudflare Access keys from ${url} failed (${String(err)}), keeping the cached keys`
+            : `[bridge] ERROR: Cloudflare Access keys from ${url} failed (${String(err)}). Every request that is not a local caller is refused (503) until they load; retrying.`;
+          this.log(msg);
+        }
+        this.failing = true;
         return false;
       } finally {
         this.inflight = null;
@@ -320,7 +407,7 @@ export class AccessGate {
     if (!this.configured) return refuse(503, "access gate misconfigured");
     if (!this.loadedOnce) {
       // A request is also a nudge: the first load may have failed a moment ago.
-      if (this.nowMs() - this.lastFetchMs >= UNKNOWN_KID_REFETCH_MS) await this.refresh();
+      if (this.nowMs() - this.lastFetchMs >= FIRST_LOAD_RETRY_MS[0]) await this.refresh();
       if (!this.loadedOnce) return refuse(503, "access keys not loaded");
     }
     const token = req.headers.get(ACCESS_JWT_HEADER);
@@ -330,7 +417,9 @@ export class AccessGate {
     const expect = { issuer: this.issuer!, aud: this.aud, nowS: Math.floor(this.nowMs() / 1000) };
     let verdict = await verifyAccessToken(token, this.keys, expect);
     if (!verdict.ok && verdict.reason === "unknown-kid" && this.nowMs() - this.lastFetchMs >= UNKNOWN_KID_REFETCH_MS) {
-      // Cloudflare rotated its key ahead of our hourly refresh.
+      // Cloudflare rotated its key ahead of our hourly refresh. The window is global: it reads the
+      // time of the last fetch of any kind, and concurrent callers share the one in flight, so a
+      // spray of made-up kids costs Cloudflare one fetch per 30 seconds at most.
       await this.refresh();
       verdict = await verifyAccessToken(token, this.keys, expect);
     }
@@ -342,5 +431,5 @@ export class AccessGate {
 export function createAccessGate(s: AccessGateSettings, deps: AccessGateDeps = {}): AccessGate | null {
   if (!accessGateRequested(s)) return null;
   const aud = s.accessAud.map((a) => a.trim()).filter((a) => a !== "");
-  return new AccessGate(accessIssuer(s.accessTeam), aud, deps);
+  return new AccessGate(accessIssuer(s.accessTeam), aud, deps, accessConfigProblem(s));
 }

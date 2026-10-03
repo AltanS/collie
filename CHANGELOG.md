@@ -70,6 +70,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   that Cloudflare signed for this application. A deleted Access app, a bypass rule or a policy that
   has not propagated yet then shows the panes to nobody. Half a setting, or keys Collie could not
   fetch, refuse every tunnel request. Unset, nothing changes. Thanks @xbach (#341).
+- **With the Access gate on, only a process on the machine itself skips the token.** A request
+  that carries a forwarding header (`X-Forwarded-For`, `Forwarded`, `X-Real-Ip` and the like) needs
+  the token too, so `tailscale serve` beside the tunnel stops serving browsers. `COLLIE_ACCESS_TEAM`
+  must name a `<team>.cloudflareaccess.com` team, so the key fetch cannot be pointed at another host.
+  The fetch gives up after 5 seconds, reads at most 64 KiB and follows no redirect. A bad setting or a
+  failed first fetch prints one line in the bridge log that names the cause.
 
 ### Changed
 
