@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { JsonValue } from "../bridge/json.ts";
 import {
   coerceSttFile,
+  commandLookup,
   DEFAULT_CODEX_BIN,
   DEFAULT_STT_MODEL,
   resolveSttSettings,
@@ -11,6 +12,7 @@ import {
   STT_PROVIDERS,
   sttEnvSettings,
   type CodexSttSettings,
+  MAX_LOCAL_CLI_ARGS,
   type SttProviderName,
   type SttSettings,
   type SttWireIdentity,
@@ -18,7 +20,9 @@ import {
 import { CODEX_TRANSCRIBE_URL, probeCodexIdentity, silentWavBytes } from "../bridge/stt/codex.ts";
 import { silentMp4AacBytes, silentWebmOpusBytes } from "../bridge/stt/probe-clips.ts";
 import { createSttProvider } from "../bridge/stt/index.ts";
-import { SttError, type SttProvider } from "../bridge/stt/provider.ts";
+import { jsonStringField } from "../bridge/stt/json.ts";
+import { LOCAL_CLI_TIMEOUT_MS, LocalCliEmptyTranscriptError } from "../bridge/stt/local-cli.ts";
+import { SttError, type SttAudio, type SttProvider, type SttResult } from "../bridge/stt/provider.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { parseCrewArgs } from "./crew.ts";
@@ -55,7 +59,10 @@ export interface SttDeps {
   ctx: CliContext;
   io: Io;
   files: Files;
-  /** Only ever asked `which(<codex binary>)` — no verb here runs an external tool. */
+  /**
+   * Only ever asked `which(<codex binary>)` or `which(<local-cli command>)` — no verb here runs an
+   * external tool itself; `stt test` reaches one only through the provider.
+   */
   exec: Exec;
   /**
    * Whether there is a terminal to ask at all.
@@ -108,10 +115,11 @@ function liveEnvKeys(ctx: CliContext): string[] {
 // ── setup ────────────────────────────────────────────────────────────────────
 
 const SETUP_USAGE = [
-  "usage: collie stt setup [--provider openai-compatible|codex]",
+  "usage: collie stt setup [--provider openai-compatible|codex|local-cli]",
   "                        [--url <base>] [--model <name>] [--key <api-key>]",
   "                        [--lang <iso-639-1>]                                (openai-compatible)",
   "                        [--codex-bin <path>] [--accept-risk]                (codex)",
+  "                        [--command <path>] [--args <list>]                  (local-cli)",
 ];
 
 /**
@@ -126,10 +134,10 @@ export async function cmdSttSetup(deps: SttDeps, args: readonly string[]): Promi
 
   const provider = await chooseProvider(deps, flags.provider);
   if (provider === null) return EXIT.FAIL;
-  const document =
-    provider === "codex"
-      ? await setupCodex(deps, flags, bare.has("accept-risk"))
-      : await setupOpenAi(deps, flags);
+  let document: RawSettings | null;
+  if (provider === "codex") document = await setupCodex(deps, flags, bare.has("accept-risk"));
+  else if (provider === "local-cli") document = await setupLocalCli(deps, flags);
+  else document = await setupOpenAi(deps, flags);
   if (document === null) return EXIT.FAIL;
 
   // The bridge's own resolve is the acceptance test. Anything it would refuse at request time is
@@ -197,7 +205,7 @@ async function chooseProvider(
 async function askProvider(deps: SttDeps): Promise<string | null> {
   if (!deps.interactive) {
     deps.io.err("error: this run is not interactive, and it would have asked which provider to use.");
-    deps.io.err("       Pass it: `collie stt setup --provider openai-compatible|codex`.");
+    deps.io.err("       Pass it: `collie stt setup --provider openai-compatible|codex|local-cli`.");
     return null;
   }
   deps.io.out("Which speech-to-text provider?");
@@ -206,10 +214,12 @@ async function askProvider(deps: SttDeps): Promise<string | null> {
   deps.io.out("                     server, which is the zero-egress choice and the one to prefer.");
   deps.io.out("  codex              borrow your own `codex` sign-in. No new key, no new account —");
   deps.io.out("                     and a private endpoint that may break without notice.");
+  deps.io.out("  local-cli          run a transcription command already on this machine, such as");
+  deps.io.out("                     whisper-cli or muesli-cli. Its stdout is the transcript.");
   const answered = (await deps.prompt("provider [openai-compatible]: "))?.trim();
   if (answered === undefined) {
     deps.io.err("error: this run is not interactive, and it would have asked which provider to use.");
-    deps.io.err("       Pass it: `collie stt setup --provider openai-compatible|codex`.");
+    deps.io.err("       Pass it: `collie stt setup --provider openai-compatible|codex|local-cli`.");
     return null;
   }
   return answered === "" ? "openai-compatible" : answered;
@@ -423,6 +433,108 @@ async function accepted(deps: SttDeps, byFlag: boolean): Promise<boolean> {
   return true;
 }
 
+// ── setup: the local-cli provider ────────────────────────────────────────────
+
+/** The `local-cli` document, or null when the command is missing or the arguments do not parse. */
+async function setupLocalCli(
+  deps: SttDeps,
+  flags: Readonly<Record<string, string>>,
+): Promise<RawSettings | null> {
+  const named = await ask(deps, flags.command, {
+    lead: [
+      "The transcription command. Collie runs it once per recording, with the recording's path as",
+      "its LAST argument, and reads the transcript from its stdout. An absolute path, or a name on PATH.",
+    ],
+    question: "command: ",
+    missing: "the command — `collie stt setup --command <path>`",
+  });
+  if (named === null) return null;
+  if (named === "") {
+    deps.io.err("error: no command given. Nothing was written.");
+    return null;
+  }
+  const command = locateCommand(deps, named);
+  if (command === null) return null;
+
+  const rawArgs = await ask(deps, flags.args, {
+    lead: [
+      "The arguments that go BEFORE the recording's path, separated by spaces — for example",
+      "`transcribe` or `-m /models/ggml-base.bin -nt`. No shell reads them, so quotes are literal; an",
+      'argument with a space in it needs the JSON form instead: ["-m", "/my models/base.bin"].',
+    ],
+    question: "arguments [none]: ",
+    missing: "the arguments — `collie stt setup --args <list>` (omit it for none)",
+    optional: true,
+  });
+  if (rawArgs === null) return null;
+  const args = parseArgList(rawArgs);
+  if (args === null) {
+    deps.io.err("error: --args is not a list of strings. Use words separated by spaces, or a JSON");
+    deps.io.err('       array of strings such as ["transcribe", "--lang", "en"]. Nothing was written.');
+    return null;
+  }
+
+  deps.io.out("");
+  deps.io.out("  Collie will run this as the bridge's own user, once per dictation:");
+  deps.io.out(`    ${[command, ...args].join(" ")} <recording>`);
+  deps.io.out(`  No shell is involved. A run longer than ${LOCAL_CLI_TIMEOUT_MS / 1000} s is killed, and stderr is never shown.`);
+  const document: RawSettings = { provider: "local-cli", command };
+  // Absent rather than `[]`, the same rule as every other optional field in this file.
+  if (args.length > 0) document.args = args;
+  return document;
+}
+
+/**
+ * The command, as an absolute path — the same reasoning as {@link locateCodex}: the bridge runs
+ * under a systemd user unit whose PATH is minimal, so a bare name is resolved HERE, in the
+ * operator's shell, and the path that was found is what gets written.
+ */
+function locateCommand(deps: SttDeps, named: string): string | null {
+  const lookup = commandLookup(named);
+  if (lookup === "absolute") {
+    if (deps.files.exists(named)) return named;
+    deps.io.err(`error: no such file: ${named} (--command)`);
+    return null;
+  }
+  if (lookup === "relative") {
+    deps.io.err(`error: \`${named}\` is a relative path. Give an absolute path, or a name on PATH (--command).`);
+    return null;
+  }
+  const found = deps.exec.which(named);
+  if (found !== null) return found;
+  deps.io.err(`error: \`${named}\` was not found on PATH (--command).`);
+  return null;
+}
+
+/**
+ * The `--args` value as a list: a JSON array of strings when it opens with `[`, else words split on
+ * whitespace. `null` when it is neither, or longer than the bridge will accept.
+ */
+export function parseArgList(raw: string): string[] | null {
+  const text = raw.trim();
+  if (text === "") return [];
+  let list: string[];
+  if (text.startsWith("[")) {
+    let parsed: JsonValue;
+    try {
+      // SAFETY: `JSON.parse` answers with a JSON value; every element is checked below before use.
+      parsed = JSON.parse(text) as JsonValue;
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(parsed)) return null;
+    list = [];
+    for (const item of parsed) {
+      const word = jsonStringField(item);
+      if (word === null) return null;
+      list.push(word);
+    }
+  } else {
+    list = text.split(/\s+/);
+  }
+  return list.length > MAX_LOCAL_CLI_ARGS ? null : list;
+}
+
 // ── test ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -485,7 +597,7 @@ export async function cmdSttTest(deps: SttDeps): Promise<number> {
       const label = `sending:  0.2 s of generated silence as ${clip.mimeType} (${clip.audience}) …`;
       const started = clock();
       try {
-        const result = await provider.transcribe({
+        const result = await transcribeProbe(provider, {
           audio: clip.bytes(),
           mimeType: clip.mimeType,
           filename: clip.filename,
@@ -521,6 +633,19 @@ export async function cmdSttTest(deps: SttDeps): Promise<number> {
   deps.io.err(`error: the provider refused ${refused.length} of ${STT_PROBE_CLIPS.length} clips.`);
   if (wavPassed) sayContainerRefusal(deps, refused);
   return EXIT.FAIL;
+}
+
+/**
+ * One probe clip through the provider. A `local-cli` command that printed nothing is refused on the
+ * route, but here the clip IS silence, so its empty answer is the same pass it is everywhere else.
+ */
+async function transcribeProbe(provider: SttProvider, clip: SttAudio): Promise<SttResult> {
+  try {
+    return await provider.transcribe(clip);
+  } catch (err) {
+    if (err instanceof LocalCliEmptyTranscriptError) return { text: "" };
+    throw err;
+  }
 }
 
 /**
@@ -562,6 +687,9 @@ function describeProvider(settings: SttSettings): string {
   if (settings.provider === "codex") {
     return `codex (${settings.codexBin}, identity ${settings.wireIdentity})`;
   }
+  if (settings.provider === "local-cli") {
+    return `local-cli (${settings.command}, ${settings.args.length} argument(s) before the recording)`;
+  }
   const language = settings.language === undefined ? "auto-detect" : settings.language;
   return `openai-compatible (${settings.baseUrl}, model ${settings.model}, language ${language})`;
 }
@@ -584,7 +712,8 @@ export function cmdSttStatus(deps: SttDeps): number {
 
   // Where one field's value came from, in the same precedence the bridge resolves in.
   const source = (name: keyof RawSettings, fallback = "default"): string => {
-    if (env[name] !== undefined) return STT_ENV_KEYS[envKeyOf(name)];
+    const envName = envKeyOf(name);
+    if (envName !== null && env[name] !== undefined) return STT_ENV_KEYS[envName];
     if (file[name] !== undefined) return STT_FILENAME;
     return fallback;
   };
@@ -617,6 +746,17 @@ export function cmdSttStatus(deps: SttDeps): number {
     if (file.language !== undefined || env.language !== undefined) {
       row("language", "ignored — this endpoint takes no language", source("language"));
     }
+  } else if (settings.provider === "local-cli") {
+    row("command", settings.command, source("command"));
+    row(
+      "args",
+      settings.args.length === 0 ? "none — the recording's path alone" : JSON.stringify(settings.args),
+      settings.args.length === 0 ? "default" : source("args"),
+    );
+    row("runs", `as this user, no shell, killed after ${LOCAL_CLI_TIMEOUT_MS / 1000} s`, "fixed");
+    if (file.language !== undefined || env.language !== undefined) {
+      row("language", "ignored — pass it in args if the command takes one", source("language"));
+    }
   } else {
     row("endpoint", settings.baseUrl, source("baseUrl"));
     row("model", settings.model, source("model", "default"));
@@ -631,10 +771,14 @@ export function cmdSttStatus(deps: SttDeps): number {
   return EXIT.OK;
 }
 
-/** The env key that carries one raw field. One switch, so a renamed field cannot silently mis-report. */
-function envKeyOf(name: keyof RawSettings): keyof typeof STT_ENV_KEYS {
+/**
+ * The env key that carries one raw field, or null for a field with no environment spelling (`args`,
+ * a list). One switch, so a renamed field cannot silently mis-report.
+ */
+function envKeyOf(name: keyof RawSettings): keyof typeof STT_ENV_KEYS | null {
   if (name === "baseUrl") return "url";
   if (name === "apiKey") return "key";
+  if (name === "args") return null;
   return name;
 }
 

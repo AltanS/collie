@@ -65,6 +65,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Type mode, and the card updates after about a second. A row omp cut short and a model the
   conversation no longer fits (picking it compacts first) are left out. The `@` quick roles, the
   task-model picker, narrow panes and the Nerd Font symbols stay terminal text with an Escape button.
+- **Voice input can run a transcription command already on your machine.** The new `local-cli` provider runs a command such as `whisper-cli` or `muesli-cli` once per recording, with the recording's path as its last argument, and takes the transcript from its stdout. Set it up with `collie stt setup --provider local-cli --command <path> --args <list>`, and check it with `collie stt test`. Collie runs it without a shell, as the bridge's user, and kills it after 60 seconds. The phone never sees its command line or its error output. Thanks @SubodhDahal (#227).
 
 ### Changed
 

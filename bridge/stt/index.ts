@@ -2,6 +2,7 @@ import type { OperatorFileIo } from "../operator-file.ts";
 import type { SttSettings } from "./config.ts";
 import { createSttSettingsReader } from "./config.ts";
 import { createCodexSttProvider } from "./codex.ts";
+import { createLocalCliSttProvider } from "./local-cli.ts";
 import { createOpenAiSttProvider } from "./openai.ts";
 import type { SttProvider } from "./provider.ts";
 
@@ -12,6 +13,7 @@ import type { SttProvider } from "./provider.ts";
 /** Build the provider the settings name. Total over {@link SttSettings} by construction. */
 export function createSttProvider(settings: SttSettings): SttProvider {
   if (settings.provider === "codex") return createCodexSttProvider(settings);
+  if (settings.provider === "local-cli") return createLocalCliSttProvider(settings);
   return createOpenAiSttProvider(settings);
 }
 

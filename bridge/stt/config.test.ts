@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { hostFor } from "../host.ts";
 import type { OperatorFileIo } from "../operator-file.ts";
 import type { OpenAiSttSettings, SttSettings } from "./config.ts";
 import {
@@ -8,6 +9,7 @@ import {
   DEFAULT_STT_MODEL,
   STT_FILENAME,
   coerceSttFile,
+  commandLookup,
   createSttSettingsReader,
   resolveSttSettings,
   sttEnvSettings,
@@ -476,5 +478,96 @@ describe("stt settings — the reader re-reads behind an mtime check", () => {
     env.COLLIE_STT_URL = "http://env:2/v1";
     expect(openAi(await read()).baseUrl).toBe("http://env:2/v1");
     expect(io.reads).toBe(1);
+  });
+});
+
+describe("stt settings — the local-cli provider (#227)", () => {
+  test("a command and an argument list resolve; absent args are an empty list", () => {
+    const { warn, lines } = collectWarnings();
+    expect(
+      resolveSttSettings(
+        coerceSttFile({ provider: "local-cli", command: "/opt/muesli/muesli-cli", args: ["transcribe"] }),
+        sttEnvSettings(NO_ENV),
+        warn,
+      ),
+    ).toEqual({ provider: "local-cli", command: "/opt/muesli/muesli-cli", args: ["transcribe"] });
+    expect(
+      resolveSttSettings(coerceSttFile({ provider: "local-cli", command: "whisper-cli" }), sttEnvSettings(NO_ENV), warn),
+    ).toEqual({ provider: "local-cli", command: "whisper-cli", args: [] });
+    expect(lines).toEqual([]);
+  });
+
+  test("the environment can name the command; args stay file-only", () => {
+    const { warn } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ provider: "local-cli", command: "/a", args: ["x"] }),
+      sttEnvSettings({ COLLIE_STT_COMMAND: "/b" }),
+      warn,
+    );
+    expect(settings).toEqual({ provider: "local-cli", command: "/b", args: ["x"] });
+  });
+
+  test("no command is refused, and the warning names the field", () => {
+    const { warn, lines } = collectWarnings();
+    expect(resolveSttSettings(coerceSttFile({ provider: "local-cli" }), sttEnvSettings(NO_ENV), warn)).toBeNull();
+    expect(lines.join("\n")).toContain("needs a command");
+  });
+
+  test("a relative path with a slash is refused; it would depend on the bridge's cwd", () => {
+    const { warn, lines } = collectWarnings();
+    const settings = resolveSttSettings(
+      coerceSttFile({ provider: "local-cli", command: "./bin/engine" }),
+      sttEnvSettings(NO_ENV),
+      warn,
+    );
+    expect(settings).toBeNull();
+    expect(lines.join("\n")).toContain("absolute path or a bare name");
+    expect(lines.join("\n")).not.toContain("./bin/engine");
+  });
+
+  test("args that are not a list of strings refuse rather than read as no arguments", () => {
+    for (const args of ["transcribe", ["ok", 3], { a: 1 }]) {
+      const { warn, lines } = collectWarnings();
+      const settings = resolveSttSettings(
+        coerceSttFile({ provider: "local-cli", command: "/x", args }),
+        sttEnvSettings(NO_ENV),
+        warn,
+      );
+      expect(settings).toBeNull();
+      expect(lines.join("\n")).toContain("must be a list of strings");
+    }
+  });
+
+  test("too many arguments, or one holding a NUL, are refused without echoing them", () => {
+    const { warn, lines } = collectWarnings();
+    const tooMany = Array.from({ length: 33 }, (_, i) => `a${i}`);
+    expect(
+      resolveSttSettings(coerceSttFile({ provider: "local-cli", command: "/x", args: tooMany }), sttEnvSettings(NO_ENV), warn),
+    ).toBeNull();
+    expect(
+      resolveSttSettings(
+        coerceSttFile({ provider: "local-cli", command: "/x", args: ["tok\0en"] }),
+        sttEnvSettings(NO_ENV),
+        warn,
+      ),
+    ).toBeNull();
+    expect(lines).toHaveLength(2);
+    expect(lines.join("\n")).not.toContain("tok");
+  });
+});
+
+describe("stt settings — how a local-cli command is looked up, per host", () => {
+  test("POSIX: a slash-led path is absolute, a name is bare, anything else with a slash is relative", () => {
+    const posix = hostFor("linux");
+    expect(commandLookup("/usr/bin/whisper-cli", posix)).toBe("absolute");
+    expect(commandLookup("whisper-cli", posix)).toBe("bare");
+    expect(commandLookup("bin/whisper-cli", posix)).toBe("relative");
+  });
+
+  test("Windows: a drive path is absolute though it starts with no slash", () => {
+    const win = hostFor("win32");
+    expect(commandLookup("C:\\tools\\whisper.exe", win)).toBe("absolute");
+    expect(commandLookup("whisper.exe", win)).toBe("bare");
+    expect(commandLookup("tools\\whisper.exe", win)).toBe("relative");
   });
 });

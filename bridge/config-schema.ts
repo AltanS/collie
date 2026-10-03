@@ -680,7 +680,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     env: "COLLIE_STT_PROVIDER",
     section: "stt",
     kind: "enum",
-    values: ["openai-compatible", "codex"],
+    values: ["openai-compatible", "codex", "local-cli"],
     default: "",
     doc: "Which speech-to-text provider to build. Absent leaves the feature off.",
   },
@@ -732,6 +732,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     kind: "string",
     default: "codex",
     doc: "The codex binary the codex provider borrows your session from.",
+  },
+  {
+    key: "stt_command",
+    env: "COLLIE_STT_COMMAND",
+    section: "stt",
+    kind: "string",
+    default: "",
+    doc: "The command the local-cli provider runs, an absolute path or a name on PATH.",
   },
 ];
 
