@@ -599,8 +599,8 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(schtasks(h)).toEqual([]);
       expect(h.files.exists(taskFilePath("C:\\cfg%TEMP%x", null, WIN))).toBe(false);
       expect(h.io.stderr.slice(-2)).toEqual([
-        "error: C:\\cfg%TEMP%x holds a '%', and Task Scheduler would read %NAME% in it as an environment variable",
-        "       Move Collie and its config folder to paths without '%', then run: collie start",
+        "error: Collie cannot start from C:\\cfg%TEMP%x, because that path has a % sign. Windows replaces %NAME% in a scheduled task's settings with the value of a variable, so the task would use the wrong path.",
+        "       Move Collie, and its config folder, to a folder whose path has no % sign, for example C:\\collie. Then run: collie start",
       ]);
     });
 

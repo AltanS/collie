@@ -533,8 +533,10 @@ function registerTask(deps: LifecycleDeps): boolean {
   const conhost = deps.exec.which("conhost");
   const percent = taskPercentPath(spec, conhost);
   if (percent !== null) {
-    deps.io.err(`error: ${percent} holds a '%', and Task Scheduler would read %NAME% in it as an environment variable`);
-    deps.io.err("       Move Collie and its config folder to paths without '%', then run: collie start");
+    deps.io.err(
+      `error: Collie cannot start from ${percent}, because that path has a % sign. Windows replaces %NAME% in a scheduled task's settings with the value of a variable, so the task would use the wrong path.`,
+    );
+    deps.io.err("       Move Collie, and its config folder, to a folder whose path has no % sign, for example C:\\collie. Then run: collie start");
     return false;
   }
   const file = taskFilePath(deps.ctx.configDir, deps.ctx.instance, deps.host);
