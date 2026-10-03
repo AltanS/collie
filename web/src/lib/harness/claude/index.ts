@@ -28,7 +28,7 @@ import {
   namesAModalKey,
   inputBoxTail,
 } from "./chrome";
-import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
+import { collapsesAsPaste, isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
 /**
  * Claude's block pipeline: detect a tail dialog (preview / wizard / prompt-select), replacing it with
@@ -215,4 +215,6 @@ export const claudeAdapter: HarnessAdapter = {
   // "this isn't the user's text" for the stranded-draft preview's Take over.
   draftCarriesSend: pasteCarriesSend,
   draftIsOpaque: isPastePlaceholderOnly,
+  // A send long enough to collapse goes as one bracketed paste; see `collapsesAsPaste`.
+  bracketedPaste: collapsesAsPaste,
 };

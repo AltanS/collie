@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
+import { collapsesAsPaste, isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
 // The paste-placeholder grammar (.adr/0010). Every shape below was live-probed on 2026-08-06 in the
 // collie-demo sandbox; the rejections are the load-bearing half — a `true` here fires the submit key
@@ -122,11 +122,48 @@ describe("pasteCarriesSend — rejections (the guard stays shut)", () => {
   });
 });
 
+// A long bracketed paste that carries an image path: Claude lifts a path off its end, or off a line
+// of its own, into `[Image #N]` and attaches the file (live-probed 2026-10-03, Claude Code 2.1.288).
+describe("pasteCarriesSend — an image path Claude lifted out of the paste", () => {
+  const long = "x".repeat(1500);
+
+  it("accepts the image token beside the paste when the send ended in an image path", () => {
+    expect(pasteCarriesSend(`${long} /tmp/shot.png`, "[Image #8][Pasted text #9]")).toBe(true);
+  });
+
+  it("accepts the lifted path taking its own line's newline with it", () => {
+    // Two newlines sent; the path's line went into the image, so the token claims one.
+    expect(pasteCarriesSend(`${long}\n/tmp/shot.png\n${long}`, "[Image #10][Pasted text #11 +1 lines]")).toBe(
+      true,
+    );
+  });
+
+  it("rejects an image token the send had no image path for", () => {
+    expect(pasteCarriesSend(`${long} /tmp/notes.txt`, "[Image #8][Pasted text #9]")).toBe(false);
+  });
+
+  it("rejects more image tokens than the send had image paths", () => {
+    expect(pasteCarriesSend(`${long} /tmp/shot.png`, "[Image #7][Image #8][Pasted text #9]")).toBe(false);
+  });
+
+  it("still rejects a line count no lifted image explains", () => {
+    expect(pasteCarriesSend(`${long}\n${long}\n${long}`, "[Image #10][Pasted text #11 +0 lines]")).toBe(false);
+  });
+});
+
+describe("collapsesAsPaste — which sends go as one bracketed paste", () => {
+  it("frames only what Claude would collapse: over 800 characters", () => {
+    expect(collapsesAsPaste("x".repeat(800))).toBe(false);
+    expect(collapsesAsPaste("x".repeat(801))).toBe(true);
+  });
+});
+
 describe("isPastePlaceholderOnly", () => {
   it("is true for token-only drafts, including a wrapped one", () => {
     expect(isPastePlaceholderOnly("[Pasted text #3 +3 lines]")).toBe(true);
     expect(isPastePlaceholderOnly("[Pasted text #3 +3 li nes]")).toBe(true);
     expect(isPastePlaceholderOnly("[Pasted text #1][Pasted text #2 +4 lines]")).toBe(true);
+    expect(isPastePlaceholderOnly("[Image #8][Pasted text #9]")).toBe(true);
   });
 
   it("is false once the user's own text sits beside the token, and for a plain draft", () => {

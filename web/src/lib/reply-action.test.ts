@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import * as registry from "./harness/registry";
-import { draftCarriesSend, sendGuardedReply } from "./reply-action";
+import { bracketPaste, draftCarriesSend, sendGuardedReply } from "./reply-action";
 
 // The regression suite for #34: a free-text reply must never fire the submit key until the text is
 // verifiably sitting in the harness's input box. Before this, the reply path typed and then submitted
@@ -635,6 +635,25 @@ describe("sendGuardedReply", () => {
       { text: "first line\nsecond line\nthird line\nfourth line", submit: false },
       { text: "", submit: true },
     ]);
+  });
+
+  // Bare, a send this long reached Claude as ~1 KB reads and only the last one survived; that tail
+  // verified, so Enter submitted it (claude/paste.ts → collapsesAsPaste). It now goes as ONE paste.
+  it("types a long Claude send as one bracketed paste, then submits on its placeholder", async () => {
+    const long = "a long voice note that goes on and on ".repeat(30);
+    const calls = harness(() => paneWithDraft("[Pasted text #4]"));
+
+    const out = await sendGuardedReply({ paneId: "w1:p1", text: long, agent: "claude", ...instant });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: `\x1b[200~${long}\x1b[201~`, submit: false },
+      { text: "", submit: true },
+    ]);
+  });
+
+  it("drops a paste marker already inside the text, so it cannot end the paste early", () => {
+    expect(bracketPaste("a\x1b[201~\nb\x1b[200~")).toBe("\x1b[200~a\nb\x1b[201~");
   });
 
   it("stalls on a placeholder inconsistent with what we sent — no submit key", async () => {
