@@ -128,7 +128,7 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
 
 7. **`contrib/windows` is removed.** Every verb of the community script `collie-ctl.ps1` is now a
    `collie` verb of the same name, and an install of the old script is taken over under the same task
-   name. The credits stay: @Pimpmuckl wrote the first Windows supervisor in `contrib/windows`
+   name. The credits stay: @JJLiebig wrote the first Windows supervisor in `contrib/windows`
    (PR #71), and @mqmalagris wrote the restart and swap path that makes `collie update` work on
    a running `collie.exe` (PR #309), with the Windows fixes before it (#296, #297, #298).
 

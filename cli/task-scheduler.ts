@@ -19,7 +19,7 @@ import { logFileName } from "./unit.ts";
 // are. The task therefore runs a launcher Collie owns, `collie _supervise`, and the launcher runs the
 // bridge (`collie _exec-bridge`, the same process the other supervisors run) and relaunches it when
 // it exits non-zero. It is the shape of `contrib/windows/collie-ctl.ps1`, first written by
-// @Pimpmuckl (#71), whose restart path @mqmalagris taught `cli/` to read (PR 309). That script is
+// @JJLiebig (#71), whose restart path @mqmalagris taught `cli/` to read (PR 309). That script is
 // retired; this file and the `taskscheduler` tier in `cli/lifecycle.ts` replace it.
 //
 // THE RECORD. The launcher writes which processes it owns to `<configDir>\collie-processes`, so

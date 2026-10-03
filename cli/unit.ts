@@ -259,7 +259,7 @@ ${envEntries}
 // No analogue: NoNewPrivileges and PrivateTmp. The task runs with the user's limited token unless
 // the operator asks for `COLLIE_TASK_RUN_LEVEL=highest` (see `taskRunLevel` in cli/lifecycle.ts).
 //
-// First written by @Pimpmuckl as `contrib/windows/collie-ctl.ps1` (#71), which this replaces.
+// First written by @JJLiebig as `contrib/windows/collie-ctl.ps1` (#71), which this replaces.
 
 /**
  * How often the task's time trigger fires: an ISO 8601 duration. No `Duration` goes with it, so it
