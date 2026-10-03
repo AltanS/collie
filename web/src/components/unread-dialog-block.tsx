@@ -53,7 +53,11 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
   useLocale();
   const [sending, setSending] = useState(false);
   const locked = disabled || sending;
-  const [armed, setArmed] = useState(false);
+  // The arm belongs to ONE dialog: it records the identity it was armed for, so a new dialog (other
+  // key, other rows, or another pane reusing this instance) is never armed by the old one's tap.
+  const identity = `${cancel.key}\n${lines.map(lineText).join("\n")}`;
+  const [armedFor, setArmedFor] = useState<string | null>(null);
+  const armed = armedFor === identity;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const caption = t("unreadDialog.caption");
   const dismissWording = lines.some((l) => NAMES_A_DISMISS.test(lineText(l)));
@@ -63,19 +67,19 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
   useEffect(() => {
     if (!disabled) return;
     clearTimeout(timer.current);
-    setArmed(false);
+    setArmedFor(null);
   }, [disabled]);
 
   async function press() {
     if (locked) return;
     if (!armed) {
-      setArmed(true);
+      setArmedFor(identity);
       clearTimeout(timer.current);
-      timer.current = setTimeout(() => setArmed(false), ARM_MS);
+      timer.current = setTimeout(() => setArmedFor(null), ARM_MS);
       return;
     }
     clearTimeout(timer.current);
-    setArmed(false);
+    setArmedFor(null);
     setSending(true);
     try {
       await onAction(cancel.key);
@@ -83,6 +87,10 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
       setSending(false);
     }
   }
+
+  const armedLabel = dismissWording
+    ? t("unreadDialog.confirmDismiss")
+    : t("unreadDialog.confirmKey", { key: keyLabel(cancel.key) });
 
   return (
     // rawMode (ADR 0056 counsel fix): this card always shows the mirror by default (below), so
@@ -94,7 +102,6 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
         type="button"
         disabled={locked}
         aria-busy={sending}
-        aria-live="polite"
         onClick={press}
         className={cn(
           "font-content flex min-h-11 w-full items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-foreground transition-colors disabled:opacity-60",
@@ -103,12 +110,12 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
             : "border-primary/60 bg-primary/15 active:bg-primary/25",
         )}
       >
-        {armed
-          ? dismissWording
-            ? t("unreadDialog.confirmDismiss")
-            : t("unreadDialog.confirmKey", { key: keyLabel(cancel.key) })
-          : keyLabel(cancel.key)}
+        {armed ? armedLabel : keyLabel(cancel.key)}
       </button>
+      {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
+      <span role="status" className="sr-only">
+        {armed ? armedLabel : ""}
+      </span>
 
       <RawMirror lines={lines} />
     </PromptPanel>
