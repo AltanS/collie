@@ -6,6 +6,9 @@ import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
 import { ompAdapter } from "./omp";
 import { lineText, rstrip } from "./omp/markers";
+import { hasComposer as hasBoxComposer } from "./omp/chrome";
+import { locateBorderlessComposer, locateClaudeComposer, locateGlyphComposer } from "./omp/glyph-prompt";
+import { locatePiComposer } from "./omp/pi-shape";
 import { locateRuleComposer } from "./omp/rule";
 import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
@@ -43,6 +46,15 @@ const allGrokFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
   .toSorted();
 const allForeignFixtures = [...allClaudeFixtures, ...allCodexFixtures, ...allGrokFixtures];
+// The `claude` and `borderless` composer captures (issue #343, omp v18.4.10) are composers under the
+// same `omp--v18-4-` prefix, so the modal cohort names them out. `omp--v18-4-claude-*` and
+// `omp--v18-4-borderless-*` are derived from the directory, so a new capture of either shape joins
+// this list and the negative cohorts below without a typed entry.
+const GLYPH_COMPOSER_FIXTURES = allOmpFixtures.filter((name) =>
+  /^omp--v18-4-(?:claude|borderless)-/.test(name),
+);
+const CLAUDE_COMPOSER_FIXTURES = GLYPH_COMPOSER_FIXTURES.filter((name) => name.includes("-claude-"));
+const BORDERLESS_COMPOSER_FIXTURES = GLYPH_COMPOSER_FIXTURES.filter((name) => name.includes("-borderless-"));
 // `omp--menu-dismissed.txt` matches this prefix and is a COMPOSER capture, not a modal, and so is
 // `omp--v18-4-composer-idle.txt`, the one `omp--v18-4-*` capture that is not a modal.
 // `omp--tree.txt` is a modal under a name that fits none of those prefixes, so it is named outright.
@@ -51,7 +63,9 @@ const allOmpModalFixtures = allOmpFixtures.filter(
     name.startsWith("omp--menu-") ||
     name.startsWith("omp--select-") ||
     name.startsWith("omp--approval-") ||
-    (name.startsWith("omp--v18-4-") && name !== "omp--v18-4-composer-idle.txt") ||
+    (name.startsWith("omp--v18-4-") &&
+      name !== "omp--v18-4-composer-idle.txt" &&
+      !GLYPH_COMPOSER_FIXTURES.includes(name)) ||
     name === "omp--tree.txt",
 );
 
@@ -124,6 +138,14 @@ const DECLINED = new Set([
   "omp--fresh-idle.txt",
   "omp--menu-dismissed.txt",
   "omp--v18-4-composer-idle.txt",
+  "omp--v18-4-borderless-draft.txt",
+  "omp--v18-4-borderless-idle.txt",
+  "omp--v18-4-borderless-wrapped.txt",
+  "omp--v18-4-claude-draft.txt",
+  "omp--v18-4-claude-idle.txt",
+  "omp--v18-4-claude-titled-draft.txt",
+  "omp--v18-4-claude-titled.txt",
+  "omp--v18-4-claude-wrapped.txt",
   "omp--v18-pi-effort-hint.txt",
   "omp--v18-rule-draft.txt",
   "omp--v18-rule-idle.txt",
@@ -248,6 +270,14 @@ describe("the omp corpus", () => {
     "omp--v18-4-ask-note-editor.txt",
     "omp--v18-4-ask-single-moved.txt",
     "omp--v18-4-ask-single.txt",
+    "omp--v18-4-borderless-draft.txt",
+    "omp--v18-4-borderless-idle.txt",
+    "omp--v18-4-borderless-wrapped.txt",
+    "omp--v18-4-claude-draft.txt",
+    "omp--v18-4-claude-idle.txt",
+    "omp--v18-4-claude-titled-draft.txt",
+    "omp--v18-4-claude-titled.txt",
+    "omp--v18-4-claude-wrapped.txt",
     "omp--v18-4-composer-idle.txt",
     "omp--v18-4-menu-model.txt",
     "omp--v18-4-menu-settings.txt",
@@ -382,6 +412,14 @@ const COMPOSER_FIXTURES = [
   "omp--slash-palette.txt",
   "omp--working.txt",
   "omp--v18-4-composer-idle.txt",
+  "omp--v18-4-borderless-draft.txt",
+  "omp--v18-4-borderless-idle.txt",
+  "omp--v18-4-borderless-wrapped.txt",
+  "omp--v18-4-claude-draft.txt",
+  "omp--v18-4-claude-idle.txt",
+  "omp--v18-4-claude-titled-draft.txt",
+  "omp--v18-4-claude-titled.txt",
+  "omp--v18-4-claude-wrapped.txt",
   "omp--v18-pi-effort-hint.txt",
   "omp--v18-rule-effort-hint.txt",
   "omp--v18-rule-draft.txt",
@@ -432,6 +470,9 @@ describe("the empty-editor key hint is not a draft", () => {
     "omp--fresh-agents-hint.txt",
     "omp--v18-rule-effort-hint.txt",
     "omp--v18-pi-effort-hint.txt",
+    "omp--v18-4-claude-idle.txt",
+    "omp--v18-4-claude-titled.txt",
+    "omp--v18-4-borderless-idle.txt",
   ])(
     "%s: composer on screen, no draft",
     (name) => {
@@ -523,6 +564,228 @@ describe("OMP 18 rule composer", () => {
 
   it.each(allForeignFixtures)("%s: the rule scanner rejects a foreign fixture", (name) => {
     expect(locateRuleComposer(fixtureLines(name))).toBeNull();
+  });
+});
+
+// OMP 18.4's `composer.shape: claude` and `composer.shape: borderless` (issue #343). Neither had a
+// locator, so `hasComposer` / `composerReady` / `extractInputDraft` read false / false / null and every
+// Send asked "Type anyway?". Captured on omp v18.4.10, one sandbox pane per shape, no model configured.
+describe("OMP 18.4 claude and borderless composers", () => {
+  const WRAP_WORDS = [
+    "COLLIE_SHAPE_WRAP", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+    "nineteen", "twenty", "twentyone", "twentytwo", "twentythree", "twentyfour", "twentyfive",
+    "twentysix", "twentyseven", "twentyeight", "twentynine", "thirty", "thirtyone", "thirtytwo",
+    "thirtythree", "thirtyfour", "thirtyfive", "END",
+  ];
+  const WRAPPED_DRAFT = WRAP_WORDS.join(" ");
+  const WRAPPED_PROMPT = [
+    "❯ COLLIE_SHAPE_WRAP one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen",
+    "  seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix twentyseven",
+    "  twentyeight twentynine thirty thirtyone thirtytwo thirtythree thirtyfour thirtyfive END",
+  ].join("\n");
+
+  // A synthetic tail: `body` rows, then a styled status row (lone separator segments, like the real
+  // renderer's), so each negative case changes exactly one thing about a known-good frame.
+  const STATUS = " \x1b[38;2;107;114;128mπ\x1b[0m \x1b[38;2;42;48;56m·\x1b[0m \x1b[38;2;0;180;255mmodel\x1b[0m";
+  const RULE = "\x1b[38;2;0;180;255m" + "─".repeat(40) + "\x1b[0m";
+  const frame = (...rows: string[]) => splitLines(parseAnsi(rows.join("\n")));
+
+  it.each(CLAUDE_COMPOSER_FIXTURES)("%s: the claude locator reads the composer, no other locator does", (name) => {
+    const lines = fixtureLines(name);
+    const composer = locateClaudeComposer(lines);
+    expect(composer).not.toBeNull();
+    expect(composer!.style).toBe("claude");
+    expect(composer!.status).toBe(lines.length - 1);
+    expect(lineText(lines[composer!.top!]!)).toMatch(/^─/);
+    expect(locateBorderlessComposer(lines)).toBeNull();
+    expect(locateRuleComposer(lines)).toBeNull();
+    expect(locatePiComposer(lines)).toBeNull();
+    expect(hasBoxComposer(lines)).toBe(false);
+    expect(ompAdapter.composerReady!(lines)).toBe(true);
+  });
+
+  it.each(BORDERLESS_COMPOSER_FIXTURES)("%s: the borderless locator reads the composer, no other locator does", (name) => {
+    const lines = fixtureLines(name);
+    const composer = locateBorderlessComposer(lines);
+    expect(composer).not.toBeNull();
+    expect(composer!.style).toBe("borderless");
+    expect(composer!.status).toBe(lines.length - 1);
+    expect(locateClaudeComposer(lines)).toBeNull();
+    expect(locateRuleComposer(lines)).toBeNull();
+    expect(locatePiComposer(lines)).toBeNull();
+    expect(hasBoxComposer(lines)).toBe(false);
+    expect(ompAdapter.composerReady!(lines)).toBe(true);
+  });
+
+  it("reads an empty claude composer, the title chip and the key hint included", () => {
+    for (const name of ["omp--v18-4-claude-idle.txt", "omp--v18-4-claude-titled.txt"]) {
+      const lines = fixtureLines(name);
+      expect(ompAdapter.extractInputDraft(lines)).toBeNull();
+      expect(ompAdapter.composerPrompt!(lines)).toMatch(/^❯ +⇧⇥ to change thinking effort$/);
+      const status = ompAdapter.extractStatusLines(lines);
+      expect(status).toHaveLength(1);
+      expect(status[0]).toBe(lines.at(-1));
+      const blocks = ompAdapter.buildBlocks(lines);
+      expect(blocks.map((b) => b.kind)).toEqual(["raw"]);
+      if (blocks[0]!.kind === "raw") {
+        const rawText = blocks[0]!.lines.map(lineText).join("\n");
+        expect(rawText).not.toContain("❯");
+        expect(rawText).not.toContain(lineText(status[0]!).trim());
+      }
+    }
+    // The title is the one thing that tells the two captures apart, and it lives in the top rule.
+    expect(lineText(fixtureLines("omp--v18-4-claude-titled.txt").at(-4)!)).toContain("Shape lab title");
+  });
+
+  it("reads claude drafts back exactly, wrapped rows folded with single spaces", () => {
+    const draft = (name: string) => ompAdapter.extractInputDraft(fixtureLines(name));
+    expect(draft("omp--v18-4-claude-draft.txt")).toBe("COLLIE_CLAUDE_SHAPE_DRAFT");
+    expect(draft("omp--v18-4-claude-titled-draft.txt")).toBe("COLLIE_TITLED_DRAFT");
+    expect(draft("omp--v18-4-claude-wrapped.txt")).toBe(WRAPPED_DRAFT);
+    expect(ompAdapter.composerPrompt!(fixtureLines("omp--v18-4-claude-draft.txt"))).toBe(
+      "❯ COLLIE_CLAUDE_SHAPE_DRAFT",
+    );
+    expect(ompAdapter.composerPrompt!(fixtureLines("omp--v18-4-claude-wrapped.txt"))).toBe(WRAPPED_PROMPT);
+  });
+
+  it("reads an empty borderless composer", () => {
+    const lines = fixtureLines("omp--v18-4-borderless-idle.txt");
+    expect(ompAdapter.extractInputDraft(lines)).toBeNull();
+    expect(ompAdapter.composerPrompt!(lines)).toMatch(/^❯ +⇧⇥ to change thinking effort$/);
+    const status = ompAdapter.extractStatusLines(lines);
+    expect(status).toHaveLength(1);
+    expect(status[0]).toBe(lines.at(-1));
+    const blocks = ompAdapter.buildBlocks(lines);
+    expect(blocks.map((b) => b.kind)).toEqual(["raw"]);
+    if (blocks[0]!.kind === "raw") {
+      const rawText = blocks[0]!.lines.map(lineText).join("\n");
+      expect(rawText).not.toContain("❯");
+      expect(rawText).not.toContain(lineText(status[0]!).trim());
+    }
+  });
+
+  it("reads borderless drafts back exactly, wrapped rows folded with single spaces", () => {
+    const draft = (name: string) => ompAdapter.extractInputDraft(fixtureLines(name));
+    expect(draft("omp--v18-4-borderless-draft.txt")).toBe("COLLIE_BORDERLESS_DRAFT");
+    expect(draft("omp--v18-4-borderless-wrapped.txt")).toBe(WRAPPED_DRAFT);
+    expect(ompAdapter.composerPrompt!(fixtureLines("omp--v18-4-borderless-draft.txt"))).toBe(
+      "❯ COLLIE_BORDERLESS_DRAFT",
+    );
+    expect(ompAdapter.composerPrompt!(fixtureLines("omp--v18-4-borderless-wrapped.txt"))).toBe(WRAPPED_PROMPT);
+  });
+
+  // The rejection cohorts: both locators decline every omp modal and composer of another shape, and
+  // every foreign capture, so the shapes cannot steal one another's panes.
+  const OTHER_OMP = allOmpFixtures.filter((name) => !GLYPH_COMPOSER_FIXTURES.includes(name));
+  it.each([...OTHER_OMP, ...allForeignFixtures])("%s: neither new locator claims it", (name) => {
+    const lines = fixtureLines(name);
+    expect(locateClaudeComposer(lines)).toBeNull();
+    expect(locateBorderlessComposer(lines)).toBeNull();
+    expect(locateGlyphComposer(lines)).toBeNull();
+  });
+
+  it("keeps the shapes apart: each locator declines the other shape's captures", () => {
+    for (const name of BORDERLESS_COMPOSER_FIXTURES) expect(locateClaudeComposer(fixtureLines(name))).toBeNull();
+    for (const name of CLAUDE_COMPOSER_FIXTURES) expect(locateBorderlessComposer(fixtureLines(name))).toBeNull();
+  });
+
+  it("the claude locator needs the status row directly under the bottom rule", () => {
+    const good = frame("transcript", "", RULE, "❯ hello", RULE, STATUS);
+    expect(locateClaudeComposer(good)).not.toBeNull();
+    expect(locateClaudeComposer(frame("transcript", "", RULE, "❯ hello", RULE, "", STATUS))).toBeNull();
+    expect(locateClaudeComposer(frame("transcript", "", RULE, "❯ hello", RULE, STATUS, "output below"))).toBeNull();
+    expect(locateClaudeComposer(frame("transcript", "", RULE, "❯ hello", RULE, " plain text no separator"))).toBeNull();
+    expect(locateClaudeComposer(frame("transcript", "", RULE, "❯ hello", "──", STATUS))).toBeNull();
+  });
+
+  it("the claude locator needs a top rule in the bottom rule's colour right above the prompt", () => {
+    const otherRule = "\x1b[38;2;255;179;71m" + "─".repeat(40) + "\x1b[0m";
+    expect(locateClaudeComposer(frame("transcript", otherRule, "❯ hello", RULE, STATUS))).toBeNull();
+    expect(locateClaudeComposer(frame("transcript", "", "❯ hello", RULE, STATUS))).toBeNull();
+    expect(locateClaudeComposer(frame("transcript", RULE, "", "❯ hello", RULE, STATUS))).toBeNull();
+  });
+
+  // issue 343, 18.3.0 form by description: no capture exists. The reporter's paste shows the titled top
+  // rule with no closing rule glyph after the title and a bottom rule shorter than the top. The lines
+  // are the 18.4.10 `claude-titled-draft` capture with exactly those two edits made on the raw bytes.
+  describe("issue 343, 18.3.0 form by description", () => {
+    const CLOSING_GLYPH = "\x1b[38;2;119;245;108m─\x1b[0m\r";
+    const from18410 = readFileSync(join(PANES_DIR, "omp--v18-4-claude-titled-draft.txt"), "utf8").split("\n");
+    const topIndex = from18410.findIndex((row) => row.includes("Shape lab title") && row.includes("──"));
+    const bottomIndex = topIndex + 2;
+    const form1830 = (mutate?: (rows: string[]) => void) => {
+      const rows = [...from18410];
+      expect(rows[topIndex]!.endsWith(CLOSING_GLYPH)).toBe(true);
+      rows[topIndex] = rows[topIndex]!.slice(0, -CLOSING_GLYPH.length) + "\r";
+      rows[bottomIndex] = "\x1b[0m\x1b[38;2;119;245;108m" + "─".repeat(40) + "\x1b[0m\r";
+      mutate?.(rows);
+      return splitLines(parseAnsi(rows.join("\n")));
+    };
+
+    it("locates as claude and reads the draft with no closing glyph and a 40-glyph bottom rule", () => {
+      const lines = form1830();
+      expect(lineText(lines[topIndex]!).trimEnd()).toMatch(/^─+ Shape lab title$/);
+      expect(lineText(lines[bottomIndex]!).trimEnd()).toBe("─".repeat(40));
+      const composer = locateClaudeComposer(lines);
+      expect(composer).not.toBeNull();
+      expect(composer!.style).toBe("claude");
+      expect(ompAdapter.extractInputDraft(lines)).toBe("COLLIE_TITLED_DRAFT");
+    });
+
+    it("declines a top row with fewer than 8 rule glyphs before its text", () => {
+      const lines = form1830((rows) => {
+        rows[topIndex] = "\x1b[38;2;119;245;108m" + "─".repeat(7) + " Shape lab title\x1b[0m\r";
+      });
+      expect(locateClaudeComposer(lines)).toBeNull();
+    });
+
+    it("declines a top row that is plain text", () => {
+      const lines = form1830((rows) => {
+        rows[topIndex] = "\x1b[38;2;119;245;108mShape lab title\x1b[0m\r";
+      });
+      expect(locateClaudeComposer(lines)).toBeNull();
+    });
+  });
+
+  it("the claude locator folds a draft with a blank line and caps the draft rows", () => {
+    const lines = frame("transcript", RULE, "❯ first", "  ", "  third", RULE, STATUS);
+    expect(locateClaudeComposer(lines)).not.toBeNull();
+    expect(ompAdapter.extractInputDraft(lines)).toBe("first third");
+    expect(ompAdapter.composerPrompt!(lines)).toBe("❯ first\n\n  third");
+    const rows = Array.from({ length: 100 }, (_, i) => `  row-${i}`);
+    expect(locateClaudeComposer(frame("transcript", RULE, "❯ head", ...rows, RULE, STATUS))).not.toBeNull();
+    expect(locateClaudeComposer(frame("transcript", RULE, "❯ head", ...rows, "  row-100", RULE, STATUS))).toBeNull();
+  });
+
+  it("the borderless locator needs every piece of the tail", () => {
+    expect(locateBorderlessComposer(frame("transcript", "", "❯ hello", STATUS))).not.toBeNull();
+    expect(ompAdapter.extractInputDraft(frame("transcript", "", "❯ hello", "  more", STATUS))).toBe("hello more");
+    // a blank row between the prompt and the status row is the `rule` shape's tail, never this one
+    expect(locateBorderlessComposer(frame("transcript", "❯ hello", "", STATUS))).toBeNull();
+    // anything below the status row
+    expect(locateBorderlessComposer(frame("❯ hello", STATUS, "output below"))).toBeNull();
+    // a status row without styled separator segments, or with the wrong indent
+    expect(locateBorderlessComposer(frame("❯ hello", " π · model"))).toBeNull();
+    expect(locateBorderlessComposer(frame("❯ hello", "  " + STATUS.trimStart()))).toBeNull();
+    // a shell prompt with a command typed is not a composer
+    expect(locateBorderlessComposer(frame("❯ ls -la", "total 0"))).toBeNull();
+    // a transcript row above the status row that is not the prompt or an indented continuation
+    expect(locateBorderlessComposer(frame("❯ hello", "output", STATUS))).toBeNull();
+    // a box row in the way
+    expect(locateBorderlessComposer(frame("❯ hello", "│ box │", STATUS))).toBeNull();
+    // a modal's key-hint footer at the tail
+    expect(
+      locateBorderlessComposer(frame("❯ hello", "│ ⏎ select · ↑/↓ move · ⎋ cancel │", "╰──────────────────╯", STATUS)),
+    ).toBeNull();
+  });
+
+  it("the borderless locator declines a pointer row of a picker and caps the draft rows", () => {
+    const picker = frame("  Resume Session", "❯ first session", "  2 minutes ago", "", "  [Enter select · Esc cancel]");
+    expect(locateBorderlessComposer(picker)).toBeNull();
+    const rows = Array.from({ length: 100 }, (_, i) => `  row-${i}`);
+    expect(locateBorderlessComposer(frame("transcript", "❯ head", ...rows, STATUS))).not.toBeNull();
+    expect(locateBorderlessComposer(frame("transcript", "❯ head", ...rows, "  row-100", STATUS))).toBeNull();
   });
 });
 

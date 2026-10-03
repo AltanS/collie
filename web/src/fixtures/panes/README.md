@@ -947,6 +947,54 @@ half of that test: exactly one styled row with more than one segment.
 | `omp--v18-pi-effort-hint.txt` | `pi` composer: the hint right-aligned on the single draft row between the two rules, status row below | `idle` |
 | `omp--fresh-agents-hint.txt` | Boxed composer with a background subagent running: `← ← to see 1 running agent` right-aligned in the bottom border | `idle` |
 
+## OMP `claude` and `borderless` composer corpus (captured 2026-10-03, oh-my-pi `omp` v18.4.10, herdr 0.9.3, throwaway Herdr pane)
+
+Eight byte-faithful `pane.read format:ansi` captures, taken with `scripts/capture-fixture.sh` from one throwaway Herdr
+pane, for [issue #343](https://github.com/AltanS/collie/issues/343): on omp 18.3.0 `composer.shape: claude` and
+`composer.shape: borderless` showed no composer to Collie, so `composerReady` was false and every Send asked
+"Type anyway?". Each shape ran under a `--config` overlay that set only `composer.shape`, in a fresh `git init` sandbox
+named `collie-omp-shape-sandbox` under `/tmp`, with `PI_CODING_AGENT_DIR` pointing at a copy of the agent directory that
+held nothing but `config.yml`. That keeps the operator's credentials, sessions and hint counters out of the pane, and
+it is why the status row reads `no-model` and the screen carries omp's `No models available` warning and an
+`Update Available` banner. No prompt was sent to any model: the drafts were typed into the editor and never submitted.
+The copy, the sandbox and the overlays were deleted afterwards. **No sanitization pass was needed**: no home path, host,
+account, session id or UUID appears, and the draft text is synthetic. All eight are CRLF with no trailing newline; their
+`wc -l` counts are 34 to 36 (`claude`) and 32 to 34 (`borderless`).
+
+Both shapes draw the `❯` gutter, which the `rule` scanner and the `pi` scanner do not read, so `harness/omp/glyph-prompt.ts`
+locates them from their own tails:
+
+- **`claude`**: a top rule, the `❯` row and its two-space continuation rows, a bottom rule, then the status row as the last
+  non-blank row, **with no blank gap**. The two rules are full width and painted in one colour. With a named session
+  (`/rename`) the top rule carries the title chip right-aligned, `──── Shape lab title ─`, which omp builds from the
+  status line's `session_name` segment; the bottom rule never carries one. The reporter's 18.3.0 paste has a bottom rule
+  shorter than the top, which 18.4.10 does not draw, so the locator takes a bottom rule of any length from eight glyphs up. The 18.3.0 form (a title with no closing rule glyph, where 18.4.10 ends it ` Title ─`, and a shorter bottom rule) is accepted by description and has no capture yet.
+- **`borderless`**: no rule at all. A blank spacer row, the `❯` row and its continuation rows, then the status row directly
+  under them as the last non-blank row. Because nothing frames it, the locator requires the whole tail: a status row of one
+  leading space and styled fields joined by a separator glyph painted as a segment of its own, nothing below it, no box row,
+  and no modal footer.
+
+In both shapes omp 18.4.10 paints the empty-editor key hint right-aligned on the `❯` row (`⇧⇥ to change thinking effort`),
+which is not a draft, and the `❯` glyph itself is unstyled while the draft text carries a foreground. The wrapped drafts
+are one 313-character line wrapped over three rows at 120 columns.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-4-claude-idle.txt` | Welcome panel, tip, warning and update banner, then the full-width top rule, an empty `❯` row with the key hint, the bottom rule and the status row. No session title in the top rule | not recorded |
+| `omp--v18-4-claude-draft.txt` | The same tail with `COLLIE_CLAUDE_SHAPE_DRAFT` on the `❯` row | not recorded |
+| `omp--v18-4-claude-wrapped.txt` | A 313-character draft wrapped over three rows, the last two behind the two-space gutter | not recorded |
+| `omp--v18-4-claude-titled.txt` | After `/rename Shape lab title`: a `Session renamed to …` notice, and the title chip right-aligned in the top rule | not recorded |
+| `omp--v18-4-claude-titled-draft.txt` | The titled tail with `COLLIE_TITLED_DRAFT` on the `❯` row | not recorded |
+| `omp--v18-4-borderless-idle.txt` | The update banner, a blank row, an empty `❯` row with the key hint and the status row directly under it | not recorded |
+| `omp--v18-4-borderless-draft.txt` | The same tail with `COLLIE_BORDERLESS_DRAFT` on the `❯` row | not recorded |
+| `omp--v18-4-borderless-wrapped.txt` | The same 313-character draft wrapped over three rows above the status row | not recorded |
+
+Both locators are fail-closed: every other omp capture (each modal, the boxed, `rule` and `pi` composers) and every claude,
+codex and grok capture is a rejection cohort, asserted to decline in `harness/omp.test.ts`, and the two shapes decline each
+other's captures. Not captured, and so not read: a `Working` pane (it needs a model; the reporter's status row starts with
+a spinner and a timer, which the locator does not inspect beyond the separator segment), the slash palette (it replaces the
+status row, so the tail no longer matches and the composer reads as absent), and a status row without a separator glyph.
+
 ## OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)
 
 Nine captures from omp 18.4.10 (five more for the `ask` tool, five for the tool approval and twenty-three for the model picker follow below), byte-faithful but for the sanitization pass below, taken to lift `/resume` and to give every other omp modal a declared way out ([ADR 0076](../../../../.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)).

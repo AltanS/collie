@@ -101,10 +101,22 @@
 // a status-bearing top rule directly above `❯` plus bounded continuation rows, then exactly one blank
 // gap and one standalone status row at the buffer tail. Neither scanner searches past a completed
 // transcript row, and every captured picker and Ask dialog still makes both return null.
+//
+// OMP 18.4's `claude` and `borderless` composer shapes (issue #343) carry a third scanner, glyph-prompt.ts.
+// `claude` is a rule pair around the `❯` rows with the status row directly under the bottom rule;
+// `borderless` has no rule, so it takes only the `❯` rows directly above a styled status row that is the
+// last non-blank row. Each declines on any modal and on every other shape's tail.
 
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { locatePiComposer, piDraft } from "./pi-shape";
+import {
+  extractGlyphInputDraft,
+  extractGlyphStatusLines,
+  glyphComposerPrompt,
+  locateGlyphComposer,
+  stripGlyphChrome,
+} from "./glyph-prompt";
 import { ompOpaqueDraft, ompReplyChunks } from "./reply-chunks";
 import {
   composerPrompt as boxComposerPrompt,
@@ -172,34 +184,43 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const pi = locatePiComposer(lines);
   if (pi) return decorateOmpDisplay(lines.slice(pi.bottom + 1, pi.suggestEnd));
   const rule = locateRuleComposer(lines);
-  const status = rule === null ? extractBoxStatusLines(lines) : extractRuleStatusLines(lines, rule);
-  return decorateOmpDisplay(status);
+  if (rule !== null) return decorateOmpDisplay(extractRuleStatusLines(lines, rule));
+  const glyph = locateGlyphComposer(lines);
+  if (glyph !== null) return decorateOmpDisplay(extractGlyphStatusLines(lines, glyph));
+  return decorateOmpDisplay(extractBoxStatusLines(lines));
 }
 
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const pi = locatePiComposer(lines);
   if (pi) return piDraft(lines, pi);
   const rule = locateRuleComposer(lines);
-  return rule === null ? extractBoxInputDraft(lines) : extractRuleInputDraft(lines, rule);
+  if (rule !== null) return extractRuleInputDraft(lines, rule);
+  const glyph = locateGlyphComposer(lines);
+  return glyph === null ? extractBoxInputDraft(lines) : extractGlyphInputDraft(lines, glyph);
 }
 
 export function stripChrome(lines: StyledLine[]): StyledLine[] {
   const pi = locatePiComposer(lines);
   if (pi) return lines.slice(0, pi.top);
   const rule = locateRuleComposer(lines);
-  return rule === null ? stripBoxChrome(lines) : stripRuleChrome(lines, rule);
+  if (rule !== null) return stripRuleChrome(lines, rule);
+  const glyph = locateGlyphComposer(lines);
+  return glyph === null ? stripBoxChrome(lines) : stripGlyphChrome(lines, glyph);
 }
 
 export function hasComposer(lines: StyledLine[]): boolean {
   if (locatePiComposer(lines)) return true;
-  return locateRuleComposer(lines) !== null || hasBoxComposer(lines);
+  if (locateRuleComposer(lines) !== null) return true;
+  return locateGlyphComposer(lines) !== null || hasBoxComposer(lines);
 }
 
 export function composerPrompt(lines: StyledLine[]): string | null {
   const pi = locatePiComposer(lines);
   if (pi) return lines.slice(pi.top, pi.bottom + 1).map((line) => line.segments.map((s) => s.text).join("").trimEnd()).join("\n");
   const rule = locateRuleComposer(lines);
-  return rule === null ? boxComposerPrompt(lines) : ruleComposerPrompt(lines, rule);
+  if (rule !== null) return ruleComposerPrompt(lines, rule);
+  const glyph = locateGlyphComposer(lines);
+  return glyph === null ? boxComposerPrompt(lines) : glyphComposerPrompt(lines, glyph);
 }
 
 // Two inputs a phone reply can land in: the composer (boxed, rule or pi-shaped), and the `ask` tool's
