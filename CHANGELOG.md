@@ -76,6 +76,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   must name a `<team>.cloudflareaccess.com` team, so the key fetch cannot be pointed at another host.
   The fetch gives up after 5 seconds, reads at most 64 KiB and follows no redirect. A bad setting or a
   failed first fetch prints one line in the bridge log that names the cause.
+  The app's manifest is fetched with the Access cookie, so the phone can install it behind Access.
 
 ### Changed
 
