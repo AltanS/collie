@@ -19,10 +19,13 @@ tailnet, and on Windows you run that one step by hand.
 > - A real install from the public v1.16.0 release on a Windows 11 virtual machine: `install.ps1`
 >   found the release, the sha256 matched and `collie.exe` ran. Then `collie start`,
 >   `collie status`, `collie doctor` and `collie stop` worked.
+> - Phone access through Tailscale Serve over HTTP, on a Headscale tailnet: the Host check,
+>   `collie url`, pairing and the write gate.
 >
 > **Not tested yet**
 > - An update between two real releases on Windows.
-> - Phone access through Tailscale on Windows.
+> - The HTTPS form of Tailscale Serve on Windows, and with it the home screen install, Web Push and
+>   the microphone.
 > - Windows 10, Windows Server, Windows on ARM, and the other items in
 >   [What is not tested](#what-is-not-tested).
 >
@@ -105,7 +108,7 @@ the installer script before you run it, see [Install](#install).
    ```
 
 6. Give the phone a way in with [Reaching it from your phone](#reaching-it-from-your-phone), which
-   the project has not run on Windows yet. Before its `tailscale serve` command only this PC can
+   the project ran over HTTP only on Windows. Before its `tailscale serve` command only this PC can
    reach Collie, and after it every device on your tailnet can, until you pair.
 
 7. On the phone, type that address into the browser, or send it to yourself, then add Collie to the
@@ -198,8 +201,9 @@ error. The bridge is the Collie program that runs on your PC and serves the web 
 ## Reaching it from your phone
 
 Step 6 of Zero to phone, in full. These are the same steps as on Linux and macOS, done by hand.
-They have not been run on Windows by the project yet. If a step fails, report it
-([where](#when-something-breaks)).
+The project ran them once on Windows, over HTTP, on a Headscale tailnet (Headscale is a self-hosted
+Tailscale server), with a desktop browser at phone size. The HTTPS form below was not run, and no
+real phone or agent was used. If a step fails, report it ([where](#when-something-breaks)).
 
 > **Caution.** From the `tailscale serve` command (step 3 below) until you pair a device, Collie is
 > open to every device on your tailnet, and they can read and type into your panes. Before that
@@ -256,9 +260,27 @@ https://myhost.tail1234.ts.net (tailnet only)
 The command is the same one that `collie start` runs for you on Linux and macOS. `--set-path=/`
 replaces whatever this PC already serves at `/` on your tailnet.
 
-Tailscale gives the address a certificate that the phone trusts. That matters, because installing
-to the home screen, Web Push (notifications to your phone) and the microphone need HTTPS. Over
-plain HTTP they stay off ([Voice input and Web Push](voice-and-push.md)).
+> **Note.** On a Headscale tailnet, the HTTPS command in step 3 fails with
+> `error enabling https feature: error 501 Not Implemented`, because Headscale issues no HTTPS
+> certificates. `collie doctor` may keep warning on its `front-door` line:
+> `this tailnet has no HTTPS certificates, so an https front door cannot be published`.
+>
+> There, publish over HTTP, which is the form the project ran on Windows:
+> `tailscale serve --bg --http=80 --set-path=/ 8787`. It publishes on tailnet port 80, so the
+> address is `http://<name>` with no port. Use that `http://` address in `COLLIE_PUBLIC_URL`.
+>
+> Plain HTTP is acceptable here because Tailscale encrypts the traffic between tailnet devices
+> (WireGuard), and the HTTP hop stays inside the tailnet. Never use `tailscale funnel`. Over HTTP
+> the home screen install, Web Push and the microphone stay off.
+>
+> On Linux and macOS, Collie's own HTTP mode publishes on the bridge port instead
+> ([`COLLIE_SERVE_MODE`](configure.md#the-environment-still-wins)). Collie does not run Serve on
+> Windows, so that variable changes no publishing here.
+
+On a tailnet with HTTPS on, Tailscale gives the address a certificate that the phone trusts. On
+Headscale, see the Note above. Installing to the home screen, Web Push (notifications to your
+phone) and the microphone need HTTPS. Over plain HTTP they stay off
+([Voice input and Web Push](voice-and-push.md)).
 
 In step 4, Notepad asks whether to create the file if it is not there. Click **Yes**. The folder
 is the Herdr plugin config folder for `herdr.collie`, by default
@@ -267,7 +289,8 @@ is the Herdr plugin config folder for `herdr.collie`, by default
 
 `COLLIE_PUBLIC_HOSTS` is the Host check: Collie reads the website name in each request and refuses
 any name that is not on this list, which stops a web page from reaching it through DNS rebinding.
-`COLLIE_PUBLIC_URL` is the address that `collie url` and the QR code of `collie pair` print.
+`COLLIE_PUBLIC_URL` is the address that `collie url` and the QR code of `collie pair` print. Open
+Collie by the full name: the Host check refuses the tailnet IP address and the short name.
 Collie also tries to find the tailnet name itself at start. The two lines make it certain.
 
 Collie does not manage this mapping on Windows. `collie stop` and `collie uninstall` leave it in
@@ -553,8 +576,8 @@ Two words on this page have a fixed meaning:
   and a rehearsal on a Windows 11 virtual machine before each release tag
   ([ADR 0075](../.adr/0075-windows-is-a-supported-host.md)). CI is the automatic test run on
   GitHub. An ADR is a short decision record kept in the repository.
-- **Experimental** means the update path and the phone path are not yet proven against real
-  releases.
+- **Experimental** means an update between two real releases and the HTTPS phone path are not yet
+  proven.
 
 What the support rests on:
 
@@ -572,6 +595,13 @@ What the support rests on:
   registered the task and started the bridge. `collie status` said running, `collie doctor` exited
   0, and `collie stop` stopped it. The script at `https://colliepwa.dev/install.ps1` is live, and it
   is byte-identical to the script in the v1.16.0 release.
+- Phone access ran on a Windows 11 VM on a Headscale tailnet, over HTTP. `tailscale serve --bg
+  --http=80 --set-path=/ <port>` published Collie. The two `.env` lines and `collie restart` made
+  `collie url` and the `collie start` banner print the tailnet name. From another tailnet machine,
+  the page, `/api/health` and `/api/snapshot` answered by the full name, and a request by tailnet IP
+  address or by the short name was refused. Pairing in the phone interface worked, and after it a
+  write without the credential got 403 "device not paired". A desktop browser at phone size stood
+  in for the phone.
 - Smart App Control on the test VM is in evaluation mode, and neither Smart App Control nor
   SmartScreen has blocked Collie there. This page describes what Windows documents, not a block
   that was seen.
@@ -616,8 +646,10 @@ Plain list, so nothing here reads as a promise:
 
 - An update between two real releases on Windows. The rehearsal used a local copy of the release
   files.
-- Phone access through a front door on Windows: Tailscale Serve, run by hand as in
-  [Reaching it from your phone](#reaching-it-from-your-phone), or any proxy.
+- The HTTPS form of Tailscale Serve on Windows (Headscale answered `501 Not Implemented`), and with
+  it the home screen install, Web Push and the microphone. Also a real phone, an agent running in a
+  Herdr pane, and a reverse proxy, in place of
+  [Tailscale Serve](#reaching-it-from-your-phone).
 - A manual `collie update --rollback` on Windows. The automatic rollback after a failed update was
   rehearsed.
 - Moving from a source checkout to the zip install, and updating a source checkout by hand.

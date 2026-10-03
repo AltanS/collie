@@ -161,11 +161,12 @@ macOS has no package yet. [mise](#mise) works on a Mac, as does the `aarch64-dar
 ### Windows support (experimental)
 
 > **Experimental.** The install was tested against the public v1.16.0 release on a Windows 11
-> virtual machine, and the update was rehearsed against local copies of the release files. An update
-> between two real releases and phone access on Windows are not tested yet. The release check
-> requires the Windows zip from now on. Only the maintainer can override that, for a Linux hotfix.
-> "Supported" means the maintainer owns the code and tests it; "experimental" stays until the
-> conditions on the Windows page are all met.
+> virtual machine, and the update was rehearsed against local copies of the release files. Phone
+> access over HTTP through Tailscale Serve was run too. An update between two real releases and the
+> HTTPS form of phone access are not tested yet. The release check requires the Windows zip from now
+> on. Only the maintainer can override that, for a Linux hotfix. "Supported" means the maintainer
+> owns the code and tests it; "experimental" stays until the conditions on the Windows page are all
+> met.
 > [Collie on Windows](windows.md) has the whole page.
 
 Run `install.ps1`. It needs no Bun, Git or `bash`:

@@ -199,9 +199,9 @@ irm https://colliepwa.dev/install.ps1 | iex
 ```
 
 v1.16.0 is the first release with a Windows zip. The installer was run against that public release on
-a Windows 11 VM, and `collie start`, `status`, `doctor` and `stop` worked. Not tested yet are an
-update between two real releases on Windows and phone access through Tailscale on Windows, which is
-why it stays experimental.
+a Windows 11 VM, and `collie start`, `status`, `doctor` and `stop` worked. Phone access over HTTP
+through Tailscale Serve was run too. Not tested yet are an update between two real releases on
+Windows and the HTTPS form of Tailscale Serve on Windows, which is why it stays experimental.
 
 The release check requires the Windows zip from now on. Only the maintainer can override that, for a
 Linux hotfix.
