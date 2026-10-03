@@ -831,6 +831,9 @@ export const ko: Dictionary = {
   // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}, 현재",
   "unreadDialog.caption": "Collie가 이 대화상자를 읽을 수 없습니다", // wordsmith
+  // English stopgap (#339), awaiting `wordsmith --translate`.
+  "unreadDialog.confirmKey": "Tap again to send {key}",
+  "unreadDialog.confirmDismiss": "Tap again to dismiss",
   "dialog.preview.currentAnswerAria": "현재 답변",
   "dialog.preview.previewedBelowAria": "하단 미리보기",
   "dialog.preview.previewLabel": "미리보기 · {label}",

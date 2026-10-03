@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import type { StyledLine, UnreadDialogModel } from "@/lib/blocks";
+import { lineText, type StyledLine, type UnreadDialogModel } from "@/lib/blocks";
 import { keyLabel } from "@/lib/key-queue";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { RawMirror } from "@/components/raw-mirror";
@@ -41,14 +41,41 @@ export interface UnreadDialogBlockProps {
 // appears, no border is added, no padding moves. The border is reserved in the base string and the
 // pending state only repaints it, so the card the operator is reading does not shift under the tap.
 // DESIGN.md §6: `min-h-11` is the 44px tap floor, stated as a floor and never a fixed height.
+// ARM, THEN SEND (#339). The declared key is sent on the SECOND tap. A screen this card could not
+// read may be a question dialog whose Escape ends the whole turn (opencode's `esc dismiss`), and
+// the first tap must not be able to do that. The first tap only arms: the button's words change
+// (never its size), and it disarms by itself after ARM_MS. The wording names "Dismiss" only when
+// the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
+export const ARM_MS = 4000;
+const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
+
 export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
   const locked = disabled || sending;
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const caption = t("unreadDialog.caption");
+  const dismissWording = lines.some((l) => NAMES_A_DISMISS.test(lineText(l)));
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+  // A card that stops being pressable (read-only device, gone pane) also stops being armed.
+  useEffect(() => {
+    if (!disabled) return;
+    clearTimeout(timer.current);
+    setArmed(false);
+  }, [disabled]);
 
   async function press() {
     if (locked) return;
+    if (!armed) {
+      setArmed(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setArmed(false), ARM_MS);
+      return;
+    }
+    clearTimeout(timer.current);
+    setArmed(false);
     setSending(true);
     try {
       await onAction(cancel.key);
@@ -67,13 +94,20 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled }: UnreadD
         type="button"
         disabled={locked}
         aria-busy={sending}
+        aria-live="polite"
         onClick={press}
         className={cn(
           "font-content flex min-h-11 w-full items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-foreground transition-colors disabled:opacity-60",
-          sending ? "border-primary bg-primary/25" : "border-primary/60 bg-primary/15 active:bg-primary/25",
+          sending || armed
+            ? "border-primary bg-primary/25"
+            : "border-primary/60 bg-primary/15 active:bg-primary/25",
         )}
       >
-        {keyLabel(cancel.key)}
+        {armed
+          ? dismissWording
+            ? t("unreadDialog.confirmDismiss")
+            : t("unreadDialog.confirmKey", { key: keyLabel(cancel.key) })
+          : keyLabel(cancel.key)}
       </button>
 
       <RawMirror lines={lines} />

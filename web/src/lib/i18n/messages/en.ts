@@ -906,6 +906,9 @@ export const en = {
   "dialog.menu.levelAria": "{verb} to {label}",
   "dialog.menu.levelCurrentAria": "{label}, current",
   "unreadDialog.caption": "Collie cannot read this dialog",
+  // Second-tap wording (#339): the first tap arms the key, the second sends it.
+  "unreadDialog.confirmKey": "Tap again to send {key}",
+  "unreadDialog.confirmDismiss": "Tap again to dismiss",
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",
   "dialog.preview.previewLabel": "Preview · {label}",
