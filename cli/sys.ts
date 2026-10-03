@@ -253,6 +253,8 @@ export interface Files {
   /** Write `text`, creating the parent directory. `mode` is applied to the file. */
   write(p: string, text: string, mode?: number): void;
   mkdirp(p: string, mode?: number): void;
+  /** The sha256 of a file's bytes, in hex, or null when it cannot be read. */
+  digest(p: string): string | null;
   /** Remove a file. Missing is success — this is `rm -f`. */
   remove(p: string): void;
   /** Remove a tree. Missing is success — this is `rm -rf`. */
@@ -772,6 +774,13 @@ export const realFiles: Files = {
   },
   rename(from, to) {
     renameSync(from, to);
+  },
+  digest(p) {
+    try {
+      return new Bun.CryptoHasher("sha256").update(readFileSync(p)).digest("hex");
+    } catch {
+      return null;
+    }
   },
   ownerUid(p) {
     // Windows has no POSIX uid, and Node/Bun report a constant 0 there regardless of who owns the

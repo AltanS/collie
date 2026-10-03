@@ -1598,7 +1598,7 @@ describe("collie update on a binary install", () => {
     // The update goes on past the sweep to the release check (this fixture's release has no zip).
     await cmdUpdate(h.deps);
     expect(h.io.stderr.join("\n")).toContain("has no Windows build");
-    expect(h.io.stdout.some((l) => l.includes("0.9.0.abc") && l.includes("is still in use") && l.includes("a later update removes it"))).toBe(true);
+    expect(h.io.stdout.some((l) => l.includes("0.9.0.abc") && l.includes("is still in use") && l.includes("It is harmless, and the next update removes it."))).toBe(true);
 
     // Off Windows the same failure still stops the update, as it always did.
     const linux = binaryHarness();
@@ -1666,8 +1666,11 @@ describe("collie update on a binary install", () => {
     });
     const laid = `${INST}/versions/${NEW}`;
     const EBUSY = (): Error => Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
-    /** The target's folder laid down by an earlier update; `whole` lays all four files the payload needs. */
-    const held = (whole: boolean, refuse: "rename" | "delete" | "none" = "rename") => {
+    /**
+     * The target's folder laid down by an earlier update. `whole` lays all four files the payload
+     * needs; `binary` is its collie.exe, the same bytes as the download unless a test says otherwise.
+     */
+    const held = (whole: boolean, refuse: "rename" | "delete" | "none" = "rename", binary = "NEW BINARY") => {
       const h = windowsBinaryHarness({ manifest: zipManifest });
       const download = h.deps.net.download;
       h.deps.net = {
@@ -1678,7 +1681,8 @@ describe("collie update on a binary install", () => {
           return got;
         },
       };
-      h.files.write(`${laid}/bin/collie.exe`, "NEW BINARY, laid before");
+      h.files.write(`${laid}/bin/collie.exe`, binary);
+      h.files.write(`${laid}/marker`, "laid before");
       if (whole) {
         h.files.write(`${laid}/web/dist/index.html`, "NEW");
         h.files.write(`${laid}/herdr-plugin.toml`, `version = "${NEW}"\n`);
@@ -1697,15 +1701,27 @@ describe("collie update on a binary install", () => {
       return h;
     };
 
-    test("a complete folder is used as it is, with a note, and the update goes on", async () => {
+    test("a complete folder holding the same collie.exe is used as it is, with a plain note", async () => {
       const h = held(true);
       expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
       // POSIX keys: on a real Windows run the native `join` spells the folder with backslashes.
-      expect(posixKey(h.io.stdout.join("\n"))).toContain(`note: ${laid} is in use and could not be moved aside (`);
-      expect(h.io.stdout.join("\n")).toContain("this update uses it as it is");
+      expect(posixKey(h.io.stdout.join("\n"))).toContain(
+        `note: ${laid} is still in use and holds this same build, so this update uses it as it is. This does not stop the update.`,
+      );
       // The new payload never replaced it, and the staging folder is gone.
       expect(h.files.ops).not.toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${laid}`);
-      expect(h.files.read(`${laid}/bin/collie.exe`)).toBe("NEW BINARY, laid before");
+      expect(h.files.read(`${laid}/marker`)).toBe("laid before");
+      expect(h.files.exists(`${INST}/.staging`)).toBe(false);
+    });
+
+    test("a complete folder whose collie.exe is another build is not used: the update stops and changes nothing", async () => {
+      const h = held(true, "rename", "AN OLDER CUT OF THE SAME VERSION");
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      const err = posixKey(h.io.stderr.join("\n"));
+      expect(err).toContain(`error: ${laid} is still in use, and its collie.exe is not the one just downloaded, so this update cannot use it or replace it now (`);
+      expect(err).toContain("Nothing was changed. Run `collie stop`, then `collie start`, then run `collie update` again.");
+      expect(h.link.ops).toEqual([]);
+      expect(h.files.read(`${laid}/bin/collie.exe`)).toBe("AN OLDER CUT OF THE SAME VERSION");
       expect(h.files.exists(`${INST}/.staging`)).toBe(false);
     });
 
@@ -1713,16 +1729,18 @@ describe("collie update on a binary install", () => {
       const h = held(false);
       expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
       const err = posixKey(h.io.stderr.join("\n"));
-      expect(err).toContain(`${laid} is there already, is not complete (missing web/dist/index.html, herdr-plugin.toml, package.json)`);
-      expect(err).toContain("Run `collie stop`, then `collie start`, and update again.");
+      expect(err).toContain(`${laid} is still in use, and it is missing web/dist/index.html, herdr-plugin.toml, package.json`);
+      expect(err).toContain("Run `collie stop`, then `collie start`, then run `collie update` again.");
       expect(h.link.ops).toEqual([]);
       expect(h.files.exists(`${INST}/.staging`)).toBe(false);
     });
 
-    test("a folder that moves but cannot be deleted yet stays in .trash with a note", async () => {
+    test("a folder that moves but cannot be deleted yet stays in .trash with a plain note", async () => {
       const h = held(true, "delete");
       expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-      expect(h.io.stdout.some((l) => posixKey(l).includes(`${INST}/.trash/${NEW}.`) && l.includes("a later update removes it"))).toBe(true);
+      const note = h.io.stdout.find((l) => posixKey(l).includes(`${INST}/.trash/${NEW}.`)) ?? "";
+      expect(note).toContain("note: the old folder ");
+      expect(note).toContain("so it stays for now. It is harmless, and the next update removes it. This does not stop the update.");
       expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${laid}`);
     });
 
@@ -1735,7 +1753,7 @@ describe("collie update on a binary install", () => {
         rename(from, to);
       };
       expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
-      expect(h.io.stderr.join("\n")).toContain("could not be moved aside");
+      expect(h.io.stderr.join("\n")).toContain("so this update cannot use it or replace it now");
     });
   });
 

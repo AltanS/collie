@@ -1268,7 +1268,7 @@ function clearScratch(deps: UpdateDeps, path: string): void {
   try {
     deps.files.removeTree(path);
   } catch (err) {
-    deps.io.out(`note: ${path} is still in use (${String(err)}); a later update removes it.`);
+    deps.io.out(`note: the old folder ${path} is still in use (${String(err)}), so it stays for now. It is harmless, and the next update removes it. This does not stop the update.`);
   }
 }
 
@@ -1701,17 +1701,21 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   if (stuck !== null) {
     // On Windows the launcher keeps running from the version it started with, through a rollback and
     // a `collie restart`, so the folder of the version rolled away from stays in use until the next
-    // `collie stop` or logon. A COMPLETE folder of this very version is used as it is: the smoke below
-    // still checks that it runs and names this version. A partial one is not.
+    // `collie stop` or logon. That folder is used as it is only when it is COMPLETE and its
+    // `collie.exe` is byte for byte the one just downloaded: a release re-cut under the same version,
+    // or a folder an interrupted run left, is another build. The smoke below still checks that it runs.
     const incomplete = missingIn(laid);
-    if (incomplete.length > 0) {
+    const held = deps.files.digest(collieBinary(laid, deps.host));
+    const same = incomplete.length === 0 && held !== null && held === deps.files.digest(collieBinary(payload, deps.host));
+    if (!same) {
+      const why = incomplete.length > 0 ? `it is missing ${incomplete.join(", ")}` : "its collie.exe is not the one just downloaded";
       deps.files.removeTree(layout.stagingDir);
-      deps.io.err(`error: ${laid} is there already, is not complete (missing ${incomplete.join(", ")}), and could not be moved aside (${stuck}).`);
-      deps.io.err("       Something still runs from it. Nothing was changed. Run `collie stop`, then `collie start`, and update again.");
-      abandonStaging(deps, `the old ${target.version} folder could not be moved aside`);
+      deps.io.err(`error: ${laid} is still in use, and ${why}, so this update cannot use it or replace it now (${stuck}).`);
+      deps.io.err("       Nothing was changed. Run `collie stop`, then `collie start`, then run `collie update` again.");
+      abandonStaging(deps, `the old ${target.version} folder is in use and is not this build`);
       return EXIT.FAIL;
     }
-    const said = `${laid} is in use and could not be moved aside (${stuck}); this update uses it as it is`;
+    const said = `${laid} is still in use and holds this same build, so this update uses it as it is. This does not stop the update.`;
     deps.io.out(`note: ${said}`);
     progress.note(said);
   } else {
