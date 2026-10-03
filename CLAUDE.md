@@ -670,8 +670,10 @@ its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it throug
 **The bridge makes no outbound call and spawns no long-running child for content — unless the
 operator ran `collie stt setup`.** Speech-to-text (`bridge/stt/`, CLI `cli/stt.ts`) is a registered
 provider seam, absent until that verb writes `stt.json`: it then holds a provider credential at 0600,
-opens an operator-configured outbound path carrying microphone audio, and on the `codex` provider
-spawns a `codex app-server` child. All three costs are declined by doing nothing, the local-engine
+opens an operator-configured outbound path carrying microphone audio, on the `codex` provider
+spawns a `codex app-server` child, and on the `local-cli` provider spawns the operator's named
+command as the bridge user, once per dictation, argv only and never a shell (ADR 0029, addendum
+2026-10-03). Every one of these costs is declined by doing nothing, the local-engine
 configuration keeps the egress on loopback, and the wire identity is probed honest-first and recorded
 ([ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md)). Setup is a CLI act, never
 a web form, for the reason pairing is.
