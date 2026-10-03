@@ -93,7 +93,17 @@ and lives only in the action layer.**
    `signature` keeps it verbatim, so the entry guard still refuses a tap on a screen whose age
    ticked (the trade ADR 0058 records), and the final Enter is still bound to the fresh verbatim
    read. It blanks the one token its own row parse located, never a pattern run over the whole
-   region. The Claude and Oh My Pi `/resume` pickers do this. A grammar whose pointer is only a
+   region. The Claude and Oh My Pi `/resume` pickers do this.
+   **Twin rows keep their ages.** Two sessions with the same title and the same meta row apart from
+   the age (same size, branch, marks) are told apart only by the age. With ages blanked, a re-sort
+   that swaps them during the walk would pass identity, and the Enter would resume the other session.
+   So when two or more sessions are identical in title and in meta-minus-age, `coreSignature` keeps
+   the ages of those sessions verbatim. Every other session still gets the age token. A tick on such
+   a row then makes a walked tap answer `changed`, which is the safe side. **Every blank is a safety
+   decision.** `coreSignature` is the only link between the dialog the user tapped and the Enter that
+   is committed after the walk. So each grammar ships mutation tests for both directions: what the
+   blank must hold (every age shifted, a detail row replaced) and what it must refuse (a title, a
+   size, an id, a badge, a mark or a row changed, removed or swapped). A grammar whose pointer is only a
    style, so that it cannot appear in `signature` at all, carries the pointer in its option plans
    (point 2). **The corpus MUST hold such a walk pair for
    every grammar that emits walked plans.** `harness/walk-pairs.ts` declares the pairs, and the
@@ -101,7 +111,7 @@ and lives only in the action layer.**
    captures are `promptsSameIdentity` both ways, not `promptsEqual`, and that the row with the plan
    `["Enter"]` differs. It reads the walked fixtures off the adapter over the whole corpus, so a
    grammar cannot opt out, and it fails for a grammar group (agent, family, dialog title) that has
-   neither a declared pair nor a one-line gap in `WALK_GAPS`. The message says to capture the same
+   neither a declared pair nor a dated one-line gap in `WALK_GAPS`. The set of gaps is pinned by a literal list in the suite and only shrinks: a new gap needs a second capture first. The message says to capture the same
    dialog with the pointer on another row.
 
 6. **A clamped list commits an edge row with a sticky arrow.** A grammar whose source or capture
@@ -133,9 +143,14 @@ and lives only in the action layer.**
   screen and the user taps again. This is the accepted cost; ADR 0055 point 4 was trying to avoid it.
 - **Where a harness shows its pointer only as a style, the bridge cannot see it.** The bridge's text
   binding compares screen text, and opencode's permission chips differ from one another by a
-  background colour, so the same binding matches with the pointer on any chip. The verify read on the
-  phone is then the guard: it must see the tapped chip carry the plan `["Enter"]` before Enter goes
-  out. The window that remains runs from that read to the send.
+  background colour, so the same binding matches with the pointer on any chip. Before this ADR the one
+  batch had the same blind spot: the bridge never saw a style-only pointer, and nothing checked the
+  pointer between the arrows and the Enter. Now the phone's read verifies the walk: the tapped chip
+  must carry the plan `["Enter"]` before Enter goes out. The window that remains runs from that verify
+  read to the send. It is larger than the window of a text-visible pointer, where the bridge's own
+  re-read sees the pointer. opencode's "Always allow" opens a second confirm step (`Confirm` and
+  `Cancel`, see `web/src/lib/harness/opencode/PERMISSION_NOTES.md`). So a one-chip slip from "Allow
+  once" lands on a confirm dialog, not on a standing grant.
 - **The race window is smaller, not gone, and for an edge row of a clamped list it is covered.**
   What remains is the milliseconds between the bridge's own re-read and its send (see
   `checkPromptBinding` in `bridge/server.ts`). Point 6 covers that gap for the first and last row of
@@ -146,3 +161,10 @@ and lives only in the action layer.**
   the keys, the visible default, the pointer as visible state, and the numbered shape untouched.
 - **Revisit** if a multiplexer gains a send that is conditional on the screen, or if a harness prints
   a pointed list whose Enter commits a different row than the one the pointer shows.
+
+### Follow-ups
+
+1. Answer opencode permissions over its HTTP channel by id. That removes the pointer.
+2. Add a bridge-side pointer check for style-only pointers.
+3. Let the poll return its last model, so the commit needs no extra read.
+4. Let a drift refusal report which field differed, so a harness drift is a one-line diagnosis.

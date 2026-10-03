@@ -52,6 +52,14 @@
 // moves both without a key and the walk's own arrows move the first. Only the age token that
 // `readMeta` parsed is blanked; size and the rest of the meta row stay.
 //
+// TWIN ROWS KEEP THEIR AGES. Two sessions with the same title and the same meta row apart from the
+// age (same size, marks, folder) are told apart only by the age. With ages blanked, a re-sort that
+// swapped them during the walk would pass identity, and the Enter would resume the other session. So
+// when two or more sessions are identical in title AND in meta-minus-age, `coreSignature` keeps the
+// ages of THOSE sessions verbatim; every other session still gets the age token. A tick on a twin row
+// then makes a walked tap answer `changed`, which is the safe side. Every blank here is a safety
+// decision: `coreSignature` is the only link between the tapped dialog and the committed Enter.
+//
 // FAIL CLOSED. Every piece of evidence is required, and any one missing returns null, which leaves the
 // raw mirror and the unread-dialog card (omp/modal.ts) exactly as they were before this file:
 //   * the layout's own bottom border at the tail, one spacer row, and a bracketed footer above it that
@@ -274,7 +282,13 @@ export function detectResumePickerRegion(lines: StyledLine[]): ResumePickerRegio
   // session's age (`1 minute ago` becomes `2 minutes ago` with no key pressed). The verify step of a
   // walked tap compares fresh reads with it (ADR 0080 point 5), and an age that ticked between the
   // arrows and the read must not make that tap answer `changed`. Only the age token is blanked.
-  const ageAt = new Map(sessions.map((s) => [s.metaRow, s.age] as const));
+  // Twins (same title, same meta apart from the age) keep their ages: the age is all that tells them
+  // apart, so a swap of the twins must change the identity.
+  const twinCount = new Map<string, number>();
+  for (const s of sessions) twinCount.set(twinKey(s), (twinCount.get(twinKey(s)) ?? 0) + 1);
+  const ageAt = new Map(
+    sessions.filter((s) => twinCount.get(twinKey(s)) === 1).map((s) => [s.metaRow, s.age] as const),
+  );
   const coreSignature = texts
     .slice(titleAt, end + 1)
     .map((row, i) => {
@@ -358,6 +372,11 @@ function readMeta(layout: Layout, row: string): { meta: string; age: string } | 
   if (segments.length < 2) return null;
   if (!AGE.test(segments[0]!) || !SIZE.test(segments[1]!)) return null;
   return { meta: segments.join(" · "), age: segments[0]! };
+}
+
+/** What makes two sessions twins: the title and the meta row apart from its age (which opens it). */
+function twinKey(s: Session): string {
+  return JSON.stringify([s.title, s.meta.slice(s.age.length)]);
 }
 
 /** The age token every `coreSignature` row carries in place of a session's real age. */

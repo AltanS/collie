@@ -288,3 +288,124 @@ describe("fails closed", () => {
     }
   });
 });
+
+// THE OVER-ACCEPT DIRECTION (ADR 0080 point 5). Every blank in `coreSignature` is a safety decision:
+// it is the only link between the dialog the user tapped and the Enter that goes out after the walk.
+// The tests above prove the blanks do not over-refuse. These start from a real capture, change ONE
+// thing, and assert the stated result with `promptsSameIdentity`.
+describe("mutations of a real capture: what the verify read must hold and what it must refuse", () => {
+  const FIRST = "claude--menu-resume-picker--w120-first.txt";
+  const AGE_ROW = /^(\s+)(\d+ \w+ ago|now)( · .*)$/;
+
+  const metaRows = (texts: string[]): number[] =>
+    texts.flatMap((t, i) => (AGE_ROW.test(t) ? [i] : []));
+  const setAge = (row: string, age: string): string => row.replace(AGE_ROW, `$1${age}$3`);
+  /** `texts` with the nth meta row's age set, one age per session in order. */
+  const withAges = (texts: string[], ages: string[]): string[] => {
+    const rows = metaRows(texts);
+    expect(rows).toHaveLength(ages.length);
+    return texts.map((t, i) => (rows.includes(i) ? setAge(t, ages[rows.indexOf(i)]!) : t));
+  };
+  const model = (texts: string[]) => {
+    const m = detectResumePicker(fromTexts(texts));
+    expect(m, "the edited screen must still lift").not.toBeNull();
+    return m!;
+  };
+  const same = (a: string[], b: string[]): boolean => promptsSameIdentity(model(a), model(b));
+  /** The session's title row index: the row above its meta row. */
+  const titleOf = (texts: string[], session: number): number => metaRows(texts)[session]! - 1;
+
+  const base = textsOf(FIRST);
+
+  it("holds: every age shifted, across a width change (9 to 10 minutes, 59 minutes to 1 hour)", () => {
+    const before = withAges(base, ["9 minutes ago", "59 minutes ago", "2 minutes ago", "1 minute ago"]);
+    const after = withAges(base, ["10 minutes ago", "1 hour ago", "3 minutes ago", "now"]);
+    expect(same(before, after)).toBe(true);
+    expect(same(after, before)).toBe(true);
+    expect(promptsEqual(model(before), model(after))).toBe(false);
+  });
+
+  it("differs: a session title changed", () => {
+    const edited = base.map((t) => t.replace("say ok", "say no"));
+    expect(same(base, edited)).toBe(false);
+  });
+
+  it("differs: a session size changed", () => {
+    const edited = base.map((t) => t.replace("176.8KB", "176.9KB"));
+    expect(edited).not.toEqual(base);
+    expect(same(base, edited)).toBe(false);
+  });
+
+  it("differs: a session removed", () => {
+    const at = titleOf(base, 2);
+    const edited = base.filter((_, i) => i !== at && i !== at + 1);
+    expect(model(edited).options).toHaveLength(model(base).options.length - 1);
+    expect(same(base, edited)).toBe(false);
+  });
+
+  it("differs: two non-twin sessions swapped (the pointer stays on the first row)", () => {
+    const a = titleOf(base, 1);
+    const b = titleOf(base, 2);
+    const edited = [...base];
+    [edited[a], edited[b]] = [base[b], base[a]];
+    [edited[a + 1], edited[b + 1]] = [base[b + 1], base[a + 1]];
+    expect(same(base, edited)).toBe(false);
+  });
+
+  it("an age-shaped string inside a title is not blanked: changing it changes the identity", () => {
+    const at = titleOf(base, 1);
+    const titled = (n: number) => base.map((t, i) => (i === at ? t.replace("Name a colour", `fix the ${n} minutes ago bug`) : t));
+    expect(titled(5)[at]).toContain("fix the 5 minutes ago bug");
+    expect(same(titled(5), titled(5))).toBe(true);
+    expect(same(titled(5), titled(6))).toBe(false);
+  });
+
+  describe("twin rows: same title, same meta apart from the age", () => {
+    /** The base with a second `Count to three` (same meta but for the age) after the third session. */
+    const withTwin = (twinAge: string): string[] => {
+      const first = titleOf(base, 0);
+      const last = metaRows(base)[2]!;
+      const title = base[first]!.replace("❯", " ");
+      const meta = setAge(base[first + 1]!, twinAge);
+      return [...base.slice(0, last + 1), title, meta, ...base.slice(last + 1)];
+    };
+    const twinned = withTwin("3 minutes ago");
+    const first = metaRows(twinned)[0]!;
+    const twin = metaRows(twinned)[3]!;
+
+    it("the sessions really are twins, and the others are not", () => {
+      const m = model(twinned);
+      expect(m.options.map((o) => o.label)).toEqual(["Count to three", "Name a colour", "say ok", "Count to three", "Say hi in one word", "Cancel"]);
+    });
+
+    it("keeps the twins' ages verbatim in coreSignature and blanks every other age", () => {
+      const core = model(twinned).coreSignature;
+      expect(core).toContain("44 seconds ago · master · 177.4KB");
+      expect(core).toContain("3 minutes ago · master · 177.4KB");
+      expect(core.match(/<age>/g)).toHaveLength(3);
+    });
+
+    it("swapping the twins changes coreSignature, so the identity is refused", () => {
+      const swapped = twinned.map((t, i) => (i === first ? setAge(t, "3 minutes ago") : i === twin ? setAge(t, "44 seconds ago") : t));
+      expect(model(swapped).coreSignature).not.toBe(model(twinned).coreSignature);
+      expect(same(twinned, swapped)).toBe(false);
+    });
+
+    it("a tick on a twin row answers changed, the safe side", () => {
+      const ticked = twinned.map((t, i) => (i === twin ? setAge(t, "4 minutes ago") : t));
+      expect(same(twinned, ticked)).toBe(false);
+    });
+
+    it("a non-twin row's age is still blanked, with a twin on screen", () => {
+      const second = metaRows(twinned)[1]!;
+      const ticked = twinned.map((t, i) => (i === second ? setAge(t, "7 minutes ago") : t));
+      expect(ticked).not.toEqual(twinned);
+      expect(same(twinned, ticked)).toBe(true);
+    });
+
+    it("without a twin the same age swap is blanked, as before", () => {
+      const ticked = base.map((t, i) => (i === metaRows(base)[0] ? setAge(t, "3 minutes ago") : t));
+      expect(same(base, ticked)).toBe(true);
+    });
+  });
+});

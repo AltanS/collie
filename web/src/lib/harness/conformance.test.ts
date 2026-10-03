@@ -250,6 +250,35 @@ describe("the walk-pair table", () => {
   });
 
   it("gives every gap a reason", () => {
-    for (const [key, reason] of Object.entries(WALK_GAPS)) expect(reason.length, key).toBeGreaterThan(10);
+    for (const [key, gap] of Object.entries(WALK_GAPS)) expect(gap.reason.length, key).toBeGreaterThan(10);
+  });
+
+  it("dates every gap", () => {
+    for (const [key, gap] of Object.entries(WALK_GAPS)) {
+      expect(gap.since, `${key}: since must be an ISO date`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  // THE RATCHET: gaps only shrink. The set of gap keys is pinned as a literal list. A new grammar
+  // group that lifts a walked list must arrive with a second capture (a walk pair), not with a new
+  // gap. Adding a key below is a reviewed decision, not a convenience: it says nothing proves that
+  // grammar blanks what follows its pointer (ADR 0080 point 5). Removing a key is always fine, and
+  // the stale-gap checks in describeAdapterConformance already demand it when a pair lands.
+  it("pins the exact set of gap keys: a new gap needs a second capture first", () => {
+    expect(
+      Object.keys(WALK_GAPS).toSorted(),
+      "WALK_GAPS changed. A new grammar group needs a second capture of the same dialog with the " +
+        "pointer on another row (add it to WALK_PAIRS), not a new gap. Adding a key to the literal list " +
+        "in this test is a reviewed decision. Removing one is expected when a pair lands.",
+    ).toEqual(
+      [
+        "claude | trust | Quick safety check",
+        "codex | trust | Trust this folder?",
+        "omp | select | Pick a colour",
+        "opencode | permission | % WebFetch https",
+        "opencode | permission | $ echo narrow-width-probe",
+        "opencode | permission | This will allow edit until OpenCode is restarted.",
+      ].toSorted(),
+    );
   });
 });

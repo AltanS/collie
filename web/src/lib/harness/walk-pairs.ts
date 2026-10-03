@@ -19,7 +19,8 @@
 //      different row. The suite asserts `promptsSameIdentity` both ways, not `promptsEqual`, and that
 //      the row carrying the plan ["Enter"] (the pointed offered row) differs between the two, so a
 //      pair can never be two captures of one pointer position;
-//   2. a reason in {@link WALK_GAPS}: no such pair exists in the corpus yet.
+//   2. a dated reason in {@link WALK_GAPS}: no such pair exists in the corpus yet. Gaps only shrink:
+//      the set of keys is pinned in `conformance.test.ts`, so a new gap is a reviewed decision.
 //
 // A new fixture whose grammar is in neither fails the suite. The fix is a second capture of the same
 // dialog with the pointer on another row, added to {@link WALK_PAIRS}. A pair that fails identity is a
@@ -87,22 +88,46 @@ export const WALK_PAIRS: readonly WalkPair[] = [
 
 /**
  * Grammar groups with no pair in the corpus yet, keyed as {@link walkGroupKey}, one line of reason
- * each. The ratchet fails when a listed group gains a pair (remove the line) or has no walked fixture
- * left (stale). Adding a line here is a debt, not a fix: it says "nothing proves this grammar blanks
- * what follows its pointer".
+ * each, dated. The ratchet fails when a listed group gains a pair (remove the entry) or has no walked
+ * fixture left (stale). Gaps only shrink: the set of keys is pinned by a literal list in
+ * `conformance.test.ts`, so a new gap needs a second capture first, and adding one is a reviewed
+ * decision. An entry is a debt, not a fix: it says "nothing proves this grammar blanks what follows
+ * its pointer".
  */
+export interface WalkGap {
+  /** The date the gap was listed (ISO), so its age is visible in review. */
+  since: string;
+  /** One line: why no pair exists yet. */
+  reason: string;
+}
+
 export const WALK_GAPS = {
-  "claude | trust | Quick safety check":
-    "no second capture yet: the two captures differ in width and both have the pointer on the first row",
-  "codex | trust | Trust this folder?": "no second capture yet: one capture, pointer on the first row",
-  "opencode | permission | % WebFetch https":
-    "no second capture yet: one capture, pointer on the first chip (the same grammar as the bash dialog, " +
-    "which has pairs, but the body differs)",
-  "opencode | permission | $ echo narrow-width-probe":
-    "no second capture yet: the 50-column layout puts the chips on a row of their own, and only the pointer " +
-    "on the first chip is captured",
-  "opencode | permission | This will allow edit until OpenCode is restarted.":
-    "no second capture yet: one capture of the edit's `Always allow` step, pointer on Confirm",
-  "omp | select | Pick a colour":
-    "no pointer-only pair: the two captures differ by a `✎ note` mark, which is note state, not the pointer",
-} satisfies Record<string, string>;
+  "claude | trust | Quick safety check": {
+    since: "2026-10-03",
+    reason: "no second capture yet: the two captures differ in width and both have the pointer on the first row",
+  },
+  "codex | trust | Trust this folder?": {
+    since: "2026-10-03",
+    reason: "no second capture yet: one capture, pointer on the first row",
+  },
+  "opencode | permission | % WebFetch https": {
+    since: "2026-10-03",
+    reason:
+      "no second capture yet: one capture, pointer on the first chip (the same grammar as the bash dialog, " +
+      "which has pairs, but the body differs)",
+  },
+  "opencode | permission | $ echo narrow-width-probe": {
+    since: "2026-10-03",
+    reason:
+      "no second capture yet: the 50-column layout puts the chips on a row of their own, and only the pointer " +
+      "on the first chip is captured",
+  },
+  "opencode | permission | This will allow edit until OpenCode is restarted.": {
+    since: "2026-10-03",
+    reason: "no second capture yet: one capture of the edit's `Always allow` step, pointer on Confirm",
+  },
+  "omp | select | Pick a colour": {
+    since: "2026-10-03",
+    reason: "no pointer-only pair: the two captures differ by a `✎ note` mark, which is note state, not the pointer",
+  },
+} satisfies Record<string, WalkGap>;

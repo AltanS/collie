@@ -815,3 +815,76 @@ describe("a moved pointer is the same picker (real captures, ADR 0080 point 5)",
     }
   });
 });
+
+// THE OVER-ACCEPT DIRECTION (ADR 0080 point 5). Every blank in `coreSignature` is a safety decision:
+// it is the only link between the dialog the user tapped and the Enter that goes out after the walk.
+// The two detail rows are blanked because they follow the pointer. These tests start from a real
+// capture (pointer on haiku, the current model opus), change ONE thing and assert the result.
+describe("mutations of a real capture: what the verify read must hold and what it must refuse", () => {
+  const BASE = "omp--v18-4-switch-ptr-haiku.txt";
+  const base = textsOf(BASE);
+
+  const model = (texts: string[]) => {
+    const m = detectSwitchPicker(fromTexts(texts));
+    expect(m, "the edited screen must still lift").not.toBeNull();
+    return m!;
+  };
+  const same = (a: string[], b: string[]): boolean => promptsSameIdentity(model(a), model(b));
+  /** Replace the one occurrence of `from` in the row containing `needle`, keeping the row's width. */
+  const edit = (texts: string[], needle: string, from: string, to: string): string[] => {
+    expect(to.length, `${from} and ${to} must have the same width`).toBe(from.length);
+    const at = texts.findIndex((t) => t.includes(needle));
+    expect(at, needle).toBeGreaterThanOrEqual(0);
+    expect(texts[at]).toContain(from);
+    return texts.map((t, i) => (i === at ? t.replace(from, to) : t));
+  };
+
+  it("holds: the two detail rows replaced by another model's detail rows", () => {
+    const other = textsOf("omp--v18-4-switch-ptr-sonnet.txt");
+    const bottom = (texts: string[]) => texts.findLastIndex((t) => t.startsWith("╰"));
+    const [mine, theirs] = [bottom(base), bottom(other)];
+    // The facts row and the chips row, the two rows above the footer.
+    const edited = base.map((t, i) => (i === mine - 3 || i === mine - 2 ? other[theirs - (mine - i)]! : t));
+    expect(edited[mine - 3]).not.toBe(base[mine - 3]);
+    expect(edited[mine - 3]).toContain("Claude Sonnet 5.5");
+    expect(same(base, edited)).toBe(true);
+    expect(same(edited, base)).toBe(true);
+    expect(promptsEqual(model(base), model(edited))).toBe(false);
+  });
+
+  it("differs: a model row's id changed", () => {
+    expect(same(base, edit(base, "claude-fable-5-1", "fable-5-1", "fable-5-2"))).toBe(false);
+  });
+
+  it("differs: a row's badge changed (intelligence, context, price)", () => {
+    expect(same(base, edit(base, "claude-fable-5-1", "🧠 53", "🧠 54"))).toBe(false);
+    expect(same(base, edit(base, "claude-fable-5-1", "1m ◫", "2m ◫"))).toBe(false);
+    expect(same(base, edit(base, "claude-sonnet-5-5", "$2/10", "$2/11"))).toBe(false);
+  });
+
+  it("differs: the search text changed", () => {
+    const typed = edit(base, "🔍 >", "🔍 >   ", "🔍 > s ");
+    expect(model(typed).options.at(-1)!.label).toBe("Clear search");
+    expect(same(base, typed)).toBe(false);
+    expect(same(typed, edit(base, "🔍 >", "🔍 >   ", "🔍 > t "))).toBe(false);
+  });
+
+  it("differs: the current mark moved to another row", () => {
+    const cleared = edit(base, "claude-opus-5-5", "5-5 ●", "5-5  ");
+    const moved = edit(cleared, "claude-sonnet-5-5", "5-5  ", "5-5 ●");
+    expect(model(moved).options.map((o) => o.label)).toContain("anthropic/claude-opus-5-5");
+    expect(same(base, moved)).toBe(false);
+  });
+
+  it("differs: the current mark removed", () => {
+    expect(same(base, edit(base, "claude-opus-5-5", "5-5 ●", "5-5  "))).toBe(false);
+  });
+
+  it("differs: a model row swapped for another (the window's order changed)", () => {
+    const a = base.findIndex((t) => t.includes("claude-fable-5-1"));
+    const b = base.findIndex((t) => t.includes("claude-sonnet-5-5"));
+    const edited = [...base];
+    [edited[a], edited[b]] = [base[b], base[a]];
+    expect(same(base, edited)).toBe(false);
+  });
+});

@@ -32,6 +32,14 @@
 // (`44 seconds ago` becomes `1 minute ago` with no key pressed). Only the token that `META_AGE` finds
 // at the head of the grammar's own meta row is blanked: size, branch and the rest of the row stay.
 //
+// TWIN ROWS KEEP THEIR AGES. Two sessions with the same title and the same meta row apart from the
+// age (same size, branch, marks) are told apart only by the age. With ages blanked, a re-sort that
+// swapped them during the walk would pass identity, and the Enter would resume the other session. So
+// when two or more sessions are identical in title AND in meta-minus-age, `coreSignature` keeps the
+// ages of THOSE sessions verbatim; every other session still gets the age token. A tick on a twin row
+// then makes a walked tap answer `changed`, which is the safe side. Every blank here is a safety
+// decision: `coreSignature` is the only link between the tapped dialog and the committed Enter.
+//
 // FAIL CLOSED. Every piece of evidence is required — the title, the rounded search box directly
 // under it, and a footer (read across its wrapped rows by `readKeyHintFooter`) that names `Esc to
 // cancel` or `Esc to clear`. Any one missing returns null, and the generic menu still runs.
@@ -222,11 +230,21 @@ function titleRow(text: string, column: number): { text: string; pointed: boolea
   return { text: rest.trim(), pointed: glyph === POINTER };
 }
 
+/** What makes two sessions twins: the title and the meta row apart from its age (which opens it). */
+function twinKey(s: Session): string {
+  return JSON.stringify([s.title, s.meta.slice(s.age.length)]);
+}
+
 /** `texts` with each session's age token replaced by {@link AGE_TOKEN}. Positional: the age starts at
- *  the meta row's own column, so no pattern runs over the rest of the region. */
+ *  the meta row's own column, so no pattern runs over the rest of the region. Twin sessions (same
+ *  title, same meta apart from the age) keep their ages verbatim: the age is all that tells them
+ *  apart, so a swap of the twins must change the identity. */
 function blankAges(texts: string[], sessions: Session[]): string[] {
   const out = [...texts];
+  const twinKeys = new Map<string, number>();
+  for (const s of sessions) twinKeys.set(twinKey(s), (twinKeys.get(twinKey(s)) ?? 0) + 1);
   for (const s of sessions) {
+    if ((twinKeys.get(twinKey(s)) ?? 0) > 1) continue;
     const row = texts[s.metaRow]!;
     out[s.metaRow] = row.slice(0, s.metaColumn) + AGE_TOKEN + row.slice(s.metaColumn + s.age.length);
   }

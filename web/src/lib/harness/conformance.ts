@@ -808,7 +808,7 @@ export function describeAdapterConformance(
               `${name} lifts a pointed list with walked plans, group "${key}", and nothing proves the ` +
                 `grammar survives its own walk. Capture the same dialog with the pointer on another row, ` +
                 `add both fixtures to WALK_PAIRS in harness/walk-pairs.ts (agent "${adapter.agent}"), or ` +
-                `list the group in WALK_GAPS with a one-line reason.`,
+                `list the group in WALK_GAPS ({ since, reason }) and in the pinned list in conformance.test.ts: a new gap is a reviewed decision, and a second capture is the fix.`,
             ).toBe(true);
           });
         }

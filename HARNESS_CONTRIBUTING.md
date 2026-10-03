@@ -204,6 +204,18 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    is the same class: blank it in `coreSignature`, and only there, so `signature` stays verbatim and
    the entry guard still refuses a screen whose age ticked. Blank the one token your own row parse
    found, not a pattern over the whole region (the two `/resume` grammars are the reference).
+   **Twin rows keep their ages:** when two or more rows are identical in title AND in the rest of
+   their meta row apart from the age, the age is all that tells them apart, so `coreSignature` keeps
+   the ages of THOSE rows verbatim (every other row still gets the token). A tick on a twin then
+   answers `changed`, the safe side, and a re-sort that swaps twins can never pass identity.
+   **Every blank is a safety decision**, because `coreSignature` is the only link between the dialog
+   the user tapped and the Enter that is committed after the walk. Ship mutation tests for both
+   directions, starting from a real capture and changing one thing: what the blank must HOLD (every
+   age shifted across a width change, a detail row replaced) and what it must REFUSE (a title, size,
+   id, badge or mark changed, a row removed, two rows swapped, an age-shaped string inside a title).
+   The three tests for `claude/resume.ts`, `omp/resume.ts` and `omp/switch.ts` are the reference. The
+   walk-pair gaps in `walk-pairs.ts` only shrink: the set of gap keys is pinned in
+   `conformance.test.ts`, so a new gap is a reviewed decision and a second capture is the fix.
    Claude's folder-trust prompt is the reference case since 2.1.278 — it prints no digit, so none may
    be synthesised, and ADR 0009 holds here exactly as it does above
    ([ADR 0055](./.adr/0055-a-pointed-list-is-walked-then-confirmed.md)). Two things are load-bearing.

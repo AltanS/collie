@@ -61,6 +61,14 @@ that sat open for a minute answered `changed` to every walked tap (ADR 0080 poin
 `omp--menu-resume.txt` and `omp--menu-resume-moved.txt` shows it: its ages differ (`1 minute ago` against
 `2 minutes ago`) and so does the pointer.
 
+**Twin rows keep their ages.** Two sessions with the same title and the same meta row apart from the age
+(same size, marks, folder) are told apart only by the age. If the age were blanked there too, a re-sort
+that swapped the twins during the walk would pass identity, and the Enter would resume the other session.
+So when two or more sessions are identical in title AND in meta-minus-age, the core signature keeps the
+ages of those sessions verbatim, and every other session still gets `<age>`. A tick on a twin row then
+makes a walked tap answer `changed`, which is the safe side. Every blank in the core signature is a safety
+decision, because it is the only link between the tapped dialog and the committed Enter.
+
 The walk is the shortest path and assumes the pointer does not wrap. A tap on a session that is on
 screen never needs a wrap, so this holds for every row the card can offer.
 
