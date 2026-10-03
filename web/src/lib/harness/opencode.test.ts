@@ -368,6 +368,18 @@ describe("opencode composer chrome", () => {
     expect(draftCarriesSend("test test", draft)).toBe(true);
   });
 
+  it("the #337 capture: sidebar glyphs stay out of the draft, the typed words stay in", () => {
+    // The reporter's real screen (oc--draft-sidebar-overlay.txt, opencode 1.18.31, Models sidebar open):
+    // the panel's right edge and bottom border share rows with the composer.
+    const lines = loadLines("oc--draft-sidebar-overlay.txt");
+    expect(locateComposer(lines)).not.toBeNull();
+    const draft = extractInputDraft(lines);
+    expect(draft).not.toBeNull();
+    expect(draft).not.toMatch(/[│└┘┌┐─]/);
+    expect(draft).toBe("stell mir eine Frage mit dem Frage tool");
+    expect(draftCarriesSend("stell mir eine Frage mit dem Frage tool", draft)).toBe(true);
+  });
+
   it("a sidebar edge row and a shared-row border read as the typed words alone", () => {
     // Live shape from a Models-sidebar pane: an edge-only row above the message, and the
     // message sharing its row with the panel's bottom border. Both leaked into the join
