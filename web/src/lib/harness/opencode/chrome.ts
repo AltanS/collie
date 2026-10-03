@@ -104,10 +104,12 @@ function isEdgeOnly(text: string): boolean {
 // cutting it breaks the reply guard's contiguity check — the stripped run is gone from the
 // draft but still in what was sent, so verification can never match. A typed rule (`───`)
 // never strips for the same reason. The strip applies only when words remain; a border-only
-// row keeps its text for the isPanelBorder join below to refuse. The walk still owns
+// row keeps its text for the isPanelBorder join below to refuse. The run must also follow a gap of
+// two or more spaces: an overlay sits in its own column, far from the typed words, while a pasted
+// `╭─ title ─╮` or `┌ Name ┐` closes its box one space after its words and must stay whole. The walk still owns
 // row-level stops — this owns suffixes in kept rows.
 const OVERLAY_SUFFIX =
-  /[ \t]*[─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*[┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬][─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*$/u;
+  /[ \t]{2,}[─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*[┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬][─━┄┈│┃═║┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬╹▀]*$/u;
 
 function stripOverlaySuffix(text: string): string {
   const cut = text.replace(OVERLAY_SUFFIX, "");

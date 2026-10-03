@@ -400,7 +400,7 @@ describe("opencode composer chrome", () => {
         [
           "some transcript above",
           "  ┃  ├── src",
-          "  ┃  └── leaf └─┘",
+          "  ┃  └── leaf   └─┘",
           "  ┃",
           "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen                                                                     ~/repos/omarchy",
           "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
@@ -432,6 +432,26 @@ describe("opencode composer chrome", () => {
     expect(draft).toBe("summary ───");
     expect(draftCarriesSend("summary ───", draft)).toBe(true);
   });
+  it("a pasted box row closing its own corner one space after its words stays whole", () => {
+    for (const row of ["╭─ title ─╮", "┌ Name ┐"]) {
+      const lines = splitLines(
+        parseAnsi(
+          [
+            "some transcript above",
+            `  ┃  ${row}`,
+            "  ┃",
+            "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen                                                                     ~/repos/omarchy",
+            "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+            "   /tmp/probe   1.18.32",
+          ].join("\n"),
+        ),
+      );
+      const draft = extractInputDraft(lines);
+      expect(draft).toBe(row);
+      expect(draftCarriesSend(row, draft)).toBe(true);
+    }
+  });
+
   // THE REGRESSION THE FIRST SHAPE OF THAT RULE CAUSED, on a real capture rather than a hand-typed
   // string. A junction ANYWHERE on a row read as a panel border, so a pasted `tree` stopped the walk
   // at its first branch: these four typed lines read back as "and that is all" alone, and "Take over"
