@@ -1,6 +1,6 @@
 import { apiError, type ApiErrorDetail, type ErrorCode } from "../error-codes.ts";
 import type { SttCapability } from "../types.ts";
-import { createSttDeadline, SttCancelledError, SttError, type SttProvider } from "./provider.ts";
+import { createSttDeadline, SttBusyError, SttCancelledError, SttError, type SttProvider } from "./provider.ts";
 
 // ── THE ROUTE'S OWN RULES, AWAY FROM Bun.serve ───────────────────────────────────────────────
 //
@@ -179,6 +179,11 @@ export async function transcribeRequest(
         attempt: { status: 200, outcome: "ok", bytes: audio.byteLength },
       };
     } catch (err) {
+      // A provider with a cap of its own (local-cli) refused before it started anything: the same
+      // answer as this route's own admission refusal above, so the phone shows one busy sentence.
+      if (err instanceof SttBusyError) {
+        return fail(429, "busy", "stt.busy", undefined, audio.byteLength);
+      }
       if (err instanceof SttCancelledError) {
         return fail(400, "invalid", "stt.unreadable", undefined, audio.byteLength);
       }

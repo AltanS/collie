@@ -1,17 +1,34 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { hostFor } from "../host.ts";
 import type { LocalCliSttSettings } from "./config.ts";
 import {
   childEnv,
+  commandFileProblem,
   createLocalCliSttProvider,
   extensionOf,
+  LOCAL_CLI_MAX_IN_FLIGHT,
+  LOCAL_CLI_TEMP_PREFIX,
   LocalCliEmptyTranscriptError,
+  STALE_TEMP_DIR_MS,
+  sweepStaleTempDirs,
   type LocalCliSttDeps,
 } from "./local-cli.ts";
-import { SttCancelledError, SttError, type SttAudio } from "./provider.ts";
+import { SttBusyError, SttCancelledError, SttError, type SttAudio } from "./provider.ts";
 
 // The local-cli provider against a FAKE transcription command: a small script run by this very
 // Bun, so the suite needs no shell and runs the same on Linux, macOS and Windows. Every case spawns a
@@ -177,10 +194,24 @@ describe("local-cli — failures are clean and say nothing of the host", () => {
     expect(err.kind).toBe("refused");
   });
 
-  test("a stdout past the cap is refused mid-stream as oversized", async () => {
-    const settings = fakeCommand("loud", `process.stdout.write("x".repeat(300 * 1024));`);
-    const err = await sttFailureOf(createLocalCliSttProvider(settings, deps()).transcribe(clip()));
+  test("a stdout past the cap is refused mid-stream as oversized, and the child is killed then", async () => {
+    // The command writes past the cap and then would sit for 30 s, deaf to a closed pipe. The
+    // deadline is 30 s too, so only a kill AT the cap can end it inside the bound below.
+    const pidFile = join(root, "loud.pid");
+    const settings = fakeCommand(
+      "loud",
+      `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+       process.stdout.on("error", () => {});
+       process.on("uncaughtException", () => {});
+       process.on("SIGPIPE", () => {});
+       process.stdout.write("x".repeat(300 * 1024));
+       await Bun.sleep(30_000);`,
+    );
+    const started = Date.now();
+    const err = await sttFailureOf(createLocalCliSttProvider(settings, deps({ timeoutMs: 30_000 })).transcribe(clip()));
     expect(err.kind).toBe("oversized");
+    expect(Date.now() - started).toBeLessThan(10_000);
+    await waitUntil(() => !alive(Number(readFileSync(pidFile, "utf8"))));
     expect(tempRootIsEmpty()).toBe(true);
   });
 
@@ -268,11 +299,234 @@ describe("local-cli — the small pure helpers", () => {
   });
 });
 
+/** Whether `pid` is a live process. A zombie (killed, not yet reaped by whoever adopted it) is dead. */
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
+  } catch {
+    return false;
+  }
+  if (process.platform !== "linux") return true;
+  try {
+    // `/proc/<pid>/stat`: "pid (comm) S …", the state letter after the last `)`.
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) !== "Z";
   } catch {
     return false;
   }
 }
+
+/** Poll `check` for up to `ms`; fail the test with `what` if it never holds. */
+async function waitUntil(check: () => boolean, ms = 5_000, what = "condition"): Promise<void> {
+  for (const end = Date.now() + ms; Date.now() < end; ) {
+    if (check()) return;
+    await Bun.sleep(25);
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+/** A script body that starts a grandchild (a 30 s Bun sleep), records its pid, then runs `then`. */
+function forker(pidFile: string, then: string): string {
+  return `
+const kid = Bun.spawn([process.execPath, "-e", "await Bun.sleep(30_000)"], {
+  stdin: "ignore", stdout: "ignore", stderr: "ignore",
+});
+require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(kid.pid));
+${then}
+`;
+}
+
+/** The first transcript `settings` gives within a second, retrying while every slot is busy. */
+async function firstAnswer(settings: LocalCliSttSettings): Promise<string | null> {
+  for (let i = 0; i < 40; i++) {
+    try {
+      return (await createLocalCliSttProvider(settings, deps()).transcribe(clip())).text;
+    } catch (err) {
+      if (!(err instanceof SttBusyError)) throw err;
+      await Bun.sleep(25);
+    }
+  }
+  return null;
+}
+
+const pidIn = (file: string): number => Number(readFileSync(file, "utf8"));
+
+describe("local-cli — the whole process tree goes (POSIX process group)", () => {
+  test.if(posix)("the fixture is real: killing only the parent leaves the grandchild running", async () => {
+    // What the group kill exists for, shown without it: a plain SIGKILL to the parent orphans the
+    // grandchild, which then runs on for its full 30 s.
+    const pidFile = join(root, "control.pid");
+    const script = join(scripts, "control.ts");
+    writeFileSync(script, forker(pidFile, "await Bun.sleep(30_000);"));
+    const parent = Bun.spawn([process.execPath, script], { stdout: "ignore", stderr: "ignore" });
+    await waitUntil(() => existsSync(pidFile), 5_000, "the grandchild's pid");
+    parent.kill("SIGKILL");
+    await parent.exited;
+    const grandchild = pidIn(pidFile);
+    await Bun.sleep(200);
+    expect(alive(grandchild)).toBe(true);
+    process.kill(grandchild, "SIGKILL");
+  });
+
+  test.if(posix)("the deadline kills the grandchild too", async () => {
+    const pidFile = join(root, "tree-deadline.pid");
+    const settings = fakeCommand("tree-deadline", forker(pidFile, "await Bun.sleep(30_000);"));
+    const err = await sttFailureOf(createLocalCliSttProvider(settings, deps({ timeoutMs: 1_500 })).transcribe(clip()));
+    expect(err.kind).toBe("timeout");
+    await waitUntil(() => !alive(pidIn(pidFile)), 5_000, "the grandchild to die");
+    expect(tempRootIsEmpty()).toBe(true);
+  });
+
+  test.if(posix)("a straggler left in the group after a clean exit is killed too", async () => {
+    const pidFile = join(root, "tree-clean.pid");
+    const settings = fakeCommand("tree-clean", forker(pidFile, `process.stdout.write("done"); process.exit(0);`));
+    expect(await createLocalCliSttProvider(settings, deps()).transcribe(clip())).toEqual({ text: "done" });
+    await waitUntil(() => !alive(pidIn(pidFile)), 5_000, "the straggler to die");
+  });
+
+  test("on a Windows host the child is spawned without a group and still killed at the deadline", async () => {
+    // Pinned host: the Windows branch (no `detached`, kill the child alone) runs here on Linux.
+    const pidFile = join(root, "win.pid");
+    const settings = fakeCommand(
+      "win",
+      `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); await Bun.sleep(30_000);`,
+    );
+    const err = await sttFailureOf(
+      createLocalCliSttProvider(settings, deps({ timeoutMs: 1_000, host: hostFor("win32") })).transcribe(clip()),
+    );
+    expect(err.kind).toBe("timeout");
+    await waitUntil(() => !alive(pidIn(pidFile)), 5_000, "the child to die");
+  });
+});
+
+describe("local-cli — at most LOCAL_CLI_MAX_IN_FLIGHT children at once", () => {
+  test("the next request is busy, spawns nothing and writes nothing; a slot returns when its child exits", async () => {
+    // A child an earlier test killed gives its slot back when Bun has reaped it, a tick or so after
+    // it died. Start from a provider that answers, so every slot is free.
+    expect(await firstAnswer(fakeCommand("busy-probe", `process.stdout.write("ready");`))).toBe("ready");
+    const controllers: AbortController[] = [];
+    const pending: Promise<unknown>[] = [];
+    const pids: string[] = [];
+    for (let i = 0; i < LOCAL_CLI_MAX_IN_FLIGHT; i++) {
+      const pidFile = join(root, `busy-${i}.pid`);
+      pids.push(pidFile);
+      const settings = fakeCommand(
+        `busy-${i}`,
+        `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); await Bun.sleep(30_000);`,
+      );
+      const controller = new AbortController();
+      controllers.push(controller);
+      pending.push(failureOf(createLocalCliSttProvider(settings, deps()).transcribe(clip(), controller.signal)));
+    }
+    for (const file of pids) await waitUntil(() => existsSync(file), 5_000, "the busy children");
+    const dirsWhileFull = readdirSync(tmpRoot).length;
+
+    const marker = join(root, "busy-spawned");
+    const extra = fakeCommand("busy-extra", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "x");`);
+    // A NEW provider instance: the cap is per bridge process, not per provider object.
+    await expect(createLocalCliSttProvider(extra, deps()).transcribe(clip())).rejects.toBeInstanceOf(SttBusyError);
+    expect(existsSync(marker)).toBe(false);
+    expect(readdirSync(tmpRoot).length).toBe(dirsWhileFull);
+
+    for (const c of controllers) c.abort();
+    await Promise.all(pending);
+    for (const file of pids) await waitUntil(() => !alive(pidIn(file)), 5_000, "the busy children to die");
+    expect(await firstAnswer(fakeCommand("busy-after", `process.stdout.write("free again");`))).toBe("free again");
+  });
+});
+
+describe("local-cli — the command must be a regular, executable file", () => {
+  test.if(posix)("commandFileProblem: regular executable passes, symlinks are followed", () => {
+    const dir = mkdtempSync(join(root, "cmd-"));
+    const exe = join(dir, "engine");
+    writeFileSync(exe, "#!/bin/sh\n");
+    chmodSync(exe, 0o755);
+    const plain = join(dir, "plain");
+    writeFileSync(plain, "");
+    chmodSync(plain, 0o644);
+    const sub = join(dir, "sub");
+    mkdirSync(sub);
+    symlinkSync(exe, join(dir, "to-exe"));
+    symlinkSync(sub, join(dir, "to-dir"));
+    symlinkSync(join(dir, "nowhere"), join(dir, "dangling"));
+
+    expect(commandFileProblem(exe)).toBeNull();
+    expect(commandFileProblem(join(dir, "to-exe"))).toBeNull();
+    expect(commandFileProblem(plain)).toContain("not executable");
+    expect(commandFileProblem(sub)).toContain("directory");
+    expect(commandFileProblem(join(dir, "to-dir"))).toContain("directory");
+    expect(commandFileProblem(join(dir, "dangling"))).toContain("does not exist");
+    expect(commandFileProblem(join(dir, "missing"))).toContain("does not exist");
+    if (existsSync("/dev/null")) expect(commandFileProblem("/dev/null")).toBe("is not a regular file");
+  });
+
+  test.if(posix)("status refuses a directory and a non-executable file, and names neither", async () => {
+    const dir = mkdtempSync(join(root, "status-"));
+    const plain = join(dir, "plain");
+    writeFileSync(plain, "");
+    chmodSync(plain, 0o644);
+    for (const command of [dir, plain]) {
+      const status = await createLocalCliSttProvider({ provider: "local-cli", command, args: [] }, deps()).status();
+      expect(status.available).toBe(false);
+      expect(status.reason).not.toContain(command);
+    }
+  });
+});
+
+describe("local-cli — stale temp dirs from a killed bridge", () => {
+  const old = (path: string): void => {
+    const then = (Date.now() - STALE_TEMP_DIR_MS - 60_000) / 1000;
+    utimesSync(path, then, then);
+  };
+
+  test.if(posix)("only an old directory with the prefix, owned by this user, is removed", async () => {
+    const sweepRoot = mkdtempSync(join(root, "sweep-"));
+    const stale = join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}stale`);
+    mkdirSync(stale);
+    writeFileSync(join(stale, "recording.webm"), "x");
+    old(stale);
+    const fresh = join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}fresh`);
+    mkdirSync(fresh);
+    const foreign = join(sweepRoot, "other-tool-dir");
+    mkdirSync(foreign);
+    old(foreign);
+    const file = join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}file`);
+    writeFileSync(file, "x");
+    old(file);
+    // A symlink with the prefix, pointing at an old dir elsewhere: neither the link's target nor
+    // its contents may go, because the sweep never follows a link.
+    const target = mkdtempSync(join(root, "link-target-"));
+    writeFileSync(join(target, "keep"), "x");
+    old(target);
+    symlinkSync(target, join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}link`));
+
+    // Another user's uid removes nothing.
+    expect(await sweepStaleTempDirs(sweepRoot, Date.now(), (process.getuid?.() ?? 0) + 1)).toBe(0);
+    expect(existsSync(stale)).toBe(true);
+
+    expect(await sweepStaleTempDirs(sweepRoot)).toBe(1);
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
+    expect(existsSync(foreign)).toBe(true);
+    expect(existsSync(file)).toBe(true);
+    expect(existsSync(join(target, "keep"))).toBe(true);
+  });
+
+  test("no uid (Windows) sweeps nothing", async () => {
+    const sweepRoot = mkdtempSync(join(root, "sweep-win-"));
+    const stale = join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}stale`);
+    mkdirSync(stale);
+    old(stale);
+    expect(await sweepStaleTempDirs(sweepRoot, Date.now(), null)).toBe(0);
+    expect(existsSync(stale)).toBe(true);
+  });
+
+  test.if(posix)("loading the provider sweeps its temp root once, in the background", async () => {
+    const sweepRoot = mkdtempSync(join(root, "sweep-load-"));
+    const stale = join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}left-behind`);
+    mkdirSync(stale);
+    old(stale);
+    createLocalCliSttProvider({ provider: "local-cli", command: process.execPath, args: [] }, { tmpRoot: sweepRoot });
+    await waitUntil(() => !existsSync(stale), 5_000, "the load-time sweep");
+  });
+});

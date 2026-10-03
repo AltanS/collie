@@ -108,6 +108,18 @@ function defaultMessage(kind: SttFailureKind): string {
   return "transcription is unavailable";
 }
 
+/**
+ * The provider is already running as many transcriptions as it allows, and refused this one before
+ * starting any work for it. The route answers it exactly like its own admission refusal: 429,
+ * `stt.busy`. Distinct from {@link SttError} because nothing failed upstream; nothing was tried.
+ */
+export class SttBusyError extends Error {
+  constructor() {
+    super("transcription is busy");
+    this.name = "SttBusyError";
+  }
+}
+
 /** A caller stopped waiting; this is distinct from an upstream provider failure. */
 export class SttCancelledError extends Error {
   constructor() {

@@ -156,7 +156,38 @@ in the module header, and in short:
   and **no stderr, command line or path ever reaches the phone**: an `SttStatus.reason` or a
   refusal is Collie's own sentence and, at most, an exit status.
 - **No `COLLIE_*` variable is passed to the child**, so the push keys and another provider's key do
-  not ride along.
+  not ride along. Everything else in the bridge's environment IS passed: `PATH`, `HOME`, the locale,
+  and any other key the service runs with. That is deliberate, because it is the operator's own
+  command and it may need them to find its model, but it means a non-`COLLIE_` secret in the
+  bridge's environment reaches the command too.
+- **The whole process tree dies, not just the child.** On Linux and macOS the child is spawned
+  `detached`, so it leads a process group of its own, and every kill is `kill(-pgid, SIGKILL)`: at
+  the deadline, at the stdout cap (at once, not at the deadline), on a cancelled caller, and after a
+  clean exit, so a grandchild cannot outlive the call. A helper that must stay up has to leave the
+  group itself (`setsid`). Windows has no group to kill by a negative pid; there the child alone is
+  killed, and a grandchild it started may outlive it. The code says so where it branches on the
+  `Host`.
+- **At most two children in flight per bridge**, the same number the route's admission already
+  allows, and the number the phone's catalogued busy sentence says in every language. The provider
+  holds its own count because the route frees a slot when the caller disconnects, while the child
+  may still be dying: the provider frees its slot only when the child has exited. A request over the
+  cap gets the route's `429 stt.busy` before any temp file or spawn.
+- **The command must be a regular, executable file.** Symlinks are followed, so the check is on the
+  target. `collie stt setup` refuses anything else and `collie stt status` says which check failed,
+  on the host; the phone's capability only ever reads "cannot be run".
+- **Stale temp dirs are swept** once per process when the provider loads: only directories named
+  `collie-stt-…` directly under the OS temp dir, not symlinks, owned by this user, and more than an
+  hour old, which no live call can be. Not on Windows, which has no uid to check ownership by.
+
+**Where `command` and `args` can come from, confirmed 2026-10-03.** Only `stt.json` in the state dir
+(0600, written by `collie stt setup` on the host's own keyboard) and the bridge's environment
+(`COLLIE_STT_COMMAND`, which a `config.toml` `[stt]` key also feeds, under the environment). `args`
+has no environment spelling. A grep of `bridge/server.ts` finds exactly two STT touch points, and
+neither writes: `POST /api/stt`, which reads the settings through the gate and transcribes, and
+`GET /api/config`, which reports the capability. No route writes `stt.json`, `config.toml` or any
+STT setting. The one file write in `server.ts` is `/upload`, into `<stateDir>/uploads/` under a name
+the bridge generates, which cannot be `stt.json`. So no request, and no route a paired phone can
+reach, can name the command or its arguments; the phone contributes the recording's bytes only.
 
 Egress is the operator's command's business: a local engine keeps the audio on the host, which is
 the configuration this ADR already leads with. Setup stays a CLI act, and nothing about the

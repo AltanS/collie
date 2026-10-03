@@ -1,11 +1,14 @@
-import { accessSync, constants as fsConstants } from "node:fs";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { accessSync, constants as fsConstants, statSync } from "node:fs";
+import { chmod, lstat, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST, type Host } from "../host.ts";
 import { commandLookup, type LocalCliSttSettings } from "./config.ts";
+import { MAX_CONCURRENT_STT } from "./http.ts";
 import {
   createSttDeadline,
+  SttBusyError,
   SttCancelledError,
   SttError,
   type SttAudio,
@@ -37,7 +40,18 @@ import { MAX_PROVIDER_RESPONSE_BYTES, readCapped } from "./transcript.ts";
 //     with `wx`, and the whole directory removed in `finally`, success or failure.
 //   • the same 60 s deadline `openai-compatible` has, enforced with SIGKILL — a hung engine is
 //     killed, not waited out, and not asked politely.
-//   • a capped stdout — the same 256 KiB as an HTTP answer, refused mid-stream.
+//   • the whole tree, not just the child — on Linux and macOS the command starts in a process group
+//     of its own (`detached`), and every kill is `kill(-pgid, SIGKILL)`. A wrapper script whose
+//     engine runs as ITS child would otherwise leave the engine running after the wrapper died. The
+//     group is also killed after a clean exit, so nothing the command left behind in its group
+//     outlives the call; a helper that means to stay must leave the group (`setsid`), as daemons do.
+//     On Windows there is no process group to kill by a negative pid, so there only the child itself
+//     is killed, and a grandchild it started may outlive it.
+//   • a capped stdout — the same 256 KiB as an HTTP answer, refused mid-stream, and the group is
+//     killed at that moment, not at the deadline.
+//   • a cap of its own on children in flight — {@link LOCAL_CLI_MAX_IN_FLIGHT}, refused before any
+//     temp file or spawn — and a slot is only given back once the child has exited.
+//   • a command that is a regular, executable file — checked by `status()` and by `collie stt`.
 //   • stderr is never read and never forwarded. The phone gets Collie's own sentence and an exit
 //     status; a command line or an engine's error output may name a path, a model or a token.
 //   • no `COLLIE_*` variable is passed down. The bridge's environment carries the push keys and
@@ -45,6 +59,34 @@ import { MAX_PROVIDER_RESPONSE_BYTES, readCapped } from "./transcript.ts";
 
 /** The whole-call deadline, spawn to exit. The same budget `openai-compatible` has. */
 export const LOCAL_CLI_TIMEOUT_MS = 60_000;
+
+/**
+ * The most local-cli children one bridge runs at once. The route already admits two transcriptions
+ * per process (`MAX_CONCURRENT_STT`), and the phone's busy sentence says "two" in every language, so
+ * this is that number, not a smaller one. It is enforced here as well because the route gives its
+ * slot back the moment a caller disconnects, while a child may still be dying: this slot is only
+ * returned once the child has exited (or {@link KILL_GRACE_MS} after the kill, if it will not).
+ * An on-device engine is CPU- and memory-heavy, so a burst never becomes more engines than this.
+ */
+export const LOCAL_CLI_MAX_IN_FLIGHT = MAX_CONCURRENT_STT;
+
+/** How long a killed child may take to exit before its slot is given back anyway. */
+const KILL_GRACE_MS = 5_000;
+
+/** The prefix of every temp dir this provider makes under the OS temp dir. */
+export const LOCAL_CLI_TEMP_PREFIX = "collie-stt-";
+
+/**
+ * A temp dir older than this was left by a bridge that died mid-call (SIGKILL, power loss), because
+ * no live call lasts more than {@link LOCAL_CLI_TIMEOUT_MS}. Swept once per process at provider load.
+ */
+export const STALE_TEMP_DIR_MS = 60 * 60 * 1000;
+
+/** Children in flight across every provider instance in this process: the gate rebuilds providers. */
+let inFlight = 0;
+
+/** Temp roots already swept in this process, so a rebuilt provider does not sweep again. */
+const swept = new Set<string>();
 
 /** An extension Collie is willing to put in a path: short, lower-case, alphanumeric. */
 const SAFE_EXTENSION = /^[a-z0-9]{1,5}$/;
@@ -67,10 +109,11 @@ export class LocalCliEmptyTranscriptError extends SttError {
 }
 
 /** The running child, as much of `Bun.spawn`'s answer as this provider touches. */
-export interface LocalCliChild {
+interface LocalCliChild {
   readonly stdout: ReadableStream<Uint8Array>;
   readonly exited: Promise<number>;
-  kill(signal: "SIGKILL"): void;
+  /** SIGKILL the child's whole process group (POSIX), or the child alone (Windows). Never throws. */
+  killTree(): void;
 }
 
 export interface LocalCliSttDeps {
@@ -80,11 +123,14 @@ export interface LocalCliSttDeps {
   tmpRoot?: string;
   /** The environment the child is built from, before `COLLIE_*` is dropped. */
   env?: Record<string, string | undefined>;
+  /** The platform facts the spawn branches on. The machine's own unless a test pins one. */
+  host?: Host;
 }
 
 /**
- * A provider over one operator-named command. Nothing runs at construction time: the gate builds
- * this inside a snapshot poll, and a poll must stay free.
+ * A provider over one operator-named command. Nothing is spawned at construction time: the gate
+ * builds this inside a snapshot poll, and a poll must stay free. The one thing construction starts is
+ * the stale temp dir sweep, once per process and temp root, in the background and never awaited.
  */
 export function createLocalCliSttProvider(
   settings: LocalCliSttSettings,
@@ -93,37 +139,50 @@ export function createLocalCliSttProvider(
   const timeoutMs = deps.timeoutMs ?? LOCAL_CLI_TIMEOUT_MS;
   const tmpRoot = deps.tmpRoot ?? tmpdir();
   const env = childEnv(deps.env ?? process.env);
+  const host = deps.host ?? HOST;
+  if (!swept.has(tmpRoot)) {
+    swept.add(tmpRoot);
+    void sweepStaleTempDirs(tmpRoot).catch(() => {
+      /* a sweep that fails leaves the dirs to the OS temp cleaner, as before */
+    });
+  }
 
   return {
     id: settings.provider,
 
     /**
-     * Whether the command is there to run. One `access` or one PATH walk, which is the cost of the
-     * mtime check the gate already pays per poll. The reason names no path: it is shown on the phone.
+     * Whether the command is there to run: a regular, executable file (see {@link commandFileProblem}).
+     * One `stat` and one `access`, or one PATH walk first, which is the cost of the mtime check the
+     * gate already pays per poll. The reason names no path and no cause: it is shown on the phone.
+     * `collie stt status` on the host says which check failed.
      */
     async status(): Promise<SttStatus> {
       return commandRunnable(settings.command, env.PATH)
         ? { available: true }
-        : { available: false, reason: "the local transcription command was not found on the host" };
+        : { available: false, reason: "the local transcription command was not found on the host, or cannot be run" };
     },
 
     async transcribe(input: SttAudio, signal?: AbortSignal): Promise<SttResult> {
+      // Refused before anything touches the disk or the process table.
+      if (inFlight >= LOCAL_CLI_MAX_IN_FLIGHT) throw new SttBusyError();
+      inFlight += 1;
+      let released = false;
+      const release = (): void => {
+        if (released) return;
+        released = true;
+        inFlight -= 1;
+      };
+
       const deadline = createSttDeadline(signal, timeoutMs);
       let dir: string | null = null;
       let child: LocalCliChild | null = null;
       // SIGKILL, not SIGTERM: the deadline is the end of the operator's wait, and an engine that
-      // traps TERM to finish its model load would outlive it.
-      const kill = (): void => {
-        try {
-          child?.kill("SIGKILL");
-        } catch {
-          /* already gone */
-        }
-      };
+      // traps TERM to finish its model load would outlive it. The whole group, see the header.
+      const kill = (): void => child?.killTree();
       deadline.signal.addEventListener("abort", kill, { once: true });
       try {
         deadline.throwIfAborted();
-        dir = await mkdtemp(join(tmpRoot, "collie-stt-"));
+        dir = await mkdtemp(join(tmpRoot, LOCAL_CLI_TEMP_PREFIX));
         // mkdtemp already makes 0700 on every platform Bun runs on; said again so a umask or a
         // runtime change cannot widen it silently.
         await chmod(dir, 0o700);
@@ -131,7 +190,7 @@ export function createLocalCliSttProvider(
         await writeFile(path, input.audio, { mode: 0o600, flag: "wx" });
         deadline.throwIfAborted();
 
-        child = spawnCommand([settings.command, ...settings.args, path], dir, env);
+        child = spawnCommand([settings.command, ...settings.args, path], dir, env, host);
         const stdout = await deadline.wait(readCapped(new Response(child.stdout), deadline.signal));
         const status = await deadline.wait(child.exited);
         if (status !== 0) {
@@ -150,6 +209,12 @@ export function createLocalCliSttProvider(
         throw new SttError("unavailable", "the local transcription command could not be run");
       } finally {
         deadline.signal.removeEventListener("abort", kill);
+        // After a clean exit too: a straggler the command left in its group goes with it.
+        kill();
+        // The slot is the CHILD's, not the call's: given back when it has exited, which after a
+        // SIGKILL is at once, or after a grace period for a child stuck in the kernel.
+        if (child === null) release();
+        else void Promise.race([child.exited, Bun.sleep(KILL_GRACE_MS)]).then(release, release);
         if (dir !== null) {
           await rm(dir, { recursive: true, force: true }).catch(() => {
             /* a temp dir that will not go is the OS temp cleaner's, not a failed transcription */
@@ -160,14 +225,73 @@ export function createLocalCliSttProvider(
   };
 }
 
-/** The real spawn: argv, no shell, stdin closed, stderr discarded unread. */
-function spawnCommand(argv: string[], cwd: string, env: Record<string, string>): LocalCliChild {
-  const proc = Bun.spawn(argv, { cwd, env, stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+/**
+ * The real spawn: argv, no shell, stdin closed, stderr discarded unread.
+ *
+ * On POSIX the child is `detached`, which makes it the leader of a new process group (its pgid is
+ * its pid), so `kill(-pid)` reaches everything it forked that did not leave the group. On Windows
+ * `detached` means a new console and a negative pid means nothing, so the child is spawned as before
+ * and only the child is killed: the documented limit of this provider there.
+ */
+function spawnCommand(argv: string[], cwd: string, env: Record<string, string>, host: Host): LocalCliChild {
+  const group = host.platform !== "win32";
+  const proc = Bun.spawn(argv, { cwd, env, stdin: "ignore", stdout: "pipe", stderr: "ignore", detached: group });
   return {
     stdout: proc.stdout,
     exited: proc.exited,
-    kill: (signal) => proc.kill(signal),
+    killTree() {
+      if (group) {
+        try {
+          process.kill(-proc.pid, "SIGKILL");
+        } catch {
+          /* ESRCH: the group is already empty */
+        }
+      }
+      try {
+        // The leader itself, in case the group kill was refused; a no-op once it has exited.
+        proc.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    },
   };
+}
+
+/**
+ * Remove temp dirs a previous bridge left behind when it was killed mid-call, from under `root`.
+ *
+ * Only entries that are, without following a symlink, a DIRECTORY named {@link LOCAL_CLI_TEMP_PREFIX}…,
+ * OWNED BY THIS USER, and last modified more than {@link STALE_TEMP_DIR_MS} ago. No live call is that
+ * old, so this never races a transcription, in this bridge or in a sibling bridge of the same user.
+ * Another user's dir is never touched, and in a sticky `/tmp` it cannot be swapped in under us.
+ * Skipped on Windows, where there is no uid to prove ownership by. Returns how many it removed.
+ */
+export async function sweepStaleTempDirs(
+  root: string,
+  now: number = Date.now(),
+  uid: number | null = process.getuid?.() ?? null,
+): Promise<number> {
+  if (uid === null) return 0;
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const name of names) {
+    if (!name.startsWith(LOCAL_CLI_TEMP_PREFIX)) continue;
+    const path = join(root, name);
+    try {
+      const entry = await lstat(path);
+      if (!entry.isDirectory() || entry.uid !== uid || now - entry.mtimeMs < STALE_TEMP_DIR_MS) continue;
+      await rm(path, { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      /* gone already, or not ours to remove */
+    }
+  }
+  return removed;
 }
 
 /**
@@ -190,17 +314,39 @@ export function childEnv(source: Record<string, string | undefined>) {
   return out;
 }
 
-/** Whether `command` names something executable: itself when absolute, else a PATH hit. */
-function commandRunnable(command: string, path: string | undefined): boolean {
-  if (commandLookup(command) === "absolute") {
-    try {
-      accessSync(command, fsConstants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
+/**
+ * Why `path` cannot be run as the local-cli command, or null when it can. The answer is an
+ * OPERATOR's sentence for `collie stt` on the host: it is never put on the wire, because the bridge's
+ * own status reason names no path and no cause.
+ *
+ * Symlinks are FOLLOWED (`stat`, not `lstat`): a `/usr/local/bin/whisper-cli` that links into a
+ * versioned install is the ordinary case, and what must hold is that the TARGET is a regular file
+ * this user may execute. On Windows `X_OK` reads as "exists" (there is no execute bit), so there the
+ * check is "a regular file".
+ */
+export function commandFileProblem(path: string): string | null {
+  let entry;
+  try {
+    entry = statSync(path);
+  } catch {
+    return "does not exist (or is a symlink to nothing)";
   }
-  return Bun.which(command, path === undefined ? {} : { PATH: path }) !== null;
+  if (entry.isDirectory()) return "is a directory, not a program";
+  if (!entry.isFile()) return "is not a regular file";
+  try {
+    accessSync(path, fsConstants.X_OK);
+  } catch {
+    return "is not executable by this user (chmod +x it)";
+  }
+  return null;
+}
+
+/** Whether `command` names something runnable: itself when absolute, else a PATH hit, checked alike. */
+function commandRunnable(command: string, path: string | undefined): boolean {
+  const found = commandLookup(command) === "absolute"
+    ? command
+    : Bun.which(command, path === undefined ? {} : { PATH: path });
+  return found !== null && commandFileProblem(found) === null;
 }
 
 /** Re-exported so a reader of this provider sees the cap it claims above without a second hop. */
