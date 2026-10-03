@@ -160,26 +160,32 @@ macOS has no package yet. [mise](#mise) works on a Mac, as does the `aarch64-dar
 
 ### Windows support (experimental)
 
-> **Experimental.** Today, a release carries the Windows zip when its Windows build succeeds. Until
-> the Windows build is a required part of the release, a release may ship without it. Then
-> `install.ps1` and `collie update` say so and install nothing. The pieces below were tested as
-> described. Phone access needs a front door that you set up yourself, and it has not been tested on
-> Windows. "Supported" means the maintainer owns the code and tests it; "experimental" means the
-> install path and the phone path are not yet proven against a real release, and it stays until the
+> **Experimental.** The install was tested against the public v1.16.0 release on a Windows 11
+> virtual machine, and the update was rehearsed against local copies of the release files. An update
+> between two real releases and phone access on Windows are not tested yet. The release check
+> requires the Windows zip from now on. Only the maintainer can override that, for a Linux hotfix.
+> "Supported" means the maintainer owns the code and tests it; "experimental" stays until the
 > conditions on the Windows page are all met.
 > [Collie on Windows](windows.md) has the whole page.
 
-Save `scripts/install.ps1` from the repository, read it, and run it. It needs no Bun, Git or
-`bash`:
+Run `install.ps1`. It needs no Bun, Git or `bash`:
 
 ```powershell
-Invoke-WebRequest -OutFile install.ps1 `
-  https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.ps1
+irm https://colliepwa.dev/install.ps1 | iex
+```
+
+To read the script first, save it, open it and run it as a file:
+
+```powershell
+Invoke-WebRequest -OutFile install.ps1 https://colliepwa.dev/install.ps1
+notepad install.ps1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-`irm https://colliepwa.dev/install.ps1 | iex` is the intended front door once that address is live.
-Then open a new terminal, start Herdr, and run `collie start`.
+Then open a new terminal and start Herdr. Herdr takes over that terminal, so open a second terminal
+or a Herdr pane and run `collie start` there.
+[Zero to phone](windows.md#zero-to-phone) has every step, including how to open Collie on your
+phone.
 
 What to know before you start:
 
@@ -187,9 +193,11 @@ What to know before you start:
   covered.
 - **The binary is unsigned.** SmartScreen can ask before it runs, and Smart App Control can block it.
   [Windows page](windows.md#unsigned-binary-smartscreen-and-smart-app-control).
-- **There is no managed front door yet.** `collie start` does not run `tailscale serve` on Windows.
-  Bring your own, as in
-  [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
+- **You publish the address yourself.** On Linux and macOS `collie start` runs `tailscale serve`
+  for you. On Windows it does not, so you run it by hand: [Reaching it from your phone](windows.md#reaching-it-from-your-phone) has the
+  steps with Tailscale, and
+  [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) covers a
+  reverse proxy.
 - **A Windows machine cannot join a crew in this release.**
 - **A build from source needs Git for Windows' `bash`.** The zip needs no toolchain.
 - **A source checkout never updates itself on Windows.** Moving to the zip install is a one-time

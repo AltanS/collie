@@ -194,15 +194,21 @@ isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the r
 
 Linux and macOS: nothing changes for you.
 
-**Today:** a release carries the Windows zip when its Windows build succeeds. Until the Windows
-build is a required part of the release, a release may ship without it. Then `install.ps1` and
-`collie update` say so and install nothing. The pieces below were tested as described. Phone
-access needs a front door that you set up yourself, and it has not been tested on Windows.
+```powershell
+irm https://colliepwa.dev/install.ps1 | iex
+```
 
-Windows 11 on x64 with Herdr is a supported host: the maintainer owns the code and tests it. It stays
-marked experimental, because the install path and the phone path are not yet proven against a real
-release. The conditions for dropping the word are on the Windows page. [**docs/windows.md**](./docs/windows.md) has the install, the update, and what is not
-tested. In short:
+v1.16.0 is the first release with a Windows zip. The installer was run against that public release on
+a Windows 11 VM, and `collie start`, `status`, `doctor` and `stop` worked. Not tested yet are an
+update between two real releases on Windows and phone access through Tailscale on Windows, which is
+why it stays experimental.
+
+The release check requires the Windows zip from now on. Only the maintainer can override that, for a
+Linux hotfix.
+
+Windows 11 on x64 with Herdr is a supported host: the maintainer owns the code and tests it.
+The conditions for dropping the word are on the Windows page. [**docs/windows.md**](./docs/windows.md)
+has the install, the update, and what is not tested. In short:
 
 - **Tested.** The `windows.yml` workflow runs the bridge, cli and scripts tests on every push, and
   a Windows 11 VM rehearses an install, an update and a rollback before each release tag.

@@ -109,14 +109,13 @@ release. 1.14.2 was cut this way on 2026-09-28.
    installs, updates and rolls back a Windows build on the test VM, which no CI job can do. It
    resets the VM's disk and takes 13 to 16 minutes, and it ships the commits of `LOCAL`, so commit
    the release first. Read its table: a failed step holds the tag, and so does an unavailable VM.
-   The `windows.yml` run on the release commit must be green as well. If this release is the first
-   to carry the Windows zip, rewrite the "today" box in `docs/windows.md`, the README and
-   `docs/install.md` in the release commit: they say no release carries the zip. Then tag and push
-   (next paragraph).
+   The `windows.yml` run on the release commit must be green as well. Then tag and push (next
+   paragraph).
 
-   A missing Windows zip stops the release once a published release has carried one, from
-   2026-11-15 (`WINDOWS_ASSET_MANDATORY_FROM` in `scripts/windows-asset.ts`), and whenever the
-   releases API does not answer. For a Linux hotfix while the Windows job is broken, set the
+   A missing Windows zip stops the release from the first of two moments: once an earlier stable
+   release (not a draft, not a prerelease) has carried one, or on 2026-11-15
+   (`WINDOWS_ASSET_MANDATORY_FROM` in `scripts/windows-asset.ts`). It also stops the release
+   whenever the releases API does not answer. For a Linux hotfix while the Windows job is broken, set the
    repository variable `COLLIE_WINDOWS_ASSET_OVERRIDE` to `optional` (Settings > Secrets and
    variables > Actions > Variables) before the tag, and delete it right after the release: the run
    warns loudly while it is set. To move the date instead, change that one constant in a commit.
