@@ -304,17 +304,21 @@ export function privateArgs(path: string, userSid: string, folder: boolean, leak
 }
 
 /**
- * A path quoted for a line the operator pastes. Double quotes, which PowerShell and cmd both read,
- * unless the path holds a `$` or a backtick: inside double quotes PowerShell expands `$x` and reads
- * a backtick as an escape, so such a path is single-quoted with each `'` doubled, PowerShell's form.
+ * A path quoted for a line the operator pastes into PowerShell (and only PowerShell: these lines are
+ * not written for cmd). Plain double quotes, unless the path holds a character that double quotes do
+ * not keep literal in PowerShell: `$` (a variable), a backtick (an escape), or one of PowerShell's
+ * own double-quote characters (U+201C to U+201E). Such a path is single-quoted, and every character
+ * PowerShell reads as a single quote, `'` and U+2018 to U+201B, is doubled, which is how PowerShell
+ * writes that character inside single quotes.
  */
 export function quotePath(path: string): string {
-  return /[$`]/.test(path) ? `'${path.replaceAll("'", "''")}'` : `"${path}"`;
+  if (!/[$`\u201C-\u201E]/u.test(path)) return `"${path}"`;
+  return `'${path.replace(/['\u2018-\u201B]/gu, (q) => q + q)}'`;
 }
 
 /**
- * The same repair as one line an operator can paste into PowerShell or cmd: the path and the grants
- * quoted (PowerShell reads a bare `(OI)` as an expression), no placeholder.
+ * The same repair as one line an operator can paste into PowerShell: the path and the grants quoted
+ * (PowerShell reads a bare `(OI)` as an expression), no placeholder.
  */
 export function privateCommand(path: string, userSid: string, folder: boolean, leaks: readonly Leak[] = []): string {
   const [first, ...rest] = privateArgs(path, userSid, folder, leaks);

@@ -441,6 +441,15 @@ describe("the rest", () => {
     );
   });
 
+  test("every character PowerShell reads as a single quote is doubled, and its double quotes force single quotes", () => {
+    // U+2018..U+201B are single quotes to PowerShell, each doubled like `'`.
+    expect(quotePath("D:\\$x\\a\u2018b\u2019c\u201Ad\u201Be'f")).toBe("'D:\\$x\\a\u2018\u2018b\u2019\u2019c\u201A\u201Ad\u201B\u201Be''f'");
+    // Curly single quotes alone are harmless inside double quotes.
+    expect(quotePath("C:\\o\u2019brien")).toBe('"C:\\o\u2019brien"');
+    // PowerShell's own double quotes would end a double-quoted string: single quotes instead.
+    expect(quotePath("C:\\a\u201Cb\u201D")).toBe("'C:\\a\u201Cb\u201D'");
+  });
+
   test("the config root names .env and config.toml as its secrets", () => {
     expect(CONFIG_ROOT.secrets).toEqual([".env", "config.toml"]);
   });
