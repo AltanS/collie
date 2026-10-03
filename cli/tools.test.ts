@@ -4,7 +4,7 @@ import { delimiter, isAbsolute, join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { hostFor } from "../bridge/host.ts";
+import { HOST, hostFor } from "../bridge/host.ts";
 import { fallbackDirs, findIn, findTool, searchDirs, toolExts } from "./tools.ts";
 
 // The whole reason this module exists: Herdr spawns plugin actions with no login shell, so PATH may
@@ -190,9 +190,12 @@ describe("findTool skips a directory that carries the tool's name", () => {
     expect(findTool("powershell", env, HOME, hostFor("win32"))).toBe(file);
   });
 
-  test("posix: a +x directory named like the tool does not win over a later executable file", () => {
-    const { a, b, file } = layout("powershell");
-    const env = { PATH: [a, b].join(delimiter) };
-    expect(findTool("powershell", env, HOME, hostFor("linux"))).toBe(file);
+  // Runs on the REAL host, not a pinned one: a pinned `linux` host over real Windows temp paths
+  // splits `C:\...` on `:`. The file name carries the host's own executable suffix, so the same
+  // test asserts "a directory named like the tool never wins" on Linux, macOS and Windows alike.
+  test("host: a directory named like the tool does not win over a later executable file", () => {
+    const { a, b, file } = layout(`powershell${HOST.exeSuffix}`);
+    const env = { PATH: [a, b].join(HOST.path.delimiter), PATHEXT: ".exe" };
+    expect(findTool("powershell", env, HOME, HOST)).toBe(file);
   });
 });
