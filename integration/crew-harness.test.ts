@@ -5,6 +5,7 @@ import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
 import { cmdDevicesRevoke } from "../cli/pairing.ts";
@@ -344,6 +345,8 @@ function depsFor(instance: Instance, captured: Captured): CrewDeps {
     io: { out: (l) => captured.out.push(l), err: (l) => captured.err.push(l) },
     exec: noExec,
     files: realFiles,
+    // The machine the drill runs on, as production passes it: a verb refuses on a Windows host.
+    host: HOST,
     store: freshStore(instance),
     ops: new CrewOpsStore(instance.stateDir),
     audit: null,
