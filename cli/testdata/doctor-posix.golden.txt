@@ -27,7 +27,7 @@ local:
   ✓        hook-python3          /fake/python3
   skipped: agent-sessions        the bridge reports no agent panes → start an agent in a pane, then re-run `collie doctor`
   ✓        journal-roots         1 of 7 roots present — claude: /home/pat/.claude/projects (resolved from /home/pat; the BRIDGE resolves them from ITS OWN user's home)
-  ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked 39 days ago
+  ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked <N> days ago
   ✓        cache-rules           no /cfg/cache-rules.toml — every TTL is the shipped rule
   ✓        cache-env             no Claude Code cache variable is set in this shell
   skipped: restart-pending       the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and roster, and nothing names the code it is executing → `collie restart` after any build if in doubt; `collie logs` dates the running process
@@ -65,7 +65,7 @@ local:
   ✓        hook-python3          /fake/python3
   skipped: agent-sessions        the bridge reports no agent panes → start an agent in a pane, then re-run `collie doctor`
   ✓        journal-roots         1 of 7 roots present — claude: /home/pat/.claude/projects (resolved from /home/pat; the BRIDGE resolves them from ITS OWN user's home)
-  ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked 39 days ago
+  ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked <N> days ago
   ✓        cache-rules           no /cfg/cache-rules.toml — every TTL is the shipped rule
   ✓        cache-env             no Claude Code cache variable is set in this shell
   skipped: restart-pending       the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and roster, and nothing names the code it is executing → `collie restart` after any build if in doubt; `collie logs` dates the running process
