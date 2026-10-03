@@ -66,6 +66,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   conversation no longer fits (picking it compacts first) are left out. The `@` quick roles, the
   task-model picker, narrow panes and the Nerd Font symbols stay terminal text with an Escape button.
 - **Voice input can run a transcription command already on your machine.** The new `local-cli` provider runs a command such as `whisper-cli` or `muesli-cli` once per recording, with the recording's path as its last argument, and takes the transcript from its stdout. Set it up with `collie stt setup --provider local-cli --command <path> --args <list>`, and check it with `collie stt test`. Collie runs it without a shell, as the bridge's user, and kills it after 60 seconds. The phone never sees its command line or its error output. Thanks @SubodhDahal (#227).
+- **Collie can check the Cloudflare Access token itself.** Set `COLLIE_ACCESS_TEAM` and
+  `COLLIE_ACCESS_AUD`, and every request through the tunnel must carry a `Cf-Access-Jwt-Assertion`
+  that Cloudflare signed for this application. A deleted Access app, a bypass rule or a policy that
+  has not propagated yet then shows the panes to nobody. Half a setting, or keys Collie could not
+  fetch, refuse every tunnel request. Unset, nothing changes. Thanks @xbach (#341).
 
 ### Changed
 

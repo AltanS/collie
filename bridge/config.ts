@@ -301,6 +301,14 @@ export interface Config {
    */
   trustedUserOptional: boolean;
   /**
+   * Cloudflare Access team (`COLLIE_ACCESS_TEAM`): `myteam`, `myteam.cloudflareaccess.com` or the
+   * https issuer. With {@link accessAud}, turns on the Access JWT gate (`bridge/access-jwt.ts`,
+   * ADR 0081). Either one alone fails closed. Empty with an empty {@link accessAud} = the gate is off.
+   */
+  accessTeam: string;
+  /** Cloudflare Access application audience tag(s) (`COLLIE_ACCESS_AUD`). See {@link accessTeam}. */
+  accessAud: string[];
+  /**
    * How much of each value's content the audit trail keeps — see {@link AuditContent} in audit.ts
    * for what `none` does and does not redact.
    */
@@ -642,6 +650,8 @@ export function loadConfig(env: Environment = process.env): Config {
     cacheRulesFile: join(configDir, "cache-rules.toml"),
     trustedUser: env.COLLIE_TRUSTED_USER ?? "",
     trustedUserOptional: envBool("COLLIE_TRUSTED_USER_OPTIONAL", false, env),
+    accessTeam: (env.COLLIE_ACCESS_TEAM ?? "").trim(),
+    accessAud: envList("COLLIE_ACCESS_AUD", env),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview", env),
     deviceHeader: (env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST", env),
