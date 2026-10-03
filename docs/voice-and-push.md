@@ -13,12 +13,13 @@ character you type turns it back into Send. You dictate a message or you type on
 primary action rather than two competing for the width of the field.
 
 **It does not exist until you run `collie stt setup`.** No button is drawn, no audio leaves the
-phone, no credential is held, no child process runs. Absent, not disabled. Two providers:
+phone, no credential is held, no child process runs. Absent, not disabled. Three providers:
 
 | provider | what it is |
 | --- | --- |
 | **`openai-compatible`** | Any endpoint that speaks `POST /audio/transcriptions` — the public OpenAI API, a cloud Whisper clone, or **a local engine on the same machine, which is the zero-egress choice** ([below](#zero-egress--point-it-at-your-own-engine)). |
 | **`codex`** | Borrows the `codex` binary you already trust for a short-lived token. No new account, no new key — and a **private, unsupported** endpoint that carries a consent step you have to type `yes` to ([below](#the-codex-provider--what-you-are-accepting)). |
+| **`local-cli`** | Runs a transcription command already on the host, such as `whisper-cli` or `muesli-cli`, once per recording, and reads the transcript from its stdout. No HTTP server needed ([below](#run-your-own-command-the-local-cli-provider)). |
 
 Setup is a CLI act for the reason [pairing](security.md#pair-a-device--the-write-credential) is one: this
 surface accepts a credential, so it belongs on the host's keyboard. There is no web setup form.
@@ -31,6 +32,8 @@ Which speech-to-text provider?
                      server, which is the zero-egress choice and the one to prefer.
   codex              borrow your own `codex` sign-in. No new key, no new account —
                      and a private endpoint that may break without notice.
+  local-cli          run a transcription command already on this machine, such as
+                     whisper-cli or muesli-cli. Its stdout is the transcript.
 provider [openai-compatible]:
 The API base, INCLUDING its version prefix — the provider appends /audio/transcriptions.
   local  http://127.0.0.1:8080/v1     (whisper.cpp / parakeet.cpp — nothing leaves the host)
@@ -152,6 +155,53 @@ Collie asks that endpoint **under its own name first**. Only if the honest ident
 it fall back to the Codex CLI's headers — and that fallback is written into the config, in a word
 `collie stt status` reads back to you. Collie never reads or stores `~/.codex/auth.json`; the binary
 you already trust stays the only thing that touches it.
+
+### Run your own command: the local-cli provider
+
+`local-cli` runs a transcription command you already have, once per recording, with no HTTP server
+in between:
+
+```bash
+bin/collie stt setup --provider local-cli \
+  --command /Applications/Muesli.app/Contents/MacOS/muesli-cli --args transcribe
+bin/collie stt test
+```
+
+Collie writes the recording to a private temp file and runs `<command> [args…] <file>`. The file's
+path is always the last argument. The command's stdout, trimmed, is the transcript.
+
+| setting | flag | env | what it is |
+| --- | --- | --- | --- |
+| `command` | `--command` | `COLLIE_STT_COMMAND` | An absolute path, or a name on `PATH`. |
+| `args` | `--args` | none | The arguments before the file's path. |
+
+A bare name is looked up when you run `setup`, and the full path is saved. The service runs with a
+short `PATH`, so a name your shell finds may not resolve there. A relative path such as
+`./whisper-cli` is refused.
+
+`--args` takes words separated by spaces. No shell reads them, so quotes are kept as typed. An
+argument with a space in it needs the JSON form instead:
+
+```bash
+bin/collie stt setup --provider local-cli --command whisper-cli \
+  --args '["-m", "/srv/my models/ggml-base.bin", "-nt"]'
+```
+
+What the command must do:
+
+- Exit with status 0 and print the transcript to stdout. Anything else fails the dictation.
+- Finish within 60 seconds. Collie kills it with SIGKILL after that.
+- Print at most 256 KiB to stdout.
+
+An empty stdout is a failure on the phone, because there is nothing to put in the box.
+`collie stt test` counts it as a pass, since its clips are silence.
+
+> **Note.** The command runs as the bridge's own user, with that user's rights, once per dictation.
+> It gets no shell, no stdin, and no `COLLIE_*` environment variable. Its stderr is never read, and
+> the phone never sees the command line or a path, only that the command failed and its exit status.
+
+The temp file sits in a folder only your user can open, and Collie deletes it after every run. Where
+the audio goes next is up to the command: a local engine keeps it on the host.
 
 The reasoning for all of the above — why this was declined twice, what changed, and why the seam
 looks like this — is [ADR 0029](../.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md).

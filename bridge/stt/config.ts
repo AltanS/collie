@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+import { HOST, type Host } from "../host.ts";
 import type { JsonValue } from "../json.ts";
 import { diskIo, type OperatorFileIo } from "../operator-file.ts";
 import { jsonRecord, jsonStringField } from "./json.ts";
@@ -41,7 +42,7 @@ export const STT_FILENAME = "stt.json";
 export const DEFAULT_STT_MODEL = "gpt-transcribe";
 
 /** The provider names this bridge can build. */
-export const STT_PROVIDERS = ["openai-compatible", "codex"] as const;
+export const STT_PROVIDERS = ["openai-compatible", "codex", "local-cli"] as const;
 export type SttProviderName = (typeof STT_PROVIDERS)[number];
 
 /** The binary the codex provider borrows its auth from, when the operator names no other. */
@@ -105,8 +106,33 @@ export interface CodexSttSettings {
   wireIdentity: SttWireIdentity;
 }
 
+/**
+ * The most arguments `local-cli` will put in front of the recording's path. A transcription command
+ * needs a verb and a few flags; a list longer than this is a hand-edit gone wrong, not a use case.
+ */
+export const MAX_LOCAL_CLI_ARGS = 32;
+
+/**
+ * The `local-cli` provider, configured (#227).
+ *
+ * Collie runs `command`, then each of `args`, then the path of a temporary file it named itself,
+ * as an argv array and never through a shell. Both fields come from `stt.json` (0600, written by
+ * `collie stt setup`) or the deployment's own environment; nothing a request carries reaches them.
+ */
+export interface LocalCliSttSettings {
+  provider: "local-cli";
+  /**
+   * The program to run: an absolute path, or a bare name resolved from the service's own `PATH`.
+   * `collie stt setup` writes the absolute path it found, because a systemd user unit's `PATH` is
+   * minimal. A relative path with a slash is refused: it would mean whatever the bridge's cwd says.
+   */
+  command: string;
+  /** The arguments before the recording's path. Empty when the command takes the path alone. */
+  args: string[];
+}
+
 /** Everything a resolved provider can be. */
-export type SttSettings = OpenAiSttSettings | CodexSttSettings;
+export type SttSettings = OpenAiSttSettings | CodexSttSettings | LocalCliSttSettings;
 
 /** The environment keys this module reads. Named once so the CLI and the docs can cite them. */
 export const STT_ENV_KEYS = {
@@ -117,6 +143,7 @@ export const STT_ENV_KEYS = {
   language: "COLLIE_STT_LANG",
   codexBin: "COLLIE_CODEX_BIN",
   wireIdentity: "COLLIE_STT_WIRE_IDENTITY",
+  command: "COLLIE_STT_COMMAND",
 } as const;
 
 /** The path `stt.json` sits at, given the bridge's state dir. */
@@ -133,6 +160,27 @@ interface RawSettings {
   language?: string;
   codexBin?: string;
   wireIdentity?: string;
+  command?: string;
+  /**
+   * The `local-cli` arguments. `null` means PRESENT BUT UNREADABLE — not an array, or an array
+   * holding something other than strings — which the resolve refuses rather than reads as "no
+   * arguments": running the command without the flags the operator wrote is a different command.
+   * File only; there is no environment spelling of a list.
+   */
+  args?: string[] | null;
+}
+
+/** The `local-cli` argument list as it arrived, narrowed. See {@link RawSettings.args}. */
+function argList(value: JsonValue | undefined): string[] | null | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return null;
+  const out: string[] = [];
+  for (const item of value) {
+    const text = jsonStringField(item);
+    if (text === null) return null;
+    out.push(text);
+  }
+  return out;
 }
 
 /** A trimmed string, or undefined when the value is absent, not a string, or blank. */
@@ -159,6 +207,8 @@ export function coerceSttFile(raw: JsonValue | undefined): RawSettings {
     language: optionalString(o.language),
     codexBin: optionalString(o.codexBin),
     wireIdentity: optionalString(o.wireIdentity),
+    command: optionalString(o.command),
+    args: argList(o.args),
   };
 }
 
@@ -172,6 +222,7 @@ export function sttEnvSettings(env: Record<string, string | undefined>): RawSett
     language: optionalString(env[STT_ENV_KEYS.language]),
     codexBin: optionalString(env[STT_ENV_KEYS.codexBin]),
     wireIdentity: optionalString(env[STT_ENV_KEYS.wireIdentity]),
+    command: optionalString(env[STT_ENV_KEYS.command]),
   };
 }
 
@@ -228,6 +279,9 @@ export function resolveSttSettings(
   const language = env.language ?? file.language;
   const codexBin = env.codexBin ?? file.codexBin;
   const wireIdentity = env.wireIdentity ?? file.wireIdentity;
+  const command = env.command ?? file.command;
+  // File only: the environment has no spelling of a list (see RawSettings.args).
+  const args = file.args;
 
   // Nothing was configured at all — the ordinary case, and not something to warn about.
   if (
@@ -237,7 +291,9 @@ export function resolveSttSettings(
     apiKey === undefined &&
     language === undefined &&
     codexBin === undefined &&
-    wireIdentity === undefined
+    wireIdentity === undefined &&
+    command === undefined &&
+    args === undefined
   ) {
     return null;
   }
@@ -246,6 +302,7 @@ export function resolveSttSettings(
     return null;
   }
   if (provider === "codex") return resolveCodex(codexBin, wireIdentity, warn);
+  if (provider === "local-cli") return resolveLocalCli(command, args, warn);
   if (baseUrl === undefined) {
     warn(`speech-to-text is off: no endpoint configured (set ${STT_ENV_KEYS.url} or "baseUrl" in ${STT_FILENAME})`);
     return null;
@@ -319,6 +376,59 @@ function resolveCodex(
     // documented default before the assertion is reached.
     wireIdentity: (wireIdentity ?? "honest") as SttWireIdentity,
   };
+}
+
+/**
+ * How a `local-cli` command is spelled: an absolute path on this host, a bare name to look up on
+ * `PATH` (no separator at all), or a relative path, which is refused everywhere it is met.
+ * Read through the {@link Host}, because `C:\x\whisper.exe` is absolute and starts with no slash.
+ */
+export function commandLookup(command: string, host: Host = HOST): "absolute" | "bare" | "relative" {
+  if (host.path.isAbsolute(command)) return "absolute";
+  return /[\\/]/.test(command) ? "relative" : "bare";
+}
+
+/** True when a string carries a NUL, which no argv entry can hold. */
+const hasNul = (value: string): boolean => value.includes("\0");
+
+/**
+ * The `local-cli` provider's half of the resolve: a command Collie can run without a shell, and the
+ * arguments to put before the recording's path.
+ *
+ * Every refusal here names the FIELD, never its value. The arguments may well carry a token or a
+ * model path the operator would rather not see in a journal line.
+ */
+function resolveLocalCli(
+  command: string | undefined,
+  args: string[] | null | undefined,
+  warn: (message: string) => void,
+): LocalCliSttSettings | null {
+  if (command === undefined) {
+    warn(
+      `speech-to-text is off: the local-cli provider needs a command ` +
+        `(${STT_ENV_KEYS.command} or "command" in ${STT_FILENAME})`,
+    );
+    return null;
+  }
+  // A bare name resolves from PATH; an absolute path is itself. A RELATIVE path with a slash would
+  // resolve against whatever directory the bridge happened to start in, so it is refused.
+  if (hasNul(command) || commandLookup(command) === "relative") {
+    warn('speech-to-text is off: the local-cli "command" must be an absolute path or a bare name on PATH');
+    return null;
+  }
+  if (args === null) {
+    warn(`speech-to-text is off: the local-cli "args" in ${STT_FILENAME} must be a list of strings`);
+    return null;
+  }
+  const list = args ?? [];
+  if (list.length > MAX_LOCAL_CLI_ARGS || list.some(hasNul)) {
+    warn(
+      `speech-to-text is off: the local-cli "args" must be at most ${MAX_LOCAL_CLI_ARGS} strings ` +
+        "with no NUL characters",
+    );
+    return null;
+  }
+  return { provider: "local-cli", command, args: [...list] };
 }
 
 /**

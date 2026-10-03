@@ -10,7 +10,10 @@ reinstated as the two providers below; the standing rule they were refused under
 here, deliberately and only for operators who opt in.
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) and
 [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (the phone talks to the lead) ·
-[ADR 0001](./0001-one-managed-front-door.md) (nothing new is published).
+[ADR 0001](./0001-one-managed-front-door.md) (nothing new is published) · a third provider,
+`local-cli`, is recorded in the
+[Addendum — 2026-10-03](#addendum--2026-10-03-a-third-provider-runs-the-operators-own-command)
+below ([#227](https://github.com/AltanS/collie/issues/227))
 
 Note on numbering: #91 carried two ADRs of its own, `0011-one-openai-compatible-transcription-endpoint`
 and `0012-synchronous-one-shot-voice`. Neither merged, and **both numbers are long since claimed by
@@ -125,3 +128,37 @@ it says out loud what identity it puts on the wire.**
   paragraph all go away; the provider stays.
 - **Evidence that operators enable STT by default.** If the opt-in stops being the thing that makes
   the cost acceptable, the cost has to be re-argued rather than inherited.
+
+## Addendum — 2026-10-03: a third provider runs the operator's own command
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum records the
+third provider the seam was built to take, and the one cost it adds.
+
+[#227](https://github.com/AltanS/collie/issues/227) (@SubodhDahal) asked for an operator who already
+runs an on-device engine behind a command line (Muesli's `muesli-cli transcribe <file>`, a
+`whisper-cli` build) not to have to stand up an HTTP server just to reach `openai-compatible`.
+`local-cli` is that provider: `bridge/stt/local-cli.ts`, one arm in `bridge/stt/index.ts`, and
+nothing in the composer, the route or the wire moved. That is the "a file, not a fork" sentence
+above, kept.
+
+**The cost: on this provider the bridge spawns a child as the bridge user for every dictation.**
+It is short-lived, one per recording, unlike the `codex app-server` above, and it runs whatever the
+operator named, so it runs with everything that user can do. The bounds that make it acceptable sit
+in the module header, and in short:
+
+- **argv, never a shell.** `Bun.spawn([command, ...args, tempPath])`. Nothing is expanded or globbed.
+- **The operator's words only.** `command` and `args` come from `stt.json` (0600, written by
+  `collie stt setup`) or the deployment's environment (`COLLIE_STT_COMMAND`; `args` is file-only). A
+  request contributes the recording's bytes and nothing else. The temp file's name and extension are
+  Collie's, and the extension is narrowed again before it becomes part of a path.
+- **A private temp dir** (0700, the file 0600), removed in `finally` whatever happened.
+- **The same 60 s deadline** as `openai-compatible`, enforced with SIGKILL, a 256 KiB stdout cap,
+  and **no stderr, command line or path ever reaches the phone**: an `SttStatus.reason` or a
+  refusal is Collie's own sentence and, at most, an exit status.
+- **No `COLLIE_*` variable is passed to the child**, so the push keys and another provider's key do
+  not ride along.
+
+Egress is the operator's command's business: a local engine keeps the audio on the host, which is
+the configuration this ADR already leads with. Setup stays a CLI act, and nothing about the
+lead-only rule, the hands-free rule or the absent-until-configured rule changes.
+

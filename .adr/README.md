@@ -103,7 +103,7 @@ the pointer, it was a supersede.
 | [0026](./0026-the-operator-is-the-quorum.md) | The operator is the quorum | Accepted |
 | [0027](./0027-the-deputy-is-named-ahead-of-time.md) | The deputy is named ahead of time, and takes over on the operator's word | Accepted |
 | [0028](./0028-the-standby-door-is-a-second-listener.md) | The standby door is a second listener that arms on silence (amends 0013) | Accepted |
-| [0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md) | Speech-to-text is a provider seam Collie owns; Codex auth rides the operator's own binary | Accepted |
+| [0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md) | Speech-to-text is a provider seam Collie owns; Codex auth rides the operator's own binary (addendum 2026-10-03: a local command provider) | Accepted |
 | [0030](./0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md) | The UI is translated by a typed dictionary, not an i18n library | Amended in scope by 0074 |
 | [0031](./0031-freshness-is-a-declared-promise.md) | Freshness, focus and shape are contract promises, not adapter folklore | Accepted |
 | [0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md) | A worktree is opened by the multiplexer, not by Git | Accepted |
