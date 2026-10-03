@@ -154,8 +154,15 @@ export class NotificationCoordinator<H = unknown> {
   ) {}
 
   /** Wire to `StateEngine.onTransition`. */
-  onTransition(agent: AgentView, _from: AgentStatus, to: AgentStatus): void {
+  onTransition(agent: AgentView, from: AgentStatus, rawTo: AgentStatus): void {
     const id = agent.paneId;
+    // Herdr 0.9 can report a finished turn as `idle` instead of `done`, and tmux and zellij never
+    // report `done` (issue #345), so a `working → idle` flip IS the completion and is read as `done` from here on: the Finished pref,
+    // the debounce, the verb and the payload all behave as for a real `done`. Only that exact pair
+    // counts. `blocked → idle` (the operator answered the prompt) and every other way into `idle`
+    // stay a resolve. Known limit: an agent the operator interrupts also goes `working → idle` and
+    // will push. Not `isNewWork`: that one includes `blocked → idle`.
+    const to: AgentStatus = from === "working" && rawTo === "idle" ? "done" : rawTo;
     if (!this.isNotifiable(to)) {
       // Resolved to a non-notifiable (or preference-disabled) state: drop a still-pending alert,
       // retract a delivered one.

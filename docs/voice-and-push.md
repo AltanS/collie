@@ -289,6 +289,8 @@ Four kinds, each with its own switch under **Settings → Alerts → Notify when
 | App updates | a newer Collie release is available | on |
 | Cache about to go cold | a pane's prompt cache expires in about five minutes | off |
 
+Finished fires when an agent goes from working to idle, so an agent you interrupt also counts as finished.
+
 Each device shows an alert's title in its own [language](configure.md#language), and English on a
 device that has not opened Collie since it was updated. The body stays as the bridge wrote it.
 

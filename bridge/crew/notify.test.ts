@@ -202,6 +202,19 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
     expect(push.sent.at(-1)).toEqual({ type: "clear", tag: "collie:herd@laptop" });
   });
 
+  test("a peer's working → idle is a finished turn and pushes once, naming the host (#345)", () => {
+    const { clock, push, peer } = notifier();
+    peer.observe("laptop", body([pane("p1", "working")]));
+    peer.observe("laptop", body([pane("p1", "idle")]));
+    clock.fireAll();
+    for (let i = 0; i < 10; i++) peer.observe("laptop", body([pane("p1", "idle")]));
+    clock.fireAll();
+    expect(push.sent).toHaveLength(1);
+    expect(push.sent[0]?.title).toBe("claude is done");
+    expect(push.sent[0]?.titleCode).toBe("agent.done");
+    expect(push.sent[0]?.host).toBe("laptop");
+  });
+
   test("a pane closing on the peer retracts it too", () => {
     const { clock, push, peer } = notifier();
     peer.observe("laptop", body([pane("p1", "working")]));

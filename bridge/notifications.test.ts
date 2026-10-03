@@ -124,6 +124,78 @@ describe("NotificationCoordinator — debounce", () => {
   });
 });
 
+// Herdr 0.9, tmux and zellij report a finished turn as `idle`, never `done` (issue #345), so the
+// coordinator reads working → idle as the completion. The `setup` isNotifiable above is faithful to
+// the real one: blocked and done only, never idle.
+describe("NotificationCoordinator — working → idle is a completion (#345)", () => {
+  test("pushes once with the 'is done' wording after the debounce", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "idle"), "working", "idle");
+    expect(sink.events).toEqual([]); // armed, not yet fired
+    clock.fireAll();
+    expect(sink.renders).toHaveLength(1);
+    expect(sink.last).toEqual({
+      title: "claude is done",
+      titleCode: "agent.done",
+      titleDetail: { agent: "claude" },
+      body: "demo",
+      paneId: "p1",
+      renotify: true,
+    });
+  });
+
+  test("blocked → idle stays a resolve: nothing pushed, the delivered alert retracted", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "blocked"), "working", "blocked");
+    clock.fireAll();
+    coord.onTransition(agent("p1", "idle"), "blocked", "idle"); // the operator answered the prompt
+    expect(clock.armed).toBe(0);
+    clock.fireAll();
+    expect(sink.renders).toHaveLength(1); // only the original blocked alert
+    expect(sink.events.at(-1)).toEqual({ kind: "clear" });
+  });
+
+  test("blocked → idle with nothing outstanding pushes nothing", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "idle"), "blocked", "idle");
+    expect(clock.armed).toBe(0);
+    expect(sink.events).toEqual([]);
+  });
+
+  test("working → idle → working inside the debounce sends nothing", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "idle"), "working", "idle");
+    coord.onTransition(agent("p1", "working"), "idle", "working");
+    expect(clock.armed).toBe(0);
+    clock.fireAll();
+    expect(sink.events).toEqual([]);
+  });
+
+  test("a later done → idle retracts the alert and never pushes twice", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "idle"), "working", "idle");
+    clock.fireAll();
+    coord.onTransition(agent("p1", "idle"), "done", "idle");
+    clock.fireAll();
+    expect(sink.renders).toHaveLength(1);
+  });
+
+  test("an idle that did not come from working (unknown → idle) stays a resolve", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "idle"), "unknown", "idle");
+    expect(clock.armed).toBe(0);
+    expect(sink.events).toEqual([]);
+  });
+
+  test("with the Finished pref off, working → idle sends nothing", () => {
+    const { clock, sink, coord } = setup({ blocked: true, done: false });
+    coord.onTransition(agent("p1", "idle"), "working", "idle");
+    expect(clock.armed).toBe(0);
+    clock.fireAll();
+    expect(sink.events).toEqual([]);
+  });
+});
+
 describe("NotificationCoordinator — coalescing", () => {
   test("two outstanding agents collapse into one digest that buzzes, named by their pane", () => {
     const { clock, sink, coord } = setup();
