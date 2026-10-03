@@ -156,7 +156,12 @@ describe("scripts/install.ps1, read as text", () => {
     expect(offending(/Authorization/)[0]).toContain("$mirror -eq ''");
     const withHeaders = CODE.filter((l) => /-Headers/.test(l));
     expect(withHeaders).toHaveLength(1);
-    expect(withHeaders[0]).toContain("/tags?per_page=100");
+    expect(withHeaders[0]).toContain("-Uri $uri -Headers $headers");
+    // `$uri` is only ever a page of the tags API.
+    expect(CODE.filter((l) => /\$uri = /.test(l)).map((l) => l.trim())).toEqual([
+      '$uri = "$api/repos/$repo/tags?per_page=100"',
+      'if ($page -gt 1) { $uri = "$uri&page=$page" }',
+    ]);
   });
 
   test("unpacks with its own checked loop, never with Expand-Archive alone", () => {
@@ -207,6 +212,8 @@ interface Asset {
 /** A release mirror: the tags API and the download path, both as GitHub spells them. */
 class Mirror {
   readonly requests: string[] = [];
+  /** The query of every tags call, so a case can see which pages were asked for. */
+  readonly tagQueries: string[] = [];
   /** Every Authorization header the mirror was sent. A token must never reach it. */
   readonly authorizations: string[] = [];
   /** The tags API's status, so a case can be rate-limited. */
@@ -225,13 +232,19 @@ class Mirror {
       hostname: "127.0.0.1",
       port: 0,
       fetch: (req) => {
-        const path = new URL(req.url).pathname;
+        const url = new URL(req.url);
+        const path = url.pathname;
         this.requests.push(path);
         const auth = req.headers.get("authorization");
         if (auth !== null) this.authorizations.push(auth);
         if (/^\/repos\/[^/]+\/[^/]+\/tags$/.test(path)) {
           if (this.tagsStatus !== 200) return new Response("rate limited", { status: this.tagsStatus });
-          return new Response(JSON.stringify(this.tags.map((name) => ({ name, commit: { sha: `sha-${name}` } }))), {
+          this.tagQueries.push(url.search);
+          // GitHub's paging: `per_page` (30 when absent, at most 100) and `page`, from 1.
+          const size = Math.min(Number(url.searchParams.get("per_page") ?? "30"), 100);
+          const page = Number(url.searchParams.get("page") ?? "1");
+          const slice = this.tags.slice((page - 1) * size, page * size);
+          return new Response(JSON.stringify(slice.map((name) => ({ name, commit: { sha: `sha-${name}` } }))), {
             headers: { "content-type": "application/json; charset=utf-8" },
           });
         }
@@ -751,6 +764,26 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
         `/${REPO}/releases/download/v0.38.4/collie-0.38.4-${PLATFORM}.zip.sha256`,
         `/${REPO}/releases/download/v${v1}/collie-${v1}-${PLATFORM}.zip.sha256`,
       ]);
+    } finally {
+      mirror.tags = saved;
+    }
+  }, 60_000);
+
+  test("reads every page of tags: a newest release at position 120 of 130 is still found", async () => {
+    const b = box();
+    const saved = mirror.tags;
+    mirror.tags = [
+      ...Array.from({ length: 119 }, (_, i) => `v0.0.${i + 1}`),
+      `v${v1}`,
+      "v9.9.9-rc.1",
+      ...Array.from({ length: 9 }, (_, i) => `v0.0.${i + 200}`),
+    ];
+    const before = mirror.tagQueries.length;
+    try {
+      const r = await install(b, mirror);
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(`Collie ${v1} is installed`);
+      expect(mirror.tagQueries.slice(before)).toEqual(["?per_page=100", "?per_page=100&page=2"]);
     } finally {
       mirror.tags = saved;
     }

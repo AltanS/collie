@@ -495,9 +495,19 @@ function Invoke-CollieInstall {
       if ($api.StartsWith("file:///")) {
         $tagsFile = ([Uri]"$api/repos/$repo/tags").LocalPath
         if (-not (Test-Path -LiteralPath $tagsFile -PathType Leaf)) { Stop-CollieInstall "the mirror has no $tagsFile." "Put the tags list there, or remove COLLIE_INSTALL_MIRROR." }
-        $answer = @{ Content = [System.IO.File]::ReadAllText($tagsFile) }
+        $rows = @([System.IO.File]::ReadAllText($tagsFile) | ConvertFrom-Json | ForEach-Object { $_ })
       } else {
-        $answer = Invoke-WebRequest -UseBasicParsing -Uri "$api/repos/$repo/tags?per_page=100" -Headers $headers -ErrorAction Stop
+        # Every page: GitHub serves 100 tags a page, and a newer tag can sit on a later one. A page
+        # shorter than 100 is the last; ten pages is the bound, as in `collie update`.
+        $rows = @()
+        for ($page = 1; $page -le 10; $page++) {
+          $uri = "$api/repos/$repo/tags?per_page=100"
+          if ($page -gt 1) { $uri = "$uri&page=$page" }
+          $answer = Invoke-WebRequest -UseBasicParsing -Uri $uri -Headers $headers -ErrorAction Stop
+          $onePage = @($answer.Content | ConvertFrom-Json | ForEach-Object { $_ })
+          $rows += $onePage
+          if ($onePage.Count -lt 100) { break }
+        }
       }
     } catch {
       if ($null -ne $_.Exception.Data["CollieFix"]) { throw }
@@ -509,7 +519,7 @@ function Invoke-CollieInstall {
       }
       Stop-CollieInstall "$api answered HTTP $code when asked for the tags of $repo." "Try again later, or $pinFix"
     }
-    $names = @($answer.Content | ConvertFrom-Json | ForEach-Object { $_ } | ForEach-Object { "$($_.name)" })
+    $names = @($rows | ForEach-Object { "$($_.name)" })
     $candidates = @(Sort-CollieTags $names | Select-Object -First 5)
     if ($candidates.Count -eq 0) { Stop-CollieInstall "no release tag found for $repo." "Pin a version with COLLIE_TAG, or report this at https://github.com/AltanS/collie/issues" }
   }

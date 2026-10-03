@@ -136,6 +136,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **On Windows (experimental): `collie start` refuses a path with a `%` in it.** Task Scheduler reads `%NAME%` in a task as an environment variable and has no way to write a literal `%`, so a task for a folder such as `C:\pct%TEMP%dir` ran another path, or did not start at all. `start` now says which path holds the `%`, writes no task, and asks you to move Collie and its config folder.
 - **On Windows (experimental): `collie stop` checks that the bridge really stopped.** Windows can refuse to end a program that runs as another account or as administrator, and `stop` used to report success anyway. It now looks again after a moment, names each Collie program still running, keeps its record, and says to close it in Task Manager and run the same command again. `restart` and `uninstall` name themselves in that last step.
 - **On Windows (experimental): `collie start` waits until Collie answers.** It used to print `bridge started` as soon as Task Scheduler took the job, even when no bridge came up. It now waits, as `collie restart` does, and fails with the steps to take when nothing answers.
+- **The update check and `install.ps1` read every page of release tags.** GitHub lists 100 tags a page and the repository has about 92, so the next releases would soon have landed on a second page that nothing read, and a new release could go unseen. The release picked today does not change.
 
 ## [1.15.3] - 2026-10-02
 

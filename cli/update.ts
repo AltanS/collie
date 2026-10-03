@@ -18,7 +18,7 @@ import {
   updateMirror,
   parsePrereleaseTag,
   parseReleaseManifest,
-  parseTagsResponse,
+  readAllTags,
 } from "../bridge/update.ts";
 import { STALE_AFTER_MS, inFlight, type UpdateRun } from "../bridge/update-run.ts";
 import { STAGING_LOG_LINES, STAGING_LOG_PREFIX, stagingLogPath } from "../bridge/staging-log.ts";
@@ -1543,17 +1543,22 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   sweepScratch(deps, layout);
 
   // 3. One HTTPS GET. Never a second endpoint, never a guessed version.
-  const tagsUrl = githubTagsUrl(repo, mirror.base);
   // Every request to a mirror refuses a redirect; with no mirror the requests are the ones they were.
+  // Every page of the tag list (`readAllTags`); a failed page is the failed release check.
   const via = mirror.base === null ? undefined : MIRROR_FETCH;
-  const tagsResponse = await deps.net.getJson(tagsUrl, via);
+  let failedUrl = githubTagsUrl(repo, mirror.base);
+  const tagsResponse = await readAllTags(repo, mirror.base, async (url) => {
+    failedUrl = url;
+    const page = await deps.net.getJson(url, via);
+    // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JsonValue by
+    // construction; `parseTagsResponse` checks every field it keeps.
+    return page.ok ? { ok: true, value: page.value as JsonValue } : page;
+  });
   if (!tagsResponse.ok) {
-    netError(deps, "the release check", tagsUrl, tagsResponse.failure);
+    netError(deps, "the release check", failedUrl, tagsResponse.failure);
     return EXIT.FAIL;
   }
-  // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JsonValue by
-  // construction; `parseTagsResponse` checks every field it keeps.
-  const tags = parseApiTags(parseTagsResponse(tagsResponse.value as JsonValue));
+  const tags = parseApiTags(tagsResponse.tags);
 
   // 4. The same plan the git paths make. `head: ""` is correct rather than a fudge: a binary install
   //    has no checked-out commit, so `planUpdate`'s commit arm must never fire and the VERSION

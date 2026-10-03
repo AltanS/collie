@@ -9,10 +9,9 @@ import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import {
   compareSemver,
   githubCredential,
-  githubTagsUrl,
+  readAllTags,
   MIRROR_FETCH,
   mirrorRefusal,
-  parseTagsResponse,
   UPDATE_MIRROR_ENV,
   updateMirror,
 } from "../bridge/update.ts";
@@ -594,7 +593,13 @@ async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: strin
   const mirror = updateMirror(deps.ctx.env);
   if (!mirror.ok) return { ok: false, reason: mirrorRefusal(mirror.value), remedy: `unset ${UPDATE_MIRROR_ENV}` };
   const credential = githubCredential(deps.ctx.env);
-  const response = await deps.net.getJson(githubTagsUrl(repo, mirror.base), mirror.base === null ? undefined : MIRROR_FETCH);
+  const via = mirror.base === null ? undefined : MIRROR_FETCH;
+  const response = await readAllTags(repo, mirror.base, async (url) => {
+    const page = await deps.net.getJson(url, via);
+    // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JsonValue by
+    // construction; `parseTagsResponse` checks every field it keeps.
+    return page.ok ? { ok: true, value: page.value as JsonValue } : page;
+  });
   if (!response.ok) {
     const status = response.failure.status;
     // The token is named by the variable it came from, never by value (#254). A 401 without one is
@@ -626,9 +631,7 @@ async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: strin
       remedy: "check this machine's network",
     };
   }
-  // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JsonValue by
-  // construction; `parseTagsResponse` checks every field it keeps.
-  return { ok: true, tags: parseApiTags(parseTagsResponse(response.value as JsonValue)) };
+  return { ok: true, tags: parseApiTags(response.tags) };
 }
 
 /**

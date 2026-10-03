@@ -15,6 +15,9 @@ import {
   GITHUB_TOKEN_ENVS,
   githubReleaseUrl,
   githubTagsUrl,
+  readAllTags,
+  TAG_PAGE_SIZE,
+  TAG_PAGES_MAX,
   isGithubApiUrl,
   isPrereleaseVersion,
   latestUpdateInMajor,
@@ -1446,5 +1449,65 @@ describe("COLLIE_UPDATE_MIRROR is read in one module, and stays out of the opera
   it("neither the CHANGELOG nor docs/ mention it: it is a test seam, not a setting", () => {
     const pages = [join(ROOT, "CHANGELOG.md"), ...readdirSync(join(ROOT, "docs")).filter((p) => p.endsWith(".md")).map((p) => join(ROOT, "docs", p))];
     expect(pages.filter((p) => readFileSync(p, "utf8").includes("COLLIE_UPDATE_MIRROR"))).toEqual([]);
+  });
+});
+
+describe("the tag list past one page (counsel: about 92 tags, and GitHub pages at 100)", () => {
+  /** 130 tags in the API's order: 100 older ones fill page 1, and the newest stable sits at 120. */
+  const ORDER = [
+    ...Array.from({ length: 100 }, (_, i) => `v0.${i + 1}.0`),
+    ...Array.from({ length: 19 }, (_, i) => `v0.${i + 101}.0`),
+    "v1.1.0",
+    "v1.2.0-rc.1",
+    ...Array.from({ length: 9 }, (_, i) => `v0.${i + 120}.0`),
+  ];
+  const json = (names: readonly string[]) => names.map((name) => ({ name, commit: { sha: `sha-${name}` } }));
+  const pages = (all: readonly string[]) => (url: string) => {
+    const page = Number(/[?&]page=(\d+)/.exec(url)?.[1] ?? "1");
+    return Promise.resolve({ ok: true as const, value: json(all.slice((page - 1) * TAG_PAGE_SIZE, page * TAG_PAGE_SIZE)) });
+  };
+
+  it("reads page after page until a short one, and keeps the first page's URL as it was", async () => {
+    expect(ORDER).toHaveLength(130);
+    expect(ORDER.indexOf("v1.1.0")).toBe(119);
+    const asked: string[] = [];
+    const fetchPage = pages(ORDER);
+    const all = await readAllTags("AltanS/collie", null, (url) => {
+      asked.push(url);
+      return fetchPage(url);
+    });
+    expect(asked).toEqual([
+      "https://api.github.com/repos/AltanS/collie/tags?per_page=100",
+      "https://api.github.com/repos/AltanS/collie/tags?per_page=100&page=2",
+    ]);
+    expect(all.ok && all.tags.map((t) => t.name)).toEqual(ORDER);
+    // The newest stable is the same one a single page of all 130 would give; the rc is still a prerelease.
+    const stable = (all.ok ? all.tags : []).map((t) => t.name).filter((n) => /^v\d+\.\d+\.\d+$/.test(n));
+    expect(stable.toSorted((a, b) => compareSemver(b.slice(1), a.slice(1)))[0]).toBe("v1.1.0");
+  });
+
+  it("asks once for a repository with one page, as before, and on a mirror too", async () => {
+    const asked: string[] = [];
+    const base = "http://127.0.0.1:8899";
+    const all = await readAllTags("AltanS/collie", base, (url) => {
+      asked.push(url);
+      return pages(ORDER.slice(0, 92))(url);
+    });
+    expect(asked).toEqual([`${base}/repos/AltanS/collie/tags?per_page=100`]);
+    expect(all.ok && all.tags).toHaveLength(92);
+  });
+
+  it("a failed page fails the whole read, and the reading stops at the page bound", async () => {
+    const failed = await readAllTags("o/r", null, (url) =>
+      Promise.resolve(url.includes("page=2") ? { ok: false as const, failure: "HTTP 502" } : pages(ORDER)(url)),
+    );
+    expect(failed).toEqual({ ok: false, failure: "HTTP 502" });
+    let n = 0;
+    const endless = await readAllTags("o/r", null, () => {
+      n++;
+      return Promise.resolve({ ok: true as const, value: json(Array.from({ length: TAG_PAGE_SIZE }, (_, i) => `v0.${n}.${i}`)) });
+    });
+    expect(n).toBe(TAG_PAGES_MAX);
+    expect(endless.ok && endless.tags).toHaveLength(TAG_PAGE_SIZE * TAG_PAGES_MAX);
   });
 });

@@ -1390,6 +1390,35 @@ const BINARY_APPLY: Omit<ApplyArgs, "handoff"> = {
 };
 
 describe("collie update on a binary install", () => {
+  test("reads the tag list past its first page: the newest release at position 120 of 130 is still found", async () => {
+    // GitHub pages /tags at 100. The repository had 92 tags on 2026-10-03; the next ones must not vanish.
+    const order = [
+      ...Array.from({ length: 119 }, (_, i) => `v0.${i + 1}.0`),
+      `v${NEW}`,
+      "v1.2.0-rc.1",
+      ...Array.from({ length: 9 }, (_, i) => `v0.${i + 200}.0`),
+    ];
+    const h = binaryHarness();
+    const { getJson } = h.deps.net;
+    const asked: string[] = [];
+    h.deps.net = {
+      ...h.deps.net,
+      getJson: (url, opts) => {
+        if (!url.includes("/tags?")) return getJson(url, opts);
+        asked.push(url);
+        const page = Number(/[?&]page=(\d+)/.exec(url)?.[1] ?? "1");
+        return Promise.resolve({ ok: true as const, value: apiTags(...order.slice((page - 1) * 100, page * 100)) });
+      },
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(asked).toEqual([
+      "https://api.github.com/repos/AltanS/collie/tags?per_page=100",
+      "https://api.github.com/repos/AltanS/collie/tags?per_page=100&page=2",
+    ]);
+    // The stable one, as before: the newer rc is still a prerelease and is not taken.
+    expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${INST}/versions/${NEW}`);
+  });
+
   test("lays the version down, then hands the swap to the detached updater with systemd-run", async () => {
     const h = binaryHarness({ others: ["0.9.0"] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
