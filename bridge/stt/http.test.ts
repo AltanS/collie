@@ -7,7 +7,7 @@ import {
   transcribeRequest,
   type SttTranscribeResponse,
 } from "./http.ts";
-import { SttError, type SttAudio, type SttProvider, type SttResult, type SttStatus } from "./provider.ts";
+import { SttBusyError, SttError, type SttAudio, type SttProvider, type SttResult, type SttStatus } from "./provider.ts";
 
 // `POST /api/stt`'s own rules, driven without `Bun.serve`: the caller here has already cleared the
 // write gate, exactly as server.ts's dispatch guarantees, so nothing below is about authorisation.
@@ -308,6 +308,24 @@ describe("POST /api/stt — a provider failure earns one status each", () => {
     expect(attempt.outcome).toBe("unavailable");
     // The thrown message could name an internal host; it must not be reflected.
     expect(JSON.stringify(await bodyOf(response))).not.toContain("10.0.0.4");
+  });
+
+  test("a provider's own busy refusal is the route's 429 stt.busy, not a 502", async () => {
+    const { provider } = fakeProvider({
+      fail: () => {
+        throw new SttBusyError();
+      },
+    });
+    const { response, attempt } = await transcribeRequest(
+      provider,
+      audioRequest(new Uint8Array([1, 2]), "audio/webm"),
+      createSttAdmission(),
+    );
+    expect(response.status).toBe(429);
+    expect(attempt).toEqual({ status: 429, outcome: "busy", bytes: 2 });
+    const body = await bodyOf(response);
+    expect(body.ok).toBe(false);
+    if (!body.ok) expect(body.code).toBe("stt.busy");
   });
 });
 

@@ -21,7 +21,7 @@ import { CODEX_TRANSCRIBE_URL, probeCodexIdentity, silentWavBytes } from "../bri
 import { silentMp4AacBytes, silentWebmOpusBytes } from "../bridge/stt/probe-clips.ts";
 import { createSttProvider } from "../bridge/stt/index.ts";
 import { jsonStringField } from "../bridge/stt/json.ts";
-import { LOCAL_CLI_TIMEOUT_MS, LocalCliEmptyTranscriptError } from "../bridge/stt/local-cli.ts";
+import { commandFileProblem, LOCAL_CLI_TIMEOUT_MS, LocalCliEmptyTranscriptError } from "../bridge/stt/local-cli.ts";
 import { SttError, type SttAudio, type SttProvider, type SttResult } from "../bridge/stt/provider.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -87,6 +87,12 @@ export interface SttDeps {
   create?(settings: SttSettings): SttProvider;
   /** Injected so a test can pin the reported round trip. */
   now?(): number;
+  /**
+   * Why a local-cli command file cannot be run, or null when it can. Production leaves it: it is
+   * `bridge/stt/local-cli.ts`'s `commandFileProblem` (a regular file, executable, symlinks followed),
+   * the same check the bridge's own status runs.
+   */
+  commandProblem?(path: string): string | null;
 }
 
 const settingsPath = (deps: SttDeps): string => join(deps.ctx.stateDir, STT_FILENAME);
@@ -491,19 +497,42 @@ async function setupLocalCli(
  */
 function locateCommand(deps: SttDeps, named: string): string | null {
   const lookup = commandLookup(named);
-  if (lookup === "absolute") {
-    if (deps.files.exists(named)) return named;
-    deps.io.err(`error: no such file: ${named} (--command)`);
-    return null;
-  }
   if (lookup === "relative") {
     deps.io.err(`error: \`${named}\` is a relative path. Give an absolute path, or a name on PATH (--command).`);
     return null;
   }
-  const found = deps.exec.which(named);
-  if (found !== null) return found;
-  deps.io.err(`error: \`${named}\` was not found on PATH (--command).`);
+  let found: string;
+  if (lookup === "absolute") {
+    if (!deps.files.exists(named)) {
+      deps.io.err(`error: no such file: ${named} (--command)`);
+      return null;
+    }
+    found = named;
+  } else {
+    const hit = deps.exec.which(named);
+    if (hit === null) {
+      deps.io.err(`error: \`${named}\` was not found on PATH (--command).`);
+      return null;
+    }
+    found = hit;
+  }
+  // The bridge's status runs the same check, so a command written here is one it calls runnable.
+  const problem = (deps.commandProblem ?? commandFileProblem)(found);
+  if (problem === null) return found;
+  deps.io.err(`error: ${found} ${problem} (--command). Nothing was written.`);
   return null;
+}
+
+/**
+ * The file the bridge will run for this command, as this shell sees it: the path itself, or the PATH
+ * hit for a bare name. The service's PATH may differ from this shell's, which is why setup writes the
+ * absolute path it found.
+ */
+function commandProblemOnHost(deps: SttDeps, command: string): string | null {
+  const path = commandLookup(command) === "absolute" ? command : deps.exec.which(command);
+  if (path === null) return "was not found on this shell's PATH";
+  const problem = (deps.commandProblem ?? commandFileProblem)(path);
+  return problem === null ? null : `${path} ${problem}`;
 }
 
 /**
@@ -756,6 +785,15 @@ export function cmdSttStatus(deps: SttDeps): number {
     row("runs", `as this user, no shell, killed after ${LOCAL_CLI_TIMEOUT_MS / 1000} s`, "fixed");
     if (file.language !== undefined || env.language !== undefined) {
       row("language", "ignored — pass it in args if the command takes one", source("language"));
+    }
+    // The host-side reason the phone never gets: the bridge's status only says "cannot be run".
+    const problem = commandProblemOnHost(deps, settings.command);
+    if (problem !== null) {
+      deps.io.out(`  config    ${path}`);
+      deps.io.err(`error: the command cannot be run: ${problem}.`);
+      deps.io.err("       The phone shows the microphone as unavailable until it can.");
+      deps.io.err("       Fix the file, or run `collie stt setup --provider local-cli` again.");
+      return EXIT.FAIL;
     }
   } else {
     row("endpoint", settings.baseUrl, source("baseUrl"));

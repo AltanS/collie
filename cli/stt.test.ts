@@ -28,6 +28,7 @@ function deps(
     probe?: SttDeps["probe"];
     create?: SttDeps["create"];
     absent?: string[];
+    commandProblem?: SttDeps["commandProblem"];
   } = {},
 ): Deps {
   const io = capture();
@@ -42,6 +43,9 @@ function deps(
     interactive: queued.length > 0,
     prompt: () => queued.shift() ?? null,
     now: () => 0,
+    // Every command file reads as runnable unless a test says otherwise: the fake paths
+    // (`/fake/<tool>`, `/opt/engine`) do not exist on the real disk the production check reads.
+    commandProblem: over.commandProblem ?? (() => null),
   };
   if (over.probe !== undefined) built.probe = over.probe;
   if (over.create !== undefined) built.create = over.create;
@@ -521,7 +525,7 @@ describe("collie stt — the local-cli provider (#227)", () => {
   });
 
   test("no args leaves the field absent, not an empty list", async () => {
-    // An absolute command is checked for existence only, so the fake disk holds it.
+    // An absolute command must exist on the fake disk; the file check itself is stubbed to pass.
     const e = deps({ seed: { "/opt/engine": "" } });
     expect(await cmdSttSetup(e, ["--provider", "local-cli", "--command", "/opt/engine"])).toBe(EXIT.OK);
     expect(written(e)).toEqual({ provider: "local-cli", command: "/opt/engine" });
@@ -606,5 +610,43 @@ describe("collie stt — the local-cli provider (#227)", () => {
     expect(heard).toContain('["transcribe"]');
     expect(heard).toContain(`(${STT_FILENAME})`);
     expect(heard).toContain("no shell");
+  });
+
+  test("setup refuses a command file that is not a regular executable, and says why", async () => {
+    const seen: string[] = [];
+    const d = deps({
+      seed: { "/opt/engine": "" },
+      commandProblem: (p) => {
+        seen.push(p);
+        return "is not executable by this user (chmod +x it)";
+      },
+    });
+    expect(await cmdSttSetup(d, ["--provider", "local-cli", "--command", "/opt/engine"])).toBe(EXIT.FAIL);
+    expect(said(d)).toContain("/opt/engine is not executable by this user");
+    expect(said(d)).toContain("Nothing was written");
+    expect(d.files.entries.has(CONFIG_PATH)).toBe(false);
+
+    // A bare name is checked at the path PATH resolved it to, which is the path that gets written.
+    const bare = deps({ commandProblem: (p) => (seen.push(p), "is a directory, not a program") });
+    expect(await cmdSttSetup(bare, ["--provider", "local-cli", "--command", "engine"])).toBe(EXIT.FAIL);
+    expect(seen).toEqual(["/opt/engine", "/fake/engine"]);
+    expect(said(bare)).toContain("/fake/engine is a directory, not a program");
+  });
+
+  test("status fails on a command the bridge cannot run, with the host-side reason", () => {
+    const d = deps({
+      seed: { [CONFIG_PATH]: '{"provider":"local-cli","command":"/opt/engine"}' },
+      commandProblem: () => "is not a regular file",
+    });
+    expect(cmdSttStatus(d)).toBe(EXIT.FAIL);
+    expect(said(d)).toContain("the command cannot be run: /opt/engine is not a regular file.");
+    expect(said(d)).toContain("microphone as unavailable");
+
+    const gone = deps({
+      seed: { [CONFIG_PATH]: '{"provider":"local-cli","command":"engine"}' },
+      absent: ["engine"],
+    });
+    expect(cmdSttStatus(gone)).toBe(EXIT.FAIL);
+    expect(said(gone)).toContain("was not found on this shell's PATH");
   });
 });

@@ -189,9 +189,18 @@ bin/collie stt setup --provider local-cli --command whisper-cli \
 
 What the command must do:
 
+- Be a regular file your user can execute. A symlink to one is fine, because Collie follows it.
+  `collie stt setup` refuses anything else, and `collie stt status` says what is wrong.
 - Exit with status 0 and print the transcript to stdout. Anything else fails the dictation.
-- Finish within 60 seconds. Collie kills it with SIGKILL after that.
-- Print at most 256 KiB to stdout.
+- Finish within 60 seconds. Collie then kills it, and every process it started, with SIGKILL.
+- Print at most 256 KiB to stdout. Collie kills it as soon as it prints more.
+- Leave nothing running. When the command exits, Collie kills any process it started that is still
+  there. A helper that must stay up has to start its own session, for example with `setsid`.
+
+On Windows, Collie kills only the command itself, so a process it started can outlive it.
+
+At most two dictations run the command at the same time. A third gets the same "busy" answer the
+phone already knows, and Collie starts nothing for it.
 
 An empty stdout is a failure on the phone, because there is nothing to put in the box.
 `collie stt test` counts it as a pass, since its clips are silence.
@@ -200,7 +209,9 @@ An empty stdout is a failure on the phone, because there is nothing to put in th
 > It gets no shell, no stdin, and no `COLLIE_*` environment variable. Its stderr is never read, and
 > the phone never sees the command line or a path, only that the command failed and its exit status.
 
-The temp file sits in a folder only your user can open, and Collie deletes it after every run. Where
+The temp file sits in a folder only your user can open, and Collie deletes it after every run. If
+the bridge itself was killed mid-run, the next bridge start removes such folders once they are an
+hour old. Where
 the audio goes next is up to the command: a local engine keeps it on the host.
 
 The reasoning for all of the above — why this was declined twice, what changed, and why the seam
