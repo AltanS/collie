@@ -147,7 +147,13 @@ export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
     // digit must not fire across a change to it: focus decides whether that digit answers at all, and
     // text appearing in the box means someone at the terminal is typing into this very dialog.
     a.feedback?.focused === b.feedback?.focused &&
-    a.feedback?.text === b.feedback?.text
+    a.feedback?.text === b.feedback?.text &&
+    // The EXACT plan of every option, walk included. `promptsSameIdentity` ignores the arrow count
+    // (ADR 0080), so for a grammar that draws its pointer as a glyph the byte-faithful `signature`
+    // already refuses a moved pointer. A grammar that draws it as a style only (opencode's chip
+    // background) has the same text with the pointer anywhere, and the only trace of the pointer is
+    // each option's plan. Without this line a stale tap on such a dialog would pass the entry guard.
+    a.options.every((o, i) => sameKeys(o.keys, b.options[i]!.keys))
   );
 }
 
@@ -192,14 +198,15 @@ export function sameKeys(a: string[], b: string[]): boolean {
 
 /**
  * Split a keystroke plan into its pointer walk and its commit: non-null exactly when `keys` is
- * `(Up|Down)* Enter` (the walk may be empty). Digits, `["y"]`, `["Escape"]` and `["1", "Enter"]` are
- * not walks and give null. The action layer (lib/prompt-action.ts) sends the walk, verifies the
+ * `(Up|Down|Left|Right)* Enter` (the walk may be empty). Digits, `["y"]`, `["Escape"]`,
+ * `["1", "Enter"]` and a lone `["Left"]` (a back key) are not walks and give null. The walk need not
+ * be one direction here; the conformance suite requires that of every grammar. The action layer (lib/prompt-action.ts) sends the walk, verifies the
  * pointer on the tapped row, and only then commits (ADR 0080).
  */
 export function splitWalk(keys: string[]): { walk: string[]; commit: string[] } | null {
   if (keys.length === 0 || keys[keys.length - 1] !== "Enter") return null;
   const walk = keys.slice(0, -1);
-  if (!walk.every((k) => k === "Up" || k === "Down")) return null;
+  if (!walk.every((k) => k === "Up" || k === "Down" || k === "Left" || k === "Right")) return null;
   return { walk, commit: ["Enter"] };
 }
 
@@ -217,7 +224,9 @@ export function sameKeysModuloWalk(a: string[], b: string[]): boolean {
  * edge changes nothing when the pointer is already on the edge row, and it pulls a pointer that a
  * desk keystroke moved one row back onto it. The first row wins on a one-row list. Rows are the
  * options whose plan is walk-class; any other option (Cancel) is not a row of the list. An `index`
- * that is not a row gives `["Enter"]`.
+ * that is not a row gives `["Enter"]`. The sticky arrow is vertical only: a model whose walked plans
+ * are horizontal (opencode's chips, which wrap) never sets `clampedEnds`, and gets `["Enter"]`. No
+ * horizontal clamp is invented here.
  */
 export function commitKeysFor(model: PromptModel, index: number): string[] {
   if (model.clampedEnds !== true) return ["Enter"];
@@ -226,6 +235,11 @@ export function commitKeysFor(model: PromptModel, index: number): string[] {
     if (splitWalk(o.keys) !== null) rows.push(i);
   });
   if (rows.length === 0 || !rows.includes(index)) return ["Enter"];
+  // Horizontal walks (Left/Right) have no declared clamp: nothing here says what a sticky arrow
+  // would do on such a list, so the commit stays the plain Enter.
+  if (rows.some((i) => splitWalk(model.options[i]!.keys)!.walk.some((k) => k === "Left" || k === "Right"))) {
+    return ["Enter"];
+  }
   if (index === rows[0]) return ["Up", "Enter"];
   if (index === rows[rows.length - 1]) return ["Down", "Enter"];
   return ["Enter"];

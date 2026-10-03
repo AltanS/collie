@@ -61,9 +61,18 @@ Every option's `keys` are computed from the pointer the screen currently shows: 
 (with wrap) then `Enter` — the option AT the pointer is `["Enter"]`, one at `d` is
 `["Right" × d, "Enter"]`. Two reasons, one per field: no digit is ever synthesised (.adr/0009), and
 a derivation always matches the screen the user is looking at, so a tap against a stale render
-fails the identity comparison (the keys are part of it) and re-derives instead of mis-typing. The
+fails `promptsEqual` (it compares every option's exact plan, because the text of the dialog is the
+same with the pointer on any chip) and re-derives instead of mis-typing. The
 pointed row's badge is therefore `⏎` and every other row's is `→`, the way ADR 0055 draws a
 pointed list.
+
+A tap is walked, verified, then confirmed (ADR 0080), sideways here: `Right` × d goes out bound to the
+tapped screen, then Enter once a fresh read shows the tapped chip as the pointed one. The pointer is a
+background colour, so the bridge's text binding is the same string with the pointer on any chip. It
+cannot see the pointer. The verify read on the phone is the guard, and the window that remains runs
+from that read to the send. The corpus pairs are `oc--permission-bash.txt` with `--moved`, `--reject`
+and `--wrap`, `oc--permission-edit.txt` with `--moved`, and `oc--permission-always-bash.txt` with
+`--cancel` (`harness/walk-pairs.ts`).
 
 The second step is lifted as its own dialog: its title differs, so its signature and identity
 differ, and a tap on one step never fires on the other. Its buttons walk and confirm exactly as the

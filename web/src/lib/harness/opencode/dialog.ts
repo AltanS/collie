@@ -29,6 +29,15 @@
 // at the pointer is `["Enter"]`, one at offset d is `["Right" × d, "Enter"]` — d ≤ options-1, so
 // every key is a single herdr-sendable step and no digit is ever synthesised (.adr/0009). The
 // pointed row's badge is therefore ⏎ and every other row's is →, as ADR 0055 draws a pointed list.
+//
+// A tap is walked, verified, then confirmed (ADR 0080): the action layer splits `["Right" × d,
+// "Enter"]` with `splitWalk` (arrows may be horizontal), sends the Rights bound to the tapped screen,
+// reads again until the tapped chip carries the plan `["Enter"]`, and only then sends Enter. The
+// pointer is a STYLE, so it is not in `signature` and not in `coreSignature`, both of which are the
+// row text alone and are equal with the pointer on any chip. The only trace of the pointer is each
+// option's plan, which `promptsEqual` compares exactly, so a stale tap is refused at entry; and the
+// bridge's text binding cannot see the pointer at all, so the verify read is the guard on the
+// last step (ADR 0080, Consequences).
 // A derivation that cannot see exactly one pointer chip answers null and the dialog stays on the
 // raw mirror — the fail-closed contract.
 
@@ -148,7 +157,9 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   // ABOVE the title (measured), so the region text neither churns with the spinner frame nor moves
   // with the pointer (the chip changes the pointer option's STYLE, never the row's text). One
   // byte-faithful signature serves both the guard and the bridge binding; it ends at the footer,
-  // the buffer's last non-blank row, inside the bridge's tail window.
+  // the buffer's last non-blank row, inside the bridge's tail window. Because the pointer is not in
+  // this text, `coreSignature` has nothing of the pointer to blank and is the same string; the
+  // pointer lives in the option plans (see the header).
   const signature = texts.slice(titleRow, footer + 1).join("\n");
   const model: PromptModel = {
     question: subject,

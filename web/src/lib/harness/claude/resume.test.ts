@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
-import { promptsEqual } from "../prompt-model";
+import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 import { claudeBuildBlocks } from "./index";
 import { detectResumePicker } from "./resume";
 
@@ -160,6 +160,67 @@ describe("the race guard sees the pointer", () => {
     expect(promptsEqual(first, after)).toBe(false);
     // And a re-derivation of the unchanged screen is equal, so the guard is not simply always shut.
     expect(promptsEqual(first, detectResumePicker(fromTexts(texts))!)).toBe(true);
+  });
+});
+
+describe("a relative age ticks without a key, and the verify step of a walked tap survives it", () => {
+  const FIRST = "claude--menu-resume-picker--w120-first.txt";
+  const THIRD = "claude--menu-resume-picker--w120-third.txt";
+
+  it("two real captures, the pointer moved and four ages ticked, are one dialog both ways", () => {
+    const first = detectResumePicker(load(FIRST))!;
+    const third = detectResumePicker(load(THIRD))!;
+    // The ages differ (`44 seconds ago` against `1 minute ago`), and so does the pointer.
+    expect(first.options[0]!.description).not.toBe(third.options[0]!.description);
+    expect(promptsSameIdentity(first, third)).toBe(true);
+    expect(promptsSameIdentity(third, first)).toBe(true);
+    // The entry guard still refuses: the byte-faithful signature carries the pointer and every age.
+    expect(promptsEqual(first, third)).toBe(false);
+  });
+
+  it("an age that ticks with the pointer fixed keeps the identity and moves the signature", () => {
+    const texts = textsOf(FIRST);
+    const ticked = texts.map((t) => t.replace("44 seconds ago", "1 minute ago"));
+    const before = detectResumePicker(fromTexts(texts))!;
+    const after = detectResumePicker(fromTexts(ticked))!;
+    expect(after.signature).not.toBe(before.signature);
+    expect(after.coreSignature).toBe(before.coreSignature);
+    expect(promptsSameIdentity(before, after)).toBe(true);
+    expect(promptsEqual(before, after)).toBe(false);
+  });
+
+  it("blanks the age token alone: a changed size, branch or title still breaks the identity", () => {
+    const texts = textsOf(FIRST);
+    const before = detectResumePicker(fromTexts(texts))!;
+    for (const [from, to] of [
+      ["177.4KB", "177.9KB"],
+      ["master", "main"],
+      ["Count to three", "Count to four"],
+    ] as const) {
+      const edited = texts.map((t) => t.replace(from, to));
+      const after = detectResumePicker(fromTexts(edited))!;
+      expect(promptsSameIdentity(before, after), `${from} to ${to}`).toBe(false);
+    }
+  });
+
+  it("an age word in a title is not an age: only the meta row's own token is blanked", () => {
+    const texts = textsOf(FIRST);
+    const edited = texts.map((t) => t.replace("Name a colour", "Name a colour 2 hours ago"));
+    const before = detectResumePicker(fromTexts(edited))!;
+    const ticked = edited.map((t) => t.replace("2 hours ago", "3 hours ago"));
+    const after = detectResumePicker(fromTexts(ticked))!;
+    expect(promptsSameIdentity(before, after)).toBe(false);
+  });
+
+  it("the all-projects view's `now` age is blanked too", () => {
+    const texts = textsOf("claude--menu-resume-picker--w120-all-sanitized.txt");
+    const at = texts.findIndex((t) => /^\s+now · /.test(t));
+    expect(at).toBeGreaterThan(0);
+    const aged = texts.map((t, i) => (i === at ? t.replace("now", "1 minute ago") : t));
+    const before = detectResumePicker(fromTexts(texts))!;
+    const after = detectResumePicker(fromTexts(aged))!;
+    expect(promptsSameIdentity(before, after)).toBe(true);
+    expect(promptsEqual(before, after)).toBe(false);
   });
 });
 

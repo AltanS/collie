@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
-import { promptsEqual } from "../prompt-model";
+import { promptsEqual, promptsSameIdentity, sameKeys } from "../prompt-model";
 import { ompAdapter, ompBuildBlocks } from "./index";
 import { ompModalOnScreen } from "./modal";
 import { detectSwitchPicker, detectSwitchPickerRegion } from "./switch";
@@ -37,9 +37,14 @@ const LIFTED = [
   "omp--v18-4-switch-narrow.txt",
   "omp--v18-4-switch-overcontext-moved.txt",
   "omp--v18-4-switch-overcontext.txt",
+  "omp--v18-4-switch-ptr-fable.txt",
+  "omp--v18-4-switch-ptr-haiku.txt",
+  "omp--v18-4-switch-ptr-opus-current.txt",
+  "omp--v18-4-switch-ptr-sonnet.txt",
   "omp--v18-4-switch-roles-chips.txt",
   "omp--v18-4-switch-search-short-moved.txt",
   "omp--v18-4-switch-search-short.txt",
+  "omp--v18-4-switch-search-son.txt",
   "omp--v18-4-switch-search.txt",
   "omp--v18-4-switch-short-pane-scrolled.txt",
   "omp--v18-4-switch-short-pane.txt",
@@ -515,9 +520,20 @@ describe("the region, and what stays on screen above the card", () => {
     expect(rows.at(-2)!.startsWith(`│ ${FOOTER} `)).toBe(true);
     expect(rows.every((r) => r === r.trimEnd())).toBe(true);
     expect(model.signature.length).toBeLessThan(32_000);
-    // The core signature differs by the pointer alone.
-    expect(model.coreSignature).not.toBe(model.signature);
-    expect(model.coreSignature).toBe(model.signature.replace("❯", " "));
+    // The core signature differs by what the pointer's own move changes: the pointer glyph and the two
+    // detail rows, each a fixed token. Every other row is byte-identical.
+    const core = model.coreSignature.split("\n");
+    expect(core).toHaveLength(rows.length);
+    const detailRows = [FACTS_AT - TITLE_AT, CHIPS_AT - TITLE_AT];
+    const pointerRow = rows.findIndex((r) => r.includes("❯"));
+    expect(pointerRow).toBeGreaterThan(-1);
+    rows.forEach((row, i) => {
+      if (detailRows.includes(i)) expect(core[i], `row ${i} is a detail row`).not.toBe(row);
+      else if (i === pointerRow) expect(core[i]).toBe(row.replace("❯", " "));
+      else expect(core[i], `row ${i}`).toBe(row);
+    });
+    expect(core[detailRows[0]!]).not.toContain("Claude");
+    expect(core[detailRows[1]!]).not.toContain("current");
   });
 });
 
@@ -725,10 +741,77 @@ describe("tail anchoring", () => {
 });
 
 describe("the grammar claims nothing else in the corpus", () => {
-  it("lifts exactly the eighteen session-state captures, out of every capture in the corpus (none of them offered only the current model)", () => {
+  it("lifts exactly the twenty-three session-state captures, out of every capture in the corpus (none of them offered only the current model)", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
     expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectSwitchPicker(load(name)) !== null);
     expect(lifted.toSorted()).toEqual(LIFTED);
+  });
+});
+
+// THE POINTER MOVES, THE DIALOG DOES NOT. These are four REAL captures of one picker, the pointer on
+// a different row each time, and a fifth with a search typed (`omp--v18-4-switch-ptr-*.txt`,
+// `-search-son.txt`). omp rewrites the two detail rows under the list for the pointed model, so a
+// walk changes them; a `coreSignature` that kept them made every walked tap answer `changed` and
+// never commit (found live, 2026-10-03). Synthetic perturbations had missed it: only two real
+// captures with the pointer on different rows show what omp itself repaints.
+/** True when two rows differ only by the pointer glyph: one has it where the other has a blank. */
+const differsByPointerOnly = (a: string, b: string): boolean => a.replace("❯", " ") === b.replace("❯", " ");
+
+describe("a moved pointer is the same picker (real captures, ADR 0080 point 5)", () => {
+  const POINTER_CAPTURES = [
+    ["omp--v18-4-switch-ptr-opus-current.txt", null],
+    ["omp--v18-4-switch-ptr-haiku.txt", "anthropic/claude-haiku-4-5"],
+    ["omp--v18-4-switch-ptr-fable.txt", "anthropic/claude-fable-5-1"],
+    ["omp--v18-4-switch-ptr-sonnet.txt", "anthropic/claude-sonnet-5-5"],
+  ] as const;
+
+  it("captured: only the detail rows and the pointer differ between positions, so the core blanks them and nothing else", () => {
+    const rowsOf = (name: string) => detectSwitchPicker(load(name))!.signature.split("\n");
+    const base = rowsOf(POINTER_CAPTURES[0][0]);
+    for (const [name] of POINTER_CAPTURES.slice(1)) {
+      const rows = rowsOf(name);
+      expect(rows).toHaveLength(base.length);
+      const differing = rows.flatMap((r, i) => (r === base[i] ? [] : [i]));
+      // The pointer's old and new row, the facts row and the chips row: `rows.length - 4` and `- 3`.
+      const details = [rows.length - 4, rows.length - 3];
+      expect(differing.filter((i) => !details.includes(i) && !differsByPointerOnly(rows[i]!, base[i]!)), name).toEqual([]);
+      for (const i of details) expect(rows[i], `${name} detail row ${i}`).not.toBe(base[i]);
+    }
+  });
+
+  it("the core blanks exactly those rows: no other row of any capture differs in it", () => {
+    const coreOf = (name: string) => detectSwitchPicker(load(name))!.coreSignature;
+    const cores = new Set(POINTER_CAPTURES.map(([name]) => coreOf(name)));
+    expect(cores.size).toBe(1);
+  });
+
+  for (const [a] of POINTER_CAPTURES) {
+    for (const [b] of POINTER_CAPTURES) {
+      if (a === b) continue;
+      it(`${a} and ${b}: same identity both ways, not equal`, () => {
+        const ma = detectSwitchPicker(load(a))!;
+        const mb = detectSwitchPicker(load(b))!;
+        expect(promptsSameIdentity(ma, mb)).toBe(true);
+        expect(promptsSameIdentity(mb, ma)).toBe(true);
+        expect(promptsEqual(ma, mb)).toBe(false);
+      });
+    }
+  }
+
+  it.each(POINTER_CAPTURES)("%s: exactly the pointed offered row has the plan [Enter]", (name, pointed) => {
+    const model = detectSwitchPicker(load(name))!;
+    const bare = model.options.filter((o) => sameKeys(o.keys, ["Enter"])).map((o) => o.label);
+    // The pointer on the current model: that row is hidden, so no offered row is the pointed one.
+    expect(bare).toEqual(pointed === null ? [] : [pointed]);
+  });
+
+  it("a search typed is another picker: not the same identity as any pointer capture", () => {
+    const search = detectSwitchPicker(load("omp--v18-4-switch-search-son.txt"))!;
+    for (const [name] of POINTER_CAPTURES) {
+      const other = detectSwitchPicker(load(name))!;
+      expect(promptsSameIdentity(search, other), name).toBe(false);
+      expect(promptsSameIdentity(other, search), name).toBe(false);
+    }
   });
 });

@@ -76,7 +76,11 @@
 // THE RACE GUARD. The signature is the whole box verbatim, title through bottom border, rows trimmed of
 // trailing space: the pointer column, the search text, every row of the window, the scrollbar thumb and
 // both detail rows. A pointer moved at the desk, a search typed or changed, a scroll, a current-model
-// mark that moved, all refuse the tap (ADR 0055 point 6). The core signature blanks the pointer alone.
+// mark that moved, all refuse the tap (ADR 0055 point 6). The core signature blanks what the pointer's
+// own move changes: the pointer glyph and both detail rows. omp rewrites those two rows to describe the
+// pointed model, so a walk changes them (captured: `omp--v18-4-switch-ptr-*.txt`, same picker, only the
+// pointer moved). Each becomes one fixed token, so the core stays sensitive to the list, the search, the
+// scrollbar and every other row.
 //
 // NOT MODELLED. The search box: the card types nothing into it (Type mode does, SWITCH_NOTES.md), and
 // each keystroke changes the signature, so the card re-derives on the next poll. `@ quick roles` and
@@ -119,6 +123,9 @@ const MAX_REGION_CHARS = 32_000;
 const TITLE_SCAN_WINDOW = MAX_WINDOW + 12;
 
 const POINTER = "❯";
+/** What the core signature keeps of the two detail rows, which follow the pointer (see below). */
+const DETAIL_FACTS_BLANK = "<detail facts>";
+const DETAIL_CHIPS_BLANK = "<detail chips>";
 /** The last row's label while a search is typed: omp's first Escape clears it rather than closing. */
 const CLEAR_SEARCH = "Clear search";
 const CURRENT_MARK = "●";
@@ -259,8 +266,16 @@ export function detectSwitchPickerRegion(lines: StyledLine[]): SwitchPickerRegio
   const signature = region.join("\n");
   if (signature.length > MAX_REGION_CHARS) return null;
   const pointedRow = windowStart + rows.indexOf(pointed);
+  // The core signature blanks everything the pointer's own move changes (ADR 0080 point 5): the pointer
+  // glyph, and the two detail rows under the list, which describe the pointed model.
+  const detailFactsAt = end - 3 - titleAt;
+  const detailChipsAt = end - 2 - titleAt;
   const coreSignature = region
-    .map((row, i) => (titleAt + i === pointedRow ? row.replace(POINTER, " ") : row))
+    .map((row, i) => {
+      if (i === detailFactsAt) return DETAIL_FACTS_BLANK;
+      if (i === detailChipsAt) return DETAIL_CHIPS_BLANK;
+      return titleAt + i === pointedRow ? row.replace(POINTER, " ") : row;
+    })
     .join("\n");
 
   const title = "Switch Model";

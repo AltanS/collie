@@ -20,6 +20,8 @@ import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectPromptSelect } from "./harness/claude/prompt-select";
 import { detectApproval } from "./harness/omp/approval";
+import { ompAdapter } from "./harness/omp";
+import { opencodeAdapter } from "./harness/opencode";
 import { t } from "./i18n";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -634,6 +636,102 @@ describe("submitPromptOption — a clamped list commits an edge row with a stick
     expect(await submitPromptOption({ ...base, prompt: m, option: m.options[0]! })).toEqual({
       status: "sent",
     });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Enter"], undefined, m.signature]]);
+  });
+});
+
+// THE REAL PICKER, WALKED. omp's `/switch` picker rewrites two detail rows under the list every time the
+// pointer moves. A `coreSignature` that kept them made the verify step see "another dialog" after every
+// walk, so a walked tap answered `changed` and never committed (found live, 2026-10-03). These screens
+// are real captures of one picker with the pointer on haiku and on fable, read through the real omp
+// adapter, so what moves between the two reads is exactly what omp repaints.
+describe("submitPromptOption: a walked tap on the real omp model picker commits", () => {
+  const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+  const screen = (name: string) => readFileSync(join(PANES, name), "utf8");
+  const onHaiku = screen("omp--v18-4-switch-ptr-haiku.txt");
+  const onFable = screen("omp--v18-4-switch-ptr-fable.txt");
+  const pickerModel = (text: string) => {
+    const block = ompAdapter.buildBlocks(splitLines(parseAnsi(text))).find((b) => b.kind === "prompt-select");
+    if (block === undefined || block.kind !== "prompt-select") throw new Error("omp picker did not lift");
+    return block.prompt;
+  };
+
+  it("Down to fable bound to the tapped screen, then Enter bound to the fresh read", async () => {
+    const m = pickerModel(onHaiku);
+    const tapped = m.options.find((o) => o.label === "anthropic/claude-fable-5-1")!;
+    expect(tapped.keys).toEqual(["Down", "Enter"]);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(onHaiku)) // entry guard: the screen the user saw
+      .mockResolvedValue(paneWith(onFable)); // the poll and the pre-commit read: the pointer arrived
+
+    expect(await submitPromptOption({ ...base, agent: "omp", prompt: m, option: tapped })).toEqual({
+      status: "sent",
+    });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, m.signature],
+      ["w1:p1", ["Enter"], undefined, pickerModel(onFable).signature],
+    ]);
+    // The detail rows moved between the two reads, which is why the signatures differ and the
+    // identity must not.
+    expect(pickerModel(onFable).signature).not.toBe(m.signature);
+  });
+});
+
+// ADR 0080 for a HORIZONTAL list. opencode's permission dialog is a row of chips; its plans are
+// `[Right × d, Enter]` and its pointer is a background colour, so two captures with the pointer on
+// different chips carry the SAME text. These are real captures read through the real adapter.
+describe("submitPromptOption: a walked tap on the real opencode permission chips", () => {
+  const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+  const screen = (name: string) => readFileSync(join(PANES, name), "utf8");
+  const onOnce = screen("oc--permission-bash.txt");
+  const onAlways = screen("oc--permission-bash--moved.txt");
+  const dialogModel = (text: string) => {
+    const block = opencodeAdapter.buildBlocks(splitLines(parseAnsi(text))).find((b) => b.kind === "prompt-select");
+    if (block === undefined || block.kind !== "prompt-select") throw new Error("opencode dialog did not lift");
+    return block.prompt;
+  };
+  const opencode = { ...base, agent: "opencode" };
+
+  it("Right bound to the tapped screen, then Enter bound to the fresh read", async () => {
+    const m = dialogModel(onOnce);
+    const tapped = m.options.find((o) => o.label === "Allow always")!;
+    expect(tapped.keys).toEqual(["Right", "Enter"]);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(onOnce)) // entry guard: the screen the user saw
+      .mockResolvedValue(paneWith(onAlways)); // the poll and the pre-commit read: the chip arrived
+
+    expect(await submitPromptOption({ ...opencode, prompt: m, option: tapped })).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Right"], undefined, m.signature],
+      ["w1:p1", ["Enter"], undefined, dialogModel(onAlways).signature],
+    ]);
+    // The text binding cannot see a style: both bindings are the same string. The verify read, which
+    // saw the tapped chip carry the plan ["Enter"], is the guard (ADR 0080 Consequences).
+    expect(dialogModel(onAlways).signature).toBe(m.signature);
+  });
+
+  it("sends NO Enter when the chip never arrives on the tapped option", async () => {
+    const m = dialogModel(onOnce);
+    mockFetchPane.mockResolvedValue(paneWith(onOnce)); // every read still shows the pointer on the first chip
+    expect(
+      await submitPromptOption({ ...opencode, prompt: m, option: m.options.find((o) => o.label === "Allow always")! }),
+    ).toEqual({ status: "changed" });
+    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Right"]]);
+  });
+
+  it("refuses a stale tap at entry: the text is the same, the chip is not, and nothing is sent", async () => {
+    const m = dialogModel(onOnce); // the user saw the chip on Allow once and tapped Reject
+    mockFetchPane.mockResolvedValue(paneWith(onAlways)); // the chip has since moved at the desk
+    expect(
+      await submitPromptOption({ ...opencode, prompt: m, option: m.options.find((o) => o.label === "Reject")! }),
+    ).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("a tap on the pointed chip is one guarded Enter", async () => {
+    const m = dialogModel(onOnce);
+    mockFetchPane.mockResolvedValue(paneWith(onOnce));
+    expect(await submitPromptOption({ ...opencode, prompt: m, option: m.options[0]! })).toEqual({ status: "sent" });
     expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Enter"], undefined, m.signature]]);
   });
 });

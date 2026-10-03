@@ -11,13 +11,29 @@ import {
 } from "./prompt-model";
 
 describe("splitWalk", () => {
-  it("splits (Up|Down)* Enter into the walk and the commit", () => {
+  it("splits (Up|Down|Left|Right)* Enter into the walk and the commit", () => {
     expect(splitWalk(["Enter"])).toEqual({ walk: [], commit: ["Enter"] });
     expect(splitWalk(["Down", "Enter"])).toEqual({ walk: ["Down"], commit: ["Enter"] });
     expect(splitWalk(["Up", "Up", "Up", "Enter"])).toEqual({
       walk: ["Up", "Up", "Up"],
       commit: ["Enter"],
     });
+  });
+
+  it("accepts horizontal walks: a chip row walks Right, then Enter", () => {
+    expect(splitWalk(["Right", "Enter"])).toEqual({ walk: ["Right"], commit: ["Enter"] });
+    expect(splitWalk(["Right", "Right", "Enter"])).toEqual({
+      walk: ["Right", "Right"],
+      commit: ["Enter"],
+    });
+    expect(splitWalk(["Left", "Enter"])).toEqual({ walk: ["Left"], commit: ["Enter"] });
+  });
+
+  it("a back key or a stray key is not a walk, horizontal or not", () => {
+    expect(splitWalk(["Left"])).toBeNull(); // opencode's tab back key: no Enter to commit
+    expect(splitWalk(["Right"])).toBeNull();
+    expect(splitWalk(["Right", "Tab", "Enter"])).toBeNull();
+    expect(splitWalk(["Enter", "Right", "Enter"])).toBeNull();
   });
 
   it("is null for everything that is not a pointer walk", () => {
@@ -33,6 +49,12 @@ describe("splitWalk", () => {
 });
 
 describe("sameKeysModuloWalk", () => {
+  it("treats horizontal walk plans as walk-class too", () => {
+    expect(sameKeysModuloWalk(["Enter"], ["Right", "Right", "Enter"])).toBe(true);
+    expect(sameKeysModuloWalk(["Right", "Enter"], ["Left", "Enter"])).toBe(true);
+    expect(sameKeysModuloWalk(["Left"], ["Right"])).toBe(false);
+  });
+
   it("treats any two walk-class plans as equal, whatever the count or direction", () => {
     expect(sameKeysModuloWalk(["Enter"], ["Down", "Down", "Enter"])).toBe(true);
     expect(sameKeysModuloWalk(["Up", "Enter"], ["Down", "Enter"])).toBe(true);
@@ -78,7 +100,41 @@ describe("a pointer walk in identity and equality", () => {
   });
 });
 
+describe("promptsEqual compares the exact plans (a pointer drawn as a style)", () => {
+  const chips = (keys: string[][]): PromptModel => ({
+    question: "$ echo hi",
+    family: "permission",
+    options: ["Allow once", "Allow always", "Reject"].map((label, i) => ({ label, keys: keys[i]! })),
+    coreSignature: "same text",
+    signature: "same text",
+  });
+  const first = chips([["Enter"], ["Right", "Enter"], ["Right", "Right", "Enter"]]);
+  const second = chips([["Right", "Right", "Enter"], ["Enter"], ["Right", "Enter"]]);
+
+  it("two captures with the same text and the pointer on different chips are not equal", () => {
+    expect(promptsSameIdentity(first, second)).toBe(true);
+    expect(promptsEqual(first, second)).toBe(false);
+    expect(promptsEqual(first, chips(first.options.map((o) => o.keys)))).toBe(true);
+  });
+});
+
 describe("commitKeysFor", () => {
+  it("is a bare Enter on horizontal walked plans, even if clampedEnds were set", () => {
+    const chips: PromptModel = {
+      question: "$ echo hi",
+      family: "permission",
+      options: [
+        { label: "Allow once", keys: ["Enter"] },
+        { label: "Allow always", keys: ["Right", "Enter"] },
+        { label: "Reject", keys: ["Right", "Right", "Enter"] },
+      ],
+      coreSignature: "core",
+      signature: "sig",
+      clampedEnds: true,
+    };
+    for (let i = 0; i < 3; i++) expect(commitKeysFor(chips, i)).toEqual(["Enter"]);
+  });
+
   const rows = (...plans: string[][]): PromptModel => ({
     question: "Which row?",
     family: "permission",

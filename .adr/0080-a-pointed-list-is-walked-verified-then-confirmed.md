@@ -52,13 +52,18 @@ against the second the wrong way round.
 and lives only in the action layer.**
 
 1. **`splitWalk(keys)`** (`harness/prompt-model.ts`) returns `{ walk, commit }` exactly when `keys` is
-   `(Up|Down)* Enter`, with the walk possibly empty, and `null` for everything else: digits, `["y"]`,
-   `["Escape"]`, `["1", "Enter"]`.
+   `(Up|Down|Left|Right)* Enter`, with the walk possibly empty, and `null` for everything else:
+   digits, `["y"]`, `["Escape"]`, `["1", "Enter"]`, and a lone arrow such as the back key `["Left"]`.
+   A list may run down the screen or along it (opencode's permission chips walk `Right`). One plan
+   uses one direction.
 2. **`sameKeysModuloWalk(a, b)`** is true when both plans are walk-class, otherwise exact equality.
    `promptsSameIdentity` compares option keys with it. The walk is a claim about where the pointer
    stands, and the pointer is our own choreography's effect, which `coreSignature` already blanks.
    `promptsEqual` still compares the byte-faithful `signature`, which carries the pointer, so a stale
-   tap is still refused at entry.
+   tap is still refused at entry. It also compares every option's exact plan. For a grammar that draws
+   the pointer as a glyph this adds nothing, because the signature already moved. For one that draws
+   it as a style only (opencode's chip background), the text is the same with the pointer anywhere,
+   and the plans are the only trace of the pointer, so this line is what refuses its stale tap.
 3. **`submitPromptOption` does three things for a walked option** (`splitWalk` non-null with a
    non-empty walk):
    - the entry guard, then the arrows, bound to the region of the screen the user tapped;
@@ -75,6 +80,29 @@ and lives only in the action layer.**
    action layer survives the race for every harness; a per-harness plan shape is a second, weaker
    guard and is refused in review. The conformance suite checks that every walk-class plan is arrows
    in one direction before its Enter, and that at most one option carries the plan `["Enter"]`.
+   **A grammar's `coreSignature` MUST blank everything the pointer's own move changes.** That is the
+   glyph and any text that follows the pointer: a detail row under the list, a description of the
+   highlighted row, a position counter such as "(n/m)". The verify step compares the fresh read with
+   `promptsSameIdentity`, so text that follows the pointer makes every walked tap answer `changed`
+   and never commit. The omp `/switch` picker shipped this defect: it rewrites its two detail rows
+   for the pointed model, and a live test found it, because no test had compared two REAL captures
+   of one picker with the pointer on different rows. **Text that changes with the clock when the
+   screen redraws is the same class.** A relative age (`1 minute ago`, `just now`) ticks between the
+   arrows and the verify read with no key pressed, so a resume picker that kept it in `coreSignature`
+   answers `changed` after a minute. The grammar blanks the age in `coreSignature`, and only there:
+   `signature` keeps it verbatim, so the entry guard still refuses a tap on a screen whose age
+   ticked (the trade ADR 0058 records), and the final Enter is still bound to the fresh verbatim
+   read. It blanks the one token its own row parse located, never a pattern run over the whole
+   region. The Claude and Oh My Pi `/resume` pickers do this. A grammar whose pointer is only a
+   style, so that it cannot appear in `signature` at all, carries the pointer in its option plans
+   (point 2). **The corpus MUST hold such a walk pair for
+   every grammar that emits walked plans.** `harness/walk-pairs.ts` declares the pairs, and the
+   conformance suite (`describeAdapterConformance`, "walk pairs") asserts for each that the two
+   captures are `promptsSameIdentity` both ways, not `promptsEqual`, and that the row with the plan
+   `["Enter"]` differs. It reads the walked fixtures off the adapter over the whole corpus, so a
+   grammar cannot opt out, and it fails for a grammar group (agent, family, dialog title) that has
+   neither a declared pair nor a one-line gap in `WALK_GAPS`. The message says to capture the same
+   dialog with the pointer on another row.
 
 6. **A clamped list commits an edge row with a sticky arrow.** A grammar whose source or capture
    proves that its list clamps (Up on the first row and Down on the last row leave the pointer where
@@ -103,6 +131,11 @@ and lives only in the action layer.**
   extra.
 - **A walk can leave the pointer moved with nothing committed.** The card then re-derives from the
   screen and the user taps again. This is the accepted cost; ADR 0055 point 4 was trying to avoid it.
+- **Where a harness shows its pointer only as a style, the bridge cannot see it.** The bridge's text
+  binding compares screen text, and opencode's permission chips differ from one another by a
+  background colour, so the same binding matches with the pointer on any chip. The verify read on the
+  phone is then the guard: it must see the tapped chip carry the plan `["Enter"]` before Enter goes
+  out. The window that remains runs from that read to the send.
 - **The race window is smaller, not gone, and for an edge row of a clamped list it is covered.**
   What remains is the milliseconds between the bridge's own re-read and its send (see
   `checkPromptBinding` in `bridge/server.ts`). Point 6 covers that gap for the first and last row of

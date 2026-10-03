@@ -26,6 +26,12 @@
 // `Enter`. The `❯` pointer means "Enter takes this row" in every Claude list; the exception is
 // scoped to this screen and gives no other dialog an unprinted key.
 //
+// TWO SIGNATURES. `signature` is the region verbatim (pointer and ages included), so the entry guard
+// refuses a tap on a screen that changed, ADR 0058's trade. `coreSignature`, which the verify read of
+// a walked tap compares (ADR 0080 point 5), blanks the `❯` column and each session's age token
+// (`44 seconds ago` becomes `1 minute ago` with no key pressed). Only the token that `META_AGE` finds
+// at the head of the grammar's own meta row is blanked: size, branch and the rest of the row stay.
+//
 // FAIL CLOSED. Every piece of evidence is required — the title, the rounded search box directly
 // under it, and a footer (read across its wrapped rows by `readKeyHintFooter`) that names `Esc to
 // cancel` or `Esc to clear`. Any one missing returns null, and the generic menu still runs.
@@ -59,6 +65,13 @@ const FOOTER_ENTER = /\bEnter to \w+/;
  *  ending in `ago` (or `now`), then at least one ` · ` segment. */
 const META_ROW = /^(?:\S.*\bago|now) · \S/;
 
+/** The AGE token at the head of a meta row, taken the same way {@link META_ROW} reads it: up to the
+ *  first ` · ` that follows `ago` (so a branch named `ago` cannot move the cut), or `now`. */
+const META_AGE = /^(\S.*?\bago|now)(?= · )/;
+
+/** What every `coreSignature` row carries in place of a session's real age. */
+const AGE_TOKEN = "<age>";
+
 /** The glyphs the picker draws in the pointer column. `❯` is the pointer; `↓` / `↑` mark that the
  *  list scrolls past this row — the row is still a session, just not the pointed one. */
 const POINTER = "❯";
@@ -75,6 +88,11 @@ interface Session {
   title: string;
   meta: string;
   pointed: boolean;
+  /** Screen row of the meta row, and the display column its age token starts at, so `coreSignature`
+   *  can blank that one token and nothing else on the row. */
+  metaRow: number;
+  metaColumn: number;
+  age: string;
 }
 
 /**
@@ -115,7 +133,14 @@ export function detectResumePickerRegion(lines: StyledLine[]): PromptRegion | nu
     if (title === null) continue;
     const meta = i + 1 < end ? metaRow(texts[i + 1]!, column) : null;
     if (meta === null) continue;
-    sessions.push({ title: title.text, meta, pointed: title.pointed });
+    sessions.push({
+      title: title.text,
+      meta: meta.text,
+      pointed: title.pointed,
+      metaRow: i + 1,
+      metaColumn: column + POINTER_COLUMN,
+      age: meta.age,
+    });
     i++; // the meta row is consumed with its title
   }
   if (sessions.length === 0) return null;
@@ -153,10 +178,15 @@ export function detectResumePickerRegion(lines: StyledLine[]): PromptRegion | nu
     options,
     family: "select",
     // Byte-faithful from the title through the footer: it carries the `❯` column verbatim, so a
-    // pointer moved between the render and the tap refuses the tap (ADR 0055 point 6). The walk is
-    // also baked into every option's `keys`, which the identity comparison checks.
+    // pointer moved between the render and the tap refuses the tap (ADR 0055 point 6). It carries
+    // every age verbatim too, so a tap on a screen whose age ticked is refused at entry (ADR 0058's
+    // trade). The walk is also baked into every option's `keys`, which the identity comparison checks.
     signature: regionSignature(texts, titleAt, footerAt.endLine),
-    coreSignature: coreRegionSignature(texts, titleAt, footerAt.endLine, new Set()),
+    // Blind to what a redraw changes by itself: the `❯` column (coreRegionSignature) and each
+    // session's age, which ticks (`1 minute ago` to `2 minutes ago`) between a walked tap's arrows and
+    // its verify read (ADR 0080 point 5). Only the age token is blanked, found by this grammar's own
+    // meta-row parse; size, branch and the rest of the row stay.
+    coreSignature: coreRegionSignature(blankAges(texts, sessions), titleAt, footerAt.endLine, new Set()),
   };
   return { model, startLine: titleAt };
 }
@@ -192,14 +222,28 @@ function titleRow(text: string, column: number): { text: string; pointed: boolea
   return { text: rest.trim(), pointed: glyph === POINTER };
 }
 
-/** A session's meta row, trimmed, when it sits at the title's own column and reads as one. */
-function metaRow(text: string, column: number): string | null {
+/** `texts` with each session's age token replaced by {@link AGE_TOKEN}. Positional: the age starts at
+ *  the meta row's own column, so no pattern runs over the rest of the region. */
+function blankAges(texts: string[], sessions: Session[]): string[] {
+  const out = [...texts];
+  for (const s of sessions) {
+    const row = texts[s.metaRow]!;
+    out[s.metaRow] = row.slice(0, s.metaColumn) + AGE_TOKEN + row.slice(s.metaColumn + s.age.length);
+  }
+  return out;
+}
+
+/** A session's meta row, trimmed, when it sits at the title's own column and reads as one, and the
+ *  age token it opens with. */
+function metaRow(text: string, column: number): { text: string; age: string } | null {
   const indent = column + POINTER_COLUMN;
   if (text.slice(0, indent).trim() !== "") return null;
   const rest = text.slice(indent);
   if (rest.length === 0 || rest[0] === " ") return null;
   const meta = rest.trim();
-  return META_ROW.test(meta) ? meta : null;
+  if (!META_ROW.test(meta)) return null;
+  const age = META_AGE.exec(meta)?.[1];
+  return age === undefined ? null : { text: meta, age };
 }
 
 /** The model alone (or null) — the thin matcher tests assert on. */

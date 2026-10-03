@@ -18,7 +18,7 @@ import { detectPermissionDialog } from "./opencode/dialog";
 import { detectQuestionDialog } from "./opencode/question";
 import { detectQuestionTabs } from "./opencode/question-tabs";
 import { describeAdapterConformance } from "./conformance";
-import { promptsSameIdentity } from "./prompt-model";
+import { promptsEqual, promptsSameIdentity, splitWalk } from "./prompt-model";
 import { draftCarriesSend } from "../reply-action";
 
 // The opencode adapter's CI gate. Tier 1 chrome (composer strip, status/draft probes, the composer
@@ -130,6 +130,20 @@ describe("opencode permission dialog lift", () => {
   it("reject selection: the pointer is derivable there too", () => {
     const rejected = detectPermissionDialog(loadLines("oc--permission-bash--reject.txt"));
     expect(rejected?.model.options.at(-1)?.keys).toEqual(["Enter"]);
+  });
+
+  it("the pointer is a style, so the text is identical and only the plans tell two pointers apart", () => {
+    const here = detectPermissionDialog(loadLines("oc--permission-bash.txt"))!.model;
+    const moved = detectPermissionDialog(loadLines("oc--permission-bash--moved.txt"))!.model;
+    // The signature (also the bridge's text binding) cannot see the pointer.
+    expect(moved.signature).toBe(here.signature);
+    expect(moved.coreSignature).toBe(here.coreSignature);
+    // Every plan is walk-class (Right arrows, then Enter), so the identity ignores the counts ...
+    for (const o of [...here.options, ...moved.options]) expect(splitWalk(o.keys)).not.toBeNull();
+    expect(promptsSameIdentity(here, moved)).toBe(true);
+    // ... and `promptsEqual` is what refuses a stale tap: it compares the exact plans.
+    expect(promptsEqual(here, moved)).toBe(false);
+    expect(promptsEqual(here, detectPermissionDialog(loadLines("oc--permission-bash.txt"))!.model)).toBe(true);
   });
 
   it("wrapped selection: Right past Reject lands back on Allow once", () => {
@@ -799,6 +813,8 @@ describe("opencode tab-bar question dialogs lift", () => {
       // The footer's own word: Escape ends the turn, so "Cancel" would promise less than the key does.
       expect(review.cancelLabel).toBe("Dismiss");
       expect(review.backKeys).toEqual(["Left"]);
+      // A back key is one Left and no Enter, so it is not a pointer walk and is sent as it is.
+      expect(splitWalk(review.backKeys ?? [])).toBeNull();
       expect(review.answers).toEqual([{ question: "Colour", answer: "Red" }]);
       expect(review.incomplete).toBe(false);
       expect(review.pointer).toBeNull();

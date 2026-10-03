@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
-import { promptsEqual } from "../prompt-model";
+import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 import { ompBuildBlocks } from "./index";
 import { detectResumePicker, detectResumePickerRegion } from "./resume";
 
@@ -199,6 +199,63 @@ describe("the race guard sees the pointer, the rows and the ticking age", () => 
     // The pointer is the one difference between these two captures, and the core signature is blind to it.
     expect(a.coreSignature).toBe(b.coreSignature);
     expect(a.coreSignature).not.toContain("❯");
+  });
+
+  it.each([
+    ["omp--v18-4-resume.txt", "omp--v18-4-resume-moved.txt"],
+    ["omp--menu-resume.txt", "omp--menu-resume-moved.txt"],
+  ])("%s and %s: the pointer moved, ages may have ticked, and the identity holds both ways", (a, b) => {
+    const first = detectResumePicker(load(a))!;
+    const moved = detectResumePicker(load(b))!;
+    expect(promptsSameIdentity(first, moved)).toBe(true);
+    expect(promptsSameIdentity(moved, first)).toBe(true);
+    expect(promptsEqual(first, moved)).toBe(false);
+  });
+
+  it("the unboxed pair really differs in its ages, which the core signature blanks", () => {
+    const first = detectResumePicker(load("omp--menu-resume.txt"))!;
+    const moved = detectResumePicker(load("omp--menu-resume-moved.txt"))!;
+    expect(first.options.map((o) => o.description)).not.toEqual(moved.options.map((o) => o.description));
+    expect(first.coreSignature).toBe(moved.coreSignature);
+    expect(first.coreSignature).toContain("<age>");
+  });
+
+  it("an age that ticks with the pointer fixed keeps the identity, in both layouts", () => {
+    for (const [name, from, to] of [
+      ["omp--v18-4-resume.txt", "7 minutes ago ", "8 minutes ago "],
+      ["omp--menu-resume.txt", "1 minute ago ", "2 minutes ago "],
+    ] as const) {
+      const texts = textsOf(name);
+      const before = detectResumePicker(fromTexts(texts))!;
+      const after = detectResumePicker(fromTexts(texts.map((t) => t.replace(from, to))))!;
+      expect(after.signature, name).not.toBe(before.signature);
+      expect(promptsSameIdentity(before, after), name).toBe(true);
+      expect(promptsEqual(before, after), name).toBe(false);
+    }
+  });
+
+  it("an age that grows in width keeps the identity in the boxed layout (padding to the border)", () => {
+    const texts = textsOf("omp--v18-4-resume.txt");
+    // The box keeps its width, so one more character of age is one fewer cell of padding.
+    const wide = texts.map((t) =>
+      t.includes("7 minutes ago") ? t.replace("7 minutes ago", "17 minutes ago").replace(/ │$/, "│") : t,
+    );
+    const before = detectResumePicker(fromTexts(texts))!;
+    const after = detectResumePicker(fromTexts(wide))!;
+    expect(after.signature).not.toBe(before.signature);
+    expect(promptsSameIdentity(before, after)).toBe(true);
+  });
+
+  it("blanks the age token alone: a changed size or a `done` mark breaks the identity", () => {
+    const texts = textsOf("omp--v18-4-resume.txt");
+    const before = detectResumePicker(fromTexts(texts))!;
+    for (const [from, to] of [
+      ["138.1KB", "139.1KB"],
+      ["✔ done", "⚠ interrupted"],
+    ] as const) {
+      const after = detectResumePicker(fromTexts(texts.map((t) => t.replace(from, to))))!;
+      expect(promptsSameIdentity(before, after), `${from} to ${to}`).toBe(false);
+    }
   });
 
   it("an age that ticks moves the signature, so a tap across the tick is refused", () => {

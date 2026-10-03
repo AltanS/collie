@@ -61,7 +61,7 @@ const allOmpModalFixtures = allOmpFixtures.filter(
 // and glyph (18.4.10), and the tool-approval dialog in both captured presets: `nerd` with text keycaps
 // (18.1.17, `bash` and `write`, the latter in both selection states) and `unicode` with glyph keycaps
 // (18.4.10, `bash` and `write` in both selection states, and a fourteen-row `write`), and the compact
-// model picker's session state (18.4.10, eighteen captures: the pointer moved, wrapped and at both
+// model picker's session state (18.4.10, twenty-three captures: the pointer moved, wrapped and at both
 // window edges, searches, over-context and truncated rows, role chips, and windows of 16, 15 and 5 rows).
 const LIFTED = new Set([
   "omp--menu-resume-moved.txt",
@@ -91,9 +91,14 @@ const LIFTED = new Set([
   "omp--v18-4-switch-narrow.txt",
   "omp--v18-4-switch-overcontext-moved.txt",
   "omp--v18-4-switch-overcontext.txt",
+  "omp--v18-4-switch-ptr-fable.txt",
+  "omp--v18-4-switch-ptr-haiku.txt",
+  "omp--v18-4-switch-ptr-opus-current.txt",
+  "omp--v18-4-switch-ptr-sonnet.txt",
   "omp--v18-4-switch-roles-chips.txt",
   "omp--v18-4-switch-search-short-moved.txt",
   "omp--v18-4-switch-search-short.txt",
+  "omp--v18-4-switch-search-son.txt",
   "omp--v18-4-switch-search.txt",
   "omp--v18-4-switch-short-pane-scrolled.txt",
   "omp--v18-4-switch-short-pane.txt",
@@ -189,7 +194,7 @@ const DECLINED = new Set([
   "omp--v18-4-switch-task.txt",
 ]);
 
-// The own cohort is the thirty-nine lifted captures, so every conformance leg that needs one runs on them
+// The own cohort is the forty-four lifted captures, so every conformance leg that needs one runs on them
 // for real: each lifts, none lifts once output scrolls below it, every key is send_keys-valid, and each
 // model signs itself and fails the committing check when a row of it changes. The neutral cohort still
 // carries the leg that matters most here: raw-only on the other 44 omp captures and on every foreign
@@ -270,10 +275,15 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch-nomatch.txt",
     "omp--v18-4-switch-overcontext-moved.txt",
     "omp--v18-4-switch-overcontext.txt",
+    "omp--v18-4-switch-ptr-fable.txt",
+    "omp--v18-4-switch-ptr-haiku.txt",
+    "omp--v18-4-switch-ptr-opus-current.txt",
+    "omp--v18-4-switch-ptr-sonnet.txt",
     "omp--v18-4-switch-quick-roles.txt",
     "omp--v18-4-switch-roles-chips.txt",
     "omp--v18-4-switch-search-short-moved.txt",
     "omp--v18-4-switch-search-short.txt",
+    "omp--v18-4-switch-search-son.txt",
     "omp--v18-4-switch-search.txt",
     "omp--v18-4-switch-short-pane-scrolled.txt",
     "omp--v18-4-switch-short-pane.txt",
@@ -293,11 +303,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 83 captures this adapter was developed against", () => {
+  it("is exactly the 88 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("lifts the thirty-nine `/resume`, Ask single-select, approval and model picker captures and declines the other forty-four", () => {
+  it("lifts the forty-four `/resume`, Ask single-select, approval and model picker captures and declines the other forty-four", () => {
     expect(ownFixtures).toEqual([...LIFTED].toSorted());
     expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
     expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);

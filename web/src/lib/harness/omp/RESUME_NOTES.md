@@ -51,6 +51,16 @@ assumed. No digit anywhere, because the screen printed none. The arrow count is 
 was, which is why the signature carries the `❯` column verbatim: a pointer moved at the desk between the
 render and the tap refuses the tap (ADR 0055 point 6).
 
+The signature also carries every age verbatim, so a tap on a screen whose age ticked is refused at entry
+(the trade ADR 0058 records). The CORE signature, which the verify read of a walked tap compares, blanks
+two things that a redraw changes without a key: the `❯` column and each session's age token. The token is
+the one `readMeta` parsed as the age (`7 minutes ago`, `just now`, a date), replaced by `<age>`; size,
+`current`, `✔ done` and the rest of the row stay. In the boxed layout the padding up to the closing `│`
+depends on the age's width, so that run collapses to one space on those rows. Without this, a picker
+that sat open for a minute answered `changed` to every walked tap (ADR 0080 point 5). The pair
+`omp--menu-resume.txt` and `omp--menu-resume-moved.txt` shows it: its ages differ (`1 minute ago` against
+`2 minutes ago`) and so does the pointer.
+
 The walk is the shortest path and assumes the pointer does not wrap. A tap on a session that is on
 screen never needs a wrap, so this holds for every row the card can offer.
 

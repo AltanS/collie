@@ -394,7 +394,7 @@ is why a composer send used to be typed straight into it. Claimed by the last-re
 | `claude--menu-effort-slider--w40-low.txt` | 40 × 40, `low` selected, captured live 2026-09-22: **declines.** At 40 columns with the marker leftmost Claude draws no `▲` at all — `low` is marked by colour alone — so no grammar lifts the screen and the unread-dialog card shows instead |
 | `claude--menu-effort-slider--w40-ultracode.txt` | 40 × 40, `ultracode` selected, captured live 2026-09-22: **declines.** A genuine Claude Code 2.1.278 render glitch — labels truncated (`xhigh      m`), no marker, no divider — so the Effort grammar declines and the generic `menu` grammar lifts with Cancel only |
 | `claude--menu-resume-picker--w120-first.txt` | The `/resume` session picker at 120 × 40, captured live 2026-09-22 on Claude Code 2.1.278 in `/tmp/resume-lab`, pointer on the first of four sessions. Lifts as a `prompt-select` list (resume.ts, ADR 0058): four sessions, each with its meta row as the description, the pointed one sending Enter and the rest walking Down, then Cancel. The footer wraps onto two rows and never names Enter or the arrows |
-| `claude--menu-resume-picker--w120-third.txt` | The same picker, pointer on the third session: the rows above walk Up, the row below walks Down |
+| `claude--menu-resume-picker--w120-third.txt` | The same picker, pointer on the third session: the rows above walk Up, the row below walks Down. With `w120-first` it is the walk pair of this grammar (`harness/walk-pairs.ts`): the pointer moved and four ages ticked (`44 seconds ago` against `1 minute ago`), which `coreSignature` blanks |
 | `claude--menu-resume-picker--w120-search.txt` | The same picker with `hi` typed into the search box: one match, **no pointer glyph**, and the footer changes to `Type to Search · Enter to select · Esc to clear`. The single session sends Enter; the Esc row reads Clear |
 | `claude--menu-resume-picker--w60-first.txt` | 60 × 40, pointer on the first session: the footer wraps onto three rows and still reads whole. The weekly-limit banner above the dialog is kept |
 | `claude--menu-resume-picker--w80-second.txt` | 80 × 40, pointer on the second session |
@@ -1076,6 +1076,28 @@ are counted in every walk and not offered; the card's name ends `● current: <i
 | `omp--v18-4-switch-task.txt` | Alt+P: `╭─ Switch Task Model ─╮`, footer `… · ⎋ close · Alt+P session model`. Declines; gets the card | not recorded |
 | `omp--v18-4-switch-nerd.txt` | 103 columns, `symbolPreset: nerd` set in the sandbox config: private-use glyphs for the pointer, marks, search icon and two keycaps. Declines; gets the card | not recorded |
 | `omp--v18-4-switch-clipped.txt` | 74 columns: the footer clipped to `… @ quick roles …`, so no way out is on screen. Declines, and no card, like `/tree` | not recorded |
+
+**Five more, 2026-10-03, for the walk pairs** ([ADR 0080](../../../../.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)
+point 5). One picker in one sandbox pane (omp 18.4.10, `HOME` `/tmp/omp-s3/home`, working directory
+`/tmp/omp-s3/cwd`, the same sandbox as the twenty-three above), 138 columns, 45 rows,
+with four models in its window. Four captures of the SAME list with only the pointer moved, and one
+with `son` typed. They exist because a live walked tap found a defect no synthetic
+test had: omp rewrites the two detail rows under the list (the pointed model's facts row and its
+chips row) every time the pointer moves, so a `coreSignature` that kept them made every walked tap
+answer `changed`. Nothing else differs between the four pointer captures, the scrollbar thumb
+included, which the test in `omp/switch.test.ts` checks row by row. **No sanitization pass was
+needed**, and the same scan as above was run on the five (user and host names, `collie-workspace`,
+`/home/`, `/Users/`, `/var/home`, a UUID, an email, a key-shaped string, a long hex or base64 token,
+an OSC escape): no match. Above the box is the sandbox session's splash and its `omp-s3/cwd`
+powerline. All are CRLF with no trailing newline; `wc -l` is 45.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-4-switch-ptr-opus-current.txt` | The pointer on the current model, `anthropic/claude-opus-5-5 ●`, the first row of the list. That row is hidden from the card, so no card row has the plan `Enter`. Facts row `Claude Opus 5.5 · …`, chips row `● current · ● default ◒` | not recorded |
+| `omp--v18-4-switch-ptr-haiku.txt` | The pointer on `anthropic/claude-haiku-4-5`. Facts row `Claude Haiku 4.5 · …`, chips row `● smol · ○ tiny · ○ memory` | not recorded |
+| `omp--v18-4-switch-ptr-fable.txt` | The pointer on `anthropic/claude-fable-5-1`. Facts row `Claude Fable 5.1 · …`, chips row `● slow ◒ · ○ advisor ◒` | not recorded |
+| `omp--v18-4-switch-ptr-sonnet.txt` | The pointer on `anthropic/claude-sonnet-5-5`. Facts row `Claude Sonnet 5.5 · …`, chips row blank | not recorded |
+| `omp--v18-4-switch-search-son.txt` | `son` typed: the pointer on the first result, `anthropic/claude-sonnet-5-5`, a rule row between the first and second result, chips row blank. Another picker, not the same identity as the four above | not recorded |
 
 ## OMP `ask` answer editor (captured 2026-10-01, oh-my-pi `omp` v18.4.4, herdr 0.9.3, throwaway Herdr pane)
 

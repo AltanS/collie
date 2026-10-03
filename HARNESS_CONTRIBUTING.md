@@ -186,12 +186,24 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
 7. **A POINTED list is walked, not numbered.** The same arithmetic covers a modal that prints a
    column of unnumbered rows with a `❯` on one of them and a commit key in its footer: a tap is the
    arrow walk from the pointed row to the target row, then that commit key. The action layer does
-   not send that plan as one batch: it splits it with `splitWalk`, sends the arrows bound to the
+   not send that plan as one batch: it splits it with `splitWalk` (`(Up|Down|Left|Right)* Enter`, so a
+   row of chips walks `Right` the way a column walks `Down`), sends the arrows bound to the
    tapped screen, sends the commit key only after a fresh read shows the pointer on the tapped row,
    and binds that key to the read ([ADR 0080](./.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)).
    Build the plan with `pointerWalk`, carry the pointer verbatim in `signature` and blank it in
    `coreSignature`, and never shape a plan to survive a race: the action layer does that for every
-   harness.
+   harness. If the pointer is only a style (a background colour), the signature cannot carry it, so
+   the plans do: `promptsEqual` compares them exactly, and the verify read on the phone is the guard. **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
+   any text that follows the pointer, such as a detail row under the list, a description of the
+   highlighted row or a "(n/m)" position counter. Text that follows the pointer makes the verify step
+   see another dialog after every walk, so a walked tap answers `changed` and never commits (the omp
+   `/switch` picker did exactly this). The corpus must prove it: capture the dialog twice with the
+   pointer on different rows and declare the pair in `web/src/lib/harness/walk-pairs.ts`. The
+   conformance suite checks that every grammar with walked plans has such a pair, or a listed gap.
+   Text that changes with the clock when the screen redraws, such as a relative age (`1 minute ago`),
+   is the same class: blank it in `coreSignature`, and only there, so `signature` stays verbatim and
+   the entry guard still refuses a screen whose age ticked. Blank the one token your own row parse
+   found, not a pattern over the whole region (the two `/resume` grammars are the reference).
    Claude's folder-trust prompt is the reference case since 2.1.278 — it prints no digit, so none may
    be synthesised, and ADR 0009 holds here exactly as it does above
    ([ADR 0055](./.adr/0055-a-pointed-list-is-walked-then-confirmed.md)). Two things are load-bearing.

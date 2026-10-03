@@ -2,7 +2,7 @@
 
 The choreography notes file the Tier-2 bar asks for (`HARNESS_CONTRIBUTING.md`), for the fourth omp
 screen the adapter lifts ([ADR 0079](../../../../../.adr/0079-the-omp-model-picker-is-lifted-as-its-visible-window.md)).
-Grammar: `switch.ts`. Corpus: `omp--v18-4-switch*.txt`, 23 captures, omp 18.4.10, 2026-10-02, in a
+Grammar: `switch.ts`. Corpus: `omp--v18-4-switch*.txt`, 28 captures, omp 18.4.10, 2026-10-02 and 2026-10-03, in a
 sandbox home with dummy provider keys. Behaviour below is read from pi-tui's
 `overlays/model-picker.ts` and `overlays/model-browser.ts` and the coding agent's
 `modes/controllers/selector-controller.ts` and `session/model-controls.ts` in the published omp
@@ -106,6 +106,13 @@ What each key does, from omp 18.4.10:
   label is the footer's verb, `Close`, while the search row is empty, and `Clear search` while it holds
   text. The grammar already parses the search row (`🔍 >` and the typed text), and the typed text is in
   the signature, so a search typed or cleared between render and tap refuses the tap.
+- **The core signature blanks what the pointer's own move changes.** omp rewrites the two detail rows
+  under the list (the pointed model's facts row and its chips row) every time the pointer moves, so
+  the core replaces each by one fixed token, and blanks the `❯` glyph. Nothing else differs between two
+  pointer positions of one picker, the scrollbar thumb included (captured:
+  `omp--v18-4-switch-ptr-*.txt`). The full `signature` keeps both rows verbatim, so a tap on a stale
+  screen is still refused at entry. A search typed is another dialog: its rows and its search row
+  differ.
 - **The card starts at the window.** The title, the status sentence and the search row as typed stay
   in the raw mirror above it, verbatim. The card's accessible name carries the same three rows, then
   the current line.
