@@ -68,6 +68,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Changed
 
+- **The Spaces section follows the workspace you isolate.** Tap a workspace chip on the dashboard and
+  the Spaces list shows that space and the worktrees of its repo. Tap All and every space is back.
+  Thanks @dantebarba (#338).
 - **A tap on a dialog card can bind a larger screen region.** The bridge accepted at most 8 KiB of the
   screen a card drew when it checked a tap, which a full-screen picker on a pane wider than about 134
   columns exceeds. The limit is now 32 KiB. A phone newer than its bridge still gets the old refusal on
