@@ -192,6 +192,8 @@ isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the r
 
 ## Windows
 
+Linux and macOS: nothing changes for you.
+
 **Today:** no release carries the Windows zip yet, so `install.ps1` has nothing to download and
 cannot finish until the first release that does. The pieces below were tested as described. Phone
 access needs a front door that you set up yourself, and it has not been tested on Windows.

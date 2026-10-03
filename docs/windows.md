@@ -41,7 +41,9 @@ Five steps. Each links to its section.
 1. [Install Herdr for Windows](#what-is-supported), 0.9.3 or newer.
 2. [Install Collie](#install) with `install.ps1`. This needs a release that carries the zip.
 3. [Open a new terminal, start Herdr, then run `collie start`](#install).
-4. [Set up a front door](#reaching-it-from-your-phone). Not tested on Windows.
+4. To open Collie on your phone you must expose it yourself, for example with a reverse proxy or a
+   VPN. This is not tested on Windows. [Reaching it from your phone](#reaching-it-from-your-phone)
+   has the details.
 5. [Pair your phone](security.md#pair-a-device--the-write-credential) with `collie pair`.
 
 ## What is supported
@@ -258,9 +260,9 @@ of the rules is in [Secret files on Windows](security.md#secret-files-on-windows
 
 ## Reaching it from your phone
 
-Collie on Windows has no front door of its own, and a phone reaching a Windows machine has not
-been tested. `collie start` does not run `tailscale serve` here, and Collie listens on this
-machine only. You set the front door up yourself.
+To open Collie on your phone you must expose it yourself, for example with a reverse proxy or a
+VPN. This is not tested on Windows. On Windows, `collie start` does not run `tailscale serve`, and
+Collie listens on this machine only.
 
 [Deployment](deployment.md) describes the variants, for example
 [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale), a
