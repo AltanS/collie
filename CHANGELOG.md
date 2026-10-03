@@ -32,10 +32,6 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
-- **Muse panes have History and Chat.** Collie reads Muse's own `session.jsonl` log, finds the newest
-  session whose workspace is the pane's folder, and needs no Herdr hook, so a Muse pane no longer
-  answers "no transcript". `collie doctor` reports the hook line as green for that reason.
-  Thanks @jpcarranza94 (#333).
 - **Oh My Pi's `/resume` picker is a list of sessions on the phone.** Tap a session and Collie
   moves the pointer to it and presses Enter, in the boxed picker of omp 18.4 and the unboxed one
   before it. On a very large pane the picker stays terminal text with an Escape button. Every other
@@ -75,23 +71,25 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   that Cloudflare signed for this application. A deleted Access app, a bypass rule or a policy that
   has not propagated yet then shows the panes to nobody. Half a setting, or keys Collie could not
   fetch, refuse every tunnel request. Unset, nothing changes. Thanks @xbach (#341).
+- **Muse panes have History and Chat.** Collie reads Muse's own `session.jsonl` log, finds the newest
+  session whose workspace is the pane's folder, and needs no Herdr hook, so a Muse pane no longer
+  answers "no transcript". `collie doctor` reports the hook line as green for that reason.
+  Thanks @jpcarranza94 (#333).
 
 ### Changed
 
-- **The Spaces section follows the workspace you isolate.** Tap a workspace chip on the dashboard and
-  the Spaces list shows that space and the worktrees of its repo. Tap All and every space is back.
-  Thanks @dantebarba (#338).
 - **A tap on a dialog card can bind a larger screen region.** The bridge accepted at most 8 KiB of the
   screen a card drew when it checked a tap, which a full-screen picker on a pane wider than about 134
   columns exceeds. The limit is now 32 KiB. A phone newer than its bridge still gets the old refusal on
   such a pane and no key is sent, so update the lead and its crew together.
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
 - **The community Windows script in `contrib/windows` is gone, and Collie runs the task itself.** Every verb of `collie-ctl.ps1` is a `collie` verb of the same name: `update`, `build`, `version`, `logs`, `url`, `start`, `stop`, `restart`, `status` and `uninstall`. `COLLIE_TASK_NAME` is gone (the task is always `herdr.collie`), and so is the script's crash-log rotation: the bridge log is `collie.log` in the plugin config folder (`%APPDATA%\herdr\plugins\config\herdr.collie\collie.log` by default), appended to and never rotated. One Collie per Windows machine is supported: `start` refuses a task that runs another install, and warns when a second instance registers its own. Run `collie restart` once after updating (and `collie build` before it if the script's own `update` pulled this version). Until then `collie status` and `collie doctor` say `Task herdr.collie still runs the old script. Run: collie restart`.
+- **The Spaces section follows the workspace you isolate.** Tap a workspace chip on the dashboard and
+  the Spaces list shows that space and the worktrees of its repo. Tap All and every space is back.
+  Thanks @dantebarba (#338).
 
 ### Fixed
 
-- **Sidebar edges and shared-row borders no longer leak into an opencode draft.** With a sidebar open over the composer, a row holding only the sidebar's `│` edge now reads as blank, and a panel's closing border on the same row as your words is cut off, so the Draft card shows what you typed and the reply guard verifies the send. A pasted box row such as `╭─ title ─╮`, a typed rule and a pasted tree keep their glyphs. Thanks @AndiWandHerd (#340, fixes #337).
-- **The Escape button on a dialog Collie cannot read now needs a second tap.** The first tap only arms it, and it disarms by itself after four seconds. On an opencode question dialog the button reads "Tap again to dismiss", because Escape there ends the whole question turn. One stray tap no longer does that. Thanks @AndiWandHerd (#339).
 - **Windows no longer prints a false `.env` mode warning, and `collie doctor` checks Herdr's version there.** NTFS has no mode bits, so the line saying `.env` was tightened to 600 was untrue on every command. Collie now reads the file's access list instead (see the owner-only line below). `doctor` warns when Herdr on Windows is older than 0.9.3, the build Collie was checked with.
 - **On Windows (experimental): the phone's Update button works.** It used to answer `412 no systemd user unit`, because the update's check looked for a systemd unit; it now asks Task Scheduler for the `herdr.collie` task. `collie doctor` no longer fails a Windows machine that has no Python, which also kept the button off. A source checkout is not updated on Windows: `collie update` and the button say so in one sentence and change nothing.
 - **On Windows (experimental): `collie restart` says what it found and stops waiting after 30 seconds.** It says whether the bridge was running, gone, or whether the process list did not answer. It used to wait about 3 minutes for a bridge that did not come back, so a broken update took 221 seconds to roll back; now about 75. A launcher killed by hand comes back within 5 minutes.
@@ -109,6 +107,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A tapped row is confirmed only after the pointer is seen on it.** A tap on a pointed list now sends the arrow keys first, reads the screen again, and sends Enter only when the pointer stands on the tapped row, bound to that very screen. A keystroke at the terminal in between, or a row that changed under the pointer, refuses the tap instead of confirming the wrong row. This covers every harness with a pointed list: Claude Code, Codex, Oh My Pi and opencode, whose permission buttons are a row and walk sideways. A resume list whose ages tick while the arrows go out still commits. A conformance guard now requires every such grammar to prove, on two real captures with the pointer on different rows, that a moved pointer is still the same dialog.
 - **The model picker's Close button says when it clears a search instead.** With a search typed, Oh My Pi's Escape clears the search and keeps the picker open, so the button now reads "Clear search" and only reads "Close" when a tap closes the picker.
 - **A tap on an opencode permission chip is bound to the highlighted chip.** The bridge now also checks the colours of the dialog it is about to answer, because opencode marks the chosen chip only by a background colour. A keystroke at the terminal that moved the highlight refuses the tap instead of confirming another chip. A refused tap also writes the reason to the browser console.
+- **Sidebar edges and shared-row borders no longer leak into an opencode draft.** With a sidebar open over the composer, a row holding only the sidebar's `│` edge now reads as blank, and a panel's closing border on the same row as your words is cut off, so the Draft card shows what you typed and the reply guard verifies the send. A pasted box row such as `╭─ title ─╮`, a typed rule and a pasted tree keep their glyphs. Thanks @AndiWandHerd (#340, fixes #337).
+- **The Escape button on a dialog Collie cannot read now needs a second tap.** The first tap only arms it, and it disarms by itself after four seconds. On an opencode question dialog the button reads "Tap again to dismiss", because Escape there ends the whole question turn. One stray tap no longer does that. Thanks @AndiWandHerd (#339).
 
 ## [1.15.3] - 2026-10-02
 
