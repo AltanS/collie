@@ -820,6 +820,8 @@ export const zh: Dictionary = {
   // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}，当前",
   "unreadDialog.caption": "Collie 无法读取此对话框", // wordsmith
+  "unreadDialog.confirmKey": "再次点击以发送 {key}", // wordsmith
+  "unreadDialog.confirmDismiss": "再次点击以关闭", // wordsmith
   "dialog.preview.currentAnswerAria": "当前回答",
   "dialog.preview.previewedBelowAria": "下方显示预览",
   "dialog.preview.previewLabel": "预览 · {label}",

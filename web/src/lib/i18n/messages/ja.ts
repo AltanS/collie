@@ -833,6 +833,8 @@ export const ja: Dictionary = {
   // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}、現在",
   "unreadDialog.caption": "Collie はこの対話を読み取れません", // wordsmith
+  "unreadDialog.confirmKey": "もう一度タップして{key}を送信", // wordsmith
+  "unreadDialog.confirmDismiss": "もう一度タップして閉じる", // wordsmith
   "dialog.preview.currentAnswerAria": "現在の回答",
   "dialog.preview.previewedBelowAria": "プレビューを下に表示中",
   "dialog.preview.previewLabel": "プレビュー · {label}",
