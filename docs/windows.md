@@ -278,6 +278,19 @@ A front door on Windows that Collie manages is planned and not built.
 A Windows machine cannot join a crew in this release, and no crew step was rehearsed on Windows.
 Collie on one Windows machine works on its own.
 
+## Moving from the community script
+
+Before this release, Windows ran under `contrib/windows/collie-ctl.ps1`, a script the community wrote. Collie now runs the task itself, and every verb of the script is a `collie` verb of the same name. After you update, run `collie restart` once. If the script ran the task named `herdr.collie`, Collie takes it over under the same name. Until you restart, `collie status` and `collie doctor` say that the task still runs the old script.
+
+Two things do not carry over:
+
+- **A custom task name.** The script let you set `COLLIE_TASK_NAME`. Collie does not read it, and the task is always `herdr.collie`. A task you registered under another name stays where it is, and Collie does not stop or remove it. Delete it before you run `collie start`, or two supervisors will start the bridge. In PowerShell: `schtasks /Delete /TN "<your task name>" /F`.
+- **Crash-log copies.** The script kept a copy of the log when the bridge failed. Collie does not. The old copies stay on disk until you delete them.
+
+## Logs
+
+The bridge log is `collie.log` in the plugin config folder (`%APPDATA%\herdr\plugins\config\herdr.collie\collie.log` by default). Collie only appends to it and never rotates it, so the file grows for as long as the bridge runs. To empty it, run `collie stop`, delete the file, then run `collie start`.
+
 ## Build from source
 
 The release zip needs no toolchain. A build from source still needs Bun, Git and Git for Windows'

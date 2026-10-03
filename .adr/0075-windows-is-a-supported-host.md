@@ -96,6 +96,14 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
      in it is not Collie's to fix.
    - Herdr's action buttons. `herdr-plugin.toml` stays `linux` and `macos` because its actions
      run `bash`.
+   - Installing through `herdr plugin install` and starting from a Herdr action. On Windows the
+     install is `install.ps1`, and the start is `collie start`.
+   - A task name override. The community script read `COLLIE_TASK_NAME`. The task is always
+     `herdr.collie`, so one task name has one owner, and `collie doctor` can tell whose it is.
+   - Log rotation. `collie.log` is appended to and not rotated, and the crash-log copies of the
+     community script are gone. `docs/windows.md` says how to empty it.
+   - A version gate without `bash`. PR #71 proposed one and it was not taken. The release check
+     still needs `bash`, and a build from source without it is the open spec 03.
 
 4. **The service tier is native Task Scheduler.** `cli/task-scheduler.ts` registers the task
    `herdr.collie` at logon with a limited token. The task runs `collie.exe _supervise`, which relaunches
