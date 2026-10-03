@@ -4,6 +4,7 @@ import { createClaudeReducer } from "./claude.ts";
 import { createCodexReducer } from "./codex.ts";
 import { createGrokReducer } from "./grok.ts";
 import { createHermesReducer } from "./hermes.ts";
+import { createMuseReducer } from "./muse.ts";
 import { createOpencodeReducer } from "./opencode.ts";
 import { createPiReducer } from "./pi.ts";
 import {
@@ -186,6 +187,166 @@ describe("hermes", () => {
   });
 });
 
+describe("muse", () => {
+  const envelope = (payloadType: string, payload: Record<string, JsonValue>) =>
+    row({ schema_version: 1, id: "row-1", recorded_at: 1790904354495081, payload_type: payloadType, payload });
+  const run = (kind: string) =>
+    envelope("runtime.session", { kind: "run", run_id: "run-1", event: { kind, message_id: "m1" } });
+  const clean = [
+    // One user turn with both content kinds the format carries.
+    envelope("runtime.user_intent.accepted", {
+      model_messages: [{ role: "user", content: [{ kind: "text", text: "hi" }, { kind: "asset", asset: {} }] }],
+    }),
+    envelope("runtime.user_intent.materialized", {}),
+    envelope("runtime.session.task", {}),
+    envelope("runtime.session.metadata", {}),
+    envelope("runtime.session.route_facts", {}),
+    envelope("runtime.retained_fact", {}),
+    envelope("runtime.command_intake.received", {}),
+    envelope("runtime.command_intake.settled", {}),
+    envelope("runtime.command_intake.session_name.received", {}),
+    envelope("run.model.configured", {}),
+    envelope("tool_batch.effect.started", {}),
+    envelope("tool_batch.effect.terminal", {}),
+    envelope("async.owner.attempt_admitted", {}),
+    envelope("reminder.cleanup_effect.started", {}),
+    envelope("reminder.cleanup_effect.terminal", {}),
+    envelope("approval_wait.effect.started", {}),
+    envelope("approval_wait.effect.terminal", {}),
+    envelope("session.resource_pressure.observed", {}),
+    envelope("session.opened.observed", {}),
+    envelope("session.startup_phases.observed", {}),
+    envelope("session.end", {}),
+    envelope("session.resumed", {}),
+    envelope("session.name.changed", {}),
+    envelope("command.invoked", {}),
+    ...[
+      "spawn_accepted",
+      "resume_context_recorded",
+      "attempt_admitted",
+      "child_session_bound",
+      "start_attested",
+      "status_updated",
+      "runtime_observed",
+      "result_ready",
+    ].map((kind) => envelope(`subagent.control.${kind}`, {})),
+    // The run/task/approval event inventory, one row each.
+    ...[
+      "task_stream_linked",
+      "goal_usage_attribution",
+      "hook_run_started",
+      "hook_run_terminal",
+      "reasoning_committed",
+      "provider_request_options_configured",
+      "model_input_trace_recorded",
+      "model_response_created",
+      "model_completed",
+      "assistant_tool_calls_committed",
+      "tool_result_batch_committed",
+      "memory_reminder_child_session_linked",
+      "reminder_proposal",
+      "reminder_reconciler_outcome",
+      "skill_reminder_decision",
+      "reasoning_summary_delta",
+      "context_block_diagnostic",
+      "reasoning_summary_committed",
+      "resource_usage_sampled",
+      "started",
+      "model_request_configured",
+      "terminal",
+      "assistant_message_committed",
+      "todo_snapshot_updated",
+      "reminder_installed",
+      "tool_result_model_visible_content",
+      "inbox_item_queued",
+      "inbox_item_drained",
+      "inbox_delivery_anomaly",
+      "skill_read_observed",
+      "workflow_child_lifecycle",
+      "tool_results_cleared",
+      "context_compaction_candidate",
+      "context_compaction_installed",
+      "context_projection_checkpoint",
+      "context_projection_checkpoint_skipped",
+      "user_input_prompt_requested",
+      "user_input_prompt_settled",
+      "task_backgrounded",
+      "run_retracted",
+      "workflow_run_launched",
+      "workflow_launch_reconciled",
+    ].map(run),
+    ...[
+      "proposed",
+      "accepted",
+      "scheduled",
+      "started",
+      "side_effect_intent",
+      "completed",
+      "status",
+      "output",
+      "rejected",
+      "tool_output_ref",
+      "failed",
+      "cancelled",
+      "timed_out",
+    ].map((kind) =>
+      envelope("runtime.session", { kind: "task", task_id: "task-1", event: { kind, task_id: "task-1" } }),
+    ),
+    ...["requested", "decision_applied", "automated_review_started", "automated_review_completed"].map(
+      (kind) =>
+        envelope("runtime.session", {
+          kind: "approval",
+          approval_id: "a1",
+          event: { kind, decision: "approved", tool_call_id: "call_1" },
+        }),
+    ),
+    envelope("runtime.session", { kind: "agent_tree_initialized" }),
+    // The third content kind, beside a tool result.
+    envelope("runtime.session", {
+      kind: "run",
+      run_id: "run-1",
+      event: {
+        kind: "tool_result_model_visible_content",
+        message_id: "m1",
+        call_id: "call_1",
+        content: [{ kind: "image", base64_data: "x", media_type: "image/png" }],
+      },
+    }),
+  ];
+
+  test("the whole measured inventory counts nothing", () => {
+    const tally = tallyOf(createMuseReducer(), clean);
+    expect(describeUnknowns(tally)).toBe("");
+    expect(unknownCount(tally)).toBe(0);
+  });
+
+  test("a row type Muse adds is counted and named", () => {
+    const tally = tallyOf(createMuseReducer(), [
+      ...clean,
+      envelope("runtime.future.row", {}),
+      envelope("runtime.future.row", {}),
+    ]);
+    expect(names(tally.rows)).toEqual(["runtime.future.row"]);
+    expect(tally.rows.get("runtime.future.row")).toBe(2);
+    expect(describeUnknowns(tally)).toBe("row types runtime.future.row (2)");
+  });
+
+  test("a run event Muse adds is counted under its composite", () => {
+    const tally = tallyOf(createMuseReducer(), [...clean, run("future_event")]);
+    expect(names(tally.rows)).toEqual(["run/future_event"]);
+  });
+
+  test("a content block Muse adds is counted and named", () => {
+    const tally = tallyOf(createMuseReducer(), [
+      envelope("runtime.user_intent.accepted", {
+        model_messages: [{ role: "user", content: [{ kind: "future_block", text: "?" }] }],
+      }),
+    ]);
+    expect(names(tally.parts)).toEqual(["future_block"]);
+    expect(describeUnknowns(tally)).toBe("part types future_block (1)");
+  });
+});
+
 describe("opencode", () => {
   const line = (role: string, parts: JsonValue[]) =>
     row({ id: `msg_${role}`, ts: 1, data: { role, time: { created: 1 } }, parts: parts.map((d, i) => ({ id: `prt_${i}`, data: d })) });
@@ -292,11 +453,11 @@ describe("the counter itself", () => {
   });
 });
 
-// A seventh adapter cannot land without a tally: the canary's gate reads every registered adapter's
+// An eighth adapter cannot land without a tally: the canary's gate reads every registered adapter's
 // reducer, and one that answered nothing would be an agent whose drift nobody is watching.
 test("every registered journal adapter's reducer answers a tally", () => {
-  const registry = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [] });
-  expect(journalAgents(registry)).toHaveLength(6);
+  const registry = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [] });
+  expect(journalAgents(registry)).toHaveLength(7);
   for (const [agent, adapter] of Object.entries(registry)) {
     const tally = adapter.reducer().unknowns();
     expect(tally.rows.size, agent).toBe(0);

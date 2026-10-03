@@ -198,7 +198,7 @@ export const FIRST_TAIL_ROWS = 400;
 /**
  * What is new in a log since `cursor` — the live read, beside {@link loadTail}'s whole-window one.
  *
- * Shared by every harness that writes a FILE (claude, codex, pi, grok), which is why it lives here:
+ * Shared by every harness that writes a FILE (claude, codex, pi, grok, muse), which is why it lives here:
  * the byte counting, the bound and the torn-line rule are properties of reading a log, not of any
  * one grammar. The two SQLite harnesses answer the same question in their own language and share
  * nothing with this but the {@link Cursor} codec.

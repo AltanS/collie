@@ -835,6 +835,8 @@ export function startServer(opts: {
   const live = transcripts === null ? null : new LiveWindows(transcripts);
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
+  const discoversSessions = (agent: string) =>
+    adapterFor(journals ?? {}, agent)?.discover !== undefined;
 
   /** One in-flight "look now" per session — see bridge/refresh.ts for why it coalesces. */
   const refreshes = new RefreshCoalescer();
@@ -920,7 +922,7 @@ export function startServer(opts: {
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
       const wired = sources.map((from) => ({
         name: from.name,
-        panes: pick(from).map((p) => toPaneWire(withActivity(from, p), hasJournal)),
+        panes: pick(from).map((p) => toPaneWire(withActivity(from, p), hasJournal, discoversSessions)),
       }));
       // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
       // at all, which is the whole backward-compatibility claim (solo-baseline.test.ts).
@@ -2461,9 +2463,7 @@ async function paneHistory(
 
   const { agents, shellPanes } = engine.current();
   const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
-  // No pane, or an agent that named no session (a shell, or a harness whose integration isn't
-  // installed): nothing to read, and that's an ordinary answer rather than an error.
-  if (!pane?.agentSession) return unavailable("no-session");
+  if (pane === undefined) return unavailable("no-session");
   // An agent with no adapter has no journal. Same answer — the UI shouldn't distinguish "this
   // harness isn't supported" from "this pane never started one"; both mean there's nothing to show.
   // NOT `pane.agent`: a pane whose agent EXITED reads as a shell, and the harness that wrote the ref
@@ -2471,9 +2471,16 @@ async function paneHistory(
   // always did — see `journalAgentOf`.
   const adapter = adapterFor(journals, journalAgentOf(pane));
   if (adapter === undefined) return unavailable("no-session");
+  // The ref the pane reported — or, for an adapter that finds its own (Muse, whose panes Herdr
+  // never reports one for), the discovered one. Either way an ordinary id ref from here on:
+  // discovery widens WHICH panes answer, never how an answer is read. A shell, or a harness whose
+  // integration isn't installed, still names nothing discoverable: no-session, an ordinary answer
+  // rather than an error.
+  const ref = pane.agentSession ?? (await adapter.discover?.(pane.cwd)) ?? null;
+  if (ref === null) return unavailable("no-session");
 
   try {
-    const page = await transcripts.page(adapter, pane.agentSession, historyParams(url));
+    const page = await transcripts.page(adapter, ref, historyParams(url));
     if (page === null) return unavailable("no-log");
     return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
   } catch (err) {
@@ -2521,16 +2528,21 @@ async function paneChat(
   // Identical to the history route's reading, and deliberately the same words: a pane with no session
   // and a harness with no adapter are both "nothing to show", never an error. `journalAgentOf` rather
   // than `pane.agent`, so a pane whose agent EXITED still reads the journal that agent wrote.
-  if (!pane?.agentSession) return unavailable("no-session");
+  if (pane === undefined) return unavailable("no-session");
   const adapter = adapterFor(journals, journalAgentOf(pane));
   if (adapter === undefined) return unavailable("no-session");
+  // The reported ref, or the discovered one — the history route's rule, word for word. Discovery
+  // runs per poll here, a bounded newest-first walk that costs milliseconds in the common case;
+  // the resolved path below is what the live window holds.
+  const ref = pane.agentSession ?? (await adapter.discover?.(pane.cwd)) ?? null;
+  if (ref === null) return unavailable("no-session");
 
   const params = chatParams(url);
   try {
     const body =
       params.before === undefined
-        ? await live.window(adapter, pane.agentSession, params)
-        : await live.older(adapter, pane.agentSession, params.before, params.limit);
+        ? await live.window(adapter, ref, params)
+        : await live.older(adapter, ref, params.before, params.limit);
     if (body === null) return unavailable("no-log");
     const data = { paneId, available: true, ...body } satisfies PaneChatResponse;
     const etag = computeEtag(JSON.stringify(data));

@@ -2,7 +2,7 @@
 //
 // ── WHY ONE CODEC AND NOT THREE SHAPES ───────────────────────────────────────
 // The contract is `readSince(key, cursor)`, and the three storage kinds under it count position
-// differently: a byte offset for the four harnesses that write a file, `max(time_updated)` for
+// differently: a byte offset for the five harnesses that write a file, `max(time_updated)` for
 // opencode's rows (which it mutates while a reply streams), and `max(id)` for hermes' append-only
 // ones. Every one of those is ONE non-negative integer, so the shape they share is worth more than
 // the names they don't. A single text token carries it, and the number's MEANING never leaves the

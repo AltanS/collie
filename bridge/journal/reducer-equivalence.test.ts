@@ -6,6 +6,7 @@ import { createClaudeReducer, parseClaudeTranscript } from "./claude.ts";
 import { createCodexReducer, parseCodexTranscript } from "./codex.ts";
 import { createGrokReducer, parseGrokTranscript } from "./grok.ts";
 import { createHermesReducer, parseHermesTranscript } from "./hermes.ts";
+import { createMuseReducer, parseMuseTranscript } from "./muse.ts";
 import { createOpencodeReducer, parseOpencodeTranscript } from "./opencode.ts";
 import { createPiReducer, parsePiTranscript } from "./pi.ts";
 import type { TranscriptEntry } from "./types.ts";
@@ -88,7 +89,7 @@ function expectEquivalent(make: () => RowReducer, parse: (text: string) => Trans
 /**
  * The adapters this file covers, one name per line.
  *
- * Checked against the registry below rather than kept as a comment, so a seventh adapter cannot land
+ * Checked against the registry below rather than kept as a comment, so an eighth adapter cannot land
  * without a section here: the reducer is the seam a live tail reads through, and an adapter with no
  * equivalence proof is an adapter whose tail nobody has checked.
  */
@@ -99,6 +100,7 @@ const COVERED = [
   "pi",
   "grok",
   "hermes",
+  "muse",
 ] as const;
 
 test("every harness the registry knows has an equivalence section here", () => {
@@ -273,6 +275,53 @@ describe("opencode: a reducer reads a torn stream the way the parser reads a who
 
   test("the three readings agree", () => {
     expectEquivalent(() => createOpencodeReducer(), parseOpencodeTranscript, text);
+  });
+});
+
+describe("muse: a reducer reads a torn stream the way the parser reads a whole file", () => {
+  const row = (id: string, payloadType: string, payload: Record<string, JsonValue>) =>
+    JSON.stringify({ schema_version: 1, id, recorded_at: 1790904354495081, payload_type: payloadType, payload });
+  const text = [
+    row("row-1", "runtime.user_intent.accepted", {
+      model_messages: [{ role: "user", content: [{ kind: "text", text: "run it" }] }],
+    }),
+    row("row-2", "runtime.session", {
+      kind: "run",
+      run_id: "run-1",
+      event: { kind: "assistant_message_committed", message_id: "m1", text: "one\ntwo" },
+    }),
+    row("row-3", "runtime.session", {
+      kind: "run",
+      run_id: "run-1",
+      event: {
+        kind: "assistant_tool_calls_committed",
+        message_id: "m1",
+        tool_calls: [{ id: "fc_0", call_id: "call_1", name: "bash", args: '{"command":"ls"}' }],
+      },
+    }),
+    row("row-4", "runtime.session", {
+      kind: "run",
+      run_id: "run-1",
+      event: {
+        kind: "tool_result_batch_committed",
+        message_id: "m1",
+        results: [{ tool_call_id: "call_1", tool_call_index: 0, text: "total 0" }],
+      },
+    }),
+    row("row-5", "runtime.session", {
+      kind: "run",
+      run_id: "run-1",
+      event: {
+        kind: "tool_result_batch_committed",
+        message_id: "m1",
+        results: [{ tool_call_id: "gone", tool_call_index: 0, text: "orphan" }],
+      },
+    }),
+    ...RUBBISH,
+  ].join("\n");
+
+  test("the three readings agree", () => {
+    expectEquivalent(() => createMuseReducer(), parseMuseTranscript, text);
   });
 });
 

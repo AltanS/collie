@@ -115,7 +115,7 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
  * what it could not read"). Anything else is counted and named.
  *
  * The rows are this file's own header inventory, verified on disk on 2026-08-21; there are no local
- * Grok logs on the canary host, so unlike the other five this list has NOT been re-swept since.
+ * Grok logs on the canary host, so unlike the other six this list has NOT been re-swept since.
  *
  * `parts` covers the two block lists: a row's `content` (`text`) and a `reasoning` row's `summary`
  * (`summary_text`). Both are read by FIELD — `contentText` takes any block's `.text` — so a block

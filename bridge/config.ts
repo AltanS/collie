@@ -495,7 +495,7 @@ export function resolveStateDir(
  * Where each harness's journal lives, resolved from an environment and a home directory.
  *
  * A PARAMETER rather than a read of `process.env` and `homedir()`, so `collie doctor` can ask this
- * one function the same question the bridge asks it (issue #137) instead of re-deriving five
+ * one function the same question the bridge asks it (issue #137) instead of re-deriving seven
  * fallbacks that would drift. {@link loadConfig} calls it with the defaults, so the running bridge's
  * roots are unchanged.
  *
@@ -542,6 +542,14 @@ export function resolveJournalRoots(
       env,
     ),
     hermes: envRoots("COLLIE_HERMES_ROOT", join(home, ".hermes"), env),
+    // Muse keeps date-partitioned session logs under the XDG data dir, one session.jsonl per
+    // session uuid. Muse publishes no home var of its own, so the Collie override is the only
+    // relocation.
+    muse: envRoots(
+      "COLLIE_MUSE_ROOT",
+      join(env.XDG_DATA_HOME ?? join(home, ".local", "share"), "muse", "sessions"),
+      env,
+    ),
   };
 }
 

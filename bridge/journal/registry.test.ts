@@ -4,6 +4,7 @@ import {
   adapterFor,
   AGENT_ALIASES,
   buildJournalRegistry,
+  DISCOVERS_OWN_SESSIONS,
   DRAWS_IMAGES_OFF_GRID,
   journalAgents,
   KNOWN_HARNESS_NAMES,
@@ -14,15 +15,24 @@ import {
 // two properties that keep it from rotting: keys come from the adapters themselves, and a hostile
 // agent name can't resolve to something that isn't an adapter.
 
-const roots = { claude: ["/c"], codex: ["/x"], pi: ["/p"], opencode: ["/o"], grok: ["/g"], hermes: ["/h"] };
+const roots = {
+  claude: ["/c"],
+  codex: ["/x"],
+  pi: ["/p"],
+  opencode: ["/o"],
+  grok: ["/g"],
+  hermes: ["/h"],
+  muse: ["/m"],
+};
 
 describe("buildJournalRegistry", () => {
-  test("serves the six verified harnesses", () => {
+  test("serves the seven verified harnesses", () => {
     expect(journalAgents(buildJournalRegistry(roots))).toEqual([
       "claude",
       "codex",
       "grok",
       "hermes",
+      "muse",
       "opencode",
       "pi",
     ]);
@@ -37,7 +47,7 @@ describe("buildJournalRegistry", () => {
 describe("adapterFor", () => {
   const registry = buildJournalRegistry(roots);
 
-  test.each(["claude", "codex", "pi", "opencode", "grok", "hermes"])("resolves %s", (agent) => {
+  test.each(["claude", "codex", "pi", "opencode", "grok", "hermes", "muse"])("resolves %s", (agent) => {
     expect(adapterFor(registry, agent)?.agent).toBe(agent);
   });
 
@@ -67,7 +77,7 @@ describe("adapterFor", () => {
 // `web/src/lib/journal-agents.ts` carries the same names, because the browser must tell an agent
 // that COULD have a transcript (and reported no session — the case an operator can fix) from one
 // that never could. The list is not on the wire, so the mirror is kept by hand — and this test is
-// what makes "by hand" safe: adding a sixth adapter above fails here until the frontend follows.
+// what makes "by hand" safe: adding a seventh adapter above fails here until the frontend follows.
 describe("the frontend mirror", () => {
   test("web/src/lib/journal-agents.ts names exactly these agents", async () => {
     const source = await Bun.file(new URL("../../web/src/lib/journal-agents.ts", import.meta.url)).text();
@@ -105,4 +115,16 @@ describe("the frontend mirror", () => {
     const registry = buildJournalRegistry(roots);
     for (const agent of DRAWS_IMAGES_OFF_GRID) expect(adapterFor(registry, agent)).toBeDefined();
   });
+});
+
+// `DISCOVERS_OWN_SESSIONS` names exactly the adapters that implement `discover` — derived from the
+// adapters themselves, so neither side can drift. `collie doctor` reads the list; the routes read
+// the capability.
+test("DISCOVERS_OWN_SESSIONS names exactly the discovering adapters", () => {
+  const registry = buildJournalRegistry(roots);
+  const discovering = Object.entries(registry)
+    .filter(([, adapter]) => adapter.discover !== undefined)
+    .map(([agent]) => agent)
+    .toSorted();
+  expect([...DISCOVERS_OWN_SESSIONS].toSorted()).toEqual(discovering);
 });
