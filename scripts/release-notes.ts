@@ -386,7 +386,7 @@ export function changelogAnchor(version: string, date: string): string {
  * update banner (web/src/components/update-banner.tsx) to copy one command, so this may never sit
  * behind a `<details>` and may never sit below the change list.
  */
-function updateBlock(repo: string, tag: string): string[] {
+function updateBlock(): string[] {
 	return [
 		"## Update",
 		"",
@@ -401,11 +401,8 @@ function updateBlock(repo: string, tag: string): string[] {
 		"```",
 		"",
 		"Check with `collie version` or `herdr plugin action invoke version --plugin herdr.collie`.",
-		"",
-		// The 0.x crossing rides on EVERY release, not only 1.0.0's. A 0.x install's update banner
-		// points at the newest release, so a reader who never opens 1.0.0's notes must still find
-		// this line here (M14/01 §8).
-		`**Coming from 0.x?** \`collie update\` will not cross a major. Follow [Upgrading from 0.x to 1.0](https://github.com/${repo}/blob/${tag}/docs/upgrading.md#upgrading-from-0x-to-10).`,
+		// The 0.x crossing no longer rides here: `docs/upgrading.md` keeps it ("Upgrading from 0.x
+		// to 1.0"), and a release page of the 1.x line does not repeat it.
 	];
 }
 
@@ -452,7 +449,7 @@ export function renderBody(
 	const urgent = parseUrgent(changelog, version);
 	const lines: string[] = [];
 	if (urgent) lines.push(`**Urgent.** ${urgent.reason}`, "");
-	lines.push(...updateBlock(repo, tag), "", "## What changed", "");
+	lines.push(...updateBlock(), "", "## What changed", "");
 
 	for (const group of section.groups) {
 		if (group.leads.length === 0) continue;

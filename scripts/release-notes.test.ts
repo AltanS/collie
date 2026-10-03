@@ -193,8 +193,6 @@ herdr plugin action invoke update --plugin herdr.collie    # Herdr plugin instal
 
 Check with \`collie version\` or \`herdr plugin action invoke version --plugin herdr.collie\`.
 
-**Coming from 0.x?** \`collie update\` will not cross a major. Follow [Upgrading from 0.x to 1.0](https://github.com/AltanS/collie/blob/v2.1.0/docs/upgrading.md#upgrading-from-0x-to-10).
-
 ## What changed
 
 **Added**

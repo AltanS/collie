@@ -126,7 +126,7 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 $readme = @(
   "Collie $Version for Windows (experimental, for testing only)",
   "",
-  "There is no installer yet. This whole folder is the install: bin\collie.exe needs web\dist beside it.",
+  "The usual way to install is  irm https://colliepwa.dev/install.ps1 | iex . This folder is the same payload, for a look by hand: bin\collie.exe needs web\dist beside it.",
   "Start here: open PowerShell in this folder and run  bin\collie.exe --help",
   "collie.exe is not signed. Windows 11 Smart App Control can block an unsigned program, and you cannot override it.",
   "The .sha256 file beside the zip guards against a bad download. It is not a signature.",

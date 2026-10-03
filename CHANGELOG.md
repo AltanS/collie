@@ -21,14 +21,12 @@ newest tag. The phone PWA updates itself within about a minute; no reload needed
 Running a crew? Update the lead first; members follow on their own. Details:
 `docs/crew.md` → *Updating from 1.7.0*.
 
-**Coming from 0.x?** Upgrade with one command. Do not use `collie update`. From the Herdr
-plugin: `herdr plugin action invoke update-major --plugin herdr.collie`. From a checkout you can
-reach: `bin/collie update --major`. Fresh install:
-`curl -fsSL https://colliepwa.dev/install.sh | sh`. Neither upgrade path assumes a `collie` on your
-PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to
-1.0*.
-
 ## [Unreleased]
+
+### Changed
+
+- **Release pages and the changelog no longer repeat the upgrade path from 0.x.** The steps stay in `docs/upgrading.md` under "Upgrading from 0.x to 1.0".
+- **The Windows note on a release page names the installer and the setup guide.** It said "There is no installer yet", which has been false since `install.ps1`. It now gives the `irm https://colliepwa.dev/install.ps1 | iex` command and links `docs/windows.md`, and the README inside the zip says the same.
 
 ## [1.16.0] - 2026-10-03
 

@@ -191,10 +191,15 @@ describe("the tolerance closes on its own", () => {
 describe("the release-notes block", () => {
   test("says what the zip is when it is there, and that it was not built when it is not", () => {
     expect(windowsNotes(true)).toBe(
-      "Windows zip: experimental, unsigned, for testing only. There is no installer yet. Windows 11 Smart App Control may block it and that cannot be overridden. Linux and macOS are not affected.",
+      [
+        "Windows zip: experimental and unsigned. Install it with `irm https://colliepwa.dev/install.ps1 | iex`.",
+        "The setup guide is at https://github.com/AltanS/collie/blob/main/docs/windows.md.",
+        "Windows 11 Smart App Control may block it. Linux and macOS are not affected.",
+      ].join("\n"),
     );
+    expect(windowsNotes(true)).not.toContain("no installer");
     expect(windowsNotes(false)).toBe("The Windows zip was not built for this release.");
-    expect(`${windowsNotes(true)}${windowsNotes(false)}`).not.toContain("http");
+    expect(windowsNotes(false)).not.toContain("http");
   });
 });
 

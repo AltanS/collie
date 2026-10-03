@@ -71,7 +71,11 @@ export function windowsVerdict(set: WindowsSet, result: string, optional: boolea
 /** The block the release notes end with. Appended after the Linux and macOS part, which it never changes. */
 export function windowsNotes(present: boolean): string {
   return present
-    ? "Windows zip: experimental, unsigned, for testing only. There is no installer yet. Windows 11 Smart App Control may block it and that cannot be overridden. Linux and macOS are not affected."
+    ? [
+        "Windows zip: experimental and unsigned. Install it with `irm https://colliepwa.dev/install.ps1 | iex`.",
+        "The setup guide is at https://github.com/AltanS/collie/blob/main/docs/windows.md.",
+        "Windows 11 Smart App Control may block it. Linux and macOS are not affected.",
+      ].join("\n")
     : "The Windows zip was not built for this release.";
 }
 
