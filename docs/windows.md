@@ -262,12 +262,13 @@ replaces whatever this PC already serves at `/` on your tailnet.
 
 > **Note.** On a Headscale tailnet, the HTTPS command in step 3 fails with
 > `error enabling https feature: error 501 Not Implemented`, because Headscale issues no HTTPS
-> certificates. `collie doctor` may keep warning on its `front-door` line:
+> certificates. Until you publish, `collie doctor` warns on its `front-door` line:
 > `this tailnet has no HTTPS certificates, so an https front door cannot be published`.
 >
 > There, publish over HTTP, which is the form the project ran on Windows:
 > `tailscale serve --bg --http=80 --set-path=/ 8787`. It publishes on tailnet port 80, so the
 > address is `http://<name>` with no port. Use that `http://` address in `COLLIE_PUBLIC_URL`.
+> After that command, the `front-door` line passes. In 1.16.0 it keeps the warning.
 >
 > Plain HTTP is acceptable here because Tailscale encrypts the traffic between tailnet devices
 > (WireGuard), and the HTTP hop stays inside the tailnet. Never use `tailscale funnel`. Over HTTP

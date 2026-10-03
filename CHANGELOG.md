@@ -32,6 +32,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **On Windows (experimental): `collie doctor` and `collie crew status` no longer suggest `collie crew invite`.** With no crew, both ended on "`collie crew invite` here makes it a lead; `collie join …` makes it a peer", and both verbs refuse on Windows. They now say "A Windows machine cannot join or lead a crew in this release." Linux and macOS print what they printed before.
 - **On Windows (experimental): `collie doctor` no longer tells you to run `collie serve`.** Collie publishes no front door on Windows, so the `front-door` remedies sent you to a command that does nothing useful there. They now give the Tailscale command to run by hand, `tailscale serve --bg --set-path=/ <port>`, with a reminder to pair a device right away, and point to `docs/windows.md`. A mapping you made by hand that points at Collie now passes the `front-door` check instead of warning. Linux and macOS print what they printed before.
+- **On Windows (experimental): `collie doctor` passes a front door published over HTTP on a Headscale tailnet.** Headscale issues no HTTPS certificates, so the Windows guide publishes with `tailscale serve --bg --http=80 --set-path=/ <port>`. The `front-door` check kept the warning "this tailnet has no HTTPS certificates" after that. It now looks for a mapping made by hand that points at Collie, on port 80 too, before it asks about certificates. Linux and macOS print what they printed before.
 
 ## [1.16.0] - 2026-10-03
 

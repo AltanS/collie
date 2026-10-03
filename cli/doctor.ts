@@ -86,6 +86,7 @@ import {
   VERSION_REPORTED_SINCE,
 } from "./crew.ts";
 import { fingerprintRoot, mountName, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
+import type { ServeMode } from "./context.ts";
 import type { Exec, Files } from "./sys.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
 import {
@@ -917,6 +918,30 @@ const windowsOccupiedRemedy = (port: number): string =>
   ` ${tailscaleServeByHand(port)} (docs/windows.md)`;
 
 /**
+ * The listener of a hand-made root mount that proxies to this collie, or `null`. Two places are
+ * looked at: the listener the configured serve mode names, and plain HTTP on :80, which is the form
+ * docs/windows.md gives for a tailnet with no HTTPS certificates (Headscale).
+ */
+function windowsHandMadeDoor(deps: DoctorDeps): number | null {
+  const status = liveServeStatus(deps);
+  if (status === null) return null;
+  const proxy = `http://127.0.0.1:${deps.ctx.port}`;
+  const configured = deps.ctx.serveMode === "http" ? deps.ctx.port : deps.ctx.servePort;
+  const candidates: [number, ServeMode][] = [
+    [configured, deps.ctx.serveMode],
+    [80, "http"],
+  ];
+  for (const [listener, protocol] of candidates) {
+    try {
+      if (rootAvailability(status, listener, protocol, proxy, deps.ctx.basePath) === "adoptable") return listener;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
  * `tailscale serve` reality vs. the `tailscale-managed-handler` record. Only a mapping matching the
  * record is ours (ADR 0001); a mapping we do not own is REPORTED, never touched — and a **peer** with
  * any mapping at all is an error, because a peer publishes nothing (ADR 0013).
@@ -952,6 +977,19 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
         ? `install tailscale and run ${tailscaleServeByHand(deps.ctx.port)} (docs/windows.md), or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)`
         : "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)",
     );
+  }
+  // Windows records no mapping, so a root mount that proxies to us is the operator's own
+  // `tailscale serve`, and it is the door working as designed (docs/windows.md). Asked before the
+  // certificate question: on a Headscale tailnet the door is plain HTTP on :80 and no certificate
+  // will ever exist.
+  if (windows && raw === null && mode !== "peer") {
+    const door = windowsHandMadeDoor(deps);
+    if (door !== null) {
+      return ok(
+        "front-door",
+        `:${door} proxies to http://127.0.0.1:${deps.ctx.port}, published by hand (Collie records no mapping on Windows)`,
+      );
+    }
   }
   // No certificates, no https door — and `tailscale serve` says so by asking a question at a
   // terminal a service has not got (#172). `collie serve` refuses on this same fact; doctor names it
@@ -992,14 +1030,6 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
             "`collie unserve` here",
           )
         : ok("front-door", "a peer publishes nothing, and nothing of ours is published");
-    }
-    // Windows records no mapping, so a root mount on our listener that proxies to us is the operator's
-    // own `tailscale serve`, and it is the door working as designed (docs/windows.md).
-    if (windows && availability === "adoptable") {
-      return ok(
-        "front-door",
-        `:${listener} proxies to ${proxy}, published by hand (Collie records no mapping on Windows)`,
-      );
     }
     if (availability === "occupied" || availability === "protocol-mismatch") {
       return warn(

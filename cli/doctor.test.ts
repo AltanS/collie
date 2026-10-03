@@ -860,6 +860,45 @@ describe("collie doctor — the local checks", () => {
     expect(posixFinding.remedy).toContain("`collie serve` here");
   });
 
+  test("front-door: on a Windows host a hand-made HTTP mount on :80 passes on a tailnet with no certificates (Headscale)", async () => {
+    const files = healthyFiles();
+    delete files[HANDLER];
+    const serveHttp80 = JSON.stringify({
+      TCP: { "80": { HTTP: true } },
+      Web: { "laptop.tail.ts.net:80": { Handlers: { "/": { Proxy: PROXY } } } },
+    });
+    const answers: NonNullable<Scripted["answers"]> = [
+      ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
+      ["tailscale serve status --json", { stdout: serveHttp80 }],
+      ...netmapAnswers(NETMAP_OPEN),
+    ];
+    const win = harness(null, [], { files, answers });
+    win.deps = { ...win.deps, host: hostFor("win32") };
+    const winFinding = (await findings(win)).byCheck.get("front-door")!;
+    expect(winFinding.status).toBe("ok");
+    expect(winFinding.detail).toContain(`:80 proxies to http://127.0.0.1:${win.deps.ctx.port}`);
+
+    // A mount on :80 that proxies somewhere else is not ours: the certificate warning stays.
+    const elsewhere = harness(null, [], {
+      files,
+      answers: [
+        answers[0]!,
+        ["tailscale serve status --json", { stdout: serveHttp80.replace(PROXY, "http://127.0.0.1:9999") }],
+        ...netmapAnswers(NETMAP_OPEN),
+      ],
+    });
+    elsewhere.deps = { ...elsewhere.deps, host: hostFor("win32") };
+    const elsewhereFinding = (await findings(elsewhere)).byCheck.get("front-door")!;
+    expect(elsewhereFinding.status).toBe("warn");
+    expect(elsewhereFinding.detail).toContain("no HTTPS certificates");
+
+    const posix = harness(null, [], { files, answers });
+    posix.deps = { ...posix.deps, host: hostFor("linux") };
+    const posixFinding = (await findings(posix)).byCheck.get("front-door")!;
+    expect(posixFinding.status).toBe("warn");
+    expect(posixFinding.detail).toContain("no HTTPS certificates");
+  });
+
   test("front-door: a LEAD with no mapping and no COLLIE_SKIP_SERVE is an error", async () => {
     const files = { ...healthyFiles(), ...markerFile(LEAD) };
     delete files[HANDLER];
