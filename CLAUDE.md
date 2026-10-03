@@ -114,6 +114,13 @@ release. 1.14.2 was cut this way on 2026-09-28.
    `docs/install.md` in the release commit: they say no release carries the zip. Then tag and push
    (next paragraph).
 
+   A missing Windows zip stops the release once a published release has carried one, from
+   2026-11-15 (`WINDOWS_ASSET_MANDATORY_FROM` in `scripts/windows-asset.ts`), and whenever the
+   releases API does not answer. For a Linux hotfix while the Windows job is broken, set the
+   repository variable `COLLIE_WINDOWS_ASSET_OVERRIDE` to `optional` (Settings > Secrets and
+   variables > Actions > Variables) before the tag, and delete it right after the release: the run
+   warns loudly while it is set. To move the date instead, change that one constant in a commit.
+
 **A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
 line — send the functional commits only. The version is the maintainer's to pick, because it depends
 on what else lands in the same release and on which axis the *sum* of those changes sits; a bump

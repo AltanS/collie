@@ -97,12 +97,15 @@ describe("release.yml: a Windows failure never stops a release", () => {
 
   test("the asset check runs the tested script, which alone decides when the tolerance closes", () => {
     // The verdicts themselves (warn on failure/skipped/cancelled, fail on a lost asset after
-    // success, fail with the tolerance closed) and the closing rule (the date, or an earlier release
-    // with the zip) are pinned in scripts/windows-asset.test.ts.
+    // success, fail with the tolerance closed) and the closing rule (the date, an earlier release
+    // with the zip, an API that does not answer, the override) are pinned in scripts/windows-asset.test.ts.
     const step = (job("release").steps ?? []).find((s) => s.name === "Check for the Windows asset");
     expect(step?.id).toBe("windows");
     expect(step?.run).toContain("bun scripts/windows-asset.ts --dir");
     expect(step?.run).toContain('--result "$WINDOWS_RESULT" --repo "$GITHUB_REPOSITORY"');
+    // The escape: a repository variable, read by the workflow, passed through untouched.
+    expect(step?.env?.WINDOWS_ASSET_OVERRIDE).toBe("${{ vars.COLLIE_WINDOWS_ASSET_OVERRIDE }}");
+    expect(step?.run).toContain('--override "$WINDOWS_ASSET_OVERRIDE"');
     expect(step?.env?.WINDOWS_RESULT).toBe("${{ needs.payload-windows.result }}");
     // The same token the gate job hands `gh`; the script asks the releases API with it.
     expect(step?.env?.GH_TOKEN).toBe("${{ github.token }}");

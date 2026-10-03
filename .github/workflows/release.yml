@@ -420,16 +420,21 @@ jobs:
       # manifest never names a file that is not published.
       #
       # The script also decides when the tolerance closes, and this file holds no copy of that rule.
-      # It asks the releases API for earlier releases with `gh`, so it needs the token below.
+      # It asks the releases API for earlier releases with `gh`, so it needs the token below; an API
+      # that does not answer closes the tolerance. The repository variable
+      # COLLIE_WINDOWS_ASSET_OVERRIDE, set to `optional`, opens it by hand for a Linux hotfix while
+      # the Windows job is broken; the script says so loudly. Unset, it passes an empty string.
       - name: Check for the Windows asset
         id: windows
         env:
           WINDOWS_RESULT: ${{ needs.payload-windows.result }}
+          WINDOWS_ASSET_OVERRIDE: ${{ vars.COLLIE_WINDOWS_ASSET_OVERRIDE }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           nix develop --command bun scripts/windows-asset.ts --dir "$RUNNER_TEMP/assets" \
-            --version "${GITHUB_REF_NAME#v}" --result "$WINDOWS_RESULT" --repo "$GITHUB_REPOSITORY"
+            --version "${GITHUB_REF_NAME#v}" --result "$WINDOWS_RESULT" --repo "$GITHUB_REPOSITORY" \
+            --override "$WINDOWS_ASSET_OVERRIDE"
 
       # The built frontend, published as an asset. It is what colliepwa.dev's demo runs: a pinned
       # release bundle whose network calls are answered in the browser, so the demo shows the real

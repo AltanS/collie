@@ -8,6 +8,9 @@ import {
   lookupPriorWindowsRelease,
   priorWindowsRelease,
   RELEASES_JQ,
+  LOOKUP_BACKOFF_MS,
+  LOOKUP_TRIES,
+  OVERRIDE_VARIABLE,
   WINDOWS_ASSET_MANDATORY_FROM,
   windowsFiles,
   windowsNotes,
@@ -69,7 +72,7 @@ describe("the tolerance closes on its own", () => {
 
   test("before the date, with no earlier Windows zip, a missing asset is optional", () => {
     const t = windowsTolerance(BEFORE, answer({ kind: "none" }));
-    expect(t).toEqual({ optional: true, dateOnly: false, why: expect.stringContaining("no earlier release") });
+    expect(t).toEqual({ optional: true, warning: null, overridden: false, why: expect.stringContaining("no earlier release") });
   });
 
   test("on and after the date it is mandatory, and GitHub is not asked", () => {
@@ -91,29 +94,62 @@ describe("the tolerance closes on its own", () => {
     expect(t.why).toBe("release v1.16.0 already carries the Windows zip");
   });
 
-  test("an API that does not answer falls back to the date rule, and says so", () => {
-    const failing: GhRunner = () => ({ code: 1, stdout: "", stderr: "HTTP 502: Bad Gateway\nmore" });
-    const before = windowsTolerance(BEFORE, () => lookupPriorWindowsRelease("AltanS/collie", "v1.16.0", failing));
-    expect(before.optional).toBe(true);
-    expect(before.dateOnly).toBe(true);
-    expect(before.why).toContain("the releases API did not answer (gh api exited 1: HTTP 502: Bad Gateway)");
-    expect(before.why).toContain("the date rule alone decides");
-    expect(windowsTolerance(ON, () => lookupPriorWindowsRelease("AltanS/collie", "v1.16.0", failing)).optional).toBe(false);
+  test("an API that does not answer after three tries closes the tolerance (fail closed), with a warning", () => {
+    let asked = 0;
+    const failing: GhRunner = () => {
+      asked++;
+      return { code: 1, stdout: "", stderr: "HTTP 502: Bad Gateway\nmore" };
+    };
+    const pauses: number[] = [];
+    const t = windowsTolerance(BEFORE, () => lookupPriorWindowsRelease("AltanS/collie", "v1.16.0", failing, (ms) => void pauses.push(ms)));
+    expect(asked).toBe(LOOKUP_TRIES);
+    expect(LOOKUP_TRIES).toBe(3);
+    expect(pauses).toEqual([LOOKUP_BACKOFF_MS, LOOKUP_BACKOFF_MS * 2]);
+    expect(t.optional).toBe(false);
+    expect(t.why).toContain("the releases API did not answer (3 tries; the last: gh api exited 1: HTTP 502: Bad Gateway)");
+    expect(t.why).toContain("mandatory for this release (fail closed)");
+    expect(t.warning).toContain(`set the repository variable ${OVERRIDE_VARIABLE}=optional for a hotfix`);
+  });
+
+  test("a second try that answers is believed", () => {
+    let n = 0;
+    const flaky: GhRunner = () => (++n === 1 ? { code: 1, stdout: "", stderr: "HTTP 502" } : { code: 0, stdout: "", stderr: "" });
+    expect(lookupPriorWindowsRelease("o/r", "v1.0.0", flaky, () => {})).toEqual({ kind: "none" });
+    expect(n).toBe(2);
   });
 
   test("a gh that cannot start, or a timeout, is an API that did not answer", () => {
     const missing: GhRunner = () => {
       throw new Error("Executable not found in $PATH: \"gh\"");
     };
-    expect(lookupPriorWindowsRelease("o/r", "v1.0.0", missing)).toEqual({
+    expect(lookupPriorWindowsRelease("o/r", "v1.0.0", missing, () => {})).toEqual({
       kind: "unknown",
-      reason: 'gh did not start: Executable not found in $PATH: "gh"',
+      reason: '3 tries; the last: gh did not start: Executable not found in $PATH: "gh"',
     });
     const killed: GhRunner = () => ({ code: null, stdout: "", stderr: "" });
-    expect(lookupPriorWindowsRelease("o/r", "v1.0.0", killed)).toEqual({
+    expect(lookupPriorWindowsRelease("o/r", "v1.0.0", killed, () => {})).toEqual({
       kind: "unknown",
-      reason: "gh api exited on a signal or timeout",
+      reason: "3 tries; the last: gh api exited on a signal or timeout",
     });
+  });
+
+  test(`${OVERRIDE_VARIABLE}=optional opens it whatever the date or the API says, loudly; any other value is ignored`, () => {
+    let asked = 0;
+    const ask = (): PriorWindowsRelease => {
+      asked++;
+      return { kind: "found", tag: "v1.16.0" };
+    };
+    for (const now of [BEFORE, ON]) {
+      const t = windowsTolerance(now, ask, "optional");
+      expect(t.optional).toBe(true);
+      expect(t.overridden).toBe(true);
+      expect(t.warning).toContain(`${OVERRIDE_VARIABLE}=optional is set`);
+    }
+    expect(asked).toBe(0);
+    const typo = windowsTolerance(ON, ask, "Optional ");
+    expect(typo.optional).toBe(false);
+    expect(typo.warning).toBe(`${OVERRIDE_VARIABLE}=Optional is ignored: only "optional" opens the tolerance.`);
+    expect(windowsTolerance(BEFORE, () => ({ kind: "none" }), "").warning).toBeNull();
   });
 
   test("the lookup asks every page of the repository's releases through gh api", () => {
@@ -173,27 +209,47 @@ describe("the script, as the release job runs it", () => {
     writeFileSync(join(dir, "collie-9.9.9-linux-x64.tar.gz"), "linux");
     return dir;
   };
-  // No `--repo`, so these runs never reach GitHub: the date rule alone decides, through `--now`.
+  // No `--repo`, so these runs never reach GitHub: that reads as an API that did not answer, which
+  // closes the tolerance. The tolerant path is reached with the override, as an operator would.
   const BEFORE = "2026-10-03T12:00:00Z";
   const AFTER = `${WINDOWS_ASSET_MANDATORY_FROM}T00:00:00Z`;
-  const run = (dir: string, result: string, now: string) => {
+  const run = (dir: string, result: string, now: string, override?: string) => {
     const out = join(dir, "github-output");
+    const summary = join(dir, "summary");
     const p = Bun.spawnSync(
-      ["bun", join(import.meta.dir, "windows-asset.ts"), "--dir", dir, "--version", "9.9.9", "--result", result, "--now", now],
-      { env: { ...process.env, GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: join(dir, "summary") } },
+      [
+        "bun",
+        join(import.meta.dir, "windows-asset.ts"),
+        "--dir",
+        dir,
+        "--version",
+        "9.9.9",
+        "--result",
+        result,
+        "--now",
+        now,
+        ...(override === undefined ? [] : ["--override", override]),
+      ],
+      { env: { ...process.env, GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: summary } },
     );
-    return { code: p.exitCode, out: p.stdout.toString(), github: existsSync(out) ? readFileSync(out, "utf8") : "" };
+    return {
+      code: p.exitCode,
+      out: p.stdout.toString(),
+      github: existsSync(out) ? readFileSync(out, "utf8") : "",
+      summary: existsSync(summary) ? readFileSync(summary, "utf8") : "",
+    };
   };
   const f = windowsFiles("9.9.9");
 
   test("a partial set after a failed job is removed whole, and the run warns and goes on", () => {
     const dir = assets();
     writeFileSync(join(dir, f.zip), "zip bytes");
-    const r = run(dir, "failure", BEFORE);
+    const r = run(dir, "failure", AFTER, "optional");
     expect(r.code).toBe(0);
     expect(r.out).toContain("::warning title=No Windows asset::");
-    expect(r.out).toContain("::notice title=Windows asset tolerance::the releases API did not answer (no --repo was given)");
+    expect(r.out).toContain(`::warning title=Windows asset tolerance::${OVERRIDE_VARIABLE}=optional is set`);
     expect(r.out).toContain("Windows asset optional:");
+    expect(r.summary).toContain("### Windows asset optional by hand");
     expect(r.github).toBe("present=false\n");
     expect(existsSync(join(dir, f.zip))).toBe(false);
     expect(existsSync(join(dir, "collie-9.9.9-linux-x64.tar.gz"))).toBe(true);
@@ -215,6 +271,14 @@ describe("the script, as the release job runs it", () => {
     const r = run(assets(), "success", BEFORE);
     expect(r.code).toBe(1);
     expect(r.out).toContain("::error title=Windows asset::");
+  });
+
+  test("an API that does not answer fails the run closed, with a warning that names the escape", () => {
+    const r = run(assets(), "failure", BEFORE);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("::warning title=Windows asset tolerance::the releases API did not answer (");
+    expect(r.out).toContain(`${OVERRIDE_VARIABLE}=optional`);
+    expect(r.out).toContain("Windows asset mandatory:");
   });
 
   test("from the date on, a failed job without its asset fails the run", () => {

@@ -137,7 +137,9 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
   Administrator account that icacls writes as the SDDL alias `LA`. The VM sees what the runner
   cannot, and neither is a real user's machine.
 - **A release waits for the Windows job.** `release` needs `payload-windows`, which costs up to
-  fifteen minutes and the runner queue. I accepted that on purpose.
+  fifteen minutes and the runner queue. I accepted that on purpose. A missing Windows zip stops a release once one release has
+  carried it, from 2026-11-15, or when the releases API does not answer; the repository variable
+  `COLLIE_WINDOWS_ASSET_OVERRIDE=optional` is the loud, temporary escape for a Linux hotfix.
 - **A source checkout never updates itself on Windows.** Every Windows install before the first
   zip is a source checkout, and it refuses `collie update`. Moving to the zip install is a one-time
   manual step: `collie uninstall`, then `install.ps1`. After that `collie update` works. This route

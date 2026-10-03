@@ -6,7 +6,7 @@ import { join } from "node:path";
 // `.sha256` sidecar and `windows-x64.artifact.json`, the zip's manifest entry. It is all or nothing.
 //
 //   bun scripts/windows-asset.ts --dir <assets> --version <X.Y.Z> --result <payload-windows result> \
-//     --repo <owner/name> [--now <ISO date, tests only>]
+//     --repo <owner/name> [--override <the variable's value>] [--now <ISO date, tests only>]
 //       decides, removes a partial set, prints a GitHub `::warning::` or `::error::`, writes
 //       `present=true|false` to $GITHUB_OUTPUT, and exits 1 only on a failure
 //   bun scripts/windows-asset.ts --notes <true|false>
@@ -26,8 +26,17 @@ import { join } from "node:path";
 //   * an earlier release, neither a draft nor a prerelease, that carries a `collie-*-windows-x64.zip`.
 //     The script asks the releases API with `gh` and the job's `GH_TOKEN`, as the gate job does. A
 //     prerelease does not count, so an rc rehearsal that ships the zip leaves the next rehearsal free
-//     to test the failure. When the API does not answer, the date alone decides, and the log says so.
-// No YAML holds a copy of either rule; release.yml only runs this file.
+//     to test the failure.
+// When the API does not answer after {@link LOOKUP_TRIES} tries, the tolerance is CLOSED (fail closed,
+// with a `::warning::`): a re-run of the job is cheap, and a release that quietly drops the Windows
+// zip is not.
+//
+// THE ESCAPE. The repository variable {@link OVERRIDE_VARIABLE} (Settings > Secrets and variables >
+// Actions > Variables), passed as `--override`, set to `optional`, opens the tolerance whatever the
+// date and the earlier releases say, with a loud `::warning::` and a line in the job summary. It is
+// for a Linux hotfix while the Windows job is broken. Unset it once the Windows job is fixed. Any
+// other value is ignored, with a warning.
+// No YAML holds a copy of either rule; release.yml only runs this file and passes the variable.
 
 /** What is on disk, read by {@link readSet} or written by a test. `null` is a missing file. */
 export interface WindowsSet {
@@ -77,39 +86,55 @@ export type PriorWindowsRelease =
   | { readonly kind: "none" }
   | { readonly kind: "unknown"; readonly reason: string };
 
+/** The repository variable that opens the tolerance by hand. */
+export const OVERRIDE_VARIABLE = "COLLIE_WINDOWS_ASSET_OVERRIDE";
+
 export interface Tolerance {
   /** True while a missing Windows asset only warns. */
   readonly optional: boolean;
   /** One clause for the log: why the tolerance is open or closed. */
   readonly why: string;
-  /** True when the API did not answer and the date alone decided. */
-  readonly dateOnly: boolean;
+  /** A `::warning::` the run must print, or `null`: the override is on or ignored, or the API failed. */
+  readonly warning: string | null;
+  /** True when the override opened it: the job summary says so too. */
+  readonly overridden: boolean;
 }
 
 /**
  * Whether a missing Windows asset is still tolerated. `now` is the clock, `ask` asks GitHub about
- * earlier releases. `ask` runs only before the date: from the date on the answer cannot change it.
+ * earlier releases, `override` is the repository variable's value ("" when unset). `ask` runs only
+ * before the date and without the override: neither answer could change the result.
  */
-export function windowsTolerance(now: Date, ask: () => PriorWindowsRelease): Tolerance {
+export function windowsTolerance(now: Date, ask: () => PriorWindowsRelease, override = ""): Tolerance {
+  const value = override.trim();
+  if (value === "optional") {
+    return {
+      optional: true,
+      why: `${OVERRIDE_VARIABLE}=optional opens it, whatever the date or earlier releases say`,
+      warning: `${OVERRIDE_VARIABLE}=optional is set: a missing Windows asset does not stop this release. Unset the variable once the Windows job is fixed.`,
+      overridden: true,
+    };
+  }
+  const ignored = value === "" ? null : `${OVERRIDE_VARIABLE}=${value} is ignored: only "optional" opens the tolerance.`;
   const today = now.toISOString().slice(0, 10);
   if (today >= WINDOWS_ASSET_MANDATORY_FROM) {
-    return { optional: false, why: `it is ${today}, on or after ${WINDOWS_ASSET_MANDATORY_FROM}`, dateOnly: false };
+    return { optional: false, why: `it is ${today}, on or after ${WINDOWS_ASSET_MANDATORY_FROM}`, warning: ignored, overridden: false };
   }
   const prior = ask();
   if (prior.kind === "found") {
-    return { optional: false, why: `release ${prior.tag} already carries the Windows zip`, dateOnly: false };
+    return { optional: false, why: `release ${prior.tag} already carries the Windows zip`, warning: ignored, overridden: false };
   }
   if (prior.kind === "unknown") {
-    return {
-      optional: true,
-      why: `the releases API did not answer (${prior.reason}), so the date rule alone decides, and it is ${today}, before ${WINDOWS_ASSET_MANDATORY_FROM}`,
-      dateOnly: true,
-    };
+    const failed =
+      `the releases API did not answer (${prior.reason}), so the Windows asset is mandatory for this release (fail closed). ` +
+      `Re-run the job, or set the repository variable ${OVERRIDE_VARIABLE}=optional for a hotfix.`;
+    return { optional: false, why: failed, warning: ignored === null ? failed : `${failed} ${ignored}`, overridden: false };
   }
   return {
     optional: true,
     why: `no earlier release carries the Windows zip, and it is ${today}, before ${WINDOWS_ASSET_MANDATORY_FROM}`,
-    dateOnly: false,
+    warning: ignored,
+    overridden: false,
   };
 }
 
@@ -163,8 +188,31 @@ const runGh: GhRunner = (args) => {
   return { code: p.exitCode, stdout: p.stdout.toString(), stderr: p.stderr.toString() };
 };
 
-/** Ask the releases API, through `gh`, for an earlier release with the Windows zip. Never throws. */
-export function lookupPriorWindowsRelease(repo: string, currentTag: string, gh: GhRunner = runGh): PriorWindowsRelease {
+/** How many times the releases API is asked before it counts as not answering. */
+export const LOOKUP_TRIES = 3;
+/** The pause before the second try; the third waits twice as long. */
+export const LOOKUP_BACKOFF_MS = 2_000;
+
+/**
+ * Ask the releases API, through `gh`, for an earlier release with the Windows zip, up to
+ * {@link LOOKUP_TRIES} times with a growing pause. Never throws. `sleep` is injected for the tests.
+ */
+export function lookupPriorWindowsRelease(
+  repo: string,
+  currentTag: string,
+  gh: GhRunner = runGh,
+  sleep: (ms: number) => void = (ms) => Bun.sleepSync(ms),
+): PriorWindowsRelease {
+  let last: PriorWindowsRelease = { kind: "unknown", reason: "not asked" };
+  for (let attempt = 1; attempt <= LOOKUP_TRIES; attempt++) {
+    if (attempt > 1) sleep(LOOKUP_BACKOFF_MS * 2 ** (attempt - 2));
+    last = askOnce(repo, currentTag, gh);
+    if (last.kind !== "unknown") return last;
+  }
+  return last.kind === "unknown" ? { kind: "unknown", reason: `${LOOKUP_TRIES} tries; the last: ${last.reason}` } : last;
+}
+
+function askOnce(repo: string, currentTag: string, gh: GhRunner): PriorWindowsRelease {
   let result: GhResult;
   try {
     result = gh(["api", "--paginate", `repos/${repo}/releases?per_page=100`, "--jq", RELEASES_JQ]);
@@ -222,20 +270,27 @@ function main(args: readonly string[]): number {
   const version = arg(args, "--version");
   const result = arg(args, "--result");
   const repo = arg(args, "--repo");
+  const override = arg(args, "--override") ?? "";
   const nowArg = arg(args, "--now");
   const now = nowArg === null ? new Date() : new Date(nowArg);
   if (dir === null || version === null || result === null || Number.isNaN(now.getTime())) {
     process.stderr.write(
-      "usage: windows-asset.ts --dir <assets> --version <X.Y.Z> --result <result> --repo <owner/name> [--now <ISO date>]\n",
+      "usage: windows-asset.ts --dir <assets> --version <X.Y.Z> --result <result> --repo <owner/name> [--override <value>] [--now <ISO date>]\n",
     );
     return 2;
   }
   const files = windowsFiles(version);
-  const tolerance = windowsTolerance(now, () =>
-    repo === null ? { kind: "unknown", reason: "no --repo was given" } : lookupPriorWindowsRelease(repo, `v${version}`),
+  const tolerance = windowsTolerance(
+    now,
+    () => (repo === null ? { kind: "unknown", reason: "no --repo was given" } : lookupPriorWindowsRelease(repo, `v${version}`)),
+    override,
   );
-  if (tolerance.dateOnly) process.stdout.write(`::notice title=Windows asset tolerance::${tolerance.why}\n`);
+  if (tolerance.warning !== null) process.stdout.write(`::warning title=Windows asset tolerance::${tolerance.warning}\n`);
   process.stdout.write(`Windows asset ${tolerance.optional ? "optional" : "mandatory"}: ${tolerance.why}.\n`);
+  const summary = process.env.GITHUB_STEP_SUMMARY;
+  if (tolerance.overridden && summary) {
+    appendFileSync(summary, `### Windows asset optional by hand\n\n${tolerance.warning ?? ""}\n`);
+  }
   const verdict = windowsVerdict(readSet(dir, version), result, tolerance.optional, files.zip);
   const output = process.env.GITHUB_OUTPUT;
   if (output) appendFileSync(output, `present=${verdict.kind === "present"}\n`);
@@ -251,7 +306,6 @@ function main(args: readonly string[]): number {
   // that is not published.
   for (const name of [files.zip, files.sidecar, files.entry]) rmSync(join(dir, name), { force: true });
   process.stdout.write(`::warning title=No Windows asset::${verdict.reason}\n`);
-  const summary = process.env.GITHUB_STEP_SUMMARY;
   if (summary) {
     appendFileSync(summary, `### No Windows asset\n\n${verdict.reason}\nWindows users keep their version until the next release.\n`);
   }
