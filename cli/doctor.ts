@@ -77,7 +77,14 @@ import { queryTask, taskOwner, windowsPathKey } from "./task-scheduler.ts";
 import { agentLabel, collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
 import type { Ui } from "./render.ts";
-import { failureLine, type MemberReach, parseCrewArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./crew.ts";
+import {
+  failureLine,
+  type MemberReach,
+  parseCrewArgs,
+  probeMemberReach,
+  soloCrewHint,
+  VERSION_REPORTED_SINCE,
+} from "./crew.ts";
 import { fingerprintRoot, mountName, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
@@ -360,10 +367,7 @@ async function render(
   crew: readonly Finding[],
 ): Promise<void> {
   const heading = `collie doctor — ${collieVersionBare(deps.ctx.root, (p) => deps.files.read(p))} · mode ${mode}`;
-  const crewNote = [
-    "crew: none — this collie is not in a crew.",
-    "  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.",
-  ];
+  const crewNote = ["crew: none — this collie is not in a crew.", soloCrewHint(deps.host)];
   // One findings list, two renderings. The terminal gets the columns laid out and the statuses
   // coloured; everything else gets exactly the lines below, which are what `--json`'s human twin has
   // always printed and what scripts/collie-cli.test.sh greps.

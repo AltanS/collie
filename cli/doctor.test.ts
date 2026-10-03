@@ -1941,6 +1941,26 @@ describe("the config-file finding", () => {
     expect(f.remedy).toBe("run the `icacls` line the warning above names for that file, then `collie restart`");
   });
 
+  test("solo on a Windows host says it cannot join or lead, and suggests no verb that refuses", async () => {
+    const h = harness(null);
+    h.deps = { ...h.deps, host: hostFor("win32") };
+    await cmdDoctor(h.deps, []);
+    const lines = h.io.stdout;
+    const at = lines.indexOf("crew: none — this collie is not in a crew.");
+    expect(at).toBeGreaterThan(-1);
+    expect(lines[at + 1]).toBe("  A Windows machine cannot join or lead a crew in this release.");
+    expect(lines.join("\n")).not.toContain("crew invite");
+  });
+
+  test("solo on a POSIX host still names both ways into a crew", async () => {
+    const h = harness(null);
+    h.deps = { ...h.deps, host: hostFor("linux") };
+    await cmdDoctor(h.deps, []);
+    const lines = h.io.stdout;
+    const at = lines.indexOf("crew: none — this collie is not in a crew.");
+    expect(lines[at + 1]).toBe("  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.");
+  });
+
   test("a typo'd COLLIE_CONFIG shows as an absent path rather than as silence", async () => {
     const reader: ConfigFileReader = { read: () => ({ text: null, error: null }) };
     const typo = readConfigFilesSync(

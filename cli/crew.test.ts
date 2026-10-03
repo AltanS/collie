@@ -488,6 +488,23 @@ describe("on a Windows host, the verbs that form a crew refuse and change nothin
     expect(leave.data()?.crew ?? null).toBeNull();
   });
 
+  test("a solo crew status on Windows names no verb that refuses", async () => {
+    const h = harness(null, [], WIN);
+    expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout).toEqual([
+      "mode: solo — this collie is not in a crew (no trust store, or an empty one).",
+      "  A Windows machine cannot join or lead a crew in this release.",
+    ]);
+    expect(text(h.io)).not.toContain("crew invite");
+    expect(text(h.io)).not.toContain("collie join");
+  });
+
+  test("a solo crew status off Windows still names both ways in", async () => {
+    const h = harness(null, [], { host: hostFor("linux") });
+    expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout[1]).toBe("  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.");
+  });
+
   test("off Windows the same invite is minted as before", async () => {
     const h = harness(leadStore(), [], { host: hostFor("linux") });
     expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);

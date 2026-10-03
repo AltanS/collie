@@ -28,6 +28,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Release pages and the changelog no longer repeat the upgrade path from 0.x.** The steps stay in `docs/upgrading.md` under "Upgrading from 0.x to 1.0".
 - **The Windows note on a release page names the installer and the setup guide.** It said "There is no installer yet", which has been false since `install.ps1`. It now gives the `irm https://colliepwa.dev/install.ps1 | iex` command and links `docs/windows.md`, and the README inside the zip says the same.
 
+### Fixed
+
+- **On Windows (experimental): `collie doctor` and `collie crew status` no longer suggest `collie crew invite`.** With no crew, both ended on "`collie crew invite` here makes it a lead; `collie join …` makes it a peer", and both verbs refuse on Windows. They now say "A Windows machine cannot join or lead a crew in this release." Linux and macOS print what they printed before.
+
 ## [1.16.0] - 2026-10-03
 
 ### Added

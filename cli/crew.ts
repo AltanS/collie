@@ -622,6 +622,17 @@ export const WINDOWS_CREW_SENTENCE =
   "On Windows, Collie runs on one machine only: a Windows machine cannot join, lead or change a crew in this release, and nothing was changed. See docs/windows.md.";
 
 /**
+ * The second line of the "this collie is in no crew" block, which `crew status` and `doctor` both
+ * print. Elsewhere it names the two ways in; on Windows both verbs refuse ({@link refuseCrewOnWindows}),
+ * so it says that instead of suggesting a command that fails.
+ */
+export function soloCrewHint(host: Host): string {
+  return host.platform === "win32"
+    ? "  A Windows machine cannot join or lead a crew in this release."
+    : "  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.";
+}
+
+/**
  * Refuse a crew-forming verb on a Windows host, before any argument, store, network or terminal is
  * touched. True when it refused; the caller returns `EXIT.FAIL`, as `collie update` does for its
  * own Windows refusal.
@@ -1244,7 +1255,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   const data = await deps.store.load();
   if (data === null || data.crew === null) {
     deps.io.out("mode: solo — this collie is not in a crew (no trust store, or an empty one).");
-    deps.io.out("  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.");
+    deps.io.out(soloCrewHint(deps.host));
     return EXIT.OK;
   }
 
