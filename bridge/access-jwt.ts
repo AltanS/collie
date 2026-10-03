@@ -34,29 +34,75 @@ export interface AccessGateSettings {
 /** One answer from the gate: null admits, a Response refuses. */
 export type AccessDecision = Response | null;
 
-/** The header Cloudflare Access adds to every request it lets through. */
-export const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
+/**
+ * One signed-identity front door, in its own vocabulary. A table of these is the shape (ADR 0081):
+ * the verification below is generic and a preset only says where the token is, which one algorithm
+ * it pins, which headers prove the request crossed the vendor's edge, how a setting names the
+ * issuer, and where that issuer publishes its keys.
+ */
+export interface DoorPreset {
+  name: "cloudflare";
+  /** The request header that carries the signed token. */
+  header: string;
+  /** The one algorithm this preset pins. A token that says anything else is refused. */
+  alg: "RS256";
+  /** Headers the vendor's edge stamps on every request it proxies. Their presence means "not local". */
+  edgeHeaders: readonly string[];
+  /** The issuer for the preset's team setting, or null when the value cannot name one. */
+  issuer(setting: string): string | null;
+  /** The URL the issuer publishes its JWKS at. */
+  jwksUrl(issuer: string): string;
+}
+
+/** One DNS label: letters, digits and inner hyphens, 1 to 63 characters. */
+const DNS_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+/** The three spellings of a team, anchored whole: no userinfo, port, path, query or other domain. */
+const TEAM_FORMS = [
+  new RegExp(`^(${DNS_LABEL})$`, "i"),
+  new RegExp(`^(${DNS_LABEL})\\.cloudflareaccess\\.com$`, "i"),
+  new RegExp(`^https://(${DNS_LABEL})\\.cloudflareaccess\\.com/?$`, "i"),
+] as const;
 
 /**
- * Headers that say a request did not start on this machine. The Cloudflare edge stamps the `cf-*`
- * ones on every request it proxies and `cloudflared` forwards them, so a request that came through
- * Cloudflare cannot look local, even through a tunnel set to `httpHostHeader: localhost`. The
- * forwarding headers are what every other proxy adds (`tailscale serve`, Caddy, nginx, Traefik), so
- * a request through any front door is not local either. A request carrying none of them, addressed
+ * Cloudflare Access. `myteam`, `myteam.cloudflareaccess.com` and `https://myteam.cloudflareaccess.com`
+ * all mean `https://myteam.cloudflareaccess.com`, and nothing else is accepted. The issuer is also
+ * where the keys come from, so the host is always exactly `<label>.cloudflareaccess.com` over https:
+ * a value that could steer the fetch elsewhere (`evil.com/x?`, `a.cloudflareaccess.com.evil.com`,
+ * userinfo, a port, a path, plain http) names no issuer, and the gate then refuses everything.
+ *
+ * The edge stamps `cf-*` on every request it proxies and `cloudflared` forwards them, so a request
+ * that came through Cloudflare cannot look local, even through a tunnel set to
+ * `httpHostHeader: localhost`.
+ */
+const CLOUDFLARE: DoorPreset = {
+  name: "cloudflare",
+  header: "cf-access-jwt-assertion",
+  alg: "RS256",
+  edgeHeaders: ["cf-ray", "cf-connecting-ip", "cf-visitor"],
+  issuer(team) {
+    const t = team.trim();
+    for (const form of TEAM_FORMS) {
+      const label = form.exec(t)?.[1];
+      if (label !== undefined) return `https://${label.toLowerCase()}.cloudflareaccess.com`;
+    }
+    return null;
+  },
+  jwksUrl: (issuer) => `${issuer}/cdn-cgi/access/certs`,
+};
+
+/** The presets Collie knows. Which one applies is implied by which settings are set. */
+export const DOOR_PRESETS = { cloudflare: CLOUDFLARE } as const;
+
+/** The header Cloudflare Access adds to every request it lets through. */
+export const ACCESS_JWT_HEADER = CLOUDFLARE.header;
+
+/**
+ * Headers every other proxy adds (`tailscale serve`, Caddy, Traefik) to say a request did not start
+ * on this machine. A request carrying none of them, nor a preset's edge headers or token, addressed
  * to a loopback Host, is a local process (`collie doctor`, `curl`): it can already reach the
  * loopback port directly, so the gate has nothing to protect there, and pairing still guards it.
  */
-const NOT_LOCAL_HEADERS = [
-  "cf-ray",
-  "cf-connecting-ip",
-  "cf-visitor",
-  ACCESS_JWT_HEADER,
-  "x-forwarded-for",
-  "x-forwarded-host",
-  "x-forwarded-proto",
-  "forwarded",
-  "x-real-ip",
-] as const;
+const FORWARDING_HEADERS = ["x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "x-real-ip"] as const;
 
 const LOOPBACK_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i;
 
@@ -76,36 +122,9 @@ const MAX_CERTS_BYTES = 64 * 1024;
  */
 const FIRST_LOAD_RETRY_MS = [2_000, 5_000, 15_000, 30_000, 60_000] as const;
 
-/** One DNS label: letters, digits and inner hyphens, 1 to 63 characters. */
-const DNS_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
-/** The three spellings of a team, anchored whole: no userinfo, port, path, query or other domain. */
-const TEAM_FORMS = [
-  new RegExp(`^(${DNS_LABEL})$`, "i"),
-  new RegExp(`^(${DNS_LABEL})\\.cloudflareaccess\\.com$`, "i"),
-  new RegExp(`^https://(${DNS_LABEL})\\.cloudflareaccess\\.com/?$`, "i"),
-] as const;
-
-/**
- * The issuer for a configured team, or null when the value cannot name one.
- *
- * `myteam`, `myteam.cloudflareaccess.com` and `https://myteam.cloudflareaccess.com` all mean
- * `https://myteam.cloudflareaccess.com`, and nothing else is accepted. The issuer is also where the
- * keys come from, so the host is always exactly `<label>.cloudflareaccess.com` over https: a value
- * that could steer the fetch elsewhere (`evil.com/x?`, `a.cloudflareaccess.com.evil.com`, userinfo,
- * a port, a path, plain http) names no issuer, and the gate then refuses everything (half config).
- */
+/** The issuer for a configured team, or null when the value cannot name one. */
 export function accessIssuer(team: string): string | null {
-  const t = team.trim();
-  for (const form of TEAM_FORMS) {
-    const label = form.exec(t)?.[1];
-    if (label !== undefined) return `https://${label.toLowerCase()}.cloudflareaccess.com`;
-  }
-  return null;
-}
-
-/** The certs URL Cloudflare publishes for an issuer. */
-export function accessCertsUrl(issuer: string): string {
-  return `${issuer}/cdn-cgi/access/certs`;
+  return CLOUDFLARE.issuer(team);
 }
 
 /** Whether the operator asked for the gate at all (either setting present). */
@@ -132,15 +151,16 @@ export function accessConfigProblem(s: AccessGateSettings): string | null {
  *
  * `/api/health` is the one route the bridge has always left ungated (the updater polls it before any
  * browser exists, and it discloses only the version, which every response carries anyway). The rest
- * is a local caller: a loopback Host and none of {@link NOT_LOCAL_HEADERS}. Spoofing that takes a
+ * is a local caller: a loopback Host and none of the forwarding, edge and token headers. Spoofing that takes a
  * process that already reaches the loopback port with a crafted request, which is a local caller.
  * The exemption reaches past this gate only; pairing still decides what the caller may do.
  */
-export function accessExempt(req: Request, pathname: string): boolean {
+export function accessExempt(req: Request, pathname: string, preset: DoorPreset = CLOUDFLARE): boolean {
   if (pathname === "/api/health") return true;
   const host = req.headers.get("host") ?? "";
   if (!LOOPBACK_HOST.test(host)) return false;
-  return NOT_LOCAL_HEADERS.every((h) => !req.headers.has(h));
+  const notLocal = [...FORWARDING_HEADERS, ...preset.edgeHeaders, preset.header];
+  return notLocal.every((h) => !req.headers.has(h));
 }
 
 function b64urlBytes(s: string): Uint8Array<ArrayBuffer> | null {
@@ -203,7 +223,7 @@ async function boundedText(res: Response, max: number): Promise<string> {
 /**
  * Verify one token against a key set. Pure apart from WebCrypto; exported for the tests.
  *
- * Only RS256 is accepted, which is what Cloudflare signs with. The algorithm is never taken from the
+ * Only the preset's one algorithm is accepted. The algorithm is never taken from the
  * token to choose a verifier: the header's `alg` must equal the one we verify with, so `none` and
  * HS256 key-confusion tokens fail before any key is looked at.
  */
@@ -211,6 +231,7 @@ export async function verifyAccessToken(
   token: string,
   keys: ReadonlyMap<string, CryptoKey>,
   expect: { issuer: string; aud: readonly string[]; nowS: number },
+  preset: DoorPreset = CLOUDFLARE,
 ): Promise<TokenVerdict> {
   const parts = token.split(".");
   if (parts.length !== 3) return { ok: false, reason: "malformed" };
@@ -219,7 +240,7 @@ export async function verifyAccessToken(
   if (header === null) return { ok: false, reason: "malformed" };
   // The algorithm first, before the payload, the signature bytes or any key: `none` (with or
   // without a signature), HS256 key confusion, RS512 and a missing `alg` all stop here.
-  if (header.alg !== "RS256") return { ok: false, reason: "alg" };
+  if (header.alg !== preset.alg) return { ok: false, reason: "alg" };
   const payload = b64urlJson(p);
   const sig = b64urlBytes(s);
   if (payload === null || sig === null || sig.length === 0) return { ok: false, reason: "malformed" };
@@ -315,6 +336,7 @@ export class AccessGate {
     deps: AccessGateDeps = {},
     /** The operator-facing sentence for half a configuration; logged once at start. */
     private readonly problem: string | null = null,
+    private readonly preset: DoorPreset = CLOUDFLARE,
   ) {
     this.fetchFn = deps.fetch ?? ((url, init) => fetch(url, init));
     this.nowMs = deps.nowMs ?? Date.now;
@@ -362,7 +384,7 @@ export class AccessGate {
   refresh(): Promise<boolean> {
     if (this.issuer === null) return Promise.resolve(false);
     if (this.inflight) return this.inflight;
-    const url = accessCertsUrl(this.issuer);
+    const url = this.preset.jwksUrl(this.issuer);
     this.lastFetchMs = this.nowMs();
     this.inflight = (async () => {
       try {
@@ -403,25 +425,25 @@ export class AccessGate {
 
   /** Admit or refuse one request. Null admits. */
   async admit(req: Request, pathname: string): Promise<AccessDecision> {
-    if (accessExempt(req, pathname)) return null;
+    if (accessExempt(req, pathname, this.preset)) return null;
     if (!this.configured) return refuse(503, "access gate misconfigured");
     if (!this.loadedOnce) {
       // A request is also a nudge: the first load may have failed a moment ago.
       if (this.nowMs() - this.lastFetchMs >= FIRST_LOAD_RETRY_MS[0]) await this.refresh();
       if (!this.loadedOnce) return refuse(503, "access keys not loaded");
     }
-    const token = req.headers.get(ACCESS_JWT_HEADER);
+    const token = req.headers.get(this.preset.header);
     // 401, not 403: the phone's refusal banner offers a sign-in on 401/403 alike, and a top-level
     // reload is what sends the browser back through Access.
     if (!token) return refuse(401, "access token required");
     const expect = { issuer: this.issuer!, aud: this.aud, nowS: Math.floor(this.nowMs() / 1000) };
-    let verdict = await verifyAccessToken(token, this.keys, expect);
+    let verdict = await verifyAccessToken(token, this.keys, expect, this.preset);
     if (!verdict.ok && verdict.reason === "unknown-kid" && this.nowMs() - this.lastFetchMs >= UNKNOWN_KID_REFETCH_MS) {
       // Cloudflare rotated its key ahead of our hourly refresh. The window is global: it reads the
       // time of the last fetch of any kind, and concurrent callers share the one in flight, so a
       // spray of made-up kids costs Cloudflare one fetch per 30 seconds at most.
       await this.refresh();
-      verdict = await verifyAccessToken(token, this.keys, expect);
+      verdict = await verifyAccessToken(token, this.keys, expect, this.preset);
     }
     return verdict.ok ? null : refuse(401, "access token rejected");
   }
@@ -431,5 +453,5 @@ export class AccessGate {
 export function createAccessGate(s: AccessGateSettings, deps: AccessGateDeps = {}): AccessGate | null {
   if (!accessGateRequested(s)) return null;
   const aud = s.accessAud.map((a) => a.trim()).filter((a) => a !== "");
-  return new AccessGate(accessIssuer(s.accessTeam), aud, deps, accessConfigProblem(s));
+  return new AccessGate(CLOUDFLARE.issuer(s.accessTeam), aud, deps, accessConfigProblem(s), CLOUDFLARE);
 }

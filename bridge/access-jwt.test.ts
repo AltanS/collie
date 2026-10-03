@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "./json.ts";
 import {
   ACCESS_JWT_HEADER,
+  DOOR_PRESETS,
   accessConfigProblem,
   accessExempt,
   accessIssuer,
@@ -557,4 +558,15 @@ test("server.ts consults the Access gate before the deposed page and the routes"
   // stream open. A WebSocket upgrade or an event stream would be checked once, at connect, and keep
   // running past the token's expiry: adding one must revisit the ADR, and this line fails first.
   expect(src).not.toMatch(/\.upgrade\(|websocket\s*:|text\/event-stream/);
+});
+
+describe("DOOR_PRESETS", () => {
+  test("the cloudflare preset names its header, its one algorithm and its edge headers", () => {
+    const p = DOOR_PRESETS.cloudflare;
+    expect(p.header).toBe("cf-access-jwt-assertion");
+    expect(p.alg).toBe("RS256");
+    expect([...p.edgeHeaders]).toEqual(["cf-ray", "cf-connecting-ip", "cf-visitor"]);
+    expect(p.issuer("myteam")).toBe(ISS);
+    expect(p.jwksUrl(ISS)).toBe(`${ISS}/cdn-cgi/access/certs`);
+  });
 });
