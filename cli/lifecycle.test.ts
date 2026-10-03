@@ -838,8 +838,14 @@ describe("the Task Scheduler tier (Windows)", () => {
         "kill 7200",
         `sleep ${STOP_SETTLE_MS}`,
         "list",
+        // Something was killed, so the table is read once more: a refused kill must not read as stopped.
+        `sleep ${STOP_SETTLE_MS}`,
+        "list",
       ]);
-      expect(h.exec.listed).toEqual([["collie.exe", "bun.exe", "powershell.exe"]]);
+      expect(h.exec.listed).toEqual([
+        ["collie.exe", "bun.exe", "powershell.exe"],
+        ["collie.exe", "bun.exe", "powershell.exe"],
+      ]);
     });
 
     test("a launcher that wrote a fresh bridge pid between the read and the kill loses that bridge too", async () => {
@@ -905,8 +911,8 @@ describe("the Task Scheduler tier (Windows)", () => {
       const unreadable = (h: { io: { stdout: string[]; stderr: string[] } }): void => {
         expect(h.io.stdout).not.toContain("bridge stopped");
         expect(h.io.stderr).toEqual([
-          "error: could not read the Windows process table (PowerShell did not answer within 60s); the bridge may still be running, and its record was kept",
-          "       run `collie stop` again in a minute",
+          "error: Collie could not read the list of running programs on this PC (PowerShell did not answer within 60s).",
+          "       The bridge may still be running. Collie did not change its record. Close it in Task Manager, then run `collie stop` again.",
         ]);
       };
 
@@ -934,12 +940,40 @@ describe("the Task Scheduler tier (Windows)", () => {
         expect(h.io.stderr[0]).toContain("(the process list did not answer)");
       });
 
+      test("restart's stop + start and uninstall name the verb the operator ran", async () => {
+        const restart = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE }, listUnknown: true });
+        // A dead launcher sends restart to stop + start.
+        restart.exec.processLookup = (pid) => (pid === 7100 ? { kind: "gone" } : { kind: "running", command: OUR_BRIDGE });
+        expect(await cmdRestart(restart.deps)).toBe(EXIT.FAIL);
+        expect(restart.io.stderr.at(-1)).toContain("then run `collie restart` again.");
+        const uninstall = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER }, psUnknown: [7100] });
+        expect(await cmdUninstall(uninstall.deps)).toBe(EXIT.FAIL);
+        expect(uninstall.io.stderr.at(-1)).toContain("then run `collie uninstall` again.");
+      });
+
       test("uninstall stops there too, and removes no task", async () => {
         const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER }, psUnknown: [7100] });
         expect(await cmdUninstall(h.deps)).toBe(EXIT.FAIL);
         expect(schtasks(h)).not.toContain("schtasks /Delete /TN herdr.collie /F");
         expect(h.files.exists(RECORD)).toBe(true);
       });
+    });
+
+    test("a launcher or bridge that survives its kill fails stop, names it, and keeps the record", async () => {
+      const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE }, unkillable: [7200] });
+      expect(await cmdStop(h.deps)).toBe(EXIT.FAIL);
+      expect(h.io.stdout).not.toContain("bridge stopped");
+      expect(h.io.stderr).toEqual([
+        "error: Windows did not let Collie stop collie.exe (pid 7200). It may run as another account or as administrator.",
+        "       The bridge may still be running. Collie did not change its record. Close it in Task Manager, then run `collie stop` again.",
+      ]);
+      expect(h.files.read(RECORD)).toBe(V2(7100, 7200));
+    });
+
+    test("nothing to kill: no second look at the table", async () => {
+      const h = windows();
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(h.exec.listed).toHaveLength(1);
     });
 
     test("a stale launcher record (the script's `$PID|0`) is cleared", async () => {
@@ -1028,8 +1062,8 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
       expect(h.exec.killed).toEqual([7200]);
       expect(h.io.stderr).toEqual([
-        "error: the bridge (pid 7200) is still running: Windows did not let Collie stop it.",
-        "       It may run as another account or as administrator. Stop it from there, or run `collie stop` in an administrator terminal.",
+        "error: Windows did not let Collie stop the old bridge, collie.exe (pid 7200). It may run as another account or as administrator.",
+        "       Close collie.exe (pid 7200) in Task Manager, then run `collie restart` again.",
       ]);
       expect(h.io.stdout.join("\n")).not.toContain("bridge stopped");
       // The old bridge would have answered the health wait as if it were the new one.

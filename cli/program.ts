@@ -400,7 +400,7 @@ export function crewAliasRow(sub: Subcommand): AliasRow {
 export const COMMANDS: readonly Command[] = [
   // `start` and `status` share one banner (`statusBanner`), so they share its surface too.
   lifecycleCommand("start", "start the bridge service (and publish the front door)", cmdStart, { rich: true }),
-  lifecycleCommand("stop", "stop the bridge service", cmdStop),
+  lifecycleCommand("stop", "stop the bridge service", (deps) => cmdStop(deps)),
   lifecycleCommand("restart", "stop then start", cmdRestart),
   lifecycleCommand(
     "uninstall",
