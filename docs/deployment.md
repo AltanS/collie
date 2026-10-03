@@ -377,16 +377,19 @@ A tunnel made in the Zero Trust dashboard works too: set its public hostname's s
    and the crew links do not need a token either. `collie doctor` is such a local caller, so a green
    doctor does not show that the keys loaded or that a token verifies. Open the hostname from the
    phone to check that.
-   [ADR 0081](../.adr/0081-the-cloudflare-access-token-is-verified-not-assumed.md) has the reasons.
+   [ADR 0081](../.adr/0081-a-front-doors-signed-identity-is-verified-cloudflare-access-is-the-first-preset.md) has the reasons.
 
    Keep these rules with the gate on:
 
-   - **One front door at a time.** With Access on, every request through any other front door
-     needs a token too. A machine that serves both a tunnel and a tailnet name (`tailscale serve`)
-     loses the tailnet door for browsers: those requests carry no Access token and get `401`.
-   - **No second proxy between `cloudflared` and Collie that rewrites `Host` to `127.0.0.1` or
-     `localhost` and removes the `Cf-*` and forwarding headers.** Its requests would look like a
-     local process and skip the token. Point `cloudflared` at Collie directly.
+   - **One front door at a time.** With Access on, a request through `tailscale serve`, Caddy or
+     Traefik needs a token too, because they add a forwarding header by default.
+     A machine that serves both a tunnel and a tailnet name (`tailscale serve`) loses the tailnet
+     door for browsers: those requests carry no Access token and get `401`.
+   - **No second proxy between `cloudflared` and Collie that makes requests look local.** One that
+     rewrites `Host` to `127.0.0.1` or `localhost` and removes the `Cf-*` and forwarding headers
+     does it on purpose. A bare nginx `proxy_pass http://127.0.0.1:8787` does it by default: it
+     sends `Host: 127.0.0.1:8787` and adds no forwarding header unless you configure one. Those
+     requests skip the token. Point `cloudflared` at Collie directly.
    - **Do not add Access bypass rules for Collie paths**, not for the manifest, the service worker
      or the icons. Access adds the token to every request it lets through. A bypassed path carries
      no token, so Collie answers `401`.

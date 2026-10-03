@@ -1,4 +1,4 @@
-# 0081: The Cloudflare Access token is verified, not assumed
+# 0081: A front door's signed identity is verified, not assumed; Cloudflare Access is the first preset
 
 - **Status:** Accepted
 - **Date:** 2026-10-03
@@ -34,18 +34,30 @@ Three roads were on the table besides this one:
 
 ## Decision
 
-**The promise.** With Access configured, every remote request needs a verified Access token. Only a
-true local process is exempt. The crew surface (its own admission) and `/api/health` stay outside
-the gate. The exemption reaches past this gate only, never past pairing: a local caller still needs
+**The promise.** With Access configured, every remote request needs a verified Access token. Three
+things stay outside it: a true local process, the crew surface (its own admission), and
+`/api/health`. The exemption reaches past this gate only, never past pairing: a local caller still needs
 a paired device to type, exactly as before.
 
 **When the operator sets `COLLIE_ACCESS_TEAM` and `COLLIE_ACCESS_AUD`, the bridge verifies the
-Access token on every request that is not exempt.** The algorithm first: the header must say RS256,
-and anything else (`none`, HS256, RS512, no `alg`) fails before a key is looked at. Then the key
-the `kid` names, exactly, with no fallback to the first or only key; the signature; `iss` equal to
-the team's issuer; `aud` containing the configured tag, whether `aud` is a string or an array; `exp`
-required and in the future; `nbf`, when present, not in the future. Both times allow a minute of
-skew. Anything else is a `401`.
+Access token on every request that is not exempt.** The checks and their order live in `bridge/access-jwt.ts`
+(`verifyAccessToken`): the pinned algorithm first, then the exact `kid`, the signature, `iss`, `aud`
+containing one of the configured tags, and the times. Anything else is a `401`, and so is a missing
+token: a top-level reload sends the browser back through Access, which a `403` would not.
+
+**A preset table is the shape, and Cloudflare Access is its only entry.** Each preset says where
+the signed token is, the one algorithm it pins, the headers that prove a request crossed the
+vendor's edge, how a setting names the issuer, and where the issuer publishes its keys
+(`DoorPreset` in `bridge/access-jwt.ts`). The verification is generic and names no vendor. Each
+preset gets settings in its own vocabulary: Access's team and AUD tag are copied off the Cloudflare
+dashboard, so they are `COLLIE_ACCESS_TEAM` and `COLLIE_ACCESS_AUD`, not generic names. The preset
+is implied by which settings are set; there is no selector setting. This answers the point ADR 0001
+makes about vendor `case` branches: "a plugin-shaped problem being solved in the wrong shape". A
+second vendor is a table entry, not a branch in the gate.
+
+Not built: a second preset; ES256 and PEM key import (Google IAP, AWS ALB); OIDC discovery; per-user
+claim checks (they belong to the Access policy, not here); signed identity for Tailscale, whose
+headers are unsigned and stay under `COLLIE_TRUSTED_USER`.
 
 **The team names one host, and only that host.** `COLLIE_ACCESS_TEAM` is `myteam`,
 `myteam.cloudflareaccess.com` or `https://myteam.cloudflareaccess.com`, where `myteam` is one DNS
@@ -53,21 +65,22 @@ label. It is also where the keys come from, so any other value (another domain, 
 userinfo, plain http) names no issuer and counts as half a configuration.
 
 **It fails closed.** One setting without the other, or a team that names no issuer, refuses every
-gated request with `503` and logs one line at start naming the setting that is wrong. Keys never
+gated request with `503` and logs one line at start naming the setting that is wrong. The bridge
+still starts. A refused non-loopback bind stops the process, but a member must still answer its lead
+on `/crew/v1/*` and the updater must still reach `/api/health`, so the gate refuses requests, not
+the process. Keys never
 fetched refuse every gated request with `503`; the first failure logs one line with the cause, and
 the fetch retries on a ladder that starts at 2 seconds. Keys fetched once are kept when a refresh
 fails, because Cloudflare keeps the previous key valid for days after a rotation.
 
-**The key fetch is bounded.** A 5-second timeout, a 64 KiB body cap, no redirects, and only the
-`keys` member of the answer (`public_cert` and `public_certs` are ignored). An unknown `kid`
-triggers at most one refetch every 30 seconds across all requests, and concurrent callers share the
-fetch in flight, so a spray of made-up kids costs Cloudflare one request per 30 seconds. That window
-does not hold back a cold start, which retries on its own ladder.
+**The key fetch is bounded**, and so is the refetch an unknown `kid` triggers (one per 30 seconds
+across all requests, so a spray of made-up kids costs the vendor one request in that time). The
+bounds live in `bridge/access-jwt.ts`.
 
 **What is outside the gate, and why each is safe under the promise.**
 
 - `/api/health`, the one route that was already ungated. The updater polls it before a browser
-  exists, and it discloses only the version every response carries.
+  exists, and it discloses the version every response carries, plus the crew mode.
 - The crew surface, `/crew/v1/*`. It sits in front of the gate on purpose: it answers first, with
   its own admission (pinned mutual TLS plus the crew secret, ADR 0013), and a browser credential
   never admits a crew request. A lead's forward to a member (`bridge/crew/forward.ts`) and a
@@ -80,15 +93,18 @@ does not hold back a cold start, which retries on its own ladder.
 **Why a header check is enough for the local caller.** The Cloudflare edge always adds `Cf-Ray` and
 `Cf-Connecting-Ip`, and `cloudflared` forwards them, so a request that came through Cloudflare
 cannot look local. A tunnel set to `originRequest: httpHostHeader: localhost` is still gated,
-because of `Cf-Ray`. Every other front door (`tailscale serve`, Caddy, nginx, Traefik) adds a
-forwarding header, so it is gated too. To pass as local, a process must already reach the loopback
+because of `Cf-Ray`. `tailscale serve`, Caddy and Traefik add a
+forwarding header by default, so they are gated too. nginx does not: a bare
+`proxy_pass http://127.0.0.1:8787` sends `Host: 127.0.0.1:8787` and no forwarding header, so its
+requests look local. That is the residual below. To pass as local, a process must already reach the loopback
 port and send a crafted request, and such a process is a local caller in practice: it could read
 the port directly anyway (`docs/security.md` → *Risk model*). The peer-address check still runs
 before the gate, so the request must also arrive from loopback.
 
-**The one residual.** A second proxy on the same host, between `cloudflared` and the bridge, that
-rewrites `Host` to loopback and strips every `Cf-*` and forwarding header. Its requests look local.
-The documented setup is one front door at a time, and `docs/deployment.md` names this case.
+**The one residual.** A second proxy on the same host, between `cloudflared` and the bridge, whose
+requests look local. A proxy that rewrites `Host` to loopback and strips every `Cf-*` and
+forwarding header does it on purpose, and a bare nginx `proxy_pass` does it by default. The
+documented setup is one front door at a time, and `docs/deployment.md` names this case.
 
 **A second residual: a non-loopback bind.** With `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` the peer-address
 check is off, so a client that reaches the port directly can send `Host: localhost` and no forwarding
@@ -136,9 +152,9 @@ about the operator (ADR 0034).
 **Do not add Access bypass rules for Collie paths.** Access adds the token to every request it lets
 through, cookie-based or not, so the service worker script, the icons and the app shell all carry
 it. A path behind a bypass rule carries no token and gets `401`. The gate does not exempt more
-routes for this.
+routes for this. The manifest is the one fetch a browser makes without cookies, so its link carries
+`crossorigin="use-credentials"` (`web/vite.config.ts`); a bypass rule for it is refused here.
 
 **What would justify revisiting.** If Cloudflare starts signing Access tokens with another algorithm,
-the RS256-only rule moves with it. If another identity proxy that signs its assertions (an OIDC
-proxy, Tailscale's own identity tokens) is asked for, the same gate shape generalises, and that
-request should extend this ADR's mechanism rather than add a vendor branch beside it.
+the RS256-only rule moves with it. If another identity proxy that signs its assertions is asked for, its request extends the preset
+table rather than adding a vendor branch beside it.
