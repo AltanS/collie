@@ -11,6 +11,7 @@ import {
   GUARD_RETRY_MS,
   GUARD_TRIES,
   type GuardAnswer,
+  holdGuardPipe,
   isOwnWindowsProcess,
   isTaskBridge,
   isTaskLauncher,
@@ -196,6 +197,8 @@ describe("_supervise, the loop", () => {
     /** Every guard asked for, and what each ask answers in turn; past the list it is `held`. */
     const guards: string[] = [];
     const guardAnswers: GuardAnswer[] = [];
+    const rows: Record<number, string> = {};
+    const procs = { rows, unknown: false };
     const deps: SuperviseDeps = {
       io,
       files: {
@@ -236,8 +239,14 @@ describe("_supervise, the loop", () => {
         guards.push(pipe);
         return Promise.resolve(guardAnswers.shift() ?? { kind: "held" });
       },
+      // The process table: a pid in `procs` runs that command line, `unknown` does not answer.
+      lookup: (pid) => {
+        if (procs.unknown) return { kind: "unknown", why: "PowerShell did not answer within 5s" };
+        const command = procs.rows[pid];
+        return command === undefined ? { kind: "gone" } : { kind: "running", command };
+      },
     };
-    return { deps, io, files, link, writes, launched, notes, slept, renameFailures, guards, guardAnswers };
+    return { deps, io, files, link, writes, launched, notes, slept, renameFailures, guards, guardAnswers, procs };
   }
 
   test("relaunches a bridge that fails, after the pause, and stops with one that exits 0", async () => {
@@ -336,9 +345,13 @@ describe("_supervise, the loop", () => {
       expect(supervisePipeName(RECORD.toUpperCase(), null)).toBe(supervisePipeName(RECORD, null));
     });
 
-    test("a second launcher exits 0 at once, quietly, and never touches the record or launches", async () => {
+    /** The launcher a task of this install runs, as Win32_Process shows its command line. */
+    const OUR_LAUNCHER = `"${BINARY}" _supervise HERDR_SOCKET_PATH=x COLLIE_PLUGIN_ROOT=${ROOT}`;
+
+    test("a second launcher yields to a live launcher of this install: one log line, record and bridge untouched", async () => {
       const l = launcher([]);
       l.files.write(RECORD, formatTaskRecord(5000, 5001));
+      l.procs.rows[5000] = OUR_LAUNCHER;
       l.guardAnswers.push(...Array.from({ length: GUARD_TRIES }, () => taken));
       expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
       expect(l.guards).toHaveLength(GUARD_TRIES);
@@ -346,9 +359,49 @@ describe("_supervise, the loop", () => {
       expect(l.launched).toEqual([]);
       expect(l.writes).toEqual([]);
       expect(l.files.read(RECORD)).toBe(formatTaskRecord(5000, 5001));
-      expect(l.notes).toEqual([]);
+      expect(l.notes).toEqual(["another Collie launcher (pid 5000) already runs for this instance; this one exits"]);
       expect(l.io.stdout).toEqual([]);
       expect(l.io.stderr).toEqual([]);
+    });
+
+    test("a pipe held by anything that is not a live launcher of this install is no reason to stay down", async () => {
+      const strangers: [string, (l: ReturnType<typeof launcher>) => void][] = [
+        ["no record at all", () => {}],
+        ["a record whose launcher is dead", (l) => l.files.write(RECORD, formatTaskRecord(5000, 0))],
+        ["a recycled pid that runs something else", (l) => {
+          l.files.write(RECORD, formatTaskRecord(5000, 0));
+          l.procs.rows[5000] = "C:\\Windows\\notepad.exe";
+        }],
+        ["a launcher of another install", (l) => {
+          l.files.write(RECORD, formatTaskRecord(5000, 0));
+          l.procs.rows[5000] = '"D:\\other\\bin\\collie.exe" _supervise COLLIE_PLUGIN_ROOT=D:\\other';
+        }],
+      ];
+      for (const [, arrange] of strangers) {
+        const l = launcher([0]);
+        arrange(l);
+        l.guardAnswers.push(...Array.from({ length: GUARD_TRIES }, () => taken));
+        expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+        expect(l.launched).toHaveLength(1);
+        expect(l.notes[0]).toBe("another process holds the guard pipe and is not a Collie launcher, running unguarded");
+      }
+    });
+
+    test("a taken pipe and a process list that does not answer: exit, say so, and let the next try ask again", async () => {
+      const l = launcher([]);
+      l.files.write(RECORD, formatTaskRecord(5000, 5001));
+      l.procs.unknown = true;
+      l.guardAnswers.push(...Array.from({ length: GUARD_TRIES }, () => taken));
+      expect(await cmdSupervise(l.deps, ARGS)).toBe(EXIT.OK);
+      expect(l.launched).toEqual([]);
+      expect(l.notes[0]).toContain("the guard pipe is taken and the process list did not answer");
+    });
+
+    // The real pipe, on the one platform that has named pipes of this shape.
+    test.skipIf(process.platform !== "win32")("on Windows, a second hold on one pipe name is refused while the first lives", async () => {
+      const pipe = `\\\\.\\pipe\\collie-supervise-test-${process.pid}-${Date.now().toString(36)}`;
+      expect(await holdGuardPipe(pipe)).toEqual({ kind: "held" });
+      expect(await holdGuardPipe(pipe)).toEqual({ kind: "taken" });
     });
 
     test("a guard a killed launcher still held a moment ago is taken on a later ask", async () => {

@@ -2,13 +2,14 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { createServer } from "node:net";
+import { homedir } from "node:os";
 
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import { sweepAsides } from "./build.ts";
 import { instanceSuffix } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
-import { type Exec, type Files, POWERSHELL_UTF8, PROCESS_QUERY_TIMEOUT_MS } from "./sys.ts";
+import { type Exec, type Files, POWERSHELL_UTF8, type ProcessLookup, PROCESS_QUERY_TIMEOUT_MS, realExec } from "./sys.ts";
 import { logFileName } from "./unit.ts";
 
 // WINDOWS: THE TASK SCHEDULER SUPERVISOR'S OWN PIECES (M43 spec 05).
@@ -300,6 +301,8 @@ export interface SuperviseDeps {
    * `unguarded`: the guard could not be made at all, and `why` says how.
    */
   holdGuard(pipe: string): Promise<GuardAnswer>;
+  /** The process table's answer for one pid: who holds a taken guard ({@link guardHolder}). */
+  lookup(pid: number): ProcessLookup;
 }
 
 export type GuardAnswer = { readonly kind: "held" } | { readonly kind: "taken" } | { readonly kind: "unguarded"; readonly why: string };
@@ -479,11 +482,24 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   const restartMarker = taskRestartPath(configDir, instance, deps.host);
   const logPath = deps.host.path.join(configDir, logFileName(instance));
 
-  // Before the record is touched: a second launcher must not overwrite the first one's pids. It exits
-  // 0 and says nothing, because the revive trigger starts one every five minutes while the task
-  // reads `Ready`, and a line each time would bury the log.
+  // Before the record is touched: a second launcher must not overwrite the first one's pids.
   const guard = await takeGuard(deps, supervisePipeName(record, instance));
-  if (guard.kind === "taken") return EXIT.OK;
+  if (guard.kind === "taken") {
+    // libuv reports EVERY refused pipe create as EADDRINUSE, a pipe another account made first
+    // included. So "taken" is believed only when the record names a live launcher of this install;
+    // anything else holding the name must not keep the bridge down for good (the revive trigger
+    // would start, and stop, a launcher every five minutes forever).
+    const holder = guardHolder(deps, record, root, instance);
+    if (holder.kind === "launcher") {
+      deps.note(logPath, `another Collie launcher (pid ${holder.pid}) already runs for this instance; this one exits`);
+      return EXIT.OK;
+    }
+    if (holder.kind === "unknown") {
+      deps.note(logPath, `the guard pipe is taken and the process list did not answer (${holder.why}); this launcher exits and the next try asks again`);
+      return EXIT.OK;
+    }
+    deps.note(logPath, "another process holds the guard pipe and is not a Collie launcher, running unguarded");
+  }
   if (guard.kind === "unguarded") deps.note(logPath, `could not take the one-launcher guard (${guard.why}); running without it`);
 
   let delay = RELAUNCH_DELAY_MIN_MS;
@@ -547,6 +563,24 @@ export async function cmdSupervise(deps: SuperviseDeps, args: readonly string[])
   }
 }
 
+/** Who holds a taken guard: the live launcher the record names, nobody we can name, or no answer. */
+type GuardHolder = { readonly kind: "launcher"; readonly pid: number } | { readonly kind: "stranger" } | { readonly kind: "unknown"; readonly why: string };
+
+/**
+ * The record's launcher, when it is alive and its command line is a launcher of THIS install (the
+ * same check `stop` makes before it kills one). A record that is missing, names a dead pid or
+ * another program, or a launcher of another install: a stranger.
+ */
+function guardHolder(deps: SuperviseDeps, recordPath: string, root: string, instance: string | null): GuardHolder {
+  const text = deps.files.read(recordPath);
+  const record = text === null ? null : parseTaskRecord(text);
+  if (record === null || record.launcher <= 1 || record.launcher === deps.pid) return { kind: "stranger" };
+  const found = deps.lookup(record.launcher);
+  if (found.kind === "unknown") return { kind: "unknown", why: found.why };
+  if (found.kind === "gone") return { kind: "stranger" };
+  return isTaskLauncher(found.command, record.format, root, instance, deps.host) ? { kind: "launcher", pid: record.launcher } : { kind: "stranger" };
+}
+
 /** Ask for the guard up to {@link GUARD_TRIES} times: a launcher killed a moment ago may still hold it. */
 async function takeGuard(deps: SuperviseDeps, pipe: string): Promise<GuardAnswer> {
   for (let attempt = 1; ; attempt++) {
@@ -557,7 +591,7 @@ async function takeGuard(deps: SuperviseDeps, pipe: string): Promise<GuardAnswer
 }
 
 /** The real guard: a named pipe server, unreferenced, so it never keeps a finished launcher alive. */
-function holdPipe(pipe: string): Promise<GuardAnswer> {
+export function holdGuardPipe(pipe: string): Promise<GuardAnswer> {
   return new Promise((resolve) => {
     const server = createServer((socket) => socket.destroy());
     server.once("error", (err) => {
@@ -589,7 +623,8 @@ export function realSuperviseDeps(io: Io, files: Pick<Files, "write" | "remove" 
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     pauseStepMs: PAUSE_STEP_MS,
     now: () => Date.now(),
-    holdGuard: holdPipe,
+    holdGuard: holdGuardPipe,
+    lookup: (pid) => realExec(env, homedir()).processLookup(pid, PROCESS_QUERY_TIMEOUT_MS),
     launch(command, opts) {
       const [program, ...rest] = command;
       if (program === undefined) return null;

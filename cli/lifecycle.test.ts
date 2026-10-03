@@ -604,6 +604,20 @@ describe("the Task Scheduler tier (Windows)", () => {
       ]);
     });
 
+    test("start waits for the bridge to answer, and fails loudly when none does", async () => {
+      const up = windows();
+      expect(await cmdStart(up.deps)).toBe(EXIT.OK);
+      expect(up.readyCalls.length).toBeGreaterThan(0);
+
+      const down = windows({ ready: false });
+      down.deps.sleep = () => Promise.resolve();
+      expect(await cmdStart(down.deps)).toBe(EXIT.FAIL);
+      expect(schtasks(down)).toContain("schtasks /Run /TN herdr.collie");
+      expect(down.io.stdout).not.toContain("bridge started (Task Scheduler: herdr.collie)");
+      expect(down.io.stderr.join("\n")).toContain("error: Collie did not answer on 127.0.0.1:");
+      expect(down.io.stderr.join("\n")).toContain("collie logs");
+    });
+
     test("no secret from the environment reaches the task file", async () => {
       const h = windows({ env: { COLLIE_VAPID_PRIVATE: "s3cret-vapid", COLLIE_TRUSTED_USER: "pat@example.com" } });
       expect(await cmdStart(h.deps)).toBe(EXIT.OK);
@@ -799,6 +813,12 @@ describe("the Task Scheduler tier (Windows)", () => {
   });
 
   describe("stop", () => {
+    test("disables the task first, which turns off its logon and five-minute triggers too", async () => {
+      const h = windows();
+      expect(await cmdStop(h.deps)).toBe(EXIT.OK);
+      expect(schtasks(h)[0]).toBe("schtasks /Change /TN herdr.collie /DISABLE");
+    });
+
     test("disables, ends, and kills the recorded launcher then bridge", async () => {
       const h = windows({ files: { [RECORD]: V2(7100, 7200) }, ps: { 7100: OUR_LAUNCHER, 7200: OUR_BRIDGE } });
       expect(await cmdStop(h.deps)).toBe(EXIT.OK);

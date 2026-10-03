@@ -687,6 +687,10 @@ async function startTaskScheduler(deps: LifecycleDeps): Promise<number> {
     deps.io.err(`error: schtasks /Run /TN ${name} failed`);
     return EXIT.FAIL;
   }
+  // `/Run` returns once the task is asked to run, not once a bridge answers: a launcher that cannot
+  // start one (a broken build, a port in use) would otherwise read as a started Collie.
+  const waited = await awaitTaskBridge(deps, false);
+  if (!waited.answered) return taskBridgeSilent(deps, waited.waitS);
   deps.io.out(`bridge started (Task Scheduler: ${name})`);
   return EXIT.OK;
 }
@@ -811,11 +815,25 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
 
   // The loop waits a few seconds before it relaunches, and the bridge then has to come up. Say
   // whether it did, rather than printing a banner over a bridge that is still starting.
-  // The update health gate's own budget, so a slow machine that raised `COLLIE_UPDATE_HEALTH_TIMEOUT_MS`
-  // is waited for here too, and both call the same silence a failure.
-  // Bounded by the clock as well as by the count: one `ready` probe is itself a poll of about five
-  // seconds, so thirty of them waited three minutes, not thirty seconds (M43 spec 08 rehearsal: a
-  // broken update took 221 s to roll back). The kill's pause counts as part of the wait.
+  const waited = await awaitTaskBridge(deps, settled);
+  await printStatusBanner(deps);
+  if (waited.answered) return EXIT.OK;
+  // A FAILURE, because this tier waited and saw no bridge, which the other tiers cannot know. The
+  // in-place update stops here instead of recording a `pass` and printing `✓ update complete` over a
+  // dead bridge. The detached runner does not read this code: it polls its own health gate and rolls
+  // back once whatever the restart returned (`driveApply` in `cli/update-run.ts`).
+  return taskBridgeSilent(deps, waited.waitS);
+}
+
+/**
+ * Wait for the bridge the task runs to answer, after a `/Run` or a restart's kill. The update health
+ * gate's own budget, so a slow machine that raised `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` is waited for
+ * here too, and both call the same silence a failure. Bounded by the clock as well as by the count:
+ * one `ready` probe is itself a poll of about five seconds, so thirty of them waited three minutes,
+ * not thirty seconds (M43 spec 08 rehearsal: a broken update took 221 s to roll back). A kill's
+ * pause (`settled`) counts as part of the wait.
+ */
+async function awaitTaskBridge(deps: LifecycleDeps, settled: boolean): Promise<{ answered: boolean; waitS: number }> {
   const waitS = Math.max(1, Math.ceil(healthTimeoutMs(deps.ctx.env) / 1000));
   const now = deps.now ?? ((): number => performance.now());
   const deadline = now() + waitS * 1000 - (settled ? KILL_SETTLE_MS : 0);
@@ -830,12 +848,11 @@ async function restartTaskScheduler(deps: LifecycleDeps): Promise<number | null>
     if (answered || now() >= deadline) break;
     await deps.sleep(1000);
   }
-  await printStatusBanner(deps);
-  if (answered) return EXIT.OK;
-  // A FAILURE, because this tier waited and saw no bridge, which the other tiers cannot know. The
-  // in-place update stops here instead of recording a `pass` and printing `✓ update complete` over a
-  // dead bridge. The detached runner does not read this code: it polls its own health gate and rolls
-  // back once whatever the restart returned (`driveApply` in `cli/update-run.ts`).
+  return { answered, waitS };
+}
+
+/** No bridge answered within the budget: say so loudly, with the two next steps, and fail. */
+function taskBridgeSilent(deps: LifecycleDeps, waitS: number): number {
   deps.io.err(
     `error: Collie did not answer on ${localBridgeHostPort(deps.ctx.env, deps.ctx.port)} within ${waitS}s; it may still be starting`,
   );
