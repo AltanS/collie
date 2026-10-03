@@ -147,7 +147,7 @@ export interface ChatWindowBody {
    * this wire does not have. The 304 still works: the ETag is over these bytes, so a queue that
    * changed is a different body and a queue that did not is the same one.
    *
-   * ONE harness fills it. Claude Code records its queue in the log; the other five do not record one,
+   * ONE harness fills it. Claude Code and Muse record their queues in the log; the other five do not record one,
    * and answer `[]` (`journal/reduce.ts` § `RowReducer.queued`).
    */
   queued: string[];

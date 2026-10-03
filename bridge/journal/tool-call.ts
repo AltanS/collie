@@ -7,7 +7,7 @@
 // questions per kind of call, so the answer is a discriminated union rather than more optional
 // fields on one shape.
 //
-// The union is deliberately SMALL and closed. Nine kinds cover every tool the six adapters have met,
+// The union is deliberately SMALL and closed. Nine kinds cover every tool the seven adapters have met,
 // because tool vocabularies overlap almost completely: each harness has a read, a shell, a grep and
 // an edit under some spelling. A tool outside the nine is not an error, it is `other`, and it still
 // carries a name and a summary, so an unrecognised tool degrades to exactly what the view drew
@@ -79,7 +79,7 @@ export type ToolCall =
  * Harnesses spell the same tool differently and every one of these has been seen in a real log:
  * Claude writes `Bash` and `Edit`, Codex writes `shell` and `apply_patch`, opencode and pi write
  * `bash` and `edit`. Matching on a lower-cased name rather than per adapter is what stops this table
- * from being copied six times and drifting five ways.
+ * from being copied seven times and drifting six ways.
  */
 const NAMES = {
   // edit
@@ -90,6 +90,9 @@ const NAMES = {
   apply_patch: "edit",
   str_replace_editor: "edit",
   patch: "edit",
+  // Muse's file verbs (bridge/journal/muse.ts): without these its workhorse calls read as `other`.
+  edit_file: "edit",
+  write_file: "edit",
   // execute
   bash: "execute",
   shell: "execute",

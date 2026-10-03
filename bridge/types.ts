@@ -209,9 +209,22 @@ export function journalAgentOf(pane: AgentView): string {
   return pane.sessionAgent ?? pane.agent;
 }
 
-export function toPaneWire(pane: AgentView, hasJournal: (agent: string) => boolean): PaneWire {
+/**
+ * The wire form of one pane: server-only fields stripped, the History affordance decided.
+ *
+ * `hasSession` answers "may this pane have history": its harness has a journal adapter AND a
+ * session is addressable — reported on the pane record, or discoverable by an adapter that finds
+ * its own (`JournalAdapter.discover`). Keyed off the live `agent` either way, so an exited
+ * agent's pane still offers no affordance and reads like every other shell pane.
+ */
+export function toPaneWire(
+  pane: AgentView,
+  hasJournal: (agent: string) => boolean,
+  discoversSessions: (agent: string) => boolean = () => false,
+): PaneWire {
   const { agentSession, sessionAgent: _sessionAgent, ...rest } = pane;
-  return agentSession && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
+  const addressable = agentSession !== undefined || discoversSessions(pane.agent);
+  return addressable && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */

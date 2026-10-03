@@ -32,6 +32,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **Muse panes have History and Chat.** Collie reads Muse's own `session.jsonl` log, finds the newest
+  session whose workspace is the pane's folder, and needs no Herdr hook, so a Muse pane no longer
+  answers "no transcript". `collie doctor` reports the hook line as green for that reason.
+  Thanks @jpcarranza94 (#333).
 - **Oh My Pi's `/resume` picker is a list of sessions on the phone.** Tap a session and Collie
   moves the pointer to it and presses Enter, in the boxed picker of omp 18.4 and the unboxed one
   before it. On a very large pane the picker stays terminal text with an Escape button. Every other

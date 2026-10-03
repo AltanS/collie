@@ -151,6 +151,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       opencode: ["/nope/opencode"],
       grok: ["/nope/grok"],
       hermes: ["/nope/hermes"],
+      muse: ["/nope/muse"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",

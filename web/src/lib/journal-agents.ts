@@ -1,13 +1,15 @@
 // WHICH AGENTS CAN HAVE A READABLE TRANSCRIPT AT ALL — the client's half of the question
 // `bridge/journal/registry.ts` answers server-side.
 //
-// The bridge sets `AgentView.hasSession` only when a pane named a session AND its agent has a
-// journal adapter (`bridge/types.ts` toPaneWire). Both halves are folded into that one flag, so an
-// absent flag cannot say WHICH half failed — and the two want opposite words. An agent with no
-// journal adapter has nothing to explain: there is no transcript to read, ever, and a sentence
-// about it would be noise. An agent that HAS one and still reported no session is the case an
-// operator can fix (issue #137: a missing or outdated `herdr integration install <agent>` hook),
-// and silence there reads as a bug in Collie.
+// The bridge sets `AgentView.hasSession` when the agent has a journal adapter and a session is
+// addressable — reported on the pane record, or found by an adapter that discovers its own
+// (`bridge/types.ts` toPaneWire). Both halves are folded into that one flag, so an absent flag
+// cannot say WHICH half failed — and the two want opposite words. An agent with no journal adapter
+// has nothing to explain: there is no transcript to read, ever, and a sentence about it would be
+// noise. An agent that HAS one and still reported no session is the case an operator can fix
+// (issue #137: a missing or outdated `herdr integration install <agent>` hook), and silence there
+// reads as a bug in Collie. A discovering adapter (Muse) never lands here: its panes always offer
+// the affordance, since no hook could fix what discovery already finds.
 //
 // So the frontend needs the name list, and it is a NAME LIST, never a detector: nothing may key a
 // grammar, a fetch or a pane's identity off a match against `JOURNAL_AGENT_NAMES` — the same rule
@@ -20,8 +22,8 @@
 //
 // This is NOT `lib/harness/registry.ts`, and the two must not be folded together — that one owns
 // block grammars for the LIVE MIRROR (claude, codex, grok, omp, agy), this one owns reading an
-// on-disk log (claude, codex, grok, opencode, pi). A harness can plausibly have either without the
-// other, which is exactly why the bridge keeps two registries too.
+// on-disk log (claude, codex, grok, hermes, muse, opencode, pi). A harness can plausibly have
+// either without the other, which is exactly why the bridge keeps two registries too.
 //
 // Kept in step with `bridge/journal/registry.ts` by hand, deliberately: the list is not on the wire
 // (no bridge publishes it), and a speculative fetch to discover it would cost a request per pane to
@@ -29,7 +31,7 @@
 
 /** The Herdr `agent` strings this build can read a session log for. Mirrors `journalAgents()` plus
  *  every alias in the bridge's `AGENT_ALIASES` — `omp` is Oh My Pi, which writes pi's log in pi's
- *  format, so it is a second NAME for the pi adapter and not a seventh adapter.
+ *  format, so it is a second NAME for the pi adapter and not an eighth adapter.
  *
  *  Exported for the version ledger's test (M41/05), which owes a `journal` line to every agent on
  *  this list and cannot ask for one without the list. Still a NAME LIST and still never a detector:
@@ -39,6 +41,7 @@ export const JOURNAL_AGENT_NAMES: ReadonlySet<string> = new Set([
   "codex",
   "grok",
   "hermes",
+  "muse",
   "omp",
   "opencode",
   "pi",

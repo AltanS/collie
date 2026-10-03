@@ -194,6 +194,21 @@ export interface JournalAdapter {
    */
   reducer(): RowReducer;
   /**
+   * Find the session running in `cwd` without a reported ref — or null when none matches.
+   *
+   * OPTIONAL, and absent everywhere but the harness whose panes carry no `agentSession`:
+   * custom-source session reports never surface in the pane record, and Muse has no integration
+   * of its own (see journal/muse.ts). The history and chat routes call this when the
+   * pane names no session, and `toPaneWire` offers the History affordance on its presence, so a
+   * discoverable pane reads exactly like a reporting one.
+   *
+   * The returned ref is an ordinary id ref: it goes through the same `resolve`, containment and
+   * caching as a reported one, so discovery widens WHICH panes answer, never how an answer is
+   * read. It must be cheap enough to run per tap — bounded walk, early exit — because the chat
+   * route calls it on every poll that finds no ref.
+   */
+  discover?(cwd: string): Promise<AgentSessionRef | null>;
+  /**
    * The prompt-cache reading for one session, off the same log `parse` reads — or null when there is
    * nothing to read yet.
    *
