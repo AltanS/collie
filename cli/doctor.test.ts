@@ -902,16 +902,17 @@ describe("collie doctor — the local checks", () => {
   test("front-door: a LEAD with no mapping and no COLLIE_SKIP_SERVE is an error", async () => {
     const files = { ...healthyFiles(), ...markerFile(LEAD) };
     delete files[HANDLER];
-    const { code, byCheck } = await findings(
-      harness(LEAD, [hello()], {
-        files,
-        answers: [
-          ["tailscale status --json", { stdout: CERTS_ONLY }],
-          ["tailscale serve status --json", { stdout: "{}" }],
-          ...netmapAnswers(NETMAP_OPEN),
-        ],
-      }),
-    );
+    const lead = harness(LEAD, [hello()], {
+      files,
+      answers: [
+        ["tailscale status --json", { stdout: CERTS_ONLY }],
+        ["tailscale serve status --json", { stdout: "{}" }],
+        ...netmapAnswers(NETMAP_OPEN),
+      ],
+    });
+    // The remedy names `collie serve` on a POSIX host only; a Windows host is told the by-hand command.
+    lead.deps = { ...lead.deps, host: hostFor("linux") };
+    const { code, byCheck } = await findings(lead);
     expect(byCheck.get("front-door")?.status).toBe("error");
     expect(byCheck.get("front-door")?.remedy).toContain("collie serve");
     expect(code).toBe(EXIT.FAIL);
