@@ -368,6 +368,90 @@ describe("opencode composer chrome", () => {
     expect(draftCarriesSend("test test", draft)).toBe(true);
   });
 
+  it("a sidebar edge row and a shared-row border read as the typed words alone", () => {
+    // Live shape from a Models-sidebar pane: an edge-only row above the message, and the
+    // message sharing its row with the panel's bottom border. Both leaked into the join
+    // and the reply guard never verified the send.
+    const lines = splitLines(
+      parseAnsi(
+        [
+          "some transcript above",
+          "  ┃                                                                                                                                │                                   │",
+          "  ┃  stell mir eine Frage mit dem Frage tool                                                                                       └───────────────────────────────────┘",
+          "  ┃",
+          "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen                                                                     ~/repos/omarchy",
+          "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+          "   /tmp/probe   1.18.32",
+        ].join("\n"),
+      ),
+    );
+    expect(locateComposer(lines)).not.toBeNull();
+    const draft = extractInputDraft(lines);
+    expect(draft).toBe("stell mir eine Frage mit dem Frage tool");
+    expect(draftCarriesSend("stell mir eine Frage mit dem Frage tool", draft)).toBe(true);
+  });
+  it("a pasted tree sharing a row with an overlay border keeps its words", () => {
+    // Suffix strip, opposite risk: the overlay corner run goes, the pasted words stay.
+    // A lone trailing `│` after words is deliberately NOT stripped — textually identical
+    // to a table cell divider, only geometry could tell them apart (needs a column-aware
+    // strip, out of scope) — so such a row keeps its edge and fails safe.
+    const lines = splitLines(
+      parseAnsi(
+        [
+          "some transcript above",
+          "  ┃  ├── src",
+          "  ┃  └── leaf   └─┘",
+          "  ┃",
+          "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen                                                                     ~/repos/omarchy",
+          "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+          "   /tmp/probe   1.18.32",
+        ].join("\n"),
+      ),
+    );
+    const draft = extractInputDraft(lines);
+    expect(draft).toBe("├── src └── leaf");
+    expect(draftCarriesSend("├── src └── leaf", draft)).toBe(true);
+  });
+
+  it("a typed row ending in a plain rule keeps the rule", () => {
+    // The suffix strip demands a corner, junction, vertical or rule-block inside the run:
+    // bare horizontals never strip, so a typed emphasis divider survives verbatim.
+    const lines = splitLines(
+      parseAnsi(
+        [
+          "some transcript above",
+          "  ┃  summary ───",
+          "  ┃",
+          "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen                                                                     ~/repos/omarchy",
+          "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+          "   /tmp/probe   1.18.32",
+        ].join("\n"),
+      ),
+    );
+    const draft = extractInputDraft(lines);
+    expect(draft).toBe("summary ───");
+    expect(draftCarriesSend("summary ───", draft)).toBe(true);
+  });
+  it("a pasted box row closing its own corner one space after its words stays whole", () => {
+    for (const row of ["╭─ title ─╮", "┌ Name ┐"]) {
+      const lines = splitLines(
+        parseAnsi(
+          [
+            "some transcript above",
+            `  ┃  ${row}`,
+            "  ┃",
+            "  ┃  Sisyphus - Ultraworker · Muse Spark 1.3 Free OpenCode Zen                                                                     ~/repos/omarchy",
+            "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+            "   /tmp/probe   1.18.32",
+          ].join("\n"),
+        ),
+      );
+      const draft = extractInputDraft(lines);
+      expect(draft).toBe(row);
+      expect(draftCarriesSend(row, draft)).toBe(true);
+    }
+  });
+
   // THE REGRESSION THE FIRST SHAPE OF THAT RULE CAUSED, on a real capture rather than a hand-typed
   // string. A junction ANYWHERE on a row read as a panel border, so a pasted `tree` stopped the walk
   // at its first branch: these four typed lines read back as "and that is all" alone, and "Take over"
