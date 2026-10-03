@@ -164,9 +164,10 @@ describe("the host guard: platform-blind spellings in source Windows runs", () =
 
   // A second ratchet: a raw `process.platform` read decides for the machine it runs on, so a test
   // cannot pin `hostFor("win32")` and reach the Windows branch on Linux. `bridge/host.ts` is the one
-  // place that reads it (`HOST`). A count may only go down; lower it here in the commit that converts
-  // a site, and drop the file at 0. The target is 0.
-  test("no file reads process.platform more often than it did", () => {
+  // place that reads it (`HOST`). Each file's count must EQUAL its allowance: a new read fails, and so
+  // does a removed one until its allowance is lowered in the same commit (a file at 0 leaves the
+  // list). So the allowance can only go down. The target is 0.
+  test("every file reads process.platform exactly as often as its allowance says", () => {
     const reads = new Map<string, number>();
     for (const top of SCANNED) {
       for (const file of sourceFiles(join(ROOT, top))) {
@@ -177,13 +178,18 @@ describe("the host guard: platform-blind spellings in source Windows runs", () =
         if (n > 0) reads.set(name, n);
       }
     }
-    const grown = [...reads]
-      .filter(([name, n]) => n > (RAW_PLATFORM_READS.get(name) ?? 0))
-      .map(
-        ([name, n]) =>
-          `${name}: ${n} lines read process.platform (allowed: ${RAW_PLATFORM_READS.get(name) ?? 0}). ` +
-          "Read the host instead: `host.platform` from bridge/host.ts, `HOST` at the edge and a `host` parameter below it.",
+    const files = new Set([...reads.keys(), ...RAW_PLATFORM_READS.keys()]);
+    const off = [...files]
+      .toSorted()
+      .map((name) => [name, reads.get(name) ?? 0, RAW_PLATFORM_READS.get(name) ?? 0] as const)
+      .filter(([, n, allowance]) => n !== allowance)
+      .map(([name, n, allowance]) =>
+        n > allowance
+          ? `${name}: ${n} lines read process.platform (allowed: ${allowance}). ` +
+            "Read the host instead: `host.platform` from bridge/host.ts, `HOST` at the edge and a `host` parameter below it."
+          : `${name}: ${n} lines read process.platform now (allowed: ${allowance}). ` +
+            `Lower its entry in RAW_PLATFORM_READS in bridge/host-guard.test.ts to ${n}${n === 0 ? " (remove the entry)" : ""}.`,
       );
-    expect(grown).toEqual([]);
+    expect(off).toEqual([]);
   });
 });
