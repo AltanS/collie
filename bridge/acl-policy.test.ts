@@ -124,10 +124,12 @@ describe("names", () => {
   });
 
   test("only Collie's own suffixes follow a Collie name: a rotation and its temporary files", () => {
-    for (const name of ["audit.log.1", "crew-trust.json.tmp", "collie-processes.4242.tmp", ".env.collie-tmp", ".env.push-keys.tmp"]) {
+    for (const name of ["audit.log.1", "crew-trust.json.tmp", "collie-processes.4242.tmp", "paired-devices.json.4242.7.tmp", ".env.collie-tmp", ".env.push-keys.tmp"]) {
       expect(isCollieName(name)).toBe(true);
     }
-    for (const name of [".env.production", ".env.local", "audit.log.x", "config.toml.bak", "stt.json.old"]) expect(isCollieName(name)).toBe(false);
+    for (const name of [".env.production", ".env.local", "audit.log.x", "config.toml.bak", "stt.json.old", "paired-devices.json.1.2.3.tmp"]) {
+      expect(isCollieName(name)).toBe(false);
+    }
   });
 
   test("a folder is Collie's only by its name AND its contents, one level deep; a link never is", () => {

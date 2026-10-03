@@ -118,9 +118,10 @@ const KNOWN_NAME_PATTERNS: readonly RegExp[] = [
 /**
  * The suffixes Collie itself puts after one of its names: a rotation (`audit.log.1`), a temporary
  * file of an atomic write (`crew-trust.json.tmp`, `collie-processes.4242.tmp`, `.env.collie-tmp`,
- * `.env.push-keys.tmp`). Nothing else: `.env.production` and `audit.log.x` are somebody else's.
+ * `.env.push-keys.tmp`, and `paired-devices.json.4242.7.tmp`, pid and sequence, from `pairing.ts`).
+ * Nothing else: `.env.production` and `audit.log.x` are somebody else's.
  */
-const OWN_SUFFIX = /^(?:\.\d+|\.tmp|\.\d+\.tmp|\.collie-tmp|\.push-keys\.tmp)$/;
+const OWN_SUFFIX = /^(?:\.\d+|\.tmp|\.\d+\.tmp|\.\d+\.\d+\.tmp|\.collie-tmp|\.push-keys\.tmp)$/;
 
 /**
  * Collie's own FOLDERS in the state and the config folder, and the one kind of file each holds:
