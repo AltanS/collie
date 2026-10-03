@@ -13,11 +13,25 @@
 #              the most skipped tests that still count as green, PER SUITE, so a new skip in one suite
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
-#              Measured 2026-10-02 on the Windows 11 VM: bridge 0, cli 1, scripts 23 (24 in all).
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
+#              Today, 28 in all, each one named, with its reason:
+#              bridge 4, in bridge/stt/local-cli.test.ts. Windows has no executable bit and no file
+#                owner check in this provider:
+#                - "commandFileProblem: regular executable passes, symlinks are followed" (the
+#                  executable bit; a symlink needs a privilege on Windows)
+#                - "status refuses a directory and a non-executable file, and names neither" (the
+#                  executable bit)
+#                - "only an old directory with the prefix, owned by this user, is removed" (the
+#                  owner check by uid)
+#                - "loading the provider sweeps its temp root once, in the background" (without a
+#                  uid the sweep removes nothing on Windows, so there is nothing to see)
+#              cli 1: "a per-call override wins over the Exec's own environment (#283) > a child
+#                killed by a signal says which one" (Windows has no POSIX signals)
+#              scripts 23: every test of scripts/install.test.ts ("scripts/install.sh > ..."):
+#                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 0,
+  [int]$MaxSkipsBridge = 4,
   [int]$MaxSkipsCli = 1,
   [int]$MaxSkipsScripts = 23
 )
