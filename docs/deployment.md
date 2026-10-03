@@ -353,6 +353,25 @@ A tunnel made in the Zero Trust dashboard works too: set its public hostname's s
 > **Warning.** Without step 4, anyone who finds the hostname gets a shell on your machine.
 > Cloudflare Access is the door's lock; pairing then decides which device may type.
 
+5. Make Collie check the lock. In the Access application, copy the **Application Audience (AUD)
+   tag**. Add it and your team name to `.env`, then restart.
+
+   ```bash
+   COLLIE_ACCESS_TEAM=myteam          # from myteam.cloudflareaccess.com
+   COLLIE_ACCESS_AUD=<the AUD tag>
+   ```
+
+   Every request through the tunnel must now carry a token that Cloudflare signed for this
+   application. If the Access app is deleted, gets a bypass rule, or has not reached every edge yet,
+   Collie refuses the request instead of showing the panes. The audience check matters: every Access
+   app in a team signs with the same key, so a token for another app is refused too.
+
+   Collie fetches the team's public keys at start and every hour. Until the first fetch works,
+   every request through the tunnel gets `503`. If a later fetch fails, Collie keeps the keys it
+   has. Set both lines or neither: one alone refuses every request through the tunnel. Local
+   callers on `127.0.0.1`, such as `collie doctor`, and `/api/health` do not need a token.
+   [ADR 0081](../.adr/0081-the-cloudflare-access-token-is-verified-not-assumed.md) has the reasons.
+
 Access redirects to `/cdn-cgi/access/` to log in. Keep `sw.js` and `index.html` uncached, as
 [Routing `/auth/` and caching](#routing-auth-and-caching) says.
 

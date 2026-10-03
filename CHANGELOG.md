@@ -65,6 +65,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   Type mode, and the card updates after about a second. A row omp cut short and a model the
   conversation no longer fits (picking it compacts first) are left out. The `@` quick roles, the
   task-model picker, narrow panes and the Nerd Font symbols stay terminal text with an Escape button.
+- **Collie can check the Cloudflare Access token itself.** Set `COLLIE_ACCESS_TEAM` and
+  `COLLIE_ACCESS_AUD`, and every request through the tunnel must carry a `Cf-Access-Jwt-Assertion`
+  that Cloudflare signed for this application. A deleted Access app, a bypass rule or a policy that
+  has not propagated yet then shows the panes to nobody. Half a setting, or keys Collie could not
+  fetch, refuse every tunnel request. Unset, nothing changes. Thanks @xbach (#341).
 
 ### Changed
 

@@ -756,12 +756,16 @@ const CONFIG_KEYS = {
   basePath: true,
   uploadExtraTypes: true,
   cacheWarnSeconds: true,
+  accessTeam: true,
+  accessAud: true,
 } satisfies Record<keyof Config, true>;
 
 describe("solo zero-tax — config", () => {
   test("Config carries no crew/peer/lead key", () => {
     const keys = Object.keys(CONFIG_KEYS).toSorted();
     expect(keys).toEqual([
+      "accessAud",
+      "accessTeam",
       "allowAnyHost",
       "allowNonLoopbackBind",
       "allowedOrigins",
@@ -827,7 +831,7 @@ describe("solo zero-tax — config", () => {
   // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
   // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
   // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
-  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052) — the two
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052) and the two `COLLIE_ACCESS_*` keys (ADR 0081) — the two
   // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
   // name is built at the call site and the file key must not be.
   test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
@@ -839,6 +843,8 @@ describe("solo zero-tax — config", () => {
       ),
     ].toSorted();
     expect(keys).toEqual([
+      "COLLIE_ACCESS_AUD",
+      "COLLIE_ACCESS_TEAM",
       "COLLIE_ALLOWED_ORIGINS",
       "COLLIE_ALLOW_ANY_HOST",
       "COLLIE_ALLOW_NON_LOOPBACK_BIND",

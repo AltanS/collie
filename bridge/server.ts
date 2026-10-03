@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
+import { createAccessGate } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
@@ -1327,6 +1328,10 @@ export function startServer(opts: {
     return tail === null ? status : { ...status, run: { ...run, logTail: tail } };
   }
 
+  // Cloudflare Access, verified rather than assumed (#341, ADR 0081). Null unless configured.
+  const accessGate = createAccessGate(cfg);
+  accessGate?.start();
+
   const server = Bun.serve({
     hostname: cfg.host,
     port: cfg.port,
@@ -1370,6 +1375,13 @@ export function startServer(opts: {
       // is what that flag has always meant.
       if (!cfg.allowNonLoopbackBind && !isLoopbackPeer(server.requestIP(req)?.address)) {
         return text("non-loopback peer rejected", 403);
+      }
+
+      // The Access gate: after the crew surface (its own admission) and the peer check, before the
+      // deposed page and every route. `/api/health` and local callers are exempt inside it.
+      if (accessGate) {
+        const denied = await accessGate.admit(req, pathname);
+        if (denied) return denied;
       }
 
       // A DEPOSED collie serves one page and fails its health check (§18.12). It sits AFTER the

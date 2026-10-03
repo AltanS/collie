@@ -162,6 +162,8 @@ function cfg(overrides: Partial<Config> = {}): Config {
     cacheRulesFile: "/nope/cache-rules.toml",
     trustedUser: "",
     trustedUserOptional: false,
+    accessTeam: "",
+    accessAud: [],
     auditContent: "preview",
     deviceHeader: "",
     deviceAllowlist: [],
