@@ -289,7 +289,7 @@ describe("tableRuns — the whole pane corpus", () => {
       // grows up through the whole box.
       "claude--workflow-view.txt 8..59",
       // omp's welcome splash: the logo on the left, Tips / LSP servers / Recent sessions on the right.
-      // It sits in the scrollback of most omp captures, which is why it appears 40 times and always
+      // It sits in the scrollback of most omp captures, which is why it appears so often and always
       // at the same rows. The menus and dialogs BELOW it are not claimed, and that is the point: the
       // run stops where the box does.
       //

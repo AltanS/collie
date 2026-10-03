@@ -18,10 +18,17 @@ import type { Scope } from "../scope";
  * The canonical result of a guarded action. `sent` = the keystrokes went through; `changed` = the
  * guard rejected the tap (the pane drifted underfoot) and the caller should refresh; `error` = a
  * transport/RPC failure the caller surfaces verbatim.
+ *
+ * `why` on `changed` is a diagnosis for a person with a console open, never UI text and never
+ * translated: which step refused. `"entry"` (the entry guard), `"timeout"` (the awaited state never
+ * came), `"vanished"` (the dialog was gone), `"drift: <field>"` (another dialog: the first field
+ * `identityDiff` names), `"bridge"` (the bridge answered 409). Only the walked tap
+ * (`prompt-action.ts`, `walkVerifyCommit`) fills it in today, the one flow whose refusal hid a
+ * grammar defect; every other caller leaves it out, and the generic guard stays silent.
  */
 export type ActionResult =
   | { status: "sent" }
-  | { status: "changed" }
+  | { status: "changed"; why?: string }
   | { status: "error"; error: string };
 
 /**
@@ -31,7 +38,7 @@ export type ActionResult =
  * failure, and no call site has to reason about truthiness to tell the two apart.
  */
 export type GuardOutcome =
-  | { ok: true; region: string }
+  | { ok: true; region: string; styled?: string }
   | { ok: false; result: ActionResult };
 
 /** Test seam for the verification polls' pacing. */
@@ -46,6 +53,8 @@ export const POLL_DELAY_MS = 350;
 /** Derive the on-screen dialog model from a fresh pane's styled lines (null = no dialog there). */
 type Detect<M> = (lines: StyledLine[]) => M | null;
 type RegionOf<M> = (model: M) => string;
+/** The canonical styled lines a model binds its write to, for a grammar whose pointer is a style. */
+type StyledOf<M> = (model: M) => string | undefined;
 
 /** One fresh read + re-derivation. Returns the model (null = no dialog on screen). */
 export async function readModel<M>(
@@ -64,7 +73,8 @@ export async function readModel<M>(
  *
  * Returns a {@link GuardOutcome}: `{ ok: false, result }` when the guard refused (`"changed"`) or
  * the read failed, and `{ ok: true, region }` when it passed, carrying the verified region (via
- * `regionOf`) that the caller binds to its write.
+ * `regionOf`) that the caller binds to its write, plus `styled` (via `styledOf`) when the model
+ * carries a style-only state the bridge must bind as well (ADR 0080 point 7).
  *
  * The region the caller gets back is the one derived from THIS fresh read, so it describes the pane
  * as of a moment ago, not as of the render the user tapped. That is deliberate: the client guard has
@@ -83,6 +93,7 @@ export async function entryGuard<M>(
   detect: Detect<M>,
   equals: (a: M, b: M) => boolean,
   regionOf: RegionOf<M>,
+  styledOf?: StyledOf<M>,
 ): Promise<GuardOutcome> {
   let fresh;
   try {
@@ -104,8 +115,21 @@ export async function entryGuard<M>(
   if (!fresh.model || !equals(fresh.model, tapped)) {
     return { ok: false, result: { status: "changed" } };
   }
-  return { ok: true, region: regionOf(fresh.model) };
+  const region = regionOf(fresh.model);
+  const styled = styledOf?.(fresh.model);
+  // Assigned, never conditionally spread: a model with no style-only state binds `region` alone.
+  return styled === undefined ? { ok: true, region } : { ok: true, region, styled };
 }
+
+/**
+ * What {@link pollUntil} hands back. `ok` carries the accepted fresh model and the `revision` of the
+ * read it came from, so a caller that must bind a write to "the read that proved the state" needs no
+ * second read. `drifted` carries the model whose identity failed, or none when the dialog was gone.
+ */
+export type PollOutcome<M> =
+  | { status: "ok"; model: M; revision: number }
+  | { status: "drifted"; model?: M }
+  | { status: "timeout" };
 
 /**
  * Poll (bounded) until `accept` passes on a fresh re-derivation. THREE-VALUED, because the caller
@@ -120,7 +144,7 @@ export async function entryGuard<M>(
  *                   within the bounded window (e.g. a swallowed keystroke). The dialog is still ours,
  *                   so a bounded RETRY of the same key is safe.
  * A transient null re-derivation MID-poll keeps polling (the TUI redraw can briefly hide the tail);
- * only an all-null poll (the dialog truly vanished) resolves to `"drifted"`.
+ * only an all-null poll (the dialog truly vanished) resolves to `"drifted"`, with no model.
  */
 export async function pollUntil<M>(
   args: {
@@ -135,7 +159,7 @@ export async function pollUntil<M>(
   detect: Detect<M>,
   accept: (m: M) => boolean,
   identity: (a: M, b: M) => boolean,
-): Promise<"ok" | "drifted" | "timeout"> {
+): Promise<PollOutcome<M>> {
   const sleep = args.sleep ?? defaultSleep;
   let sawDialog = false;
   for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
@@ -148,12 +172,12 @@ export async function pollUntil<M>(
     }
     if (!fresh.model) continue; // transient redraw hid the tail — keep polling
     sawDialog = true;
-    if (accept(fresh.model)) return "ok";
-    if (!identity(fresh.model, tapped)) return "drifted"; // a different dialog now
+    if (accept(fresh.model)) return { status: "ok", model: fresh.model, revision: fresh.revision };
+    if (!identity(fresh.model, tapped)) return { status: "drifted", model: fresh.model }; // a different dialog now
   }
   // Exhausted. If we never saw the dialog at all it has vanished (a now-running agent) — treat as
   // drift, NOT a retryable timeout, so no blind key is sent at whatever replaced it.
-  return sawDialog ? "timeout" : "drifted";
+  return sawDialog ? { status: "timeout" } : { status: "drifted" };
 }
 
 /**

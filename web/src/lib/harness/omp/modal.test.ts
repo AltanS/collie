@@ -20,6 +20,14 @@ const fixtureLines = (name: string): StyledLine[] =>
   splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
 const linesOf = (rows: string[]): StyledLine[] => splitLines(parseAnsi(rows.join("\n")));
 
+// The model picker on a 74-column pane: omp clips the footer to `… @ quick roles …`, so the way out is
+// gone from the screen. The gate cannot see it, the same honest gap as `/tree`.
+const CLIPPED = ["omp--v18-4-switch-clipped.txt"];
+// The rest of the picker's captures, read off the directory (see MODALS_WITH_A_WAY_OUT).
+const SWITCH_WITH_A_WAY_OUT = ALL.filter(
+  (f) => f.startsWith("omp--v18-4-switch") && !CLIPPED.includes(f),
+);
+
 // Every omp modal capture whose footer names a way out, in all three footer dialects: the glyph
 // keycaps of omp 18.4, the text keycaps of omp 17.x to 18.1, and the approval dialog's lower-case
 // `esc cancel`.
@@ -65,43 +73,16 @@ const MODALS_WITH_A_WAY_OUT = [
   // The compact model picker (`/switch`, Alt+P) in omp 18.4.10. Its footer ends `⎋ close · Alt+P task
   // model`, one segment past the way out (modal.ts header). The session state is LIFTED (omp/switch.ts)
   // and draws no card; the task-model state, the `@` quick-roles state, a search with no match and the
-  // Nerd Font preset stay raw and take the card.
-  "omp--v18-4-switch-moved-up.txt",
-  "omp--v18-4-switch-moved.txt",
-  "omp--v18-4-switch-narrow-moved.txt",
-  "omp--v18-4-switch-narrow.txt",
-  "omp--v18-4-switch-nerd.txt",
-  "omp--v18-4-switch-nomatch.txt",
-  "omp--v18-4-switch-overcontext-moved.txt",
-  "omp--v18-4-switch-overcontext.txt",
-  "omp--v18-4-switch-ptr-fable.txt",
-  "omp--v18-4-switch-ptr-haiku.txt",
-  "omp--v18-4-switch-ptr-opus-current.txt",
-  "omp--v18-4-switch-ptr-sonnet.txt",
-  "omp--v18-4-switch-quick-roles.txt",
-  "omp--v18-4-switch-roles-chips.txt",
-  "omp--v18-4-switch-search-short-moved.txt",
-  "omp--v18-4-switch-search-short.txt",
-  "omp--v18-4-switch-search-son.txt",
-  "omp--v18-4-switch-search.txt",
-  "omp--v18-4-switch-short-pane-scrolled.txt",
-  "omp--v18-4-switch-short-pane.txt",
-  "omp--v18-4-switch-task.txt",
-  "omp--v18-4-switch-top-edge.txt",
-  "omp--v18-4-switch-top.txt",
-  "omp--v18-4-switch-truncated-pointed.txt",
-  "omp--v18-4-switch-truncated.txt",
-  "omp--v18-4-switch-wrapped.txt",
-  "omp--v18-4-switch.txt",
+  // Nerd Font preset stay raw and take the card. All of them name the way out, bar the one the 74-column
+  // pane clips (CLIPPED below), so the cohort is DERIVED: every `omp--v18-4-switch*` capture but that one.
+  // A new capture of the picker joins by its name.
+  ...SWITCH_WITH_A_WAY_OUT,
 ];
 
 // The `/tree` picker is a modal that prints NO way out: omp clips its hint row and neither capture
 // holds an Esc segment. It is the one omp modal this gate does not see, on purpose (modal.ts header).
 const TREE = ["omp--tree.txt", "omp--v18-4-tree.txt"];
 
-// The model picker on a 74-column pane: omp clips the footer to `… @ quick roles …`, so the way out is
-// gone from the screen. The gate cannot see it, the same honest gap as `/tree`.
-const CLIPPED = ["omp--v18-4-switch-clipped.txt"];
 const NO_WAY_OUT = [...TREE, ...CLIPPED];
 
 const OMP = ALL.filter((f) => f.startsWith("omp--"));
@@ -127,6 +108,10 @@ describe("ompModalOnScreen on the omp corpus", () => {
     // as a key, so there is nothing for any grammar to read and the card must stay off.
     const screen = lines.map(lineText).join("\n");
     expect(screen).not.toMatch(/\besc\b|⎋/i);
+  });
+
+  it("the derived model picker cohort is not empty, so a prefix typo cannot make it vanish", () => {
+    expect(SWITCH_WITH_A_WAY_OUT.length).toBeGreaterThan(0);
   });
 
   it("covers every omp capture exactly once", () => {

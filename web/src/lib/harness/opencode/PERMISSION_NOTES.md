@@ -68,9 +68,14 @@ pointed list.
 
 A tap is walked, verified, then confirmed (ADR 0080), sideways here: `Right` × d goes out bound to the
 tapped screen, then Enter once a fresh read shows the tapped chip as the pointed one. The pointer is a
-background colour, so the bridge's text binding is the same string with the pointer on any chip. It
-cannot see the pointer. The verify read on the phone is the guard, and the window that remains runs
-from that read to the send. The corpus pairs are `oc--permission-bash.txt` with `--moved`, `--reject`
+background colour, so the bridge's text binding alone is the same string with the pointer on any chip.
+The model therefore also carries `styledSignature`, the canonical styled lines of the same rows
+(`web/src/lib/styled-region.ts`), and the phone sends it as `expected_styled` with the arrows and with
+the Enter. The bridge runs the same function over the read it is about to answer and refuses with
+`409 prompt_changed` when the colours differ, so a keystroke at the terminal that moved the highlight
+refuses the tap instead of confirming another chip (ADR 0080 point 7). The window that remains is the
+bridge's own read-to-send gap, as for a text pointer. The Enter is bound to the read that proved the
+pointer; there is no extra read. The corpus pairs are `oc--permission-bash.txt` with `--moved`, `--reject`
 and `--wrap`, `oc--permission-edit.txt` with `--moved`, and `oc--permission-always-bash.txt` with
 `--cancel` (`harness/walk-pairs.ts`).
 

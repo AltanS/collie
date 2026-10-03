@@ -47,8 +47,19 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../ansi";
 import { lineText, splitLines, type Block, type MultiSelectModel, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
-import { promptsEqual, promptsSameIdentity, sameKeys, splitWalk, type PromptModel } from "./prompt-model";
+import {
+  identityDiff,
+  promptsEqual,
+  promptsSameIdentity,
+  sameKeys,
+  splitWalk,
+  type PromptModel,
+} from "./prompt-model";
 import { WALK_GAPS, WALK_PAIRS, walkGroupKey } from "./walk-pairs";
+// The bridge's own verifier, imported so the phone's `styledSignature` is checked against what the
+// bridge really computes from the same bytes (a web test may import the bridge's pure modules; the
+// bridge imports web/src/lib/styled-region.ts the other way, and neither pulls a cycle).
+import { verifyExpectedStyled } from "../../../../bridge/prompt-binding.ts";
 import {
   DIALOG_CONTRACT,
   dialogComparators,
@@ -785,9 +796,53 @@ export function describeAdapterConformance(
               `coreSignature keeps text that follows the pointer (a detail row, a description of the ` +
               `highlighted row, a position counter). Blank it in the grammar.`,
           ).toBe(true);
+          // The verdict is the diff: `promptsSameIdentity` is `identityDiff === null`, on the real captures.
+          for (const [x, y] of [[a!, b!], [b!, a!]] as const) {
+            expect(identityDiff(x, y), `${nameA} <> ${nameB}`).toBeNull();
+            expect(promptsSameIdentity(x, y)).toBe(identityDiff(x, y) === null);
+          }
           expect(promptsEqual(a!, b!), `${nameA} and ${nameB} are byte-identical, not a moved pointer`).toBe(
             false,
           );
+          // A pointer drawn only as a style leaves the two signatures EQUAL, so the bridge's text
+          // binding cannot tell the pair apart. Such a grammar must hand the bridge the styled lines
+          // (ADR 0080 point 7), and they must move with the pointer.
+          if (a!.signature === b!.signature) {
+            expect(
+              a!.styledSignature !== undefined && b!.styledSignature !== undefined,
+              `${nameA} and ${nameB}: the pointer is a style: the grammar must set styledSignature so the bridge can bind to it`,
+            ).toBe(true);
+            expect(
+              a!.styledSignature,
+              `${nameA} and ${nameB}: the pointer is a style: the grammar must set styledSignature so the bridge can bind to it, and it must differ between the two pointers`,
+            ).not.toBe(b!.styledSignature);
+          }
+        });
+
+        // The phone's value is what the bridge computes. For a pair whose models carry one, each side's
+        // `styledSignature` is found in its OWN raw capture by the bridge's verifier, and is NOT
+        // found in the other capture of the pair: the same dialog with the pointer elsewhere.
+        it(`${nameA} <> ${nameB}: styledSignature binds to its own capture and refuses the other`, () => {
+          const a = walked.get(nameA);
+          const b = walked.get(nameB);
+          if (a?.styledSignature === undefined || b?.styledSignature === undefined) return;
+          const rawA = readFileSync(join(PANES_DIR, nameA), "utf8");
+          const rawB = readFileSync(join(PANES_DIR, nameB), "utf8");
+          expect(verifyExpectedStyled(rawA, a.signature, a.styledSignature), `${nameA} against its own styledSignature`).toEqual({ ok: true });
+          expect(verifyExpectedStyled(rawB, b.signature, b.styledSignature), `${nameB} against its own styledSignature`).toEqual({ ok: true });
+          expect(verifyExpectedStyled(rawB, a.signature, a.styledSignature).ok, `${nameB} must not pass ${nameA}'s styledSignature`).toBe(false);
+          expect(verifyExpectedStyled(rawA, b.signature, b.styledSignature).ok, `${nameA} must not pass ${nameB}'s styledSignature`).toBe(false);
+        });
+      }
+
+      // Every walked capture whose model carries a styledSignature, pair or not: the bridge's
+      // verifier accepts it against the capture's raw bytes. This is the contract between the two
+      // sides: the same function over the same bytes gives the same lines.
+      for (const [name, model] of walked) {
+        if (model.styledSignature === undefined) continue;
+        it(`${name}: the bridge finds the phone's styledSignature in the raw capture`, () => {
+          const raw = readFileSync(join(PANES_DIR, name), "utf8");
+          expect(verifyExpectedStyled(raw, model.signature, model.styledSignature!)).toEqual({ ok: true });
         });
       }
 

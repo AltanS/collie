@@ -45,7 +45,7 @@ describe("pollUntil — the verification budget", () => {
     mockFetchPane.mockResolvedValue(paneWith("dialog:model pointer=1")); // the state never arrives
     const { waits, sleep } = recordingSleep();
 
-    await expect(run(sleep, () => false)).resolves.toBe("timeout");
+    await expect(run(sleep, () => false)).resolves.toEqual({ status: "timeout" });
     expect(mockFetchPane).toHaveBeenCalledTimes(POLL_ATTEMPTS);
     expect(waits).toEqual(Array<number>(POLL_ATTEMPTS).fill(POLL_DELAY_MS));
     expect(waits.reduce((a, b) => a + b, 0)).toBe(POLL_ATTEMPTS * POLL_DELAY_MS);
@@ -55,7 +55,11 @@ describe("pollUntil — the verification budget", () => {
     mockFetchPane.mockResolvedValue(paneWith("dialog:model pointer=2"));
     const { waits, sleep } = recordingSleep();
 
-    await expect(run(sleep, (m) => m.endsWith("pointer=2"))).resolves.toBe("ok");
+    await expect(run(sleep, (m) => m.endsWith("pointer=2"))).resolves.toEqual({
+      status: "ok",
+      model: "dialog:model pointer=2",
+      revision: expect.any(Number),
+    });
     expect(mockFetchPane).toHaveBeenCalledTimes(1);
     expect(waits).toEqual([POLL_DELAY_MS]);
   });
@@ -67,7 +71,11 @@ describe("pollUntil — the verification budget", () => {
     mockFetchPane.mockResolvedValue(paneWith("dialog:model pointer=2"));
     const { waits, sleep } = recordingSleep();
 
-    await expect(run(sleep, (m) => m.endsWith("pointer=2"))).resolves.toBe("ok");
+    await expect(run(sleep, (m) => m.endsWith("pointer=2"))).resolves.toEqual({
+      status: "ok",
+      model: "dialog:model pointer=2",
+      revision: expect.any(Number),
+    });
     expect(mockFetchPane).toHaveBeenCalledTimes(n);
     expect(waits.reduce((a, b) => a + b, 0)).toBe(n * POLL_DELAY_MS);
   });
@@ -79,7 +87,7 @@ describe("pollUntil — the verification budget", () => {
     const { waits, sleep } = recordingSleep();
 
     // Never saw the dialog at all ⇒ "drifted", not a retryable timeout: no blind key may follow.
-    await expect(run(sleep, () => true)).resolves.toBe("drifted");
+    await expect(run(sleep, () => true)).resolves.toEqual({ status: "drifted" });
     expect(waits).toHaveLength(POLL_ATTEMPTS);
   });
 
@@ -87,7 +95,11 @@ describe("pollUntil — the verification budget", () => {
     mockFetchPane.mockResolvedValue(paneWith("dialog:permissions pointer=1")); // a different dialog
     const { waits, sleep } = recordingSleep();
 
-    await expect(run(sleep, () => false)).resolves.toBe("drifted");
+    // The drifted model comes back, so a caller can say which field differed.
+    await expect(run(sleep, () => false)).resolves.toEqual({
+      status: "drifted",
+      model: "dialog:permissions pointer=1",
+    });
     expect(waits).toEqual([POLL_DELAY_MS]); // one attempt, not the full budget
   });
 });

@@ -302,4 +302,20 @@ describe("crew attribution", () => {
     expect(entry).toMatchObject({ action: "reply", via: "crew", from: "desk" });
     expect(lines[0]).not.toContain("the secret");
   });
+
+  test("`none` keeps the binding's `styled` outcome (an enum, not screen content) and drops `expected`", () => {
+    const lines: string[] = [];
+    const log = new AuditLog((l) => void lines.push(l), { now: () => 0, content: "none" });
+    log.record({
+      action: "keys",
+      paneId: "w1:p1",
+      detail: {
+        keys: ["Enter"],
+        promptBinding: { checked: true, passed: true, expected: "Permission required", styled: "checked" },
+      },
+    });
+    expect(lines[0]).toContain("checked");
+    expect(JSON.parse(lines[0]!).detail.promptBinding.styled).toBe("checked");
+    expect(lines[0]).not.toContain("Permission required");
+  });
 });

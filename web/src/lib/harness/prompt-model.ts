@@ -127,6 +127,18 @@ export interface PromptModel {
    * it MUST be non-empty and MUST change when the region's text changes.
    */
   signature: string;
+  /**
+   * The canonical styled lines of the SAME rows as {@link signature} (`canonicalStyledLines`,
+   * lib/styled-region.ts), as the wire value `encodeStyledRegion` builds: a `v1` format line, then
+   * the lines, joined with "\n". Set ONLY by a grammar whose pointer, or any other state
+   * a tap depends on, is visible only as a style: the bridge binds a write to the text alone, so a
+   * pointer that is not in the text is invisible to it. With this set, the phone sends it as
+   * `expected_styled` beside the text region and the bridge compares the colours of the very read it
+   * is about to answer (ADR 0080 point 7). `promptsEqual` compares it, so a stale tap on a moved
+   * style is refused at entry; `promptsSameIdentity` does not, because the pointer is the one thing a
+   * walk moves. Absent for every grammar that draws its pointer as a glyph.
+   */
+  styledSignature?: string;
 }
 
 /**
@@ -153,7 +165,10 @@ export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
     // already refuses a moved pointer. A grammar that draws it as a style only (opencode's chip
     // background) has the same text with the pointer anywhere, and the only trace of the pointer is
     // each option's plan. Without this line a stale tap on such a dialog would pass the entry guard.
-    a.options.every((o, i) => sameKeys(o.keys, b.options[i]!.keys))
+    a.options.every((o, i) => sameKeys(o.keys, b.options[i]!.keys)) &&
+    // The colours of the region, for a grammar whose pointer is a style. The plans above are one
+    // trace of such a pointer; this is the other, and the one the bridge is handed to bind to.
+    a.styledSignature === b.styledSignature
   );
 }
 
@@ -164,31 +179,76 @@ export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
  * Everything that would re-route a keystroke to a DIFFERENT dialog still participates.
  *
  * Part of the CONTRACT, not of any harness — harness/dialog-contract.ts wires it in as
- * prompt-select's `identity`.
+ * prompt-select's `identity`. Defined through {@link identityDiff}, so the verdict and its
+ * explanation can never disagree.
  */
 export function promptsSameIdentity(a: PromptModel, b: PromptModel): boolean {
-  return (
-    a.family === b.family &&
-    a.question === b.question &&
-    a.coreSignature === b.coreSignature &&
-    // The row's key and purpose, not its state: a feedback row that appeared, vanished,
-    // renumbered, or changed purpose is a different dialog, and the flow's remaining
-    // keystrokes would be aimed at the wrong row.
-    a.feedback?.key === b.feedback?.key &&
-    a.feedback?.purpose === b.feedback?.purpose &&
-    a.options.length === b.options.length &&
-    // A declared fact about the list, not a state: a model that gained or lost it is another
-    // grammar's reading, and the commit batch the action layer builds from it would differ.
-    a.clampedEnds === b.clampedEnds &&
-    // The arrow COUNT of a pointer walk is not compared (ADR 0080): a walk is a claim about where
-    // the pointer stands, and the pointer is our own choreography's effect, which `coreSignature`
-    // already blanks. `promptsEqual` still compares the byte-faithful `signature`, which carries
-    // the pointer, so a stale tap is refused at entry; only the mid-flight identity polls, which
-    // watch the pointer arrive, stop caring where it stood.
-    a.options.every(
-      (o, i) => o.label === b.options[i]!.label && sameKeysModuloWalk(o.keys, b.options[i]!.keys),
-    )
-  );
+  return identityDiff(a, b) === null;
+}
+
+/** A value for a diagnosis line: cut to a readable length. */
+function clip(text: string, max = 120): string {
+  return text.length <= max ? text : `${text.slice(0, max)}...`;
+}
+
+/** The first line where two multi-line signatures differ, with both lines. */
+function firstLineDiff(a: string, b: string): string {
+  const aLines = a.split("\n");
+  const bLines = b.split("\n");
+  const n = Math.max(aLines.length, bLines.length);
+  for (let i = 0; i < n; i++) {
+    if (aLines[i] !== bLines[i]) {
+      return `line ${i + 1}: ${JSON.stringify(clip(aLines[i] ?? "(none)"))} vs ${JSON.stringify(clip(bLines[i] ?? "(none)"))}`;
+    }
+  }
+  return "";
+}
+
+/**
+ * The FIRST field in which two derivations are not the same dialog, or null when they are
+ * ({@link promptsSameIdentity} is exactly `identityDiff(a, b) === null`). Fields are checked in a
+ * fixed order and named for a one-line diagnosis of a refused tap, which used to answer a bare
+ * `changed` and hid a grammar defect until a live test:
+ *
+ *   `family` · `question` · `coreSignature` (with the first differing line, both lines cut to 120
+ *   characters) · `feedback` · `options.length` · `clampedEnds` · `option[i].label` · `option[i].keys`
+ *
+ * Pure, and for a person reading a console: the strings are not UI text and are never translated.
+ */
+export function identityDiff(a: PromptModel, b: PromptModel): string | null {
+  if (a.family !== b.family) return `family: ${a.family} vs ${b.family}`;
+  if (a.question !== b.question) return "question";
+  if (a.coreSignature !== b.coreSignature) {
+    return `coreSignature ${firstLineDiff(a.coreSignature, b.coreSignature)}`;
+  }
+  // The row's key and purpose, not its state: a feedback row that appeared, vanished,
+  // renumbered, or changed purpose is a different dialog, and the flow's remaining
+  // keystrokes would be aimed at the wrong row.
+  if (a.feedback?.key !== b.feedback?.key || a.feedback?.purpose !== b.feedback?.purpose) {
+    return "feedback";
+  }
+  if (a.options.length !== b.options.length) {
+    return `options.length: ${a.options.length} vs ${b.options.length}`;
+  }
+  // A declared fact about the list, not a state: a model that gained or lost it is another
+  // grammar's reading, and the commit batch the action layer builds from it would differ.
+  if (a.clampedEnds !== b.clampedEnds) return "clampedEnds";
+  // The arrow COUNT of a pointer walk is not compared (ADR 0080): a walk is a claim about where
+  // the pointer stands, and the pointer is our own choreography's effect, which `coreSignature`
+  // already blanks. `promptsEqual` still compares the byte-faithful `signature`, which carries
+  // the pointer, so a stale tap is refused at entry; only the mid-flight identity polls, which
+  // watch the pointer arrive, stop caring where it stood.
+  for (let i = 0; i < a.options.length; i++) {
+    const x = a.options[i]!;
+    const y = b.options[i]!;
+    if (x.label !== y.label) {
+      return `option[${i}].label: ${JSON.stringify(clip(x.label))} vs ${JSON.stringify(clip(y.label))}`;
+    }
+    if (!sameKeysModuloWalk(x.keys, y.keys)) {
+      return `option[${i}].keys: ${clip(x.keys.join(","))} vs ${clip(y.keys.join(","))}`;
+    }
+  }
+  return null;
 }
 
 /** Exact keystroke-plan equality — a label can map to a different digit across hidden-row layouts. */

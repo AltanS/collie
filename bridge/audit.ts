@@ -45,6 +45,7 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "saved",
   "sent",
   "size",
+  "styled",
   "submit",
   "submitted",
   "tabId",

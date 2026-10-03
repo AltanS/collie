@@ -93,6 +93,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   @enieuwy (#336).
 - **A tapped row is confirmed only after the pointer is seen on it.** A tap on a pointed list now sends the arrow keys first, reads the screen again, and sends Enter only when the pointer stands on the tapped row, bound to that very screen. A keystroke at the terminal in between, or a row that changed under the pointer, refuses the tap instead of confirming the wrong row. This covers every harness with a pointed list: Claude Code, Codex, Oh My Pi and opencode, whose permission buttons are a row and walk sideways. A resume list whose ages tick while the arrows go out still commits. A conformance guard now requires every such grammar to prove, on two real captures with the pointer on different rows, that a moved pointer is still the same dialog.
 - **The model picker's Close button says when it clears a search instead.** With a search typed, Oh My Pi's Escape clears the search and keeps the picker open, so the button now reads "Clear search" and only reads "Close" when a tap closes the picker.
+- **A tap on an opencode permission chip is bound to the highlighted chip.** The bridge now also checks the colours of the dialog it is about to answer, because opencode marks the chosen chip only by a background colour. A keystroke at the terminal that moved the highlight refuses the tap instead of confirming another chip. A refused tap also writes the reason to the browser console.
 
 ## [1.15.3] - 2026-10-02
 

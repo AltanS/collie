@@ -36,7 +36,13 @@ import {
   sendGuardedKeys,
   type DialogTarget,
 } from "./dialog-guard";
-import { commitKeysFor, promptsSameIdentity, sameKeys, splitWalk } from "./harness/prompt-model";
+import {
+  commitKeysFor,
+  identityDiff,
+  promptsSameIdentity,
+  sameKeys,
+  splitWalk,
+} from "./harness/prompt-model";
 import { t } from "./i18n";
 import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
 import type { Scope } from "./scope";
@@ -119,6 +125,13 @@ function rowIndexOf(prompt: PromptModel, option: PromptOption): number {
   );
 }
 
+/** `result` with a diagnosis on it when it is a `changed` refusal, untouched otherwise. A `why` the
+ *  result already carries is more specific than this step's name (the bridge's own reason code), so
+ *  it stays. */
+function withWhy(result: PromptActionResult, why: string): PromptActionResult {
+  return result.status === "changed" ? { status: "changed", why: result.why ?? why } : result;
+}
+
 /**
  * ADR 0080, "walk, verify, commit", for a pointed list's row whose plan is `[Up|Down × n, Enter]`:
  *
@@ -126,8 +139,12 @@ function rowIndexOf(prompt: PromptModel, option: PromptOption): number {
  *   2. poll until a fresh read shows the SAME dialog with the pointer on the tapped row (that row's
  *      plan is now just `Enter`). Drift or timeout sends nothing: the pointer may be anywhere, the
  *      card re-derives on the next poll, and nothing was committed;
- *   3. one more read, and Enter bound to THAT read's region — a keystroke at the terminal after it
- *      makes the bridge refuse instead of confirming whatever the pointer now rests on.
+ *   3. Enter bound to the read that proved the pointer. The poll hands that model back, so there is
+ *      no second read between the proof and the binding: a keystroke at the terminal after it makes
+ *      the bridge refuse instead of confirming whatever the pointer now rests on.
+ *
+ * A refusal says why (`ActionResult.why`): the entry guard, the bridge's 409, a poll timeout, or the
+ * first field `identityDiff` names when the poll saw another dialog.
  */
 async function walkVerifyCommit(
   args: GuardArgs & { option: PromptOption },
@@ -135,12 +152,12 @@ async function walkVerifyCommit(
   plan: { walk: string[]; commit: string[] },
 ): Promise<PromptActionResult> {
   const index = rowIndexOf(args.prompt, option);
-  if (index < 0) return { status: "changed" };
+  if (index < 0) return { status: "changed", why: "entry" };
 
   const guarded = await guardDialog(target(args));
-  if (!guarded.ok) return guarded.result;
-  const walked = await sendBoundKeys(args, plan.walk, guarded.region);
-  if (walked.status !== "sent") return walked;
+  if (!guarded.ok) return withWhy(guarded.result, "entry");
+  const walked = await sendBoundKeys(args, plan.walk, guarded.region, guarded.styled);
+  if (walked.status !== "sent") return withWhy(walked, "bridge");
 
   const landed = (m: PromptModel) => {
     const row = m.options[index];
@@ -152,12 +169,23 @@ async function walkVerifyCommit(
     );
   };
   try {
-    if ((await pollDialog(target(args), landed)) !== "ok") return { status: "changed" };
-    const fresh = await readDialog(target(args));
-    if (!fresh.model || !landed(fresh.model)) return { status: "changed" };
-    // The verified commit. On a clamped list an edge row carries a sticky arrow (ADR 0080 point 6)
-    // so a desk arrow landing in the last gap before the send cannot move the commit off the edge.
-    return sendBoundKeys(args, commitKeysFor(args.prompt, index), fresh.model.signature);
+    const polled = await pollDialog(target(args), landed);
+    if (polled.status === "timeout") return { status: "changed", why: "timeout" };
+    if (polled.status === "drifted") {
+      const diff = polled.model === undefined ? null : identityDiff(polled.model, args.prompt);
+      return { status: "changed", why: diff === null ? "vanished" : `drift: ${diff}` };
+    }
+    // The verified commit, bound to the read that proved the pointer. On a clamped list an edge row
+    // carries a sticky arrow (ADR 0080 point 6) so a desk arrow landing in the last gap before the
+    // send cannot move the commit off the edge.
+    const { model } = polled;
+    const commit = await sendBoundKeys(
+      args,
+      commitKeysFor(args.prompt, index),
+      model.signature,
+      model.styledSignature,
+    );
+    return withWhy(commit, "bridge");
   } catch (e) {
     return { status: "error", error: describeThrownError(e) };
   }
@@ -199,7 +227,7 @@ export async function submitPromptFeedback(
 
   // Bind this write to the guarded region. It moves focus, so the steps after it must re-derive
   // rather than reuse this binding.
-  const focus = await sendBoundKeys(args, [row.key], guarded.region);
+  const focus = await sendBoundKeys(args, [row.key], guarded.region, guarded.styled);
   if (focus.status !== "sent") return focus;
 
   // The field must be FOCUSED, and STILL EMPTY, before anything is typed. Focus alone is not enough:
@@ -212,7 +240,7 @@ export async function submitPromptFeedback(
   // trip, which is irreducible. On timeout we stop dead: nothing has been typed.
   const focusedAndEmpty = (m: PromptModel) =>
     promptsSameIdentity(m, args.prompt) && (m.feedback?.focused ?? false) && m.feedback?.text === "";
-  if ((await pollDialog(target(args), focusedAndEmpty)) !== "ok") {
+  if ((await pollDialog(target(args), focusedAndEmpty)).status !== "ok") {
     return { status: "error", error: t("promptAction.feedback.boxNotOpened") };
   }
 
@@ -228,7 +256,7 @@ export async function submitPromptFeedback(
       promptsSameIdentity(m, args.prompt) &&
       (m.feedback?.focused ?? false) &&
       m.feedback?.text === text;
-    if ((await pollDialog(target(args), landed)) !== "ok") {
+    if ((await pollDialog(target(args), landed)).status !== "ok") {
       return { status: "error", error: t("promptAction.feedback.notArrived") };
     }
     // The Enter is the only irreversible write in this flow — it rejects a plan and puts words in the
@@ -238,7 +266,7 @@ export async function submitPromptFeedback(
     // screen that has moved. (The sibling flows send their last key unbound; this one carries more.)
     const fresh = await readDialog(target(args));
     if (!fresh.model || !landed(fresh.model)) return { status: "changed" };
-    return sendBoundKeys(args, ["Enter"], fresh.model.signature);
+    return sendBoundKeys(args, ["Enter"], fresh.model.signature, fresh.model.styledSignature);
   } catch (e) {
     return { status: "error", error: describeThrownError(e) };
   }

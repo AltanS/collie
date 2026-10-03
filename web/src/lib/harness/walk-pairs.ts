@@ -26,6 +26,10 @@
 // dialog with the pointer on another row, added to {@link WALK_PAIRS}. A pair that fails identity is a
 // defect in the grammar's `coreSignature` (blank what follows the pointer), never in the table.
 //
+// A pair whose two `signature` strings are EQUAL is a pointer drawn only as a style. The suite then also
+// requires `styledSignature` on both models, different between the two, and checks it against the raw
+// captures with the bridge's own verifier (ADR 0080 point 7).
+//
 // The group key is the agent, the family and the dialog's own title (the caption, else the first
 // question line, cut at the first `:` or ` (`). It needs no per-fixture bookkeeping, it is stable
 // across widths and presets of one grammar, and a new grammar lands in a new group by itself.

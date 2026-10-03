@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   commitKeysFor,
+  identityDiff,
   promptsEqual,
   promptsSameIdentity,
   sameKeys,
@@ -189,5 +190,111 @@ describe("clampedEnds in identity", () => {
     expect(promptsSameIdentity(model(true), model())).toBe(false);
     expect(promptsSameIdentity(model(), model(true))).toBe(false);
     expect(promptsEqual(model(true), model())).toBe(false);
+  });
+});
+
+describe("styledSignature in equality", () => {
+  const model = (styledSignature?: string): PromptModel => {
+    const m: PromptModel = {
+      question: "$ echo hi",
+      family: "permission",
+      options: [{ label: "Allow once", keys: ["Enter"] }, { label: "Reject", keys: ["Right", "Enter"] }],
+      coreSignature: "text",
+      signature: "text",
+    };
+    if (styledSignature !== undefined) m.styledSignature = styledSignature;
+    return m;
+  };
+
+  it("promptsEqual compares it, so a stale tap on a moved style is refused", () => {
+    expect(promptsEqual(model("a"), model("a"))).toBe(true);
+    expect(promptsEqual(model("a"), model("b"))).toBe(false);
+    expect(promptsEqual(model("a"), model())).toBe(false);
+  });
+
+  it("promptsSameIdentity ignores it: the pointer is the one thing a walk moves", () => {
+    expect(promptsSameIdentity(model("a"), model("b"))).toBe(true);
+    expect(identityDiff(model("a"), model("b"))).toBeNull();
+  });
+});
+
+// `identityDiff` names the first field in which two derivations are not one dialog, and
+// `promptsSameIdentity` is defined through it, so the verdict and its explanation cannot disagree.
+describe("identityDiff", () => {
+  const base = (): PromptModel => ({
+    question: "Which row?",
+    family: "permission",
+    options: [
+      { label: "First", keys: ["Enter"] },
+      { label: "Second", keys: ["Down", "Enter"] },
+    ],
+    coreSignature: "line one\nline two\nline three",
+    signature: "sig",
+    feedback: { key: "3", focused: false, text: "" },
+    clampedEnds: true,
+  });
+
+  it("is null for the same dialog, including a moved walk pointer", () => {
+    expect(identityDiff(base(), base())).toBeNull();
+    const moved = base();
+    moved.options = [
+      { label: "First", keys: ["Up", "Enter"] },
+      { label: "Second", keys: ["Enter"] },
+    ];
+    expect(identityDiff(base(), moved)).toBeNull();
+  });
+
+  // One mutation per field, in the order the function checks them. Each names its own field.
+  const mutations: [string, (m: PromptModel) => void, RegExp][] = [
+    ["family", (m) => void (m.family = "select"), /^family: permission vs select$/],
+    ["question", (m) => void (m.question = "Another?"), /^question$/],
+    [
+      "coreSignature",
+      (m) => void (m.coreSignature = "line one\nline 2\nline three"),
+      /^coreSignature line 2: "line two" vs "line 2"$/,
+    ],
+    ["feedback key", (m) => void (m.feedback = { key: "4", focused: false, text: "" }), /^feedback$/],
+    ["feedback purpose", (m) => void (m.feedback = { key: "3", focused: false, text: "", purpose: "free-text" }), /^feedback$/],
+    ["feedback gone", (m) => void (m.feedback = undefined), /^feedback$/],
+    ["options.length", (m) => void m.options.pop(), /^options\.length: 2 vs 1$/],
+    ["clampedEnds", (m) => void (m.clampedEnds = undefined), /^clampedEnds$/],
+    ["option label", (m) => void (m.options[1] = { label: "Other", keys: ["Down", "Enter"] }), /^option\[1\]\.label: "Second" vs "Other"$/],
+    ["option keys", (m) => void (m.options[1] = { label: "Second", keys: ["2"] }), /^option\[1\]\.keys: Down,Enter vs 2$/],
+  ];
+  for (const [name, mutate, expected] of mutations) {
+    it(`names ${name}`, () => {
+      const changed = base();
+      mutate(changed);
+      expect(identityDiff(base(), changed)).toMatch(expected);
+      // The boolean is the diff, not a second opinion.
+      expect(promptsSameIdentity(base(), changed)).toBe(false);
+    });
+  }
+
+  it("reports the FIRST differing field when several differ", () => {
+    const changed = base();
+    changed.family = "select";
+    changed.question = "Another?";
+    changed.options.pop();
+    expect(identityDiff(base(), changed)).toMatch(/^family/);
+  });
+
+  it("cuts both lines of a coreSignature difference to 120 characters", () => {
+    const a = base();
+    const b = base();
+    a.coreSignature = "x".repeat(300);
+    b.coreSignature = "y".repeat(300);
+    const diff = identityDiff(a, b)!;
+    expect(diff.startsWith("coreSignature line 1: ")).toBe(true);
+    expect(diff).toContain(`"${"x".repeat(120)}..."`);
+    expect(diff).toContain(`"${"y".repeat(120)}..."`);
+    expect(diff).not.toContain("x".repeat(121));
+  });
+
+  it("names a line that exists on one side only", () => {
+    const a = base();
+    const b = base();
+    b.coreSignature = `${a.coreSignature}\nline four`;
+    expect(identityDiff(a, b)).toBe('coreSignature line 4: "(none)" vs "line four"');
   });
 });

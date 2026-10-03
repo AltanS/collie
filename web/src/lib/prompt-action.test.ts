@@ -431,6 +431,7 @@ describe("submitPromptOption — a pointed list is walked, verified, then confir
     mockFetchPane.mockResolvedValue(paneWith(pointed(0))); // every poll still shows the pointer elsewhere
     expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
       status: "changed",
+      why: "timeout",
     });
     expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
   });
@@ -442,6 +443,7 @@ describe("submitPromptOption — a pointed list is walked, verified, then confir
       .mockResolvedValue(paneWith("● Working on it\n  ⎿  running"));
     expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
       status: "changed",
+      why: "vanished",
     });
     expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
   });
@@ -451,24 +453,29 @@ describe("submitPromptOption — a pointed list is walked, verified, then confir
     mockFetchPane
       .mockResolvedValueOnce(paneWith(pointed(0)))
       .mockResolvedValue(paneWith(pointed(1, "Is this some other folder you trust?")));
-    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
-      status: "changed",
-    });
+    const refused = await submitPromptOption({ ...base, prompt: m, option: m.options[1]! });
+    expect(refused).toMatchObject({ status: "changed" });
+    // The refusal names the field that differed, so a drift is a one-line diagnosis.
+    expect(refused).toHaveProperty("why", expect.stringMatching(/^drift: (question|coreSignature line \d+:)/));
     expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
   });
 
-  it("sends NO Enter when the pointer moves again between the poll and the last read", async () => {
-    // A keystroke at the terminal after the poll saw the pointer arrive: the last read shows it
-    // elsewhere, so the Enter would confirm the wrong row. It is refused, not sent.
+  it("binds Enter to the read that proved the pointer, with no extra read", async () => {
+    // The poll hands back the model it accepted, so the commit is bound to that very read. A
+    // keystroke at the terminal after it is the bridge's to refuse (the next test), not a second read.
     const m = pointedModel(0);
     mockFetchPane
       .mockResolvedValueOnce(paneWith(pointed(0))) // entry
       .mockResolvedValueOnce(paneWith(pointed(1))) // poll: arrived
-      .mockResolvedValue(paneWith(pointed(0))); // pre-commit read: moved away
+      .mockResolvedValue(paneWith(pointed(0))); // anything after the poll must never be read
     expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
-      status: "changed",
+      status: "sent",
     });
-    expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
+    expect(mockFetchPane).toHaveBeenCalledTimes(2);
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, m.signature],
+      ["w1:p1", ["Enter"], undefined, pointedModel(1).signature],
+    ]);
   });
 
   it("stops after the walk when the bridge refuses it as prompt_changed", async () => {
@@ -477,8 +484,37 @@ describe("submitPromptOption — a pointed list is walked, verified, then confir
     mockSendKeys.mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" });
     expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
       status: "changed",
+      why: "bridge",
     });
     expect(mockSendKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the bridge's own reason as `why` instead of the step's name", async () => {
+    const m = pointedModel(0);
+    mockFetchPane.mockResolvedValue(paneWith(pointed(0)));
+    mockSendKeys.mockResolvedValueOnce({
+      ok: false,
+      code: "prompt_changed",
+      error: "moved",
+      reason: "not_in_tail",
+    });
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+      why: "bridge: not_in_tail",
+    });
+
+    mockFetchPane
+      .mockReset()
+      .mockResolvedValueOnce(paneWith(pointed(0)))
+      .mockResolvedValue(paneWith(pointed(1)));
+    mockSendKeys
+      .mockReset()
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved", reason: "style_not_found" });
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
+      status: "changed",
+      why: "bridge: style_not_found",
+    });
   });
 
   it("reports changed when the bridge refuses the bound Enter", async () => {
@@ -491,6 +527,7 @@ describe("submitPromptOption — a pointed list is walked, verified, then confir
       .mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" });
     expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
       status: "changed",
+      why: "bridge",
     });
     expect(mockSendKeys).toHaveBeenCalledTimes(2);
   });
@@ -524,6 +561,7 @@ describe("submitPromptOption — a pointed list is walked, verified, then confir
     mockFetchPane.mockResolvedValue(paneWith(pointed(1))); // someone moved the pointer before the tap
     expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({
       status: "changed",
+      why: "entry",
     });
     expect(mockSendKeys).not.toHaveBeenCalled();
   });
@@ -608,6 +646,7 @@ describe("submitPromptOption — a clamped list commits an edge row with a stick
     mockFetchPane.mockResolvedValue(paneWith(onApprove));
     expect(await submitPromptOption({ ...omp, prompt: m, option: m.options[1]! })).toEqual({
       status: "changed",
+      why: "timeout",
     });
     expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Down"]]);
   });
@@ -701,13 +740,17 @@ describe("submitPromptOption: a walked tap on the real opencode permission chips
       .mockResolvedValue(paneWith(onAlways)); // the poll and the pre-commit read: the chip arrived
 
     expect(await submitPromptOption({ ...opencode, prompt: m, option: tapped })).toEqual({ status: "sent" });
+    // Both writes carry the styled lines too (ADR 0080 point 7): the arrow the screen the user tapped,
+    // the Enter the read that proved the chip. The text region is the same string either time.
     expect(mockSendKeys.mock.calls).toEqual([
-      ["w1:p1", ["Right"], undefined, m.signature],
-      ["w1:p1", ["Enter"], undefined, dialogModel(onAlways).signature],
+      ["w1:p1", ["Right"], undefined, m.signature, m.styledSignature],
+      ["w1:p1", ["Enter"], undefined, dialogModel(onAlways).signature, dialogModel(onAlways).styledSignature],
     ]);
-    // The text binding cannot see a style: both bindings are the same string. The verify read, which
-    // saw the tapped chip carry the plan ["Enter"], is the guard (ADR 0080 Consequences).
+    // The text binding cannot see a style: both text bindings are the same string. The styled lines
+    // are what tells the bridge the chip moved.
     expect(dialogModel(onAlways).signature).toBe(m.signature);
+    expect(m.styledSignature).toBeDefined();
+    expect(dialogModel(onAlways).styledSignature).not.toBe(m.styledSignature);
   });
 
   it("sends NO Enter when the chip never arrives on the tapped option", async () => {
@@ -715,7 +758,7 @@ describe("submitPromptOption: a walked tap on the real opencode permission chips
     mockFetchPane.mockResolvedValue(paneWith(onOnce)); // every read still shows the pointer on the first chip
     expect(
       await submitPromptOption({ ...opencode, prompt: m, option: m.options.find((o) => o.label === "Allow always")! }),
-    ).toEqual({ status: "changed" });
+    ).toEqual({ status: "changed", why: "timeout" });
     expect(mockSendKeys.mock.calls.map((c) => c[1])).toEqual([["Right"]]);
   });
 
@@ -724,7 +767,7 @@ describe("submitPromptOption: a walked tap on the real opencode permission chips
     mockFetchPane.mockResolvedValue(paneWith(onAlways)); // the chip has since moved at the desk
     expect(
       await submitPromptOption({ ...opencode, prompt: m, option: m.options.find((o) => o.label === "Reject")! }),
-    ).toEqual({ status: "changed" });
+    ).toEqual({ status: "changed", why: "entry" });
     expect(mockSendKeys).not.toHaveBeenCalled();
   });
 
@@ -732,6 +775,20 @@ describe("submitPromptOption: a walked tap on the real opencode permission chips
     const m = dialogModel(onOnce);
     mockFetchPane.mockResolvedValue(paneWith(onOnce));
     expect(await submitPromptOption({ ...opencode, prompt: m, option: m.options[0]! })).toEqual({ status: "sent" });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Enter"], undefined, m.signature]]);
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Enter"], undefined, m.signature, m.styledSignature]]);
+  });
+
+  it("the bridge refusing the bound Enter answers changed, and says it was the bridge", async () => {
+    // A keystroke at the desk after the proof moved the chip: the bridge sees the colours differ.
+    const m = dialogModel(onOnce);
+    const tapped = m.options.find((o) => o.label === "Allow always")!;
+    mockFetchPane.mockResolvedValueOnce(paneWith(onOnce)).mockResolvedValue(paneWith(onAlways));
+    mockSendKeys
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" });
+    expect(await submitPromptOption({ ...opencode, prompt: m, option: tapped })).toEqual({
+      status: "changed",
+      why: "bridge",
+    });
   });
 });

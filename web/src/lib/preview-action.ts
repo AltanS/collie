@@ -89,7 +89,7 @@ export async function submitPreviewOption(
       previewStructureEqual(m, args.preview) && // same dialog, note untouched (an open input eats keys)
       (m.options.find((o) => o.n === args.option.n)?.pointed ?? false),
   );
-  if (pointed !== "ok") return { status: "changed" };
+  if (pointed.status !== "ok") return { status: "changed" };
 
   try {
     const enter = await sendKeys(args.paneId, ["Enter"], args.scope);
@@ -134,7 +134,7 @@ export async function submitPreviewNote(
 
   // The input must be FOCUSED before anything else is sent — early keys are misrouted (verified).
   // On timeout we stop dead: a blind Escape could cancel the whole dialog if `n` never landed.
-  if ((await pollDialog(target(args), editing)) !== "ok") {
+  if ((await pollDialog(target(args), editing)).status !== "ok") {
     return { status: "error", error: t("previewAction.note.notOpened") };
   }
 
@@ -150,7 +150,7 @@ export async function submitPreviewNote(
       );
       if (!clear.ok) return { status: "error", error: describeApiError(clear) };
       if (
-        (await pollDialog(target(args), (m) => editing(m) && m.note.text === "")) !== "ok"
+        (await pollDialog(target(args), (m) => editing(m) && m.note.text === "")).status !== "ok"
       ) {
         return { status: "error", error: t("previewAction.note.clearFailed") };
       }
@@ -164,7 +164,7 @@ export async function submitPreviewNote(
         target(args),
         (m) => editing(m) && m.note.text.length > 0 && text.endsWith(m.note.text),
       );
-      if (landed !== "ok") {
+      if (landed.status !== "ok") {
         return { status: "error", error: t("previewAction.note.textFailed") };
       }
     }
@@ -180,8 +180,8 @@ export async function submitPreviewNote(
         target(args),
         (m) => previewCoreEqual(m, args.preview) && m.note.state !== "editing",
       );
-      if (blurred === "ok") return { status: "sent" };
-      if (blurred === "drifted") return { status: "changed" }; // no second Escape at a successor
+      if (blurred.status === "ok") return { status: "sent" };
+      if (blurred.status === "drifted") return { status: "changed" }; // no second Escape at a successor
       // "timeout": our dialog is still editing — the ESC was likely swallowed. Retry once.
     }
     return { status: "error", error: t("previewAction.note.closeFailed") };

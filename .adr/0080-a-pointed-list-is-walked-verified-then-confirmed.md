@@ -8,6 +8,7 @@
 - **Trail:** `web/src/lib/prompt-action.ts` (`submitPromptOption`, `walkVerifyCommit`) ·
   `web/src/lib/harness/prompt-model.ts` (`splitWalk`, `sameKeysModuloWalk`, `promptsSameIdentity`) ·
   `web/src/lib/harness/menu-hints.ts` (`pointerWalk`) · `web/src/lib/dialog-guard.ts` ·
+  `web/src/lib/styled-region.ts` · `bridge/prompt-binding.ts` (`verifyExpectedStyled`) ·
   `bridge/server.ts` (`checkPromptBinding`) ·
   [ADR 0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md) ·
   [ADR 0079](./0079-the-omp-model-picker-is-lifted-as-its-visible-window.md) · the Oh My Pi `/switch`
@@ -63,7 +64,8 @@ and lives only in the action layer.**
    tap is still refused at entry. It also compares every option's exact plan. For a grammar that draws
    the pointer as a glyph this adds nothing, because the signature already moved. For one that draws
    it as a style only (opencode's chip background), the text is the same with the pointer anywhere,
-   and the plans are the only trace of the pointer, so this line is what refuses its stale tap.
+   and the plans (and, since point 7, the `styledSignature`) are the only trace of the pointer, so
+   those lines are what refuse its stale tap.
 3. **`submitPromptOption` does three things for a walked option** (`splitWalk` non-null with a
    non-empty walk):
    - the entry guard, then the arrows, bound to the region of the screen the user tapped;
@@ -71,8 +73,17 @@ and lives only in the action layer.**
      plan now exactly `["Enter"]`, meaning the pointer stands on it. A poll that ends in drift OR
      timeout sends **nothing** and answers `changed`: the pointer may be anywhere and nothing is
      committed;
-   - one more read, which must still show the pointer on the row, and then `Enter` bound to THAT
-     read's region. This is the same last step as `submitPromptFeedback`.
+   - `Enter` bound to the read that proved the pointer. The poll hands back the fresh model it
+     accepted, and the commit is bound to that model's region (and its `styledSignature`, point 7),
+     with no extra read between the proof and the binding.
+
+   A refusal says why. The `changed` result of the action layer carries an optional `why` (`entry`,
+   `timeout`, `vanished`, `bridge`, or `drift: <field>`), where the field is the first one
+   `identityDiff` names (`prompt-model.ts`). `promptsSameIdentity` is defined as
+   `identityDiff(a, b) === null`, so the verdict and its explanation cannot disagree. The phone
+   writes it to the console (`console.info("collie: tap refused", why)`) and shows no new text. A
+   harness drift is then a one-line diagnosis, where the omp `/switch` defect once hid behind a bare
+   `changed` until a live test.
 4. **Everything else is unchanged.** A plan with no walk (a digit, or `["Enter"]` on the pointed row)
    is one guarded, bound write.
 5. **A grammar MUST carry the pointer verbatim in `signature` and blank it in `coreSignature`. It MUST
@@ -105,7 +116,7 @@ and lives only in the action layer.**
    blank must hold (every age shifted, a detail row replaced) and what it must refuse (a title, a
    size, an id, a badge, a mark or a row changed, removed or swapped). A grammar whose pointer is only a
    style, so that it cannot appear in `signature` at all, carries the pointer in its option plans
-   (point 2). **The corpus MUST hold such a walk pair for
+   (point 2) and in `styledSignature` (point 7). **The corpus MUST hold such a walk pair for
    every grammar that emits walked plans.** `harness/walk-pairs.ts` declares the pairs, and the
    conformance suite (`describeAdapterConformance`, "walk pairs") asserts for each that the two
    captures are `promptsSameIdentity` both ways, not `promptsEqual`, and that the row with the plan
@@ -135,22 +146,65 @@ and lives only in the action layer.**
    never shapes a plan: plans stay the plain walk (point 5). `promptsSameIdentity` requires equal
    `clampedEnds`, so the guard refuses a model that gained or lost the fact.
 
+7. **A pointer drawn only as a style is bound by `expected_styled`.** The bridge's text binding strips
+   every SGR escape, so a pointer that is a background colour (opencode's chips) is invisible to it:
+   the same text matches with the pointer on any chip. `PromptModel.styledSignature` closes this. A
+   grammar whose pointer, or any other state a tap depends on, is visible only as a style sets it to
+   the canonical styled lines of the same rows as `signature`, and the phone sends it as the optional
+   body field `expected_styled` on `/keys` (and `/reply`) beside `expected_prompt`, with every write it
+   binds: the walk's arrows, the commit, and a one-step pointed-row send. **One pure function builds it
+   on both sides**, `canonicalStyledLines` in `web/src/lib/styled-region.ts`: the phone calls it on
+   a region's StyledLines, the bridge calls its thin wrapper `styledRegionLines` on the raw text of
+   its read. It sits on the one SGR parser (`parseAnsi`, `splitLines`), adds no grammar and no terminal
+   emulation, and its form depends only on the visible grid (text plus style per cell), never on which
+   escape sequences encoded it. **The bridge holds no grammar for this.** It cannot say which chip is
+   the pointer. It can only say that the colours it is about to answer are the colours the phone
+   verified. `checkPromptBinding` makes ONE call, `verifyPromptBinding`, over the single read: the text
+   check as before (the last contiguous match, ending in the tail), then the style check **at the same
+   place**. The style check does not search. The two projections drop the same lines (a line with no
+   visible text is dropped by both), so the normalized text lines and the canonical styled lines of
+   one read have the same count and aligned indices, and the expected styled lines must equal the fresh
+   styled lines exactly at the index where the text matched. A search of its own could match a stale
+   copy of the region higher in the buffer, in a pointer state the screen no longer shows, while the
+   text matched the live copy below. If the fresh read's two projections differ in length the tap is
+   refused as `style_misaligned`, never guessed at; a test holds the invariant over every committed
+   pane fixture. No second RPC, no added latency. A mismatch is the same `409 prompt_changed`.
+   **The wire value has a format line.** It is `"v1\n"` followed by the canonical lines joined by
+   "\n" (`encodeStyledRegion`, `decodeStyledRegion` and `STYLED_FORMAT` in `styled-region.ts`;
+   `styledSignature` holds the encoded value). A value whose first line is not exactly `v1` is neither
+   an error nor a refusal: the bridge skips the style check, decides on the text check alone, and
+   records `styled: "skipped_unknown_version"` in the audit entry (`styled: "checked"` otherwise; no
+   key when the phone sent none). A newer phone must not have every tap refused by an older bridge.
+   **A refusal says why.** The `409 prompt_changed` body carries an optional `reason`, the bridge's
+   reason code and never pane content: `not_found`, `not_in_tail`, `empty`, `style_empty`,
+   `style_not_found`, `style_misaligned` (and `read_failed`, which is a 502 with its own code). The
+   phone's `sendBoundKeys` turns it into `why: "bridge: <reason>"` on the `changed` result, and the
+   walk keeps that more specific `why` rather than the step's name. It is a diagnosis for the console,
+   not UI text.
+   The field is honoured only with `expected_prompt` (alone it is `400 bad expected_styled`) and is
+   capped at four times `expected_prompt`'s cap; a region larger than the cap gets `400` and the tap
+   reports an error, the same as the text cap. `promptsEqual` compares `styledSignature`;
+   `promptsSameIdentity` does not, because the pointer is the one thing a walk moves. The conformance
+   suite requires it of every walk pair whose two `signature` strings are equal, and checks that the
+   bridge's own verifier finds the phone's value in the raw capture and refuses the other capture of
+   the pair. **Version skew is safe by construction.** An older bridge ignores the field, and the
+   walk's verify step still guards the pointer as before; an older phone sends none, and the bridge
+   checks the text alone.
+
 ## Consequences
 
 - **One extra read, about 350 ms, per walked tap.** A tap on the pointed row itself costs nothing
   extra.
 - **A walk can leave the pointer moved with nothing committed.** The card then re-derives from the
   screen and the user taps again. This is the accepted cost; ADR 0055 point 4 was trying to avoid it.
-- **Where a harness shows its pointer only as a style, the bridge cannot see it.** The bridge's text
-  binding compares screen text, and opencode's permission chips differ from one another by a
-  background colour, so the same binding matches with the pointer on any chip. Before this ADR the one
-  batch had the same blind spot: the bridge never saw a style-only pointer, and nothing checked the
-  pointer between the arrows and the Enter. Now the phone's read verifies the walk: the tapped chip
-  must carry the plan `["Enter"]` before Enter goes out. The window that remains runs from that verify
-  read to the send. It is larger than the window of a text-visible pointer, where the bridge's own
-  re-read sees the pointer. opencode's "Always allow" opens a second confirm step (`Confirm` and
-  `Cancel`, see `web/src/lib/harness/opencode/PERMISSION_NOTES.md`). So a one-chip slip from "Allow
-  once" lands on a confirm dialog, not on a standing grant.
+- **Where a harness shows its pointer only as a style, the bridge binds to the style.** The text
+  binding alone cannot see opencode's permission chips, which differ from one another by a background
+  colour, and before this ADR nothing checked the pointer between the arrows and the Enter. Now the
+  phone's read verifies the walk (the tapped chip must carry the plan `["Enter"]` before Enter goes
+  out), and point 7 hands the bridge the colours of that very read. The window that remains is the
+  bridge's own read-to-send gap, as for a text pointer. opencode's "Always allow" also opens a second
+  confirm step (`Confirm` and `Cancel`, see `web/src/lib/harness/opencode/PERMISSION_NOTES.md`), so a
+  one-chip slip from "Allow once" lands on a confirm dialog, not on a standing grant.
 - **The race window is smaller, not gone, and for an edge row of a clamped list it is covered.**
   What remains is the milliseconds between the bridge's own re-read and its send (see
   `checkPromptBinding` in `bridge/server.ts`). Point 6 covers that gap for the first and last row of
@@ -164,7 +218,7 @@ and lives only in the action layer.**
 
 ### Follow-ups
 
-1. Answer opencode permissions over its HTTP channel by id. That removes the pointer.
-2. Add a bridge-side pointer check for style-only pointers.
-3. Let the poll return its last model, so the commit needs no extra read.
-4. Let a drift refusal report which field differed, so a harness drift is a one-line diagnosis.
+1. **Not planned: answer opencode permissions over its HTTP channel by id.** Point 7 closes the same
+   window without a second channel, and the bridge makes no outbound call (CLAUDE.md, Security
+   posture). Reopen only if opencode stops drawing a pointer, or if a harness offers a conditional
+   send that makes the style check redundant.

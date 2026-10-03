@@ -65,6 +65,24 @@ describe("api client", () => {
     ]);
   });
 
+  it("adds expected_styled to a keys body only when supplied, beside expected_prompt", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await sendKeys("w1:p1", ["Enter"], undefined, "Approve?", "styled lines");
+    await sendKeys("w1:p1", ["Enter"], undefined, "Approve?");
+
+    expect(bodies).toEqual([
+      { keys: ["Enter"], expected_prompt: "Approve?", expected_styled: "styled lines" },
+      { keys: ["Enter"], expected_prompt: "Approve?" },
+    ]);
+  });
+
   it("returns the structured prompt_changed result instead of throwing on 409", async () => {
     server.use(
       http.post(/\/api\/pane\/[^/]+\/keys$/, () =>
@@ -74,6 +92,31 @@ describe("api client", () => {
         ),
       ),
     );
+    await expect(sendKeys("w1:p1", ["1"], undefined, "Approve?")).resolves.toEqual({
+      ok: false,
+      error: "prompt changed",
+      code: "prompt_changed",
+    });
+  });
+
+  it("keeps the bridge's reason code on the 409 result, and drops one that is not a plain code", async () => {
+    const respond = (reason: string) =>
+      server.use(
+        http.post(/\/api\/pane\/[^/]+\/keys$/, () =>
+          HttpResponse.json(
+            { ok: false, error: "prompt changed", code: "prompt_changed", reason },
+            { status: 409 },
+          ),
+        ),
+      );
+    respond("style_misaligned");
+    await expect(sendKeys("w1:p1", ["1"], undefined, "Approve?")).resolves.toEqual({
+      ok: false,
+      error: "prompt changed",
+      code: "prompt_changed",
+      reason: "style_misaligned",
+    });
+    respond("Approve this command? 1. Yes");
     await expect(sendKeys("w1:p1", ["1"], undefined, "Approve?")).resolves.toEqual({
       ok: false,
       error: "prompt changed",

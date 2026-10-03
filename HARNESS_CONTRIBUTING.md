@@ -193,7 +193,18 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    Build the plan with `pointerWalk`, carry the pointer verbatim in `signature` and blank it in
    `coreSignature`, and never shape a plan to survive a race: the action layer does that for every
    harness. If the pointer is only a style (a background colour), the signature cannot carry it, so
-   the plans do: `promptsEqual` compares them exactly, and the verify read on the phone is the guard. **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
+   the plans do: `promptsEqual` compares them exactly, and the verify read on the phone is the guard.
+   **A grammar whose pointer is only a style MUST also set `styledSignature`**: the canonical styled
+   lines of the same rows as `signature`, from `canonicalStyledLines` in `web/src/lib/styled-region.ts`
+   (call it on the region's StyledLines, never hand-roll a projection). The bridge's text binding
+   cannot see a colour, so the phone sends `styledSignature` as `expected_styled` and the bridge
+   compares the colours of the very read it is about to answer
+   ([ADR 0080](./.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md) point 7). The
+   conformance suite enforces it: for every declared walk pair whose two `signature` strings are equal,
+   both models must carry `styledSignature` and the two must differ, and the bridge's own verifier must
+   find each value in its raw capture and refuse the other capture of the pair. A grammar that draws its
+   pointer as a glyph sets nothing. An older bridge ignores the field and an older phone sends none,
+   so a mixed pair still works. **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
    any text that follows the pointer, such as a detail row under the list, a description of the
    highlighted row or a "(n/m)" position counter. Text that follows the pointer makes the verify step
    see another dialog after every walk, so a walked tap answers `changed` and never commits (the omp

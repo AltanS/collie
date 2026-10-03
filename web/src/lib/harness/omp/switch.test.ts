@@ -741,7 +741,7 @@ describe("tail anchoring", () => {
 });
 
 describe("the grammar claims nothing else in the corpus", () => {
-  it("lifts exactly the twenty-three session-state captures, out of every capture in the corpus (none of them offered only the current model)", () => {
+  it(`lifts exactly the ${LIFTED.length} pinned session-state captures, out of every capture in the corpus (none of them offered only the current model)`, () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
     expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectSwitchPicker(load(name)) !== null);

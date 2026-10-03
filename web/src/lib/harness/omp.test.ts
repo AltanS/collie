@@ -55,14 +55,28 @@ const allOmpModalFixtures = allOmpFixtures.filter(
     name === "omp--tree.txt",
 );
 
+// THE MODEL PICKER COHORT is derived from the directory, not typed: every `omp--v18-4-switch*` capture.
+// The states the grammar declines are the exceptions, and they are a decision with a reason each (see the
+// DECLINED comment below), so THEY stay a typed list. Everything else in the cohort is a session-state
+// capture and must lift; a new one that does not fails conformance and gets filed here by a person.
+const DECLINED_SWITCH = [
+  "omp--v18-4-switch-clipped.txt",
+  "omp--v18-4-switch-nerd.txt",
+  "omp--v18-4-switch-nomatch.txt",
+  "omp--v18-4-switch-quick-roles.txt",
+  "omp--v18-4-switch-task.txt",
+];
+const SWITCH_COHORT = allOmpFixtures.filter((name) => name.startsWith("omp--v18-4-switch"));
+const SWITCH_LIFTED = SWITCH_COHORT.filter((name) => !DECLINED_SWITCH.includes(name));
+
 // The screens this adapter lifts. The `/resume` captures that list at least one session, seven of the
 // eight (`omp--v18-4-resume-nomatch.txt` has no rows and stays raw, below), the Ask tool's
 // one-question single-select dialog in all three keycap dialects: text (17.2.12), Nerd Font (18.4.4)
 // and glyph (18.4.10), and the tool-approval dialog in both captured presets: `nerd` with text keycaps
 // (18.1.17, `bash` and `write`, the latter in both selection states) and `unicode` with glyph keycaps
 // (18.4.10, `bash` and `write` in both selection states, and a fourteen-row `write`), and the compact
-// model picker's session state (18.4.10, twenty-three captures: the pointer moved, wrapped and at both
-// window edges, searches, over-context and truncated rows, role chips, and windows of 16, 15 and 5 rows).
+// model picker's session state (18.4.10: the pointer moved, wrapped and at both window edges, searches,
+// over-context and truncated rows, role chips, and windows of 16, 15 and 5 rows).
 const LIFTED = new Set([
   "omp--menu-resume-moved.txt",
   "omp--menu-resume.txt",
@@ -85,34 +99,15 @@ const LIFTED = new Set([
   "omp--v18-4-approval-write-long.txt",
   "omp--v18-4-approval-write-moved.txt",
   "omp--v18-4-approval-write.txt",
-  "omp--v18-4-switch-moved-up.txt",
-  "omp--v18-4-switch-moved.txt",
-  "omp--v18-4-switch-narrow-moved.txt",
-  "omp--v18-4-switch-narrow.txt",
-  "omp--v18-4-switch-overcontext-moved.txt",
-  "omp--v18-4-switch-overcontext.txt",
-  "omp--v18-4-switch-ptr-fable.txt",
-  "omp--v18-4-switch-ptr-haiku.txt",
-  "omp--v18-4-switch-ptr-opus-current.txt",
-  "omp--v18-4-switch-ptr-sonnet.txt",
-  "omp--v18-4-switch-roles-chips.txt",
-  "omp--v18-4-switch-search-short-moved.txt",
-  "omp--v18-4-switch-search-short.txt",
-  "omp--v18-4-switch-search-son.txt",
-  "omp--v18-4-switch-search.txt",
-  "omp--v18-4-switch-short-pane-scrolled.txt",
-  "omp--v18-4-switch-short-pane.txt",
-  "omp--v18-4-switch-top-edge.txt",
-  "omp--v18-4-switch-top.txt",
-  "omp--v18-4-switch-truncated-pointed.txt",
-  "omp--v18-4-switch-truncated.txt",
-  "omp--v18-4-switch-wrapped.txt",
-  "omp--v18-4-switch.txt",
+  // The compact model picker's session state is DERIVED: every `omp--v18-4-switch*` capture except the
+  // declined states listed in DECLINED_SWITCH. A new capture of it lifts by default, and the conformance
+  // suite fails it loudly if it does not, which is the moment a person files it as declined with a reason.
+  ...SWITCH_LIFTED,
 ]);
 
 // Every omp screen this adapter DECLINES, which is every screen IN THIS CORPUS bar the lifted resume
 // pickers, Ask single-selects, tool approvals and model pickers, not every screen omp can draw. These
-// are NOT "neutral output" in the plain sense: nineteen of them are live modals with the keyboard, and
+// are NOT "neutral output" in the plain sense: many of them are live modals with the keyboard, and
 // the conformance assertion (raw-only) is exactly the promise worth pinning, because it is a promise
 // about a screen where being wrong would type a keystroke. One reason per line.
 const DECLINED = new Set([
@@ -187,17 +182,13 @@ const DECLINED = new Set([
   //   actions under other footers. The Nerd Font preset is uncaptured as a lift and its footer differs by
   //   two glyphs. On a 74-column pane omp clips the footer, so the way out is not on screen at all and
   //   even the Escape card stays off (omp/modal.test.ts).
-  "omp--v18-4-switch-clipped.txt",
-  "omp--v18-4-switch-nerd.txt",
-  "omp--v18-4-switch-nomatch.txt",
-  "omp--v18-4-switch-quick-roles.txt",
-  "omp--v18-4-switch-task.txt",
+  ...DECLINED_SWITCH,
 ]);
 
-// The own cohort is the forty-four lifted captures, so every conformance leg that needs one runs on them
+// The own cohort is the lifted captures, so every conformance leg that needs one runs on them
 // for real: each lifts, none lifts once output scrolls below it, every key is send_keys-valid, and each
 // model signs itself and fails the committing check when a row of it changes. The neutral cohort still
-// carries the leg that matters most here: raw-only on the other 44 omp captures and on every foreign
+// carries the leg that matters most here: raw-only on the other omp captures and on every foreign
 // harness capture.
 const ownFixtures = allOmpFixtures.filter((f) => LIFTED.has(f));
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
@@ -303,11 +294,18 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 88 captures this adapter was developed against", () => {
+  // The list above is the pin and it stays typed: a new capture is filed by a person. The numbers in
+  // the titles are read off it, so they never go stale.
+  it(`is exactly the ${PINNED.length} captures this adapter was developed against`, () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("lifts the forty-four `/resume`, Ask single-select, approval and model picker captures and declines the other forty-four", () => {
+  it("the model picker cohort is not empty, so a prefix typo cannot make its derived entries vanish", () => {
+    expect(SWITCH_COHORT.length).toBeGreaterThan(0);
+    expect(SWITCH_LIFTED.length).toBeGreaterThan(0);
+  });
+
+  it(`lifts the ${ownFixtures.length} \`/resume\`, Ask single-select, approval and model picker captures and declines the other ${neutralFixtures.length}`, () => {
     expect(ownFixtures).toEqual([...LIFTED].toSorted());
     expect([...ownFixtures, ...neutralFixtures].toSorted()).toEqual(PINNED);
     expect(ownFixtures.filter((f) => neutralFixtures.includes(f))).toEqual([]);

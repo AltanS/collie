@@ -114,6 +114,12 @@ export interface DialogComparators<M> {
   signature(m: M): string;
   /** The literal on-screen region text bound to the first write (the bridge's expected prompt). */
   region(m: M): string;
+  /**
+   * The canonical styled lines of the same region (`expected_styled`, ADR 0080 point 7), for a model
+   * whose pointer or another state a tap depends on is visible only as a style. Absent on the kinds
+   * that never carry one, and `undefined` for a model that does not.
+   */
+  styled?(m: M): string | undefined;
 }
 
 /** The shape of the contract table: one row of comparators per interactive block kind. */
@@ -129,6 +135,7 @@ export const DIALOG_CONTRACT: DialogContract = {
     identity: promptsSameIdentity,
     signature: (m) => m.signature,
     region: (m) => m.signature,
+    styled: (m) => m.styledSignature,
   },
   wizard: {
     // Every wizard key commits too — a digit selects AND advances; Left/Right change the step.
