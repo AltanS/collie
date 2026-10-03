@@ -27,6 +27,8 @@ import {
   STALE_TEMP_DIR_MS,
   sweepStaleTempDirs,
   type LocalCliSttDeps,
+  windowsKillCommands,
+  windowsOrphanScript,
 } from "./local-cli.ts";
 import { SttBusyError, SttCancelledError, SttError, type SttAudio } from "./provider.ts";
 
@@ -351,8 +353,14 @@ async function firstAnswer(settings: LocalCliSttSettings): Promise<string | null
 
 const pidIn = (file: string): number => Number(readFileSync(file, "utf8"));
 
-describe("local-cli — the whole process tree goes (POSIX process group)", () => {
-  test.if(posix)("the fixture is real: killing only the parent leaves the grandchild running", async () => {
+/**
+ * How long a killed tree may take to go. POSIX kills the group at once; Windows runs taskkill and
+ * then a PowerShell pass for orphans, and PowerShell alone can take seconds to start.
+ */
+const TREE_GONE_MS = posix ? 5_000 : 30_000;
+
+describe("local-cli — the whole process tree goes (POSIX process group, Windows process tree)", () => {
+  test("the fixture is real: killing only the parent leaves the grandchild running", async () => {
     // What the group kill exists for, shown without it: a plain SIGKILL to the parent orphans the
     // grandchild, which then runs on for its full 30 s.
     const pidFile = join(root, "control.pid");
@@ -368,20 +376,42 @@ describe("local-cli — the whole process tree goes (POSIX process group)", () =
     process.kill(grandchild, "SIGKILL");
   });
 
-  test.if(posix)("the deadline kills the grandchild too", async () => {
+  test("the deadline kills the grandchild too", async () => {
     const pidFile = join(root, "tree-deadline.pid");
     const settings = fakeCommand("tree-deadline", forker(pidFile, "await Bun.sleep(30_000);"));
     const err = await sttFailureOf(createLocalCliSttProvider(settings, deps({ timeoutMs: 1_500 })).transcribe(clip()));
     expect(err.kind).toBe("timeout");
-    await waitUntil(() => !alive(pidIn(pidFile)), 5_000, "the grandchild to die");
+    await waitUntil(() => !alive(pidIn(pidFile)), TREE_GONE_MS, "the grandchild to die");
     expect(tempRootIsEmpty()).toBe(true);
-  });
+  }, 40_000);
 
-  test.if(posix)("a straggler left in the group after a clean exit is killed too", async () => {
+  test("a straggler left behind after a clean exit is killed too", async () => {
     const pidFile = join(root, "tree-clean.pid");
     const settings = fakeCommand("tree-clean", forker(pidFile, `process.stdout.write("done"); process.exit(0);`));
     expect(await createLocalCliSttProvider(settings, deps()).transcribe(clip())).toEqual({ text: "done" });
-    await waitUntil(() => !alive(pidIn(pidFile)), 5_000, "the straggler to die");
+    await waitUntil(() => !alive(pidIn(pidFile)), TREE_GONE_MS, "the straggler to die");
+  }, 40_000);
+
+  test("the Windows kill is two programs by absolute path, as argv, with numbers only in the script", () => {
+    const [taskkill, orphans] = windowsKillCommands(4242, 1_000_000, 2_000_000, { SystemRoot: "D:\\WINNT" });
+    expect(taskkill).toEqual(["D:\\WINNT\\System32\\taskkill.exe", "/PID", "4242", "/T", "/F"]);
+    expect(orphans?.slice(0, 4)).toEqual([
+      "D:\\WINNT\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+    ]);
+    // No SystemRoot: C:\Windows, never a PATH lookup.
+    expect(windowsKillCommands(1, 0, 0, {})[0]?.[0]).toBe("C:\\Windows\\System32\\taskkill.exe");
+    // The window: one second before the spawn to five seconds after the kill, as FILETIME ticks.
+    const script = orphans?.[4] ?? "";
+    expect(script).toContain(`FromFileTimeUtc(${(999_000n + 11_644_473_600_000n) * 10_000n})`);
+    expect(script).toContain(`FromFileTimeUtc(${(2_005_000n + 11_644_473_600_000n) * 10_000n})`);
+    expect(script).toContain("$queue.Enqueue(@(4242, $from, $to))");
+    // Parent pid AND start time decide; then each child's children, started after it.
+    expect(script).toContain("$p.Parent -eq $q[0] -and $p.At -ge $q[1] -and $p.At -le $q[2]");
+    expect(script).toContain("Stop-Process -Id $id -Force");
+    expect(windowsOrphanScript(7, 0, 0)).toBe(windowsKillCommands(7, 1_000, -5_000, {})[1]?.[4] ?? "");
   });
 
   test("on a Windows host the child is spawned without a group and still killed at the deadline", async () => {
@@ -436,6 +466,7 @@ describe("local-cli — at most LOCAL_CLI_MAX_IN_FLIGHT children at once", () =>
 });
 
 describe("local-cli — the command must be a regular, executable file", () => {
+  // POSIX only: Windows has no executable bit, and making a symlink there needs a privilege.
   test.if(posix)("commandFileProblem: regular executable passes, symlinks are followed", () => {
     const dir = mkdtempSync(join(root, "cmd-"));
     const exe = join(dir, "engine");
@@ -460,6 +491,7 @@ describe("local-cli — the command must be a regular, executable file", () => {
     if (existsSync("/dev/null")) expect(commandFileProblem("/dev/null")).toBe("is not a regular file");
   });
 
+  // POSIX only: the non-executable half has no Windows meaning (no executable bit).
   test.if(posix)("status refuses a directory and a non-executable file, and names neither", async () => {
     const dir = mkdtempSync(join(root, "status-"));
     const plain = join(dir, "plain");
@@ -479,6 +511,7 @@ describe("local-cli — stale temp dirs from a killed bridge", () => {
     utimesSync(path, then, then);
   };
 
+  // POSIX only: the sweep proves ownership by uid, which Windows does not have ("no uid" below).
   test.if(posix)("only an old directory with the prefix, owned by this user, is removed", async () => {
     const sweepRoot = mkdtempSync(join(root, "sweep-"));
     const stale = join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}stale`);
@@ -521,6 +554,7 @@ describe("local-cli — stale temp dirs from a killed bridge", () => {
     expect(existsSync(stale)).toBe(true);
   });
 
+  // POSIX only: on Windows the sweep removes nothing (no uid), so there is nothing to see it do.
   test.if(posix)("loading the provider sweeps its temp root once, in the background", async () => {
     const sweepRoot = mkdtempSync(join(root, "sweep-load-"));
     const stale = join(sweepRoot, `${LOCAL_CLI_TEMP_PREFIX}left-behind`);

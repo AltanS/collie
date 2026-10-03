@@ -316,3 +316,6 @@ Plain list, so nothing here reads as a promise:
 - A second Collie's task being refused, covered by unit tests only.
 - Whether Explorer sees the new PATH without a sign-out, and a PATH edit by a standard user.
 - A build from source on a machine where Smart App Control is on.
+- The `local-cli` voice provider with a real engine. Its cleanup was tested with a test command:
+  Collie ends the command's process tree, but a process started by a helper that has already exited
+  can outlive it ([Voice input and Web Push](voice-and-push.md#run-your-own-command-the-local-cli-provider)).

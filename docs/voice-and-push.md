@@ -197,7 +197,9 @@ What the command must do:
 - Leave nothing running. When the command exits, Collie kills any process it started that is still
   there. A helper that must stay up has to start its own session, for example with `setsid`.
 
-On Windows, Collie kills only the command itself, so a process it started can outlive it.
+On Windows, Collie ends the command's whole process tree at the same moments, and after a clean exit
+it ends any process the command started that is still running. One case is left: a process
+started by a helper that has already exited can outlive the command.
 
 At most two dictations run the command at the same time. A third gets the same "busy" answer the
 phone already knows, and Collie starts nothing for it.

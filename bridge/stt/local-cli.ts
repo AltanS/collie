@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST, type Host } from "../host.ts";
+import { systemTool } from "../icacls.ts";
 import { commandLookup, type LocalCliSttSettings } from "./config.ts";
 import { MAX_CONCURRENT_STT } from "./http.ts";
 import {
@@ -45,10 +46,16 @@ import { MAX_PROVIDER_RESPONSE_BYTES, readCapped } from "./transcript.ts";
 //     engine runs as ITS child would otherwise leave the engine running after the wrapper died. The
 //     group is also killed after a clean exit, so nothing the command left behind in its group
 //     outlives the call; a helper that means to stay must leave the group (`setsid`), as daemons do.
-//     On Windows there is no process group to kill by a negative pid, so there only the child itself
-//     is killed, and a grandchild it started may outlive it.
-//   • a capped stdout — the same 256 KiB as an HTTP answer, refused mid-stream, and the group is
-//     killed at that moment, not at the deadline.
+//     Windows has no process group to kill by a negative pid, so there the kill goes by PROCESS
+//     TREE: `taskkill /PID <pid> /T /F`, by its absolute `%SystemRoot%\System32` path and as argv,
+//     ends the command and every live process below it; then one PowerShell pass ends what the
+//     command left behind after it exited, found by parent pid and by a start time inside the call
+//     (so a reused pid is never taken for ours). Both run in the background, bounded, and never
+//     throw. The one gap: a process whose own parent had already exited, and was not the command
+//     itself, has no parent left to be found by.
+//   • a capped stdout — the same 256 KiB as an HTTP answer, refused mid-stream, and the group (the
+//     tree, on Windows) is killed at that moment, not at the deadline. The cap and the in-flight cap
+//     below behave the same on every platform.
 //   • a cap of its own on children in flight — {@link LOCAL_CLI_MAX_IN_FLIGHT}, refused before any
 //     temp file or spawn — and a slot is only given back once the child has exited.
 //   • a command that is a regular, executable file — checked by `status()` and by `collie stt`.
@@ -112,7 +119,10 @@ export class LocalCliEmptyTranscriptError extends SttError {
 interface LocalCliChild {
   readonly stdout: ReadableStream<Uint8Array>;
   readonly exited: Promise<number>;
-  /** SIGKILL the child's whole process group (POSIX), or the child alone (Windows). Never throws. */
+  /**
+   * SIGKILL the child's whole process group (POSIX), or end its process tree (Windows: `taskkill /T`,
+   * then the orphan pass). Never throws, and on Windows never waits.
+   */
   killTree(): void;
 }
 
@@ -231,30 +241,103 @@ export function createLocalCliSttProvider(
  * On POSIX the child is `detached`, which makes it the leader of a new process group (its pgid is
  * its pid), so `kill(-pid)` reaches everything it forked that did not leave the group. On Windows
  * `detached` means a new console and a negative pid means nothing, so the child is spawned as before
- * and only the child is killed: the documented limit of this provider there.
+ * and its tree is ended by {@link windowsTreeKill}, once, whichever of the deadline, the stdout cap
+ * or the clean exit asks first.
  */
 function spawnCommand(argv: string[], cwd: string, env: Record<string, string>, host: Host): LocalCliChild {
   const group = host.platform !== "win32";
+  const startedAt = Date.now();
   const proc = Bun.spawn(argv, { cwd, env, stdin: "ignore", stdout: "pipe", stderr: "ignore", detached: group });
+  let treeKilled = false;
   return {
     stdout: proc.stdout,
     exited: proc.exited,
     killTree() {
-      if (group) {
+      const leader = (): void => {
         try {
-          process.kill(-proc.pid, "SIGKILL");
+          // The leader itself, in case the group or tree kill was refused; a no-op once it has exited.
+          proc.kill("SIGKILL");
         } catch {
-          /* ESRCH: the group is already empty */
+          /* already gone */
         }
+      };
+      if (!group) {
+        // taskkill walks the tree from the live command, so the command is killed after it, not before.
+        if (treeKilled) return;
+        treeKilled = true;
+        windowsTreeKill(proc.pid, startedAt, env, leader);
+        return;
       }
       try {
-        // The leader itself, in case the group kill was refused; a no-op once it has exited.
-        proc.kill("SIGKILL");
+        process.kill(-proc.pid, "SIGKILL");
       } catch {
-        /* already gone */
+        /* ESRCH: the group is already empty */
       }
+      leader();
     },
   };
+}
+
+/** How long each of the two Windows kill programs may run before it is itself ended. */
+export const WINDOWS_KILL_TIMEOUT_MS = 15_000;
+
+/** Milliseconds since the epoch as a Windows FILETIME (100 ns ticks since 1601), for PowerShell. */
+const fileTime = (ms: number): string => ((BigInt(Math.floor(ms)) + 11_644_473_600_000n) * 10_000n).toString();
+
+/**
+ * The PowerShell pass that ends what the command left behind. One snapshot of the process table,
+ * taken before anything is killed; from it, every process whose parent is `pid` and that started
+ * between `fromMs` and `toMs` (the call's own window, so a process of a later owner of a reused pid
+ * is never taken), then their children, and theirs, each started after its parent. Numbers only are
+ * spliced in, so nothing from the operator's settings reaches the script.
+ */
+export function windowsOrphanScript(pid: number, fromMs: number, toMs: number): string {
+  return [
+    `$from = [datetime]::FromFileTimeUtc(${fileTime(fromMs)}); $to = [datetime]::FromFileTimeUtc(${fileTime(toMs)})`,
+    "$all = @(Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ Id = [int]$_.ProcessId; Parent = [int]$_.ParentProcessId; At = $_.CreationDate.ToUniversalTime() } })",
+    `$queue = New-Object System.Collections.Queue; $queue.Enqueue(@(${pid}, $from, $to)); $found = @{}`,
+    "while ($queue.Count -gt 0) { $q = $queue.Dequeue(); foreach ($p in $all) { if ($p.Parent -eq $q[0] -and $p.At -ge $q[1] -and $p.At -le $q[2] -and -not $found.ContainsKey($p.Id)) { $found[$p.Id] = $true; $queue.Enqueue(@($p.Id, $p.At, [datetime]::MaxValue)) } } }",
+    "foreach ($id in $found.Keys) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }",
+  ].join("; ");
+}
+
+/**
+ * The two programs that end a Windows command's tree, as argv with absolute paths (never a PATH
+ * lookup): `taskkill /T /F` for the live tree, then the orphan pass. `toMs` has a few seconds of
+ * slack past now, for a grandchild started in the instant before the kill.
+ */
+export function windowsKillCommands(pid: number, startedAt: number, now: number, env: Readonly<Record<string, string | undefined>>): string[][] {
+  return [
+    [systemTool(env, "taskkill.exe"), "/PID", String(pid), "/T", "/F"],
+    [
+      systemTool(env, "WindowsPowerShell", "v1.0", "powershell.exe"),
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      windowsOrphanScript(pid, startedAt - 1_000, now + 5_000),
+    ],
+  ];
+}
+
+/**
+ * Run {@link windowsKillCommands} one after the other, in the background, and kill the command
+ * itself (`leader`) right after taskkill, as the POSIX path does after its group kill. Never throws,
+ * never waits.
+ */
+function windowsTreeKill(pid: number, startedAt: number, env: Readonly<Record<string, string | undefined>>, leader: () => void): void {
+  const [taskkill, orphans] = windowsKillCommands(pid, startedAt, Date.now(), env);
+  const run = async (argv: string[] | undefined): Promise<void> => {
+    if (argv === undefined) return;
+    try {
+      const p = Bun.spawn(argv, { stdin: "ignore", stdout: "ignore", stderr: "ignore", timeout: WINDOWS_KILL_TIMEOUT_MS });
+      await p.exited;
+    } catch {
+      /* no taskkill or no PowerShell: the child itself is still killed below */
+    }
+  };
+  void run(taskkill)
+    .then(leader)
+    .then(() => run(orphans));
 }
 
 /**
