@@ -143,6 +143,11 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
   manual step: `collie uninstall`, then `install.ps1`. After that `collie update` works. This route
   was not rehearsed. Separately, releases up to and including v1.15.0 cannot swap a running
   `collie.exe` (fixed by PR #309 in v1.15.1).
+- **A Windows host refuses the crew verbs in code.** `crew invite`, `crew join`, `crew add`,
+  `crew deputy`, `crew approve-promote` and `collie promote` stop with one sentence and change
+  nothing. The bridge's `POST /crew/v1/enroll` is left as it is, because it only spends an invite
+  those verbs mint, so only a trust store copied from Linux with an unexpired invite could still
+  enrol a member.
 - **The first real tag is the first real test of the release job.** A rehearsal rc tag of the real
   `release.yml` has not run.
 - **Open follow-ups, none of them part of this decision:** a stable launcher outside `versions\`

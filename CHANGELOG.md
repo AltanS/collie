@@ -100,6 +100,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the Spaces list shows that space and the worktrees of its repo. Tap All and every space is back.
   Thanks @dantebarba (#338).
 - **On Windows (experimental): `collie crew invite`, `crew join` and `crew add` refuse at once.** A Windows machine cannot join a crew or take in a member in this release. The three verbs, and the old `collie join`, say so in one sentence, exit with an error and change nothing. `crew status` and `crew leave` still work, so crew state copied from another machine can be read and dropped.
+- **On Windows (experimental): the crew verbs that join, lead or change a crew refuse at once.** A Windows machine cannot join, lead or change a crew in this release. `collie crew invite`, `crew join` (and the old `collie join`), `crew add`, `crew deputy`, `crew approve-promote` and `collie promote` say so in one sentence that points at docs/windows.md, exit with an error and change nothing. `crew status` and `crew leave` still work, so crew state copied from another machine can be read and dropped.
 
 ### Fixed
 

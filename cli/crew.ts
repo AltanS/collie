@@ -612,13 +612,14 @@ async function clearOwnHerdTags(deps: CrewDeps): Promise<void> {
 // ── Windows runs alone (M43) ─────────────────────────────────────────────────
 
 /**
- * Why `crew invite`, `crew join` and `crew add` refuse on Windows. Those are the verbs that put this
- * machine into a crew or take a member in; nothing about a crew was checked on Windows in this
- * release. The verbs that read or leave a crew stay open, so a store carried over can still be
- * inspected and dropped.
+ * Why the verbs that form a crew or change who leads it refuse on Windows: `crew invite`, `crew join`
+ * (and `collie join`), `crew add`, `crew deputy`, `crew approve-promote` and `collie promote`. They
+ * put this machine into a crew, take a member in, or hand the lead to someone; nothing about a crew
+ * was checked on Windows in this release. The verbs that read or leave a crew stay open, so a store
+ * carried over can still be inspected and dropped.
  */
 export const WINDOWS_CREW_SENTENCE =
-  "On Windows, collie runs alone: a Windows machine cannot join a crew or take in a member in this release, and nothing was changed.";
+  "On Windows, Collie runs on one machine only: a Windows machine cannot join, lead or change a crew in this release, and nothing was changed. See docs/windows.md.";
 
 /**
  * Refuse a crew-forming verb on a Windows host, before any argument, store, network or terminal is
@@ -2097,6 +2098,7 @@ export async function cmdCrewSetAddress(deps: CrewDeps, args: readonly string[])
  * the consent. Same for `--cancel`: the bridge must *forget* it, which is the same mechanism.
  */
 export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly string[]): Promise<number> {
+  if (refuseCrewOnWindows(deps)) return EXIT.FAIL;
   // `cancel` is a BARE flag. Anything else and `--cancel` would swallow the following token as its
   // value — which, on a verb whose one argument is a member id, silently approves nobody.
   const { positional, bare } = parseCrewArgs(args, ["force", "cancel"]);
@@ -2166,6 +2168,7 @@ export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly strin
  * lead is gone.
  */
 export async function cmdPromote(deps: CrewDeps, args: readonly string[]): Promise<number> {
+  if (refuseCrewOnWindows(deps)) return EXIT.FAIL;
   const { flags, bare } = parseCrewArgs(args);
   const force = bare.has("force");
   const data = await deps.store.load();

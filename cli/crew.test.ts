@@ -449,6 +449,11 @@ describe("on a Windows host, the verbs that form a crew refuse and change nothin
     ["collie crew join", (h) => cmdCrew(h.deps, ["join", "desk.ts.net", "-"]), null],
     ["collie crew invite", (h) => cmdCrew(h.deps, ["invite"]), leadStore()],
     ["collie crew add", (h) => cmdCrew(h.deps, ["add", "nas.example"]), leadStore()],
+    // The verbs that change who leads: name a deputy, consent to a promotion, take the lead.
+    ["collie crew deputy", (h) => cmdCrew(h.deps, ["deputy", "peer"]), leadStore()],
+    ["collie crew deputy --revoke", (h) => cmdCrew(h.deps, ["deputy", "--revoke"]), leadStore()],
+    ["collie crew approve-promote", (h) => cmdCrew(h.deps, ["approve-promote", "peer"]), leadStore()],
+    ["collie promote", (h) => cmdPromote(h.deps, ["--force"]), peerStore()],
   ];
 
   for (const [name, verb, initial] of forming) {
@@ -470,7 +475,7 @@ describe("on a Windows host, the verbs that form a crew refuse and change nothin
 
   test("the sentence is the one the operator reads, word for word", () => {
     expect(WINDOWS_CREW_SENTENCE).toBe(
-      "On Windows, collie runs alone: a Windows machine cannot join a crew or take in a member in this release, and nothing was changed.",
+      "On Windows, Collie runs on one machine only: a Windows machine cannot join, lead or change a crew in this release, and nothing was changed. See docs/windows.md.",
     );
   });
 

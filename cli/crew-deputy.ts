@@ -4,7 +4,7 @@ import type { TrustedMember, TrustStoreData, Warrant } from "../bridge/crew/trus
 import { commitCrewChange } from "../bridge/crew/enrollment.ts";
 import { currentWarrant, mintWarrant, warrantExpired, type WarrantPush } from "../bridge/crew/warrant.ts";
 import { EXIT } from "./io.ts";
-import { clientFor, failureLine, linkOf, parseCrewArgs } from "./crew.ts";
+import { clientFor, failureLine, linkOf, parseCrewArgs, refuseCrewOnWindows } from "./crew.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { firstLine, restartScript, runProbe, transportFailure, type CrewAddDeps, type RemoteRunner } from "./remote.ts";
 
@@ -91,6 +91,7 @@ interface Planned {
  * mint itself could not be committed or the run was not interactive.
  */
 export async function cmdCrewDeputy(deps: CrewAddDeps, args: readonly string[]): Promise<number> {
+  if (refuseCrewOnWindows(deps)) return EXIT.FAIL;
   const { positional, bare } = parseCrewArgs(args, ["force", "revoke"]);
   const revoking = bare.has("revoke");
 
