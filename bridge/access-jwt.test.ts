@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "./json.ts";
 import {
   ACCESS_JWT_HEADER,
+  accessConfigProblem,
   accessExempt,
   accessIssuer,
   createAccessGate,
@@ -82,23 +83,32 @@ function gateWith(jwks: Certs, team = "myteam", aud = [AUD]) {
   let fetches = 0;
   let now = NOW_S * 1000;
   const urls: string[] = [];
+  const inits: (RequestInit | undefined)[] = [];
+  const logs: string[] = [];
+  const scheduled: number[] = [];
   const gate = createAccessGate(
     { accessTeam: team, accessAud: aud },
     {
-      fetch: async (url) => {
+      fetch: async (url, init) => {
         fetches++;
         urls.push(url);
+        inits.push(init);
+        // A tick, so concurrent callers really do overlap the fetch in flight.
+        await Bun.sleep(1);
         return new Response(JSON.stringify(jwks.current), { status: jwks.status ?? 200 });
       },
       nowMs: () => now,
-      log: () => {},
-      schedule: () => {},
+      log: (l) => logs.push(l),
+      schedule: (_fn, ms) => scheduled.push(ms),
     },
   );
   if (gate === null) throw new Error("the gate is configured in every caller");
   return {
     gate,
     urls,
+    inits,
+    logs,
+    scheduled,
     fetches: () => fetches,
     advance: (ms: number) => {
       now += ms;
@@ -117,6 +127,38 @@ describe("accessIssuer", () => {
     expect(accessIssuer("http://myteam.cloudflareaccess.com")).toBeNull();
     expect(accessIssuer("https://myteam.cloudflareaccess.com/cdn-cgi/access/certs")).toBeNull();
     expect(accessIssuer("my team")).toBeNull();
+  });
+  // The team becomes the host the keys are fetched from, so nothing may steer that host.
+  test("refuses every value that could point the key fetch at another host", () => {
+    for (const bad of [
+      "evil.com/x?",
+      "evil.com",
+      "a.cloudflareaccess.com.evil.com",
+      "https://a.cloudflareaccess.com.evil.com",
+      "a@b",
+      "https://user@myteam.cloudflareaccess.com",
+      "https://user:pw@myteam.cloudflareaccess.com",
+      "https://myteam.cloudflareaccess.com:8443",
+      "myteam.cloudflareaccess.com:443",
+      "https://myteam.cloudflareaccess.com/x",
+      "https://myteam.cloudflareaccess.com/?a=1",
+      "https://myteam.cloudflareaccess.com#x",
+      "myteam.cloudflareaccess.com/",
+      "a.b.cloudflareaccess.com",
+      "-myteam",
+      "myteam-",
+      "x".repeat(64),
+      "https://evil.com",
+      "ftp://myteam.cloudflareaccess.com",
+    ]) {
+      expect(accessIssuer(bad)).toBeNull();
+    }
+    expect(accessIssuer("x".repeat(63))).toBe(`https://${"x".repeat(63)}.cloudflareaccess.com`);
+  });
+  test("a bad team is half a configuration: the gate refuses everything", async () => {
+    const gate = createAccessGate({ accessTeam: "evil.com/x?", accessAud: [AUD] }, { log: () => {}, schedule: () => {} })!;
+    expect(gate.configured).toBe(false);
+    expect((await gate.admit(tunnelReq("/", { [ACCESS_JWT_HEADER]: "x" }), "/"))?.status).toBe(503);
   });
 });
 
@@ -173,13 +215,60 @@ describe("verifyAccessToken", () => {
     });
   });
 
-  test("alg none and HS256 are refused before any key is used", async () => {
+  test("alg is pinned to RS256 before any key is looked at", async () => {
     const p = b64url(JSON.stringify(claims()));
-    const none = `${b64url(JSON.stringify({ alg: "none", kid: "kid-a" }))}.${p}.`;
-    const hs = `${b64url(JSON.stringify({ alg: "HS256", kid: "kid-a" }))}.${p}.${b64url("x")}`;
     const keys = await keysOf(A);
-    expect(await verifyAccessToken(none, keys, expect_)).toEqual({ ok: false, reason: "malformed" });
-    expect(await verifyAccessToken(hs, keys, expect_)).toEqual({ ok: false, reason: "alg" });
+    const withAlg = (header: JsonObject, sig: string) => `${b64url(JSON.stringify(header))}.${p}.${sig}`;
+    for (const header of [
+      { alg: "none", kid: "kid-a" },
+      { alg: "HS256", kid: "kid-a" },
+      { alg: "RS512", kid: "kid-a" },
+      { alg: "rs256", kid: "kid-a" },
+      { kid: "kid-a" },
+      // An unknown kid still answers `alg`, not `unknown-kid`: the alg check comes first.
+      { alg: "HS256", kid: "kid-nobody" },
+    ]) {
+      expect(await verifyAccessToken(withAlg(header, ""), keys, expect_)).toEqual({ ok: false, reason: "alg" });
+      expect(await verifyAccessToken(withAlg(header, b64url("x")), keys, expect_)).toEqual({ ok: false, reason: "alg" });
+    }
+    // A real RS256 signature under a header claiming RS512 is still refused.
+    const rs512 = await A.sign({ alg: "RS512", kid: "kid-a" }, claims());
+    expect(await verifyAccessToken(rs512, keys, expect_)).toEqual({ ok: false, reason: "alg" });
+  });
+
+  test("the kid must match exactly: no kid, or a near miss, never falls back to the only key", async () => {
+    const keys = await keysOf(A);
+    for (const header of [{ alg: "RS256" }, { alg: "RS256", kid: "KID-A" }, { alg: "RS256", kid: "kid-a " }, { alg: "RS256", kid: 1 }]) {
+      const t = await A.sign(header, claims());
+      expect(await verifyAccessToken(t, keys, expect_)).toEqual({ ok: false, reason: "unknown-kid" });
+    }
+  });
+
+  test("iss must match exactly", async () => {
+    const keys = await keysOf(A);
+    for (const iss of [`${ISS}/`, "https://MYTEAM.cloudflareaccess.com", "http://myteam.cloudflareaccess.com", undefined]) {
+      expect(await verifyAccessToken(await good({ iss }), keys, expect_)).toEqual({ ok: false, reason: "iss" });
+    }
+  });
+
+  test("aud: an array holding the tag passes, a string or array without it fails", async () => {
+    const keys = await keysOf(A);
+    expect(await verifyAccessToken(await good({ aud: ["other", AUD] }), keys, expect_)).toEqual({ ok: true });
+    expect(await verifyAccessToken(await good({ aud: "other" }), keys, expect_)).toEqual({ ok: false, reason: "aud" });
+    expect(await verifyAccessToken(await good({ aud: [] }), keys, expect_)).toEqual({ ok: false, reason: "aud" });
+    expect(await verifyAccessToken(await good({ aud: undefined }), keys, expect_)).toEqual({ ok: false, reason: "aud" });
+  });
+
+  test("exp and nbf share the same minute of skew; nbf is optional", async () => {
+    const keys = await keysOf(A);
+    const v = async (over: JsonObject) => verifyAccessToken(await good(over), keys, expect_);
+    expect(await v({ exp: NOW_S - 30 })).toEqual({ ok: true });
+    expect(await v({ exp: NOW_S - 60 })).toEqual({ ok: false, reason: "exp" });
+    expect(await v({ exp: String(NOW_S + 600) })).toEqual({ ok: false, reason: "exp" });
+    expect(await v({ nbf: NOW_S + 30 })).toEqual({ ok: true });
+    expect(await v({ nbf: NOW_S + 61 })).toEqual({ ok: false, reason: "nbf" });
+    expect(await v({ nbf: String(NOW_S) })).toEqual({ ok: false, reason: "nbf" });
+    expect(await v({ nbf: undefined })).toEqual({ ok: true });
   });
 
   test("garbage is malformed, not a throw", async () => {
@@ -196,6 +285,11 @@ describe("importAccessKeys", () => {
       keys: [A.jwk, { kty: "EC", kid: "ec" }, { ...B.jwk, alg: "RS512" }, { ...B.jwk, kid: undefined }, null],
       public_cert: { kid: "ignored" },
     });
+    expect([...keys.keys()]).toEqual(["kid-a"]);
+  });
+  test("reads keys only; public_cert and public_certs never become keys", async () => {
+    expect((await importAccessKeys({ public_cert: B.jwk, public_certs: [B.jwk] })).size).toBe(0);
+    const keys = await importAccessKeys({ keys: [A.jwk], public_cert: B.jwk, public_certs: [B.jwk] });
     expect([...keys.keys()]).toEqual(["kid-a"]);
   });
   test("a body without keys yields none", async () => {
@@ -222,6 +316,18 @@ describe("accessExempt", () => {
     const r = new Request("http://127.0.0.1:8787/", { headers: { host: "collie.example.com" } });
     expect(accessExempt(r, "/")).toBe(false);
   });
+  test("a tunnel with httpHostHeader: localhost is still gated, because the edge stamps cf-ray", () => {
+    const r = new Request("http://127.0.0.1:8787/", {
+      headers: { host: "localhost", "cf-ray": "8f00-FRA", "cf-connecting-ip": "203.0.113.9" },
+    });
+    expect(accessExempt(r, "/")).toBe(false);
+  });
+  test("a loopback Host with any forwarding header is NOT local, even with no cf-* header", () => {
+    for (const h of ["x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "x-real-ip"]) {
+      const r = new Request("http://127.0.0.1:8787/api/snapshot", { headers: { host: "127.0.0.1:8787", [h]: "x" } });
+      expect(accessExempt(r, "/api/snapshot")).toBe(false);
+    }
+  });
 });
 
 describe("AccessGate", () => {
@@ -234,6 +340,126 @@ describe("AccessGate", () => {
     const g = gateWith({ current: { keys: [A.jwk] } });
     await g.gate.refresh();
     expect(g.urls).toEqual(["https://myteam.cloudflareaccess.com/cdn-cgi/access/certs"]);
+  });
+
+  test("a loopback Host behind a forwarding proxy and no token is refused", async () => {
+    const g = gateWith({ current: { keys: [A.jwk] } });
+    await g.gate.refresh();
+    const r = new Request("http://127.0.0.1:8787/api/snapshot", {
+      headers: { host: "127.0.0.1:8787", "x-forwarded-for": "100.64.0.7" },
+    });
+    expect((await g.gate.admit(r, "/api/snapshot"))?.status).toBe(401);
+  });
+
+  // `tailscale serve` on a host that also runs the tunnel: tailnet Host, X-Forwarded-For, no cf-*.
+  // With Access configured that door needs a token too, and a browser on the tailnet has none.
+  test("a tailnet request (bluefin:8788, X-Forwarded-For, no token) is refused with 401", async () => {
+    const g = gateWith({ current: { keys: [A.jwk] } });
+    await g.gate.refresh();
+    const r = new Request("http://127.0.0.1:8788/api/snapshot", {
+      headers: { host: "bluefin:8788", "x-forwarded-for": "100.64.0.7" },
+    });
+    expect(accessExempt(r, "/api/snapshot")).toBe(false);
+    expect((await g.gate.admit(r, "/api/snapshot"))?.status).toBe(401);
+  });
+
+  test("half a configuration logs one line naming the missing setting, and never the tag", () => {
+    for (const [s, needle] of [
+      [{ accessTeam: "myteam", accessAud: [] }, "COLLIE_ACCESS_AUD is not"],
+      [{ accessTeam: "", accessAud: [AUD] }, "COLLIE_ACCESS_TEAM is not"],
+      [{ accessTeam: "evil.com/x?", accessAud: [AUD] }, "COLLIE_ACCESS_TEAM is not a Cloudflare Access team"],
+    ] as const) {
+      expect(accessConfigProblem(s)).toContain(needle);
+      const logs: string[] = [];
+      createAccessGate(s, { log: (l) => logs.push(l), schedule: () => {} })!.start();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toContain(needle);
+      expect(logs[0]).not.toContain(AUD);
+    }
+    expect(accessConfigProblem({ accessTeam: "myteam", accessAud: [AUD] })).toBeNull();
+  });
+
+  test("the first key load failure logs one ERROR line; retries stay quiet; recovery logs armed", async () => {
+    const jwks: Certs = { current: {}, status: 500 };
+    const g = gateWith(jwks);
+    await g.gate.refresh();
+    await g.gate.refresh();
+    await g.gate.refresh();
+    expect(g.logs).toHaveLength(1);
+    expect(g.logs[0]).toContain("ERROR");
+    expect(g.logs[0]).toContain("HTTP 500");
+    expect(g.logs[0]).not.toContain(AUD);
+    jwks.current = { keys: [A.jwk] };
+    jwks.status = 200;
+    await g.gate.refresh();
+    expect(g.logs).toHaveLength(2);
+    expect(g.logs[1]).toContain("armed");
+  });
+
+  test("the certs fetch refuses redirects and carries a 5 s timeout", async () => {
+    const g = gateWith({ current: { keys: [A.jwk] } });
+    await g.gate.refresh();
+    expect(g.inits[0]?.redirect).toBe("error");
+    expect(g.inits[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("a redirected or oversized certs answer is a failed load", async () => {
+    const big = JSON.stringify({ keys: [A.jwk], pad: "x".repeat(70 * 1024) });
+    for (const make of [
+      () => {
+        const r = new Response(JSON.stringify({ keys: [A.jwk] }));
+        Object.defineProperty(r, "redirected", { value: true });
+        return r;
+      },
+      () => new Response(big),
+      // A streamed body with no Content-Length is cut off at the cap too.
+      () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode(big));
+              c.close();
+            },
+          }),
+        ),
+      () => new Response(null, { status: 302, headers: { location: "https://evil.example/certs" } }),
+    ]) {
+      const gate = createAccessGate(
+        { accessTeam: "myteam", accessAud: [AUD] },
+        { fetch: async () => make(), log: () => {}, schedule: () => {}, nowMs: () => NOW_S * 1000 },
+      )!;
+      expect(await gate.refresh()).toBe(false);
+    }
+  });
+
+  test("a failed start retries on its own 2 s rung, not the 30 s unknown-kid window", async () => {
+    const jwks: Certs = { current: {}, status: 500 };
+    const g = gateWith(jwks);
+    g.gate.start();
+    await Bun.sleep(5);
+    expect(g.scheduled).toEqual([2_000]);
+    jwks.current = { keys: [A.jwk] };
+    jwks.status = 200;
+    // A request two seconds later nudges a fetch of its own and is admitted.
+    g.advance(2_000);
+    expect(await g.gate.admit(tunnelReq("/", { [ACCESS_JWT_HEADER]: await good() }), "/")).toBeNull();
+    expect(g.fetches()).toBe(2);
+  });
+
+  test("N concurrent garbage-kid requests cause one fetch, and none for 30 s after", async () => {
+    const g = gateWith({ current: { keys: [A.jwk] } });
+    await g.gate.refresh();
+    g.advance(31_000);
+    const garbage = (i: number) =>
+      `${b64url(JSON.stringify({ alg: "RS256", kid: `junk-${i}` }))}.${b64url("{}")}.${b64url("x")}`;
+    const answers = await Promise.all(
+      Array.from({ length: 50 }, (_, i) => g.gate.admit(tunnelReq("/", { [ACCESS_JWT_HEADER]: garbage(i) }), "/")),
+    );
+    expect(answers.every((a) => a?.status === 401)).toBe(true);
+    expect(g.fetches()).toBe(2);
+    g.advance(29_000);
+    await g.gate.admit(tunnelReq("/", { [ACCESS_JWT_HEADER]: garbage(99) }), "/");
+    expect(g.fetches()).toBe(2);
   });
 
   test("half a configuration refuses every tunnel request (fail closed)", async () => {
@@ -275,9 +501,9 @@ describe("AccessGate", () => {
     expect((await req())?.status).toBe(503);
     jwks.current = { keys: [A.jwk] };
     jwks.status = 200;
-    // Within the throttle window no refetch happens, so still closed.
+    // Within the cold-start rung no refetch happens, so still closed.
     expect((await req())?.status).toBe(503);
-    g.advance(31_000);
+    g.advance(2_000);
     expect(await req()).toBeNull();
   });
 
@@ -327,4 +553,8 @@ test("server.ts consults the Access gate before the deposed page and the routes"
   expect(gate).toBeGreaterThan(peer);
   expect(deposed).toBeGreaterThan(gate);
   expect(health).toBeGreaterThan(gate);
+  // ADR 0081 says the gate checks every request, including each poll, because the bridge holds no
+  // stream open. A WebSocket upgrade or an event stream would be checked once, at connect, and keep
+  // running past the token's expiry: adding one must revisit the ADR, and this line fails first.
+  expect(src).not.toMatch(/\.upgrade\(|websocket\s*:|text\/event-stream/);
 });

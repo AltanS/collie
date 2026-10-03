@@ -257,6 +257,10 @@ export default defineConfig({
       // Registration is done manually in main.tsx via the `virtual:pwa-register` module (a bundled,
       // same-origin script) so we never inject an inline <script>, which the strict CSP blocks.
       injectRegister: false,
+      // `crossorigin="use-credentials"` on the manifest <link>: browsers fetch a manifest without
+      // cookies by default, so behind Cloudflare Access the request never reaches Collie and the app
+      // cannot install (#341, ADR 0081). Same-origin everywhere else, so no other door notices.
+      useCredentials: true,
       registerType: "autoUpdate",
       strategies: "injectManifest",
       srcDir: "src",
