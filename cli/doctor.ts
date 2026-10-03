@@ -887,11 +887,42 @@ function acl(deps: DoctorDeps): Finding {
 }
 
 /**
+ * On Windows Collie publishes no front door (M43 spec 09, docs/windows.md): the operator runs
+ * `tailscale serve` by hand, so a remedy that says `collie serve` sends them to the wrong place.
+ * The by-hand command lives here, once; every Windows remedy below builds on it.
+ */
+const tailscaleServeByHand = (port: number): string => `\`tailscale serve --bg --set-path=/ ${port}\``;
+
+/**
+ * Collie records no mapping on Windows, so a hand-made one leaves every tailnet device free to use
+ * Collie until a device is paired. The remedies that publish say to pair right away.
+ */
+const WINDOWS_PAIR_NOW = "pair a device right away";
+
+const windowsPublishRemedy = (port: number): string =>
+  `run ${tailscaleServeByHand(port)} in PowerShell, then ${WINDOWS_PAIR_NOW}: until then every tailnet` +
+  " device can use Collie (docs/windows.md); or set COLLIE_SKIP_SERVE=1 if you own the ingress";
+
+const windowsHttpsDisabledHint = (port: number): string =>
+  'enable HTTPS in the admin console (https://login.tailscale.com/admin/dns, "Enable HTTPS"), then run' +
+  ` ${tailscaleServeByHand(port)} again; on a Headscale tailnet (a self-hosted Tailscale server) use` +
+  ` \`tailscale serve --bg --http=80 --set-path=/ ${port}\`; ${WINDOWS_PAIR_NOW} after you publish (docs/windows.md)`;
+
+const windowsStatusUnreadableRemedy = (port: number): string =>
+  `run \`tailscale serve status\` by hand; if no / mapping to port ${port} shows, run` +
+  ` ${tailscaleServeByHand(port)} (docs/windows.md)`;
+
+const windowsOccupiedRemedy = (port: number): string =>
+  "run `tailscale serve status` to see what owns that listener; free it, or point Collie elsewhere, then run" +
+  ` ${tailscaleServeByHand(port)} (docs/windows.md)`;
+
+/**
  * `tailscale serve` reality vs. the `tailscale-managed-handler` record. Only a mapping matching the
  * record is ours (ADR 0001); a mapping we do not own is REPORTED, never touched — and a **peer** with
  * any mapping at all is an error, because a peer publishes nothing (ADR 0013).
  */
 function frontDoor(deps: DoctorDeps, mode: string): Finding {
+  const windows = deps.host.platform === "win32";
   const skip = deps.ctx.env.COLLIE_SKIP_SERVE === "1";
   const raw = deps.files.read(deps.ctx.handlerFile);
 
@@ -917,7 +948,9 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     return skipped(
       "front-door",
       "no `tailscale` here — the published mapping cannot be read",
-      "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)",
+      windows
+        ? `install tailscale and run ${tailscaleServeByHand(deps.ctx.port)} (docs/windows.md), or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)`
+        : "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)",
     );
   }
   // No certificates, no https door — and `tailscale serve` says so by asking a question at a
@@ -927,7 +960,7 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     return warn(
       "front-door",
       "this tailnet has no HTTPS certificates, so an https front door cannot be published",
-      HTTPS_DISABLED_HINT,
+      windows ? windowsHttpsDisabledHint(deps.ctx.port) : HTTPS_DISABLED_HINT,
     );
   }
   const status = liveServeStatus(deps);
@@ -935,7 +968,9 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     return skipped(
       "front-door",
       "`tailscale serve status --json` did not answer readably",
-      "run it by hand; then `collie serve` if this collie's root mount is missing",
+      windows
+        ? windowsStatusUnreadableRemedy(deps.ctx.port)
+        : "run it by hand; then `collie serve` if this collie's root mount is missing",
     );
   }
 
@@ -958,24 +993,37 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
           )
         : ok("front-door", "a peer publishes nothing, and nothing of ours is published");
     }
+    // Windows records no mapping, so a root mount on our listener that proxies to us is the operator's
+    // own `tailscale serve`, and it is the door working as designed (docs/windows.md).
+    if (windows && availability === "adoptable") {
+      return ok(
+        "front-door",
+        `:${listener} proxies to ${proxy}, published by hand (Collie records no mapping on Windows)`,
+      );
+    }
     if (availability === "occupied" || availability === "protocol-mismatch") {
       return warn(
         "front-door",
         `:${listener} carries a root mount Collie does not own (${availability}) — reported, never touched`,
-        "free that listener, or point Collie elsewhere, then `collie serve`",
+        windows
+          ? windowsOccupiedRemedy(deps.ctx.port)
+          : "free that listener, or point Collie elsewhere, then `collie serve`",
       );
     }
     const detail = `no Collie-managed mapping is recorded and nothing of ours is published on :${listener}`;
+    const publishRemedy = windows
+      ? windowsPublishRemedy(deps.ctx.port)
+      : "`collie serve` here (or COLLIE_SKIP_SERVE=1 if you own the ingress)";
     return mode === "lead"
       ? bad(
           "front-door",
           `${detail} — the crew has a lead with no URL for the phone`,
-          "`collie serve` here (or COLLIE_SKIP_SERVE=1 if you own the ingress)",
+          publishRemedy,
         )
       : warn(
           "front-door",
           `${detail} — the phone has nothing to point at`,
-          "`collie serve` here (or COLLIE_SKIP_SERVE=1 if you own the ingress)",
+          publishRemedy,
         );
   }
 

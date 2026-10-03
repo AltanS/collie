@@ -791,6 +791,75 @@ describe("collie doctor — the local checks", () => {
     expect(byCheck.get("front-door")?.remedy).toContain("https://login.tailscale.com/admin/dns");
   });
 
+  test("front-door: on a Windows host the no-certificates remedy names the by-hand command, not `collie serve` (#172)", async () => {
+    const answers: NonNullable<Scripted["answers"]> = [
+      ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
+      ["tailscale serve status --json", { stdout: SERVE_OK }],
+      ...netmapAnswers(NETMAP_OPEN),
+    ];
+    const win = harness(null, [], { answers });
+    win.deps = { ...win.deps, host: hostFor("win32") };
+    const winFinding = (await findings(win)).byCheck.get("front-door")!;
+    expect(winFinding.status).toBe("warn");
+    expect(winFinding.detail).toContain("no HTTPS certificates");
+    expect(winFinding.remedy).toContain("https://login.tailscale.com/admin/dns");
+    expect(winFinding.remedy).toContain(`tailscale serve --bg --set-path=/ ${win.deps.ctx.port}`);
+    expect(winFinding.remedy).toContain(`tailscale serve --bg --http=80 --set-path=/ ${win.deps.ctx.port}`);
+    expect(winFinding.remedy).toContain("pair a device");
+    expect(winFinding.remedy).toContain("docs/windows.md");
+    expect(winFinding.remedy).not.toContain("collie serve");
+
+    const posix = harness(null, [], { answers });
+    posix.deps = { ...posix.deps, host: hostFor("linux") };
+    const posixFinding = (await findings(posix)).byCheck.get("front-door")!;
+    expect(posixFinding.remedy).toContain("collie serve");
+    expect(posixFinding.remedy).not.toContain("tailscale serve --bg");
+  });
+
+  test("front-door: on a Windows host a solo collie with no mapping is told the by-hand command, not `collie serve`", async () => {
+    const files = healthyFiles();
+    delete files[HANDLER];
+    const answers: NonNullable<Scripted["answers"]> = [
+      ["tailscale status --json", { stdout: CERTS_ONLY }],
+      ["tailscale serve status --json", { stdout: "{}" }],
+      ...netmapAnswers(NETMAP_OPEN),
+    ];
+    const win = harness(null, [], { files, answers });
+    win.deps = { ...win.deps, host: hostFor("win32") };
+    const winFinding = (await findings(win)).byCheck.get("front-door")!;
+    expect(winFinding.status).toBe("warn");
+    expect(winFinding.remedy).toContain(`tailscale serve --bg --set-path=/ ${win.deps.ctx.port}`);
+    expect(winFinding.remedy).toContain("pair a device");
+    expect(winFinding.remedy).toContain("COLLIE_SKIP_SERVE=1");
+    expect(winFinding.remedy).not.toContain("collie serve");
+
+    const posix = harness(null, [], { files, answers });
+    posix.deps = { ...posix.deps, host: hostFor("linux") };
+    expect((await findings(posix)).byCheck.get("front-door")?.remedy).toContain("`collie serve` here");
+  });
+
+  test("front-door: on a Windows host a hand-made root mount that proxies to this collie passes; a POSIX host still warns", async () => {
+    const files = healthyFiles();
+    delete files[HANDLER];
+    const answers: NonNullable<Scripted["answers"]> = [
+      ["tailscale status --json", { stdout: CERTS_ONLY }],
+      ["tailscale serve status --json", { stdout: SERVE_OK }],
+      ...netmapAnswers(NETMAP_OPEN),
+    ];
+    const win = harness(null, [], { files, answers });
+    win.deps = { ...win.deps, host: hostFor("win32") };
+    const winFinding = (await findings(win)).byCheck.get("front-door")!;
+    expect(winFinding.status).toBe("ok");
+    expect(winFinding.detail).toContain(`proxies to http://127.0.0.1:${win.deps.ctx.port}`);
+    expect(winFinding.detail).toContain("published by hand");
+
+    const posix = harness(null, [], { files, answers });
+    posix.deps = { ...posix.deps, host: hostFor("linux") };
+    const posixFinding = (await findings(posix)).byCheck.get("front-door")!;
+    expect(posixFinding.status).toBe("warn");
+    expect(posixFinding.remedy).toContain("`collie serve` here");
+  });
+
   test("front-door: a LEAD with no mapping and no COLLIE_SKIP_SERVE is an error", async () => {
     const files = { ...healthyFiles(), ...markerFile(LEAD) };
     delete files[HANDLER];
