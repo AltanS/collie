@@ -4,9 +4,10 @@ What Windows support covers, how to install and update Collie there, and what Wi
 you on. Read [Security](security.md) first: Collie exposes remote shell access to your machine
 by design.
 
-> **Experimental.** Read this first, because it is the truth about today. No release carries the
-> Windows zip yet, so `install.ps1` has nothing to download and cannot finish until the first
-> release that does. The parts below were tested as this page describes them. Phone access needs
+> **Experimental.** Read this first, because it is the truth about today. A release carries the
+> Windows zip when its Windows build succeeds. Until the Windows build is a required part of the
+> release, a release may ship without it. Then `install.ps1` and `collie update` say so and
+> install nothing. The parts below were tested as this page describes them. Phone access needs
 > a front door that you set up yourself, and it has not been tested on Windows.
 
 Two words on this page have a fixed meaning:
@@ -21,7 +22,7 @@ Two words on this page have a fixed meaning:
   Windows workflow; and the tolerance for a missing Windows zip is off. That tolerance closes
   itself, as soon as any earlier release carries a Windows zip or on 2026-11-15.
 
-What you see today, before a release carries the zip:
+What you see when a release carries no Windows zip:
 
 - `install.ps1` looks at the newest five releases. For each one it prints
   `<tag> has no Windows build. Trying the next older release.` Then it prints
@@ -181,8 +182,8 @@ update it by hand: fetch the newer tag, run `bun run build`, then `collie restar
 needs Git for Windows' `bash`. That route was not rehearsed either.
 
 Releases up to and including v1.15.0 cannot swap a running `collie.exe` and fail with `EPERM`.
-The fix (PR 309) first shipped in v1.15.1. No release yet contains the later Windows update work,
-such as the phone's Update button on Windows.
+The fix (PR 309) first shipped in v1.15.1. The later Windows update work, such as the phone's
+Update button on Windows, first ships in v1.16.0.
 
 ## Long paths
 
@@ -309,7 +310,7 @@ Plain list, so nothing here reads as a promise:
 
 - Windows 10, Windows Server, Windows on ARM, tmux, zellij and tuios on Windows.
 - A real Smart App Control block, and PowerShell 7 for `install.ps1`.
-- `install.ps1` against a real release that carries the zip. None does yet.
+- `install.ps1` against a real release that carries the zip.
 - An update from a real GitHub release. The rehearsal used a local copy of the release files.
 - A phone reaching a Windows machine through Tailscale or any proxy.
 - A FAT volume with real hardware. The "not checked" answer is covered by unit tests.

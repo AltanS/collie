@@ -5,7 +5,7 @@
   the tool-approval dialog this record left assessed but raw is now lifted for `bash` and `write`.
   Everything below stands.
 - **Date:** 2026-10-02
-- **Shipped in:** pending
+- **Shipped in:** 1.16.0
 - **Amends:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md),
   in scope. 0076 left "the Ask tool's selects" raw; the one-question single-select dialog is now a
   card. The multi-select dialog, the multi-question dialog and everything else 0076 says stand.

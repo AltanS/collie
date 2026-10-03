@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-02
-- **Shipped in:** pending
+- **Shipped in:** 1.16.0
 - **Amends:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)
   and [ADR 0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md), in
   scope. Both left the tool-approval dialog raw with the Escape card; the `bash` and `write`

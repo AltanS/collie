@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-02
-- **Shipped in:** pending
+- **Shipped in:** 1.16.0
 - **Amends:** [ADR 0055](./0055-a-pointed-list-is-walked-then-confirmed.md), point 4 only. Points 1 to 3
   and 5 to 7 stand.
 - **Trail:** `web/src/lib/prompt-action.ts` (`submitPromptOption`, `walkVerifyCommit`) ·

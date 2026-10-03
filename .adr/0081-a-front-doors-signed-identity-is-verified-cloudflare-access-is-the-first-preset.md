@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-03
-- **Shipped in:** pending
+- **Shipped in:** 1.16.0
 - **Relates to:** [ADR 0001](./0001-one-managed-front-door.md). Nothing there is retracted: Collie
   still manages one front door, and the operator still runs `cloudflared` and owns the Access app.
 - **Trail:** [issue #341](https://github.com/AltanS/collie/issues/341) (@xbach, who runs the same

@@ -7,7 +7,7 @@
   That tolerance closes itself: it is mandatory once any earlier release carries a Windows zip, or on
   2026-11-15.
 - **Date:** 2026-10-03
-- **Shipped in:** pending (M43)
+- **Shipped in:** 1.16.0
 - **Supersedes:** the contrib-only decisions on PR #71 (2026-08-11) and PR #298 (2026-09-26), which
   made Windows a community-maintained, best-effort platform. Their reasoning held while nobody could
   test Windows. It does not hold now.
@@ -158,7 +158,7 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
   nothing. The bridge's `POST /crew/v1/enroll` is left as it is, because it only spends an invite
   those verbs mint, so only a trust store copied from Linux with an unexpired invite could still
   enrol a member.
-- **The first real tag is the first real test of the release job.** A rehearsal rc tag of the real
+- **The first real tag, v1.16.0, is the first real test of the release job.** A rehearsal rc tag of the real
   `release.yml` has not run.
 - **Open follow-ups, none of them part of this decision:** a stable launcher outside `versions\`
   so no version folder stays held; building from source without Git's `bash`; a managed front door on

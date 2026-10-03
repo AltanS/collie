@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-02
-- **Shipped in:** pending
+- **Shipped in:** 1.16.0
 - **Amends:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md),
   in scope, twice. The compact model picker that 0076 left raw with the Escape card is now a card in
   its session state. And the modal gate of 0076 point 1 accepts ONE segment after the way out, the

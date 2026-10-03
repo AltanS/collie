@@ -160,8 +160,9 @@ macOS has no package yet. [mise](#mise) works on a Mac, as does the `aarch64-dar
 
 ### Windows support (experimental)
 
-> **Experimental.** Today, no release carries the Windows zip yet, so `install.ps1` has nothing to
-> download and cannot finish until the first release that does. The pieces below were tested as
+> **Experimental.** Today, a release carries the Windows zip when its Windows build succeeds. Until
+> the Windows build is a required part of the release, a release may ship without it. Then
+> `install.ps1` and `collie update` say so and install nothing. The pieces below were tested as
 > described. Phone access needs a front door that you set up yourself, and it has not been tested on
 > Windows. "Supported" means the maintainer owns the code and tests it; "experimental" means the
 > install path and the phone path are not yet proven against a real release, and it stays until the

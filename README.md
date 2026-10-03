@@ -194,8 +194,9 @@ isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the r
 
 Linux and macOS: nothing changes for you.
 
-**Today:** no release carries the Windows zip yet, so `install.ps1` has nothing to download and
-cannot finish until the first release that does. The pieces below were tested as described. Phone
+**Today:** a release carries the Windows zip when its Windows build succeeds. Until the Windows
+build is a required part of the release, a release may ship without it. Then `install.ps1` and
+`collie update` say so and install nothing. The pieces below were tested as described. Phone
 access needs a front door that you set up yourself, and it has not been tested on Windows.
 
 Windows 11 on x64 with Herdr is a supported host: the maintainer owns the code and tests it. It stays
