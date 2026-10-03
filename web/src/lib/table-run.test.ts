@@ -289,9 +289,30 @@ describe("tableRuns — the whole pane corpus", () => {
       // grows up through the whole box.
       "claude--workflow-view.txt 8..59",
       // omp's welcome splash: the logo on the left, Tips / LSP servers / Recent sessions on the right.
-      // It sits in the scrollback of most omp captures, which is why it appears 23 times and always
+      // It sits in the scrollback of most omp captures, which is why it appears so often and always
       // at the same rows. The menus and dialogs BELOW it are not claimed, and that is the point: the
       // run stops where the box does.
+      //
+      // Absent from this list since .adr/0076: every omp modal that prints its own way out and that no
+      // grammar lifts (the `/model` picker, the Ask tool's multi-select screens) gets the unread-dialog
+      // card, which mirrors the whole pane in its own horizontally scrolling region instead of a raw
+      // block, so no raw block carries a table run there. That includes the `/model` box ADR 0072 once
+      // panned, which scrolls as part of the card's mirror, as Claude's generic-menu card always has.
+      //
+      // Back on this list since .adr/0077: the Ask tool's one-question single-select dialog is a
+      // `prompt-select` card now, and the transcript above it is an ordinary raw block again, splash
+      // included. The note editor `n` opens is an input, not a modal, so it never had the card.
+      //
+      // Back on this list since .adr/0078, for the same reason: the three omp 18.1.17 tool-approval
+      // screens are a `prompt-select` card now. The five 18.4.10 approval captures are not here because
+      // their splash has scrolled out of the buffer.
+      //
+      // Back on this list since .adr/0079, for the same reason again: the compact model picker's
+      // session state is a `prompt-select` card, so the splash above it is a raw block. Its splash is
+      // shorter (rows 2 to 14), drawn in the sandbox the picker was captured in. The 74-column capture
+      // is here although it is declined: omp clipped its footer, so no card stands over it either. The
+      // 103-column captures are absent because their splash has scrolled out, and the four declined
+      // states with a way out take the card.
       "omp--approval-bash.txt 2..20",
       "omp--approval-write--deny.txt 2..20",
       "omp--approval-write.txt 2..20",
@@ -303,20 +324,36 @@ describe("tableRuns — the whole pane corpus", () => {
       "omp--draft-wrapped.txt 2..20",
       "omp--fresh-idle.txt 2..20",
       "omp--menu-dismissed.txt 2..20",
-      // omp's `/model` picker, in its alphabetical place because this list runs in the directory's
-      // order: the vendor list on the left, the model names on the right, the whole box from lid to
-      // floor. The one screen here that is also a MENU the operator drives, so panning it right can
-      // carry its `❯` off-screen until they pan back. That is the cost ADR 0072 accepts.
-      "omp--menu-model-moved.txt 0..54",
-      "omp--menu-model.txt 0..54",
       "omp--select-menu-moved.txt 2..20",
       "omp--select-menu.txt 2..20",
-      "omp--select-multi-checked.txt 2..20",
-      "omp--select-multi-review.txt 2..20",
-      "omp--select-multi.txt 2..20",
       "omp--slash-palette--filtered.txt 2..20",
       "omp--slash-palette.txt 2..20",
       "omp--tree.txt 2..20",
+      "omp--v18-4-ask-note-editor.txt 2..20",
+      "omp--v18-4-ask-single-moved.txt 2..20",
+      "omp--v18-4-ask-single.txt 2..20",
+      "omp--v18-4-composer-idle.txt 2..20",
+      "omp--v18-4-switch-clipped.txt 2..14",
+      "omp--v18-4-switch-moved-up.txt 2..14",
+      "omp--v18-4-switch-moved.txt 2..14",
+      "omp--v18-4-switch-narrow-moved.txt 2..14",
+      "omp--v18-4-switch-narrow.txt 2..14",
+      "omp--v18-4-switch-overcontext-moved.txt 2..14",
+      "omp--v18-4-switch-overcontext.txt 2..14",
+      "omp--v18-4-switch-ptr-fable.txt 2..20",
+      "omp--v18-4-switch-ptr-haiku.txt 2..20",
+      "omp--v18-4-switch-ptr-opus-current.txt 2..20",
+      "omp--v18-4-switch-ptr-sonnet.txt 2..20",
+      "omp--v18-4-switch-roles-chips.txt 2..14",
+      "omp--v18-4-switch-search-short-moved.txt 2..14",
+      "omp--v18-4-switch-search-short.txt 2..14",
+      "omp--v18-4-switch-search-son.txt 2..20",
+      "omp--v18-4-switch-search.txt 2..14",
+      "omp--v18-4-switch-top-edge.txt 2..14",
+      "omp--v18-4-switch-top.txt 2..14",
+      "omp--v18-4-switch-wrapped.txt 2..14",
+      "omp--v18-4-switch.txt 2..14",
+      "omp--v18-4-tree.txt 2..20",
       "omp--v18-rule-draft.txt 2..20",
       "omp--v18-rule-idle.txt 2..20",
       "omp--v18-rule-wrapped.txt 2..20",

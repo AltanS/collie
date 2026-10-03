@@ -1,6 +1,6 @@
 # 0058 — The resume picker commits with Enter
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended by [ADR 0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md): the walk is no longer "sent as one batch"; the arrows go first, the pointer is read back, and `Enter` follows bound to that read.
 - **Date:** 2026-09-22
 - **Shipped in:** pending (target 1.12.0)
 - **Trail:** `web/src/lib/harness/claude/resume.ts` (`detectResumePickerRegion`) ·

@@ -384,6 +384,105 @@ describe("sendGuardedReply", () => {
     ]);
   });
 
+  // omp's `ask` tool swaps its composer for an answer editor when the operator picks `Other` or
+  // presses `n` for a note. Before omp/answer-editor.ts the pre-flight saw no composer and refused,
+  // and the only way through ("type anyway") typed the answer but could never verify it — so Enter
+  // was withheld and the draft stayed on the phone.
+  describe("omp's answer editor", () => {
+    const empty = fixtureText("omp--answer-editor-empty.txt");
+    const typed = fixtureText("omp--answer-editor-typed.txt");
+    const composer = fixtureText("omp--fresh-idle.txt");
+
+    it("types the answer, verifies it in the editor, then submits bound to its row", async () => {
+      const calls = harness(() => (calls.length === 0 ? empty : typed));
+
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "a deep teal, like the sea at dusk",
+        agent: "omp",
+        ...instant,
+      });
+
+      expect(out).toEqual({ status: "sent" });
+      expect(calls).toEqual([
+        { text: "a deep teal, like the sea at dusk", submit: false },
+        { text: "", submit: true, expected_prompt: expect.stringMatching(/^│ > a deep teal, like the sea at dusk +│$/) },
+      ]);
+    });
+
+    // Live-probed: a raw newline SUBMITS this editor, so `line one\nline two` answered `line one` and
+    // typed the rest into the composer behind it. No override can make that safe.
+    it("refuses a multi-line answer before typing anything, force or not", async () => {
+      const calls = harness(() => empty);
+
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "line one\nline two",
+        agent: "omp",
+        force: true,
+        ...instant,
+      });
+
+      expect(out).toMatchObject({ status: "error", error: expect.stringMatching(/one line/i) });
+      expect(calls).toEqual([]);
+    });
+
+    // The first read can see omp's composer, where a newline is fine, and a later read the answer
+    // editor, if the operator opened it on the desktop in between. Every read that clears the text
+    // to go out asks again.
+    it("asks again on the read after the pre-clear sweep", async () => {
+      let reads = 0;
+      const calls = harness(() => (reads++ === 0 ? composer : empty));
+
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "line one\nline two",
+        agent: "omp",
+        onComposerSeen: async () => ({ ok: true as const, keysSent: true }),
+        ...instant,
+      });
+
+      expect(reads).toBe(2);
+      expect(out).toMatchObject({ status: "error", error: expect.stringMatching(/one line/i) });
+      expect(calls).toEqual([]);
+    });
+
+    it("asks again on the read before a chunked send", async () => {
+      let reads = 0;
+      const calls = harness(() => (reads++ === 0 ? composer : empty));
+
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        // Five newlines: omp's transport plan splits this into two pastes (omp/reply-chunks.ts).
+        text: "one\ntwo\nthree\nfour\nfive\nsix",
+        agent: "omp",
+        ...instant,
+      });
+
+      expect(reads).toBe(2);
+      expect(out).toMatchObject({ status: "error", error: expect.stringMatching(/one line/i) });
+      expect(calls).toEqual([]);
+    });
+
+    it("asks again on every read between chunks, and says the first one landed", async () => {
+      let reads = 0;
+      // The composer for the pre-flight and the chunk plan's own read, then the answer editor:
+      // the operator opened it on the desktop while the first paste was in flight.
+      const calls = harness(() => (reads++ < 2 ? composer : empty));
+
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "one\ntwo\nthree\nfour\nfive\nsix",
+        agent: "omp",
+        ...instant,
+      });
+
+      expect(out).toMatchObject({ status: "error", error: expect.stringMatching(/already in the pane/i), textDelivered: true });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ submit: false });
+    });
+  });
+
   // The PRE-FLIGHT (.adr/0009). The verify-after guard below already kept Enter from answering a
   // dialog; this keeps the MESSAGE from being deposited in one, which is what the `/model` picker
   // exposed — no input box at all, so the text went into the picker before anything noticed.

@@ -60,6 +60,7 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--menu-dismissed.txt",
   "omp--slash-palette--filtered.txt",
   "omp--slash-palette.txt",
+  "omp--v18-4-composer-idle.txt",
   "omp--working.txt",
 ];
 
@@ -92,6 +93,9 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--done--tool-result.txt", top: 49, bottom: 50, suggestEnd: 51 },
     { fixture: "omp--working.txt", top: 32, bottom: 33, suggestEnd: 34 },
     { fixture: "omp--menu-dismissed.txt", top: 26, bottom: 27, suggestEnd: 28 },
+    // omp 18.4.10 after `/resume` forked a session: a 177-row buffer whose boxed composer is empty and
+    // whose top border carries the 18.4 powerline (`… ▶─2%───┃─1.1M─`, no branch named `master`).
+    { fixture: "omp--v18-4-composer-idle.txt", top: 175, bottom: 176, suggestEnd: 177 },
     // The slash palette renders BELOW the box — so `suggestEnd` runs past `bottom + 1` and the strip
     // takes the palette with the box.
     { fixture: "omp--slash-palette.txt", top: 26, bottom: 27, suggestEnd: 31 },
@@ -162,6 +166,7 @@ describe("extractInputDraft", () => {
     { fixture: "omp--done--tool-result.txt", draft: null },
     { fixture: "omp--working.txt", draft: null },
     { fixture: "omp--menu-dismissed.txt", draft: null },
+    { fixture: "omp--v18-4-composer-idle.txt", draft: null },
   ];
 
   it.each(DRAFTS)("$fixture reads its draft", ({ fixture, draft }) => {
@@ -183,10 +188,15 @@ describe("extractStatusLines", () => {
   });
 
   // The two omp 18.4 hint captures carry the capturing operator's own statusline template, not
-  // the `π … ▶` powerline these assertions read.
+  // the `π … ▶` powerline these assertions read, and neither does the 18.4.10 idle capture, whose
+  // row runs on into a context meter (`▶─2%───┃─1.1M`) and names branch `main`.
   it.each(
     BOX_COMPOSER_FIXTURES.filter(
-      (f) => f !== "omp--done.txt" && f !== "omp--fresh-effort-hint.txt" && f !== "omp--fresh-agents-hint.txt",
+      (f) =>
+        f !== "omp--done.txt" &&
+        f !== "omp--fresh-effort-hint.txt" &&
+        f !== "omp--fresh-agents-hint.txt" &&
+        f !== "omp--v18-4-composer-idle.txt",
     ),
   )(
     "%s: trims the border glyphs off both ends, keeping the whole powerline",

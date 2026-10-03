@@ -112,15 +112,20 @@ the key and never a verb.
 
 **Declaring nothing is a supported answer, and it has a visible cost:** no card for that agent, ever,
 so an unread modal leaves the operator with the raw mirror and the Keys pad. Take it when your
-`composerReady` has a false-negative mode you do not trust. `omp` does: one ZWJ emoji in a statusline
-template makes its composer scanner return null on every frame, so `composerReady` would be false
-forever on a healthy pane and the card would paint itself permanently over a live composer.
+`composerReady` has a false-negative mode you do not trust and you have no positive evidence of a
+modal to put beside it. `omp` had that problem: one ZWJ emoji in a statusline template makes its
+composer scanner return null on every frame, so `composerReady` would be false forever on a healthy
+pane and the card would paint itself permanently over a live composer. It now declares `cancelKey`
+together with `modalOnScreen`, which reads its own key-hint footer at the buffer tail
+([ADR 0076](./.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)); a
+composer prints no such footer, so the false negative can no longer paint the card.
 
 **Optionally declare `modalOnScreen(lines)` too**: positive evidence that one of your harness's
 modals is up. No input box is also what a shell prompt looks like while your agent starts or exits,
 and Herdr reports the agent in both windows, so without it the card can flash over the shell. When
 declared, the card needs it to answer `true`. Claude's answer is "one of the last six non-blank rows
-names a key"; pin yours against the card's allow-list test (`unread-dialog.test.ts`).
+names a key"; omp's is stricter, a footer row at the tail whose last hint is its own way out, in the six
+spellings it prints. Pin yours against the card's allow-list test (`unread-dialog.test.ts`).
 
 ### The fail-closed contract (non-negotiable)
 
@@ -180,7 +185,48 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    ([ADR 0053](./.adr/0053-an-unread-dialog-still-has-a-way-out.md)).
 7. **A POINTED list is walked, not numbered.** The same arithmetic covers a modal that prints a
    column of unnumbered rows with a `❯` on one of them and a commit key in its footer: a tap is the
-   arrow walk from the pointed row to the target row, then that commit key, sent as one batch.
+   arrow walk from the pointed row to the target row, then that commit key. The action layer does
+   not send that plan as one batch: it splits it with `splitWalk` (`(Up|Down|Left|Right)* Enter`, so a
+   row of chips walks `Right` the way a column walks `Down`), sends the arrows bound to the
+   tapped screen, sends the commit key only after a fresh read shows the pointer on the tapped row,
+   and binds that key to the read ([ADR 0080](./.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md)).
+   Build the plan with `pointerWalk`, carry the pointer verbatim in `signature` and blank it in
+   `coreSignature`, and never shape a plan to survive a race: the action layer does that for every
+   harness. If the pointer is only a style (a background colour), the signature cannot carry it, so
+   the plans do: `promptsEqual` compares them exactly, and the verify read on the phone is the guard.
+   **A grammar whose pointer is only a style MUST also set `styledSignature`**: the canonical styled
+   lines of the same rows as `signature`, from `canonicalStyledLines` in `web/src/lib/styled-region.ts`
+   (call it on the region's StyledLines, never hand-roll a projection). The bridge's text binding
+   cannot see a colour, so the phone sends `styledSignature` as `expected_styled` and the bridge
+   compares the colours of the very read it is about to answer
+   ([ADR 0080](./.adr/0080-a-pointed-list-is-walked-verified-then-confirmed.md) point 7). The
+   conformance suite enforces it: for every declared walk pair whose two `signature` strings are equal,
+   both models must carry `styledSignature` and the two must differ, and the bridge's own verifier must
+   find each value in its raw capture and refuse the other capture of the pair. A grammar that draws its
+   pointer as a glyph sets nothing. An older bridge ignores the field and an older phone sends none,
+   so a mixed pair still works. **`coreSignature` must blank everything the pointer's own move changes**: the glyph, and
+   any text that follows the pointer, such as a detail row under the list, a description of the
+   highlighted row or a "(n/m)" position counter. Text that follows the pointer makes the verify step
+   see another dialog after every walk, so a walked tap answers `changed` and never commits (the omp
+   `/switch` picker did exactly this). The corpus must prove it: capture the dialog twice with the
+   pointer on different rows and declare the pair in `web/src/lib/harness/walk-pairs.ts`. The
+   conformance suite checks that every grammar with walked plans has such a pair, or a listed gap.
+   Text that changes with the clock when the screen redraws, such as a relative age (`1 minute ago`),
+   is the same class: blank it in `coreSignature`, and only there, so `signature` stays verbatim and
+   the entry guard still refuses a screen whose age ticked. Blank the one token your own row parse
+   found, not a pattern over the whole region (the two `/resume` grammars are the reference).
+   **Twin rows keep their ages:** when two or more rows are identical in title AND in the rest of
+   their meta row apart from the age, the age is all that tells them apart, so `coreSignature` keeps
+   the ages of THOSE rows verbatim (every other row still gets the token). A tick on a twin then
+   answers `changed`, the safe side, and a re-sort that swaps twins can never pass identity.
+   **Every blank is a safety decision**, because `coreSignature` is the only link between the dialog
+   the user tapped and the Enter that is committed after the walk. Ship mutation tests for both
+   directions, starting from a real capture and changing one thing: what the blank must HOLD (every
+   age shifted across a width change, a detail row replaced) and what it must REFUSE (a title, size,
+   id, badge or mark changed, a row removed, two rows swapped, an age-shaped string inside a title).
+   The three tests for `claude/resume.ts`, `omp/resume.ts` and `omp/switch.ts` are the reference. The
+   walk-pair gaps in `walk-pairs.ts` only shrink: the set of gap keys is pinned in
+   `conformance.test.ts`, so a new gap is a reviewed decision and a second capture is the fix.
    Claude's folder-trust prompt is the reference case since 2.1.278 — it prints no digit, so none may
    be synthesised, and ADR 0009 holds here exactly as it does above
    ([ADR 0055](./.adr/0055-a-pointed-list-is-walked-then-confirmed.md)). Two things are load-bearing.

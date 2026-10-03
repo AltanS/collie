@@ -360,6 +360,25 @@ describe("update hands off — the command that leaves this process's cgroup", (
     });
   });
 
+  test("a rehearsal mirror reaches the transient unit's bare environment; the other tiers inherit it", () => {
+    // The transient unit starts `collie update` with a bare environment. Without this the CLI there
+    // would not see a mirror the bridge was started with and would ask GitHub instead.
+    for (const value of ["http://127.0.0.1:47321", "http://10.0.0.5:1"]) {
+      expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, mirror: value }).command).toEqual([
+        "systemd-run", "--user", "--collect", "--unit", "collie-api-update-42",
+        `--setenv=COLLIE_UPDATE_MIRROR=${value}`, "/opt/collie/bin/collie", "update",
+      ]);
+    }
+    // No mirror: the command is the one it always was. Other tiers: the child inherits the variable.
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, mirror: null }).command).not.toContain(
+      "--setenv=COLLIE_UPDATE_MIRROR=",
+    );
+    expect(updateStartCommand({ ...base, platform: "win32", major: false, hasSystemdRun: false, hasSetsid: false, mirror: "http://127.0.0.1:1" })).toEqual({
+      command: ["/opt/collie/bin/collie", "update"],
+      detach: true,
+    });
+  });
+
   test("a major crossing hands the CLI its own consent flag (ADR 0020)", () => {
     const plan = updateStartCommand({ ...base, major: true, hasSystemdRun: true, hasSetsid: true });
     expect(plan.command.slice(-2)).toEqual(["update", "--major"]);

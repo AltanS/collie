@@ -6,6 +6,7 @@ import { DEFAULT_PORT, defaultSocketPath, normaliseBasePath, resolveStateDir } f
 import { HOST } from "../bridge/host.ts";
 import {
   configFilePaths,
+  hostFilePerms,
   overlayConfig,
   readConfigFilesSync,
   tightenPrivateFile,
@@ -13,6 +14,7 @@ import {
   type ConfigFileReader,
 } from "../bridge/config-source.ts";
 import { pluginRoot } from "../bridge/root.ts";
+import { secretFileVerdict } from "../bridge/owner-only.ts";
 import {
   herdrActionCommand,
   instanceSuffixOf,
@@ -132,11 +134,11 @@ export interface EnvFilePerms {
  *
  * Returns the line for stderr, or `null` when there was nothing to say.
  */
-export function tightenEnvFile(path: string, perms: EnvFilePerms): string | null {
+export function tightenEnvFile(path: string, perms: EnvFilePerms, repairAcl = false): string | null {
   // One rule, two files. `bridge/config-source.ts` owns it because a `config.toml` holding
   // `[push] vapid_private` raises exactly this question, and a second implementation would be a
-  // second posture (ADR 0040).
-  return tightenPrivateFile(path, perms).warning;
+  // second posture (ADR 0040). `repairAcl` matters on Windows only: see `loadContext`.
+  return tightenPrivateFile(path, perms, repairAcl).warning;
 }
 
 /**
@@ -303,8 +305,12 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
 // caller keeps importing it from here.
 export { collieVersion, collieVersionBare, collieVersionFrom } from "../bridge/version.ts";
 
-/** {@link EnvFilePerms} against the real filesystem. */
-const diskEnvPerms: EnvFilePerms = {
+/**
+ * {@link EnvFilePerms} against the real filesystem. On Windows the access list decides instead of
+ * the mode, which ended the false `.env was mode 666; tightened it to 600` on every command
+ * ({@link hostFilePerms}, `bridge/owner-only.ts`).
+ */
+const diskEnvPerms: EnvFilePerms = hostFilePerms(HOST, {
   mode(path) {
     try {
       return statSync(path).mode & 0o777;
@@ -320,7 +326,7 @@ const diskEnvPerms: EnvFilePerms = {
       return false;
     }
   },
-};
+}, (path, repair) => secretFileVerdict(path, { repair }));
 
 /** File contents, or `null` when missing/unreadable. */
 function readIfPresent(p: string): string | null {
@@ -516,7 +522,17 @@ export function shadowNotes(ambient: Environment, fromFile: EnvVars): string[] {
  * Resolve the context once. `warn` receives diagnostics destined for stderr (the caller owns the
  * stream, so this stays testable).
  */
-export function loadContext(warn: (line: string) => void = (l) => console.error(l)): CliContext {
+export function loadContext(
+  warn: (line: string) => void = (l) => console.error(l),
+  opts: {
+    /**
+     * Whether a loose secret file's access list may be changed (Windows only, M43 spec 04). Only the
+     * bridge process (`_exec-bridge`) passes `true`; every other command verifies and warns.
+     */
+    readonly repairAcl?: boolean;
+  } = {},
+): CliContext {
+  const repairAcl = opts.repairAcl === true;
   const root = pluginRoot();
   const home = resolveHome(process.env);
   const { dir: configDir, note } = resolveConfigDir({
@@ -534,7 +550,7 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
     diskConfigReader,
     configFilePaths(process.env, home, configDir),
     warn,
-    { home, perms: diskEnvPerms },
+    { home, perms: diskEnvPerms, repairAcl },
   );
 
   // `.env` overrides the ambient environment, exactly as `set -a; . .env` did.
@@ -542,7 +558,7 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
   const envPath = join(configDir, ".env");
   const dotenv = readIfPresent(envPath);
   if (dotenv !== null) {
-    const tightened = tightenEnvFile(envPath, diskEnvPerms);
+    const tightened = tightenEnvFile(envPath, diskEnvPerms, repairAcl);
     if (tightened !== null) warn(tightened);
     const fromFile = parseEnvFile(dotenv);
     for (const line of shadowNotes(process.env, fromFile)) warn(line);

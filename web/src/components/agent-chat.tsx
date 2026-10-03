@@ -1048,6 +1048,9 @@ export function AgentChat({
         revalidator.revalidate();
         listRef.current?.scrollToBottom();
       } else if (result.status === "changed") {
+        // Which step refused, for a person with the console open (`why` is a diagnosis, never UI
+        // text). A harness drift shows up here as the one field that differed.
+        if (result.why !== undefined) console.info("collie: tap refused", result.why);
         setStatus(t("chat.status.menuChanged"), "warn");
         revalidator.revalidate();
       } else {

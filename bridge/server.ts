@@ -33,8 +33,9 @@ import { createOperatorFonts, resolveOperatorFont } from "./operator-fonts.ts";
 import { createOperatorLaunchers } from "./operator-launchers.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
-  verifyExpectedPrompt,
-  type PromptBindingResult,
+  verifyPromptBinding,
+  type PromptBindingVerdict,
+  type StyledOutcome,
 } from "./prompt-binding.ts";
 import type { Push, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
@@ -136,7 +137,13 @@ export function requestBodyCap(cfg: Config): number {
 }
 // Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
 const MAX_READ_LINES = 10_000;
-const MAX_EXPECTED_PROMPT_CHARS = 8192;
+// A bound region is whatever a dialog card covers, and a full-screen picker covers the whole pane:
+// about rows times columns, so 8192 refused a pane wider than ~134 columns at 59 rows. 32 KiB takes
+// a 220-column pane. A phone newer than this bridge gets the old 400 on such a pane and no key is sent.
+const MAX_EXPECTED_PROMPT_CHARS = 32_768;
+// `expected_styled` carries the same rows as `expected_prompt` plus a style tag per run (about 30
+// extra characters each, and a chip row can hold a dozen runs), so it gets four times the room.
+const MAX_EXPECTED_STYLED_CHARS = 4 * MAX_EXPECTED_PROMPT_CHARS;
 const PROMPT_BINDING_BLANK_LINE_HEADROOM = 6;
 // How long `GET /api/update/check` waits for an on-demand poll before answering with what it has.
 // Only paid once per boot: it fires exactly while `latest` is still null (the monitor's deliberate
@@ -2790,6 +2797,8 @@ export async function replyPane(
   const fields = asJsonRecord(body) ?? {};
   const expected = expectedPrompt(fields);
   if (!expected.ok) return text("bad expected_prompt", 400);
+  const styled = expectedStyled(fields, expected.present);
+  if (!styled.ok) return text("bad expected_styled", 400);
   // `text`/`submit` are CHECKED, not assumed. They used only to be declared string/boolean, so a
   // body that lied handed a non-string to `pane.send_text` (herdr refused it one layer down) or
   // made `submit ?? true` follow a truthiness path nobody wrote. A malformed write is refused here,
@@ -2800,7 +2809,7 @@ export async function replyPane(
   const submit = fields.submit ?? true;
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -2869,11 +2878,13 @@ export async function keysPane(
   const fields = asJsonRecord(body) ?? {};
   const expected = expectedPrompt(fields);
   if (!expected.ok) return text("bad expected_prompt", 400);
+  const styled = expectedStyled(fields, expected.present);
+  if (!styled.ok) return text("bad expected_styled", 400);
   const keys = Array.isArray(fields.keys) ? fields.keys.filter((k): k is string => typeof k === "string") : [];
   if (keys.length === 0) return text("no keys", 400);
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -2930,10 +2941,31 @@ function expectedPrompt(body: JsonObject): ExpectedPrompt {
   return { ok: true, present: true, value };
 }
 
+type ExpectedStyled = { ok: true; value: string | undefined } | { ok: false };
+
+/**
+ * The optional `expected_styled` body field (ADR 0080 point 7): the canonical styled lines of the
+ * region `expected_prompt` names, for a grammar whose pointer is drawn only as a style. It is
+ * honoured only WITH `expected_prompt`, which it refines and never replaces, so a body that names it
+ * alone is malformed. Absent = `{ ok: true, value: undefined }`.
+ */
+function expectedStyled(body: JsonObject, promptPresent: boolean): ExpectedStyled {
+  if (!Object.prototype.hasOwnProperty.call(body, "expected_styled")) {
+    return { ok: true, value: undefined };
+  }
+  const value = body.expected_styled;
+  if (!promptPresent || typeof value !== "string" || value.length > MAX_EXPECTED_STYLED_CHARS) {
+    return { ok: false };
+  }
+  return { ok: true, value };
+}
+
 type PromptBindingCheck =
   | {
       ok: true;
-      audit: { checked: true; passed: true; expected: string };
+      // `styled` is present only when the phone sent `expected_styled`: `checked`, or
+      // `skipped_unknown_version` when the text check alone decided (ADR 0080 point 7).
+      audit: { checked: true; passed: true; expected: string; styled?: StyledOutcome };
     }
   | {
       ok: false;
@@ -2945,7 +2977,7 @@ type PromptBindingCheck =
         checked: true;
         passed: false;
         expected: string;
-        reason: Extract<PromptBindingResult, { ok: false }>["reason"] | "read_failed";
+        reason: Extract<PromptBindingVerdict, { ok: false }>["reason"] | "read_failed";
       };
     };
 
@@ -2975,6 +3007,7 @@ async function checkPromptBinding(
   cfg: Config,
   paneId: string,
   expected: string,
+  expectedStyledLines?: string,
 ): Promise<PromptBindingCheck> {
   let fresh: MuxGrid;
   try {
@@ -3001,7 +3034,10 @@ async function checkPromptBinding(
     return readFailed(herdr, expected, errorText(err));
   }
 
-  const result = verifyExpectedPrompt(fresh.text, expected);
+  // One verdict over the one read: the text check, and, when the phone sent `expected_styled`, the
+  // style check at the same place in the same text. It adds no RPC and no latency before the send. It
+  // exists for a pointer drawn only as a style (opencode's chips), which the text check cannot see.
+  const result = verifyPromptBinding(fresh.text, expected, expectedStyledLines);
   if (!result.ok) {
     return {
       ok: false,
@@ -3015,9 +3051,15 @@ async function checkPromptBinding(
   // RPCs, so a TOCTOU window remains by construction; it shrinks from seconds (poll interval + push
   // latency + human reaction time) to the few milliseconds between two local RPCs. It removes the
   // human-latency portion of the window, which is where essentially all of the real risk lives.
-  // Closing the window completely would need a conditional-input primitive in herdr (send_keys with
-  // a precondition rejected atomically server-side), which does not exist today.
-  return { ok: true, audit: { checked: true, passed: true, expected } };
+  // That holds for a pointer drawn only as a style as well: the style check judges the colours of the
+  // very read the text check used, so such a pointer's window is this same read-to-send gap
+  // and no longer reaches back to the phone's own read. Closing the window completely would need a
+  // conditional-input primitive in herdr (send_keys with a precondition rejected atomically
+  // server-side), which does not exist today.
+  const passed: Extract<PromptBindingCheck, { ok: true }>["audit"] = { checked: true, passed: true, expected };
+  // Assigned, never conditionally spread: a bound send without `expected_styled` records no `styled` key.
+  if (result.styled !== undefined) passed.styled = result.styled;
+  return { ok: true, audit: passed };
 }
 
 function promptBindingFailure(
@@ -3027,6 +3069,9 @@ function promptBindingFailure(
   const failure: ActionResponse = { ok: false, error: result.error, code: result.code };
   // Assigned, never conditionally spread: a refusal with nothing to interpolate carries no `detail`.
   if (result.detail !== undefined) failure.detail = result.detail;
+  // The reason code of a changed prompt, and nothing else: never pane content. A 502 (the read
+  // itself failed) already says so in its own code.
+  if (result.status === 409) failure.reason = result.audit.reason;
   return json(failure, acceptEncoding, result.status);
 }
 

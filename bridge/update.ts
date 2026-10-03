@@ -436,10 +436,91 @@ export interface ApiTag {
 }
 
 /** The endpoint the banner AND the binary updater read — never `releases/latest`, which hides
- *  prereleases and stalls a whole beta train (docs/upgrading.md). */
-export function githubTagsUrl(repo: string): string {
-  return `https://api.github.com/repos/${repo}/tags?per_page=100`;
+ *  prereleases and stalls a whole beta train (docs/upgrading.md). With a {@link UPDATE_MIRROR_ENV}
+ *  rehearsal mirror, the same path on that mirror. */
+export function githubTagsUrl(repo: string, mirror: string | null = null): string {
+  return `${mirror ?? "https://api.github.com"}/repos/${repo}/tags?per_page=100`;
 }
+
+// ── The rehearsal mirror (M43 spec 08) ───────────────────────────────────────
+// A TEST SEAM, not a way to update. A rehearsal of `collie update` on a test machine must not touch
+// a real release, so it serves its own releases from a local HTTP server, in the shape GitHub serves
+// them: `<mirror>/repos/<repo>/tags` for the tag list and `<mirror>/<repo>/releases/download/<tag>/
+// <file>` for every asset. `scripts/install.ps1` reads the same shape from its own mirror variable.
+//
+// Only this machine's loopback address is accepted, so the seam cannot point an install at another
+// host. A value that is set and not loopback is refused, never ignored: `collie update` stops, and
+// the bridge's release check keeps asking GitHub and says why. No token goes to a mirror, because a
+// token goes to `api.github.com` alone ({@link githubHeaders}). A loud line says the seam is set.
+
+/** The variable that names a rehearsal mirror. A test seam only; see the section above. */
+export const UPDATE_MIRROR_ENV = "COLLIE_UPDATE_MIRROR";
+
+/** `http://127.0.0.1` or `http://localhost`, an optional port and an optional plain path. Nothing else. */
+const LOOPBACK_MIRROR = /^http:\/\/(127\.0\.0\.1|localhost)(:[0-9]{1,5})?(\/[A-Za-z0-9._~/-]*)?$/;
+
+/**
+ * The mirror {@link UPDATE_MIRROR_ENV} names: `base` null when it is unset or blank, the base URL
+ * without a trailing slash when it is a loopback URL, and `ok: false` with the value for anything else.
+ */
+export function updateMirror(
+  env: Readonly<Record<string, string | undefined>>,
+): { ok: true; base: string | null } | { ok: false; value: string } {
+  const value = env[UPDATE_MIRROR_ENV]?.trim() ?? "";
+  if (value === "") return { ok: true, base: null };
+  const base = value.replace(/\/+$/, "");
+  // A `.` or `..` path segment is refused as well: the base is joined with more path, and a client
+  // or a proxy that folds `..` would leave the base the pattern checked.
+  const dotted = /\/\.{1,2}(\/|$)/.test(base.slice("http://".length));
+  return LOOPBACK_MIRROR.test(base) && !dotted ? { ok: true, base } : { ok: false, value };
+}
+
+/** What every request to a mirror carries: a loopback server may not send the client to another host. */
+export const MIRROR_FETCH = { redirect: "error" } as const;
+
+/** The line every surface prints while a mirror is in use. */
+export const mirrorWarning = (base: string): string =>
+  `WARNING: ${UPDATE_MIRROR_ENV} is set. This is a test seam: releases come from ${base}, not from GitHub.`;
+
+/** The line for a mirror value that is not loopback. */
+export const mirrorRefusal = (value: string): string =>
+  `${UPDATE_MIRROR_ENV}='${value}' is not an http://127.0.0.1 or http://localhost URL. It is a test seam for rehearsals, never a download source.`;
+
+/**
+ * The bridge's two release reads, with the mirror decided ONCE, here, from `env`. Unset: GitHub, as
+ * always. A loopback mirror: that mirror, and `warning` to log once. A value that is set and not
+ * loopback: REFUSED, never GitHub in its place, because an operator who set it meant not to ask
+ * GitHub. The release check then fails with the refusal, and the phone shows no new version.
+ */
+export interface ReleaseFetchers {
+  readonly fetchTags: () => Promise<ApiTag[]>;
+  readonly fetchReleaseReading: (version: string) => Promise<ReleaseReadingResult>;
+  /** The one line to log at boot, or null when there is nothing to say. */
+  readonly warning: string | null;
+}
+
+export function releaseFetchers(repo: string, env: Readonly<Record<string, string | undefined>>): ReleaseFetchers {
+  const mirror = updateMirror(env);
+  if (!mirror.ok) {
+    const said = mirrorRefusal(mirror.value);
+    return {
+      fetchTags: () => Promise.reject(new Error(said)),
+      fetchReleaseReading: () => Promise.resolve(null),
+      warning: `${said} The release check is off until it is fixed or unset.`,
+    };
+  }
+  return {
+    fetchTags: githubTagsFetcher(repo, githubCredential(env), mirror.base),
+    fetchReleaseReading: releaseReadingFetcher(repo, mirror.base),
+    warning: mirror.base === null ? null : mirrorWarning(mirror.base),
+  };
+}
+
+/** The raw mirror value to hand a child that starts with a bare environment, or null when unset. */
+export const mirrorValue = (env: Readonly<Record<string, string | undefined>>): string | null => {
+  const value = env[UPDATE_MIRROR_ENV]?.trim() ?? "";
+  return value === "" ? null : value;
+};
 
 // ── The GitHub credential (#254) ─────────────────────────────────────────────
 // GitHub allows an anonymous caller 60 API calls an hour, counted per network address, so every
@@ -514,17 +595,20 @@ export function parseTagsResponse(data: JsonValue): ApiTag[] {
 export function githubTagsFetcher(
   repo: string,
   credential: GithubCredential | null = null,
+  mirror: string | null = null,
 ): () => Promise<ApiTag[]> {
-  const url = githubTagsUrl(repo);
+  const url = githubTagsUrl(repo, mirror);
   let refusedSaid = false;
   return async () => {
-    const res = await fetch(url, {
+    const init: RequestInit = {
       headers: githubHeaders(url, credential, {
         accept: "application/vnd.github+json",
         "user-agent": "collie-update-check",
       }),
       signal: AbortSignal.timeout(TAGS_TIMEOUT_MS),
-    });
+    };
+    if (mirror !== null) init.redirect = MIRROR_FETCH.redirect;
+    const res = await fetch(url, init);
     // Once, not every tick: the check runs for the life of the process, and a line an hour is the
     // sort of log nobody reads. The price is that a token revoked later is said once and then only
     // shows as a banner that stops moving; `collie update --check` names it any time it is asked.
@@ -575,8 +659,8 @@ export interface UpdateUrgentReading {
 /** Where the asset sits. Constructed from (repo, version), never taken from a document, for the
  *  reason the manifest carries no URLs: a release must not be able to redirect a read to another
  *  host. The trust boundary stays "which repo", which is what COLLIE_UPDATE_REPO names. */
-export function releaseReadingUrl(repo: string, version: string): string {
-  return `https://github.com/${repo}/releases/download/v${version}/collie-release.json`;
+export function releaseReadingUrl(repo: string, version: string, mirror: string | null = null): string {
+  return `${mirror ?? "https://github.com"}/${repo}/releases/download/v${version}/collie-release.json`;
 }
 
 /** The asset, parsed. Null for anything that is not the document we asked for — a wrong shape, a
@@ -628,13 +712,16 @@ export type ReleaseReadingResult = ReleaseReading | "absent" | null;
  *  answer is the tag list, and this is a footnote on it. */
 export function releaseReadingFetcher(
   repo: string,
+  mirror: string | null = null,
 ): (version: string) => Promise<ReleaseReadingResult> {
   return async (version) => {
     try {
-      const res = await fetch(releaseReadingUrl(repo, version), {
+      const init: RequestInit = {
         headers: { accept: "application/json", "user-agent": "collie-update-check" },
         signal: AbortSignal.timeout(RELEASE_READING_TIMEOUT_MS),
-      });
+      };
+      if (mirror !== null) init.redirect = MIRROR_FETCH.redirect;
+      const res = await fetch(releaseReadingUrl(repo, version, mirror), init);
       // 404 is the ordinary answer for every release before 1.8.0, and it is DEFINITE: that release
       // is published and will never grow the asset. Every other bad status is this minute's problem.
       if (res.status === 404) return "absent";

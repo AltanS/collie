@@ -35,6 +35,7 @@ import {
   parseDfAvailableKb,
   parseReport,
   preflight,
+  serviceCheck,
   PREFLIGHT_SCHEMA,
   PROTOCOL_FLOOR_VERSION,
   type PreflightCheck,
@@ -596,6 +597,30 @@ describe("preflight — the upstream check", () => {
   });
 });
 
+describe("preflight — a source checkout on Windows (M43 spec 08)", () => {
+  test("one red check with the one sentence, and nothing else is asked", async () => {
+    const h = harness();
+    const report = await preflight({ ...h.deps, host: hostFor("win32") });
+    expect(report.verdict).toBe("red");
+    expect(report.checks).toEqual([
+      {
+        id: "windows-checkout",
+        verdict: "red",
+        reason:
+          "On Windows, collie updates a release install. A source checkout is not supported for updates; install the release zip with install.ps1.",
+        remedy: "install the release zip with install.ps1",
+      },
+    ]);
+    // No fetch, no build tool, no git: nothing it says could change the answer.
+    expect(h.exec.calls.some((c) => c.includes("ls-remote") || c.includes("bun"))).toBe(false);
+  });
+
+  test("off Windows the checkout's checks are the ones they were", async () => {
+    const report = await preflight(harness().deps);
+    expect(report.checks.some((c) => c.id === "windows-checkout")).toBe(false);
+  });
+});
+
 describe("preflight — the service check", () => {
   test("green when the unit exists and is restartable", async () => {
     const check = byId(await preflight(harness().deps), "service");
@@ -624,6 +649,25 @@ describe("preflight — the service check", () => {
     expect(check.verdict).toBe("red");
     expect(check.reason).toContain("LaunchAgent");
     expect(check.reason).toContain(join("Library", "LaunchAgents"));
+  });
+
+  test("on Windows the Task Scheduler task is what is asked about, never a systemd unit", () => {
+    // The rehearsal found the phone's Update refused on Windows with "no systemd user unit".
+    const QUERY = "powershell -NoProfile -NonInteractive -Command";
+    const running = harness({ answers: [[QUERY, { stdout: "Running\r\nC:\\WINDOWS\\system32\\conhost.exe\r\n--headless x _supervise\r\n" }]] });
+    const live = serviceCheck({ ...running.deps, host: hostFor("win32") });
+    expect(live.verdict).toBe("green");
+    expect(live.reason).toBe("the Task Scheduler task herdr.collie is Running, and the update can restart it");
+    expect(running.exec.calls.some((c) => c.startsWith("systemctl --user is-active"))).toBe(false);
+
+    const none = harness({ answers: [[QUERY, { code: 1 }]] });
+    const missing = serviceCheck({ ...none.deps, host: hostFor("win32") });
+    expect(missing.verdict).toBe("red");
+    expect(missing.reason).toContain("no Task Scheduler task herdr.collie");
+    expect(missing.remedy).toBe("collie start");
+
+    const blind = harness({ absent: ["powershell"] });
+    expect(serviceCheck({ ...blind.deps, host: hostFor("win32") }).verdict).toBe("amber");
   });
 });
 
@@ -1054,6 +1098,27 @@ describe("preflight — a folder a package manager owns", () => {
     expect(check.verdict).toBe("green");
     expect(check.reason).toBe("updates come from your package manager");
     expect(check.remedy).toBeUndefined();
+  });
+
+  test("a rehearsal mirror is where the release list is asked, and one that is not loopback is red", async () => {
+    const asked: string[] = [];
+    const h = packaged({
+      env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:8899" },
+      net: {
+        ...deadNet,
+        getJson: (url) => {
+          asked.push(url);
+          return Promise.resolve({ ok: true, value: [{ name: "v1.0.0", commit: { sha: "cccccccc" } }] });
+        },
+      },
+    });
+    expect(byId(await preflight(h.deps), "upstream").verdict).not.toBe("red");
+    expect(asked).toEqual(["http://127.0.0.1:8899/repos/AltanS/collie/tags?per_page=100"]);
+
+    const wide = byId(await preflight(packaged({ env: { COLLIE_UPDATE_MIRROR: "http://10.0.0.5:8899" } }).deps), "upstream");
+    expect(wide.verdict).toBe("red");
+    expect(wide.reason).toContain("is not an http://127.0.0.1 or http://localhost URL");
+    expect(wide.remedy).toBe("unset COLLIE_UPDATE_MIRROR");
   });
 
   test("the report names the kind, which is what the crew flow branches on", async () => {

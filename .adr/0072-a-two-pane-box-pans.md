@@ -1,6 +1,9 @@
 # 0072 — A two-pane box pans
 
 - **Status:** Accepted
+- **Amended in scope by:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md):
+  omp's `/model` picker now renders inside the unread-dialog card, whose mirror pans the whole pane
+  as one, so no table run claims it any more. The anchor rule and everything else below stand.
 - **Date:** 2026-09-30
 - **Changes:** the anchor alphabet of `web/src/lib/table-run.ts`, which until now refused a T-piece.
   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) and

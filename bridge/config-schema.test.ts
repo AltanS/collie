@@ -44,6 +44,10 @@ const EXEMPT = {
   COLLIE_PAYLOAD__: "a marker in the remote script `cli/remote.ts` writes",
   COLLIE_TAG: "install.sh's version pin, set by the release install leg `crew add` sends (cli/remote.ts)",
   COLLIE_DIR: "install.sh's install root, set by that same leg — the installer's variable, not a setting here",
+  COLLIE_UPDATE_MIRROR:
+    "a loopback-only test seam that serves rehearsal releases (bridge/update.ts), never a setting to put in a file",
+  COLLIE_NO_ACL_REPAIR:
+    "the Windows off switch for the access-list repair (bridge/owner-only.ts), documented in docs/security.md only, never a settings card",
   COLLIE_PACK_SECRET:
     "named only in the update runner's redaction list, so it is a name to scrub and not a value read",
 } satisfies Record<string, string>;

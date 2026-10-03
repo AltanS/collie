@@ -581,6 +581,35 @@ The terminal mirror continues polling in Zen mode, and interactive buffer elemen
 functional. Prompt buttons, "Load older", and "Show entire history" controls stay available because
 they are part of the content stream rather than chrome.
 
+## Chat view
+
+> **Note.** Chat is experimental and off by default.
+
+Turn it on in **Settings → Experiments**. The setting is stored per device in the browser. A pane's
+**⋮** menu then gets a row that switches that pane between **Terminal** and **Chat**. Chat draws the
+agent's own conversation instead of the terminal: your turns, its replies, thinking behind a fold and
+a card per step. The composer, the belt and the pane menu stay where they were.
+
+Chat reads the agent's session log, not the screen. That means a pane gets Chat only when Collie
+knows which session the pane is running, and the agent has to tell the multiplexer. The pane itself
+cannot work this out.
+
+| Multiplexer | What reports the session | Chat works for |
+| --- | --- | --- |
+| Herdr | The matching Herdr integration for that agent, installed once with `herdr integration install <agent>` (for example `claude`, `codex`, `opencode`, `pi`, `omp`, `grok`, `hermes`), then restart the agent | Every agent that has an integration and a session log Collie reads |
+| tmux, zellij | Collie's [beacon hooks](multiplexers.md#agent-beacons-optional-linux) | Claude Code only, after `collie hooks install claude` |
+| tuios | The tuios daemon | The agents the daemon reports |
+
+`herdr integration status` shows which integrations are installed. A hook is read when the agent
+starts, so an agent that was already running when you installed it needs a restart. Oh My Pi is the
+`omp` integration, not the `pi` one: they are two agents with two hooks, and they share one log
+format.
+
+A pane whose agent never named its session keeps the terminal, and the **⋮** row says why. Chat never
+hides the row, so you can tell a missing hook from a missing feature. `collie doctor` lists those
+panes under `agent-sessions` and names the integration line (`integration-<agent>`) that fixes each.
+The [troubleshooting page](troubleshooting.md) has the steps, under **a pane has no Chat or History**.
+
 ## Changes
 
 The [Changes view](changes.md) shows what an agent changed in its workspace's git repos. Two

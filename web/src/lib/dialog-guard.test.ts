@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { fetchPane, sendKeys } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
-import { dialogDetector, sendGuardedKeys } from "./dialog-guard";
+import { dialogDetector, sendBoundKeys, sendGuardedKeys } from "./dialog-guard";
 import { submitPromptOption } from "./prompt-action";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -114,5 +114,61 @@ describe("the guard refuses when the fresh screen isn't the tapped dialog", () =
 
     expect(res).toEqual({ status: "changed" });
     expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+});
+
+// ADR 0080 point 7: a model that carries `styledSignature` has the guard bind its write to it too.
+// A grammar with no style-only state sends the old four arguments, byte for byte.
+describe("the guard binds a model's styledSignature as expected_styled", () => {
+  const opencode = (name: string) => dialogDetector("prompt-select", "opencode")(lines(fixture(name)))!;
+  const target = (model: ReturnType<typeof opencode>) => ({
+    paneId: "w1:p1",
+    requestedLines: 200,
+    detectedRevision: 0,
+    agent: "opencode",
+    kind: "prompt-select" as const,
+    model,
+  });
+
+  it("sends the styled lines of the FRESH read beside the text region", async () => {
+    pane(fixture("oc--permission-bash.txt"));
+    const p = opencode("oc--permission-bash.txt");
+    expect(p.styledSignature).toBeDefined();
+
+    expect(await sendGuardedKeys(target(p), p.options[0]!.keys)).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["Enter"], undefined, p.signature, p.styledSignature);
+  });
+
+  it("refuses a tap whose chip has since moved, though the text is identical", async () => {
+    pane(fixture("oc--permission-bash--moved.txt"));
+    const p = opencode("oc--permission-bash.txt");
+    expect(await sendGuardedKeys(target(p), p.options[0]!.keys)).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("a model with no styledSignature sends exactly the old four arguments", async () => {
+    pane(fixture("claude--permission-edit.txt"));
+    const p = dialogDetector("prompt-select", "claude")(lines(fixture("claude--permission-edit.txt")))!;
+    expect(p.styledSignature).toBeUndefined();
+    await sendGuardedKeys({ ...target(p), agent: "claude" }, p.options[0]!.keys);
+    expect(mockSendKeys.mock.calls[0]).toEqual(["w1:p1", p.options[0]!.keys, undefined, p.signature]);
+  });
+});
+
+// A refused write says which check refused, for a person with the console open (never UI text).
+describe("sendBoundKeys: the bridge's reason on a changed prompt", () => {
+  const target = { paneId: "w1:p1" };
+
+  it("puts the bridge's reason code on the result as `why`", async () => {
+    mockSendKeys.mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved", reason: "style_not_found" });
+    expect(await sendBoundKeys(target, ["Enter"], "region", "v1\nstyled")).toEqual({
+      status: "changed",
+      why: "bridge: style_not_found",
+    });
+  });
+
+  it("is the bare `changed` of old when the body carries no reason (an older bridge)", async () => {
+    mockSendKeys.mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" });
+    expect(await sendBoundKeys(target, ["Enter"], "region")).toEqual({ status: "changed" });
   });
 });

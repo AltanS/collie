@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { hostFor } from "../bridge/host.ts";
 import { context, fakeExec, fakeFiles, HOME, type Scripted, type SeededFiles } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
 import {
+  HERDR_MIN_WINDOWS,
   historyFindings,
+  JOURNAL_AGENT_NAMES,
   JOURNAL_AGENTS,
   paneVerdicts,
   parseIntegrationStatus,
@@ -30,6 +33,7 @@ const MIXED_STATUS = [
   "claude: installed (/home/pat/.claude/hooks/herdr-agent-state.sh)",
   "codex: not installed (/home/pat/.codex/herdr-agent-state.sh)",
   "omp: not installed (/home/pat/.omp/agent/extensions/herdr-omp-agent-state.ts)",
+  "cursor: not installed (/home/pat/.cursor/herdr-agent-state.sh)",
 ].join("\n");
 
 describe("parseIntegrationStatus", () => {
@@ -40,13 +44,19 @@ describe("parseIntegrationStatus", () => {
       ["claude", "installed"],
       ["codex", "missing"],
       ["omp", "missing"],
+      ["cursor", "missing"],
     ]);
     expect(lines[0]?.note).toBe("outdated (v6 < v8) (/home/pat/.pi/agent/extensions/herdr-agent-state.ts)");
   });
 
   test("an agent Collie has no journal for is parsed, not dropped — the caller decides who to report", () => {
-    expect(parseIntegrationStatus(MIXED_STATUS).map((l) => l.agent)).toContain("omp");
+    expect(parseIntegrationStatus(MIXED_STATUS).map((l) => l.agent)).toContain("cursor");
+    expect(JOURNAL_AGENT_NAMES).not.toContain("cursor");
+  });
+
+  test("an alias is reported on although it owns no adapter: omp reads through pi's", () => {
     expect(JOURNAL_AGENTS).not.toContain("omp");
+    expect(JOURNAL_AGENT_NAMES).toContain("omp");
   });
 
   test("a state word this build has never seen reads `unknown` rather than healthy", () => {
@@ -99,18 +109,20 @@ describe("the per-pane verdict", () => {
     { paneId: "w1:p1", agent: "claude", hasSession: true },
     { paneId: "w2:p5", agent: "claude", hasSession: false },
     { paneId: "w3:p1", agent: "omp", hasSession: false },
+    { paneId: "w3:p2", agent: "cursor", hasSession: false },
   ];
 
   test("a pane is journalled when THIS build has an adapter for its agent, never by its name alone", () => {
     expect(paneVerdicts(panes).map((v) => [v.pane.paneId, v.journalled])).toEqual([
       ["w1:p1", true],
       ["w2:p5", true],
-      ["w3:p1", false],
+      ["w3:p1", true],
+      ["w3:p2", false],
     ]);
   });
 
-  test("only a journalled pane with no session hides its link silently — the other two are honest", () => {
-    expect(silentPanes(paneVerdicts(panes)).map((v) => v.pane.paneId)).toEqual(["w2:p5"]);
+  test("only a journalled pane with no session hides its link silently — the others are honest", () => {
+    expect(silentPanes(paneVerdicts(panes)).map((v) => v.pane.paneId)).toEqual(["w2:p5", "w3:p1"]);
   });
 });
 
@@ -160,10 +172,13 @@ async function run(
     snapshot?: string | null;
     /** A read that is not a body: the bridge answered, and refused (issue #238). */
     refused?: number;
+    /** What `herdr --version` prints. */
+    herdr?: string;
+    platform?: string;
   } = {},
 ): Promise<Map<string, Finding>> {
   const answers: Scripted["answers"] = [
-    ["herdr --version", { stdout: "herdr 0.8.2\n" }],
+    ["herdr --version", { stdout: over.herdr ?? "herdr 0.8.2\n" }],
     ["herdr integration status", { stdout: over.status ?? HEALTHY_STATUS }],
   ];
   const findings = await historyFindings({
@@ -175,9 +190,29 @@ async function run(
       if (over.snapshot === null) return { kind: "silent" };
       return { kind: "body", text: over.snapshot ?? snapshotOf([]) };
     },
+    host: hostFor(over.platform ?? "linux"),
   });
   return new Map(findings.map((f) => [f.check, f]));
 }
+
+describe("the Herdr version on Windows", () => {
+  test(`is checked against ${HERDR_MIN_WINDOWS}, the build verified on the Windows VM`, async () => {
+    const old = (await run({ platform: "win32", herdr: "herdr 0.9.2\n" })).get("herdr-version");
+    expect(old?.status).toBe("warn");
+    expect(old?.detail).toContain(`older than ${HERDR_MIN_WINDOWS}`);
+    expect(old?.remedy).toBe(`update Herdr to ${HERDR_MIN_WINDOWS} or newer`);
+    for (const current of ["herdr 0.9.3\n", "herdr 0.10.0\n", "herdr 1.0.0\n"]) {
+      expect((await run({ platform: "win32", herdr: current })).get("herdr-version")?.status).toBe("ok");
+    }
+  });
+
+  test("Linux and macOS have no minimum, and a version nobody can read is not judged", async () => {
+    for (const platform of ["linux", "darwin"]) {
+      expect((await run({ platform, herdr: "herdr 0.5.0\n" })).get("herdr-version")?.status).toBe("ok");
+    }
+    expect((await run({ platform: "win32", herdr: "herdr dev-build\n" })).get("herdr-version")?.status).toBe("ok");
+  });
+});
 
 describe("the history section", () => {
   test("a host with current hooks and a readable root passes every line", async () => {
@@ -222,7 +257,7 @@ describe("the history section", () => {
       snapshot: snapshotOf([
         { paneId: "w1:p1", agent: "claude", hasSession: true },
         { paneId: "w2:p5", agent: "claude" },
-        { paneId: "w3:p1", agent: "omp" },
+        { paneId: "w3:p1", agent: "cursor" },
       ]),
     });
     expect(bad.get("agent-sessions")?.status).toBe("error");
@@ -232,6 +267,20 @@ describe("the history section", () => {
 
     const good = await run({ snapshot: snapshotOf([{ paneId: "w1:p1", agent: "claude", hasSession: true }]) });
     expect(good.get("agent-sessions")?.status).toBe("ok");
+  });
+
+  // An omp pane reads through pi's adapter, so the bridge hides its History and Chat when it names no
+  // session, and `collie doctor` has to say so and name omp's own hook.
+  test("an omp pane with no session is named, and its own hook is the remedy", async () => {
+    const byCheck = await run({
+      status: MIXED_STATUS,
+      snapshot: snapshotOf([{ paneId: "w3:p1", agent: "omp" }]),
+    });
+    expect(byCheck.get("agent-sessions")?.status).toBe("error");
+    expect(byCheck.get("agent-sessions")?.detail).toContain("w3:p1 (omp)");
+    expect(byCheck.get("integration-omp")?.status).toBe("error");
+    expect(byCheck.get("integration-omp")?.remedy).toContain("herdr integration install omp");
+    expect(byCheck.get("integration-omp")?.detail).toContain("w3:p1");
   });
 
   // Issue #294: Codex reports its session only after its first prompt, so a fresh Codex pane under a
@@ -284,7 +333,7 @@ describe("the history section", () => {
 
   test("`herdr integration status` that says nothing leaves every agent skipped, never ok", async () => {
     const byCheck = await run({ status: "" });
-    for (const agent of JOURNAL_AGENTS) expect(byCheck.get(`integration-${agent}`)?.status).toBe("skipped");
+    for (const agent of JOURNAL_AGENT_NAMES) expect(byCheck.get(`integration-${agent}`)?.status).toBe("skipped");
   });
 
   test("no python3 is an error: the hook needs it and exits silently without it", async () => {

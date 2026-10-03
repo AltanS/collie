@@ -259,7 +259,12 @@ function promptChangedResponse(detail: string): ActionResponse | null {
   if (body.ok !== false || body.code !== "prompt_changed") return null;
   const error = asJsonString(body.error);
   if (error === undefined) return null;
-  return { ok: false, error, code: "prompt_changed" };
+  const response: ActionResponse = { ok: false, error, code: "prompt_changed" };
+  // The bridge's reason code, kept only when it is a plain code: it is shown to a person with the
+  // console open and never as UI text, and a body that is not one is not forwarded.
+  const reason = asJsonString(body.reason);
+  if (reason !== undefined && /^[a-z_]{1,32}$/.test(reason)) response.reason = reason;
+  return response;
 }
 
 /**
@@ -695,13 +700,15 @@ export function sendKeys(
   keys: string[],
   scope?: Scope,
   expectedPrompt?: string,
+  expectedStyled?: string,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(
     withScope(`/api/pane/${encodeURIComponent(paneId)}/keys`, scope),
     {
       method: "POST",
-      // As in `sendReply`: an `undefined` property is omitted by `JSON.stringify`.
-      body: JSON.stringify({ keys, expected_prompt: expectedPrompt }),
+      // As in `sendReply`: an `undefined` property is omitted by `JSON.stringify`. The bridge honours
+      // `expected_styled` only beside `expected_prompt` (ADR 0080 point 7); an older bridge ignores it.
+      body: JSON.stringify({ keys, expected_prompt: expectedPrompt, expected_styled: expectedStyled }),
     },
     recoverPromptChanged,
   );

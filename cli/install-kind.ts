@@ -206,6 +206,15 @@ export function classifyInstall(p: InstallProbe): InstallKind {
  */
 export const PACKAGED_SENTENCE = "updates come from your package manager";
 
+/**
+ * The one sentence for a source checkout on Windows (M43 spec 08). There `collie update` takes a
+ * release install only: a checkout's update needs `bash` to build (spec 03), and its task runs the
+ * clone's own `bin\collie.exe`, so the restart after a staged update relaunched the old build (VM,
+ * 2026-10-02). `collie update` and its preflight (so the phone's button) print exactly this.
+ */
+export const WINDOWS_CHECKOUT_SENTENCE =
+  "On Windows, collie updates a release install. A source checkout is not supported for updates; install the release zip with install.ps1.";
+
 // ── The probe, and what a binary install's paths are ─────────────────────────
 
 /** The paths of a binary install, all derived from the version directory the process runs from. */
@@ -268,13 +277,22 @@ export function binaryLayout(root: string, host: Host = HOST): BinaryLayout {
  * `bin/collie` exactly as before.
  */
 export function publishedBinary(root: string, link: LinkReader, host: Host = HOST): string {
+  return collieBinary(publishedRoot(root, link, host), host);
+}
+
+/**
+ * The folder {@link publishedBinary} sits under: `<install-root>/current` on a binary install whose
+ * `current` names a version under `versions/`, and `root` itself everywhere else. The Windows task is
+ * registered on this folder (`cli/lifecycle.ts`), so the task, the PATH name and `doctor` read one
+ * answer and cannot drift apart.
+ */
+export function publishedRoot(root: string, link: LinkReader, host: Host = HOST): string {
   const layout = binaryLayout(root, host);
-  if (host.path.basename(layout.versionsDir) !== "versions") return collieBinary(root, host);
+  if (host.path.basename(layout.versionsDir) !== "versions") return root;
   const probe = link.probe(layout.currentLink);
-  if (probe.kind !== "symlink") return collieBinary(root, host);
+  if (probe.kind !== "symlink") return root;
   const target = host.path.resolve(layout.installRoot, probe.target);
-  const inLayout = isSameOrUnder(host, layout.versionsDir, target);
-  return inLayout ? collieBinary(layout.currentLink, host) : collieBinary(root, host);
+  return isSameOrUnder(host, layout.versionsDir, target) ? layout.currentLink : root;
 }
 
 /** What the world says about `root` — one `git` call, one `lstat`, one `readlink`. All reads. */

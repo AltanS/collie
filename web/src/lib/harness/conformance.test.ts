@@ -6,6 +6,8 @@ import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
 import { claudeAdapter } from "./claude";
 import { describeAdapterConformance, isValidHerdrKey } from "./conformance";
+import { registeredAgents } from "./registry";
+import { WALK_GAPS, WALK_PAIRS } from "./walk-pairs";
 
 // The Claude adapter is the reference implementation the conformance suite gates. The fixture
 // cohorts are derived from the byte-faithful corpus (web/src/fixtures/panes/claude--*.txt) by
@@ -224,5 +226,59 @@ describe("isValidHerdrKey", () => {
     for (const key of ["10", "42", "PageUp", "PageDown", "Home", "End", "Insert", "Delete", "", "C-c"]) {
       expect(isValidHerdrKey(key), key).toBe(false);
     }
+  });
+});
+
+// The walk-pair table (harness/walk-pairs.ts) is read per adapter by `describeAdapterConformance`, so a
+// row naming an agent no adapter claims would never be checked. Pin the table's own hygiene here.
+describe("the walk-pair table", () => {
+  const agents = registeredAgents();
+
+  it("names only registered agents, in pairs and in gaps", () => {
+    for (const [agent] of WALK_PAIRS) expect(agents, `pair agent ${agent}`).toContain(agent);
+    for (const key of Object.keys(WALK_GAPS)) expect(agents, `gap ${key}`).toContain(key.split(" | ")[0]);
+  });
+
+  it("holds each pair once, and no fixture against itself", () => {
+    const seen = new Set<string>();
+    for (const [agent, a, b] of WALK_PAIRS) {
+      expect(a, `${agent}: ${a} paired with itself`).not.toBe(b);
+      const id = [agent, ...[a, b].toSorted()].join("|");
+      expect(seen.has(id), `${a} <> ${b} is declared twice`).toBe(false);
+      seen.add(id);
+    }
+  });
+
+  it("gives every gap a reason", () => {
+    for (const [key, gap] of Object.entries(WALK_GAPS)) expect(gap.reason.length, key).toBeGreaterThan(10);
+  });
+
+  it("dates every gap", () => {
+    for (const [key, gap] of Object.entries(WALK_GAPS)) {
+      expect(gap.since, `${key}: since must be an ISO date`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  // THE RATCHET: gaps only shrink. The set of gap keys is pinned as a literal list. A new grammar
+  // group that lifts a walked list must arrive with a second capture (a walk pair), not with a new
+  // gap. Adding a key below is a reviewed decision, not a convenience: it says nothing proves that
+  // grammar blanks what follows its pointer (ADR 0080 point 5). Removing a key is always fine, and
+  // the stale-gap checks in describeAdapterConformance already demand it when a pair lands.
+  it("pins the exact set of gap keys: a new gap needs a second capture first", () => {
+    expect(
+      Object.keys(WALK_GAPS).toSorted(),
+      "WALK_GAPS changed. A new grammar group needs a second capture of the same dialog with the " +
+        "pointer on another row (add it to WALK_PAIRS), not a new gap. Adding a key to the literal list " +
+        "in this test is a reviewed decision. Removing one is expected when a pair lands.",
+    ).toEqual(
+      [
+        "claude | trust | Quick safety check",
+        "codex | trust | Trust this folder?",
+        "omp | select | Pick a colour",
+        "opencode | permission | % WebFetch https",
+        "opencode | permission | $ echo narrow-width-probe",
+        "opencode | permission | This will allow edit until OpenCode is restarted.",
+      ].toSorted(),
+    );
   });
 });

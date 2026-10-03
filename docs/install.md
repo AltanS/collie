@@ -165,8 +165,7 @@ macOS has no package yet. [mise](#mise) works on a Mac, as does the `aarch64-dar
 The bridge runs on Windows against the Herdr Windows beta. `collie start` and the rest of the
 launcher do not. Run the bridge with Bun, and supply your own front door because `tailscale serve`
 integration is unavailable there. [Windows](../README.md#windows-experimental) in the README has
-the steps. [`contrib/windows/`](../contrib/windows/README.md) has an unsupported Task Scheduler
-setup.
+the steps. The community Task Scheduler script that lived in `contrib/windows/` is retired.
 
 ### Standalone
 

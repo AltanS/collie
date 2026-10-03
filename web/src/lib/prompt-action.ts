@@ -11,7 +11,16 @@
 //     is irreversible and it is the LAST thing sent, only after a fresh read shows our own words in
 //     the box — the same "never submit blind" rule as reply-action and submitPreviewNote.
 //
-// Both flows start with the same guard as their siblings: a FRESH pane read, the unconditional
+//   - Answering a row of a POINTED list is `[Down × n, Enter]` (ADR 0055's walk). The plan is split
+//     (`splitWalk`): the arrows go first, bound to the screen the user tapped; then a fresh read must
+//     show the pointer standing on the tapped row; only then does Enter go, bound to THAT read
+//     (ADR 0080, "walk, verify, commit"). A half-walked pointer with nothing committed is harmless;
+//     a committed wrong row is not. The only window left is the milliseconds between the bridge's own
+//     re-read and its send (see `checkPromptBinding` in bridge/server.ts). For an EDGE row of a list
+//     the grammar declared `clampedEnds`, even that gap is covered: the commit batch is `[Up, Enter]`
+//     on the first row and `[Down, Enter]` on the last (`commitKeysFor`, ADR 0080 point 6).
+//
+// All flows start with the same guard as their siblings: a FRESH pane read, the unconditional
 // revision check, and a re-derivation THROUGH THE PANE'S ADAPTER compared against what the user
 // tapped. The mid-flight polls re-derive the same way, against `promptsSameIdentity` — the feedback
 // flow moves the pointer and fills the input by design, so `promptsEqual` would reject its own work.
@@ -27,7 +36,13 @@ import {
   sendGuardedKeys,
   type DialogTarget,
 } from "./dialog-guard";
-import { promptsSameIdentity } from "./harness/prompt-model";
+import {
+  commitKeysFor,
+  identityDiff,
+  promptsSameIdentity,
+  sameKeys,
+  splitWalk,
+} from "./harness/prompt-model";
 import { t } from "./i18n";
 import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
 import type { Scope } from "./scope";
@@ -88,7 +103,92 @@ export async function submitPromptOption(
   args: GuardArgs & { option: PromptOption },
 ): Promise<PromptActionResult> {
   if (args.prompt.feedback?.focused) return { status: "changed" };
-  return sendGuardedKeys({ ...args, kind: "prompt-select", model: args.prompt }, args.option.keys);
+  const { option } = args;
+  const plan = splitWalk(option.keys);
+  if (plan === null) return sendGuardedKeys(target(args), option.keys);
+  if (plan.walk.length === 0) {
+    // The pointed row: one guarded write. On a clamped list an edge row carries its sticky arrow
+    // (ADR 0080 point 6), bound to the guarded region like the plain Enter.
+    const index = rowIndexOf(args.prompt, option);
+    const keys = index < 0 ? option.keys : commitKeysFor(args.prompt, index);
+    return sendGuardedKeys(target(args), keys);
+  }
+  return walkVerifyCommit(args, option, plan);
+}
+
+/** The tapped option's index in the model the user tapped: by identity, else by label and plan. */
+function rowIndexOf(prompt: PromptModel, option: PromptOption): number {
+  const index = prompt.options.indexOf(option);
+  if (index >= 0) return index;
+  return prompt.options.findIndex(
+    (o) => o.label === option.label && sameKeys(o.keys, option.keys),
+  );
+}
+
+/** `result` with a diagnosis on it when it is a `changed` refusal, untouched otherwise. A `why` the
+ *  result already carries is more specific than this step's name (the bridge's own reason code), so
+ *  it stays. */
+function withWhy(result: PromptActionResult, why: string): PromptActionResult {
+  return result.status === "changed" ? { status: "changed", why: result.why ?? why } : result;
+}
+
+/**
+ * ADR 0080, "walk, verify, commit", for a pointed list's row whose plan is `[Up|Down × n, Enter]`:
+ *
+ *   1. entry guard, then the arrows bound to the region the user tapped;
+ *   2. poll until a fresh read shows the SAME dialog with the pointer on the tapped row (that row's
+ *      plan is now just `Enter`). Drift or timeout sends nothing: the pointer may be anywhere, the
+ *      card re-derives on the next poll, and nothing was committed;
+ *   3. Enter bound to the read that proved the pointer. The poll hands that model back, so there is
+ *      no second read between the proof and the binding: a keystroke at the terminal after it makes
+ *      the bridge refuse instead of confirming whatever the pointer now rests on.
+ *
+ * A refusal says why (`ActionResult.why`): the entry guard, the bridge's 409, a poll timeout, or the
+ * first field `identityDiff` names when the poll saw another dialog.
+ */
+async function walkVerifyCommit(
+  args: GuardArgs & { option: PromptOption },
+  option: PromptOption,
+  plan: { walk: string[]; commit: string[] },
+): Promise<PromptActionResult> {
+  const index = rowIndexOf(args.prompt, option);
+  if (index < 0) return { status: "changed", why: "entry" };
+
+  const guarded = await guardDialog(target(args));
+  if (!guarded.ok) return withWhy(guarded.result, "entry");
+  const walked = await sendBoundKeys(args, plan.walk, guarded.region, guarded.styled);
+  if (walked.status !== "sent") return withWhy(walked, "bridge");
+
+  const landed = (m: PromptModel) => {
+    const row = m.options[index];
+    return (
+      promptsSameIdentity(m, args.prompt) &&
+      row !== undefined &&
+      row.label === option.label &&
+      sameKeys(row.keys, plan.commit)
+    );
+  };
+  try {
+    const polled = await pollDialog(target(args), landed);
+    if (polled.status === "timeout") return { status: "changed", why: "timeout" };
+    if (polled.status === "drifted") {
+      const diff = polled.model === undefined ? null : identityDiff(polled.model, args.prompt);
+      return { status: "changed", why: diff === null ? "vanished" : `drift: ${diff}` };
+    }
+    // The verified commit, bound to the read that proved the pointer. On a clamped list an edge row
+    // carries a sticky arrow (ADR 0080 point 6) so a desk arrow landing in the last gap before the
+    // send cannot move the commit off the edge.
+    const { model } = polled;
+    const commit = await sendBoundKeys(
+      args,
+      commitKeysFor(args.prompt, index),
+      model.signature,
+      model.styledSignature,
+    );
+    return withWhy(commit, "bridge");
+  } catch (e) {
+    return { status: "error", error: describeThrownError(e) };
+  }
 }
 
 /**
@@ -127,7 +227,7 @@ export async function submitPromptFeedback(
 
   // Bind this write to the guarded region. It moves focus, so the steps after it must re-derive
   // rather than reuse this binding.
-  const focus = await sendBoundKeys(args, [row.key], guarded.region);
+  const focus = await sendBoundKeys(args, [row.key], guarded.region, guarded.styled);
   if (focus.status !== "sent") return focus;
 
   // The field must be FOCUSED, and STILL EMPTY, before anything is typed. Focus alone is not enough:
@@ -140,7 +240,7 @@ export async function submitPromptFeedback(
   // trip, which is irreducible. On timeout we stop dead: nothing has been typed.
   const focusedAndEmpty = (m: PromptModel) =>
     promptsSameIdentity(m, args.prompt) && (m.feedback?.focused ?? false) && m.feedback?.text === "";
-  if ((await pollDialog(target(args), focusedAndEmpty)) !== "ok") {
+  if ((await pollDialog(target(args), focusedAndEmpty)).status !== "ok") {
     return { status: "error", error: t("promptAction.feedback.boxNotOpened") };
   }
 
@@ -156,7 +256,7 @@ export async function submitPromptFeedback(
       promptsSameIdentity(m, args.prompt) &&
       (m.feedback?.focused ?? false) &&
       m.feedback?.text === text;
-    if ((await pollDialog(target(args), landed)) !== "ok") {
+    if ((await pollDialog(target(args), landed)).status !== "ok") {
       return { status: "error", error: t("promptAction.feedback.notArrived") };
     }
     // The Enter is the only irreversible write in this flow — it rejects a plan and puts words in the
@@ -166,7 +266,7 @@ export async function submitPromptFeedback(
     // screen that has moved. (The sibling flows send their last key unbound; this one carries more.)
     const fresh = await readDialog(target(args));
     if (!fresh.model || !landed(fresh.model)) return { status: "changed" };
-    return sendBoundKeys(args, ["Enter"], fresh.model.signature);
+    return sendBoundKeys(args, ["Enter"], fresh.model.signature, fresh.model.styledSignature);
   } catch (e) {
     return { status: "error", error: describeThrownError(e) };
   }

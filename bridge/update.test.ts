@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 
 import { loadConfig } from "./config.ts";
 
@@ -13,6 +14,7 @@ import {
   githubHeaders,
   GITHUB_TOKEN_ENVS,
   githubReleaseUrl,
+  githubTagsUrl,
   isGithubApiUrl,
   isPrereleaseVersion,
   latestUpdateInMajor,
@@ -32,6 +34,8 @@ import {
   shouldNotify,
   stampOf,
   updateDigestBody,
+  releaseFetchers,
+  updateMirror,
   updatesNewerThan,
   UpdateMonitor,
   type UpdateMonitorDeps,
@@ -1333,5 +1337,114 @@ describe("the GitHub credential (#254)", () => {
     expect(githubHeaders("https://api.github.com/x", null, base)).toBe(base);
     expect(isGithubApiUrl("https://api.github.com:443/x")).toBe(true);
     expect(isGithubApiUrl("http://api.github.com:8080/x")).toBe(false);
+  });
+});
+
+describe("the rehearsal mirror (COLLIE_UPDATE_MIRROR), a loopback-only test seam", () => {
+  it("is off when unset or blank, and GitHub is asked as before", () => {
+    expect(updateMirror({})).toEqual({ ok: true, base: null });
+    expect(updateMirror({ COLLIE_UPDATE_MIRROR: "  " })).toEqual({ ok: true, base: null });
+    expect(githubTagsUrl("AltanS/collie")).toBe("https://api.github.com/repos/AltanS/collie/tags?per_page=100");
+    expect(releaseReadingUrl("AltanS/collie", "1.8.0", null)).toBe(
+      "https://github.com/AltanS/collie/releases/download/v1.8.0/collie-release.json",
+    );
+  });
+
+  it("takes this machine's loopback, with a port and a path, and moves every release URL there", () => {
+    for (const [value, base] of [
+      ["http://127.0.0.1:8899/", "http://127.0.0.1:8899"],
+      ["http://localhost:8899", "http://localhost:8899"],
+      ["http://127.0.0.1/mirror/", "http://127.0.0.1/mirror"],
+    ] as const) {
+      expect(updateMirror({ COLLIE_UPDATE_MIRROR: value })).toEqual({ ok: true, base });
+    }
+    const base = "http://127.0.0.1:8899";
+    expect(githubTagsUrl("AltanS/collie", base)).toBe(`${base}/repos/AltanS/collie/tags?per_page=100`);
+    expect(releaseReadingUrl("AltanS/collie", "1.8.0", base)).toBe(
+      `${base}/AltanS/collie/releases/download/v1.8.0/collie-release.json`,
+    );
+  });
+
+  it("refuses everything else: another host, https, a folder, a look-alike, a user part, IPv6", () => {
+    for (const value of [
+      "http://10.0.0.5:8899",
+      "https://127.0.0.1:8899",
+      "file:///C:/mirror",
+      "http://127.0.0.1.example.com",
+      "http://localhost@example.com",
+      "http://[::1]:8899",
+      "http://127.0.0.1:8899/?x=1",
+      "http://127.0.0.1@evil.com",
+      "http://localhost.evil.com",
+      "http://127.0.0.1:80@evil",
+      "http://localhost:1/../x",
+      "http://localhost:1/a/./b",
+      "https://127.0.0.1",
+      "http://127.0.0.1:8899 x",
+      "http://127.0.0.1:8899#top",
+      "http://127.0.0.1:123456",
+      "http://127.0.0.1:8899/x\\y",
+    ]) {
+      expect(updateMirror({ COLLIE_UPDATE_MIRROR: value })).toEqual({ ok: false, value });
+    }
+  });
+
+  it("the bridge refuses a bad value outright: no request at all, never GitHub in its place", async () => {
+    const reads = releaseFetchers("AltanS/collie", { COLLIE_UPDATE_MIRROR: "http://10.0.0.5:8899", GH_TOKEN: "t" });
+    await expect(reads.fetchTags()).rejects.toThrow("is not an http://127.0.0.1 or http://localhost URL");
+    expect(await reads.fetchReleaseReading("1.0.0")).toBeNull();
+    expect(reads.warning).toContain("The release check is off until it is fixed or unset.");
+    expect(releaseFetchers("AltanS/collie", {}).warning).toBeNull();
+  });
+
+  it("the bridge asks the mirror with no token and refuses its redirect (a local server)", async () => {
+    const seen: (string | null)[] = [];
+    let hop = false;
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(req) {
+        seen.push(req.headers.get("authorization"));
+        if (hop) return new Response(null, { status: 302, headers: { location: "http://127.0.0.1:1/elsewhere" } });
+        return Response.json([{ name: "v1.2.3", commit: { sha: "abc" } }]);
+      },
+    });
+    try {
+      const reads = releaseFetchers("AltanS/collie", { COLLIE_UPDATE_MIRROR: `http://127.0.0.1:${server.port}`, GH_TOKEN: "t" });
+      expect(reads.warning).toContain("WARNING: COLLIE_UPDATE_MIRROR is set");
+      expect(await reads.fetchTags()).toEqual([{ name: "v1.2.3", sha: "abc" }]);
+      hop = true;
+      await expect(reads.fetchTags()).rejects.toThrow();
+      expect(await reads.fetchReleaseReading("1.2.3")).toBeNull();
+      expect(seen.every((h) => h === null)).toBe(true);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("never gets the GitHub token", () => {
+    const credential = { token: "t", source: "GH_TOKEN" as const };
+    const base = { accept: "application/json" };
+    expect(githubHeaders(githubTagsUrl("AltanS/collie", "http://127.0.0.1:8899"), credential, base)).toBe(base);
+  });
+});
+
+describe("COLLIE_UPDATE_MIRROR is read in one module, and stays out of the operator's pages", () => {
+  const ROOT = join(import.meta.dir, "..");
+  const sources = (dir: string): string[] =>
+    readdirSync(join(ROOT, dir), { recursive: true, encoding: "utf8" })
+      .filter((p) => p.endsWith(".ts") && !p.endsWith(".test.ts"))
+      .map((p) => join(ROOT, dir, p));
+
+  it("no file but bridge/update.ts names it; everything else asks `updateMirror` or `releaseFetchers`", () => {
+    const naming = [...sources("bridge"), ...sources("cli")]
+      .filter((f) => readFileSync(f, "utf8").includes("COLLIE_UPDATE_MIRROR"))
+      .map((f) => relative(ROOT, f).replaceAll("\\", "/"));
+    expect(naming).toEqual(["bridge/update.ts"]);
+  });
+
+  it("neither the CHANGELOG nor docs/ mention it: it is a test seam, not a setting", () => {
+    const pages = [join(ROOT, "CHANGELOG.md"), ...readdirSync(join(ROOT, "docs")).filter((p) => p.endsWith(".md")).map((p) => join(ROOT, "docs", p))];
+    expect(pages.filter((p) => readFileSync(p, "utf8").includes("COLLIE_UPDATE_MIRROR"))).toEqual([]);
   });
 });

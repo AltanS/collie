@@ -61,9 +61,23 @@ Every option's `keys` are computed from the pointer the screen currently shows: 
 (with wrap) then `Enter` — the option AT the pointer is `["Enter"]`, one at `d` is
 `["Right" × d, "Enter"]`. Two reasons, one per field: no digit is ever synthesised (.adr/0009), and
 a derivation always matches the screen the user is looking at, so a tap against a stale render
-fails the identity comparison (the keys are part of it) and re-derives instead of mis-typing. The
+fails `promptsEqual` (it compares every option's exact plan, because the text of the dialog is the
+same with the pointer on any chip) and re-derives instead of mis-typing. The
 pointed row's badge is therefore `⏎` and every other row's is `→`, the way ADR 0055 draws a
 pointed list.
+
+A tap is walked, verified, then confirmed (ADR 0080), sideways here: `Right` × d goes out bound to the
+tapped screen, then Enter once a fresh read shows the tapped chip as the pointed one. The pointer is a
+background colour, so the bridge's text binding alone is the same string with the pointer on any chip.
+The model therefore also carries `styledSignature`, the canonical styled lines of the same rows
+(`web/src/lib/styled-region.ts`), and the phone sends it as `expected_styled` with the arrows and with
+the Enter. The bridge runs the same function over the read it is about to answer and refuses with
+`409 prompt_changed` when the colours differ, so a keystroke at the terminal that moved the highlight
+refuses the tap instead of confirming another chip (ADR 0080 point 7). The window that remains is the
+bridge's own read-to-send gap, as for a text pointer. The Enter is bound to the read that proved the
+pointer; there is no extra read. The corpus pairs are `oc--permission-bash.txt` with `--moved`, `--reject`
+and `--wrap`, `oc--permission-edit.txt` with `--moved`, and `oc--permission-always-bash.txt` with
+`--cancel` (`harness/walk-pairs.ts`).
 
 The second step is lifted as its own dialog: its title differs, so its signature and identity
 differ, and a tap on one step never fires on the other. Its buttons walk and confirm exactly as the

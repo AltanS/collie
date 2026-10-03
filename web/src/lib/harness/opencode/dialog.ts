@@ -29,10 +29,24 @@
 // at the pointer is `["Enter"]`, one at offset d is `["Right" × d, "Enter"]` — d ≤ options-1, so
 // every key is a single herdr-sendable step and no digit is ever synthesised (.adr/0009). The
 // pointed row's badge is therefore ⏎ and every other row's is →, as ADR 0055 draws a pointed list.
+//
+// A tap is walked, verified, then confirmed (ADR 0080): the action layer splits `["Right" × d,
+// "Enter"]` with `splitWalk` (arrows may be horizontal), sends the Rights bound to the tapped screen,
+// reads again until the tapped chip carries the plan `["Enter"]`, and only then sends Enter. The
+// pointer is a STYLE, so it is not in `signature` and not in `coreSignature`, both of which are the
+// row text alone and are equal with the pointer on any chip. The pointer is carried twice instead.
+// Each option's plan holds it for the phone, and `promptsEqual` compares those exactly, so a stale
+// tap is refused at entry. `styledSignature` holds it for the bridge: the canonical styled lines of
+// the same rows as `signature` (lib/styled-region.ts, the one function both sides use). The phone
+// sends it as `expected_styled` with every write it binds, and the bridge compares the colours of the
+// very read it is about to answer, so a keystroke at the terminal that moved the highlight refuses
+// the tap (ADR 0080 point 7). The bridge holds no opencode grammar for this: it cannot say which chip
+// is the pointer, only that the colours are the ones the phone verified.
 // A derivation that cannot see exactly one pointer chip answers null and the dialog stays on the
 // raw mirror — the fail-closed contract.
 
 import type { StyledLine } from "../../blocks";
+import { canonicalStyledLines, encodeStyledRegion } from "../../styled-region";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import {
   SELECT_HINT,
@@ -148,7 +162,10 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   // ABOVE the title (measured), so the region text neither churns with the spinner frame nor moves
   // with the pointer (the chip changes the pointer option's STYLE, never the row's text). One
   // byte-faithful signature serves both the guard and the bridge binding; it ends at the footer,
-  // the buffer's last non-blank row, inside the bridge's tail window.
+  // the buffer's last non-blank row, inside the bridge's tail window. Because the pointer is not in
+  // this text, `coreSignature` has nothing of the pointer to blank and is the same string; the
+  // pointer lives in the option plans and in `styledSignature` (see the header): the same rows as
+  // `signature`, so the bridge's style check judges exactly the region its text check does.
   const signature = texts.slice(titleRow, footer + 1).join("\n");
   const model: PromptModel = {
     question: subject,
@@ -156,6 +173,7 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
     family: "permission",
     signature,
     coreSignature: signature,
+    styledSignature: encodeStyledRegion(canonicalStyledLines(lines.slice(titleRow, footer + 1))),
   };
   return { model, startLine: optionRow };
 }

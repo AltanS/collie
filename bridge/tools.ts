@@ -76,7 +76,7 @@ export function searchDirs(
  * tool search then silently falls back to the POSIX directory list and reports every Windows tool
  * as "not installed on this host".
  */
-function envGet(
+export function envGet(
   env: Record<string, string | undefined>,
   name: string,
   host: Host,

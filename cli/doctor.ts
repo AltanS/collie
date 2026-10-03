@@ -39,6 +39,18 @@ import { deriveMode } from "../bridge/crew/mode.ts";
 import type { HelloResult, CrewFetch, PeerOutcome } from "../bridge/crew/peer-client.ts";
 import { crewRuntimePath, parseMarker, rosterDrift, type CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
+import {
+  currentUserSid,
+  foreignOwners,
+  isOwnerOnly,
+  type OwnerOnlyDeps,
+  privateCommand,
+  PRIVATE_ROOTS,
+  realOwnerOnlyDeps,
+  scopeOf,
+  whoCanRead,
+} from "../bridge/owner-only.ts";
+import { sidName } from "../bridge/sddl.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
@@ -61,7 +73,8 @@ import {
 import { packageCommand } from "./package-command.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
 import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced.ts";
-import { collieBinary, unitName } from "./unit.ts";
+import { queryTask, taskOwner, windowsPathKey } from "./task-scheduler.ts";
+import { agentLabel, collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parseCrewArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./crew.ts";
@@ -130,6 +143,13 @@ export interface DoctorDeps {
   readonly now: () => number;
   /** The path rules and binary name this run judges the install by (`bridge/host.ts`). */
   readonly host: Host;
+  /**
+   * The owner-only check's seams (`bridge/owner-only.ts`): a `stat`, and on Windows the `icacls` and
+   * `whoami` reads. `doctor` calls `isOwnerOnly` and `currentUserSid` only, which read; the repair
+   * functions are never called from here. A read writes `icacls /save`'s answer to a file in the
+   * user's temp folder and removes it at once: that file is the tool's output, not Collie's state.
+   */
+  readonly ownerOnly: OwnerOnlyDeps;
   /**
    * The terminal renderer, when this run landed on one (`cli/render.ts`). Absent — which is what
    * every test and every piped run sees — means the plain lines below, unchanged.
@@ -202,6 +222,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     acl(deps),
     frontDoor(deps, mode),
     mux(deps),
+    // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
+    // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
+    // on POSIX the mode bits are checked where the files are read, as before.
+    ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps), secretsPrivate(deps)] : []),
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
     // Why a pane's History link is not there (issue #137) — its own module, because the chain it
@@ -212,6 +236,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       exec: deps.exec,
       files: deps.files,
       snapshot: ownRead,
+      host: deps.host,
     })),
     // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
@@ -226,7 +251,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // about nobody, and carries no stamp. Together with `store-drift` below this is the rule: these
     // two arrays are RENDER SECTIONS, and `aboutCrew` is applied per finding on its own merit.
     inCrew ? aboutCrew(clock(inCrew, probes)) : clock(inCrew, probes),
-  ].filter((f) => appliesToMux(f.check, chosen.name));
+  ].filter((f) => appliesToMux(f.check, chosen.name) && appliesToHost(f.check, deps.host));
   // STAMPED `scope: "crew"`, every one of them (ADR 0050). These four describe the crew's health,
   // never this machine's readiness to take a new version, and `collie update --check` is the reader
   // that must not confuse the two: a laptop asleep in another room is not a reason this desktop
@@ -305,6 +330,20 @@ const HERDR_ONLY_CHECKS = new Set(["herdr-socket", "herdr-version", "hook-python
 /** `integration-<agent>`: every one of them is a line of `herdr integration status` (cli/history.ts). */
 const HERDR_ONLY_PREFIX = "integration-";
 
+// ── The finding set is scoped by the HOST too ───────────────────────────────
+// `hook-python3` hunts for the interpreter Herdr's shell-flavoured hooks run under. On Windows Herdr
+// installs PowerShell hooks instead (`herdr-agent-state.ps1` for claude, codex and grok, as
+// `herdr integration status` names them on the VM, 2026-10-02), so a missing `python3` costs a
+// Windows host nothing. It reported `error` there, which failed `collie doctor` on every healthy
+// Windows install without Python, and through `collie update --check` turned the phone's Update
+// button off (M43 spec 08). Dropped on Windows, the same way the multiplexer scoping above drops it.
+const NOT_ON_WINDOWS = new Set(["hook-python3"]);
+
+/** Whether a check has anything to say on this host. */
+function appliesToHost(check: string, host: Host): boolean {
+  return host.platform !== "win32" || !NOT_ON_WINDOWS.has(check);
+}
+
 /** Whether a check has anything to say on an install driving `chosenMux`. */
 function appliesToMux(check: string, chosenMux: string): boolean {
   if (chosenMux === DEFAULT_MUX) return true;
@@ -358,7 +397,9 @@ function line(f: Finding): string {
   const head = f.status === "ok" ? "✓" : `${f.status}:`;
   // 22 = longest check id ("integration-opencode", 20 chars) + 2, so every id gets
   // at least one space before the detail. Grow this if a longer check id lands.
-  const body = `  ${head.padEnd(9)}${f.check.padEnd(22)}${f.detail}`;
+  // A detail of more than one line (the Windows `secrets-private` line puts a path on its own)
+  // continues under its first line. No other detail holds a line break.
+  const body = `  ${head.padEnd(9)}${f.check.padEnd(22)}${f.detail.replaceAll("\n", `\n${" ".repeat(33)}`)}`;
   return f.remedy === null ? body : `${body} → ${f.remedy}`;
 }
 
@@ -396,7 +437,11 @@ function configFile(deps: DoctorDeps): Finding {
     return bad(
       "config-file",
       `${where} — dropped ${layer.blocked.join(", ")}: the file holding them is not owner-only`,
-      "`chmod 600` that file, then `collie restart`",
+      // Windows has no `chmod 600`: the loader's own warning above carries the `icacls` line for
+      // that file (M43 spec 04), and on POSIX the remedy is what it always was.
+      deps.host.platform === "win32"
+        ? "run the `icacls` line the warning above names for that file, then `collie restart`"
+        : "`chmod 600` that file, then `collie restart`",
     );
   }
   if (layer.problems.length > 0) {
@@ -1397,6 +1442,157 @@ function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null 
  * Collie with no panes at all, and the symptom an operator sees first is an empty home screen or the
  * disconnected banner — neither of which names the socket, the session or the binary.
  */
+/** Where Windows keeps the long-path switch, and the value `reg query` reads. */
+export const LONG_PATHS_KEY = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem";
+/** An install folder longer than this leaves little room under 260 characters for what sits inside it. */
+export const LONG_INSTALL_PATH = 200;
+const PANE_PATH_LIMIT =
+  "Herdr cannot start a pane in a folder whose path is longer than 260 characters (os error 267). Keep your work folders short.";
+
+/**
+ * `windows-long-paths`: Windows only, and never more than a warning. Measured on the VM on 2026-10-02:
+ * with `LongPathsEnabled` 0, a pane asked for in a 280-character folder fails inside Herdr with
+ * `CreateProcessW ... The directory name is invalid (os error 267)`. Read with `reg query`, which
+ * needs no administrator.
+ */
+export function windowsLongPaths(deps: Pick<DoctorDeps, "ctx" | "exec">): Finding {
+  const check = "windows-long-paths";
+  const r = deps.exec.capture("reg", ["query", LONG_PATHS_KEY, "/v", "LongPathsEnabled"]);
+  const value = /LongPathsEnabled\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(r.stdout)?.[1];
+  const enabled = value === undefined ? null : Number.parseInt(value, 16) !== 0;
+  const long = deps.ctx.root.length > LONG_INSTALL_PATH;
+  if (long) {
+    return warn(
+      check,
+      `${PANE_PATH_LIMIT} The install folder ${deps.ctx.root} is ${String(deps.ctx.root.length)} characters long.`,
+      "install Collie in a shorter folder: set COLLIE_DIR to a short path, then run install.ps1 again",
+    );
+  }
+  if (enabled === false) {
+    return warn(
+      check,
+      `${PANE_PATH_LIMIT} LongPathsEnabled is 0 on this machine.`,
+      `in an Administrator PowerShell: Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' -Name LongPathsEnabled -Value 1`,
+    );
+  }
+  if (enabled === null) return skipped(check, "`reg query` could not read LongPathsEnabled", "run `collie doctor` from a PowerShell");
+  return ok(check, `LongPathsEnabled is 1, and the install folder is ${String(deps.ctx.root.length)} characters long`);
+}
+
+/**
+ * `secrets-private`: Windows only (M43 spec 04). The state folder and the config folder, each read
+ * with everything below it (`isOwnerOnly`, one `icacls /T` each), and the owner of each folder and
+ * secret file (one PowerShell `Get-Acl`, which `icacls` cannot answer). Three answers:
+ *
+ *   - a VERIFIED grant to an account outside the allowlist, or a foreign owner: `error`, the
+ *     severity a `config.toml` secret dropped for a loose mode gets on POSIX (`config-file`);
+ *   - a folder that could not be checked (no access list, a network share, a tool that failed):
+ *     `warn`, "cannot confirm", never silent and never ok;
+ *   - private: ok.
+ *
+ * `doctor` changes nothing (the contract at the top of this file). The bridge repairs Collie's own
+ * folders at start, so "restart Collie" is the first fix there; the `icacls` line is the same repair
+ * by hand, and the only fix for a folder Collie does not own.
+ */
+export function secretsPrivate(deps: Pick<DoctorDeps, "ctx" | "host" | "ownerOnly">): Finding {
+  const check = "secrets-private";
+  const { path } = deps.host;
+  const roots = PRIVATE_ROOTS.map((root) => ({ root, dir: root.id === "state" ? deps.ctx.stateDir : deps.ctx.configDir })).filter(
+    (r) => deps.ownerOnly.stat(r.dir) !== null,
+  );
+  if (roots.length === 0) {
+    return skipped(check, "there is no Collie state or config folder yet", "`collie start` creates the state folder private");
+  }
+  const owned = roots.flatMap(({ root, dir }) => [dir, ...root.secrets.map((n) => path.join(dir, n))]).filter(
+    (p) => deps.ownerOnly.stat(p) !== null,
+  );
+  const owners = foreignOwners(owned, deps.ownerOnly);
+  const user = currentUserSid(deps.ownerOnly.acl);
+  const problems: { detail: string; remedy: string }[] = [];
+  const unconfirmed: string[] = [];
+  for (const { root, dir } of roots) {
+    const verdict = isOwnerOnly(dir, deps.host, deps.ownerOnly);
+    const strangeOwners = owned.filter((p) => (p === dir || path.dirname(p) === dir) && owners.has(p));
+    if (verdict.state === "not-checked" && strangeOwners.length === 0) {
+      unconfirmed.push(`${root.label}: ${verdict.reason}\n${dir}`);
+      continue;
+    }
+    const leaks = verdict.state === "loose" ? verdict.leaks : [];
+    const own = leaks.filter((l) => l.path === dir);
+    const inside = leaks.filter((l) => l.path !== dir);
+    const ownCollie = scopeOf(dir, false, deps.host, deps.ownerOnly).allowed;
+    const restart = ownCollie ? "restart Collie, or run: " : "run: ";
+    if (own.length > 0 && user !== null) {
+      problems.push({
+        detail: `${root.label} can be read by other accounts (${whoCanRead(own)}).\n${dir}`,
+        remedy: `Fix: ${restart}${privateCommand(dir, user, true, own)}`,
+      });
+    } else if (inside.length > 0) {
+      const files = [...new Set(inside.map((l) => l.path))];
+      const secret = files.every((f) => root.secrets.includes(path.basename(f)));
+      problems.push({
+        detail: `${root.label} holds files other accounts can read (${whoCanRead(inside)}): ${files.slice(0, 3).map((f) => path.relative(dir, f)).join(", ")}.\n${dir}`,
+        remedy: `Fix: ${secret && ownCollie ? "restart Collie, or run: " : "run: "}icacls "${files[0]!}" /reset`,
+      });
+    }
+    for (const p of strangeOwners) {
+      const sid = owners.get(p)!;
+      problems.push({
+        detail: `${p === dir ? root.label : path.basename(p)} is owned by ${sidName(sid)} [${sid}], who can always change its permissions.\n${p}`,
+        remedy: user === null ? "Fix: take ownership as your account" : `Fix: in an Administrator PowerShell, icacls "${p}" /setowner "*${user}"`,
+      });
+    }
+  }
+  if (problems.length > 0) {
+    return bad(check, problems.map((p) => p.detail).join("\n"), problems.map((p) => p.remedy).join("; "));
+  }
+  if (unconfirmed.length > 0) {
+    return warn(
+      check,
+      `cannot confirm who can read ${unconfirmed.join("\n")}`,
+      "keep the state and config folders on an NTFS drive on this PC, and run `collie doctor` as the account that runs Collie",
+    );
+  }
+  return ok(check, `${roots.map((r) => r.root.label).join(" and ")} are private to your account, SYSTEM and Administrators`);
+}
+
+/**
+ * `windows-task`: the Task Scheduler task this install registers, read back. The failure it exists
+ * for is silent: a task that still runs `contrib\windows\collie-ctl.ps1` after an update deleted that
+ * file keeps the old loop alive until the next logon, and then starts nothing at all.
+ */
+export function windowsTask(deps: Pick<DoctorDeps, "ctx" | "exec" | "host" | "link">): Finding {
+  const check = "windows-task";
+  const name = agentLabel(deps.ctx.instance);
+  const query = queryTask(deps.exec, name, deps.host);
+  if (query === undefined) return skipped(check, "no PowerShell to read Task Scheduler with", "run `collie status` from a PowerShell");
+  if (query === null) return skipped(check, `no task ${name} is registered`, "`collie start` registers it");
+  switch (taskOwner(query, deps.ctx.root, deps.host)) {
+    case "legacy":
+      return warn(check, `Task ${name} still runs the old script (contrib\\windows\\collie-ctl.ps1)`, "Run: collie restart");
+    case "foreign":
+      return warn(
+        check,
+        `Task ${name} runs ${query.program}, another Collie install; one Collie per Windows machine`,
+        "run `collie uninstall` from that install, then `collie start` here",
+      );
+    case "collie": {
+      // A binary install's task must run the binary `current` points at, or a restart after an update
+      // relaunches the version the task was registered from. `start` registers it there (M43 spec
+      // 06), so this reads ok for a task this release wrote and warns for one an older build wrote.
+      const published = publishedBinary(deps.ctx.root, deps.link, deps.host);
+      if (windowsPathKey(query.program) !== windowsPathKey(published)) {
+        return warn(
+          check,
+          `Task ${name} runs ${query.program}, not ${published}; after an update moves \`current\`, it keeps relaunching the old version`,
+          "run `collie start` once: it registers the task on `current`",
+        );
+      }
+      return ok(check, `Task ${name} runs ${query.program} (${query.state})`);
+    }
+  }
+}
+
 function mux(deps: DoctorDeps): Finding {
   const settings = muxSettings(deps);
   const registry = buildMuxRegistry();
@@ -1907,5 +2103,6 @@ export function doctorDeps(base: {
     // running bridge counts. Both of its seams are reads; neither can create the directory.
     beacons: beaconReader(base.ctx.stateDir),
     now: () => Date.now(),
+    ownerOnly: realOwnerOnlyDeps,
   };
 }

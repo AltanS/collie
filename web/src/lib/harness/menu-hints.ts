@@ -246,9 +246,10 @@ export function parseSingleHint(footer: string): { key: string; verb: string } |
 }
 
 /** The keystroke plan for the row at `target` when the pointer sits on `pointed`: the arrow walk the
- *  highlight implies, then Enter. Sent as ONE batch (lib/prompt-action.ts hands the whole array to
- *  `pane.send_keys`), so no half-walked pointer can be left behind. Shared by every pointed list
- *  (Claude's folder-trust prompt, ADR 0055, and Codex 0.156.1's). */
+ *  highlight implies, then Enter. The action layer splits the plan with `splitWalk`
+ *  (harness/prompt-model.ts): the arrows go first, bound to the tapped screen; Enter goes only
+ *  after a fresh read shows the pointer on the row, bound to that read (ADR 0080). Shared by every
+ *  pointed list (Claude's folder-trust prompt, ADR 0055, Codex 0.156.1's, Oh My Pi's). */
 export function pointerWalk(pointed: number, target: number): string[] {
   const steps = target - pointed;
   const arrow = steps > 0 ? "Down" : "Up";

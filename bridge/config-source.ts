@@ -7,6 +7,7 @@ import {
   type ConfigSetting,
   CONFIG_SECTIONS,
 } from "./config-schema.ts";
+import type { Host } from "./host.ts";
 import type { OperatorFileIo } from "./operator-file.ts";
 
 // ── THE CONFIG FILE, TURNED INTO AN ENVIRONMENT ──────────────────────────────
@@ -124,6 +125,30 @@ export interface FilePerms {
   mode(path: string): number | null;
   /** Tighten it to `0600`. `false` when the chmod failed — a file owned by someone else. */
   tighten(path: string): boolean;
+  /**
+   * The whole verdict, when the host decides it some other way than by mode bits. Present only on
+   * Windows ({@link hostFilePerms}); when it is there, `mode` and `tighten` are never asked.
+   * `repair` says whether this process may change the file's access list: the bridge at start may,
+   * a CLI command may not (it verifies and warns).
+   */
+  readonly verdict?: (path: string, repair: boolean) => PrivateFileVerdict;
+}
+
+/**
+ * {@link FilePerms} as `host` can answer them. Windows has no mode bits: NTFS keeps an access list,
+ * `stat` reports `666` (or `444`) for every file, and `chmod` flips only the read-only flag, so
+ * "tightened it to 600" would be a false line on every command. There `windows` decides instead:
+ * `bridge/owner-only.ts`'s `secretFileVerdict`, which reads the access list, repairs it only when
+ * allowed, and says so only when a second read confirms it (M43 spec 04). It is a parameter, not an
+ * import, so this module keeps no Windows tool behind it. Every other host gets `disk` back as it is.
+ */
+export function hostFilePerms(
+  host: Host,
+  disk: FilePerms,
+  windows: (path: string, repair: boolean) => PrivateFileVerdict,
+): FilePerms {
+  if (host.platform !== "win32") return disk;
+  return { mode: () => null, tighten: () => false, verdict: windows };
 }
 
 /**
@@ -137,7 +162,8 @@ export interface FilePerms {
  * `cli/context.ts`'s `tightenEnvFile` is this function with the `.env` path passed in — one rule,
  * two files, so `config.toml` can never drift into a looser posture than the `.env` beside it.
  */
-export function tightenPrivateFile(path: string, perms: FilePerms): PrivateFileVerdict {
+export function tightenPrivateFile(path: string, perms: FilePerms, repairAcl = false): PrivateFileVerdict {
+  if (perms.verdict !== undefined) return perms.verdict(path, repairAcl);
   const mode = perms.mode(path);
   if (mode === null || PRIVATE_FILE_MODES.has(mode)) return { ok: true, warning: null };
   const shown = mode.toString(8).padStart(3, "0");
@@ -157,6 +183,12 @@ export interface ReadConfigOptions {
   readonly home: string;
   /** Absent means the secret permission rule does not run — which is what a `--print` check wants. */
   readonly perms?: FilePerms;
+  /**
+   * Whether this process may change a loose secret file's access list (Windows only). The bridge
+   * at start passes `true`; every CLI command leaves it `false`, so it only verifies and warns.
+   * POSIX ignores it: the mode rule there tightens as it always has.
+   */
+  readonly repairAcl?: boolean;
 }
 
 /** One file as it arrived: its text, or the reason there is none. */
@@ -231,7 +263,7 @@ export function buildConfigLayer(
     const holdsSecret = values.some((v) => v.setting.kind === "secret");
     let secretsAllowed = true;
     if (holdsSecret && opts.perms !== undefined) {
-      const verdict = tightenPrivateFile(entry.path, opts.perms);
+      const verdict = tightenPrivateFile(entry.path, opts.perms, opts.repairAcl === true);
       if (verdict.warning !== null) warn(verdict.warning);
       secretsAllowed = verdict.ok;
     }
@@ -254,7 +286,15 @@ export function buildConfigLayer(
       warn(`[config] ${file}: ${count} problem${count === 1 ? "" : "s"}, run \`collie config check\``);
     }
   }
-  if (blocked.length > 0) {
+  if (blocked.length > 0 && opts.perms?.verdict !== undefined) {
+    // Windows words it by the consequence (M43 spec 04): which secrets stay unused, and what that
+    // turns off. POSIX keeps its line below, byte for byte.
+    const push = blocked.includes("COLLIE_VAPID_PRIVATE") ? " Push notifications are off." : "";
+    warn(
+      `[config] Collie did not load ${blocked.join(", ")}: other accounts on this PC can read the file that holds ` +
+        `${blocked.length === 1 ? "it" : "them"}.${push} Restart Collie to repair it, or run \`collie doctor\`.`,
+    );
+  } else if (blocked.length > 0) {
     warn(
       `[config] dropped ${blocked.join(", ")} because the file holding them is not owner-only, ` +
         "run `collie config check`",

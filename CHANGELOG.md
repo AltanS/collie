@@ -30,9 +30,70 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **Oh My Pi's `/resume` picker is a list of sessions on the phone.** Tap a session and Collie
+  moves the pointer to it and presses Enter, in the boxed picker of omp 18.4 and the unboxed one
+  before it. On a very large pane the picker stays terminal text with an Escape button. Every other
+  Oh My Pi dialog that names its way out, such as `/model`, `/settings`, an Ask question or a tool
+  approval, now shows a button for that key. `/tree` names none, so it keeps no button.
+- **`collie doctor` checks Oh My Pi's Herdr hook.** An `omp` pane that reported no session had no
+  line of its own in `agent-sessions`, so its missing Chat and History went unexplained. The doctor
+  now names the pane and the `integration-omp` line, which says to run
+  `herdr integration install omp` and restart the agent.
+- **Oh My Pi's Ask questions with one answer are buttons on the phone.** Tap an answer and Collie
+  moves the pointer to it and presses Enter, so the agent gets the answer at once. `Other (type your
+  own)` opens omp's answer box, and the phone's composer types into it. A question where you pick
+  several answers, several questions in one call, options with descriptions, or a long list still
+  show the terminal text with an Escape button.
+- **Oh My Pi's `bash` and `write` approvals are buttons on the phone.** The card names the tool and
+  shows the whole command, or the path and all of the file's content, on the Approve button. Approve,
+  Deny and Cancel each take one tap, and Deny can never land on Approve, even if the pointer moves at
+  the desk. Approvals for other tools, a third choice, a countdown, text omp itself cut short, a file
+  of more than thirty rows, hidden or direction-changing characters, or a screen that is not omp
+  18.4.10 or 18.1.17 still show the terminal text with an Escape button, which denies.
+- **`collie start`, `stop`, `restart`, `status` and `uninstall` supervise the bridge on Windows through Task Scheduler.** (experimental; there is no Windows release asset yet) `start` registers the task `herdr.collie` at your logon with a limited token and runs a launcher Collie owns, which relaunches a bridge that exits with an error. `status` names the task and its state, `restart` restarts the bridge alone, and an install of the community script is taken over under the same task name. The first supervisor was written by @Pimpmuckl in contrib/windows, and the restart path by @mqmalagris (PR 309).
+- **`collie status` and `collie doctor` say whose Task Scheduler task runs on Windows.** Status names Collie's launcher or the old script's loop, `doctor` gains a `windows-task` line, and a task that still points at the deleted script is reported as `Task herdr.collie still runs the old script. Run: collie restart`. `start` refuses a task that runs another install and prints `Registered Task Scheduler job herdr.collie (starts at logon)`.
+- **Each release now tries to build an experimental Windows zip (unsigned `collie.exe`).** There is no published Windows installer yet, so do not expect a supported install path. Linux and macOS releases are unchanged. If the Windows build fails, the release still ships without it.
+- **`install.ps1` installs Collie on Windows without a toolchain.** (experimental; it is not on colliepwa.dev yet, and no release carries the Windows zip until the next one) `scripts/install.ps1` needs no Bun, Git or bash, and works in Windows PowerShell 5.1. It downloads a release's Windows zip, checks its sha256 and stops on a mismatch or a missing `.sha256`, lays it into `%LOCALAPPDATA%\collie\versions\<version>`, points the `current` junction at it, and adds `current\bin` to your user PATH. It never asks for admin and never starts Collie: it runs the new `collie.exe version` once to check that Windows lets it run, then prints the next steps. A second run changes nothing and points at `collie update`. `COLLIE_DIR`, `COLLIE_UPDATE_REPO` and `COLLIE_TAG` steer it, as they steer `install.sh`. Windows is not yet a supported host.
+- **`collie uninstall` on a Windows binary install prints how to remove the rest.** (experimental) It keeps the install folder and the user PATH entry, as every install keeps its files, and now ends with the two PowerShell lines that remove them: `rmdir /s` for the folder and a registry edit that drops only `current\bin` from your PATH. Linux and macOS print what they printed before.
+- **Oh My Pi's model picker is a list of models on the phone.** With omp 18.4.10, `/switch` and Alt+P
+  open omp's session-only model picker. The card lists the rows the picker shows right now, not the
+  whole catalog. Tap a model and Collie moves the pointer to it and presses Enter, which switches this
+  session's model and leaves your role models and config as they are. The current model is named on
+  the card but cannot be tapped. To reach a model that is not listed, type a search through Keys or
+  Type mode, and the card updates after about a second. A row omp cut short and a model the
+  conversation no longer fits (picking it compacts first) are left out. The `@` quick roles, the
+  task-model picker, narrow panes and the Nerd Font symbols stay terminal text with an Escape button.
+
 ### Changed
 
+- **A tap on a dialog card can bind a larger screen region.** The bridge accepted at most 8 KiB of the
+  screen a card drew when it checked a tap, which a full-screen picker on a pane wider than about 134
+  columns exceeds. The limit is now 32 KiB. A phone newer than its bridge still gets the old refusal on
+  such a pane and no key is sent, so update the lead and its crew together.
 - **Groundwork for Windows support.** The code that picks path rules or a binary name now reads one host object. Nothing changes on Linux or macOS. Windows is still not a supported host.
+- **The community Windows script in `contrib/windows` is gone, and Collie runs the task itself.** Every verb of `collie-ctl.ps1` is a `collie` verb of the same name: `update`, `build`, `version`, `logs`, `url`, `start`, `stop`, `restart`, `status` and `uninstall`. `COLLIE_TASK_NAME` is gone (the task is always `herdr.collie`), and so is the script's crash-log rotation: the bridge log is `collie.log` in the plugin config folder (`%APPDATA%\herdr\plugins\config\herdr.collie\collie.log` by default), appended to and never rotated. One Collie per Windows machine is supported: `start` refuses a task that runs another install, and warns when a second instance registers its own. Run `collie restart` once after updating (and `collie build` before it if the script's own `update` pulled this version). Until then `collie status` and `collie doctor` say `Task herdr.collie still runs the old script. Run: collie restart`.
+
+### Fixed
+
+- **Windows no longer prints a false `.env` mode warning, and `collie doctor` checks Herdr's version there.** NTFS has no mode bits, so the line saying `.env` was tightened to 600 was untrue on every command. Collie now reads the file's access list instead (see the owner-only line below). `doctor` warns when Herdr on Windows is older than 0.9.3, the build Collie was checked with.
+- **On Windows (experimental): the phone's Update button works.** It used to answer `412 no systemd user unit`, because the update's check looked for a systemd unit; it now asks Task Scheduler for the `herdr.collie` task. `collie doctor` no longer fails a Windows machine that has no Python, which also kept the button off. A source checkout is not updated on Windows: `collie update` and the button say so in one sentence and change nothing.
+- **On Windows (experimental): `collie restart` says what it found and stops waiting after 30 seconds.** It says whether the bridge was running, gone, or whether the process list did not answer. It used to wait about 3 minutes for a bridge that did not come back, so a broken update took 221 seconds to roll back; now about 75. A launcher killed by hand comes back within 5 minutes.
+- **On Windows (experimental): an old version folder that is still in use no longer fails the next update.** The update prints a note, and a later update removes the folder once nothing uses it.
+- **On Windows (experimental): Collie keeps its secret files and folders private to your account, SYSTEM and Administrators.** It repairs loose permissions at start, only in its own folders. `collie doctor` checks this (`secrets-private`). The false `.env mode 666` warning is gone. Linux and macOS are unchanged.
+
+- **A phone reply reaches omp's `ask` answer box.** Picking `Other (type your own)` or adding a note
+  opens a box Collie did not recognise, so Send refused with "input box isn't on screen". Send now
+  types, checks and submits there. A multi-line message is refused on that box, because a newline
+  submits it. Thanks @enieuwy (#336).
+- **A refused multi-line reply says when part of it was already typed.** On an input that submits on
+  a newline, a long message sent in several parts could be refused after the first part landed, and
+  the notice still said nothing was typed. It now says the earlier part is in the pane. Thanks
+  @enieuwy (#336).
+- **A tapped row is confirmed only after the pointer is seen on it.** A tap on a pointed list now sends the arrow keys first, reads the screen again, and sends Enter only when the pointer stands on the tapped row, bound to that very screen. A keystroke at the terminal in between, or a row that changed under the pointer, refuses the tap instead of confirming the wrong row. This covers every harness with a pointed list: Claude Code, Codex, Oh My Pi and opencode, whose permission buttons are a row and walk sideways. A resume list whose ages tick while the arrows go out still commits. A conformance guard now requires every such grammar to prove, on two real captures with the pointer on different rows, that a moved pointer is still the same dialog.
+- **The model picker's Close button says when it clears a search instead.** With a search typed, Oh My Pi's Escape clears the search and keeps the picker open, so the button now reads "Clear search" and only reads "Close" when a tap closes the picker.
+- **A tap on an opencode permission chip is bound to the highlighted chip.** The bridge now also checks the colours of the dialog it is about to answer, because opencode marks the chosen chip only by a background colour. A keystroke at the terminal that moved the highlight refuses the tap instead of confirming another chip. A refused tap also writes the reason to the browser console.
 
 ## [1.15.3] - 2026-10-02
 
