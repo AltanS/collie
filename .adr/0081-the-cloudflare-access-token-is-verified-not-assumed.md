@@ -90,6 +90,11 @@ before the gate, so the request must also arrive from loopback.
 rewrites `Host` to loopback and strips every `Cf-*` and forwarding header. Its requests look local.
 The documented setup is one front door at a time, and `docs/deployment.md` names this case.
 
+**A second residual: a non-loopback bind.** With `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` the peer-address
+check is off, so a client that reaches the port directly can send `Host: localhost` and no forwarding
+header and pass the gate. Pairing still guards it. Access does not protect a bridge bound to a
+non-loopback address; bind to loopback.
+
 **A consequence of the promise: one door for browsers.** A host that serves both a tunnel and a
 tailnet name loses the tailnet door for browsers once Access is on. `tailscale serve` sends a
 tailnet `Host` and `X-Forwarded-For` and carries no Access token, so its requests get `401`. That is
