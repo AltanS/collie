@@ -841,9 +841,8 @@ export const de: Dictionary = {
   // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}, aktuell",
   "unreadDialog.caption": "Collie kann diesen Dialog nicht lesen", // wordsmith
-  // English stopgap (#339), awaiting `wordsmith --translate`.
-  "unreadDialog.confirmKey": "Tap again to send {key}",
-  "unreadDialog.confirmDismiss": "Tap again to dismiss",
+  "unreadDialog.confirmKey": "Erneut tippen, um {key} zu senden", // wordsmith
+  "unreadDialog.confirmDismiss": "Erneut tippen, um zu verwerfen", // wordsmith
   "dialog.preview.currentAnswerAria": "Aktuelle Antwort",
   "dialog.preview.previewedBelowAria": "Vorschau unten",
   "dialog.preview.previewLabel": "Vorschau: {label}",

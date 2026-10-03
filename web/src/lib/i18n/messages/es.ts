@@ -840,9 +840,8 @@ export const es: Dictionary = {
   // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}, actual",
   "unreadDialog.caption": "Collie no puede leer este diálogo", // wordsmith
-  // English stopgap (#339), awaiting `wordsmith --translate`.
-  "unreadDialog.confirmKey": "Tap again to send {key}",
-  "unreadDialog.confirmDismiss": "Tap again to dismiss",
+  "unreadDialog.confirmKey": "Pulsa de nuevo para enviar {key}", // wordsmith
+  "unreadDialog.confirmDismiss": "Pulsa de nuevo para descartar", // wordsmith
   "dialog.preview.currentAnswerAria": "Respuesta actual",
   "dialog.preview.previewedBelowAria": "Vista previa a continuación",
   "dialog.preview.previewLabel": "Vista previa · {label}",

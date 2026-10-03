@@ -816,9 +816,8 @@ export const zhTW: Dictionary = {
   // TODO wordsmith
   "dialog.menu.levelCurrentAria": "{label}，目前",
   "unreadDialog.caption": "Collie 無法讀取此對話框", // wordsmith
-  // English stopgap (#339), awaiting `wordsmith --translate`.
-  "unreadDialog.confirmKey": "Tap again to send {key}",
-  "unreadDialog.confirmDismiss": "Tap again to dismiss",
+  "unreadDialog.confirmKey": "再次點擊以傳送 {key}", // wordsmith
+  "unreadDialog.confirmDismiss": "再次點擊以關閉", // wordsmith
   "dialog.preview.currentAnswerAria": "目前回答",
   "dialog.preview.previewedBelowAria": "下方顯示預覽",
   "dialog.preview.previewLabel": "預覽 · {label}",
