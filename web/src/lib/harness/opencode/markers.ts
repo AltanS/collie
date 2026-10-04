@@ -21,6 +21,7 @@
 // REJECT.
 
 import { isBlank, lineText } from "../../blocks";
+import { displayWidth } from "../../text-width";
 
 // `lineText` / `isBlank` are properties of a StyledLine, not of any grammar — they live in the
 // neutral core (lib/blocks.ts). Re-exported here so the opencode grammars keep their single import
@@ -53,6 +54,32 @@ export function isBareBar(text: string): boolean {
 export function isBarRow(text: string): boolean {
   return BAR_ROW.test(rstrip(text));
 }
+
+// Overlay chrome from a panel sharing the bar run (a sidebar's right-aligned rows) is the only
+// content allowed to sit far right of the dialog gutter: legitimate dialog indents are 2 (labels,
+// questions) and 5 (descriptions) after the bar — deepest measured bar+5 across the question
+// corpus — while observed overlay starts at bar+140. Such rows are skipped in the dialog walks
+// below exactly like bare bars; style cannot tell them apart (same base background) and content
+// patterns are open-ended. The torn-frame guard (dangling pending → null) is untouched, and a
+// missed overlay fails safe (refuse, raw + unread card). NOTE: this threshold is valid for
+// DIALOG walks only — the composer draft box holds user-typed text at any indent, so its reader
+// conjoins panel glyphs below and never uses this predicate alone.
+const OVERLAY_GUTTER_CELLS = 24;
+
+/** True when this bar row's first content starts further right than any dialog indent. */
+export function isOverlayRow(text: string): boolean {
+  const bar = text.indexOf("┃");
+  if (bar < 0) return false;
+  const after = text.slice(bar + 1);
+  const first = after.search(/\S/);
+  if (first < 0) return false; // blank: bare-bar territory, not ours
+  return displayWidth(after.slice(0, first)) > OVERLAY_GUTTER_CELLS;
+}
+
+/** Panel box glyphs: verticals, corners and junctions a sidebar paints with. Typed prose and code
+ *  almost never carry these (and never at overlay indent), so the composer draft reader conjoins
+ *  them with {@link isOverlayRow} to tell a sidebar row from a deeply-indented typed line. */
+export const OVERLAY_CHROME_GLYPHS = /[│┌┐└┘├┤┬┴┼╭╮╰╯╔╗╚╝╠╣╦╩╬]/;
 
 // The composer's BOTTOM RULE: U+2579 (╹) then a run of U+2580 (▀ upper-half blocks). Across the
 // corpus it appears once per composer frame, under the model row (directly under it at full width,

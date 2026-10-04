@@ -57,7 +57,7 @@ import type { StyledLine } from "../../blocks";
 import type { MultiPointer, MultiSelectModel, MultiSelectOption } from "../multi-select-model";
 import type { WizardAnswer, WizardModel, WizardOption, WizardStepChip } from "../wizard-model";
 import { backgroundOf } from "./dialog";
-import { FREE_TEXT_LABEL, barDraftText, isBareBar, isBarRow, lineText, questionFooter, rstrip } from "./markers";
+import { FREE_TEXT_LABEL, barDraftText, isBareBar, isBarRow, isOverlayRow, lineText, questionFooter, rstrip } from "./markers";
 import {
   MAX_OPTIONS,
   footerBackground,
@@ -65,6 +65,8 @@ import {
   foregroundOf,
   locateFooter,
   pointedEntry,
+  stripOverlayShared,
+  stripOverlayTail,
   walkEntries,
   type Entry,
   type FooterInks,
@@ -118,10 +120,12 @@ interface Tab {
   answered: boolean;
 }
 
-/** The head of the dialog: its question and the row the tab row sits on. */
+/** The head of the dialog: its question, the row the tab row sits on, and whether any
+ *  overlay evidence fired while reading it (gates the missing-padding allowance below). */
 interface Head {
   question: string;
   tabRow: number;
+  sawOverlay: boolean;
 }
 
 /**
@@ -163,8 +167,9 @@ interface ParsedRow {
 function detectStep(screen: Screen, checkbox: boolean): QuestionTabsRegion | null {
   const { lines, texts, footer, base } = screen;
 
-  const entries = walkEntries(texts, footer, Math.max(0, footer - MAX_REGION_ROWS));
-  if (entries === null) return null;
+  const walked = walkEntries(texts, footer, Math.max(0, footer - MAX_REGION_ROWS));
+  if (walked === null) return null;
+  const entries = walked.entries;
 
   // Every row is read as the step's own kind. A checkbox step whose row has no box, or a
   // single-select step whose row has one, is a shape this module does not know.
@@ -217,7 +222,8 @@ function detectStep(screen: Screen, checkbox: boolean): QuestionTabsRegion | nul
   if (!checkbox) {
     const options: WizardOption[] = choices.map((r) => {
       const option: WizardOption = { label: r.label, keys: [String(r.entry.n)], chosen: r.marked, escape: false };
-      if (r.entry.sub.length > 0) option.description = r.entry.sub.join(" ");
+      if (r.entry.sub.length > 0)
+        option.description = r.entry.sub.map((s) => stripOverlayShared(s).text.trim()).join(" ");
       return option;
     });
     const model: WizardModel = { phase: "question", steps, question: head.question, options, signature: literal };
@@ -226,7 +232,8 @@ function detectStep(screen: Screen, checkbox: boolean): QuestionTabsRegion | nul
 
   const options: MultiSelectOption[] = choices.map((r) => {
     const option: MultiSelectOption = { n: r.entry.n, label: r.label, checked: r.marked };
-    if (r.entry.sub.length > 0) option.description = r.entry.sub.join(" ");
+    if (r.entry.sub.length > 0)
+      option.description = r.entry.sub.map((s) => stripOverlayShared(s).text.trim()).join(" ");
     return option;
   });
   const onFree = free !== null && free.entry.n === pointed;
@@ -275,10 +282,10 @@ function parseRow(entry: Entry, checkbox: boolean): ParsedRow | null {
  * Typed text that is not yet committed is bright, and the placeholder is the label itself. A
  * single-select step has no committed state, so any row under its free-text row means open.
  *
- * Shared-exposure note: this shares walkEntries with the single-select lift, so a panel-overlay
- * row under the free-text row refuses here too (fail-safe: raw + unread card, never a mis-lift).
- * Pointer-gating it the way detectQuestionDialog does needs `pointed` plumbed in here — tracked
- * as a follow-up (#347), not attempted here.
+ * Shared-exposure note: this shares walkEntries with the single-select lift, so a far-right
+ * panel-overlay row under the free-text row lifts with it (the walk skips it before this
+ * check ever sees it). Only near-gutter rows no geometry can tell apart still refuse here
+ * (fail-safe: raw + unread card, never a mis-lift) — tracked as a follow-up (#347).
  */
 function freeTextClosed(screen: Screen, free: Entry, checkbox: boolean): boolean {
   if (free.sub.length === 0) return true;
@@ -306,8 +313,16 @@ function detectReview(screen: Screen): QuestionTabsRegion | null {
   const top = Math.max(0, footer - MAX_REGION_ROWS);
   const body: string[] = [];
   let tabRow = -1;
+  let sawOverlay = false;
   for (let i = footer - 1; i >= top; i--) {
     if (isBareBar(texts[i]!)) continue;
+    // Overlay rows are panel chrome, never review content — but body rows may hold user
+    // answers, so their text is never stripped; a shared-row tail refuses via the checks
+    // below instead.
+    if (isOverlayRow(texts[i]!)) {
+      sawOverlay = true;
+      continue;
+    }
     const inner = barDraftText(texts[i]!);
     if (inner === null) return null;
     if (inner.startsWith(" ")) {
@@ -316,7 +331,7 @@ function detectReview(screen: Screen): QuestionTabsRegion | null {
     }
     body.unshift(inner.trim());
   }
-  if (tabRow < 0 || !barePaddingAbove(texts, tabRow)) return null;
+  if (tabRow < 0 || !barePaddingAbove(texts, tabRow, sawOverlay)) return null;
 
   const tabs = readTabs(screen, tabRow);
   if (tabs === null) return null;
@@ -383,32 +398,60 @@ function detectReview(screen: Screen): QuestionTabsRegion | null {
 function locateHead(screen: Screen, firstOption: number): Head | null {
   const { texts, footer } = screen;
   let q = firstOption - 1;
-  while (q >= 0 && isBareBar(texts[q]!)) q--;
+  let sawOverlay = false;
+  while (q >= 0 && (isBareBar(texts[q]!) || isOverlayRow(texts[q]!))) {
+    if (isOverlayRow(texts[q]!)) sawOverlay = true;
+    q--;
+  }
   const parts: string[] = [];
   while (q >= 0 && footer - q <= MAX_REGION_ROWS) {
+    // Overlay chrome is not dialog content: skip it without breaking the run.
+    if (isOverlayRow(texts[q]!)) {
+      sawOverlay = true;
+      q--;
+      continue;
+    }
     const inner = isBarRow(texts[q]!) ? barDraftText(texts[q]!) : null;
-    if (inner === null || inner.trim().length === 0 || inner.startsWith(" ")) break;
-    parts.unshift(inner.trim());
+    if (inner === null) break;
+    const shared = stripOverlayShared(inner);
+    if (shared.cut) sawOverlay = true;
+    const clean = shared.text;
+    if (clean.trim().length === 0 || clean.startsWith(" ")) break;
+    parts.unshift(clean.trim());
     q--;
   }
   if (parts.length === 0) return null;
 
   // One or more bare rows between the tab row and the question.
-  if (q < 0 || !isBareBar(texts[q]!)) return null;
-  while (q >= 0 && isBareBar(texts[q]!)) q--;
+  let seenGap = false;
+  while (q >= 0 && (isBareBar(texts[q]!) || isOverlayRow(texts[q]!))) {
+    seenGap = true;
+    if (isOverlayRow(texts[q]!)) sawOverlay = true;
+    q--;
+  }
+  if (!seenGap && !sawOverlay) return null;
   if (q < 0 || footer - q > MAX_REGION_ROWS) return null;
   const inner = isBarRow(texts[q]!) ? barDraftText(texts[q]!) : null;
   if (inner === null || !inner.startsWith(" ") || inner.trim().length === 0) return null;
-  if (!barePaddingAbove(texts, q)) return null;
-  return { question: parts.join(" "), tabRow: q };
+  if (!barePaddingAbove(texts, q, sawOverlay)) return null;
+  return { question: parts.join(" "), tabRow: q, sawOverlay };
 }
 
-/** The dialog's top padding: a bare bar row over the tab row, and over that nothing but the
- *  transcript. A TEXT bar row there is another dialog's body, or the user's own message. */
-function barePaddingAbove(texts: string[], tabRow: number): boolean {
-  const pad = tabRow - 1;
-  if (pad < 0 || !isBareBar(texts[pad]!)) return false;
-  return !(pad - 1 >= 0 && isBarRow(texts[pad - 1]!) && !isBareBar(texts[pad - 1]!));
+/** The dialog's top padding: bare bar rows, with overlay rows counting as padding too — they
+ *  are panel chrome, neither transcript nor another dialog (a sidebar can paint over the very
+ *  row that separates the tab row from the transcript). Above the run must be nothing but the
+ *  transcript: a TEXT bar row there is another dialog's body, or the user's own message. */
+function barePaddingAbove(texts: string[], tabRow: number, sawOverlay: boolean): boolean {
+  let pad = tabRow - 1;
+  let seen = false;
+  while (pad >= 0 && (isBareBar(texts[pad]!) || isOverlayRow(texts[pad]!))) {
+    seen = true;
+    pad--;
+  }
+  if (!seen && !sawOverlay) return false;
+  let above = pad;
+  while (above >= 0 && isOverlayRow(texts[above]!)) above--;
+  return !(above >= 0 && isBarRow(texts[above]!) && !isBareBar(texts[above]!));
 }
 
 /**
@@ -419,7 +462,7 @@ function barePaddingAbove(texts: string[], tabRow: number): boolean {
  */
 function readTabs(screen: Screen, tabRow: number): Tab[] | null {
   const { lines, texts, base, inks } = screen;
-  const text = texts[tabRow]!;
+  const text = stripOverlayTail(texts[tabRow]!);
   const line = lines[tabRow]!;
   const bar = text.indexOf("┃");
 
