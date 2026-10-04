@@ -924,7 +924,8 @@ describe("opencode tab-bar question dialogs lift", () => {
       expect(model.regionSignature).toContain("5. [✓] Type your own answer");
     });
 
-    it("an OPEN free-text input stays raw: the placeholder, or typed text in the bright ink", () => {      // The placeholder row (`Type your own answer` under the row) is the capture.
+    it("an OPEN free-text input stays raw: the placeholder, or typed text in the bright ink", () => {
+      // The placeholder row (`Type your own answer` under the row) is the capture.
       expect(tabs("multi--free-text")).toBeNull();
       // Typed text that is not committed is bright; the committed capture's row is grey. Paint the
       // committed text in the footer's bright ink and the same screen refuses.
