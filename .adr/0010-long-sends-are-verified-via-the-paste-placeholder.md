@@ -92,6 +92,8 @@ At 800 or fewer the send stays bare, since no read can collapse, so a short repl
 literally and verifies as before. The framed send always collapses to the token this ADR already
 reads, so the evidence rules above are unchanged, with one widening: Claude lifts an image path off
 the end of a paste, or off a line of its own, into `[Image #N]`, and `pasteCarriesSend` accepts
-that token while the send holds at least as many image paths.
+that token only while the send holds at least as many upload paths in the shape Collie sends
+(an absolute `<state dir>/uploads/<pane>-<time>-<hex>.<ext>` that stands alone on its line or ends
+the text). A prose mention of `shot.png` lifts nothing, so it never explains a token.
 
 Chunking stays rejected, for the reasons above.

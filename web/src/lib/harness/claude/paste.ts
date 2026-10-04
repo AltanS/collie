@@ -45,8 +45,33 @@ const PLACEHOLDER = /\[Pastedtext#\d+(?:\+(\d+)lines)?\]/g;
  */
 const IMAGE_TOKEN = /\[Image#\d+\]/g;
 
-/** An image path Claude could have lifted into an {@link IMAGE_TOKEN}: Collie's upload types. */
-const IMAGE_PATH = /\.(?:png|jpe?g|gif|webp)\b/gi;
+/**
+ * The shape of the path Collie's upload route hands back (`bridge/server.ts`): an absolute
+ * `<stateDir>/uploads/<pane>-<base36 time>-<8 hex>.<ext>`, with a POSIX or a Windows root. The
+ * composer swaps a chip's marker for that path where the marker stood (`composeLine`), so it is the
+ * only image path Collie ever sends. A name merely ending `.png` in a sentence is not this shape.
+ */
+const UPLOAD_PATH_TAIL = String.raw`[\\/]uploads[\\/][A-Za-z0-9_-]+-[0-9a-z]+-[0-9a-f]{8}\.(?:png|jpe?g|gif|webp)`;
+const UPLOAD_ROOT = String.raw`(?:/|[A-Za-z]:[\\/])`;
+/** A path with no whitespace in it, as the last whitespace-separated token of a send. */
+const UPLOAD_TOKEN = new RegExp(`^${UPLOAD_ROOT}\\S*${UPLOAD_PATH_TAIL}$`, "i");
+/** A path that is a whole line on its own; the directories may hold spaces (a Windows profile name). */
+const UPLOAD_LINE = new RegExp(`^${UPLOAD_ROOT}.*${UPLOAD_PATH_TAIL}$`, "i");
+
+/**
+ * How many upload image paths in a send Claude could have lifted into an {@link IMAGE_TOKEN}: one per
+ * line that is nothing but such a path, plus the last whitespace-separated token of the text when it
+ * is one and does not already stand on a line of its own. A path in the middle of a line stays inside
+ * the paste (live-probed 2026-10-03), and a prose mention of `shot.png` is no path at all.
+ */
+export function liftableImagePaths(sent: string): number {
+  const lines = sent.split(/\r?\n/);
+  let count = lines.filter((line) => UPLOAD_LINE.test(line.trim())).length;
+  const last = lines[lines.length - 1]!.trim();
+  const lastToken = sent.trimEnd().split(/\s+/).pop() ?? "";
+  if (!UPLOAD_LINE.test(last) && UPLOAD_TOKEN.test(lastToken)) count += 1;
+  return count;
+}
 
 /**
  * Claude collapses one paste longer than this into a token; this many or fewer insert literally.
@@ -164,7 +189,8 @@ function scan(stripped: string): Scan {
  * worse failure of the two.
  *
  * An `[Image #N]` token beside the paste is Claude having lifted an image path out of it. It counts
- * only while the send holds at least that many image paths, and it may take one newline with it each,
+ * only while the send holds at least that many liftable paths ({@link liftableImagePaths}: an upload
+ * path standing alone on its line or ending the text), and it may take one newline with it each,
  * so rule 3 becomes `S − images ≤ Σ M ≤ S`.
  *
  * Anything inconsistent returns false and the caller keeps today's behaviour: no submit key, draft
@@ -172,7 +198,7 @@ function scan(stripped: string): Scan {
  */
 export function pasteCarriesSend(sent: string, draft: string): boolean {
   const { draft: d, images } = liftImages(stripWhitespace(draft));
-  if (images > (sent.match(IMAGE_PATH)?.length ?? 0)) return false;
+  if (images > liftableImagePaths(sent)) return false;
   const s = stripWhitespace(sent);
   const { tokens, lines, fragments, trailing } = scan(d);
   if (tokens === 0) return false;

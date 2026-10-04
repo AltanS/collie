@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { collapsesAsPaste, isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
+import { collapsesAsPaste, isPastePlaceholderOnly, liftableImagePaths, pasteCarriesSend } from "./paste";
 
 // The paste-placeholder grammar (.adr/0010). Every shape below was live-probed on 2026-08-06 in the
 // collie-demo sandbox; the rejections are the load-bearing half — a `true` here fires the submit key
@@ -126,14 +126,28 @@ describe("pasteCarriesSend — rejections (the guard stays shut)", () => {
 // of its own, into `[Image #N]` and attaches the file (live-probed 2026-10-03, Claude Code 2.1.288).
 describe("pasteCarriesSend — an image path Claude lifted out of the paste", () => {
   const long = "x".repeat(1500);
+  // The shape the upload route returns: <stateDir>/uploads/<pane>-<base36 time>-<8 hex>.<ext>.
+  const shot = "/home/you/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.png";
+  const shot2 = "/home/you/.local/state/collie/uploads/w1_p1-mf3x9r-1b2c3d4e.jpg";
+  const winShot = "C:\\Users\\Jane Doe\\AppData\\collie\\uploads\\w1_p1-mf3x9q-0a1b2c3d.png";
 
-  it("accepts the image token beside the paste when the send ended in an image path", () => {
-    expect(pasteCarriesSend(`${long} /tmp/shot.png`, "[Image #8][Pasted text #9]")).toBe(true);
+  it("accepts the image token beside the paste when the send ended in an upload path", () => {
+    expect(pasteCarriesSend(`${long} ${shot}`, "[Image #8][Pasted text #9]")).toBe(true);
   });
 
   it("accepts the lifted path taking its own line's newline with it", () => {
     // Two newlines sent; the path's line went into the image, so the token claims one.
-    expect(pasteCarriesSend(`${long}\n/tmp/shot.png\n${long}`, "[Image #10][Pasted text #11 +1 lines]")).toBe(
+    expect(pasteCarriesSend(`${long}\n${shot}\n${long}`, "[Image #10][Pasted text #11 +1 lines]")).toBe(true);
+  });
+
+  it("accepts a Windows upload path alone on its line, spaces in the profile name and all", () => {
+    expect(pasteCarriesSend(`${long}\r\n${winShot}\r\n${long}`, "[Image #10][Pasted text #11 +1 lines]")).toBe(
+      true,
+    );
+  });
+
+  it("accepts two tokens for two paths, one on its own line and one ending the text", () => {
+    expect(pasteCarriesSend(`${long}\n${shot}\n${long} ${shot2}`, "[Image #1][Image #2][Pasted text #3 +1 lines]")).toBe(
       true,
     );
   });
@@ -142,12 +156,44 @@ describe("pasteCarriesSend — an image path Claude lifted out of the paste", ()
     expect(pasteCarriesSend(`${long} /tmp/notes.txt`, "[Image #8][Pasted text #9]")).toBe(false);
   });
 
-  it("rejects more image tokens than the send had image paths", () => {
-    expect(pasteCarriesSend(`${long} /tmp/shot.png`, "[Image #7][Image #8][Pasted text #9]")).toBe(false);
+  it("rejects a prose mention of an image name, with a leftover [Image #1] already in the draft", () => {
+    expect(pasteCarriesSend(`${long} see screenshot.png`, "[Image #1][Pasted text #9]")).toBe(false);
+    expect(pasteCarriesSend(`${long}\nplease open screenshot.png now\n${long}`, "[Image #1][Pasted text #9 +1 lines]")).toBe(
+      false,
+    );
+  });
+
+  it("rejects a bare path outside the uploads shape, and an upload path in the middle of a line", () => {
+    expect(pasteCarriesSend(`${long} /tmp/shot.png`, "[Image #8][Pasted text #9]")).toBe(false);
+    expect(pasteCarriesSend(`${long} ${shot} and then more words`, "[Image #8][Pasted text #9]")).toBe(false);
+  });
+
+  it("rejects more image tokens than the send had upload paths (two paths, three tokens)", () => {
+    expect(
+      pasteCarriesSend(`${long}\n${shot}\n${long} ${shot2}`, "[Image #1][Image #2][Image #3][Pasted text #4 +1 lines]"),
+    ).toBe(false);
+    expect(pasteCarriesSend(`${long} ${shot}`, "[Image #7][Image #8][Pasted text #9]")).toBe(false);
   });
 
   it("still rejects a line count no lifted image explains", () => {
     expect(pasteCarriesSend(`${long}\n${long}\n${long}`, "[Image #10][Pasted text #11 +0 lines]")).toBe(false);
+  });
+});
+
+describe("liftableImagePaths — only the paths Claude lifts, in the shape Collie sends", () => {
+  const p = "/s/uploads/w1_p1-mf3x9q-0a1b2c3d.png";
+
+  it("counts a path on its own line and a path ending the text, once each", () => {
+    expect(liftableImagePaths(`a\n${p}\nb`)).toBe(1);
+    expect(liftableImagePaths(`a ${p}`)).toBe(1);
+    expect(liftableImagePaths(`a\n${p}`)).toBe(1);
+    expect(liftableImagePaths(`${p}\nmid ${p}\nend ${p}`)).toBe(2);
+  });
+
+  it("counts nothing for prose mentions, foreign paths or a path mid-line", () => {
+    expect(liftableImagePaths("look at screenshot.png please")).toBe(0);
+    expect(liftableImagePaths("see /tmp/shot.png")).toBe(0);
+    expect(liftableImagePaths(`before ${p} after`)).toBe(0);
   });
 });
 

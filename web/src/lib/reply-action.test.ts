@@ -656,6 +656,48 @@ describe("sendGuardedReply", () => {
     expect(bracketPaste("a\x1b[201~\nb\x1b[200~")).toBe("\x1b[200~a\nb\x1b[201~");
   });
 
+  it("strips until stable: removing an inner marker cannot assemble a new one", () => {
+    expect(bracketPaste("\x1b[2\x1b[201~01~tail\nrm -rf")).toBe("\x1b[200~tail\nrm -rf\x1b[201~");
+  });
+
+  it("strips a start marker nested inside a start marker", () => {
+    expect(bracketPaste("\x1b[20\x1b[200~0~body")).toBe("\x1b[200~body\x1b[201~");
+  });
+
+  it("strips the 8-bit CSI form, alone and mixed with the 7-bit form", () => {
+    expect(bracketPaste("a\x9b201~b\x9b200~c")).toBe("\x1b[200~abc\x1b[201~");
+    expect(bracketPaste("\x9b2\x1b[201~01~x")).toBe("\x1b[200~x\x1b[201~");
+    expect(bracketPaste("\x1b[2\x9b201~01~x")).toBe("\x1b[200~x\x1b[201~");
+  });
+
+  it("frames an empty body when the text is only markers", () => {
+    expect(bracketPaste("\x1b[200~\x1b[201~\x9b200~\x9b201~")).toBe("\x1b[200~\x1b[201~");
+    expect(bracketPaste("\x1b[20\x1b[201~0~")).toBe("\x1b[200~\x1b[201~");
+  });
+
+  it("leaves every other byte alone, other escape sequences and newlines included", () => {
+    const text = "line\n\x1b[31mred\x1b[0m\t\x1b[202~ \x9b1m end\r\n";
+    expect(bracketPaste(text)).toBe(`\x1b[200~${text}\x1b[201~`);
+  });
+
+  it("never lets a marker survive between the outer pair, over random interleavings", () => {
+    const fragments = ["\x1b", "\x1b[", "\x1b[2", "\x1b[20", "\x1b[200", "\x1b[201", "\x1b[200~", "\x1b[201~", "\x9b", "\x9b2", "\x9b20", "\x9b200", "\x9b201", "\x9b200~", "\x9b201~", "2", "0", "1", "~", "[", "x", "\n"];
+    let seed = 0x2f6e2b1;
+    const rand = (n: number): number => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed % n;
+    };
+    for (let i = 0; i < 400; i++) {
+      let text = "";
+      for (let k = 1 + rand(14); k > 0; k--) text += fragments[rand(fragments.length)]!;
+      const framed = bracketPaste(text);
+      expect(framed.startsWith("\x1b[200~")).toBe(true);
+      expect(framed.endsWith("\x1b[201~")).toBe(true);
+      const inner = framed.slice("\x1b[200~".length, framed.length - "\x1b[201~".length);
+      for (const marker of ["\x1b[200~", "\x1b[201~", "\x9b200~", "\x9b201~"]) expect(inner).not.toContain(marker);
+    }
+  });
+
   it("stalls on a placeholder inconsistent with what we sent — no submit key", async () => {
     // `#N` is a session counter we cannot predict, so somebody else's leftover token looks exactly
     // like ours; the line count is the only thing tying it to THIS send. 9 lines were never typed.
