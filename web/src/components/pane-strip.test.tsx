@@ -228,4 +228,29 @@ describe("PaneStrip", () => {
     await user.click(screen.getByRole("button", { name: /claude/ }));
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p1");
   });
+
+  // iOS Safari does not scroll a `pointer-events: none` scroller from a `pointer-events: auto`
+  // child (https://bugs.webkit.org/show_bug.cgi?id=183870): the row looked fine and did not move
+  // under a thumb. jsdom cannot scroll, so this pins the cause: nothing from the scroller down to
+  // a pill may opt out of hit-testing, and the z-index that lifts the row over the tab row's reach
+  // sits on the track inside the scroller, never on the <nav> (that would lift the scroller's
+  // blank overhang over the terminal mirror).
+  it("lets the scroller take a touch itself, so a sideways swipe scrolls the row on iOS", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p2", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    const nav = screen.getByRole("navigation", { name: "Panes" });
+    const pill = screen.getByRole("button", { name: /claude/ });
+    const scroller = nav.querySelector<HTMLElement>(".overflow-x-auto")!;
+    for (let el: HTMLElement | null = pill; el && el !== nav.parentElement; el = el.parentElement) {
+      expect(el.className).not.toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    }
+    expect(nav.className).not.toMatch(/(?:^|\s)z-\[/);
+    expect(scroller.firstElementChild!.className).toMatch(/(?:^|\s)z-\[2\](?=\s|$)/);
+    expect(scroller.firstElementChild!.contains(pill)).toBe(true);
+  });
 });

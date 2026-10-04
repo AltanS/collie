@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The pane row scrolls sideways on an iPhone.** With more panes in a tab than fit the screen, the row did not move under a thumb on iOS Safari, so the panes past the edge could not be reached from it. The tab row was not affected. Thanks @enieuwy (#350).
+
 ## [1.16.1] - 2026-10-03
 
 ### Changed

@@ -100,44 +100,55 @@ export function PaneStrip({
           (`tab-strip.tsx`, the scroller's comment), and for the same reason: nothing may reach up.
           Above this row is the tab row, whose tabs own every pixel of it.
 
-          `relative z-[2]` is what settles the boundary between the two rows. The tab row's reach
-          hangs 14px down into this row at `z-[1]`, and this <nav> sits one step above it, so it
-          owns its whole 26px, gaps between pills included: a tap on this row can never switch the
+          THE ROW OWNS ITS WHOLE 26px, AND NOTHING BELOW IT. The tab row's reach hangs 14px down
+          into this row at `z-[1]`, so the pills sit in a TRACK, `relative z-[2]`, one step above
+          that: the track spans the row's full height and the scroller's full width, gutters
+          included, so a tap anywhere on this row, gaps between pills included, can never switch the
           tab. The tab measures its own 30px while this row stands under it, and 44 when it does
           not. `flow-root` keeps the scroller's negative margin from collapsing through the <nav>,
-          so the <nav> box, and with it that claim, is 26px and not 44.
+          so the <nav> box is 26px and not 44.
 
-          `pt-px pb-[19px] -mb-[18px]` on the scroller: 1px above the pill, and 19px below it so
-          the clip box (the scroller's padding box, `overflow-x: auto` clips both axes) reaches the
-          44px line; `-mb-[18px]` gives 18 of those 19px back to the layout, so the row still
-          measures 1 + 24 + 1 = 26 and the lower 18px lie over the page gap and the mirror's top
+          `pb-[18px] -mb-[18px]` on the scroller: the track is 1 + 24 + 1 = 26px, and 18px of
+          padding below it carry the clip box (the scroller's padding box, `overflow-x: auto` clips
+          both axes) down to the 44px line; `-mb-[18px]` gives those 18px back to the layout, so
+          the row still measures 26 and the lower 18px lie over the page gap and the mirror's top
           edge. `py-0` first, so no half of LabelledStrip's shared `py-1.5` survives the override.
           The pill's own `before:-top-[2px] before:-bottom-5` is the other half: row top to 44.
 
-          Those 18px lie over the terminal mirror, and the z-index above lifts everything in this
-          row over it, the scroller's blank overflow included. So the scroller is
-          `pointer-events-none` and each pill `pointer-events-auto`: only a pill's reach takes a
-          tap from the mirror (its top 14px, under a pill), the rest falls through. The one thing
-          this gives up is starting a sideways swipe in the gap between two pills. */}
+          THE SCROLLER TAKES TOUCHES ITSELF, AND IT IS THE Z-INDEX THAT KEEPS ITS OVERHANG OFF THE
+          MIRROR. It used to be the other way round: the whole <nav> was `relative z-[2]`, which
+          lifted the scroller's blank 18px over the mirror too, so the scroller was
+          `pointer-events-none` and each pill `pointer-events-auto`. iOS Safari does not scroll a
+          `pointer-events: none` scroller from a `pointer-events: auto` child
+          (https://bugs.webkit.org/show_bug.cgi?id=183870), so on a phone this row did not scroll
+          at all. Now the <nav> and the scroller are plain blocks, the way the tab row's are: the
+          mirror is `relative` and later in the tree, so it wins the scroller's blank overhang, and
+          only the track (the row) and the pills' reaches inside it (`z-[2]` with the track) stand
+          above the mirror. A swipe that starts on the row or on a pill's reach scrolls the row; a
+          touch anywhere else in the overhang reaches the mirror. */}
       <LabelledStrip
         label={t("space.paneStrip.title")}
-        className="relative z-[2] flow-root bg-chrome"
-        scrollerClassName="pointer-events-none py-0 pt-px pb-[19px] -mb-[18px]"
+        className="flow-root bg-chrome"
+        scrollerClassName="px-0 py-0 pb-[18px] -mb-[18px]"
         scrollerRef={scrollerRef}
       >
-        {panes.map((p) => (
-          <PanePill
-            key={p.paneId}
-            pane={p}
-            active={p.paneId === currentPaneId}
-            onSelect={onSelect}
-            ordinal={ordinals.get(p.paneId)}
-            onLongPress={actionsEnabled ? () => setSheetPane(p) : undefined}
-            // Tapping the already-active pill would otherwise be a useless re-navigate; repurpose it
-            // to open the same actions sheet a long-press would, so it's not a dead tap.
-            onTapActive={actionsEnabled ? () => setSheetPane(p) : undefined}
-          />
-        ))}
+        {/* `px-4` moves the gutter from the scroller onto the track, so the track covers the
+            gutters too and the scroll width keeps both of them. */}
+        <div className="relative z-[2] flex w-max min-w-full shrink-0 items-center gap-2 px-4 py-px">
+          {panes.map((p) => (
+            <PanePill
+              key={p.paneId}
+              pane={p}
+              active={p.paneId === currentPaneId}
+              onSelect={onSelect}
+              ordinal={ordinals.get(p.paneId)}
+              onLongPress={actionsEnabled ? () => setSheetPane(p) : undefined}
+              // Tapping the already-active pill would otherwise be a useless re-navigate; repurpose it
+              // to open the same actions sheet a long-press would, so it's not a dead tap.
+              onTapActive={actionsEnabled ? () => setSheetPane(p) : undefined}
+            />
+          ))}
+        </div>
       </LabelledStrip>
 
       {actionsEnabled && (
@@ -223,10 +234,10 @@ function PanePill({
         // STRIP_TAP_TARGET's symmetric 7px: an inset resolves against the padding box, 1px inside
         // the border, so `-2px` puts the reach's top on the row's top edge (the boundary with the tab
         // row, never past it), and `-20px` puts its bottom 44px below that, into the scroller's
-        // `pb-[19px]` clip room (see the row's comment in PaneStrip above). 26px of row plus 18px
+        // `pb-[18px]` clip room (see the row's comment in PaneStrip above). 26px of row plus 18px
         // hanging below it: a 44px hit off a 24px pill in a 26px row.
         STRIP_TAP_TARGET,
-        "flex h-6 min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-[11px] font-medium transition-colors pointer-events-auto before:-top-[2px] before:-bottom-5 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "flex h-6 min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-[11px] font-medium transition-colors before:-top-[2px] before:-bottom-5 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-muted text-muted-foreground hover:bg-muted/70",
