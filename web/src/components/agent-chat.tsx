@@ -27,8 +27,9 @@ import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
 import { t, type MessageKey } from "@/lib/i18n";
+import { settleAfterSend } from "@/lib/harness/guard";
 import { setStatus } from "@/lib/status";
-import { setFollowing as publishFollowing, stampSend } from "@/lib/poll-intent";
+import { setFollowing as publishFollowing } from "@/lib/poll-intent";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
@@ -1007,6 +1008,20 @@ export function AgentChat({
     listRef.current?.scrollToBottom();
   };
 
+  // The tail of every dialog tap that SENT: wait for the TUI to repaint, then show it. The read a
+  // card revalidates on can land before the repaint (measured: the screen changes about 19 ms after
+  // the key), and a card left on the old highlight refuses its next committing tap, whose guard
+  // compares the full signature against a fresh read. The card's buttons stay disabled while the
+  // `onAction` promise is pending, so awaiting this keeps the card inactive until its picture is
+  // fresh. A key that changes nothing just runs out the bound (lib/harness/guard.ts). The poll burst
+  // is not started here: `sendKeys` in lib/api.ts stamps it for every key written.
+  const showAfterSend = useCallback(async () => {
+    await settleAfterSend({ paneId, requestedLines, scope });
+    setFollowing(true);
+    revalidator.revalidate();
+    listRef.current?.scrollToBottom();
+  }, [paneId, requestedLines, scope, revalidator]);
+
   // Tap a prompt-select option. This can type into a real terminal, so it runs the revision-based
   // race guard first (fresh fetch → revision + re-derived-menu equality); only a clean match sends
   // the option's keys. The guard checks against the FROZEN pair's revision — the menu the user
@@ -1021,9 +1036,6 @@ export function AgentChat({
         setStatus(refusal, "error");
         return false;
       }
-      // A prompt button is a send too — the same "watch this land" moment as the composer's Send,
-      // just with the keys chosen for you.
-      stampSend(paneId);
       const base = {
         paneId,
         scope,
@@ -1044,9 +1056,7 @@ export function AgentChat({
           action.kind === "feedback" ? t("chat.status.feedbackSent") : t("chat.status.sent"),
           "success",
         );
-        setFollowing(true);
-        revalidator.revalidate();
-        listRef.current?.scrollToBottom();
+        await showAfterSend();
       } else if (result.status === "changed") {
         // Which step refused, for a person with the console open (`why` is a diagnosis, never UI
         // text). A harness drift shows up here as the one field that differed.
@@ -1060,7 +1070,7 @@ export function AgentChat({
       // what someone just thumb-typed. Option taps ignore it.
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -1087,9 +1097,7 @@ export function AgentChat({
       });
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
-        setFollowing(true);
-        revalidator.revalidate();
-        listRef.current?.scrollToBottom();
+        await showAfterSend();
       } else if (result.status === "changed") {
         setStatus(t("chat.status.wizardChanged"), "warn");
         revalidator.revalidate();
@@ -1097,7 +1105,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -1136,9 +1144,7 @@ export function AgentChat({
             : t("chat.status.sent"),
           "success",
         );
-        setFollowing(true);
-        revalidator.revalidate();
-        listRef.current?.scrollToBottom();
+        await showAfterSend();
       } else if (result.status === "changed") {
         setStatus(t("chat.status.dialogChanged"), "warn");
         revalidator.revalidate();
@@ -1147,7 +1153,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -1173,9 +1179,7 @@ export function AgentChat({
       });
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
-        setFollowing(true);
-        revalidator.revalidate();
-        listRef.current?.scrollToBottom();
+        await showAfterSend();
       } else if (result.status === "changed") {
         setStatus(t("chat.status.selectionChanged"), "warn");
         revalidator.revalidate();
@@ -1183,7 +1187,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -1210,9 +1214,7 @@ export function AgentChat({
       });
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
-        setFollowing(true);
-        revalidator.revalidate();
-        listRef.current?.scrollToBottom();
+        await showAfterSend();
       } else if (result.status === "changed") {
         setStatus(t("chat.status.screenChanged"), "warn");
         revalidator.revalidate();
@@ -1220,7 +1222,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
   // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the
@@ -1248,9 +1250,7 @@ export function AgentChat({
       );
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
-        setFollowing(true);
-        revalidator.revalidate();
-        listRef.current?.scrollToBottom();
+        await showAfterSend();
       } else if (result.status === "changed") {
         setStatus(t("chat.status.screenChanged"), "warn");
         revalidator.revalidate();
@@ -1258,7 +1258,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android

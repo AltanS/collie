@@ -8,6 +8,7 @@ import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
+import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { mounted } from "./base-path";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
@@ -392,6 +393,30 @@ const paneCache = new Map<string, PaneCacheEntry>();
 // pane's last body). 20 comfortably covers any panes in flight on a phone.
 const PANE_CACHE_MAX = 20;
 
+// What the client had last SEEN of each pane, and what it had seen at the moment of its most recent
+// key send. The second is the baseline `settleAfterSend` (lib/harness/guard.ts) waits to leave: a
+// tap that moves a highlight is only "on screen" once a read differs from the one the tap was made
+// against. Kept here, beside the one function that reads and the one that sends, so a multi-step
+// choreography needs no plumbing: the last key it sends snapshots whatever its last verified read
+// showed. Both are FIFO-bounded like `paneCache`, and keyed the same way.
+const lastSeenText = new Map<string, string>();
+const textBeforeSend = new Map<string, string>();
+
+function remember(map: Map<string, string>, key: string, text: string): void {
+  map.delete(key); // re-insert, so the FIFO bound evicts the pane least recently touched
+  map.set(key, text);
+  if (map.size > PANE_CACHE_MAX) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+}
+
+/** The pane text the client had seen when its latest key was sent (`undefined` = never read, or no
+ *  key sent yet). The baseline for `settleAfterSend`. */
+export function textBeforeLastSend(paneId: string, scope?: Scope): string | undefined {
+  return textBeforeSend.get(paneScopeKey(scope, paneId));
+}
+
 /**
  * Read one pane's mirror. `seen: false` leaves the pane's unseen mark alone: the read a finger
  * starts on `pointerdown` (lib/pane-prefetch.ts) may be the start of a scroll, not an open.
@@ -431,6 +456,7 @@ export async function fetchPane(
     // Unchanged — hand back the cached body (text included) so the mirror keeps its content. An
     // unchanged poll is still a live poll: stamp the connection-health anchor (a 304 counts as live).
     markLive();
+    remember(lastSeenText, cacheKey, cached.response.text);
     return { ...cached.response, notModified: true };
   }
 
@@ -455,6 +481,7 @@ export async function fetchPane(
 
   // A pane body served from Herdr is provably-live data — stamp the connection-health anchor.
   markLive();
+  remember(lastSeenText, cacheKey, data.text);
   return data;
 }
 
@@ -676,6 +703,22 @@ export function fetchChangeCommitDiff(
   return req<ChangeCommitDiffResponse>(withScope(`${changesBase(target)}?${q.toString()}`, scope), { signal });
 }
 
+/**
+ * Run a write to a pane's input under the poll burst. The burst starts when the request is ISSUED,
+ * because the operator is watching the mirror from the tap on, and again when it comes back ok, so
+ * the minimum polls it buys start counting at the moment the pane can actually have changed. A write
+ * that fails leaves no burst behind that could run forever: a burst ends itself after its minimum
+ * and two quiet polls (lib/poll-intent.ts), so the stamp on issue is the whole cost of a failure.
+ *
+ * This is the one chokepoint: every dialog tap, the key bar and the composer's typed text end in
+ * `sendKeys` or `sendReply`, so no call site has to remember to stamp.
+ */
+async function withSendBurst(paneId: string, write: Promise<ActionResponse>): Promise<ActionResponse> {
+  const res = await write;
+  if (res.ok) stampSend(paneId);
+  return res;
+}
+
 export function sendReply(
   paneId: string,
   text: string,
@@ -683,15 +726,19 @@ export function sendReply(
   scope?: Scope,
   expectedPrompt?: string,
 ): Promise<ActionResponse> {
-  return req<ActionResponse>(
-    withScope(`/api/pane/${encodeURIComponent(paneId)}/reply`, scope),
-    {
-      method: "POST",
-      // `JSON.stringify` omits an `undefined` property entirely, so an absent binding puts no
-      // `expected_prompt` on the wire — byte-identical to not naming the field at all.
-      body: JSON.stringify({ text, submit, expected_prompt: expectedPrompt }),
-    },
-    recoverPromptChanged,
+  stampSend(paneId);
+  return withSendBurst(
+    paneId,
+    req<ActionResponse>(
+      withScope(`/api/pane/${encodeURIComponent(paneId)}/reply`, scope),
+      {
+        method: "POST",
+        // `JSON.stringify` omits an `undefined` property entirely, so an absent binding puts no
+        // `expected_prompt` on the wire — byte-identical to not naming the field at all.
+        body: JSON.stringify({ text, submit, expected_prompt: expectedPrompt }),
+      },
+      recoverPromptChanged,
+    ),
   );
 }
 
@@ -702,15 +749,25 @@ export function sendKeys(
   expectedPrompt?: string,
   expectedStyled?: string,
 ): Promise<ActionResponse> {
-  return req<ActionResponse>(
-    withScope(`/api/pane/${encodeURIComponent(paneId)}/keys`, scope),
-    {
-      method: "POST",
-      // As in `sendReply`: an `undefined` property is omitted by `JSON.stringify`. The bridge honours
-      // `expected_styled` only beside `expected_prompt` (ADR 0080 point 7); an older bridge ignores it.
-      body: JSON.stringify({ keys, expected_prompt: expectedPrompt, expected_styled: expectedStyled }),
-    },
-    recoverPromptChanged,
+  stampSend(paneId);
+  // Snapshot what the client has seen NOW, before the key can change anything: `settleAfterSend`
+  // waits for a read that differs from it.
+  const key = paneScopeKey(scope, paneId);
+  const seen = lastSeenText.get(key);
+  if (seen === undefined) textBeforeSend.delete(key);
+  else remember(textBeforeSend, key, seen);
+  return withSendBurst(
+    paneId,
+    req<ActionResponse>(
+      withScope(`/api/pane/${encodeURIComponent(paneId)}/keys`, scope),
+      {
+        method: "POST",
+        // As in `sendReply`: an `undefined` property is omitted by `JSON.stringify`. The bridge honours
+        // `expected_styled` only beside `expected_prompt` (ADR 0080 point 7); an older bridge ignores it.
+        body: JSON.stringify({ keys, expected_prompt: expectedPrompt, expected_styled: expectedStyled }),
+      },
+      recoverPromptChanged,
+    ),
   );
 }
 

@@ -6,12 +6,14 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 vi.mock("./api", () => ({
   fetchPane: vi.fn(),
   sendKeys: vi.fn(),
+  textBeforeLastSend: vi.fn(),
 }));
 
-import { fetchPane, sendKeys } from "./api";
+import { fetchPane, sendKeys, textBeforeLastSend } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectMenu } from "./harness/claude/menu";
+import { settleAfterSend } from "./harness/guard";
 import type { MenuModel } from "./harness/menu-model";
 import { menusEqual, menusSameIdentity, submitMenuKeys } from "./menu-action";
 
@@ -127,5 +129,74 @@ describe("submitMenuKeys", () => {
 
     expect(res).toEqual({ status: "changed" });
     expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+});
+
+// The fault of 2026-10-04: tap "Move up" on the /model picker, then "Use this session only". The
+// card revalidated right after the arrow, a read that can land before the TUI repaints, so it kept
+// the old highlight; the committing tap compared that stale picture with a fresh read and was
+// refused. The fix is the settle step between the two taps. A fake pane whose repaint lands 20 ms
+// (virtual) after the key stands in for the TUI, and the sleep seam is the only clock.
+describe("move up, then commit: the card must show the repaint before the next tap", () => {
+  const REPAINT_MS = 20;
+
+  function fakePane() {
+    let now = 0;
+    let highlight = 3;
+    let repaint: { at: number; to: number } | null = null;
+    const shown = () => (repaint && now >= repaint.at ? repaint.to : highlight);
+    const text = () => pickerBuffer(shown());
+    let seenAtSend: string | undefined;
+    mockFetchPane.mockImplementation(async () => ({ paneId: "w1:p1", text: text(), truncated: false, revision: 0 }));
+    mockTextBeforeLastSend.mockImplementation(() => seenAtSend);
+    mockSendKeys.mockImplementation(async (_pane, keys) => {
+      seenAtSend = text(); // what the client had seen when the key left
+      if (keys[0] === "Up") {
+        highlight = shown();
+        repaint = { at: now + REPAINT_MS, to: highlight - 1 };
+      }
+      return { ok: true };
+    });
+    return {
+      sleep: async (ms: number) => void (now += ms),
+      /** The card's own re-derivation: a read, as `revalidate()` would do, turned into a model. */
+      renderedNow: () => detectMenu(splitLines(parseAnsi(text())))!,
+    };
+  }
+
+  const mockTextBeforeLastSend = vi.mocked(textBeforeLastSend);
+
+  it("with the settle step the committing tap passes and its key is sent", async () => {
+    const tui = fakePane();
+    const rendered = tui.renderedNow(); // highlight on row 3
+
+    const arrow = await submitMenuKeys({ ...base, menu: rendered, keys: ["Up"], nav: true });
+    expect(arrow).toEqual({ status: "sent" });
+
+    await settleAfterSend({ paneId: "w1:p1", requestedLines: 200, sleep: tui.sleep });
+    const afterSettle = tui.renderedNow(); // the revalidated card
+    expect(afterSettle).not.toEqual(rendered);
+    expect(menusEqual(afterSettle, menuAt(2))).toBe(true);
+
+    const commit = await submitMenuKeys({ ...base, menu: afterSettle, keys: ["s"] });
+    expect(commit).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenLastCalledWith("w1:p1", ["s"], undefined, expect.any(String));
+  });
+
+  it("WITHOUT the settle step the card is stale and the committing tap is refused (the fault)", async () => {
+    const tui = fakePane();
+    const rendered = tui.renderedNow();
+
+    await submitMenuKeys({ ...base, menu: rendered, keys: ["Up"], nav: true });
+
+    // `revalidate()` right after the key: the repaint has not landed, so the card is unchanged.
+    const staleCard = tui.renderedNow();
+    expect(menusEqual(staleCard, rendered)).toBe(true);
+
+    // The operator taps a moment later; by then the TUI has repainted.
+    await tui.sleep(500);
+    const commit = await submitMenuKeys({ ...base, menu: staleCard, keys: ["s"] });
+    expect(commit).toEqual({ status: "changed" });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1); // only the arrow
   });
 });

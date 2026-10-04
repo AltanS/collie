@@ -8,7 +8,7 @@
 // and it is the only caller the action modules see. Keeping the mechanism here and the wiring there
 // is what lets this file stay free of both the registry and the models.
 
-import { fetchPane } from "../api";
+import { fetchPane, textBeforeLastSend } from "../api";
 import { describeThrownError } from "../api-error-message";
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
@@ -178,6 +178,55 @@ export async function pollUntil<M>(
   // Exhausted. If we never saw the dialog at all it has vanished (a now-running agent) — treat as
   // drift, NOT a retryable timeout, so no blind key is sent at whatever replaced it.
   return sawDialog ? { status: "timeout" } : { status: "drifted" };
+}
+
+/** The gaps between the reads {@link settleAfterSend} makes. The first is short because the TUI
+ *  repaints within tens of milliseconds of a key (measured 2026-10-04: about 19 ms), the rest widen
+ *  because a slower repaint is rarer. They sum to the 1.2 s bound. */
+export const SETTLE_DELAYS_MS: readonly number[] = [60, 80, 120, 160, 240, 240, 300];
+
+/**
+ * After a key was sent, wait until the pane's text differs from what it showed when the key left, or
+ * until a short bound passes (SETTLE_DELAYS_MS, 1.2 s in all).
+ *
+ * Why a tap needs this: the read a card revalidates on can land before the TUI repaints, and the
+ * card would then keep the OLD highlight until the next idle poll (6 s). The next committing tap
+ * compares the full signature of that stale picture with a fresh read and is refused. Awaiting this
+ * before `revalidate()` makes the card show the picture the key produced, and the card stays
+ * disabled for as long as its `onAction` promise is pending.
+ *
+ * The baseline is `args.from`, else the text the client had seen when its latest key was sent (the
+ * read the entry guard made, or a choreography's last verified read; see `textBeforeLastSend`), so no
+ * extra read is spent on it. With no baseline there is nothing to wait for and it returns at once.
+ *
+ * Never throws, and a timeout is a normal outcome: a key that changes nothing (Left at the end of a
+ * scale) leaves the text as it was. A failed read counts as an unchanged one. Returns whether a
+ * changed read was seen.
+ */
+export async function settleAfterSend(args: {
+  paneId: string;
+  requestedLines: number;
+  scope?: Scope;
+  /** The text to wait to change. Defaults to the pane text at the latest key send. */
+  from?: string;
+  /** Test seams: the pacing and the read. */
+  sleep?: Sleep;
+  read?: (paneId: string, requestedLines: number, scope: Scope | undefined) => Promise<{ text: string }>;
+}): Promise<boolean> {
+  const from = args.from ?? textBeforeLastSend(args.paneId, args.scope);
+  if (from === undefined) return false;
+  const sleep = args.sleep ?? defaultSleep;
+  const read = args.read ?? fetchPane;
+  for (const delay of SETTLE_DELAYS_MS) {
+    await sleep(delay);
+    try {
+      const fresh = await read(args.paneId, args.requestedLines, args.scope);
+      if (fresh.text !== from) return true;
+    } catch {
+      // A failed read says nothing about the screen; the bounded loop is the timeout.
+    }
+  }
+  return false;
 }
 
 /**

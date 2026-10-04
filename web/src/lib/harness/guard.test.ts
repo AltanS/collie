@@ -5,10 +5,10 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 // price one delay at a time, and that a check passing on attempt N costs only N delays. The two
 // constants are a measured judgement call and may be re-tuned (issue #156) — every assertion below
 // is written against the constants so a re-tune moves the wall-clock budget and nothing else.
-vi.mock("../api", () => ({ fetchPane: vi.fn() }));
+vi.mock("../api", () => ({ fetchPane: vi.fn(), textBeforeLastSend: vi.fn() }));
 
-import { fetchPane } from "../api";
-import { POLL_ATTEMPTS, POLL_DELAY_MS, pollUntil } from "./guard";
+import { fetchPane, textBeforeLastSend } from "../api";
+import { POLL_ATTEMPTS, POLL_DELAY_MS, SETTLE_DELAYS_MS, pollUntil, settleAfterSend } from "./guard";
 import { lineText, type StyledLine } from "../blocks";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -101,5 +101,89 @@ describe("pollUntil — the verification budget", () => {
       model: "dialog:permissions pointer=1",
     });
     expect(waits).toEqual([POLL_DELAY_MS]); // one attempt, not the full budget
+  });
+});
+
+// settleAfterSend: after a key, wait until the pane text leaves what it showed at the send, or give up
+// at a short bound. Virtual time throughout: the sleep seam advances a clock and the reader answers by
+// that clock, so nothing here waits for real.
+describe("settleAfterSend", () => {
+  const BOUND_MS = SETTLE_DELAYS_MS.reduce((a, b) => a + b, 0);
+
+  /** A pane whose text turns from "before" to "after" at `changeAtMs` of virtual time. */
+  function virtualPane(changeAtMs: number) {
+    let now = 0;
+    let reads = 0;
+    return {
+      reads: () => reads,
+      now: () => now,
+      sleep: async (ms: number) => void (now += ms),
+      read: async () => {
+        reads += 1;
+        return { text: now >= changeAtMs ? "after" : "before" };
+      },
+    };
+  }
+
+  const settle = (pane: ReturnType<typeof virtualPane>, from: string | undefined = "before") =>
+    settleAfterSend({ paneId: "w1:p1", requestedLines: 200, from, sleep: pane.sleep, read: pane.read });
+
+  it("the bound is about 1.2 s and the first read comes about 60 ms after the send", () => {
+    expect(BOUND_MS).toBeGreaterThanOrEqual(1100);
+    expect(BOUND_MS).toBeLessThanOrEqual(1300);
+    expect(SETTLE_DELAYS_MS[0]).toBeGreaterThanOrEqual(50);
+    expect(SETTLE_DELAYS_MS[0]).toBeLessThanOrEqual(70);
+  });
+
+  it.each([0, 20])("returns on the first read when the repaint lands at %i ms", async (changeAt) => {
+    const pane = virtualPane(changeAt);
+    await expect(settle(pane)).resolves.toBe(true);
+    expect(pane.reads()).toBe(1);
+    expect(pane.now()).toBe(SETTLE_DELAYS_MS[0]);
+  });
+
+  it("returns as soon as a changed read is seen when the repaint is slow (300 ms)", async () => {
+    const pane = virtualPane(300);
+    await expect(settle(pane)).resolves.toBe(true);
+    expect(pane.reads()).toBeGreaterThan(1);
+    expect(pane.reads()).toBeLessThan(SETTLE_DELAYS_MS.length);
+    expect(pane.now()).toBeLessThanOrEqual(BOUND_MS);
+  });
+
+  it("gives up at its bound when nothing ever changes (2000 ms), with a bounded number of reads", async () => {
+    const pane = virtualPane(2000);
+    await expect(settle(pane)).resolves.toBe(false);
+    expect(pane.reads()).toBe(SETTLE_DELAYS_MS.length);
+    expect(pane.now()).toBe(BOUND_MS);
+  });
+
+  it("never throws: a failing read counts as unchanged", async () => {
+    const waits: number[] = [];
+    const settled = await settleAfterSend({
+      paneId: "w1:p1",
+      requestedLines: 200,
+      from: "before",
+      sleep: async (ms) => void waits.push(ms),
+      read: async () => {
+        throw new Error("bridge down");
+      },
+    });
+    expect(settled).toBe(false);
+    expect(waits).toEqual([...SETTLE_DELAYS_MS]);
+  });
+
+  it("takes its baseline from the text at the latest send when none is passed, and waits for nothing without one", async () => {
+    const pane = virtualPane(20);
+    vi.mocked(textBeforeLastSend).mockReturnValueOnce("before");
+    await expect(
+      settleAfterSend({ paneId: "w1:p1", requestedLines: 200, sleep: pane.sleep, read: pane.read }),
+    ).resolves.toBe(true);
+
+    const idle = virtualPane(2000);
+    vi.mocked(textBeforeLastSend).mockReturnValueOnce(undefined);
+    await expect(
+      settleAfterSend({ paneId: "w1:p1", requestedLines: 200, sleep: idle.sleep, read: idle.read }),
+    ).resolves.toBe(false);
+    expect(idle.reads()).toBe(0);
   });
 });

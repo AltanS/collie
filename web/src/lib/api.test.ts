@@ -5,6 +5,7 @@ import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
 import { __resetConnectionHealth, isLostLatched, lastHealthyAt } from "./connection-health";
 import { isConnecting } from "./connection";
 import { resetBasePathForTests } from "./base-path";
+import { burstPaneId, resetPollIntent, sendCount } from "./poll-intent";
 import {
   checkForUpdates,
   createTab,
@@ -17,6 +18,7 @@ import {
   refreshNow,
   sendKeys,
   sendReply,
+  textBeforeLastSend,
   uploadFile,
   sttTimeoutFor,
   transcribeAudio,
@@ -141,6 +143,67 @@ describe("api client", () => {
       ok: false,
       error: "prompt changed",
       code: "prompt_changed",
+    });
+  });
+
+  // The burst starts at this one chokepoint, so a dialog tap, the key bar and the composer's typed
+  // text never have to remember to start it (a card that waited for the idle poll kept a stale
+  // highlight for up to 6 s).
+  describe("the poll burst", () => {
+    beforeEach(() => resetPollIntent());
+    afterEach(() => resetPollIntent());
+
+    it("a successful sendKeys starts a burst for that pane, on issue and again on the ok answer", async () => {
+      expect(burstPaneId()).toBeNull();
+      const pending = sendKeys("w1:p1", ["Up"]);
+      // Issued, not yet answered: the operator is already watching.
+      expect(burstPaneId()).toBe("w1:p1");
+      expect(sendCount()).toBe(1);
+      await pending;
+      expect(burstPaneId()).toBe("w1:p1");
+      expect(sendCount()).toBe(2);
+    });
+
+    it("a successful sendReply starts a burst for that pane", async () => {
+      await sendReply("w1:p2", "hi");
+      expect(burstPaneId()).toBe("w1:p2");
+      expect(sendCount()).toBe(2);
+    });
+
+    // The rule: stamp on issue, and again only on an ok answer. A write that fails leaves the one
+    // issue stamp, which is harmless because a burst ends itself after its minimum polls and two quiet
+    // ones (poll-intent.ts); nothing here can keep the fast gap running.
+    it("a failed sendKeys leaves only the stamp from the issue, never a second one", async () => {
+      server.use(
+        http.post(/\/api\/pane\/[^/]+\/keys$/, () => new HttpResponse("herdr down", { status: 502 })),
+      );
+      await expect(sendKeys("w1:p1", ["Up"])).rejects.toThrow(/502/);
+      expect(sendCount()).toBe(1);
+      server.use(
+        http.post(/\/api\/pane\/[^/]+\/keys$/, () =>
+          HttpResponse.json(
+            { ok: false, error: "prompt changed", code: "prompt_changed" },
+            { status: 409 },
+          ),
+        ),
+      );
+      await sendKeys("w1:p1", ["Up"], undefined, "Approve?");
+      expect(sendCount()).toBe(2); // one more issue stamp, no ok stamp
+    });
+
+    it("remembers what the pane showed when the latest key was sent, not what it shows after", async () => {
+      let text = "before";
+      server.use(
+        http.get(/\/api\/pane\/[^/]+$/, () =>
+          HttpResponse.json({ paneId: "w9:p9", text, truncated: false, revision: 0 }, { headers: { etag: `"${text}"` } }),
+        ),
+      );
+      expect(textBeforeLastSend("w9:p9")).toBeUndefined();
+      await fetchPane("w9:p9");
+      await sendKeys("w9:p9", ["Up"]);
+      text = "after";
+      await fetchPane("w9:p9");
+      expect(textBeforeLastSend("w9:p9")).toBe("before");
     });
   });
 
