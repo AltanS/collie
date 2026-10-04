@@ -164,6 +164,12 @@ export interface Config {
    * unless {@link mux} is `zellij`.
    */
   zellijBin: string;
+  /**
+   * Absolute path to the `tern` binary, when the operator has one somewhere unusual. Empty (the
+   * default) probes fixed paths — `~/.local/opt/tern` and `~/.local/bin` first — and never `PATH`
+   * (`bridge/mux/tern/exec.ts`). Set via `COLLIE_TERN_BIN`. Inert unless {@link mux} is `tern`.
+   */
+  ternBin: string;
   /** Path to Herdr's control socket. A non-Herdr-launched daemon must discover this itself. */
   socketPath: string;
   /**
@@ -627,6 +633,7 @@ export function loadConfig(env: Environment = process.env): Config {
     muxEndpoint: mux === DEFAULT_MUX ? socketPath : (env[muxEndpointVar(mux)] ?? "").trim(),
     tmuxBin: (env.COLLIE_TMUX_BIN ?? "").trim(),
     zellijBin: (env.COLLIE_ZELLIJ_BIN ?? "").trim(),
+    ternBin: (env.COLLIE_TERN_BIN ?? "").trim(),
     socketPath,
     dialMode: envEnum("COLLIE_HERDR_DIAL", ["auto", "net", "bun"] as const, "auto", env),
     port: envInt("COLLIE_PORT", DEFAULT_PORT, { min: 1, max: 65535 }, env),

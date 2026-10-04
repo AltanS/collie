@@ -1,7 +1,7 @@
 # Multiplexers
 
-Collie drives one multiplexer per install: Herdr, tmux, zellij or tuios. Herdr is the default. This
-page covers pointing Collie at any of the four, what each backend can answer, and the beacons Collie
+Collie drives one multiplexer per install: Herdr, tmux, zellij, tuios or tern. Herdr is the default. This
+page covers pointing Collie at any of them, what each backend can answer, and the beacons Collie
 uses to detect an agent in a pane.
 
 ## Pointing Collie at a multiplexer
@@ -21,6 +21,7 @@ COLLIE_MUX=herdr collie start
 COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
 COLLIE_MUX=tuios collie start
+COLLIE_MUX=tern collie start
 ```
 
 Set the endpoint when the default target is not the one you want:
@@ -47,6 +48,9 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_ZELLIJ` | empty | the single running session |
 | `COLLIE_MUX_ENDPOINT_TUIOS` | `/run/user/1000/tuios/tuios.sock` | the tuios daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TUIOS` | empty | `$XDG_RUNTIME_DIR/tuios/tuios.sock`, else `/tmp/tuios-<uid>/tuios.sock` |
+| `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
+| `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
+| `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
 
@@ -130,6 +134,19 @@ Zellij sessions persist independently of their initial terminal. Create a sessio
 zellij 0.44.2).
 
 > **Note.** Collie manages active sessions, but it does not create or restart them.
+
+### tern notes
+
+Point Collie at Tern:
+
+```bash
+COLLIE_MUX=tern collie start
+collie hooks install claude   # beacon hooks for agent detection
+```
+
+Collie reads Tern sessions as spaces, tabs as tabs, and blocks as panes. The endpoint is the Tern daemon's socket, defaulting to `$XDG_RUNTIME_DIR/tern/daemon.sock` (or `/tmp/tern-<uid>/daemon.sock`). Inside a Tern pane, `$TERN_PANE` identifies the block and `$TERN_PANE_SOCKET` points at the daemon socket.
+
+Tern reports lifecycle events via `tern events`, enabling immediate topology change notifications.
 
 ### tuios notes
 

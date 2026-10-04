@@ -96,7 +96,7 @@ describe("buildMuxRegistry", () => {
 
   // Herdr landed behind the contract in spec 02; tmux appended one entry in 04, zellij will in 05.
   test("the shipped list builds", () => {
-    expect(muxNames(buildMuxRegistry())).toEqual(["herdr", "tmux", "tuios", "zellij"]);
+    expect(muxNames(buildMuxRegistry())).toEqual(["herdr", "tern", "tmux", "tuios", "zellij"]);
   });
 });
 
