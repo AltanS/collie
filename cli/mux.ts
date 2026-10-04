@@ -2,6 +2,8 @@ import { join } from "node:path";
 
 import { HERDR_MUX } from "../bridge/mux/herdr/adapter.ts";
 import { buildMuxRegistry, muxEndpointVar, muxNames } from "../bridge/mux/registry.ts";
+import { TERN_MUX } from "../bridge/mux/tern/adapter.ts";
+import { defaultTernSocket, resolveTernBinary } from "../bridge/mux/tern/exec.ts";
 import { TMUX_MUX } from "../bridge/mux/tmux/adapter.ts";
 import { resolveTmuxBinary, tmuxServerArgs, tmuxServerLabel } from "../bridge/mux/tmux/exec.ts";
 import { ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
@@ -80,7 +82,7 @@ export function explicitMux(env: Pick<CliContext, "env">["env"]): string | null 
  * being asked is "what is here", not "is this one healthy".
  */
 export function probeMuxes(deps: MuxProbeDeps): MuxSighting[] {
-  return [probeHerdr(deps), probeTmux(deps), probeZellij(deps)].filter(
+  return [probeHerdr(deps), probeTern(deps), probeTmux(deps), probeZellij(deps)].filter(
     (sighting): sighting is MuxSighting => sighting !== null,
   );
 }
@@ -89,6 +91,25 @@ function probeHerdr(deps: MuxProbeDeps): MuxSighting | null {
   const socket = deps.ctx.socket;
   if (!deps.files.exists(socket)) return null;
   return { mux: HERDR_MUX, endpoint: "", evidence: `a Herdr socket at ${socket}` };
+}
+
+function probeTern(deps: MuxProbeDeps): MuxSighting | null {
+  const binary = resolveTernBinary((deps.ctx.env.COLLIE_TERN_BIN ?? "").trim(), (p) => deps.files.exists(p));
+  if (binary === null) return null;
+  const endpoint = (deps.ctx.env[muxEndpointVar(TERN_MUX)] ?? "").trim();
+  const asked = deps.exec.capture(binary, ["ls", "--json"]);
+  if (!asked.found || asked.code !== 0) return null;
+  try {
+    const ls = JSON.parse(asked.stdout);
+    const sessions = Array.isArray(ls.sessions) ? ls.sessions.length : 0;
+    return {
+      mux: TERN_MUX,
+      endpoint,
+      evidence: `a Tern daemon on ${endpoint || defaultTernSocket()} — ${String(sessions)} session${sessions === 1 ? "" : "s"}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function probeTmux(deps: MuxProbeDeps): MuxSighting | null {

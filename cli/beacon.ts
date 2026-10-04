@@ -90,6 +90,12 @@ const MUX_ENV_MARKERS: readonly MuxEnvMarker[] = [
     scopeOf: (raw) => raw.split(",")[0] ?? raw,
   },
   {
+    namespace: "tern",
+    paneVar: "TERN_PANE",
+    scopeVar: "TERN_PANE_SOCKET",
+    scopeOf: (raw) => raw,
+  },
+  {
     namespace: "zellij",
     paneVar: "ZELLIJ_PANE_ID",
     // zellij pane ids are per-session integers, so the session name IS the addressing space.

@@ -308,7 +308,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: DEFAULT_MUX,
-    doc: "Which multiplexer this collie mirrors: herdr, tmux, zellij or tuios.",
+    doc: "Which multiplexer this collie mirrors: herdr, tern, tmux, zellij or tuios.",
     configField: "mux",
   },
   {
@@ -340,6 +340,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "tmuxBin",
   },
   {
+    key: "tern_bin",
+    env: "COLLIE_TERN_BIN",
+    section: "mux",
+    kind: "string",
+    default: "",
+    doc: "Absolute path to the tern binary, when it sits somewhere unusual.",
+  },
+  {
     key: "zellij_bin",
     env: "COLLIE_ZELLIJ_BIN",
     section: "mux",
@@ -364,6 +372,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     kind: "string",
     default: "",
     doc: "The zellij session to drive. Empty works only when exactly one is running.",
+    configField: "muxEndpoint",
+  },
+  {
+    key: "mux_endpoint_tern",
+    env: "COLLIE_MUX_ENDPOINT_TERN",
+    section: "mux",
+    kind: "string",
+    default: "",
+    doc: "The tern daemon socket to drive. Empty takes the socket tern itself uses.",
     configField: "muxEndpoint",
   },
   {

@@ -32,6 +32,9 @@ import { herdrConformanceFixture } from "./herdr/fixture.ts";
 import { tmuxMuxFactory } from "./tmux/adapter.ts";
 import { FakeTmux, FAKE_TMUX_SOCKET, tmuxConformanceFixture, tmuxWorld } from "./tmux/fixture.ts";
 import { tmuxBeaconMatcher } from "./tmux/markers.ts";
+import { ternMuxFactory } from "./tern/adapter.ts";
+import { FakeTern, ternConformanceFixture, ternWorld } from "./tern/fixture.ts";
+import { ternBeaconMatcher } from "./tern/markers.ts";
 import { tuiosConformanceFixture } from "./tuios/fixture.ts";
 import { zellijMuxFactory } from "./zellij/adapter.ts";
 import { FakeZellij, SESSION, zellijConformanceFixture, zellijWorld } from "./zellij/fixture.ts";
@@ -120,6 +123,23 @@ async function zellijDecoratedWorld(hooksInstalled: boolean): Promise<MuxConform
   }));
 }
 
+async function ternDecoratedWorld(hooksInstalled: boolean): Promise<MuxConformanceWorld> {
+  const fake = new FakeTern();
+  const world = ternWorld(fake);
+  const namespace = ternMuxFactory.mux;
+  const socketPath = "/run/user/1000/tern/daemon.sock";
+  const beacons = (await paneIdsOf(world)).map((paneId, index) =>
+    seedBeacon([{ namespace, scope: socketPath, pane: paneId }], index === 0 ? "waiting" : "working", 900 + index),
+  );
+  const foreign = (await paneIdsOf(world)).map((paneId) =>
+    seedBeacon([{ namespace, scope: "/tmp/tern-1000/somebody-else", pane: paneId }], "idle", 999),
+  );
+  return decorated(world, withAgentBeacons(world.adapter, fakeBeaconReader([...beacons, ...foreign]), {
+    matcher: ternBeaconMatcher(namespace, fake, socketPath),
+    hooksInstalled: () => hooksInstalled,
+  }));
+}
+
 /** The same world, driven through the decorated adapter. Every perturbation stays the fixture's. */
 function decorated(world: MuxConformanceWorld, adapter: MuxAdapter): MuxConformanceWorld {
   return { ...world, adapter };
@@ -131,9 +151,12 @@ function decorated(world: MuxConformanceWorld, adapter: MuxAdapter): MuxConforma
  */
 export const MUX_CONFORMANCE_FIXTURES: readonly MuxConformanceFixture[] = [
   herdrConformanceFixture,
+  ternConformanceFixture,
   tmuxConformanceFixture,
   zellijConformanceFixture,
   tuiosConformanceFixture,
+  { mux: ternMuxFactory.mux, variant: "beacons, hooks installed", create: () => ternDecoratedWorld(true) },
+  { mux: ternMuxFactory.mux, variant: "beacons, hooks absent", create: () => ternDecoratedWorld(false) },
   { mux: tmuxMuxFactory.mux, variant: "beacons, hooks installed", create: () => tmuxDecoratedWorld(true) },
   { mux: tmuxMuxFactory.mux, variant: "beacons, hooks absent", create: () => tmuxDecoratedWorld(false) },
   { mux: zellijMuxFactory.mux, variant: "beacons, hooks installed", create: () => zellijDecoratedWorld(true) },

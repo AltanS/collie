@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Drive the Tern multiplexer.** Point `COLLIE_MUX=tern` at Tern (so.stencil.tern) to monitor and reply to agents running in Tern tabs and blocks from your phone. Supports ANSI screen capture, focus switching, tab management, and agent detection via beacon hooks. Thanks @Codder13.
+
 ## [1.16.2] - 2026-10-04
 
 ### Fixed
