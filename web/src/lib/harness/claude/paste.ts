@@ -67,7 +67,9 @@ const UPLOAD_LINE = new RegExp(`^${UPLOAD_ROOT}.*${UPLOAD_PATH_TAIL}$`, "i");
 export function liftableImagePaths(sent: string): number {
   const lines = sent.split(/\r?\n/);
   let count = lines.filter((line) => UPLOAD_LINE.test(line.trim())).length;
-  const last = lines[lines.length - 1]!.trim();
+  // The last NON-BLANK line: after a trailing newline the final line is empty, and a path that is
+  // already counted as a whole line above must not be counted again as the trailing token.
+  const last = (lines.findLast((line) => line.trim() !== "") ?? "").trim();
   const lastToken = sent.trimEnd().split(/\s+/).pop() ?? "";
   if (!UPLOAD_LINE.test(last) && UPLOAD_TOKEN.test(lastToken)) count += 1;
   return count;

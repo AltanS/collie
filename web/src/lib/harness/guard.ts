@@ -182,12 +182,16 @@ export async function pollUntil<M>(
 
 /** The gaps between the reads {@link settleAfterSend} makes. The first is short because the TUI
  *  repaints within tens of milliseconds of a key (measured 2026-10-04: about 19 ms), the rest widen
- *  because a slower repaint is rarer. They sum to the 1.2 s bound. */
+ *  because a slower repaint is rarer. They set the spacing only; the bound is
+ *  {@link SETTLE_DEADLINE_MS}, and the gaps happen to sum to it. */
 export const SETTLE_DELAYS_MS: readonly number[] = [60, 80, 120, 160, 240, 240, 300];
+
+/** The wall-clock bound of {@link settleAfterSend}, from its first line to its return. */
+export const SETTLE_DEADLINE_MS = 1200;
 
 /**
  * After a key was sent, wait until the pane's text differs from what it showed when the key left, or
- * until a short bound passes (SETTLE_DELAYS_MS, 1.2 s in all).
+ * until a wall-clock deadline of {@link SETTLE_DEADLINE_MS} (1.2 s) passes.
  *
  * Why a tap needs this: the read a card revalidates on can land before the TUI repaints, and the
  * card would then keep the OLD highlight until the next idle poll (6 s). The next committing tap
@@ -195,13 +199,23 @@ export const SETTLE_DELAYS_MS: readonly number[] = [60, 80, 120, 160, 240, 240, 
  * before `revalidate()` makes the card show the picture the key produced, and the card stays
  * disabled for as long as its `onAction` promise is pending.
  *
+ * The bound is time, not a count of sleeps: a read is a `fetchPane` with a 10 s timeout of its own,
+ * so a stalled bridge would otherwise hold the cards for about 70 s. The loop checks the deadline
+ * before each sleep and before each read, never sleeps past it, and gives each read an abort signal
+ * that fires at the deadline. At most one read is in flight. The spacing between reads is
+ * SETTLE_DELAYS_MS.
+ *
  * The baseline is `args.from`, else the text the client had seen when its latest key was sent (the
  * read the entry guard made, or a choreography's last verified read; see `textBeforeLastSend`), so no
  * extra read is spent on it. With no baseline there is nothing to wait for and it returns at once.
  *
  * Never throws, and a timeout is a normal outcome: a key that changes nothing (Left at the end of a
- * scale) leaves the text as it was. A failed read counts as an unchanged one. Returns whether a
- * changed read was seen.
+ * scale) leaves the text as it was. A failed or aborted read counts as an unchanged one. Returns
+ * whether a changed read was seen.
+ *
+ * A settle read refreshes the pane's ETag cache, so the `revalidate()` that follows can come back
+ * "not modified" and count as a quiet poll. That is harmless: the burst a tap starts runs at least
+ * BURST_MIN_POLLS (5, lib/poll-intent.ts) polls before quiet polls can end it.
  */
 export async function settleAfterSend(args: {
   paneId: string;
@@ -209,24 +223,51 @@ export async function settleAfterSend(args: {
   scope?: Scope;
   /** The text to wait to change. Defaults to the pane text at the latest key send. */
   from?: string;
-  /** Test seams: the pacing and the read. */
+  /** Test seams: the pacing, the clock and the read. `signal` aborts at the deadline. */
   sleep?: Sleep;
-  read?: (paneId: string, requestedLines: number, scope: Scope | undefined) => Promise<{ text: string }>;
+  now?: () => number;
+  read?: (
+    paneId: string,
+    requestedLines: number,
+    scope: Scope | undefined,
+    signal: AbortSignal,
+  ) => Promise<{ text: string }>;
 }): Promise<boolean> {
   const from = args.from ?? textBeforeLastSend(args.paneId, args.scope);
   if (from === undefined) return false;
   const sleep = args.sleep ?? defaultSleep;
+  const now = args.now ?? Date.now;
   const read = args.read ?? fetchPane;
-  for (const delay of SETTLE_DELAYS_MS) {
-    await sleep(delay);
-    try {
-      const fresh = await read(args.paneId, args.requestedLines, args.scope);
-      if (fresh.text !== from) return true;
-    } catch {
-      // A failed read says nothing about the screen; the bounded loop is the timeout.
+  const deadline = now() + SETTLE_DEADLINE_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SETTLE_DEADLINE_MS);
+  // A seam that ignores its signal must not outlive the deadline either, so the read races the abort.
+  const aborted = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener("abort", () => reject(new Error("settle deadline")), {
+      once: true,
+    });
+  });
+  aborted.catch(() => undefined);
+  try {
+    for (const delay of SETTLE_DELAYS_MS) {
+      const left = deadline - now();
+      if (left <= 0) break;
+      await sleep(Math.min(delay, left));
+      if (now() > deadline) break;
+      try {
+        const fresh = await Promise.race([
+          read(args.paneId, args.requestedLines, args.scope, controller.signal),
+          aborted,
+        ]);
+        if (fresh.text !== from) return true;
+      } catch {
+        // A failed read says nothing about the screen; the deadline is the timeout.
+      }
     }
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
-  return false;
 }
 
 /**

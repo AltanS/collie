@@ -8,7 +8,14 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 vi.mock("../api", () => ({ fetchPane: vi.fn(), textBeforeLastSend: vi.fn() }));
 
 import { fetchPane, textBeforeLastSend } from "../api";
-import { POLL_ATTEMPTS, POLL_DELAY_MS, SETTLE_DELAYS_MS, pollUntil, settleAfterSend } from "./guard";
+import {
+  POLL_ATTEMPTS,
+  POLL_DELAY_MS,
+  SETTLE_DEADLINE_MS,
+  SETTLE_DELAYS_MS,
+  pollUntil,
+  settleAfterSend,
+} from "./guard";
 import { lineText, type StyledLine } from "../blocks";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -170,6 +177,74 @@ describe("settleAfterSend", () => {
     });
     expect(settled).toBe(false);
     expect(waits).toEqual([...SETTLE_DELAYS_MS]);
+  });
+
+  it("returns false at the wall-clock deadline when a read never resolves until its signal aborts", async () => {
+    vi.useFakeTimers();
+    try {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      let reads = 0;
+      const settled = settleAfterSend({
+        paneId: "w1:p1",
+        requestedLines: 200,
+        from: "before",
+        read: (_paneId, _lines, _scope, signal) => {
+          reads += 1;
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          return new Promise((_, reject) => {
+            signal.addEventListener("abort", () => {
+              inFlight -= 1;
+              reject(new Error("aborted"));
+            });
+          });
+        },
+      });
+      let done = false;
+      void settled.then(() => void (done = true));
+      await vi.advanceTimersByTimeAsync(SETTLE_DEADLINE_MS - 1);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(settled).resolves.toBe(false);
+      expect(reads).toBe(1);
+      expect(maxInFlight).toBe(1);
+      expect(inFlight).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops at the deadline when every read takes 500 ms, and never sleeps past it", async () => {
+    let t = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let reads = 0;
+    const sleepEnds: number[] = [];
+    const settled = await settleAfterSend({
+      paneId: "w1:p1",
+      requestedLines: 200,
+      from: "before",
+      now: () => t,
+      sleep: async (ms) => {
+        t += ms;
+        sleepEnds.push(t);
+      },
+      read: async () => {
+        reads += 1;
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        t += 500;
+        inFlight -= 1;
+        return { text: "before" };
+      },
+    });
+    expect(settled).toBe(false);
+    expect(Math.max(...sleepEnds)).toBeLessThanOrEqual(SETTLE_DEADLINE_MS);
+    expect(reads).toBeLessThan(SETTLE_DELAYS_MS.length);
+    expect(reads).toBeLessThanOrEqual(3);
+    expect(t).toBeLessThanOrEqual(SETTLE_DEADLINE_MS + 500);
+    expect(maxInFlight).toBe(1);
   });
 
   it("takes its baseline from the text at the latest send when none is passed, and waits for nothing without one", async () => {

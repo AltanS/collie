@@ -190,6 +190,13 @@ describe("liftableImagePaths — only the paths Claude lifts, in the shape Colli
     expect(liftableImagePaths(`${p}\nmid ${p}\nend ${p}`)).toBe(2);
   });
 
+  it("counts a path once when the send ends in one or two newlines", () => {
+    expect(liftableImagePaths(`x\n${p}\n`)).toBe(1);
+    expect(liftableImagePaths(`x\n${p}\n\n`)).toBe(1);
+    expect(liftableImagePaths(`x ${p}\n`)).toBe(1);
+    expect(liftableImagePaths(`x ${p}\n\n`)).toBe(1);
+  });
+
   it("counts nothing for prose mentions, foreign paths or a path mid-line", () => {
     expect(liftableImagePaths("look at screenshot.png please")).toBe(0);
     expect(liftableImagePaths("see /tmp/shot.png")).toBe(0);
