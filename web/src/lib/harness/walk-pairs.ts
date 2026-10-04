@@ -65,6 +65,11 @@ export const WALK_PAIRS: readonly WalkPair[] = [
     "claude--menu-resume-picker--w120-first.txt",
     "claude--menu-resume-picker--w120-third.txt",
   ],
+  // Claude "Switch model?" confirmation (2.1.289), two widths: the pointer on `Yes` against on `No`.
+  // The 50-column pair also prints the edge row both ways (labelled, then bare), which
+  // `coreSignature` leaves out of the identity.
+  ["claude", "claude--v2289-switch-model-yes.txt", "claude--v2289-switch-model-no.txt"],
+  ["claude", "claude--v2289-switch-model-yes--w50.txt", "claude--v2289-switch-model-no--w50.txt"],
   // omp `/switch` picker. The four ptr captures move the pointer over one list, the first of them on
   // the hidden CURRENT row; the detail rows under the list change with every move (the 2026-10-03
   // defect). The rest are older pairs of the same picker in other layouts.

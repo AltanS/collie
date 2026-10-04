@@ -1,0 +1,40 @@
+
+           [0m[1mClaude Code[0m [0m[38;2;153;153;153mv2.1.289[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█[0m   [0m[38;2;153;153;153mSonnet 5.5 with high effort[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀[0m  [0m[38;2;153;153;153mClaude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝ [0m  [0m[38;2;153;153;153m/tmp/collie-model-picker[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mreply with the single word ok[0m[48;2;55;55;55m                   [0m
+
+[0m[38;2;255;255;255m● [0mok
+
+[0m[38;2;153;153;153m✻ Cooked for 2s · done 1:45 PM[0m
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ [0m[38;2;153;153;153m● high · /effort[0m[38;2;177;185;249m ▔[0m
+   [0m[1m[38;2;255;193;7mSwitch model?[0m
+   [0m[38;2;153;153;153mYour next response will be slower and use [0m
+   [0m[38;2;153;153;153mmore tokens        [0m          
+                                
+   This conversation is cached for the current
+   model. Switching to [0m[1mFable 5.1 [0mmeans the full
+   history gets re-read on your next message.
+   
+   [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes, switch to Fable 5.1[0m
+     [0m[38;2;153;153;153m2. [0mNo, go back             
+                  

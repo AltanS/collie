@@ -659,6 +659,30 @@ it, and Claude answered `✔ Updated 1 marketplace`.
 | `claude--v2283-fullscreen-plugin-marketplaces-changed--w{40,82}.txt` | Esc from that page, full screen: back on the tab, whose `▔` edge now carries `Plugins changed. Run /reload-plugins to activate.` At 40 columns the label crowds out the edge's left run (` Plugins changed. Run /reload-plugins… ▔`), which `region-top.ts`'s edge shape does not take, so the marketplaces grammar accepts that crowded edge itself. Same reading as the tab |
 | `claude--v2283-plugin-marketplaces-add-form--w82.txt` | Enter on `+ Add Marketplace`: a boxed text field, `Enter to add · Esc to cancel`. Not claimed by the marketplaces grammar; the unread card offers Escape |
 
+## Switch-model confirmation corpus (captured 2026-10-04, Claude Code 2.1.289, herdr 0.9.3, throwaway Herdr pane)
+
+The "Switch model?" confirmation, the footerless screen the `/model` picker opens when the
+conversation is cached for the current model. No grammar read it, so the phone showed the
+unread-dialog card with Esc and nothing else; `harness/claude/switch-model.ts` reads it now. Made in
+a sandbox pane in `/tmp/collie-model-picker` with a one-message conversation (`reply with the single
+word ok`), then `/model`, `Up` to move onto the other model, and `s` (this session only). Down for the
+second capture of each pair, read back with `herdr pane read --ansi`, the call the bridge's
+`/api/pane` route makes. The 50-column pair was captured under `stty cols 50 rows 40`. Byte-faithful,
+sandbox content only: no user or host names, home paths or keys.
+
+The screen paints under the `▔` edge, with the effort label spliced in on some reads and not on
+others (`claude--v2289-switch-model-yes--w50.txt` has it, its `no` twin is bare), so the grammar keeps
+the edge out of `coreSignature`. No key-hint footer. Proven live on 2.1.289: Enter on row 1 switches
+the model, Enter on row 2 returns to the picker, Down on row 2 goes to row 1 and Up on row 1 goes to
+row 2 (the list wraps), Esc cancels. The digits were not probed and are never sent.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2289-switch-model-yes.txt` | 120 columns, the pointer on `1. Yes, switch to Fable 5.1`. Lifts `prompt-select` `Switch model?`: Yes is `Enter`, No is `Down`, `Enter` |
+| `claude--v2289-switch-model-no.txt` | 120 columns, the pointer on `2. No, go back` after one `Down`. Yes is `Up`, `Enter`, No is `Enter`. The walk pair of the capture above |
+| `claude--v2289-switch-model-yes--w50.txt` | 50 columns: the sub-title and the prose wrap over two and three rows, the edge carries the label. Pointer on row 1 |
+| `claude--v2289-switch-model-no--w50.txt` | 50 columns, pointer on row 2, the edge bare. The walk pair of the capture above |
+
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 
 | Fixture | State / what's in it |
