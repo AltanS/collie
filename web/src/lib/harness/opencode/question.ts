@@ -119,21 +119,23 @@ export function detectQuestionDialog(lines: StyledLine[]): QuestionRegion | null
   if (q - 1 >= 0 && isBarRow(texts[q - 1]!) && !isBareBar(texts[q - 1]!)) return null;
 
   // 7. The free-text row's state. Opened, a row under it holds the placeholder or the typed text,
-  //    the chip stays on the row, and every digit becomes text. The pointer on any other row with
-  //    sub-rows under the free-text row is not a shape we know.
+  //    the chip stays on the row, and every digit becomes text. The chip staying on the row is
+  //    what makes a sub-row input: a sub-row with the pointer elsewhere is foreign chrome (a panel
+  //    overlay sharing the bar run, e.g. a right-aligned path row), not input. Read the row as
+  //    closed and keep those rows out of the model, so overlay text never becomes free-text
+  //    content or a bound signature.
   let feedback: PromptFeedback | undefined;
   let inputRows: number[] = [];
   if (freeText !== null) {
-    const open = freeText.sub.length > 0;
-    if (open && pointed !== freeText.n) return null;
-    const typed = freeText.sub.join(" ");
+    const open = freeText.sub.length > 0 && pointed === freeText.n;
+    const typed = open ? freeText.sub.join(" ") : "";
     feedback = {
       key: String(freeText.n),
       focused: open,
       text: typed === FREE_TEXT_LABEL ? "" : typed,
       purpose: "free-text",
     };
-    if (open) inputRows = rowsAfter(freeText.row, freeText.sub.length);
+    if (freeText.sub.length > 0) inputRows = rowsAfter(freeText.row, freeText.sub.length);
   }
 
   const options: PromptOption[] = choices.map((e) => {

@@ -274,6 +274,11 @@ function parseRow(entry: Entry, checkbox: boolean): ParsedRow | null {
  * COMMITTED text under the row after the input closes (round two): grey, the footer's own verb ink.
  * Typed text that is not yet committed is bright, and the placeholder is the label itself. A
  * single-select step has no committed state, so any row under its free-text row means open.
+ *
+ * Shared-exposure note: this shares walkEntries with the single-select lift, so a panel-overlay
+ * row under the free-text row refuses here too (fail-safe: raw + unread card, never a mis-lift).
+ * Pointer-gating it the way detectQuestionDialog does needs `pointed` plumbed in here — tracked
+ * as a follow-up (#347), not attempted here.
  */
 function freeTextClosed(screen: Screen, free: Entry, checkbox: boolean): boolean {
   if (free.sub.length === 0) return true;

@@ -758,6 +758,52 @@ describe("opencode question dialog lift", () => {
     expect(detectQuestionDialog(both)).toBeNull();
   });
 
+  it("an overlay row under the free-text row does not fake an open input", () => {
+    // Live shape: a panel overlay paints a right-aligned path row where the closed dialog
+    // specifies a bare bar row. The chip is on option 1, so the row is foreign chrome, not
+    // input: the dialog lifts with the free-text row closed, and the row stays out of the
+    // free-text content and the compared identity.
+    const lines = loadLines("oc--question--single.txt");
+    const at = lines.findIndex((l) => lineText(l).includes("4. Type your own answer"));
+    const overlay = splitLines(parseAnsi(`  ┃${" ".repeat(140)}~/repos/omarchy:master\n`))[0]!;
+    const lifted = detectQuestionDialog([...lines.slice(0, at + 1), overlay, ...lines.slice(at + 1)]);
+    expect(lifted).not.toBeNull();
+    expect(lifted!.model.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue"]);
+    expect(lifted!.model.feedback).toEqual({ key: "4", focused: false, text: "", purpose: "free-text" });
+    expect(lifted!.pointed).toBe(1);
+    expect(lifted!.model.coreSignature).not.toContain("omarchy:master");
+  });
+
+  it("an overlay-shaped row with the chip on the free-text row still locks", () => {
+    // Fail-safe direction: with the chip ON the free-text row a sub-row reads as open input
+    // even if it looks like overlay chrome — the card locks instead of offering taps.
+    const lines = loadLines("oc--question--single.txt");
+    const one = lines.map((l) => lineText(l)).findIndex((t) => t.includes("1. Red"));
+    const four = lines.map((l) => lineText(l)).findIndex((t) => t.includes("4. Type your own answer"));
+    const footer = lines.findLast((l) => lineText(l).includes("esc dismiss"))!;
+    const footerBg = footer.segments.find((s) => s.text.includes("esc"))!.bg;
+    const pointedBg = lines[one]!.segments.find((s) => s.text.includes("1."))!.bg;
+    const moved = repaint(repaint(lines, one, footerBg), four, pointedBg);
+    const at = moved.findIndex((l) => lineText(l).includes("4. Type your own answer"));
+    const overlay = splitLines(parseAnsi(`  ┃${" ".repeat(140)}~/repos/omarchy:master\n`))[0]!;
+    const lifted = detectQuestionDialog([...moved.slice(0, at + 1), overlay, ...moved.slice(at + 1)]);
+    expect(lifted).not.toBeNull();
+    expect(lifted!.pointed).toBe(4);
+    expect(lifted!.model.feedback?.focused).toBe(true);
+  });
+
+  it("an overlay row inside the options keeps the lift, description polluted", () => {
+    // Documents current behavior: an overlay row absorbed as an option's description does not
+    // refuse the lift (descriptions are display-only). A column-aware strip would clean it;
+    // until then the polluted text rides along, fail-safe.
+    const lines = loadLines("oc--question--single.txt");
+    const at = lines.findIndex((l) => lineText(l).includes("2. Green"));
+    const overlay = splitLines(parseAnsi(`  ┃${" ".repeat(140)}~/repos/omarchy:master\n`))[0]!;
+    const lifted = detectQuestionDialog([...lines.slice(0, at + 1), overlay, ...lines.slice(at + 1)]);
+    expect(lifted).not.toBeNull();
+    expect(lifted!.model.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue"]);
+  });
+
   it("refuses when ordinary output follows the footer (a dialog that scrolled up)", () => {
     const lines = loadLines("oc--question--single.txt");
     const tail = (text: string) => splitLines(parseAnsi(text));
@@ -878,8 +924,7 @@ describe("opencode tab-bar question dialogs lift", () => {
       expect(model.regionSignature).toContain("5. [✓] Type your own answer");
     });
 
-    it("an OPEN free-text input stays raw: the placeholder, or typed text in the bright ink", () => {
-      // The placeholder row (`Type your own answer` under the row) is the capture.
+    it("an OPEN free-text input stays raw: the placeholder, or typed text in the bright ink", () => {      // The placeholder row (`Type your own answer` under the row) is the capture.
       expect(tabs("multi--free-text")).toBeNull();
       // Typed text that is not committed is bright; the committed capture's row is grey. Paint the
       // committed text in the footer's bright ink and the same screen refuses.
@@ -896,6 +941,19 @@ describe("opencode tab-bar question dialogs lift", () => {
       const odd = lines.slice();
       odd[row] = { segments: odd[row]!.segments.map((s) => (s.text === "mine" ? Object.assign({}, s, { fg: "rgb(1,2,3)" }) : s)) };
       expect(detectQuestionTabs(odd)).toBeNull();
+    });
+
+    it("an overlay row under the free-text row stays raw until the tabs follow-up", () => {
+      // Same shared-walk exposure as the single-select lift, pinned as refuse: the tabbed
+      // flow has no pointer to arbitrate with, so it stays raw (fail-safe) until the
+      // follow-up pointer-plumbs freeTextClosed (#347).
+      const lines = loadLines("oc--question--multi.txt");
+      const at = lines.findIndex((l) => lineText(l).includes("5. [ ] Type your own answer"));
+      expect(at).toBeGreaterThan(0);
+      const overlay = splitLines(parseAnsi(`  ┃${" ".repeat(140)}~/repos/omarchy:master\n`))[0]!;
+      expect(detectQuestionTabs([...lines.slice(0, at + 1), overlay, ...lines.slice(at + 1)])).toBeNull();
+      // The unedited screen lifts, so the refusal above is the overlay row and nothing else.
+      expect(detectQuestionTabs(lines)).not.toBeNull();
     });
   });
 
