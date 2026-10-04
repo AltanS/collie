@@ -117,6 +117,11 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
   appears, **do not chunk a send.** Chunking is what [`.adr/0010`](./.adr/0010-long-sends-are-verified-via-the-paste-placeholder.md)
   rejects: `pane.send_text` carries no bracketed paste, so a chunk boundary landing on a lone `\n`
   submits a half-written message.
+- **Bytes arriving intact is not text arriving intact.** Re-probed 2026-10-03 on herdr 0.9.0 (macOS):
+  12,000 bytes reached a raw-mode reader byte-for-byte, as twelve ~1,022-byte reads. Claude Code
+  turned those reads into separate paste tokens and kept only the last one. Markers written inside
+  `text` pass through untouched, which is how Collie sends a long reply to Claude as one bracketed
+  paste ([`.adr/0010`](./.adr/0010-long-sends-are-verified-via-the-paste-placeholder.md), addendum).
 - **An ack means "herdr took the bytes", never "the TUI acted on them".** Both `send_text` and
   `send_keys` return before the target program has read, let alone rendered, anything. So a
   successful RPC pair is not evidence a reply was delivered — a focused TUI dialog can swallow the

@@ -73,3 +73,25 @@ time with a pause, so Claude never collapses anything — is rejected:
   catch it — a live probe, as in ADR 0009, is what settles any question about the shape.
 - Revisit if Herdr grows a bracketed-paste or "type verbatim" mode for `pane.send_text`: with the
   heuristic bypassed, the text would land as text and the generic matcher would verify it directly.
+
+## Addendum — 2026-10-03: a long send to Claude goes as one bracketed paste
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum takes the
+revisit the last consequence reserved, without waiting for Herdr: `pane.send_text` writes raw bytes,
+so Collie writes the markers itself.
+
+Bare sends lost text. On macOS a PTY hands Claude a long send in ~1,022-byte reads. Claude Code
+(2.1.288) makes each read over 800 characters its own paste token, and a short final read then wipes
+the earlier tokens, so only the end survived. That tail is a slice of the message, so the literal
+match verified it and Enter submitted it. Probed in an isolated herdr 0.9.0 session: 12,029
+characters sent bare, 787 received. The bytes themselves arrived intact; the loss is inside Claude.
+
+So the Claude adapter's `bracketedPaste` sends any reply over 800 characters framed as
+`ESC[200~ … ESC[201~`, and Claude takes it as ONE paste: all 12,029 arrived, through the phone UI.
+At 800 or fewer the send stays bare, since no read can collapse, so a short reply still lands
+literally and verifies as before. The framed send always collapses to the token this ADR already
+reads, so the evidence rules above are unchanged, with one widening: Claude lifts an image path off
+the end of a paste, or off a line of its own, into `[Image #N]`, and `pasteCarriesSend` accepts
+that token while the send holds at least as many image paths.
+
+Chunking stays rejected, for the reasons above.

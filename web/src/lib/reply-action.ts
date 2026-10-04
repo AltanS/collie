@@ -283,6 +283,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   const aborted = await runPreType?.();
   if (aborted) return aborted;
 
+  const onWire = (part: string): string => (adapter.bracketedPaste?.(part) ? bracketPaste(part) : part);
   const chunks = adapter.replyChunks?.(args.text) ?? [args.text];
   if (chunks.length === 0 || chunks.join("") !== args.text) {
     return { status: "error", error: t("reply.stalled.generic") };
@@ -304,7 +305,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   for (let i = 0; i < chunks.length - 1; i++) {
     let part;
     try {
-      part = await sendReply(args.paneId, chunks[i]!, false, args.scope);
+      part = await sendReply(args.paneId, onWire(chunks[i]!), false, args.scope);
     } catch (e) {
       return { status: "error", error: message(e) };
     }
@@ -336,7 +337,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
 
   let typed;
   try {
-    typed = await sendReply(args.paneId, chunks[chunks.length - 1]!, false, args.scope);
+    typed = await sendReply(args.paneId, onWire(chunks[chunks.length - 1]!), false, args.scope);
   } catch (e) {
     return { status: "error", error: message(e) };
   }
@@ -413,6 +414,18 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     status: "stalled",
     error: t("reply.stalled.generic"),
   };
+}
+
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
+
+/**
+ * One reply part framed as a single bracketed paste, for a harness whose `bracketedPaste` asks. A
+ * marker already inside the text is dropped: an end marker there would close the paste early and the
+ * rest, newlines included, would arrive as keystrokes.
+ */
+export function bracketPaste(text: string): string {
+  return `${PASTE_START}${text.replaceAll(PASTE_START, "").replaceAll(PASTE_END, "")}${PASTE_END}`;
 }
 
 function noBoxMessage(): string {
