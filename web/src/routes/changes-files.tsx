@@ -15,7 +15,7 @@ import { useNav } from "@/hooks/use-nav";
 import { fetchFileText, fetchFilesDir, type ChangesTarget, type FilesAnswer } from "@/lib/api";
 import { unavailableKey } from "@/lib/changes-reason";
 import { folderView, isNameFilterOn } from "@/lib/files-filter";
-import { baseName, formatBytes, previewKindFor } from "@/lib/files-view";
+import { baseName, formatBytes, headerFolder, previewKindFor } from "@/lib/files-view";
 import { t, type MessageKey } from "@/lib/i18n";
 import { isAbortError } from "@/lib/loaders";
 import {
@@ -100,12 +100,6 @@ function useFilesRead<T>(key: string, load: (signal: AbortSignal) => Promise<Fil
   // An answer for another key is not this screen's: until its own arrives the screen is loading.
   const shown: ReadState<T> = state.key === key ? state : { key, phase: "loading" };
   return { state: shown, reload, refreshing };
-}
-
-/** The last two segments of a folder, for the header: `…/projects/collie-workspace`. */
-function shortFolder(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts.length <= 2 ? path : `…/${parts.slice(-2).join("/")}`;
 }
 
 function Quiet({ children }: { children: React.ReactNode }) {
@@ -272,10 +266,16 @@ export function FilesRoute() {
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">{t("files.title")}</h1>
                 <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
-                  <span className="shrink-0 truncate">{workspaceLabel}</span>
+                  <span className="max-w-[45%] shrink-0 truncate">{workspaceLabel}</span>
                   {rootFolder.current !== null && (
-                    <span className="min-w-0 truncate font-mono" title={rootFolder.current}>
-                      {shortFolder(rootFolder.current)}
+                    // Cut from the LEFT: `direction: rtl` puts the ellipsis at the start, and the
+                    // `bdi` keeps the slashes in reading order. The last folders always stay.
+                    <span
+                      className="min-w-0 flex-1 truncate font-mono [direction:rtl] text-left"
+                      data-slot="files-root-folder"
+                      title={rootFolder.current}
+                    >
+                      <bdi>{headerFolder(rootFolder.current, workspaceLabel)}</bdi>
                     </span>
                   )}
                 </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { baseName, formatBytes, joinRel, previewKindFor, rootPathOf, splitLines } from "./files-view";
+import { baseName, formatBytes, headerFolder, joinRel, previewKindFor, rootPathOf, splitLines } from "./files-view";
 import { countJsonNodes, JSON_TREE_MAX_NODES, parseJsonTree } from "./json-tree";
 
 describe("previewKindFor", () => {
@@ -68,5 +68,22 @@ describe("parseJsonTree", () => {
 
   it("counts a wide array without overflowing the call stack", () => {
     expect(countJsonNodes(Array(300_000).fill(1), JSON_TREE_MAX_NODES)).toBeGreaterThan(JSON_TREE_MAX_NODES);
+  });
+});
+
+describe("headerFolder", () => {
+  it("does not say the label twice: a folder named like it shows the folders above it", () => {
+    expect(headerFolder("/var/home/altan/projects/storefront", "storefront")).toBe("/var/home/altan/projects/");
+    expect(headerFolder("/var/home/altan/projects/storefront/", "storefront")).toBe("/var/home/altan/projects/");
+  });
+
+  it("keeps the whole path when the label is another name, for the screen to cut from the left", () => {
+    expect(headerFolder("/var/home/altan/projects/storefront", "Shop")).toBe("/var/home/altan/projects/storefront");
+    expect(headerFolder("/home/you/webapp/", "Shop")).toBe("/home/you/webapp");
+  });
+
+  it("a root folder is itself, and a relative folder named like the label shows nothing above it", () => {
+    expect(headerFolder("/", "home")).toBe("/");
+    expect(headerFolder("/storefront", "storefront")).toBe("/");
   });
 });

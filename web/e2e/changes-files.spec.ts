@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
-import { fixtureAgents, fixtureFileRead } from "@/test/handlers";
+import { fixtureAgents, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
 import { serveWithShellCsp } from "./fixtures/csp";
@@ -230,4 +230,29 @@ test("the HTML preview renders in a sandboxed frame under the shell's CSP and no
 
   // Nothing from outside ever answered: not the image, the stylesheet, the link, the form or the refresh.
   expect(answered.filter((url) => /\.invalid\b/.test(url))).toEqual([]);
+});
+
+test("a deep folder is cut from the left, the label is not repeated, and the last folders stay visible at 375 px", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  const root = "/var/home/altan/projects/clients/acme/storefront-monorepo/packages/webapp";
+  await page.route(/\/api\/pane\/[^/]+\/files(\?.*)?$/, async (route) => {
+    // The shared fixture's own answer, with only the root made deep.
+    const q = new URL(route.request().url()).searchParams;
+    const found = q.get("path") !== null ? fixtureFileRead(q.get("path")!) : fixtureFilesDir(q.get("dir") ?? "");
+    await route.fulfill({ json: { ...found, root } });
+  });
+  await page.goto(`/pane/${PANE}/changes/files`);
+  const folder = page.getByTitle(root);
+  await expect(folder).toBeVisible();
+  // The label is the folder's own name, so the header says the folders above it and not `webapp` twice.
+  await expect(folder.locator("bdi")).toHaveText("/var/home/altan/projects/clients/acme/storefront-monorepo/packages/");
+  const box = await folder.evaluate((el) => {
+    const outer = el.getBoundingClientRect();
+    const inner = el.querySelector("bdi")!.getBoundingClientRect();
+    return { clipped: el.scrollWidth > el.clientWidth, outerRight: outer.right, outerLeft: outer.left, innerRight: inner.right };
+  });
+  // Too long for the row, so it is cut, and what stays is the END of the path: its last segment sits
+  // flush against the right edge instead of being the part that is lost.
+  expect(box.clipped).toBe(true);
+  expect(Math.abs(box.innerRight - box.outerRight)).toBeLessThan(2);
 });

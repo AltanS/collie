@@ -31,6 +31,19 @@ export function rootPathOf(repo: string, path: string): string {
   return repo === "." || repo === "" ? path : `${repo}/${path}`;
 }
 
+/**
+ * The folder as the Files header spells it beside the workspace label. The whole path, with the
+ * screen cutting it from the LEFT when it does not fit (so the last folders stay readable), except
+ * that a folder named like the label is not said twice: the label already is its last segment, so
+ * only the folders above it show, ending in a slash.
+ */
+export function headerFolder(path: string, label: string): string {
+  const trimmed = path.replace(/\/+$/, "");
+  const cut = trimmed.lastIndexOf("/");
+  if (cut === -1 || trimmed.slice(cut + 1) !== label) return trimmed === "" ? path : trimmed;
+  return trimmed.slice(0, cut + 1);
+}
+
 /** The last segment of a path: a file's name, a folder's name, or `""` for the root. */
 export function baseName(path: string): string {
   return path.split("/").at(-1) ?? "";
