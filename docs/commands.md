@@ -69,7 +69,7 @@ command resolves to.
 ## Herdr actions
 
 **Applies only to a Herdr-managed install** created with `herdr plugin install AltanS/collie` or
-`herdr plugin link`. Herdr is one of three multiplexers Collie supports. These actions map directly
+`herdr plugin link`. Herdr is one of five multiplexers Collie supports. These actions map directly
 to the adapter: each action forwards the verb to the same `collie` binary documented in the table
 above. On binary installs created via `scripts/install.sh`, plugin actions do not exist, and
 `collie <verb>` is the only syntax.

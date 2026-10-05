@@ -176,7 +176,7 @@ both with no other symptom. `collie doctor` names the pane under `agent-sessions
    started from a shell that another agent opened. Oh My Pi's hook stays silent when `OMPCODE=1` is
    inherited from the parent agent. Start it from a fresh terminal.
 
-On tmux and zellij only Claude Code reports a session, through Collie's beacon hooks. Run
+On tmux, zellij and tern only Claude Code reports a session, through Collie's beacon hooks. Run
 `collie hooks install claude` ([Collie writes hooks into Claude's own
 settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)). The other agents have no
 Chat or History there.
