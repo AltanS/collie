@@ -170,6 +170,16 @@ describe("mergeHistory", () => {
     expect(merged.ts).toBe(10 * M + 5_000);
   });
 
+  it("an empty later answer still drops held points from after its own clock", () => {
+    const held = answer(20 * M, 8 * M, 9 * M, 19 * M, 20 * M);
+    // The server's clock stepped back to minute 10: the points at 19 and 20 are from a future it lost.
+    const merged = mergeHistory(held, answer(10 * M + 5_000));
+    expect(merged.points.map((p) => p[0])).toEqual([8 * M, 9 * M]);
+    // The minute still filling (up to a minute past `ts`) stays.
+    expect(mergeHistory(answer(10 * M, 9 * M, 11 * M), answer(10 * M + 5_000)).points.map((p) => p[0])).toEqual([9 * M, 11 * M]);
+    expect(mergeHistory(answer(10 * M, 9 * M, 11 * M + 6_000), answer(10 * M + 5_000)).points.map((p) => p[0])).toEqual([9 * M]);
+  });
+
   it("asks from the newest point it holds, or for the whole day", () => {
     expect(sinceOf(null)).toBeUndefined();
     expect(sinceOf(answer(10 * M))).toBeUndefined();

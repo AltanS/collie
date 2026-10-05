@@ -218,7 +218,10 @@ export function mergeHistory(prev: MachineHistoryResponse | null, next: MachineH
   if (prev === null) return next;
   const first = next.points[0]?.[0] ?? Number.POSITIVE_INFINITY;
   const floor = next.ts - DAY_MS;
-  const kept = prev.points.filter((p) => p[0] < first && p[0] > floor);
+  // A held point later than the answer's own `ts` (plus the minute still filling) is from a clock or a
+  // history the server no longer has, and an empty answer would otherwise keep it for a whole day.
+  const ceiling = next.ts + DAY_MS / 1440;
+  const kept = prev.points.filter((p) => p[0] < first && p[0] > floor && p[0] <= ceiling);
   return { ts: next.ts, stepMs: next.stepMs, points: kept.length === 0 ? next.points : [...kept, ...next.points] };
 }
 
