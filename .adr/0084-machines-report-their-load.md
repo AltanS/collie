@@ -28,28 +28,41 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
    `os.cpus()` there drops iowait, softirq and steal (measured 2026-10-05 under Bun 1.4.1: each core's
    times are exactly 10 x the jiffies for user, nice, sys, idle and irq, and nothing else). Memory on
    Linux is `MemTotal - MemAvailable`, so the page cache is not counted as used. Network on Linux is
-   `/proc/net/dev` without `lo`. Every other platform reads `node:os`: CPU from `os.cpus()`, memory
+   `/proc/net/dev` over the physical interfaces only: loopback, bridges (`br*`, `docker*`, `virbr*`,
+   `cni*` and the like), veth and tap ends, tunnels (`tailscale*`, `wg*`, `tun*`, `zt*`), bonds and
+   VLANs are left out, because their bytes also cross a physical interface and would be counted twice
+   (`isSkippedInterface` holds the list). Every other platform reads `node:os`: CPU from `os.cpus()`, memory
    from `totalmem - freemem`, no network, and no load average on Windows, where Node answers zeros.
 
 2. **A member's reading rides the answer it already gives.** `machineStats` is an additive-optional
    sibling of the `/crew/v1/snapshot` body, beside `version`, `updatePreflight` and `updateRun`. The
    peer reads the sample it holds, so the answer does no disk read. The lead parses it defensively:
    any field that is not a finite number in range drops the whole sample. It stamps the sample on
-   its own clock (§10.2). `X-Crew-Protocol` stays `2`.
+   its own clock (§10.2). A sample equal in every field to the last one taken for that member is
+   the same reading served again, and is neither recorded nor stamped: that is what a member whose
+   sampler hangs sends, and stamping it fresh would draw a live, flat machine forever. A real
+   reading that repeats another in every field is not expected, since CPU and network are ratios of
+   counters over time and memory is counted in bytes, and skipping one costs a single point.
+   `X-Crew-Protocol` stays `2`.
 
 3. **The history is the lead's, not each member's.** The lead (or a solo Collie) keeps one bucket per
    minute per machine for 24 hours: CPU average and maximum, memory fraction, and network averages.
    It persists them to `machine-history.json` from the tick, at most once every five minutes and on
    shutdown, atomic and owner-only. A peer keeps nothing. The phone asks the lead for everything, so
    history kept on a peer would need a forwarded route and a second copy of the same day, and would
-   still be lost with that peer. A removed member's history is dropped with it.
+   still be lost with that peer. A removed member's history and alert rules are dropped with it, live
+   and again on the next save for a member removed while the lead was down. A bucket more than a
+   minute in the future, left by a clock that stepped back, is dropped on record and on load. The
+   writes go through one chain, and the shutdown flush waits for it. A deposed lead (§18.12) records,
+   judges and pushes nothing.
 
 4. **One rule per metric per machine, judged by a pure function.** Rules live in
    `machine-alerts.json` on the lead, keyed by member id, written on change only. A rule fires when
    every complete minute in its window is at or above the line and at least 80% of the window has
    data. The episode closes after five straight complete minutes below the line minus 0.05. Open
    episodes are saved with the rules, so a restart does not push twice. An unreachable machine
-   neither opens nor closes an episode: missing data is not a recovery.
+   neither opens nor closes an episode: missing data is not a recovery. Alerts report sustained high
+   load only; a machine that goes offline sends no push.
 
 5. **The push is the cache warning's shape.** `type: "machine"`, tag
    `collie:machine:<id>:<metric>`, title codes `machine.cpu` and `machine.mem`, and
@@ -82,6 +95,11 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
 - **History on a peer.** Covered in point 3.
 - **Alerts while the lead is down.** The lead judges. When it is down nobody records and nobody
   judges, and the chart shows a gap.
+- **An alert for a machine that goes offline.** The crew page already shows a member's health; an
+  alert here reports sustained high load only.
+- **History and rules that follow the lead.** A deputy that takes over starts with no alert rules
+  and no history: both files stay on the old lead. A solo Collie that becomes a lead changes its own
+  id from `local` to its member id, and the `local` history and rules are dropped on the next save.
 - **Network figures off Linux, and disk.** No `node:os` source exists for them without a child
   process.
 

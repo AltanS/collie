@@ -255,14 +255,35 @@ each machine, for 24 hours. A Collie with no crew keeps the same day for its own
 | CPU | yes | yes | yes |
 | Memory | yes, without the page cache | yes | yes |
 | Load average | yes | yes | no |
-| Network | yes, every interface except loopback | no | no |
+| Network | yes, physical interfaces only | no | no |
+
+**Network counts each byte once.** On Linux, Collie adds up the physical interfaces, such as `eth0`,
+`enp3s0` and `wlan0`. It leaves out every interface whose bytes also cross a physical one:
+
+- Loopback: `lo`.
+- Bridges: `br*` (also Docker's `br-*`), `docker*`, `virbr*`, `lxcbr*`, `lxdbr*`, `incusbr*`,
+  `podman*`, `cni*`, `flannel*`, `cali*`, `cilium*`, `weave*`, `vxlan*`.
+- Container and VM ends: `veth*`, `vnet*`, `tap*`.
+- Tunnels: `tailscale*`, `wg*`, `tun*`, `zt*`. Tunnel traffic also leaves through the physical
+  interface, so the crew link is counted there.
+- Bonds and VLANs: `bond*`, `team*`, and any name with a dot, such as `eth0.100`.
 
 The day of points lives in `machine-history.json` in the lead's state folder. The lead writes it at
 most once every five minutes, and once more when it stops. A member keeps no history of its own, so
 the lead is the only place to look. When the lead is down, nobody records, and the chart shows a gap.
 
 A machine that stops answering keeps its last reading, with the time it was taken, and records no
-new minutes. Collie never shows a zero it did not measure. A member older than this feature sends no
+new minutes. Collie never shows a zero it did not measure. A member that sends the same reading
+again, equal in every number, has not measured again. The lead does not record it, and the reading
+keeps its old time. A member whose sampler hangs therefore shows a gap, not a flat line.
+
+**The day of points and the rules stay on one lead.**
+
+- **A deputy that takes over starts with no alert rules and no history.** Both files live on the old
+  lead. Set the rules again on the new lead.
+- **A collie on its own that becomes a lead drops its own history.** On its own it names its machine
+  `local`. As a lead it uses its member id, and the `local` points and rules go.
+- **A machine removed from the crew takes its history and its alert rules with it.** A member older than this feature sends no
 reading at all, and it stays in the crew as before.
 
 ### Alerts for a machine
@@ -275,7 +296,8 @@ for at least 80% of those minutes. It sends nothing more while the value stays h
 after five minutes in a row at least five points under the line, and the next climb sends a new
 push. An open alert is saved with the rules, so a restart does not send it twice.
 
-A machine that is not answering neither starts nor ends an alert. A snooze holds every alert, and
+**An alert reports sustained high load only.** It does not report a machine that goes offline. A
+machine that is not answering neither starts nor ends an alert. A snooze holds every alert, and
 the **Machine load stays high** switch in Settings turns them all off
 ([which alerts Collie sends](voice-and-push.md#which-alerts-collie-sends)).
 
