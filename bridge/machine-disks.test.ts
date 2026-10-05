@@ -286,6 +286,36 @@ describe("DiskWatch", () => {
     expect(watch.current()).toEqual([]);
   });
 
+  test("a clock that steps back starts a round at once, and the old answer ages from the step", async () => {
+    const fs: World["fs"] = { "/": BTRFS };
+    const { watch, clock, calls } = harness({ paths: ["/"], fs, devs: { "/": 1 } });
+    watch.tick();
+    await flush();
+    expect(calls).toHaveLength(1);
+    // Ten minutes back: the round is due, not held until the old time comes round again.
+    clock.now -= 600_000;
+    watch.tick();
+    await flush();
+    expect(calls).toHaveLength(2);
+    // An answer stamped in the future ages out like any other once the clock has gone on.
+    fs["/"] = "hang";
+    clock.now += DISK_READ_MS;
+    watch.tick();
+    await flush();
+    clock.now += DISK_STALE_MS;
+    expect(watch.current()).toEqual([]);
+  });
+
+  test("an answer stamped after a backward step still ages out", async () => {
+    const { watch, clock } = harness({ paths: ["/"], fs: { "/": BTRFS }, devs: { "/": 1 } });
+    watch.tick();
+    await flush();
+    clock.now -= 600_000;
+    expect(watch.current()).toHaveLength(1);
+    clock.now += DISK_STALE_MS + 1;
+    expect(watch.current()).toEqual([]);
+  });
+
   test("tick never throws when every reader fails", () => {
     const { watch } = harness({ paths: ["/"], fs: {}, mounts: null });
     expect(() => watch.tick()).not.toThrow();

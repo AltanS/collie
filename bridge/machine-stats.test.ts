@@ -259,6 +259,28 @@ describe("MachineSampler — a Linux host", () => {
     expect(sampler.tick()?.cpu).toBeCloseTo(80 / 300, 10);
   });
 
+  test("a clock that steps back reads at once instead of waiting for the old time to come round", () => {
+    const src = fakeSources();
+    src.state.files.set("/proc/stat", statLine(100, 0, 100, 700, 100, 0, 0, 0));
+    src.state.files.set("/proc/meminfo", MEMINFO);
+    const sampler = new MachineSampler({ host: hostFor("linux"), readText: src.readText, os: src.os, now: src.now });
+    sampler.tick();
+    src.state.now = T0 + SAMPLE_WATCHED_MS;
+    src.state.files.set("/proc/stat", statLine(150, 0, 130, 900, 120, 0, 0, 0));
+    expect(sampler.tick()).not.toBeNull();
+    // Ten minutes back, as an NTP step or a resume can do.
+    src.state.now = T0 + SAMPLE_WATCHED_MS - 600_000;
+    const reads = src.state.reads.length;
+    src.state.files.set("/proc/stat", statLine(200, 0, 160, 1100, 140, 0, 0, 0));
+    expect(sampler.tick(SAMPLE_IDLE_MS)).not.toBeNull();
+    expect(src.state.reads.length).toBeGreaterThan(reads);
+    // And it carries on at its own pace from there.
+    const after = src.state.reads.length;
+    src.state.now += SAMPLE_IDLE_MS - 1;
+    expect(sampler.tick(SAMPLE_IDLE_MS)).toBeNull();
+    expect(src.state.reads.length).toBe(after);
+  });
+
   test("before its first sample, a sampler reads again after five seconds, never sooner", () => {
     const src = fakeSources();
     src.state.files.set("/proc/stat", statLine(100, 0, 100, 700, 100, 0, 0, 0));

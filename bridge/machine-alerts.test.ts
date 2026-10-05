@@ -477,6 +477,17 @@ describe("the sample rate follows the phone, and an idle bridge still fills ever
     expect(r.watch.sampleEveryMs()).toBe(SAMPLE_IDLE_MS);
   });
 
+  test("a clock that steps back does not hold the 5 s pace past the usual window", async () => {
+    const dir = await tempDir();
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir));
+    r.watch.rows();
+    expect(r.watch.sampleEveryMs()).toBe(SAMPLE_WATCHED_MS);
+    r.state.now -= 3_600_000;
+    r.watch.sampleEveryMs();
+    r.state.now += MACHINES_WATCH_MS + 1;
+    expect(r.watch.sampleEveryMs()).toBe(SAMPLE_IDLE_MS);
+  });
+
   for (const tickMs of [12_000, 1_500, 30_000, 60_000]) {
     test(`a lead nobody watches, on a ${tickMs / 1000} s tick: every minute holds a sample, and a 10-minute rule fires`, async () => {
       const dir = await tempDir();

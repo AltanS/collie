@@ -175,7 +175,9 @@ export class DiskWatch {
   /** Start a round when one is due. Returns at once; the answers land later. */
   tick(): void {
     const now = this.r.now();
-    if (now - this.lastRound < DISK_READ_MS) return;
+    // A negative gap is a clock that stepped back: the round is due, not held until it catches up.
+    const gap = now - this.lastRound;
+    if (gap >= 0 && gap < DISK_READ_MS) return;
     this.lastRound = now;
     if (this.r.platform === "linux") void this.readMounts();
     for (const [path, slot] of this.slots) {
@@ -211,6 +213,8 @@ export class DiskWatch {
     const now = this.r.now();
     const fresh: DiskReading[] = [];
     for (const slot of this.slots.values()) {
+      // An answer stamped in the future (the clock stepped back) ages from now, not never.
+      if (slot.at > now) slot.at = now;
       if (slot.value === null || now - slot.at > DISK_STALE_MS) continue;
       // The read-only flag may arrive after the statfs; a mount it names drops out here too.
       if (this.roMounts?.has(slot.value.mount) && slot.value.avail === 0) continue;

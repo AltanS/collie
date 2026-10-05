@@ -339,7 +339,10 @@ export class MachineSampler {
     this.readers.disks?.tick();
     const now = this.readers.now();
     const floor = this.last === null ? Math.min(minIntervalMs, SAMPLE_WATCHED_MS) : minIntervalMs;
-    if (this.prev !== null && now - this.prev.at < floor) return null;
+    // A clock that stepped back makes the age negative: that reading is due, not "too soon" until the
+    // clock catches up with the one it left behind.
+    const age = this.prev === null ? Number.POSITIVE_INFINITY : now - this.prev.at;
+    if (age >= 0 && age < floor) return null;
     const next = readCounters(this.readers);
     const prev = this.prev;
     this.prev = next;

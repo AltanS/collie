@@ -194,6 +194,9 @@ export class MachineWatch implements MachineSurface {
    * last {@link MACHINES_WATCH_MS}, slow otherwise. Read by the engine tick, which arms nothing.
    */
   sampleEveryMs(now = this.deps.now()): number {
+    // A phone's ask stamped in the future (the clock stepped back) would hold the watched pace until
+    // the clock caught up: clamp it to now, so it lapses in the usual window.
+    if (this.askedAt > now) this.askedAt = now;
     return now - this.askedAt <= MACHINES_WATCH_MS ? SAMPLE_WATCHED_MS : SAMPLE_IDLE_MS;
   }
 
