@@ -10,7 +10,7 @@
 // and an unreadable rule file means no rule, which is the closed reading (it pushes nothing).
 
 import type { JsonObject, JsonValue } from "./json.ts";
-import type { MinuteBucket } from "./machine-history.ts";
+import type { LoadedMinute } from "./machine-history.ts";
 import { CREW_MACHINE_FIELD, isMachineSample } from "./machine-stats.ts";
 import type { AlertMetric, AlertRule, MachineAlerts, MachineSample } from "./types.ts";
 
@@ -91,33 +91,81 @@ export function parseMachineAlerts(value: JsonValue | undefined): MachineAlerts 
 }
 
 /**
- * `machine-history.json` as minute buckets per machine. A bucket that is not nine finite numbers, or
- * whose count is not a positive integer, is dropped; the rest of the file still loads.
+ * `machine-history.json` as minutes per machine, oldest first. Two versions load: version 2, the
+ * compact rows `machine-history.ts` writes, and version 1, the nine sums per minute the first 1.17.0
+ * builds wrote. A row that is not the right count of finite numbers is dropped; the rest of the file
+ * still loads.
  */
-export function coerceHistoryFile(raw: JsonValue | undefined, maxMinutes: number): Map<string, MinuteBucket[]> {
-  const out = new Map<string, MinuteBucket[]>();
-  const machines = recordOf(recordOf(raw)?.machines);
+export function coerceHistoryFile(raw: JsonValue | undefined, maxMinutes: number): Map<string, LoadedMinute[]> {
+  const out = new Map<string, LoadedMinute[]>();
+  const file = recordOf(raw);
+  const machines = recordOf(file?.machines);
   if (machines === null) return out;
-  for (const [id, rows] of Object.entries(machines)) {
-    if (!Array.isArray(rows)) continue;
-    const buckets: MinuteBucket[] = [];
-    for (const row of rows.slice(-maxMinutes)) {
-      const bucket = Array.isArray(row) ? bucketOf(row) : null;
-      if (bucket !== null) buckets.push(bucket);
-    }
-    if (buckets.length > 0) out.set(id, buckets.toSorted((a, b) => a.t - b.t));
+  const version = numberOf(file?.version);
+  for (const [id, entry] of Object.entries(machines)) {
+    const minutes = version === 2 ? minutesOfV2(entry) : minutesOfV1(entry);
+    if (minutes.length > 0) out.set(id, minutes.toSorted((a, b) => a.t - b.t).slice(-maxMinutes));
   }
   return out;
 }
 
-/** One persisted bucket, `[t, n, cpuSum, cpuMax, memSum, rxSum, rxN, txSum, txN]`, or `null`. */
-function bucketOf(row: readonly JsonValue[]): MinuteBucket | null {
-  if (row.length !== 9) return null;
-  const [t, n, cpuSum, cpuMax, memSum, rxSum, rxN, txSum, txN] = row.map((v) => numberOf(v));
-  if (t == null || n == null || cpuSum == null || cpuMax == null || memSum == null) return null;
-  if (rxSum == null || rxN == null || txSum == null || txN == null) return null;
-  if (!Number.isInteger(n) || n <= 0) return null;
-  return { t, n, cpuSum, cpuMax, memSum, rxSum, rxN, txSum, txN };
+/** A fraction off disk, or `null` when it is not one. */
+function fractionOf(value: JsonValue | undefined): number | null {
+  const n = numberOf(value);
+  return n !== null && n >= 0 && n <= 1 ? n : null;
+}
+
+/** A rate off disk: a non-negative number, or `null` for "no reading" (and for anything else). */
+function rateOf(value: JsonValue | undefined): number | null {
+  const n = numberOf(value);
+  return n !== null && n >= 0 ? n : null;
+}
+
+/** Version 2: `{ t, n, rows: [[gap, cpu, cpuMax, mem, rx | null, tx | null], ...] }`. */
+function minutesOfV2(entry: JsonValue | undefined): LoadedMinute[] {
+  const rec = recordOf(entry);
+  const start = numberOf(rec?.t);
+  const lastN = numberOf(rec?.n);
+  const rows = rec?.rows;
+  if (rec === null || start === null || !Array.isArray(rows)) return [];
+  const out: LoadedMinute[] = [];
+  let t = start;
+  rows.forEach((row, index) => {
+    if (!Array.isArray(row) || row.length !== 6) return;
+    const gap = numberOf(row[0]);
+    if (gap === null || !Number.isInteger(gap) || gap < 0) return;
+    t += gap * 60_000;
+    const cpu = fractionOf(row[1]);
+    const cpuMax = fractionOf(row[2]);
+    const mem = fractionOf(row[3]);
+    if (cpu === null || cpuMax === null || mem === null) return;
+    const n = index === rows.length - 1 && lastN !== null && Number.isInteger(lastN) && lastN > 0 ? lastN : 1;
+    out.push({ t, n, cpu, cpuMax, mem, rx: rateOf(row[4]), tx: rateOf(row[5]) });
+  });
+  return out;
+}
+
+/** Version 1: one row per minute, `[t, n, cpuSum, cpuMax, memSum, rxSum, rxN, txSum, txN]`. */
+function minutesOfV1(entry: JsonValue | undefined): LoadedMinute[] {
+  if (!Array.isArray(entry)) return [];
+  const out: LoadedMinute[] = [];
+  for (const row of entry) {
+    if (!Array.isArray(row) || row.length !== 9) continue;
+    const [t, n, cpuSum, cpuMax, memSum, rxSum, rxN, txSum, txN] = row.map((v) => numberOf(v));
+    if (t == null || n == null || cpuSum == null || cpuMax == null || memSum == null) continue;
+    if (rxSum == null || rxN == null || txSum == null || txN == null) continue;
+    if (!Number.isInteger(n) || n <= 0) continue;
+    out.push({
+      t,
+      n,
+      cpu: cpuSum / n,
+      cpuMax,
+      mem: memSum / n,
+      rx: rxN > 0 ? rxSum / rxN : null,
+      tx: txN > 0 ? txSum / txN : null,
+    });
+  }
+  return out;
 }
 
 /** One machine's stored rules and the episodes open for it. */

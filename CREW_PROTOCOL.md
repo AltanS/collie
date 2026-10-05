@@ -2869,9 +2869,10 @@ same protocol integer: `X-Crew-Protocol` stays `2`.
   because their bytes cross a physical interface too), absent where they cannot be read (every OS
   but Linux today).
 - The member **reads what its sampler already holds**. The answer does no disk read and no system
-  call, and the sampler itself rides the member's own `StateEngine.onTick` at most once every five
-  seconds (§10.1: no second timer). Before its second reading there is no sample, and the field is
-  omitted.
+  call, and the sampler itself rides the member's own `StateEngine.onTick` at most once every 15
+  seconds (§10.1: no second timer; on the 12 s idle tick that is every 24 s, never less than once a
+  minute). Only the lead samples faster, every 5 s, while a phone reads its machine list. Before
+  its second reading there is no sample, and the field is omitted.
 - The lead **stamps it on receipt**, on its own clock (§10.2), and folds it into that machine's
   minute history. A malformed field drops the whole sample. An unknown key inside it is ignored. A
   sample equal in every field to the last one the lead took from that member is the same reading

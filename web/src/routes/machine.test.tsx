@@ -125,16 +125,21 @@ describe("the machine page", () => {
     expect(router.state.location.pathname).toBe("/machines");
   });
 
-  it("shows an older machine's page without charts it cannot fill", async () => {
-    server.use(
-      http.get("/api/machines/:id/history", () =>
-        HttpResponse.json({ ts: FIXTURE_MACHINES_TS, stepMs: 60_000, points: [] }),
-      ),
-    );
+  it("shows an older machine's page without charts it cannot fill, and reads no history for it", async () => {
     renderMachine("pantry");
     expect(await screen.findByText("Update this machine to see its load")).toBeInTheDocument();
-    expect(await screen.findAllByText("No readings in this range yet.")).toHaveLength(3);
+    // No range switch and no chart: the lead holds no minute of a machine that never sent a reading.
+    expect(screen.queryByRole("radiogroup", { name: "Time range" })).toBeNull();
     expect(screen.queryAllByRole("img")).toHaveLength(0);
+    expect(screen.queryByText("No readings in this range yet.")).toBeNull();
+    expect(historyReads).toBe(0);
+  });
+
+  it("shows a reachable machine whose reading stopped with its age marked, its numbers quieted", async () => {
+    const stuck = { ...fixtureMachines.machines[0]!, sampledAt: FIXTURE_MACHINES_TS - 5 * 60_000 };
+    renderMachine("bluefin", { census: { ts: FIXTURE_MACHINES_TS, machines: [stuck] }, error: false });
+    const age = await screen.findByText("Last reading 5m ago");
+    expect(age.className).toContain("text-status-working");
   });
 
   it("hides the alert controls on an older machine and says it needs updating", async () => {
@@ -205,6 +210,41 @@ describe("the history read", () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
     await waitFor(() => expect(historyReads).toBe(2));
+  });
+
+  it("reads the whole day once, then only the minutes from its newest point on", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const asked: (string | null)[] = [];
+    const day = fixtureMachineHistory();
+    const newest = day.points.at(-1)![0];
+    server.use(
+      http.get("/api/machines/:id/history", ({ request }) => {
+        historyReads += 1;
+        const since = new URL(request.url).searchParams.get("since");
+        asked.push(since);
+        if (since === null) return HttpResponse.json(day);
+        // The newest minute again, now complete, and one new minute after it.
+        return HttpResponse.json({
+          ts: day.ts + 60_000,
+          stepMs: 60_000,
+          points: [
+            [newest, 0.5, 0.6, 0.4, 1, 1],
+            [newest + 60_000, 0.99, 1, 0.4, 1, 1],
+          ],
+        });
+      }),
+    );
+    renderMachine("bluefin");
+    await waitFor(() => expect(historyReads).toBe(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HISTORY_REFRESH_MS + 1_000);
+    });
+    await waitFor(() => expect(historyReads).toBe(2));
+    expect(asked).toEqual([null, String(newest)]);
+    // The merged day's CPU now ends on the new minute's 99%.
+    await waitFor(() =>
+      expect(screen.getAllByRole("img").find((i) => i.getAttribute("data-kind") === "cpu")?.getAttribute("aria-label")).toMatch(/now 99%/),
+    );
   });
 
   it("does not re-read on a loader revalidation, which is what every poll tick is", async () => {

@@ -11,10 +11,31 @@
 // ── WHAT THE PHONE READS IS ALREADY HERE ─────────────────────────────────────
 // `rows()` and `history()` read memory. The roster comes from the same closure `GET /api/crew` reads,
 // so asking about machines can no more make the lead dial a member than asking about the crew can.
+//
+// ── THE SAMPLE RATE FOLLOWS THE PHONE ────────────────────────────────────────
+// `rows()` notes when a phone last asked. For {@link MACHINES_WATCH_MS} after that, this machine
+// samples at most every 5 s (`SAMPLE_WATCHED_MS`); otherwise at most every 15 s (`SAMPLE_IDLE_MS`).
+// Nothing is armed: the engine tick asks {@link MachineWatch.sampleEveryMs} each time it runs. The
+// Machines list and a machine's page ask on every poll (4 to 6 s), the dashboard's Crew tab every
+// 15 s, so all three hold the fast rate, and a phone put away drops it within 30 s.
+//
+// The idle arithmetic, which the alert rules lean on (ALERT_COVERAGE in machine-alerts.ts: 80 % of
+// a window's minutes must hold data). The tick runs every 12 s while the multiplexer's event stream
+// is healthy and every 1.5 s otherwise, plus once per event poke. A 15 s floor on a 12 s tick takes a
+// sample on every second tick, 24 s apart, so every minute bucket holds two or three samples and
+// none is empty. On a 1.5 s tick it is one every 15 s, four per minute. Any idle tick up to 60 s
+// still leaves no minute empty, because the gap between two samples is then the tick itself.
+//
+// A member has no phone asking, so it samples at the idle rate and serves the sample it holds to
+// every sweep. The lead skips a sample equal to the last one it took ({@link MachineWatch.observe}),
+// so it records each of the member's samples once: a new one every 24 s at most, stamped on the
+// lead's clock within one lead tick of the member taking it. The gap between two stamps is at most
+// 24 s plus one 12 s lead tick, 36 s, so a member's minute buckets are never empty either.
 
 import type { MachineAlertStore } from "./machine-alerts.ts";
 import { evaluateMachineAlerts, machineAlertMessage } from "./machine-alerts.ts";
-import { minuteOf, type MachineHistory } from "./machine-history.ts";
+import { minuteOf, SPARK_MAX_MINUTES, type MachineHistory } from "./machine-history.ts";
+import { SAMPLE_IDLE_MS, SAMPLE_WATCHED_MS } from "./machine-stats.ts";
 import type { PushMessage } from "./push.ts";
 import type {
   CrewStatusResponse,
@@ -27,6 +48,12 @@ import type {
 
 /** The longest the history goes unsaved while it is changing. */
 export const HISTORY_SAVE_EVERY_MS = 5 * 60_000;
+
+/**
+ * How long one `GET /api/machines` keeps this machine sampling at the fast rate. Twice the Crew tab's
+ * 15 s pace, so a tab that skips one round on a slow link does not drop the rate.
+ */
+export const MACHINES_WATCH_MS = 30_000;
 
 /** The machine id of a solo collie that never enrolled: it has no member id to use. */
 export const SOLO_MACHINE_ID = "local";
@@ -80,8 +107,10 @@ export interface MachineWatchDeps {
 
 /** What `bridge/server.ts` asks of the watch. Structural, so a route test can pass a small object. */
 export interface MachineSurface {
-  rows(): MachinesResponse;
-  history(id: string): MachineHistoryResponse | null;
+  /** `spark` is the minutes of the small charts the request asked for (1..60), or none. */
+  rows(opts?: { spark?: number }): MachinesResponse;
+  /** `since` keeps the minutes starting at or after it. */
+  history(id: string, since?: number): MachineHistoryResponse | null;
   entry(id: string): MachineRosterEntry | undefined;
   setAlerts(id: string, alerts: MachineAlerts): Promise<MachineAlerts | null>;
 }
@@ -91,6 +120,8 @@ export class MachineWatch implements MachineSurface {
   private lastJudgedMinute: number | null = null;
   private lastSave: number;
   private judging = false;
+  /** When a phone last asked for the list; 0 is never. */
+  private askedAt = 0;
   /** Every history write, one after another: a tick's save and the shutdown flush never interleave. */
   private saveChain: Promise<void> = Promise.resolve();
   private readonly log: (line: string) => void;
@@ -158,9 +189,19 @@ export class MachineWatch implements MachineSurface {
     await this.deps.alerts.settled();
   }
 
-  /** `GET /api/machines`. */
-  rows(): MachinesResponse {
+  /**
+   * How often this machine should sample itself now: fast while a phone asked for the list in the
+   * last {@link MACHINES_WATCH_MS}, slow otherwise. Read by the engine tick, which arms nothing.
+   */
+  sampleEveryMs(now = this.deps.now()): number {
+    return now - this.askedAt <= MACHINES_WATCH_MS ? SAMPLE_WATCHED_MS : SAMPLE_IDLE_MS;
+  }
+
+  /** `GET /api/machines`, with each row's spark when `opts.spark` asks for one. */
+  rows(opts: { spark?: number } = {}): MachinesResponse {
     const now = this.deps.now();
+    this.askedAt = now;
+    const spark = opts.spark !== undefined && Number.isInteger(opts.spark) ? Math.min(SPARK_MAX_MINUTES, Math.max(1, opts.spark)) : undefined;
     const machines = this.deps.roster().map((entry): MachineRow => {
       const row: MachineRow = {
         id: entry.id,
@@ -176,16 +217,18 @@ export class MachineWatch implements MachineSurface {
         row.sample = last.sample;
         row.sampledAt = last.at;
       }
+      const lines = spark === undefined ? null : this.deps.history.spark(entry.id, now, spark);
+      if (lines !== null) row.spark = lines;
       return row;
     });
     return { ts: now, machines };
   }
 
   /** `GET /api/machines/:id/history`, or `null` for a machine this collie does not answer for. */
-  history(id: string): MachineHistoryResponse | null {
+  history(id: string, since?: number): MachineHistoryResponse | null {
     if (!this.known(id)) return null;
     const now = this.deps.now();
-    return { ts: now, stepMs: 60_000, points: this.deps.history.points(id, now) };
+    return { ts: now, stepMs: 60_000, points: this.deps.history.points(id, now, since) };
   }
 
   /** `POST /api/machines/:id/alerts`, or `null` for an unknown machine. Written before it answers. */

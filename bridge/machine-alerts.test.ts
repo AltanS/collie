@@ -13,7 +13,9 @@ import {
 } from "./machine-alerts.ts";
 import { MachineHistory, MINUTE_MS, type MinuteReading } from "./machine-history.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
-import { MachineWatch, type MachineRosterEntry, sameSample } from "./machines.ts";
+import { hostFor } from "./host.ts";
+import { MachineSampler, SAMPLE_IDLE_MS, SAMPLE_WATCHED_MS } from "./machine-stats.ts";
+import { MACHINES_WATCH_MS, MachineWatch, type MachineRosterEntry, sameSample } from "./machines.ts";
 import { machineTopic, type PushMessage } from "./push.ts";
 import type { MachineSample } from "./types.ts";
 
@@ -384,6 +386,111 @@ describe("MachineWatch — what it takes in, and what it lets go", () => {
     release();
     await done;
     expect(log).toEqual(["start 1", `end 1 ${T0 + 6 * MINUTE_MS}`, "start 2", `end 2 ${T0 + 6 * MINUTE_MS}`]);
+  });
+});
+
+// ── The sample rate, against the alert rules' minute buckets ─────────────────
+
+/**
+ * A sampler over a fake macOS-like host at a steady 95 % CPU. Memory moves by one byte per reading,
+ * as a real machine's does, so no two samples are equal in every field.
+ */
+function busySampler(clock: { now: number }): MachineSampler {
+  let busy = 0;
+  let idle = 0;
+  let reads = 0;
+  return new MachineSampler({
+    host: hostFor("darwin"),
+    readText: () => null,
+    os: {
+      cpus: () => {
+        busy += 95;
+        idle += 5;
+        return [{ model: "t", speed: 1, times: { user: busy, nice: 0, sys: 0, idle, irq: 0 } }];
+      },
+      totalmem: () => 8e9,
+      freemem: () => 4e9 - (reads += 1),
+      loadavg: () => [1, 1, 1],
+    },
+    now: () => clock.now,
+  });
+}
+
+describe("the sample rate follows the phone, and an idle bridge still fills every minute", () => {
+  test("15 s by default, 5 s for 30 s after a phone asked for the list", async () => {
+    const dir = await tempDir();
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir));
+    expect(r.watch.sampleEveryMs()).toBe(SAMPLE_IDLE_MS);
+    r.watch.rows();
+    expect(r.watch.sampleEveryMs()).toBe(SAMPLE_WATCHED_MS);
+    r.state.now += MACHINES_WATCH_MS;
+    expect(r.watch.sampleEveryMs()).toBe(SAMPLE_WATCHED_MS);
+    r.state.now += 1;
+    expect(r.watch.sampleEveryMs()).toBe(SAMPLE_IDLE_MS);
+    // Reading the history, or a machine's page asking for nothing, does not count as watching.
+    r.watch.history("desk");
+    expect(r.watch.sampleEveryMs()).toBe(SAMPLE_IDLE_MS);
+  });
+
+  for (const tickMs of [12_000, 1_500, 30_000, 60_000]) {
+    test(`a lead nobody watches, on a ${tickMs / 1000} s tick: every minute holds a sample, and a 10-minute rule fires`, async () => {
+      const dir = await tempDir();
+      const history = new MachineHistory();
+      const r = rig(dir, history, await MachineAlertStore.load(dir));
+      await r.watch.setAlerts("desk", { cpu: { above: 0.9, forMin: 10 } });
+      r.state.now = T0 + 7_000;
+      const sampler = busySampler(r.state);
+      const end = T0 + 13 * MINUTE_MS;
+      let samples = 0;
+      while (r.state.now < end) {
+        const sample = sampler.tick(r.watch.sampleEveryMs());
+        if (sample !== null) {
+          samples += 1;
+          r.watch.observe("desk", sample, r.state.now);
+        }
+        r.watch.tick();
+        await Bun.sleep(0);
+        r.state.now += tickMs;
+      }
+      // The first reading only primes the counters, so the count starts at the second minute.
+      const complete = history.minutes("desk", T0 + MINUTE_MS, end);
+      expect(complete.map((m) => m.t)).toEqual(Array.from({ length: 12 }, (_, i) => T0 + (i + 1) * MINUTE_MS));
+      // Never faster than the idle floor: at most four samples a minute, whatever the tick.
+      expect(samples).toBeLessThanOrEqual(13 * 4);
+      expect(r.sent.map((m) => m.tag)).toEqual(["collie:machine:desk:cpu"]);
+    });
+  }
+
+  test("a member sampling at the idle rate, swept faster than it samples: every minute holds a sample, and the rule fires", async () => {
+    const dir = await tempDir();
+    const history = new MachineHistory();
+    const r = rig(dir, history, await MachineAlertStore.load(dir));
+    await r.watch.setAlerts("laptop", { cpu: { above: 0.9, forMin: 10 } });
+    // The member's own clock and tick: 12 s, out of phase with the lead's 1.5 s sweep.
+    const member = { now: T0 + 5_000 };
+    const sampler = busySampler(member);
+    const end = T0 + 13 * MINUTE_MS;
+    let observed = 0;
+    for (r.state.now = T0; r.state.now < end; r.state.now += 1_500) {
+      while (member.now <= r.state.now) {
+        sampler.tick();
+        member.now += 12_000;
+      }
+      // The sweep: the member answers with the sample it holds, every time.
+      const held = sampler.latest();
+      if (held !== null) {
+        r.watch.observe("laptop", held, r.state.now);
+        observed += 1;
+      }
+      r.watch.tick();
+      await Bun.sleep(0);
+    }
+    // The lead heard the same sample on most sweeps and recorded each one once.
+    expect(observed).toBeGreaterThan(400);
+    expect(history.minutes("laptop", T0 + MINUTE_MS, end).map((m) => m.t)).toEqual(
+      Array.from({ length: 12 }, (_, i) => T0 + (i + 1) * MINUTE_MS),
+    );
+    expect(r.sent.map((m) => m.tag)).toEqual(["collie:machine:laptop:cpu"]);
   });
 });
 

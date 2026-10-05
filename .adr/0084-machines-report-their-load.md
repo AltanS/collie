@@ -10,7 +10,8 @@
 - **Trail:** `bridge/machine-stats.ts` · `bridge/machine-history.ts` · `bridge/machine-alerts.ts` ·
   `bridge/machine-parse.ts` · `bridge/machines.ts` · `bridge/crew/router.ts` and `lead.ts` (the
   sibling) · `bridge/server.ts` (`serveMachinesRoute`) · `CREW_PROTOCOL.md` §5, §7.1, §11, §19 ·
-  `docs/crew.md` → *Machines*
+  `docs/crew.md` → *Machines* · `web/src/components/machine-card.tsx`, `machine-spark.tsx`,
+  `crew-tab.tsx` · `web/src/hooks/use-machine-history.ts`, `use-machine-census.ts`
 
 ## Context
 
@@ -22,8 +23,19 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
 ## Decision
 
 1. **Each Collie samples its own machine, on the tick it already has.** `MachineSampler` reads CPU,
-   memory, load and network at most once every five seconds, from the `StateEngine.onTick` listener
-   list. There is no second timer and no child process (CREW_PROTOCOL.md §10.1, §11). On Linux CPU
+   memory, load and network from the `StateEngine.onTick` listener list, at most once every 15 s,
+   and at most once every 5 s while a phone asked for `GET /api/machines` in the last 30 s
+   (`MachineWatch.sampleEveryMs`). There is no second timer and no child process
+   (CREW_PROTOCOL.md §10.1, §11). The idle tick is 12 s, so an unwatched machine samples every 24 s,
+   two or three times a minute, and any tick up to 60 s still puts a reading in every minute: the
+   80% coverage rule in point 4 holds without a page open. A sample needs two readings, and the
+   first sample after a start comes at the 5 s pace, so a machine that just started or joined shows
+   its load within seconds. A member samples at the idle rate, since
+   only the lead sees the phone, and the lead's sweep reads its last sample; a sweep that finds the
+   same sample again skips it (point 2), and member readings are at most 36 s apart, so no minute
+   goes empty for it either. One sample costs about 0.05 ms of parsing and 0.15 ms of kernel reads
+   on a 16-core machine with 33 interfaces (measured 2026-10-05), mostly `/proc/net/dev`. On Linux
+   the core count comes from `/proc/stat` too, so `os.cpus()` is not called there. On Linux CPU
    comes from the aggregate line of `/proc/stat`, with iowait counted as idle, because Bun's
    `os.cpus()` there drops iowait, softirq and steal (measured 2026-10-05 under Bun 1.4.1: each core's
    times are exactly 10 x the jiffies for user, nice, sys, idle and irq, and nothing else). Memory on
@@ -47,8 +59,12 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
 
 3. **The history is the lead's, not each member's.** The lead (or a solo Collie) keeps one bucket per
    minute per machine for 24 hours: CPU average and maximum, memory fraction, and network averages.
-   It persists them to `machine-history.json` from the tick, at most once every five minutes and on
-   shutdown, atomic and owner-only. A peer keeps nothing. The phone asks the lead for everything, so
+   It holds them in fixed typed arrays, about 55 KiB per machine for the full day, and persists them
+   to `machine-history.json` from the tick, at most once every five minutes and only when a minute
+   changed, and on shutdown, atomic and owner-only. The file is version 2: per machine the first
+   minute, the last minute's reading count, and one row per minute
+   `[minutes since the last row, cpu, cpuMax, mem, rx, tx]`, fractions to 3 decimals. A version 1
+   file still loads. A day of one machine is about 49 KiB on disk, against 80 KiB before. A peer keeps nothing. The phone asks the lead for everything, so
    history kept on a peer would need a forwarded route and a second copy of the same day, and would
    still be lost with that peer. A removed member's history and alert rules are dropped with it, live
    and again on the next save for a member removed while the lead was down. A bucket more than a
@@ -76,7 +92,12 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
    switch is on by default, because a rule is something the operator set on purpose.
 
 6. **Three routes, on the lead and on a solo Collie.** `GET /api/machines`,
-   `GET /api/machines/:id/history` and `POST /api/machines/:id/alerts`. A peer answers 404
+   `GET /api/machines/:id/history` and `POST /api/machines/:id/alerts`. Two queries are
+   additive-optional, and an answer without them is byte-identical to the one before them:
+   `?spark=N` (1 to 60) adds `spark: { stepMs, cpu, mem }` to each row with a reading in that
+   window, the last N complete minutes oldest first, `null` for a missing minute, 2 decimals, leading
+   empty minutes cut; `?since=<ms>` makes the history answer only the minutes starting at or after
+   it. History fractions are rounded to 3 decimals. A malformed query value is ignored. A peer answers 404
    `crew.not_lead`, like `/api/crew`. None is forwardable with `?host=`. The POST takes the write gate
    and is audited as `machine.alerts`, with the machine in `host`. A row's id is the
    `CrewMemberStatus.id` of `GET /api/crew`, the lead's own row included. A solo Collie that never
@@ -87,6 +108,18 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
    `machine-history.json` appears after five minutes of running. No snapshot key is added, the
    browser's snapshot bytes are unchanged, and nothing is written by a bridge that is only started
    and stopped.
+
+8. **The phone reads only what is on screen.** The list's loader asks for the census with
+   `?spark=30`, on the poll loop, and keeps the identity of every row that did not change
+   (`keepCensusIdentity`), so the memoised cards and sparks draw only when their row moved. A
+   machine's page reads the whole day once, then once a minute while visible only the minutes from
+   its newest point on (`?since=`), merged by `mergeHistory`; the memoised charts draw once a minute,
+   not on the poll. The dashboard's Crew tab (ADR 0085) shows the same card, read on mount and every
+   15 s while the tab is on screen and the page is visible, one round at a time, and it reads
+   nothing on any other tab (ADR 0066 point 4). A tap on a card goes down to `/machines/<id>`, and
+   because `/` is a legitimate parent of a machine (`ancestorsOf`), back steps onto the dashboard,
+   which opens on the tab it stored (ADR 0067). A machine that answers but sends no new reading for
+   two minutes is called stale: its numbers are quieted and its age is said in words.
 
 ## Not built
 
@@ -108,5 +141,9 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
 - ADR 0034 holds: readings travel on the crew link and stay on the lead. Nothing is collected or
   sent outside the crew.
 - A member older than this feature sends no reading. Its row says "no sample", never zero.
-- The day of minutes costs the lead about 9 numbers x 1440 minutes per machine on disk, rewritten
-  at most every five minutes.
+- The day of minutes costs the lead about 55 KiB of memory and 49 KiB on disk per machine,
+  rewritten at most every five minutes and only when it changed. Ten machines take about 3 ms to
+  serialise and write.
+- On the wire, the census is about 340 B per machine raw (`?spark=30` about 680 B). The whole day
+  of one machine is about 66 KiB raw, 22 KiB gzipped, read once per page visit; each minute after is
+  a few hundred bytes.

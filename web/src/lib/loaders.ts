@@ -37,6 +37,7 @@ import {
 } from "@/lib/last-seen";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { markPollResult } from "@/lib/poll-intent";
+import { shareEqual } from "@/lib/share-equal";
 import { prefetchPane, takePanePrefetch } from "@/lib/pane-prefetch";
 import { clearNotPaired, markNotPaired } from "@/lib/pairing";
 import {
@@ -629,9 +630,36 @@ export interface MachinesData {
   error: boolean;
 }
 
+/** How many complete minutes the list's small charts show: the Crew tab's half hour. */
+export const MACHINE_SPARK_MINUTES = 30;
+
+/**
+ * The last census read, so the next one can keep the identity of every row that did not change
+ * (`shareEqual`). A poll tick that brings the same numbers then re-renders no card and no chart.
+ */
+let lastCensus: MachinesResponse | null = null;
+
+/** `fresh`, with every row equal to the last census's row swapped for that row's own object. */
+export function keepCensusIdentity(fresh: MachinesResponse): MachinesResponse {
+  const kept = lastCensus === null ? fresh : shareEqual(lastCensus, fresh);
+  lastCensus = kept;
+  return kept;
+}
+
+/** One machine's page: the census without the small charts, which the page does not draw. */
 export async function machinesLoader({ request }: { request?: Request } = {}): Promise<MachinesData> {
+  return machinesRead(request?.signal, undefined);
+}
+
+/** The Machines list: the census with each card's last half hour of CPU and memory. */
+export async function machinesListLoader({ request }: { request?: Request } = {}): Promise<MachinesData> {
+  return machinesRead(request?.signal, MACHINE_SPARK_MINUTES);
+}
+
+async function machinesRead(signal: AbortSignal | undefined, spark: number | undefined): Promise<MachinesData> {
   try {
-    return { census: await fetchMachines(request?.signal), error: false };
+    const census = await fetchMachines(signal, spark === undefined ? {} : { spark });
+    return { census: keepCensusIdentity(census), error: false };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation, let React Router drop it
     if (isApiErrorStatus(e, 404)) return { census: null, error: false };

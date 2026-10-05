@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ArrowLeft, Crown } from "lucide-react";
+import { ArrowLeft, Clock } from "lucide-react";
 import { useLoaderData, useParams, useRevalidator } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
 import { healthTone, healthWord } from "@/components/crew-formation";
 import { MachineAlertsControl } from "@/components/machine-alerts-control";
+import { LeadBadge } from "@/components/machine-card";
 import { ChartPlaceholder, MachineChart, type MachineChartKind } from "@/components/machine-chart";
 import { MachineLoad, readingLine } from "@/components/machine-load";
 import { MachinesEmptyCard } from "@/components/machines-empty-card";
@@ -17,9 +18,11 @@ import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
 import type { MachinesData } from "@/lib/loaders";
 import type { MachineRange } from "@/lib/machine-chart";
+import { machineReading } from "@/lib/machine-reading";
 import { machinesPath, settingsSectionPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import type { MachineAlerts, MachineHistoryResponse, MachineRow } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // One machine: its numbers large, then CPU, memory and network over the last hour or day, then its
 // alert rules.
@@ -29,6 +32,7 @@ import type { MachineAlerts, MachineHistoryResponse, MachineRow } from "@/lib/ty
 // poll loop and an alert firing shows within a tick. The history does not: it is up to 1440 points that
 // change once a minute, so `useMachineHistory` reads it on open and then once a minute while visible.
 // The 1 h and 24 h views are one answer sliced client-side; switching is instant and asks for nothing.
+// An older machine, which never sent a reading, gets no charts at all: the lead holds no minute of it.
 //
 // Every age is measured against the answer's `ts` (the loader's for the row, the history's own for the
 // charts), never `Date.now()`.
@@ -58,7 +62,10 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
   const data = (useLoaderData() as MachinesData | undefined) ?? EMPTY_MACHINES;
   const census = data.census;
   const row = census?.machines.find((m) => m.id === id);
-  const live = useMachineHistory(id, row !== undefined && given === undefined);
+  // An older machine never sent a reading, so the lead holds no minute of it: no charts, and no read
+  // that could only come back empty. Its card says to update it, once.
+  const older = row !== undefined && census !== null && machineReading(row, census.ts) === "older";
+  const live = useMachineHistory(id, row !== undefined && !older && given === undefined);
   const { history, failed } = given ?? live;
   const [range, setRange] = useState<MachineRange>("hour");
 
@@ -93,27 +100,31 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
         ) : (
           <>
             <NowCard row={row} ts={census.ts} multi={census.machines.length > 1} />
-            <Segmented
-              label={t("machines.range.label")}
-              options={[
-                { value: "hour", label: t("machines.range.hour") },
-                { value: "day", label: t("machines.range.day") },
-              ]}
-              value={range}
-              onChange={setRange}
-            />
-            {CHARTS.map((chart) => (
-              <Card key={chart.kind} className="gap-0 py-0">
-                <h2 className="px-4 pt-3 pb-1 text-sm font-medium">{t(chart.title)}</h2>
-                <ChartBody
-                  kind={chart.kind}
-                  history={history}
-                  failed={failed}
-                  range={range}
-                  alerts={row.alerts}
+            {!older && (
+              <>
+                <Segmented
+                  label={t("machines.range.label")}
+                  options={[
+                    { value: "hour", label: t("machines.range.hour") },
+                    { value: "day", label: t("machines.range.day") },
+                  ]}
+                  value={range}
+                  onChange={setRange}
                 />
-              </Card>
-            ))}
+                {CHARTS.map((chart) => (
+                  <Card key={chart.kind} className="gap-0 py-0">
+                    <h2 className="px-4 pt-3 pb-1 text-sm font-medium">{t(chart.title)}</h2>
+                    <ChartBody
+                      kind={chart.kind}
+                      history={history}
+                      failed={failed}
+                      range={range}
+                      alerts={row.alerts}
+                    />
+                  </Card>
+                ))}
+              </>
+            )}
             <MachineAlertsControl
               machineId={row.id}
               alerts={row.alerts}
@@ -133,25 +144,39 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
 
 const EMPTY_MACHINES: MachinesData = { census: null, error: false };
 
-/** The same numbers the list card shows, large, with the machine's health and the age of its reading. */
+/**
+ * The numbers now, large, under one line that says the machine's health and the age of its reading.
+ * The age is there on a live machine too: numbers with no age are a claim about now. A reachable
+ * machine whose reading stopped moving (lib/machine-reading.ts, "stale") keeps its numbers, quieted,
+ * and its age turns the waiting colour with a clock beside it, so the state is said in words and
+ * marked, not tinted alone.
+ */
 function NowCard({ row, ts, multi }: { row: MachineRow; ts: number; multi: boolean }) {
+  const reading = machineReading(row, ts);
+  const stale = reading === "stale";
   return (
     <Card className="gap-0 py-0">
-      <div className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span className={healthTone(row)}>{healthWord(row)}</span>
-          {multi && row.isLead && (
-            <span className="flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-              <Crown className="size-2.5" aria-hidden />
-              {t("connection.host.lead")}
+      <div className="space-y-4 p-4">
+        <div className="flex min-h-5 items-center justify-between gap-3 text-sm">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={healthTone(row)}>{healthWord(row)}</span>
+            {multi && row.isLead && <LeadBadge />}
+          </div>
+          {(reading === "live" || stale) && (
+            <span
+              className={cn(
+                "flex shrink-0 items-center gap-1 text-xs tabular-nums",
+                stale ? "font-medium text-status-working" : "text-muted-foreground",
+              )}
+            >
+              {stale && <Clock className="size-3.5" aria-hidden />}
+              {readingLine(row, ts)}
             </span>
           )}
         </div>
-        <MachineLoad row={row} ts={ts} size="large" />
-        {/* The age of the reading, on a reachable machine too: numbers with no age are a claim about now. */}
-        {row.sample !== undefined && row.health === "reachable" && (
-          <p className="text-xs text-muted-foreground">{readingLine(row, ts)}</p>
-        )}
+        <div className={cn(stale && "opacity-60")}>
+          <MachineLoad row={row} ts={ts} size="large" />
+        </div>
       </div>
     </Card>
   );

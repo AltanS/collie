@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import type { MachinesData } from "@/lib/loaders";
-import { FIXTURE_MACHINES_TS, fixtureMachineRows, fixtureMachines, fixtureMachinesSolo } from "@/test/machine-fixtures";
+import { FIXTURE_MACHINES_TS, fixtureMachineRows, fixtureMachines, fixtureMachinesSolo, withSpark } from "@/test/machine-fixtures";
 import { withHeaderHost } from "@/test/header-host";
 
 import { MachinesRoute } from "./machines";
@@ -26,7 +26,12 @@ function renderMachines(data: MachinesData, entry = "/machines") {
   return router;
 }
 
-const crew: MachinesData = { census: fixtureMachines, error: false };
+const crew: MachinesData = { census: withSpark(fixtureMachines), error: false };
+
+/** A card's spark for one metric: the drawing's accessible name starts with the metric. */
+function sparkOf(card: HTMLElement, metric: "CPU" | "Memory"): HTMLElement {
+  return within(card).getByRole("img", { name: new RegExp(`^${metric}, last 30 minutes`) });
+}
 
 /** The card whose name button reads `name`. */
 async function cardOf(name: string): Promise<HTMLElement> {
@@ -54,24 +59,35 @@ describe("the machines list", () => {
     expect(first).toHaveTextContent("bluefin");
   });
 
-  it("gives a reachable machine its CPU and memory bars, network and load", async () => {
+  it("gives a reachable machine its CPU and memory now, their half hour, network and load", async () => {
     renderMachines(crew);
     const card = await cardOf("bluefin");
-    const cpu = within(card).getByRole("meter", { name: "CPU" });
-    expect(cpu).toHaveAttribute("aria-valuetext", "34%");
-    expect(cpu).toHaveAttribute("aria-valuenow", "34");
-    expect(within(card).getByRole("meter", { name: "Memory" })).toHaveAttribute("aria-valuetext", "7.4 / 16 GB");
+    expect(within(card).getByText("34%")).toBeInTheDocument();
+    expect(within(card).getByText("46%")).toBeInTheDocument();
+    expect(within(card).getByText("7.4 / 16 GB")).toBeInTheDocument();
+    // The spark is one sentence for a screen reader: now, the peak, and the rule's line.
+    expect(sparkOf(card, "CPU").getAttribute("aria-label")).toMatch(/^CPU, last 30 minutes: now 34%, peak \d+%\. Alert line at 90%\.$/);
+    expect(sparkOf(card, "Memory").getAttribute("aria-label")).toMatch(/^Memory, last 30 minutes: now 46%, peak \d+%\.$/);
     expect(within(card).getByText("1.2 MB/s")).toBeInTheDocument();
     expect(within(card).getByText("340 KB/s")).toBeInTheDocument();
     expect(within(card).getByText("1.42")).toBeInTheDocument();
     expect(within(card).getByText("8 cores")).toBeInTheDocument();
   });
 
-  it("says a reachable machine with no sample needs an update, and draws no bar for it", async () => {
+  it("draws a spark from the census's minutes, and the reading now at its right edge", async () => {
+    renderMachines(crew);
+    const spark = sparkOf(await cardOf("bluefin"), "CPU");
+    expect(spark.querySelector('[data-series="line"]')).not.toBeNull();
+    expect(spark.querySelector('[data-series="now"]')).not.toBeNull();
+    expect(spark.querySelector('[data-series="threshold"]')).not.toBeNull();
+    expect(sparkOf(await cardOf("bluefin"), "Memory").querySelector('[data-series="threshold"]')).toBeNull();
+  });
+
+  it("says a reachable machine with no sample needs an update, and draws no spark for it", async () => {
     renderMachines(crew);
     const card = await cardOf("pantry");
     expect(within(card).getByText("Update this machine to see its load")).toBeInTheDocument();
-    expect(within(card).queryByRole("meter")).toBeNull();
+    expect(within(card).queryByRole("img")).toBeNull();
   });
 
   it("shows an unreachable machine's health and the age of its last reading, not its numbers", async () => {
@@ -80,31 +96,42 @@ describe("the machines list", () => {
     expect(within(card).getByText("unreachable")).toBeInTheDocument();
     // Aged against the answer's own clock: 25 minutes before `ts`.
     expect(within(card).getByText(/^Last reading 25m ago$/)).toBeInTheDocument();
-    expect(within(card).queryByRole("meter")).toBeNull();
+    expect(within(card).queryByRole("img")).toBeNull();
     expect(within(card).queryByText("12%")).toBeNull();
   });
 
-  it("says a firing metric in words, and tints only that bar", async () => {
+  it("shows a reachable machine whose reading stopped as stale: quieted numbers and the age in words", async () => {
+    const stuck = { ...fixtureMachineRows[0]!, sampledAt: FIXTURE_MACHINES_TS - 5 * 60_000 };
+    renderMachines({ census: withSpark({ ts: FIXTURE_MACHINES_TS, machines: [stuck] }), error: false });
+    const card = await cardOf("bluefin");
+    expect(within(card).getByText("reachable")).toBeInTheDocument();
+    expect(within(card).getByText(/^Last reading 5m ago$/)).toBeInTheDocument();
+    expect(within(card).getByText("34%").className).toContain("text-muted-foreground");
+    // No dot for "now": the reading is not now.
+    expect(sparkOf(card, "CPU").querySelector('[data-series="now"]')).toBeNull();
+  });
+
+  it("says a firing metric in words, and tints only that metric", async () => {
     renderMachines(crew);
     const card = await cardOf("workshop");
     expect(within(card).getByText("Alert firing: CPU")).toBeInTheDocument();
-    const tint = (meter: HTMLElement) => meter.firstElementChild?.className ?? "";
-    expect(tint(within(card).getByRole("meter", { name: "CPU" }))).toContain("bg-status-blocked");
-    expect(tint(within(card).getByRole("meter", { name: "Memory" }))).toContain("bg-status-info");
+    expect(sparkOf(card, "CPU").getAttribute("class")).toContain("text-status-blocked");
+    expect(within(card).getByText("96%").className).toContain("text-status-blocked");
+    expect(sparkOf(card, "Memory").getAttribute("class")).toContain("text-status-info");
   });
 
   it("says nothing about alerts on a machine where none fires", async () => {
     renderMachines(crew);
     const card = await cardOf("bluefin");
     expect(within(card).queryByText(/Alert firing/)).toBeNull();
-    expect(within(card).getByRole("meter", { name: "CPU" }).firstElementChild?.className).toContain("bg-status-info");
+    expect(sparkOf(card, "CPU").getAttribute("class")).toContain("text-status-info");
   });
 
   it("is one card and no role badge on a solo collie", async () => {
     renderMachines({ census: fixtureMachinesSolo, error: false });
     await cardOf("this-machine");
     expect(screen.queryByText("lead")).toBeNull();
-    expect(screen.getAllByRole("meter")).toHaveLength(2);
+    expect(screen.getAllByRole("img")).toHaveLength(2);
   });
 
   it("marks the lead on a crew", async () => {

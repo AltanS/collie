@@ -15,17 +15,40 @@
 // the gap grows with disk wait. So Linux reads the aggregate `cpu` line and counts `iowait` as idle,
 // the way `top` does. Every other platform sums `os.cpus()`, which is all it offers without a spawn.
 //
-// ── NO TIMER ─────────────────────────────────────────────────────────────────
+// ── NO TIMER, AND A SLOW BASE RATE ───────────────────────────────────────────
 // {@link MachineSampler.tick} is called from the state engine's tick (CREW_PROTOCOL.md §10.1, §11:
-// no second timer) and reads at most once every {@link SAMPLE_MIN_INTERVAL_MS}. A crew snapshot
-// answer never reads anything: it serves {@link MachineSampler.latest}, the last sample held.
+// no second timer). It reads at most once every {@link SAMPLE_IDLE_MS}, and at most once every
+// {@link SAMPLE_WATCHED_MS} while a phone has asked for the Machines list in the last
+// `MACHINES_WATCH_MS` (`bridge/machines.ts`): the same intent-driven idea as the poll cadence, so a
+// bridge nobody looks at reads its machine a third as often. The alerts judge minute buckets, and
+// the idle arithmetic is in `machines.ts` beside the watch. A crew snapshot answer never reads
+// anything: it serves {@link MachineSampler.latest}, the last sample held.
+//
+// ── WHAT ONE SAMPLE COSTS ────────────────────────────────────────────────────
+// Measured on 2026-10-05 under Bun 1.4.1 on a 16-core Fedora desktop with 33 network interfaces
+// (Docker): about 0.2 ms, almost all of it in the kernel producing the three files (`/proc/net/dev`
+// about 0.11 ms, `/proc/stat` 0.03 ms, `/proc/meminfo` 0.01 ms). The parsers below cost about 0.01 ms
+// together, because each walks only the lines it needs. Linux takes its core count from the `cpuN`
+// lines of `/proc/stat`, which it reads anyway, and never calls `os.cpus()`. Reading
+// `/sys/class/net/<iface>/statistics` instead of `/proc/net/dev` was measured too, and was no cheaper.
 
 import type { CpuInfo } from "node:os";
 import type { Host } from "./host.ts";
 import type { MachineSample } from "./types.ts";
 
-/** The fastest a machine samples itself. The tick runs at 1.5 s, or 12 s when nobody is looking. */
-export const SAMPLE_MIN_INTERVAL_MS = 5_000;
+/**
+ * The fastest a machine samples itself while a phone is watching its load (the Machines list, a
+ * machine's page, the dashboard's Crew tab). The tick runs at 1.5 s, or 12 s while the multiplexer's
+ * event stream is healthy, so a 12 s tick samples every 12 s here.
+ */
+export const SAMPLE_WATCHED_MS = 5_000;
+
+/**
+ * The fastest a machine samples itself otherwise: a lead or solo collie nobody is watching, and every
+ * crew member (no phone asks a member, it answers its lead). On the 12 s idle tick that is a sample
+ * every 24 s, two or three in every minute bucket.
+ */
+export const SAMPLE_IDLE_MS = 15_000;
 
 // ── Pure parsers ─────────────────────────────────────────────────────────────
 
@@ -44,13 +67,31 @@ export interface CpuTimes {
  * does not.
  */
 export function parseProcStat(text: string): CpuTimes | null {
-  const line = text.split("\n").find((l) => l.startsWith("cpu "));
-  if (line === undefined) return null;
+  // The aggregate line is the file's first. Found by position rather than by splitting the whole file,
+  // whose `intr` line alone runs to kilobytes on a machine with many interrupts.
+  const newline = text.startsWith("cpu ") ? -1 : text.indexOf("\ncpu ");
+  if (newline < 0 && !text.startsWith("cpu ")) return null;
+  const at = newline + 1;
+  const end = text.indexOf("\n", at);
+  const line = text.slice(at, end < 0 ? undefined : end);
   const cols = line.trim().split(/\s+/).slice(1, 9).map(Number);
   if (cols.length < 4 || cols.some((n) => !Number.isFinite(n) || n < 0)) return null;
   const total = cols.reduce((a, b) => a + b, 0);
   const idle = cols[3]! + (cols[4] ?? 0);
   return { busy: total - idle, total };
+}
+
+/**
+ * The number of `cpuN` lines in `/proc/stat`: the online cores, the count `os.cpus()` reports on
+ * Linux, taken from the file the sampler reads anyway. 0 when the file names none.
+ */
+export function procStatCores(text: string): number {
+  let cores = 0;
+  for (let at = text.indexOf("\ncpu"); at >= 0; at = text.indexOf("\ncpu", at + 4)) {
+    const next = text.charCodeAt(at + 4);
+    if (next >= 48 && next <= 57) cores += 1;
+  }
+  return cores;
 }
 
 /** The same counters summed over `os.cpus()`. `null` for an empty list, which some sandboxes return. */
@@ -78,21 +119,33 @@ export function cpuFraction(prev: CpuTimes, next: CpuTimes): number | null {
   return Math.min(1, Math.max(0, busy / total));
 }
 
+/** One pattern per `/proc/meminfo` key the reader needs, each a whole line. The other fifty go unread. */
+const MEMINFO_KEY = {
+  MemTotal: /(?:^|\n)MemTotal:\s+(\d+)\s*kB/,
+  MemFree: /(?:^|\n)MemFree:\s+(\d+)\s*kB/,
+  MemAvailable: /(?:^|\n)MemAvailable:\s+(\d+)\s*kB/,
+  Buffers: /(?:^|\n)Buffers:\s+(\d+)\s*kB/,
+  Cached: /(?:^|\n)Cached:\s+(\d+)\s*kB/,
+} as const;
+
+function meminfoKb(text: string, key: RegExp): number | undefined {
+  const m = key.exec(text);
+  return m === null ? undefined : Number(m[1]);
+}
+
 /**
  * `/proc/meminfo` as bytes in use and in total. Used is `MemTotal - MemAvailable`: the kernel's own
  * estimate of what could be handed out without swapping, so page cache does not read as pressure.
  * A kernel older than 3.14 has no `MemAvailable`; free plus buffers plus cache is the old estimate.
  */
 export function parseMeminfo(text: string): { used: number; total: number } | null {
-  const kb = new Map<string, number>();
-  for (const line of text.split("\n")) {
-    const m = /^(\w+):\s+(\d+)\s*kB/.exec(line);
-    if (m !== null) kb.set(m[1]!, Number(m[2]));
-  }
-  const total = kb.get("MemTotal");
+  const total = meminfoKb(text, MEMINFO_KEY.MemTotal);
   if (total === undefined || total <= 0) return null;
   const available =
-    kb.get("MemAvailable") ?? (kb.get("MemFree") ?? 0) + (kb.get("Buffers") ?? 0) + (kb.get("Cached") ?? 0);
+    meminfoKb(text, MEMINFO_KEY.MemAvailable) ??
+    (meminfoKb(text, MEMINFO_KEY.MemFree) ?? 0) +
+      (meminfoKb(text, MEMINFO_KEY.Buffers) ?? 0) +
+      (meminfoKb(text, MEMINFO_KEY.Cached) ?? 0);
   const used = Math.min(total, Math.max(0, total - available));
   return { used: used * 1024, total: total * 1024 };
 }
@@ -196,6 +249,8 @@ export interface MachineReaders {
 interface Counters {
   readonly at: number;
   readonly cpu: CpuTimes | null;
+  /** Where `cpu` came from. Two readings from two sources count in two units, and give no delta. */
+  readonly cpuSource: "proc" | "os";
   readonly cores: number;
   readonly mem: { used: number; total: number } | null;
   readonly load1: number | null;
@@ -213,8 +268,20 @@ function attempt<T>(fn: () => T | null): T | null {
 
 function readCounters(r: MachineReaders): Counters {
   const linux = r.host.platform === "linux";
-  const cpus = attempt(() => r.os.cpus()) ?? [];
-  const cpu = (linux ? attempt(() => parseProcStat(r.readText("/proc/stat") ?? "")) : null) ?? cpuTimesFromOs(cpus);
+  // Linux: the busy counters and the core count both come off `/proc/stat`. `os.cpus()` is asked
+  // only when that file said nothing usable, and on every other platform.
+  const stat = linux ? attempt(() => r.readText("/proc/stat")) : null;
+  let cpu = stat === null ? null : attempt(() => parseProcStat(stat));
+  let cpuSource: Counters["cpuSource"] = "proc";
+  let cores = stat === null ? 0 : procStatCores(stat);
+  if (cpu === null || cores === 0) {
+    const cpus = attempt(() => r.os.cpus()) ?? [];
+    if (cpu === null) {
+      cpu = cpuTimesFromOs(cpus);
+      cpuSource = "os";
+    }
+    if (cores === 0) cores = cpus.length;
+  }
   const mem =
     (linux ? attempt(() => parseMeminfo(r.readText("/proc/meminfo") ?? "")) : null) ??
     attempt(() => {
@@ -233,7 +300,7 @@ function readCounters(r: MachineReaders): Counters {
           return value !== undefined && Number.isFinite(value) && value >= 0 ? value : null;
         });
   const net = linux ? attempt(() => parseNetDev(r.readText("/proc/net/dev") ?? "")) : null;
-  return { at: r.now(), cpu, cores: cpus.length, mem, load1, net };
+  return { at: r.now(), cpu, cpuSource, cores, mem, load1, net };
 }
 
 /**
@@ -246,18 +313,21 @@ export class MachineSampler {
   private prev: Counters | null = null;
   private last: MachineSample | null = null;
 
-  constructor(
-    private readonly readers: MachineReaders,
-    private readonly minIntervalMs = SAMPLE_MIN_INTERVAL_MS,
-  ) {}
+  constructor(private readonly readers: MachineReaders) {}
 
   /**
-   * Read, at most once every {@link SAMPLE_MIN_INTERVAL_MS}. Returns the sample this call produced,
-   * or `null` when it read nothing new (too soon, the first reading, or a source that failed).
+   * Read, at most once every `minIntervalMs`: {@link SAMPLE_IDLE_MS} unless the caller says a phone
+   * is watching. Returns the sample this call produced, or `null` when it read nothing new (too soon,
+   * the first reading, or a source that failed). A call that is too soon reads nothing at all.
+   *
+   * Until the first sample exists, the floor is {@link SAMPLE_WATCHED_MS} at most: a sample needs two
+   * readings, and a machine that just started (or a member that just joined) should show its load
+   * within seconds, not after a whole idle interval. That costs one extra reading per start.
    */
-  tick(): MachineSample | null {
+  tick(minIntervalMs = SAMPLE_IDLE_MS): MachineSample | null {
     const now = this.readers.now();
-    if (this.prev !== null && now - this.prev.at < this.minIntervalMs) return null;
+    const floor = this.last === null ? Math.min(minIntervalMs, SAMPLE_WATCHED_MS) : minIntervalMs;
+    if (this.prev !== null && now - this.prev.at < floor) return null;
     const next = readCounters(this.readers);
     const prev = this.prev;
     this.prev = next;
@@ -275,6 +345,7 @@ export class MachineSampler {
 
 function composeSample(prev: Counters, next: Counters): MachineSample | null {
   if (prev.cpu === null || next.cpu === null || next.mem === null || next.cores <= 0) return null;
+  if (prev.cpuSource !== next.cpuSource) return null;
   const cpu = cpuFraction(prev.cpu, next.cpu);
   if (cpu === null) return null;
   const sample: MachineSample = { cpu, cores: next.cores, memUsed: next.mem.used, memTotal: next.mem.total };

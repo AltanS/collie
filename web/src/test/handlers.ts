@@ -21,7 +21,7 @@ import type {
   WorkspaceView,
 } from "@/lib/types";
 
-import { fixtureMachineHistory, fixtureMachinesSolo } from "./machine-fixtures";
+import { censusFor, fixtureMachinesSolo, historyFor } from "./machine-fixtures";
 
 // A couple of fixture agents covering the triage groups, reused across tests.
 export const fixtureAgents: AgentView[] = [
@@ -726,8 +726,8 @@ export const handlers = [
   // The machines census. The DEFAULT world is solo, which is a lead with one row, so the page has
   // something to show; a test that wants a crew (or a peer's 404) overrides these. The POST echoes the
   // body, which is what the bridge answers: the rules as stored.
-  http.get("/api/machines", () => HttpResponse.json(fixtureMachinesSolo)),
-  http.get("/api/machines/:id/history", () => HttpResponse.json(fixtureMachineHistory())),
+  http.get("/api/machines", ({ request }) => HttpResponse.json(censusFor(fixtureMachinesSolo, new URL(request.url)))),
+  http.get("/api/machines/:id/history", ({ request }) => HttpResponse.json(historyFor(new URL(request.url)))),
   http.post<never, MachineAlerts>("/api/machines/:id/alerts", async ({ request }) =>
     HttpResponse.json({ alerts: await request.json() }),
   ),

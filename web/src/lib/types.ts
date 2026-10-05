@@ -502,6 +502,18 @@ export interface MachineRow {
   alerts: MachineAlerts;
   /** Episodes open now. */
   firing: MachineMetric[];
+  /** The last complete minutes for the small charts; only when asked for with `?spark=N`. */
+  spark?: MachineSpark;
+}
+
+/**
+ * One value per complete minute, oldest first; the newest is the minute before the one the answer's
+ * `ts` falls in. Fractions to two places, `null` for a minute with no reading.
+ */
+export interface MachineSpark {
+  stepMs: number;
+  cpu: (number | null)[];
+  mem: (number | null)[];
 }
 
 /**

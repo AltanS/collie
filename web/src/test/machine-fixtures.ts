@@ -5,7 +5,7 @@
 // a fixed number, never `Date.now()`: the pages age everything against it, and a test must not depend
 // on when it runs.
 
-import type { MachineHistoryResponse, MachineRow, MachinesResponse } from "@/lib/types";
+import type { MachineHistoryResponse, MachineRow, MachineSpark, MachinesResponse } from "@/lib/types";
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -94,4 +94,59 @@ export function fixtureMachineHistory(
     points.push([ts - ago * 60_000, avg, max, mem, rx, tx]);
   }
   return { ts, stepMs: 60_000, points };
+}
+
+/**
+ * A row's last `minutes` complete minutes, the way `?spark=N` answers: oldest first, two places, the
+ * newest the minute before `ts`. It climbs toward the row's reading now, so the spark's right end
+ * meets the number above it. A row with no reading gets none; a machine that went quiet gets the
+ * minutes before it went quiet, then `null` for every minute since, as the lead records it.
+ */
+export function fixtureSpark(row: MachineRow, ts: number = FIXTURE_MACHINES_TS, minutes = 30): MachineSpark | undefined {
+  const sample = row.sample;
+  if (sample === undefined) return undefined;
+  const mem = sample.memTotal > 0 ? sample.memUsed / sample.memTotal : 0;
+  const quietFor = row.health === "reachable" ? 0 : Math.ceil((ts - (row.sampledAt ?? ts)) / 60_000);
+  const cpu: (number | null)[] = [];
+  const memory: (number | null)[] = [];
+  for (let ago = minutes; ago >= 1; ago -= 1) {
+    if (ago < quietFor) {
+      cpu.push(null);
+      memory.push(null);
+      continue;
+    }
+    const wave = Math.sin(ago / 3) * 0.06 + Math.sin(ago / 7) * 0.05;
+    const climb = (minutes - ago) / minutes;
+    cpu.push(round2(Math.min(1, Math.max(0.01, sample.cpu * (0.55 + 0.45 * climb) + wave))));
+    memory.push(round2(Math.min(1, Math.max(0.01, mem - 0.03 * (ago / minutes) + wave / 6))));
+  }
+  return { stepMs: 60_000, cpu, mem: memory };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** A census with each row's spark, the answer to `GET /api/machines?spark=N`. */
+export function withSpark(census: MachinesResponse, minutes = 30): MachinesResponse {
+  return {
+    ...census,
+    machines: census.machines.map((row) => {
+      const spark = fixtureSpark(row, census.ts, minutes);
+      return spark === undefined ? row : { ...row, spark };
+    }),
+  };
+}
+
+/** The census for one read: with sparks when the URL asks for them (`?spark=N`), as the bridge does. */
+export function censusFor(census: MachinesResponse, url: URL): MachinesResponse {
+  const spark = Number(url.searchParams.get("spark"));
+  return Number.isInteger(spark) && spark >= 1 && spark <= 60 ? withSpark(census, spark) : census;
+}
+
+/** The history for one read: only the minutes at or after `?since=` when the URL names one, as the bridge does. */
+export function historyFor(url: URL): MachineHistoryResponse {
+  const day = fixtureMachineHistory();
+  const since = Number(url.searchParams.get("since") ?? Number.NaN);
+  return Number.isSafeInteger(since) ? { ...day, points: day.points.filter((p) => p[0] >= since) } : day;
 }

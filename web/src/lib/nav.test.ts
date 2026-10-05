@@ -47,6 +47,14 @@ describe("back from the machines pages", () => {
 
   it("replaces onto the structural parent on a cold entry, never pushes a parent", () => {
     expect(resolveUp("/machines/bluefin", undefined, "/machines")).toEqual({ kind: "replace", to: "/machines" });
+  });
+
+  it("steps back onto the dashboard from a machine the Crew tab opened (ADR 0085)", () => {
+    // The dashboard stores its tab per device, so stepping back lands on the Crew tab again.
+    expect(resolveUp("/machines/bluefin", "/", "/machines")).toEqual({ kind: "back" });
+    expect(resolveUp("/machines/bluefin", "/?h=workshop", "/machines")).toEqual({ kind: "back" });
+    // A cold link has nothing behind it, so it still goes up to the list.
+    expect(resolveUp("/machines/bluefin", "/", "/machines", false)).toEqual({ kind: "replace", to: "/machines" });
     expect(resolveUp("/machines", undefined, "/settings")).toEqual({ kind: "replace", to: "/settings" });
     expect(resolveUp("/machines/bluefin", "/pane/w1%3Ap1", "/machines")).toEqual({ kind: "replace", to: "/machines" });
   });

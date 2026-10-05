@@ -28,6 +28,7 @@ import {
   devicesLoader,
   historyLoader,
   crewLoader,
+  machinesListLoader,
   machinesLoader,
   rootLoader,
   paneLoader,
@@ -118,7 +119,7 @@ export const router = createBrowserRouter([
       // both stay ON the poll loop: a value moving and an alert firing should show without a reload.
       // The detail page's history is its own timed read (hooks/use-machine-history.ts), because every
       // active loader is refetched on each tick and 1440 points a tick would be pure waste.
-      { path: "machines", loader: machinesLoader, element: <MachinesRoute /> },
+      { path: "machines", loader: machinesListLoader, element: <MachinesRoute /> },
       { path: "machines/:id", loader: machinesLoader, element: <MachineRoute /> },
       // The path was `crew` until 1.7.0 (M24 renamed the word a person reads). The service worker
       // caches the app shell, so a client sitting on /crew when the new bundle arrives, a bookmark
