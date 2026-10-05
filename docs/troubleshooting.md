@@ -8,7 +8,7 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
-unloaded** · **a pane shows no prompt-cache chip** · **a pane has no Chat or History** · **a new Codex pane says it has no history
+unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a pane has no Chat or History** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
@@ -234,6 +234,19 @@ The runner shared the agent's process group, and restarting the agent killed it 
 `collie restart` writes the agent's plist again and loads it. From the next release on, the bridge
 starts the runner in a session of its own. If a phone update still unloads the agent after that, run
 the same command and add a note to [#213](https://github.com/AltanS/collie/issues/213).
+
+**On macOS, `collie start` finishes but `collie status` says "loaded, not running".** The launchd job is
+loaded and no process runs, so the log is empty. Start the job by hand:
+
+```
+launchctl kickstart gui/$(id -u)/herdr.collie
+collie status
+```
+
+A suffixed instance has its own label, for example `herdr.collie-next`. From the next release on, `collie start`
+and `collie restart` do this step for you and print a warning with this command when no process
+shows up. If the job stays "loaded, not running" after that, read the log with `collie logs`, then
+add a note to [#213](https://github.com/AltanS/collie/issues/213).
 
 ---
 

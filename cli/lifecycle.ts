@@ -377,6 +377,51 @@ function startSystemd(deps: LifecycleDeps): number {
   return EXIT.OK;
 }
 
+/** How often {@link confirmLaunchdJob} reads the job back, and how long it waits between reads (2 s at most). */
+const LAUNCHD_CONFIRM_READS = 5;
+const LAUNCHD_CONFIRM_GAP_MS = 500;
+
+/**
+ * The pid launchd reports for a job, or undefined when the job is loaded but has none. Reads
+ * `launchctl print`, whose `pid = N` line exists only while a process runs (the banner reads it the
+ * same way).
+ */
+function launchdJobPid(deps: LifecycleDeps, target: string): string | undefined {
+  const r = deps.exec.capture("launchctl", ["print", target]);
+  if (!r.found || r.code !== 0) return undefined;
+  return /^[ \t]*pid = (\d+)/m.exec(r.stdout)?.[1];
+}
+
+/**
+ * After a successful `bootstrap`: start the job, then check that a process came up. `bootstrap`
+ * loads the job and `RunAtLoad` should start it, but on macOS 26 a fresh install was seen loaded
+ * and never run (#213), and the plist's `KeepAlive` (`SuccessfulExit` false) does not retry a job
+ * that never ran. So start it by hand: `kickstart` without `-k` leaves a job that is already
+ * running alone. A nonzero `kickstart` is not fatal, since the pid read below is what decides.
+ *
+ * "bridge started" prints only when a pid shows. Otherwise the job is loaded but not running: warn
+ * with the manual command and the log, and exit OK, as `startSystemd` does when `enable --now`
+ * succeeds and the unit is not active. The banner that follows reports the state either way.
+ */
+async function confirmLaunchdJob(deps: LifecycleDeps, target: string): Promise<number> {
+  deps.exec.capture("launchctl", ["kickstart", target]);
+  let pid: string | undefined;
+  for (let read = 1; read <= LAUNCHD_CONFIRM_READS; read++) {
+    pid = launchdJobPid(deps, target);
+    if (pid !== undefined) break;
+    if (read < LAUNCHD_CONFIRM_READS) await deps.sleep(LAUNCHD_CONFIRM_GAP_MS);
+  }
+  const label = agentLabel(deps.ctx.instance);
+  if (pid !== undefined) {
+    deps.io.out(`bridge started (launchd: ${label})`);
+    return EXIT.OK;
+  }
+  deps.io.err(`warn: launchd loaded ${label} but no process is running`);
+  deps.io.err(`      Start it by hand: launchctl kickstart ${target}`);
+  deps.io.err(`      The log is ${logFilePath(deps.ctx.configDir, deps.ctx.instance)} (collie logs prints it).`);
+  return EXIT.OK;
+}
+
 async function startLaunchd(deps: LifecycleDeps): Promise<number> {
   if (!writeAgent(deps)) return EXIT.FAIL;
   const uid = deps.uid();
@@ -397,10 +442,7 @@ async function startLaunchd(deps: LifecycleDeps): Promise<number> {
   const plist = agentFilePath(deps.ctx.home, deps.ctx.instance);
   for (let attempt = 1; attempt <= 3; attempt++) {
     const r = deps.exec.capture("launchctl", ["bootstrap", launchdDomain(uid), plist]);
-    if (r.found && r.code === 0) {
-      deps.io.out(`bridge started (launchd: ${agentLabel(deps.ctx.instance)})`);
-      return EXIT.OK;
-    }
+    if (r.found && r.code === 0) return confirmLaunchdJob(deps, target);
     if (attempt === 3) {
       // Out of retries. The likeliest cause is not a race at all: `gui/<uid>` exists only with a
       // console session, so a Mac administered purely over SSH has no domain to bootstrap into and

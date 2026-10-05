@@ -384,8 +384,13 @@ describe("start, on systemd", () => {
 });
 
 describe("start, on launchd", () => {
+  const JOB = "launchctl print gui/501/herdr.collie";
+  const RUNNING: NonNullable<Scripted["answers"]>[number] = [JOB, { stdout: "gui/501/herdr.collie = {\n\tstate = running\n\tpid = 4242\n}\n" }];
+  const LOADED: NonNullable<Scripted["answers"]>[number] = [JOB, { stdout: "gui/501/herdr.collie = {\n\tstate = not running\n}\n" }];
+  // A job that came up is the default, so a test names only how it differs. The first matching
+  // answer wins, so a test's own `launchctl print` answer goes ahead of RUNNING.
   const darwin = (over: HarnessOptions = {}): Harness =>
-    harness({ ...over, host: hostFor("darwin"), answers: [...NO_SYSTEMD, ...(over.answers ?? [])] });
+    harness({ ...over, host: hostFor("darwin"), answers: [...NO_SYSTEMD, ...(over.answers ?? []), RUNNING] });
 
   test("installs the plist mode 644 and bootstraps it, idempotently", async () => {
     const h = darwin();
@@ -401,6 +406,67 @@ describe("start, on launchd", () => {
       `launchctl bootstrap gui/501 ${join(HOME, "Library", "LaunchAgents", "herdr.collie.plist")}`,
     );
     expect(h.io.stdout).toContain("bridge started (launchd: herdr.collie)");
+  });
+
+  test("kickstarts the job after bootstrap, and says started once a pid shows", async () => {
+    const h = darwin();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    const launchctl = h.exec.calls.filter((c) => c.startsWith("launchctl "));
+    const boot = launchctl.findIndex((c) => c.startsWith("launchctl bootstrap"));
+    // No `-k`: a job that is already running is left alone.
+    expect(launchctl[boot + 1]).toBe("launchctl kickstart gui/501/herdr.collie");
+    expect(launchctl[boot + 2]).toBe(JOB);
+    expect(h.io.stdout).toContain("bridge started (launchd: herdr.collie)");
+    expect(h.io.stderr.join("\n")).not.toContain("no process is running");
+  });
+
+  test("a job that never ran is a warning with the manual command, not 'started'", async () => {
+    const h = darwin({ answers: [LOADED] });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).not.toContain("bridge started");
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("warn: launchd loaded herdr.collie but no process is running");
+    expect(err).toContain("launchctl kickstart gui/501/herdr.collie");
+    expect(err).toContain(`${CONFIG}/collie.log`);
+    // Five reads of the job, one more than the waits between them.
+    expect(h.exec.calls.filter((c) => c === JOB).length).toBeGreaterThanOrEqual(5);
+    // It must not fall back to a second, unsupervised bridge beside the loaded job.
+    expect(h.exec.spawned).toEqual([]);
+  });
+
+  test("the read-back waits at most two seconds in total", async () => {
+    const h = darwin({ answers: [LOADED] });
+    const waits: number[] = [];
+    h.deps.sleep = (ms) => {
+      waits.push(ms);
+      return Promise.resolve();
+    };
+    await cmdStart(h.deps);
+    expect(waits.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(2000);
+  });
+
+  test("a pid that shows up on a later read still counts as started", async () => {
+    const h = darwin({
+      answers: [[JOB, { perCall: (n) => (n < 3 ? { stdout: "state = not running\n" } : { stdout: "\tpid = 4242\n" }) }]],
+    });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout).toContain("bridge started (launchd: herdr.collie)");
+    expect(h.io.stderr.join("\n")).not.toContain("no process is running");
+  });
+
+  test("a failing kickstart is not fatal when the job is running anyway", async () => {
+    // RunAtLoad already started it, so kickstart may refuse; the pid is what decides.
+    const h = darwin({ answers: [["launchctl kickstart", { code: 113, stderr: "Could not find service" }]] });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout).toContain("bridge started (launchd: herdr.collie)");
+    expect(h.io.stderr.join("\n")).not.toContain("no process is running");
+  });
+
+  test("a failing bootstrap never reaches kickstart", async () => {
+    const h = darwin({ answers: [["launchctl bootstrap", { code: 5, stderr: "Bootstrap failed: 5" }]] });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls.some((c) => c.startsWith("launchctl kickstart"))).toBe(false);
+    expect(h.io.stdout.join("\n")).not.toContain("bridge started (launchd:");
   });
 
   test("migrates an install predating launchd support by releasing the port", async () => {
@@ -1934,16 +2000,20 @@ describe("restart off Windows, golden", () => {
     expect(h.exec.killed).toEqual([]);
   });
 
-  test("launchd: bootout, build, bootstrap, the banner", async () => {
-    const h = harness({ host: hostFor("darwin"), answers: NO_SYSTEMD });
+  test("launchd: bootout, build, bootstrap, kickstart, read the pid back, the banner", async () => {
+    const h = harness({
+      host: hostFor("darwin"),
+      answers: [...NO_SYSTEMD, ["launchctl print gui/501/herdr.collie", { stdout: "\tpid = 4242\n" }]],
+    });
     expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
     expect(fold(h.exec.calls)).toEqual([
       ENV, ENV, ENV, ENV, "launchctl disable gui/501/herdr.collie", "launchctl bootout gui/501/herdr.collie", ...BUILD,
       ENV, ENV, "tailscale status --json", "launchctl bootout gui/501/herdr.collie", "launchctl enable gui/501/herdr.collie",
-      "launchctl bootstrap gui/501 /home/pat/Library/LaunchAgents/herdr.collie.plist", ENV, ENV,
+      "launchctl bootstrap gui/501 /home/pat/Library/LaunchAgents/herdr.collie.plist",
+      "launchctl kickstart gui/501/herdr.collie", "launchctl print gui/501/herdr.collie", ENV, ENV,
       "launchctl print gui/501/herdr.collie", "launchctl print user/501/herdr.collie", "tailscale status --json",
     ]);
-    expect(fold(h.io.stdout)).toEqual([...head, "bridge started (launchd: herdr.collie)", ...banner("launchd (herdr.collie) · not loaded")]);
+    expect(fold(h.io.stdout)).toEqual([...head, "bridge started (launchd: herdr.collie)", ...banner("launchd (gui/501/herdr.collie) · active (pid 4242)")]);
     expect(fold(h.io.stderr)).toEqual(noTailnet);
   });
 
