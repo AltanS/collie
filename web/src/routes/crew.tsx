@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Crown, Network, Shield } from "lucide-react";
+import { Activity, ArrowLeft, Crown, Network, Shield } from "lucide-react";
 import { useLoaderData } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
@@ -17,7 +17,7 @@ import { timeAgoShort } from "@/lib/format";
 import { hostCounts } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { type CrewData } from "@/lib/loaders";
-import { homePath } from "@/lib/nav";
+import { homePath, machinePath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import type { AgentView, CrewMemberStatus, CrewStatusResponse } from "@/lib/types";
@@ -135,6 +135,11 @@ export function CrewRoute() {
               <MemberSheet
                 member={selected}
                 status={status}
+                onLoad={() => {
+                  setOpenId(null);
+                  // Down onto the machine's own page: a level below Crew, so Back returns here.
+                  nav.down(machinePath(selected.id, scope));
+                }}
                 onGo={() => {
                   setOpenId(null);
                   // The ServerSwitcher's rule, restated because it is the one this milestone exists
@@ -171,10 +176,12 @@ const NO_AGENTS: AgentView[] = [];
 function MemberSheet({
   member,
   status,
+  onLoad,
   onGo,
 }: {
   member: CrewMemberStatus;
   status: CrewStatusResponse;
+  onLoad: () => void;
   onGo: () => void;
 }) {
   // Compared against the LEAD's version, not against the newest one known: a crew levels to whatever
@@ -303,6 +310,12 @@ function MemberSheet({
         </div>
       )}
 
+      {/* Where its load, history and alert rules live. A link to the page, never a switch of machine:
+          "Go to this machine" below is the one that moves the phone. */}
+      <Button variant="outline" className="w-full" onClick={onLoad}>
+        <Activity className="size-4" aria-hidden />
+        {t("machines.memberSheet.link")}
+      </Button>
       <Button className="w-full" onClick={onGo}>
         {t("crew.sheet.goTo")}
       </Button>

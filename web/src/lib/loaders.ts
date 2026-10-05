@@ -17,6 +17,7 @@ import {
   fetchDevices,
   fetchHistory,
   fetchCrew,
+  fetchMachines,
   fetchPane,
   fetchSnapshot,
   isApiErrorStatus,
@@ -52,6 +53,7 @@ import type {
   BridgeStatus,
   DeviceAuth,
   CrewStatusResponse,
+  MachinesResponse,
   PairedDeviceWire,
   PaneHistoryResponse,
   PaneReadResponse,
@@ -606,6 +608,34 @@ export async function crewLoader({ request }: { request?: Request } = {}): Promi
     // Solo or peer: there is no crew to report, and that is a complete answer.
     if (isApiErrorStatus(e, 404)) return { status: null, error: false };
     return { status: null, error: true };
+  }
+}
+
+// ── The machines census (the /machines pages) ────────────────────────────────
+//
+// `crewLoader`'s shape for the same reasons: it rides the poll loop (a firing alert and a quiet
+// machine should show without a reload), and a failure degrades instead of throwing. A 404 is an
+// answer, not a failure: only a lead or a solo collie serves `/api/machines`, so a peer opened
+// directly says "there is nothing to show here" in one card.
+//
+// `/machines/:id` reads this same loader for its row. Its history is NOT loaded here: 1440 points
+// every poll tick would be the waste History opts out of, so the detail page fetches it on open
+// and then once a minute while visible (routes/machine.tsx).
+
+export interface MachinesData {
+  /** The census, or `null` when this collie serves none (404) or the fetch failed. */
+  census: MachinesResponse | null;
+  /** True only for a fetch that FAILED. A 404 is an answer, not an error. */
+  error: boolean;
+}
+
+export async function machinesLoader({ request }: { request?: Request } = {}): Promise<MachinesData> {
+  try {
+    return { census: await fetchMachines(request?.signal), error: false };
+  } catch (e) {
+    if (isAbortError(e)) throw e; // superseded revalidation, let React Router drop it
+    if (isApiErrorStatus(e, 404)) return { census: null, error: false };
+    return { census: null, error: true };
   }
 }
 

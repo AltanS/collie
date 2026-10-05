@@ -47,6 +47,7 @@ import * as dashboard from "./sections/dashboard";
 import * as pane from "./sections/pane";
 import * as actionsRow from "./sections/actions-row";
 import * as crew from "./sections/crew";
+import * as machines from "./sections/machines";
 import * as settings from "./sections/settings";
 import * as notices from "./sections/notices";
 import * as updateScreen from "./sections/update-screen";
@@ -84,6 +85,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: pane.DEF, render: () => <pane.PaneSection /> },
   { def: actionsRow.DEF, render: () => <actionsRow.ActionsRowSection /> },
   { def: crew.DEF, render: () => <crew.CrewSection /> },
+  { def: machines.DEF, render: () => <machines.MachinesSection /> },
   { def: settings.DEF, render: () => <settings.SettingsSection /> },
   { def: boot.DEF, render: (ctx) => <boot.BootSection clock={ctx.clock} /> },
   { def: tour.DEF, render: () => <tour.TourSection /> },

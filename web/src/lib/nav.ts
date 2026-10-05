@@ -166,6 +166,20 @@ export function crewPath(scope?: Scope): string {
 }
 
 /**
+ * The machines list: every machine's load now, one card each. Opened from the Settings index; a
+ * CHILD of Settings. Carries the scope like the others, so "back" returns to the machine you were
+ * looking at.
+ */
+export function machinesPath(scope?: Scope): string {
+  return `/machines${scopeSearch(scope)}`;
+}
+
+/** One machine's page: the numbers, the last hour and day, and its alert rules. A child of Machines. */
+export function machinePath(id: string, scope?: Scope): string {
+  return `/machines/${encodeURIComponent(id)}${scopeSearch(scope)}`;
+}
+
+/**
  * The Updates page — a CHILD of Settings, not an anchor inside it. Updating is a flow with a lead,
  * N peers, progress and a rollback state, so it gets a page and Settings keeps one row that links
  * here. Carries the scope like the others, so "back" returns to the machine you came from.
@@ -265,7 +279,7 @@ const ANY_SPACE = "/space/*";
  *
  *   L0 `/`
  *   L1 `/space/:id`, `/settings`, `/crew`
- *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/:section`, `/settings/updates`
+ *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/pane/:id/changes/files` (a folder or a file is the same path with `?dir=` or `?path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files`
@@ -306,6 +320,12 @@ export function ancestorsOf(pathname: string): string[] {
   }
   if (head === "settings" && seg.length === 2) return ["/settings", "/"];
   if (head === "crew" && seg.length === 1) return ["/settings/system", "/settings", "/"];
+  // Machines is opened from the Settings index and from the crew card in System, so both are
+  // legitimate parents; its structural parent is Settings.
+  if (head === "machines" && seg.length === 1) return ["/settings/system", "/settings", "/"];
+  // A machine goes up to Machines. The crew census opens one too (the member sheet's "Load and
+  // alerts"), so a step back onto /crew is still a step UP and not a push.
+  if (head === "machines" && seg.length === 2) return ["/machines", "/crew", "/settings/system", "/settings", "/"];
   return [];
 }
 
@@ -434,5 +454,7 @@ export function parentChain(pathname: string, search: string): string[] {
   }
   if (head === "settings" && seg.length === 2) return [home, `/settings${q}`];
   if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/system${q}`];
+  if (head === "machines" && seg.length === 1) return [home, `/settings${q}`];
+  if (head === "machines" && seg.length === 2) return [home, `/settings${q}`, `/machines${q}`];
   return [];
 }

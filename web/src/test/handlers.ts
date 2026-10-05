@@ -10,6 +10,7 @@ import type {
   FileReadResponse,
   FilesListResponse,
   CrewStatusResponse,
+  MachineAlerts,
   PaneChangeDiffResponse,
   PaneChangesResponse,
   ServerSummary,
@@ -19,6 +20,8 @@ import type {
   TranscriptEntry,
   WorkspaceView,
 } from "@/lib/types";
+
+import { fixtureMachineHistory, fixtureMachinesSolo } from "./machine-fixtures";
 
 // A couple of fixture agents covering the triage groups, reused across tests.
 export const fixtureAgents: AgentView[] = [
@@ -714,6 +717,14 @@ export const handlers = [
       { error: "this collie is not the lead of a crew", code: "crew.not_lead" },
       { status: 404 },
     ),
+  ),
+  // The machines census. The DEFAULT world is solo, which is a lead with one row, so the page has
+  // something to show; a test that wants a crew (or a peer's 404) overrides these. The POST echoes the
+  // body, which is what the bridge answers: the rules as stored.
+  http.get("/api/machines", () => HttpResponse.json(fixtureMachinesSolo)),
+  http.get("/api/machines/:id/history", () => HttpResponse.json(fixtureMachineHistory())),
+  http.post<never, MachineAlerts>("/api/machines/:id/alerts", async ({ request }) =>
+    HttpResponse.json({ alerts: await request.json() }),
   ),
   http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
   // Default world: no `launchers.toml`. Session-scoped (server.ts), so a test that wants rows

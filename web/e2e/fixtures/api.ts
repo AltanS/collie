@@ -1,6 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 
 import type { Locale } from "@/lib/i18n/locale";
+import type { MachineAlerts } from "@/lib/types";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "@/lib/tour";
 import {
   fixtureChangeDiff,
@@ -19,6 +20,7 @@ import {
   paneTextWithDraft,
   recordReply,
 } from "@/test/handlers";
+import { fixtureMachineHistory, fixtureMachines, fixtureMachinesSolo } from "@/test/machine-fixtures";
 
 // The `app` target's API. The shipped bundle is served off disk by a static server, so nothing
 // answers `/api/*` unless this module does.
@@ -212,6 +214,15 @@ async function answer(route: Route, path: string, folders: FolderWorld): Promise
       404,
     );
   }
+  // The machines census: a solo lead with one row, its day of history, and the alert POST echoing the
+  // body it was given (the bridge answers the rules as stored). A case that wants a crew, or that
+  // wants the rules to stick, registers its own route after `installApiStub` (see `installMachinesWorld`).
+  if (path === "/api/machines") return fulfillJson(route, fixtureMachinesSolo);
+  if (/^\/api\/machines\/[^/]+\/history$/.test(path)) return fulfillJson(route, fixtureMachineHistory());
+  if (/^\/api\/machines\/[^/]+\/alerts$/.test(path) && method === "POST") {
+    // SAFETY: as in `installMachinesWorld`, the body is the app's own `MachineAlerts`.
+    return fulfillJson(route, { alerts: route.request().postDataJSON() as MachineAlerts });
+  }
   if (path === "/api/config") return fulfillJson(route, { push: false, vapidPublicKey: "" });
   if (path === "/api/launchers") return fulfillJson(route, { launchers: [], home: "" });
   // Nothing paired, nothing enforced — a fresh install.
@@ -305,6 +316,36 @@ export async function installCrewWorld(page: Page): Promise<void> {
     (url) => url.pathname === "/api/crew",
     (route) => fulfillJson(route, fixtureCrewStatus),
   );
+}
+
+/**
+ * Turn the default solo machines census into the crew's four machines, with alert rules that STICK:
+ * a POST to a machine's alerts replaces that machine's rules in the census the next read returns, the
+ * way the bridge stores them. Returns the bodies posted, in order, for a case that asserts on them.
+ *
+ * Call it AFTER {@link installApiStub}: Playwright checks the newest handler first.
+ */
+export async function installMachinesWorld(page: Page): Promise<{ posted: { id: string; body: unknown }[] }> {
+  const posted: { id: string; body: unknown }[] = [];
+  const machines = structuredClone(fixtureMachines);
+  await page.route(
+    (url) => url.pathname === "/api/machines",
+    (route) => fulfillJson(route, machines),
+  );
+  await page.route(
+    (url) => /^\/api\/machines\/[^/]+\/alerts$/.test(url.pathname),
+    async (route) => {
+      const id = decodeURIComponent(new URL(route.request().url()).pathname.split("/")[3] ?? "");
+      // SAFETY: the body is the app's own: `lib/api.ts`'s `setMachineAlerts` is the only caller and it
+      // posts a `MachineAlerts` object.
+      const body = route.request().postDataJSON() as MachineAlerts;
+      posted.push({ id, body });
+      const row = machines.machines.find((m) => m.id === id);
+      if (row) row.alerts = body;
+      return fulfillJson(route, { alerts: body });
+    },
+  );
+  return { posted };
 }
 
 /**

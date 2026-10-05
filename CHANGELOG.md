@@ -52,6 +52,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Changes has a Files tab, and Markdown, JSON and HTML files open as a Preview.** Tap Files at the top of Changes to browse the folder Changes reads, one folder at a time, and open a file as numbered, coloured source. A Markdown file draws as text, a JSON file as a tree that folds, and an HTML file in a sandboxed frame that runs no scripts and loads nothing remote. A changed file of those types has a Preview button in its diff header. Files reads when you open a folder or tap refresh, never on a timer, and an older crew member answers "Update this machine to browse files".
 - **The global cache warning switch now stays on.** Settings, Alerts, "Cache about to go cold" showed the switch move and then fall back, because the bridge dropped that key from the request and kept the old value. Panes watched one by one were not affected.
+- **Machines pages show every machine's load and hold its alert rules.** Settings, Machines lists each machine's CPU, memory, network and load now, with the lead first. A machine's page draws the last hour and the last 24 hours as charts, with a gap wherever minutes are missing, and sets a CPU or memory alert: a threshold of 80, 90 or 95 percent held for 5 to 60 minutes. A firing alert is named in words on its card, a machine that is not answering shows the age of its last reading, and a member on an older Collie says it needs an update. The pages need the lead of a crew or a collie on its own.
 
 ## [1.16.2] - 2026-10-04
 

@@ -16,6 +16,7 @@ import { CrewProvider } from "@/components/crew-provider";
 import { StripHost } from "@/components/ui/strip-host";
 import { UpdateRibbon } from "@/components/update-ribbon";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
+import type { MachineHistoryState } from "@/hooks/use-machine-history";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
 import { saveDraft } from "@/lib/drafts";
 import {
@@ -25,6 +26,7 @@ import {
   type HistoryData,
   type HomeData,
   type CrewData,
+  type MachinesData,
   type PaneData,
 } from "@/lib/loaders";
 import { internScope, scopeFromUrl, scopeKey } from "@/lib/scope";
@@ -34,6 +36,8 @@ import { CrewRoute } from "@/routes/crew";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { HomeRoute } from "@/routes/home";
+import { MachineRoute } from "@/routes/machine";
+import { MachinesRoute } from "@/routes/machines";
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { SettingsRoute } from "@/routes/settings";
 import { SpaceRoute } from "@/routes/space";
@@ -179,6 +183,54 @@ export function CrewRouter({ home, crew }: { home: HomeData; crew: CrewData }) {
         },
       ],
       { initialEntries: ["/crew"] },
+    ),
+  );
+  return <RouterProvider router={router} />;
+}
+
+/**
+ * The Machines list, or one machine's page, on a memory router whose loader hands the census in: the
+ * same `MachinesData` shape `machinesLoader` returns, so the page renders its real cards. `start` is
+ * `/machines` or `/machines/<id>`.
+ *
+ * `history` is the detail page's one escape from the network: a page that stubs nothing cannot fetch a
+ * day of points, so the card hands the answer in and the live read is switched off (`MachineRoute`'s
+ * `history` prop says why it exists). The alert card still posts for real, and with no bridge behind
+ * the page that shows its "could not save" line, which is a state worth seeing.
+ */
+export function MachinesRouter({
+  home,
+  machines,
+  start,
+  history,
+}: {
+  home: HomeData;
+  machines: MachinesData;
+  start: string;
+  history?: MachineHistoryState;
+}) {
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => home,
+          element: (
+            <CrewProvider servers={home.servers} sessions={home.sessions} ts={home.ts} pollMs={3_000}>
+              <AppHeaderHost bridge={home.bridge} error={false}>
+                <Outlet />
+              </AppHeaderHost>
+            </CrewProvider>
+          ),
+          children: [
+            { index: true, element: <div className="p-4 text-sm text-muted-foreground">home</div> },
+            { path: "machines", loader: () => machines, element: <MachinesRoute /> },
+            { path: "machines/:id", loader: () => machines, element: <MachineRoute history={history} /> },
+          ],
+        },
+      ],
+      { initialEntries: [start] },
     ),
   );
   return <RouterProvider router={router} />;

@@ -35,6 +35,9 @@ import type {
   FilesListResponse,
   PaneHistoryResponse,
   CrewStatusResponse,
+  MachineAlerts,
+  MachineHistoryResponse,
+  MachinesResponse,
   PaneReadResponse,
   PairFailure,
   SnapshotResponse,
@@ -1320,6 +1323,32 @@ export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
  */
 export function fetchCrew(signal?: AbortSignal): Promise<CrewStatusResponse> {
   return req<CrewStatusResponse>("/api/crew", { signal });
+}
+
+/**
+ * The machines census (`GET /api/machines`): every machine's load now, its alert rules and which
+ * rules are firing. Read-level, never forwarded, and carries no scope: a lead (or a solo collie)
+ * answers for the whole crew, and a peer refuses with 404, which `machinesLoader` reads as "nothing
+ * to show here" rather than as a failure.
+ */
+export function fetchMachines(signal?: AbortSignal): Promise<MachinesResponse> {
+  return req<MachinesResponse>("/api/machines", { signal });
+}
+
+/** One machine's last 24 hours at one point per minute (`GET /api/machines/:id/history`). */
+export function fetchMachineHistory(id: string, signal?: AbortSignal): Promise<MachineHistoryResponse> {
+  return req<MachineHistoryResponse>(`/api/machines/${encodeURIComponent(id)}/history`, { signal });
+}
+
+/**
+ * Replace one machine's alert rules. The body is the WHOLE `MachineAlerts` object: a missing key
+ * removes that rule. Returns the rules as the bridge stored them.
+ */
+export function setMachineAlerts(id: string, alerts: MachineAlerts): Promise<{ alerts: MachineAlerts }> {
+  return req<{ alerts: MachineAlerts }>(`/api/machines/${encodeURIComponent(id)}/alerts`, {
+    method: "POST",
+    body: JSON.stringify(alerts),
+  });
 }
 
 /**

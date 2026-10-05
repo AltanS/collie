@@ -22,6 +22,7 @@ function renderSettings() {
     [
       { path: "/settings", element: withHeaderHost(<SettingsRoute />) },
       { path: "/settings/:section", element: <div data-testid="section" /> },
+      { path: "/machines", element: <div data-testid="machines" /> },
       { path: "/", element: <div data-testid="home" /> },
     ],
     { initialEntries: ["/settings"] },
@@ -107,6 +108,20 @@ describe("SettingsRoute — the index", () => {
     renderSettings();
     await screen.findByRole("button", { name: /Appearance/ });
     expect(screen.queryByRole("button", { name: /Experiments/ })).toBeNull();
+  });
+
+  // Machines is a page of its own and not a section, so its row is the one that opens `/machines`. It is
+  // always there, solo included: a solo collie is one machine with a load worth watching.
+  it("offers Machines on a solo install, between System and Experiments, and opens its own page", async () => {
+    const router = renderSettings();
+    const row = await screen.findByRole("button", { name: /Machines/ });
+    const all = screen.getAllByRole("button").map((b) => b.textContent ?? "");
+    const at = (word: string) => all.findIndex((text) => text.includes(word));
+    expect(at("System")).toBeLessThan(at("Machines"));
+    expect(at("Machines")).toBeLessThan(at("Experiments"));
+    await userEvent.click(row);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/machines"));
+    expect(router.state.location.state).toMatchObject({ from: "/settings" });
   });
 
   it("renders no setting of its own: every switch moved behind a row", async () => {

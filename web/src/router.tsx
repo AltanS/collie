@@ -21,11 +21,14 @@ import {
   SettingsSystemRoute,
 } from "@/routes/settings-sections";
 import { CrewRoute } from "@/routes/crew";
+import { MachineRoute } from "@/routes/machine";
+import { MachinesRoute } from "@/routes/machines";
 import { UpdatesRoute } from "@/routes/updates";
 import {
   devicesLoader,
   historyLoader,
   crewLoader,
+  machinesLoader,
   rootLoader,
   paneLoader,
   PANE_ROUTE_ID,
@@ -111,6 +114,12 @@ export const router = createBrowserRouter([
       // is one small object per machine, and the whole point of the page is that a member going
       // quiet shows up here without the operator reloading. (History opts out; this one wants in.)
       { path: "crew", loader: crewLoader, element: <CrewRoute /> },
+      // The machines list and one machine's page. Both read the census through the same loader and
+      // both stay ON the poll loop: a value moving and an alert firing should show without a reload.
+      // The detail page's history is its own timed read (hooks/use-machine-history.ts), because every
+      // active loader is refetched on each tick and 1440 points a tick would be pure waste.
+      { path: "machines", loader: machinesLoader, element: <MachinesRoute /> },
+      { path: "machines/:id", loader: machinesLoader, element: <MachineRoute /> },
       // The path was `crew` until 1.7.0 (M24 renamed the word a person reads). The service worker
       // caches the app shell, so a client sitting on /crew when the new bundle arrives, a bookmark
       // and an installed PWA's start URL all still ask for the old spelling. `replace` rather than

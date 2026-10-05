@@ -144,6 +144,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The switch flips optimistically under the thumb; the server's merged view then reconciles it, and a REVERT is paired with an error status because a switch that moves back in silence misinforms anyone who has stopped looking (hooks/use-notify-prefs.ts).",
   },
+  setMachineAlerts: {
+    channel: "inline",
+    why: "The alert card shows Saving, Saved or Could not save in its own header and keeps the last stored rules on screen after a failure, because a rule that did not land has to stay visible next to the control that tried to set it (components/machine-alerts-control.tsx).",
+  },
   setCacheWatch: {
     channel: "echo",
     why: "The sheet's switch flips optimistically under the thumb and the bridge's answer reconciles it; a revert is paired with an error status, for the reason `setNotifyPrefs` states (hooks/use-cache-watch.ts).",

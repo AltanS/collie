@@ -1,13 +1,13 @@
 import { cn } from "@/lib/utils";
 
 /** One segment. */
-export interface SegmentedOption<V extends string> {
+export interface SegmentedOption<V extends string | number> {
   value: V;
   /** ALREADY TRANSLATED. */
   label: string;
 }
 
-export interface SegmentedProps<V extends string> {
+export interface SegmentedProps<V extends string | number> {
   options: readonly SegmentedOption<V>[];
   value: V;
   onChange: (value: V) => void;
@@ -19,6 +19,8 @@ export interface SegmentedProps<V extends string> {
    * radio group. The look is the same; a screen reader hears the right kind of control.
    */
   semantics?: "tabs" | "choice";
+  /** Every segment is inert together, for a choice that is being saved. */
+  disabled?: boolean;
   className?: string;
 }
 
@@ -32,14 +34,18 @@ export interface SegmentedProps<V extends string> {
  * edges read as one line, and the selected edge sits above its neighbour's (`z-10`) so it is not
  * half hidden by it.
  *
+ * Values are strings or numbers (the alert threshold and duration choices are numbers). Tapping the
+ * selected segment does nothing, and `disabled` makes every segment inert together.
+ *
  * It owns the look and the roles. It owns no words and no state.
  */
-export function Segmented<V extends string>({
+export function Segmented<V extends string | number>({
   options,
   value,
   onChange,
   label,
   semantics = "choice",
+  disabled = false,
   className,
 }: SegmentedProps<V>) {
   const tabs = semantics === "tabs";
@@ -54,9 +60,14 @@ export function Segmented<V extends string>({
             role={tabs ? "tab" : "radio"}
             aria-selected={tabs ? on : undefined}
             aria-checked={tabs ? undefined : on}
-            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            onClick={() => {
+              // A choice is never un-picked, and a caller that posts on change is not asked to post
+              // twice for a tap on the segment that is already on.
+              if (!on) onChange(option.value);
+            }}
             className={cn(
-              "relative -ml-px min-h-11 min-w-0 flex-1 truncate border px-4 text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              "relative -ml-px min-h-11 min-w-0 flex-1 truncate border px-4 text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
               on ? "z-10 border-foreground text-foreground" : "border-border text-muted-foreground active:text-foreground",
             )}
           >

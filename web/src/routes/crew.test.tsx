@@ -30,6 +30,7 @@ function renderCrew(data: CrewData, entry = "/crew", servers?: ServerSummary[]) 
         element: withHeaderHost(<CrewProvider servers={servers}>{<CrewRoute />}</CrewProvider>),
       },
       { path: "/", element: <div data-testid="home" /> },
+      { path: "/machines/:id", element: <div data-testid="machine" /> },
     ],
     { initialEntries: [entry] },
   );
@@ -231,6 +232,19 @@ describe("CrewRoute", () => {
     expect(router.state.location.search).toBe("?h=workshop");
   });
 
+  it("links a member's sheet to its load and alerts, one level below the census", async () => {
+    const user = userEvent.setup();
+    const router = renderCrew(loaded);
+
+    await user.click(await screen.findByRole("button", { name: /^workshop/ }));
+    await user.click(await screen.findByRole("button", { name: "Load and alerts" }));
+    expect(router.state.location.pathname).toBe("/machines/workshop");
+    // A push that remembers the census, so Back returns to it. It is NOT a switch of machine:
+    // the scope stays where it was.
+    expect(router.state.location.search).toBe("");
+    expect(router.state.location.state).toMatchObject({ from: "/crew" });
+  });
+
   it("opens the lead at the bare URL — absent `?h=` IS the lead", async () => {
     const user = userEvent.setup();
     const router = renderCrew(loaded);
@@ -274,6 +288,28 @@ describe("the entry points", () => {
 
     await user.click(screen.getByRole("button", { name: /Crew overview/ }));
     expect(await screen.findByTestId("crew")).toBeInTheDocument();
+  });
+
+  it("renders a Machines row beside it on a crew, pointing at /machines", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/settings",
+          element: (
+            <CrewProvider servers={fixtureServers} ts={1_000} pollMs={1500}>
+              <CrewSettingsCard />
+            </CrewProvider>
+          ),
+        },
+        { path: "/machines", element: <div data-testid="machines" /> },
+      ],
+      { initialEntries: ["/settings"] },
+    );
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: /^Machines/ }));
+    expect(await screen.findByTestId("machines")).toBeInTheDocument();
   });
 
   it("puts no footer in a switcher that a solo install never opens", () => {

@@ -42,4 +42,39 @@ describe("Segmented", () => {
     expect(boxClasses(after)).toEqual(boxClasses(before));
     expect(boxClasses(after)[0]).toContain("border");
   });
+
+  it("reports a different segment and stays quiet for the selected one", async () => {
+    const onChange = vi.fn();
+    render(<Segmented options={OPTIONS} value="a" onChange={onChange} label="Pick" />);
+    await userEvent.click(screen.getByRole("radio", { name: "First" }));
+    expect(onChange).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("radio", { name: "Second" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("b");
+  });
+
+  it("carries numeric values through unchanged", async () => {
+    const onChange = vi.fn();
+    const numbers = [
+      { value: 5, label: "5 min" },
+      { value: 10, label: "10 min" },
+      { value: 30, label: "30 min" },
+    ];
+    render(<Segmented options={numbers} value={10} onChange={onChange} label="For" />);
+    expect(screen.getAllByRole("radio").map((r) => r.getAttribute("aria-checked"))).toEqual(["false", "true", "false"]);
+    await userEvent.click(screen.getByRole("radio", { name: "30 min" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(30);
+  });
+
+  it("disables every segment together", () => {
+    render(<Segmented options={OPTIONS} value="a" onChange={() => {}} label="Pick" disabled />);
+    for (const radio of screen.getAllByRole("radio")) expect(radio.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps the 44px floor on every segment, selected or not", () => {
+    render(<Segmented options={OPTIONS} value="a" onChange={() => {}} label="Pick" />);
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio.className).toContain("min-h-11");
+      expect(radio.className).toMatch(/(^|\s)border(\s|$)/);
+    }
+  });
 });

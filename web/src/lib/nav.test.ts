@@ -6,6 +6,8 @@ import {
   filesPath,
   homePath,
   isAncestor,
+  machinePath,
+  machinesPath,
   pairLandingPath,
   panePath,
   parentChain,
@@ -25,6 +27,28 @@ describe("the commit view's paths", () => {
     expect(changesCommitPath("w1:p1", undefined, ".")).toBe("/pane/w1%3Ap1/changes/commit?repo=.");
     expect(changesCommitPath("w1:p1", undefined, "one", "a b.ts")).toBe("/pane/w1%3Ap1/changes/commit?repo=one&path=a+b.ts");
     expect(spaceChangesCommitPath("w1", undefined, ".")).toBe("/space/w1/changes/commit?repo=.");
+  });
+});
+
+describe("the machines paths", () => {
+  it("names the list and one machine, and carries the scope", () => {
+    expect(machinesPath()).toBe("/machines");
+    expect(machinePath("bluefin")).toBe("/machines/bluefin");
+    expect(machinePath("a b/c")).toBe("/machines/a%20b%2Fc");
+    expect(machinesPath({ host: "badger", session: undefined })).toBe("/machines?h=badger");
+  });
+});
+
+describe("back from the machines pages", () => {
+  it("goes up one level at a time: machine, Machines, Settings", () => {
+    expect(resolveUp("/machines/bluefin", "/machines", "/machines")).toEqual({ kind: "back" });
+    expect(resolveUp("/machines", "/settings", "/settings")).toEqual({ kind: "back" });
+  });
+
+  it("replaces onto the structural parent on a cold entry, never pushes a parent", () => {
+    expect(resolveUp("/machines/bluefin", undefined, "/machines")).toEqual({ kind: "replace", to: "/machines" });
+    expect(resolveUp("/machines", undefined, "/settings")).toEqual({ kind: "replace", to: "/settings" });
+    expect(resolveUp("/machines/bluefin", "/pane/w1%3Ap1", "/machines")).toEqual({ kind: "replace", to: "/machines" });
   });
 });
 
@@ -157,6 +181,18 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/", "/settings/updates", true],
     ["/", "/crew", true],
     ["/settings", "/crew", true],
+    // Machines: Settings above it, and a machine above that. The crew census and the System card
+    // open both, so each is a legitimate parent there too.
+    ["/settings", "/machines", true],
+    ["/settings/system", "/machines", true],
+    ["/", "/machines", true],
+    ["/crew", "/machines", false],
+    ["/machines", "/machines/bluefin", true],
+    ["/machines?h=workshop", "/machines/bluefin", true],
+    ["/crew", "/machines/bluefin", true],
+    ["/settings", "/machines/bluefin", true],
+    ["/machines/workshop", "/machines/bluefin", false],
+    ["/pane/w1%3Ap1", "/machines/bluefin", false],
     ["/", "/nowhere", false],
   ])("%s above %s: %s", (from, here, expected) => {
     expect(isAncestor(from, here)).toBe(expected);
@@ -254,6 +290,10 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/settings/updates", "", ["/", "/settings", "/settings/system"]],
     ["/settings/device", "", ["/", "/settings"]],
     ["/crew", "", ["/", "/settings", "/settings/system"]],
+    // Machines sits under Settings, and one machine under Machines: a cold deep link gets both behind it.
+    ["/machines", "", ["/", "/settings"]],
+    ["/machines/bluefin", "", ["/", "/settings", "/machines"]],
+    ["/machines/bluefin", "?h=badger", ["/?h=badger", "/settings?h=badger", "/machines?h=badger"]],
     ["/nowhere", "", []],
   ])("%s%s → %j", (pathname, search, expected) => {
     expect(parentChain(pathname, search)).toEqual(expected);
