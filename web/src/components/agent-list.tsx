@@ -536,11 +536,12 @@ export function AgentList({
         // where ADR 0063 point 3 puts urgency, and the order control takes the right as glyphs, the
         // way the switcher draws it. It is drawn on EVERY tab so a tab switch moves neither the strip
         // nor this row. A tap, the selected segment included, asks for a new reading. The Changes
-        // tab draws no toggle, since it orders nothing there, but the row keeps the toggle's 44px so
-        // a tab switch still moves nothing below it.
+        // tab orders nothing, so it draws no toggle, but the slot is still there, invisible: the row
+        // keeps the toggle's 44px AND its width, so a tab switch moves neither the line beside it nor
+        // anything below it (DESIGN.md §2, `e2e/dashboard-footer.spec.ts`).
         <div className="flex min-h-11 items-center justify-between gap-2">
           {summary}
-          {renderBody === undefined && (
+          {renderBody === undefined ? (
             <PaneOrderToggle
               order={order}
               onChange={(next) => {
@@ -549,6 +550,10 @@ export function AgentList({
               }}
               compact
             />
+          ) : (
+            <div className="invisible" aria-hidden="true">
+              <PaneOrderToggle order={order} onChange={() => {}} compact />
+            </div>
           )}
         </div>
       ) : (

@@ -83,10 +83,22 @@ const PNG_PATH = fileURLToPath(new URL("../../public/badge-96x96.png", import.me
 const PNG_BYTES = readFileSync(PNG_PATH);
 
 /**
+ * A device that chose the terminal view, which is what every case here is about. Chat is the default
+ * body of an agent pane since 1.17.0 (ADR 0082), and these cases read the mirror, so each pins the
+ * per-device choice the way a device that had chosen Terminal before the flip still holds it.
+ */
+async function pinTerminalView(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+  });
+}
+
+/**
  * Point the pane, the journal and the snapshot at the image world. Call AFTER `installApiStub`:
  * Playwright checks the newest handler first, so these three win over the default table.
  */
 export async function installMirrorWorld(page: Page): Promise<void> {
+  await pinTerminalView(page);
   await page.route(
     (url) => url.pathname === "/api/snapshot",
     (route) => fulfillJson(route, SNAPSHOT_WITH_SESSION),
@@ -181,6 +193,7 @@ export async function installPiPictureWorld(
   page: Page,
   { status }: { status: "done" | "working" },
 ): Promise<void> {
+  await pinTerminalView(page);
   const snapshot: SnapshotResponse = {
     ...fixtureSnapshot,
     agents: fixtureSnapshot.agents.map((agent) =>
