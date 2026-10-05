@@ -45,7 +45,7 @@ A Herdr plugin is still the same `collie` binary; the actions forward to it
 the verbs that have no action (`pair`, `qr`, `logs`, `link`, `devices`, `stt`, `config`) run from
 the plugin's directory as `bin/collie <verb>`.
 
-Herdr is also one of the three multiplexers Collie can mirror. Which one you mirror is a separate
+Herdr is also one of the five multiplexers Collie can mirror (Herdr, tmux, zellij, tuios and tern). Which one you mirror is a separate
 choice ([Name your multiplexer](#name-your-multiplexer)): a standalone Collie can mirror Herdr, and
 a Herdr plugin can mirror tmux.
 
@@ -59,7 +59,7 @@ experimental; see [Windows support](#windows-support-experimental).
 | `curl`, `tar`, sha256 tool (`sha256sum`/`shasum`) | Binary install script and updates | Download and verify release archives. |
 | [Bun](https://bun.sh) | Source builds | Run the bridge and build the web UI. |
 | git | Source builds and Herdr routes | Clone and update the repository. |
-| Multiplexer: Herdr, [tmux](https://github.com/tmux/tmux), or [zellij](https://zellij.dev) | All installs | Mirrored backend set via `COLLIE_MUX`. tmux and zellij are experimental in 1.0; see [Pointing Collie at a multiplexer](multiplexers.md#pointing-collie-at-a-multiplexer) and [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
+| Multiplexer: Herdr, [tmux](https://github.com/tmux/tmux), [zellij](https://zellij.dev), tuios or tern | All installs | Mirrored backend set via `COLLIE_MUX`. tmux and zellij are experimental in 1.0, and tuios and tern are experimental too; see [Pointing Collie at a multiplexer](multiplexers.md#pointing-collie-at-a-multiplexer) and [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
 | [Herdr](https://herdr.dev) ≥ 0.7.0 | Herdr backend only | Required when `COLLIE_MUX=herdr`. Check with `herdr --version`. |
 | [Tailscale](https://tailscale.com) | The default front door | `tailscale serve` proxies Collie to your tailnet. Not needed behind [another front door](deployment.md#front-doors-one-product-at-a-time). |
 

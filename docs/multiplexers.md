@@ -66,7 +66,7 @@ Then restart, install the beacon hooks, and start an agent where the phone can s
 
 ```bash
 collie restart                 # after every .env edit
-collie hooks install claude    # once per host, tmux and zellij only
+collie hooks install claude    # once per host, tmux, zellij and tern only
 
 # open a window or a tab for the agent
 tmux -S /run/user/1000/collie-tmux.sock new-window -n claude
@@ -85,7 +85,7 @@ writes the answer to `.env`. For the full configuration reference, see
 [`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer).
 
 `collie hooks install claude` installs Collie's [beacon](#agent-beacons-optional-linux) hooks, which
-tmux and zellij require. They expose panes as generic shells, so without hooks every pane appears as
+tmux, zellij and tern require. They expose panes as generic shells, so without hooks every pane appears as
 `bash`.
 
 The command updates `~/.claude/settings.json` and leaves project configs untouched
@@ -218,7 +218,7 @@ would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 /home/you/.claude/settings.json: installed (v1)
 ```
 
-Because tmux and zellij expose panes as generic shells, agents must announce themselves. This
+Because tmux, zellij and tern expose panes as generic shells, agents must announce themselves. This
 requires installing Collie's [beacon](#agent-beacons-optional-linux) hooks into Claude Code's
 configuration.
 
@@ -263,7 +263,7 @@ exact specification.
 | [open a space](../MUX_CONTRACT.md#capabilities) | yes | yes | **no** — a session it made would be invisible to it |
 | [pane history](../MUX_CONTRACT.md#capabilities) | from Herdr's own pane record | from the beacon's session key | from the beacon's session key |
 
-Without active beacons, tmux and zellij present panes as raw shells, and pane history is marked
+Without active beacons, tmux, zellij and tern present panes as raw shells, and pane history is marked
 unavailable rather than returning empty content.
 
 ### Two things that feel different on the phone
@@ -315,7 +315,7 @@ agents inside it, reconnecting each with `claude --resume` or `claude --continue
 
 ## Agent beacons (optional, Linux)
 
-A **beacon** is how an agent identifies itself to Collie, on tmux and zellij, where a pane otherwise
+A **beacon** is how an agent identifies itself to Collie, on tmux, zellij and tern, where a pane otherwise
 appears as a generic shell.
 
 ```console
