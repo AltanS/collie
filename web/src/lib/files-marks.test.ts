@@ -197,6 +197,13 @@ describe("the root itself untracked", () => {
   });
 });
 
+describe("repos above the root", () => {
+  it("are not repo boundaries, but a nested repo named like `..foo` is", () => {
+    const index = indexChanges(ROOT, [], [{ relPath: ".." }, { relPath: "../.." }, { relPath: "..foo" }, { relPath: "a/..b" }]);
+    expect([...index.repoRoots].toSorted()).toEqual(["..foo", "a/..b"]);
+  });
+});
+
 describe("changeAt", () => {
   it("finds the change a file screen diffs, but not an untracked folder", () => {
     expect(changeAt(INDEX, "src/lib/cart.ts")).toMatchObject({ repo: ".", path: "src/lib/cart.ts", status: "A" });

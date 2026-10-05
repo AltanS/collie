@@ -58,7 +58,8 @@ export function indexChanges(
   const folders = new Map<string, { count: number; statuses: Set<ChangeStatus> }>();
   const repoRoots = new Set<string>();
   for (const repo of [...repos, ...clean]) {
-    if (repo.relPath !== "." && !repo.relPath.startsWith("..")) repoRoots.add(repo.relPath);
+    const above = repo.relPath === ".." || repo.relPath.startsWith("../");
+    if (repo.relPath !== "." && !above) repoRoots.add(repo.relPath);
   }
   for (const repo of repos) {
     for (const file of repo.files) {
