@@ -5,38 +5,15 @@ This file tracks all notable changes to Collie, ordered newest version first. Th
 `### Added`, `### Changed`, `### Fixed`, `### Packaging` and `### Docs`, in that order and only
 where there is content, and every bullet opens with a short bold lead sentence, which is the line
 the GitHub Release page prints. Older versions carry a single flat list. Every entry links to its commit and credits the contributor where there is one. The
-`## [Unreleased]` section contains merged work waiting for release. The release
-commit renames this heading to `## [x.y.z] - YYYY-MM-DD`, adds the commit hashes, and adds a new
-empty `## [Unreleased]` section above it. The newest numbered `## [x.y.z]` heading (excluding the
-Unreleased heading) **must** match the `version` field in `herdr-plugin.toml`, `package.json`,
-and `web/package.json`, which `scripts/check-version.sh` checks. See [`CLAUDE.md`](./CLAUDE.md) →
-*Versioning* for the bump policy.
+`## [Unreleased]
 
-## Upgrading
-
-**Already on 1.x?** Run `collie update`, or run
-`herdr plugin action invoke update --plugin herdr.collie`. Check the result with
-`bin/collie version` (or `herdr plugin action invoke version --plugin herdr.collie`). It shows the
-newest tag. The phone PWA updates itself within about a minute; no reload needed.
-Running a crew? Update the lead first; members follow on their own. Details:
-`docs/crew.md` → *Updating from 1.7.0*.
-
-## [Unreleased]
-
-### Added
-
-- **The lead keeps a day of CPU and memory for every machine.** Each Collie reads its own CPU, memory, load and network about once every five seconds, on the tick it already runs. A crew member sends its last reading with the answer the lead already asks for, and the lead keeps one point per minute for 24 hours. A Collie with no crew keeps the same day for its own machine. You can set one CPU rule and one memory rule per machine, and the lead sends one push when a value stays above the line. Nothing leaves the crew. See `docs/crew.md`, *Machines*.
-- **Settings has a switch for machine alerts, and a tap on one opens that machine.** Settings, Alerts, "Machine load stays high" turns every machine rule off at once, and it is on by default. A machine alert opens `/machines/<id>` on the phone.
-
-### Fixed
-
-- **An opencode draft and dialog read correctly with a sidebar open beside the pane.** A sidebar row that shares a row with the composer or a dialog is now skipped, so the Draft card shows what you typed, the reply guard can verify the send, and a question card is not lost behind the sidebar's box glyphs. Thanks @AndiWandHerd (#352). ([fedbe6dc](https://github.com/AltanS/collie/commit/fedbe6dc))
-- **An iOS home-screen launch fills the screen to the bottom edge.** Every screen now takes its height from one `--app-h` token, which reads the full height in a home-screen launch on iOS, so the tab bar and composer no longer float over a dead band above the home indicator. Thanks @broven (#355). ([3007f8e2](https://github.com/AltanS/collie/commit/3007f8e2))
-- **On macOS, `collie start` and `collie restart` start the launchd job and check that it runs.** Before, they printed "bridge started" as soon as launchd loaded the job, even when no process came up, and `collie status` then said "loaded, not running" with an empty log. Collie now runs `launchctl kickstart` on the job after it loads it, reads the job back for up to two seconds, and prints "bridge started" only when launchd reports a pid. If none shows, it warns that the job is loaded but not running and prints `launchctl kickstart gui/<uid>/herdr.collie` and the log path. The exit code stays 0, as on systemd, and the status banner shows the state. This has not been tried on macOS 26 yet. Thanks @babhishek21 (#213).
 ### Added
 
 - **The dashboard takes the pane switcher's order.** On Panes and Focus, a clock and an hourglass beside the status line order the dashboard by the pane where something last happened, or by the cache that goes cold first. Either one folds the workspace groups into one list, with pinned panes first and each row naming its workspace. It is the same per-device setting as the switcher and Settings → Appearance, Place stays the default, and the order is read once and held, so a poll never moves a row. Tapping the selected choice, or coming back to the page, reads it again.
 - **The Quick dock offers "drastically simplify".** It is the last phrase of the common group for every agent pane, and a long phrase now wraps inside its button instead of running past it. A `quick-replies.toml` that already addresses a pane replaces the shipped list, so add the phrase to your own file to keep it there.
+- **Changes has a Files tab, and Markdown, JSON and HTML files open as a Preview.** Tap Files at the top of Changes to browse the folder Changes reads, one folder at a time, and open a file as numbered, coloured source. A Markdown file draws as text, a JSON file as a tree that folds, and an HTML file in a sandboxed frame that runs no scripts and loads nothing remote. A changed file of those types has a Preview button in its diff header. Files reads when you open a folder or tap refresh, never on a timer, and an older crew member answers "Update this machine to browse files". On the bridge, `GET /api/pane/:id/files` and `GET /api/workspace/:id/files` list one folder (`?dir=`) or read one text file (`?path=`) under the same folder the Changes view reads, and nowhere else. A path that leads out of it, also through a symlink, a `.git` folder, and Collie's own state and config folders are refused with one answer. It needs an authorised device, like a write, caps a folder at 2000 entries and a file at 1 MiB, and works on a crew member running 1.17.0 or later (ADR 0083).
+- **Machines show every machine's load for a day and hold its alert rules.** Each Collie reads its own CPU, memory, load and network about once every five seconds, on the tick it already runs. A crew member sends its last reading with the answer the lead already asks for, and the lead keeps one point per minute for 24 hours. A Collie with no crew keeps the same day for its own machine. Settings, Machines lists each machine's CPU, memory, network and load now, with the lead first. A machine's page draws the last hour and the last 24 hours as charts, with a gap wherever minutes are missing, and sets a CPU or memory alert: a threshold of 80, 90 or 95 percent held for 5 to 60 minutes, and the lead sends one push when a value stays above the line. A firing alert is named in words on its card, a machine that is not answering shows the age of its last reading, and a member on an older Collie says it needs an update. Settings, Alerts, "Machine load stays high" turns every machine rule off at once, and it is on by default, and a machine alert opens `/machines/<id>` on the phone. The pages need the lead of a crew or a collie on its own. Nothing leaves the crew. See `docs/crew.md`, *Machines*.
+
 ### Changed
 
 - **Chat is the default view of an agent pane.** A pane with an agent session opens as the agent's own conversation on every device, and the Chat switch under Settings → Experiments is gone. The pane's ⋮ menu has **Terminal view** one tap away, and a device that already chose the terminal keeps it. Hermes can still lose a turn from its own log, and the docs under "Chat view" say so. This brings forward the flip that 1.15.0 planned for 2.0.
@@ -44,15 +21,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **An opencode draft and dialog read correctly with a sidebar open beside the pane.** A sidebar row that shares a row with the composer or a dialog is now skipped, so the Draft card shows what you typed, the reply guard can verify the send, and a question card is not lost behind the sidebar's box glyphs. Thanks @AndiWandHerd (#352). ([fedbe6dc](https://github.com/AltanS/collie/commit/fedbe6dc))
+- **An iOS home-screen launch fills the screen to the bottom edge.** Every screen now takes its height from one `--app-h` token, which reads the full height in a home-screen launch on iOS, so the tab bar and composer no longer float over a dead band above the home indicator. Thanks @broven (#355). ([3007f8e2](https://github.com/AltanS/collie/commit/3007f8e2))
+- **On macOS, `collie start` and `collie restart` start the launchd job and check that it runs.** Before, they printed "bridge started" as soon as launchd loaded the job, even when no process came up, and `collie status` then said "loaded, not running" with an empty log. Collie now runs `launchctl kickstart` on the job after it loads it, reads the job back for up to two seconds, and prints "bridge started" only when launchd reports a pid. If none shows, it warns that the job is loaded but not running and prints `launchctl kickstart gui/<uid>/herdr.collie` and the log path. The exit code stays 0, as on systemd, and the status banner shows the state. This has not been tried on macOS 26 yet. Thanks @babhishek21 (#213).
 - **The agent-start animation and the switch to Chat are one sequence.** When a shell turned into an agent, the animation ran on its own clock while the pane swapped from the terminal to Chat whenever the first answer arrived, so the swap showed beside it. The swap now waits for the animation to cover the pane, happens under it, and the animation lifts only once Chat is ready. A tap on it still ends it at once.
-### Added
-
-- **The bridge lists a folder and reads a file under the Changes root.** `GET /api/pane/:id/files` and `GET /api/workspace/:id/files` list one folder (`?dir=`) or read one text file (`?path=`) under the same folder the Changes view reads, and nowhere else. A path that leads out of it, also through a symlink, a `.git` folder, and Collie's own state and config folders are refused with one answer. It needs an authorised device, like a write, caps a folder at 2000 entries and a file at 1 MiB, and works on a crew member running 1.17.0 or later (ADR 0083).
-### Added
-
-- **Changes has a Files tab, and Markdown, JSON and HTML files open as a Preview.** Tap Files at the top of Changes to browse the folder Changes reads, one folder at a time, and open a file as numbered, coloured source. A Markdown file draws as text, a JSON file as a tree that folds, and an HTML file in a sandboxed frame that runs no scripts and loads nothing remote. A changed file of those types has a Preview button in its diff header. Files reads when you open a folder or tap refresh, never on a timer, and an older crew member answers "Update this machine to browse files".
 - **The global cache warning switch now stays on.** Settings, Alerts, "Cache about to go cold" showed the switch move and then fall back, because the bridge dropped that key from the request and kept the old value. Panes watched one by one were not affected.
-- **Machines pages show every machine's load and hold its alert rules.** Settings, Machines lists each machine's CPU, memory, network and load now, with the lead first. A machine's page draws the last hour and the last 24 hours as charts, with a gap wherever minutes are missing, and sets a CPU or memory alert: a threshold of 80, 90 or 95 percent held for 5 to 60 minutes. A firing alert is named in words on its card, a machine that is not answering shows the age of its last reading, and a member on an older Collie says it needs an update. The pages need the lead of a crew or a collie on its own.
 
 ## [1.16.2] - 2026-10-04
 

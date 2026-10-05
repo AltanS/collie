@@ -235,7 +235,15 @@ so the phone can reach the deputy while the lead is gone.
 
 ## Machines
 
-Every Collie measures its own machine, and the lead keeps a day of it for each machine in the crew.
+Every Collie measures its own machine, the lead keeps a day of it for each machine in the crew, and
+the Machines pages show it and hold the alert rules.
+
+**Open the list from Settings, Machines.** It is there on a collie that runs on its own too, as one
+machine. On a lead with a crew, Settings, System has a second row for the same page, and a member's
+sheet on the Crew page links to that machine's own page with **Load and alerts**.
+
+Only a lead, or a collie on its own, keeps the list. A crew member opened directly says there is no
+machine list on it; open the page on the lead.
 
 Each Collie reads its CPU, memory and network about once every five seconds. It reads them on the
 same tick that already watches your panes, so nothing new runs in the background. A member sends
@@ -272,6 +280,48 @@ the **Machine load stays high** switch in Settings turns them all off
 ([which alerts Collie sends](voice-and-push.md#which-alerts-collie-sends)).
 
 Nothing leaves the crew. The readings travel on the crew link and stay on the lead.
+
+### On the phone
+
+| Page | What it shows |
+| --- | --- |
+| Machines | One card per machine, the lead first: its name, its health, a CPU bar, a memory bar, and network down and up and the load where the machine reports them |
+| One machine | The same numbers large, then a chart each for CPU, memory and network, over the last hour or the last 24 hours, and the machine's alert rules |
+
+**A card names what is wrong in words.** A machine that is not answering shows its health and the age
+of its last reading, and no numbers, because a stale 12% next to the word "unreachable" reads as a calm
+machine. A member that still runs a Collie from before it reported load says "Update this machine to see
+its load". A metric whose alert is firing turns its bar red, and the card says "Alert firing: CPU".
+
+**The charts leave a missing minute empty.** The history has one point per minute. When the lead was
+restarted, or a machine went quiet, the line stops and starts again after the hole, and it does not run
+across it. CPU draws its average as a line and its peak as a lighter band. The alert threshold is a
+dashed line while a rule is set. The network axis has no fixed top: it follows the largest value and
+prints its unit. A machine on a platform with no network counters says so instead of drawing an empty
+chart.
+
+**Each chart has one sentence for a screen reader.** It gives the metric, the range, the value now, the
+average and the peak. The legend under the chart names every mark, so no chart relies on colour alone.
+
+### Set an alert on the phone
+
+Set a rule on that machine's page. The rules and their limits are under *Alerts for a machine* above.
+
+| Choice | Values |
+| --- | --- |
+| Switch | On or off, for CPU and for memory separately |
+| Threshold | 80%, 90% or 95% |
+| Duration | 5, 10, 30 or 60 minutes |
+
+A rule set another way, with a line or a time outside these choices, keeps its value and shows it
+beside them.
+
+A new rule starts at 90% for 10 minutes. Every change posts the whole set of rules for that machine, so
+changing the CPU threshold never drops the memory rule. The card shows Saving, Saved or Could not save
+in its own status line, and after a failure it shows the rules the bridge last reported.
+
+The push goes to every device subscribed to this Collie. The card links to Settings, Alerts, where you
+choose which alerts you get.
 
 ## Members that were not installed by install.sh
 
@@ -315,56 +365,6 @@ member stores it without ever showing it. A machine that joins after the rename 
 name, and the members already in the crew keep the old string in a field nobody reads. A name is
 trimmed, is at most 64 characters, and carries no control characters. On a peer, or on a machine in
 no crew, the verb refuses and says where to run it.
-
-## Machines
-
-The Machines pages show how hard each machine is working, and hold the alert rules for each one.
-
-**Open the list from Settings, Machines.** It is there on a collie that runs on its own too, as one
-machine. On a lead with a crew, Settings, System has a second row for the same page, and a member's
-sheet on the Crew page links to that machine's own page with **Load and alerts**.
-
-Only a lead, or a collie on its own, keeps the list. A crew member opened directly says there is no
-machine list on it; open the page on the lead.
-
-### On the phone
-
-| Page | What it shows |
-| --- | --- |
-| Machines | One card per machine, the lead first: its name, its health, a CPU bar, a memory bar, and network down and up and the load where the machine reports them |
-| One machine | The same numbers large, then a chart each for CPU, memory and network, over the last hour or the last 24 hours, and the machine's alert rules |
-
-**A card names what is wrong in words.** A machine that is not answering shows its health and the age
-of its last reading, and no numbers, because a stale 12% next to the word "unreachable" reads as a calm
-machine. A member that still runs a Collie from before it reported load says "Update this machine to see
-its load". A metric whose alert is firing turns its bar red, and the card says "Alert firing: CPU".
-
-**The charts leave a missing minute empty.** The history has one point per minute. When the lead was
-restarted, or a machine went quiet, the line stops and starts again after the hole, and it does not run
-across it. CPU draws its average as a line and its peak as a lighter band. The alert threshold is a
-dashed line while a rule is set. The network axis has no fixed top: it follows the largest value and
-prints its unit. A machine on a platform with no network counters says so instead of drawing an empty
-chart.
-
-**Each chart has one sentence for a screen reader.** It gives the metric, the range, the value now, the
-average and the peak. The legend under the chart names every mark, so no chart relies on colour alone.
-
-### Alerts
-
-An alert watches CPU or memory on one machine. Set it on that machine's page.
-
-| Choice | Values |
-| --- | --- |
-| Switch | On or off, for CPU and for memory separately |
-| Threshold | 80%, 90% or 95% |
-| Duration | 5, 10, 30 or 60 minutes |
-
-A new rule starts at 90% for 10 minutes. Every change posts the whole set of rules for that machine, so
-changing the CPU threshold never drops the memory rule. The card shows Saving, Saved or Could not save
-in its own status line, and after a failure it shows the rules the bridge last reported.
-
-The push goes to every device subscribed to this Collie. The card links to Settings, Alerts, where you
-choose which alerts you get.
 
 ## Updating to 1.9.0 from 1.7.0 or 1.8.x
 
