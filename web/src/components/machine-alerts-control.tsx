@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { BellRing, Loader2 } from "lucide-react";
+import { BellRing, Check, CircleAlert, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Collapse } from "@/components/ui/collapse";
+import { OneOf } from "@/components/ui/one-of";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
@@ -25,10 +27,16 @@ import { cn } from "@/lib/utils";
 //
 // ── SAVING, SAVED, COULD NOT SAVE: IN THE CARD ───────────────────────────────
 // The answer outlives the operator's next tap and belongs beside the control that asked
-// (DESIGN.md §11, a contextual notice; lib/ack-manifest.ts files it as `inline`). One status
-// line holds all three words, always mounted at a fixed height so none of them moves the rows. A
-// failure puts the controls back on the rules the bridge last reported, because a rule that did not
-// land must not stay on screen as if it had.
+// (DESIGN.md §11, a contextual notice; lib/ack-manifest.ts files it as `inline`). The card's last
+// line is one slot with two faces (`ui/one-of.tsx`): at rest it says where the push goes and links
+// to Settings, and after a tap it says Saving, Saved or what went wrong, each with its own mark, so
+// no state is told by colour alone. The slot keeps the taller face's height, so no word moves the
+// rows, and an idle card has no empty band waiting for a status. A screen reader hears the status
+// from one live line that is always mounted. A failure puts the controls back on the rules the
+// bridge last reported, because a rule that did not land must not stay on screen as if it had.
+//
+// A switch turned on opens its threshold and duration rows with `ui/collapse.tsx`, so the rows
+// under it slide instead of jumping.
 //
 // ── THE CARD NEVER FETCHES ───────────────────────────────────────────────────
 // The rules arrive as a prop from the page's loader (the poll loop keeps them current). The card keeps
@@ -147,7 +155,6 @@ export function MachineAlertsControl({
             <p className="text-sm text-muted-foreground">{t("machines.alerts.description")}</p>
           </div>
         </div>
-        {saving && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />}
       </div>
 
       {METRICS.map((metric) => (
@@ -162,28 +169,44 @@ export function MachineAlertsControl({
         />
       ))}
 
-      {/* One line, always mounted at one height: Saving, Saved and Could not save take turns in it. */}
-      <p
-        role="status"
-        className={cn(
-          "flex min-h-8 items-center border-t border-border px-4 text-xs",
-          state === "failed" || state === "unpaired" ? "text-status-blocked" : "text-muted-foreground",
-        )}
-      >
-        {state === "saving" && t("machines.alerts.saving")}
-        {state === "saved" && t("machines.alerts.saved")}
-        {state === "failed" && t("machines.alerts.failed")}
-        {state === "unpaired" && t("machines.alerts.notPaired")}
+      {/* The status, for a screen reader: one live line, always mounted, never seen. */}
+      <p role="status" className="sr-only">
+        {statusWords(state)}
       </p>
-
-      <div className="flex flex-wrap items-center gap-x-1 border-t border-border px-4 py-1 text-xs text-muted-foreground">
-        <span>{t("machines.alerts.push")}</span>
-        {onOpenAlerts !== undefined && (
-          <Button variant="link" size="sm" className="h-11 px-0 text-xs" onClick={onOpenAlerts}>
-            {t("machines.alerts.pushLink")}
-          </Button>
-        )}
-      </div>
+      <OneOf
+        active={state === "idle" ? "push" : "status"}
+        className="min-h-11 items-center border-t border-border px-4 py-1 text-xs"
+        options={[
+          {
+            key: "push",
+            node: (
+              <div className="flex flex-wrap items-center gap-x-1 text-muted-foreground">
+                <span>{t("machines.alerts.push")}</span>
+                {onOpenAlerts !== undefined && (
+                  <Button variant="link" size="sm" className="h-11 px-0 text-xs" onClick={onOpenAlerts}>
+                    {t("machines.alerts.pushLink")}
+                  </Button>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: "status",
+            node: (
+              <p
+                aria-hidden
+                className={cn(
+                  "flex items-center gap-1.5 py-2",
+                  state === "failed" || state === "unpaired" ? "font-medium text-status-blocked" : "text-muted-foreground",
+                )}
+              >
+                <StatusMark state={state} />
+                {statusWords(state)}
+              </p>
+            ),
+          },
+        ]}
+      />
     </Card>
   );
 }
@@ -213,24 +236,26 @@ function RuleRow({
         </div>
         <Switch checked={rule !== undefined} disabled={busy} onCheckedChange={onToggle} aria-label={label} />
       </div>
-      {rule !== undefined && (
-        <div className="mt-3 space-y-3">
-          <Segmented
-            label={t("machines.alerts.above", { metric: label })}
-            options={withCurrent(ALERT_THRESHOLDS, rule.above).map((v) => ({ value: v, label: formatPercent(v) }))}
-            value={rule.above}
-            disabled={busy}
-            onChange={(above) => onChange({ ...rule, above })}
-          />
-          <Segmented
-            label={t("machines.alerts.for", { metric: label })}
-            options={withCurrent(ALERT_DURATIONS, rule.forMin).map((v) => ({ value: v, label: t("machines.alerts.minutes", { count: v }) }))}
-            value={rule.forMin}
-            disabled={busy}
-            onChange={(forMin) => onChange({ ...rule, forMin })}
-          />
-        </div>
-      )}
+      <Collapse open={rule !== undefined}>
+        {rule !== undefined && (
+          <div className="space-y-3 pt-3">
+            <Segmented
+              label={t("machines.alerts.above", { metric: label })}
+              options={withCurrent(ALERT_THRESHOLDS, rule.above).map((v) => ({ value: v, label: formatPercent(v) }))}
+              value={rule.above}
+              disabled={busy}
+              onChange={(above) => onChange({ ...rule, above })}
+            />
+            <Segmented
+              label={t("machines.alerts.for", { metric: label })}
+              options={withCurrent(ALERT_DURATIONS, rule.forMin).map((v) => ({ value: v, label: t("machines.alerts.minutes", { count: v }) }))}
+              value={rule.forMin}
+              disabled={busy}
+              onChange={(forMin) => onChange({ ...rule, forMin })}
+            />
+          </div>
+        )}
+      </Collapse>
     </div>
   );
 }
@@ -241,4 +266,28 @@ function RuleRow({
  */
 function withCurrent(options: readonly number[], current: number): number[] {
   return options.includes(current) ? [...options] : [...options, current].toSorted((a, b) => a - b);
+}
+
+/** The words of one save state, or nothing at rest. */
+function statusWords(state: SaveState): string {
+  switch (state) {
+    case "idle":
+      return "";
+    case "saving":
+      return t("machines.alerts.saving");
+    case "saved":
+      return t("machines.alerts.saved");
+    case "failed":
+      return t("machines.alerts.failed");
+    case "unpaired":
+      return t("machines.alerts.notPaired");
+  }
+}
+
+/** The mark beside the words: a spinner while saving, a check once saved, a warning on a failure. */
+function StatusMark({ state }: { state: SaveState }) {
+  if (state === "saving") return <Loader2 className="size-3.5 shrink-0 motion-safe:animate-spin" aria-hidden />;
+  if (state === "saved") return <Check className="size-3.5 shrink-0 text-status-done" aria-hidden />;
+  if (state === "failed" || state === "unpaired") return <CircleAlert className="size-3.5 shrink-0" aria-hidden />;
+  return null;
 }

@@ -112,11 +112,11 @@ describe("MachineAlertsControl", () => {
     const onSaved = vi.fn();
     render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} onSaved={onSaved} />);
     await user.click(screen.getByRole("switch", { name: "Memory alert" }));
-    expect(await screen.findByText("Saving")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Saving"));
     // Nothing else can be tapped while it saves: a second POST would race the first.
     expect(screen.getByRole("switch", { name: "CPU alert" })).toBeDisabled();
     release();
-    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Saved"));
     expect(onSaved).toHaveBeenCalledOnce();
     expect(screen.getByRole("switch", { name: "Memory alert" })).not.toBeChecked();
   });
@@ -131,7 +131,7 @@ describe("MachineAlertsControl", () => {
     const onSaved = vi.fn();
     render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} onSaved={onSaved} />);
     await user.click(screen.getByRole("switch", { name: "Memory alert" }));
-    expect(await screen.findByText("Could not save. The rules are unchanged.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Could not save. The rules are unchanged."));
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
     expect(onSaved).not.toHaveBeenCalled();
     // And the controls are live again, so the operator can try once more.
@@ -145,8 +145,8 @@ describe("MachineAlertsControl", () => {
     );
     render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
     await user.click(screen.getByRole("switch", { name: "Memory alert" }));
-    expect(await screen.findByText("Pair this device to change alerts")).toBeInTheDocument();
-    expect(screen.queryByText("Could not save. The rules are unchanged.")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Pair this device to change alerts"));
+    expect(screen.getByRole("status")).not.toHaveTextContent("Could not save");
     // The rules snap back to what the bridge reported, and the controls are live again.
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeEnabled();

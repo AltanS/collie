@@ -245,9 +245,10 @@ sheet on the Crew page links to that machine's own page with **Load and alerts**
 Only a lead, or a collie on its own, keeps the list. A crew member opened directly says there is no
 machine list on it; open the page on the lead.
 
-Each Collie reads its CPU, memory and network about once every five seconds. It reads them on the
-same tick that already watches your panes, so nothing new runs in the background. A member sends
-its last reading with the answer it already gives the lead. The lead keeps one point per minute for
+Each Collie reads its CPU, memory and network on the same tick that already watches your panes, so
+nothing new runs in the background. It reads them about every 15 to 25 seconds. The lead reads its own
+every 5 seconds while a phone has the Machines pages or the Crew tab open. Either way, every minute
+gets at least one reading. A member sends its last reading with the answer it already gives the lead. The lead keeps one point per minute for
 each machine, for 24 hours. A Collie with no crew keeps the same day for its own machine.
 
 | what | Linux | macOS | Windows |
@@ -269,7 +270,8 @@ each machine, for 24 hours. A Collie with no crew keeps the same day for its own
 - Bonds and VLANs: `bond*`, `team*`, and any name with a dot, such as `eth0.100`.
 
 The day of points lives in `machine-history.json` in the lead's state folder. The lead writes it at
-most once every five minutes, and once more when it stops. A member keeps no history of its own, so
+most once every five minutes, only when a minute changed, and once more when it stops. A day of one
+machine takes about 50 KB on disk and about 55 KB of the lead's memory. A member keeps no history of its own, so
 the lead is the only place to look. When the lead is down, nobody records, and the chart shows a gap.
 
 A machine that stops answering keeps its last reading, with the time it was taken, and records no
@@ -307,13 +309,23 @@ Nothing leaves the crew. The readings travel on the crew link and stay on the le
 
 | Page | What it shows |
 | --- | --- |
-| Machines | One card per machine, the lead first: its name, its health, a CPU bar, a memory bar, and network down and up and the load where the machine reports them |
+| Machines | One card per machine, the lead first: its name, its health, CPU and memory now with a small chart of their last 30 minutes, and the load and network down and up where the machine reports them |
+| Dashboard, Crew tab | The same cards, on the dashboard of a lead with a crew. A tap opens the machine, and back returns to the Crew tab |
 | One machine | The same numbers large, then a chart each for CPU, memory and network, over the last hour or the last 24 hours, and the machine's alert rules |
 
 **A card names what is wrong in words.** A machine that is not answering shows its health and the age
 of its last reading, and no numbers, because a stale 12% next to the word "unreachable" reads as a calm
-machine. A member that still runs a Collie from before it reported load says "Update this machine to see
-its load". A metric whose alert is firing turns its bar red, and the card says "Alert firing: CPU".
+machine. A machine that answers but has sent no new reading for two minutes shows its numbers greyed,
+with a clock and the age of its last reading. A member that still runs a Collie from before it reported
+load says "Update this machine to see its load", and its page shows no charts. A metric whose alert is
+firing turns its number and its small chart red, and the card says "Alert firing: CPU". The small chart
+has a fixed scale from 0 to 100%, a dashed line where a rule is set, a dot for the reading now, and a
+gap for a missing minute.
+
+**The pages read only while you look.** The Machines list reads with the dashboard's own refresh. A
+machine's page reads the day once when it opens, and then only the newest minutes, once a minute. The
+Crew tab reads when you open it and every 15 seconds while it is on screen. Nothing is read for a page
+or a tab that is not on screen, or while the phone is locked.
 
 **The charts leave a missing minute empty.** The history has one point per minute. When the lead was
 restarted, or a machine went quiet, the line stops and starts again after the hole, and it does not run
