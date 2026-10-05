@@ -38,6 +38,9 @@ function feedOf(window: Partial<ChatWindow>, over: Partial<ChatFeed> = {}): Chat
     window: { ...EMPTY_CHAT_WINDOW, ...window },
     loadOlder: vi.fn(),
     loadingOlder: false,
+    asked: 0,
+    answered: 0,
+    tried: false,
     ...over,
   };
 }

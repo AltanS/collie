@@ -1,9 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 
-import { CHAT_HOLD_MS, useChatReady } from "./use-chat-ready";
+import { useChatReady } from "./use-chat-ready";
 
-// The swap from the terminal to Chat waits for Chat's first answer, so the turns are there when the
-// body changes instead of popping in after it.
+// The swap from the terminal to Chat waits for Chat's first read to come back, so the turns are there
+// when the body changes instead of popping in after it. An EVENT moves it, never a clock: a read that
+// failed comes back too (the caller folds it into `answered`), and the fetch has its own deadline.
 
 interface Props {
   wanted: boolean;
@@ -32,18 +33,17 @@ describe("useChatReady", () => {
     expect(result.current).toBe(true);
   });
 
-  it("gives up waiting after the hold, so a failed read does not strand the terminal", () => {
+  it("waits for the read however long it takes: no clock moves the swap", () => {
     const { result, rerender } = renderHook((p: Props) => useChatReady(p.wanted, p.answered), {
       initialProps: { wanted: false, answered: false },
     });
     rerender({ wanted: true, answered: false });
     act(() => {
-      vi.advanceTimersByTime(CHAT_HOLD_MS - 1);
+      vi.advanceTimersByTime(60_000);
     });
     expect(result.current).toBe(false);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
+    // The read came back, with an answer or with a failure: either releases it.
+    rerender({ wanted: true, answered: true });
     expect(result.current).toBe(true);
   });
 

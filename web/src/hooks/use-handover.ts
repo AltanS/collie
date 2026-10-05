@@ -40,7 +40,8 @@ export type HandoverPhase = "idle" | "covering" | "covered" | "revealing";
 interface Timings {
   /** Until the cover is complete: the mark has reached the centre. `animationend` usually beats it. */
   cover: number;
-  /** How long the cover rests once complete. The body swaps under it, and the reveal follows it. */
+  /** How long the cover rests once complete. The body swaps under it, and the reveal follows it. A
+   *  DESIGN duration, the beat in the picture: it backs up no event and waits for none. */
   dwell: number;
   /** The whole reveal, until the layer has left. */
   reveal: number;
@@ -50,7 +51,8 @@ interface Timings {
 
 /** The bloom: 380 ms flight, a 380 ms beat, a 640 ms reveal, which is the 1400 ms it always was. */
 export const MOTION_TIMINGS: Timings = { cover: 380, dwell: 380, reveal: 640, slack: 150 };
-/** Reduced motion: a still picture, no keyframe to wait for, so the timers are the clock. */
+/** Reduced motion: a still picture, no keyframe to wait for, so the timers are the clock. Each one is
+ *  how long the picture shows, a design duration like the dwell, not a wait for anything. */
 export const CALM_TIMINGS: Timings = { cover: 150, dwell: 250, reveal: 400, slack: 0 };
 
 export interface HandoverState {

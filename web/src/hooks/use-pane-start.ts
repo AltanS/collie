@@ -1,30 +1,36 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { CHAT_GRACE_MS, activityAt, type PaneActivity, type PaneHistory } from "@/lib/chat-gate";
+import { LAST_RESORT_NO_JOURNAL_MS, type PaneActivity, type PaneHistory } from "@/lib/chat-gate";
 import type { AgentStatus } from "@/lib/types";
 
 // What this view has seen of how the open pane's agent began, for lib/chat-gate.ts.
 //
-// Two readings, and both are memory of THIS view, never a fact the bridge holds:
+// Memory of THIS view, never a fact the bridge holds:
 //
 //   history   `fresh` when this view watched the pane turn from a shell into the agent, or first saw
 //             the agent idle. `unknown` when the first sight was already busy, done or unknown.
-//   activity  whether the agent has worked since it began (a status other than idle, or a prompt
-//             sent from this device), and whether that began {@link CHAT_GRACE_MS} ago or more.
+//   activity  the EVENTS seen since the agent began: it worked, it asked for input, its first turn
+//             ended. Each is read off a snapshot, in the render that brings it.
+//   settled   whether the journal read started AFTER the turn-end snapshot has answered.
+//
+// ── HOW THE TURN-END READ IS SEQUENCED ───────────────────────────────────────
+// The chat feed numbers its reads (hooks/use-chat-window.ts: `asked` is the number of the last read
+// started, `answered` the number of the last read that came back with an answer). The render that
+// first sees the turn end records `asked` as it stands in that render. A read started before that
+// render has a number at or below the mark; the read the turn-end poll starts runs in the effect
+// AFTER that render, so it gets the next number. `settled` is `answered > mark`: only an answer to a
+// read that began after the turn ended can say "still no log". A failed read settles nothing; the
+// next poll's read is the next chance, and the poll is what the operator's turn already made hot.
 //
 // ── A NEW AGENT IS A NEW RECORD ──────────────────────────────────────────────
-// Both readings belong to one agent in one pane. A pane switch, an agent that exits to a shell and
+// Every reading belongs to one agent in one pane. A pane switch, an agent that exits to a shell and
 // a different harness in the same pane all start a new record, so a prompt typed into the shell
 // (`codex`, sent from the phone) never counts as the new agent's first turn.
 //
-// ── ONE TIMER, AND ONLY WHILE IT CAN MATTER ──────────────────────────────────
-// The grace ends on a single timeout, armed when work begins and gone once it fires. It reads
-// nothing and fetches nothing: it only moves `recent` to `long`. The poll cadence is untouched.
-
-/** Which statuses count as "the agent has worked". `unknown` says nothing either way. */
-function hasWorked(status: AgentStatus | undefined): boolean {
-  return status === "working" || status === "blocked" || status === "done";
-}
+// ── ONE LAST-RESORT TIMER, AND ONLY WHILE NO EVENT CAN COME ─────────────────
+// Armed only while the agent works with nothing to read (lib/chat-gate.ts § LAST_RESORT_NO_JOURNAL_MS)
+// and gone the moment anything moves: the log becomes readable, the turn ends, the pane asks, or the
+// record resets. It reads nothing and fetches nothing. The poll cadence is untouched.
 
 interface Seen {
   paneId: string;
@@ -34,8 +40,8 @@ interface Seen {
 }
 
 /**
- * The next record, given the last one and this render's reading of the pane. Returns `prev` itself
- * when nothing that starts a new record moved, so the caller can compare by identity.
+ * The next identity record, given the last one and this render's reading of the pane. Returns `prev`
+ * itself when nothing that starts a new record moved, so the caller can compare by identity.
  */
 export function nextSeen(
   prev: Seen | null,
@@ -59,60 +65,126 @@ export function nextSeen(
   };
 }
 
+/** Everything this view remembers about one agent's start. The latches only ever go one way. */
+export interface StartRecord {
+  seen: Seen | null;
+  /** A snapshot showed the agent working, blocked or done. */
+  worked: boolean;
+  /** A snapshot showed the agent blocked: it asked for input. */
+  blocked: boolean;
+  /** The chat feed's `asked` in the render that first saw the first turn end; null until then. */
+  endMark: number | null;
+  /** A prompt was sent from this device. Arms the last resort on a harness whose status never moves. */
+  sent: boolean;
+  /** The last resort fired. */
+  stalled: boolean;
+}
+
+export const NO_RECORD: StartRecord = {
+  seen: null,
+  worked: false,
+  blocked: false,
+  endMark: null,
+  sent: false,
+  stalled: false,
+};
+
+/**
+ * The next record for this render's snapshot. Pure, and returns `prev` itself when nothing moved, so
+ * the hook can take it in render without looping.
+ *
+ * The first turn has ended when a snapshot reads `done`, or reads `idle` after one read the agent
+ * working. `idle` alone is not an end: a fresh agent is idle before its first prompt.
+ */
+export function nextRecord(
+  prev: StartRecord,
+  paneId: string,
+  harness: string | undefined,
+  isShell: boolean,
+  status: AgentStatus | undefined,
+  asked: number,
+): StartRecord {
+  const seen = nextSeen(prev.seen, paneId, harness, isShell, status);
+  const base = seen === prev.seen ? prev : { ...NO_RECORD, seen };
+  if (seen === null || seen.kind !== "agent" || harness === undefined) return base;
+  const worked = base.worked || status === "working" || status === "blocked" || status === "done";
+  const blocked = base.blocked || status === "blocked";
+  const ended = status === "done" || (base.worked && status === "idle");
+  const endMark = base.endMark ?? (ended ? asked : null);
+  if (worked === base.worked && blocked === base.blocked && endMark === base.endMark) return base;
+  return { ...base, worked, blocked, endMark };
+}
+
+/** The gate's activity reading of a record. A question or the last resort outranks an ended turn. */
+export function activityOf(record: StartRecord): PaneActivity {
+  if (record.blocked) return "blocked";
+  if (record.stalled) return "stalled";
+  if (record.endMark !== null) return "ended";
+  if (record.worked || record.sent) return "working";
+  return "none";
+}
+
 export interface PaneStart {
   history: PaneHistory;
   activity: PaneActivity;
+  /** A read started after the turn-end snapshot has answered (see the header). */
+  settled: boolean;
   /** The operator sent a prompt to this pane from this device. */
   markSent: () => void;
 }
 
+export interface JournalReads {
+  /** The number of the last chat read started. */
+  asked: number;
+  /** The number of the last chat read that came back with an answer. */
+  answered: number;
+}
+
+/**
+ * @param readable the pane has a session and its log is not known to be missing. While it is, the
+ *   last resort is never armed.
+ */
 export function usePaneStart(
   paneId: string,
   harness: string | undefined,
   isShell: boolean,
   status: AgentStatus | undefined,
+  reads: JournalReads,
+  readable: boolean,
 ): PaneStart {
-  const [seen, setSeen] = useState<Seen | null>(null);
-  // When this agent began to work (epoch ms), and whether the grace since then is over.
-  const [since, setSince] = useState<number | null>(null);
-  const [over, setOver] = useState(false);
+  const [record, setRecord] = useState<StartRecord>(NO_RECORD);
 
   // Taken in the render that sees it (the adjust-state-in-render pattern), so the first frame of a
-  // new agent already has its record and the body never draws one frame on the old one.
-  const next = nextSeen(seen, paneId, harness, isShell, status);
-  if (next !== seen) {
-    setSeen(next);
-    setSince(null);
-    setOver(false);
-  }
+  // new agent already has its record, and the render that brings the turn's end is the one whose
+  // `asked` becomes the mark.
+  const next = nextRecord(record, paneId, harness, isShell, status, reads.asked);
+  if (next !== record) setRecord(next);
 
-  const working = next !== null && next.kind === "agent" && hasWorked(status);
+  const activity = activityOf(next);
+  // THE LAST RESORT. Armed only while the agent works with nothing to read; every event above
+  // disarms it by moving `activity` or `readable`.
+  const armed = activity === "working" && !readable;
+  const seen = next.seen;
   useEffect(() => {
-    if (working) setSince((s) => s ?? Date.now());
-  }, [working, next]);
-
-  // The grace's one timer. Armed while work has begun and the grace is not yet over.
-  useEffect(() => {
-    if (since === null || over) return;
-    const now = Date.now();
-    if (activityAt(since, now) === "long") {
-      setOver(true);
-      return;
-    }
-    const id = setTimeout(() => setOver(true), since + CHAT_GRACE_MS - now);
+    if (!armed) return;
+    const id = setTimeout(
+      () => setRecord((r) => (r.seen === seen ? { ...r, stalled: true } : r)),
+      LAST_RESORT_NO_JOURNAL_MS,
+    );
     return () => clearTimeout(id);
-  }, [since, over]);
+  }, [armed, seen]);
 
-  const isAgent = next !== null && next.kind === "agent";
+  const isAgent = seen !== null && seen.kind === "agent";
   const markSent = useCallback(() => {
-    if (isAgent) setSince((s) => s ?? Date.now());
-  }, [isAgent]);
+    if (isAgent) setRecord((r) => (r.seen === seen && !r.sent ? { ...r, sent: true } : r));
+  }, [isAgent, seen]);
 
   return {
     // A pane this view has no record of yet reads as fresh: rule 3 of the gate must not fire on a
     // beat where the snapshot simply has not named the pane.
-    history: next?.history ?? "fresh",
-    activity: since === null ? "none" : over ? "long" : "recent",
+    history: seen?.history ?? "fresh",
+    activity,
+    settled: next.endMark !== null && reads.answered > next.endMark,
     markSent,
   };
 }
