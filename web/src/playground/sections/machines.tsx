@@ -77,13 +77,17 @@ const fresh: MachinesResponse = {
 const tabFresh: MachineCensusState = { kind: "census", census: fresh, failed: false };
 
 /** The Crew tab body on a memory router, in the dashboard's 16px gutter, the way the tab bar mounts it. */
-function CrewTabFrame({ state }: { state: MachineCensusState | "loading" }) {
+// A constant, not the literal: `e2e/handles.spec.ts` reads every `state="..."` in this folder as a
+// card handle, so a prop spelled `state="loading"` was counted as a handle no card carries.
+const CREW_TAB_LOADING = "loading" as const;
+
+function CrewTabFrame({ state }: { state: MachineCensusState | typeof CREW_TAB_LOADING }) {
   const [router] = useState(() =>
     createMemoryRouter(
       [
         {
           path: "/",
-          element: <div className="p-4">{state === "loading" ? <CrewTabSkeleton /> : <CrewTabView state={state} />}</div>,
+          element: <div className="p-4">{state === CREW_TAB_LOADING ? <CrewTabSkeleton /> : <CrewTabView state={state} />}</div>,
         },
         { path: "/machines/:id", element: <div className="p-4 text-sm text-muted-foreground">a machine's page</div> },
       ],
@@ -293,7 +297,7 @@ export function MachinesSection() {
 
         <Card state="crew-tab-loading" label="crew tab, the first read" reach="open the Crew tab for the first time in this page session.">
           <PhoneFrameCard height={420}>
-            <CrewTabFrame state="loading" />
+            <CrewTabFrame state={CREW_TAB_LOADING} />
           </PhoneFrameCard>
         </Card>
 
