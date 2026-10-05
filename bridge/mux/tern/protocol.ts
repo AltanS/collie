@@ -120,6 +120,8 @@ export function saysNoDaemon(stderr: string): boolean {
   return (
     s.includes("the session daemon did not answer") ||
     s.includes("no daemon running") ||
+    // What a socket path with no daemon answers (MUX_CONTRACT.md, TN).
+    s.includes("no tern is running") ||
     s.includes("cannot spawn daemon process") ||
     s.includes("connection refused") ||
     s.includes("broken pipe")

@@ -80,6 +80,9 @@ describe("error classifiers", () => {
     expect(saysNoDaemon("the session daemon did not answer")).toBe(true);
     expect(saysNoDaemon("connection refused")).toBe(true);
     expect(saysNoDaemon("no daemon running")).toBe(true);
+    // The real answer of TERN_DAEMON_SOCKET pointing at a path with no daemon, as Tern spells it.
+    expect(saysNoDaemon("tern: no Tern is running")).toBe(true);
+    expect(saysNoDaemon("No Tern is running\n")).toBe(true);
     expect(saysNoDaemon("ok")).toBe(false);
   });
 });
