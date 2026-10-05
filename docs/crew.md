@@ -233,6 +233,46 @@ A deputy is one peer the lead named ahead of time. It binds a standby door with 
 that door is never published. The lead's silence arms it, and your own pairing credential spends it,
 so the phone can reach the deputy while the lead is gone.
 
+## Machines
+
+Every Collie measures its own machine, and the lead keeps a day of it for each machine in the crew.
+
+Each Collie reads its CPU, memory and network about once every five seconds. It reads them on the
+same tick that already watches your panes, so nothing new runs in the background. A member sends
+its last reading with the answer it already gives the lead. The lead keeps one point per minute for
+each machine, for 24 hours. A Collie with no crew keeps the same day for its own machine.
+
+| what | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| CPU | yes | yes | yes |
+| Memory | yes, without the page cache | yes | yes |
+| Load average | yes | yes | no |
+| Network | yes, every interface except loopback | no | no |
+
+The day of points lives in `machine-history.json` in the lead's state folder. The lead writes it at
+most once every five minutes, and once more when it stops. A member keeps no history of its own, so
+the lead is the only place to look. When the lead is down, nobody records, and the chart shows a gap.
+
+A machine that stops answering keeps its last reading, with the time it was taken, and records no
+new minutes. Collie never shows a zero it did not measure. A member older than this feature sends no
+reading at all, and it stays in the crew as before.
+
+### Alerts for a machine
+
+You can set one rule for CPU and one for memory on each machine. A rule has a line, from 50% to 99%,
+and a time, from 5 to 120 minutes. The rules live in `machine-alerts.json` on the lead.
+
+The lead sends one push when every minute in that time is at or above the line. It needs a reading
+for at least 80% of those minutes. It sends nothing more while the value stays high. The alert ends
+after five minutes in a row at least five points under the line, and the next climb sends a new
+push. An open alert is saved with the rules, so a restart does not send it twice.
+
+A machine that is not answering neither starts nor ends an alert. A snooze holds every alert, and
+the **Machine load stays high** switch in Settings turns them all off
+([which alerts Collie sends](voice-and-push.md#which-alerts-collie-sends)).
+
+Nothing leaves the crew. The readings travel on the crew link and stay on the lead.
+
 ## Members that were not installed by install.sh
 
 A crew updates every member from the phone, except the members whose files somebody else owns.
