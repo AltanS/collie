@@ -27,7 +27,7 @@
 // `[gap, cpu, cpuMax, mem, rx, tx]` plus a seventh value, the fullest disk's fraction, on a minute that
 // has one. `gap` is the minutes since the row before (1 for a whole run) and the fractions are rounded
 // to three places. Only the last row's sample count is kept, as
-// `n`: it is the one minute a sample may still fold into. One machine's full day is about 52 KiB,
+// `n`: it is the one minute a sample may still fold into. One machine's full day is about 46 KiB (54 KiB with the disk value),
 // where version 1 (nine sums per minute, epoch milliseconds on every row) was about 80 KiB, and the
 // file is rewritten every five minutes. The disk value adds about 6 bytes a row. Version 1 still loads,
 // and so does a version 2 file written before the disk value (its minutes have none).

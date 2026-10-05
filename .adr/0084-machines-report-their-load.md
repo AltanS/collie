@@ -60,12 +60,12 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
 
 3. **The history is the lead's, not each member's.** The lead (or a solo Collie) keeps one bucket per
    minute per machine for 24 hours: CPU average and maximum, memory fraction, and network averages.
-   It holds them in fixed typed arrays, about 55 KiB per machine for the full day, and persists them
+   It holds them in fixed typed arrays, about 68 KiB per machine for the full day, and persists them
    to `machine-history.json` from the tick, at most once every five minutes and only when a minute
    changed, and on shutdown, atomic and owner-only. The file is version 2: per machine the first
    minute, the last minute's reading count, and one row per minute
    `[minutes since the last row, cpu, cpuMax, mem, rx, tx]`, fractions to 3 decimals. A version 1
-   file still loads. A day of one machine is about 49 KiB on disk, against 80 KiB before. A peer keeps nothing. The phone asks the lead for everything, so
+   file still loads. A day of one machine is about 46 KiB on disk (54 KiB with a disk reported), against 80 KiB before. A peer keeps nothing. The phone asks the lead for everything, so
    history kept on a peer would need a forwarded route and a second copy of the same day, and would
    still be lost with that peer. A removed member's history and alert rules are dropped with it, live
    and again on the next save for a member removed while the lead was down. A bucket more than a

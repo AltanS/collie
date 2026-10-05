@@ -268,7 +268,7 @@ filled up. Each disk shows the same numbers as `df`: "used" is df's Used, and th
 The total is what you can still fill as a normal user, so it can be a few percent under df's Size,
 which also counts the space reserved for root. Collie reads the disks once a minute, in the background.
 A disk that does not answer, such as a network mount that hangs, never holds up the rest, and Collie
-stops showing it after three minutes without an answer. No program is started for it.
+stops showing it after three and a half minutes without an answer. No program is started for it.
 
 **Network counts each byte once.** On Linux, Collie adds up the physical interfaces, such as `eth0`,
 `enp3s0` and `wlan0`. It leaves out every interface whose bytes also cross a physical one:
@@ -298,8 +298,9 @@ keeps its old time. A member whose sampler hangs therefore shows a gap, not a fl
   lead. Set the rules again on the new lead.
 - **A collie on its own that becomes a lead drops its own history.** On its own it names its machine
   `local`. As a lead it uses its member id, and the `local` points and rules go.
-- **A machine removed from the crew takes its history and its alert rules with it.** A member older than this feature sends no
-reading at all, and it stays in the crew as before.
+- **A machine removed from the crew takes its history and its alert rules with it.**
+
+A member older than this feature sends no reading at all, and it stays in the crew as before.
 
 ### Alerts for a machine
 

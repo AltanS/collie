@@ -70,7 +70,7 @@ Running multiple sessions creates multiple waiting prompts. Collie groups panes 
 marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count
 on the line at the top, which jumps to the first of them. Hold a row to pin that pane to the top. The
 clock and hourglass beside the count order the list by recent activity or by the cache that goes
-cold first. On tmux and zellij, these marks require the beacon hooks from
+cold first. On tmux, zellij and tern, these marks require the beacon hooks from
 [step 3](#3-run-claude-code-in-a-pane).
 
 ## Drive it from your phone with Collie
@@ -92,8 +92,8 @@ changes.
 ## What you need
 
 - A Linux or macOS host with Claude Code installed.
-- A terminal multiplexer: Herdr, tmux, or zellij. Herdr detects agents directly. On tmux and zellij,
-  Collie uses beacon hooks, which require Linux.
+- A terminal multiplexer: Herdr, tmux, zellij, tuios or tern. Herdr and tuios detect agents directly. On tmux, zellij
+  and tern, Collie uses beacon hooks, which require Linux.
 - Tailscale installed on the host and phone, with HTTPS enabled on your tailnet. For other setups,
   see [Deployment](deployment.md).
 - An iPhone or an Android phone.
