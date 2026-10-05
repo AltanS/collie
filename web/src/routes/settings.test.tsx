@@ -112,13 +112,15 @@ describe("SettingsRoute — the index", () => {
 
   // Machines is a page of its own and not a section, so its row is the one that opens `/machines`. It is
   // always there, solo included: a solo collie is one machine with a load worth watching.
-  it("offers Machines on a solo install, between System and Experiments, and opens its own page", async () => {
+  it("offers Machines on a solo install, after System, and opens its own page", async () => {
     const router = renderSettings();
     const row = await screen.findByRole("button", { name: /Machines/ });
     const all = screen.getAllByRole("button").map((b) => b.textContent ?? "");
     const at = (word: string) => all.findIndex((text) => text.includes(word));
     expect(at("System")).toBeLessThan(at("Machines"));
-    expect(at("Machines")).toBeLessThan(at("Experiments"));
+    // No Experiments row exists while the list is empty (ADR 0082), so Machines closes the index. When
+    // one returns it sits after Machines, which is where its section is placed.
+    expect(at("Experiments")).toBe(-1);
     await userEvent.click(row);
     await waitFor(() => expect(router.state.location.pathname).toBe("/machines"));
     expect(router.state.location.state).toMatchObject({ from: "/settings" });

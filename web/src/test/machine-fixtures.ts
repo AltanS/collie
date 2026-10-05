@@ -63,7 +63,7 @@ export const fixtureMachines: MachinesResponse = { ts: FIXTURE_MACHINES_TS, mach
 /** The default world is solo: one row, the lead, and `isLead` true. */
 export const fixtureMachinesSolo: MachinesResponse = {
   ts: FIXTURE_MACHINES_TS,
-  machines: [{ ...fixtureMachineRows[0]!, name: "this-machine", id: "this-machine" }],
+  machines: [{ ...fixtureMachineRows[0]!, name: "this-machine", id: "local" }],
 };
 
 /**

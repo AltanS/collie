@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { setMachineAlerts } from "@/lib/api";
 import { t } from "@/lib/i18n";
+import { ALERT_DURATIONS, ALERT_THRESHOLDS, DEFAULT_ALERT_RULE } from "@/lib/machine-alerts";
 import { formatPercent } from "@/lib/machine-units";
 import { mutate } from "@/lib/mutate";
 import type { MachineAlertRule, MachineAlerts, MachineMetric } from "@/lib/types";
@@ -34,10 +35,6 @@ import { cn } from "@/lib/utils";
 // a local copy only until the prop moves, so the controls do not flash the old rules between the answer
 // and the next poll.
 
-const THRESHOLDS = [0.8, 0.9, 0.95] as const;
-const DURATIONS = [5, 10, 30, 60] as const;
-/** What a switch turns on to, before the operator picks anything else. */
-const DEFAULT_RULE: MachineAlertRule = { above: 0.9, forMin: 10 };
 const METRICS = ["cpu", "mem"] as const satisfies readonly MachineMetric[];
 
 /** A stable empty list for the `firing` default, so the prop keeps one identity across renders. */
@@ -131,7 +128,7 @@ export function MachineAlertsControl({ machineId, alerts, firing = NOT_FIRING, o
           rule={shown[metric]}
           firing={firing.includes(metric)}
           busy={saving}
-          onToggle={(on) => void save(withRule(metric, on ? DEFAULT_RULE : null))}
+          onToggle={(on) => void save(withRule(metric, on ? DEFAULT_ALERT_RULE : null))}
           onChange={(rule) => void save(withRule(metric, rule))}
         />
       ))}
@@ -190,14 +187,14 @@ function RuleRow({
         <div className="mt-3 space-y-3">
           <Segmented
             label={t("machines.alerts.above", { metric: label })}
-            options={withCurrent(THRESHOLDS, rule.above).map((v) => ({ value: v, label: formatPercent(v) }))}
+            options={withCurrent(ALERT_THRESHOLDS, rule.above).map((v) => ({ value: v, label: formatPercent(v) }))}
             value={rule.above}
             disabled={busy}
             onChange={(above) => onChange({ ...rule, above })}
           />
           <Segmented
             label={t("machines.alerts.for", { metric: label })}
-            options={withCurrent(DURATIONS, rule.forMin).map((v) => ({ value: v, label: t("machines.alerts.minutes", { count: v }) }))}
+            options={withCurrent(ALERT_DURATIONS, rule.forMin).map((v) => ({ value: v, label: t("machines.alerts.minutes", { count: v }) }))}
             value={rule.forMin}
             disabled={busy}
             onChange={(forMin) => onChange({ ...rule, forMin })}

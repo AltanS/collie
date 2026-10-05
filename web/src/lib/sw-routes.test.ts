@@ -17,6 +17,25 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/api/pane/w1:p1/keys")).toBe(true);
   });
 
+  // The Files reads (ADR 0083) and the Machines routes (ADR 0084) are API calls like their neighbours:
+  // the worker answers none of them from the precache, with or without a query, and the app pages that
+  // show them are Collie's own routes, answered offline from the shell.
+  it("never answers the Files and Machines routes from the precache", () => {
+    for (const path of [
+      "/api/pane/w1%3Ap1/files",
+      "/api/pane/w1%3Ap1/files?dir=docs&host=laptop",
+      "/api/workspace/w1/files?path=README.md",
+      "/api/machines",
+      "/api/machines/local/history",
+      "/api/machines/laptop/alerts",
+    ]) {
+      expect(isNetworkOnlyNavigation(path)).toBe(true);
+    }
+    for (const page of ["/machines", "/machines/local", "/pane/w1%3Ap1/changes/files?dir=docs", "/space/w1/changes/files"]) {
+      expect(isNetworkOnlyNavigation(page)).toBe(false);
+    }
+  });
+
   it("passes the reserved proxy namespace to the network, with or without the slash", () => {
     expect(isNetworkOnlyNavigation("/auth")).toBe(true);
     expect(isNetworkOnlyNavigation("/auth/")).toBe(true);

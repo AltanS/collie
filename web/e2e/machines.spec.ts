@@ -72,7 +72,7 @@ test("a solo collie lists its one machine and opens it", async ({ page }) => {
   await page.goto("/machines");
   await expect(page.getByRole("meter", { name: en["machines.metric.cpu"] })).toBeVisible();
   await page.getByRole("button", { name: "this-machine", exact: true }).click();
-  await landed(page, "/machines/this-machine");
+  await landed(page, "/machines/local");
   await expect(page.getByRole("img", { name: /^CPU, last hour:/u })).toBeVisible();
 });
 

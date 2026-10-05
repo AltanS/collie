@@ -448,9 +448,12 @@ echo "systemctl \$*" >> "$L_CALLS"
 [ "\$2" = "is-active" ] && echo active
 exit 0
 EOF
+# `print` answers with a pid line, as launchd does for a running job: `start` reads it back after
+# `kickstart` and prints "bridge started" only when it shows.
 cat > "${L_BIN}/launchctl" <<EOF
 #!/bin/sh
 echo "launchctl \$*" >> "$L_CALLS"
+[ "\$1" = print ] && echo "	pid = 4242"
 exit 0
 EOF
 cat > "${L_BIN}/journalctl" <<EOF
@@ -652,6 +655,7 @@ CALLS="$(cat "$L_CALLS")"
 assert_contains "$CALLS" "launchctl bootout gui/$(id -u)/herdr.collie"
 assert_contains "$CALLS" "launchctl enable gui/$(id -u)/herdr.collie"
 assert_contains "$CALLS" "launchctl bootstrap gui/$(id -u) ${PLIST}"
+assert_contains "$CALLS" "launchctl kickstart gui/$(id -u)/herdr.collie"
 assert_contains "$STDOUT" "bridge started (launchd: herdr.collie)"
 if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$PLIST" >/dev/null || fail "the generated plist is not a valid property list"
@@ -671,6 +675,7 @@ install_flaky_launchctl() {
   cat > "${L_BIN}/launchctl" <<EOF
 #!/bin/sh
 echo "launchctl \$*" >> "$L_CALLS"
+[ "\$1" = print ] && echo "	pid = 4242"
 [ "\$1" = bootstrap ] || exit 0
 n=0
 [ -f "${TMP_ROOT}/bootstrap.count" ] && read n < "${TMP_ROOT}/bootstrap.count"
