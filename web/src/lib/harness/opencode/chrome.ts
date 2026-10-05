@@ -30,9 +30,11 @@ import {
   isBarRow,
   isBlank,
   isModelRow,
+  isOverlayRow,
   isQuestionFooter,
   isRuleRow,
   lineText,
+  OVERLAY_CHROME_GLYPHS,
   rstrip,
 } from "./markers";
 import { displayWidth } from "../../text-width";
@@ -279,12 +281,24 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   if (tail.draftStart > tail.draftEnd) return null; // no draft block — only the model row below
   const parts: string[] = [];
   for (let i = tail.draftStart; i <= tail.draftEnd; i++) {
+    // A bare bar row inside the block is a blank line of the draft. A sidebar row sharing
+    // the bar run reads as blank too — but only with panel box glyphs aboard: the width
+    // gate alone would also eat deeply-indented typed code, which has no box glyphs.
+    if (isOverlayRow(texts[i]!) && OVERLAY_CHROME_GLYPHS.test(texts[i]!)) {
+      parts.push("");
+      continue;
+    }
     // A bare bar row inside the block is a blank line of the draft.
     const text = isBareBar(texts[i]!) ? "" : barDraftText(texts[i]!);
     if (text === null) return null; // a non-gutter row inside the block — not a shape we claim
     const cleaned = stripOverlaySuffix(text);
     const trimmed = cleaned.trim();
-    parts.push(isEdgeOnly(trimmed) ? "" : trimmed);
+    // A palette-box blank row (`┃` + pad + `┃`) carries no words — only the composer's own
+    // bar plus a panel's right edge — so it reads as blank, never as a one-glyph draft line
+    // that would poison the join ("┃ …") and stall verification. Scoped to blank rows in
+    // this reader on purpose: the walk-stop (isPanelBorder) and the dialog walks must keep
+    // seeing the row, and a trailing `┃` on a row WITH words stays untouched (tables).
+    parts.push(isEdgeOnly(trimmed) || /^[\s┃]*$/.test(trimmed) ? "" : trimmed);
   }
   const draft = parts.filter((p) => p.length > 0).join(" ");
   if (draft.length === 0) return null;

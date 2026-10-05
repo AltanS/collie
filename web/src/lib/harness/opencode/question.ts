@@ -41,7 +41,7 @@
 import type { StyledLine } from "../../blocks";
 import type { PromptFeedback, PromptModel, PromptOption } from "../prompt-model";
 import { backgroundOf } from "./dialog";
-import { FREE_TEXT_LABEL, barDraftText, isBareBar, isBarRow, isBlank, lineText, questionFooter, rstrip } from "./markers";
+import { FREE_TEXT_LABEL, barDraftText, isBareBar, isBarRow, isBlank, isOverlayRow, lineText, questionFooter, rstrip } from "./markers";
 
 // How far above the footer the dialog may start. Nine options with descriptions need 22 rows from
 // the first text row to the footer (QUESTION_NOTES.md, "Height"); a few more for a wrapped question.
@@ -80,8 +80,10 @@ export function detectQuestionDialog(lines: StyledLine[]): QuestionRegion | null
 
   // 3. The numbered rows, walked UP from the footer. One bare bar row sits between the list and the
   //    footer; each numbered row owns the unnumbered, indented rows under it.
-  const entries = walkEntries(texts, footer, Math.max(0, footer - MAX_REGION_ROWS));
-  if (entries === null) return null;
+  const walked = walkEntries(texts, footer, Math.max(0, footer - MAX_REGION_ROWS));
+  if (walked === null) return null;
+  const entries = walked.entries;
+  let sawOverlay = walked.sawOverlay;
   const firstOption = entries[0]!.row;
 
   // 4. The free-text row: the last numbered row, when it carries opencode's own label. It is not an
@@ -102,21 +104,40 @@ export function detectQuestionDialog(lines: StyledLine[]): QuestionRegion | null
   //    row between them (a single select has one, a multi select none), then take the run of
   //    gutter-aligned text rows. A narrow pane wraps it, so the rows join with one space.
   let q = firstOption - 1;
-  while (q >= 0 && isBareBar(texts[q]!)) q--;
-  const paragraphEnd = q;
+  while (q >= 0 && (isBareBar(texts[q]!) || isOverlayRow(texts[q]!))) q--;
   const parts: string[] = [];
+  let startLine = q + 1;
   while (q >= 0 && firstOption - q <= MAX_REGION_ROWS) {
+    if (isOverlayRow(texts[q]!)) {
+      sawOverlay = true;
+      q--;
+      continue;
+    }
     const inner = isBarRow(texts[q]!) ? barDraftText(texts[q]!) : null;
-    if (inner === null || inner.trim().length === 0 || inner.startsWith(" ")) break;
-    parts.unshift(inner.trim());
+    if (inner === null) break;
+    const shared = stripOverlayShared(inner);
+    if (shared.cut) sawOverlay = true;
+    const clean = shared.text;
+    if (clean.trim().length === 0 || clean.startsWith(" ")) break;
+    parts.unshift(clean.trim());
+    startLine = q;
     q--;
   }
   if (parts.length === 0) return null;
-  const startLine = paragraphEnd - parts.length + 1;
-  // The paragraph sits under one bare bar row (the dialog's top padding) and nothing but the
-  // transcript above that. A TEXT bar row in its place is a tab bar or another dialog's body.
-  if (q < 0 || !isBareBar(texts[q]!)) return null;
-  if (q - 1 >= 0 && isBarRow(texts[q - 1]!) && !isBareBar(texts[q - 1]!)) return null;
+  // The paragraph sits under padding — bare bar rows, with overlay rows counting as padding
+  // too (a sidebar can paint over the very row that separates the dialog from the
+  // transcript) — and over that nothing but the transcript. A TEXT bar row there is a tab
+  // bar or another dialog's body. Missing padding is allowed only with overlay evidence
+  // anywhere in this detection (footer, entries and pointer already verified above):
+  // without a sidebar on screen the rule behaves bit-identically to before.
+  let seenPadding = false;
+  while (q >= 0 && (isBareBar(texts[q]!) || isOverlayRow(texts[q]!))) {
+    seenPadding = true;
+    if (isOverlayRow(texts[q]!)) sawOverlay = true;
+    q--;
+  }
+  if (!seenPadding && !sawOverlay) return null;
+  if (q >= 0 && isBarRow(texts[q]!) && !isBareBar(texts[q]!)) return null;
 
   // 7. The free-text row's state. Opened, a row under it holds the placeholder or the typed text,
   //    the chip stays on the row, and every digit becomes text. The chip staying on the row is
@@ -140,14 +161,18 @@ export function detectQuestionDialog(lines: StyledLine[]): QuestionRegion | null
 
   const options: PromptOption[] = choices.map((e) => {
     const option: PromptOption = { label: e.label, keys: [String(e.n)] };
-    if (e.sub.length > 0) option.description = e.sub.join(" ");
+    // Descriptions are agent-side text like labels; the free-text row's typed sub above
+    // is user text and stays raw — a mismatch there must stall, not silently drop words.
+    if (e.sub.length > 0)
+      option.description = e.sub.map((s) => stripOverlayShared(s).text.trim()).join(" ");
     return option;
   });
 
   // The dialog's own rows from the question to the footer, byte-faithful: the bridge binds the first
   // write to this text. It ends at the footer, inside the bridge's tail window. The pointer is a
   // STYLE, never text, so a moved chip leaves it as it was, and a digit does not care where the
-  // chip is. A toggled or typed row IS text, so those change it.
+  // chip is. A toggled or typed row IS text, so those change it. Overlay rows stay in: the bridge
+  // compares byte-exact against the fresh screen, so a stripped row would refuse every tap.
   const signature = texts.slice(startLine, footer + 1).join("\n");
   // The identity the free-text flow would compare mid-flight: the same rows without the input row.
   const core = texts.slice(startLine, footer + 1).filter((_, i) => !inputRows.includes(startLine + i));
@@ -175,6 +200,44 @@ function rowsAfter(row: number, count: number): number[] {
 
 /** The most options one digit can reach. The free-text row is not counted. */
 export const MAX_OPTIONS = 9;
+
+/** The wide gap that separates dialog content from a same-row sidebar tail (`…Confirm   <wide
+ *  gap>│ model │`): an overlay sits in its own column, far from the typed words, while a pasted
+ *  `╭─ title ─╮` or `┌ Name ┐` closes its box one space after its words and must stay whole. */
+const OVERLAY_TAIL_GAP = / {25,}\S/;
+
+/** Cut a trailing overlay tail off one row's text (`…Confirm   <wide gap>│ model │`): the tab-row
+ *  tokenizer below must not read sidebar tokens as chips. Columns left of the cut are untouched,
+ *  so style lookups by column still land. The literal region keeps the full row: the bridge binds
+ *  byte-exact against the fresh screen, so a stripped signature would refuse every tap. */
+export function stripOverlayTail(text: string): string {
+  const cut = text.search(OVERLAY_TAIL_GAP);
+  return cut < 0 ? text : text.slice(0, cut);
+}
+
+/** A row with its same-row sidebar tail cut off, plus whether a cut fired. */
+export interface StrippedTail {
+  text: string;
+  cut: boolean;
+}
+
+/** Cut a same-row sidebar tail off DIALOG text and say whether it fired: either a wide gap run
+ *  or the first light `│` — dialog chrome never uses light verticals (heavy `┃` only, see
+ *  markers.ts), so a `│` past the gutter is panel chrome, never content. Agent-authored `│`
+ *  inside option/question text truncates display text only (keys/signature unaffected). The
+ *  literal region keeps the full row. NEVER apply to user-typed rows (free-text sub): a
+ *  mismatch there must stall, not silently drop words. */
+export function stripOverlayShared(text: string): StrippedTail {
+  const gap = text.search(OVERLAY_TAIL_GAP);
+  const pipe = text.indexOf("│");
+  let at = -1;
+  if (gap >= 0 && pipe >= 0) at = Math.min(gap, pipe);
+  else at = gap >= 0 ? gap : pipe;
+  if (at < 0) return { text, cut: false };
+  const kept = text.slice(0, at);
+  if (kept.trim() === "") return { text, cut: false };
+  return { text: kept, cut: true };
+}
 
 /** A numbered row and the rows hung under it. */
 export interface Entry {
@@ -208,17 +271,35 @@ export function locateFooter(texts: string[]): number {
  * with an empty description that was not measured, ends the walk early and fails this, which is
  * the point).
  */
-export function walkEntries(texts: string[], footer: number, top: number): Entry[] | null {
+export function walkEntries(
+  texts: string[],
+  footer: number,
+  top: number,
+): { entries: Entry[]; sawOverlay: boolean } | null {
   let at = footer - 1;
-  while (at >= 0 && isBareBar(texts[at]!)) at--;
+  let sawOverlay = false;
+  while (at >= 0 && (isBareBar(texts[at]!) || isOverlayRow(texts[at]!))) {
+    if (isOverlayRow(texts[at]!)) sawOverlay = true;
+    at--;
+  }
   const entries: Entry[] = [];
   let pending: string[] = [];
   for (; at >= top; at--) {
     const inner = barDraftText(texts[at]!);
     if (inner === null) break;
+    // Overlay chrome is not dialog content: skip it without touching pending.
+    if (isOverlayRow(texts[at]!)) {
+      sawOverlay = true;
+      continue;
+    }
     const numbered = NUMBERED.exec(inner);
     if (numbered !== null) {
-      entries.unshift({ row: at, n: Number(numbered[1]), label: numbered[2]!.trim(), sub: pending });
+      // Labels are agent-side text (options) or opencode's own literal (free-text row):
+      // a shared-row sidebar tail is foreign chrome either way. Sub-rows stay raw here —
+      // the caller strips choices' subs but never the free-text row's typed text.
+      const shared = stripOverlayShared(numbered[2]!.trim());
+      if (shared.cut) sawOverlay = true;
+      entries.unshift({ row: at, n: Number(numbered[1]), label: shared.text.trim(), sub: pending });
       pending = [];
       continue;
     }
@@ -229,7 +310,7 @@ export function walkEntries(texts: string[], footer: number, top: number): Entry
   // Sub-rows with no numbered row above them are not a list (a torn frame, or foreign output).
   if (pending.length > 0 || entries.length === 0) return null;
   if (!entries.every((e, i) => e.n === i + 1)) return null;
-  return entries;
+  return { entries, sawOverlay };
 }
 
 /**
