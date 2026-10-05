@@ -1,5 +1,5 @@
+import { bandPath, linePath, maxOf, pointsInRange, runsOf, summarize, xOf, xTicks, yOf, mergeHistory, sinceOf, type PlotBox } from "./machine-chart";
 import type { MachineHistoryPoint } from "./types";
-import { bandPath, linePath, maxOf, pointsInRange, runsOf, summarize, xOf, xTicks, yOf, type PlotBox } from "./machine-chart";
 
 const STEP = 60_000;
 const TS = 10_000_000;
@@ -129,5 +129,50 @@ describe("xTicks", () => {
     expect(xTicks("hour")[0]).toEqual({ frac: 0, kind: "minutes", count: 60 });
     expect(xTicks("day")[1]).toEqual({ frac: 0.5, kind: "hours", count: 12 });
     expect(xTicks("day")[2]).toEqual({ frac: 1, kind: "now" });
+  });
+});
+
+describe("mergeHistory", () => {
+  const M = 60_000;
+  const answer = (ts: number, ...times: number[]) => ({
+    ts,
+    stepMs: M,
+    points: times.map((t): MachineHistoryPoint => [t, 0.1, 0.2, 0.3, null, null]),
+  });
+
+  it("takes the first answer whole", () => {
+    const first = answer(10 * M, 8 * M, 9 * M);
+    expect(mergeHistory(null, first)).toBe(first);
+  });
+
+  it("replaces the minutes the later answer covers and appends the new ones", () => {
+    const held = answer(10 * M, 7 * M, 8 * M, 9 * M);
+    const later = answer(11 * M, 9 * M, 10 * M);
+    later.points[0]![1] = 0.9;
+    const merged = mergeHistory(held, later);
+    expect(merged.ts).toBe(11 * M);
+    expect(merged.points.map((p) => p[0])).toEqual([7 * M, 8 * M, 9 * M, 10 * M]);
+    expect(merged.points[2]![1]).toBe(0.9);
+  });
+
+  it("drops what fell out of the day", () => {
+    const DAY = 24 * 60 * M;
+    const held = answer(DAY, 0, M, 2 * M);
+    // A point exactly a day older than the new `ts` has left the window too.
+    const merged = mergeHistory(held, answer(DAY + 1.5 * M, DAY + M));
+    expect(merged.points.map((p) => p[0])).toEqual([2 * M, DAY + M]);
+  });
+
+  it("keeps the held day when the later answer has no new minute", () => {
+    const held = answer(10 * M, 8 * M, 9 * M);
+    const merged = mergeHistory(held, answer(10 * M + 5_000));
+    expect(merged.points.map((p) => p[0])).toEqual([8 * M, 9 * M]);
+    expect(merged.ts).toBe(10 * M + 5_000);
+  });
+
+  it("asks from the newest point it holds, or for the whole day", () => {
+    expect(sinceOf(null)).toBeUndefined();
+    expect(sinceOf(answer(10 * M))).toBeUndefined();
+    expect(sinceOf(answer(10 * M, 8 * M, 9 * M))).toBe(9 * M);
   });
 });

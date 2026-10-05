@@ -20,7 +20,7 @@ import {
   paneTextWithDraft,
   recordReply,
 } from "@/test/handlers";
-import { fixtureMachineHistory, fixtureMachines, fixtureMachinesSolo } from "@/test/machine-fixtures";
+import { censusFor, fixtureMachines, fixtureMachinesSolo, historyFor } from "@/test/machine-fixtures";
 
 // The `app` target's API. The shipped bundle is served off disk by a static server, so nothing
 // answers `/api/*` unless this module does.
@@ -217,8 +217,8 @@ async function answer(route: Route, path: string, folders: FolderWorld): Promise
   // The machines census: a solo lead with one row, its day of history, and the alert POST echoing the
   // body it was given (the bridge answers the rules as stored). A case that wants a crew, or that
   // wants the rules to stick, registers its own route after `installApiStub` (see `installMachinesWorld`).
-  if (path === "/api/machines") return fulfillJson(route, fixtureMachinesSolo);
-  if (/^\/api\/machines\/[^/]+\/history$/.test(path)) return fulfillJson(route, fixtureMachineHistory());
+  if (path === "/api/machines") return fulfillJson(route, censusFor(fixtureMachinesSolo, new URL(route.request().url())));
+  if (/^\/api\/machines\/[^/]+\/history$/.test(path)) return fulfillJson(route, historyFor(new URL(route.request().url())));
   if (/^\/api\/machines\/[^/]+\/alerts$/.test(path) && method === "POST") {
     // SAFETY: as in `installMachinesWorld`, the body is the app's own `MachineAlerts`.
     return fulfillJson(route, { alerts: route.request().postDataJSON() as MachineAlerts });
@@ -330,7 +330,7 @@ export async function installMachinesWorld(page: Page): Promise<{ posted: { id: 
   const machines = structuredClone(fixtureMachines);
   await page.route(
     (url) => url.pathname === "/api/machines",
-    (route) => fulfillJson(route, machines),
+    (route) => fulfillJson(route, censusFor(machines, new URL(route.request().url()))),
   );
   await page.route(
     (url) => /^\/api\/machines\/[^/]+\/alerts$/.test(url.pathname),

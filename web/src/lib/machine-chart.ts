@@ -13,7 +13,7 @@
 // the answering bridge's clock, and a phone a few minutes off would otherwise draw the whole chart
 // shifted (the argument lib/host-health.ts makes for every other age in the app).
 
-import type { MachineHistoryPoint } from "./types";
+import type { MachineHistoryPoint, MachineHistoryResponse } from "./types";
 
 /** The two ranges the detail page switches between. */
 export type MachineRange = "hour" | "day";
@@ -168,4 +168,27 @@ export function xTicks(range: MachineRange): XTick[] {
     { frac: 0.5, kind: "hours", count: 12 },
     { frac: 1, kind: "now" },
   ];
+}
+
+/** A day: the most the history answer holds, and what a merged answer is cut to. */
+const DAY_MS = RANGE_MS.day;
+
+/**
+ * Fold a later history answer into the one the page holds. The page reads the whole day once, then
+ * asks only for the minutes from its newest point on (`?since=`), and that answer replaces every
+ * point it covers: the newest minute was still filling when it was read last time. Points a day or
+ * more older than the new answer's `ts` go. An answer that ignored `since` (it holds the whole day)
+ * simply replaces everything, so the merge is right either way.
+ */
+export function mergeHistory(prev: MachineHistoryResponse | null, next: MachineHistoryResponse): MachineHistoryResponse {
+  if (prev === null) return next;
+  const first = next.points[0]?.[0] ?? Number.POSITIVE_INFINITY;
+  const floor = next.ts - DAY_MS;
+  const kept = prev.points.filter((p) => p[0] < first && p[0] > floor);
+  return { ts: next.ts, stepMs: next.stepMs, points: kept.length === 0 ? next.points : [...kept, ...next.points] };
+}
+
+/** Where the next incremental read starts: the newest point the page holds, or the whole day. */
+export function sinceOf(history: MachineHistoryResponse | null): number | undefined {
+  return history?.points.at(-1)?.[0];
 }

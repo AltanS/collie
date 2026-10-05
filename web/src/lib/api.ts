@@ -1334,13 +1334,21 @@ export function fetchCrew(signal?: AbortSignal): Promise<CrewStatusResponse> {
  * answers for the whole crew, and a peer refuses with 404, which `machinesLoader` reads as "nothing
  * to show here" rather than as a failure.
  */
-export function fetchMachines(signal?: AbortSignal): Promise<MachinesResponse> {
-  return req<MachinesResponse>("/api/machines", { signal });
+export function fetchMachines(signal?: AbortSignal, opts: { spark?: number } = {}): Promise<MachinesResponse> {
+  // `?spark=N` adds each row's last N complete minutes for the small charts; without it the answer is
+  // the plain census.
+  const query = opts.spark === undefined ? "" : `?spark=${opts.spark}`;
+  return req<MachinesResponse>(`/api/machines${query}`, { signal });
 }
 
-/** One machine's last 24 hours at one point per minute (`GET /api/machines/:id/history`). */
-export function fetchMachineHistory(id: string, signal?: AbortSignal): Promise<MachineHistoryResponse> {
-  return req<MachineHistoryResponse>(`/api/machines/${encodeURIComponent(id)}/history`, { signal });
+/**
+ * One machine's last 24 hours at one point per minute (`GET /api/machines/:id/history`). With
+ * `since`, only the minutes starting at or after it: the page reads the day once, then only what it
+ * has not seen.
+ */
+export function fetchMachineHistory(id: string, signal?: AbortSignal, since?: number): Promise<MachineHistoryResponse> {
+  const query = since === undefined ? "" : `?since=${Math.max(0, Math.floor(since))}`;
+  return req<MachineHistoryResponse>(`/api/machines/${encodeURIComponent(id)}/history${query}`, { signal });
 }
 
 /**

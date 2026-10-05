@@ -8,7 +8,7 @@ import { MachineHistory, MINUTE_MS, minuteOf } from "./machine-history.ts";
 import { MachineWatch, SOLO_MACHINE_ID, type MachineRosterEntry } from "./machines.ts";
 import { serveMachinesRoute, type MachineRouteCaller } from "./server.ts";
 import { ALERT_DURATIONS, ALERT_THRESHOLDS } from "../web/src/lib/machine-alerts.ts";
-import { pointsInRange, runsOf } from "../web/src/lib/machine-chart.ts";
+import { mergeHistory, pointsInRange, runsOf, sinceOf } from "../web/src/lib/machine-chart.ts";
 import { fetchMachineHistory, fetchMachines, apiErrorFields, setMachineAlerts } from "../web/src/lib/api.ts";
 
 // THE MACHINES PAGES' TWO HALVES, ASKED OF EACH OTHER (ADR 0084).
@@ -33,7 +33,7 @@ Object.defineProperty(globalThis, "localStorage", {
 
 // The loaders import the build stamp vite bakes in at build time. Give it a value, then load them.
 Object.defineProperty(globalThis, "__BUILD_INFO__", { value: { version: "0.0.0", channel: "dev" }, configurable: true });
-const { machinesLoader } = await import("../web/src/lib/loaders.ts");
+const { MACHINE_SPARK_MINUTES, machinesListLoader, machinesLoader } = await import("../web/src/lib/loaders.ts");
 
 const ROSTER: MachineRosterEntry[] = [
   { id: "desk", name: "desk.lan", isLead: true, health: "reachable" },
@@ -136,6 +136,46 @@ describe("the phone's Machines fetchers read the bridge's real answers", () => {
     expect(runsOf(inRange, (p) => p[3], history.stepMs).flat().every((pt) => pt.v === 0.25)).toBe(true);
     expect(runsOf(inRange, (p) => p[4], history.stepMs)[0]![0]!.v).toBe(100);
     expect(runsOf(inRange, (p) => p[2], history.stepMs).flat().length).toBe(7);
+  });
+
+  test("the list's loader asks for the half hour, and each row's spark is oldest first with a gap as null", async () => {
+    const watch = await watchOf(ROSTER);
+    const start = minuteOf(NOW) - 5 * MINUTE_MS;
+    // Minutes -5, -4 and -2 are recorded; -3 is a hole, and the minute NOW falls in is not complete.
+    for (const m of [0, 1, 3, 5]) {
+      watch.observe("desk", { cpu: 0.1 * (m + 1), cores: 4, memUsed: 2e9, memTotal: 8e9 }, start + m * MINUTE_MS + 5000);
+    }
+    serve(watch);
+    const data = await machinesListLoader();
+    const desk = data.census!.machines[0]!;
+    expect(MACHINE_SPARK_MINUTES).toBe(30);
+    expect(desk.spark).toEqual({ stepMs: MINUTE_MS, cpu: [0.1, 0.2, null, 0.4, null], mem: [0.25, 0.25, null, 0.25, null] });
+    // A machine with no minute in the window carries no spark at all.
+    expect("spark" in data.census!.machines[1]!).toBe(false);
+    // Without the query, the census is the plain one.
+    expect("spark" in (await fetchMachines()).machines[0]!).toBe(false);
+  });
+
+  test("the history read from the newest point on merges into the held day", async () => {
+    const watch = await watchOf(ROSTER);
+    const start = minuteOf(NOW) - 10 * MINUTE_MS;
+    // Each reading differs: the lead skips one equal in every number to the last.
+    for (const m of [0, 1, 2]) {
+      watch.observe("desk", { cpu: 0.1 * (m + 1), cores: 4, memUsed: 2e9, memTotal: 8e9 }, start + m * MINUTE_MS + 5000);
+    }
+    serve(watch);
+    const day = await fetchMachineHistory("desk");
+    expect(day.points.map((p) => p[0])).toEqual([start, start + MINUTE_MS, start + 2 * MINUTE_MS]);
+    watch.observe("desk", { cpu: 0.9, cores: 4, memUsed: 2e9, memTotal: 8e9 }, start + 3 * MINUTE_MS + 5000);
+    const later = await fetchMachineHistory("desk", undefined, sinceOf(day));
+    expect(later.points.map((p) => p[0])).toEqual([start + 2 * MINUTE_MS, start + 3 * MINUTE_MS]);
+    const merged = mergeHistory(day, later);
+    expect(merged.points.map((p) => [p[0], p[1]])).toEqual([
+      [start, 0.1],
+      [start + MINUTE_MS, 0.2],
+      [start + 2 * MINUTE_MS, 0.3],
+      [start + 3 * MINUTE_MS, 0.9],
+    ]);
   });
 
   test("a machine the lead does not know is a 404 with the host.unknown code, on history and on alerts", async () => {

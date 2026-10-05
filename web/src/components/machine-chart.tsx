@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import {
@@ -72,7 +74,13 @@ function tickLabel(tick: XTick): string {
     : t("machines.axis.hoursAgo", { count: tick.count });
 }
 
-export function MachineChart({ kind, points, ts, stepMs, range, threshold = null }: MachineChartProps) {
+// ── IT DRAWS WHEN ITS DATA MOVES, NOT ON THE POLL ────────────────────────────
+// Memoised on its props, which are plain values or the history answer's own array. The page renders
+// again on every poll tick (the census rides the loop), but the history moves once a minute, so the
+// three charts of up to 1440 points draw once a minute, not every 4 to 6 seconds.
+
+/** A chart, memoised: see the header. */
+export const MachineChart = memo(function MachineChart({ kind, points, ts, stepMs, range, threshold = null }: MachineChartProps) {
   useLocale();
   const inRange = pointsInRange(points, ts, range);
   const metric = t(METRIC_KEY[kind]);
@@ -173,7 +181,7 @@ export function MachineChart({ kind, points, ts, stepMs, range, threshold = null
       <Legend kind={kind} threshold={kind === "net" ? null : threshold} />
     </div>
   );
-}
+});
 
 function Line({
   series,
