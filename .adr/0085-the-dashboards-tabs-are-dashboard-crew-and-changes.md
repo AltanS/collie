@@ -32,7 +32,7 @@ Panes and Focus, which made the pair read as two views of the same thing when on
 
 ## Decision
 
-**The footer's tabs are Dashboard, Crew and Changes. Focus is a switch in the summary line.**
+**The footer's tabs are Dashboard, Crew and Changes. Focus is a switch in the summary line. With a crew the footer reads Crew, Dashboard, Changes, left to right.** Dashboard is the default and sits in the middle under the thumb; the two side tabs are the side trips (the operator's call on 2026-10-05, after the first build, which had Crew between the other two).
 
 1. **Dashboard is the one list tab.** It is the old Panes list: the strip, the summary line, the
    Pinned group, the workspace groups (or the one ranked list of ADR 0071), then the launch strip and
@@ -55,12 +55,12 @@ Panes and Focus, which made the pair read as two views of the same thing when on
    accessible text ("Dashboard, 2 blocked"). It is drawn with the switch on or off, and on every tab:
    it is information about the herd and no nag, as it was on Focus.
 5. **Crew is a tab drawn only while a crew is configured**, the condition `crew-footer-link.tsx`
-   uses (`useCrew().multi`). It sits between Dashboard and Changes and wears `Network`, the icon the
+   uses (`useCrew().multi`). It sits first, to the left of Dashboard, and wears `Network`, the icon the
    Settings card, the switcher sheet and the footer line already use for the crew. Its body is
    `CrewTab`, mounted only while the tab is selected, so it fetches nothing otherwise. A solo
    Collie has two tabs, Dashboard and Changes, and its chrome is otherwise as it was. `CrewFooterLink`
    stays.
-6. **Changes is unchanged**, third (second on a solo Collie).
+6. **Changes is unchanged**, last: third with a crew, second on a solo Collie. The keyboard and screen-reader order is the DOM order of the buttons in `TabBar`, which is the visual order; there is no separate roving focus to keep in step.
 7. **The order toggle shows on the Dashboard in both switch states.** On Changes and Crew the row's
    controls slot stays, invisible and `aria-hidden`, so the summary line does not jump between tabs.
    A crew with no pane anywhere still draws the Crew body, instead of the list's empty placeholder.

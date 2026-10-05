@@ -323,16 +323,19 @@ export function HomeRoute() {
         <BuildStamp className="px-4 pt-3 pb-2" />
       </div>
 
-      {/* The dashboard's footer (ADR 0066, ADR 0085): lists, each named for what it holds. Dashboard,
-          then Crew while a crew is configured, then Changes. It sits OUTSIDE the scroller, so the
-          content scrolls above it and a switch moves neither it nor the strip and summary line at the
-          top of the list. At every width: the dashboard has no sidebar on a wide screen (it is one
+      {/* The dashboard's footer (ADR 0066, ADR 0085): lists, each named for what it holds. Crew
+          first while a crew is configured, then Dashboard, the default, in the middle under the
+          thumb, then Changes. It sits OUTSIDE the scroller, so the content scrolls above it and a
+          switch moves neither it nor the strip and summary line at the top of the list. At every width: the dashboard has no sidebar on a wide screen (it is one
           centred column), so nothing else offers these views. */}
       <TabBar<DashView>
         label={t("home.tabs.aria")}
         active={view}
         onSelect={setDashView}
         items={[
+          // Crew leads, drawn only while a crew is configured (ADR 0085). Network is the Crew icon
+          // the Settings card, the switcher sheet and the footer line wear.
+          ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
           // The Dashboard tab carries the corner mark the Focus tab wore (ADR 0066 point 7), always:
           // it is information about the herd, not a nag, so it shows with the switch on or off.
           {
@@ -343,8 +346,6 @@ export function HomeRoute() {
             dot: readyUnseen,
             badgeLabel: blockedCount > 0 ? tn("home.tabs.blocked", blockedCount) : t("home.tabs.unseen"),
           },
-          // Network is the Crew icon the Settings card, the switcher sheet and the footer line wear.
-          ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
           // GitCompare is the one Changes icon: the pane belt's Changes pill and the Settings row wear it.
           { value: "changes", label: t("changes.title"), icon: <GitCompare className="size-5" /> },
         ]}

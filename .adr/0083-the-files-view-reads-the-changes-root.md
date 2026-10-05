@@ -93,7 +93,7 @@ Facts that shaped it:
 11. **A listing says which entries git ignores, and the web hides them by default.** A listing row
     may carry `ignored: true`. It is additive and optional: absent means not ignored or not known. The
     web hides flagged rows until the operator asks (a per-device `filesShowIgnored` pref, a Filter
-    button with a name field and an Ignored chip, a quiet "{count} ignored hidden" line). This is a
+    an eye toggle in the header and the same toggle, labelled, beside the name field in the Filter row, a quiet "{count} ignored hidden" line). This is a
     **view filter and not a gate**: `?path=` is unchanged, an ignored file reads like any other, and
     nothing here widens or narrows what Files can reach. See *Ignored entries* below.
 

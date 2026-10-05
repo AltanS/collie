@@ -15,7 +15,7 @@
 // they mount the real `TabBar`; options 2 to 4 still say "Needs you", as they were drawn.
 //
 // Since 2026-10-05 the first tab is named Dashboard and the Focus tab is a switch in the summary
-// line, with a Crew tab between Dashboard and Changes while a crew is configured (ADR 0085). The
+// line, with a Crew tab before Dashboard while a crew is configured, so Dashboard sits in the middle (ADR 0085). The
 // phones below are the round as it was drawn and picked; the Dashboard section's "Tabs and the
 // needs-you switch" cards show the shipped footer.
 //

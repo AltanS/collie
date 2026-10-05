@@ -480,7 +480,7 @@ const CHIP_STATUS = { M: "M", A: "A", D: "D", R: "R", U: "?" } as const satisfie
  * always there, only hidden (not removed) while no filter is on, so typing the first letter moves
  * nothing. Drawn inside `ChangesFilterOverlay`, which supplies the card's border, shadow and
  * background. The Changes list fills the slot with status letters, the Files view with its
- * "Ignored" chip, so both screens share one look.
+ * Ignored toggle, so both screens share one look.
  */
 export function FilterRow({
   query,

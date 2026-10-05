@@ -5,7 +5,7 @@ import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import { RouteHeader } from "@/components/app-header";
 import { ChangePath, ChangesFilterButton, ChangesFilterOverlay } from "@/components/changes-view";
 import { FileContent, defaultView, type FileLinks, type FileView } from "@/components/file-preview";
-import { ChangesTabs, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, entryPath, useFilesFilter } from "@/components/files-view";
+import { ChangesTabs, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, IgnoredToggle, entryPath, useFilesFilter } from "@/components/files-view";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { Segmented } from "@/components/ui/segmented";
@@ -280,6 +280,9 @@ export function FilesRoute() {
                   )}
                 </div>
               </div>
+              {counted !== null && (
+                <IgnoredToggle showIgnored={prefs.filesShowIgnored} onShowIgnored={setFilesShowIgnored} />
+              )}
               {counted !== null && (
                 <ChangesFilterButton
                   open={filter.open}

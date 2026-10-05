@@ -156,7 +156,7 @@ test("a stored Focus tab opens the Dashboard with the switch on, once", async ({
   await expect(needsYou(page)).toHaveAttribute("aria-pressed", "false");
 });
 
-test("a solo Collie has no Crew tab; a crew has one, between Dashboard and Changes", async ({ page }) => {
+test("a solo Collie has no Crew tab; a crew has one, before Dashboard and Changes", async ({ page }) => {
   await page.goto("/");
   await expect(footer(page).getByRole("button")).toHaveCount(2);
   await expect(tab(page, CREW)).toHaveCount(0);
@@ -165,7 +165,11 @@ test("a solo Collie has no Crew tab; a crew has one, between Dashboard and Chang
   await installCrewWorld(page);
   await page.goto("/");
   await expect(footer(page).getByRole("button")).toHaveCount(3);
-  await expect(footer(page).getByRole("button").nth(1)).toHaveAccessibleName(CREW);
+  // Crew, Dashboard, Changes: Dashboard is the default and sits in the middle.
+  await expect(footer(page).getByRole("button").nth(0)).toHaveAccessibleName(CREW);
+  await expect(footer(page).getByRole("button").nth(1)).toHaveAccessibleName(DASHBOARD);
+  await expect(footer(page).getByRole("button").nth(2)).toHaveAccessibleName(CHANGES);
+  await expect(tab(page, DASHBOARD)).toHaveAttribute("aria-current", "page");
   await tab(page, CREW).click();
   await expect(tab(page, CREW)).toHaveAttribute("aria-current", "page");
 });

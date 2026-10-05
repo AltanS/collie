@@ -534,27 +534,65 @@ describe("Files: entries git ignores, and the filter", () => {
     expect(screen.queryByText(hiddenLine(2))).toBeNull();
   });
 
-  it("the Ignored chip toggles the same choice, and it stays when the folder changes", async () => {
+  // The toggle is drawn twice, by design: icon-only in the header, labelled in the filter row. Both
+  // carry the one accessible name and write the one pref.
+  const headerToggle = () => within(document.querySelector<HTMLElement>("header")!).getByRole("button", { name: en["files.ignored.toggleAria"] });
+  const rowToggle = () => within(document.querySelector<HTMLElement>('[data-slot="files-filter"]')!).getByRole("button", { name: en["files.ignored.toggleAria"] });
+
+  it("the header toggle is found without opening the filter, and says its state", async () => {
     renderAt([FILES]);
-    await userEvent.click(await filterButton());
-    const chip = await screen.findByRole("button", { name: en["files.filter.ignored"] });
-    expect(chip.getAttribute("aria-pressed")).toBe("false");
-    await userEvent.click(chip);
-    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    await screen.findByRole("button", { name: /^docs, folder/ });
+    const toggle = headerToggle();
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("title")).toBe(en["files.ignored.stateHidden"]);
+    expect(toggle.className).toContain("size-11");
+    expect(toggle.querySelector("svg.lucide-eye-off")).not.toBeNull();
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("title")).toBe(en["files.ignored.stateShown"]);
+    expect(toggle.querySelector("svg.lucide-eye")).not.toBeNull();
+    // The pressed look is the needs-you switch's: the primary tint and the hairline ring.
+    expect(toggle.className).toContain("bg-primary/10");
+    expect(toggle.className).toContain("ring-primary/40");
     expect(names()).toContain("debug.log");
     expect(stored()).toBe(true);
+  });
+
+  it("the labelled toggle in the filter row writes the same choice and names the state in words", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await filterButton());
+    await screen.findByPlaceholderText(en["files.filter.placeholder"]);
+    const chip = rowToggle();
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    expect(chip.textContent).toBe(en["files.ignored.stateHidden"]);
+    await userEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(chip.textContent).toBe(en["files.ignored.stateShown"]);
+    expect(names()).toContain("debug.log");
+    expect(stored()).toBe(true);
+    // The header's twin follows: one pref, two doors.
+    expect(headerToggle().getAttribute("aria-pressed")).toBe("true");
     await userEvent.click(chip);
     expect(names()).not.toContain("debug.log");
     expect(stored()).toBe(false);
+    expect(headerToggle().getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("the Ignored chip survives opening a folder", async () => {
+  it("the Show action under the list flips the same pref the toggles read", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await screen.findByRole("button", { name: en["files.ignored.showAria"] }));
+    expect(headerToggle().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("the Ignored choice survives opening a folder", async () => {
     localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ filesShowIgnored: true }));
     renderAt([FILES]);
     await userEvent.click(await screen.findByRole("button", { name: /^src, folder/ }));
     await screen.findByRole("button", { name: /^cart\.ts/ });
     await userEvent.click(await filterButton());
-    expect((await screen.findByRole("button", { name: en["files.filter.ignored"] })).getAttribute("aria-pressed")).toBe("true");
+    await screen.findByPlaceholderText(en["files.filter.placeholder"]);
+    expect(rowToggle().getAttribute("aria-pressed")).toBe("true");
+    expect(headerToggle().getAttribute("aria-pressed")).toBe("true");
   });
 
   it("filters the folder's names by a case-insensitive substring, with the count, and Clear resets it", async () => {

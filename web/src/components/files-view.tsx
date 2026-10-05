@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
-import { File, Folder, Link2 } from "lucide-react";
+import { Eye, EyeOff, File, Folder, Link2 } from "lucide-react";
 
 import { ChangesNoMatch, FilterRow } from "@/components/changes-view";
 import { Segmented } from "@/components/ui/segmented";
 import { ListGroup } from "@/components/ui/list-group";
+import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
 import { folderView, isNameFilterOn } from "@/lib/files-filter";
 import { formatBytes, joinRel } from "@/lib/files-view";
@@ -157,9 +158,40 @@ export function entryPath(dir: string, entry: FileEntry): string {
 }
 
 // ── The filter (ADR 0083) ───────────────────────────────────────────────────────────────────────
-// Files gets the filter control Changes has, drawn by the same `FilterRow`: a name field, one chip,
-// and the "3 of 12" count. The name filter belongs to one folder and resets when the folder changes;
-// the Ignored chip is the device's `filesShowIgnored` pref and outlives it.
+// Files gets the filter control Changes has, drawn by the same `FilterRow`: a name field, the Ignored
+// toggle, and the "3 of 12" count. The name filter belongs to one folder and resets when the folder
+// changes; the Ignored toggle is the device's `filesShowIgnored` pref and outlives it.
+
+/**
+ * The Ignored toggle: whether entries git ignores are listed. It is a setting, so it is drawn as an
+ * icon toggle button (`ui/toggle-button.tsx`, the look of the dashboard's "needs you" switch) and not
+ * as a chip, and it says its own state: `EyeOff` and "Ignored hidden" when off, `Eye` and "Ignored
+ * shown" when on. `labelled` adds that word beside the glyph, for the filter row; the header draws
+ * the icon alone with the state as its tooltip. Both write the same pref.
+ */
+export function IgnoredToggle({
+  showIgnored,
+  onShowIgnored,
+  labelled = false,
+}: {
+  showIgnored: boolean;
+  onShowIgnored: (show: boolean) => void;
+  labelled?: boolean;
+}) {
+  useLocale();
+  const state = t(showIgnored ? "files.ignored.stateShown" : "files.ignored.stateHidden");
+  const Icon = showIgnored ? Eye : EyeOff;
+  return (
+    <ToggleButton
+      pressed={showIgnored}
+      onPressedChange={onShowIgnored}
+      label={t("files.ignored.toggleAria")}
+      icon={<Icon className={labelled ? "size-4" : "size-5"} />}
+      text={labelled ? state : undefined}
+      title={labelled ? undefined : state}
+    />
+  );
+}
 
 /** The name filter and whether its overlay is open, both keyed to one folder or file. */
 export function useFilesFilter(folderKey: string) {
@@ -177,7 +209,7 @@ export function useFilesFilter(folderKey: string) {
   return { query: mine.query, open: mine.open, setQuery, setOpen, clear };
 }
 
-/** The row inside the overlay: the name field, the Ignored chip, and the count with its Clear. */
+/** The row inside the overlay: the name field, the Ignored toggle, and the count with its Clear. */
 export function FilesFilterBar({
   query,
   onQuery,
@@ -207,25 +239,7 @@ export function FilesFilterBar({
       // Clear resets the name only: the Ignored choice is the device's, not this folder's.
       onClear={() => onQuery("")}
       focusOnMount={focusOnMount}
-      chips={
-        <div role="group" aria-label={t("files.filter.ignoredAria")} className="-ml-1.5 flex">
-          <button
-            type="button"
-            aria-pressed={showIgnored}
-            onClick={() => onShowIgnored(!showIgnored)}
-            className="flex h-11 min-w-11 items-center justify-center px-1.5"
-          >
-            <span
-              className={cn(
-                "flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
-                showIgnored ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
-              )}
-            >
-              {t("files.filter.ignored")}
-            </span>
-          </button>
-        </div>
-      }
+      chips={<IgnoredToggle showIgnored={showIgnored} onShowIgnored={onShowIgnored} labelled />}
     />
   );
 }

@@ -1,8 +1,8 @@
 import { CircleDot } from "lucide-react";
 
+import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 // The Dashboard's "needs you" switch (ADR 0085, the old Focus tab of ADRs 0066 and 0068). One
 // toggle button in the summary line's row, beside the order toggle. On, each workspace shows only the
@@ -14,21 +14,16 @@ import { cn } from "@/lib/utils";
 // segment, which is `bg-muted`: with the brand's near-black primary the two fills read alike, and one
 // control on and the other selected must never look like the same state.
 // The glyph is the control and the accessible name says what it does; `aria-pressed` says its state.
-// A 44px square, like the order toggle's segments.
+// A 44px square, like the order toggle's segments. The look is `ui/toggle-button.tsx`, which the
+// Files view's Ignored toggle wears too.
 export function NeedsYouSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
   useLocale();
   return (
-    <button
-      type="button"
-      aria-pressed={on}
-      aria-label={t("home.needsYouOnly")}
-      onClick={() => onChange(!on)}
-      className={cn(
-        "flex size-11 shrink-0 items-center justify-center rounded-md transition-colors",
-        on ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/40" : "text-muted-foreground active:bg-muted",
-      )}
-    >
-      <CircleDot className="size-4 shrink-0" aria-hidden />
-    </button>
+    <ToggleButton
+      pressed={on}
+      onPressedChange={onChange}
+      label={t("home.needsYouOnly")}
+      icon={<CircleDot className="size-4 shrink-0" />}
+    />
   );
 }

@@ -7,7 +7,7 @@ import { ChangesControl } from "@/components/changes-control";
 import { useState } from "react";
 
 import { FileContent, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
-import { ChangesTabs, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, type ChangesTab } from "@/components/files-view";
+import { ChangesTabs, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, IgnoredToggle, type ChangesTab } from "@/components/files-view";
 import { Segmented } from "@/components/ui/segmented";
 
 import {
@@ -208,7 +208,7 @@ function FileCard({ file, initial, height = 380 }: { file: FileText; initial: Fi
 }
 
 /**
- * A folder of the Files tab, live: the Show action and the Ignored chip are real. `showIgnored`
+ * A folder of the Files tab, live: the Show action and both Ignored toggles are real. `showIgnored`
  * and `query` set the card's starting state; `filterOpen` draws the filter row open over the list.
  */
 function FolderCard({
@@ -236,6 +236,7 @@ function FolderCard({
       <div className="flex h-full flex-col">
         <div className="relative flex items-center gap-2 border-b border-rule px-2 py-1">
           <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("files.title")}</span>
+          <IgnoredToggle showIgnored={showIgnored} onShowIgnored={setShowIgnored} />
           <ChangesFilterButton
             open={open}
             active={query.trim() !== ""}
@@ -385,7 +386,8 @@ export function ChangesSection() {
           state="files-folder-ignored-hidden"
           label="files, ignored entries hidden"
           reach="open Files in a folder inside a git repository that ignores node_modules and logs. Those
-            rows are left out, and one quiet line under the list says how many, with a Show action."
+            rows are left out, and one quiet line under the list says how many, with a Show action. The
+            eye-off toggle in the header, left of Filter, is the same choice, unpressed."
         >
           <FolderCard dir="" />
         </Card>
@@ -393,8 +395,10 @@ export function ChangesSection() {
         <Card
           state="files-folder-ignored-shown"
           label="files, ignored entries shown"
-          reach="in Files, tap Show under the list, or the Filter button and its Ignored chip. The ignored
-            rows come back dimmed and still open. The choice stays on this device."
+          reach="in Files, tap Show under the list, or the eye toggle in the header. The toggle takes the
+            primary tint and a hairline ring, as the dashboard's needs-you switch does, and its glyph
+            becomes an open eye. The ignored rows come back dimmed and still open. The choice stays on
+            this device."
         >
           <FolderCard dir="" showIgnored />
         </Card>
@@ -402,8 +406,9 @@ export function ChangesSection() {
         <Card
           state="files-filter-open"
           label="files, the filter row"
-          reach="in Files, tap the Filter button. A name field, one Ignored chip, and the count once a name
-            is typed."
+          reach="in Files, tap the Filter button. A name field, the labelled Ignored toggle (an eye and
+            Ignored shown or Ignored hidden), and the count once a name is typed. It is the same
+            choice as the eye in the header."
         >
           <FolderCard dir="" showIgnored query="o" filterOpen />
         </Card>
