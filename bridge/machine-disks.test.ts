@@ -91,7 +91,13 @@ describe("diskOf: which filesystems count, and the numbers match df", () => {
   });
 
   test("no free block at all, on a platform that cannot say read-only, is an image", () => {
-    expect(diskOf("/", { ...BTRFS, bfree: 0, bavail: 0 }, "1", false)).toBeNull();
+    expect(diskOf("/", { ...BTRFS, bfree: 0, bavail: 0 }, "1", null)).toBeNull();
+  });
+
+  test("a writable filesystem with no free block at all is a full disk, not an image, when the mount table was read", () => {
+    // xfs, btrfs, tmpfs, NTFS and f2fs have no root reserve: full means bfree 0 too.
+    const full = diskOf("/", { ...BTRFS, bfree: 0, bavail: 0 }, "1", false)!;
+    expect(full.used / full.total).toBe(1);
   });
 
   test("nonsense numbers are dropped", () => {
@@ -200,6 +206,20 @@ describe("DiskWatch", () => {
     watch.tick();
     await flush();
     expect(watch.current().map((x) => x.mount)).toEqual(["C:", "D:"]);
+  });
+
+  test("a completely full xfs mounted read-write stays on the card, a read-only one does not", async () => {
+    const XFS: StatFsLike = { type: 0x58465342, bsize: 4096, frsize: 4096, blocks: 5_000_000, bfree: 0, bavail: 0 };
+    const mounts = ["/dev/sda1 / xfs rw,relatime 0 0", "/dev/sdb1 /mnt/image xfs ro,relatime 0 0"].join("\n");
+    const { watch } = harness({
+      paths: ["/", "/mnt/image"],
+      fs: { "/": XFS, "/mnt/image": { ...XFS, blocks: 4_000_000 } },
+      devs: { "/": 1, "/mnt/image": 2 },
+      mounts,
+    });
+    watch.tick();
+    await flush();
+    expect(watch.current().map((d) => d.mount)).toEqual(["/"]);
   });
 
   test("a statfs that rejects reports nothing for that path, and the rest still shows", async () => {

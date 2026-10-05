@@ -102,21 +102,23 @@ export function windowsLabel(path: string): string {
 
 /**
  * One filesystem's numbers, or `null` when it does not count: too small, read-only and full, or a
- * nonsense answer. `readOnly` is what the platform could tell (Linux only).
+ * nonsense answer. `readOnly` is what the platform could tell (Linux only): `null` is "could not
+ * tell", which is not the same as `false`.
  */
 export function diskOf(
   mount: string,
   s: StatFsLike,
   dev: string | null,
-  readOnly: boolean,
+  readOnly: boolean | null,
 ): DiskReading | null {
   const unit = s.frsize !== undefined && s.frsize > 0 ? s.frsize : s.bsize;
   const ok = [unit, s.blocks, s.bfree, s.bavail].every((n) => Number.isFinite(n) && n >= 0);
   if (!ok || !(unit > 0) || s.blocks <= 0) return null;
   if (s.blocks * unit < MIN_DISK_BYTES) return null;
-  // No free block at all, the root reserve included: an image, not a disk that filled up. On Linux the
-  // mount flag says it outright; elsewhere this is the only sign there is.
-  if (s.bavail === 0 && (readOnly || s.bfree === 0)) return null;
+  // No free block at all, the root reserve included: an image, not a disk that filled up. Where the
+  // mount table was read the flag says it outright, and a full xfs, btrfs, tmpfs, NTFS or f2fs (its
+  // bfree is 0 too) stays on the card. Only with no mount table is "no free block" the sign there is.
+  if (s.bavail === 0 && (readOnly === null ? s.bfree === 0 : readOnly)) return null;
   const used = Math.max(0, s.blocks - s.bfree) * unit;
   const avail = Math.min(s.bavail, s.blocks) * unit;
   const total = used + avail;
@@ -236,7 +238,7 @@ export class DiskWatch {
     };
     const dev = await devOf(real);
     const mount = this.r.platform === "win32" ? windowsLabel(real) : await this.mountOf(real, dev, devOf);
-    return diskOf(mount, stats, dev, this.roMounts?.has(mount) ?? false);
+    return diskOf(mount, stats, dev, this.roMounts === null ? null : this.roMounts.has(mount));
   }
 
   /** The topmost folder above `path` on the same device: its mount point. The path itself without ids. */
