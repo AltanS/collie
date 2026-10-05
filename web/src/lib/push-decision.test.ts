@@ -16,6 +16,34 @@ describe("decidePush", () => {
     });
   });
 
+  // A machine's sustained load is the one push no visible tab stands in for: the in-app status speaks
+  // for panes, not machines. It shows whether or not a Collie tab is open, and carries the machine.
+  test("a machine alert is shown even while a Collie tab is visible", () => {
+    const payload = {
+      type: "machine" as const,
+      title: "laptop: CPU high",
+      body: "94% for 5 min",
+      tag: "collie:machine@laptop",
+      renotify: true,
+      data: { target: "machine", machine: "laptop" },
+    };
+    const shown = {
+      kind: "show",
+      title: "laptop: CPU high",
+      body: "94% for 5 min",
+      tag: "collie:machine@laptop",
+      target: "machine",
+      machine: "laptop",
+      renotify: true,
+    };
+    expect(decidePush(payload, true)).toMatchObject(shown);
+    expect(decidePush(payload, false)).toMatchObject(shown);
+  });
+
+  test("other typed pushes are still suppressed by a visible tab", () => {
+    expect(decidePush({ type: "update", title: "update", tag: "collie:update" }, true)).toEqual({ kind: "suppress" });
+  });
+
   test("shows with the bridge-provided tag, renotify, and deep-link paneId", () => {
     expect(
       decidePush(
@@ -209,10 +237,17 @@ describe("notificationPath — where a tap lands", () => {
   // the phone is talking to, and `host` must not send the tap somewhere else.
   // A machine alert (ADR 0084) opens that machine's page, keyed by the crew member id in `host`.
   test("a machine alert opens that machine, not a pane", () => {
-    expect(notificationPath({ target: "machine", host: "laptop" })).toBe("/machines/laptop");
-    expect(notificationPath({ target: "machine", host: "local" })).toBe("/machines/local");
-    expect(notificationPath({ target: "machine", host: "a b/c" })).toBe("/machines/a%20b%2Fc");
+    expect(notificationPath({ target: "machine", machine: "laptop" })).toBe("/machines/laptop");
+    expect(notificationPath({ target: "machine", machine: "local" })).toBe("/machines/local");
+    expect(notificationPath({ target: "machine", machine: "a b/c" })).toBe("/machines/a%20b%2Fc");
     expect(notificationPath({ target: "machine" })).toBe("/machines");
+  });
+
+  // `host` names where a PANE lives. A machine alert carries `machine`, and a stray `host` must not
+  // pick the page: it would send the tap to the wrong machine, or to a page for a pane's host.
+  test("a machine alert reads data.machine and never data.host", () => {
+    expect(notificationPath({ target: "machine", machine: "laptop", host: "box2" })).toBe("/machines/laptop");
+    expect(notificationPath({ target: "machine", host: "box2" })).toBe("/machines");
   });
 
   test("update push opens updates, unscoped", () => {

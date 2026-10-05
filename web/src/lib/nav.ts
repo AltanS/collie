@@ -10,6 +10,10 @@ import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json
 import { scopeFromSearchParams, scopeSearch, type Scope } from "./scope";
 import type { AgentView } from "./types";
 
+// The two Machines paths live in `machine-paths.ts` so the service worker can build them: this file
+// reads `window`, which a worker has no type for. Re-exported, so every caller still asks nav.ts.
+export { machinePath, machinesPath } from "./machine-paths";
+
 export function panePath(paneId: string, scope?: Scope): string {
   return `/pane/${encodeURIComponent(paneId)}${scopeSearch(scope)}`;
 }
@@ -163,20 +167,6 @@ export function settingsSectionPath(section: SettingsSection, scope?: Scope): st
  */
 export function crewPath(scope?: Scope): string {
   return `/crew${scopeSearch(scope)}`;
-}
-
-/**
- * The machines list: every machine's load now, one card each. Opened from the Settings index; a
- * CHILD of Settings. Carries the scope like the others, so "back" returns to the machine you were
- * looking at.
- */
-export function machinesPath(scope?: Scope): string {
-  return `/machines${scopeSearch(scope)}`;
-}
-
-/** One machine's page: the numbers, the last hour and day, and its alert rules. A child of Machines. */
-export function machinePath(id: string, scope?: Scope): string {
-  return `/machines/${encodeURIComponent(id)}${scopeSearch(scope)}`;
 }
 
 /**

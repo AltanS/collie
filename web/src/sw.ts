@@ -199,6 +199,7 @@ async function handlePush(event: PushEvent): Promise<void> {
       session: decision.session,
       host: decision.host,
       target: decision.target,
+      machine: decision.machine,
     } satisfies NotifData,
     icon: ICON,
     badge: BADGE,
