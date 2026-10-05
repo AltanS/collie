@@ -284,7 +284,14 @@ graph TD
   `pane.agent_status_changed` subscription trigger an immediate debounced re-poll, while the interval
   relaxes to `COLLIE_POLL_IDLE_MS` (12 s default) whenever the stream is healthy and drops back to
   the fast `COLLIE_POLL_MS` when it isn't. **The snapshot poll stays the source of truth throughout —
-  a missed event costs one interval, never correctness.**
+  a missed event costs one interval, never correctness.** Some changes come with no event at all:
+  Herdr announces nothing when an agent reports its session (measured on 0.9.3). So two INTENTS
+  tighten the same interval to `COLLIE_POLL_MS` for `HOT_POLLS` (8) polls and then let it relax:
+  an input landed on a pane through `/reply` or `/keys` (on the member that owns the pane, and on a
+  lead that forwarded it, whose sweep rides this tick), and a pane that has just become an agent
+  with no session yet, whose hold also ends the moment its session is seen
+  (`bridge/state-engine.ts` § noteInput, § noteNewAgents). No second timer, and the hot spell
+  decays by counted polls, never by a deadline.
 - **Scrollback comes from the transcript, not the terminal.** An agent's TUI runs on the *alternate
   screen* (`ESC[?1049h`), so the emulator keeps no scrollback ring and a grid read can never return
   more than the visible viewport — the live mirror physically cannot scroll back past it. (Screen

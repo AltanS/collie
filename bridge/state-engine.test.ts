@@ -7,6 +7,7 @@ import { trackActivity } from "./activity-tracking.ts";
 
 import {
   ATTENTION_WINDOW_MS,
+  HOT_POLLS,
   StateEngine,
   terminalTitleIsStale,
   type EngineSnapshot,
@@ -1258,5 +1259,142 @@ describe("soleTabName and tabPosition", () => {
     expect(byId.get("p2")?.tabPosition).toBe(0);
     expect(byId.get("p3")?.tabPosition).toBe(1);
     expect(byId.get("p1")?.tabPosition).toBe(0);
+  });
+});
+
+// The hot intent (state-engine.ts § noteInput, § noteNewAgents). Herdr announces nothing when an
+// agent reports its session, so a bridge relaxed to its idle cadence saw a fresh pi or Claude session
+// only on the next 12 s tick. Two intents now tighten the ONE interval for a bounded count of polls:
+// an input written to a pane, and a pane that has just become an agent with no session yet.
+describe("StateEngine: the hot intent", () => {
+  const IDLE = 12_000;
+  const session = { source: "herdr:pi", agent: "pi", kind: "path", value: "/s/pi.jsonl" };
+
+  // A connected, started engine relaxed by a healthy watch, with no interval left running.
+  async function relaxedEngine(panes: FakePane[] = []) {
+    const made = makeEngine();
+    made.herdr.panes = panes;
+    made.engine["started"] = true;
+    await made.poll();
+    made.engine.setCadence(IDLE);
+    return { ...made, cadence: () => made.engine["cadenceMs"] };
+  }
+
+  test("an input tightens the cadence at once and relaxes after HOT_POLLS polls", async () => {
+    const { engine, poll, cadence } = await relaxedEngine([pane("w1:p1", "w1", "idle", "codex")]);
+    expect(cadence()).toBe(IDLE);
+    engine.noteInput();
+    expect(engine.hot()).toBe(true);
+    expect(cadence()).toBe(1500);
+    for (let i = 1; i < HOT_POLLS; i++) {
+      await poll();
+      expect(cadence()).toBe(1500);
+    }
+    await poll();
+    expect(engine.hot()).toBe(false);
+    expect(cadence()).toBe(IDLE);
+    engine.stop();
+  });
+
+  test("a second input restarts the spell rather than stacking it", async () => {
+    const { engine, poll } = await relaxedEngine();
+    engine.noteInput();
+    for (let i = 0; i < HOT_POLLS - 1; i++) await poll();
+    engine.noteInput();
+    for (let i = 0; i < HOT_POLLS - 1; i++) await poll();
+    expect(engine.hot()).toBe(true);
+    await poll();
+    expect(engine.hot()).toBe(false);
+    engine.stop();
+  });
+
+  test("an input on a stopped engine does nothing", () => {
+    const { engine } = makeEngine();
+    engine.noteInput();
+    expect(engine.hot()).toBe(false);
+    expect(engine["timer"]).toBeNull();
+  });
+
+  test("a hot spell never slows a watch that is down: the fast cadence stays the fast cadence", async () => {
+    const { engine, poll, cadence } = await relaxedEngine();
+    engine.setCadence(1500); // the watch went down
+    engine.noteInput();
+    expect(cadence()).toBe(1500);
+    for (let i = 0; i < HOT_POLLS; i++) await poll();
+    expect(cadence()).toBe(1500);
+    engine.stop();
+  });
+
+  test("a pane that turns into an agent with no session holds the engine hot until its session is seen", async () => {
+    const { herdr, engine, poll, cadence } = await relaxedEngine([pane("w1:p1", "w1", "idle", null)]);
+    herdr.panes = [pane("w1:p1", "w1", "unknown", "pi")]; // the shell became pi; no session yet
+    await poll();
+    expect(engine.hot()).toBe(true);
+    expect(cadence()).toBe(1500);
+    await poll(); // still no session: the hold stays
+    expect(engine.hot()).toBe(true);
+    herdr.panes = [{ ...pane("w1:p1", "w1", "idle", "pi"), agent_session: session }];
+    await poll(); // the EVENT: the session is seen, and the hold ends on it, not on a count
+    expect(engine.hot()).toBe(false);
+    expect(cadence()).toBe(IDLE);
+    engine.stop();
+  });
+
+  test("a session that never comes spends the hold to its end, and no further", async () => {
+    const { herdr, engine, poll, cadence } = await relaxedEngine();
+    herdr.panes = [pane("w1:p1", "w1", "unknown", "codex")]; // Codex names its session on the first prompt
+    await poll();
+    for (let i = 0; i < HOT_POLLS - 1; i++) {
+      await poll();
+      expect(engine.hot()).toBe(true);
+    }
+    await poll();
+    expect(engine.hot()).toBe(false);
+    expect(cadence()).toBe(IDLE);
+    engine.stop();
+  });
+
+  test("a pane closed while it waits ends its hold", async () => {
+    const { herdr, engine, poll } = await relaxedEngine();
+    herdr.panes = [pane("w1:p1", "w1", "unknown", "pi")];
+    await poll();
+    expect(engine.hot()).toBe(true);
+    herdr.panes = [];
+    await poll();
+    expect(engine.hot()).toBe(false);
+    engine.stop();
+  });
+
+  test("agents already there at the first poll, or that name a session at once, hold nothing", async () => {
+    const first = makeEngine();
+    first.herdr.panes = [pane("w1:p1", "w1", "idle", "pi"), pane("w1:p2", "w1", "idle", "codex")];
+    first.engine["started"] = true;
+    await first.poll(); // a bridge that just came up: these panes are not new
+    expect(first.engine.hot()).toBe(false);
+    first.engine.stop();
+
+    const { herdr, engine, poll } = await relaxedEngine();
+    herdr.panes = [
+      { ...pane("w1:p1", "w1", "idle", "claude"), agent_session: { source: "herdr:claude", agent: "claude", kind: "id", value: "c1" } },
+    ];
+    await poll();
+    expect(engine.hot()).toBe(false);
+    engine.stop();
+  });
+
+  test("a failed poll spends a poll of every hold but ends none of them on missing panes", async () => {
+    const { herdr, engine, poll } = await relaxedEngine();
+    herdr.panes = [pane("w1:p1", "w1", "unknown", "pi")];
+    await poll();
+    const ok = herdr.sessionSnapshot.bind(herdr);
+    herdr.sessionSnapshot = () => Promise.reject(new Error("down"));
+    await poll();
+    expect(engine.hot()).toBe(true); // a dead multiplexer proves nothing about the pane
+    herdr.sessionSnapshot = ok;
+    for (let i = 0; i < HOT_POLLS - 2; i++) await poll();
+    expect(engine.hot()).toBe(true);
+    await poll();
+    expect(engine.hot()).toBe(false); // ...but it still decays: the failed poll counted
+    engine.stop();
   });
 });

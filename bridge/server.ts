@@ -336,6 +336,24 @@ export function isPaneReadAction(action: string | undefined): boolean {
 }
 
 /**
+ * Does this request write INPUT into a pane: typed text (`reply`) or keys (`keys`)? Those are the two
+ * routes after which the operator watches the pane for an effect, so a landed one puts the engine
+ * that owns the pane into its hot cadence (state-engine.ts § noteInput). Structural writes (close,
+ * rename, focus, a new tab) settle their own topology and need no intent; an upload types nothing.
+ */
+export function isPaneInput(pathname: string, method: string): boolean {
+  if (method !== "POST") return false;
+  const action = pathname.match(PANE_ROUTE)?.[2];
+  return action === "reply" || action === "keys";
+}
+
+/** Answer `res`, and when it landed, tell `engine` an input was written (§ isPaneInput). */
+export function afterPaneInput(engine: Pick<StateEngine, "noteInput">, res: Response): Response {
+  if (res.ok) engine.noteInput();
+  return res;
+}
+
+/**
  * The gate level a pane route asks at. A plain read for the pane itself and for `history`, `chat`
  * and `changes`; `device-read` for `files`, which is a read that needs an authorised device (ADR 0083:
  * it exposes every file under the root, which Changes does not); a write for everything that types
@@ -1262,8 +1280,12 @@ export function startServer(opts: {
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req);
       if (action === "files" && req.method === "GET")
         return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg));
-      if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit_, device, session);
-      if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit_, device, session);
+      // A landed input makes the engine hot for a few polls (§ isPaneInput). On a member this runs
+      // through the crew dispatch, so the member that owns the pane is the one that goes hot.
+      if (action === "reply" && req.method === "POST")
+        return afterPaneInput(rt.engine, await replyPane(herdr, cfg, paneId, req, audit_, device, session));
+      if (action === "keys" && req.method === "POST")
+        return afterPaneInput(rt.engine, await keysPane(herdr, cfg, paneId, req, audit_, device, session));
       if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit_, device, session);
       if (action === "close" && req.method === "POST") return closePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "rename" && req.method === "POST") return renamePane(herdr, rt.engine, paneId, req, audit_, device, session);
@@ -1563,10 +1585,15 @@ export function startServer(opts: {
             );
           }
           if (resolved.kind === "peer") {
+            // An input forwarded to a member makes the member's engine hot there, and the LEAD's
+            // too: the lead sees the member's panes only through its sweep, which rides this
+            // engine's tick (CREW_PROTOCOL.md §10.1), so a cold lead would show the member's answer
+            // up to one idle interval late.
+            const input = isPaneInput(pathname, req.method);
             // The lead's own record of the forward (§12): one line, the same `action` the peer will
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.
-            return secure(
+            const forwarded = secure(
               await crewLead!.forward(req, url, resolved, {
                 device: whois(req).device,
                 audit: (entry) => {
@@ -1584,6 +1611,9 @@ export function startServer(opts: {
                 },
               }),
             );
+            // The PRIMARY engine, because that is the one whose tick the sweep rides (index.ts).
+            const own = registry.get()?.engine;
+            return input && own !== undefined ? afterPaneInput(own, forwarded) : forwarded;
           }
           return resolved.runtime;
         }
