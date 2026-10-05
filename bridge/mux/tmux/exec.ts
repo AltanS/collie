@@ -121,6 +121,32 @@ export function tmuxServerLabel(endpoint: string): string {
   return args[0] === "-S" ? `socket ${args[1] ?? ""}` : `socket name ${args[1] ?? ""}`;
 }
 
+/**
+ * The client flags every tmux invocation carries, ahead of the server flags.
+ *
+ * `-u` tells the tmux CLIENT its output is UTF-8 whatever the ambient locale says. Without it, a
+ * client started with no UTF-8 locale — a minimal container sets none at all, and systemd hands a
+ * unit `C` — has its `-F` output sanitized on the way out, and that turns the U+001F
+ * field separator into `_` (probed on 3.7c and again on 3.6b with `env -i`: `S_$0_1_repro` where a
+ * UTF-8 locale gives `S^_$0^_1^_repro`). No un-escaper can recover that: the separator is simply gone, every line
+ * parses to nothing and the bridge reads a healthy server as disconnected.
+ *
+ * The flag rather than `LC_ALL=C.UTF-8` in the child's environment, for two reasons: it needs no
+ * locale to exist on the box (`C.UTF-8` is glibc's, not macOS's or musl's), and it holds even when
+ * the operator's environment pins `LC_ALL=C`, which outranks any `LANG` a fix could set.
+ */
+export const TMUX_CLIENT_ARGS: readonly string[] = ["-u"];
+
+/**
+ * The whole argv for one tmux invocation: binary, client flags, server flags, then the command.
+ *
+ * Pure and in one place so both spawns below build the same line and a test can pin it — the
+ * spawns themselves cannot run under the pure layer.
+ */
+export function tmuxArgv(binary: string, serverArgs: readonly string[], args: readonly string[]): string[] {
+  return [binary, ...TMUX_CLIENT_ARGS, ...serverArgs, ...args];
+}
+
 /** The message a run reports when there is no tmux binary to run at all. */
 export const NO_TMUX_BINARY = "no tmux binary found — set COLLIE_TMUX_BIN to its absolute path";
 
@@ -140,7 +166,7 @@ export class SpawnTmuxExec implements TmuxExec {
 
   async run(args: readonly string[], stdin?: string): Promise<TmuxRunResult> {
     if (this.binary === null) return { code: 127, stdout: "", stderr: NO_TMUX_BINARY };
-    const child = Bun.spawn([this.binary, ...this.serverArgs, ...args], {
+    const child = Bun.spawn(tmuxArgv(this.binary, this.serverArgs, args), {
       stdin: stdin === undefined ? "ignore" : new TextEncoder().encode(stdin),
       stdout: "pipe",
       stderr: "pipe",
@@ -166,7 +192,7 @@ export class SpawnTmuxExec implements TmuxExec {
     }
     // stdin stays an open pipe and is never written: a control client reads commands from stdin and
     // exits the moment it closes, so holding it open IS what keeps the stream alive (probed, M10/04).
-    const child = Bun.spawn([this.binary, ...this.serverArgs, ...args], {
+    const child = Bun.spawn(tmuxArgv(this.binary, this.serverArgs, args), {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "ignore",

@@ -122,8 +122,11 @@ affected: every other action on those panes keeps working
 tmux versions (3.4, not 3.6b) escape the separator this adapter reads on their way out of a `-F`
 listing. Collie reads both shapes now, so a listing that parses to zero rows is reported as a mux
 error instead of being stored as an empty herd — the error line names the tmux version and how many
-lines it saw. If you still hit this, note the `tmux -V` version and open an issue; the fix belongs in
-the adapter, not in your `.env`.
+lines it saw. A second cause was the locale: started with no UTF-8 locale (a minimal container, a
+systemd unit), tmux replaces that separator with `_` instead of escaping it. Collie now runs
+every tmux command with `-u`, so the listing no longer depends on `LANG` or `LC_ALL`. If you still
+hit this, note the `tmux -V` version and open an issue; the fix belongs in the adapter, not in your
+`.env`.
 
 **`herdr plugin list` shows the old version after an `update`.** Expected — Herdr caches the manifest
 it read at install or link time. The authority on what's running is the footer build stamp, or

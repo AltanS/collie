@@ -392,6 +392,14 @@ describe("a tmux whose output does not parse", () => {
     await expect(new TmuxMux(new TalkativeTmux(garbage)).snapshot()).rejects.toThrow(/did not parse/u);
   });
 
+  test("a listing whose separator was sanitized to `_` still trips the guard", async () => {
+    // The no-locale fault in one assertion (issue 358). A tmux client with no UTF-8 locale prints `_`
+    // where the U+001F separator belongs, so there is nothing to un-escape and every line fails the
+    // split. `-u` (exec.ts) keeps it from happening; this keeps it from ever being silent if it does.
+    const sanitized = ["S_$0_1_1791236795_/_x_repro", "W_$0_@0_0_1_x_1_0"].join("\n");
+    await expect(new TmuxMux(new TalkativeTmux(sanitized)).snapshot()).rejects.toThrow(/did not parse/u);
+  });
+
   test("the error names the likely cause and the version it happened on", async () => {
     // The version IS the diagnosis: the escaping is tmux's, not this herd's. `#{version}` is the
     // only field this stub answers, so the sentence carries it.

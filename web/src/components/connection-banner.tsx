@@ -11,6 +11,7 @@ import {
   WifiOff,
 } from "lucide-react";
 
+import { useCrew, useHostHealth } from "@/components/crew-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP } from "@/components/ui/notice";
 import { StripSlot } from "@/components/ui/strip-host";
@@ -22,6 +23,7 @@ import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
 import { isConnecting } from "@/lib/connection";
 import { clockTime } from "@/lib/format";
+import { writeRefusal } from "@/lib/host-health";
 import * as api from "@/lib/api";
 import type { BridgeStatus } from "@/lib/types";
 import { mounted } from "@/lib/base-path";
@@ -31,6 +33,8 @@ import { useLocale } from "@/hooks/use-locale";
 interface ConnectionBannerProps {
   /** Herdr link from the last snapshot (undefined before the first successful poll). */
   bridge: BridgeStatus | undefined;
+  /** The machine being viewed. The snapshot's bridge field still belongs to the lead. */
+  host?: string;
   /** The last snapshot fetch failed (stale data on screen). */
   error: boolean;
   /** The failed snapshot request was rejected with HTTP 401 or 403. */
@@ -43,9 +47,7 @@ interface ConnectionBannerProps {
   lastSeenAt?: number;
 }
 
-// The result of the /api/config probe (which never touches Herdr): "unknown" until it resolves,
-// "reachable" = the bridge answered (so the herd link is what's down), "unreachable" = the bridge
-// itself couldn't be reached. Only ever run while RED, to name the cause.
+// /api/config probes the lead's HTTP surface, never a member or a mux.
 type Probe = "unknown" | "reachable" | "unreachable";
 
 // The three color-coded states, plus null = nothing. green = established, amber = checking, red = failed.
@@ -73,9 +75,9 @@ export const GREEN_MS = 1_800;
 // slot's PRIORITY moves with it: a lost connection is `OUTAGE`, trouble and the recovery flash are
 // `DEGRADED` (`lib/strip-priority.ts`). Green is not a fifth level — it is this same fact, resolved,
 // and it outranks the update offer for the second it stands for exactly the reason amber does.
-export function ConnectionBanner({ bridge, error, authError, lastSeenAt }: ConnectionBannerProps) {
+export function ConnectionBanner({ bridge, host, error, authError, lastSeenAt }: ConnectionBannerProps) {
   if (authError) return <AuthErrorBanner />;
-  return <ConnectionStateBanner bridge={bridge} error={error} lastSeenAt={lastSeenAt} />;
+  return <ConnectionStateBanner bridge={bridge} host={host} error={error} lastSeenAt={lastSeenAt} />;
 }
 
 // A refusal is not an outage, so it gets its own surface ahead of the connection state machine: no
@@ -140,10 +142,13 @@ function AuthErrorBanner() {
 
 function ConnectionStateBanner({
   bridge,
+  host,
   error,
   lastSeenAt,
 }: Omit<ConnectionBannerProps, "authError">) {
   useLocale();
+  const { lead } = useCrew();
+  const memberHealth = useHostHealth(host);
   const stalled = useLoadingStalled();
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
@@ -186,8 +191,7 @@ function ConnectionStateBanner({
   // had finished closing over it — so what is left here is the state machine and nothing else:
   // there is a tone, or there is no slot.
   //
-  // Probe /api/config only while RED, to tell "bridge unreachable" from "bridge up, Herdr down". Amber
-  // (ambient) and green (a success flash) never probe. Reset when we leave red so a later outage re-probes.
+  // Probe HTTP reachability only while red. Reset on recovery so a later outage re-probes.
   const online = useOnline();
   const revalidator = useRevalidator();
   const [probe, setProbe] = useState<Probe>("unknown");
@@ -221,7 +225,12 @@ function ConnectionStateBanner({
     setRetrying(false);
   }
 
-  const view = resolveView(tone, online, probe, lastSeenAt);
+  const muxDisconnected = !error && bridge === "disconnected" && (host === undefined || host === lead);
+  // A member view with a lead that still answers: the lead's own last snapshot already says whether
+  // that member is down, and the sentence for it exists (`connection.stale.*`, the one the pane
+  // notice and a refused write use). Read only to NAME the cause; it feeds no clock and no latch.
+  const memberFault = host !== undefined && host !== lead ? writeRefusal(memberHealth) : undefined;
+  const view = resolveView(tone, online, probe, muxDisconnected, memberFault, lastSeenAt);
 
   return (
     // A lost connection outranks trouble, and both outrank the update offer. Green rides at
@@ -271,8 +280,8 @@ function ConnectionStateBanner({
   );
 }
 
-// Copy + tone + icon per state. Green/amber are fixed; red names the cause — the bridge answering means
-// Herdr is the outage, otherwise onLine decides between a true offline drop and an unreachable Collie.
+// A config response proves HTTP reachability. Only a fresh, lead-scoped snapshot can also prove
+// the mux is disconnected. Member snapshots retain the lead's mux status, not the member's.
 //
 // Red also DATES what's on screen when it can ("… — last seen 14:32"). That matters most in the case
 // this whole path exists for: a PWA the browser discarded, reopened with the tunnel still down, has a
@@ -284,7 +293,14 @@ function ConnectionStateBanner({
 // itself: `success` is `--status-done`, `caution` is `--status-working`, `danger` is
 // `--status-blocked`. Nothing here changed colour; the recipe moved to the one table allowed to
 // hold it, which is what stops the next banner drifting an alpha.
-function resolveView(tone: Tone, online: boolean, probe: Probe, lastSeenAt?: number) {
+function resolveView(
+  tone: Tone,
+  online: boolean,
+  probe: Probe,
+  muxDisconnected: boolean,
+  memberFault: string | undefined,
+  lastSeenAt?: number,
+) {
   if (tone === "green") {
     return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success" } as const;
   }
@@ -293,8 +309,15 @@ function resolveView(tone: Tone, online: boolean, probe: Probe, lastSeenAt?: num
     // prefers-reduced-motion. Ambient by design.
     return { copy: t("connection.reconnecting"), Icon: Plug, tone: "caution" } as const;
   }
+  // The lead answered, so the fault is one it can name. A mux that is down belongs to the machine
+  // being viewed only when that machine is the lead (or there is no crew); on a member the lead's
+  // own `bridge` says nothing, and what the lead knows about that member is its health. The member's
+  // sentence carries its own "last seen", so it is not dated a second time below.
+  if (probe === "reachable" && !muxDisconnected && memberFault !== undefined) {
+    return { copy: memberFault, Icon: TriangleAlert, tone: "danger" } as const;
+  }
   const cause =
-    probe === "reachable"
+    probe === "reachable" && muxDisconnected
       ? { copy: t("connection.herdrDown"), Icon: TriangleAlert }
       : probe === "unreachable" && !online
         ? { copy: t("connection.offlineCantReach"), Icon: WifiOff }
