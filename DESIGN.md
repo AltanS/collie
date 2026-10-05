@@ -45,7 +45,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer; there is no popover, no dialog, no tooltip. |
 | `ui/strip-host.tsx` | The top band above the header. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. Domain-blind: a bigger number wins, and it does not know what a connection is. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
-| `ui/tab-bar.tsx` | A bottom tab bar: equal icon-over-word tabs on the page colour, a rule above, the safe area below. The active mark is a reserved 2px top edge, and a count badge floats on the icon, so a switch or a count never moves a word. The dashboard footer (ADR 0066). |
+| `ui/tab-bar.tsx` | A bottom tab bar: equal icon-over-word tabs on the page colour, a rule above, the safe area below. The active mark is a reserved 2px top edge, and a count badge floats on the icon, so a switch or a count never moves a word. The dashboard footer (ADR 0066, ADR 0085). |
 | `ui/toast-viewport.tsx` | Where a transient event floats: `dock="bottom"` fixed to the viewport, `dock="top"` absolute inside a route's content region. Owns position and nothing else. |
 | `ui/chat/chat-input.tsx` | The composer's text box shell. |
 | `ui/chat/chat-message-list.tsx` | The transcript's scrolling list. |
@@ -408,9 +408,16 @@ change the scroller's padding or the pill's border and you must re-measure.
 **The one exception: the pane header's two lines (1.17.0).** The name line opens Pane
 settings and the workspace line opens the space, so the 60px row holds two targets, each
 30px tall and as wide as the identity block. Two 44px targets do not fit in one 60px row.
-Each button extends its hit area with a pseudo-element, the `STRIP_TAP_TARGET` idea, so a
-thumb that lands a little above or below its line still reaches it. Do not copy this for a
-new control: a single target in a row still owes the full 44px.
+The two buttons are not drawn over their lines and use no pseudo-element. They are empty
+siblings that together fill a layer laid over the identity block (`pane-identity-taps` in
+`agent-chat.tsx`), split at the line boundary, each as wide as the block. The layer reaches
+8px past the block top and bottom (`-inset-y-2`), which is air the row already owns, so the
+two targets are 30px tall each, half the 60px row, and a thumb a little above or below its
+line still lands on one. The lines paint above the layer with `pointer-events-none` and pass
+their taps through. The one pseudo-element in the header is the cache reading's: it reaches
+16px down from its 12px line (`pane-meta.tsx`), a `STRIP_TAP_TARGET`-style reach, and takes
+its own taps back. Do not copy any of this for a new control: a single target in a row still
+owes the full 44px.
 
 **A row states its own floor with `min-h`, never `h`.** `app-header.tsx:212` is
 `min-h-15` — 60px. It is a floor, not a sum: the row's own padding is `py-1`, and the

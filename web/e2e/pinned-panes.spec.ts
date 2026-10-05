@@ -6,7 +6,7 @@ import { fixtureChanges, fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
 
-// A PANE CAN BE PINNED (ADR 0070, issue 286). A pinned pane leads the dashboard's Panes, Focus and
+// A PANE CAN BE PINNED (ADR 0070, issue 286). A pinned pane leads the dashboard's Dashboard (with the needs-you switch on or off) and
 // Changes lists and the switcher, under the summary line, in place order, and is listed once. The
 // cases a real engine has to check: where the Pinned group lands on each tab, that the hold (and
 // its right-click twin) opens the pane's own sheet instead of the pane, and that the row the
@@ -25,7 +25,8 @@ test.beforeEach(async ({ page }, testInfo) => {
 
 const footer = (page: Page) => page.getByRole("navigation", { name: en["home.tabs.aria"] });
 const tab = (page: Page, name: RegExp) => footer(page).getByRole("button", { name });
-const FOCUS = new RegExp(`^${en["home.tabs.focus"]}`, "u");
+/** The needs-you switch in the summary line's row (ADR 0085), the old Focus tab. */
+const needsYou = (page: Page) => page.getByRole("button", { name: en["home.needsYouOnly"] });
 const CHANGES = new RegExp(`^${en["changes.title"]}$`, "u");
 /** The summary line: the one button in the list that opens on a count of what needs you, or the all-clear. */
 const summary = (page: Page) =>
@@ -86,7 +87,7 @@ async function box(l: Locator) {
   return b!;
 }
 
-test("Panes: a pinned pane leads under the summary line and is gone from its workspace group", async ({ page }) => {
+test("Dashboard: a pinned pane leads under the summary line and is gone from its workspace group", async ({ page }) => {
   await page.goto("/");
   await expect(pinnedGroup(page)).toHaveCount(0);
   const s0 = await box(summary(page));
@@ -97,7 +98,7 @@ test("Panes: a pinned pane leads under the summary line and is gone from its wor
   await expect(row(pinnedGroup(page), "codex")).toBeVisible();
   // Listed once: the collie group keeps its shell and loses the codex row.
   await expect(mainRow(page, "codex")).toHaveCount(1);
-  // Pinned is the first group, then the workspaces (Launch and Spaces trail under Panes).
+  // Pinned is the first group, then the workspaces (Launch and Spaces trail under the Dashboard).
   expect((await headings(page)).slice(0, 3)).toEqual([en["home.pinned.title"], "webapp", "collie"]);
   // Under the summary line, which did not move.
   expect(await box(summary(page))).toEqual(s0);
@@ -108,7 +109,7 @@ test("Panes: a pinned pane leads under the summary line and is gone from its wor
   await expect(page).toHaveURL(new RegExp(`/pane/${encodeURIComponent("w2:p1")}$`, "u"));
 });
 
-test("Focus: an idle pinned pane still leads, and the workspace groups keep only what needs you", async ({ page }) => {
+test("needs-you switch: an idle pinned pane still leads, and the workspace groups keep only what needs you", async ({ page }) => {
   // The orchestrator case: a pane opened many times an hour that is idle, not blocked.
   await withSnapshot(page, (snap) => {
     snap.agents.find((a) => a.paneId === "w2:p1")!.status = "idle";
@@ -116,8 +117,8 @@ test("Focus: an idle pinned pane still leads, and the workspace groups keep only
   await page.goto("/");
   await viaMenu(page, mainRow(page, "codex"), "paneActions.pin.label");
 
-  await tab(page, FOCUS).click();
-  await expect(tab(page, FOCUS)).toHaveAttribute("aria-current", "page");
+  await needsYou(page).click();
+  await expect(needsYou(page)).toHaveAttribute("aria-pressed", "true");
   await expect(row(pinnedGroup(page), "codex")).toBeVisible();
   // webapp's blocked pane still shows in its group; collie has nothing that needs you.
   expect(await headings(page)).toEqual([en["home.pinned.title"], "webapp"]);
@@ -284,13 +285,13 @@ test("hold: a tap on a row opens its pane and never shows the hold", async ({ pa
   expect(await page.evaluate(() => window.holdLog)).toEqual([]);
 });
 
-test("hold: unpinning an idle pane on Focus takes it off the list and hands focus to the summary line", async ({ page }) => {
+test("hold: unpinning an idle pane with the switch on takes it off the list and hands focus to the summary line", async ({ page }) => {
   await withSnapshot(page, (snap) => {
     for (const a of snap.agents) a.status = "idle";
   });
   await page.goto("/");
   await viaMenu(page, mainRow(page, "codex"), "paneActions.pin.label");
-  await tab(page, FOCUS).click();
+  await needsYou(page).click();
   await expect(row(pinnedGroup(page), "codex")).toBeVisible();
 
   await viaMenu(page, row(pinnedGroup(page), "codex"), "paneActions.unpin.label");
@@ -299,21 +300,22 @@ test("hold: unpinning an idle pane on Focus takes it off the list and hands focu
 });
 
 // THE PIN HINT (M38/02). The fixture herd is three pane rows (two agents and a shell), so a fresh
-// device sees the hint on Panes; the cases below retire it the two ways the spec allows.
-test("hint: shows on Panes with no pins, leaves on the first pin, and stays gone after a reload and an unpin", async ({ page }) => {
+// device sees the hint on the Dashboard; the cases below retire it the two ways the spec allows.
+test("hint: shows on the Dashboard with no pins, leaves on the first pin, and stays gone after a reload and an unpin", async ({ page }) => {
   await page.goto("/");
   const words = await hintWords(page);
   const line = hintLine(page, words);
   await expect(line).toBeVisible();
-  // Under the summary line, in the place the Pinned group takes, and never on Focus or Changes.
+  // Under the summary line, in the place the Pinned group takes, and never with the switch on, or on Changes.
   const s0 = await box(summary(page));
   expect((await box(line)).y).toBeGreaterThan(s0.y + s0.height - 1);
   expect((await box(line)).y).toBeLessThan((await box(page.getByRole("heading", { name: "webapp" }))).y);
-  await tab(page, FOCUS).click();
+  await needsYou(page).click();
   await expect(hintLine(page, words)).toHaveCount(0);
+  await needsYou(page).click();
   await tab(page, CHANGES).click();
   await expect(hintLine(page, words)).toHaveCount(0);
-  await tab(page, /^Panes$/u).click();
+  await tab(page, /^Dashboard/u).click();
   await expect(line).toBeVisible();
   expect(await page.evaluate((k) => localStorage.getItem(k), HINT_FLAG)).toBeNull();
 

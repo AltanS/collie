@@ -8,7 +8,7 @@ import { fill, installApiStub, installCrewWorld } from "./fixtures/api";
 // A CREW'S DASHBOARD CAN HIDE A MACHINE (issue #288, M40/01, Option A1). The Machines sheet carries
 // a Show switch per machine; a hidden machine's workspaces leave the list, and one dimmed stand-in
 // chip in the strip keeps its worst dot and brings it back. A filter, never an address: `?h=` and
-// history stay as they were, and the summary line and the Focus badge keep counting every machine.
+// history stay as they were, and the summary line and the Dashboard badge keep counting every machine.
 // Pins ignore the filter (ADR 0070). 390x844, the phone.
 //
 // The crew fixture (src/test/handlers.ts): the lead bluefin holds webapp (a blocked claude pane) and
@@ -33,8 +33,8 @@ const headings = (page: Page) => page.getByRole("main").getByRole("heading").all
 const strip = (page: Page) => page.getByRole("navigation", { name: en["space.strip.title"] });
 const standIn = (page: Page) => strip(page).getByRole("button", { name: fill(en["home.machineHidden.show"], { name: PEER }) });
 const summary = (page: Page) => page.getByRole("main").getByRole("button", { name: /^\d+ needs you/u });
-const focusTab = (page: Page) =>
-  page.getByRole("navigation", { name: en["home.tabs.aria"] }).getByRole("button", { name: new RegExp(`^${en["home.tabs.focus"]}`, "u") });
+const dashboardTab = (page: Page) =>
+  page.getByRole("navigation", { name: en["home.tabs.aria"] }).getByRole("button", { name: new RegExp(`^${en["home.tabs.dashboard"]}`, "u") });
 const pinnedGroup = (page: Page) => page.getByRole("region", { name: en["home.pinned.title"] });
 
 /** Open the Machines sheet from the dashboard header. */
@@ -94,9 +94,9 @@ test("hiding a machine drops its rows and chips, and its stand-in chip brings th
   await expect(standIn(page)).toBeVisible();
   await expect(standIn(page)).toContainText(PEER);
   await expect(standIn(page)).toHaveAccessibleDescription(/needs you/u);
-  // Nothing is silenced: the summary line and the Focus badge still count the hidden machine.
+  // Nothing is silenced: the summary line and the Dashboard badge still count the hidden machine.
   await expect(summary(page)).toHaveAccessibleName(/^2 needs you/u);
-  await expect(focusTab(page)).toContainText("2");
+  await expect(dashboardTab(page)).toContainText("2");
   // No address changed and no history entry was added.
   await expect(page).toHaveURL(/\/$/u);
   expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);

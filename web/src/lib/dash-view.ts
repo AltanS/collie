@@ -1,14 +1,15 @@
-// The dashboard's three views, one per footer tab (ADR 0066): Panes (every pane, grouped by
-// workspace), Focus (only the panes that need you, same groups, same order) and Changes (each
-// workspace's uncommitted changes). Each tab names what its list holds. Focus was named Attention
-// until ADR 0068 renamed it and swapped its icon.
+// The dashboard's three views, one per footer tab (ADR 0085): Dashboard (every pane, grouped by
+// workspace), Crew (the machines, drawn only when a crew is configured) and Changes (each workspace's
+// uncommitted changes). Each tab names what its list holds. The old Focus tab (ADR 0066, 0068) is now
+// a switch in the summary line, `DashPrefs.needsYouOnly`, and filters the Dashboard list.
 //
-// Focus is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves nothing.
+// The needs-you filter is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves
+// nothing.
 //
-// Pinned panes lead all three under the summary line (ADR 0070), in place order, and leave their
-// workspace group on Panes and Focus so each pane is listed once.
+// Pinned panes lead all of them under the summary line (ADR 0070), in place order, and leave their
+// workspace group on the Dashboard so each pane is listed once.
 //
-// A hidden machine (lib/hidden-machines.ts, issue #288) leaves all three too, and its workspace chips
+// A hidden machine (lib/hidden-machines.ts, issue #288) leaves the lists too, and its workspace chips
 // give way to one stand-in chip in the strip (`stripEntries`).
 import { hostKey } from "./hosts";
 import type { JsonValue } from "./json";
@@ -16,18 +17,34 @@ import type { WorkspaceGroup } from "./pane-groups";
 import { needsYou } from "./triage";
 import type { AgentView } from "./types";
 
-export const DASH_VIEWS = ["panes", "focus", "changes"] as const;
+export const DASH_VIEWS = ["dashboard", "crew", "changes"] as const;
 export type DashView = (typeof DASH_VIEWS)[number];
 
 /**
- * A stored value as a view; anything unknown is the default, Panes. `"needs"` is the value a
- * device stored before ADR 0068 renamed the tab (Attention → Focus); `"attention"` is handled the
- * same way in case any build ever wrote the label instead of the internal name. Both read back as
- * `"focus"`, and only `"focus"` is ever written from here on.
+ * The values a device stored before ADR 0085 turned the Focus tab into a switch. `"panes"` is the old
+ * first tab; `"focus"` is the old second tab, with `"needs"` and `"attention"` its earlier names
+ * (ADR 0066, 0068). All four read as the Dashboard now.
+ */
+const LEGACY_VIEWS = ["panes", "focus", "needs", "attention"] as const;
+const LEGACY_FOCUS_VIEWS = ["focus", "needs", "attention"] as const;
+
+/** Whether a stored value is one of the retired tab names, so the blob wants rewriting. */
+export function isLegacyDashView(raw: JsonValue | undefined): boolean {
+  return LEGACY_VIEWS.some((v) => v === raw);
+}
+
+/** Whether a stored value is the retired Focus tab, which a migration turns into the needs-you switch. */
+export function wasFocusView(raw: JsonValue | undefined): boolean {
+  return LEGACY_FOCUS_VIEWS.some((v) => v === raw);
+}
+
+/**
+ * A stored value as a view; anything unknown is the default, Dashboard. A retired name reads as the
+ * Dashboard (see {@link isLegacyDashView}). `"crew"` is kept as stored even where no crew is
+ * configured: the route shows the Dashboard then and never overwrites the stored value.
  */
 export function coerceDashView(raw: JsonValue | undefined): DashView {
-  if (raw === "needs" || raw === "attention") return "focus";
-  return DASH_VIEWS.find((v) => v === raw) ?? "panes";
+  return DASH_VIEWS.find((v) => v === raw) ?? "dashboard";
 }
 
 /** One workspace as a view draws it: the whole group (its heading counts it all) and the rows shown. */

@@ -16,6 +16,7 @@ import { HOST_TEXT_CLASSES, hostName, hostSlot, paneRowKey, paneScope } from "@/
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import { NeedsYouSwitch } from "@/components/needs-you-switch";
 import { PaneOrderToggle } from "@/components/pane-order-toggle";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
@@ -91,19 +92,26 @@ interface AgentListProps {
   /** Tap a hidden machine's stand-in chip: show that machine again. */
   onShowMachine?: (host: string) => void;
   /**
-   * The "Focus" tab (issue 270, ADR 0066, renamed by ADR 0068): a group shows only its panes that need you, and a
-   * group with none is dropped. A filter, never a sort. The strip, the summary line and every
-   * heading's counts still count ALL panes, so the filter never understates the herd.
+   * The "needs you" switch (issue 270, ADR 0066; the old Focus tab, now a switch by ADR 0085): a group
+   * shows only its panes that need you, and a group with none is dropped. A filter, never a sort. The
+   * strip, the summary line and every heading's counts still count ALL panes, so the filter never
+   * understates the herd.
    */
   needsYouOnly?: boolean;
   /**
-   * The "Changes" tab: draws its own body in place of the pane groups, from the workspaces the strip
-   * leaves shown. The strip and the summary line above stay exactly where they were.
+   * Flip the needs-you switch. Given, the switch is drawn in the controls row beside the order toggle
+   * (which `onOrderChange` draws, so give both); withheld, it is not, and the list keeps whatever
+   * `needsYouOnly` says.
+   */
+  onNeedsYouOnlyChange?: (on: boolean) => void;
+  /**
+   * The Changes and Crew tabs: draw their own body in place of the pane groups, from the workspaces
+   * the strip leaves shown. The strip and the summary line above stay exactly where they were.
    */
   renderBody?: (shown: readonly WorkspaceGroup[]) => ReactNode;
   /**
    * This device's pins (lib/pins.ts, ADR 0070). A pinned pane leads every view in a Pinned group
-   * under the summary line, in place order, whatever the workspace filter and the Focus filter say,
+   * under the summary line, in place order, whatever the workspace filter and the needs-you switch say,
    * and leaves its workspace group. Omit, or pass none, and the list renders as it did.
    */
   pins?: readonly Pin[];
@@ -114,7 +122,7 @@ interface AgentListProps {
    */
   order?: PaneOrder;
   /**
-   * Store a new order. Given, the toggle is drawn beside the summary line on Panes and Focus; withheld, it
+   * Store a new order. Given, the toggle is drawn beside the summary line on the Dashboard; withheld, it
    * is not, and the list keeps whatever `order` says.
    */
   onOrderChange?: (order: PaneOrder) => void;
@@ -122,7 +130,7 @@ interface AgentListProps {
   onHold?: (pane: AgentView) => void;
   /**
    * After a pin or unpin moved a row: scroll that row into view and focus it in its new place, once
-   * per new object. A row the act took off the list (an idle pane unpinned on Focus) hands focus to
+   * per new object. A row the act took off the list (an idle pane unpinned with the needs-you switch on) hands focus to
    * the summary line instead, never to `body`.
    */
   reveal?: { rowKey: string } | null;
@@ -241,6 +249,7 @@ export function AgentList({
   addressedHost,
   onShowMachine,
   needsYouOnly = false,
+  onNeedsYouOnlyChange,
   renderBody,
   pins = NO_PINS,
   order = "place",
@@ -257,7 +266,7 @@ export function AgentList({
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
   const agentDetection = useMuxCapability("agentDetection");
-  // Whether this device retired the Panes tab's pin hint (lib/pin-hint.ts). Read here for the same
+  // Whether this device retired the pin hint (lib/pin-hint.ts). Read here for the same
   // reason: above the early return.
   const pinHintRetired = usePinHintRetired();
   // A pin or unpin just moved a row (ADR 0070). Runs after the commit that moved it, and after the
@@ -335,7 +344,7 @@ export function AgentList({
   const isolatedGroup = isolated === null ? undefined : groups.find((g) => workspacePrefKey(g) === isolated);
   const hiddenSet = new Set(hidden);
   // THE MACHINE FILTER (issue #288), one clause beside hide: a group on a hidden machine leaves
-  // `shown`, so Panes, Focus and Changes follow at once. Isolate still wins, because the isolated
+  // `shown`, so the Dashboard, Crew and Changes follow at once. Isolate still wins, because the isolated
   // group was found among ALL groups above; the Pinned group below is drawn from all groups too
   // (ADR 0070). The addressed machine is never in this set, so the filter cannot empty the list, and
   // on a solo list the set is empty and the clause never matches (lib/hidden-machines.ts).
@@ -346,7 +355,7 @@ export function AgentList({
   const strip = stripEntries(groups, machineHidden, isolatedGroup?.key);
   const allClear = attention.length === 0;
   // THE PINNED GROUP (ADR 0070). Drawn from EVERY workspace, before isolate and hide apply, and never
-  // through the Focus filter: a pin means "always show me this one", and the summary line above
+  // through the needs-you switch: a pin means "always show me this one", and the summary line above
   // still says what needs you. Place order, so no state moves a pinned row.
   const isPinned = pinMatcher(pins);
   const ranked = order !== "place";
@@ -362,7 +371,7 @@ export function AgentList({
   // (lib/dash-view.ts).
   const drawn = shownGroups(shown, needsYouOnly, isPinned);
   // THE RANKED LIST (ADR 0071, rule 2 of "The dashboard takes the setting"): Activity and Cache fold
-  // the workspace groups into one list. The filters above (Focus, isolate, hide, hidden machines,
+  // the workspace groups into one list. The filters above (needs you, isolate, hide, hidden machines,
   // pins) have already run, so they decide WHICH rows and never their order; shells are in these
   // groups already and are ranked with everything else, as in the switcher.
   const rankedRows = ranked && !renderBody ? inRankOrder(drawn.flatMap((d) => d.rows), ranks) : NO_PANES;
@@ -382,9 +391,9 @@ export function AgentList({
   const jumpToPinned = () =>
     document.getElementById(PINNED_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
   // THE PIN HINT (M38/02): one quiet line in the Pinned group's place that says a hold pins a pane.
-  // Panes only: Focus and Changes are narrower lists, and a list without a hold has nothing to teach.
+  // The Dashboard with the switch off only: the other lists are narrower, and a list without a hold has nothing to teach.
   // It needs no pin stored, a device that never retired it, and enough rows on show to pin one above
-  // the others; the count is the rows drawn after isolate and hide, the Panes list the eye sees.
+  // the others; the count is the rows drawn after isolate and hide, the list the eye sees.
   const pinHintHere = !needsYouOnly && renderBody === undefined && onHold !== undefined;
   const shownRows = drawn.reduce((n, d) => n + d.rows.length, 0);
   const pinHintOpen = showsPinHint(pinHintRetired, pins.length, shownRows);
@@ -456,11 +465,28 @@ export function AgentList({
       panes={agents}
       allClear={allClear}
       onJump={onJump}
-      // Focus lands here when an unpin takes a row off the list, so the line must be able to hold
+      // Focus (the keyboard's) lands here when an unpin takes a row off the list, so the line must be able to hold
       // it. Only once pins are in play: with none, the line renders exactly as it did.
       focusable={pins.length > 0 || reveal !== null}
       className={onOrderChange ? "min-w-0 flex-1" : undefined}
     />
+  );
+
+  // The controls the row ends in. The same markup is drawn invisibly on a tab that has none, so the
+  // row's width never depends on the tab. The needs-you switch is a pair with the order toggle and
+  // is drawn only when the route gave it a way to flip.
+  const controls = onOrderChange && (
+    <div className="flex shrink-0 gap-1">
+      {onNeedsYouOnlyChange && <NeedsYouSwitch on={needsYouOnly} onChange={onNeedsYouOnlyChange} />}
+      <PaneOrderToggle
+        order={order}
+        onChange={(next) => {
+          reread();
+          onOrderChange(next);
+        }}
+        compact
+      />
+    </div>
   );
 
   return (
@@ -532,27 +558,19 @@ export function AgentList({
           The all-clear check leads when nothing needs you. A tap goes to the first workspace
           holding something urgent. */}
       {onOrderChange ? (
-        // THE CONTROLS ROW (ADR 0071, "The dashboard takes the setting"): the summary keeps the left,
-        // where ADR 0063 point 3 puts urgency, and the order control takes the right as glyphs, the
-        // way the switcher draws it. It is drawn on EVERY tab so a tab switch moves neither the strip
-        // nor this row. A tap, the selected segment included, asks for a new reading. The Changes
-        // tab orders nothing, so it draws no toggle, but the slot is still there, invisible: the row
-        // keeps the toggle's 44px AND its width, so a tab switch moves neither the line beside it nor
-        // anything below it (DESIGN.md §2, `e2e/dashboard-footer.spec.ts`).
+        // THE CONTROLS ROW (ADR 0071, "The dashboard takes the setting"; ADR 0085): the summary keeps
+        // the left, where ADR 0063 point 3 puts urgency, and the controls take the right as glyphs,
+        // the way the switcher draws the order: the needs-you switch, then the order toggle. The row
+        // is drawn on EVERY tab so a tab switch moves neither the strip nor this row. A tap on the
+        // order toggle, the selected segment included, asks for a new reading. Changes and Crew order
+        // nothing and filter nothing, so they draw no controls, but the slot is still there,
+        // invisible: the row keeps the controls' 44px AND their width, so a tab switch moves neither
+        // the line beside it nor anything below it (DESIGN.md §2, `e2e/dashboard-footer.spec.ts`).
         <div className="flex min-h-11 items-center justify-between gap-2">
           {summary}
-          {renderBody === undefined ? (
-            <PaneOrderToggle
-              order={order}
-              onChange={(next) => {
-                reread();
-                onOrderChange(next);
-              }}
-              compact
-            />
-          ) : (
+          {renderBody === undefined ? controls : (
             <div className="invisible" aria-hidden="true">
-              <PaneOrderToggle order={order} onChange={() => {}} compact />
+              {controls}
             </div>
           )}
         </div>
@@ -581,8 +599,8 @@ export function AgentList({
       {/* THE PIN HINT (M38/02), in the place the Pinned group takes: directly under the summary line
           while nothing is pinned. It sits AFTER the Pinned section, so on the first pin the group lands
           in its final place at once and the line slides shut below it, rather than the group sliding
-          up as the line leaves above it. Mounted on Panes only, so a tab switch drops it with the rest
-          of the body instead of playing its exit on Focus. */}
+          up as the line leaves above it. Mounted on the Dashboard with the switch off only, so a tab
+          or switch change drops it with the rest of the body instead of playing its exit. */}
       {pinHintHere && <PinHint open={pinHintOpen} onFocusLeaves={focusFirstRow} />}
 
       {renderBody?.(shown)}
@@ -595,7 +613,7 @@ export function AgentList({
           The heading ends in a "+" that opens a new tab in that workspace (M40/03). `min-h-7` is the
           "+"'s 28px, reserved on EVERY strong heading, drawn or not, so no heading's height depends
           on a machine's capability or on a state (DESIGN.md §2). A workspace with no heading here (all
-          its panes pinned, hidden or filtered out, or nothing of it urgent under Focus) has no "+";
+          its panes pinned, hidden or filtered out, or nothing of it urgent with the needs-you switch on) has no "+";
           the space view keeps its own. */}
       {/* IN ACTIVITY OR CACHE ORDER the workspace groups give way to ONE list under one heading that
           names the order in words, as the switcher's does (ADR 0071). No workspace heading and so no

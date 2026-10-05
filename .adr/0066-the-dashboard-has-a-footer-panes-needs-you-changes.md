@@ -6,6 +6,10 @@
 - **Amended in scope by:** [ADR 0070](./0070-a-pin-is-a-place-the-operator-chose.md): a Pinned
   group sits under the summary line on all three tabs, so Focus is no longer empty under its
   all-clear when pins exist; the footer, the filter and the Changes rows stand.
+- **Amended in scope by:** [ADR 0085](./0085-the-dashboards-tabs-are-dashboard-crew-and-changes.md):
+  the first tab is renamed Dashboard, the Focus tab becomes a switch in the summary line (stored as
+  `needsYouOnly`) and a Crew tab joins while a crew is configured; the filter's rules, the corner
+  mark's rule (now on the Dashboard tab) and Changes stand.
 - **Date:** 2026-09-23
 - **Shipped in:** pending
 - **Trail:** GitHub issue 270 (@simplysoft: a `Needs you` chip on the workspace strip, persisted as

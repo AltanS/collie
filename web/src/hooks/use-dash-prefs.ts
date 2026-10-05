@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 
 import type { ChangesLayout } from "@/lib/changes-tree";
-import { coerceDashView, type DashView } from "@/lib/dash-view";
+import { coerceDashView, isLegacyDashView, wasFocusView, type DashView } from "@/lib/dash-view";
 import { coercePaneOrder, type PaneOrder } from "@/lib/pane-order";
 import { coercePaneView, type PaneView } from "@/lib/pane-view";
 import type { RecentDir } from "@/lib/triage";
@@ -52,8 +52,14 @@ export interface DashPrefs {
    * the icons slightly larger, like 15%"); the other two are the Settings row's way up from there.
    */
   beltScale: BeltScale;
-  /** The dashboard's footer tab: Panes, Focus or Changes (ADR 0066, renamed by ADR 0068). Panes by default. */
+  /** The dashboard's footer tab: Dashboard, Crew or Changes (ADR 0085). Dashboard by default. */
   dashView: DashView;
+  /**
+   * The Dashboard's "needs you" switch (ADR 0085, the old Focus tab): on, each workspace shows only
+   * its panes that need you. Per device, off by default. A device that had the Focus tab selected
+   * reads as on, once (see {@link coerceDashPrefs}).
+   */
+  needsYouOnly: boolean;
   /**
    * Whether a session view draws the agent's tool calls: the reads, the searches, the commands and
    * the edits it ran between saying things.
@@ -120,7 +126,8 @@ const DEFAULTS: DashPrefs = {
   changesDepth: 2,
   changesLayout: "list",
   beltScale: 1.15,
-  dashView: "panes",
+  dashView: "dashboard",
+  needsYouOnly: false,
   showToolCalls: false,
   showCompactions: false,
   paneOrder: "place",
@@ -173,6 +180,9 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     changesLayout: p.changesLayout === "tree" ? "tree" : DEFAULTS.changesLayout,
     beltScale: coerceBeltScale(p.beltScale),
     dashView: coerceDashView(p.dashView),
+    // THE FOCUS MIGRATION (ADR 0085): a stored Focus tab turns the switch on, so no one loses the
+    // view they had. An explicit stored value wins otherwise.
+    needsYouOnly: wasFocusView(p.dashView) ? true : (asJsonBoolean(p.needsYouOnly) ?? DEFAULTS.needsYouOnly),
     showToolCalls: asJsonBoolean(p.showToolCalls) ?? DEFAULTS.showToolCalls,
     showCompactions: asJsonBoolean(p.showCompactions) ?? DEFAULTS.showCompactions,
     paneOrder: coercePaneOrder(p.paneOrder),
@@ -184,7 +194,13 @@ function loadPrefs(): DashPrefs {
   try {
     const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     if (!raw) return { ...DEFAULTS };
-    return coerceDashPrefs(JSON.parse(raw));
+    const parsed: JsonValue = JSON.parse(raw);
+    const prefs = coerceDashPrefs(parsed);
+    // A retired tab name is written back migrated, so the Focus migration happens once: the switch is
+    // then stored as its own value and the old name is gone.
+    const stored = asJsonObject(parsed);
+    if (stored && isLegacyDashView(stored.dashView)) savePrefs(prefs);
+    return prefs;
   } catch {
     return { ...DEFAULTS };
   }
@@ -213,6 +229,7 @@ export interface UseDashPrefsReturn {
   setChangesLayout: (layout: ChangesLayout) => void;
   setBeltScale: (scale: number) => void;
   setDashView: (view: DashView) => void;
+  setNeedsYouOnly: (on: boolean) => void;
   setShowToolCalls: (show: boolean) => void;
   setShowCompactions: (show: boolean) => void;
   setPaneOrder: (order: PaneOrder) => void;
@@ -253,6 +270,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
   );
 
   const setDashView = useCallback((dashView: DashView) => update({ dashView }), [update]);
+  const setNeedsYouOnly = useCallback((needsYouOnly: boolean) => update({ needsYouOnly }), [update]);
 
   const setIsolatedSpace = useCallback((isolatedSpace: string | null) => update({ isolatedSpace }), [update]);
   const toggleHiddenSpace = useCallback((key: string) => {
@@ -279,6 +297,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setChangesLayout,
     setBeltScale,
     setDashView,
+    setNeedsYouOnly,
     setShowToolCalls,
     setShowCompactions,
     setPaneOrder,
