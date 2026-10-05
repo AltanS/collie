@@ -24,7 +24,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 // it, the phone gets it back, and the only operations on it are string equality and one trailing
 // slash dropped. A folder that no longer exists stays until newer ones push it out; a create there
 // fails with the multiplexer's own words and records nothing. So CLAUDE.md's rule about client
-// values becoming paths gains no third place: a starred string must already be in Recent, and
+// values becoming paths gains no further place: a starred string must already be in Recent, and
 // Recent only ever holds what a multiplexer said.
 
 /** Recent keeps the newest eight folders a space was created in. */

@@ -832,6 +832,56 @@ export type WorkspaceChangeCommitResponse = { workspaceId: string; workspaceLabe
 /** GET /api/workspace/:id/changes?view=commit&repo=&path= — the same file, asked by workspace. */
 export type WorkspaceChangeCommitDiffResponse = { workspaceId: string; workspaceLabel?: string } & ChangeCommitDiff;
 
+// ── The Files view (ADR 0083): one folder, or one text file, under the Changes root ──────────────
+
+/**
+ * One row of a Files listing. `link` is any symlink: it is listed and never followed by the listing.
+ * `size` is present for a file only (the bytes on disk, from `lstat`).
+ */
+export interface FileEntry {
+  name: string;
+  kind: "dir" | "file" | "link";
+  size?: number;
+}
+
+/** Why a Files request has nothing to show: the Changes reasons, minus `no-git` (Files needs no git). */
+export type FilesUnavailableReason = Exclude<ChangesUnavailableReason, "no-git">;
+
+/**
+ * One folder under the root, not recursive. `dir` is the folder relative to `root`, `/`-separated,
+ * `""` for the root itself. Order: folders first, then by name, case-insensitive. `truncated` means
+ * the folder held more than the entry cap.
+ */
+export type FilesListing =
+  | { available: false; reason: FilesUnavailableReason }
+  | { available: true; root: string; dir: string; entries: FileEntry[]; truncated: boolean };
+
+/**
+ * One file under the root, as UTF-8 text cut at the byte cap. `text` is `""` when `binary` (a NUL in
+ * the first 8000 bytes, git's rule). `size` is the whole file's size, which `truncated` compares
+ * against the cap.
+ */
+export type FileReadAnswer =
+  | { available: false; reason: FilesUnavailableReason }
+  | {
+      available: true;
+      root: string;
+      path: string;
+      size: number;
+      binary: boolean;
+      truncated: boolean;
+      text: string;
+    };
+
+/**
+ * GET /api/pane/:id/files — the pane's workspace root, the Changes view's own. The subject fields are
+ * the Changes answer's, on every answer. A refused path is not one of these: it is
+ * `404 { error: "unknown-path" }`.
+ */
+export type PaneFilesResponse = { paneId: string } & ChangesWorkspace & (FilesListing | FileReadAnswer);
+/** GET /api/workspace/:id/files — the same, asked by workspace. */
+export type WorkspaceFilesResponse = { workspaceId: string; workspaceLabel?: string } & (FilesListing | FileReadAnswer);
+
 /**
  * POST /api/pane/:id/{reply,keys} — result of a send. Discriminated on `ok`: a failure always
  * carries the reason Herdr rejected it. `textDelivered` distinguishes the reply partial-failure case

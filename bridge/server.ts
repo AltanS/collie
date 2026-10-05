@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, join, normalize, sep } from "node:path";
+import { dirname, extname, join, normalize, sep } from "node:path";
 import { createAccessGate } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { ActivityLedger } from "./activity.ts";
@@ -14,7 +14,8 @@ import {
   sharedListChanges,
   sharedReadCommit,
 } from "./changes.ts";
-import { rootOfWorkspace, type RootSnapshot } from "./changes-root.ts";
+import { rootOfWorkspace, type RootSnapshot, withinBound } from "./changes-root.ts";
+import { filesQuery, serveFiles, UNKNOWN_PATH } from "./files-view.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
@@ -67,7 +68,7 @@ import {
 import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
-import { crewDeviceOf, crewGate } from "./crew/peer-gate.ts";
+import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
 import type { CrewHandler, CrewSurface } from "./crew/router.ts";
@@ -102,10 +103,12 @@ import type {
   PaneChangeCommitResponse,
   PaneChangeDiffResponse,
   PaneChangesResponse,
+  PaneFilesResponse,
   WorkspaceChangeCommitDiffResponse,
   WorkspaceChangeCommitResponse,
   WorkspaceChangeDiffResponse,
   WorkspaceChangesResponse,
+  WorkspaceFilesResponse,
   PaneChatResponse,
   PaneHistoryResponse,
   PaneReadResponse,
@@ -209,7 +212,7 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
 }
 
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|focus))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -271,6 +274,14 @@ const WORKTREE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree(?:\/(open))?
 const WORKSPACE_CHANGES_ROUTE = /^\/api\/workspace\/([^/]+)\/changes$/;
 
 /**
+ * `GET /api/workspace/<id>/files` — the Files view asked by workspace (ADR 0083): one folder or one
+ * file under the same root the workspace's Changes list reads. A READ that needs an authorised
+ * device (`device-read`), forwarded with `?host=` like the Changes route: `bridge/crew/forward.ts`
+ * mirrors this shape and `forward.test.ts` pins it.
+ */
+const WORKSPACE_FILES_ROUTE = /^\/api\/workspace\/([^/]+)\/files$/;
+
+/**
  * Header the web app sets on its own pane reads, and the ONLY thing that lets a read mark a pane
  * seen. See {@link marksPaneSeen} for why a header, of all things, is the check.
  */
@@ -310,7 +321,18 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
  * forwarded route's kind the same way.
  */
 export function isPaneReadAction(action: string | undefined): boolean {
-  return action === "history" || action === "chat" || action === "changes";
+  return action === "history" || action === "chat" || action === "changes" || action === "files";
+}
+
+/**
+ * The gate level a pane route asks at. A plain read for the pane itself and for `history`, `chat`
+ * and `changes`; `device-read` for `files`, which is a read that needs an authorised device (ADR 0083:
+ * it exposes every file under the root, which Changes does not); a write for everything that types
+ * into or restructures a terminal.
+ */
+export function paneGateLevel(action: string | undefined): GateLevel {
+  if (action === "files") return "device-read";
+  return !action || isPaneReadAction(action) ? "read" : "write";
 }
 
 /**
@@ -336,8 +358,11 @@ interface RouteCaller {
    * response comes back here (§9.1). For a crew caller it is always local.
    */
   resolve(): Promise<SessionRuntime | Response>;
-  /** The caller's own authorisation at this level, or `null` to proceed. */
-  gate(level: "read" | "write"): Response | null;
+  /**
+   * The caller's own authorisation at this level, or `null` to proceed. `device-read` is a read that
+   * needs the write level's device factors (ADR 0083) without the write level's `Origin` rule.
+   */
+  gate(level: GateLevel): Response | null;
   /** The device a write is attributed to. */
   device(): string | null;
   /** Where a write's audit line lands — the peer's is pre-stamped `via:"crew"` + originator (§12). */
@@ -1114,6 +1139,22 @@ export function startServer(opts: {
       return workspaceChanges(rt.engine, workspaceId, url, req);
     }
 
+    // ── Files, asked by workspace (ADR 0083): one folder or one file under the same root ──
+    const workspaceFilesMatch = pathname.match(WORKSPACE_FILES_ROUTE);
+    if (workspaceFilesMatch && req.method === "GET") {
+      const denied = caller.gate("device-read");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      let workspaceId: string;
+      try {
+        workspaceId = decodeURIComponent(workspaceFilesMatch[1]!);
+      } catch {
+        return text("malformed URL", 400);
+      }
+      return workspaceFiles(rt.engine, workspaceId, url, req, filesPrivateFolders(cfg));
+    }
+
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
     const worktreeListMatch = pathname.match(WORKTREE_LIST_ROUTE);
     if (worktreeListMatch && req.method === "GET") {
@@ -1160,7 +1201,8 @@ export function startServer(opts: {
       // `history` and `changes` are READS despite being action segments — one reads a log off disk,
       // the other runs read-only git over the pane's folder.
       const isRead = !action || isPaneReadAction(action);
-      const denied = caller.gate(isRead ? "read" : "write");
+      // `files` is a read that still needs an authorised device (ADR 0083); see paneGateLevel.
+      const denied = caller.gate(paneGateLevel(action));
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
@@ -1198,6 +1240,8 @@ export function startServer(opts: {
       if (action === "chat" && req.method === "GET")
         return paneChat(cfg, journals, live, rt.engine, paneId, url, req);
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req);
+      if (action === "files" && req.method === "GET")
+        return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg));
       if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit_, device, session);
       if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, audit_, device, session);
       if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit_, device, session);
@@ -1576,7 +1620,7 @@ export function startServer(opts: {
       // SAME closure, passed to both, never a second call that agrees today. Two authorisation
       // checks meant to be identical drift the moment one of them is edited, so there is only one
       // (spec M15/05; `server.test.ts` → "same device auth as pane input").
-      const browserGate = (level: "read" | "write"): Response | null => guard(req, cfg, level, pairing);
+      const browserGate = (level: GateLevel): Response | null => guard(req, cfg, level, pairing);
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
         gate: browserGate,
@@ -2655,6 +2699,75 @@ export async function workspaceChanges(
   } catch (err) {
     return text(`changes read failed: ${errorText(err)}`, 502);
   }
+}
+
+/**
+ * The folders the Files view never shows (ADR 0083): this bridge's state folder and its config folder
+ * (`PRIVATE_ROOTS` in bridge/acl-policy.ts). The config folder is where `commands.toml` lives, beside
+ * the `.env`. On a crew member this is the MEMBER's own config, because the member runs this.
+ */
+export function filesPrivateFolders(cfg: Pick<Config, "stateDir" | "commandsFile">): string[] {
+  return [cfg.stateDir, dirname(cfg.commandsFile)];
+}
+
+/** The one refusal for a path: absent, outside, denied, or the wrong kind (ADR 0083). */
+function unknownPath(): Response {
+  return jsonError({ error: UNKNOWN_PATH }, 404, null);
+}
+
+/**
+ * GET /api/pane/:id/files — one folder (`?dir=`, or none for the root) or one file (`?path=`) under
+ * the pane's WORKSPACE root, the Changes view's own (ADR 0083). The root comes off the live snapshot;
+ * when the workspace has none, the pane's cwd stands in only if it passes the same bound, else
+ * `no-folder`. The client names a path relative to that root and never a root. A refused path is
+ * `404 { error: "unknown-path" }`, the same answer whatever the reason. JSON only: file bytes are
+ * never served as a document.
+ */
+export async function paneFiles(
+  engine: ChangesSnapshotSource,
+  paneId: string,
+  url: URL,
+  req: Request,
+  privateFolders: readonly string[],
+  home: string = homedir(),
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  const snap = engine.current();
+  const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === paneId);
+  if (!pane) return json({ paneId, available: false, reason: "no-pane" } satisfies PaneFilesResponse, accept);
+  const found = rootOfWorkspace(snap, pane.workspaceId, home);
+  // The fallback is bounded, unlike the Changes route's: a pane sitting in `~` or `/` lists nothing.
+  const root = found?.root ?? (withinBound(pane.cwd, home) ? pane.cwd : null);
+  const subject = found
+    ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
+    : { paneId };
+  if (root === null) return json({ ...subject, available: false, reason: "no-folder" } satisfies PaneFilesResponse, accept);
+  const answer = await serveFiles({ root, home, privateFolders }, filesQuery(url));
+  if (answer === UNKNOWN_PATH) return unknownPath();
+  return json({ ...subject, ...answer } satisfies PaneFilesResponse, accept);
+}
+
+/** GET /api/workspace/:id/files — the same, asked by workspace; no pane, so no fallback (ADR 0083). */
+export async function workspaceFiles(
+  engine: ChangesSnapshotSource,
+  workspaceId: string,
+  url: URL,
+  req: Request,
+  privateFolders: readonly string[],
+  home: string = homedir(),
+): Promise<Response> {
+  const accept = req.headers.get("accept-encoding");
+  const found = rootOfWorkspace(engine.current(), workspaceId, home);
+  if (found === null) {
+    return json({ workspaceId, available: false, reason: "no-workspace" } satisfies WorkspaceFilesResponse, accept);
+  }
+  const subject = { workspaceId, workspaceLabel: found.workspace.label };
+  if (found.root === null) {
+    return json({ ...subject, available: false, reason: "no-folder" } satisfies WorkspaceFilesResponse, accept);
+  }
+  const answer = await serveFiles({ root: found.root, home, privateFolders }, filesQuery(url));
+  if (answer === UNKNOWN_PATH) return unknownPath();
+  return json({ ...subject, ...answer } satisfies WorkspaceFilesResponse, accept);
 }
 
 /** Just the two port calls a reply needs — the real adapter in the bridge, a fake in tests. */
@@ -4117,7 +4230,9 @@ export function isHostAllowed(host: string, cfg: Config): boolean {
  * Combined API gate used by every handler. A request must always pass {@link checkAccess}
  * (same-origin / CSRF + optional Tailscale identity). A `"write"` request — one that types into a
  * terminal or creates panes — must additionally come from an authorised device (see
- * {@link deviceAuth}). Returns a 403 Response to short-circuit on denial, or null to proceed.
+ * {@link deviceAuth}). A `"device-read"` (the Files view, ADR 0083) needs the same device factors,
+ * both of them, but is checked for access as a read. Returns a 403 Response to short-circuit on
+ * denial, or null to proceed.
  *
  * Exported for tests: {@link deviceAuth} being correct in isolation proves nothing if this wiring
  * regresses, and the write/read asymmetry below is exactly what a device gate stands or falls on.
@@ -4125,12 +4240,15 @@ export function isHostAllowed(host: string, cfg: Config): boolean {
 export function guard(
   req: Request,
   cfg: Config,
-  level: "read" | "write",
+  level: GateLevel,
   pairing?: PairingGate,
 ): Response | null {
-  const gate = checkAccess(req, cfg, level);
+  // `device-read` (ADR 0083) is checked for ACCESS as a read: it changes nothing, so the `Origin`
+  // rule for writes (a CSRF defence, and browsers send no `Origin` on a same-origin GET) does not
+  // apply, and a cross-site page cannot read the answer anyway. Its DEVICE half is the write's.
+  const gate = checkAccess(req, cfg, level === "write" ? "write" : "read");
   if (!gate.ok) return text(gate.reason, 403);
-  if (level !== "write") return null;
+  if (level === "read") return null;
   if (!deviceAuth(req, cfg).authorized) return text("device not authorised", 403);
   // The second, independent write factor. Distinct refusal text on purpose: "not authorised" is the
   // operator's proxy allowlist, "not paired" is this device's own missing credential, and the two
@@ -4233,7 +4351,9 @@ function json<TBody>(data: TBody, acceptEncoding: string | null, status = 200): 
  *
  * It takes a BODY rather than a message so a caller must have gone through {@link apiError} to get
  * one — which is what keeps a refusal's English and its code in the catalogue together. The bare
- * `{ error }` shape stays legal for the one caller that must not carry a code: the crew link's 404.
+ * `{ error }` shape stays legal for two callers that must not carry a code: the crew link's 404, and
+ * the Files view's `404 { error: "unknown-path" }` (ADR 0083), whose `error` IS the machine word, as
+ * Changes' `reason: "unknown-path"` is, and which the web tells apart from an older member's 404 by it.
  */
 function jsonError(
   body: ApiErrorBody | { error: string },

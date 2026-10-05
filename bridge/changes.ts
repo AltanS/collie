@@ -95,7 +95,7 @@ const MAX_LIST_BYTES = 4 * 1024 * 1024;
 /** Bytes of untracked files read in one list to count their lines. Past it the count reads 0. */
 const MAX_COUNT_BUDGET_BYTES = 16 * 1024 * 1024;
 /** How many bytes decide "binary", git's own rule: a NUL in the first 8000. */
-const BINARY_SNIFF_BYTES = 8000;
+export const BINARY_SNIFF_BYTES = 8000;
 /** Repos listed at once. */
 const REPO_CONCURRENCY = 4;
 
@@ -552,7 +552,7 @@ async function baseTree(git: string, repo: RepoDirs): Promise<string | null> {
 }
 
 /** First bytes of a file hold a NUL: git's own "binary" rule. */
-function looksBinary(bytes: Uint8Array): boolean {
+export function looksBinary(bytes: Uint8Array): boolean {
   const end = Math.min(bytes.byteLength, BINARY_SNIFF_BYTES);
   for (let i = 0; i < end; i++) if (bytes[i] === 0) return true;
   return false;

@@ -52,6 +52,13 @@ describe("the peer applies its OWN write-level checks (§12)", () => {
       expect(crewGate("read", OFF, device)).toEqual({ ok: true });
     }
   });
+
+  test("a device-read (the Files view, ADR 0083) is the member's own device decision, as a write is", () => {
+    for (const device of [null, "phone-7", "someone-elses-phone", "unknown"]) {
+      expect(crewGate("device-read", ON, device)).toEqual(crewGate("write", ON, device));
+      expect(crewGate("device-read", OFF, device)).toEqual({ ok: true });
+    }
+  });
 });
 
 describe("the device identity comes off the LINK, not off the peer's own header", () => {

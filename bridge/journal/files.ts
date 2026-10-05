@@ -31,7 +31,8 @@
 // journal — bridge/operator-fonts.ts serves an operator's own font files under it. That does not
 // widen anything, because the rule was never "only the journal touches the disk". The rule is:
 //
-//   A CLIENT-SUPPLIED VALUE BECOMES A PATH IN TWO PLACES ONLY: THE JOURNAL, AND THE CHANGES VIEW.
+//   A CLIENT-SUPPLIED VALUE BECOMES A PATH IN THREE PLACES ONLY: THE JOURNAL, THE CHANGES VIEW,
+//   AND THE FILES VIEW.
 //
 // In the journal it is a pane id, never a path. The Changes view (bridge/changes.ts, ADR 0065) is
 // the second place, and it is bounded by a LISTED-PATHS rule: the client names a repo and a file,
@@ -42,11 +43,19 @@
 // a third such place: `GET /api/fonts/<basename>` LOOKS the request's name UP in the rows the
 // operator's own `theme.toml` declared and takes THAT row's path, so a name nobody declared is
 // refused before any path exists. Containment then runs anyway, as an independent second check on
-// the real paths. A new reader may reuse this function; it may not become a third place without an
-// ADR that says why and names its bound.
+// the real paths.
+//
+// The Files view (bridge/files-view.ts, ADR 0083) is the THIRD place, and its bound is the Changes
+// root: the client names a path RELATIVE to the root bridge/changes-root.ts picked off the live
+// snapshot (never a root of its own), the relative path is refused on its shape before any disk call
+// (absolute, `..`, `.`, an empty segment, NUL, a backslash, over 4096 bytes), and the real path of the
+// target must lie inside the real path of the root — through this function. A `.git` segment, the
+// bridge's own state folder and its config folder are refused on top. A new reader may reuse this
+// function; it may not become a fourth place without an ADR that says why and names its bound.
 
 import { realpath, stat } from "node:fs/promises";
-import { sep } from "node:path";
+
+import { HOST, type Host, isInside } from "../host.ts";
 
 import { type Cursor, decodeCursor, encodeCursor, type ReadSince } from "./cursor.ts";
 
@@ -70,12 +79,22 @@ export async function exists(path: string): Promise<boolean> {
  * were handed would be satisfied by a symlink pointing anywhere. Null means "not ours to read" —
  * callers treat that identically to "no log", so a containment failure is never distinguishable from
  * an absent file by anything the client can see.
+ *
+ * The comparison is by folder names through {@link isInside} with the host's own rules: case-folded
+ * on Windows, where `C:\Users\Pat` and `c:\users\pat` are one folder, and exact elsewhere. It used to
+ * be a raw `startsWith(realRoot + sep)`, which a root of `/` could never satisfy (`//`) and which
+ * read two spellings of one Windows folder as two folders. `host` is the running machine's unless a
+ * test pins one; a pinned host changes the string rule only, the realpath calls stay the machine's.
  */
-export async function containedRealpath(candidate: string, root: string): Promise<string | null> {
+export async function containedRealpath(
+  candidate: string,
+  root: string,
+  host: Host = HOST,
+): Promise<string | null> {
   const real = await realpath(candidate).catch(() => null);
   const realRoot = await realpath(root).catch(() => null);
   if (real === null || realRoot === null) return null;
-  return real === realRoot || real.startsWith(realRoot + sep) ? real : null;
+  return isInside(host, real, realRoot) ? real : null;
 }
 
 /**

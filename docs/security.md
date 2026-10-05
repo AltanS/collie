@@ -33,7 +33,8 @@ The two device gates answer different questions, and you can run either, both, o
 Pairing requires no extra infrastructure. It fits a direct `tailscale serve` setup where no proxy
 exists to inject headers.
 
-Both options gate write access only. Read requests remain open to anything that passes the
+Both options gate write access, and one read: the [Files view](changes.md#files), which can show
+every file under a workspace's folder. Every other read remains open to anything that passes the
 same-origin check.
 
 ```bash
@@ -69,6 +70,11 @@ Key security boundaries and risks:
   restricts write access, but read operations remain accessible to all local users. This limits
   execution risks but does not prevent data disclosure
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
+- **The Files view reads files off your disk.** It shows any file under a workspace's folder, except
+  a `.git` folder and Collie's own state and config folders, so it asks for an authorised device,
+  like a write ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)). With no device
+  paired and no `COLLIE_DEVICE_HEADER`, every device is authorised, so anything that can read panes
+  can read those files too. Pair your phone to close it.
 - **A single instance exposes all sessions.** By default, one Collie process fronts every
   multiplexer session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).

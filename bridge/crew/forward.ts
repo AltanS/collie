@@ -52,7 +52,7 @@ export function crewRouteFor(pathname: string): string | null {
  * but not across a link (or, worse, the reverse).
  */
 const FORWARDABLE: readonly RegExp[] = [
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|focus))?$/,
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
   /^workspace$/,
@@ -60,6 +60,9 @@ const FORWARDABLE: readonly RegExp[] = [
   // lives on ONE member, so a `?host=` call is proxied like `pane/:id/changes`. Mirrors
   // `WORKSPACE_CHANGES_ROUTE` in bridge/server.ts one-for-one.
   /^workspace\/[^/]+\/changes$/,
+  // The Files view asked by workspace (ADR 0083): one folder or one file under the same root, read
+  // off the disk of the member that owns the space. Mirrors `WORKSPACE_FILES_ROUTE` one-for-one.
+  /^workspace\/[^/]+\/files$/,
   // Rows must come from the host that runs them: a launch (and the rows a launch button reads)
   // addressed at a peer via `?host=` has to reach THAT machine's `launchers.toml`, never the
   // lead's. Both ride the crew link exactly like `workspace` does.
@@ -78,9 +81,14 @@ const FORWARDABLE: readonly RegExp[] = [
   /^blobs\/[^/]+$/,
 ];
 
-/** `workspace/<id>/changes` — the one workspace route that is a read. */
-function isWorkspaceChanges(route: string): boolean {
-  return /^workspace\/[^/]+\/changes$/.test(route);
+/** `workspace/<id>/changes` and `workspace/<id>/files` — the workspace routes that are reads. */
+function isWorkspaceRead(route: string): boolean {
+  return /^workspace\/[^/]+\/(?:changes|files)$/.test(route);
+}
+
+/** The pane actions that only read, as bridge/server.ts's `isPaneReadAction` lists them. */
+function isPaneRead(action: string | undefined): action is undefined | "history" | "chat" | "changes" | "files" {
+  return action === undefined || action === "history" || action === "chat" || action === "changes" || action === "files";
 }
 
 /** The inverse of {@link crewRouteFor}, for the peer dispatching a crew route into its own routes. */
@@ -109,16 +117,17 @@ export function forwardKind(route: string): ForwardKind {
   // A blob read serves a file off the owning member's disk and changes nothing there — the same
   // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
   if (route.startsWith("blobs/")) return "read";
-  // A workspace's Changes list is the pane route's `changes`, asked by space: a read.
-  if (isWorkspaceChanges(route)) return "read";
+  // A workspace's Changes list is the pane route's `changes`, asked by space: a read. Its Files view
+  // too: it needs an authorised device on the member (ADR 0083), but it changes nothing, so it is
+  // attempted against a stale member and rides the read budget like any other read.
+  if (isWorkspaceRead(route)) return "read";
   if (!route.startsWith("pane/")) return "write";
   const action = route.split("/")[2];
   // `changes` is read-only git over the owning member's folder (ADR 0065): a read, like history.
   // `chat` is the same log `history` reads, asked for its newest end (journal/live.ts): a read too,
-  // and the one on the poll path — so it must never be refused before it is tried (§10.3).
-  return action === undefined || action === "history" || action === "chat" || action === "changes"
-    ? "read"
-    : "write";
+  // and the one on the poll path — so it must never be refused before it is tried (§10.3). `files`
+  // reads one folder or file under that same root (ADR 0083): a read as well.
+  return isPaneRead(action) ? "read" : "write";
 }
 
 /** The pane id a route addresses, for the lead's own audit line. `undefined` for tab/workspace. */
@@ -149,12 +158,10 @@ export function forwardAuditAction(route: string): string | null {
   if (route === "launchers") return null;
   if (route === "folders" || route === "folders/star") return null; // a read, and a preference
   if (route.startsWith("blobs/")) return null; // a read
-  if (isWorkspaceChanges(route)) return null; // a read
+  if (isWorkspaceRead(route)) return null; // a read
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
   const action = route.split("/")[2];
-  if (action === undefined || action === "history" || action === "chat" || action === "changes") {
-    return null; // reads, and a read is audited on neither side
-  }
+  if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
   if (action === "close" || action === "rename") return `pane.${action}`;
   return action; // reply | keys | upload
 }

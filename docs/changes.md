@@ -130,10 +130,47 @@ Changes runs git to read, and nothing else.
 
 The full rules are in [ADR 0065](../.adr/0065-the-changes-view-reads-git-read-only.md).
 
+## Files
+
+The Files tab browses the same folder the Changes list reads, one folder at a time, and opens one
+file as text. It needs no git repository, so it works for a shell pane in any folder too.
+
+Who may use it:
+
+- **Files needs an authorised device**, the same check as typing into a pane. When you have paired a
+  device ([Security](security.md#pair-a-device--the-write-credential)) or set
+  `COLLIE_DEVICE_ALLOWLIST`, a device that is not paired or not on the list cannot open Files. Changes
+  stays open to any device that can read, because it shows only what changed.
+
+What it shows, and what it never shows:
+
+- Only files under the workspace's folder. A path that leads out of it, also through a symlink,
+  is refused. A symlink is listed as a link and opens only when it points inside the folder.
+- Never a `.git` folder, and never Collie's own state folder or config folder, also when they sit
+  inside the workspace's folder. They are left out of the list, and a request for them is refused.
+- Dot-files such as `.env` are shown. They are your own files.
+- A refused file gets the same answer as a missing one.
+
+Limits:
+
+- **2000 entries per folder.** A larger folder shows its first 2000 and says it was cut.
+- **1 MiB per file.** A larger file shows its first 1 MiB and says it was cut.
+- **Binary files show no text.** A file with a NUL byte in its first 8000 bytes counts as binary, git's
+  own rule.
+- **No folder, no Files.** A workspace whose folder is your home folder, a folder above it, or `/`
+  has no Files tab, and neither has a zellij pane. A workspace folder that is a symlink to one of those
+  counts as that folder.
+- **Files does not refresh by itself.** It reads when you open a folder or a file, and when you pull
+  or tap Refresh.
+
+The full rules are in [ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md).
+
 ## Across a crew
 
 In a [crew](crew.md), a pane or workspace on another machine is read on that machine. The lead
 forwards the request, and that machine's git answers. That machine must run Collie 1.13.0 or later.
+Files reads that machine's own disk, under that machine's own device rules, and needs Collie 1.17.0
+or later there.
 
 ## Limits
 

@@ -40,6 +40,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The agent-start animation and the switch to Chat are one sequence.** When a shell turned into an agent, the animation ran on its own clock while the pane swapped from the terminal to Chat whenever the first answer arrived, so the swap showed beside it. The swap now waits for the animation to cover the pane, happens under it, and the animation lifts only once Chat is ready. A tap on it still ends it at once.
+### Added
+
+- **The bridge lists a folder and reads a file under the Changes root.** `GET /api/pane/:id/files` and `GET /api/workspace/:id/files` list one folder (`?dir=`) or read one text file (`?path=`) under the same folder the Changes view reads, and nowhere else. A path that leads out of it, also through a symlink, a `.git` folder, and Collie's own state and config folders are refused with one answer. It needs an authorised device, like a write, caps a folder at 2000 entries and a file at 1 MiB, and works on a crew member running 1.17.0 or later (ADR 0083).
 
 ## [1.16.2] - 2026-10-04
 

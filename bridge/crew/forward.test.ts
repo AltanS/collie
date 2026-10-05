@@ -208,9 +208,10 @@ describe("which routes cross a link", () => {
     const tab = server.match(/^const TAB_ACTION_ROUTE = (.+);$/m)![1]!;
     const alternation = /\(([a-z]+(?:\|[a-z]+)+)\)/;
     const paneActions = pane.match(alternation)![1]!.split("|").toSorted();
-    // The list IS the inventory of what crosses a link; `chat` joined it with the live window.
+    // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
+    // `files` with the Files view (ADR 0083).
     expect(paneActions).toEqual([
-      "changes", "chat", "close", "focus", "history", "keys", "rename", "reply", "upload",
+      "changes", "chat", "close", "files", "focus", "history", "keys", "rename", "reply", "upload",
     ]);
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
@@ -231,6 +232,13 @@ describe("which routes cross a link", () => {
     expect(crewRouteFor("/api/workspace/w1/changes/x")).toBeNull();
     expect(crewRouteFor("/api/workspace/w1/worktrees")).toBeNull();
     expect(apiPathFor("workspace/w1/changes")).toBe("/api/workspace/w1/changes");
+    // The workspace Files route (ADR 0083): the same shape with the literal `files`.
+    const wsFiles = server.match(/^const WORKSPACE_FILES_ROUTE = (.+);$/m)![1]!;
+    expect(wsFiles).toBe("/^\\/api\\/workspace\\/([^/]+)\\/files$/");
+    expect(crewRouteFor("/api/workspace/w1/files")).toBe("workspace/w1/files");
+    expect(crewRouteFor("/api/workspace/w1/files/x")).toBeNull();
+    expect(crewRouteFor("/api/pane/w1:p1/files")).toBe("pane/w1:p1/files");
+    expect(apiPathFor("workspace/w1/files")).toBe("/api/workspace/w1/files");
   });
 
   test("read vs write is decided exactly as server.ts decides it — history is a READ", () => {
@@ -246,6 +254,10 @@ describe("which routes cross a link", () => {
     expect(forwardKind("tab")).toBe("write");
     expect(forwardKind("workspace")).toBe("write");
     expect(forwardKind("workspace/w1/changes")).toBe("read");
+    // Files needs an authorised device on the member, but it changes nothing: a READ for forwarding,
+    // attempted against a stale member and never given the write budget (ADR 0083).
+    expect(forwardKind("pane/w1:p1/files")).toBe("read");
+    expect(forwardKind("workspace/w1/files")).toBe("read");
   });
 
   test("the audit action a forward records is the one the peer will write", () => {
@@ -263,6 +275,8 @@ describe("which routes cross a link", () => {
     expect(forwardAuditAction("pane/w1:p1/history")).toBeNull();
     expect(forwardAuditAction("pane/w1:p1/changes")).toBeNull();
     expect(forwardAuditAction("workspace/w1/changes")).toBeNull();
+    expect(forwardAuditAction("pane/w1:p1/files")).toBeNull();
+    expect(forwardAuditAction("workspace/w1/files")).toBeNull();
   });
 });
 

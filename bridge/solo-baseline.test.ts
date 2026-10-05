@@ -607,11 +607,16 @@ describe("solo zero-tax — routes", () => {
       // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
       // half of `history` (journal/live.ts): the same log, asked "anything after this?" — a read, on
       // the poll path, forwarded to the owning member and taxing a solo instance with nothing.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|focus))?$/",
+      // `files` is the Files view (ADR 0083): one folder or one file under the Changes root, a read
+      // gated on an authorised device and forwarded to the owning member like `changes`.
+      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       // The Changes view asked by workspace (ADR 0065): the same read as the pane route's `changes`,
       // read-gated and forwarded with `?host=` to the member that owns the space.
       "/^\\/api\\/workspace\\/([^/]+)\\/changes$/",
+      // The Files view asked by workspace (ADR 0083): the pane route's `files`, by space, gated and
+      // forwarded the same way.
+      "/^\\/api\\/workspace\\/([^/]+)\\/files$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`

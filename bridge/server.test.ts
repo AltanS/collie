@@ -1342,6 +1342,36 @@ describe("guard — the pairing gate composes with the header gate", () => {
     expect(read(cfg(), { authorization: "Bearer wrong" }, paired)).toBeNull();
   });
 
+  // The Files view (ADR 0083): a read that needs the write level's device factors, both of them,
+  // without the write level's `Origin` rule — a browser sends no `Origin` on a same-origin GET.
+  const deviceRead = (c: Config, headers: Record<string, string>, gate?: ReturnType<typeof gateOf>) =>
+    guard(req({ host: "collie.ts.net", ...headers }), c, "device-read", gate);
+
+  test("device-read: pairing refuses an unpaired device and lets a paired one read, with no Origin", async () => {
+    const denied = deviceRead(cfg(), {}, paired);
+    expect(denied!.status).toBe(403);
+    expect(await denied!.text()).toBe("device not paired");
+    expect(deviceRead(cfg(), { authorization: "Bearer wrong" }, paired)!.status).toBe(403);
+    expect(deviceRead(cfg(), { authorization: "Bearer tok-phone" }, paired)).toBeNull();
+    // Nothing paired and no header gate: open, like a write is.
+    expect(deviceRead(cfg(), {}, nothingPaired)).toBeNull();
+  });
+
+  test("device-read: the header gate refuses an unlisted or absent device", async () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    expect(deviceRead(c, { [HDR]: "phone" })).toBeNull();
+    const unlisted = deviceRead(c, { [HDR]: "tablet" });
+    expect(unlisted!.status).toBe(403);
+    expect(await unlisted!.text()).toBe("device not authorised");
+    expect(deviceRead(c, {})!.status).toBe(403);
+    // The same device may still read a pane: only files asks for the device.
+    expect(read(c, { [HDR]: "tablet" })).toBeNull();
+  });
+
+  test("device-read: still an access check — a cross-origin Origin is refused", () => {
+    expect(deviceRead(cfg(), { origin: "https://evil.example", authorization: "Bearer tok-phone" }, paired)!.status).toBe(403);
+  });
+
   test("the two gates compose by AND: each refuses independently of the other", async () => {
     const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
     // Header ok, not paired → the pairing refusal.
@@ -2373,11 +2403,11 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All THIRTEEN session-scoped routes (tab create, workspace create, launch, this host's launcher
+    // All FOURTEEN session-scoped routes (tab create, workspace create, launch, this host's launcher
     // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
-    // tab action, the pane family, "look now", the worktree listing and the worktree actions) reach
-    // their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(13);
+    // a workspace's Files view, tab action, the pane family, "look now", the worktree listing and the
+    // worktree actions) reach their runtime through the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(14);
     // Exactly seven `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -2460,7 +2490,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   test("same device auth as pane input: one gate expression, two call sites, no second guard() call", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // Defined once…
-    expect([...src.matchAll(/const browserGate = \(level: "read" \| "write"\)/g)]).toHaveLength(1);
+    expect([...src.matchAll(/const browserGate = \(level: GateLevel\)/g)]).toHaveLength(1);
     // …handed to the pane family…
     expect(src).toContain("gate: browserGate,");
     // …and used by the update route. If someone re-spells either as its own `guard(req, cfg, …)`

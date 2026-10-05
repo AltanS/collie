@@ -32,6 +32,18 @@ export interface PeerGateConfig {
 export type PeerGateVerdict = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /**
+ * The level a session-scoped route asks its caller's gate at, on both callers (the browser's
+ * `guard()` and this file's {@link crewGate}).
+ *
+ * - `read`: looking. Allowed to any caller the front door (or the crew link) admitted.
+ * - `device-read`: looking at something only an authorised device may see, the Files view
+ *   (ADR 0083). It changes nothing, so it is still a READ for forwarding, audit and the `Origin`
+ *   rule; what it borrows from `write` is the device decision, on each machine by its own policy.
+ * - `write`: typing into or restructuring a terminal.
+ */
+export type GateLevel = "read" | "device-read" | "write";
+
+/**
  * May this crew-originated request run, at `level`, on this peer?
  *
  * Reads exactly like {@link deviceAuth}'s matrix, because it IS that matrix — the peer's own policy,
@@ -48,8 +60,13 @@ export type PeerGateVerdict = { readonly ok: true } | { readonly ok: false; read
  *
  * Reads are always allowed: the link's two factors already admitted the caller, and mirroring a pane
  * is exactly what a crew is for. That is the same asymmetry `guard()` has locally.
+ *
+ * A `device-read` (the Files view, ADR 0083) takes the write branch below: the member's OWN device
+ * policy decides whether that device may browse this member's files, exactly as it decides whether it
+ * may type here. The lead's pairing check ran before the forward; pairing is lead-local and never
+ * crosses the link, the same as for a write.
  */
-export function crewGate(level: "read" | "write", cfg: PeerGateConfig, device: string | null): PeerGateVerdict {
+export function crewGate(level: GateLevel, cfg: PeerGateConfig, device: string | null): PeerGateVerdict {
   if (level === "read") return { ok: true };
   if (cfg.deviceHeader === "") return { ok: true };
   if (device === null || device === "") {

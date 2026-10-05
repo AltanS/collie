@@ -245,6 +245,8 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `GET` | `/crew/v1/pane/:id/chat` | `GET …/chat` | proxied byte-for-byte — additive-optional (§7.1), added 2026-09-30 (M41/08). The live half of `history`: the same session log on the member that owns the pane, asked "anything after this?" rather than "show me this". The query (`after`, `before`, `limit`) rides through untouched, and `if-none-match` is already forwarded (§6), so the peer answers its own 304 and the lead re-emits it. A read, so it is attempted against a stale member rather than refused (§10.3). A lead that predates it never calls it, and a peer that predates it answers **404** to a lead that does — which the phone must read as "update this member", never as an empty session |
 | `GET` | `/crew/v1/pane/:id/changes` | `GET …/changes` | proxied byte-for-byte — additive-optional (§7.1). Read-only git over the folder of the pane's WORKSPACE on the machine that owns it (ADR 0065); the query (`depth`, `nested`, `repo`, `path`, and `view=commit` for the repo's last commit) rides through untouched. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/crew/v1/workspace/:id/changes` | `GET …/workspace/:id/changes` | proxied byte-for-byte — additive-optional (§7.1). The same list asked by workspace rather than by pane (ADR 0065), with the same query. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `GET` | `/crew/v1/pane/:id/files` | `GET …/files` | proxied byte-for-byte — additive-optional (§7.1), added 2026-10-05 (M45/03). One folder (`?dir=`) or one text file (`?path=`) under the same root the pane's Changes list reads, off **the member's own disk** (ADR 0083); the query rides through untouched. A READ for forwarding (attempted against a stale member, read budget, audited on neither side), but the member answers it only for a device its **own** device policy authorises, exactly as for a write (§12): `crewGate` takes its write branch for it. A lead that predates it never calls it, and a peer that predates it answers **404** to a lead that does, which the phone must read as "update this member", never as a missing file. A refused path is the member's own `404 { "error": "unknown-path" }`, told apart by its body |
+| `GET` | `/crew/v1/workspace/:id/files` | `GET …/workspace/:id/files` | proxied byte-for-byte — additive-optional (§7.1), added 2026-10-05 (M45/03). The same Files view asked by workspace, with the same query, gate and 404 reading as the pane row above |
 | `POST` | `/crew/v1/pane/:id/reply` | `POST …/reply` (`:279`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/keys` | `POST …/keys` (`:280`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/upload` | `POST …/upload` (`:281`) | forwarded (§13) |
@@ -1504,6 +1506,11 @@ happened on the peer's terminals.
   depends on the other's disk to answer "what happened here".
 - **A peer is never asked to trust the lead's authorisation decision in place of its own.** The peer
   applies its own write-level checks to a crew request; the lead's gate does not stand in for them.
+- **One read borrows the write's device check** (added 2026-10-05, ADR 0083): `files` on the pane and
+  workspace routes. It is still a read on the link (forwarded on the read budget, audited on neither
+  side), but the peer answers it only when `X-Crew-Device` names a device its own allowlist holds,
+  the same branch of `crewGate` a write takes. Additive inside protocol version 2: the route is new,
+  so no request that crossed the link before is gated differently.
 
 ---
 
