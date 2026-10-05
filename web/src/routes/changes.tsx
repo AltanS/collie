@@ -529,8 +529,16 @@ function ChangesScreen() {
   // entry's way up (ADR 0067).
   const openFilesTab = () => nav.side(target.kind === "pane" ? filesPath(paneId, scope) : spaceFilesPath(spaceId, scope));
   // The diff's "Preview": the same file in Files, a level below this one (`?path=` is from the root).
-  const previewInFiles = (ref: ChangeRef) => {
-    const at = { path: rootPathOf(ref.repo, ref.path) };
+  // Null for a file Files cannot reach: one of a repo above the root that lies outside the root. Only
+  // a repo above the root needs the root's name, so every other file has its button from the first
+  // frame, before the list answers.
+  const previewPath = (ref: ChangeRef): string | null => {
+    const listRoot = list.phase === "ready" && list.data.available ? list.data.root : null;
+    if (listRoot === null && ref.repo.startsWith("..")) return null;
+    return rootPathOf(listRoot ?? "", ref.repo, ref.path);
+  };
+  const previewInFiles = (path: string) => {
+    const at = { path };
     nav.down(target.kind === "pane" ? filesPath(paneId, scope, at) : spaceFilesPath(spaceId, scope, at));
   };
   // Up from the commit to the list: a step back onto it, or a replace when opened cold.
@@ -615,6 +623,7 @@ function ChangesScreen() {
   const next = at >= 0 && at < order.length - 1 ? order[at + 1] : slot >= 0 ? order[slot] : undefined;
 
   const listScreen = current === null && !commitView;
+  const previewOf = open === null ? null : previewPath(open);
   const folderLine = rootFolder && (
     <span className="min-w-0 truncate font-mono text-xs leading-tight text-muted-foreground" title={rootFolder}>
       {shortFolder(rootFolder)}
@@ -745,7 +754,7 @@ function ChangesScreen() {
             oldPath={listedFile ? listedFile.oldPath : shownDiff?.oldPath}
             status={listedFile?.status ?? shownDiff?.status}
             gone={gone}
-            onPreview={current ? () => previewInFiles(current) : undefined}
+            onPreview={previewOf === null ? undefined : () => previewInFiles(previewOf)}
             state={fileState}
             prev={prev}
             next={next}

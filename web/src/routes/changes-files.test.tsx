@@ -415,6 +415,49 @@ describe("Changes → Files: Preview from a diff", () => {
     expect(router.state.location.search).toBe("?path=packages%2Fapi%2Fnotes.md");
   });
 
+  // A pane opened in a folder INSIDE a repo: the root is `proj/web`, the repo is `..`, and its paths
+  // start with `web/`. The Preview path is the one from the root, not `../web/…`, which Files refuses.
+  it("opens a file of a repo above the root at its path from the root", async () => {
+    const above = {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "web",
+      available: true,
+      root: "/home/you/proj/web",
+      truncated: false,
+      repos: [{ relPath: "..", name: "proj", files: [{ path: "web/docs/guide.md", status: "M", added: 1, removed: 0, binary: false }] }],
+    };
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) =>
+        new URL(request.url).searchParams.get("path") === null ? HttpResponse.json(above) : undefined,
+      ),
+    );
+    const router = renderAt(["/pane/w1%3Ap1/changes?repo=..&path=web%2Fdocs%2Fguide.md"]);
+    await userEvent.click(await screen.findByRole("button", { name: en["changes.file.previewAria"] }));
+    expect(router.state.location.pathname).toBe(FILES);
+    expect(router.state.location.search).toBe("?path=docs%2Fguide.md");
+  });
+
+  it("offers no Preview for a file of a repo above the root that lies outside the root", async () => {
+    const above = {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "web",
+      available: true,
+      root: "/home/you/proj/web",
+      truncated: false,
+      repos: [{ relPath: "..", name: "proj", files: [{ path: "api/notes.md", status: "M", added: 1, removed: 0, binary: false }] }],
+    };
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) =>
+        new URL(request.url).searchParams.get("path") === null ? HttpResponse.json(above) : HttpResponse.json({ ...above, available: false, reason: "unknown-path" }),
+      ),
+    );
+    renderAt(["/pane/w1%3Ap1/changes?repo=..&path=api%2Fnotes.md"]);
+    await screen.findByText(en["changes.file.unknown"]);
+    expect(screen.queryByRole("button", { name: en["changes.file.previewAria"] })).toBeNull();
+  });
+
   it("offers no Preview for a file with none", async () => {
     renderAt(["/pane/w1%3Ap1/changes?repo=.&path=src%2Flib%2Fcart.ts"]);
     await screen.findByText("cartTotal", { exact: false });
