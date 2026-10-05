@@ -71,10 +71,16 @@ Key security boundaries and risks:
   execution risks but does not prevent data disclosure
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
 - **The Files view reads files off your disk.** It shows any file under a workspace's folder, except
-  a `.git` folder and Collie's own state and config folders, so it asks for an authorised device,
-  like a write ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)). With no device
-  paired and no `COLLIE_DEVICE_HEADER`, every device is authorised, so anything that can read panes
-  can read those files too. Pair your phone to close it.
+  a `.git` folder, Collie's own state and config folders, and files named like a Collie state
+  secret. So it asks for an authorised device, like a write
+  ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)).
+- **Files is gated only when a device is paired or `COLLIE_DEVICE_HEADER` is set.** Until then,
+  every device that can read panes can browse and read files under the workspace's folder, `.env`
+  files included. Pair your phone to close it.
+- **Credential files under a workspace's folder are readable.** A workspace opened in `~/.claude`,
+  `~/.codex`, `~/.config/gh` or `~/.ssh` shows what is there. So does the `.env` of a second Collie
+  whose config folder sits under the workspace. A hard link inside the folder to a file outside it is
+  not caught either.
 - **A single instance exposes all sessions.** By default, one Collie process fronts every
   multiplexer session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).

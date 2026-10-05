@@ -80,6 +80,19 @@ beforeAll(() => {
   symlinkSync(join(root, ".git", "config"), join(root, "gitlink"));
   symlinkSync(join(root, "c"), join(root, "clink"), "dir");
 
+  // A SIBLING instance's state folder under the root (a root of `~/.local/state` holds every
+  // instance's): not one of this bridge's private folders, so only the basename rule guards it.
+  const sib = join(root, "sib", "collie-other");
+  mkdirSync(sib, { recursive: true });
+  for (const name of ["crew-trust.json", "PAIRED-DEVICES.json", "pairing-pending.json", "stt.json", "pack-trust.json"]) {
+    write(join(sib, name), '{"token":"placeholder"}');
+  }
+  write(join(sib, "push-subscriptions.json.tmp"), "{}");
+  write(join(sib, "standby-devices.json.4242.7.tmp"), "{}");
+  write(join(sib, "activity.json"), "{}");
+  write(join(sib, "crew-trust.json.bak"), "{}");
+  symlinkSync(join(sib, "crew-trust.json"), join(root, "sib", "notes"));
+
   ctx = { root, home, privateFolders: [state, config] };
 });
 
@@ -215,6 +228,28 @@ describe("read one file", () => {
     expect(await read("tostate/paired-devices.json")).toBe(UNKNOWN_PATH);
   });
 
+  test("a sibling instance's state secrets answer unknown-path by basename, in any case and through a link", async () => {
+    for (const name of [
+      "crew-trust.json",
+      "PAIRED-DEVICES.json",
+      "paired-devices.json",
+      "pairing-pending.json",
+      "stt.json",
+      "pack-trust.json",
+      "push-subscriptions.json.tmp",
+      "standby-devices.json.4242.7.tmp",
+    ]) {
+      expect(await read(`sib/collie-other/${name}`)).toBe(UNKNOWN_PATH);
+    }
+    // A link with an innocent name that leads to a secret is judged on its real path.
+    expect(await read("sib/notes")).toBe(UNKNOWN_PATH);
+    // The sibling's other files, and a name that only starts like a secret, stay readable.
+    for (const name of ["activity.json", "crew-trust.json.bak"]) {
+      const got = await read(`sib/collie-other/${name}`);
+      if (got === UNKNOWN_PATH || !got.available) throw new Error(`${name} refused`);
+    }
+  });
+
   test("a folder read as a file, the root, and an absent file answer unknown-path", async () => {
     expect(await read("c")).toBe(UNKNOWN_PATH);
     expect(await read("")).toBe(UNKNOWN_PATH);
@@ -283,12 +318,18 @@ describe("list one folder", () => {
     const kinds = listing.entries.map((e) => e.kind);
     const firstNonDir = kinds.findIndex((k) => k !== "dir");
     expect(kinds.slice(firstNonDir).includes("dir")).toBe(false);
-    expect(got.slice(0, firstNonDir).filter((n) => n !== "big")).toEqual(["c", "sub"]);
+    expect(got.slice(0, firstNonDir).filter((n) => n !== "big")).toEqual(["c", "sib", "sub"]);
     // `B.md` sorts between `a.txt` and `bin.dat`: case-insensitive.
     expect(got.indexOf("a.txt")).toBeLessThan(got.indexOf("B.md"));
     expect(got.indexOf("B.md")).toBeLessThan(got.indexOf("bin.dat"));
     // Dot-files are shown.
     expect(got).toContain(".env");
+  });
+
+  test("list: a sibling instance's state secrets are hidden; its other files and a link to one are listed", async () => {
+    expect(names(await list("sib/collie-other"))).toEqual(["activity.json", "crew-trust.json.bak"]);
+    // The link keeps its row, like a link into `.git`; reading it is refused above.
+    expect(names(await list("sib"))).toEqual(["collie-other", "notes"]);
   });
 
   test("list: a symlink is a link row, never followed, and only files carry a size", async () => {

@@ -16,10 +16,14 @@
 //   3. The real path of the target must lie inside the real path of the root, through
 //      `containedRealpath` (the shared one, host-aware). A symlink that leads out is refused on read
 //      and still listed as `link`.
-//   4. Denied for list and read alike, and hidden from listings: a `.git` segment, and anything inside
-//      the bridge's own state folder or config folder. Both are checked on the requested segments AND
-//      on the real path, and case-folded on every host, so `.GIT`, a Windows `.git.`, or a link into
-//      the state folder all land on the same refusal.
+//   4. Denied for list and read alike, and hidden from listings: a `.git` segment, anything inside
+//      the bridge's own state folder or config folder, and a file whose basename is a state secret's
+//      (`crew-trust.json`, `paired-devices.json`, ..., `isStateSecretName` in bridge/acl-policy.ts),
+//      wherever it sits, because a root can hold a SIBLING instance's state folder. All are checked on
+//      the requested segments AND on the real path, and case-folded on every host, so `.GIT`, a
+//      Windows `.git.`, a link into the state folder, or a link named `notes` that leads to a
+//      sibling's `PAIRED-DEVICES.json` all land on the same refusal. A sibling's config `.env` and
+//      every other credential file under the root are NOT covered (ADR 0083).
 //
 // Every refusal is the same answer, `unknown-path`: absent, outside, denied, a folder read as a file
 // and a file listed as a folder cannot be told apart by anything the client sees.
@@ -39,6 +43,7 @@
 import { constants, type Dirent } from "node:fs";
 import { lstat, open, opendir, realpath, stat } from "node:fs/promises";
 
+import { isStateSecretName } from "./acl-policy.ts";
 import { looksBinary, MAX_FILE_READ_BYTES } from "./changes.ts";
 import { isAbsoluteFolder, withinBound } from "./changes-root.ts";
 import { HOST, type Host, isInside, splitPath } from "./host.ts";
@@ -266,9 +271,15 @@ async function resolveRoot(ctx: FilesContext): Promise<Resolved | null> {
   return { rootReal, denied, host, fs };
 }
 
-/** Whether a real path is one this view never shows: a `.git` segment, or a private folder's inside. */
+/**
+ * Whether a real path is one this view never shows: a `.git` segment, a state secret's basename, or
+ * a private folder's inside.
+ */
 function isDeniedReal(real: string, r: Resolved): boolean {
-  if (splitPath(r.host, real).parts.some(isGitSegment)) return true;
+  const parts = splitPath(r.host, real).parts;
+  if (parts.some(isGitSegment)) return true;
+  const base = parts.at(-1);
+  if (base !== undefined && isStateSecretName(base)) return true;
   const fold = foldingHost(r.host);
   return r.denied.some((folder) => isInside(fold, real, folder));
 }
@@ -278,6 +289,8 @@ function isDeniedReal(real: string, r: Resolved): boolean {
  * `unknown-path`, whatever the cause.
  */
 async function checkedTarget(segments: readonly string[], r: Resolved): Promise<string | null> {
+  const last = segments.at(-1);
+  if (last !== undefined && isStateSecretName(last)) return null;
   const candidate = segments.length === 0 ? r.rootReal : r.host.path.join(r.rootReal, ...segments);
   const real = await r.fs.contained(candidate, r.rootReal, r.host);
   if (real === null) return null;
@@ -308,7 +321,7 @@ async function mapLimited<T, U>(items: readonly T[], limit: number, fn: (item: T
 
 /**
  * One folder under the root: one directory read, one `lstat` per kept entry, no walk. A `.git`
- * entry and a private folder are skipped before the cap counts them; a socket, FIFO or device is
+ * entry, a state secret's name and a private folder are skipped before the cap counts them; a socket, FIFO or device is
  * dropped after, since it is neither a folder to open nor a file to read.
  */
 export async function listFolder(ctx: FilesContext, dir: string): Promise<FilesResult<FilesListing>> {
@@ -323,7 +336,9 @@ export async function listFolder(ctx: FilesContext, dir: string): Promise<FilesR
     if (st === null || !st.isDirectory()) return UNKNOWN_PATH;
     const fold = foldingHost(r.host);
     const keep = (name: string): boolean =>
-      !isGitSegment(name) && !r.denied.some((folder) => isInside(fold, r.host.path.join(real, name), folder));
+      !isGitSegment(name) &&
+      !isStateSecretName(name) &&
+      !r.denied.some((folder) => isInside(fold, r.host.path.join(real, name), folder));
     const { names, more } = await r.fs.names(real, MAX_FILES_ENTRIES, keep);
     const rows = await mapLimited(names, LSTAT_CONCURRENCY, async (name): Promise<FileEntry | null> => {
       const ls = await r.fs.lstat(r.host.path.join(real, name)).catch(() => null);

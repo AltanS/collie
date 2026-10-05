@@ -6,6 +6,7 @@ import {
   isCollieEntry,
   isCollieName,
   isNetworkPath,
+  isStateSecretName,
   neverTouch,
   PRIVATE_ROOTS,
   repairScope,
@@ -112,6 +113,19 @@ describe("the repair scope", () => {
 });
 
 describe("names", () => {
+  test("a state secret name, in any case and with Collie's own suffix, is a state secret; config names are not", () => {
+    for (const name of PRIVATE_ROOTS.find((r) => r.id === "state")!.secrets) {
+      expect(isStateSecretName(name)).toBe(true);
+      expect(isStateSecretName(name.toUpperCase())).toBe(true);
+      expect(isStateSecretName(`${name}.tmp`)).toBe(true);
+    }
+    expect(isStateSecretName("pack-trust.json")).toBe(true);
+    expect(isStateSecretName("paired-devices.json.4242.7.tmp")).toBe(true);
+    for (const name of ["activity.json", "crew-trust.json.bak", "my-stt.json", ".env", "config.toml"]) {
+      expect(isStateSecretName(name)).toBe(false);
+    }
+  });
+
   test("every secret file a root names is a Collie name", () => {
     for (const root of PRIVATE_ROOTS) for (const name of root.secrets) expect(isCollieName(name)).toBe(true);
   });
