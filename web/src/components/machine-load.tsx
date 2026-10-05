@@ -201,7 +201,9 @@ function Meter({
           {label}
           {note !== undefined && <span className="ml-1.5">{note}</span>}
         </span>
-        <span className={cn("tabular-nums", large ? "text-2xl font-semibold tracking-tight" : "text-sm font-medium")}>{text}</span>
+        <span className={cn("tabular-nums", large ? "text-2xl font-semibold tracking-tight" : "text-sm font-medium", firing && "text-status-blocked")}>
+          {text}
+        </span>
       </div>
       <div
         role="meter"
