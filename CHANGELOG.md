@@ -23,6 +23,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **An opencode draft and dialog read correctly with a sidebar open beside the pane.** A sidebar row that shares a row with the composer or a dialog is now skipped, so the Draft card shows what you typed, the reply guard can verify the send, and a question card is not lost behind the sidebar's box glyphs. Thanks @AndiWandHerd (#352). ([fedbe6dc](https://github.com/AltanS/collie/commit/fedbe6dc))
+- **An iOS home-screen launch fills the screen to the bottom edge.** Every screen now takes its height from one `--app-h` token, which reads the full height in a home-screen launch on iOS, so the tab bar and composer no longer float over a dead band above the home indicator. Thanks @broven (#355). ([3007f8e2](https://github.com/AltanS/collie/commit/3007f8e2))
+
 ## [1.16.2] - 2026-10-04
 
 ### Fixed

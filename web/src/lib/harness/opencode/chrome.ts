@@ -288,7 +288,6 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
       parts.push("");
       continue;
     }
-    // A bare bar row inside the block is a blank line of the draft.
     const text = isBareBar(texts[i]!) ? "" : barDraftText(texts[i]!);
     if (text === null) return null; // a non-gutter row inside the block — not a shape we claim
     const cleaned = stripOverlaySuffix(text);
