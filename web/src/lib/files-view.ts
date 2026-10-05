@@ -31,7 +31,8 @@ export function previewKindFor(path: string): PreviewKind | null {
  * its paths start with the folders between the repo and the root, which are the root's own last
  * segments. A file elsewhere in that repo is not under the root, and Files cannot open it. An
  * untracked folder's trailing slash is dropped. An untracked folder that holds the root, or is it,
- * comes out as `""`: the root itself is untracked.
+ * comes out as `""`: the root itself is untracked. A root that is a Windows drive or UNC path
+ * matches the folders without regard to case.
  */
 export function rootPathOf(root: string, repo: string, path: string): string | null {
   const bare = path.endsWith("/") ? path.slice(0, -1) : path;
@@ -44,10 +45,12 @@ export function rootPathOf(root: string, repo: string, path: string): string | n
   const tail = root.split(/[\\/]/).filter((s) => s !== "");
   if (tail.length < segments.length) return null;
   const prefix = `${tail.slice(-segments.length).join("/")}/`;
+  // On Windows git spells a path as it is on disk and the root's realpath may spell it otherwise.
+  const fold = /^(?:[A-Za-z]:[\\/]|\\\\|\/\/)/.test(root) ? (v: string) => v.toLowerCase() : (v: string) => v;
   // An untracked folder that holds the root (or is the root): git lists the folder, not its files,
   // so the root itself is untracked. `""` is the root's own path.
-  if (path.endsWith("/") && prefix.startsWith(`${bare}/`)) return "";
-  if (!bare.startsWith(prefix) || bare.length === prefix.length) return null;
+  if (path.endsWith("/") && fold(prefix).startsWith(`${fold(bare)}/`)) return "";
+  if (!fold(bare).startsWith(fold(prefix)) || bare.length === prefix.length) return null;
   return bare.slice(prefix.length);
 }
 

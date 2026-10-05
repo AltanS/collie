@@ -60,6 +60,18 @@ describe("rootPathOf, an untracked folder that holds the root", () => {
   });
 });
 
+describe("rootPathOf on Windows", () => {
+  it("matches the root's folders without regard to case", () => {
+    expect(rootPathOf("C:\\Users\\you\\Proj\\Web", "..", "web/a.md")).toBe("a.md");
+    expect(rootPathOf("C:\\Users\\you\\Proj\\Web", "..", "web/")).toBe("");
+    expect(rootPathOf("\\\\host\\share\\Proj\\Web", "..", "WEB/src/a.md")).toBe("src/a.md");
+  });
+
+  it("stays case-sensitive on a POSIX root", () => {
+    expect(rootPathOf("/home/you/Proj/Web", "..", "web/a.md")).toBeNull();
+  });
+});
+
 describe("paths", () => {
   it("names the last segment and joins from the root", () => {
     expect(baseName("a/b/c.md")).toBe("c.md");
