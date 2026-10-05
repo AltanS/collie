@@ -148,7 +148,7 @@ function ToolPart({
             </div>
           )}
           {result.text && (
-            <pre className="overflow-x-auto px-2 py-1.5 font-mono text-[11px] leading-snug whitespace-pre-wrap">
+            <pre className="overflow-x-auto px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none] whitespace-pre-wrap">
               {result.text}
               {result.truncated && (
                 <span className="text-muted-foreground">{`\n${t("transcript.outputTruncated")}`}</span>

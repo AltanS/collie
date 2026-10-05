@@ -285,3 +285,10 @@ describe("Preview: Markdown links", () => {
     });
   });
 });
+
+describe("Preview: code draws no ligatures", () => {
+  it("the JSON tree turns them off", () => {
+    const { container } = render(<FileContent file={file("package.json")} view="preview" />);
+    expect(container.querySelector("[data-slot='file-json']")?.className).toContain("[font-variant-ligatures:none]");
+  });
+});

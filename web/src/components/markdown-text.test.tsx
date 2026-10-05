@@ -40,3 +40,14 @@ describe("MarkdownText line breaking", () => {
     expect(screen.getByRole("link").className).toContain("wrap-anywhere");
   });
 });
+
+// JetBrains Mono, first in `--font-mono`, draws `>=`, `<=` and `!==` as one glyph. Code the reader
+// compares character by character must not take them. The source view, the diffs and the terminal
+// already set the property; the renderer's two code surfaces did not, which put the ligatures into Chat.
+describe("MarkdownText code draws no ligatures", () => {
+  it("inline code and a fenced block both turn them off", () => {
+    const { container } = render(<MarkdownText text={"a `x >= y` chip\n\n```\nif (a !== b) {}\n```"} />);
+    expect(chipOf("x >= y").className).toContain("[font-variant-ligatures:none]");
+    expect(container.querySelector("pre")?.className).toContain("[font-variant-ligatures:none]");
+  });
+});

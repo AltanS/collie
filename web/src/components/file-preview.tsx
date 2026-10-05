@@ -257,7 +257,7 @@ export function JsonPreview({ text, path }: { text: string; path: string }) {
   const parsed = useMemo(() => parseJsonTree(text), [text]);
   if (parsed.kind === "ok") {
     return (
-      <div className="px-4 py-3 font-mono text-xs leading-5" data-slot="file-json">
+      <div className="px-4 py-3 font-mono text-xs leading-5 [font-variant-ligatures:none]" data-slot="file-json">
         <JsonNode name={null} value={parsed.value} depth={0} />
       </div>
     );

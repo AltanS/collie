@@ -787,13 +787,13 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
       )}
 
       {run.state === "stuck" && run.recovery !== undefined && (
-        <pre className="mt-2 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">{run.recovery}</pre>
+        <pre className="mt-2 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs [font-variant-ligatures:none]">{run.recovery}</pre>
       )}
 
       {run.logTail !== undefined && run.logTail !== "" && (
         <details className="mt-2">
           <summary className="text-xs text-muted-foreground">{t("settings.updateCard.logTail")}</summary>
-          <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">{run.logTail}</pre>
+          <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-xs [font-variant-ligatures:none]">{run.logTail}</pre>
         </details>
       )}
 

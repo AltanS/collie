@@ -165,7 +165,7 @@ function Span({ span }: { span: MdSpan }) {
       // is untouched; that one is only ever about the glyphs.
       return (
         <code
-          className={`rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] text-status-info ${breakClass(span.text)}`}
+          className={`rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-status-info ${breakClass(span.text)}`}
         >
           <Hit text={span.text} />
         </code>
@@ -214,7 +214,7 @@ function Block({ block, anchor }: { block: MdBlock; anchor: string | null }) {
     }
     case "code":
       return (
-        <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug">
+        <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]">
           <Hit text={block.text} />
         </pre>
       );

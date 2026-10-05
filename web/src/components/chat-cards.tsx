@@ -253,7 +253,7 @@ export const ToolGroup = memo(
         {step && (
           <span className="flex min-w-0 items-baseline gap-1.5 pl-5 text-xs text-muted-foreground">
             {step.verb && <span className="shrink-0">{step.verb}</span>}
-            <span className={cn("min-w-0 truncate", step.mono ? "font-mono text-[11px]" : "font-content")}>
+            <span className={cn("min-w-0 truncate", step.mono ? "font-mono text-[11px] [font-variant-ligatures:none]" : "font-content")}>
               {step.subject}
             </span>
           </span>
@@ -646,7 +646,7 @@ export function ToolCard({
         tool.kind === "search" ? (
           // The query is what was searched, so it keeps its width; the folder gives way first.
           <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="max-w-[70%] shrink-0 truncate font-mono text-[11px]">{tool.query}</span>
+            <span className="max-w-[70%] shrink-0 truncate font-mono text-[11px] [font-variant-ligatures:none]">{tool.query}</span>
             {tool.where && (
               <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
                 {t("chat.card.searchIn", { where: shortPath(tool.where) })}
@@ -654,7 +654,7 @@ export function ToolCard({
             )}
           </span>
         ) : tool.kind === "fetch" ? (
-          <span className="min-w-0 truncate font-mono text-[11px]">{tool.url}</span>
+          <span className="min-w-0 truncate font-mono text-[11px] [font-variant-ligatures:none]">{tool.url}</span>
         ) : tool.kind === "delete" ? (
           <PathLabel path={tool.path} />
         ) : tool.kind === "move" ? (
@@ -868,7 +868,7 @@ function LineTool({
       )}
       {body && <p className="font-content whitespace-pre-wrap break-words px-2 pb-1.5 text-sm">{body}</p>}
       {open && output !== undefined && (
-        <pre className="mx-2 mb-2 max-h-80 overflow-auto rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-snug whitespace-pre-wrap break-words">
+        <pre className="mx-2 mb-2 max-h-80 overflow-auto rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none] whitespace-pre-wrap break-words">
           {output}
         </pre>
       )}
