@@ -11,8 +11,9 @@ import type { NotifyPrefs } from "@/lib/api";
 import type { CacheWatchListEntry } from "@/lib/types";
 
 // Which lifecycle events are worth a push. Bridge-wide (fans out to every device, like the snooze),
-// so the copy says so. Four switches: "Needs input" (blocked, default on), "Finished" (done,
-// default off), "App updates" (updates, default on), and "Cache about to go cold" (cache, default off).
+// so the copy says so. Five switches: "Needs input" (blocked, default on), "Finished" (done,
+// default off), "App updates" (updates, default on), "Machine load stays high" (machines, default on),
+// and "Cache about to go cold" (cache, default off).
 // Optimistic toggle with revert on failure — see useNotifyPrefs.
 //
 // The fourth switch brings a section with it: the panes watched one by one from their own settings
@@ -26,6 +27,10 @@ const ROWS: ReadonlyArray<{ key: keyof NotifyPrefs; labelKey: MessageKey; hintKe
     labelKey: "settings.notify.updates.label",
     hintKey: "settings.notify.updates.hint",
   },
+  // Machine alerts (ADR 0084). Default on: a machine only alerts once the operator set a rule on its
+  // page, so this switch is the one place to silence every rule at once. Above `cache` so the watched
+  // panes stay under the switch they belong to.
+  { key: "machines", labelKey: "settings.notify.machines.label", hintKey: "settings.notify.machines.hint" },
   // The fourth, and the only one that is ALSO switchable per pane. Its hint says so, because the rule
   // is global OR per-pane with no per-pane off — a watched list keeps working under this switch, and an
   // operator who cannot see that would read a silent list as a list that stopped (ADR 0042).

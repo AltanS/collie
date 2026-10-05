@@ -57,7 +57,7 @@ export function SettingsSection() {
         <Card
           state="settings-notify-cache-row"
           label="notify card, the fourth switch and the panes watched one by one"
-          reach="scroll to Notify when in Settings. The fourth row is the cache warning, off by default,
+          reach="scroll to Notify when in Settings. The fifth row is the cache warning, off by default,
             and the section under it names the panes switched on one at a time from their own sheets —
             which is what makes the global-OR-per-pane rule visible instead of implicit."
           note="The real card with a fixture: the playground answers no API, so the controller's two
@@ -66,7 +66,7 @@ export function SettingsSection() {
           <Stage height={420}>
             <div className="p-4">
               <NotifyPrefsCard
-                prefs={{ blocked: true, done: false, updates: true, cache: false }}
+                prefs={{ blocked: true, done: false, updates: true, cache: false, machines: true }}
                 busy={false}
                 onToggle={() => {}}
                 entries={watchedPanes}

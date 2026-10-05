@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **The lead keeps a day of CPU and memory for every machine.** Each Collie reads its own CPU, memory, load and network about once every five seconds, on the tick it already runs. A crew member sends its last reading with the answer the lead already asks for, and the lead keeps one point per minute for 24 hours. A Collie with no crew keeps the same day for its own machine. You can set one CPU rule and one memory rule per machine, and the lead sends one push when a value stays above the line. Nothing leaves the crew. See `docs/crew.md`, *Machines*.
+- **Settings has a switch for machine alerts, and a tap on one opens that machine.** Settings, Alerts, "Machine load stays high" turns every machine rule off at once, and it is on by default. A machine alert opens `/machines/<id>` on the phone.
 
 ### Fixed
 

@@ -207,6 +207,14 @@ describe("notificationPath — where a tap lands", () => {
   // The update push opens the UPDATES page, not Settings — that is where the check, the card, the
   // peers and the one button live (M16/01). Unscoped on purpose: an update is about the machine
   // the phone is talking to, and `host` must not send the tap somewhere else.
+  // A machine alert (ADR 0084) opens that machine's page, keyed by the crew member id in `host`.
+  test("a machine alert opens that machine, not a pane", () => {
+    expect(notificationPath({ target: "machine", host: "laptop" })).toBe("/machines/laptop");
+    expect(notificationPath({ target: "machine", host: "local" })).toBe("/machines/local");
+    expect(notificationPath({ target: "machine", host: "a b/c" })).toBe("/machines/a%20b%2Fc");
+    expect(notificationPath({ target: "machine" })).toBe("/machines");
+  });
+
   test("update push opens updates, unscoped", () => {
     expect(notificationPath({ target: "settings", host: "box2" })).toBe("/settings/updates");
   });

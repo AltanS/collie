@@ -1498,6 +1498,9 @@ export interface NotifyPrefs {
   /** Push before an agent pane's prompt cache expires. Default off, and it covers EVERY pane — the
    *  panes watched one by one from their own settings sheet keep warning either way (ADR 0042). */
   cache: boolean;
+  /** Push when a machine's CPU or memory stays above one of its alert rules (ADR 0084). Default on:
+   *  a rule is something the operator set on purpose, so this switch only silences them all at once. */
+  machines: boolean;
 }
 
 /**

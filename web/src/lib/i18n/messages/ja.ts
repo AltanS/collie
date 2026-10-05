@@ -92,6 +92,8 @@ export const ja: Dictionary = {
   "settings.notify.done.hint": "エージェントがタスクを完了したとき",
   "settings.notify.updates.label": "アップデート",
   "settings.notify.updates.hint": "新しい Collie のリリースが存在するとき",
+  "settings.notify.machines.label": "マシンの負荷が高いまま",
+  "settings.notify.machines.hint": "マシンに設定したルールを CPU またはメモリが上回り続けています",
   "settings.notify.cache.label": "キャッシュがまもなくコールドになります",
   "settings.notify.cache.hint":
     "ペインのプロンプトキャッシュが数分で期限切れになります。個別に監視しているペインも対象です。",

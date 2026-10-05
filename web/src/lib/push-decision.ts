@@ -174,6 +174,10 @@ export function decidePush(
  */
 export function notificationPath(data: NotifData = {}): string {
   if (data.target === "settings") return "/settings/updates";
+  // A machine alert (ADR 0084) opens that machine's page. `host` is the crew member id the bridge
+  // stamped, which is the row id `/api/machines` answers with. Unscoped: the page is the lead's own.
+  // A machine push without a host has nowhere better to go than Machines itself.
+  if (data.target === "machine") return data.host ? `/machines/${encodeURIComponent(data.host)}` : "/machines";
   const base = data.paneId && data.paneId !== "test" ? `/pane/${encodeURIComponent(data.paneId)}` : "/";
   return `${base}${scopeSearch({ host: data.host, session: data.session })}`;
 }

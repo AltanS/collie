@@ -93,6 +93,8 @@ export const ko: Dictionary = {
   "settings.notify.done.hint": "에이전트 작업이 끝났을 때",
   "settings.notify.updates.label": "앱 업데이트",
   "settings.notify.updates.hint": "새로운 Collie 버전이 릴리스되었을 때",
+  "settings.notify.machines.label": "머신 부하가 계속 높음",
+  "settings.notify.machines.hint": "머신에 설정한 규칙보다 CPU 또는 메모리가 계속 높습니다",
   "settings.notify.cache.label": "캐시 콜드 임박",
   "settings.notify.cache.hint":
     "창의 프롬프트 캐시가 몇 분 내에 만료됩니다. 개별적으로 주시한 창도 포함됩니다.",

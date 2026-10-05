@@ -93,6 +93,8 @@ export const es: Dictionary = {
   "settings.notify.done.hint": "un agente completa su tarea",
   "settings.notify.updates.label": "Actualizaciones",
   "settings.notify.updates.hint": "hay una nueva versión de Collie disponible",
+  "settings.notify.machines.label": "La carga de una máquina sigue alta",
+  "settings.notify.machines.hint": "la CPU o la memoria se mantiene por encima de una regla que fijaste para una máquina",
   "settings.notify.cache.label": "La caché está a punto de enfriarse",
   "settings.notify.cache.hint":
     "la caché de prompts de un pane caduca en unos minutos; también cubre los panes observados uno a uno",

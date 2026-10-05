@@ -90,6 +90,8 @@ export const zh: Dictionary = {
   "settings.notify.done.hint": "Agent 已完成当前任务",
   "settings.notify.updates.label": "版本更新",
   "settings.notify.updates.hint": "Collie 有新版本可用",
+  "settings.notify.machines.label": "机器负载持续偏高",
+  "settings.notify.machines.hint": "CPU 或内存持续高于你为机器设置的规则",
   "settings.notify.cache.label": "缓存即将变冷",
   "settings.notify.cache.hint":
     "窗格的 prompt cache 会在几分钟后过期；这也涵盖你逐个查看过的窗格",

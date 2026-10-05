@@ -95,6 +95,8 @@ export const de: Dictionary = {
   "settings.notify.done.hint": "ein Agent schließt seine Aufgabe ab",
   "settings.notify.updates.label": "App-Updates",
   "settings.notify.updates.hint": "eine neue Collie-Version ist verfügbar",
+  "settings.notify.machines.label": "Maschinenlast bleibt hoch",
+  "settings.notify.machines.hint": "CPU oder Speicher bleibt über einer Regel, die Sie für eine Maschine festgelegt haben",
   "settings.notify.cache.label": "Cache wird bald kalt",
   "settings.notify.cache.hint":
     "Der Prompt-Cache eines Panes läuft in wenigen Minuten ab; deckt auch Panes ab, die Sie einzeln beobachten",
