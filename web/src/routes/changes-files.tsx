@@ -24,6 +24,7 @@ import {
   pairedDevicesPath,
   panePath,
   readFrom,
+  readViaLink,
   spaceChangesPath,
   spaceFilesPath,
   spacePath,
@@ -165,9 +166,19 @@ export function FilesRoute() {
   // ── The read ──────────────────────────────────────────────────────────────
   // One key per (machine, target, folder or file), so a move to another level starts clean.
   const readKey = `${scope.host ?? ""}\n${scope.session ?? ""}\n${target.kind}:${paneId}${spaceId}\n${filePath !== null ? `file\n${filePath}` : `dir\n${dir}`}`;
-  const { state, reload, refreshing } = useFilesRead<FilesListResponse | FileReadResponse>(readKey, (signal) =>
-    filePath !== null ? fetchFileText(target, filePath, scope, signal) : fetchFilesDir(target, dir, scope, signal),
-  );
+  // A `link` row opened as a file that turns out to be a folder: the file read answers `unknown-path`,
+  // the one answer for "not a file". Ask once more as a folder, and if it lists, replace this entry
+  // with the folder's own address, so a reload and the back arrow agree with what is on screen. If it
+  // does not list, the first answer stands and says "This file is not available".
+  const viaLink = readViaLink(location.state);
+  const { state, reload, refreshing } = useFilesRead<FilesListResponse | FileReadResponse>(readKey, async (signal) => {
+    if (filePath === null) return fetchFilesDir(target, dir, scope, signal);
+    const file = await fetchFileText(target, filePath, scope, signal);
+    if (file.outcome !== "unknown-path" || !viaLink) return file;
+    const folder = await fetchFilesDir(target, filePath, scope, signal);
+    if (folder.outcome === "body" && folder.body.available && !signal.aborted) nav.side(pathTo({ dir: filePath }));
+    return folder.outcome === "body" && folder.body.available ? folder : file;
+  });
 
   // The root folder, as the last answer named it, so the header does not lose it between levels.
   const rootFolder = useRef<string | null>(null);
@@ -192,7 +203,10 @@ export function FilesRoute() {
 
   const openEntry = (entry: FileEntry) => {
     const rel = entryPath(dir, entry);
-    nav.down(pathTo(entry.kind === "dir" ? { dir: rel } : { path: rel }));
+    nav.down(
+      pathTo(entry.kind === "dir" ? { dir: rel } : { path: rel }),
+      entry.kind === "link" ? { viaLink: true } : undefined,
+    );
   };
   const openCrumb = (to: string) => nav.side(pathTo(to === "" ? undefined : { dir: to }));
   const pair = () => nav.down(pairedDevicesPath(scope));

@@ -317,10 +317,88 @@ describe("Files: what a refusal reads as", () => {
     expect(isNotPaired()).toBe(false);
   });
 
+  // A crew member relays its own refusal, with a clause after the lead's two plain bodies.
+  it("an unpaired device is recognised by the start of the body, so a member's longer words count", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files/, () => new HttpResponse("device not paired on this host", { status: 403 })),
+    );
+    renderAt([FILES]);
+    expect(await screen.findByText(en["files.notPaired"])).toBeTruthy();
+    expect(isNotPaired()).toBe(true);
+    expect(screen.getByRole("button", { name: en["files.pairLink"] })).toBeTruthy();
+  });
+
+  it("an unlisted device is recognised by the start of the body, too", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files/, () => new HttpResponse("device not authorised on this host\n", { status: 403 })),
+    );
+    renderAt([FILES]);
+    expect(await screen.findByText(en["files.notAuthorised"])).toBeTruthy();
+    expect(isNotPaired()).toBe(false);
+  });
+
   it("a failed read says so and offers refresh", async () => {
     server.use(http.get(/\/api\/pane\/[^/]+\/files/, () => HttpResponse.json({ error: "boom" }, { status: 500 })));
     renderAt([FILES]);
     expect(await screen.findByText(en["files.error"])).toBeTruthy();
+  });
+});
+
+describe("Files: a link row that points at a folder", () => {
+  const LINK_DIR = [
+    { name: "releases", kind: "dir" },
+    { name: "app.ts", kind: "file", size: 9 },
+  ];
+  const answerFor = (folder: boolean) =>
+    http.get(/\/api\/pane\/[^/]+\/files/, ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      if (q.get("path") === "current") return HttpResponse.json({ error: "unknown-path" }, { status: 404 });
+      if (q.get("dir") === "current" && folder) {
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          workspaceId: "w1",
+          workspaceLabel: "webapp",
+          available: true,
+          root: "/home/you/webapp",
+          dir: "current",
+          entries: LINK_DIR,
+          truncated: false,
+        });
+      }
+      if (q.get("dir") === "current") return HttpResponse.json({ error: "unknown-path" }, { status: 404 });
+      const answer = q.get("path") !== null ? null : fixtureFilesDir(q.get("dir") ?? "");
+      return answer === null ? HttpResponse.json({ error: "unknown-path" }, { status: 404 }) : HttpResponse.json(answer);
+    });
+
+  it("opens the folder when the file read says unknown-path and a folder read lists", async () => {
+    server.use(answerFor(true));
+    const router = renderAt([FILES]);
+    await userEvent.click(await screen.findByRole("button", { name: /^current/ }));
+    expect(await screen.findByRole("button", { name: /^releases, folder/ })).toBeTruthy();
+    expect(screen.queryByText(en["files.unknown.file"])).toBeNull();
+    // The entry was replaced by the folder's own address, so a reload shows the same screen.
+    await waitFor(() => expect(router.state.location.search).toBe("?dir=current"));
+  });
+
+  it("says the file is not available when the folder read fails too", async () => {
+    server.use(answerFor(false));
+    const router = renderAt([FILES]);
+    await userEvent.click(await screen.findByRole("button", { name: /^current/ }));
+    expect(await screen.findByText(en["files.unknown.file"])).toBeTruthy();
+    expect(router.state.location.search).toBe("?path=current");
+  });
+
+  it("does not try a folder for a path that did not come from a link row", async () => {
+    let dirAsked = false;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files/, ({ request }) => {
+        if (new URL(request.url).searchParams.get("dir") === "current") dirAsked = true;
+        return HttpResponse.json({ error: "unknown-path" }, { status: 404 });
+      }),
+    );
+    renderAt([`${FILES}?path=current`]);
+    expect(await screen.findByText(en["files.unknown.file"])).toBeTruthy();
+    expect(dirAsked).toBe(false);
   });
 });
 

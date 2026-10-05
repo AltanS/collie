@@ -732,6 +732,7 @@ export type FilesAnswer<T> =
 
 const FILES_UNKNOWN_PATH = { outcome: "unknown-path" } as const;
 const FILES_STALE = { outcome: "stale" } as const;
+const NOT_AUTHORISED_BODY = "device not authorised";
 const FILES_NOT_PAIRED = { outcome: "not-paired" } as const;
 const FILES_NOT_AUTHORISED = { outcome: "not-authorised" } as const;
 
@@ -748,14 +749,16 @@ type FilesRefusal =
 function filesRefusal(status: number, detail: string): FilesRefusal | null {
   if (status === 404) return parseJsonObject(detail)?.error === "unknown-path" ? FILES_UNKNOWN_PATH : FILES_STALE;
   if (status !== 403) return null;
+  // Prefixes, not equality: a crew member answers "device not authorised on this host" and its kin,
+  // the lead's plain bodies with a clause after them (the relay keeps the member's own words).
   const body = detail.trim();
-  if (body === NOT_PAIRED_BODY) {
+  if (body.startsWith(NOT_PAIRED_BODY)) {
     // Reads were ungated until Files, so nothing on a read could ever discover an unpaired device.
     // Latch it as a refused write does: the app's read-only strip then names the remedy, once.
     markNotPaired();
     return FILES_NOT_PAIRED;
   }
-  return body === "device not authorised" ? FILES_NOT_AUTHORISED : null;
+  return body.startsWith(NOT_AUTHORISED_BODY) ? FILES_NOT_AUTHORISED : null;
 }
 
 const FILES_REFUSALS: ReadonlySet<unknown> = new Set([

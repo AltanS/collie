@@ -6,7 +6,7 @@
 //
 // The host stays in the QUERY, never in the path: a `/host/:h/pane/:paneId` shape would fork every
 // route, break every existing deep link, and force the loaders' isPaneUrl() to grow a parser.
-import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
 import { scopeFromSearchParams, scopeSearch, type Scope } from "./scope";
 import type { AgentView } from "./types";
 
@@ -240,6 +240,12 @@ export function pairLandingPath(search: string): string | null {
 export interface NavState {
   from?: string;
   freshPane?: AgentView;
+  /**
+   * The Files view opened this file from a `link` row. A symlink is listed and never followed, so
+   * the row cannot say whether it points at a file or a folder, and the file read answers
+   * `unknown-path` for a folder: the one case where the view asks again as a folder.
+   */
+  viaLink?: true;
 }
 
 /** The fields a move may carry beside `from`, which the move itself writes. */
@@ -253,6 +259,11 @@ export type NavExtras = Omit<NavState, "from">;
 export function readFrom(state: JsonValue | undefined): string | undefined {
   const from = asJsonString(asJsonObject(state)?.from);
   return from?.startsWith("/") ? from : undefined;
+}
+
+/** Whether the entry this location came from was a Files `link` row (see {@link NavState.viaLink}). */
+export function readViaLink(state: JsonValue | undefined): boolean {
+  return asJsonBoolean(asJsonObject(state)?.viaLink) === true;
 }
 
 /** A path without its query or fragment. `from` is stored with its search, the tree is pathnames. */
