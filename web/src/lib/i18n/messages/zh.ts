@@ -739,6 +739,8 @@ export const zh: Dictionary = {
   "machines.alerts.saving": "正在保存",
   "machines.alerts.saved": "已保存",
   "machines.alerts.failed": "保存失败，规则保持不变。",
+  "machines.alerts.notPaired": "配对此设备后才能更改提醒",
+  "machines.alerts.needsUpdate": "提醒需要先更新这台机器。它目前还不报告负载。",
   "machines.alerts.push": "推送会发到订阅了这个 Collie 的所有设备。",
   "machines.alerts.pushLink": "设置，提醒",
   "crew.title": "机组",

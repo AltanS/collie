@@ -750,6 +750,8 @@ export const ko: Dictionary = {
   "machines.alerts.saving": "저장 중",
   "machines.alerts.saved": "저장됨",
   "machines.alerts.failed": "저장하지 못했습니다. 규칙은 그대로입니다.",
+  "machines.alerts.notPaired": "알림을 변경하려면 이 기기를 페어링하세요",
+  "machines.alerts.needsUpdate": "알림을 사용하려면 이 머신을 업데이트해야 합니다. 아직 부하를 보고하지 않습니다.",
   "machines.alerts.push": "푸시는 이 Collie를 구독한 모든 기기로 전송됩니다.",
   "machines.alerts.pushLink": "설정, 알림",
   "crew.title": "크루",

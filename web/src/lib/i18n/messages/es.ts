@@ -757,6 +757,8 @@ export const es: Dictionary = {
   "machines.alerts.saving": "Guardando",
   "machines.alerts.saved": "Guardado",
   "machines.alerts.failed": "No se pudo guardar. Las reglas no han cambiado.",
+  "machines.alerts.notPaired": "Empareje este dispositivo para cambiar los avisos",
+  "machines.alerts.needsUpdate": "Los avisos requieren actualizar esta máquina. Aún no informa de su carga.",
   "machines.alerts.push": "La notificación push llega a todos los dispositivos suscritos a este Collie.",
   "machines.alerts.pushLink": "Ajustes, Avisos",
   "crew.title": "Equipo",

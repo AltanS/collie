@@ -148,7 +148,7 @@ export function MachinesSection() {
         <Card
           state="machine-detail-older-machine"
           label="a machine, an older Collie"
-          reach="open the page of a member that does not report load yet. No numbers, no history, and every chart box says there is nothing to draw."
+          reach="open the page of a member that does not report load yet. No numbers, no history, every chart box says there is nothing to draw, and the alert card holds one line saying the machine needs updating, with no switch."
         >
           <PhoneFrameCard height={900}>
             <MachinesRouter home={homeCrew} machines={crew} start="/machines/pantry" history={empty} />

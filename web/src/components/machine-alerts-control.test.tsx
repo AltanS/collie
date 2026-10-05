@@ -138,6 +138,28 @@ describe("MachineAlertsControl", () => {
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeEnabled();
   });
 
+  it("tells a refused save to pair this device, not 'could not save'", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post("/api/machines/:id/alerts", () => new HttpResponse("device not paired", { status: 403 })),
+    );
+    render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
+    await user.click(screen.getByRole("switch", { name: "Memory alert" }));
+    expect(await screen.findByText("Pair this device to change alerts")).toBeInTheDocument();
+    expect(screen.queryByText("Could not save. The rules are unchanged.")).toBeNull();
+    // The rules snap back to what the bridge reported, and the controls are live again.
+    expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Memory alert" })).toBeEnabled();
+  });
+
+  it("holds one line and no control for a machine that needs updating", () => {
+    render(<MachineAlertsControl machineId="pantry" alerts={{}} needsUpdate />);
+    expect(screen.getByText(/Alerts need this machine to be updated/)).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(posted).toEqual([]);
+  });
+
   it("says in words which metric is firing", () => {
     render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} firing={["cpu"]} />);
     expect(screen.getAllByText("Firing now")).toHaveLength(1);

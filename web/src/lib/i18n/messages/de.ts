@@ -758,6 +758,8 @@ export const de: Dictionary = {
   "machines.alerts.saving": "Wird gespeichert",
   "machines.alerts.saved": "Gespeichert",
   "machines.alerts.failed": "Speichern fehlgeschlagen. Die Regeln sind unverändert.",
+  "machines.alerts.notPaired": "Koppeln Sie dieses Gerät, um Hinweise zu ändern",
+  "machines.alerts.needsUpdate": "Für Hinweise muss dieser Rechner aktualisiert werden. Er meldet seine Last noch nicht.",
   "machines.alerts.push": "Der Push geht an jedes Gerät, das diesen Collie abonniert hat.",
   "machines.alerts.pushLink": "Einstellungen, Hinweise",
   "crew.title": "Crew",

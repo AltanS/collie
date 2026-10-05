@@ -137,6 +137,23 @@ describe("the machine page", () => {
     expect(screen.queryAllByRole("img")).toHaveLength(0);
   });
 
+  it("hides the alert controls on an older machine and says it needs updating", async () => {
+    renderMachine("pantry");
+    expect(await screen.findByText(/Alerts need this machine to be updated/)).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: /threshold/ })).toBeNull();
+  });
+
+  it("keeps the alert controls on a machine that is only down, which is not an old one", async () => {
+    const down = {
+      ...fixtureMachines,
+      machines: fixtureMachines.machines.map((m) => (m.id === "attic" ? Object.assign({}, m, { sample: undefined }) : m)),
+    };
+    renderMachine("attic", { census: down, error: false });
+    expect(await screen.findByRole("switch", { name: "CPU alert" })).toBeInTheDocument();
+    expect(screen.queryByText(/Alerts need this machine to be updated/)).toBeNull();
+  });
+
   it("says an unreachable machine's health and the age of the last reading", async () => {
     renderMachine("attic");
     expect(await screen.findByText("unreachable")).toBeInTheDocument();

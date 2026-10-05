@@ -752,6 +752,8 @@ export const ja: Dictionary = {
   "machines.alerts.saving": "保存中",
   "machines.alerts.saved": "保存しました",
   "machines.alerts.failed": "保存できませんでした。ルールは変わっていません。",
+  "machines.alerts.notPaired": "通知を変更するには、この端末をペアリングしてください",
+  "machines.alerts.needsUpdate": "通知を使うには、このマシンの更新が必要です。まだ負荷を報告していません。",
   "machines.alerts.push": "プッシュは、この Collie を購読しているすべての端末に届きます。",
   "machines.alerts.pushLink": "設定、通知",
   "crew.title": "クルー",

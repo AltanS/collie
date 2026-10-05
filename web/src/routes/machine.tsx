@@ -118,6 +118,9 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
               machineId={row.id}
               alerts={row.alerts}
               firing={row.firing}
+              // An older member answers but reports no load, so no rule on it could ever fire. A
+              // machine that is down has no reading either, and that is not a reason to say update.
+              needsUpdate={row.sample === undefined && (row.health === "reachable" || row.health === "incompatible")}
               onSaved={() => void revalidator.revalidate()}
               onOpenAlerts={() => nav.down(settingsSectionPath("alerts", scope))}
             />

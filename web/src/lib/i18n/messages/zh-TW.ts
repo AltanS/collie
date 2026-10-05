@@ -735,6 +735,8 @@ export const zhTW: Dictionary = {
   "machines.alerts.saving": "正在儲存",
   "machines.alerts.saved": "已儲存",
   "machines.alerts.failed": "儲存失敗，規則保持不變。",
+  "machines.alerts.notPaired": "配對此裝置後才能變更提醒",
+  "machines.alerts.needsUpdate": "提醒需要先更新這部機器。它目前還不回報負載。",
   "machines.alerts.push": "推送會發到訂閱了這個 Collie 的所有裝置。",
   "machines.alerts.pushLink": "設定，提醒",
   "crew.title": "機組",

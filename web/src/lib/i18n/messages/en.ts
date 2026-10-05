@@ -825,6 +825,8 @@ export const en = {
   "machines.alerts.saving": "Saving",
   "machines.alerts.saved": "Saved",
   "machines.alerts.failed": "Could not save. The rules are unchanged.",
+  "machines.alerts.notPaired": "Pair this device to change alerts",
+  "machines.alerts.needsUpdate": "Alerts need this machine to be updated. It does not report its load yet.",
   "machines.alerts.push": "The push goes to every device subscribed to this Collie.",
   "machines.alerts.pushLink": "Settings, Alerts",
   "crew.title": "Crew",

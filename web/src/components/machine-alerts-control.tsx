@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
-import { setMachineAlerts } from "@/lib/api";
+import { isApiErrorStatus, setMachineAlerts } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { ALERT_DURATIONS, ALERT_THRESHOLDS, DEFAULT_ALERT_RULE } from "@/lib/machine-alerts";
 import { formatPercent } from "@/lib/machine-units";
@@ -40,7 +40,7 @@ const METRICS = ["cpu", "mem"] as const satisfies readonly MachineMetric[];
 /** A stable empty list for the `firing` default, so the prop keeps one identity across renders. */
 const NOT_FIRING: readonly MachineMetric[] = [];
 
-type SaveState = "idle" | "saving" | "saved" | "failed";
+type SaveState = "idle" | "saving" | "saved" | "failed" | "unpaired";
 
 /** How long "Saved" stays before the line empties again. */
 const SAVED_MS = 3000;
@@ -55,9 +55,22 @@ export interface MachineAlertsControlProps {
   onSaved?: () => void;
   /** The "Alerts" settings link; absent in a harness that has no router. */
   onOpenAlerts?: () => void;
+  /**
+   * This machine reports no load yet (an older member), so no rule on it could ever fire. The card
+   * then holds its title and one line saying the machine needs updating, and no control: a switch
+   * that saves a rule nothing will evaluate is a promise the machine cannot keep.
+   */
+  needsUpdate?: boolean;
 }
 
-export function MachineAlertsControl({ machineId, alerts, firing = NOT_FIRING, onSaved, onOpenAlerts }: MachineAlertsControlProps) {
+export function MachineAlertsControl({
+  machineId,
+  alerts,
+  firing = NOT_FIRING,
+  onSaved,
+  onOpenAlerts,
+  needsUpdate = false,
+}: MachineAlertsControlProps) {
   useLocale();
   const [state, setState] = useState<SaveState>("idle");
   // The rules as the operator last set them, tied to the prop they were set against. Once the prop
@@ -95,7 +108,9 @@ export function MachineAlertsControl({ machineId, alerts, firing = NOT_FIRING, o
       return;
     }
     setLocal(null);
-    setState("failed");
+    // A write refused with 403 is the pairing gate (or the proxy's list): the remedy is to pair this
+    // device, and "could not save" would send the operator hunting for a fault that is not there.
+    setState(isApiErrorStatus(res.error, 403) ? "unpaired" : "failed");
   }
 
   /** The complete object with one metric's rule replaced, or removed when `rule` is null. */
@@ -106,6 +121,20 @@ export function MachineAlertsControl({ machineId, alerts, firing = NOT_FIRING, o
       if (kept !== null) next[m] = kept;
     }
     return next;
+  }
+
+  if (needsUpdate) {
+    return (
+      <Card className="gap-0 py-0" data-slot="machine-alerts-update">
+        <div className="flex items-start gap-3 p-4">
+          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="font-medium">{t("machines.alerts.title")}</div>
+            <p className="text-sm text-muted-foreground">{t("machines.alerts.needsUpdate")}</p>
+          </div>
+        </div>
+      </Card>
+    );
   }
 
   return (
@@ -138,12 +167,13 @@ export function MachineAlertsControl({ machineId, alerts, firing = NOT_FIRING, o
         role="status"
         className={cn(
           "flex min-h-8 items-center border-t border-border px-4 text-xs",
-          state === "failed" ? "text-status-blocked" : "text-muted-foreground",
+          state === "failed" || state === "unpaired" ? "text-status-blocked" : "text-muted-foreground",
         )}
       >
         {state === "saving" && t("machines.alerts.saving")}
         {state === "saved" && t("machines.alerts.saved")}
         {state === "failed" && t("machines.alerts.failed")}
+        {state === "unpaired" && t("machines.alerts.notPaired")}
       </p>
 
       <div className="flex flex-wrap items-center gap-x-1 border-t border-border px-4 py-1 text-xs text-muted-foreground">
