@@ -31,7 +31,7 @@ export interface SegmentedProps<V extends string | number> {
 }
 
 /**
- * Two or three labelled segments in one row, exactly one selected: a tap picks one. Equal widths, a
+ * Two to four labelled segments in one row, exactly one selected: a tap picks one. Equal widths, a
  * 44px floor (DESIGN.md §6), 2px corners (§3).
  *
  * NOTHING MOVES ON A SWITCH (DESIGN.md §2). Every segment reserves a 1px border, and the selected
@@ -55,6 +55,10 @@ export function Segmented<V extends string | number>({
   className,
 }: SegmentedProps<V>) {
   const tabs = semantics === "tabs";
+  // Equal widths mean four segments get a quarter of the row each. At 375 px that is about 78 px,
+  // and `px-4` spent 32 of them on air, which left "30 min" (about 50 px at 14 px) clipped to "30 m…".
+  // The padding follows the count, so two and three segments keep the look they have always had.
+  const pad = options.length >= 5 ? "px-1" : options.length === 4 ? "px-2" : "px-4";
   return (
     <div role={tabs ? "tablist" : "radiogroup"} aria-label={label} data-slot="segmented" className={cn("flex", className)}>
       {options.map((option) => {
@@ -75,7 +79,8 @@ export function Segmented<V extends string | number>({
               if (!on) onChange(option.value);
             }}
             className={cn(
-              "relative -ml-px min-h-11 min-w-0 flex-1 truncate border px-4 text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
+              pad,
+              "relative -ml-px min-h-11 min-w-0 flex-1 truncate border text-sm font-medium first:ml-0 first:rounded-l-sm last:rounded-r-sm focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
               on ? "z-10 border-foreground text-foreground" : "border-border text-muted-foreground active:text-foreground",
             )}
           >

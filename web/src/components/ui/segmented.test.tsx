@@ -89,3 +89,25 @@ describe("Segmented", () => {
     }
   });
 });
+
+describe("Segmented padding follows the count", () => {
+  const labels = (n: number) => Array.from({ length: n }, (_, i) => ({ value: `v${i}`, label: `L${i}` }));
+  const padOf = (n: number) => {
+    const { unmount } = render(<Segmented options={labels(n)} value="v0" onChange={() => {}} label="Pick" />);
+    const cls = screen.getAllByRole("radio")[0]!.className;
+    unmount();
+    return cls;
+  };
+
+  it("two and three segments keep px-4, four tighten to px-2, five to px-1", () => {
+    expect(padOf(2)).toContain("px-4");
+    expect(padOf(3)).toContain("px-4");
+    expect(padOf(4)).toContain("px-2");
+    expect(padOf(4)).not.toContain("px-4");
+    expect(padOf(5)).toContain("px-1");
+  });
+
+  it("keeps the 44px tap height at every count", () => {
+    for (const n of [2, 4, 5]) expect(padOf(n)).toContain("min-h-11");
+  });
+});

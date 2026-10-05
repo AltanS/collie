@@ -171,3 +171,34 @@ test("the list asks for the half hour, a machine's page reads its day once, and 
   await page.clock.runFor(125_000);
   expect(asked.filter((a) => a.includes("/history"))).toHaveLength(2);
 });
+
+// FOUR SEGMENTS ON A 375 PX SCREEN. The duration row of an alert rule (5 | 10 | 30 | 60 minutes) gives
+// each segment a quarter of the row, and a label that does not fit is cut to "30 m…" by `truncate`.
+// A cut label is scrollWidth over clientWidth, so that is what this measures, in every catalog (the
+// minutes string is one word in English, a Latin abbreviation in German and Spanish, a single
+// character beside the number in Japanese and Korean). The 44 px tap height stays.
+for (const locale of ["en", "de", "es", "ja", "ko", "zh", "zh-TW"]) {
+  test(`the alert duration row clips no label at 375 px, in ${locale}`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.addInitScript((code) => localStorage.setItem("collie:locale:v1", code), locale);
+    await installMachinesWorld(page);
+    await page.goto("/machines/workshop?tab=alerts");
+    const rows = page.locator("[data-slot='segmented']");
+    await expect(rows.first()).toBeVisible();
+    const measured = await rows.evaluateAll((groups) =>
+      groups.flatMap((group) =>
+        [...group.querySelectorAll("button")].map((b) => ({
+          text: b.textContent ?? "",
+          segments: group.querySelectorAll("button").length,
+          clipped: b.scrollWidth > b.clientWidth,
+          height: b.getBoundingClientRect().height,
+        })),
+      ),
+    );
+    expect(measured.some((m) => m.segments === 4)).toBe(true);
+    for (const m of measured) {
+      expect(m.clipped, `"${m.text}" is clipped`).toBe(false);
+      expect(m.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+}
