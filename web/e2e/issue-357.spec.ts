@@ -24,7 +24,7 @@ test("failed member-scoped snapshot does not infer a mux failure from lead confi
   await expect(page.getByRole("alert").filter({ hasText: "Can't reach Collie" })).toBeVisible();
 });
 
-test("member pane outage with a muxless lead does not blame the member mux", async ({ page }) => {
+test("member pane outage with a muxless lead names the member, not the mux", async ({ page }) => {
   await installApiStub(page);
   await installCrewWorld(page);
   await pinLocale(page, "en");
@@ -47,8 +47,12 @@ test("member pane outage with a muxless lead does not blame the member mux", asy
   await expect(page.getByText("member pane is live", { exact: true })).toBeVisible();
   unavailable = true;
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("alert").filter({ hasText: "Can't reach Collie" })).toBeVisible();
+  // The lead answers and says the member is down, so the bar names the member, never the lead's mux.
+  const bar = page.getByRole("alert").filter({ hasText: "workshop is unreachable" });
+  await expect(bar).toBeVisible();
+  await expect(bar).not.toContainText("Herdr is down");
   unavailable = false;
-  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  // The poll recovers on its own as soon as the member answers; a click on Retry here would race the
+  // bar leaving, so the case waits for the green flash instead.
   await expect(page.getByRole("status").filter({ hasText: "Connected" })).toBeVisible();
 });

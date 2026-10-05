@@ -11,7 +11,7 @@ import {
   WifiOff,
 } from "lucide-react";
 
-import { useCrew } from "@/components/crew-provider";
+import { useCrew, useHostHealth } from "@/components/crew-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP } from "@/components/ui/notice";
 import { StripSlot } from "@/components/ui/strip-host";
@@ -23,6 +23,7 @@ import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
 import { isConnecting } from "@/lib/connection";
 import { clockTime } from "@/lib/format";
+import { writeRefusal } from "@/lib/host-health";
 import * as api from "@/lib/api";
 import type { BridgeStatus } from "@/lib/types";
 import { mounted } from "@/lib/base-path";
@@ -147,6 +148,7 @@ function ConnectionStateBanner({
 }: Omit<ConnectionBannerProps, "authError">) {
   useLocale();
   const { lead } = useCrew();
+  const memberHealth = useHostHealth(host);
   const stalled = useLoadingStalled();
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
@@ -224,7 +226,11 @@ function ConnectionStateBanner({
   }
 
   const muxDisconnected = !error && bridge === "disconnected" && (host === undefined || host === lead);
-  const view = resolveView(tone, online, probe, muxDisconnected, lastSeenAt);
+  // A member view with a lead that still answers: the lead's own last snapshot already says whether
+  // that member is down, and the sentence for it exists (`connection.stale.*`, the one the pane
+  // notice and a refused write use). Read only to NAME the cause; it feeds no clock and no latch.
+  const memberFault = host !== undefined && host !== lead ? writeRefusal(memberHealth) : undefined;
+  const view = resolveView(tone, online, probe, muxDisconnected, memberFault, lastSeenAt);
 
   return (
     // A lost connection outranks trouble, and both outrank the update offer. Green rides at
@@ -292,6 +298,7 @@ function resolveView(
   online: boolean,
   probe: Probe,
   muxDisconnected: boolean,
+  memberFault: string | undefined,
   lastSeenAt?: number,
 ) {
   if (tone === "green") {
@@ -301,6 +308,13 @@ function resolveView(
     // Static Plug (no spinner) — the galloping dog carries the motion, and a spinner would fight
     // prefers-reduced-motion. Ambient by design.
     return { copy: t("connection.reconnecting"), Icon: Plug, tone: "caution" } as const;
+  }
+  // The lead answered, so the fault is one it can name. A mux that is down belongs to the machine
+  // being viewed only when that machine is the lead (or there is no crew); on a member the lead's
+  // own `bridge` says nothing, and what the lead knows about that member is its health. The member's
+  // sentence carries its own "last seen", so it is not dated a second time below.
+  if (probe === "reachable" && !muxDisconnected && memberFault !== undefined) {
+    return { copy: memberFault, Icon: TriangleAlert, tone: "danger" } as const;
   }
   const cause =
     probe === "reachable" && muxDisconnected

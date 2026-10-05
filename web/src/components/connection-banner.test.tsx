@@ -5,6 +5,8 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { COLLAPSE_MS } from "@/components/ui/collapse";
 import { StripHost } from "@/components/ui/strip-host";
 import { CrewProvider } from "@/components/crew-provider";
+import * as api from "@/lib/api";
+import type { ServerSummary } from "@/lib/types";
 import { fixtureServers } from "@/test/handlers";
 import { ConnectionBanner, GREEN_MS } from "./connection-banner";
 
@@ -53,6 +55,7 @@ function renderBanner(
   props: {
     bridge?: "connected" | "disconnected";
     host?: string;
+    servers?: ServerSummary[];
     error?: boolean;
     authError?: boolean;
     lastSeenAt?: number;
@@ -75,7 +78,7 @@ function renderBanner(
     {
       path: "/",
       element: (
-        <CrewProvider servers={props.host === undefined ? undefined : fixtureServers}>
+        <CrewProvider servers={props.servers ?? (props.host === undefined ? undefined : fixtureServers)}>
           <StripHost>
             <Harness />
           </StripHost>
@@ -196,6 +199,72 @@ describe("ConnectionBanner — the single connection surface", () => {
     props.host = "bluefin";
     act(() => rerenderBanner());
     expect(announced("alert")).toHaveTextContent("Herdr is down on the host");
+  });
+
+  // THE PROBE STAYS UNSCOPED. `/api/config?host=` is answered by the lead from its cache, so a scoped
+  // probe would pass for a member that is down and prove nothing; the unscoped one tests the lead.
+  it("probes the lead with no host argument, on a member view too", async () => {
+    h.lost = true;
+    renderBanner({ host: "workshop", bridge: "disconnected" });
+    await act(async () => {});
+    expect(api.fetchConfig).toHaveBeenCalled();
+    expect(vi.mocked(api.fetchConfig).mock.calls.every((call) => call.length === 0)).toBe(true);
+  });
+
+  // The lead answers and a member is the fault: the banner names it with the sentences the pane
+  // notice and a refused write already use, and only when the lead's own roster says it is down.
+  describe("a member the lead reports down", () => {
+    const down = (id: string): ServerSummary[] =>
+      fixtureServers.map((s) => (s.id === id ? Object.assign({}, s, { reachable: false }) : s));
+
+    it("names an unreachable member, with its own last seen and no second one", async () => {
+      h.lost = true;
+      renderBanner({ host: "workshop", servers: down("workshop"), bridge: "connected", error: true, lastSeenAt: 5_000 });
+      await act(async () => {});
+      expect(announced("alert")).toHaveTextContent(/^workshop is unreachable · /);
+      expect(announced("alert")).not.toHaveTextContent("Can't reach Collie");
+      expect(announced("alert")).not.toHaveTextContent("Herdr is down");
+      expect(announced("alert")).not.toHaveTextContent(/last seen \d/);
+    });
+
+    it("names an incompatible member, with the lead's protocol detail", async () => {
+      h.lost = true;
+      renderBanner({ host: "attic", bridge: "connected", error: true });
+      await act(async () => {});
+      expect(announced("alert")).toHaveTextContent("attic is running an incompatible Collie");
+      expect(announced("alert")).toHaveTextContent("crew protocol 2");
+    });
+
+    it("keeps the plain copy for a member the lead reports healthy", async () => {
+      h.lost = true;
+      renderBanner({ host: "workshop", bridge: "connected", error: true });
+      await act(async () => {});
+      expect(announced("alert")).toHaveTextContent("Can't reach Collie");
+      expect(announced("alert")).not.toHaveTextContent("is unreachable");
+    });
+
+    it("says nothing about a member when the lead itself does not answer", async () => {
+      h.lost = true;
+      cfg.reachable = false;
+      renderBanner({ host: "workshop", servers: down("workshop"), bridge: "connected", error: true });
+      await act(async () => {});
+      expect(announced("alert")).toHaveTextContent("Can't reach Collie");
+      expect(announced("alert")).not.toHaveTextContent("workshop");
+    });
+
+    it("never applies to the lead: a down mux there is still the mux", async () => {
+      h.lost = true;
+      renderBanner({ host: "bluefin", servers: down("workshop"), bridge: "disconnected" });
+      await act(async () => {});
+      expect(announced("alert")).toHaveTextContent("Herdr is down on the host");
+    });
+
+    it("never applies to a solo install", async () => {
+      h.lost = true;
+      renderBanner({ bridge: "connected", error: true });
+      await act(async () => {});
+      expect(announced("alert")).toHaveTextContent("Can't reach Collie");
+    });
   });
 
   it("says 'Offline' in red when the probe fails AND the browser reports offline", async () => {
