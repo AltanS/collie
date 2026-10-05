@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo } from "react";
 
-import { parseMarkdown, type MdBlock, type MdSpan } from "@/lib/markdown";
+import { headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
 import { splitHighlight } from "@/lib/transcript-search";
 
 // Renders the Markdown AST as React elements. Every string from the log reaches the DOM as a TEXT
@@ -14,6 +14,23 @@ import { splitHighlight } from "@/lib/transcript-search";
 // The active find query, threaded via context rather than a prop drilled through every nested span —
 // highlighting is a cross-cutting display concern, and the AST walk is already recursive.
 const QueryContext = createContext("");
+
+/**
+ * Where a link that is NOT a web address leads, as the screen showing the text decides it.
+ *
+ * The parser keeps a relative path (`./other.md`), a root-absolute one and a `#fragment` as links
+ * flagged `rel`, because only the screen knows what they are relative to. `local` is a link the
+ * screen can open itself: `href` is what a middle-click or a long-press copies, `onOpen` is the tap.
+ * `text` is a link that leads nowhere here, and reads as its label.
+ */
+export type LinkTarget = { kind: "local"; href: string; onOpen: () => void } | { kind: "text" };
+
+/** Asks the screen where one `rel` link leads. Never called for an http(s) or mailto link. */
+export type LinkResolver = (href: string) => LinkTarget;
+
+// The resolver, threaded the way the find query is. With none (the transcript) a `rel` link is its
+// label as plain text: a dead anchor would be worse than none, and raw Markdown worse still.
+const LinkContext = createContext<LinkResolver | null>(null);
 
 /** Literal text with find hits marked. Still text nodes — `<mark>` is structure, never parsed markup. */
 function Hit({ text }: { text: string }) {
@@ -66,8 +83,51 @@ function breakClass(text: string): string {
 }
 
 /** What a run of spans reads as, flattened — for length, never for rendering. */
-function flatten(spans: MdSpan[]): string {
-  return spans.map((s) => (s.kind === "text" || s.kind === "code" ? s.text : flatten(s.spans))).join("");
+const flatten = spansText;
+
+/** A plain click on a local link is the screen's to handle; a modified one is the browser's. */
+function isPlainClick(e: React.MouseEvent): boolean {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+}
+
+const LINK_CLASS = "text-primary underline underline-offset-2";
+
+function LinkSpan({ span }: { span: Extract<MdSpan, { kind: "link" }> }) {
+  const resolve = useContext(LinkContext);
+  const label = <Spans spans={span.spans} />;
+  if (!span.rel) {
+    // `href` was scheme-checked in the parser. noreferrer/noopener because these URLs come from
+    // agent output, and target=_blank keeps the PWA shell alive behind the tap.
+    //
+    // Same break rule as a chip, and for the same reason: `http://bluefin:8788` is full of slashes
+    // and colons, every one of them a wrap opportunity, and an address split across two lines is
+    // one you have to reassemble in your head before you trust the tap.
+    return (
+      <a
+        href={span.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${LINK_CLASS} ${breakClass(flatten(span.spans))}`}
+      >
+        {label}
+      </a>
+    );
+  }
+  const target = resolve?.(span.href);
+  if (target === undefined || target.kind === "text") return label;
+  return (
+    <a
+      href={target.href}
+      onClick={(e) => {
+        if (e.defaultPrevented || !isPlainClick(e)) return;
+        e.preventDefault();
+        target.onOpen();
+      }}
+      className={`${LINK_CLASS} ${breakClass(flatten(span.spans))}`}
+    >
+      {label}
+    </a>
+  );
 }
 
 // Emphasis and links hold child spans (agents nest them — ``**`sha`**`` is routine), so this recurses
@@ -111,22 +171,7 @@ function Span({ span }: { span: MdSpan }) {
         </code>
       );
     case "link":
-      // `href` was scheme-checked in the parser. noreferrer/noopener because these URLs come from
-      // agent output, and target=_blank keeps the PWA shell alive behind the tap.
-      //
-      // Same break rule as a chip, and for the same reason: `http://bluefin:8788` is full of slashes
-      // and colons, every one of them a wrap opportunity, and an address split across two lines is
-      // one you have to reassemble in your head before you trust the tap.
-      return (
-        <a
-          href={span.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`text-primary underline underline-offset-2 ${breakClass(flatten(span.spans))}`}
-        >
-          <Spans spans={span.spans} />
-        </a>
-      );
+      return <LinkSpan span={span} />;
     default:
       return <Hit text={span.text} />;
   }
@@ -154,13 +199,15 @@ const ALIGN_CLASS = new Map<string, string>([
   ["right", "text-right"],
 ]);
 
-function Block({ block }: { block: MdBlock }) {
+function Block({ block, anchor }: { block: MdBlock; anchor: string | null }) {
   switch (block.kind) {
     case "heading": {
       // Levels 4-6 are rare in agent prose and don't earn another size step on a phone.
       const cls = HEADING_CLASS.get(block.level) ?? "text-sm font-semibold";
+      // `scroll-mt-28` clears the Files screen's sticky file bar, so a tap on `#install` leaves the
+      // heading in view and not behind it. Harmless where nothing sticks.
       return (
-        <div className={`${cls} mt-1 leading-snug`}>
+        <div id={anchor ?? undefined} className={`${cls} mt-1 leading-snug ${anchor === null ? "" : "scroll-mt-28"}`}>
           <Spans spans={block.spans} />
         </div>
       );
@@ -243,25 +290,38 @@ function Block({ block }: { block: MdBlock }) {
 /**
  * Render agent prose as formatted Markdown. Memoised on the source string: a transcript page holds
  * dozens of these and the parse is pure, so re-parsing on every unrelated re-render is pure waste.
+ *
+ * `resolveLink` is for a screen that knows what a relative link is relative to (the Files preview).
+ * `headingIds` gives each heading its GitHub-style anchor id, for that same screen's `#fragment`
+ * links; the transcript leaves both off, so its links and ids are what they always were.
  */
 export function MarkdownText({
   text,
   className,
   query = "",
+  resolveLink,
+  headingIds = false,
 }: {
   text: string;
   className?: string;
   /** Active find query — occurrences render as marks. Empty disables highlighting entirely. */
   query?: string;
+  /** Where a relative or fragment link leads. Without it such a link reads as its label. */
+  resolveLink?: LinkResolver;
+  /** Give each heading an `id` (its anchor). Off by default: an id on every transcript heading is a collision. */
+  headingIds?: boolean;
 }) {
   const blocks = useMemo(() => parseMarkdown(text), [text]);
+  const anchors = useMemo(() => (headingIds ? headingAnchors(blocks) : null), [blocks, headingIds]);
   return (
     <QueryContext.Provider value={query}>
-      <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
-        {blocks.map((block, i) => (
-          <Block key={i} block={block} />
-        ))}
-      </div>
+      <LinkContext.Provider value={resolveLink ?? null}>
+        <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
+          {blocks.map((block, i) => (
+            <Block key={i} block={block} anchor={anchors?.[i] ?? null} />
+          ))}
+        </div>
+      </LinkContext.Provider>
     </QueryContext.Provider>
   );
 }
