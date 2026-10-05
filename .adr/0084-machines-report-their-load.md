@@ -51,9 +51,14 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
    episodes are saved with the rules, so a restart does not push twice. An unreachable machine
    neither opens nor closes an episode: missing data is not a recovery.
 
-5. **The push is the cache warning's shape.** `type: "machine"`, topic `collie-machines`, tag
+5. **The push is the cache warning's shape.** `type: "machine"`, tag
    `collie:machine:<id>:<metric>`, title codes `machine.cpu` and `machine.mem`, and
-   `data: { host, target: "machine" }` so a tap opens `/machines/<id>`. It respects the snooze, and a
+   `data: { target: "machine", machine: <id> }` so a tap opens `/machines/<id>`. The id is not in
+   `host`: an old cached service worker reads `host` as a crew member and opens `/?h=<id>`, which
+   names no member on a solo Collie (id `local`); with no `host` it opens the dashboard. The collapse
+   topic is one per machine and metric, `collie-machines-` and the first 12 base64url characters of
+   the SHA-256 of `<id>:<metric>` (28 characters, `machineTopic` in `bridge/push.ts`), so two alerts
+   queued for an offline phone do not replace each other at the push service. It respects the snooze, and a
    snooze records nothing, so a value that outlasts it still pushes. The new `NotifyPrefs.machines`
    switch is on by default, because a rule is something the operator set on purpose.
 

@@ -14,7 +14,7 @@ import {
 import { MachineHistory, MINUTE_MS, type MinuteReading } from "./machine-history.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
 import { MachineWatch, type MachineRosterEntry } from "./machines.ts";
-import type { PushMessage } from "./push.ts";
+import { machineTopic, type PushMessage } from "./push.ts";
 import type { MachineSample } from "./types.ts";
 
 // The evaluator is pure and judged as data; the store and the watch are driven over a temp folder.
@@ -148,8 +148,9 @@ describe("the push", () => {
       titleCode: "machine.mem",
       titleDetail: { machine: "laptop" },
       body: "laptop: memory 93% for 30 min (alert at 90%).",
-      host: "laptop",
+      machine: "laptop",
       target: "machine",
+      topic: machineTopic("laptop", "mem"),
       renotify: true,
     });
   });

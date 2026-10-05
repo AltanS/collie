@@ -27,7 +27,7 @@ import type { JsonValue } from "./json.ts";
 import { MINUTE_MS, minuteOf, type MinuteReading } from "./machine-history.ts";
 import { coerceAlertsFile, type StoredMachineAlerts } from "./machine-parse.ts";
 import { pushTitle } from "./push-titles.ts";
-import type { PushMessage } from "./push.ts";
+import { machineTopic, type PushMessage } from "./push.ts";
 import type { AlertMetric, AlertRule, MachineAlerts } from "./types.ts";
 
 /** The file in the state folder. Named here so `solo-baseline.test.ts`'s scan can read it. */
@@ -147,9 +147,12 @@ const percent = (fraction: number): number => Math.round(fraction * 100);
  * the value and the minutes.
  *
  * One tag per machine and metric, with `renotify`: the next episode on the same machine replaces this
- * one on a platform that collapses by tag, and still alerts. `host` and `target` are what a tap reads
- * (`web/src/lib/push-decision.ts`), and `host` is set for the lead's own machine too, because the
- * page it opens is addressed by machine id.
+ * one on a platform that collapses by tag, and still alerts. One collapse topic per machine and metric
+ * too ({@link machineTopic}), so the push service keeps one queued alert of each instead of one in all.
+ * `machine` and `target` are what a tap reads (`web/src/lib/push-decision.ts`), and `machine` is set
+ * for the lead's own machine too, because the page it opens is addressed by machine id. There is no
+ * `host`: an old service worker would open `/?h=<id>` with it, broken on a solo Collie (`local`), and
+ * without it opens the dashboard.
  */
 export function machineAlertMessage(opened: AlertOpened): PushMessage {
   const label = opened.metric === "cpu" ? "CPU" : "memory";
@@ -158,8 +161,9 @@ export function machineAlertMessage(opened: AlertOpened): PushMessage {
     tag: `collie:machine:${opened.id}:${opened.metric}`,
     ...pushTitle(opened.metric === "cpu" ? "machine.cpu" : "machine.mem", { machine: opened.name }),
     body: `${opened.name}: ${label} ${percent(opened.value)}% for ${opened.rule.forMin} min (alert at ${percent(opened.rule.above)}%).`,
-    host: opened.id,
+    machine: opened.id,
     target: "machine",
+    topic: machineTopic(opened.id, opened.metric),
     renotify: true,
   };
 }
