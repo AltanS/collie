@@ -1528,7 +1528,6 @@ export const zh: Dictionary = {
   "files.json.empty": "空",
   "files.html.caption": "脚本、表单和远程文件已关闭",
   "files.html.frameTitle": "HTML 预览",
-  "files.source.aria": "{path} 的源码",
   "settings.changes.title": "更改",
   "settings.changes.description": "窗格的“更改”视图如何查找 git 仓库。",
   "settings.changes.nested.label": "在此文件夹内查找仓库",

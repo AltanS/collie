@@ -1522,7 +1522,6 @@ export const zhTW: Dictionary = {
   "files.json.empty": "空",
   "files.html.caption": "指令碼、表單和遠端檔案已關閉",
   "files.html.frameTitle": "HTML 預覽",
-  "files.source.aria": "{path} 的原始碼",
   "settings.changes.title": "變更",
   "settings.changes.description": "窗格的「變更」檢視尋找 git repo 的方式。",
   "settings.changes.nested.label": "在此資料夾內尋找 repo",

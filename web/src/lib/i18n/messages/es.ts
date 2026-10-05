@@ -1559,7 +1559,6 @@ export const es: Dictionary = {
   "files.json.empty": "Vacío",
   "files.html.caption": "Los scripts, los formularios y los archivos remotos están desactivados",
   "files.html.frameTitle": "Vista previa de HTML",
-  "files.source.aria": "Código de {path}",
   "settings.changes.title": "Cambios",
   "settings.changes.description": "Cómo la vista Cambios de un panel encuentra repositorios git.",
   "settings.changes.nested.label": "Buscar repositorios dentro de esta carpeta",

@@ -1550,7 +1550,6 @@ export const ja: Dictionary = {
   "files.json.empty": "空",
   "files.html.caption": "スクリプト、フォーム、外部ファイルは無効です",
   "files.html.frameTitle": "HTML プレビュー",
-  "files.source.aria": "{path} のソース",
   "settings.changes.title": "変更",
   "settings.changes.description": "ペインの「変更」ビューがgitリポジトリを検出する方法。",
   "settings.changes.nested.label": "このフォルダー内のリポジトリを検索",

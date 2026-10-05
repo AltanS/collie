@@ -1701,7 +1701,6 @@ export const en = {
   "files.json.empty": "Empty",
   "files.html.caption": "Scripts, forms and remote files are off",
   "files.html.frameTitle": "HTML preview",
-  "files.source.aria": "Source of {path}",
   "settings.changes.title": "Changes",
   "settings.changes.description": "How a pane's Changes view finds git repos.",
   "settings.changes.nested.label": "Look for repos inside this folder",

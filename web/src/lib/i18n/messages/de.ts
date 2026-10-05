@@ -1563,7 +1563,6 @@ export const de: Dictionary = {
   "files.json.empty": "Leer",
   "files.html.caption": "Skripte, Formulare und entfernte Dateien sind deaktiviert",
   "files.html.frameTitle": "HTML-Vorschau",
-  "files.source.aria": "Quelltext von {path}",
   "settings.changes.title": "Änderungen",
   "settings.changes.description": "Wie die Änderungsansicht eines Bereichs git-Repositorys findet.",
   "settings.changes.nested.label": "In diesem Ordner nach Repositorys suchen",

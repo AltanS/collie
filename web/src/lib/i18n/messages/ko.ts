@@ -1542,7 +1542,6 @@ export const ko: Dictionary = {
   "files.json.empty": "비어 있음",
   "files.html.caption": "스크립트, 양식, 원격 파일은 꺼져 있습니다",
   "files.html.frameTitle": "HTML 미리보기",
-  "files.source.aria": "{path}의 소스",
   "settings.changes.title": "변경 사항",
   "settings.changes.description": "창의 변경 사항 뷰가 git 저장소를 찾는 방법입니다.",
   "settings.changes.nested.label": "이 폴더 내의 저장소 찾기",
