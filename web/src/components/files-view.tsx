@@ -1,8 +1,11 @@
+import { useCallback, useState } from "react";
 import { File, Folder, Link2 } from "lucide-react";
 
+import { ChangesNoMatch, FilterRow } from "@/components/changes-view";
 import { Segmented } from "@/components/ui/segmented";
 import { ListGroup } from "@/components/ui/list-group";
 import { useLocale } from "@/hooks/use-locale";
+import { folderView, isNameFilterOn } from "@/lib/files-filter";
 import { formatBytes, joinRel } from "@/lib/files-view";
 import { t, type MessageKey } from "@/lib/i18n";
 import type { FileEntry, FileEntryKind } from "@/lib/types";
@@ -106,11 +109,13 @@ const KIND_WORD = {
 function rowLabel(entry: FileEntry): string {
   const parts = [entry.name, t(KIND_WORD[entry.kind])];
   if (entry.kind === "file" && entry.size !== undefined) parts.push(formatBytes(entry.size));
+  if (entry.ignored === true) parts.push(t("files.ignored.word"));
   return parts.join(", ");
 }
 
 /**
- * One folder's rows: an icon per kind, the name, and a size for files. A link row opens like a file;
+ * One folder's rows: an icon per kind, the name, and a size for files. A row git ignores (shown only
+ * when the operator asked for them) is dimmed to the muted ink and still opens. A link row opens like a file;
  * the bridge decides what it points at. Every row is a 44px button; the kind and the size are said to a
  * screen reader after the name, since the icon alone is `aria-hidden`.
  */
@@ -128,8 +133,11 @@ export function FileRows({ entries, onOpen }: { entries: readonly FileEntry[]; o
               aria-label={rowLabel(entry)}
               className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left active:bg-muted/50"
             >
-              <Icon aria-hidden className={cn("size-4 shrink-0", entry.kind === "dir" ? "text-foreground" : "text-muted-foreground")} />
-              <span className="min-w-0 flex-1 font-mono text-sm wrap-anywhere">
+              <Icon
+                aria-hidden
+                className={cn("size-4 shrink-0", entry.kind === "dir" && entry.ignored !== true ? "text-foreground" : "text-muted-foreground")}
+              />
+              <span className={cn("min-w-0 flex-1 font-mono text-sm wrap-anywhere", entry.ignored === true && "text-muted-foreground")}>
                 {entry.name}
               </span>
               {entry.kind === "file" && entry.size !== undefined && (
@@ -146,4 +154,132 @@ export function FileRows({ entries, onOpen }: { entries: readonly FileEntry[]; o
 /** The root-relative path a row opens: this folder joined with the row's name. */
 export function entryPath(dir: string, entry: FileEntry): string {
   return joinRel(dir, entry.name);
+}
+
+// ── The filter (ADR 0083) ───────────────────────────────────────────────────────────────────────
+// Files gets the filter control Changes has, drawn by the same `FilterRow`: a name field, one chip,
+// and the "3 of 12" count. The name filter belongs to one folder and resets when the folder changes;
+// the Ignored chip is the device's `filesShowIgnored` pref and outlives it.
+
+/** The name filter and whether its overlay is open, both keyed to one folder or file. */
+export function useFilesFilter(folderKey: string) {
+  const [state, setState] = useState({ key: folderKey, query: "", open: false });
+  // Another folder is a fresh filter, closed and blank, without an effect that flashes the old one.
+  const mine = state.key === folderKey ? state : { key: folderKey, query: "", open: false };
+  const patch = useCallback(
+    (change: { query?: string; open?: boolean }) =>
+      setState((prev) => ({ ...(prev.key === folderKey ? prev : { key: folderKey, query: "", open: false }), ...change })),
+    [folderKey],
+  );
+  const setQuery = useCallback((query: string) => patch({ query }), [patch]);
+  const setOpen = useCallback((open: boolean) => patch({ open }), [patch]);
+  const clear = useCallback(() => patch({ query: "" }), [patch]);
+  return { query: mine.query, open: mine.open, setQuery, setOpen, clear };
+}
+
+/** The row inside the overlay: the name field, the Ignored chip, and the count with its Clear. */
+export function FilesFilterBar({
+  query,
+  onQuery,
+  showIgnored,
+  onShowIgnored,
+  shown,
+  total,
+  focusOnMount = false,
+}: {
+  query: string;
+  onQuery: (query: string) => void;
+  showIgnored: boolean;
+  onShowIgnored: (show: boolean) => void;
+  shown: number;
+  total: number;
+  focusOnMount?: boolean;
+}) {
+  useLocale();
+  return (
+    <FilterRow
+      slot="files-filter"
+      query={query}
+      onQuery={onQuery}
+      placeholder={t("files.filter.placeholder")}
+      active={isNameFilterOn(query)}
+      count={t("files.filter.shown", { shown, total })}
+      // Clear resets the name only: the Ignored choice is the device's, not this folder's.
+      onClear={() => onQuery("")}
+      focusOnMount={focusOnMount}
+      chips={
+        <div role="group" aria-label={t("files.filter.ignoredAria")} className="-ml-1.5 flex">
+          <button
+            type="button"
+            aria-pressed={showIgnored}
+            onClick={() => onShowIgnored(!showIgnored)}
+            className="flex h-11 min-w-11 items-center justify-center px-1.5"
+          >
+            <span
+              className={cn(
+                "flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
+                showIgnored ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
+              )}
+            >
+              {t("files.filter.ignored")}
+            </span>
+          </button>
+        </div>
+      }
+    />
+  );
+}
+
+/**
+ * One folder's body: the rows the filter leaves, the quiet "{count} ignored hidden" line with its
+ * Show action, and the sentence and way out when nothing is left. A folder that is empty on disk
+ * says so; a folder whose every entry is ignored says that instead.
+ */
+export function FilesFolderBody({
+  entries,
+  truncated,
+  query,
+  showIgnored,
+  onShowIgnored,
+  onClearQuery,
+  onOpen,
+}: {
+  entries: readonly FileEntry[];
+  truncated: boolean;
+  query: string;
+  showIgnored: boolean;
+  onShowIgnored: (show: boolean) => void;
+  onClearQuery: () => void;
+  onOpen: (entry: FileEntry) => void;
+}) {
+  useLocale();
+  if (entries.length === 0) {
+    return <p className="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground">{t("files.empty")}</p>;
+  }
+  const view = folderView(entries, query, showIgnored);
+  return (
+    <>
+      {view.rows.length > 0 ? (
+        <FileRows entries={view.rows} onOpen={onOpen} />
+      ) : isNameFilterOn(query) ? (
+        <ChangesNoMatch onClear={onClearQuery} />
+      ) : (
+        <p className="px-2 py-12 text-center text-sm leading-relaxed text-muted-foreground">{t("files.ignored.allHidden")}</p>
+      )}
+      {view.hiddenIgnored > 0 && (
+        <div data-slot="files-ignored-hidden" className="flex items-center justify-between gap-2 pt-1 text-xs text-muted-foreground">
+          <span>{t("files.ignored.hidden", { count: view.hiddenIgnored })}</span>
+          <button
+            type="button"
+            aria-label={t("files.ignored.showAria")}
+            onClick={() => onShowIgnored(true)}
+            className="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-primary active:bg-muted"
+          >
+            {t("files.ignored.show")}
+          </button>
+        </div>
+      )}
+      {truncated && <p className="pt-3 text-xs text-muted-foreground">{t("files.truncated")}</p>}
+    </>
+  );
 }

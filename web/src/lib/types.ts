@@ -1100,11 +1100,16 @@ export type ChangeCommitDiffResponse = ChangesWorkspace & ChangeCommitDiff;
 /** What one row of a folder listing is. `link` is any symlink: listed, never followed (ADR 0083). */
 export type FileEntryKind = "dir" | "file" | "link";
 
-/** One row of a folder listing. `size` is in bytes and present for files only. Mirrors bridge/types.ts. */
+/**
+ * One row of a folder listing. `size` is in bytes and present for files only. `ignored` is `true`
+ * when git ignores the entry; absent means not ignored or not known, and a member that predates the
+ * field never sends it. Mirrors bridge/types.ts.
+ */
 export interface FileEntry {
   name: string;
   kind: FileEntryKind;
   size?: number;
+  ignored?: true;
 }
 
 /**

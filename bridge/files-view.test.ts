@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,7 @@ import {
   decodeFileText,
   type FilesContext,
   filesQuery,
+  gitIgnoredNames,
   listFolder,
   MAX_FILES_ENTRIES,
   MAX_FILES_READ_BYTES,
@@ -562,5 +563,205 @@ describe("the gate: files is a read that needs an authorised device", () => {
     expect(crewGate("device-read", on, null).ok).toBe(false);
     expect(crewGate("read", on, "tablet")).toEqual({ ok: true });
     expect(crewGate("device-read", { deviceHeader: "", deviceAllowlist: [] }, null)).toEqual({ ok: true });
+  });
+});
+
+// ── Ignored entries: one `git check-ignore` per listing (ADR 0083) ──────────────────────────────
+// Real git in throwaway folders, as bridge/changes.test.ts does: the module's job is how it drives
+// git, and a fake would test the fake.
+
+describe("list: entries git ignores carry ignored: true", () => {
+  let ibase: string;
+  let ihome: string;
+  let repoRoot: string;
+  let plainRoot: string;
+
+  /** Plain git for building fixtures. The listing under test uses the hardened runner instead. */
+  function git(cwd: string, ...args: string[]): void {
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined && !key.startsWith("GIT_")) env[key] = value;
+    }
+    const run = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (run.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${run.stderr.toString()}`);
+  }
+
+  function put(path: string, body = "x\n"): void {
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, body);
+  }
+
+  const ictx = (r: string): FilesContext => ({ root: r, home: ihome, privateFolders: [] });
+  const flags = (listing: FilesListing | typeof UNKNOWN_PATH): Record<string, true | undefined> => {
+    if (listing === UNKNOWN_PATH || !listing.available) throw new Error("no listing");
+    return Object.fromEntries(listing.entries.map((e) => [e.name, e.ignored]));
+  };
+
+  beforeAll(() => {
+    ibase = realpathSync(mkdtempSync(join(tmpdir(), "collie-files-ignored-")));
+    ihome = join(ibase, "home");
+    repoRoot = join(ihome, "ws");
+    plainRoot = join(ihome, "plain");
+    mkdirSync(repoRoot, { recursive: true });
+    mkdirSync(plainRoot, { recursive: true });
+    git(repoRoot, "init", "-q");
+    put(
+      join(repoRoot, ".gitignore"),
+      ["node_modules/", "build/", "*.log", "!keep.log", "tracked.txt", "-dash*", "*.tmp", "vendor-clone/", ""].join("\n"),
+    );
+    put(join(repoRoot, "src", "main.ts"));
+    put(join(repoRoot, "node_modules", "pkg", "index.js"));
+    put(join(repoRoot, "build", "out.js"));
+    put(join(repoRoot, "debug.log"));
+    put(join(repoRoot, "keep.log"));
+    put(join(repoRoot, "tracked.txt"));
+    put(join(repoRoot, "readme.md"));
+    // `build` is also the name of a FILE elsewhere: a directory-only rule must not hit it.
+    put(join(repoRoot, "docs", "build"));
+    git(repoRoot, "add", "-f", "tracked.txt");
+    git(repoRoot, "add", ".gitignore", "src", "readme.md");
+    git(repoRoot, "commit", "-q", "-m", "init");
+    if (POSIX) {
+      // A folder link named for an ignored folder: git treats a link as a file, so `build/` skips it.
+      symlinkSync("build", join(repoRoot, "blink"), "dir");
+      put(join(repoRoot, "-dash.txt"));
+      put(join(repoRoot, "line\nbreak.tmp"));
+      // Pathspec magic spelled as names: each is one literal file.
+      put(join(repoRoot, ":(top)magic.tmp"));
+      put(join(repoRoot, ":!bang.tmp"));
+      put(join(repoRoot, ":plain"));
+    }
+    put(join(plainRoot, "a.log"));
+
+    // A nested clone: the outer repo ignores the folder, the inner repo has its own rules.
+    const inner = join(repoRoot, "vendor-clone");
+    mkdirSync(inner, { recursive: true });
+    git(inner, "init", "-q");
+    put(join(inner, ".gitignore"), "*.cache\n");
+    put(join(inner, "x.cache"));
+    put(join(inner, "x.log"));
+    put(join(inner, "code.ts"));
+  });
+
+  afterAll(() => rmSync(ibase, { recursive: true, force: true }));
+
+  test("a file rule, a directory rule, a negation and a tracked file that matches a rule", async () => {
+    const got = flags(await list("", ictx(repoRoot)));
+    expect(got["debug.log"]).toBe(true); // file rule
+    expect(got["node_modules"]).toBe(true); // directory rule, applied to a directory
+    expect(got["build"]).toBe(true);
+    expect(got["vendor-clone"]).toBe(true);
+    expect(got["keep.log"]).toBeUndefined(); // negation
+    expect(got["tracked.txt"]).toBeUndefined(); // tracked wins over the rule: no --no-index
+    expect(got["src"]).toBeUndefined();
+    expect(got["readme.md"]).toBeUndefined();
+    expect(got[".gitignore"]).toBeUndefined();
+  });
+
+  test("a directory-only rule does not hit a file of that name, and a link is never ignored by it", async () => {
+    expect(flags(await list("docs", ictx(repoRoot)))["build"]).toBeUndefined();
+    if (POSIX) expect(flags(await list("", ictx(repoRoot)))["blink"]).toBeUndefined();
+  });
+
+  test("a listing inside an ignored folder is ignored whole, however deep", async () => {
+    expect(flags(await list("node_modules", ictx(repoRoot)))).toEqual({ pkg: true });
+    expect(flags(await list("node_modules/pkg", ictx(repoRoot)))).toEqual({ "index.js": true });
+    expect(flags(await list("build", ictx(repoRoot)))).toEqual({ "out.js": true });
+  });
+
+  test("a folder git does not ignore carries no flag at all", async () => {
+    const listing = await list("src", ictx(repoRoot));
+    expect(names(listing)).toEqual(["main.ts"]);
+    expect(JSON.stringify(listing)).not.toContain(`"ignored"`);
+  });
+
+  test("names travel on stdin: a leading dash, a newline and pathspec magic are one literal path each", async () => {
+    if (!POSIX) return;
+    const got = flags(await list("", ictx(repoRoot)));
+    expect(got["-dash.txt"]).toBe(true);
+    expect(got["line\nbreak.tmp"]).toBe(true);
+    expect(got[":(top)magic.tmp"]).toBe(true);
+    expect(got[":!bang.tmp"]).toBe(true);
+    expect(got[":plain"]).toBeUndefined();
+  });
+
+  test("a nested repository answers by its own rules, not the outer one's", async () => {
+    const got = flags(await list("vendor-clone", ictx(repoRoot)));
+    expect(got["x.cache"]).toBe(true);
+    expect(got["x.log"]).toBeUndefined(); // the outer `*.log` does not apply inside another repo
+    expect(got["code.ts"]).toBeUndefined();
+  });
+
+  test("no repository: the listing answers, with no flags", async () => {
+    const listing = await list("", ictx(plainRoot));
+    expect(names(listing)).toEqual(["a.log"]);
+    expect(JSON.stringify(listing)).not.toContain(`"ignored"`);
+  });
+
+  test("a probe that answers null, throws or finds nothing leaves the listing whole", async () => {
+    for (const ignoreProbe of [
+      async () => null,
+      async (): Promise<null> => {
+        throw new Error("git is gone");
+      },
+      async () => new Set<string>(),
+    ]) {
+      const listing = await list("", { ...ictx(repoRoot), ignoreProbe });
+      expect(names(listing)).toContain("debug.log");
+      expect(JSON.stringify(listing)).not.toContain(`"ignored"`);
+    }
+  });
+
+  test("the probe is asked once per listing, with the kept entries, after the deny filter", async () => {
+    const asked: string[][] = [];
+    const ignoreProbe = async (_dir: string, entries: readonly FileEntry[]) => {
+      asked.push(entries.map((e) => e.name));
+      return new Set(["readme.md"]);
+    };
+    const listing = await list("", { ...ictx(repoRoot), ignoreProbe });
+    expect(asked.length).toBe(1);
+    expect(asked[0]).not.toContain(".git");
+    expect(flags(listing)["readme.md"]).toBe(true);
+    expect(flags(listing)["src"]).toBeUndefined();
+  });
+
+  test("a git run past its timeout is no answer; the read of an ignored file is unchanged", async () => {
+    const entries: FileEntry[] = [{ name: "debug.log", kind: "file", size: 2 }];
+    if (POSIX) {
+      // A "git" that never answers: the run is killed at the timeout and the listing gets no flags.
+      const slow = join(ibase, "slow-git");
+      writeFileSync(slow, "#!/bin/sh\nexec sleep 30\n", { mode: 0o755 });
+      const started = Date.now();
+      expect(await gitIgnoredNames(repoRoot, entries, { git: slow, timeoutMs: 150 })).toBeNull();
+      expect(Date.now() - started).toBeLessThan(5000);
+      // A "git" that fails: exit 128 is no answer either.
+      const broken = join(ibase, "broken-git");
+      writeFileSync(broken, "#!/bin/sh\ncat >/dev/null\nexit 128\n", { mode: 0o755 });
+      expect(await gitIgnoredNames(repoRoot, entries, { git: broken })).toBeNull();
+      // A "git" that records its argv: one run, and no file name in it.
+      const real = Bun.which("git");
+      if (real === null) throw new Error("git is needed for this test");
+      const log = join(ibase, "argv.log");
+      const spy = join(ibase, "spy-git");
+      writeFileSync(spy, `#!/bin/sh\nprintf '%s\\n' "$@" >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 });
+      const found = await gitIgnoredNames(repoRoot, entries, { git: spy });
+      expect([...(found ?? [])]).toEqual(["debug.log"]);
+      const argv = readFileSync(log, "utf8");
+      expect(argv).toContain("check-ignore");
+      expect(argv).not.toContain("debug.log");
+      expect(argv.split("\n").filter((l) => l === "check-ignore").length).toBe(1);
+    }
+    expect([...((await gitIgnoredNames(repoRoot, entries)) ?? [])]).toEqual(["debug.log"]);
+    expect(await gitIgnoredNames(plainRoot, entries)).toBeNull();
+    expect(await gitIgnoredNames(join(ibase, "absent"), entries)).toBeNull();
+    // A view filter, not a gate.
+    const answer = await readFile(ictx(repoRoot), "debug.log");
+    if (answer === UNKNOWN_PATH || !answer.available) throw new Error("an ignored file must still read");
+    expect(answer.text).toBe("x\n");
   });
 });

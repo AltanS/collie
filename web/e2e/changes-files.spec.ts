@@ -44,6 +44,41 @@ test("open Files, enter a folder, open a Markdown file, go back twice", async ({
   await expect(page.getByRole("button", { name: /^src, folder/ })).toBeVisible();
 });
 
+test("ignored entries are hidden, Show brings them back dimmed, and the name filter narrows the folder", async ({ page }) => {
+  await page.goto(`/pane/${PANE}/changes/files`);
+  await expect(page.getByRole("button", { name: /^docs, folder/ })).toBeVisible();
+  // Hidden by default, with one quiet line that says how many.
+  await expect(page.getByRole("button", { name: /^node_modules/ })).toHaveCount(0);
+  await expect(page.getByText(en["files.ignored.hidden"].replace("{count}", "2"))).toBeVisible();
+
+  // Show: the rows return, dimmed, and the line goes.
+  await page.getByRole("button", { name: en["files.ignored.showAria"] }).click();
+  const log = page.getByRole("button", { name: /^debug\.log/ });
+  await expect(log).toBeVisible();
+  const ink = (name: RegExp) => page.getByRole("button", { name }).locator("span").first().evaluate((el) => getComputedStyle(el).color);
+  expect(await ink(/^debug\.log/)).not.toBe(await ink(/^README\.md/));
+  await expect(page.getByText(en["files.ignored.hidden"].replace("{count}", "2"))).toHaveCount(0);
+
+  // The filter opens over the list without moving it, the Ignored chip is pressed, and a name narrows.
+  const rows = page.locator('[data-slot="file-rows"]');
+  const top = (await rows.boundingBox())!.y;
+  await page.getByRole("button", { name: en["changes.filter.button"] }).click();
+  await expect(page.getByRole("button", { name: en["files.filter.ignored"], exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect((await rows.boundingBox())!.y).toBe(top);
+  await page.getByPlaceholder(en["files.filter.placeholder"]).fill("DEBUG");
+  await expect(rows.getByRole("button")).toHaveCount(1);
+  await expect(page.getByText(en["files.filter.shown"].replace("{shown}", "1").replace("{total}", "9"))).toBeVisible();
+
+  // Nothing matches: the sentence and the way out.
+  await page.getByPlaceholder(en["files.filter.placeholder"]).fill("zzz");
+  await expect(page.getByText(en["changes.filter.none"])).toBeVisible();
+  await page.getByPlaceholder(en["files.filter.placeholder"]).fill("");
+
+  // The Ignored choice is the device's: it outlives a reload.
+  await page.reload();
+  await expect(page.getByRole("button", { name: /^debug\.log/ })).toBeVisible();
+});
+
 test("a changed Markdown file previews from its diff, in Files", async ({ page }) => {
   await page.goto(`/pane/${PANE}/changes?repo=packages%2Fapi&path=notes.md`);
   await page.getByRole("button", { name: en["changes.file.previewAria"] }).click();

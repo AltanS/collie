@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { asJsonBoolean, asJsonObject } from "@/lib/json";
 import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
@@ -491,5 +492,135 @@ describe("Files: a link in a Markdown file", () => {
     renderAt([`${FILES}?path=docs%2Fguide.md`]);
     await screen.findByText("out");
     expect(screen.queryByRole("link")).toBeNull();
+  });
+});
+
+describe("Files: entries git ignores, and the filter", () => {
+  const filterButton = () => screen.findByRole("button", { name: new RegExp(`^${en["changes.filter.button"]}`) });
+  const hiddenLine = (count: number) => en["files.ignored.hidden"].replace("{count}", String(count));
+  const counted = (shown: number, total: number) => en["files.filter.shown"].replace("{shown}", String(shown)).replace("{total}", String(total));
+  const names = () =>
+    within(document.querySelector<HTMLElement>('[data-slot="file-rows"]')!)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label")!.split(",")[0]);
+  const stored = (): boolean | undefined => asJsonBoolean(asJsonObject(JSON.parse(localStorage.getItem("collie:dash-prefs:v1") ?? "{}"))?.filesShowIgnored);
+
+  it("hides ignored rows by default and says how many, quietly", async () => {
+    renderAt([FILES]);
+    await screen.findByRole("button", { name: /^docs, folder/ });
+    expect(names()).toEqual(["docs", "src", "README.md", "index.html", "logo.png", "package.json", "current"]);
+    expect(screen.getByText(hiddenLine(2))).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^node_modules/ })).toBeNull();
+  });
+
+  it("Show brings them back dimmed and still openable, and the choice outlives a remount", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await screen.findByRole("button", { name: en["files.ignored.showAria"] }));
+    const dimmed = await screen.findByRole("button", { name: `debug.log, ${en["files.kind.file"]}, 8 KB, ${en["files.ignored.word"]}` });
+    expect(dimmed.querySelector("span")?.className).toContain("text-muted-foreground");
+    expect(screen.queryByText(hiddenLine(2))).toBeNull();
+    expect(stored()).toBe(true);
+
+    // Still tappable: an ignored folder opens, and everything in it is ignored.
+    await userEvent.click(screen.getByRole("button", { name: /^node_modules, folder/ }));
+    expect(await screen.findByRole("button", { name: /^react, folder/ })).toBeTruthy();
+  });
+
+  it("starts shown on a device that chose it", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ filesShowIgnored: true }));
+    renderAt([FILES]);
+    await screen.findByRole("button", { name: /^docs, folder/ });
+    expect(names()).toContain("node_modules");
+    expect(screen.queryByText(hiddenLine(2))).toBeNull();
+  });
+
+  it("the Ignored chip toggles the same choice, and it stays when the folder changes", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await filterButton());
+    const chip = await screen.findByRole("button", { name: en["files.filter.ignored"] });
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    await userEvent.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(names()).toContain("debug.log");
+    expect(stored()).toBe(true);
+    await userEvent.click(chip);
+    expect(names()).not.toContain("debug.log");
+    expect(stored()).toBe(false);
+  });
+
+  it("the Ignored chip survives opening a folder", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ filesShowIgnored: true }));
+    renderAt([FILES]);
+    await userEvent.click(await screen.findByRole("button", { name: /^src, folder/ }));
+    await screen.findByRole("button", { name: /^cart\.ts/ });
+    await userEvent.click(await filterButton());
+    expect((await screen.findByRole("button", { name: en["files.filter.ignored"] })).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("filters the folder's names by a case-insensitive substring, with the count, and Clear resets it", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await filterButton());
+    await userEvent.type(await screen.findByPlaceholderText(en["files.filter.placeholder"]), "RE");
+    // "RE" matches README.md and, case-insensitively inside the name, "current".
+    expect(names()).toEqual(["README.md", "current"]);
+    expect(await screen.findByText(counted(2, 7))).toBeTruthy();
+    expect(screen.getByRole("button", { name: new RegExp(`^${en["changes.filter.button"]}, 2 of 7`) })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: en["changes.filter.clear"] }));
+    expect(names()).toHaveLength(7);
+    // The Ignored choice was never part of Clear.
+    expect(stored()).toBeUndefined();
+  });
+
+  it("the name filter resets when the folder changes", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await filterButton());
+    const field = await screen.findByPlaceholderText(en["files.filter.placeholder"]);
+    await userEvent.type(field, "src");
+    expect(names()).toEqual(["src"]);
+    await userEvent.click(screen.getByRole("button", { name: /^src, folder/ }));
+    await screen.findByRole("button", { name: /^cart\.ts/ });
+    expect(names()).toEqual(["routes", "cart.ts"]);
+    // The overlay closed with the folder, and the button is not tinted.
+    expect(screen.queryByPlaceholderText(en["files.filter.placeholder"])).toBeNull();
+    expect((await filterButton()).getAttribute("aria-label")).toBe(en["changes.filter.button"]);
+  });
+
+  it("says nothing matches, with the way out, and the way out works", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await filterButton());
+    await userEvent.type(await screen.findByPlaceholderText(en["files.filter.placeholder"]), "zzz");
+    expect(await screen.findByText(en["changes.filter.none"])).toBeTruthy();
+    // The overlay's own Clear and the screen's both read "Clear filter"; either empties the field.
+    await userEvent.click(screen.getAllByRole("button", { name: en["changes.filter.clear"] }).at(-1)!);
+    await waitFor(() => expect(names()).toHaveLength(7));
+  });
+
+  it("a folder whose every entry is ignored says so and offers Show", async () => {
+    renderAt([`${FILES}?dir=node_modules`]);
+    expect(await screen.findByText(en["files.ignored.allHidden"])).toBeTruthy();
+    expect(screen.getByText(hiddenLine(1))).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: en["files.ignored.showAria"] }));
+    expect(await screen.findByRole("button", { name: /^react, folder/ })).toBeTruthy();
+  });
+
+  it("an older member's listing has no ignored field: nothing is hidden and no line shows", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files/, () => {
+        const listing = fixtureFilesDir("")!;
+        return HttpResponse.json({ ...listing, entries: listing.available ? listing.entries.map(({ ignored: _ignored, ...rest }) => rest) : [] });
+      }),
+    );
+    renderAt([FILES]);
+    await screen.findByRole("button", { name: /^docs, folder/ });
+    expect(names()).toContain("node_modules");
+    expect(names()).toContain("debug.log");
+    expect(screen.queryByText(/ignored hidden/)).toBeNull();
+  });
+
+  it("an empty folder says it is empty and offers no filter", async () => {
+    server.use(http.get(/\/api\/pane\/[^/]+\/files/, () => HttpResponse.json({ ...fixtureFilesDir("")!, entries: [] })));
+    renderAt([FILES]);
+    expect(await screen.findByText(en["files.empty"])).toBeTruthy();
+    expect(screen.queryByRole("button", { name: new RegExp(`^${en["changes.filter.button"]}`) })).toBeNull();
   });
 });

@@ -9,7 +9,8 @@
   `paneFiles`, `workspaceFiles`, `paneGateLevel`, `guard`) · `bridge/crew/peer-gate.ts` (`GateLevel`,
   `crewGate`) · `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header, `containedRealpath`) ·
   `bridge/changes-root.ts` (`workspaceRoot`, `withinBound`) · `bridge/acl-policy.ts`
-  (`isStateSecretName`) · `CREW_PROTOCOL.md` §5, §12 ·
+  (`isStateSecretName`) · `bridge/changes.ts` (`runGit`, `gitBinary`, `discoverRepos`) ·
+  `web/src/lib/files-filter.ts` · `web/src/components/files-view.tsx` · `CREW_PROTOCOL.md` §5, §12 ·
   `docs/changes.md` → *Files* · `docs/security.md`
 
 ## Context
@@ -89,6 +90,45 @@ Facts that shaped it:
     state and config folders. A member that predates it answers 404, which the phone reads as
     "update this member". The protocol version stays 2.
 
+11. **A listing says which entries git ignores, and the web hides them by default.** A listing row
+    may carry `ignored: true`. It is additive and optional: absent means not ignored or not known. The
+    web hides flagged rows until the operator asks (a per-device `filesShowIgnored` pref, a Filter
+    button with a name field and an Ignored chip, a quiet "{count} ignored hidden" line). This is a
+    **view filter and not a gate**: `?path=` is unchanged, an ignored file reads like any other, and
+    nothing here widens or narrows what Files can reach. See *Ignored entries* below.
+
+### Ignored entries
+
+When the listed folder lies inside a git work tree, `listFolder` runs **one**
+`git check-ignore --stdin -z` for that listing, over the entries it kept (after the deny filter and
+the 2000 cap), and sets `ignored: true` on the rows git names. Why it is acceptable, and how it is
+bounded:
+
+- **A child process in a read-only view is acceptable here** because Changes already runs git over
+  this same root, through the same hardened runner (`runGit` in `bridge/changes.ts`: argv only, no
+  shell, no inherited `GIT_*`, no hook, fsmonitor and pager off, no network, a timeout, an output
+  cap). Files adds one verb to it, a read that writes nothing. The one new knob is that
+  `check-ignore` refuses `--literal-pathspecs`, so the runner leaves that flag off for it and the
+  caller spells every path `./name`, which no pathspec magic (`:(top)`, `:!`) can start with.
+- **Names travel on stdin only.** The paths go in NUL-separated (`-z` in and out), never in argv, so a
+  name with a newline, a leading dash or a colon is one literal path and cannot become a flag or a
+  pathspec. The answer is read back by exact string.
+- **One run per listing, no walk.** The run is killed at 2 seconds (Changes' runs get 5). On a
+  timeout, a non-0/1 exit, a capped output, no git binary, or no repository above the folder, the
+  listing answers with **no flags at all** and no error. A listing never fails for this.
+- **The repository is the nearest `.git` above the listed folder's real path** (`discoverRepos`,
+  the walk Changes uses for the repo that contains a folder). A folder inside a nested clone is
+  therefore asked of that clone, with its own rules, and a folder outside any repository gets no
+  flags. A dotfiles repository at home that ignores everything makes everything under it ignored,
+  which is what git itself says.
+- **No `--no-index`.** A tracked file that matches an ignore rule is not ignored, which is git's own
+  answer. Directories go in without a trailing slash: git looks the path up on disk, so a `build/`
+  rule hits a directory and not a file of that name, and a symlink to a folder is a file to git.
+  Everything inside an ignored folder is reported ignored by git, so a listing opened inside
+  `node_modules` comes back whole.
+- **Crew.** The member runs it on its own disk. A member that predates the field sends none, and the
+  phone then hides nothing for it.
+
 ### Why the device gate, and not the plain read gate
 
 Changes shows what git lists as changed under the root. Files shows every file under it: `.env`
@@ -151,6 +191,11 @@ untracked read, for the same reason. On Windows neither flag exists; the regular
 - **macOS folds case on disk but `Host` does not.** Containment on macOS compares the real paths
   exactly; a request spelled in another case either resolves to the same real path or is refused.
   The deny checks fold case on every host, so they err towards refusing.
+- **A listing may start one git process.** The cost is bounded (one run, 2 seconds, no flags on
+  failure), and Changes already pays more on the same root.
+- **An ignored file is still one tap, or one `?path=`, away.** Hiding is for the operator's eyes and
+  is not a security property. A file an operator must not read belongs behind the device gate or out
+  of the root.
 - **Revisit** if Bun exposes `openat2` or an `O_RESOLVE_BENEATH` equivalent (close the race), if an
   operator asks for writes from Files (that is a different ADR, and a write gate), or if a real
   deployment needs a deny entry beyond `.git`, the two private folders and the state secret names.

@@ -9,6 +9,7 @@ import { ChangesTabs } from "@/components/files-view";
 import { CleanRepos, CommitHead } from "@/components/changes-commit";
 import {
   ChangePath,
+  ChangesFilterBar,
   ChangesFilterButton,
   ChangesFilterOverlay,
   ChangesLayoutToggle,
@@ -723,15 +724,16 @@ function ChangesScreen() {
         {/* Floats over the list, anchored under the header: opening and closing move neither by a
             pixel. Tapping outside it or Escape closes it; the filter itself stays applied. */}
         {!current && (
-          <ChangesFilterOverlay
-            open={filterOpen}
-            onClose={() => setFilterOpen(false)}
-            filter={activeFilter}
-            onChange={setActiveFilter}
-            onClear={clearFilter}
-            shown={shown}
-            total={total}
-          />
+          <ChangesFilterOverlay open={filterOpen} onClose={() => setFilterOpen(false)}>
+            <ChangesFilterBar
+              filter={activeFilter}
+              onChange={setActiveFilter}
+              onClear={clearFilter}
+              shown={shown}
+              total={total}
+              focusOnMount
+            />
+          </ChangesFilterOverlay>
         )}
       </div>
 

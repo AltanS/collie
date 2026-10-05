@@ -3,16 +3,18 @@ import { useLocation, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
-import { ChangePath } from "@/components/changes-view";
+import { ChangePath, ChangesFilterButton, ChangesFilterOverlay } from "@/components/changes-view";
 import { FileContent, defaultView, type FileLinks, type FileView } from "@/components/file-preview";
-import { ChangesTabs, FileRows, FilesBreadcrumb, entryPath } from "@/components/files-view";
+import { ChangesTabs, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, entryPath, useFilesFilter } from "@/components/files-view";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { Segmented } from "@/components/ui/segmented";
+import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { fetchFileText, fetchFilesDir, type ChangesTarget, type FilesAnswer } from "@/lib/api";
 import { unavailableKey } from "@/lib/changes-reason";
+import { folderView, isNameFilterOn } from "@/lib/files-filter";
 import { baseName, formatBytes, previewKindFor } from "@/lib/files-view";
 import { t, type MessageKey } from "@/lib/i18n";
 import { isAbortError } from "@/lib/loaders";
@@ -146,12 +148,15 @@ export function FilesRoute() {
   const location = useLocation();
   const [search] = useSearchParams();
   const root = useRootData();
+  const { prefs, setFilesShowIgnored } = useDashPrefs();
 
   const pathParam = search.get("path") ?? "";
   const dirParam = search.get("dir") ?? "";
   const at: FilesAt = pathParam !== "" ? { path: pathParam } : { dir: dirParam };
   const filePath = at.path ?? null;
   const dir = at.dir ?? "";
+  // The name filter is one folder's: another folder, or a file, starts it blank and closed.
+  const filter = useFilesFilter(filePath !== null ? `file\n${filePath}` : `dir\n${dir}`);
 
   const pane =
     target.kind === "pane"
@@ -235,16 +240,21 @@ export function FilesRoute() {
   } else if (!state.data.available) body = <Quiet>{t(unavailableKey(state.data.reason))}</Quiet>;
   else if ("entries" in state.data) {
     const data = state.data;
-    body =
-      data.entries.length === 0 ? (
-        <Quiet>{t("files.empty")}</Quiet>
-      ) : (
-        <>
-          <FileRows entries={data.entries} onOpen={openEntry} />
-          {data.truncated && <p className="pt-3 text-xs text-muted-foreground">{t("files.truncated")}</p>}
-        </>
-      );
+    body = (
+      <FilesFolderBody
+        entries={data.entries}
+        truncated={data.truncated}
+        query={filter.query}
+        showIgnored={prefs.filesShowIgnored}
+        onShowIgnored={setFilesShowIgnored}
+        onClearQuery={filter.clear}
+        onOpen={openEntry}
+      />
+    );
   } else body = <FileContent file={state.data} view={view} links={fileLinks} />;
+
+  const listed = state.phase === "ready" && state.data.available && "entries" in state.data ? state.data.entries : null;
+  const counted = listed === null || listed.length === 0 ? null : folderView(listed, filter.query, prefs.filesShowIgnored);
 
   const size = state.phase === "ready" && state.data.available && "size" in state.data ? state.data.size : null;
   const hasPreview = filePath !== null && previewKindFor(filePath) !== null;
@@ -270,6 +280,15 @@ export function FilesRoute() {
                   )}
                 </div>
               </div>
+              {counted !== null && (
+                <ChangesFilterButton
+                  open={filter.open}
+                  active={isNameFilterOn(filter.query)}
+                  shown={counted.rows.length}
+                  total={counted.pool}
+                  onClick={() => filter.setOpen(!filter.open)}
+                />
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -283,6 +302,19 @@ export function FilesRoute() {
             </>
           }
         />
+        {counted !== null && (
+          <ChangesFilterOverlay open={filter.open} onClose={() => filter.setOpen(false)}>
+            <FilesFilterBar
+              query={filter.query}
+              onQuery={filter.setQuery}
+              showIgnored={prefs.filesShowIgnored}
+              onShowIgnored={setFilesShowIgnored}
+              shown={counted.rows.length}
+              total={counted.pool}
+              focusOnMount
+            />
+          </ChangesFilterOverlay>
+        )}
       </div>
 
       <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">

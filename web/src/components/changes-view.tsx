@@ -475,10 +475,95 @@ export function ChangesNoMatch({ onClear }: { onClear: () => void }) {
 const CHIP_STATUS = { M: "M", A: "A", D: "D", R: "R", U: "?" } as const satisfies Record<FilterStatus, ChangeStatus>;
 
 /**
- * The filter row: a path field with a clear button, the status chips, and the "3 of 12" count with
- * its own Clear action. The trailing group is always there, only hidden (not removed) while no
- * filter is on, so typing the first letter moves nothing. Drawn inside `ChangesFilterOverlay`,
- * which supplies the card's border, shadow and background.
+ * The filter row's drawing, with nothing Changes-specific in it: a text field with a clear button,
+ * a slot for the chips, and the "3 of 12" count with its own Clear action. The trailing group is
+ * always there, only hidden (not removed) while no filter is on, so typing the first letter moves
+ * nothing. Drawn inside `ChangesFilterOverlay`, which supplies the card's border, shadow and
+ * background. The Changes list fills the slot with status letters, the Files view with its
+ * "Ignored" chip, so both screens share one look.
+ */
+export function FilterRow({
+  query,
+  onQuery,
+  placeholder,
+  chips,
+  active,
+  count,
+  onClear,
+  focusOnMount = false,
+  slot = "changes-filter",
+}: {
+  query: string;
+  onQuery: (query: string) => void;
+  placeholder: string;
+  /** The chips under the field, at the row's left. */
+  chips: React.ReactNode;
+  /** A filter is on: the count and Clear show. */
+  active: boolean;
+  /** The "3 of 12" text. */
+  count: string;
+  /** Resets what the row can narrow by, from a control that lives IN the row, so it stays reachable
+   *  while the overlay covers the "no match" screen's own Clear button below it. */
+  onClear: () => void;
+  /** Put the caret in the field when the row appears: the operator opened it to type. */
+  focusOnMount?: boolean;
+  slot?: string;
+}) {
+  useLocale();
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusOnMount) input.current?.focus();
+  }, [focusOnMount]);
+  return (
+    <div className="flex flex-col gap-1 px-4 pt-2 pb-1" data-slot={slot}>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          inputMode="search"
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          ref={input}
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-11 font-mono text-base placeholder:font-sans placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        />
+        {query !== "" && (
+          <button
+            type="button"
+            aria-label={t("changes.filter.clearText")}
+            onClick={() => onQuery("")}
+            className="absolute right-0 top-0 flex size-11 items-center justify-center text-muted-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+      <div className="flex items-center">
+        {chips}
+        <div className={cn("ml-auto flex shrink-0 items-center gap-1 pl-2", !active && "invisible")}>
+          <span aria-live="polite" className="truncate text-xs tabular-nums text-muted-foreground">
+            {count}
+          </span>
+          <button
+            type="button"
+            onClick={onClear}
+            className="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-primary active:bg-muted"
+          >
+            {t("changes.filter.clear")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Changes filter row: a path field, the status chips, and the count. See {@link FilterRow}.
  */
 export function ChangesFilterBar({
   filter,
@@ -490,55 +575,28 @@ export function ChangesFilterBar({
 }: {
   filter: ChangesFilter;
   onChange: (filter: ChangesFilter) => void;
-  /** Resets the whole filter — query and status chips — from a control that lives IN the row, so
-   *  it stays reachable while the overlay covers the "no match" screen's own Clear button below it. */
+  /** Resets the whole filter, query and status chips. */
   onClear: () => void;
   shown: number;
   total: number;
-  /** Put the caret in the path field when the row appears: the operator opened it to type. */
   focusOnMount?: boolean;
 }) {
   useLocale();
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (focusOnMount) input.current?.focus();
-  }, [focusOnMount]);
-  const active = isFilterActive(filter);
   const toggle = (s: FilterStatus) =>
     onChange({
       ...filter,
       statuses: filter.statuses.includes(s) ? filter.statuses.filter((x) => x !== s) : [...filter.statuses, s],
     });
   return (
-    <div className="flex flex-col gap-1 px-4 pt-2 pb-1" data-slot="changes-filter">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          inputMode="search"
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          ref={input}
-          value={filter.query}
-          onChange={(e) => onChange({ ...filter, query: e.target.value })}
-          placeholder={t("changes.filter.placeholder")}
-          aria-label={t("changes.filter.placeholder")}
-          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-11 font-mono text-base placeholder:font-sans placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        />
-        {filter.query !== "" && (
-          <button
-            type="button"
-            aria-label={t("changes.filter.clearText")}
-            onClick={() => onChange({ ...filter, query: "" })}
-            className="absolute right-0 top-0 flex size-11 items-center justify-center text-muted-foreground"
-          >
-            <X className="size-4" />
-          </button>
-        )}
-      </div>
-      <div className="flex items-center">
+    <FilterRow
+      query={filter.query}
+      onQuery={(query) => onChange({ ...filter, query })}
+      placeholder={t("changes.filter.placeholder")}
+      active={isFilterActive(filter)}
+      count={t("changes.filter.shown", { shown, total })}
+      onClear={onClear}
+      focusOnMount={focusOnMount}
+      chips={
         <div role="group" aria-label={t("changes.filter.statusAria")} className="-ml-1.5 flex">
           {FILTER_STATUSES.map((s) => {
             const on = filter.statuses.includes(s);
@@ -564,20 +622,8 @@ export function ChangesFilterBar({
             );
           })}
         </div>
-        <div className={cn("ml-auto flex shrink-0 items-center gap-1 pl-2", !active && "invisible")}>
-          <span aria-live="polite" className="truncate text-xs tabular-nums text-muted-foreground">
-            {t("changes.filter.shown", { shown, total })}
-          </span>
-          <button
-            type="button"
-            onClick={onClear}
-            className="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-primary active:bg-muted"
-          >
-            {t("changes.filter.clear")}
-          </button>
-        </div>
-      </div>
-    </div>
+      }
+    />
   );
 }
 
@@ -595,7 +641,7 @@ export function ChangesFilterBar({
  * this always reaches the button itself, never the dismiss surface, so it is the button's own toggle
  * that closes it in that case, not this one.
  *
- * The text field autofocuses itself (`focusOnMount` below); this only RESTORES focus on close, to
+ * The text field autofocuses itself (the row's `focusOnMount`); this only RESTORES focus on close, to
  * whatever held it before the field took it. It reads that target in a LAYOUT effect, which runs
  * before the field's own (passive) focus effect app-wide, so it can never read the field itself back
  * as "the thing to give focus to" — the ordinary case is the Filter button, which gets its focus
@@ -607,19 +653,12 @@ export function ChangesFilterBar({
 export function ChangesFilterOverlay({
   open,
   onClose,
-  filter,
-  onChange,
-  onClear,
-  shown,
-  total,
+  children,
 }: {
   open: boolean;
   onClose: () => void;
-  filter: ChangesFilter;
-  onChange: (filter: ChangesFilter) => void;
-  onClear: () => void;
-  shown: number;
-  total: number;
+  /** The filter row: `ChangesFilterBar` for the Changes list, the Files view's own bar for Files. */
+  children: React.ReactNode;
 }) {
   useLocale();
   useEffect(() => {
@@ -663,7 +702,7 @@ export function ChangesFilterOverlay({
       />
       <div role="dialog" aria-label={t("changes.filter.button")} className="absolute inset-x-0 top-full z-20 px-4 pt-2">
         <div className="overflow-hidden rounded-md border border-border bg-card shadow-lg">
-          <ChangesFilterBar filter={filter} onChange={onChange} onClear={onClear} shown={shown} total={total} focusOnMount />
+          {children}
         </div>
       </div>
     </>

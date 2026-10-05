@@ -1,5 +1,7 @@
 // THE FILES VIEW'S BRIDGE HALF — one folder listed, or one text file read, under the Changes root
-// (ADR 0083). Read-only by construction: nothing here writes, renames, creates or deletes.
+// (ADR 0083). Read-only by construction: nothing here writes, renames, creates or deletes. The one
+// child process is `git check-ignore`, once per listing, through Changes' hardened runner, with the
+// names on stdin and no flags at all when git does not answer ({@link gitIgnoredNames}).
 //
 // ── THE THIRD PLACE A CLIENT VALUE BECOMES A PATH ───────────────────────────────────────────────
 // The law in bridge/journal/files.ts names three places, and this is the third. Its bound:
@@ -42,9 +44,10 @@
 
 import { constants, type Dirent } from "node:fs";
 import { lstat, open, opendir, realpath, stat } from "node:fs/promises";
+import { relative, sep } from "node:path";
 
 import { isStateSecretName } from "./acl-policy.ts";
-import { looksBinary, MAX_FILE_READ_BYTES } from "./changes.ts";
+import { discoverRepos, gitBinary, looksBinary, MAX_FILE_READ_BYTES, runGit } from "./changes.ts";
 import { isAbsoluteFolder, withinBound } from "./changes-root.ts";
 import { HOST, type Host, isInside, splitPath } from "./host.ts";
 import { containedRealpath } from "./journal/files.ts";
@@ -58,6 +61,10 @@ export const MAX_FILES_ENTRIES = 2000;
 export const MAX_FILES_READ_BYTES = MAX_FILE_READ_BYTES;
 /** The longest relative path accepted, in UTF-8 bytes (PATH_MAX on Linux). */
 export const MAX_REL_PATH_BYTES = 4096;
+/** The one `git check-ignore` a listing runs is killed after this long (Changes' runs get 5 s). */
+export const IGNORE_TIMEOUT_MS = 2000;
+/** Most bytes read off that run: 2000 names at the longest path, with room to spare. */
+const MAX_IGNORE_OUTPUT_BYTES = 16 * 1024 * 1024;
 /** `lstat` calls in flight at once while a listing sizes its rows. */
 const LSTAT_CONCURRENCY = 32;
 
@@ -231,6 +238,8 @@ export interface FilesContext {
   privateFolders: readonly string[];
   host?: Host;
   fs?: FilesFs;
+  /** Which listed names git ignores. {@link gitIgnoredNames} in production; a test stands one in. */
+  ignoreProbe?: IgnoreProbe;
 }
 
 /** A host that folds case whatever the platform: the deny checks err towards refusing. */
@@ -303,6 +312,65 @@ export const UNKNOWN_PATH = "unknown-path" as const;
 /** The result of a Files call: an answer for the body, or the one refusal. */
 export type FilesResult<T> = T | typeof UNKNOWN_PATH;
 
+// ── Ignored, asked of git ───────────────────────────────────────────────────────────────────────
+
+/**
+ * Which of a folder's entries git ignores, as the set of names, or `null` when git gave no answer
+ * (no git, no repository, a timeout, an error). `null` is the quiet case: the listing still answers,
+ * with no `ignored` flag on any row.
+ */
+export type IgnoreProbe = (realDir: string, entries: readonly FileEntry[]) => Promise<ReadonlySet<string> | null>;
+
+/**
+ * ONE `git check-ignore --stdin -z` for one listing, through the same hardened runner Changes uses
+ * (bridge/changes.ts: argv only, no shell, no inherited `GIT_*`, no hook, no network).
+ *
+ * - The repository is the nearest `.git` ABOVE the listed folder's real path, so a nested clone
+ *   inside the root answers with its own rules, and a folder outside any repository answers `null`.
+ * - The names travel on stdin, NUL-separated, never in argv: a name with a newline or a leading dash
+ *   is one path. `check-ignore` refuses `--literal-pathspecs`, so each path is spelled `./name`,
+ *   which no pathspec magic (`:(top)`, `:!`) can start with.
+ * - No `--no-index`: a tracked file that matches an ignore rule is not ignored, which is git's own
+ *   answer and the one an operator expects.
+ * - A directory is passed without a trailing slash: git looks the path up and applies a `build/`
+ *   rule to it, and a trailing slash on a symlink is a fatal "beyond a symbolic link".
+ * - A child of an ignored folder is reported ignored by git itself, so a listing opened inside
+ *   `node_modules` comes back whole.
+ * - Exit 0 (some ignored) and 1 (none) are answers. Anything else, a cut-off or a timeout is `null`.
+ */
+export async function gitIgnoredNames(
+  realDir: string,
+  entries: readonly FileEntry[],
+  opts: { timeoutMs?: number; git?: string } = {},
+): Promise<ReadonlySet<string> | null> {
+  if (entries.length === 0) return null;
+  try {
+    const git = opts.git ?? (await gitBinary());
+    if (git === null) return null;
+    const repo = (await discoverRepos(realDir, 1, false)).repos[0];
+    if (repo === undefined) return null;
+    const rel = relative(repo.workTree, realDir).split(sep).join("/");
+    const asked = new Map<string, string>();
+    // `./` first: a name that starts with `:` or `-` can then never read as pathspec magic or a flag.
+    for (const { name } of entries) asked.set(`./${rel === "" ? name : `${rel}/${name}`}`, name);
+    const input = new TextEncoder().encode(`${[...asked.keys()].join("\0")}\0`);
+    const run = await runGit(git, repo, ["check-ignore", "--stdin", "-z"], [], MAX_IGNORE_OUTPUT_BYTES, {
+      input,
+      timeoutMs: opts.timeoutMs ?? IGNORE_TIMEOUT_MS,
+      literalPathspecs: false,
+    });
+    if (run.timedOut || run.capped || (run.code !== 0 && run.code !== 1)) return null;
+    const ignored = new Set<string>();
+    for (const path of run.stdout.toString("utf8").split("\0")) {
+      const name = asked.get(path);
+      if (name !== undefined) ignored.add(name);
+    }
+    return ignored;
+  } catch {
+    return null;
+  }
+}
+
 // ── List ────────────────────────────────────────────────────────────────────────────────────────
 
 /** Run `fn` over `items`, at most `limit` at once, keeping order. */
@@ -320,7 +388,8 @@ async function mapLimited<T, U>(items: readonly T[], limit: number, fn: (item: T
 }
 
 /**
- * One folder under the root: one directory read, one `lstat` per kept entry, no walk. A `.git`
+ * One folder under the root: one directory read, one `lstat` per kept entry, one `git check-ignore`
+ * for the kept entries ({@link gitIgnoredNames}), no walk. A `.git`
  * entry, a state secret's name and a private folder are skipped before the cap counts them; a socket, FIFO or device is
  * dropped after, since it is neither a folder to open nor a file to read.
  */
@@ -348,7 +417,12 @@ export async function listFolder(ctx: FilesContext, dir: string): Promise<FilesR
       if (ls.isFile()) return { name, kind: "file", size: ls.size };
       return null;
     });
-    const entries = rows.filter((e): e is FileEntry => e !== null).toSorted(compareEntries);
+    const listed = rows.filter((e): e is FileEntry => e !== null).toSorted(compareEntries);
+    const ignored = await (ctx.ignoreProbe ?? gitIgnoredNames)(real, listed).catch(() => null);
+    const entries =
+      ignored === null || ignored.size === 0
+        ? listed
+        : listed.map((e): FileEntry => (ignored.has(e.name) ? Object.assign({}, e, { ignored: true as const }) : e));
     return { available: true, root: ctx.root, dir: segments.join("/"), entries, truncated: more };
   } catch {
     return UNKNOWN_PATH;

@@ -7,11 +7,12 @@ import { ChangesControl } from "@/components/changes-control";
 import { useState } from "react";
 
 import { FileContent, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
-import { ChangesTabs, FileRows, FilesBreadcrumb, type ChangesTab } from "@/components/files-view";
+import { ChangesTabs, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, type ChangesTab } from "@/components/files-view";
 import { Segmented } from "@/components/ui/segmented";
 
 import {
   ChangePath,
+  ChangesFilterBar,
   ChangesFilterButton,
   ChangesFilterOverlay,
   ChangesLayoutToggle,
@@ -23,6 +24,7 @@ import {
   StatusLetter,
 } from "@/components/changes-view";
 import { t } from "@/lib/i18n";
+import { folderView } from "@/lib/files-filter";
 import { countFiles, filterRepos, type ChangesFilter, type ChangesLayout } from "@/lib/changes-tree";
 import { fixtureChangeDiff, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 import { Card, Group, Section, Stage, type SectionDef } from "../harness";
@@ -68,15 +70,16 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
             total={countFiles(repos)}
             onClick={() => setOpen((o) => !o)}
           />
-          <ChangesFilterOverlay
-            open={open}
-            onClose={() => setOpen(false)}
-            filter={filter}
-            onChange={setFilter}
-            onClear={clear}
-            shown={countFiles(shown)}
-            total={countFiles(repos)}
-          />
+          <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
+            <ChangesFilterBar
+              filter={filter}
+              onChange={setFilter}
+              onClear={clear}
+              shown={countFiles(shown)}
+              total={countFiles(repos)}
+              focusOnMount
+            />
+          </ChangesFilterOverlay>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {shown.length === 0 ? (
@@ -204,16 +207,66 @@ function FileCard({ file, initial, height = 380 }: { file: FileText; initial: Fi
   );
 }
 
-function FolderCard({ dir, tab = "files" }: { dir: string; tab?: ChangesTab }) {
+/**
+ * A folder of the Files tab, live: the Show action and the Ignored chip are real. `showIgnored`
+ * and `query` set the card's starting state; `filterOpen` draws the filter row open over the list.
+ */
+function FolderCard({
+  dir,
+  tab = "files",
+  showIgnored: initialShow = false,
+  query: initialQuery = "",
+  filterOpen = false,
+}: {
+  dir: string;
+  tab?: ChangesTab;
+  showIgnored?: boolean;
+  query?: string;
+  filterOpen?: boolean;
+}) {
   const [active, setActive] = useState<ChangesTab>(tab);
+  const [showIgnored, setShowIgnored] = useState(initialShow);
+  const [query, setQuery] = useState(initialQuery);
+  const [open, setOpen] = useState(filterOpen);
   const listing = fixtureFilesDir(dir);
   const entries = listing?.available ? listing.entries : rootEntries;
+  const view = folderView(entries, query, showIgnored);
   return (
-    <Stage height={440}>
-      <div className="flex flex-col gap-3 overflow-y-auto p-4">
-        <ChangesTabs active={active} onChange={setActive} />
-        <FilesBreadcrumb dir={dir} rootName="webapp" hrefFor={() => "#"} onOpen={() => {}} />
-        <FileRows entries={entries} onOpen={() => {}} />
+    <Stage height={filterOpen ? 520 : 440}>
+      <div className="flex h-full flex-col">
+        <div className="relative flex items-center gap-2 border-b border-rule px-2 py-1">
+          <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("files.title")}</span>
+          <ChangesFilterButton
+            open={open}
+            active={query.trim() !== ""}
+            shown={view.rows.length}
+            total={view.pool}
+            onClick={() => setOpen((o) => !o)}
+          />
+          <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
+            <FilesFilterBar
+              query={query}
+              onQuery={setQuery}
+              showIgnored={showIgnored}
+              onShowIgnored={setShowIgnored}
+              shown={view.rows.length}
+              total={view.pool}
+            />
+          </ChangesFilterOverlay>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+          <ChangesTabs active={active} onChange={setActive} />
+          <FilesBreadcrumb dir={dir} rootName="webapp" hrefFor={() => "#"} onOpen={() => {}} />
+          <FilesFolderBody
+            entries={entries}
+            truncated={false}
+            query={query}
+            showIgnored={showIgnored}
+            onShowIgnored={setShowIgnored}
+            onClearQuery={() => setQuery("")}
+            onOpen={() => {}}
+          />
+        </div>
       </div>
     </Stage>
   );
@@ -326,6 +379,41 @@ export function ChangesSection() {
             for each file. A symlink shows as a link row and opens like a file."
         >
           <FolderCard dir="" />
+        </Card>
+
+        <Card
+          state="files-folder-ignored-hidden"
+          label="files, ignored entries hidden"
+          reach="open Files in a folder inside a git repository that ignores node_modules and logs. Those
+            rows are left out, and one quiet line under the list says how many, with a Show action."
+        >
+          <FolderCard dir="" />
+        </Card>
+
+        <Card
+          state="files-folder-ignored-shown"
+          label="files, ignored entries shown"
+          reach="in Files, tap Show under the list, or the Filter button and its Ignored chip. The ignored
+            rows come back dimmed and still open. The choice stays on this device."
+        >
+          <FolderCard dir="" showIgnored />
+        </Card>
+
+        <Card
+          state="files-filter-open"
+          label="files, the filter row"
+          reach="in Files, tap the Filter button. A name field, one Ignored chip, and the count once a name
+            is typed."
+        >
+          <FolderCard dir="" showIgnored query="o" filterOpen />
+        </Card>
+
+        <Card
+          state="files-filter-empty"
+          label="files, a name that matches nothing"
+          reach="in Files, type a name no row has. The sentence and a way out, as Changes says it."
+        >
+          <FolderCard dir="" query="nothing-here" />
         </Card>
 
         <Card
