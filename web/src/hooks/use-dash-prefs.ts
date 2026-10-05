@@ -46,6 +46,12 @@ export interface DashPrefs {
   /** The Changes list drawn flat, one row per file, or as a folder tree. */
   changesLayout: ChangesLayout;
   /**
+   * Whether the Files view lists the entries git ignores (ADR 0083). OFF by default: `node_modules`,
+   * build output and logs bury the files an operator came to read. Per device, and it outlives the
+   * folder: the name filter resets with each folder, this choice does not.
+   */
+  filesShowIgnored: boolean;
+  /**
    * The composer's action belt size, one factor for the whole belt: band, pills, icons and words
    * all grow from it together (`--belt-scale`, `components/actions-row.tsx`). One of
    * {@link BELT_SCALES}. 1.15 is the baseline Altan asked for on 2026-09-23 ("slightly higher and
@@ -119,6 +125,7 @@ const DEFAULTS: DashPrefs = {
   changesNested: true,
   changesDepth: 2,
   changesLayout: "list",
+  filesShowIgnored: false,
   beltScale: 1.15,
   dashView: "panes",
   showToolCalls: false,
@@ -171,6 +178,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     changesNested: asJsonBoolean(p.changesNested) ?? DEFAULTS.changesNested,
     changesDepth: coerceDepth(p.changesDepth),
     changesLayout: p.changesLayout === "tree" ? "tree" : DEFAULTS.changesLayout,
+    filesShowIgnored: asJsonBoolean(p.filesShowIgnored) ?? DEFAULTS.filesShowIgnored,
     beltScale: coerceBeltScale(p.beltScale),
     dashView: coerceDashView(p.dashView),
     showToolCalls: asJsonBoolean(p.showToolCalls) ?? DEFAULTS.showToolCalls,
@@ -211,6 +219,7 @@ export interface UseDashPrefsReturn {
   setChangesNested: (nested: boolean) => void;
   setChangesDepth: (depth: number) => void;
   setChangesLayout: (layout: ChangesLayout) => void;
+  setFilesShowIgnored: (show: boolean) => void;
   setBeltScale: (scale: number) => void;
   setDashView: (view: DashView) => void;
   setShowToolCalls: (show: boolean) => void;
@@ -242,6 +251,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
   );
 
   const setChangesLayout = useCallback((changesLayout: ChangesLayout) => update({ changesLayout }), [update]);
+  const setFilesShowIgnored = useCallback((filesShowIgnored: boolean) => update({ filesShowIgnored }), [update]);
   const setShowToolCalls = useCallback((showToolCalls: boolean) => update({ showToolCalls }), [update]);
   const setShowCompactions = useCallback((showCompactions: boolean) => update({ showCompactions }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
@@ -277,6 +287,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setChangesNested,
     setChangesDepth,
     setChangesLayout,
+    setFilesShowIgnored,
     setBeltScale,
     setDashView,
     setShowToolCalls,

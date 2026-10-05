@@ -584,8 +584,13 @@ const FIXTURE_FOLDERS = new Map<string, FileEntry[]>([
       { name: "logo.png", kind: "file", size: 20480 },
       { name: "package.json", kind: "file", size: 312 },
       { name: "current", kind: "link" },
+      // What git ignores in this folder. The Files view hides these until the operator asks, so the
+      // rows above are the visible ones; a member that predates the field sends no `ignored` at all.
+      { name: "node_modules", kind: "dir", ignored: true },
+      { name: "debug.log", kind: "file", size: 8200, ignored: true },
     ],
   ],
+  ["node_modules", [{ name: "react", kind: "dir", ignored: true }]],
   ["docs", [{ name: "guide.md", kind: "file", size: 640 }]],
   [
     "src",
