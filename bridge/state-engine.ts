@@ -31,6 +31,17 @@ import {
 // more here than a smaller read. See HERDR_API.md → `pane.read`.
 const SESSION_NAME_READ_LINES = 40;
 
+/**
+ * How many polls the engine runs at the fast cadence after an INTENT says something is about to
+ * change: an input written to a pane, or a pane that has just become an agent and has not named its
+ * session yet. Counted in polls, not milliseconds, for the reason the phone's burst is
+ * (web/src/lib/poll-intent.ts): a deadline would end early on a slow multiplexer and late on a fast
+ * one. Eight polls at the default 1.5 s is about one idle interval, so the hot spell never outlasts
+ * the 12 s gap it closes. It is the decay, and so the last resort: the session-wait hold below ends
+ * on the EVENT (the session seen) and spends this only when that event never comes.
+ */
+export const HOT_POLLS = 8;
+
 // Claude renders its input box as a horizontal rule, the ❯ prompt line, then a closing rule. After
 // `/rename <name>` the TOP rule carries the session name inside it: "────────── my-name ──". This
 // matches that named rule. `\S` also matches box-drawing chars, but a *plain* rule has no embedded
@@ -220,11 +231,25 @@ export class StateEngine {
   // A relax ordered before the engine has ever CONNECTED - parked, and applied by the first
   // successful poll. See setCadence for why relaxing is earned rather than granted on an ack.
   private pendingCadenceMs: number | null = null;
+  // The cadence the event watch asked for (setCadence), before any intent tightens it. The armed
+  // interval is `cadenceMs`; this is what it returns to when the hot spell ends.
+  private baseCadenceMs: number;
+  // Polls left in the hot spell an input bought (noteInput). Decays one per poll attempt.
+  private inputHotPolls = 0;
+  // Panes that became agents while this engine watched and have not named a session yet, each with
+  // the polls its hold has left. A hold ends on the event (the session seen, the pane gone) or, as
+  // the last resort, when its polls run out. See noteNewAgents.
+  private readonly sessionWaits = new Map<string, number>();
+  // Whether a poll has ever succeeded. The first poll's agents are not "new": they were there before
+  // the bridge came up, and holding the engine hot for each of them would spend a fast spell on every
+  // restart.
+  private sawHerd = false;
   constructor(
     private readonly mux: MuxAdapter,
     private readonly pollMs: number,
   ) {
     this.cadenceMs = pollMs;
+    this.baseCadenceMs = pollMs;
   }
 
   onTransition(fn: TransitionListener): () => void {
@@ -283,6 +308,27 @@ export class StateEngine {
     return now - this.lastReadAt <= ATTENTION_WINDOW_MS ? "watched" : "idle";
   }
 
+  /**
+   * An input was just written to a pane through this bridge: typed text, keys, a quick reply, a
+   * dialog answer. The operator is watching for its effect, and some effects reach the multiplexer
+   * with no event at all (Herdr announces a session report to nobody, measured on 0.9.3), so the
+   * engine polls at the fast cadence for {@link HOT_POLLS} polls and then relaxes.
+   *
+   * An intent, not a timer: it re-arms the ONE interval (applyCadence), adds no second one, and
+   * decays by itself. It never polls by itself either; the next poll comes on the fast interval or
+   * on an event's poke, whichever is first. No-op once stopped.
+   */
+  noteInput(): void {
+    if (!this.started) return;
+    this.inputHotPolls = HOT_POLLS;
+    this.applyCadence(this.effectiveCadence());
+  }
+
+  /** Is an intent holding the engine at the fast cadence right now? For tests and diagnostics. */
+  hot(): boolean {
+    return this.inputHotPolls > 0 || this.sessionWaits.size > 0;
+  }
+
   current(): EngineSnapshot {
     return {
       agents: this.agents,
@@ -297,7 +343,10 @@ export class StateEngine {
     if (this.started) return;
     this.started = true;
     this.cadenceMs = this.pollMs;
+    this.baseCadenceMs = this.pollMs;
     this.pendingCadenceMs = null;
+    this.inputHotPolls = 0;
+    this.sessionWaits.clear();
     void this.poll();
     this.timer = setInterval(() => void this.poll(), this.cadenceMs);
   }
@@ -339,7 +388,47 @@ export class StateEngine {
       return;
     }
     this.pendingCadenceMs = null;
-    this.applyCadence(ms);
+    this.baseCadenceMs = ms;
+    this.applyCadence(this.effectiveCadence());
+  }
+
+  /** The watch's cadence, tightened to the fast one while an intent holds the engine hot. */
+  private effectiveCadence(): number {
+    return this.hot() ? Math.min(this.pollMs, this.baseCadenceMs) : this.baseCadenceMs;
+  }
+
+  /**
+   * Spend one poll of every hot hold, and open a session-wait hold for each pane that has just become
+   * an agent with no session. Runs after every poll attempt; `agents` is null when the poll failed,
+   * which still spends a poll (a hold must decay against a dead multiplexer too) but proves nothing
+   * about any pane, so no hold ends on it.
+   *
+   * A pane joins the wait when it was not an agent on the previous successful poll and names no
+   * session now. It leaves on the EVENT: its session is seen, or it stops being an agent. Only a
+   * session that never comes spends the hold to its end. Herdr sends no event when a session is
+   * reported, so without this a pi or Claude pane sitting idle after its start is seen to have a
+   * session only on the next idle tick, 12 s later.
+   */
+  private noteNewAgents(agents: readonly AgentView[] | null, before: ReadonlySet<string>): void {
+    if (this.inputHotPolls > 0) this.inputHotPolls--;
+    for (const [id, left] of this.sessionWaits) {
+      if (left <= 1) this.sessionWaits.delete(id);
+      else this.sessionWaits.set(id, left - 1);
+    }
+    if (agents !== null) {
+      const live = new Map(agents.map((a) => [a.paneId, a]));
+      for (const id of this.sessionWaits.keys()) {
+        const a = live.get(id);
+        if (a === undefined || a.agentSession !== undefined) this.sessionWaits.delete(id);
+      }
+      if (this.sawHerd) {
+        for (const a of agents) {
+          if (!before.has(a.paneId) && a.agentSession === undefined) this.sessionWaits.set(a.paneId, HOT_POLLS);
+        }
+      }
+      this.sawHerd = true;
+    }
+    if (this.started) this.applyCadence(this.effectiveCadence());
   }
 
   /** Swap the interval to `ms` if it differs. The one place the poll timer is re-armed. */
@@ -355,6 +444,10 @@ export class StateEngine {
     // ticks would otherwise stack overlapping in-flight polls.
     if (this.polling) return;
     this.polling = true;
+    // The agent panes the previous successful poll saw, for noteNewAgents. Read before the poll
+    // rewrites prevStatus. `fresh` stays null when the poll fails.
+    const before = new Set(this.prevStatus.keys());
+    let fresh: AgentView[] | null = null;
     try {
       const { panes, spaces, tabs } = await this.mux.snapshot();
 
@@ -468,6 +561,7 @@ export class StateEngine {
       await this.enrichSessionNames(agents, revisions);
 
       this.agents = agents;
+      fresh = agents;
       this.shellPanes = shellPanes;
       this.workspaces = workspaceViews;
       this.tabs = tabViews;
@@ -475,9 +569,8 @@ export class StateEngine {
       this.pollFailureLogged = false;
       // The relax the watch ordered while we had never yet connected - earned now.
       if (this.pendingCadenceMs !== null) {
-        const relaxed = this.pendingCadenceMs;
+        this.baseCadenceMs = this.pendingCadenceMs;
         this.pendingCadenceMs = null;
-        this.applyCadence(relaxed);
       }
 
       // After all transition/removal bookkeeping so listeners see a consistent, current snapshot.
@@ -491,6 +584,9 @@ export class StateEngine {
       this.bridge = "disconnected";
     } finally {
       this.polling = false;
+      // The hot holds, spent and re-judged on every attempt, and the interval re-armed to match. This
+      // is also where a relax the watch parked before the first connect is applied.
+      this.noteNewAgents(fresh, before);
       // Every poll attempt, however it went (see onTick). Listener throws are contained: a tick
       // subscriber must never be able to break the poll loop that hosts it.
       for (const fn of this.tickListeners) {

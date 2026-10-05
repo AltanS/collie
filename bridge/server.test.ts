@@ -4,6 +4,8 @@ import { updateStartVerdict, type CrewUpdateRow } from "./update-action.ts";
 import { encodeStyledRegion, styledRegionLines } from "../web/src/lib/styled-region.ts";
 
 import {
+  afterPaneInput,
+  isPaneInput,
   blobRoute,
   BLOB_MAX_BYTES,
   sniffBlobType,
@@ -2432,7 +2434,7 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // a workspace's Files view, tab action, the pane family, "look now", the worktree listing and the
     // worktree actions) reach their runtime through the caller's resolver and nothing else.
     expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(14);
-    // Exactly seven `registry.get(` calls remain, and each is a sanctioned one, named here rather
+    // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
     // collie's own multiplexer (M10/06) and is not session-scoped at all; `/api/mux/logo.svg`,
@@ -2445,9 +2447,12 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // a PREFERENCE is stored under — deliberately NOT through the gate, because that preference belongs
     // on the collie the phone is talking to and a forward would store it on the machine that holds no
     // push subscription (ADR 0042, CREW_PROTOCOL.md §5). It reads a peer's pane out of the lead's own
-    // swept body instead, exactly as `bridge/crew/notify.ts` does, and writes to no terminal at all.
-    // An EIGHTH would be a route reaching past the gate.
-    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(7);
+    // swept body instead, exactly as `bridge/crew/notify.ts` does, and writes to no terminal at all;
+    // and the hot intent after an input FORWARDED to a member, which tightens THIS collie's primary
+    // engine because the sweep that brings the member's answer back rides its tick (CREW_PROTOCOL.md
+    // §10.1). It runs after the forward has answered and writes nothing. A NINTH would be a route
+    // reaching past the gate.
+    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(8);
     // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
     // are its own business and reach the lead over the crew API, never out of this registry.
     expect(src).toContain("const activeMux = registry.get();");
@@ -3837,5 +3842,44 @@ describe("readPane — the logical read is asked for only when it can repair som
     expect(body.logicalText).toBe("run:\nhttps://a.dev/auth?client=1&state=y then");
     // The mirror keeps its own rows, styling and all — only the hrefs are repaired downstream.
     expect(body.text).toBe(grid);
+  });
+});
+
+// ── The hot intent after an input (state-engine.ts § noteInput) ─────────────────────────────────
+//
+// Herdr announces nothing when an agent reports its session, so a bridge relaxed to its 12 s idle
+// tick saw a Codex session, reported on the first prompt, up to one tick late. A landed input now
+// puts the engine that owns the pane into its fast cadence for a bounded count of polls.
+describe("an input written to a pane makes its engine hot", () => {
+  test("isPaneInput names the two input routes, as POSTs, and nothing else", () => {
+    expect(isPaneInput("/api/pane/w1%3Ap1/reply", "POST")).toBe(true);
+    expect(isPaneInput("/api/pane/w1%3Ap1/keys", "POST")).toBe(true);
+    expect(isPaneInput("/api/pane/w1%3Ap1/reply", "GET")).toBe(false);
+    for (const action of ["upload", "close", "rename", "focus", "history", "chat", "changes", "files"]) {
+      expect(isPaneInput(`/api/pane/w1%3Ap1/${action}`, "POST")).toBe(false);
+    }
+    expect(isPaneInput("/api/pane/w1%3Ap1", "POST")).toBe(false);
+    expect(isPaneInput("/api/tab/w1%3At1/close", "POST")).toBe(false);
+  });
+
+  test("afterPaneInput tells the engine only when the write landed, and hands the response back", () => {
+    let noted = 0;
+    const engine = { noteInput: () => void noted++ };
+    const ok = new Response("{}", { status: 200 });
+    expect(afterPaneInput(engine, ok)).toBe(ok);
+    expect(noted).toBe(1);
+    for (const status of [400, 403, 404, 409, 502]) afterPaneInput(engine, new Response("{}", { status }));
+    expect(noted).toBe(1);
+  });
+
+  test("the reply and keys routes, and the lead's forward of them, all pass through it", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    // On the owning host: the browser's request and a member's crew dispatch share this block.
+    expect(src).toContain("return afterPaneInput(rt.engine, await replyPane(");
+    expect(src).toContain("return afterPaneInput(rt.engine, await keysPane(");
+    // On the lead: the forward's answer, so the lead's sweep follows the member it typed into.
+    expect(src).toContain("const input = isPaneInput(pathname, req.method);");
+    expect(src).toContain("return input && own !== undefined ? afterPaneInput(own, forwarded) : forwarded;");
+    expect([...src.matchAll(/afterPaneInput\(/g)]).toHaveLength(4); // the definition and three calls
   });
 });

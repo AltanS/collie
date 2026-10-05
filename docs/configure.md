@@ -615,9 +615,10 @@ A new agent pane shows Chat at once, before it has anything to read, with one li
 message to start". Codex reports its session only after your first message, and pi writes its log
 only after its first reply, so both start this way. The conversation appears as soon as there is one.
 
-A pane falls back to the terminal when it has worked for 15 seconds and still has no session, or no
+A pane falls back to the terminal when something happens that Chat cannot show: the agent asks you a
+question before there is anything to read, or its first turn ends and it still has no session, or no
 log file to read. The terminal then shows a line that names what is missing, and the **⋮** row says
-why. A pane that was already busy when you first opened it, with no session, shows the terminal at
+why. A first turn that runs for a minute with nothing to read and no other sign also falls back. A pane that was already busy when you first opened it, with no session, shows the terminal at
 once. When the session or the log arrives later, the pane goes back to Chat. Chat never hides the
 row, so you can tell a missing hook from a missing feature. `collie doctor` lists those
 panes under `agent-sessions` and names the integration line (`integration-<agent>`) that fixes each.

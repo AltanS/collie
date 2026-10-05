@@ -45,6 +45,16 @@ export interface ChatFeed {
   readonly loadOlder: () => void;
   /** A `?before=` page is in flight — the top affordance says so rather than repeating the tap. */
   readonly loadingOlder: boolean;
+  /**
+   * The number of the last live read STARTED. Reads are numbered from 1 for the life of the view and
+   * never reused, so a number taken in one render orders every read against that render: a read
+   * numbered above it began after it (hooks/use-pane-start.ts § the turn-end read).
+   */
+  readonly asked: number;
+  /** The number of the last live read that came back with an answer. A thrown fetch moves nothing. */
+  readonly answered: number;
+  /** A live read for THIS pane has come back, with an answer or with a failure. The swap gate. */
+  readonly tried: boolean;
 }
 
 /**
@@ -76,6 +86,13 @@ export function useChatWindow({
   // would carry the same cursor and the later one would merge an answer the first already merged.
   const busy = useRef(false);
   const alive = useRef(true);
+  // The read numbers (see ChatFeed.asked). The counter is a ref because the effect allocates from it;
+  // the two readings are state because a render reads them.
+  const counter = useRef(0);
+  const [asked, setAsked] = useState(0);
+  const [answered, setAnswered] = useState(0);
+  // The address the last read that came back was for, so `tried` is about this pane and no other.
+  const [triedAddress, setTriedAddress] = useState<string | null>(null);
 
   // A window belongs to the pane it was read from. Keyed on the ADDRESS, not the pane id: `w1:p1`
   // is a different terminal in every session and on every machine, and merging one machine's turns
@@ -111,6 +128,8 @@ export function useChatWindow({
     void (async () => {
       if (busy.current) return;
       busy.current = true;
+      const number = ++counter.current;
+      setAsked(number);
       try {
         const cursor = window.current;
         // `gen` 0 means nothing has been placed yet — a first paint, a pane just switched to, or a
@@ -121,10 +140,12 @@ export function useChatWindow({
           scope,
         );
         apply(answer);
+        if (alive.current) setAnswered(number);
       } catch {
         // Keep what we hold — see the module header.
       } finally {
         busy.current = false;
+        if (alive.current) setTriedAddress(address);
       }
     })();
     // `scope` is safe in a dependency array: scopes read off a URL are interned to one frozen
@@ -156,5 +177,5 @@ export function useChatWindow({
     })();
   }, [apply, loadingOlder, paneId, scope]);
 
-  return { window: held, loadOlder, loadingOlder };
+  return { window: held, loadOlder, loadingOlder, asked, answered, tried: triedAddress === address };
 }

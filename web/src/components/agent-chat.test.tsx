@@ -17,6 +17,13 @@ vi.mock("@/lib/prompt-action", () => ({
 vi.mock("@/lib/wizard-action", () => ({
   submitWizardKeys: vi.fn(),
 }));
+// The Chat gate's one clock, the last resort, pushed past every horizon in this file (still under
+// 2^31, the most a timer takes). Each fallback the timelines below record is therefore an EVENT's:
+// none of them can be the clock's (lib/chat-gate.ts § LAST_RESORT_NO_JOURNAL_MS).
+vi.mock("@/lib/chat-gate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/chat-gate")>()),
+  LAST_RESORT_NO_JOURNAL_MS: 2_000_000_000,
+}));
 
 import { server } from "@/test/setup";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
@@ -3250,14 +3257,16 @@ describe("AgentChat — the handover from a shell to an agent", () => {
   });
 });
 
-// ── CHAT FROM THE FIRST FRAME: FIVE TIMELINES, WITH FAKE TIMERS (1.17.0 review) ─────────────────
+// ── CHAT FROM THE FIRST FRAME: THE TIMELINES, WITH FAKE TIMERS (1.17.0 review) ─────────────────
 //
 // The operator's report: Codex never reached Chat, handing a pane to pi took long, and the bloom did
 // not match the swap. The rule since (lib/chat-gate.ts, ADR 0082 point 4): a NEW agent pane draws
-// Chat from the first frame, with nothing to wait for, and the handover ends when its animation
+// Chat from the first frame, and falls back to the terminal only on an EVENT: the pane asks for
+// input, or its first turn ends with no session or no log. The handover ends when its animation
 // ends. These cases replay each harness's real order of events and record two things: every body
 // drawn, in order, and every phase the layer showed. The phases run on their timers here (jsdom
-// fires no `animationend`): covering ends at 530 ms, the rest at 910 ms, the reveal at 1700 ms.
+// fires no `animationend`): covering ends at 530 ms, the rest at 910 ms, the reveal at 1700 ms. The
+// last resort is mocked out of reach (top of file), so no body below can come from a clock.
 describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
   const shell = fixtureShellPanes[0]!;
   const layer = () => screen.queryByRole("status", { name: /^Handed to / });
@@ -3389,6 +3398,12 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     await advance(view, 200);
     expect(screen.getByText("what changed today?")).toBeInTheDocument();
 
+    // The turn ends with the session read: Chat stays.
+    view.set(agentOf("codex", "done", true));
+    view.poll();
+    await advance(view, 200);
+    expect(screen.getByText("what changed today?")).toBeInTheDocument();
+
     expect(bodies(view.frames)).toEqual(["terminal", "chat"]);
     swapsOnlyUnderCover(view.frames);
   });
@@ -3438,21 +3453,25 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     swapsOnlyUnderCover(view.frames);
   });
 
-  it("(d) no hook installed: Chat while the pane is new, the terminal and its hint once it has worked 15 s", async () => {
+  it("(d) no hook installed: Chat for as long as the first turn runs, the terminal and its hint when it ends", async () => {
     const view = renderShell();
     await handOver(view, agentOf("claude", "idle", false));
     expect(startLine()).toBeInTheDocument();
 
+    // A long first turn with nothing to read: no clock takes Chat away while it works.
     view.set(agentOf("claude", "working", false));
-    await advance(view, 14_900);
+    await advance(view, 120_000);
     expect(view.container.querySelector('[data-slot="session-stream"]')).not.toBeNull();
-    await advance(view, 150);
-    // The fallback: the terminal, with the line that names the missing hook.
+    expect(screen.getByText("Still working…")).toBeInTheDocument();
+
+    // The EVENT: the snapshot that reports the turn's end names no session. The fallback is in that
+    // same render: the terminal, with the line that names the missing hook.
+    view.set(agentOf("claude", "done", false));
     expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
     expect(screen.getByText(/has not reported a session to Herdr/i)).toBeInTheDocument();
 
     // A session that arrives after all takes the pane back to Chat, in one more quiet swap.
-    view.set(agentOf("claude", "working", true));
+    view.set(agentOf("claude", "done", true));
     await advance(view, 300);
     expect(screen.getByText("what changed today?")).toBeInTheDocument();
 
@@ -3460,13 +3479,22 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     swapsOnlyUnderCover(view.frames);
   });
 
-  it("(d) a log that never appears: the terminal says so after the grace, and Chat returns when it does", async () => {
+  it("(d) a log that never appears: the terminal says so after the read that follows the turn's end", async () => {
     chatAnswer = "no-log";
     const view = renderShell();
     await handOver(view, agentOf("pi", "idle", true));
     view.set(agentOf("pi", "working", true));
-    await advance(view, 15_100);
+    await advance(view, 120_000);
     view.poll();
+    await advance(view, 100);
+    expect(screen.getByText("Still working…")).toBeInTheDocument();
+
+    // The turn ends. The snapshot that says so has a session, so the gate waits for the journal
+    // read STARTED AFTER it: every answer so far came from a read that began before the end.
+    view.set(agentOf("pi", "done", true));
+    await advance(view, 60_000); // no poll, so no new read: Chat holds, whatever the clock says
+    expect(view.container.querySelector('[data-slot="session-stream"]')).not.toBeNull();
+    view.poll(); // the next poll's read answers no-log: now the fallback
     await advance(view, 100);
     expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
     expect(screen.getByText("No transcript file was found for this pane's session yet.")).toBeInTheDocument();
@@ -3474,9 +3502,22 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     chatAnswer = "live";
     view.poll();
     await advance(view, 300);
-    await advance(view, 1500); // the swap back waits for its first answer, as a ⋮ switch does
     expect(screen.getByText("what changed today?")).toBeInTheDocument();
     expect(bodies(view.frames)).toEqual(["terminal", "chat", "terminal", "chat"]);
+    swapsOnlyUnderCover(view.frames);
+  });
+
+  it("(f) a question with nothing to read: the terminal at once, so the dialog is on screen", async () => {
+    const view = renderShell();
+    await handOver(view, agentOf("codex", "idle", false));
+    view.set(agentOf("codex", "working", false));
+    await advance(view, 500);
+    expect(view.container.querySelector('[data-slot="session-stream"]')).not.toBeNull();
+    view.set(agentOf("codex", "blocked", false)); // the EVENT, and the fallback in the same render
+    expect(view.container.querySelector('[data-slot="session-stream"]')).toBeNull();
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    expect(bodies(view.frames)).toEqual(["terminal", "chat", "terminal"]);
+    swapsOnlyUnderCover(view.frames);
   });
 
   it("(e) a device on the terminal sees the terminal throughout, and the cover still lifts once", async () => {
@@ -3486,6 +3527,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     expect(screen.getByText(/reports its session to Herdr only after its first message/i)).toBeInTheDocument();
     view.set(agentOf("codex", "working", false));
     await advance(view, 16_000);
+    view.set(agentOf("codex", "done", false));
     view.set(agentOf("codex", "working", true));
     await advance(view, 300);
     expect(screen.getByText(/recent pane output/)).toBeInTheDocument();

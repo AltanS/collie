@@ -872,8 +872,6 @@ export function AgentChat({
   const switchSheetOpen = drawer === "paneMenu" || drawer === "display";
   const warming = historyAvailable && switchSheetOpen;
   const chatFeed = useChatWindow({ paneId, scope, enabled: chatFetch || warming });
-  // What this view has seen of how the agent began, for the gate (hooks/use-pane-start.ts).
-  const paneStart = usePaneStart(paneId, agent?.agent, isShell, agent?.status);
   const chatStatus = chatFeed.window.status;
   const journal: JournalReading =
     chatStatus.kind === "empty"
@@ -881,6 +879,16 @@ export function AgentChat({
       : chatStatus.kind === "unavailable" && (chatStatus.reason === "no-log" || chatStatus.reason === "no-session")
         ? "missing"
         : "readable";
+  // What this view has seen of how the agent began, for the gate (hooks/use-pane-start.ts): the
+  // events, and whether the journal read that followed the turn's end has answered.
+  const paneStart = usePaneStart(
+    paneId,
+    agent?.agent,
+    isShell,
+    agent?.status,
+    chatFeed,
+    Boolean(agent?.hasSession) && journal !== "missing",
+  );
   // A harness draws Chat when the multiplexer keeps a session log and Collie reads this harness's
   // log. A pane that reported a session is one by construction (the bridge's `hasSession` already
   // folds the adapter in), so an older phone that does not know a newer harness still draws it.
@@ -892,6 +900,7 @@ export function AgentChat({
     journal,
     history: paneStart.history,
     activity: paneStart.activity,
+    settled: paneStart.settled,
   });
   const chatBody = body !== "terminal";
   // What the Chat body's running question card says about the dialog below it. Chat body only: the
@@ -907,12 +916,14 @@ export function AgentChat({
   // already names the body that stays.
   const handover = useHandover(agentStart.started !== null, agentStart.clear);
   // WHICH BODY IS ON SCREEN. `chatBody` is what the gate chose; the body drawn lags it by one answer
-  // when the swap happens on an open pane (the ⋮ switch, or a session that arrives after a fallback). The swap used to land on an empty stream in the same tick the
-  // menu started to close, so the turns popped in after it; the terminal now stays up until Chat has
-  // something to show (hooks/use-chat-ready.ts), with a cap so a failed read cannot strand it. A
-  // pane with no session to ask has nothing to wait for, and neither has a handover, whose cover is
-  // what hides the swap.
-  const chatAnswered = !chatFetch || chatStatus.kind !== "empty" || handover.phase !== "idle";
+  // when the swap happens on an open pane (the ⋮ switch, or a session that arrives after a
+  // fallback). The swap used to land on an empty stream in the same tick the menu started to close,
+  // so the turns popped in after it; the terminal now stays up until Chat's first read for this pane
+  // comes back (hooks/use-chat-ready.ts). A read that FAILED comes back too, so a broken read cannot
+  // strand the terminal, and no clock is involved. A pane with no session to ask has nothing to wait
+  // for, and neither has a handover, whose cover is what hides the swap.
+  const chatAnswered =
+    !chatFetch || chatStatus.kind !== "empty" || chatFeed.tried || handover.phase !== "idle";
   const chatReadyBody = useChatReady(chatBody, chatAnswered);
   const chatShown = useHeldBody(chatReadyBody, handover.phase);
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
@@ -1055,7 +1066,8 @@ export function AgentChat({
 
   // After a successful send, snap the mirror back to the live tail so the reply's result is visible.
   const onSent = () => {
-    // A prompt sent from here is work begun, for the Chat gate's grace (lib/chat-gate.ts).
+    // A prompt sent from here is work begun: it arms the Chat gate's last resort on a harness whose
+    // status never moves (hooks/use-pane-start.ts).
     paneStart.markSent();
     setFollowing(true);
     revalidator.revalidate();
@@ -2191,8 +2203,8 @@ export function AgentChat({
                       {t(noSessionKey, { agent: agent?.agent ?? "" })}
                     </p>
                   )}
-                  {/* The other half of the Chat fallback: the pane named a session, and its log is
-                      still not there after the grace (lib/chat-gate.ts). The stream's own sentence
+                  {/* The other half of the Chat fallback: the pane named a session, and its log was
+                      still not there when its first turn ended (lib/chat-gate.ts). The stream's own sentence
                       for that reading, on the body the operator now has. */}
                   {noLogFallback && (
                     <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">

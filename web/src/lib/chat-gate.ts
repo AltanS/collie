@@ -7,23 +7,40 @@
 // quiet line that says how to begin, and the terminal is the FALLBACK for a pane whose session or
 // log should have come and did not.
 //
+// ── EVENTS DECIDE, NEVER A CLOCK ─────────────────────────────────────────────
+// Every fallback below waits for something to HAPPEN on the pane: it asks for input, or its first
+// turn ends. The end of a turn is the moment a healthy harness has certainly named its session and
+// written its log, so it is the moment a missing one becomes a fault rather than a wait. Nothing
+// here counts seconds, except one last resort for a pane that works and never sends another event.
+//
 // ── THE RULE, IN ORDER ───────────────────────────────────────────────────────
 //   1. The device chose the terminal, or this harness cannot draw Chat → terminal.
 //   2. The pane has a session and its log is not known to be missing → chat.
 //   3. Nothing to read, and this view did not see the pane start fresh → terminal at once.
-//   4. Nothing to read, and the pane has not worked yet → start (Chat, "Send a message to start").
-//   5. Nothing to read, and it started working under {@link CHAT_GRACE_MS} ago → start.
-//   6. Nothing to read, and it has worked longer than that → terminal, with the existing hint.
+//   4. Nothing to read, and the pane asked for input (blocked) → terminal at once. A dialog on an
+//      empty Chat is a question the operator cannot see.
+//   5. Nothing to read, and the last resort fired: the pane worked for
+//      {@link LAST_RESORT_NO_JOURNAL_MS} and no event came at all → terminal.
+//   6. Nothing to read, and the first turn ended:
+//        - the snapshot that reports the end names no session → terminal at once;
+//        - the log is still missing in the journal read STARTED AFTER that snapshot → terminal.
+//          Until that read answers → start. (`settled`, see hooks/use-pane-start.ts.)
+//   7. Otherwise (not worked yet, or working) → start: Chat, "Send a message to start", or the
+//      working indicator.
 //
-// Rule 6 is the guard against a broken hook: an operator must never be left on an empty Chat over a
-// pane that is plainly doing something. The fallback is not sticky. When the session or the log
-// arrives later, rule 2 takes the body back to Chat.
+// The fallback is not sticky. When the session and the log arrive later, rule 2 takes the body back
+// to Chat.
 //
 // Pure, so the whole decision is one table test (chat-gate.test.ts). The hook that feeds it
-// (hooks/use-pane-start.ts) owns the clock and the memory of what this view has seen.
+// (hooks/use-pane-start.ts) owns the memory of what this view has seen.
 
-/** How long a pane may work with nothing to read before Chat gives way to the terminal. */
-export const CHAT_GRACE_MS = 15_000;
+/**
+ * THE LAST RESORT, and the one duration in this decision. A pane that works with nothing to read and
+ * then sends no event at all (no turn end, no question) would otherwise sit on an empty Chat for as
+ * long as it works. A healthy Codex or pi pane never reaches it: its session and log arrive within
+ * the first turn, and the turn's end is an event. Only a broken hook on a long first turn does.
+ */
+export const LAST_RESORT_NO_JOURNAL_MS = 60_000;
 
 /**
  * What the chat route last said about the pane's log.
@@ -44,12 +61,14 @@ export type JournalReading = "unasked" | "readable" | "missing";
 export type PaneHistory = "fresh" | "unknown";
 
 /**
- * Whether the pane has worked since it began, and for how long.
+ * The events this view has seen on the agent since it began. Each one past `working` is a latch:
+ * once seen, it stands for this agent until the view starts a new record.
  *
- * `none`: no status other than idle yet, and no prompt sent from this device. `recent`: work began
- * under {@link CHAT_GRACE_MS} ago. `long`: it began that long ago or more.
+ * `none`: nothing yet. `working`: it is working on its first turn. `blocked`: it asked for input.
+ * `ended`: its first turn ended (it left working for done or idle, or it read done). `stalled`: the
+ * last resort fired ({@link LAST_RESORT_NO_JOURNAL_MS}).
  */
-export type PaneActivity = "none" | "recent" | "long";
+export type PaneActivity = "none" | "working" | "blocked" | "ended" | "stalled";
 
 export interface ChatGateInput {
   /** The device chose Chat, and this pane's harness can draw it (a session log on this multiplexer). */
@@ -59,6 +78,8 @@ export interface ChatGateInput {
   journal: JournalReading;
   history: PaneHistory;
   activity: PaneActivity;
+  /** A journal read started after the turn-end snapshot has answered. Read only at `ended`. */
+  settled: boolean;
 }
 
 /**
@@ -71,11 +92,10 @@ export function paneBody(input: ChatGateInput): PaneBody {
   if (!input.chat) return "terminal";
   if (input.session && input.journal !== "missing") return "chat";
   if (input.history === "unknown") return "terminal";
-  return input.activity === "long" ? "terminal" : "start";
-}
-
-/** The activity reading at `now`, for work that began at `since` (or never, when null). */
-export function activityAt(since: number | null, now: number): PaneActivity {
-  if (since === null) return "none";
-  return now - since < CHAT_GRACE_MS ? "recent" : "long";
+  if (input.activity === "blocked" || input.activity === "stalled") return "terminal";
+  if (input.activity === "ended") {
+    if (!input.session) return "terminal";
+    return input.settled ? "terminal" : "start";
+  }
+  return "start";
 }
