@@ -102,7 +102,7 @@ describe("the row's shape", () => {
     expect(row().className).toMatch(/(?:^|\s)h-3(?=\s|$)/);
   });
 
-  it("reaches a 44px tap box without drawing one, when the surface opens the rule", async () => {
+  it("reaches a tap box without drawing one, hanging down only, when the surface opens the rule", async () => {
     const user = userEvent.setup();
     const onOpenCache = vi.fn();
     render(<PaneMeta host={undefined} cache={reading()} onOpenCache={onOpenCache} />, {
@@ -110,16 +110,18 @@ describe("the row's shape", () => {
     });
     const chip = document.querySelector<HTMLElement>('[data-slot="cache-chip"]')!;
     expect(chip.tagName).toBe("BUTTON");
-    // 12px of line plus 16px above and below is 44px. Drawn, the box would be nearly four times the
-    // line and would set the surrounding row's height on its own.
-    expect(chip.className).toMatch(/before:-inset-y-4/);
+    // 2px above and 16px below the 12px line. Never 16px above: the pane name's button ends 4px over
+    // this line, and the reach used to cut into it (e2e/pane-header-taps.spec.ts measures the hit).
+    expect(chip.className).toMatch(/before:-top-0\.5/);
+    expect(chip.className).toMatch(/before:-bottom-4/);
+    expect(chip.className).not.toMatch(/before:-inset-y-4/);
     await user.click(chip);
     expect(onOpenCache).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("the reading is a control on one screen only", () => {
-  it("is a button, with a reachable 44px box, when the surface opens the rule behind it", async () => {
+  it("is a button, with a reachable box, when the surface opens the rule behind it", async () => {
     const user = userEvent.setup();
     const onOpenCache = vi.fn();
     render(<PaneMeta host={undefined} cache={reading()} onOpenCache={onOpenCache} />, {
