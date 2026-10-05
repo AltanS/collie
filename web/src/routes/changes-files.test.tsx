@@ -209,6 +209,8 @@ describe("Changes: the marks on the tree", () => {
     renderAt([`${FILES}?dir=src%2Froutes`]);
     const changed = await row(/^checkout\.tsx, file, 388 B, Modified$/);
     expect(changed.querySelector("svg")?.getAttribute("class")).toContain("text-status-working");
+    // The icon switches shape too: a pen for a modified file, not the plain file glyph.
+    expect(changed.querySelector("svg")?.getAttribute("class")).toContain("lucide-file-pen");
     const letter = [...changed.querySelectorAll("span")].find((el) => el.textContent === "M");
     expect(letter?.className).toContain("text-status-working");
   });
@@ -216,7 +218,11 @@ describe("Changes: the marks on the tree", () => {
   it("an untracked file counts as new: U in the untracked ink", async () => {
     renderAt([`${FILES}?dir=packages%2Fapi`]);
     const note = await row(/^notes\.md, file, 38 B, Untracked$/);
-    expect([...note.querySelectorAll("span")].some((el) => el.textContent === "U")).toBe(true);
+    const letter = [...note.querySelectorAll("span")].find((el) => el.textContent === "U");
+    // Not the list's quiet grey: a file the agent just wrote takes the added ink, letter and icon.
+    expect(letter?.className).toContain("text-status-done");
+    expect(note.querySelector("svg")?.getAttribute("class")).toContain("text-status-done");
+    expect(note.querySelector("svg")?.getAttribute("class")).toContain("lucide-file-plus");
     expect(await row(/^server, folder, 1 changed file$/)).toBeTruthy();
   });
 
@@ -301,10 +307,34 @@ describe("Changes: the Changes-only toggle", () => {
     expect(storedPref("changesOnly")).toBe(false);
   });
 
-  it("shows only at the root, not in a folder or on a file", async () => {
-    renderAt([`${FILES}?dir=src`]);
+  // Review 2026-10-06: one header on every level, never a control dropped by depth.
+  it("is in every folder's header, in the root's order, and turning it on there goes up to the list", async () => {
+    const router = renderAt([CHANGES, { pathname: FILES, search: "?dir=src", state: { from: CHANGES } }]);
     await screen.findByRole("button", { name: /^cart\.ts/ });
-    expect(screen.queryByRole("button", { name: new RegExp(`^${en["changes.only.label"]}, `) })).toBeNull();
+    const header = screen.getByRole("heading", { level: 1 }).closest("header");
+    if (header === null) throw new Error("no header");
+    const squares = within(header)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? "")
+      .slice(1);
+    expect(squares).toEqual([
+      en["files.ignored.toggleAria"],
+      en["changes.filter.button"],
+      en["changes.only.aria.other"].replace("{count}", "5"),
+      en["changes.refreshAria"],
+    ]);
+    await userEvent.click(await toggle());
+    expect(storedPref("changesOnly")).toBe(true);
+    await waitFor(() => expect(router.state.location.pathname).toBe(CHANGES));
+    expect(router.state.location.search).toBe("");
+    expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
+  });
+
+  it("is on a file of the tree too, with Refresh", async () => {
+    renderAt([`${FILES}?path=README.md`]);
+    expect(await screen.findByText("Run it")).toBeTruthy();
+    expect(await toggle()).toBeTruthy();
+    expect(screen.getByRole("button", { name: en["changes.refreshAria"] })).toBeTruthy();
   });
 });
 

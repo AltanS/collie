@@ -680,7 +680,13 @@ function ChangesScreen() {
   };
   const openCrumb = (to: string) => nav.side(filesPathTo(to === "" ? undefined : { dir: to }));
   const pair = () => nav.down(pairedDevicesPath(scope));
-  const changesOnlyNow = () => setChangesOnly(true);
+  // Changes only is one header control on every level of the tree. The list is the root's body, so
+  // turning it on from a folder or a file also goes up to the root, the way back from there does.
+  const changeChangesOnly = (on: boolean) => {
+    setChangesOnly(on);
+    if (on && treeAt !== null) nav.upExact(filesPathTo());
+  };
+  const changesOnlyNow = () => changeChangesOnly(true);
   // Up from the commit to the list: a step back onto it, or a replace when opened cold.
   const upToList = () => nav.up(pathTo());
   // Previous / Next REPLACE the entry, so browser back from any file lands on the list.
@@ -874,9 +880,10 @@ function ChangesScreen() {
                   </>
                 )}
               </div>
-              {/* Changes only sits beside Refresh, so it holds its place in both bodies and while
-                  a folder loads; the controls each body owns sit to its left: the list's layout and
-                  filter, or the tree's Ignored eye and filter once a folder has rows to filter. */}
+              {/* ONE header on every level of the tree (review, 2026-10-06): the Ignored eye and
+                  Filter once a folder has rows to filter, then Changes only and Refresh, which hold
+                  their place in both bodies, in every folder, on a file and while a folder loads.
+                  At 375 px the squares win and the workspace line cuts its tail. */}
               {(showList || commitView) && !current && (
                 <>
                   <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
@@ -901,7 +908,9 @@ function ChangesScreen() {
                   />
                 </>
               )}
-              {rootScreen && <ChangesOnlyToggle on={prefs.changesOnly} count={changedFiles} onChange={setChangesOnly} />}
+              {(rootScreen || treeAt !== null) && (
+                <ChangesOnlyToggle on={prefs.changesOnly} count={changedFiles} onChange={changeChangesOnly} />
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -1012,7 +1021,7 @@ function ChangesScreen() {
               onClearQuery={filesFilter.clear}
               onOpen={openEntry}
               onPair={pair}
-              onChangesOnly={atRoot ? changesOnlyNow : undefined}
+              onChangesOnly={changesOnlyNow}
             />
           </div>
         ) : (

@@ -52,14 +52,19 @@ export const STATUS_TONE = {
   "?": "text-muted-foreground",
 } satisfies Record<ChangeStatus, string>;
 
-/** The same five colours as a fill, for the folder tree's dot. */
+/** The same five colours as a fill, for the folder tree's dot and the Changes-only badge. */
 export const STATUS_FILL = {
   M: "bg-status-working",
   A: "bg-status-done",
   D: "bg-status-blocked",
   R: "bg-status-info",
-  "?": "bg-muted-foreground",
+  // The folder tree's untracked mark: a file the agent just wrote is the change the operator looks
+  // for first, so it takes the added ink and not the list's quiet grey (ADR 0083, 2026-10-06).
+  "?": "bg-status-done",
 } satisfies Record<ChangeStatus, string>;
+
+/** The folder tree's letter and icon inks: the list's, with untracked in the added ink to match the dot. */
+export const TREE_TONE = { ...STATUS_TONE, "?": STATUS_TONE.A } satisfies Record<ChangeStatus, string>;
 
 /** A file's place in the whole list, across repos: what Previous / Next walk. */
 export interface ChangeRef {
@@ -546,10 +551,13 @@ export function FilterRow({
           </button>
         )}
       </div>
-      <div className="flex items-center">
+      {/* The count and Clear wrap onto a line of their own when the chips leave them too little
+          room (a long Ignored label at 375 px), and the count truncates before Clear does. The
+          block is drawn, invisible, while no filter is on, so typing never re-wraps the row. */}
+      <div className="flex flex-wrap items-center gap-y-1">
         {chips}
-        <div className={cn("ml-auto flex shrink-0 items-center gap-1 pl-2", !active && "invisible")}>
-          <span aria-live="polite" className="truncate text-xs tabular-nums text-muted-foreground">
+        <div className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1 pl-2", !active && "invisible")}>
+          <span aria-live="polite" className="min-w-0 truncate text-xs tabular-nums text-muted-foreground">
             {count}
           </span>
           <button

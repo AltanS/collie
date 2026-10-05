@@ -207,15 +207,18 @@ The web side only; the bridge and its bound are unchanged. The operator could no
 a tab, and a changed file meant two places to look. So the Changes screen has no Changes | Files
 switch any more. Its body is the folder tree of the Changes root, and the change set marks it:
 
-- A changed file wears its status letter and an icon in that status's colour. Untracked counts as
-  changed, and everything inside an untracked folder is marked new. A folder shows a dot and the
+- A changed file wears its status letter, and its icon switches to that status's shape (a pen, a
+  plus, a minus, an arrow in) in that status's ink. Untracked counts as changed and takes the added
+  ink, letter, icon and dot, because a file the agent just wrote is the change looked for first.
+  Everything inside an untracked folder is marked new. A folder shows a dot and the
   count of changed paths below it. A row git ignores is never marked.
 - A deleted file is not on disk, so the tree adds it from the change set, struck through, with `D`.
   A folder that holds only deleted files is added the same way.
 - The join is by the path from the root (`web/src/lib/files-marks.ts`, `rootPathOf`), from the list
   the screen already polls every 5 s. A folder outside every repo has no marks. The folder itself is
   still never polled (rule 6 above).
-- A **Changes only** toggle in the header carries the count of changed paths and shows the list as it
+- A **Changes only** toggle in the header, the same in every folder and on a file, carries the
+  count of changed paths and shows the list as it
   was. It is off by default, and a per-device pref beside `filesShowIgnored`. Refresh reads both.
 - A file of the tree opens on **Diff | Source | Preview**. Diff only for a changed file, and it is
   the default there. Preview only for the types rule 9 names. A deleted file has Diff alone. The

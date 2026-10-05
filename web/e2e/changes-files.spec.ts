@@ -80,7 +80,11 @@ test("the tree marks what changed, Changes only swaps in the list, and a new Mar
   const after = (await only.boundingBox())!;
   expect(after.x).toBe(before.x);
   expect(after.y).toBe(before.y);
-  // And back to the tree; the choice is the device's.
+  // The choice is the device's: it outlives a reload.
+  await page.reload();
+  await expect(page.locator("header").getByRole("button", { name: en["changes.layout.tree"] })).toBeVisible();
+  await expect(only).toHaveAttribute("aria-pressed", "true");
+  // And back to the tree.
   await only.click();
   await packages.click();
   await page.getByRole("button", { name: /^api, folder/ }).click();
@@ -307,4 +311,47 @@ test("a deep folder is cut from the left, the label is not repeated, and the las
   // flush against the right edge instead of being the part that is lost.
   expect(box.clipped).toBe(true);
   expect(Math.abs(box.innerRight - box.outerRight)).toBeLessThan(2);
+});
+
+// Review 2026-10-06: the header is one header on every level, and at 375 px the squares win.
+test("a folder's header holds the root's four squares at 375 px, and the filter row clips nothing", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/pane/${PANE}/changes/files?dir=packages%2Fapi`);
+  await expect(page.getByRole("button", { name: /^notes\.md, file/ })).toBeVisible();
+  const header = page.locator("header");
+  const names = [
+    en["files.ignored.toggleAria"],
+    en["changes.filter.button"],
+    fill(en["changes.only.aria.other"], { count: 5 }),
+    en["changes.refreshAria"],
+  ];
+  const boxes = [];
+  for (const name of names) {
+    const square = header.getByRole("button", { name, exact: true });
+    await expect(square).toBeVisible();
+    boxes.push((await square.boundingBox())!);
+  }
+  // In that order, left to right, every one a 44 px square inside the viewport.
+  for (let i = 0; i < boxes.length; i++) {
+    expect(boxes[i]!.height).toBeGreaterThanOrEqual(44);
+    expect(boxes[i]!.x + boxes[i]!.width).toBeLessThanOrEqual(375);
+    if (i > 0) expect(boxes[i]!.x).toBeGreaterThan(boxes[i - 1]!.x);
+  }
+
+  // The longest Ignored label, a typed name: the count and Clear stay whole inside the row. At
+  // 320 px the row has the room the playground's 375 px card gives it, where "Clear filter" clipped.
+  await page.setViewportSize({ width: 320, height: 812 });
+  await header.getByRole("button", { name: en["files.ignored.toggleAria"] }).click();
+  await header.getByRole("button", { name: en["changes.filter.button"] }).click();
+  await page.getByPlaceholder(en["files.filter.placeholder"]).fill("o");
+  const row = page.locator('[data-slot="files-filter"]');
+  const clear = row.getByRole("button", { name: en["changes.filter.clear"], exact: true });
+  await expect(clear).toBeVisible();
+  const rowBox = (await row.boundingBox())!;
+  const clearBox = (await clear.boundingBox())!;
+  expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
+  expect(await clear.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const chip = row.getByRole("button", { name: en["files.ignored.toggleAria"] });
+  expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await noSidewaysScroll(page);
 });

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
-import { Eye, EyeOff, File, FileDiff, Folder, Link2 } from "lucide-react";
+import { Eye, EyeOff, File, FileDiff, FileInput, FileMinus, FilePen, FilePlus, Folder, FolderPlus, Link2 } from "lucide-react";
 
-import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_TONE, STATUS_WORD } from "@/components/changes-view";
+import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_TONE, STATUS_WORD, TREE_TONE } from "@/components/changes-view";
 import { ListGroup } from "@/components/ui/list-group";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
@@ -9,7 +9,7 @@ import { folderView, isNameFilterOn } from "@/lib/files-filter";
 import type { EntryMark } from "@/lib/files-marks";
 import { formatBytes, joinRel } from "@/lib/files-view";
 import { t, tn, type MessageKey } from "@/lib/i18n";
-import type { FileEntry, FileEntryKind } from "@/lib/types";
+import type { ChangeStatus, FileEntry, FileEntryKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // The Changes screen's folder tree, drawn (ADR 0083): the path's breadcrumb, one folder's rows with
@@ -126,10 +126,28 @@ function rowLabel(entry: FileEntry, mark: EntryMark | undefined): string {
  * dot and the count of changed files below it. Every row of a marked folder reserves the letter's
  * width, so a mark that arrives on a re-read moves no size and no name (DESIGN.md §2).
  */
+// A changed row's icon SWITCHES as well as taking the status ink, so a change reads by shape too,
+// in the dim light of a phone and for an eye that does not tell the inks apart: a pen for modified,
+// a plus for new (added or untracked), a minus for deleted, an arrow in for renamed. A new folder
+// git lists whole is a folder with a plus. A link keeps its own glyph.
+const CHANGED_FILE_ICON = {
+  M: FilePen,
+  A: FilePlus,
+  "?": FilePlus,
+  D: FileMinus,
+  R: FileInput,
+} satisfies Record<ChangeStatus, typeof File>;
+
+function changedIcon(kind: FileEntryKind, status: ChangeStatus): typeof File {
+  if (kind === "dir") return status === "?" || status === "A" ? FolderPlus : Folder;
+  if (kind === "link") return Link2;
+  return CHANGED_FILE_ICON[status];
+}
+
 function MarkSlot({ mark }: { mark: EntryMark | undefined }) {
   if (mark?.kind === "change") {
     return (
-      <span aria-hidden className={cn("w-3 shrink-0 text-center font-mono text-xs font-semibold", STATUS_TONE[mark.status])}>
+      <span aria-hidden className={cn("w-3 shrink-0 text-center font-mono text-xs font-semibold", TREE_TONE[mark.status])}>
         {mark.status === "?" ? "U" : mark.status}
       </span>
     );
@@ -151,8 +169,8 @@ function MarkSlot({ mark }: { mark: EntryMark | undefined }) {
  * the bridge decides what it points at. Every row is a 44px button; the kind and the size are said to a
  * screen reader after the name, since the icon alone is `aria-hidden`.
  *
- * With `marks` (the Changes screen's tree), a changed row carries its status letter and an icon in
- * the same colour, a folder with changes below it carries a dot and their count, and a deleted file,
+ * With `marks` (the Changes screen's tree), a changed row carries its status letter, and its icon
+ * switches to the status's shape (`changedIcon`) in the same ink as the letter, a folder with changes below it carries a dot and their count, and a deleted file,
  * which only the change set still names, is struck through.
  */
 export function FileRows({
@@ -168,9 +186,9 @@ export function FileRows({
   return (
     <ListGroup as="ul" data-slot="file-rows">
       {entries.map((entry) => {
-        const Icon = KIND_ICON[entry.kind];
         const mark = marks?.get(entry.name);
-        const tone = mark?.kind === "change" ? STATUS_TONE[mark.status] : undefined;
+        const Icon = mark?.kind === "change" ? changedIcon(entry.kind, mark.status) : KIND_ICON[entry.kind];
+        const tone = mark?.kind === "change" ? TREE_TONE[mark.status] : undefined;
         const deleted = mark?.kind === "change" && mark.deleted === true;
         return (
           <li key={entry.name}>

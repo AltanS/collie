@@ -5,9 +5,11 @@
 
 import { ChangesControl } from "@/components/changes-control";
 import { useState } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { FileContent, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
 import { ChangesOnlyToggle, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, IgnoredToggle } from "@/components/files-view";
+import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 
 import {
@@ -54,6 +56,15 @@ const DELETED_INDEX = indexChanges(fixtureChanges.available ? fixtureChanges.roo
 ]);
 
 /** The list screen's top controls and body, live: the layout toggle, the filter button and row. */
+/** The header's Refresh square, as the route draws it. Inert here: the cards read fixtures. */
+function RefreshSquare() {
+  return (
+    <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={t("changes.refreshAria")}>
+      <RefreshCw className="size-5" />
+    </Button>
+  );
+}
+
 function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesLayout; initialFilter?: ChangesFilter }) {
   const [layout, setLayout] = useState<ChangesLayout>(initialLayout);
   const [filter, setFilter] = useState<ChangesFilter>(initialFilter ?? { query: "", statuses: [] });
@@ -81,6 +92,7 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
             onClick={() => setOpen((o) => !o)}
           />
           <ChangesOnlyToggle on count={CHANGED} onChange={() => {}} />
+          <RefreshSquare />
           <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
             <ChangesFilterBar
               filter={filter}
@@ -274,7 +286,9 @@ function FolderCard({
             total={view.pool}
             onClick={() => setOpen((o) => !o)}
           />
-          {dir === "" && <ChangesOnlyToggle on={false} count={CHANGED} onChange={() => {}} />}
+          {/* The same four squares in every folder: the header does not change with depth. */}
+          <ChangesOnlyToggle on={false} count={CHANGED} onChange={() => {}} />
+          <RefreshSquare />
           <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
             <FilesFilterBar
               query={query}
@@ -411,9 +425,10 @@ export function ChangesSection() {
           label="changes, the root folder with its marks"
           reach="open Changes from a pane's belt or the dashboard's Changes tab. The body is the root
             folder: folders first, then files by name, with a size for each file. A changed file wears
-            its status letter and an icon in the same colour; a folder with changes below it shows a
-            dot and how many. The Changes-only toggle, right of Filter, carries the number of changed
-            files, its glyph in the Modified ink."
+            its status letter, and its icon switches to the status's shape in the same ink: a pen
+            for modified, a plus for new, a minus for deleted. A folder with changes below it shows
+            a dot and how many. The Changes-only toggle, right of Filter, carries the number of
+            changed files, its glyph in the Modified ink, and Refresh closes the row."
         >
           <FolderCard dir="" />
         </Card>
@@ -421,8 +436,9 @@ export function ChangesSection() {
         <Card
           state="files-folder-marks"
           label="changes, a folder of changed files"
-          reach="in the tree, tap packages, then api. The untracked note is marked U, and server holds the
-            renamed handler, so it shows one in the Renamed colour."
+          reach="in the tree, tap packages, then api. The untracked note is new: a U and a file-plus icon,
+            both in the Added ink. Server holds the renamed handler, so it shows one in the Renamed
+            colour. The header is the root's, square for square."
         >
           <FolderCard dir="packages/api" />
         </Card>

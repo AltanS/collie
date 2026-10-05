@@ -123,8 +123,9 @@ Changes opens on the files of the folder it reads, one folder at a time, with th
 them. It needs no git repository, so it works for a shell pane in any folder too. Inside a repository
 it also knows which entries git ignores, and hides them for you.
 
-- A changed file shows its status letter, and its icon takes the same colour. A new file that git
-  does not track yet counts as changed.
+- A changed file shows its status letter, and its icon changes shape and takes the same colour: a
+  pen for a changed file, a plus for a new one, a minus for a deleted one. A new file that git does
+  not track yet counts as changed, and shows in the same green as an added file.
 - A folder with changes inside it shows a dot and the number of changed files.
 - A deleted file stays in its folder, struck through, with a **D**. Tap it to see what was removed.
 - A folder outside every repository has no marks.
@@ -135,7 +136,8 @@ to the one above, and from the top to wherever Changes goes.
 
 ### Changes only
 
-The **Changes only** button in the header shows the list of changes alone, grouped by repository.
+The **Changes only** button in the header, in every folder, shows the list of changes alone,
+grouped by repository.
 It carries the number of changed files. Your choice stays on this device, and it is off at first.
 The list has its own **Tree** button, which draws the changed files as a folder tree, and a
 **Filter** button. Refresh reads the list and the folder again.
