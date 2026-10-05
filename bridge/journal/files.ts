@@ -53,6 +53,7 @@
 // bridge's own state folder and its config folder are refused on top. A new reader may reuse this
 // function; it may not become a fourth place without an ADR that says why and names its bound.
 
+import { realpath as realpathNativeCb } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 
 import { HOST, type Host, isInside } from "../host.ts";
@@ -61,6 +62,18 @@ import { type Cursor, decodeCursor, encodeCursor, type ReadSince } from "./curso
 
 /** Most bytes we will ever pull off one log. Beyond this we keep the TAIL (newest turns). */
 export const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024; // 32 MB
+
+/**
+ * The real path of `path`. On Windows this is the OS's own answer (`fs.realpath.native`), which
+ * expands an 8.3 short name (`PAIRED~1.JSO`) to the long one, so the deny rules read the name the
+ * disk holds. Elsewhere it is the ordinary `realpath`.
+ */
+export function realpathOf(path: string): Promise<string> {
+  if (HOST.platform !== "win32") return realpath(path);
+  return new Promise((resolve, reject) => {
+    realpathNativeCb.native(path, (err, resolved) => (err === null ? resolve(resolved) : reject(err)));
+  });
+}
 
 /** True when the path exists at all. Cheap pre-check before the more expensive realpath work. */
 export async function exists(path: string): Promise<boolean> {
@@ -91,8 +104,8 @@ export async function containedRealpath(
   root: string,
   host: Host = HOST,
 ): Promise<string | null> {
-  const real = await realpath(candidate).catch(() => null);
-  const realRoot = await realpath(root).catch(() => null);
+  const real = await realpathOf(candidate).catch(() => null);
+  const realRoot = await realpathOf(root).catch(() => null);
   if (real === null || realRoot === null) return null;
   return isInside(host, real, realRoot) ? real : null;
 }

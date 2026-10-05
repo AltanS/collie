@@ -162,6 +162,16 @@ describe("the relative path is refused on its shape", () => {
     expect(parseRelPath("con", LINUX)).toEqual(["con"]);
   });
 
+  test("on Windows: an 8.3 short name is refused, since it can spell a denied name", () => {
+    for (const bad of ["PAIRED~1.JSO", "src/PROGRA~1", "a~1", ".GIT~1/config", "x~9.txt"]) {
+      expect(parseRelPath(bad, WIN)).toBeNull();
+    }
+    // A tilde not followed by a digit is an ordinary name, and every name is ordinary on POSIX.
+    expect(parseRelPath("notes~.txt", WIN)).toEqual(["notes~.txt"]);
+    expect(parseRelPath("a~b", WIN)).toEqual(["a~b"]);
+    expect(parseRelPath("PAIRED~1.JSO", LINUX)).toEqual(["PAIRED~1.JSO"]);
+  });
+
   test("the query is decoded once, by URLSearchParams, and never again", () => {
     // An encoded separator is the separator, so `%2e%2e%2f` is `../` and refused.
     expect(filesQuery(new URL("http://x/?path=%2e%2e%2fsecret"))).toEqual({ mode: "read", path: "../secret" });

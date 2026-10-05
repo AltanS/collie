@@ -43,14 +43,14 @@
 // calls through {@link FilesFs}, so a test can stand one in.
 
 import { constants, type Dirent } from "node:fs";
-import { lstat, open, opendir, realpath, stat } from "node:fs/promises";
+import { lstat, open, opendir, stat } from "node:fs/promises";
 import { relative, sep } from "node:path";
 
 import { isStateSecretName } from "./acl-policy.ts";
 import { discoverRepos, gitBinary, looksBinary, MAX_FILE_READ_BYTES, runGit } from "./changes.ts";
 import { isAbsoluteFolder, withinBound } from "./changes-root.ts";
 import { HOST, type Host, isInside, splitPath } from "./host.ts";
-import { containedRealpath } from "./journal/files.ts";
+import { containedRealpath, realpathOf } from "./journal/files.ts";
 import type { FileEntry, FileReadAnswer, FilesListing } from "./types.ts";
 
 // ── Limits ──────────────────────────────────────────────────────────────────────────────────────
@@ -86,6 +86,11 @@ export function filesQuery(url: URL): FilesQuery {
 const WINDOWS_DEVICE = /^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
 /** Characters a Windows name cannot hold, or that a Windows API reads as a wildcard or a stream. */
 const WINDOWS_BAD_CHARS = /[:*?"<>|]/;
+/**
+ * A Windows 8.3 short name (`PAIRED~1.JSO`, `PROGRA~1`) is another spelling of a long name, so the
+ * name-based deny rules (`isStateSecretName`, `.git`) cannot see through it. Refused on the shape.
+ */
+const WINDOWS_SHORT_NAME = /~\d/;
 
 /** A `.git` segment, on every host case-folded: refused for list and read, hidden from listings. */
 export function isGitSegment(name: string): boolean {
@@ -115,6 +120,7 @@ export function parseRelPath(raw: string, host: Host = HOST): string[] | null {
       // Windows drops a trailing dot or space, so `.git.` IS `.git` and `secret ` is `secret`.
       if (s.endsWith(".") || s.endsWith(" ")) return null;
       if (WINDOWS_DEVICE.test(s)) return null;
+      if (WINDOWS_SHORT_NAME.test(s)) return null;
     }
   }
   return segments;
@@ -182,7 +188,7 @@ export interface FilesFs {
 const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
 export const NODE_FILES_FS: FilesFs = {
-  realpath: (path) => realpath(path),
+  realpath: (path) => realpathOf(path),
   stat: (path) => stat(path),
   lstat: (path) => lstat(path),
   async names(dir, limit, keep) {
