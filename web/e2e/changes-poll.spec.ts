@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { en } from "@/lib/i18n/messages/en";
 import { fixtureAgents, fixtureChangeDiff } from "@/test/handlers";
 
-import { installApiStub } from "./fixtures/api";
+import { installApiStub, seedChangesOnly } from "./fixtures/api";
 
 // THE 5 S RE-READ MOVES NOTHING IT DOES NOT HAVE TO (ADR 0065 rule 8, ADR 0066). The operator saw
 // the Changes screens jitter on every beat. With the same answer each time, a beat must change not
@@ -18,6 +18,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no Changes route");
   test.skip(testInfo.project.name === "app-tablet", "a phone-width case; the tablet run would repeat it");
   await installApiStub(page);
+  // These cases read the list of changes: the screen's body with the device's Changes-only toggle on.
+  // The folder tree, the default since 2026-10-06 (ADR 0083), has its own cases in changes-files.
+  await seedChangesOnly(page);
 });
 
 const PANE = fixtureAgents[0]!;
@@ -102,8 +105,20 @@ test("the list takes three identical beats without one DOM change, in List and i
   await expect(page.getByText("api · 2 files")).toBeVisible();
   await expectQuietBeats(page, reads);
 
-  await page.getByRole("radio", { name: en["changes.layout.tree"] }).click();
+  await page.getByRole("button", { name: en["changes.layout.tree"] }).click();
   await expect(page.getByRole("button", { expanded: true }).first()).toBeVisible();
+  await expectQuietBeats(page, reads);
+});
+
+// The folder tree re-reads the list on the same beat, for its marks; the folder itself is never
+// polled. An identical answer must leave every row, mark and count untouched.
+test("the folder tree takes three identical beats without one DOM change, marks included", async ({ page }) => {
+  // After the seed above, so this case alone opens on the tree, the screen's default.
+  await page.addInitScript(() => localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: false })));
+  await page.clock.install();
+  const reads = counter(page, LIST_READ);
+  await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
+  await expect(page.getByRole("button", { name: "src, folder, 2 changed files" })).toBeVisible();
   await expectQuietBeats(page, reads);
 });
 

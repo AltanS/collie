@@ -149,8 +149,8 @@ export const router = createBrowserRouter([
         // loop's revalidate() fetches nothing for it. `shouldRevalidate` states the same opt-out as
         // History's, should a loader ever be added.
         // `/*` so the commit view below the list (`changes/commit`, ADR 0065) is the same route
-        // and the same mounted component: the list keeps its state under the commit. The Files tab
-        // (`changes/files`, ADR 0083) is matched here too; `ChangesRoute` hands it to its own screen.
+        // and the same mounted component: the list keeps its state under the commit. A folder or a
+        // file of the folder tree (`changes/files`, ADR 0083) is matched here too, the same screen.
         path: "pane/:paneId/changes/*",
         element: <ChangesRoute />,
         shouldRevalidate: () => false,

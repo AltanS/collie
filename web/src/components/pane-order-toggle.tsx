@@ -14,7 +14,8 @@ import { useLocale } from "@/hooks/use-locale";
 // account. The switcher keeps the primary ink for two things only: the row you are in, and the mark
 // that says a pane needs you (ADR 0063 point 3, "urgency is a mark, and it has one place to go"). A
 // filled segment here would be the loudest thing on a sheet whose whole job is to let an alarm be
-// seen. Same treatment as `ChangesLayoutToggle`, which answers the same kind of question.
+// seen. `ChangesLayoutToggle` answered the same kind of question the same way until 2026-10-06, when
+// the Changes header ran out of room and it became one icon toggle.
 //
 // ── AND IT HAS A COMPACT FORM, BECAUSE THE SHEET IS A PHONE SCREEN ──────────
 // Three labelled segments at the 44px floor, over a summary line of their own, cost two rows of a

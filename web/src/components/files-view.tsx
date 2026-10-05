@@ -1,37 +1,41 @@
 import { useCallback, useState } from "react";
-import { Eye, EyeOff, File, Folder, Link2 } from "lucide-react";
+import { Eye, EyeOff, File, FileDiff, Folder, Link2 } from "lucide-react";
 
-import { ChangesNoMatch, FilterRow } from "@/components/changes-view";
-import { Segmented } from "@/components/ui/segmented";
+import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_TONE, STATUS_WORD } from "@/components/changes-view";
 import { ListGroup } from "@/components/ui/list-group";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
 import { folderView, isNameFilterOn } from "@/lib/files-filter";
+import type { EntryMark } from "@/lib/files-marks";
 import { formatBytes, joinRel } from "@/lib/files-view";
-import { t, type MessageKey } from "@/lib/i18n";
+import { t, tn, type MessageKey } from "@/lib/i18n";
 import type { FileEntry, FileEntryKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// The Files view's drawings (ADR 0083): the Changes | Files switch, the path's breadcrumb and one
-// folder's rows. Presentational only, so the route and the playground mount the same markup. A name
-// is a machine-authored identifier read character by character, so it is mono (DESIGN.md §5), and
-// every string from the disk reaches the DOM as a text node.
+// The Changes screen's folder tree, drawn (ADR 0083): the path's breadcrumb, one folder's rows with
+// their change marks, and the Changes-only toggle that swaps the tree for the list of changes.
+// Presentational only, so the route and the playground mount the same markup. A name is a
+// machine-authored identifier read character by character, so it is mono (DESIGN.md §5), and every
+// string from the disk reaches the DOM as a text node.
 
-export type ChangesTab = "changes" | "files";
-
-/** The two-segment control at the top of the Changes screen: Changes | Files. */
-export function ChangesTabs({ active, onChange }: { active: ChangesTab; onChange: (tab: ChangesTab) => void }) {
+/**
+ * The header's Changes-only toggle: on, the screen shows the changed files alone (the flat list or
+ * its tree); off, the root folder with each change marked on its row. A setting, so an icon toggle
+ * button (`ui/toggle-button.tsx`), with the number of changed files floated on its corner. While
+ * anything changed and the toggle is off, the glyph takes the Modified ink, so the header says there
+ * is something to look at before the badge is read.
+ */
+export function ChangesOnlyToggle({ on, count, onChange }: { on: boolean; count: number; onChange: (on: boolean) => void }) {
   useLocale();
   return (
-    <Segmented
-      semantics="tabs"
-      label={t("changes.tabs.aria")}
-      value={active}
-      onChange={onChange}
-      options={[
-        { value: "changes", label: t("changes.tabs.changes") },
-        { value: "files", label: t("changes.tabs.files") },
-      ]}
+    <ToggleButton
+      pressed={on}
+      onPressedChange={onChange}
+      label={tn("changes.only.aria", count)}
+      title={t("changes.only.label")}
+      icon={<FileDiff className={cn("size-5", !on && count > 0 && STATUS_TONE.M)} />}
+      badge={count}
+      badgeClassName={cn(STATUS_FILL.M, "text-background")}
     />
   );
 }
@@ -103,15 +107,42 @@ const KIND_WORD = {
 } satisfies Record<FileEntryKind, MessageKey>;
 
 /**
- * What a row is called to a screen reader: the name, its kind and a file's size, spelled out. An
- * `aria-label` and not a hidden span, because engines disagree on the space between a name and a
- * visually hidden word beside it, and a name a test and a reader both depend on should not.
+ * What a row is called to a screen reader: the name, its kind and a file's size, then its change,
+ * spelled out. An `aria-label` and not a hidden span, because engines disagree on the space between
+ * a name and a visually hidden word beside it, and a name a test and a reader both depend on should
+ * not.
  */
-function rowLabel(entry: FileEntry): string {
+function rowLabel(entry: FileEntry, mark: EntryMark | undefined): string {
   const parts = [entry.name, t(KIND_WORD[entry.kind])];
   if (entry.kind === "file" && entry.size !== undefined) parts.push(formatBytes(entry.size));
+  if (mark?.kind === "change") parts.push(t(STATUS_WORD[mark.status]));
+  if (mark?.kind === "folder") parts.push(tn("files.changed", mark.mark.count));
   if (entry.ignored === true) parts.push(t("files.ignored.word"));
   return parts.join(", ");
+}
+
+/**
+ * The slot at a row's end: a changed row's status letter, in the Changes list's colour, or a folder's
+ * dot and the count of changed files below it. Every row of a marked folder reserves the letter's
+ * width, so a mark that arrives on a re-read moves no size and no name (DESIGN.md §2).
+ */
+function MarkSlot({ mark }: { mark: EntryMark | undefined }) {
+  if (mark?.kind === "change") {
+    return (
+      <span aria-hidden className={cn("w-3 shrink-0 text-center font-mono text-xs font-semibold", STATUS_TONE[mark.status])}>
+        {mark.status === "?" ? "U" : mark.status}
+      </span>
+    );
+  }
+  if (mark?.kind === "folder") {
+    return (
+      <span aria-hidden data-slot="folder-mark" className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums">
+        <span className={cn("size-1.5 rounded-full", STATUS_FILL[mark.mark.status])} />
+        {mark.mark.count}
+      </span>
+    );
+  }
+  return <span aria-hidden className="w-3 shrink-0" />;
 }
 
 /**
@@ -119,31 +150,56 @@ function rowLabel(entry: FileEntry): string {
  * when the operator asked for them) is dimmed to the muted ink and still opens. A link row opens like a file;
  * the bridge decides what it points at. Every row is a 44px button; the kind and the size are said to a
  * screen reader after the name, since the icon alone is `aria-hidden`.
+ *
+ * With `marks` (the Changes screen's tree), a changed row carries its status letter and an icon in
+ * the same colour, a folder with changes below it carries a dot and their count, and a deleted file,
+ * which only the change set still names, is struck through.
  */
-export function FileRows({ entries, onOpen }: { entries: readonly FileEntry[]; onOpen: (entry: FileEntry) => void }) {
+export function FileRows({
+  entries,
+  marks,
+  onOpen,
+}: {
+  entries: readonly FileEntry[];
+  marks?: ReadonlyMap<string, EntryMark>;
+  onOpen: (entry: FileEntry) => void;
+}) {
   useLocale();
   return (
     <ListGroup as="ul" data-slot="file-rows">
       {entries.map((entry) => {
         const Icon = KIND_ICON[entry.kind];
+        const mark = marks?.get(entry.name);
+        const tone = mark?.kind === "change" ? STATUS_TONE[mark.status] : undefined;
+        const deleted = mark?.kind === "change" && mark.deleted === true;
         return (
           <li key={entry.name}>
             <button
               type="button"
               onClick={() => onOpen(entry)}
-              aria-label={rowLabel(entry)}
+              aria-label={rowLabel(entry, mark)}
               className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left active:bg-muted/50"
             >
               <Icon
                 aria-hidden
-                className={cn("size-4 shrink-0", entry.kind === "dir" && entry.ignored !== true ? "text-foreground" : "text-muted-foreground")}
+                className={cn(
+                  "size-4 shrink-0",
+                  tone ?? (entry.kind === "dir" && entry.ignored !== true ? "text-foreground" : "text-muted-foreground"),
+                )}
               />
-              <span className={cn("min-w-0 flex-1 font-mono text-sm wrap-anywhere", entry.ignored === true && "text-muted-foreground")}>
+              <span
+                className={cn(
+                  "min-w-0 flex-1 font-mono text-sm wrap-anywhere",
+                  (entry.ignored === true || deleted) && "text-muted-foreground",
+                  deleted && "line-through",
+                )}
+              >
                 {entry.name}
               </span>
               {entry.kind === "file" && entry.size !== undefined && (
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatBytes(entry.size)}</span>
               )}
+              {marks !== undefined && <MarkSlot mark={mark} />}
             </button>
           </li>
         );
@@ -251,6 +307,7 @@ export function FilesFilterBar({
  */
 export function FilesFolderBody({
   entries,
+  marks,
   truncated,
   query,
   showIgnored,
@@ -259,6 +316,8 @@ export function FilesFolderBody({
   onOpen,
 }: {
   entries: readonly FileEntry[];
+  /** The change marks of these rows, on the Changes screen's tree. */
+  marks?: ReadonlyMap<string, EntryMark>;
   truncated: boolean;
   query: string;
   showIgnored: boolean;
@@ -274,7 +333,7 @@ export function FilesFolderBody({
   return (
     <>
       {view.rows.length > 0 ? (
-        <FileRows entries={view.rows} onOpen={onOpen} />
+        <FileRows entries={view.rows} marks={marks} onOpen={onOpen} />
       ) : isNameFilterOn(query) ? (
         <ChangesNoMatch onClear={onClearQuery} />
       ) : (

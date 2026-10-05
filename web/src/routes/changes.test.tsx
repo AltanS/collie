@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { Profiler } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
 import { keepChangeCount, resetChangeCountCache } from "@/hooks/use-workspace-change-counts";
@@ -69,6 +69,13 @@ function renderAt(url: string, onCommit?: () => void, state?: NavState) {
   render(<RouterProvider router={router} />);
   return router;
 }
+
+// These cases read the list of changes, which since 2026-10-06 is the screen's body with the
+// device's Changes-only toggle on (ADR 0083); the folder tree, the default, has its own file
+// (changes-files.test.tsx).
+beforeEach(() => {
+  localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true }));
+});
 
 afterEach(() => {
   localStorage.clear();
@@ -223,7 +230,7 @@ describe("ChangesRoute — the list", () => {
   });
 
   it("sends the depth and nested choices from Settings, and refetches on refresh", async () => {
-    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesNested: false, changesDepth: 3 }));
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true, changesNested: false, changesDepth: 3 }));
     const seen: string[] = [];
     server.use(
       http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {

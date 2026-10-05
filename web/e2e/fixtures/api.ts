@@ -378,3 +378,15 @@ export async function pinLocale(page: Page, locale: Locale): Promise<void> {
     [LOCALE_STORAGE_KEY, locale],
   );
 }
+
+/**
+ * Turn the device's Changes-only toggle on before the first navigation, so the Changes screen's body
+ * is the list of changes rather than the folder tree, its default since 2026-10-06 (ADR 0083). For a
+ * case that tests the list itself. Written only while nothing is stored, so a reload keeps whatever
+ * the page wrote since.
+ */
+export async function seedChangesOnly(page: Page): Promise<void> {
+  await page.addInitScript((key) => {
+    if (window.localStorage.getItem(key) === null) window.localStorage.setItem(key, JSON.stringify({ changesOnly: true }));
+  }, "collie:dash-prefs:v1");
+}

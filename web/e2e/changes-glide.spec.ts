@@ -4,7 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import type { ChangesResponse } from "@/lib/types";
 import { fixtureChanges } from "@/test/handlers";
 
-import { installApiStub } from "./fixtures/api";
+import { installApiStub, seedChangesOnly } from "./fixtures/api";
 
 // A TAP ON A CHANGES TAB ROW CARRIES ITS NUMBERS INTO THE SCREEN (operator, 2026-09-23). On a phone
 // at 375x812: the workspace screen's header shows the row's own count on its first frame, the list
@@ -20,6 +20,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no dashboard route");
   test.skip(testInfo.project.name === "app-tablet", "a phone-width case; the tablet run would repeat it");
   await installApiStub(page);
+  // These cases read the list of changes: the screen's body with the device's Changes-only toggle on.
+  // The folder tree, the default since 2026-10-06 (ADR 0083), has its own cases in changes-files.
+  await seedChangesOnly(page);
 });
 
 const CHANGES = new RegExp(`^${en["changes.title"]}$`, "u");

@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
 import { resetChangeCountCache } from "@/hooks/use-workspace-change-counts";
@@ -71,6 +71,13 @@ function answer(list: () => PaneChangesResponse, commit: () => ChangeCommitRespo
     }),
   );
 }
+
+// These cases read the list of changes, which since 2026-10-06 is the screen's body with the
+// device's Changes-only toggle on (ADR 0083); the folder tree, the default, has its own file
+// (changes-files.test.tsx).
+beforeEach(() => {
+  localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true }));
+});
 
 afterEach(() => {
   vi.useRealTimers();

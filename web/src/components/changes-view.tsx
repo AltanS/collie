@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, List, ListFilter, ListTree, Search, X } from "lucide-react";
+import { ChevronRight, ListFilter, ListTree, Search, X } from "lucide-react";
 
 import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
+import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
 import {
   buildChangeTree,
@@ -33,7 +34,8 @@ import { cn } from "@/lib/utils";
 // content: `font-mono`, rendered as text nodes (a coloured token is a span around a text node),
 // never as markup.
 
-const STATUS_WORD = {
+/** What a status letter says to a screen reader. Shared with the folder tree's marks. */
+export const STATUS_WORD = {
   M: "changes.status.M",
   A: "changes.status.A",
   D: "changes.status.D",
@@ -41,12 +43,22 @@ const STATUS_WORD = {
   "?": "changes.status.untracked",
 } satisfies Record<ChangeStatus, MessageKey>;
 
-const STATUS_TONE = {
+/** The ink of a status letter, which the folder tree also wears on a changed row's icon. */
+export const STATUS_TONE = {
   M: "text-status-working",
   A: "text-status-done",
   D: "text-status-blocked",
   R: "text-status-info",
   "?": "text-muted-foreground",
+} satisfies Record<ChangeStatus, string>;
+
+/** The same five colours as a fill, for the folder tree's dot. */
+export const STATUS_FILL = {
+  M: "bg-status-working",
+  A: "bg-status-done",
+  D: "bg-status-blocked",
+  R: "bg-status-info",
+  "?": "bg-muted-foreground",
 } satisfies Record<ChangeStatus, string>;
 
 /** A file's place in the whole list, across repos: what Previous / Next walk. */
@@ -375,7 +387,12 @@ export function ChangesTree({
   );
 }
 
-/** List or Tree: a two-way segmented choice of 44px squares, for the header. */
+/**
+ * List or Tree, for the header: ONE 44px icon toggle, pressed while the changes draw as a tree. It was
+ * a two-square List | Tree choice until 2026-10-06, when the Changes-only toggle joined the header and
+ * a sixth square left a 375 px phone about 60 px for the workspace's name (ADR 0083). Both layouts
+ * stay one tap away; the toggle wears `ui/toggle-button.tsx`'s one pressed look.
+ */
 export function ChangesLayoutToggle({
   layout,
   onChange,
@@ -384,32 +401,14 @@ export function ChangesLayoutToggle({
   onChange: (layout: ChangesLayout) => void;
 }) {
   useLocale();
-  const options = [
-    { value: "list", label: t("changes.layout.list"), Icon: List },
-    { value: "tree", label: t("changes.layout.tree"), Icon: ListTree },
-  ] as const;
   return (
-    <div role="radiogroup" aria-label={t("changes.layout.aria")} className="flex shrink-0 rounded-md">
-      {options.map(({ value, label, Icon }) => {
-        const selected = value === layout;
-        return (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-label={label}
-            onClick={() => onChange(value)}
-            className={cn(
-              "flex size-11 items-center justify-center rounded-md transition-colors",
-              selected ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
-            )}
-          >
-            <Icon className="size-5" />
-          </button>
-        );
-      })}
-    </div>
+    <ToggleButton
+      pressed={layout === "tree"}
+      onPressedChange={(tree) => onChange(tree ? "tree" : "list")}
+      label={t("changes.layout.tree")}
+      title={t("changes.layout.tree")}
+      icon={<ListTree className="size-5" />}
+    />
   );
 }
 

@@ -1,4 +1,5 @@
 import {
+  readPreviewAsked,
   ancestorsOf,
   changesCommitPath,
   filesFolders,
@@ -293,21 +294,22 @@ describe("parentChain: what a cold deep link gets behind it", () => {
       ["/?h=badger", "/pane/w1%3Ap1?h=badger", "/pane/w1%3Ap1/changes?h=badger", "/pane/w1%3Ap1/changes/commit?h=badger&repo=one"],
     ],
     ["/space/w1/changes/commit", "?repo=.&path=a.ts", ["/", "/space/w1", "/space/w1/changes", "/space/w1/changes/commit?repo=."]],
-    // The Files view: every folder above the target sits behind it, then the view's root, then the
-    // list's own way up (ADR 0083).
+    // The Changes tree: every folder above the target sits behind it, then the Changes screen that
+    // is the tree's root, then that screen's own way up (ADR 0083). With neither `?dir=` nor `?path=`
+    // the address is the root itself, spelled the way it was before 2026-10-06.
     ["/pane/w1%3Ap1/changes/files", "", ["/", "/pane/w1%3Ap1"]],
-    ["/pane/w1%3Ap1/changes/files", "?dir=a", ["/", "/pane/w1%3Ap1", "/pane/w1%3Ap1/changes/files"]],
+    ["/pane/w1%3Ap1/changes/files", "?dir=a", ["/", "/pane/w1%3Ap1", "/pane/w1%3Ap1/changes"]],
     [
       "/pane/w1%3Ap1/changes/files",
       "?h=badger&dir=a%2Fb",
-      ["/?h=badger", "/pane/w1%3Ap1?h=badger", "/pane/w1%3Ap1/changes/files?h=badger", "/pane/w1%3Ap1/changes/files?h=badger&dir=a"],
+      ["/?h=badger", "/pane/w1%3Ap1?h=badger", "/pane/w1%3Ap1/changes?h=badger", "/pane/w1%3Ap1/changes/files?h=badger&dir=a"],
     ],
     [
       "/space/w1/changes/files",
       "?path=a%2Fb%2Fc.md",
-      ["/", "/space/w1", "/space/w1/changes/files", "/space/w1/changes/files?dir=a", "/space/w1/changes/files?dir=a%2Fb"],
+      ["/", "/space/w1", "/space/w1/changes", "/space/w1/changes/files?dir=a", "/space/w1/changes/files?dir=a%2Fb"],
     ],
-    ["/space/w1/changes/files", "?path=README.md", ["/", "/space/w1", "/space/w1/changes/files"]],
+    ["/space/w1/changes/files", "?path=README.md", ["/", "/space/w1", "/space/w1/changes"]],
     ["/settings", "", ["/"]],
     // Both are opened from the System section now, so a cold deep link gets the index AND that
     // section behind it — two taps back to home, matching the two pushes that would have got here.
@@ -324,9 +326,8 @@ describe("parentChain: what a cold deep link gets behind it", () => {
   });
 });
 
-describe("the Files view's paths", () => {
-  it("is the Changes list's child route, with a folder or a file in the query", () => {
-    expect(filesPath("w1:p1")).toBe("/pane/w1%3Ap1/changes/files");
+describe("the Changes tree's paths", () => {
+  it("is the Changes screen's child route, with a folder or a file in the query", () => {
     expect(filesPath("w1:p1", undefined, { dir: "src/lib" })).toBe("/pane/w1%3Ap1/changes/files?dir=src%2Flib");
     expect(filesPath("w1:p1", undefined, { path: "a b.md" })).toBe("/pane/w1%3Ap1/changes/files?path=a+b.md");
     expect(spaceFilesPath("w1", undefined, { dir: "docs" })).toBe("/space/w1/changes/files?dir=docs");
@@ -336,13 +337,15 @@ describe("the Files view's paths", () => {
     expect(filesPath("w1:p1", { host: "badger" }, { dir: "a" })).toBe("/pane/w1%3Ap1/changes/files?h=badger&dir=a");
   });
 
-  it("names the root with no query at all", () => {
-    expect(filesPath("w1:p1", undefined, {})).toBe("/pane/w1%3Ap1/changes/files");
-    expect(filesPath("w1:p1", undefined, { dir: "" })).toBe("/pane/w1%3Ap1/changes/files");
+  it("names the root as the Changes screen itself", () => {
+    expect(filesPath("w1:p1")).toBe("/pane/w1%3Ap1/changes");
+    expect(filesPath("w1:p1", undefined, {})).toBe("/pane/w1%3Ap1/changes");
+    expect(filesPath("w1:p1", undefined, { dir: "" })).toBe("/pane/w1%3Ap1/changes");
+    expect(spaceFilesPath("w1", { host: "badger" })).toBe("/space/w1/changes?h=badger");
   });
 });
 
-describe("filesParent: one level up inside the Files view", () => {
+describe("filesParent: one level up inside the Changes tree", () => {
   it("takes a file to its folder, a folder to its parent, and a top-level folder to the root", () => {
     expect(filesParent({ path: "a/b/c.md" })).toEqual({ dir: "a/b" });
     expect(filesParent({ dir: "a/b" })).toEqual({ dir: "a" });
@@ -364,12 +367,14 @@ describe("filesFolders", () => {
   });
 });
 
-describe("the Files view in the level tree", () => {
-  it("shares the Changes list's parents", () => {
-    expect(ancestorsOf("/pane/w1/changes/files")).toEqual(["/pane/w1", "/space/*", "/"]);
-    expect(ancestorsOf("/space/w1/changes/files")).toEqual(["/space/w1", "/"]);
+describe("the Changes tree in the level tree", () => {
+  it("sits below the Changes screen, then shares its parents", () => {
+    expect(ancestorsOf("/pane/w1/changes/files")).toEqual(["/pane/w1/changes", "/pane/w1", "/space/*", "/"]);
+    expect(ancestorsOf("/space/w1/changes/files")).toEqual(["/space/w1/changes", "/space/w1", "/"]);
+    expect(isAncestor("/pane/w1/changes?h=badger", "/pane/w1/changes/files")).toBe(true);
     expect(isAncestor("/", "/space/w1/changes/files")).toBe(true);
     expect(isAncestor("/space/w2", "/space/w1/changes/files")).toBe(false);
+    expect(isAncestor("/space/w2/changes", "/space/w1/changes/files")).toBe(false);
   });
 });
 
@@ -395,5 +400,14 @@ describe("resolveUpToExact: a folder level of the Files view", () => {
     expect(resolveUpToExact("/pane/w1/changes/files?dir=a&h=badger", "/pane/w1/changes/files?h=badger&dir=a")).toEqual({
       kind: "back",
     });
+  });
+});
+
+describe("readPreviewAsked: the diff's Preview offer", () => {
+  it("is true only for the one value the offer writes", () => {
+    expect(readPreviewAsked({ from: "/pane/w1/changes", fileView: "preview" })).toBe(true);
+    expect(readPreviewAsked({ fileView: "source" })).toBe(false);
+    expect(readPreviewAsked(null)).toBe(false);
+    expect(readPreviewAsked(undefined)).toBe(false);
   });
 });

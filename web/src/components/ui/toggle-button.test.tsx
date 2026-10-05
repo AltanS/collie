@@ -43,4 +43,15 @@ describe("ToggleButton", () => {
     expect(labelled.className).not.toContain("size-11");
     expect(labelled.textContent).toBe("Shown");
   });
+
+  it("floats a count on the corner, hidden from a reader, and draws none for 0", () => {
+    const { rerender } = render(<ToggleButton pressed={false} label="Only, 3" icon={<Eye />} badge={3} onPressedChange={() => {}} />);
+    const button = screen.getByRole("button", { name: "Only, 3" });
+    const badge = button.querySelector('[data-slot="toggle-badge"]');
+    expect(badge?.textContent).toBe("3");
+    expect(badge?.getAttribute("aria-hidden")).toBe("true");
+    expect(badge?.className).toContain("absolute");
+    rerender(<ToggleButton pressed={false} label="Only" icon={<Eye />} badge={0} onPressedChange={() => {}} />);
+    expect(screen.getByRole("button").querySelector('[data-slot="toggle-badge"]')).toBeNull();
+  });
 });

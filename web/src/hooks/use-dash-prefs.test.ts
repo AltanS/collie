@@ -38,6 +38,7 @@ describe("coerceDashPrefs", () => {
       changesDepth: 2,
       changesLayout: "list",
       filesShowIgnored: false,
+      changesOnly: false,
       beltScale: 1.15,
       dashView: "dashboard",
       needsYouOnly: false,
@@ -61,6 +62,7 @@ describe("coerceDashPrefs", () => {
         changesDepth: 4,
         changesLayout: "tree",
         filesShowIgnored: true,
+        changesOnly: true,
         beltScale: 1.5,
         dashView: "changes",
         needsYouOnly: true,
@@ -79,6 +81,7 @@ describe("coerceDashPrefs", () => {
       changesDepth: 4,
       changesLayout: "tree",
       filesShowIgnored: true,
+      changesOnly: true,
       beltScale: 1.5,
       dashView: "changes",
       needsYouOnly: true,
@@ -112,6 +115,12 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({}).filesShowIgnored).toBe(false);
     expect(coerceDashPrefs({ filesShowIgnored: true }).filesShowIgnored).toBe(true);
     expect(coerceDashPrefs({ filesShowIgnored: "yes" }).filesShowIgnored).toBe(false);
+  });
+
+  it("keeps the Changes-only toggle to a boolean, off by default", () => {
+    expect(coerceDashPrefs({}).changesOnly).toBe(false);
+    expect(coerceDashPrefs({ changesOnly: true }).changesOnly).toBe(true);
+    expect(coerceDashPrefs({ changesOnly: "yes" }).changesOnly).toBe(false);
   });
 
   it("keeps the dashboard tab to the three views, Dashboard by default", () => {
@@ -178,6 +187,7 @@ describe("coerceDashPrefs", () => {
       changesDepth: 2,
       changesLayout: "list",
       filesShowIgnored: false,
+      changesOnly: false,
       beltScale: 1.15,
       dashView: "dashboard",
       needsYouOnly: false,
@@ -205,6 +215,7 @@ describe("useDashPrefs", () => {
       changesDepth: 2,
       changesLayout: "list",
       filesShowIgnored: false,
+      changesOnly: false,
       beltScale: 1.15,
       dashView: "dashboard",
       needsYouOnly: false,
@@ -229,6 +240,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setChangesDepth(3));
     act(() => first.result.current.setChangesLayout("tree"));
     act(() => first.result.current.setFilesShowIgnored(true));
+    act(() => first.result.current.setChangesOnly(true));
     act(() => first.result.current.setBeltScale(1.3));
     act(() => first.result.current.setDashView("crew"));
     act(() => first.result.current.setNeedsYouOnly(true));
@@ -248,6 +260,7 @@ describe("useDashPrefs", () => {
       changesDepth: 3,
       changesLayout: "tree",
       filesShowIgnored: true,
+      changesOnly: true,
       beltScale: 1.3,
       dashView: "crew",
       needsYouOnly: true,

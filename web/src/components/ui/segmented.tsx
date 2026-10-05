@@ -20,8 +20,8 @@ export interface SegmentedProps<V extends string | number> {
   /** ALREADY TRANSLATED. The group's accessible name. */
   label: string;
   /**
-   * What choosing means. `tabs` is a switch between two screens (Changes | Files): a tablist whose
-   * selected tab is `aria-selected`. `choice` is one setting with a few values (Source | Preview): a
+   * What choosing means. `tabs` is a switch between two screens: a tablist whose
+   * selected tab is `aria-selected`. `choice` is one setting with a few values (Diff | Source | Preview): a
    * radio group. The look is the same; a screen reader hears the right kind of control.
    */
   semantics?: "tabs" | "choice";
