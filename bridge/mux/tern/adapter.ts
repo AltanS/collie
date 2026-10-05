@@ -169,7 +169,10 @@ export class TernMux implements MuxAdapter {
         `tern takes typed text as a command-line argument, which the kernel caps at ${String(MAX_TYPED_BYTES)} bytes — this message is ${String(bytes)}`,
       );
     }
-    const args = ["send", paneId, text.includes("\n") ? "paste" : "text", text];
+    // `--` ends Tern's options, so a text that starts with a dash is typed and not read as a flag.
+    // Probed on 0.4.5 for `text`: without it `--help` printed Tern's help, and with it `--help` and
+    // `- item` were typed as written (PR 356). `paste` takes the same form.
+    const args = ["send", paneId, text.includes("\n") ? "paste" : "text", "--", text];
     const res = await this.attemptRun(args);
     if (!res.ok) return res;
     return muxAck();

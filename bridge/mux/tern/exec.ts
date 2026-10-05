@@ -9,7 +9,8 @@
 //  • Fixed binary path probe: does not assume PATH.
 //  • A hung child is killed on the target's budget: SIGTERM first, SIGKILL a moment later, so a tern
 //    that ignores SIGTERM cannot hold a request open.
-//  • Text still rides argv, not stdin: tern's stdin form is not probed (see `typeText`).
+//  • Text still rides argv, not stdin: tern's stdin form is not probed (see `typeText`). It follows
+//    a `--`, so a text that starts with a dash is not read as a flag (probed on 0.4.5).
 
 import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
@@ -62,7 +63,13 @@ export function resolveTernBinary(
   return candidates.find((candidate) => exists(candidate)) ?? null;
 }
 
-/** Default socket location for Tern daemon. */
+/**
+ * Default socket location for Tern daemon.
+ *
+ * Probed on 0.4.5 (PR 356): `$TERN_PANE_SOCKET` inside a block equals
+ * `$XDG_RUNTIME_DIR/tern/daemon.sock`, so a beacon written in a block and this default name the same
+ * path. `TERN_DAEMON_SOCKET`, which `run` and `events` set, is the variable Tern reads.
+ */
 export function defaultTernSocket(
   runtimeDir: string | undefined = process.env.XDG_RUNTIME_DIR,
   uid: number = process.getuid?.() ?? 1000,

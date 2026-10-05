@@ -175,7 +175,15 @@ export class FakeTern implements TernExec {
         return { code: 1, stdout: "", stderr: `tern send: no block is called \`${String(paneId)}\`` };
       }
       if (kind === "text" || kind === "paste") {
-        const text = args.slice(3).join(" ") || (stdin ?? "");
+        // As the real Tern does (probed on 0.4.5): `--` ends the options, and without it a text
+        // that starts with a dash is read as a flag and nothing is typed.
+        const rest = args.slice(3);
+        const terminated = rest[0] === "--";
+        const words = terminated ? rest.slice(1) : rest;
+        if (!terminated && words[0]?.startsWith("-")) {
+          return { code: 2, stdout: "", stderr: `tern send: unknown option \`${words[0]}\`` };
+        }
+        const text = words.join(" ") || (stdin ?? "");
         this.recorded.push({ paneId: String(paneId), kind: "text", payload: [text] });
         pane.viewport.push(text);
         return { code: 0, stdout: "", stderr: "" };

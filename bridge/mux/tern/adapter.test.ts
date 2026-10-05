@@ -152,6 +152,21 @@ describe("TernMux input and naming", () => {
     expect(await tern.typeText("101", "x".repeat(1000))).toMatchObject({ ok: true });
   });
 
+  test("a text that starts with a dash is typed, because `--` ends Tern's options", async () => {
+    for (const text of ["--help", "- item", "-rf", "- one\n- two"]) {
+      const fake = new FakeTern();
+      const answer = await new TernMux(fake).typeText("101", text);
+      expect(answer).toMatchObject({ ok: true });
+      expect(fake.writes().map((w) => w.payload)).toEqual([[text]]);
+    }
+  });
+
+  test("the fake refuses a dash text sent without `--`, as the real Tern does", async () => {
+    const fake = new FakeTern();
+    expect((await fake.run(["send", "101", "text", "--help"])).code).not.toBe(0);
+    expect(fake.writes()).toHaveLength(0);
+  });
+
   test("a tab nobody named is labelled by its number, which the web treats as unnamed", async () => {
     const snapshot = await new TernMux(new FakeTern()).snapshot();
     expect(snapshot.tabs.find((t) => t.tabId === "11")?.label).toBe("1");

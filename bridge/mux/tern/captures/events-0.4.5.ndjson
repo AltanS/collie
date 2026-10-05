@@ -1,0 +1,13 @@
+{"event":"pane_spawned","pane":519210006478851,"by":120895}
+{"event":"layout_changed","by":120895}
+{"event":"cwd_changed","pane":519210006478851,"cwd":"/home/you/projects/collie"}
+{"event":"title_changed","pane":519210006478851,"title":"/home/you/projects/collie"}
+{"event":"pane_spawned","pane":519244366217218,"by":120903}
+{"event":"layout_changed","by":120903}
+{"event":"cwd_changed","pane":519244366217218,"cwd":"/home/you/projects/collie"}
+{"event":"title_changed","pane":519244366217218,"title":"/home/you/projects/collie"}
+{"event":"layout_changed","by":120911}
+{"event":"layout_changed","by":120920}
+{"event":"pane_closed","pane":519244366217218,"by":120920}
+{"event":"layout_changed","by":120929}
+{"event":"pane_closed","pane":519210006478851,"by":120929}

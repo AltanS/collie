@@ -149,6 +149,8 @@ Collie reads Tern sessions as spaces, tabs as tabs, and blocks as panes. The end
 
 Tern reports lifecycle events via `tern events`, enabling immediate topology change notifications.
 
+"Show in terminal" moves your Tern window to the pane's session and tab and focuses its block. A tab or a session that Collie creates opens in the background and does not move your window.
+
 Collie does not detect Tern on its own, as it does not detect tuios: name it with `COLLIE_MUX=tern`. Typed text longer than 128 KiB is refused, because it travels as one command-line argument.
 
 ### tuios notes

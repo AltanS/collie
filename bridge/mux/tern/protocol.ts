@@ -2,8 +2,17 @@
 
 import { NO_BINARY_CODE, TIMED_OUT_CODE } from "./exec.ts";
 
+/**
+ * A Tern id. Tern ids are 64-bit integers, and the largest seen on 0.4.5 is 49 bits wide
+ * (`519716812619778`), so `JSON.parse` keeps it whole. An id past 2^53 would be ROUNDED by
+ * `JSON.parse`, and a rounded id names a different block: a key press would land in the wrong pane.
+ * {@link quoteLongIds} therefore turns every long id into a string before the parse. The adapter only
+ * ever uses an id through `String(id)`, so both forms read the same.
+ */
+export type TernId = number | string;
+
 export interface TernBlock {
-  id: number;
+  id: TernId;
   title: string | null;
   cwd: string;
   program: string;
@@ -18,7 +27,7 @@ export interface TernBlock {
 }
 
 export interface TernTab {
-  id: number;
+  id: TernId;
   number: number;
   name?: string | null;
   shown: boolean;
@@ -27,7 +36,7 @@ export interface TernTab {
 }
 
 export interface TernSession {
-  id: number;
+  id: TernId;
   name: string;
   shown: boolean;
   tabs: TernTab[];
@@ -41,15 +50,30 @@ export interface TernLsResult {
 /** One line from `tern events`. */
 export interface TernEvent {
   readonly event: string;
-  readonly pane?: number;
+  readonly pane?: TernId;
   readonly conn?: number;
   readonly session?: string;
-  readonly block?: number;
+  readonly block?: TernId;
+  /** The sequence number of the change that caused the event. Seen on 0.4.5; not used. */
+  readonly by?: number;
+  readonly cwd?: string;
+  readonly title?: string;
+}
+
+/**
+ * Quote every `"id"`, `"pane"` and `"block"` number of 16 digits or more, so `JSON.parse` cannot
+ * round it. 16 digits is where 2^53 (`9007199254740992`) lives; a shorter number is always exact.
+ *
+ * Safe on raw JSON: inside a JSON string a quote is written `\"`, so the unescaped `"id":` this
+ * matches can only be a real key. The digit run is bounded, so the pattern is linear.
+ */
+export function quoteLongIds(json: string): string {
+  return json.replace(/"(id|pane|block)"(\s*:\s*)(\d{16,40})(?=\s*[,}\]])/gu, '"$1"$2"$3"');
 }
 
 export function parseListing(stdout: string): TernLsResult {
   // SAFETY: parsed from JSON output and checked below for object structure and sessions array.
-  const parsed = JSON.parse(stdout) as TernLsResult;
+  const parsed = JSON.parse(quoteLongIds(stdout)) as TernLsResult;
   if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.sessions)) {
     throw new Error("unexpected response from tern ls --json: missing sessions array");
   }
@@ -61,7 +85,7 @@ export function parseEvent(line: string): TernEvent | null {
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
   try {
     // SAFETY: parsed event object validated for object and event string property below.
-    const obj = JSON.parse(trimmed) as TernEvent;
+    const obj = JSON.parse(quoteLongIds(trimmed)) as TernEvent;
     if (obj && typeof obj === "object" && typeof obj.event === "string") {
       return obj;
     }
