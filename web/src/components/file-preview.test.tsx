@@ -291,4 +291,9 @@ describe("Preview: code draws no ligatures", () => {
     const { container } = render(<FileContent file={file("package.json")} view="preview" />);
     expect(container.querySelector("[data-slot='file-json']")?.className).toContain("[font-variant-ligatures:none]");
   });
+
+  it("a README preview sets its headings as a document", () => {
+    const { container } = render(<FileContent file={file("README.md")} view="preview" />);
+    expect(container.querySelector("[data-heading-level='1']")?.className).toContain("text-2xl");
+  });
 });

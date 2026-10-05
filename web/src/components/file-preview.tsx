@@ -168,7 +168,13 @@ export function MarkdownPreview({ text, path, links }: { text: string; path: str
   );
   return (
     <div ref={root} className="mx-auto w-full max-w-prose px-4 py-4" data-slot="file-markdown">
-      <MarkdownText text={text} className="space-y-3 leading-relaxed" resolveLink={resolve} headingIds />
+      <MarkdownText
+        text={text}
+        className="space-y-3 leading-relaxed"
+        resolveLink={resolve}
+        headingIds
+        variant="document"
+      />
     </div>
   );
 }

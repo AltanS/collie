@@ -193,16 +193,43 @@ const HEADING_CLASS = new Map<number, string>([
   [3, "text-sm font-semibold"],
 ]);
 
+// A DOCUMENT (the Files preview of a README) is read, not skimmed, so its headings take a real scale
+// where Chat's stay one step apart: the title clearly above the section, the section above the
+// subsection, and more air above a heading than below it so each one belongs to what follows. Margins
+// collapse between blocks, so `mt-*` is the gap above and `mb-*` the gap below, and `first:mt-0` keeps
+// a title at the top of the page from starting low. Levels 4 to 6 stay body size, in semibold.
+const DOCUMENT_HEADING_CLASS = new Map<number, string>([
+  [1, "mt-8 mb-2 text-2xl font-bold leading-tight tracking-tight"],
+  [2, "mt-6 mb-2 text-xl font-semibold leading-tight"],
+  [3, "mt-5 mb-1.5 text-base font-semibold leading-snug"],
+]);
+const DOCUMENT_HEADING_FALLBACK = "mt-4 mb-1 text-sm font-semibold leading-snug";
+
 const ALIGN_CLASS = new Map<string, string>([
   ["left", "text-left"],
   ["center", "text-center"],
   ["right", "text-right"],
 ]);
 
-function Block({ block, anchor }: { block: MdBlock; anchor: string | null }) {
+/** `chat` is agent prose, sized for a phone transcript. `document` is a file the operator opened to read. */
+export type MarkdownVariant = "chat" | "document";
+
+function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | null; variant: MarkdownVariant }) {
   switch (block.kind) {
     case "heading": {
       // Levels 4-6 are rare in agent prose and don't earn another size step on a phone.
+      if (variant === "document") {
+        const cls = DOCUMENT_HEADING_CLASS.get(block.level) ?? DOCUMENT_HEADING_FALLBACK;
+        return (
+          <div
+            id={anchor ?? undefined}
+            data-heading-level={block.level}
+            className={`${cls} first:mt-0 ${anchor === null ? "" : "scroll-mt-28"}`}
+          >
+            <Spans spans={block.spans} />
+          </div>
+        );
+      }
       const cls = HEADING_CLASS.get(block.level) ?? "text-sm font-semibold";
       // `scroll-mt-28` clears the Files screen's sticky file bar, so a tap on `#install` leaves the
       // heading in view and not behind it. Harmless where nothing sticks.
@@ -301,6 +328,7 @@ export function MarkdownText({
   query = "",
   resolveLink,
   headingIds = false,
+  variant = "chat",
 }: {
   text: string;
   className?: string;
@@ -310,6 +338,8 @@ export function MarkdownText({
   resolveLink?: LinkResolver;
   /** Give each heading an `id` (its anchor). Off by default: an id on every transcript heading is a collision. */
   headingIds?: boolean;
+  /** `document` sizes headings as a page. Chat, the default, renders exactly as it always did. */
+  variant?: MarkdownVariant;
 }) {
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   const anchors = useMemo(() => (headingIds ? headingAnchors(blocks) : null), [blocks, headingIds]);
@@ -318,7 +348,7 @@ export function MarkdownText({
       <LinkContext.Provider value={resolveLink ?? null}>
         <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
           {blocks.map((block, i) => (
-            <Block key={i} block={block} anchor={anchors?.[i] ?? null} />
+            <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
           ))}
         </div>
       </LinkContext.Provider>

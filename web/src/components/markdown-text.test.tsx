@@ -51,3 +51,27 @@ describe("MarkdownText code draws no ligatures", () => {
     expect(container.querySelector("pre")?.className).toContain("[font-variant-ligatures:none]");
   });
 });
+
+describe("MarkdownText headings", () => {
+  const md = "# One\n\n## Two\n\n### Three\n\n#### Four\n\nbody";
+  const level = (container: HTMLElement, n: number) => container.querySelector(`[data-heading-level="${n}"]`);
+
+  it("Chat keeps its small headings and gains no document hooks", () => {
+    const { container } = render(<MarkdownText text={md} />);
+    expect(screen.getByText("One").className).toContain("text-base font-semibold");
+    expect(screen.getByText("Two").className).toContain("text-[0.95rem]");
+    expect(container.querySelector("[data-heading-level]")).toBeNull();
+  });
+
+  it("a document steps down in size, with more space above a heading than below", () => {
+    const { container } = render(<MarkdownText text={md} variant="document" />);
+    const size = (n: number) => /\btext-(2xl|xl|base|sm)\b/.exec(level(container, n)?.className ?? "")?.[1];
+    expect([1, 2, 3, 4].map(size)).toEqual(["2xl", "xl", "base", "sm"]);
+    for (const n of [1, 2, 3, 4]) {
+      const cls = level(container, n)?.className ?? "";
+      const above = Number(/\bmt-(\d+)\b/.exec(cls)?.[1]);
+      const below = Number(/\bmb-(\d+(?:\.\d+)?)\b/.exec(cls)?.[1]);
+      expect(above).toBeGreaterThan(below);
+    }
+  });
+});
