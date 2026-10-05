@@ -26,7 +26,7 @@ import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
-import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
+import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
@@ -4441,18 +4441,28 @@ export function parsePairRequest(v: JsonValue | undefined): PairRequest | null {
  * considered and each, if present, must be a boolean — a non-boolean value is rejected (null return
  * → 400). Unknown keys are ignored. An empty patch is valid (a no-op that echoes current prefs).
  * Pure + exported so the validation is unit-testable without Bun.serve.
+ *
+ * The known keys are READ OFF THE DEFAULTS, never listed here. A hand-written list of three kept
+ * dropping `cache` from 1.9.0 on: the global "Cache about to go cold" switch answered with the old
+ * value and never reached `notify-prefs.json`. A kind added to `NotifyPrefs` must have a default, so
+ * deriving the list from that object means a new kind can no longer be silently refused here.
  */
 export function parseNotifyPrefsPatch(v: JsonValue | undefined): Partial<NotifyPrefs> | null {
   const o = asJsonRecord(v);
   if (o === null) return null;
   const patch: Partial<NotifyPrefs> = {};
-  for (const key of ["blocked", "done", "updates"] as const) {
+  for (const key of notifyPrefKeys()) {
     if (!(key in o)) continue;
     const value = o[key];
     if (typeof value !== "boolean") return null;
     patch[key] = value;
   }
   return patch;
+}
+
+/** Every key of {@link NotifyPrefs}, in the order the defaults spell them. */
+function notifyPrefKeys(): (keyof NotifyPrefs)[] {
+  return Object.keys(DEFAULT_NOTIFY_PREFS).filter((k): k is keyof NotifyPrefs => k in DEFAULT_NOTIFY_PREFS);
 }
 
 /**

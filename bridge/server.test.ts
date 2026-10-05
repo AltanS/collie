@@ -36,6 +36,7 @@ import {
   readPane,
   parsePairRequest,
   parseSnoozeRequest,
+  parseNotifyPrefsPatch,
   parseCacheWatchRequest,
   parseCacheWatchForget,
   cacheWatchable,
@@ -1481,6 +1482,27 @@ describe("parsePairRequest — the bootstrap body", () => {
   test("the code is passed through unjudged — shape-checking it would be a free oracle", () => {
     // Not code-shaped at all, but it is the hash compare's job to say so, in constant time.
     expect(parsePairRequest({ code: "!!!!", label: "phone" })?.code).toBe("!!!!");
+  });
+});
+
+describe("parseNotifyPrefsPatch", () => {
+  test("every notification kind can be switched, the cache warning included", () => {
+    // The global cache switch was dropped here from 1.9.0 on: the parser listed three keys, so
+    // `{ cache: true }` became an empty patch and the bridge answered with the old value.
+    expect(parseNotifyPrefsPatch({ cache: true })).toEqual({ cache: true });
+    expect(parseNotifyPrefsPatch({ blocked: false, done: true, updates: false, cache: false })).toEqual({
+      blocked: false,
+      done: true,
+      updates: false,
+      cache: false,
+    });
+  });
+
+  test("a non-boolean value refuses the whole body, an unknown key is ignored", () => {
+    expect(parseNotifyPrefsPatch({ cache: "yes" })).toBeNull();
+    expect(parseNotifyPrefsPatch({ later: true })).toEqual({});
+    expect(parseNotifyPrefsPatch(null)).toBeNull();
+    expect(parseNotifyPrefsPatch([true])).toBeNull();
   });
 });
 

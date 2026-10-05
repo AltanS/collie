@@ -46,6 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Changes has a Files tab, and Markdown, JSON and HTML files open as a Preview.** Tap Files at the top of Changes to browse the folder Changes reads, one folder at a time, and open a file as numbered, coloured source. A Markdown file draws as text, a JSON file as a tree that folds, and an HTML file in a sandboxed frame that runs no scripts and loads nothing remote. A changed file of those types has a Preview button in its diff header. Files reads when you open a folder or tap refresh, never on a timer, and an older crew member answers "Update this machine to browse files".
+- **The global cache warning switch now stays on.** Settings, Alerts, "Cache about to go cold" showed the switch move and then fall back, because the bridge dropped that key from the request and kept the old value. Panes watched one by one were not affected.
 
 ## [1.16.2] - 2026-10-04
 
