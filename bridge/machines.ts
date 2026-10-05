@@ -242,6 +242,16 @@ export class MachineWatch implements MachineSurface {
     return this.deps.roster().find((entry) => entry.id === id);
   }
 
+  /** The mount of `id`'s fullest disk in its last sample, which a disk push names. */
+  private fullestMount(id: string): string | undefined {
+    let best: { mount: string; frac: number } | undefined;
+    for (const d of this.latest.get(id)?.sample.disks ?? []) {
+      const frac = d.total > 0 ? d.used / d.total : 0;
+      if (best === undefined || frac > best.frac) best = { mount: d.mount, frac };
+    }
+    return best?.mount;
+  }
+
   private known(id: string): boolean {
     return this.entry(id) !== undefined;
   }
@@ -262,7 +272,7 @@ export class MachineWatch implements MachineSurface {
       mayOpen,
     );
     if (pass.opened.length === 0 && pass.closed.length === 0) return;
-    for (const opened of pass.opened) this.deps.send(machineAlertMessage(opened));
+    for (const opened of pass.opened) this.deps.send(machineAlertMessage(opened, this.fullestMount(opened.id)));
     // Recorded after the sends are handed over, and not awaited by the tick. `judging` holds the next
     // minute's pass until the episodes are on disk, so a slow write cannot make one episode push twice.
     this.judging = true;
@@ -302,7 +312,13 @@ export class MachineWatch implements MachineSurface {
   }
 }
 
-/** Whether two samples say the same thing in every field, absent fields included. */
+/**
+ * Whether two samples say the same thing in every field, absent fields included.
+ *
+ * `disks` is compared too. A healthy machine repeats its disks for a minute by design (they are read
+ * once a minute), but its CPU and memory still move, so a repeated `disks` alone never makes two
+ * samples equal. A member whose sampler hung repeats every field, disks with them, and is still caught.
+ */
 export function sameSample(a: MachineSample, b: MachineSample): boolean {
   return (
     a.cpu === b.cpu &&
@@ -311,6 +327,12 @@ export function sameSample(a: MachineSample, b: MachineSample): boolean {
     a.memTotal === b.memTotal &&
     a.load1 === b.load1 &&
     a.rxBps === b.rxBps &&
-    a.txBps === b.txBps
+    a.txBps === b.txBps &&
+    sameDisks(a.disks, b.disks)
   );
+}
+
+function sameDisks(a: MachineSample["disks"], b: MachineSample["disks"]): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.length === b.length && a.every((d, i) => d.mount === b[i]!.mount && d.used === b[i]!.used && d.total === b[i]!.total);
 }

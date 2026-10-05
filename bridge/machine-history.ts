@@ -14,26 +14,29 @@
 // state folder that is itself owner-only on every platform, ACL-locked on Windows).
 //
 // ── ONE RING OF TYPED ARRAYS PER MACHINE ─────────────────────────────────────
-// A minute is seven numbers, and a day is 1440 minutes. Kept as one object per minute, a machine's
-// day held about 175 KiB of heap (measured 2026-10-05 under Bun 1.4.1). Kept here as a ring of typed
-// arrays, allocated once at the first sample, it is 1440 x 38 bytes, about 54 KiB, and it never
-// grows. Each minute keeps running AVERAGES and their counts rather than sums: an average is what
-// every reader wants, and the next sample folds in with `avg += (x - avg) / n`. CPU and memory stay
-// 64-bit, because the alert evaluator compares them with the rule's line and a 32-bit 0.9 is below
-// 0.9. The CPU maximum and the network rates are 32-bit: they are only ever drawn.
+// A minute is a handful of numbers, and a day is 1440 minutes. Kept as one object per minute, a
+// machine's day held about 175 KiB of heap (measured 2026-10-05 under Bun 1.4.1). Kept here as a ring
+// of typed arrays, allocated once at the first sample, it is 1440 x 48 bytes, about 68 KiB with the
+// disk fraction, and it never grows. Each minute keeps running AVERAGES and their counts rather than sums: an average is what
+// every reader wants, and the next sample folds in with `avg += (x - avg) / n`. CPU, memory and disk
+// stay 64-bit, because the alert evaluator compares them with the rule's line and a 32-bit 0.9 is
+// below 0.9. The CPU maximum and the network rates are 32-bit: they are only ever drawn.
 //
 // ── THE FILE IS COMPACT ──────────────────────────────────────────────────────
 // Version 2 stores, per machine, the first minute's start and one row per minute,
-// `[gap, cpu, cpuMax, mem, rx, tx]`, where `gap` is the minutes since the row before (1 for a whole
-// run) and the fractions are rounded to three places. Only the last row's sample count is kept, as
+// `[gap, cpu, cpuMax, mem, rx, tx]` plus a seventh value, the fullest disk's fraction, on a minute that
+// has one. `gap` is the minutes since the row before (1 for a whole run) and the fractions are rounded
+// to three places. Only the last row's sample count is kept, as
 // `n`: it is the one minute a sample may still fold into. One machine's full day is about 52 KiB,
 // where version 1 (nine sums per minute, epoch milliseconds on every row) was about 80 KiB, and the
-// file is rewritten every five minutes. Version 1 still loads.
+// file is rewritten every five minutes. The disk value adds about 6 bytes a row. Version 1 still loads,
+// and so does a version 2 file written before the disk value (its minutes have none).
 
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { JsonValue } from "./json.ts";
 import { coerceHistoryFile } from "./machine-parse.ts";
+import { fullestFraction } from "./machine-disks.ts";
 import type { MachineHistoryPoint, MachineSample, MachineSpark } from "./types.ts";
 
 export const MINUTE_MS = 60_000;
@@ -67,18 +70,23 @@ export interface LoadedMinute {
   readonly mem: number;
   readonly rx: number | null;
   readonly tx: number | null;
+  /** The fullest disk's fraction, `null` for a minute with no disk reading (and every older file). */
+  readonly disk: number | null;
 }
 
-/** One complete minute as the alert evaluator reads it: the CPU average and the memory fraction. */
+/** One complete minute as the alert evaluator reads it: CPU average, memory and fullest-disk fractions. */
 export interface MinuteReading {
   readonly t: number;
   readonly cpu: number;
   readonly mem: number;
+  /** `null` for a minute with no disk reading: a missing minute to the coverage rule. */
+  readonly disk: number | null;
 }
 
 /**
  * `machine-history.json`, version 2: per machine the first row's minute start (`t`), the sample
- * count of the LAST row (`n`), and one row per minute, `[gap, cpu, cpuMax, mem, rx | null, tx | null]`.
+ * count of the LAST row (`n`), and one row per minute, `[gap, cpu, cpuMax, mem, rx | null, tx | null]`,
+ * with a seventh value, the fullest disk's fraction, on a minute that has one.
  * Read back by `coerceHistoryFile`, which also reads version 1.
  */
 export interface MachineHistoryFile {
@@ -114,6 +122,8 @@ class Series {
   private readonly rxN = new Uint16Array(HISTORY_MINUTES);
   private readonly tx = new Float32Array(HISTORY_MINUTES);
   private readonly txN = new Uint16Array(HISTORY_MINUTES);
+  private readonly disk = new Float64Array(HISTORY_MINUTES);
+  private readonly diskN = new Uint16Array(HISTORY_MINUTES);
   private head = 0;
   size = 0;
 
@@ -146,6 +156,8 @@ class Series {
     this.rxN[s] = 0;
     this.tx[s] = 0;
     this.txN[s] = 0;
+    this.disk[s] = 0;
+    this.diskN[s] = 0;
     this.size += 1;
   }
 
@@ -167,6 +179,12 @@ class Series {
       this.txN[s] = k;
       this.tx[s] = this.tx[s]! + (sample.txBps - this.tx[s]!) / k;
     }
+    const disk = fullestFraction(sample.disks);
+    if (disk !== null) {
+      const k = Math.min(COUNT_MAX, this.diskN[s]! + 1);
+      this.diskN[s] = k;
+      this.disk[s] = this.disk[s]! + (disk - this.disk[s]!) / k;
+    }
   }
 
   /** Append one minute read back from the file, already averaged. Out-of-order rows are refused. */
@@ -187,6 +205,10 @@ class Series {
     if (m.tx !== null) {
       this.tx[s] = m.tx;
       this.txN[s] = n;
+    }
+    if (m.disk !== null) {
+      this.disk[s] = m.disk;
+      this.diskN[s] = n;
     }
   }
 
@@ -223,19 +245,20 @@ class Series {
       round3(this.mem[s]!),
       this.rxN[s] === 0 ? null : Math.round(this.rx[s]!),
       this.txN[s] === 0 ? null : Math.round(this.tx[s]!),
+      this.diskN[s] === 0 ? null : round3(this.disk[s]!),
     ];
   }
 
   reading(i: number): MinuteReading {
     const s = this.slot(i);
-    return { t: this.t(i), cpu: this.cpu[s]!, mem: this.mem[s]! };
+    return { t: this.t(i), cpu: this.cpu[s]!, mem: this.mem[s]!, disk: this.diskN[s] === 0 ? null : this.disk[s]! };
   }
 
   /** The file's row for index `i`, given the start of the row before it. */
   row(i: number, previousT: number | null): (number | null)[] {
     const s = this.slot(i);
     const t = this.t(i);
-    return [
+    const row: (number | null)[] = [
       previousT === null ? 0 : Math.round((t - previousT) / MINUTE_MS),
       round3(this.cpu[s]!),
       round3(this.cpuMax[s]!),
@@ -243,6 +266,9 @@ class Series {
       this.rxN[s] === 0 ? null : Math.round(this.rx[s]!),
       this.txN[s] === 0 ? null : Math.round(this.tx[s]!),
     ];
+    // The disk value only where there is one: a member with no disks costs the file nothing.
+    if (this.diskN[s] !== 0) row.push(round3(this.disk[s]!));
+    return row;
   }
 
   lastCount(): number {
@@ -334,7 +360,8 @@ export class MachineHistory {
   }
 
   /**
-   * The wire's points, oldest first: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null]`, the
+   * The wire's points, oldest first: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null,
+   * diskFrac | null]`, the
    * fractions to three places. With `since`, only the minutes starting at or after it: the page asks
    * for the whole day once, then only for what it has not seen.
    */

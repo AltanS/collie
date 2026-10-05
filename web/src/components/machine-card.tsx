@@ -1,13 +1,13 @@
 import { memo } from "react";
-import { ChevronRight, Clock, Crown, Server, TriangleAlert } from "lucide-react";
+import { ChevronRight, Clock, Crown, Server } from "lucide-react";
 
 import { healthTone, healthWord } from "@/components/crew-formation";
-import { firingWords, readingLine } from "@/components/machine-load";
+import { FiringLine, firingWords, readingLine } from "@/components/machine-load";
 import { MachineSpark, type SparkTone } from "@/components/machine-spark";
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
-import { machineReading } from "@/lib/machine-reading";
+import { fullestDisk, machineReading } from "@/lib/machine-reading";
 import { formatBytesOf, formatBytesPerSecond, formatLoad, formatPercent } from "@/lib/machine-units";
 import type { MachineMetric, MachineRow, MachineSample } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -17,10 +17,12 @@ import { cn } from "@/lib/utils";
 //
 // ── WHAT A CARD SAYS ─────────────────────────────────────────────────────────
 // The name, the health in words, then CPU and memory side by side: the number now, and under it the
-// last half hour as a spark on a fixed 0 to 100 % scale (components/machine-spark.tsx). Then the
-// load and network where the machine reports them. A firing metric turns its number and its spark
-// the blocked colour AND says so in words under them ("Alert firing: CPU"), because colour alone is
-// not a state (WCAG 1.4.1).
+// last half hour as a spark on a fixed 0 to 100 % scale (components/machine-spark.tsx). Then one quiet
+// row of facts where the machine reports them: its fullest disk ("Disk 66%", no spark: a disk moves
+// over days, not half hours), the load, and network down and up. The row wraps at the phone width
+// rather than cut a number. A firing metric turns its number the blocked colour AND says so in words
+// under them ("Alert firing: CPU"), because colour alone is not a state (WCAG 1.4.1). That line is a
+// link of its own, to the machine's Alerts view, above the card's stretched tap.
 //
 // A machine that is not answering shows its health and the age of its last reading, and nothing
 // else. An older machine says to update it. A reachable machine whose reading stopped moving shows
@@ -56,14 +58,24 @@ export interface MachineCardProps {
   /** The minutes the sparks span: the same number the census was asked for. */
   sparkMinutes: number;
   onOpen: (row: MachineRow) => void;
+  /** Opens the machine on its Alerts view: the firing line's link. Without it, the line is words. */
+  onOpenAlerts?: (row: MachineRow) => void;
 }
 
-export function MachineCard({ row, ts, showRole, sparkMinutes, onOpen }: MachineCardProps) {
+export function MachineCard({ row, ts, showRole, sparkMinutes, onOpen, onOpenAlerts }: MachineCardProps) {
   const reading = machineReading(row, ts);
   // The age is words, so a card redraws when "2m ago" becomes "3m ago", not on every poll.
   const age = reading === "live" || reading === "older" ? null : readingLine(row, ts);
   return (
-    <MachineCardBody row={row} reading={reading} age={age} showRole={showRole} sparkMinutes={sparkMinutes} onOpen={onOpen} />
+    <MachineCardBody
+      row={row}
+      reading={reading}
+      age={age}
+      showRole={showRole}
+      sparkMinutes={sparkMinutes}
+      onOpen={onOpen}
+      onOpenAlerts={onOpenAlerts}
+    />
   );
 }
 
@@ -74,9 +86,10 @@ interface BodyProps {
   showRole: boolean;
   sparkMinutes: number;
   onOpen: (row: MachineRow) => void;
+  onOpenAlerts: ((row: MachineRow) => void) | undefined;
 }
 
-const MachineCardBody = memo(function MachineCardBody({ row, reading, age, showRole, sparkMinutes, onOpen }: BodyProps) {
+const MachineCardBody = memo(function MachineCardBody({ row, reading, age, showRole, sparkMinutes, onOpen, onOpenAlerts }: BodyProps) {
   useLocale();
   const name = row.name || row.id;
   return (
@@ -100,7 +113,14 @@ const MachineCardBody = memo(function MachineCardBody({ row, reading, age, showR
         {reading === "quiet" && <p className="text-sm text-muted-foreground">{age}</p>}
         {reading === "older" && <p className="text-sm text-muted-foreground">{t("machines.noSample")}</p>}
         {(reading === "live" || reading === "stale") && row.sample !== undefined && (
-          <Numbers row={row} sample={row.sample} stale={reading === "stale"} age={age} sparkMinutes={sparkMinutes} />
+          <Numbers
+            row={row}
+            sample={row.sample}
+            stale={reading === "stale"}
+            age={age}
+            sparkMinutes={sparkMinutes}
+            onOpenAlerts={onOpenAlerts === undefined ? undefined : () => onOpenAlerts(row)}
+          />
         )}
       </div>
     </Card>
@@ -115,12 +135,14 @@ function Numbers({
   stale,
   age,
   sparkMinutes,
+  onOpenAlerts,
 }: {
   row: MachineRow;
   sample: MachineSample;
   stale: boolean;
   age: string | null;
   sparkMinutes: number;
+  onOpenAlerts: (() => void) | undefined;
 }) {
   const mem = sample.memTotal > 0 ? sample.memUsed / sample.memTotal : 0;
   const firing = firingWords(row.firing);
@@ -148,13 +170,9 @@ function Numbers({
           sparkMinutes={sparkMinutes}
         />
       </div>
-      <Facts sample={sample} />
-      {firing !== null && (
-        <p className="flex items-center gap-1.5 text-sm font-medium text-status-blocked">
-          <TriangleAlert className="size-4 shrink-0" aria-hidden />
-          {firing}
-        </p>
-      )}
+      <Facts sample={sample} diskFiring={row.firing.includes("disk") && !stale} />
+      {/* Above the stretched tap (`relative z-10`), so this line opens Alerts and the rest opens Status. */}
+      {firing !== null && <FiringLine words={firing} onOpen={onOpenAlerts} className="relative z-10" />}
       {stale && age !== null && (
         <p className="flex items-center gap-1.5 text-sm text-status-working">
           <Clock className="size-4 shrink-0" aria-hidden />
@@ -239,9 +257,20 @@ export function sparkLabel(
   return threshold === null ? base : `${base} ${t("machines.summary.threshold", { percent: formatPercent(threshold) })}`;
 }
 
-/** Load, then network down and up, each only where the machine reports it. One quiet row. */
-function Facts({ sample }: { sample: MachineSample }) {
-  const facts: { key: string; label: string; value: string }[] = [];
+/**
+ * The fullest disk, the load, then network down and up, each only where the machine reports it. One
+ * quiet row that wraps, a fact at a time, and never cuts a number.
+ */
+function Facts({ sample, diskFiring }: { sample: MachineSample; diskFiring: boolean }) {
+  const facts: { key: string; label: string; value: string; firing?: boolean }[] = [];
+  const disk = fullestDisk(sample.disks);
+  if (disk !== null)
+    facts.push({
+      key: "disk",
+      label: t("machines.metric.disk"),
+      value: formatPercent(disk.fraction),
+      firing: diskFiring,
+    });
   if (sample.load1 !== undefined)
     facts.push({
       key: "load",
@@ -264,9 +293,9 @@ function Facts({ sample }: { sample: MachineSample }) {
   return (
     <dl className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border pt-3 text-sm">
       {facts.map((f) => (
-        <div key={f.key} className="flex items-baseline gap-1.5">
+        <div key={f.key} className="flex items-baseline gap-1.5 whitespace-nowrap" data-fact={f.key}>
           <dt className="text-xs text-muted-foreground">{f.label}</dt>
-          <dd className="font-medium tabular-nums">{f.value}</dd>
+          <dd className={cn("font-medium tabular-nums", f.firing && "text-status-blocked")}>{f.value}</dd>
         </div>
       ))}
     </dl>

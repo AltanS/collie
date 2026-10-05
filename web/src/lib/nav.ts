@@ -12,7 +12,7 @@ import type { AgentView } from "./types";
 
 // The two Machines paths live in `machine-paths.ts` so the service worker can build them: this file
 // reads `window`, which a worker has no type for. Re-exported, so every caller still asks nav.ts.
-export { machinePath, machinesPath } from "./machine-paths";
+export { machinePath, machinesPath, machineTabOf, type MachineTab } from "./machine-paths";
 
 export function panePath(paneId: string, scope?: Scope): string {
   return `/pane/${encodeURIComponent(paneId)}${scopeSearch(scope)}`;

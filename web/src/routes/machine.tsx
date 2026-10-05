@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Clock } from "lucide-react";
-import { useLoaderData, useParams, useRevalidator } from "react-router";
+import { useLoaderData, useLocation, useParams, useRevalidator } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
 import { healthTone, healthWord } from "@/components/crew-formation";
@@ -19,20 +19,30 @@ import { t } from "@/lib/i18n";
 import type { MachinesData } from "@/lib/loaders";
 import type { MachineRange } from "@/lib/machine-chart";
 import { machineReading } from "@/lib/machine-reading";
-import { machinesPath, settingsSectionPath } from "@/lib/nav";
+import { machinePath, machinesPath, machineTabOf, settingsSectionPath, type MachineTab } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import type { MachineAlerts, MachineHistoryResponse, MachineRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// One machine: its numbers large, then CPU, memory and network over the last hour or day, then its
-// alert rules.
+// One machine, in two views under the header: Status (its numbers large, a bar per disk, then CPU,
+// memory, disk and network over the last hour or day) and Alerts (its rules).
+//
+// ── THE VIEW IS IN THE URL, AND A SWITCH IS SIDEWAYS ─────────────────────────
+// Status is the page with no parameter, Alerts is `?tab=alerts` (lib/machine-paths.ts). A switch is a
+// SIDE move (ADR 0067): it replaces this entry and carries its `from` over, so the two views are one
+// level, and Back (the arrow or the edge swipe) leaves the machine for wherever it was opened from,
+// never to the other view. A push about a machine opens Status, where the numbers are; the "Alert
+// firing" line on Status and on a card opens Alerts, where the rule is. While a rule fires, the Alerts
+// segment carries a dot, said in words to a screen reader.
 //
 // ── TWO CLOCKS, TWO READS ────────────────────────────────────────────────────
 // The row (numbers, health, rules, firing) comes from the SAME loader the list uses, so it rides the
 // poll loop and an alert firing shows within a tick. The history does not: it is up to 1440 points that
 // change once a minute, so `useMachineHistory` reads it on open and then once a minute while visible.
 // The 1 h and 24 h views are one answer sliced client-side; switching is instant and asks for nothing.
-// An older machine, which never sent a reading, gets no charts at all: the lead holds no minute of it.
+// The history is read only while Status is shown: Alerts draws no chart, so it reads none, and coming
+// back to Status asks only for the minutes since the last point held. An older machine, which never
+// sent a reading, gets no charts at all: the lead holds no minute of it.
 //
 // Every age is measured against the answer's `ts` (the loader's for the row, the history's own for the
 // charts), never `Date.now()`.
@@ -47,16 +57,20 @@ export function MachineRoute({ history }: { history?: MachineHistoryState }) {
   return <MachineDetail key={id} id={id} given={history} />;
 }
 
-const CHARTS: readonly { kind: MachineChartKind; title: "machines.metric.cpu" | "machines.metric.mem" | "machines.metric.net" }[] = [
-  { kind: "cpu", title: "machines.metric.cpu" },
-  { kind: "mem", title: "machines.metric.mem" },
-  { kind: "net", title: "machines.metric.net" },
-];
+const CHART_TITLE = {
+  cpu: "machines.metric.cpu",
+  mem: "machines.metric.mem",
+  disk: "machines.metric.disk",
+  net: "machines.metric.net",
+} as const satisfies Record<MachineChartKind, string>;
+
+const CHARTS: readonly MachineChartKind[] = ["cpu", "mem", "disk", "net"];
 
 function MachineDetail({ id, given }: { id: string; given: MachineHistoryState | undefined }) {
   const nav = useNav();
   const scope = useScope();
   const revalidator = useRevalidator();
+  const tab = machineTabOf(useLocation().search);
   useLocale();
   // SAFETY: `machinesLoader` returns `MachinesData` for this route; `undefined` is the harness case.
   const data = (useLoaderData() as MachinesData | undefined) ?? EMPTY_MACHINES;
@@ -65,9 +79,10 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
   // An older machine never sent a reading, so the lead holds no minute of it: no charts, and no read
   // that could only come back empty. Its card says to update it, once.
   const older = row !== undefined && census !== null && machineReading(row, census.ts) === "older";
-  const live = useMachineHistory(id, row !== undefined && !older && given === undefined);
+  const live = useMachineHistory(id, row !== undefined && !older && given === undefined && tab === "status");
   const { history, failed } = given ?? live;
   const [range, setRange] = useState<MachineRange>("hour");
+  const switchTab = (next: MachineTab) => nav.side(machinePath(id, scope, next));
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -99,42 +114,61 @@ function MachineDetail({ id, given }: { id: string; given: MachineHistoryState |
           <MachinesEmptyCard reason="unknown" />
         ) : (
           <>
-            <NowCard row={row} ts={census.ts} multi={census.machines.length > 1} />
-            {!older && (
-              <>
-                <Segmented
-                  label={t("machines.range.label")}
-                  options={[
-                    { value: "hour", label: t("machines.range.hour") },
-                    { value: "day", label: t("machines.range.day") },
-                  ]}
-                  value={range}
-                  onChange={setRange}
-                />
-                {CHARTS.map((chart) => (
-                  <Card key={chart.kind} className="gap-0 py-0">
-                    <h2 className="px-4 pt-3 pb-1 text-sm font-medium">{t(chart.title)}</h2>
-                    <ChartBody
-                      kind={chart.kind}
-                      history={history}
-                      failed={failed}
-                      range={range}
-                      alerts={row.alerts}
-                    />
-                  </Card>
-                ))}
-              </>
-            )}
-            <MachineAlertsControl
-              machineId={row.id}
-              alerts={row.alerts}
-              firing={row.firing}
-              // An older member answers but reports no load, so no rule on it could ever fire. A
-              // machine that is down has no reading either, and that is not a reason to say update.
-              needsUpdate={row.sample === undefined && (row.health === "reachable" || row.health === "incompatible")}
-              onSaved={() => void revalidator.revalidate()}
-              onOpenAlerts={() => nav.down(settingsSectionPath("alerts", scope))}
+            <Segmented
+              semantics="tabs"
+              label={t("machines.view.label")}
+              options={[
+                { value: "status", label: t("machines.view.status") },
+                {
+                  value: "alerts",
+                  label: t("machines.view.alerts"),
+                  mark: row.firing.length > 0 ? t("machines.view.firing") : undefined,
+                },
+              ]}
+              value={tab}
+              onChange={switchTab}
             />
+            {tab === "status" ? (
+              <>
+                <NowCard
+                  row={row}
+                  ts={census.ts}
+                  multi={census.machines.length > 1}
+                  onOpenAlerts={() => switchTab("alerts")}
+                />
+                {!older && (
+                  <>
+                    <Segmented
+                      label={t("machines.range.label")}
+                      options={[
+                        { value: "hour", label: t("machines.range.hour") },
+                        { value: "day", label: t("machines.range.day") },
+                      ]}
+                      value={range}
+                      onChange={setRange}
+                    />
+                    {CHARTS.map((kind) => (
+                      <Card key={kind} className="gap-0 py-0">
+                        <h2 className="px-4 pt-3 pb-1 text-sm font-medium">{t(CHART_TITLE[kind])}</h2>
+                        <ChartBody kind={kind} history={history} failed={failed} range={range} alerts={row.alerts} />
+                      </Card>
+                    ))}
+                  </>
+                )}
+              </>
+            ) : (
+              <MachineAlertsControl
+                machineId={row.id}
+                alerts={row.alerts}
+                firing={row.firing}
+                // An older member answers but reports no load, so no rule on it could ever fire. A
+                // machine that is down has no reading either, and that is not a reason to say update.
+                needsUpdate={row.sample === undefined && (row.health === "reachable" || row.health === "incompatible")}
+                hasDisks={row.sample?.disks !== undefined}
+                onSaved={() => void revalidator.revalidate()}
+                onOpenAlerts={() => nav.down(settingsSectionPath("alerts", scope))}
+              />
+            )}
           </>
         )}
       </main>
@@ -151,7 +185,7 @@ const EMPTY_MACHINES: MachinesData = { census: null, error: false };
  * and its age turns the waiting colour with a clock beside it, so the state is said in words and
  * marked, not tinted alone.
  */
-function NowCard({ row, ts, multi }: { row: MachineRow; ts: number; multi: boolean }) {
+function NowCard({ row, ts, multi, onOpenAlerts }: { row: MachineRow; ts: number; multi: boolean; onOpenAlerts: () => void }) {
   const reading = machineReading(row, ts);
   const stale = reading === "stale";
   return (
@@ -175,7 +209,7 @@ function NowCard({ row, ts, multi }: { row: MachineRow; ts: number; multi: boole
           )}
         </div>
         <div className={cn(stale && "opacity-60")}>
-          <MachineLoad row={row} ts={ts} size="large" />
+          <MachineLoad row={row} ts={ts} size="large" onOpenAlerts={onOpenAlerts} />
         </div>
       </div>
     </Card>
@@ -199,7 +233,7 @@ function ChartBody({
   if (history === null) {
     return <ChartPlaceholder>{failed ? t("machines.history.error") : t("machines.history.loading")}</ChartPlaceholder>;
   }
-  const rule = kind === "cpu" ? alerts.cpu : kind === "mem" ? alerts.mem : undefined;
+  const rule = kind === "net" ? undefined : alerts[kind];
   return (
     <MachineChart
       kind={kind}

@@ -328,8 +328,8 @@ answering build:
   secret: one integer, and one the caller itself issued.
 
 - `machineStats` is **OPTIONAL**, added 2026-10-05 (ADR 0084, §19 "The member's own load"): the
-  answering machine's last host sample, `{ cpu, cores, memUsed, memTotal, load1?, rxBps?, txBps? }`.
-  It rides **`/crew/v1/snapshot`'s response only**, beside the body for the warrant pair's reason, and
+  answering machine's last host sample, `{ cpu, cores, memUsed, memTotal, load1?, rxBps?, txBps?,
+  disks? }` (`disks` added later the same day: `[{ mount, used, total }]`, at most four, §19). It rides **`/crew/v1/snapshot`'s response only**, beside the body for the warrant pair's reason, and
   never `hello`. **Absent or malformed means "this member reported no load"**, never "idle" (§7.1).
 
 - `pairingDigest` is **OPTIONAL**, added 2026-08-20 (§18.14): a digest of the synced paired-device
@@ -605,6 +605,14 @@ updated machines, so build skew is the steady state (§7), and this section is t
   drops the whole sample on any field out of range rather than keeping half of one. Nothing in
   `bridge/crew/merge.ts` reads it, so it never reaches a browser's snapshot. `CREW_PROTOCOL_VERSION`
   stays `2`, no new route, no new verb and no new header.
+
+- **`machineStats` gained an optional `disks`** (added 2026-10-05, ADR 0084 point 9), the same
+  additive-optional shape one level down: an array of `{ mount, used, total }` in bytes. **Absent or
+  empty means no disk was reported**, never an empty disk; an older member omits it, and an older lead
+  never reads it. A malformed entry (a non-string or empty mount, a control character in it, a
+  `total` that is not positive, a `used` outside `0..total`) drops the whole sample, like any other
+  field out of range. Past four entries the lead keeps the first four rather than refuse a later build
+  that sends more. Unknown keys inside an entry are ignored.
 
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
@@ -2865,7 +2873,8 @@ machine's last host sample. Same seat as `version`, `updatePreflight` and `updat
 same protocol integer: `X-Crew-Protocol` stays `2`.
 
 ```json
-{ "machineStats": { "cpu": 0.42, "cores": 8, "memUsed": 6000000000, "memTotal": 16000000000, "load1": 2.5, "rxBps": 100000, "txBps": 20000 } }
+{ "machineStats": { "cpu": 0.42, "cores": 8, "memUsed": 6000000000, "memTotal": 16000000000, "load1": 2.5, "rxBps": 100000, "txBps": 20000,
+  "disks": [{ "mount": "/var/home", "used": 635751247872, "total": 966259671040 }] } }
 ```
 
 - `cpu` is the busy share of all cores, `0..1`, since the sample before. `memUsed` and `memTotal` are
@@ -2873,6 +2882,14 @@ same protocol integer: `X-Crew-Protocol` stays `2`.
   over the physical interfaces (loopback, bridges, veth and tap ends, tunnels and bonds are left out,
   because their bytes cross a physical interface too), absent where they cannot be read (every OS
   but Linux today).
+- `disks` (optional) is the filesystems holding the member's home folder, its root (the system drive
+  on Windows) and its Collie state folder: one entry per device, at most four. `used` is `df`'s Used
+  and `total` is `used` plus the space an unprivileged process can still write, so `used / total` is
+  `df`'s Use%. `mount` is the label to show (`/var/home`, `/`, `C:`). A filesystem under 1 GiB, or one
+  that is read-only with no free block (a composefs or squashfs root image), is left out. The member
+  reads them with `statfs`, async, at most once a minute, started from its tick and never awaited, so
+  a hung network mount cannot hold the tick or the answer; a path whose last answer is over three
+  minutes old is left out rather than served stale. No child process.
 - The member **reads what its sampler already holds**. The answer does no disk read and no system
   call, and the sampler itself rides the member's own `StateEngine.onTick` at most once every 15
   seconds (§10.1: no second timer; on the 12 s idle tick that is every 24 s, never less than once a
@@ -2882,7 +2899,9 @@ same protocol integer: `X-Crew-Protocol` stays `2`.
   minute history. A malformed field drops the whole sample. An unknown key inside it is ignored. A
   sample equal in every field to the last one the lead took from that member is the same reading
   served again (the lead swept faster than the member samples, or the member's sampler stopped), so
-  the lead neither records it nor stamps it: the minutes stay empty and the reading ages.
+  the lead neither records it nor stamps it: the minutes stay empty and the reading ages. `disks` is
+  part of that comparison: a healthy member repeats its disks for a minute by design, but its CPU and
+  memory still move, so only a sampler that stopped repeats every field.
 - **What the lead keeps is the lead's.** The day of minutes (`machine-history.json`) and the alert
   rules (`machine-alerts.json`) live on the lead only. A peer writes neither, and none of the three
   `/api/machines*` routes is forwarded with `?host=` (§9.1): a peer answers them `404 crew.not_lead`.

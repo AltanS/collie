@@ -507,10 +507,27 @@ export interface MachineSample {
    */
   rxBps?: number;
   txBps?: number;
+  /**
+   * The filesystems that hold the home folder, the root (on Windows the system drive) and Collie's
+   * state folder, one per device, at most four, read at most once a minute (bridge/machine-disks.ts).
+   * Absent: not reported (an older member, or no filesystem qualified).
+   */
+  disks?: MachineDisk[];
 }
 
-/** The two metrics an alert can watch. CPU is judged on the minute's average. */
-export type AlertMetric = "cpu" | "mem";
+/**
+ * One filesystem. `used` is `df`'s Used and `total` is `used` plus the space an unprivileged process
+ * can still write, so `used / total` is `df`'s Use%. Bytes. `mount` is the label to show: `/var/home`,
+ * `/`, `C:`.
+ */
+export type MachineDisk = {
+  mount: string;
+  used: number;
+  total: number;
+};
+
+/** The metrics an alert can watch. CPU is judged on the minute's average, disk on the fullest filesystem. */
+export type AlertMetric = "cpu" | "mem" | "disk";
 
 /** Push when the metric stays at or above `above` (0.5..0.99) for `forMin` minutes (5..120). */
 export interface AlertRule {
@@ -522,6 +539,7 @@ export interface AlertRule {
 export interface MachineAlerts {
   cpu?: AlertRule;
   mem?: AlertRule;
+  disk?: AlertRule;
 }
 
 /** One machine on `GET /api/machines`. The lead first, then members in member-id order. */
@@ -565,11 +583,13 @@ export interface MachinesResponse {
 }
 
 /**
- * One minute of history: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null]`. `t` is the
- * minute's start, the fractions are rounded to three places and the rates to whole bytes per second.
- * A minute with no reading is simply missing from the list.
+ * One minute of history: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null, diskFrac | null]`.
+ * `t` is the minute's start, the fractions are rounded to three places and the rates to whole bytes
+ * per second. `diskFrac` is the fullest filesystem's fraction, `null` where no disk was reported; a
+ * reader older than the field sees six elements and ignores the seventh. A minute with no reading is
+ * simply missing from the list.
  */
-export type MachineHistoryPoint = [number, number, number, number, number | null, number | null];
+export type MachineHistoryPoint = [number, number, number, number, number | null, number | null, number | null];
 
 /**
  * `GET /api/machines/:id/history`. Oldest first, at most 1440 points, one per minute. With

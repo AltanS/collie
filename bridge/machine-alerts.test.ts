@@ -39,7 +39,7 @@ afterAll(async () => {
 function minutes(values: readonly (number | null)[], now: number): MinuteReading[] {
   const open = Math.floor(now / MINUTE_MS) * MINUTE_MS;
   return values.flatMap((v, i) =>
-    v === null ? [] : [{ t: open - (values.length - i) * MINUTE_MS, cpu: v, mem: v }],
+    v === null ? [] : [{ t: open - (values.length - i) * MINUTE_MS, cpu: v, mem: v, disk: v }],
   );
 }
 
@@ -73,13 +73,13 @@ describe("judgeAlert — when a rule fires", () => {
     const nine = minutes(Array(9).fill(0.99), NOW);
     // Nine complete minutes is 90 % coverage of ten, so that fires on its own — but a low open minute
     // and a low minute just outside the window change nothing.
-    const withNoise = [{ t: open - 11 * MINUTE_MS, cpu: 0.1, mem: 0.1 }, ...nine, { t: open, cpu: 0.1, mem: 0.1 }];
+    const withNoise = [{ t: open - 11 * MINUTE_MS, cpu: 0.1, mem: 0.1, disk: 0.1 }, ...nine, { t: open, cpu: 0.1, mem: 0.1, disk: 0.1 }];
     expect(judgeAlert("cpu", RULE, false, withNoise, NOW).kind).toBe("fire");
   });
 
   test("memory is judged on the memory fraction", () => {
     const open = Math.floor(NOW / MINUTE_MS) * MINUTE_MS;
-    const window: MinuteReading[] = Array.from({ length: 10 }, (_, i) => ({ t: open - (10 - i) * MINUTE_MS, cpu: 0.5, mem: 0.97 }));
+    const window: MinuteReading[] = Array.from({ length: 10 }, (_, i) => ({ t: open - (10 - i) * MINUTE_MS, cpu: 0.5, mem: 0.97, disk: null }));
     expect(judgeAlert("mem", RULE, false, window, NOW).kind).toBe("fire");
     expect(judgeAlert("cpu", RULE, false, window, NOW).kind).toBe("hold");
   });
@@ -155,6 +155,46 @@ describe("the push", () => {
       topic: machineTopic("laptop", "mem"),
       renotify: true,
     });
+  });
+});
+
+describe("disk", () => {
+  test("disk is judged on the fullest disk's fraction, and a minute without one is a missing minute", () => {
+    const open = Math.floor(NOW / MINUTE_MS) * MINUTE_MS;
+    const full: MinuteReading[] = Array.from({ length: 10 }, (_, i) => ({ t: open - (10 - i) * MINUTE_MS, cpu: 0.1, mem: 0.1, disk: 0.96 }));
+    expect(judgeAlert("disk", RULE, false, full, NOW).kind).toBe("fire");
+    expect(judgeAlert("cpu", RULE, false, full, NOW).kind).toBe("hold");
+    // Three of ten minutes carry no disk reading: under 80 % coverage, so nothing fires.
+    const gappy = full.map((m, i) => (i < 3 ? Object.assign({}, m, { disk: null }) : m));
+    expect(judgeAlert("disk", RULE, false, gappy, NOW).kind).toBe("hold");
+    // And minutes without a disk reading never close an open episode.
+    const none = full.map((m) => Object.assign({}, m, { disk: null }));
+    expect(judgeAlert("disk", RULE, true, none, NOW).kind).toBe("hold");
+  });
+
+  test("the disk push names the machine, the mount, the percent and the minutes", () => {
+    const msg = machineAlertMessage({ id: "nas", name: "nas", metric: "disk", rule: { above: 0.9, forMin: 15 }, value: 0.951 }, "/var/home");
+    expect(msg).toEqual({
+      type: "machine",
+      tag: "collie:machine:nas:disk",
+      title: "Disk stays full on nas",
+      titleCode: "machine.disk",
+      titleDetail: { machine: "nas" },
+      body: "nas: disk /var/home 95% for 15 min (alert at 90%).",
+      machine: "nas",
+      target: "machine",
+      topic: machineTopic("nas", "disk"),
+      renotify: true,
+    });
+    expect(machineAlertMessage({ id: "nas", name: "nas", metric: "disk", rule: { above: 0.9, forMin: 15 }, value: 0.951 }).body).toBe(
+      "nas: disk 95% for 15 min (alert at 90%).",
+    );
+    expect(machineTopic("nas", "disk")).not.toBe(machineTopic("nas", "mem"));
+  });
+
+  test("a disk rule parses inside the same bounds", () => {
+    expect(parseMachineAlerts({ disk: { above: 0.9, forMin: 30 } })).toEqual({ disk: { above: 0.9, forMin: 30 } });
+    expect(parseMachineAlerts({ disk: { above: 1, forMin: 30 } })).toBeNull();
   });
 });
 
@@ -314,6 +354,11 @@ describe("MachineWatch — what it takes in, and what it lets go", () => {
     const { load1: _dropped, ...noLoad } = stuck;
     expect(sameSample(stuck, noLoad)).toBe(false);
     expect(sameSample(stuck, { ...stuck })).toBe(true);
+    // Disks are compared too, entry by entry.
+    const disks = [{ mount: "/", used: 1, total: 4 }];
+    expect(sameSample({ ...stuck, disks }, { ...stuck, disks: [{ ...disks[0]! }] })).toBe(true);
+    expect(sameSample({ ...stuck, disks }, { ...stuck, disks: [{ ...disks[0]!, used: 2 }] })).toBe(false);
+    expect(sameSample({ ...stuck, disks }, stuck)).toBe(false);
   });
 
   test("a deposed lead records, judges and pushes nothing", async () => {

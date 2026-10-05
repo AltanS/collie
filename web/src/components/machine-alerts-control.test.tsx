@@ -79,6 +79,25 @@ describe("MachineAlertsControl", () => {
     });
   });
 
+  it("offers a disk rule only for a machine that reports disks, or one that already holds a disk rule", () => {
+    const { unmount } = render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);
+    expect(screen.queryByRole("switch", { name: "Disk alert" })).toBeNull();
+    unmount();
+    const second = render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} hasDisks />);
+    expect(screen.getByRole("switch", { name: "Disk alert" })).not.toBeChecked();
+    second.unmount();
+    render(<MachineAlertsControl machineId="bluefin" alerts={{ disk: { above: 0.95, forMin: 60 } }} />);
+    expect(screen.getByRole("switch", { name: "Disk alert" })).toBeChecked();
+  });
+
+  it("keeps the disk rule in the body when another metric changes", async () => {
+    const user = userEvent.setup();
+    render(<MachineAlertsControl machineId="nas" alerts={{ disk: { above: 0.9, forMin: 30 } }} hasDisks />);
+    await user.click(screen.getByRole("switch", { name: "CPU alert" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.body).toEqual({ cpu: { above: 0.9, forMin: 10 }, disk: { above: 0.9, forMin: 30 } });
+  });
+
   it("removes a rule by leaving its key out of the body", async () => {
     const user = userEvent.setup();
     render(<MachineAlertsControl machineId="bluefin" alerts={BOTH} />);

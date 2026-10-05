@@ -120,6 +120,36 @@ describe("the machines list", () => {
     expect(sparkOf(card, "Memory").getAttribute("class")).toContain("text-status-info");
   });
 
+  it("the firing line opens the machine on its Alerts view, and the rest of the card on Status", async () => {
+    const user = userEvent.setup();
+    const router = renderMachines(crew);
+    const card = await cardOf("workshop");
+    await user.click(within(card).getByRole("button", { name: /Alert firing: CPU/ }));
+    expect(router.state.location.pathname).toBe("/machines/workshop");
+    expect(router.state.location.search).toBe("?tab=alerts");
+    expect(router.state.location.state).toMatchObject({ from: "/machines" });
+  });
+
+  it("gives the fullest disk as one fact, Disk and its percent, with no spark", async () => {
+    renderMachines(crew);
+    const workshop = await cardOf("workshop");
+    const fact = workshop.querySelector('[data-fact="disk"]');
+    expect(fact).not.toBeNull();
+    // `/srv/backups` at 89 % is fuller than `/` at 41 %.
+    expect(fact!.textContent).toBe("Disk89%");
+    expect(fact!.className).toContain("whitespace-nowrap");
+    expect(within(workshop).getAllByRole("img")).toHaveLength(2);
+    expect((await cardOf("bluefin")).querySelector('[data-fact="disk"]')!.textContent).toBe("Disk66%");
+  });
+
+  it("tints the disk figure while a disk alert fires, and says it in words", async () => {
+    const full = { ...fixtureMachineRows[1]!, alerts: { disk: { above: 0.8, forMin: 30 } }, firing: ["disk" as const] };
+    renderMachines({ census: withSpark({ ts: FIXTURE_MACHINES_TS, machines: [full] }), error: false });
+    const card = await cardOf("workshop");
+    expect(card.querySelector('[data-fact="disk"] dd')!.className).toContain("text-status-blocked");
+    expect(within(card).getByText("Alert firing: Disk")).toBeInTheDocument();
+  });
+
   it("says nothing about alerts on a machine where none fires", async () => {
     renderMachines(crew);
     const card = await cardOf("bluefin");

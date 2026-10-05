@@ -45,7 +45,7 @@ describe("minute buckets", () => {
     h.record("desk", sample(0.2, 0.5, { rx: 100, tx: 10 }), T0 + 1_000);
     h.record("desk", sample(0.6, 0.7, { rx: 300, tx: 30 }), T0 + 30_000);
     h.record("desk", sample(0.4, 0.6), T0 + 59_999);
-    expect(h.points("desk", T0 + 60_000)).toEqual([[T0, 0.4, 0.6, 0.6, 200, 20]]);
+    expect(h.points("desk", T0 + 60_000)).toEqual([[T0, 0.4, 0.6, 0.6, 200, 20, null]]);
   });
 
   test("a minute with no network reading says null, and a missing minute is simply missing", () => {
@@ -53,8 +53,8 @@ describe("minute buckets", () => {
     h.record("desk", sample(0.1, 0.2), T0);
     h.record("desk", sample(0.3, 0.4), T0 + 2 * MINUTE_MS);
     expect(h.points("desk", T0 + 3 * MINUTE_MS)).toEqual([
-      [T0, 0.1, 0.1, 0.2, null, null],
-      [T0 + 2 * MINUTE_MS, 0.3, 0.3, 0.4, null, null],
+      [T0, 0.1, 0.1, 0.2, null, null, null],
+      [T0 + 2 * MINUTE_MS, 0.3, 0.3, 0.4, null, null, null],
     ]);
   });
 
@@ -62,7 +62,7 @@ describe("minute buckets", () => {
     const h = new MachineHistory();
     h.record("desk", sample(0.1, 0.2), T0);
     h.record("laptop", sample(0.9, 0.8), T0);
-    expect(h.points("laptop", T0)).toEqual([[T0, 0.9, 0.9, 0.8, null, null]]);
+    expect(h.points("laptop", T0)).toEqual([[T0, 0.9, 0.9, 0.8, null, null, null]]);
     expect(h.points("nas", T0)).toEqual([]);
   });
 
@@ -92,7 +92,44 @@ describe("minute buckets", () => {
     const h = new MachineHistory();
     h.record("desk", sample(0.5, 0.5), T0);
     h.record("desk", sample(0.9, 0.5), T0 + MINUTE_MS + 1);
-    expect(h.minutes("desk", T0, T0 + MINUTE_MS + 2)).toEqual([{ t: T0, cpu: 0.5, mem: 0.5 }]);
+    expect(h.minutes("desk", T0, T0 + MINUTE_MS + 2)).toEqual([{ t: T0, cpu: 0.5, mem: 0.5, disk: null }]);
+  });
+});
+
+describe("the fullest disk", () => {
+  const disks = (...fracs: number[]) => fracs.map((f, i) => ({ mount: `/d${i}`, used: f * 1000, total: 1000 }));
+
+  test("a minute keeps the fullest disk's average fraction as its seventh value", () => {
+    const h = new MachineHistory();
+    h.record("desk", { ...sample(0.1, 0.5), disks: disks(0.2, 0.6) }, T0 + 1_000);
+    h.record("desk", { ...sample(0.1, 0.5), disks: disks(0.8, 0.3) }, T0 + 30_000);
+    h.record("desk", sample(0.1, 0.5), T0 + 50_000);
+    expect(h.points("desk", T0 + MINUTE_MS)).toEqual([[T0, 0.1, 0.1, 0.5, null, null, 0.7]]);
+    expect(h.minutes("desk", T0, T0 + MINUTE_MS)[0]!.disk).toBeCloseTo(0.7, 10);
+  });
+
+  test("the file carries the disk value only on the minutes that have one, and it loads back", async () => {
+    const dir = await tempDir();
+    const h = new MachineHistory();
+    h.record("desk", sample(0.1, 0.5), T0);
+    h.record("desk", { ...sample(0.1, 0.5), disks: disks(0.6584) }, T0 + MINUTE_MS);
+    expect(h.toFile(T0 + MINUTE_MS + 1).machines.desk!.rows).toEqual([
+      [0, 0.1, 0.1, 0.5, null, null],
+      [1, 0.1, 0.1, 0.5, null, null, 0.658],
+    ]);
+    await saveMachineHistory(dir, h, T0 + MINUTE_MS + 1);
+    const back = await loadMachineHistory(dir, T0 + MINUTE_MS + 1);
+    expect(back.points("desk", T0 + 2 * MINUTE_MS).map((p) => p[6])).toEqual([null, 0.658]);
+  });
+
+  test("a version 2 file written before the disk value loads with null", async () => {
+    const dir = await tempDir();
+    await writeFile(
+      join(dir, MACHINE_HISTORY_FILE),
+      JSON.stringify({ version: 2, machines: { desk: { t: T0, n: 1, rows: [[0, 0.1, 0.2, 0.3, 5, 6]] } } }),
+    );
+    const h = await loadMachineHistory(dir, T0 + MINUTE_MS);
+    expect(h.points("desk", T0 + MINUTE_MS)).toEqual([[T0, 0.1, 0.2, 0.3, 5, 6, null]]);
   });
 });
 
@@ -228,7 +265,7 @@ describe("the persisted round trip", () => {
     const back = await loadMachineHistory(dir, T0 + 21_000);
     back.record("desk", sample(0.9, 0.5), T0 + 40_000);
     // (0.2 + 0.4 + 0.9) / 3, not (0.3 + 0.9) / 2.
-    expect(back.points("desk", T0 + 41_000)).toEqual([[T0, 0.5, 0.9, 0.5, null, null]]);
+    expect(back.points("desk", T0 + 41_000)).toEqual([[T0, 0.5, 0.9, 0.5, null, null, null]]);
   });
 
   test("version 1, the first builds' nine sums per minute, still loads", async () => {
@@ -238,7 +275,7 @@ describe("the persisted round trip", () => {
       JSON.stringify({ version: 1, machines: { desk: [[T0, 4, 2, 0.9, 2.4, 800, 4, 80, 2]] } }),
     );
     const h = await loadMachineHistory(dir, T0 + MINUTE_MS);
-    expect(h.points("desk", T0 + MINUTE_MS)).toEqual([[T0, 0.5, 0.9, 0.6, 200, 40]]);
+    expect(h.points("desk", T0 + MINUTE_MS)).toEqual([[T0, 0.5, 0.9, 0.6, 200, 40, null]]);
   });
 
   test("a missing or unreadable file is an empty store; a bad row is dropped, the rest loads", async () => {
@@ -257,7 +294,7 @@ describe("the persisted round trip", () => {
       }),
     );
     const h = await loadMachineHistory(dir, T0 + MINUTE_MS);
-    expect(h.points("desk", T0 + MINUTE_MS)).toEqual([[T0, 0.5, 0.6, 0.5, null, null]]);
+    expect(h.points("desk", T0 + MINUTE_MS)).toEqual([[T0, 0.5, 0.6, 0.5, null, null, null]]);
     expect(h.points("laptop", T0 + MINUTE_MS)).toEqual([]);
   });
 

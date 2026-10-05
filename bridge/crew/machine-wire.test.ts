@@ -63,6 +63,41 @@ describe("parsePeerMachineStats — absent and malformed are 'not reported'", ()
   });
 });
 
+describe("parsePeerMachineStats — disks (additive-optional, §7.1)", () => {
+  const DISKS = [
+    { mount: "/var/home", used: 635e9, total: 966e9 },
+    { mount: "C:", used: 1, total: 2 },
+  ];
+
+  test("a member's disks parse; an absent or empty list is not reported", () => {
+    expect(parsePeerMachineStats({ machineStats: { ...SAMPLE, disks: DISKS } })).toEqual({ ...SAMPLE, disks: DISKS });
+    expect(parsePeerMachineStats({ machineStats: { ...SAMPLE, disks: [] } })).toEqual(SAMPLE);
+    expect(parsePeerMachineStats({ machineStats: { ...SAMPLE } })).toEqual(SAMPLE);
+  });
+
+  test("a later build's extra disks are cut to four, and extra keys on a disk are ignored", () => {
+    const six = Array.from({ length: 6 }, (_, i) => ({ mount: `/d${i}`, used: i, total: 10, kind: "ssd" }));
+    const parsed = parsePeerMachineStats({ machineStats: { ...SAMPLE, disks: six } });
+    expect(parsed?.disks?.map((d) => d.mount)).toEqual(["/d0", "/d1", "/d2", "/d3"]);
+    expect(parsed?.disks?.[0]).toEqual({ mount: "/d0", used: 0, total: 10 });
+  });
+
+  test("a malformed disk drops the whole sample", () => {
+    const bad: JsonValue[] = [
+      { ...SAMPLE, disks: "full" },
+      { ...SAMPLE, disks: [{ mount: "/", used: 5, total: 4 }] },
+      { ...SAMPLE, disks: [{ mount: "/", used: -1, total: 4 }] },
+      { ...SAMPLE, disks: [{ mount: "/", used: 0, total: 0 }] },
+      { ...SAMPLE, disks: [{ mount: "", used: 1, total: 4 }] },
+      { ...SAMPLE, disks: [{ mount: "/\n", used: 1, total: 4 }] },
+      { ...SAMPLE, disks: [{ mount: 7, used: 1, total: 4 }] },
+      { ...SAMPLE, disks: [{ mount: "/", used: "1", total: 4 }] },
+      { ...SAMPLE, disks: [null] },
+    ];
+    for (const machineStats of bad) expect(parsePeerMachineStats({ ...body, machineStats })).toBeNull();
+  });
+});
+
 describe("the sweep hands a member's load to the watch, stamped on the lead's clock", () => {
   function sweepWith(answer: PeerOutcome<unknown>) {
     const seen: { memberId: string; sample: MachineSample; at: number }[] = [];

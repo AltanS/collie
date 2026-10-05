@@ -11,8 +11,9 @@
 
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { LoadedMinute } from "./machine-history.ts";
+import { MAX_DISKS } from "./machine-disks.ts";
 import { CREW_MACHINE_FIELD, isMachineSample } from "./machine-stats.ts";
-import type { AlertMetric, AlertRule, MachineAlerts, MachineSample } from "./types.ts";
+import type { AlertMetric, AlertRule, MachineAlerts, MachineDisk, MachineSample } from "./types.ts";
 
 /** The bounds of a rule, as the phone offers them and the bridge accepts them. */
 export const ALERT_ABOVE_MIN = 0.5;
@@ -20,7 +21,7 @@ export const ALERT_ABOVE_MAX = 0.99;
 export const ALERT_FOR_MIN_MIN = 5;
 export const ALERT_FOR_MIN_MAX = 120;
 
-const METRICS: readonly AlertMetric[] = ["cpu", "mem"];
+const METRICS: readonly AlertMetric[] = ["cpu", "mem", "disk"];
 
 function recordOf(value: JsonValue | undefined): JsonObject | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
@@ -54,7 +55,32 @@ export function parsePeerMachineStats(value: JsonValue): MachineSample | null {
     if (n === null) return null;
     sample[key] = n;
   }
+  if (field.disks !== undefined) {
+    const disks = disksOf(field.disks);
+    if (disks === null) return null;
+    // An empty list says what an absent one says: nothing to report.
+    if (disks.length > 0) sample.disks = disks;
+  }
   return isMachineSample(sample) ? sample : null;
+}
+
+/**
+ * A member's `disks`: an array of `{ mount, used, total }`. `null` (the whole sample drops) for any
+ * entry that is not that shape; the ranges are `isMachineSample`'s. A later build that sends more
+ * than {@link MAX_DISKS} is cut to the first ones rather than refused.
+ */
+function disksOf(value: JsonValue): MachineDisk[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: MachineDisk[] = [];
+  for (const entry of value.slice(0, MAX_DISKS)) {
+    const rec = recordOf(entry);
+    const used = numberOf(rec?.used);
+    const total = numberOf(rec?.total);
+    const mount = rec?.mount;
+    if (rec === null || typeof mount !== "string" || used === null || total === null) return null;
+    out.push({ mount, used, total });
+  }
+  return out;
 }
 
 /** One rule, or `null` when it is outside the bounds the phone offers. */
@@ -121,7 +147,11 @@ function rateOf(value: JsonValue | undefined): number | null {
   return n !== null && n >= 0 ? n : null;
 }
 
-/** Version 2: `{ t, n, rows: [[gap, cpu, cpuMax, mem, rx | null, tx | null], ...] }`. */
+/**
+ * Version 2: `{ t, n, rows: [[gap, cpu, cpuMax, mem, rx | null, tx | null, disk?], ...] }`. The
+ * seventh value is the fullest disk's fraction, absent on a minute with none and in every file
+ * written before it.
+ */
 function minutesOfV2(entry: JsonValue | undefined): LoadedMinute[] {
   const rec = recordOf(entry);
   const start = numberOf(rec?.t);
@@ -131,7 +161,7 @@ function minutesOfV2(entry: JsonValue | undefined): LoadedMinute[] {
   const out: LoadedMinute[] = [];
   let t = start;
   rows.forEach((row, index) => {
-    if (!Array.isArray(row) || row.length !== 6) return;
+    if (!Array.isArray(row) || (row.length !== 6 && row.length !== 7)) return;
     const gap = numberOf(row[0]);
     if (gap === null || !Number.isInteger(gap) || gap < 0) return;
     t += gap * 60_000;
@@ -140,7 +170,7 @@ function minutesOfV2(entry: JsonValue | undefined): LoadedMinute[] {
     const mem = fractionOf(row[3]);
     if (cpu === null || cpuMax === null || mem === null) return;
     const n = index === rows.length - 1 && lastN !== null && Number.isInteger(lastN) && lastN > 0 ? lastN : 1;
-    out.push({ t, n, cpu, cpuMax, mem, rx: rateOf(row[4]), tx: rateOf(row[5]) });
+    out.push({ t, n, cpu, cpuMax, mem, rx: rateOf(row[4]), tx: rateOf(row[5]), disk: fractionOf(row[6]) });
   });
   return out;
 }
@@ -163,6 +193,7 @@ function minutesOfV1(entry: JsonValue | undefined): LoadedMinute[] {
       mem: memSum / n,
       rx: rxN > 0 ? rxSum / rxN : null,
       tx: txN > 0 ? txSum / txN : null,
+      disk: null,
     });
   }
   return out;
@@ -193,7 +224,7 @@ export function coerceAlertsFile(raw: JsonValue | undefined): Map<string, Stored
     }
     const openRaw = Array.isArray(rec.open) ? rec.open : [];
     const open = METRICS.filter((m) => openRaw.includes(m) && rules[m] !== undefined);
-    if (rules.cpu !== undefined || rules.mem !== undefined) out.set(id, { rules, open });
+    if (METRICS.some((m) => rules[m] !== undefined)) out.set(id, { rules, open });
   }
   return out;
 }

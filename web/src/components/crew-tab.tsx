@@ -44,6 +44,7 @@ export function CrewTabView({ state }: { state: MachineCensusState }): JSX.Eleme
   const nav = useNav();
   const scope = useScope();
   const open = useCallback((row: MachineRow) => nav.down(machinePath(row.id, scope)), [nav, scope]);
+  const openAlerts = useCallback((row: MachineRow) => nav.down(machinePath(row.id, scope, "alerts")), [nav, scope]);
 
   if (state.kind === "loading") return <CrewTabSkeleton />;
   if (state.kind === "unavailable") return <MachinesEmptyCard reason="unavailable" />;
@@ -69,6 +70,7 @@ export function CrewTabView({ state }: { state: MachineCensusState }): JSX.Eleme
           showRole={machines.length > 1}
           sparkMinutes={MACHINE_SPARK_MINUTES}
           onOpen={open}
+          onOpenAlerts={openAlerts}
         />
       ))}
     </section>

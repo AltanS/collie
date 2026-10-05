@@ -26,11 +26,13 @@ export interface MachineHistoryState {
  * The minute beat is `useVisibleInterval`: stopped outright while the page is hidden or behind the
  * idle lock, and it reads at once when the page comes back. A round starts only when the last one
  * has ended. `enabled` is false for an id the census does not know, which would only collect 404s,
- * and for an older machine, whose day is empty by definition.
+ * for an older machine, whose day is empty by definition, and while the page shows its Alerts view,
+ * which draws no chart. Enabled again, it reads from the newest point it still holds.
  */
 export function useMachineHistory(id: string, enabled: boolean): MachineHistoryState {
   const [state, setState] = useState<MachineHistoryState>({ history: null, failed: false });
   const held = useRef<MachineHistoryResponse | null>(null);
+  const heldId = useRef(id);
   const round = useRef<() => void>(() => {});
   useVisibleInterval(() => round.current(), HISTORY_REFRESH_MS, enabled);
 
@@ -38,7 +40,12 @@ export function useMachineHistory(id: string, enabled: boolean): MachineHistoryS
     if (!enabled) return undefined;
     const controller = new AbortController();
     let inFlight = false;
-    held.current = null;
+    // The day held survives a pause (the Alerts view), so coming back asks only for the minutes since
+    // its newest point. Another machine starts from nothing.
+    if (heldId.current !== id) {
+      heldId.current = id;
+      held.current = null;
+    }
 
     async function load() {
       if (inFlight || controller.signal.aborted) return;

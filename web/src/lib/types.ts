@@ -470,6 +470,18 @@ export interface MachineSample {
   load1?: number;
   rxBps?: number;
   txBps?: number;
+  /** The filesystems holding home, the root and the state folder, one per device. Absent: not reported. */
+  disks?: MachineDisk[];
+}
+
+/**
+ * One filesystem, in bytes. `used / total` is `df`'s Use%, and `total - used` is what a normal process
+ * can still write. `mount` is the label to show: `/var/home`, `/`, `C:`.
+ */
+export interface MachineDisk {
+  mount: string;
+  used: number;
+  total: number;
 }
 
 /** One alert rule: fire when the value stays at or above `above` (0.5 to 0.99) for `forMin` minutes (5 to 120). */
@@ -482,10 +494,11 @@ export interface MachineAlertRule {
 export interface MachineAlerts {
   cpu?: MachineAlertRule;
   mem?: MachineAlertRule;
+  disk?: MachineAlertRule;
 }
 
-/** The two metrics an alert can watch. */
-export type MachineMetric = "cpu" | "mem";
+/** The metrics an alert can watch. Disk is judged on the fullest filesystem. */
+export type MachineMetric = "cpu" | "mem" | "disk";
 
 /**
  * One machine in `GET /api/machines`. `sample` is absent for a machine that does not report load
@@ -527,10 +540,12 @@ export interface MachinesResponse {
 }
 
 /**
- * One minute of history: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null]`. `t` is epoch ms
- * on the answering bridge's clock. The network pair is `null` where the platform gave no counters.
+ * One minute of history: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null, diskFrac | null]`.
+ * `t` is epoch ms on the answering bridge's clock. The network pair is `null` where the platform gave
+ * no counters. `diskFrac` is the fullest filesystem's fraction: `null` for a minute with no disk
+ * reading, and absent from a bridge older than the field.
  */
-export type MachineHistoryPoint = [number, number, number, number, number | null, number | null];
+export type MachineHistoryPoint = [number, number, number, number, number | null, number | null, (number | null)?];
 
 /** `GET /api/machines/:id/history`: oldest first, at most 1440 points, a gap is a missing minute. */
 export interface MachineHistoryResponse {

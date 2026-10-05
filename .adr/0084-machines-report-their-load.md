@@ -7,11 +7,12 @@
   warning, whose shape the machine alert copies), [ADR 0074](./0074-a-push-title-is-a-code-the-phone-translates.md)
   (push titles are catalogue codes), [ADR 0034](./0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md) (Collie collects nothing;
   this holds). Nothing in them is retracted.
-- **Trail:** `bridge/machine-stats.ts` · `bridge/machine-history.ts` · `bridge/machine-alerts.ts` ·
+- **Trail:** `bridge/machine-stats.ts` · `bridge/machine-disks.ts` · `bridge/machine-history.ts` · `bridge/machine-alerts.ts` ·
   `bridge/machine-parse.ts` · `bridge/machines.ts` · `bridge/crew/router.ts` and `lead.ts` (the
   sibling) · `bridge/server.ts` (`serveMachinesRoute`) · `CREW_PROTOCOL.md` §5, §7.1, §11, §19 ·
   `docs/crew.md` → *Machines* · `web/src/components/machine-card.tsx`, `machine-spark.tsx`,
-  `crew-tab.tsx` · `web/src/hooks/use-machine-history.ts`, `use-machine-census.ts`
+  `crew-tab.tsx`, `machine-load.tsx` · `web/src/routes/machine.tsx` · `web/src/lib/machine-paths.ts` ·
+  `web/src/hooks/use-machine-history.ts`, `use-machine-census.ts`
 
 ## Context
 
@@ -121,6 +122,49 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
    which opens on the tab it stored (ADR 0067). A machine that answers but sends no new reading for
    two minutes is called stale: its numbers are quieted and its age is said in words.
 
+9. **Disks too, read with `statfs` and never on the tick's time.** A sample carries an optional
+   `disks: [{ mount, used, total }]` in bytes (`bridge/machine-disks.ts`). The filesystems are the
+   ones holding the home folder, the root (the system drive on Windows) and Collie's state folder,
+   with symlinks resolved. A filesystem is left out when it is under 1 GiB, or read-only with no free
+   block: a Fedora Atomic root is a 34 MiB composefs image at 100 %, and it must never show or alert
+   (on Linux the `ro` flag comes from `/proc/self/mounts`; elsewhere "no free block, the root reserve
+   included" stands in for it). Two paths on one device are one disk, and so are two filesystems with
+   the same type, size and free space (APFS volumes in one container, btrfs subvolumes, where a
+   platform gives no device id); the fuller is kept, at most four. `used` is `df`'s Used and `total`
+   is `used` plus the space an unprivileged process can still write, so `used / total` is `df`'s Use%
+   (`df`'s Size also counts the root reserve, so `total` can be a few percent under it). The label is
+   the mount point on Unix, found by walking up while the device id stays the same, and the drive
+   (`C:`) on Windows. The reads are async and fire-and-forget: the sampler's tick STARTS a round at
+   most once a minute and returns, each path is its own slot, a path whose read is still out is
+   skipped and not stacked (a hung network mount costs one pending promise, not one a minute), and a
+   path whose last answer is over three minutes old is left out rather than served stale. No child
+   process. Between rounds every sample carries the last answer. The lead validates `disks`
+   defensively (a string mount without control characters, `0 <= used <= total`, `total > 0`) and
+   keeps the first four of a longer list. `disks` is part of the "same sample" comparison in point 2:
+   a healthy machine repeats its disks for a minute by design, but CPU and memory still move.
+   The history keeps a seventh value per minute, the FULLEST disk's fraction as a running average,
+   `null` on a minute with none; the file row grows a seventh element only on such a minute, and a
+   version 2 file written before it loads with `null`. The disk alert (`MachineAlerts.disk`, title
+   code `machine.disk`, tag `collie:machine:<id>:disk`, topic `machineTopic(id, "disk")`) is judged
+   by the same evaluator on that fraction, and a minute with no disk value is a missing minute. The
+   push body names the machine, the fullest mount, the percent and the minutes. Verified on Linux
+   (Bun 1.4.1) only; on macOS and Windows `fs.statfs` is Bun's libuv call, and a rejection there
+   simply means no disks are reported.
+
+10. **A machine's page has two views, Status and Alerts, and the view is in the URL.** Under the
+    header a `ui/segmented.tsx` tablist offers Status (the numbers, a bar per disk, the 1 h | 24 h
+    switch and four charts: CPU, memory, disk, network) and Alerts (the rules for CPU, memory and
+    disk, the push note and the link to Settings, Alerts). Status is the page with no parameter;
+    Alerts is `?tab=alerts`, built by `machinePath(id, scope, "alerts")` and read by `machineTabOf`.
+    A switch is ADR 0067's SIDE move: it replaces the entry and carries its `from` over, so both
+    views are one level, and Back leaves the machine for wherever it was opened from, never onto the
+    other view. A machine alert push opens Status (its URL has no parameter), where the numbers are.
+    The "Alert firing" line on Status and on a card is a link to Alerts, where the rule is; on the
+    card it sits above the stretched tap. While a rule fires, the Alerts segment carries a dot whose
+    accessible name is "Alerts, alert firing". The history is read only while Status shows, and
+    coming back to Status asks only for the minutes since the newest point held. The disk rule is
+    offered only for a machine that reports disks, or one that already holds a disk rule.
+
 ## Not built
 
 - **Per-process figures.** A reading is per machine. Which process is busy is a question for the
@@ -133,17 +177,25 @@ asks every member for its snapshot on every sweep, so the fact was one field awa
 - **History and rules that follow the lead.** A deputy that takes over starts with no alert rules
   and no history: both files stay on the old lead. A solo Collie that becomes a lead changes its own
   id from `local` to its member id, and the `local` history and rules are dropped on the next save.
-- **Network figures off Linux, and disk.** No `node:os` source exists for them without a child
-  process.
+- **Network figures off Linux.** No `node:os` source exists for them without a child process.
+- **A disk history per filesystem, and a disk spark.** The history keeps the fullest filesystem only,
+  which is what the alert judges; the bars say which one it is now. A disk moves over days, so the
+  card shows "Disk 66%" with no spark.
 
 ## Consequences
 
 - ADR 0034 holds: readings travel on the crew link and stay on the lead. Nothing is collected or
   sent outside the crew.
 - A member older than this feature sends no reading. Its row says "no sample", never zero.
-- The day of minutes costs the lead about 55 KiB of memory and 49 KiB on disk per machine,
-  rewritten at most every five minutes and only when it changed. Ten machines take about 3 ms to
-  serialise and write.
-- On the wire, the census is about 340 B per machine raw (`?spark=30` about 680 B). The whole day
-  of one machine is about 66 KiB raw, 22 KiB gzipped, read once per page visit; each minute after is
-  a few hundred bytes.
+- The day of minutes costs the lead about 68 KiB of memory per machine (14 KiB of it the disk value)
+  and 46 KiB on disk, 54 KiB with a disk reported (measured 2026-10-05: 8.4 KiB for the seventh value
+  over a day), rewritten at most every five minutes and only when it changed. Ten machines take about
+  3 ms to serialise and write.
+- A round of disk reads costs the tick about 13 µs to start (three `statfs`, a few `stat` and one
+  `/proc/self/mounts` read, measured 2026-10-05 on this machine), and its I/O finishes off the tick
+  in well under a millisecond, once a minute. A sample with one disk is 73 B more on the crew link
+  and in the census (two disks, 127 B).
+- On the wire, the census is about 340 B per machine raw (`?spark=30` about 680 B), plus 73 B per
+  disk row. The whole day of one machine is about 70 KiB raw, 19 KiB gzipped, read once per page
+  visit (the seventh value adds 5 to 6 B per point, about 7 KiB raw a day and under 1 KiB gzipped);
+  each minute after is a few hundred bytes.
