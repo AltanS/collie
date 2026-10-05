@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { HERDR_LOGO_SVG } from "./herdr/logo.ts";
+import { TERN_LOGO_SVG } from "./tern/logo.ts";
 import { TMUX_LOGO_SVG } from "./tmux/logo.ts";
 import { TUIOS_LOGO_SVG } from "./tuios/logo.ts";
 import { ZELLIJ_LOGO_SVG } from "./zellij/logo.ts";
@@ -19,6 +20,7 @@ import { MUX_ADAPTERS } from "./registry.ts";
 // forgets its logo — which the config test in bridge/server.test.ts catches instead.
 const LOGOS: readonly [name: string, svg: string][] = [
   ["herdr", HERDR_LOGO_SVG],
+  ["tern", TERN_LOGO_SVG],
   ["tmux", TMUX_LOGO_SVG],
   ["zellij", ZELLIJ_LOGO_SVG],
   ["tuios", TUIOS_LOGO_SVG],

@@ -577,7 +577,7 @@ describe("the first-run multiplexer gate", () => {
     expect(h.exec.spawned).toHaveLength(0);
     const said = h.io.stderr.join("\n");
     expect(said).toContain("no COLLIE_MUX is set, and 2 multiplexers are running");
-    expect(said).toContain("  COLLIE_MUX=<herdr|tmux|tuios|zellij> collie start");
+    expect(said).toContain("  COLLIE_MUX=<herdr|tern|tmux|tuios|zellij> collie start");
   });
 });
 

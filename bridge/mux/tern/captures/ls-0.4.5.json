@@ -1,0 +1,35 @@
+{
+  "sessions": [
+    {
+      "id": 4,
+      "name": "Default",
+      "shown": true,
+      "tabs": [
+        {
+          "id": 213352500428886,
+          "number": 1,
+          "name": null,
+          "shown": true,
+          "zoomed": false,
+          "blocks": [
+            {
+              "id": 213352500428885,
+              "title": "shell",
+              "cwd": "/home/you",
+              "program": "/usr/bin/zsh",
+              "args": ["-l"],
+              "command": null,
+              "cols": 216,
+              "rows": 59,
+              "exited": null,
+              "keep_open": false,
+              "focused": true,
+              "live": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "detached": []
+}

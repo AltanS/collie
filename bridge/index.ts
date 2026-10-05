@@ -57,6 +57,7 @@ import {
   factoryFor,
   type MuxTarget,
 } from "./mux/registry.ts";
+import { TERN_BINARY_OPTION } from "./mux/tern/adapter.ts";
 import { TMUX_BINARY_OPTION } from "./mux/tmux/adapter.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import { ZELLIJ_BINARY_OPTION } from "./mux/zellij/adapter.ts";
@@ -1049,6 +1050,7 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
       [HERDR_DIAL_MODE_OPTION]: cfg.dialMode ?? "auto",
       [TMUX_BINARY_OPTION]: cfg.tmuxBin,
       [ZELLIJ_BINARY_OPTION]: cfg.zellijBin,
+      [TERN_BINARY_OPTION]: cfg.ternBin,
     },
   };
   const herdr = withBeaconsIfBlind(createMux(muxRegistry, cfg.mux, target), target);
