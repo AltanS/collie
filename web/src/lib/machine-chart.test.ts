@@ -1,4 +1,4 @@
-import { bandPath, linePath, maxOf, pointsInRange, runsOf, summarize, xOf, xTicks, yOf, mergeHistory, sinceOf, type PlotBox } from "./machine-chart";
+import { bandPath, CHART_MAX_HEIGHT, chartHeight, linePath, maxOf, pointsInRange, runsOf, summarize, thresholdLabelSide, xOf, xTicks, yOf, mergeHistory, sinceOf, type PlotBox } from "./machine-chart";
 import type { MachineHistoryPoint } from "./types";
 
 const STEP = 60_000;
@@ -174,5 +174,52 @@ describe("mergeHistory", () => {
     expect(sinceOf(null)).toBeUndefined();
     expect(sinceOf(answer(10 * M))).toBeUndefined();
     expect(sinceOf(answer(10 * M, 8 * M, 9 * M))).toBe(9 * M);
+  });
+});
+
+describe("thresholdLabelSide", () => {
+  const box: PlotBox = { width: 360, height: 150, left: 34, right: 8, top: 8, bottom: 22 };
+  // The plot runs from y 8 to y 128, 120 tall: the top 12% is the first 14.4 of it, down to y 22.4.
+  const lineAt = (fraction: number) => yOf(fraction, 1, box);
+
+  it("puts the label above the line, where there is room", () => {
+    expect(thresholdLabelSide(lineAt(0.8), box)).toBe("above");
+    expect(thresholdLabelSide(lineAt(0.5), box)).toBe("above");
+    expect(thresholdLabelSide(lineAt(0.2), box)).toBe("above");
+  });
+
+  it("flips the label under the line when the line is within the top 12% of the plot", () => {
+    expect(thresholdLabelSide(lineAt(1), box)).toBe("below");
+    expect(thresholdLabelSide(lineAt(0.95), box)).toBe("below");
+    // 90% is 10% of the plot from the top, so it flips too; 85% is 15% and does not.
+    expect(thresholdLabelSide(lineAt(0.9), box)).toBe("below");
+    expect(thresholdLabelSide(lineAt(0.85), box)).toBe("above");
+  });
+
+  it("switches at 12% of the plot from its top", () => {
+    const edge = box.top + 0.12 * (box.height - box.top - box.bottom);
+    expect(thresholdLabelSide(edge - 0.1, box)).toBe("below");
+    expect(thresholdLabelSide(edge + 0.1, box)).toBe("above");
+  });
+
+  it("a plot with no height never flips", () => {
+    expect(thresholdLabelSide(8, { ...box, height: 30 })).toBe("above");
+  });
+});
+
+describe("chartHeight", () => {
+  it("keeps the phone shape at the phone's width", () => {
+    expect(chartHeight(360)).toBe(150);
+    expect(chartHeight(358)).toBe(149);
+  });
+
+  it("grows with the column and stops at the cap on a tablet", () => {
+    expect(chartHeight(480)).toBe(200);
+    expect(chartHeight(788)).toBe(CHART_MAX_HEIGHT);
+    expect(chartHeight(1400)).toBe(CHART_MAX_HEIGHT);
+  });
+
+  it("does not go flat in a narrow column", () => {
+    expect(chartHeight(200)).toBe(120);
   });
 });

@@ -39,6 +39,40 @@ export interface PlotBox {
   bottom: number;
 }
 
+/** The width the charts are laid out at before they are measured, and in a test with no layout. */
+export const CHART_BASE_WIDTH = 360;
+/** The shape a chart keeps while it has room: 360 wide by 150 high. */
+const CHART_BASE_HEIGHT = 150;
+/** The tallest a chart gets, however wide its column. A tablet column is twice a phone's, and a plot
+ *  twice as tall says nothing more about a line that moves a few percent. */
+export const CHART_MAX_HEIGHT = 200;
+/** The shortest, for a column narrower than a phone. */
+const CHART_MIN_HEIGHT = 120;
+
+/**
+ * The height, in CSS pixels, of a chart drawn `width` pixels wide. The phone shape (150 high at 360
+ * wide) while the column is about that wide, growing with it up to {@link CHART_MAX_HEIGHT}. The
+ * drawing is made at its real pixel size, so its type and strokes do not scale with the width.
+ */
+export function chartHeight(width: number): number {
+  const proportional = Math.round((width * CHART_BASE_HEIGHT) / CHART_BASE_WIDTH);
+  return Math.min(CHART_MAX_HEIGHT, Math.max(CHART_MIN_HEIGHT, proportional));
+}
+
+/** The share of the plot, from its top, within which the alert label flips under its line. */
+const LABEL_FLIP_FRACTION = 0.12;
+
+/**
+ * Which side of the dashed alert line its label plate sits on. Above, where the data under a high
+ * line is usually absent; below when the line is within the top 12% of the plot, where there is no
+ * room above it inside the drawing. `lineY` is the line's y in the box's own units.
+ */
+export function thresholdLabelSide(lineY: number, box: PlotBox): "above" | "below" {
+  const plot = box.height - box.top - box.bottom;
+  if (plot <= 0) return "above";
+  return (lineY - box.top) / plot < LABEL_FLIP_FRACTION ? "below" : "above";
+}
+
 /** A missing minute breaks a run; 1.5 steps tolerates a sample that landed a few seconds late. */
 const GAP_STEPS = 1.5;
 

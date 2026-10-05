@@ -202,3 +202,44 @@ for (const locale of ["en", "de", "es", "ja", "ko", "zh", "zh-TW"]) {
     }
   });
 }
+
+// THE CHARTS KEEP THEIR TYPE AND STROKES AT ANY WIDTH. They used to stretch a 360 unit viewBox to the
+// column, so on an 820 px tablet the axis text and the lines were about 1.7 times what a phone shows.
+// A chart is now drawn at its column's own pixel size, so one drawing unit is one CSS pixel at both, the
+// axis label is the same height, and only the plot grows, up to a cap.
+test("a chart's axis text is the same size at 390 and 820 px, and the plot height is capped", async ({ page }) => {
+  await installMachinesWorld(page);
+  const read = async (width: number) => {
+    await page.setViewportSize({ width, height: 1100 });
+    await page.goto("/machines/workshop");
+    const svg = page.getByRole("img", { name: /^CPU, last hour:/u });
+    await expect(svg).toBeVisible();
+    return svg.evaluate((el) => {
+      if (!(el instanceof SVGSVGElement)) throw new Error("the chart is not an svg");
+      const root = el;
+      const label = [...root.querySelectorAll("text")].find((t) => t.textContent === "0%")!;
+      const css = getComputedStyle(label);
+      return {
+        scale: root.getScreenCTM()!.a,
+        labelHeight: label.getBoundingClientRect().height,
+        fontSize: css.fontSize,
+        svgHeight: root.getBoundingClientRect().height,
+        svgWidth: root.getBoundingClientRect().width,
+        columnWidth: root.parentElement!.getBoundingClientRect().width,
+        stroke: getComputedStyle(root.querySelector("path[data-series='avg']")!).strokeWidth,
+      };
+    });
+  };
+  const phone = await read(390);
+  const tablet = await read(820);
+  expect(phone.scale).toBeCloseTo(1, 2);
+  expect(tablet.scale).toBeCloseTo(1, 2);
+  expect(tablet.fontSize).toBe(phone.fontSize);
+  expect(tablet.labelHeight).toBeCloseTo(phone.labelHeight, 1);
+  expect(tablet.stroke).toBe(phone.stroke);
+  // The drawing fills its column, and the plot grows no taller than the cap.
+  expect(Math.abs(tablet.svgWidth - tablet.columnWidth)).toBeLessThan(1);
+  expect(tablet.svgWidth).toBeGreaterThan(phone.svgWidth);
+  expect(phone.svgHeight).toBeLessThanOrEqual(155);
+  expect(tablet.svgHeight).toBeLessThanOrEqual(200);
+});

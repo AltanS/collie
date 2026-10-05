@@ -109,7 +109,7 @@ test("the Crew tab starts with the machine cards, and Dashboard and Changes keep
   await installMachinesWorld(page);
   await routeChanges(page);
   await page.goto("/");
-  await page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).click({ button: "right" });
+  await page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).first().click({ button: "right" });
   await page.getByRole("dialog").getByRole("button", { name: en["paneActions.pin.label"] }).click();
   const pinned = page.getByRole("region", { name: en["home.pinned.title"] });
   const strip = page.getByRole("navigation", { name: en["space.strip.title"] });

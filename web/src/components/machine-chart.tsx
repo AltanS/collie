@@ -1,14 +1,19 @@
 import { memo } from "react";
 
+import { useElementWidth } from "@/hooks/use-element-width";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import {
   bandPath,
+  CHART_BASE_WIDTH,
+  CHART_MAX_HEIGHT,
+  chartHeight,
   linePath,
   maxOf,
   pointsInRange,
   runsOf,
   summarize,
+  thresholdLabelSide,
   xOf,
   xTicks,
   yOf,
@@ -30,19 +35,27 @@ import type { MachineHistoryPoint } from "@/lib/types";
 // chart never relies on colour alone. The disk chart draws the fullest filesystem of each minute, the
 // value the disk alert judges; the bars above the charts say which filesystem that is.
 //
-// ── THE SHAPE IS FIXED, SO NOTHING MOVES ─────────────────────────────────────
-// The viewBox is 360 by 150 and the svg is `w-full h-auto`: at the 390px phone width the page gutter
-// leaves 358px, so one viewBox unit is almost exactly one CSS pixel and the 10px axis text stays
-// 10px. A state with no data renders a box of the same height (`ChartPlaceholder`), so a chart
+// ── ONE VIEWBOX UNIT IS ONE CSS PIXEL, AT ANY WIDTH ──────────────────────────
+// The chart measures its column and draws an svg of exactly that many pixels, with a viewBox of the same
+// size. A viewBox stretched to the column made the 10px axis text and the strokes about 1.7 times larger
+// on an 820px tablet than on a phone; drawn at its real size they are the same at every width, and only
+// the plot grows. Its height follows the width up to a cap (`chartHeight`), so a tablet's chart is not
+// a poster. A state with no data renders a box of the same height (`ChartPlaceholder`), so a chart
 // arriving never pushes the one under it down.
 
-const VIEW_W = 360;
-const VIEW_H = 150;
-
 /** Percent charts: the y labels are short ("100%"), so the plot starts early and keeps the width. */
-const BOX_PERCENT: PlotBox = { width: VIEW_W, height: VIEW_H, left: 34, right: 8, top: 8, bottom: 22 };
+function boxPercent(width: number, height: number): PlotBox {
+  return { width, height, left: 34, right: 8, top: 8, bottom: 22 };
+}
 /** Network: "200 KB/s" is wider, so the left margin grows and the plot gives the width back. */
-const BOX_RATE: PlotBox = { width: VIEW_W, height: VIEW_H, left: 56, right: 8, top: 8, bottom: 22 };
+function boxRate(width: number, height: number): PlotBox {
+  return { width, height, left: 56, right: 8, top: 8, bottom: 22 };
+}
+
+/** The plate behind the alert label: the label's own text height with a little air, never taller. */
+const LABEL_PLATE_H = 14;
+/** One character of 10px axis text, near enough for a short percent: "90%" is three. */
+const LABEL_CHAR_W = 6;
 
 export type MachineChartKind = "cpu" | "mem" | "disk" | "net";
 
@@ -75,7 +88,10 @@ function percentOf(kind: MachineChartKind, p: MachineHistoryPoint): number | nul
 /** The same-height box a chart's place holds while there is nothing to draw. */
 export function ChartPlaceholder({ children }: { children: string }) {
   return (
-    <div className="flex items-center justify-center px-4 text-center text-sm text-muted-foreground" style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}>
+    <div
+      className="flex items-center justify-center px-4 text-center text-sm text-muted-foreground"
+      style={{ aspectRatio: `${CHART_BASE_WIDTH} / 150`, maxHeight: CHART_MAX_HEIGHT }}
+    >
       {children}
     </div>
   );
@@ -96,6 +112,7 @@ function tickLabel(tick: XTick): string {
 /** A chart, memoised: see the header. */
 export const MachineChart = memo(function MachineChart({ kind, points, ts, stepMs, range, threshold = null }: MachineChartProps) {
   useLocale();
+  const [column, columnWidth] = useElementWidth<HTMLDivElement>(CHART_BASE_WIDTH);
   const inRange = pointsInRange(points, ts, range);
   const metric = t(METRIC_KEY[kind]);
   const rangeWord = t(range === "hour" ? "machines.range.hour.long" : "machines.range.day.long");
@@ -114,7 +131,8 @@ export const MachineChart = memo(function MachineChart({ kind, points, ts, stepM
     return <ChartPlaceholder>{none ? t("machines.disk.none") : t("machines.history.empty")}</ChartPlaceholder>;
   }
 
-  const box = kind === "net" ? BOX_RATE : BOX_PERCENT;
+  const height = chartHeight(columnWidth);
+  const box = kind === "net" ? boxRate(columnWidth, height) : boxPercent(columnWidth, height);
   const yMax = kind === "net" ? niceCeiling(Math.max(maxOf(rxRuns), maxOf(txRuns))) : 1;
   const x = (time: number) => xOf(time, ts, range, box);
   const y = (value: number) => yOf(value, yMax, box);
@@ -126,12 +144,14 @@ export const MachineChart = memo(function MachineChart({ kind, points, ts, stepM
   const summary = chartSummary(kind, metric, rangeWord, { avgRuns, rxRuns, txRuns }, threshold);
 
   return (
-    <div>
+    <div ref={column}>
       <svg
         role="img"
         aria-label={summary}
-        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        className="block h-auto w-full text-status-info"
+        viewBox={`0 0 ${columnWidth} ${height}`}
+        width={columnWidth}
+        height={height}
+        className="block text-status-info"
         data-kind={kind}
         data-range={range}
       >
@@ -187,9 +207,7 @@ export const MachineChart = memo(function MachineChart({ kind, points, ts, stepM
               strokeWidth={1.25}
               strokeDasharray="4 3"
             />
-            <text x={plotRight} y={y(threshold) - 3} textAnchor="end" fill="currentColor" fontSize={10}>
-              {formatPercent(threshold)}
-            </text>
+            <ThresholdLabel text={formatPercent(threshold)} lineY={y(threshold)} right={plotRight} box={box} />
           </g>
         )}
       </svg>
@@ -197,6 +215,25 @@ export const MachineChart = memo(function MachineChart({ kind, points, ts, stepM
     </div>
   );
 });
+
+/**
+ * The alert line's label, on a plate of the chart card's own colour so a data line under it never
+ * crosses the letters, anchored at the right end of the line just above it, or just below when the
+ * line is in the top 12% of the plot (`thresholdLabelSide`).
+ */
+function ThresholdLabel({ text, lineY, right, box }: { text: string; lineY: number; right: number; box: PlotBox }) {
+  const side = thresholdLabelSide(lineY, box);
+  const plateW = text.length * LABEL_CHAR_W + 6;
+  const plateY = side === "above" ? lineY - 1.5 - LABEL_PLATE_H : lineY + 1.5;
+  return (
+    <g data-slot="threshold-label" data-side={side}>
+      <rect x={right - plateW} y={plateY} width={plateW} height={LABEL_PLATE_H} rx={2} className="fill-card" />
+      <text x={right - 3} y={plateY + LABEL_PLATE_H / 2} textAnchor="end" dominantBaseline="central" fill="currentColor" fontSize={10}>
+        {text}
+      </text>
+    </g>
+  );
+}
 
 function Line({
   series,

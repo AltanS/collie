@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { vi } from "vitest";
 
 import { FIXTURE_MACHINES_TS, fixtureMachineHistory } from "@/test/machine-fixtures";
 
@@ -174,5 +175,76 @@ describe("MachineChart with nothing to draw", () => {
     const [path] = lines(container, "avg");
     expect(path?.getAttribute("stroke-linecap")).toBe("round");
     expect(path?.getAttribute("d")).toMatch(/^M[\d.]+ [\d.]+L[\d.]+ [\d.]+$/);
+  });
+});
+
+describe("MachineChart alert label", () => {
+  const label = (container: HTMLElement) => container.querySelector<SVGGElement>('[data-slot="threshold-label"]');
+
+  it("sits on a plate of the card's own colour, with the label's words, above the dashed line", () => {
+    const { container } = render(
+      <MachineChart kind="cpu" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" threshold={0.8} />,
+    );
+    const g = label(container)!;
+    expect(g.textContent).toBe("80%");
+    expect(g.getAttribute("data-side")).toBe("above");
+    const plate = g.querySelector("rect")!;
+    expect(plate.getAttribute("class")).toContain("fill-card");
+    const lineY = Number(container.querySelector('line[data-series="threshold"]')?.getAttribute("y1"));
+    expect(Number(plate.getAttribute("y")) + Number(plate.getAttribute("height"))).toBeLessThan(lineY);
+    // Anchored at the right end of the plot.
+    expect(Number(plate.getAttribute("x")) + Number(plate.getAttribute("width"))).toBe(360 - 8);
+  });
+
+  it("flips under the line when it is near the top of the plot", () => {
+    const { container } = render(
+      <MachineChart kind="cpu" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" threshold={0.9} />,
+    );
+    const g = label(container)!;
+    expect(g.getAttribute("data-side")).toBe("below");
+    const lineY = Number(container.querySelector('line[data-series="threshold"]')?.getAttribute("y1"));
+    expect(Number(g.querySelector("rect")?.getAttribute("y"))).toBeGreaterThan(lineY);
+  });
+
+  it("keeps the legend entry that names the line", () => {
+    render(<MachineChart kind="cpu" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" threshold={0.9} />);
+    expect(screen.getByText("Alert at 90%")).toBeTruthy();
+  });
+});
+
+describe("MachineChart size", () => {
+  it("is drawn at the column's own pixel width, so one unit is one pixel and the 10px text stays 10px", () => {
+    // SAFETY: the chart reads only `width` off the rect, and jsdom has no layout to answer with.
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 788 } as DOMRect);
+    try {
+      const { container } = render(
+        <MachineChart kind="cpu" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" threshold={0.9} />,
+      );
+      const svg = container.querySelector("svg[data-kind]")!;
+      expect(svg.getAttribute("viewBox")).toBe("0 0 788 200");
+      expect(svg.getAttribute("width")).toBe("788");
+      expect(svg.getAttribute("height")).toBe("200");
+      for (const text of svg.querySelectorAll("text")) expect(text.getAttribute("font-size")).toBe("10");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("without a measured column it keeps the phone shape", () => {
+    const { container } = render(<MachineChart kind="cpu" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" />);
+    expect(container.querySelector("svg[data-kind]")?.getAttribute("viewBox")).toBe("0 0 360 150");
+  });
+
+  it("draws once when its props do not change: a poll tick re-renders the page, not the chart", () => {
+    const spy = vi.spyOn(Array.prototype, "filter");
+    try {
+      const { rerender } = render(<MachineChart kind="cpu" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" />);
+      const before = spy.mock.calls.length;
+      rerender(<MachineChart kind="cpu" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" />);
+      // `pointsInRange` filters the history on every draw; no filter call means no draw.
+      expect(spy.mock.calls.length).toBe(before);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
