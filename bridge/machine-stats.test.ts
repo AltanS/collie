@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CpuInfo } from "node:os";
 
 import { hostFor } from "./host.ts";
+import { DiskWatch } from "./machine-disks.ts";
 import {
   cpuFraction,
   cpuTimesFromOs,
@@ -344,6 +345,37 @@ describe("MachineSampler — a macOS-like host", () => {
     src.state.free = 2e9;
     expect(sampler.tick()).toEqual({ cpu: 100 / 300, cores: 1, memUsed: 6e9, memTotal: 8e9, load1: 0.5 });
     expect(src.state.reads).toEqual([]);
+  });
+});
+
+describe("MachineSampler — disks ride along", () => {
+  test("the tick starts the disk round without waiting, and the next sample carries its answer", async () => {
+    const src = fakeSources();
+    let statfsCalls = 0;
+    const disks = new DiskWatch({
+      platform: "darwin",
+      paths: ["/"],
+      statfs: async () => {
+        statfsCalls += 1;
+        return { type: 1, bsize: 4096, blocks: 1_000_000, bfree: 400_000, bavail: 400_000 };
+      },
+      dev: async () => 1,
+      realpath: async (p) => p,
+      mounts: async () => null,
+      now: src.now,
+    });
+    const sampler = new MachineSampler({ host: hostFor("darwin"), readText: src.readText, os: src.os, now: src.now, disks });
+    sampler.tick();
+    // Started, not awaited: the tick has returned before the read is even issued.
+    expect(statfsCalls).toBe(0);
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(statfsCalls).toBe(1);
+    src.state.now += SAMPLE_IDLE_MS;
+    src.state.cpus = [core(150, 150, 1000)];
+    const sample = sampler.tick()!;
+    expect(sample.disks).toEqual([{ mount: "/", used: 600_000 * 4096, total: 1_000_000 * 4096 }]);
+    // Fifteen seconds later is inside the minute: no second round.
+    expect(statfsCalls).toBe(1);
   });
 });
 

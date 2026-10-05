@@ -24,6 +24,10 @@
 // the idle arithmetic is in `machines.ts` beside the watch. A crew snapshot answer never reads
 // anything: it serves {@link MachineSampler.latest}, the last sample held.
 //
+// ── DISKS RIDE ALONG, ASYNC ──────────────────────────────────────────────────
+// A sample carries the last answer of `DiskWatch` (bridge/machine-disks.ts), which this tick starts
+// at most once a minute and never waits for: a `statfs` on a hung mount must not hold the tick.
+//
 // ── WHAT ONE SAMPLE COSTS ────────────────────────────────────────────────────
 // Measured on 2026-10-05 under Bun 1.4.1 on a 16-core Fedora desktop with 33 network interfaces
 // (Docker): about 0.2 ms, almost all of it in the kernel producing the three files (`/proc/net/dev`
@@ -33,8 +37,9 @@
 // `/sys/class/net/<iface>/statistics` instead of `/proc/net/dev` was measured too, and was no cheaper.
 
 import type { CpuInfo } from "node:os";
+import { type DiskWatch, MAX_DISKS } from "./machine-disks.ts";
 import type { Host } from "./host.ts";
-import type { MachineSample } from "./types.ts";
+import type { MachineDisk, MachineSample } from "./types.ts";
 
 /**
  * The fastest a machine samples itself while a phone is watching its load (the Machines list, a
@@ -243,6 +248,11 @@ export interface MachineReaders {
   readonly readText: (path: string) => string | null;
   readonly os: OsReader;
   readonly now: () => number;
+  /**
+   * This machine's disks (bridge/machine-disks.ts): a round of async reads at most once a minute,
+   * started from this tick and never awaited. Absent in a harness that does not test disks.
+   */
+  readonly disks?: DiskWatch;
 }
 
 /** Counters at one instant. Each half is `null` when its source said nothing usable. */
@@ -325,6 +335,8 @@ export class MachineSampler {
    * within seconds, not after a whole idle interval. That costs one extra reading per start.
    */
   tick(minIntervalMs = SAMPLE_IDLE_MS): MachineSample | null {
+    // Starts a round of disk reads when one is due, and returns at once (machine-disks.ts).
+    this.readers.disks?.tick();
     const now = this.readers.now();
     const floor = this.last === null ? Math.min(minIntervalMs, SAMPLE_WATCHED_MS) : minIntervalMs;
     if (this.prev !== null && now - this.prev.at < floor) return null;
@@ -332,7 +344,7 @@ export class MachineSampler {
     const prev = this.prev;
     this.prev = next;
     if (prev === null) return null;
-    const sample = composeSample(prev, next);
+    const sample = composeSample(prev, next, this.readers.disks?.current() ?? []);
     if (sample !== null) this.last = sample;
     return sample;
   }
@@ -343,7 +355,7 @@ export class MachineSampler {
   }
 }
 
-function composeSample(prev: Counters, next: Counters): MachineSample | null {
+function composeSample(prev: Counters, next: Counters, disks: MachineDisk[]): MachineSample | null {
   if (prev.cpu === null || next.cpu === null || next.mem === null || next.cores <= 0) return null;
   if (prev.cpuSource !== next.cpuSource) return null;
   const cpu = cpuFraction(prev.cpu, next.cpu);
@@ -357,6 +369,7 @@ function composeSample(prev: Counters, next: Counters): MachineSample | null {
       sample.txBps = rate.tx;
     }
   }
+  if (disks.length > 0) sample.disks = disks;
   return isMachineSample(sample) ? sample : null;
 }
 
@@ -374,6 +387,17 @@ export const CREW_MACHINE_FIELD = "machineStats";
 const MAX_CORES = 65_536;
 const MAX_BYTES = 2 ** 60;
 const MAX_LOAD = 1_000_000;
+/** A mount label longer than this is not a path anyone typed. */
+const MAX_MOUNT_CHARS = 512;
+
+/** A C0 control character or DEL: nothing a mount label shown on a phone may carry. */
+function hasControlChar(text: string): boolean {
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
 
 function finiteIn(v: number, min: number, max: number): boolean {
   return Number.isFinite(v) && v >= min && v <= max;
@@ -390,5 +414,12 @@ export function isMachineSample(s: MachineSample): boolean {
   if (s.load1 !== undefined && !finiteIn(s.load1, 0, MAX_LOAD)) return false;
   if (s.rxBps !== undefined && !finiteIn(s.rxBps, 0, MAX_BYTES)) return false;
   if (s.txBps !== undefined && !finiteIn(s.txBps, 0, MAX_BYTES)) return false;
+  if (s.disks !== undefined) {
+    if (s.disks.length === 0 || s.disks.length > MAX_DISKS) return false;
+    for (const d of s.disks) {
+      if (d.mount.length === 0 || d.mount.length > MAX_MOUNT_CHARS || hasControlChar(d.mount)) return false;
+      if (!finiteIn(d.total, 1, MAX_BYTES) || !finiteIn(d.used, 0, d.total)) return false;
+    }
+  }
   return true;
 }

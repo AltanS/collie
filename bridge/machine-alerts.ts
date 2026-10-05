@@ -10,7 +10,8 @@
 // ── FOUR RULES ───────────────────────────────────────────────────────────────
 // 1. A rule FIRES when every complete minute in its last `forMin` that has data is at or above
 //    `above`, and at least 80 % of those minutes have data. CPU is judged on the minute's average,
-//    so one busy second does not count as a busy minute. The open minute is never judged: it is
+//    so one busy second does not count as a busy minute. Disk is judged on the fullest filesystem's
+//    fraction, and a minute without a disk reading is a minute without data. The open minute is never judged: it is
 //    still filling.
 // 2. ONE PUSH PER EPISODE. A fired rule opens an episode, and nothing more is sent until it closes.
 // 3. An episode CLOSES after five straight complete minutes, each with data, below `above - 0.05`.
@@ -40,7 +41,7 @@ export const ALERT_CLOSE_MINUTES = 5;
 /** How far below `above` a minute must be to count towards closing. */
 export const ALERT_HYSTERESIS = 0.05;
 
-const METRICS: readonly AlertMetric[] = ["cpu", "mem"];
+const METRICS: readonly AlertMetric[] = ["cpu", "mem", "disk"];
 
 /** What one rule says about one machine right now. */
 export type AlertVerdict =
@@ -50,9 +51,11 @@ export type AlertVerdict =
 
 const HOLD: AlertVerdict = { kind: "hold" };
 
-/** The value a rule reads off a minute. */
-function valueOf(metric: AlertMetric, minute: MinuteReading): number {
-  return metric === "cpu" ? minute.cpu : minute.mem;
+/** The value a rule reads off a minute, `null` where the minute has none (disk only). */
+function valueOf(metric: AlertMetric, minute: MinuteReading): number | null {
+  if (metric === "cpu") return minute.cpu;
+  if (metric === "mem") return minute.mem;
+  return minute.disk;
 }
 
 /** The complete minutes in `[open - count, open)`, where `open` is the minute `now` falls in. */
@@ -73,16 +76,23 @@ export function judgeAlert(
   minutes: readonly MinuteReading[],
   now: number,
 ): AlertVerdict {
+  // A minute with no value for this metric (a disk not reported) is a missing minute, exactly like a
+  // minute with no reading at all.
+  const valued = (count: number): number[] =>
+    windowOf(minutes, count, now).flatMap((m) => {
+      const v = valueOf(metric, m);
+      return v === null ? [] : [v];
+    });
   if (open) {
-    const recent = windowOf(minutes, ALERT_CLOSE_MINUTES, now);
+    const recent = valued(ALERT_CLOSE_MINUTES);
     if (recent.length < ALERT_CLOSE_MINUTES) return HOLD;
     const line = rule.above - ALERT_HYSTERESIS;
-    return recent.every((m) => valueOf(metric, m) < line) ? { kind: "close" } : HOLD;
+    return recent.every((v) => v < line) ? { kind: "close" } : HOLD;
   }
-  const window = windowOf(minutes, rule.forMin, now);
+  const window = valued(rule.forMin);
   if (window.length < rule.forMin * ALERT_COVERAGE) return HOLD;
-  if (!window.every((m) => valueOf(metric, m) >= rule.above)) return HOLD;
-  const value = window.reduce((sum, m) => sum + valueOf(metric, m), 0) / window.length;
+  if (!window.every((v) => v >= rule.above)) return HOLD;
+  const value = window.reduce((sum, v) => sum + v, 0) / window.length;
   return { kind: "fire", value };
 }
 
@@ -124,7 +134,7 @@ export function evaluateMachineAlerts(
   const closed: { id: string; metric: AlertMetric }[] = [];
   for (const subject of subjects) {
     if (!subject.reachable) continue;
-    const reach = Math.max(ALERT_CLOSE_MINUTES, subject.rules.cpu?.forMin ?? 0, subject.rules.mem?.forMin ?? 0);
+    const reach = Math.max(ALERT_CLOSE_MINUTES, ...METRICS.map((m) => subject.rules[m]?.forMin ?? 0));
     const minutes = minutesOf(subject.id, minuteOf(now) - reach * MINUTE_MS);
     for (const metric of METRICS) {
       const rule = subject.rules[metric];
@@ -154,12 +164,13 @@ const percent = (fraction: number): number => Math.round(fraction * 100);
  * `host`: an old service worker would open `/?h=<id>` with it, broken on a solo Collie (`local`), and
  * without it opens the dashboard.
  */
-export function machineAlertMessage(opened: AlertOpened): PushMessage {
-  const label = opened.metric === "cpu" ? "CPU" : "memory";
+export function machineAlertMessage(opened: AlertOpened, mount?: string): PushMessage {
+  const label = opened.metric === "cpu" ? "CPU" : opened.metric === "mem" ? "memory" : mount === undefined ? "disk" : `disk ${mount}`;
+  const code = opened.metric === "cpu" ? "machine.cpu" : opened.metric === "mem" ? "machine.mem" : "machine.disk";
   return {
     type: "machine",
     tag: `collie:machine:${opened.id}:${opened.metric}`,
-    ...pushTitle(opened.metric === "cpu" ? "machine.cpu" : "machine.mem", { machine: opened.name }),
+    ...pushTitle(code, { machine: opened.name }),
     body: `${opened.name}: ${label} ${percent(opened.value)}% for ${opened.rule.forMin} min (alert at ${percent(opened.rule.above)}%).`,
     machine: opened.id,
     target: "machine",
@@ -211,7 +222,7 @@ export class MachineAlertStore {
    */
   async set(id: string, rules: MachineAlerts): Promise<MachineAlerts> {
     const open = this.open(id).filter((m) => rules[m] !== undefined);
-    if (rules.cpu === undefined && rules.mem === undefined) this.entries.delete(id);
+    if (METRICS.every((m) => rules[m] === undefined)) this.entries.delete(id);
     else this.entries.set(id, { rules: { ...rules }, open });
     await this.save();
     return this.rules(id);

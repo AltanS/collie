@@ -49,6 +49,8 @@ export const PUSH_TITLES = {
   "machine.cpu": "CPU stays high on {machine}",
   /** The same for memory. */
   "machine.mem": "Memory stays high on {machine}",
+  /** The same for the fullest disk. */
+  "machine.disk": "Disk stays full on {machine}",
 } as const;
 
 /** Every code a push title can carry. The client mirror restates this union verbatim. */

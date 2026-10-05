@@ -182,8 +182,8 @@ describe("GET /api/machines/:id/history", () => {
       stepMs: 60000,
       points: [
         // Each point is stamped with the start of its minute, not the time of the sample.
-        [minuteOf(NOW - 2 * MINUTE_MS), 0.5, 0.5, 0.25, 10, 20],
-        [minuteOf(NOW - MINUTE_MS), 0.7, 0.7, 0.5, null, null],
+        [minuteOf(NOW - 2 * MINUTE_MS), 0.5, 0.5, 0.25, 10, 20, null],
+        [minuteOf(NOW - MINUTE_MS), 0.7, 0.7, 0.5, null, null, null],
       ],
     });
   });
