@@ -888,6 +888,7 @@ export function AgentChat({
     agent?.status,
     chatFeed,
     Boolean(agent?.hasSession) && journal !== "missing",
+    Boolean(agent?.hasSession),
   );
   // A harness draws Chat when the multiplexer keeps a session log and Collie reads this harness's
   // log. A pane that reported a session is one by construction (the bridge's `hasSession` already

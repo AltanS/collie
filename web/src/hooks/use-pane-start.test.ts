@@ -8,33 +8,52 @@ import { NO_RECORD, activityOf, nextRecord, nextSeen, usePaneStart } from "./use
 // belongs to ONE agent in ONE pane, so anything that starts another one starts over. Every reading
 // moves on an EVENT read off a snapshot; the only clock is the last resort, tested last.
 describe("nextSeen", () => {
-  it("first sight of an idle agent is fresh, of a busy or unknown one is not", () => {
-    expect(nextSeen(null, "p", "codex", false, "idle")?.history).toBe("fresh");
+  it("first sight of an idle Codex with no session yet is fresh, of a busy or unknown agent is not", () => {
+    expect(nextSeen(null, "p", "codex", false, "idle", false)?.history).toBe("fresh");
     for (const s of ["working", "blocked", "done", "unknown"] as const) {
-      expect(nextSeen(null, "p", "claude", false, s)?.history).toBe("unknown");
+      expect(nextSeen(null, "p", "claude", false, s, false)?.history).toBe("unknown");
     }
   });
 
+  // An idle pane that has nothing to read may be new, or may be a long conversation whose session
+  // Collie cannot read (the hook is missing, Codex declined trust, the transcript was cleaned up).
+  // Only a harness with a reason to have nothing yet gets the benefit of the doubt.
+  it("first sight of an idle agent with nothing to read is fresh only where nothing is expected yet", () => {
+    // Codex reports its session on the first prompt: no session is expected. Pi writes its log after
+    // the first reply: a session and no log is expected. Oh My Pi is pi's second name.
+    expect(nextSeen(null, "p", "codex", false, "idle", false)?.history).toBe("fresh");
+    expect(nextSeen(null, "p", "pi", false, "idle", true)?.history).toBe("fresh");
+    expect(nextSeen(null, "p", "omp", false, "idle", true)?.history).toBe("fresh");
+    // Claude reports at start: an idle Claude with no readable log is not new.
+    expect(nextSeen(null, "p", "claude", false, "idle", false)?.history).toBe("unknown");
+    expect(nextSeen(null, "p", "claude", false, "idle", true)?.history).toBe("unknown");
+    // Codex with a session already named it, and pi without one has a missing hook.
+    expect(nextSeen(null, "p", "codex", false, "idle", true)?.history).toBe("unknown");
+    expect(nextSeen(null, "p", "pi", false, "idle", false)?.history).toBe("unknown");
+  });
+
   it("a shell this view watched turn into an agent is fresh, whatever its status", () => {
-    const shell = nextSeen(null, "p", "shell", true, "unknown");
-    expect(nextSeen(shell, "p", "claude", false, "working")?.history).toBe("fresh");
+    const shell = nextSeen(null, "p", "shell", true, "unknown", false);
+    expect(nextSeen(shell, "p", "claude", false, "working", false)?.history).toBe("fresh");
+    // Even an idle Claude with no session: this view saw it begin.
+    expect(nextSeen(shell, "p", "claude", false, "idle", false)?.history).toBe("fresh");
   });
 
   it("keeps the record while nothing that starts a new one moved, and while the pane is missing", () => {
-    const rec = nextSeen(null, "p", "pi", false, "idle");
-    expect(nextSeen(rec, "p", "pi", false, "working")).toBe(rec);
-    expect(nextSeen(rec, "p", undefined, false, undefined)).toBe(rec);
+    const rec = nextSeen(null, "p", "pi", false, "idle", true);
+    expect(nextSeen(rec, "p", "pi", false, "working", true)).toBe(rec);
+    expect(nextSeen(rec, "p", undefined, false, undefined, false)).toBe(rec);
   });
 
   it("a pane switch to a pane not in the snapshot drops the record", () => {
-    const rec = nextSeen(null, "p", "pi", false, "idle");
-    expect(nextSeen(rec, "q", undefined, false, undefined)).toBeNull();
+    const rec = nextSeen(null, "p", "pi", false, "idle", true);
+    expect(nextSeen(rec, "q", undefined, false, undefined, false)).toBeNull();
   });
 });
 
 describe("nextRecord: the events, as latches", () => {
   const step = (prev: typeof NO_RECORD, status: AgentStatus, asked = 0) =>
-    nextRecord(prev, "p", "pi", false, status, asked);
+    nextRecord(prev, "p", "pi", false, status, asked, true);
 
   it("idle is not an end: a fresh agent is idle before its first prompt", () => {
     const r = step(NO_RECORD, "idle");
@@ -68,10 +87,10 @@ describe("nextRecord: the events, as latches", () => {
   });
 
   it("a shell's statuses never count for the agent that replaces it", () => {
-    let r = nextRecord(NO_RECORD, "p", "shell", true, "working", 0);
-    r = nextRecord(r, "p", "shell", true, "done", 0);
+    let r = nextRecord(NO_RECORD, "p", "shell", true, "working", 0, false);
+    r = nextRecord(r, "p", "shell", true, "done", 0, false);
     expect(r.endMark).toBeNull();
-    r = nextRecord(r, "p", "codex", false, "idle", 0);
+    r = nextRecord(r, "p", "codex", false, "idle", 0, false);
     expect(activityOf(r)).toBe("none");
   });
 });
@@ -88,11 +107,12 @@ describe("usePaneStart", () => {
     asked?: number;
     answered?: number;
     readable?: boolean;
+    session?: boolean;
   };
   const setup = (p: P) =>
     renderHook(
       (q: P) =>
-        usePaneStart(q.pane, q.harness, q.shell, q.status, { asked: q.asked ?? 0, answered: q.answered ?? 0 }, q.readable ?? false),
+        usePaneStart(q.pane, q.harness, q.shell, q.status, { asked: q.asked ?? 0, answered: q.answered ?? 0 }, q.readable ?? false, q.session ?? true),
       { initialProps: p },
     );
   const advance = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
@@ -156,6 +176,19 @@ describe("usePaneStart", () => {
     act(() => result.current.markSent()); // `codex`, sent from the phone into the shell
     rerender({ pane: "p", harness: "codex", shell: false, status: "idle" });
     expect(result.current).toMatchObject({ history: "fresh", activity: "none" });
+  });
+
+  it("an idle Claude pane met first with no readable session is not fresh, so the gate keeps its terminal", () => {
+    const { result } = setup({ pane: "p", harness: "claude", shell: false, status: "idle", session: false });
+    expect(result.current.history).toBe("unknown");
+  });
+
+  it("an idle Codex pane with no session yet is fresh, and one this view watched start is fresh", () => {
+    const { result, rerender } = setup({ pane: "p", harness: "codex", shell: false, status: "idle", session: false });
+    expect(result.current.history).toBe("fresh");
+    rerender({ pane: "q", harness: "shell", shell: true, status: "unknown", session: false });
+    rerender({ pane: "q", harness: "claude", shell: false, status: "idle", session: false });
+    expect(result.current.history).toBe("fresh");
   });
 
   it("a pane switch starts a new record", () => {

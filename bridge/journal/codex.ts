@@ -21,7 +21,9 @@
 // Where Herdr's id comes from: Codex's `SessionStart` hook reports `session_id` to
 // `pane.report_agent_session` (herdr integration `codex`, version 6), so the pane record carries a
 // kind-`id` ref exactly like Claude's. It needs `herdr integration install codex`; without the hook
-// there is no id and the journal correctly reports "no-session".
+// there is no id and the journal correctly reports "no-session". The hook fires only when the first
+// prompt is submitted, so a Codex pane with no turn yet has no session either
+// (`REPORTS_SESSION_ON_FIRST_PROMPT` in `registry.ts`).
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -523,7 +525,8 @@ export function createCodexReducer(): RowReducer {
  * whole year. The hit is cached; a cached path is re-verified before use, since a session can be
  * deleted while the bridge is up.
  *
- * No continuation-following, deliberately: Codex reports its session on the `SessionStart` hook, so a
+ * No continuation-following, deliberately: Codex reports its session on the `SessionStart` hook (which
+ * fires only at the first prompt, see `REPORTS_SESSION_ON_FIRST_PROMPT` in `registry.ts`), so a
  * resumed conversation re-reports its NEW id and the pane record follows it. That's the failure
  * Claude's followContinuation exists to paper over, and Codex's hook simply doesn't have it.
  */

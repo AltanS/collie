@@ -54,9 +54,12 @@ export type JournalReading = "unasked" | "readable" | "missing";
 /**
  * What this view knows about how the pane began.
  *
- * `fresh`: this view saw the pane turn from a shell into this agent, or first saw it idle. `unknown`:
- * this view first saw it already working, blocked, done or in an unknown state, so it may have a
- * long past that Chat cannot read.
+ * `fresh`: this view saw the pane turn from a shell into this agent, or first saw it idle with an
+ * excuse for having nothing to read yet (Codex before its first prompt, pi before its first reply:
+ * lib/journal-agents.ts). `unknown`: anything else, so it may have a long past that Chat cannot read.
+ * An idle pane with nothing to read and no such excuse is `unknown`: its hook may be missing, Codex may
+ * have declined trust, or the transcript may be gone, and an empty Chat over a live conversation hides
+ * the terminal that shows it.
  */
 export type PaneHistory = "fresh" | "unknown";
 

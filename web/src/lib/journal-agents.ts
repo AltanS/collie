@@ -54,6 +54,11 @@ export const JOURNAL_AGENT_NAMES: ReadonlySet<string> = new Set([
  *  one. */
 const FIRST_PROMPT_AGENTS: ReadonlySet<string> = new Set(["codex"]);
 
+/** The agents whose session is reported at start but whose log file appears only after the first
+ *  reply: pi, and Oh My Pi (`omp`), its second name. Not on the wire, so named here by hand; the
+ *  reason is in `lib/chat-gate.ts`. A pane of one with a session and no log yet may simply be new. */
+const LOG_AFTER_FIRST_REPLY_AGENTS: ReadonlySet<string> = new Set(["omp", "pi"]);
+
 /** The agents that draw a picture the mirror cannot see, because a direct Kitty placement leaves
  *  nothing on the grid, and whose journal records it. Mirrors `DRAWS_IMAGES_OFF_GRID` in
  *  `bridge/journal/registry.ts`, which holds the reason (#292). */
@@ -85,4 +90,21 @@ export function reportsSessionOnFirstPrompt(agent: string | undefined): boolean 
  */
 export function hasJournalAdapter(agent: string | undefined): boolean {
   return agent !== undefined && JOURNAL_AGENT_NAMES.has(agent);
+}
+
+/**
+ * Whether an IDLE pane of `agent` that this view first met already idle may be brand new, because the
+ * thing Chat reads is not there YET for a reason that is not a fault:
+ *
+ * - an agent that reports its session on the first prompt (Codex) has no session before one, and
+ * - an agent that writes its log after the first reply (pi) has a session and no log.
+ *
+ * Any other agent, or either of these showing the other half (Codex with a session, pi without one),
+ * has no such excuse: an idle pane with nothing to read may have a long past Chat cannot show (the
+ * hook is missing, Codex declined trust, the transcript was cleaned up), so its terminal stays.
+ */
+export function mayBeNewWithNothingToRead(agent: string | undefined, hasSession: boolean): boolean {
+  if (agent === undefined) return false;
+  if (FIRST_PROMPT_AGENTS.has(agent)) return !hasSession;
+  return LOG_AFTER_FIRST_REPLY_AGENTS.has(agent) && hasSession;
 }
