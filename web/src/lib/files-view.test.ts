@@ -41,8 +41,22 @@ describe("rootPathOf", () => {
 
   it("is null for a file of that repo outside the root, and for the root itself", () => {
     expect(rootPathOf("/home/you/proj/web", "..", "api/server.ts")).toBeNull();
-    expect(rootPathOf("/home/you/proj/web", "..", "web/")).toBeNull();
+    expect(rootPathOf("/home/you/proj/web", "..", "api/")).toBeNull();
     expect(rootPathOf("/web", "../..", "a/web/x.md")).toBeNull();
+  });
+});
+
+describe("rootPathOf, an untracked folder that holds the root", () => {
+  // `repo/web` is the root; git in `repo` lists `web/` whole. Before this the answer was null, the
+  // tree marked nothing and the badge still counted the row.
+  it("is the root itself, an empty path", () => {
+    expect(rootPathOf("/home/you/proj/web", "..", "web/")).toBe("");
+    expect(rootPathOf("/home/you/mono/apps/web", "../..", "apps/")).toBe("");
+    expect(rootPathOf("/home/you/mono/apps/web", "../..", "apps/web/")).toBe("");
+  });
+
+  it("is still the folder's own path for an untracked folder below the root", () => {
+    expect(rootPathOf("/home/you/proj/web", "..", "web/drafts/")).toBe("drafts");
   });
 });
 

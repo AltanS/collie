@@ -30,7 +30,8 @@ export function previewKindFor(path: string): PreviewKind | null {
  * (the root is a folder inside a repo, such as a pane opened in `repo/web`) has `..` or `../..`, and
  * its paths start with the folders between the repo and the root, which are the root's own last
  * segments. A file elsewhere in that repo is not under the root, and Files cannot open it. An
- * untracked folder's trailing slash is dropped.
+ * untracked folder's trailing slash is dropped. An untracked folder that holds the root, or is it,
+ * comes out as `""`: the root itself is untracked.
  */
 export function rootPathOf(root: string, repo: string, path: string): string | null {
   const bare = path.endsWith("/") ? path.slice(0, -1) : path;
@@ -43,6 +44,9 @@ export function rootPathOf(root: string, repo: string, path: string): string | n
   const tail = root.split(/[\\/]/).filter((s) => s !== "");
   if (tail.length < segments.length) return null;
   const prefix = `${tail.slice(-segments.length).join("/")}/`;
+  // An untracked folder that holds the root (or is the root): git lists the folder, not its files,
+  // so the root itself is untracked. `""` is the root's own path.
+  if (path.endsWith("/") && prefix.startsWith(`${bare}/`)) return "";
   if (!bare.startsWith(prefix) || bare.length === prefix.length) return null;
   return bare.slice(prefix.length);
 }

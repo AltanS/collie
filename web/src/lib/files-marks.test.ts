@@ -169,6 +169,34 @@ describe("markFolder", () => {
   });
 });
 
+describe("the root itself untracked", () => {
+  // A pane in `repo/web`, git above lists `web/` whole.
+  const ROOT_UP = "/home/you/repo/web";
+  const index = indexChanges(ROOT_UP, [{ relPath: "..", name: "repo", files: [file("web/", "?")] }]);
+
+  it("marks every row new, with no change of its own to diff", () => {
+    const { marks } = markFolder(
+      [
+        { name: "src", kind: "dir" },
+        { name: "a.md", kind: "file" },
+        { name: "dist", kind: "dir", ignored: true },
+      ],
+      "",
+      index,
+    );
+    expect(marks.get("src")).toEqual({ kind: "change", status: "?" });
+    expect(marks.get("a.md")).toEqual({ kind: "change", status: "?" });
+    expect(marks.has("dist")).toBe(false);
+    expect(markFolder([{ name: "x.ts", kind: "file" }], "src", index).marks.get("x.ts")).toEqual({ kind: "change", status: "?" });
+    expect(changeAt(index, "")).toBeUndefined();
+  });
+
+  it("stops at a repo of its own inside the root", () => {
+    const withRepo = indexChanges(ROOT_UP, [{ relPath: "..", name: "repo", files: [file("web/", "?")] }], [{ relPath: "vendor" }]);
+    expect(markFolder([{ name: "vendor", kind: "dir" }], "", withRepo).marks.has("vendor")).toBe(false);
+  });
+});
+
 describe("changeAt", () => {
   it("finds the change a file screen diffs, but not an untracked folder", () => {
     expect(changeAt(INDEX, "src/lib/cart.ts")).toMatchObject({ repo: ".", path: "src/lib/cart.ts", status: "A" });

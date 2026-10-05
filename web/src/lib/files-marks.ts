@@ -8,7 +8,10 @@ import type { ChangedRepo, ChangeStatus, FileEntry } from "./types";
 
 /** One changed path under the root, as the tree marks it and the diff route asks for it. */
 export interface RootChange {
-  /** The path from the root, `/`-separated. An untracked folder carries no trailing slash here. */
+  /**
+   * The path from the root, `/`-separated. An untracked folder carries no trailing slash here. `""`
+   * is the root itself, when git lists an untracked folder that holds it: everything is new.
+   */
   rootPath: string;
   /** The repo's id in the Changes answer (`relPath`). */
   repo: string;
@@ -60,7 +63,12 @@ export function indexChanges(
   for (const repo of repos) {
     for (const file of repo.files) {
       const rootPath = rootPathOf(root, repo.relPath, file.path);
-      if (rootPath === null || rootPath === "" || files.has(rootPath)) continue;
+      if (rootPath === null || files.has(rootPath)) continue;
+      // `""` is the root itself, untracked as a whole: no row of its own, but every row below is new.
+      if (rootPath === "") {
+        if (file.status === "?") files.set("", { rootPath, repo: repo.relPath, path: file.path, status: "?", folder: true });
+        continue;
+      }
       const change: RootChange = { rootPath, repo: repo.relPath, path: file.path, status: file.status, folder: file.path.endsWith("/") };
       if (file.oldPath !== undefined) change.oldPath = file.oldPath;
       files.set(rootPath, change);
@@ -97,7 +105,9 @@ function untrackedAbove(dir: string, index: ChangeIndex): RootChange | undefined
     const change = index.files.get(at);
     if (change?.folder === true) return change;
   }
-  return undefined;
+  // The root itself untracked: a repo boundary inside it was already met above.
+  const whole = index.files.get("");
+  return whole?.folder === true ? whole : undefined;
 }
 
 /** One row's mark: a changed file or folder, or a folder with changes below it. */

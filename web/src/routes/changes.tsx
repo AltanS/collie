@@ -659,7 +659,8 @@ function ChangesScreen() {
   const previewPath = (ref: ChangeRef): string | null => {
     const listRoot = list.phase === "ready" && list.data.available ? list.data.root : null;
     if (listRoot === null && ref.repo.startsWith("..")) return null;
-    return rootPathOf(listRoot ?? "", ref.repo, ref.path);
+    // `""` is the untracked root itself, which is a folder and has no Preview.
+    return rootPathOf(listRoot ?? "", ref.repo, ref.path) || null;
   };
   const previewInFiles = (path: string) => nav.down(filesPathTo({ path }), { fileView: "preview" });
 
