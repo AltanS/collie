@@ -61,10 +61,16 @@ interface PaneActionsSheetProps {
    *  pane strip passes no callback, so a strip pill opens the sheet it always did. */
   onSettings?: () => void;
   /**
+   * Open on the rename view instead of the action list. The pane name in the header opens Pane
+   * settings (1.17.0) and its Rename row lands here, so there is one rename flow and not two. Read
+   * when the sheet opens; ignored where the pane cannot be renamed.
+   */
+  openInRename?: boolean;
+  /**
    * WHICH BODY THE PANE DRAWS, and the one place that value is written (ADR 0071's shape).
    *
-   * Absent is the gate, exactly as it is for find, history and zen: while `Settings → Experiments`
-   * has Chat off, the pane view passes nothing and this sheet is byte-identical to 1.14's.
+   * Absent is the gate, as it is for find, history and zen: the pane view always passes it since
+   * Chat became the default (1.17.0, ADR 0082), and a caller with no body to switch passes nothing.
    *
    * It lives here rather than in the header or on the belt for three reasons. ADR 0009 makes a
    * generic menu the place a pane's actions live, and Find and History are already in it. 1.9.0
@@ -134,6 +140,7 @@ export function PaneActionsSheet({
   onHistory,
   onCopyOutput,
   onSettings,
+  openInRename = false,
   onZen,
   paneView,
   onPaneViewChange,
@@ -192,7 +199,7 @@ export function PaneActionsSheet({
   // AND whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the
   // live label, so a background poll landing while you type can't clobber your edit.
   useEffect(() => {
-    setMode("actions");
+    setMode(open && openInRename && canRename.capable ? "rename" : "actions");
     if (!open) return;
     setLabel(pane?.paneLabel ?? "");
     reset();

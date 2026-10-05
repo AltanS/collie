@@ -152,6 +152,11 @@ not taken a turn yet, which is not a fault: nothing is shown before it is measur
 on the agent's first reply. A harness whose vendor publishes no cache lifetime shows nothing either,
 and `cache-claims` lists every rule this build does ship.
 
+**A pane shows the terminal where you expected Chat.** Chat is the default for a pane with an agent
+session, so one of two things holds. This device chose the terminal earlier: open the pane's **⋮**
+menu and tap **Chat view**. Or the pane has no session to read, and the menu row says so; the next
+entry has the steps.
+
 **A pane has no Chat or History, and the ⋮ menu says the pane named no session.** Chat and History read
 the agent's session log, and Collie finds the log only when the agent reports its session through the
 multiplexer. On Herdr that report comes from the agent's own integration, so a missing or old one hides

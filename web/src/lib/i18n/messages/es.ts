@@ -16,9 +16,6 @@ export const es: Dictionary = {
   "settings.compactions.title": "Resúmenes de compactación",
   "settings.compactions.description": "Conserva el resumen que escribe un agente al compactar su contexto. Desactivado, queda solo una línea marcadora donde ocurrió.",
   "settings.experiments.contract": "Todo lo que hay aquí puede cambiar, perder ajustes o retirarse en una versión de parche.",
-  "settings.experiments.chat.title": "Chat",
-  "settings.experiments.chat.description": "Lee un panel como la conversación del propio agente en lugar de su terminal. Vuelve atrás desde el menú ⋮ de un panel.",
-  "settings.experiments.chat.caveat": "Los paneles de Codex todavía no dibujan sus pasos, y un turno compactado puede quedarse en pantalla hasta que la sesión se relea.",
   // --- settings sections ---
   "settings.section.appearance.title": "Apariencia",
   "settings.section.appearance.blurb": "Tema, idioma, fuentes",
@@ -29,7 +26,7 @@ export const es: Dictionary = {
   "settings.section.system.title": "Sistema",
   "settings.section.system.blurb": "Actualizaciones, dispositivos, crew",
   "settings.section.experiments.title": "Experimentos",
-  "settings.section.experiments.blurb": "Chat",
+  "settings.section.experiments.blurb": "Funciones aún en pruebas",
   "settings.nav.back": "Atrás",
 
   // --- settings.theme ---
@@ -325,6 +322,7 @@ export const es: Dictionary = {
   "chat.copyOutput.failed": "No se pudo copiar la salida",
   "chat.paneMenu.aria": "Acciones del panel",
   "chat.header.openOverviewAria": "Abrir vista general de {workspace}{status}",
+  "chat.header.openPaneSettingsAria": "Configuración del pane {name}",
   "chat.header.statusAria": ": {label}",
   "chat.header.agentGone": "(agente desconectado)",
   "chat.scrollback.showHistory": "Mostrar historial completo",

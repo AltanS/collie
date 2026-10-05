@@ -101,18 +101,12 @@ describe("SettingsRoute — the index", () => {
   });
 
   // The fifth row, and the only one that can be absent: it renders while `lib/experiments.ts` holds
-  // something, because a row that opens an empty page is noise (M41/11).
-  it("trails the four with Experiments while anything is filed under it", async () => {
+  // something, because a row that opens an empty page is noise. Chat was the last thing filed
+  // there and left in 1.17.0 (ADR 0082), so the index shows four rows.
+  it("shows no Experiments row while nothing is filed under it", async () => {
     renderSettings();
-    const row = await screen.findByRole("button", { name: /Experiments/ });
-    const rows = screen.getAllByRole("button").filter((b) => /Appearance|Device|Alerts|System|Experiments/.test(b.textContent ?? ""));
-    expect(rows[rows.length - 1]).toBe(row);
-  });
-
-  it("opens Experiments on its own section, like every other row", async () => {
-    const router = renderSettings();
-    await userEvent.click(await screen.findByRole("button", { name: /Experiments/ }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/experiments"));
+    await screen.findByRole("button", { name: /Appearance/ });
+    expect(screen.queryByRole("button", { name: /Experiments/ })).toBeNull();
   });
 
   it("renders no setting of its own: every switch moved behind a row", async () => {

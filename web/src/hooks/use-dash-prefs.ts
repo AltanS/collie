@@ -88,22 +88,11 @@ export interface DashPrefs {
    */
   paneOrder: PaneOrder;
   /**
-   * Whether this device has opted into Chat at all (Settings → Experiments).
+   * Which body a pane with a session draws: the chat stream or the terminal mirror. One standing
+   * value for the whole device, written from the pane's ⋮ menu alone. `chat` by default since 1.17.0
+   * (ADR 0082); a device that chose the terminal keeps it.
    *
-   * OFF by default, and that is the whole gate: while it is off no pane draws the chat stream and
-   * the pane's ⋮ menu shows no switch, so a device that never opens that row behaves exactly as it
-   * did. 1.15.0 ships Chat's reader for six harnesses and its screen on the first pass, with two
-   * known holes on the day it ships (codex tool calls, and a hermes turn that can vanish with no
-   * reducer able to tell — ADR 0073's Consequences). Default-on would make those the first
-   * impression of the release; default-off with a named switch makes them the cost of opting in.
-   */
-  chatExperiment: boolean;
-  /**
-   * Which body a pane draws ONCE {@link chatExperiment} is on: the terminal mirror or the chat
-   * stream. One standing value for the whole device, written from the pane's ⋮ menu alone.
-   *
-   * See lib/pane-view.ts for why its default is `chat` while the app's default view is still the
-   * terminal — the two are different questions, and the gate above is what answers the second.
+   * See lib/pane-view.ts for why it is one per-device value and not a per-pane override.
    */
   paneView: PaneView;
 }
@@ -135,7 +124,6 @@ const DEFAULTS: DashPrefs = {
   showToolCalls: false,
   showCompactions: false,
   paneOrder: "place",
-  chatExperiment: false,
   paneView: "chat",
 };
 
@@ -188,7 +176,6 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     showToolCalls: asJsonBoolean(p.showToolCalls) ?? DEFAULTS.showToolCalls,
     showCompactions: asJsonBoolean(p.showCompactions) ?? DEFAULTS.showCompactions,
     paneOrder: coercePaneOrder(p.paneOrder),
-    chatExperiment: asJsonBoolean(p.chatExperiment) ?? DEFAULTS.chatExperiment,
     paneView: coercePaneView(p.paneView),
   };
 }
@@ -229,7 +216,6 @@ export interface UseDashPrefsReturn {
   setShowToolCalls: (show: boolean) => void;
   setShowCompactions: (show: boolean) => void;
   setPaneOrder: (order: PaneOrder) => void;
-  setChatExperiment: (on: boolean) => void;
   setPaneView: (view: PaneView) => void;
 }
 
@@ -259,7 +245,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setShowToolCalls = useCallback((showToolCalls: boolean) => update({ showToolCalls }), [update]);
   const setShowCompactions = useCallback((showCompactions: boolean) => update({ showCompactions }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
-  const setChatExperiment = useCallback((chatExperiment: boolean) => update({ chatExperiment }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
 
   const setBeltScale = useCallback(
@@ -297,7 +282,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setShowToolCalls,
     setShowCompactions,
     setPaneOrder,
-    setChatExperiment,
     setPaneView,
   };
 }

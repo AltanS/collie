@@ -11,12 +11,12 @@
 //
 // ── AND WHY THE SECTION CAN DISAPPEAR ────────────────────────────────────────
 // An Experiments row that opens an empty page is noise, and Chat will not be the last thing to pass
-// through here. So the index row renders only while this list has something in it: adding an
-// experiment is a row here plus its card on the section, and removing the last one takes the
-// section off the index with no other edit.
+// through here (it was the first, and left in 1.17.0, ADR 0082). So the index row renders only while
+// this list has something in it: adding an experiment is a row here plus its card on the section,
+// and removing the last one takes the section off the index with no other edit.
 
-/** Every experiment the section holds today, newest last. */
-export const EXPERIMENTS = ["chat"] as const;
+/** Every experiment the section holds today, newest last. Empty since Chat graduated (ADR 0082). */
+export const EXPERIMENTS = [] as const;
 
 /** One experiment's name, so a card naming something nobody built is a compile error. */
 export type ExperimentId = (typeof EXPERIMENTS)[number];

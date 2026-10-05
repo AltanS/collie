@@ -32,6 +32,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The dashboard takes the pane switcher's order.** On Panes and Focus, a clock and an hourglass beside the status line order the dashboard by the pane where something last happened, or by the cache that goes cold first. Either one folds the workspace groups into one list, with pinned panes first and each row naming its workspace. It is the same per-device setting as the switcher and Settings → Appearance, Place stays the default, and the order is read once and held, so a poll never moves a row. Tapping the selected choice, or coming back to the page, reads it again.
 - **The Quick dock offers "drastically simplify".** It is the last phrase of the common group for every agent pane, and a long phrase now wraps inside its button instead of running past it. A `quick-replies.toml` that already addresses a pane replaces the shipped list, so add the phrase to your own file to keep it there.
+### Changed
+
+- **Chat is the default view of an agent pane.** A pane with an agent session opens as the agent's own conversation on every device, and the Chat switch under Settings → Experiments is gone. The pane's ⋮ menu has **Terminal view** one tap away, and a device that already chose the terminal keeps it. Hermes can still lose a turn from its own log, and the docs under "Chat view" say so. This brings forward the flip that 1.15.0 planned for 2.0.
+- **The pane name opens Pane settings, and the workspace line opens the space.** The header's single tap target is now two, one per line, each as wide as the block and half the header tall. Pane settings gains a **Rename** row that opens the same rename view as the ⋮ menu.
+
+### Fixed
+
+- **The agent-start animation and the switch to Chat are one sequence.** When a shell turned into an agent, the animation ran on its own clock while the pane swapped from the terminal to Chat whenever the first answer arrived, so the swap showed beside it. The swap now waits for the animation to cover the pane, happens under it, and the animation lifts only once Chat is ready. A tap on it still ends it at once.
 
 ## [1.16.2] - 2026-10-04
 

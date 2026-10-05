@@ -17,9 +17,6 @@ export const zhTW: Dictionary = {
   "settings.compactions.title": "壓縮摘要",
   "settings.compactions.description": "保留代理壓縮上下文時寫下的摘要。關閉後，該處只留下一行標記。",
   "settings.experiments.contract": "這裡的項目可能會變更、失去設定，或在修補版本中移除。",
-  "settings.experiments.chat.title": "聊天",
-  "settings.experiments.chat.description": "把窗格當成代理自己的對話來讀，而不是終端機。可從窗格的 ⋮ 選單切回。",
-  "settings.experiments.chat.caveat": "Codex 窗格尚未繪製其步驟；被壓縮的對話可能會持續顯示，直到工作階段重新讀取。",
   // --- settings sections ---
   "settings.section.appearance.title": "外觀",
   "settings.section.appearance.blurb": "主題、語言、字型",
@@ -30,7 +27,7 @@ export const zhTW: Dictionary = {
   "settings.section.system.title": "系統",
   "settings.section.system.blurb": "更新、裝置、crew",
   "settings.section.experiments.title": "實驗功能",
-  "settings.section.experiments.blurb": "聊天",
+  "settings.section.experiments.blurb": "仍在測試中的功能",
   "settings.nav.back": "返回",
 
   // --- settings.theme ---
@@ -308,6 +305,7 @@ export const zhTW: Dictionary = {
   "chat.copyOutput.failed": "無法複製輸出",
   "chat.paneMenu.aria": "窗格選單",
   "chat.header.openOverviewAria": "開啟 {workspace} 總覽{status}",
+  "chat.header.openPaneSettingsAria": "{name} 的窗格設定",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（Agent 已離線）",
   "chat.scrollback.showHistory": "查看完整記錄",

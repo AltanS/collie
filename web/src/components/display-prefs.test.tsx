@@ -53,7 +53,7 @@ function draw(paneView?: Partial<PaneViewControl>) {
 }
 
 describe("DisplayPrefsContent", () => {
-  it("says nothing about Chat while the experiment is off", () => {
+  it("says nothing about Chat when the caller passes no body switch", () => {
     draw();
     expect(screen.queryByRole("radiogroup")).toBeNull();
     expect(screen.getByLabelText("Wrap lines")).toBeInTheDocument();
@@ -67,7 +67,7 @@ describe("DisplayPrefsContent", () => {
     expect(labels[0]).toBe("Text size");
   });
 
-  it("offers the body switch once this device has opted in", async () => {
+  it("offers the body switch when the caller passes one", async () => {
     const user = userEvent.setup();
     const { onChange } = draw({ chosen: "terminal", showing: "terminal" });
     await user.click(screen.getByRole("radio", { name: "Chat" }));

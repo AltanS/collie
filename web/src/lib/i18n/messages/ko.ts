@@ -17,9 +17,6 @@ export const ko: Dictionary = {
   "settings.compactions.title": "압축 요약",
   "settings.compactions.description": "에이전트가 컨텍스트를 압축할 때 쓰는 요약을 유지합니다. 끄면 그 자리에 표시 한 줄만 남습니다.",
   "settings.experiments.contract": "여기에 있는 항목은 패치 릴리스에서 바뀌거나, 설정이 사라지거나, 철회될 수 있습니다.",
-  "settings.experiments.chat.title": "채팅",
-  "settings.experiments.chat.description": "패널을 터미널 대신 에이전트의 대화로 읽습니다. 패널의 ⋮ 메뉴에서 되돌릴 수 있습니다.",
-  "settings.experiments.chat.caveat": "Codex 패널은 아직 단계를 표시하지 않으며, 압축된 대화는 세션을 다시 읽을 때까지 화면에 남을 수 있습니다.",
   // --- settings sections ---
   "settings.section.appearance.title": "화면",
   "settings.section.appearance.blurb": "테마, 언어, 글꼴",
@@ -30,7 +27,7 @@ export const ko: Dictionary = {
   "settings.section.system.title": "시스템",
   "settings.section.system.blurb": "업데이트, 기기, 크루",
   "settings.section.experiments.title": "실험 기능",
-  "settings.section.experiments.blurb": "채팅",
+  "settings.section.experiments.blurb": "아직 테스트 중인 기능",
   "settings.nav.back": "뒤로",
 
   // --- settings.theme ---
@@ -320,6 +317,7 @@ export const ko: Dictionary = {
   "chat.copyOutput.failed": "출력을 복사할 수 없음",
   "chat.paneMenu.aria": "창 작업",
   "chat.header.openOverviewAria": "{workspace} 개요 열기{status}",
+  "chat.header.openPaneSettingsAria": "{name} 창 설정",
   "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(에이전트 연결 끊김)",
   "chat.scrollback.showHistory": "전체 기록 보기",

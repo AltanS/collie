@@ -16,9 +16,6 @@ export const ja: Dictionary = {
   "settings.compactions.title": "圧縮の要約",
   "settings.compactions.description": "エージェントがコンテキストを圧縮するときに書く要約を残します。オフにすると、その位置に印の1行だけが残ります。",
   "settings.experiments.contract": "ここにあるものは変更されたり、設定がなくなったり、パッチリリースで撤回されたりすることがあります。",
-  "settings.experiments.chat.title": "チャット",
-  "settings.experiments.chat.description": "ペインをターミナルではなくエージェント自身の会話として読みます。ペインの ⋮ メニューから元に戻せます。",
-  "settings.experiments.chat.caveat": "Codex のペインはまだ操作を描画せず、圧縮された発言はセッションを読み直すまで画面に残ることがあります。",
   // --- settings sections ---
   "settings.section.appearance.title": "外観",
   "settings.section.appearance.blurb": "テーマ、言語、フォント",
@@ -29,7 +26,7 @@ export const ja: Dictionary = {
   "settings.section.system.title": "システム",
   "settings.section.system.blurb": "更新、デバイス、クルー",
   "settings.section.experiments.title": "実験機能",
-  "settings.section.experiments.blurb": "チャット",
+  "settings.section.experiments.blurb": "テスト中の機能",
   "settings.nav.back": "戻る",
 
   // --- settings.theme ---
@@ -322,6 +319,7 @@ export const ja: Dictionary = {
   "chat.copyOutput.failed": "出力をコピーできませんでした",
   "chat.paneMenu.aria": "ペイン操作",
   "chat.header.openOverviewAria": "{workspace} の概要を開く{status}",
+  "chat.header.openPaneSettingsAria": "{name} のペイン設定",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（エージェント停止）",
   "chat.scrollback.showHistory": "全履歴を表示",

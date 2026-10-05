@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { CollieMark } from "@/components/collie-mark";
+import type { HandoverPhase } from "@/hooks/use-handover";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,11 @@ import { cn } from "@/lib/utils";
 // You are looking at a bare shell on your phone. You type `opencode` at your desk. This is what the
 // phone does about it: the Collie mark flies out of the header's own mark, blooms at the centre of
 // the mirror, and hands the pane over to the agent's mark, which rises in its place.
+//
+// IT IS ONE SEQUENCE WITH THE BODY SWAP. The mark flies in and rests at the centre (covering, then
+// covered); the pane's body may change from the terminal to Chat only at that rest, under the
+// cover; then the mark goes home and the agent's mark rises (revealing). The rest lasts until the
+// body that will show is ready, so the reveal always uncovers the final body.
 //
 // IT MARKS A FACT, IT DOES NOT PREDICT ONE. The poll finds the change up to one interval late, so
 // the agent is already running by the time this plays. There is no bar, no percentage and no word
@@ -22,10 +28,12 @@ import { cn } from "@/lib/utils";
 //    is already `relative` for zen's exit button. Nothing here is in the pane's flow, so nothing
 //    here can reflow it (DESIGN.md §2). The mark grows by `scale`, inside the layer.
 //
-// 2. NO ANIMATION IS LOAD-BEARING. `onDone` is always a TIMER, never an `animationend`. A killed
-//    animation never fires one, so a variant waiting for it would leave the overlay up for good
-//    under `prefers-reduced-motion`. Under reduced motion this draws its message as a still picture
-//    and leaves on a short timer, which is a different render and not a stripped one.
+// 2. NO ANIMATION IS LOAD-BEARING, AND NO TIMER IS THIS FILE'S. The layer draws the phase it is
+//    handed (hooks/use-handover.ts: covering, covered, revealing) and reports two animation events
+//    back, the end of the covering flight and the end of the last fade. The hook runs a timer for
+//    every phase as well, because a killed animation never fires `animationend`: under
+//    `prefers-reduced-motion` this draws its message as a still picture, and the timers alone move
+//    it on. A different render and not a stripped one.
 //
 // 3. THE FLIGHT IS MEASURED, NOT WRITTEN DOWN. The header is the app shell's, mounted above the
 //    outlet, so the mark's position depends on the strip band, the notch and the header's own
@@ -34,13 +42,13 @@ import { cn } from "@/lib/utils";
 
 /** The size the travelling mark grows to at the centre. */
 const MARK = 84;
-/** The whole run, and the short still-picture version under reduced motion. */
-const RUN_MS = 1400;
-const CALM_MS = 800;
 
 const STYLE = `
 @keyframes as-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes as-out { from { opacity: 1 } to { opacity: 0 } }
+/* The veil's own leaving. A name of its own, so its end is the one event that says the layer is done
+   (the icon and the word reuse as-out and must not be taken for it). */
+@keyframes as-veil-out { from { opacity: 1 } to { opacity: 0 } }
 @keyframes as-pop {
   from { opacity: 0; transform: scale(0.82) }
   to { opacity: 1; transform: scale(1) }
@@ -65,15 +73,30 @@ const STYLE = `
     transform: translate(-50%, -50%) translate(var(--as-dx, 0px), var(--as-dy, 0px)) scale(var(--as-s, 0.3));
   }
 }
-.as-veil { animation: as-in 150ms ease-out both, as-out 220ms 1180ms ease-in forwards; }
+/* COVERING and COVERED: the veil is in, the mark has flown to the centre and RESTS there (fill-mode
+   both keeps its last frame for as long as the body swap and the answer take). The reveal below
+   adds its animations to these lists; the ones already running keep running, they do not restart. */
+.as-veil { animation: as-in 150ms ease-out both; }
 .as-mark {
   transform: translate(-50%, -50%);
+  animation: as-go 380ms cubic-bezier(0.3, 0.8, 0.35, 1) both;
+}
+.as-icon, .as-word { opacity: 0; }
+/* REVEALING: 640 ms from here, which is where the old 1400 ms run spent its last 640. */
+.as-layer[data-phase="revealing"] .as-veil {
+  animation: as-in 150ms ease-out both, as-veil-out 220ms 420ms ease-in forwards;
+}
+.as-layer[data-phase="revealing"] .as-mark {
   animation:
     as-go 380ms cubic-bezier(0.3, 0.8, 0.35, 1) both,
-    as-back 380ms 760ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
+    as-back 380ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
 }
-.as-icon { animation: as-pop 300ms 760ms cubic-bezier(0.2, 0.9, 0.3, 1) both, as-out 180ms 1220ms ease-in forwards; }
-.as-word { animation: as-rise 240ms 880ms ease-out both, as-out 180ms 1220ms ease-in forwards; }
+.as-layer[data-phase="revealing"] .as-icon {
+  animation: as-pop 300ms cubic-bezier(0.2, 0.9, 0.3, 1) both, as-out 180ms 460ms ease-in forwards;
+}
+.as-layer[data-phase="revealing"] .as-word {
+  animation: as-rise 240ms 120ms ease-out both, as-out 180ms 460ms ease-in forwards;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .as-layer,
@@ -105,48 +128,48 @@ function aimAtHeaderMark(el: HTMLElement): void {
   el.style.setProperty("--as-s", String(from.size / MARK));
 }
 
-export function AgentStart({ harness, onDone }: { harness: string; onDone: () => void }) {
+export function AgentStart({
+  harness,
+  phase,
+  calm,
+  onCovered,
+  onFinish,
+}: {
+  harness: string;
+  /** Where the sequence is (hooks/use-handover.ts). The layer draws it and decides nothing. */
+  phase: HandoverPhase;
+  /** The still-picture version, fixed when the sequence began. */
+  calm: boolean;
+  /** The covering flight ended. */
+  onCovered: () => void;
+  /** The last fade ended, or a tap: the layer can go. */
+  onFinish: () => void;
+}) {
   useLocale();
   const ref = useRef<HTMLDivElement>(null);
-  const [calm, setCalm] = useState(false);
-  const fired = useRef(false);
-  const timer = useRef<number | null>(null);
-
-  const done = useCallback(() => {
-    if (fired.current) return;
-    fired.current = true;
-    if (timer.current !== null) {
-      window.clearTimeout(timer.current);
-      timer.current = null;
-    }
-    onDone();
-  }, [onDone]);
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (el === null) return;
     aimAtHeaderMark(el);
-    // Read the setting ONCE, on mount. A change mid-flight is not worth a second render, and the
-    // still-picture branch below is what carries the message when it is on.
-    // Optional-call, the spelling lib/glide.ts already uses for the same query.
-    setCalm(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
   }, []);
-
-  useEffect(() => {
-    timer.current = window.setTimeout(done, calm ? CALM_MS : RUN_MS);
-    return () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    };
-  }, [calm, done]);
 
   const label = t("pane.agentStart.handed", { agent: harness });
 
   return (
     <div
       ref={ref}
-      // A tap anywhere ends it at once. The mirror is what the person came for, and an announcement
-      // that cannot be dismissed is in the way by definition.
-      onPointerDown={done}
+      data-phase={phase}
+      // A tap anywhere ends it at once, wherever the sequence is. The mirror is what the person came
+      // for, and an announcement that cannot be dismissed is in the way by definition. The hook
+      // applies a held body swap in the same commit.
+      onPointerDown={onFinish}
+      // The two events that are one clock with the picture. The hook's timers are the guarantee
+      // for the case where they never come.
+      onAnimationEnd={(e) => {
+        if (e.animationName === "as-go") onCovered();
+        if (e.animationName === "as-veil-out") onFinish();
+      }}
       role="status"
       aria-label={label}
       className="as-layer absolute inset-0 z-20 overflow-hidden"

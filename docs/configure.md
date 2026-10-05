@@ -583,12 +583,18 @@ they are part of the content stream rather than chrome.
 
 ## Chat view
 
-> **Note.** Chat is experimental and off by default.
+> **Note.** Chat is the default view of an agent pane since 1.17.0. Terminal is one tap away.
 
-Turn it on in **Settings → Experiments**. The setting is stored per device in the browser. A pane's
-**⋮** menu then gets a row that switches that pane between **Terminal** and **Chat**. Chat draws the
-agent's own conversation instead of the terminal: your turns, its replies, thinking behind a fold and
-a card per step. The composer, the belt and the pane menu stay where they were.
+A pane that has an agent session opens in **Chat**. Chat draws the agent's own conversation instead
+of the terminal: your turns, its replies, thinking behind a fold and a card per step. The composer,
+the belt and the pane menu stay where they were. To read the terminal instead, open the pane's **⋮**
+menu and tap **Terminal view**. The choice is one setting for the whole device, stored in the
+browser, and a device that already chose the terminal keeps it. **Chat view** in the same menu
+switches back.
+
+One thing in Chat is known to be incomplete. Hermes can remove a turn from its log after Collie
+read it, for example when it compacts. Chat then keeps showing that turn until the session is read
+again. The terminal never has this problem.
 
 Chat reads the agent's session log, not the screen. That means a pane gets Chat only when Collie
 knows which session the pane is running, and the agent has to tell the multiplexer. The pane itself

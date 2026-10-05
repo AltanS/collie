@@ -32,9 +32,6 @@ export const en = {
   // --- settings.experiments (the fifth section) ---
   // The contract is the SECTION'S, said once at the top rather than repeated on every card.
   "settings.experiments.contract": "Anything here may change, lose settings, or be withdrawn in a patch release.",
-  "settings.experiments.chat.title": "Chat",
-  "settings.experiments.chat.description": "Read a pane as the agent's own conversation instead of its terminal. Switch back from a pane's ⋮ menu.",
-  "settings.experiments.chat.caveat": "Codex panes do not draw their steps yet, and a compacted turn can stay on screen until the session is re-read.",
   // --- settings sections (the index's four rows) ---
   // The blurb names the three or four cards a person is most likely to be hunting for, so the row
   // answers "is it in here?" without being opened. Keep it short: it truncates on a narrow phone.
@@ -49,7 +46,7 @@ export const en = {
   // The fifth section, and the only one that can be absent: it renders while `lib/experiments.ts`
   // holds something and disappears when the last experiment graduates (that file says why).
   "settings.section.experiments.title": "Experiments",
-  "settings.section.experiments.blurb": "Chat",
+  "settings.section.experiments.blurb": "Features still being tested",
   "settings.nav.back": "Back",
 
   // --- settings.theme ---
@@ -356,6 +353,7 @@ export const en = {
   // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.
   "chat.paneMenu.aria": "Pane actions",
   "chat.header.openOverviewAria": "Open {workspace} overview{status}",
+  "chat.header.openPaneSettingsAria": "Pane settings for {name}",
   "chat.header.statusAria": " — {label}",
   "chat.header.agentGone": "(agent gone)",
   "chat.scrollback.showHistory": "Show entire history",

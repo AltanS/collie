@@ -38,10 +38,9 @@ import { cn } from "@/lib/utils";
 // they had to scroll a dock to find.
 
 /**
- * The Chat side of this dock, when this device has opted into the experiment.
- *
- * Absent means Chat is off (Settings → Experiments) and the dock says nothing about it: no switch,
- * no rows, exactly the dock that shipped before Chat existed.
+ * The Chat side of this dock. The pane view always passes it since Chat became the default
+ * (1.17.0, ADR 0082); absent means the caller has no body to switch, and the dock then says nothing
+ * about Chat: no switch, no rows.
  */
 export interface PaneViewControl {
   /** The standing choice this device holds, and what the segmented control writes. */

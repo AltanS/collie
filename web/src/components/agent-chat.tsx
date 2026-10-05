@@ -21,6 +21,7 @@ import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
 import { useChatReady } from "@/hooks/use-chat-ready";
+import { useHandover, useHeldBody } from "@/hooks/use-handover";
 import { useLatestReply } from "@/hooks/use-latest-reply";
 import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
@@ -310,6 +311,9 @@ export function AgentChat({
   // clock: the lead answered, so this poll was live, and the ConnectionBanner stays silent.
   const hostHealth = useHostHealth(agent?.host ?? scope?.host);
   const hostBlock = writeRefusal(hostHealth);
+  // Whether the pane's own multiplexer can rename it: gates the Rename row in Pane settings, the way
+  // the ⋮ sheet gates its own (components/pane-actions-sheet.tsx asks the same question).
+  const canRenamePane = useMuxCapability("renamePane", { host: agent?.host });
   /**
    * The ONE reason this pane currently refuses a write, or undefined when it accepts them. Every
    * write handler below starts with it, so there is a single place that decides both which gates
@@ -336,6 +340,13 @@ export function AgentChat({
     setDrawer(null);
     setPull(0);
   };
+  // Pane settings' Rename row opens the ⋮ sheet on its rename view (one rename flow, not two). A
+  // flag and not a drawer value, because the drawer is which sheet and this is how it opens. It
+  // lasts until the ⋮ sheet is no longer the open one, so a later ⋮ tap opens the list as ever.
+  const [renameOnOpen, setRenameOnOpen] = useState(false);
+  useEffect(() => {
+    if (drawer !== "paneMenu") setRenameOnOpen(false);
+  }, [drawer]);
 
   // ── ZEN MODE — chrome-free, mirror-only viewing ───────────────────────────────
   // On a phone the chrome IS most of the viewport: measured at 390x844 this route spends 199px above
@@ -838,18 +849,15 @@ export function AgentChat({
   // line moves the header, the strips, the card dock, the belt or the composer. What swaps is the
   // box between the mirror's own top rule and the chrome block, and only that.
   //
-  // TWO VALUES DECIDE IT, and they are different questions (lib/pane-view.ts). `chatExperiment` is
-  // whether this device has opted in at all — off by default, written from Settings → Experiments,
-  // and while it is off the pane menu shows no switch and this whole block is inert. `paneView` is
-  // which body, once opted in, and the pane's ⋮ menu is the one place it is written.
-  //
-  // `historyAvailable` is the third gate and it is about the PANE rather than the device: the chat
+  // CHAT IS THE DEFAULT (1.17.0, ADR 0082). Two values decide it. `paneView` is the device's
+  // standing choice, `chat` until the operator picks the terminal from the pane's ⋮ menu, the one
+  // place it is written (lib/pane-view.ts). `historyAvailable` is the gate and it is about the PANE
+  // rather than the device: the chat
   // route reads the same journal the History page does, so a pane that has no transcript to open
   // has no session to stream either. A pane like that falls back to the terminal and the ⋮ row
   // carries the reason — it never hides, because a control that disappears on some panes is how an
   // operator concludes the app is broken.
-  const chatOffered = dash.prefs.chatExperiment;
-  const chatChosen = chatOffered && dash.prefs.paneView === "chat";
+  const chatChosen = dash.prefs.paneView === "chat";
   const chatBody = chatChosen && historyAvailable;
   // The live window, moved by the poll that already exists (ADR 0073). Disabled is free: no fetch,
   // no timer, the empty window.
@@ -859,7 +867,7 @@ export function AgentChat({
   // the two sheets that carry the switch is open, so a terminal-only operator pays nothing standing
   // still on a pane.
   const switchSheetOpen = drawer === "paneMenu" || drawer === "display";
-  const warming = chatOffered && historyAvailable && switchSheetOpen;
+  const warming = historyAvailable && switchSheetOpen;
   const chatFeed = useChatWindow({ paneId, scope, enabled: chatBody || warming });
   // What the Chat body's running question card says about the dialog below it. Chat body only: the
   // terminal body draws no cards, so nothing there reads it. `localeRevision` is READ by the note's
@@ -872,7 +880,16 @@ export function AgentChat({
   // what is drawn, and it lags by one answer. The swap used to land on an empty stream in the same
   // tick the menu started to close, so the turns popped in after it. The terminal now stays up until
   // Chat has something to show (hooks/use-chat-ready.ts), with a cap so a failed read cannot strand it.
-  const chatShown = useChatReady(chatBody, chatFeed.window.status.kind !== "empty");
+  const chatReadyBody = useChatReady(chatBody, chatFeed.window.status.kind !== "empty");
+  // THE HANDOVER OWNS THE SWAP WHILE A SHELL BECOMES AN AGENT (hooks/use-handover.ts). The bloom
+  // and the body swap are one sequence: the swap is held while the layer covers and applies at its
+  // rest, and the reveal waits for the body that WILL show. That is Chat once the session is
+  // reported and its first answer is in, the terminal when this pane will not draw Chat, and still
+  // "not yet" while the device wants Chat and a journal pane has reported no session (the hook's own
+  // cap ends that wait). With no layer up the phase is idle and this is `chatReadyBody` as it was.
+  const bodyReady = chatChosen && noSessionReported ? false : chatBody ? chatReadyBody : true;
+  const handover = useHandover(agentStart.started !== null, bodyReady, agentStart.clear);
+  const chatShown = useHeldBody(chatReadyBody, handover.phase);
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
   // question this side can answer. There are two layers and the split is deliberate: a pane with no
   // journal at all never asks the bridge, so the reason belongs on the ⋮ row here, while a pane
@@ -1556,27 +1573,46 @@ export function AgentChat({
               data-glide-destination="pane"
               className="relative -mx-1 flex min-h-11 min-w-0 flex-1 items-center rounded-lg px-1 text-left"
             >
-              <button
-                type="button"
-                onClick={() => openSpace(agent.workspaceId)}
-                // The state has to be spelled into the label itself, or moving the status word into
-                // this block would have taken the pane's status out of the accessibility tree
-                // entirely. The suffix is a locale string, not a "," glued on in code, because where
-                // the punctuation goes is a translator's decision (host-chip.tsx does the same with
-                // its unreachable suffix).
-                aria-label={t("chat.header.openOverviewAria", {
-                  workspace: agent.workspaceLabel,
-                  status: t("chat.header.statusAria", {
-                    label: isShell ? t("status.shellBadge") : statusLabel(agent.status),
-                  }),
-                })}
-                // The block's geometry is a rule that spans two files — this one states the line
-                // boxes, app-header.tsx states the row floor and the padding that has to hold them —
-                // so it is asserted mechanically in agent-chat.test.tsx. These slots are what that
-                // test reads; renaming one without updating it fails there rather than on a phone.
-                data-slot="pane-identity"
-                className="absolute inset-0 rounded-lg transition-colors active:bg-muted/60"
-              />
+              {/* THE TAP SURFACE IS TWO BUTTONS, one per line (1.17.0): the name line opens Pane
+                  settings, the place line opens the space. They are siblings that together fill a
+                  layer laid over the block, split at the line boundary, and each spans the block's
+                  full width. The layer reaches 8px past the block top and bottom (`-inset-y-2`),
+                  which is where the row's own 4px padding and the 4px of air the 44px block leaves
+                  around its 36px of lines already are, so the two targets are 30px tall each, half
+                  the 60px row, and nothing outside the row is covered. The lines paint above the
+                  layer and pass their taps through, as before; the cache reading takes its own back.
+                  `data-slot="pane-identity"` stays on the place button, which keeps the overview
+                  label and the status suffix a screen reader needs. */}
+              <div data-slot="pane-identity-taps" className="absolute inset-x-0 -inset-y-2 flex flex-col rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setDrawer("paneSettings")}
+                  aria-label={t("chat.header.openPaneSettingsAria", { name })}
+                  data-slot="pane-identity-name"
+                  className="min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60"
+                />
+                <button
+                  type="button"
+                  onClick={() => openSpace(agent.workspaceId)}
+                  // The state has to be spelled into the label itself, or moving the status word into
+                  // this block would have taken the pane's status out of the accessibility tree
+                  // entirely. The suffix is a locale string, not a "," glued on in code, because where
+                  // the punctuation goes is a translator's decision (host-chip.tsx does the same with
+                  // its unreachable suffix).
+                  aria-label={t("chat.header.openOverviewAria", {
+                    workspace: agent.workspaceLabel,
+                    status: t("chat.header.statusAria", {
+                      label: isShell ? t("status.shellBadge") : statusLabel(agent.status),
+                    }),
+                  })}
+                  // The block's geometry is a rule that spans two files — this one states the line
+                  // boxes, app-header.tsx states the row floor and the padding that has to hold them —
+                  // so it is asserted mechanically in agent-chat.test.tsx. These slots are what that
+                  // test reads; renaming one without updating it fails there rather than on a phone.
+                  data-slot="pane-identity"
+                  className="min-h-0 flex-1 rounded-b-lg transition-colors active:bg-muted/60"
+                />
+              </div>
               {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
                   the air moved from outside the block to inside it. Each line states its own height
                   (20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
@@ -1754,7 +1790,13 @@ export function AgentChat({
               absolutely positioned against this region, holds no space and moves nothing (§2), and a
               tap ends it at once. It marks a fact the poll has already found; it never predicts one. */}
           {agentStart.started !== null && (
-            <AgentStart harness={agentStart.started} onDone={agentStart.clear} />
+            <AgentStart
+              harness={agentStart.started}
+              phase={handover.phase}
+              calm={handover.calm}
+              onCovered={handover.onCovered}
+              onFinish={handover.onFinish}
+            />
           )}
           {/* THE ONE WAY OUT OF ZEN. A single floating affordance over the mirror rather than a
               strip, so "everything hides" stays literally true, and TOP-right so entering (the ⋮ that
@@ -2503,22 +2545,18 @@ export function AgentChat({
             // operator opens to change how a pane LOOKS, which is the question it answers. `chosen`
             // and `showing` are both passed because they differ on a pane with no journal, and the
             // sheet draws rows for what is on screen, not for what was picked.
-            paneView={
-              chatOffered
-                ? {
-                    chosen: dash.prefs.paneView,
-                    showing: chatShown ? "chat" : "terminal",
-                    onChange: dash.setPaneView,
-                    note: chatNote,
-                    showToolCalls: dash.prefs.showToolCalls,
-                    setShowToolCalls: dash.setShowToolCalls,
-                    showCompactions: dash.prefs.showCompactions,
-                    setShowCompactions: dash.setShowCompactions,
-                    chatFontSize: prefs.chatFontSize,
-                    stepChatFontSize,
-                  }
-                : undefined
-            }
+            paneView={{
+              chosen: dash.prefs.paneView,
+              showing: chatShown ? "chat" : "terminal",
+              onChange: dash.setPaneView,
+              note: chatNote,
+              showToolCalls: dash.prefs.showToolCalls,
+              setShowToolCalls: dash.setShowToolCalls,
+              showCompactions: dash.prefs.showCompactions,
+              setShowCompactions: dash.setShowCompactions,
+              chatFontSize: prefs.chatFontSize,
+              stepChatFontSize,
+            }}
           />
         </BottomSheet>
 
@@ -2580,12 +2618,12 @@ export function AgentChat({
           // already spent. It hands over to the sheet below in one React event, so the actions sheet
           // unmounts in the same commit the settings sheet mounts.
           onSettings={() => setDrawer("paneSettings")}
-          // THE BODY SWITCH. `undefined` while Settings → Experiments has Chat off, which is what
-          // keeps the row off the sheet entirely; `chatNote` is why this pane keeps the terminal
-          // when it does. One standing per-device value, written here and nowhere else.
-          paneView={chatOffered ? dash.prefs.paneView : undefined}
-          onPaneViewChange={chatOffered ? dash.setPaneView : undefined}
-          paneViewNote={chatOffered ? chatNote : undefined}
+          openInRename={renameOnOpen}
+          // THE BODY SWITCH. `chatNote` is why this pane keeps the terminal when it does. One
+          // standing per-device value, written here and nowhere else.
+          paneView={dash.prefs.paneView}
+          onPaneViewChange={dash.setPaneView}
+          paneViewNote={chatNote}
           // Pin to top / Unpin, the last read row (ADR 0070). No `onPinChange`: the Pinned group is
           // on the dashboard and in the switcher, not on this screen, so the sheet says it in a toast.
           herd={herd}
@@ -2598,6 +2636,17 @@ export function AgentChat({
           onClose={closeDrawer}
           paneId={paneId}
           scope={scope}
+          // The header's name tap lands here, so the row that edits the name is here too. It hands
+          // over to the ⋮ sheet's rename view in one event. Hidden where that view cannot save: a
+          // read-only device, an unreachable machine, a multiplexer with no rename.
+          onRename={
+            agent && !readOnly && hostBlock === undefined && canRenamePane.capable
+              ? () => {
+                  setRenameOnOpen(true);
+                  setDrawer("paneMenu");
+                }
+              : undefined
+          }
         />
       </div>
     </CompactStripLabels>

@@ -94,6 +94,20 @@ describe("PaneSettingsView — the disabled reasons and their hints", () => {
   });
 });
 
+describe("PaneSettingsView — the Rename row", () => {
+  test("shows a Rename row above the switch when it is given a way to rename, and calls it", async () => {
+    const onRename = vi.fn();
+    render(<PaneSettingsView state={state()} busy={false} pushOff={false} onToggle={vi.fn()} onRename={onRename} />);
+    await userEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(onRename).toHaveBeenCalledTimes(1);
+  });
+
+  test("hides it when the pane cannot be renamed here", () => {
+    render(<PaneSettingsView state={state()} busy={false} pushOff={false} onToggle={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+  });
+});
+
 describe("PaneSettingsSheet — the real hooks, end to end", () => {
   beforeEach(() => {
     vi.mocked(getPushState).mockReset().mockResolvedValue({

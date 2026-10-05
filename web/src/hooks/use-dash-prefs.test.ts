@@ -42,7 +42,6 @@ describe("coerceDashPrefs", () => {
       showToolCalls: false,
       showCompactions: false,
       paneOrder: "place",
-      chatExperiment: false,
       paneView: "chat",
     });
   });
@@ -63,8 +62,7 @@ describe("coerceDashPrefs", () => {
         dashView: "changes",
         showToolCalls: true,
         paneOrder: "activity",
-        chatExperiment: true,
-        paneView: "terminal",
+          paneView: "terminal",
       }),
     ).toEqual({
       spacesOpen: false,
@@ -81,9 +79,19 @@ describe("coerceDashPrefs", () => {
       showToolCalls: true,
       showCompactions: false,
       paneOrder: "activity",
-      chatExperiment: true,
       paneView: "terminal",
     });
+  });
+
+  it("ignores a stored chatExperiment, whatever it holds (Chat is the default, ADR 0082)", () => {
+    for (const stored of [true, false, "yes", null]) {
+      const prefs = coerceDashPrefs({ chatExperiment: stored });
+      expect(prefs).not.toHaveProperty("chatExperiment");
+      expect(prefs.paneView).toBe("chat");
+    }
+    // A device that chose the terminal keeps it, with or without the old key beside it.
+    expect(coerceDashPrefs({ chatExperiment: true, paneView: "terminal" }).paneView).toBe("terminal");
+    expect(coerceDashPrefs({ paneView: "terminal" }).paneView).toBe("terminal");
   });
 
   it("keeps the Changes depth inside 1..4", () => {
@@ -143,7 +151,6 @@ describe("coerceDashPrefs", () => {
       showToolCalls: false,
       showCompactions: false,
       paneOrder: "place",
-      chatExperiment: false,
       paneView: "chat",
     });
   });
@@ -169,7 +176,6 @@ describe("useDashPrefs", () => {
       showToolCalls: false,
       showCompactions: false,
       paneOrder: "place",
-      chatExperiment: false,
       paneView: "chat",
     });
   });
@@ -191,7 +197,6 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setDashView("focus"));
     act(() => first.result.current.setShowToolCalls(true));
     act(() => first.result.current.setPaneOrder("activity"));
-    act(() => first.result.current.setChatExperiment(true));
     act(() => first.result.current.setPaneView("terminal"));
 
     const second = renderHook(() => useDashPrefs());
@@ -210,7 +215,6 @@ describe("useDashPrefs", () => {
       showToolCalls: true,
       showCompactions: false,
       paneOrder: "activity",
-      chatExperiment: true,
       paneView: "terminal",
     });
   });

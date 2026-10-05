@@ -17,9 +17,6 @@ export const de: Dictionary = {
   "settings.compactions.title": "Komprimierungs-Zusammenfassungen",
   "settings.compactions.description": "Behält die Zusammenfassung, die ein Agent beim Komprimieren seines Kontexts schreibt. Aus bleibt nur eine Markierung an der Stelle.",
   "settings.experiments.contract": "Alles hier kann sich ändern, Einstellungen verlieren oder in einem Patch-Release entfallen.",
-  "settings.experiments.chat.title": "Chat",
-  "settings.experiments.chat.description": "Ein Pane als eigene Konversation des Agenten lesen statt als Terminal. Über das ⋮-Menü eines Panes zurückschalten.",
-  "settings.experiments.chat.caveat": "Codex-Panes zeigen ihre Schritte noch nicht, und ein komprimierter Beitrag kann sichtbar bleiben, bis die Sitzung neu gelesen wird.",
   // --- settings sections ---
   "settings.section.appearance.title": "Darstellung",
   "settings.section.appearance.blurb": "Design, Sprache, Schriften",
@@ -30,7 +27,7 @@ export const de: Dictionary = {
   "settings.section.system.title": "System",
   "settings.section.system.blurb": "Updates, Geräte, Crew",
   "settings.section.experiments.title": "Experimente",
-  "settings.section.experiments.blurb": "Chat",
+  "settings.section.experiments.blurb": "Funktionen, die noch getestet werden",
   "settings.nav.back": "Zurück",
 
   // --- settings.theme ---
@@ -327,6 +324,7 @@ export const de: Dictionary = {
   "chat.copyOutput.failed": "Ausgabe konnte nicht kopiert werden",
   "chat.paneMenu.aria": "Pane-Aktionen",
   "chat.header.openOverviewAria": "Übersicht für {workspace} öffnen{status}",
+  "chat.header.openPaneSettingsAria": "Pane-Einstellungen für {name}",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(Agent nicht erreichbar)",
   "chat.scrollback.showHistory": "Gesamten Verlauf anzeigen",

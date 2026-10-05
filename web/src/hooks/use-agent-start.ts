@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** What {@link useAgentStart} hands back: the harness that just started, and the way to stop saying so. */
 export interface AgentStartEdge {
@@ -54,5 +54,7 @@ export function useAgentStart(
     setStarted(null);
   }, [paneId]);
 
-  return { started, clear: () => setStarted(null) };
+  // Stable: the handover hook's timers hang on it (hooks/use-handover.ts).
+  const clear = useCallback(() => setStarted(null), []);
+  return { started, clear };
 }

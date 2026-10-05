@@ -1,3 +1,6 @@
+import { Pencil } from "lucide-react";
+
+import { ActionRow } from "@/components/action-sheet-rows";
 import { Switch } from "@/components/ui/switch";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useCacheWatch } from "@/hooks/use-cache-watch";
@@ -7,8 +10,9 @@ import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import type { CacheWatchState } from "@/lib/types";
 
-// One pane's own settings. Today that is exactly one row: warn me before this pane's prompt cache goes
-// cold (ADR 0042).
+// One pane's own settings: warn me before this pane's prompt cache goes cold (ADR 0042), and Rename.
+// The pane name in the header opens this sheet (1.17.0), so the row that edits the name sits here
+// too; it hands over to the ⋮ sheet's own rename view and carries no second flow.
 //
 // ── WHY IT IS A SHEET AND NOT A HEADER BUTTON ────────────────────────────────
 // `agent-chat.tsx` states the header's budget as a rule — one Leave, one flexible Identity, at most two
@@ -28,9 +32,12 @@ interface PaneSettingsSheetProps {
   paneId: string | undefined;
   /** Session scope for the read and the write — the machine the PANE lives on. */
   scope?: Scope;
+  /** Open the rename flow. Absent hides the row: the pane cannot be renamed here (read-only device,
+   *  an unreachable machine, a multiplexer with no rename), and the ⋮ sheet hides its own the same way. */
+  onRename?: () => void;
 }
 
-export function PaneSettingsSheet({ open, onClose, paneId, scope }: PaneSettingsSheetProps) {
+export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename }: PaneSettingsSheetProps) {
   useLocale();
   const { state: push } = usePushControl();
   const { state, busy, toggle } = useCacheWatch(paneId, open, scope);
@@ -49,6 +56,7 @@ export function PaneSettingsSheet({ open, onClose, paneId, scope }: PaneSettings
         pushOff={pushOff}
         pushKnown={push !== null}
         onToggle={(next) => void toggle(next)}
+        onRename={onRename}
       />
     </BottomSheet>
   );
@@ -67,6 +75,7 @@ export function PaneSettingsView({
   pushOff,
   pushKnown = true,
   onToggle,
+  onRename,
 }: {
   /** Null until the bridge answers. The switch is disabled and the hint is the ordinary one. */
   state: CacheWatchState | null;
@@ -76,6 +85,8 @@ export function PaneSettingsView({
   /** False while the browser has not been asked yet — disables without claiming a refusal. */
   pushKnown?: boolean;
   onToggle: (next: boolean) => void;
+  /** The Rename row, above the switch. Absent hides it. */
+  onRename?: () => void;
 }) {
   useLocale();
   const globalOn = state?.global === true;
@@ -83,20 +94,31 @@ export function PaneSettingsView({
   const hint = hintFor({ pushOff, globalOn, unwatchable, warnSeconds: state?.warnSeconds });
 
   return (
-    <div className="flex items-center justify-between gap-4 px-4 pb-4">
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{t("paneSettings.cacheWatch.label")}</div>
-        <p className="text-xs leading-snug text-muted-foreground">{hint}</p>
+    <div className="flex flex-col gap-3 pb-4">
+      {onRename && (
+        <div className="px-1">
+          <ActionRow
+            icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+            label={t("paneActions.rename.label")}
+            onClick={onRename}
+          />
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-4 px-4">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{t("paneSettings.cacheWatch.label")}</div>
+          <p className="text-xs leading-snug text-muted-foreground">{hint}</p>
+        </div>
+        <Switch
+          // The global switch reads as ON here rather than as "off but covered": the warning for this
+          // pane IS going out, and a switch that said otherwise would be the lie the hint then has to
+          // correct.
+          checked={globalOn || state?.on === true}
+          disabled={busy || state === null || !pushKnown || pushOff || globalOn || unwatchable}
+          onCheckedChange={onToggle}
+          aria-label={t("paneSettings.cacheWatch.label")}
+        />
       </div>
-      <Switch
-        // The global switch reads as ON here rather than as "off but covered": the warning for this
-        // pane IS going out, and a switch that said otherwise would be the lie the hint then has to
-        // correct.
-        checked={globalOn || state?.on === true}
-        disabled={busy || state === null || !pushKnown || pushOff || globalOn || unwatchable}
-        onCheckedChange={onToggle}
-        aria-label={t("paneSettings.cacheWatch.label")}
-      />
     </div>
   );
 }

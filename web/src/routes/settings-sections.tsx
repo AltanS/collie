@@ -7,7 +7,6 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { BeltSizeControl } from "@/components/belt-size-control";
 import { ChangesControl } from "@/components/changes-control";
-import { ChatExperimentControl } from "@/components/chat-experiment-control";
 import { ConnectionInfo } from "@/components/connection-info";
 import { CrewSettingsCard } from "@/components/crew-settings-card";
 import { FontSettingsControl } from "@/components/font-settings";
@@ -156,11 +155,11 @@ function ExperimentsContract() {
  *
  * "Experimental" is a property of this SECTION'S CONTRACT, not an adjective on a card: everything
  * filed here may change shape, lose settings, or be withdrawn in a patch release, and that sentence
- * is worth saying once at the top rather than repeating per row. Which is also why Chat's switch is
- * not a card in Appearance: read that page's own header above — every card there answers "what do I
- * want on screen", the ordering is argued card by card, and `ToolCallsControl` is already flagged
- * as "the odd one". An unstable toggle dropped in beside it breaks the rule the page states about
- * itself.
+ * is worth saying once at the top rather than repeating per row. Which is also why an experiment's
+ * switch is not a card in Appearance: read that page's own header above — every card there answers
+ * "what do I want on screen", the ordering is argued card by card, and `ToolCallsControl` is
+ * already flagged as "the odd one". An unstable toggle dropped in beside it breaks the rule the
+ * page states about itself.
  *
  * The section renders even when `lib/experiments.ts` is empty, because the route stays; the
  * SETTINGS INDEX is what hides the row (routes/settings.tsx). A bookmark then lands on a page
@@ -170,8 +169,7 @@ export function SettingsExperimentsRoute() {
   return (
     <SettingsPage title="settings.section.experiments.title">
       <ExperimentsContract />
-      {/* One entry today (M41/11). Chat will not be the last thing to pass through here. */}
-      <ChatExperimentControl />
+      {/* Nothing is filed here since Chat graduated (ADR 0082). The next experiment is a card here. */}
     </SettingsPage>
   );
 }

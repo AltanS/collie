@@ -530,7 +530,7 @@ describe("PaneActionsSheet — pin", () => {
 // where a pane's actions live, and Find and History are already here). It is gated by absence, the
 // way every read row here is, and it EXPLAINS rather than hides when the pane cannot honour it.
 describe("PaneActionsSheet — which body the pane draws", () => {
-  it("shows no switch at all until the device has opted in", () => {
+  it("shows no switch when the caller passes no body", () => {
     renderSheet();
     expect(screen.queryByRole("button", { name: /view$/ })).toBeNull();
   });
