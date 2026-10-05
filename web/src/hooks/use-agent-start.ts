@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 /** What {@link useAgentStart} hands back: the harness that just started, and the way to stop saying so. */
 export interface AgentStartEdge {
@@ -33,28 +33,36 @@ export function useAgentStart(
   harness: string | undefined,
   isShell: boolean,
 ): AgentStartEdge {
-  const [started, setStarted] = useState<string | null>(null);
   // What this pane was, last time we looked: "shell", "agent", or null for "never seen".
-  const was = useRef<{ paneId: string; kind: "shell" | "agent" } | null>(null);
+  const [was, setWas] = useState<{ paneId: string; kind: "shell" | "agent" } | null>(null);
+  const [started, setStarted] = useState<{ paneId: string; harness: string } | null>(null);
 
-  useEffect(() => {
-    // The pane is not in the snapshot: say nothing and remember nothing. A missing reading is not
-    // evidence that the pane changed, and treating it as one would fire on every reconnect.
-    if (harness === undefined) return;
+  // TAKEN IN THE RENDER THAT SEES IT (the adjust-state-in-render pattern, 1.17.0). The handover
+  // (hooks/use-handover.ts) holds the body from the first frame of the edge, and an edge found one
+  // effect later left one frame where the new agent's body could be drawn with no cover over it.
+  let edge = started;
+  // The pane is not in the snapshot: say nothing and remember nothing. A missing reading is not
+  // evidence that the pane changed, and treating it as one would fire on every reconnect.
+  if (harness !== undefined) {
     const kind = isShell ? "shell" : "agent";
-    const prev = was.current;
-    was.current = { paneId, kind };
-    if (prev === null || prev.paneId !== paneId) return; // baseline, or a different pane
-    if (prev.kind === "shell" && kind === "agent") setStarted(harness);
-  }, [paneId, harness, isShell]);
-
-  // A pane switch inside one mount clears anything still on screen: the announcement belongs to the
+    if (was === null || was.paneId !== paneId || was.kind !== kind) {
+      setWas({ paneId, kind });
+      // Baseline, or a different pane: nothing to announce. Only a shell this view watched turn into
+      // an agent is an edge.
+      if (was !== null && was.paneId === paneId && was.kind === "shell" && kind === "agent") {
+        edge = { paneId, harness };
+        setStarted(edge);
+      }
+    }
+  }
+  // A pane switch inside one mount drops anything still on screen: the announcement belongs to the
   // pane that made it, and carrying it across would put another pane's name over this one's mirror.
-  useEffect(() => {
+  if (edge !== null && edge.paneId !== paneId) {
+    edge = null;
     setStarted(null);
-  }, [paneId]);
+  }
 
   // Stable: the handover hook's timers hang on it (hooks/use-handover.ts).
   const clear = useCallback(() => setStarted(null), []);
-  return { started, clear };
+  return { started: edge?.harness ?? null, clear };
 }

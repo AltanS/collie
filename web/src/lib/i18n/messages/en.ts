@@ -418,7 +418,7 @@ export const en = {
   "chat.mode.noChat": "{reason} The terminal stays here.",
 
   // --- chat.stream (the chat body itself) ---
-  "chat.stream.empty": "Nothing has been said in this session yet.",
+  "chat.stream.empty": "Send a message to start.",
   "chat.stream.working": "Still working…",
   "chat.stream.queued": "Waiting to send",
   "chat.stream.loadOlderFailed": "Couldn't load older turns",

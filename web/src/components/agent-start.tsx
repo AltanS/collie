@@ -15,8 +15,9 @@ import { cn } from "@/lib/utils";
 //
 // IT IS ONE SEQUENCE WITH THE BODY SWAP. The mark flies in and rests at the centre (covering, then
 // covered); the pane's body may change from the terminal to Chat only at that rest, under the
-// cover; then the mark goes home and the agent's mark rises (revealing). The rest lasts until the
-// body that will show is ready, so the reveal always uncovers the final body.
+// cover; then the mark goes home and the agent's mark rises (revealing). The rest is a fixed dwell
+// and waits for nothing else: the body is decided at once (lib/chat-gate.ts), so the reveal uncovers
+// the body that stays.
 //
 // IT MARKS A FACT, IT DOES NOT PREDICT ONE. The poll finds the change up to one interval late, so
 // the agent is already running by the time this plays. There is no bar, no percentage and no word
@@ -74,7 +75,7 @@ const STYLE = `
   }
 }
 /* COVERING and COVERED: the veil is in, the mark has flown to the centre and RESTS there (fill-mode
-   both keeps its last frame for as long as the body swap and the answer take). The reveal below
+   both keeps its last frame for the dwell, while the body swaps under it). The reveal below
    adds its animations to these lists; the ones already running keep running, they do not restart. */
 .as-veil { animation: as-in 150ms ease-out both; }
 .as-mark {

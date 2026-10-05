@@ -42,13 +42,14 @@ function feedOf(window: Partial<ChatWindow>, over: Partial<ChatFeed> = {}): Chat
   };
 }
 
-function renderStream(feed: ChatFeed, showToolCalls = true, working = false) {
+function renderStream(feed: ChatFeed, showToolCalls = true, working = false, starting = false) {
   const listRef = createRef<ChatMessageListHandle>();
   return render(
     <SessionStream
       feed={feed}
       address="w1:p1"
       working={working}
+      starting={starting}
       showToolCalls={showToolCalls}
       showCompactions={false}
       fontSize={14}
@@ -77,7 +78,34 @@ describe("SessionStream", () => {
 
   it("says a live session is empty only once the window has answered", () => {
     renderStream(feedOf({ status: { kind: "live" } }));
-    expect(screen.getByText("Nothing has been said in this session yet.")).toBeInTheDocument();
+    expect(screen.getByText("Send a message to start.")).toBeInTheDocument();
+  });
+
+  // 1.17.0: a NEW pane has nothing to read, and that is expected (lib/chat-gate.ts). It says how to
+  // begin, never the readings that are only true of a pane that should have a log by now.
+  it("on a new pane, says how to begin instead of reporting a missing session or log", () => {
+    for (const status of [
+      { kind: "empty" },
+      { kind: "unavailable", reason: "no-session" },
+      { kind: "unavailable", reason: "no-log" },
+    ] as const) {
+      const r = renderStream(feedOf({ status }), true, false, true);
+      expect(screen.getByText("Send a message to start.")).toBeInTheDocument();
+      expect(screen.queryByText(/no agent session|No transcript file/)).toBeNull();
+      r.unmount();
+    }
+  });
+
+  it("on a new pane that is working, shows the running turn and not the line that says how to begin", () => {
+    renderStream(feedOf({ status: { kind: "unavailable", reason: "no-log" } }), true, true, true);
+    expect(screen.getByText("Still working…")).toBeInTheDocument();
+    expect(screen.queryByText("Send a message to start.")).toBeNull();
+  });
+
+  it("a pane that is not new still says its log is missing", () => {
+    renderStream(feedOf({ status: { kind: "unavailable", reason: "no-log" } }));
+    expect(screen.getByText("No transcript file was found for this pane's session yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Send a message to start.")).toBeNull();
   });
 
   // ADR 0073 point 7: a 404 means "update this member", never "this pane has nothing to show".

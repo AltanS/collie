@@ -11,6 +11,9 @@ for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await installApiStub(page);
     await page.addInitScript((value) => localStorage.setItem('collie:theme:v1', value), theme);
+    // The case is about the terminal mirror. An idle agent pane with no session draws Chat on a
+    // device that kept the default (lib/chat-gate.ts), so the device is pinned to the terminal.
+    await page.addInitScript(() => localStorage.setItem('collie:dash-prefs:v1', JSON.stringify({ paneView: 'terminal' })));
     let harness = 'codex';
     const body = Array.from({ length: 60 }, (_, i) => `Earlier output ${i}`).join('\n') + '\n';
     const rule = '─'.repeat(40);

@@ -21,6 +21,7 @@ import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
 import { useChatReady } from "@/hooks/use-chat-ready";
+import { usePaneStart } from "@/hooks/use-pane-start";
 import { useHandover, useHeldBody } from "@/hooks/use-handover";
 import { useLatestReply } from "@/hooks/use-latest-reply";
 import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
@@ -89,6 +90,7 @@ import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
+import { paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { paneScopeKey } from "@/lib/scope";
 import { usePins } from "@/lib/pins";
@@ -849,18 +851,19 @@ export function AgentChat({
   // line moves the header, the strips, the card dock, the belt or the composer. What swaps is the
   // box between the mirror's own top rule and the chrome block, and only that.
   //
-  // CHAT IS THE DEFAULT (1.17.0, ADR 0082). Two values decide it. `paneView` is the device's
-  // standing choice, `chat` until the operator picks the terminal from the pane's ⋮ menu, the one
-  // place it is written (lib/pane-view.ts). `historyAvailable` is the gate and it is about the PANE
-  // rather than the device: the chat
-  // route reads the same journal the History page does, so a pane that has no transcript to open
-  // has no session to stream either. A pane like that falls back to the terminal and the ⋮ row
-  // carries the reason — it never hides, because a control that disappears on some panes is how an
-  // operator concludes the app is broken.
+  // CHAT IS THE DEFAULT (1.17.0, ADR 0082). `paneView` is the device's standing choice, `chat` until
+  // the operator picks the terminal from the pane's ⋮ menu, the one place it is written
+  // (lib/pane-view.ts). Which body a pane on a Chat device draws is lib/chat-gate.ts's call, and it
+  // is about the PANE: one that reads its session draws Chat, one that is NEW draws Chat with a line
+  // that says how to begin even before a session or a log exists (Codex reports its session on the
+  // first prompt, pi writes its log after the first reply), and one whose session or log should have
+  // come and did not falls back to the terminal, with the ⋮ row and a muted line saying why. The
+  // row never hides, because a control that disappears on some panes is how an operator concludes
+  // the app is broken.
   const chatChosen = dash.prefs.paneView === "chat";
-  const chatBody = chatChosen && historyAvailable;
-  // The live window, moved by the poll that already exists (ADR 0073). Disabled is free: no fetch,
-  // no timer, the empty window.
+  // The chat route is asked only where a session exists to read: a pane with none has nothing for
+  // it to answer. The poll that already exists moves it (ADR 0073); disabled is free.
+  const chatFetch = chatChosen && historyAvailable;
   // WARMED BEFORE THE TAP. The read starts when the menu that holds the switch opens, not when the
   // switch is pressed, so by the time it is the answer is already in hand and the swap lands with the
   // sheet's own close instead of after it. Only for a pane that has a journal and only while one of
@@ -868,7 +871,29 @@ export function AgentChat({
   // still on a pane.
   const switchSheetOpen = drawer === "paneMenu" || drawer === "display";
   const warming = historyAvailable && switchSheetOpen;
-  const chatFeed = useChatWindow({ paneId, scope, enabled: chatBody || warming });
+  const chatFeed = useChatWindow({ paneId, scope, enabled: chatFetch || warming });
+  // What this view has seen of how the agent began, for the gate (hooks/use-pane-start.ts).
+  const paneStart = usePaneStart(paneId, agent?.agent, isShell, agent?.status);
+  const chatStatus = chatFeed.window.status;
+  const journal: JournalReading =
+    chatStatus.kind === "empty"
+      ? "unasked"
+      : chatStatus.kind === "unavailable" && (chatStatus.reason === "no-log" || chatStatus.reason === "no-session")
+        ? "missing"
+        : "readable";
+  // A harness draws Chat when the multiplexer keeps a session log and Collie reads this harness's
+  // log. A pane that reported a session is one by construction (the bridge's `hasSession` already
+  // folds the adapter in), so an older phone that does not know a newer harness still draws it.
+  const chatHarness =
+    !isShell && sessionLog.capable && (Boolean(agent?.hasSession) || hasJournalAdapter(agent?.agent));
+  const body = paneBody({
+    chat: chatChosen && chatHarness,
+    session: Boolean(agent?.hasSession),
+    journal,
+    history: paneStart.history,
+    activity: paneStart.activity,
+  });
+  const chatBody = body !== "terminal";
   // What the Chat body's running question card says about the dialog below it. Chat body only: the
   // terminal body draws no cards, so nothing there reads it. `localeRevision` is READ by the note's
   // `t()` and keys the memo so the sentence follows a language change.
@@ -876,40 +901,45 @@ export function AgentChat({
     void localeRevision;
     return waitingQuestionNote(chatFeed.window.entries, blocks);
   }, [chatFeed.window.entries, blocks, localeRevision]);
-  // WHICH BODY IS ON SCREEN. `chatBody` is what was chosen and starts the read above; `chatShown` is
-  // what is drawn, and it lags by one answer. The swap used to land on an empty stream in the same
-  // tick the menu started to close, so the turns popped in after it. The terminal now stays up until
-  // Chat has something to show (hooks/use-chat-ready.ts), with a cap so a failed read cannot strand it.
-  const chatReadyBody = useChatReady(chatBody, chatFeed.window.status.kind !== "empty");
   // THE HANDOVER OWNS THE SWAP WHILE A SHELL BECOMES AN AGENT (hooks/use-handover.ts). The bloom
-  // and the body swap are one sequence: the swap is held while the layer covers and applies at its
-  // rest, and the reveal waits for the body that WILL show. That is Chat once the session is
-  // reported and its first answer is in, the terminal when this pane will not draw Chat, and still
-  // "not yet" while the device wants Chat and a journal pane has reported no session (the hook's own
-  // cap ends that wait). A harness that reports its session only on the FIRST PROMPT (Codex) is the
-  // exception: its session cannot arrive during the bloom, so waiting for it would only hold the
-  // cover for the whole cap. It reveals as soon as the bloom completes, with the terminal under it,
-  // and Chat takes the body when the first prompt makes the session appear. With no layer up the
-  // phase is idle and this is `chatReadyBody` as it was.
-  const waitsForSession = chatChosen && noSessionReported && !reportsSessionOnFirstPrompt(agent?.agent);
-  const bodyReady = waitsForSession ? false : chatBody ? chatReadyBody : true;
-  const handover = useHandover(agentStart.started !== null, bodyReady, agentStart.clear);
+  // and the body swap are one sequence: the swap is held while the layer covers, applies at its
+  // rest, and the reveal follows the rest with nothing else to wait for, because the gate above
+  // already names the body that stays.
+  const handover = useHandover(agentStart.started !== null, agentStart.clear);
+  // WHICH BODY IS ON SCREEN. `chatBody` is what the gate chose; the body drawn lags it by one answer
+  // when the swap happens on an open pane (the ⋮ switch, or a session that arrives after a fallback). The swap used to land on an empty stream in the same tick the
+  // menu started to close, so the turns popped in after it; the terminal now stays up until Chat has
+  // something to show (hooks/use-chat-ready.ts), with a cap so a failed read cannot strand it. A
+  // pane with no session to ask has nothing to wait for, and neither has a handover, whose cover is
+  // what hides the swap.
+  const chatAnswered = !chatFetch || chatStatus.kind !== "empty" || handover.phase !== "idle";
+  const chatReadyBody = useChatReady(chatBody, chatAnswered);
   const chatShown = useHeldBody(chatReadyBody, handover.phase);
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
-  // question this side can answer. There are two layers and the split is deliberate: a pane with no
-  // journal at all never asks the bridge, so the reason belongs on the ⋮ row here, while a pane
-  // that DOES ask and is told `available: false` or handed a 404 is drawing the chat body, and the
-  // stream says so in its own words there. Saying both would put "this pane keeps the terminal" on
+  // question this side can answer. There are two layers and the split is deliberate: a pane that
+  // draws Chat says what it is waiting for in the stream, in its own words, while a pane that keeps
+  // the terminal says it on the ⋮ row here. Saying both would put "this pane keeps the terminal" on
   // a menu row above a chat stream.
   //
   // The multiplexer's own words come first where it has any, because a multiplexer that keeps no
-  // agent session log at all is not Collie's fault and Collie does not say it is.
-  const chatReason = historyAvailable
-    ? null
-    : sessionLog.capable
-      ? t("history.unavailable.noSession")
-      : sessionLog.note || t("history.unavailable.noLog");
+  // agent session log at all is not Collie's fault and Collie does not say it is. A device on the
+  // terminal reads exactly the row it read before the gate existed.
+  const chatReason = !sessionLog.capable
+    ? sessionLog.note || t("history.unavailable.noLog")
+    : chatChosen
+      ? chatBody
+        ? null
+        : agent?.hasSession && journal === "missing"
+          ? t("history.unavailable.noLog")
+          : t("history.unavailable.noSession")
+      : historyAvailable
+        ? null
+        : t("history.unavailable.noSession");
   const chatNote = chatReason === null ? undefined : t("chat.mode.noChat", { reason: chatReason });
+  // The terminal's own line for a pane that fell back with a session but no log to read. The
+  // no-session half has its line already (`noSessionReported`, below in the mirror).
+  const noLogFallback =
+    chatChosen && chatHarness && !chatBody && Boolean(agent?.hasSession) && journal === "missing";
 
   // Scrollback has its own capability, and it is a genuinely different one: a multiplexer can keep
   // screen history while knowing nothing about agents. Hidden rather than explained when absent —
@@ -1025,6 +1055,8 @@ export function AgentChat({
 
   // After a successful send, snap the mirror back to the live tail so the reply's result is visible.
   const onSent = () => {
+    // A prompt sent from here is work begun, for the Chat gate's grace (lib/chat-gate.ts).
+    paneStart.markSent();
     setFollowing(true);
     revalidator.revalidate();
     listRef.current?.scrollToBottom();
@@ -2071,6 +2103,9 @@ export function AgentChat({
                   // same reason the status dot dims: a frozen reading must not animate as if it were
                   // arriving.
                   working={agent?.status === "working" && !connecting}
+                  // A new pane with nothing to read yet: one line that says how to begin, never the
+                  // "no transcript file" reading, which is only true of a pane that should have one.
+                  starting={body === "start"}
                   showToolCalls={dash.prefs.showToolCalls}
                   showCompactions={dash.prefs.showCompactions}
                   fontSize={prefs.chatFontSize}
@@ -2154,6 +2189,14 @@ export function AgentChat({
                   {noSessionReported && (
                     <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
                       {t(noSessionKey, { agent: agent?.agent ?? "" })}
+                    </p>
+                  )}
+                  {/* The other half of the Chat fallback: the pane named a session, and its log is
+                      still not there after the grace (lib/chat-gate.ts). The stream's own sentence
+                      for that reading, on the body the operator now has. */}
+                  {noLogFallback && (
+                    <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
+                      {t("history.unavailable.noLog")}
                     </p>
                   )}
                   {/* The newest reply in full, standing IN PLACE OF the rows it covers (the mirror

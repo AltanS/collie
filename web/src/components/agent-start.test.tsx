@@ -8,8 +8,8 @@ import { AgentStart } from "./agent-start";
 // never leaves, it leaves before it has said anything, or it cannot be dismissed. Each has a case.
 
 /** The layer under the real handover hook, the way agent-chat mounts it. */
-function Sequence({ finish, ready = true }: { finish: () => void; ready?: boolean }) {
-  const h = useHandover(true, ready, finish);
+function Sequence({ finish }: { finish: () => void }) {
+  const h = useHandover(true, finish);
   return (
     <>
       <span data-testid="phase">{h.phase}</span>
@@ -77,7 +77,7 @@ describe("AgentStart", () => {
 
   it("a tap ends it at once, wherever the sequence is", () => {
     const finish = vi.fn();
-    render(<Sequence finish={finish} ready={false} />);
+    render(<Sequence finish={finish} />);
     expect(screen.getByTestId("phase")).toHaveTextContent("covering");
     act(() => screen.getByRole("status").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
     expect(finish).toHaveBeenCalledTimes(1);
