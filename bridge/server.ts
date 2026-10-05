@@ -79,6 +79,7 @@ import { uploadTooLarge } from "./uploads.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
 import type { MachineAlertsResponse } from "./types.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
+import { SPARK_MAX_MINUTES } from "./machine-history.ts";
 import type { MachineSurface } from "./machines.ts";
 import type {
   ActionResponse,
@@ -3902,6 +3903,14 @@ export interface MachineRouteCaller {
   audit(entry: AuditEntry): void;
 }
 
+/** A whole number from the query between `min` and `max`, or `null` when absent or anything else. */
+function queryCount(req: Request, key: string, min: number, max: number): number | null {
+  const raw = new URL(req.url).searchParams.get(key);
+  if (raw === null || !/^\d{1,16}$/.test(raw)) return null;
+  const n = Number(raw);
+  return n >= min && n <= max ? n : null;
+}
+
 /** The three machine routes, or `null` when `pathname` is none of them. */
 export async function serveMachinesRoute(
   req: Request,
@@ -3916,7 +3925,10 @@ export async function serveMachinesRoute(
     const denied = caller.gate("read");
     if (denied) return denied;
     if (machines === undefined) return jsonError(apiError("crew.not_lead"), 404, ae);
-    return json(machines.rows(), ae);
+    // `?spark=N` (1..60) adds each row's last N complete minutes for the dashboard's small charts.
+    // Opt-in, so the answer without it is the one the Machines pages always had.
+    const spark = queryCount(req, "spark", 1, SPARK_MAX_MINUTES);
+    return json(spark === null ? machines.rows() : machines.rows({ spark }), ae);
   }
   const route = MACHINE_ROUTE.exec(pathname);
   if (route === null) return null;
@@ -3930,7 +3942,10 @@ export async function serveMachinesRoute(
   if (machines === undefined) return jsonError(apiError("crew.not_lead"), 404, ae);
   const unknownMachine = () => jsonError(apiError("host.unknown", { host: id }), 404, ae);
   if (isHistory) {
-    const body = machines.history(id);
+    // `?since=<ms>` keeps the minutes starting at or after it: the page reads the day once, then
+    // only what it has not seen. Anything that is not a whole, non-negative number is ignored.
+    const since = queryCount(req, "since", 0, Number.MAX_SAFE_INTEGER);
+    const body = since === null ? machines.history(id) : machines.history(id, since);
     return body === null ? unknownMachine() : json(body, ae);
   }
   const entry = machines.entry(id);

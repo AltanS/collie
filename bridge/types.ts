@@ -540,6 +540,22 @@ export interface MachineRow {
   alerts: MachineAlerts;
   /** The metrics whose alert episode is open now. */
   firing: AlertMetric[];
+  /**
+   * The last complete minutes of CPU and memory, for a small chart. Present only when the request
+   * asked for it (`GET /api/machines?spark=N`) and the lead holds at least one of those minutes.
+   */
+  spark?: MachineSpark;
+}
+
+/**
+ * A small chart's data: one value per complete minute, oldest first, the newest being the minute
+ * before the one the answer's `ts` falls in. Fractions to two places, `null` for a minute with no
+ * reading. At most the minutes asked for; minutes before the first reading are left out.
+ */
+export interface MachineSpark {
+  stepMs: 60000;
+  cpu: (number | null)[];
+  mem: (number | null)[];
 }
 
 /** `GET /api/machines`. */
@@ -550,11 +566,15 @@ export interface MachinesResponse {
 
 /**
  * One minute of history: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null]`. `t` is the
- * minute's start. A minute with no reading is simply missing from the list.
+ * minute's start, the fractions are rounded to three places and the rates to whole bytes per second.
+ * A minute with no reading is simply missing from the list.
  */
 export type MachineHistoryPoint = [number, number, number, number, number | null, number | null];
 
-/** `GET /api/machines/:id/history`. Oldest first, at most 1440 points, one per minute. */
+/**
+ * `GET /api/machines/:id/history`. Oldest first, at most 1440 points, one per minute. With
+ * `?since=<ms>`, only the minutes starting at or after it.
+ */
 export interface MachineHistoryResponse {
   ts: number;
   stepMs: 60000;

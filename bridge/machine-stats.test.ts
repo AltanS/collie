@@ -11,7 +11,9 @@ import {
   isSkippedInterface,
   parseNetDev,
   parseProcStat,
-  SAMPLE_MIN_INTERVAL_MS,
+  procStatCores,
+  SAMPLE_IDLE_MS,
+  SAMPLE_WATCHED_MS,
   type OsReader,
 } from "./machine-stats.ts";
 
@@ -64,6 +66,16 @@ describe("parseProcStat", () => {
     expect(parseProcStat("cpu  10 x 10 80\n")).toBeNull();
     expect(parseProcStat("cpu0 1 2 3 4\n")).toBeNull();
     expect(parseProcStat("")).toBeNull();
+  });
+});
+
+describe("procStatCores", () => {
+  test("counts the cpuN lines, and nothing else", () => {
+    expect(procStatCores(STAT_A)).toBe(1);
+    const four = `cpu  1 2 3 4\n${[0, 1, 2, 3].map((n) => `cpu${n} 1 2 3 4`).join("\n")}\nintr 1 2\nctxt 5\n`;
+    expect(procStatCores(four)).toBe(4);
+    expect(procStatCores("cpu  1 2 3 4\n")).toBe(0);
+    expect(procStatCores("")).toBe(0);
   });
 });
 
@@ -193,7 +205,7 @@ function fakeSources() {
 }
 
 describe("MachineSampler — a Linux host", () => {
-  test("the first reading yields nothing, the next one inside five seconds is skipped, then a sample", () => {
+  test("watched: the first reading yields nothing, the next one inside five seconds is skipped, then a sample", () => {
     const src = fakeSources();
     src.state.cpus = Array.from({ length: 16 }, () => core(0, 0, 0));
     src.state.files.set("/proc/stat", statLine(100, 0, 100, 700, 100, 0, 0, 0));
@@ -201,19 +213,19 @@ describe("MachineSampler — a Linux host", () => {
     src.state.files.set("/proc/net/dev", NETDEV(0, [1000, 200], [0, 0]));
     const sampler = new MachineSampler({ host: hostFor("linux"), readText: src.readText, os: src.os, now: src.now });
 
-    expect(sampler.tick()).toBeNull();
+    expect(sampler.tick(SAMPLE_WATCHED_MS)).toBeNull();
     expect(sampler.latest()).toBeNull();
 
-    src.state.now += SAMPLE_MIN_INTERVAL_MS - 1;
+    src.state.now += SAMPLE_WATCHED_MS - 1;
     const readsBefore = src.state.reads.length;
-    expect(sampler.tick()).toBeNull();
+    expect(sampler.tick(SAMPLE_WATCHED_MS)).toBeNull();
     // Too soon means nothing is READ, not merely nothing returned.
     expect(src.state.reads.length).toBe(readsBefore);
 
     src.state.now = T0 + 5000;
     src.state.files.set("/proc/stat", statLine(150, 0, 130, 900, 120, 0, 0, 0));
     src.state.files.set("/proc/net/dev", NETDEV(0, [6000, 1200], [0, 0]));
-    const sample = sampler.tick()!;
+    const sample = sampler.tick(SAMPLE_WATCHED_MS)!;
     expect(sample.cpu).toBeCloseTo(80 / 300, 10);
     expect(sample.cores).toBe(16);
     expect(sample.memUsed).toBe(4_000_000 * 1024);
@@ -224,11 +236,75 @@ describe("MachineSampler — a Linux host", () => {
     expect(sampler.latest()).toEqual(sample);
   });
 
+  test("nobody watching: a reading at most every fifteen seconds, and nothing read in between", () => {
+    const src = fakeSources();
+    src.state.files.set("/proc/stat", statLine(100, 0, 100, 700, 100, 0, 0, 0));
+    src.state.files.set("/proc/meminfo", MEMINFO);
+    const sampler = new MachineSampler({ host: hostFor("linux"), readText: src.readText, os: src.os, now: src.now });
+    sampler.tick();
+    // The first sample comes at the watched pace, so a fresh start shows its load within seconds.
+    src.state.now = T0 + SAMPLE_WATCHED_MS;
+    src.state.files.set("/proc/stat", statLine(150, 0, 130, 900, 120, 0, 0, 0));
+    expect(sampler.tick()?.cpu).toBeCloseTo(80 / 300, 10);
+    const reads = src.state.reads.length;
+    const at = src.state.now;
+    for (const step of [5_000, 12_000, SAMPLE_IDLE_MS - 1]) {
+      src.state.now = at + step;
+      expect(sampler.tick()).toBeNull();
+    }
+    expect(src.state.reads.length).toBe(reads);
+    src.state.now = at + SAMPLE_IDLE_MS;
+    src.state.files.set("/proc/stat", statLine(200, 0, 160, 1100, 140, 0, 0, 0));
+    expect(sampler.tick()?.cpu).toBeCloseTo(80 / 300, 10);
+  });
+
+  test("before its first sample, a sampler reads again after five seconds, never sooner", () => {
+    const src = fakeSources();
+    src.state.files.set("/proc/stat", statLine(100, 0, 100, 700, 100, 0, 0, 0));
+    src.state.files.set("/proc/meminfo", MEMINFO);
+    const sampler = new MachineSampler({ host: hostFor("linux"), readText: src.readText, os: src.os, now: src.now });
+    sampler.tick();
+    src.state.now = T0 + SAMPLE_WATCHED_MS - 1;
+    expect(sampler.tick()).toBeNull();
+    src.state.now = T0 + SAMPLE_WATCHED_MS;
+    src.state.files.set("/proc/stat", statLine(150, 0, 130, 900, 120, 0, 0, 0));
+    expect(sampler.tick()).not.toBeNull();
+  });
+
+  test("Linux counts its cores off /proc/stat and never asks os.cpus() while that file answers", () => {
+    const src = fakeSources();
+    let asked = 0;
+    const os = { ...src.os, cpus: () => (asked++, src.state.cpus) };
+    src.state.files.set("/proc/stat", STAT_A);
+    src.state.files.set("/proc/meminfo", MEMINFO);
+    const sampler = new MachineSampler({ host: hostFor("linux"), readText: src.readText, os, now: src.now });
+    sampler.tick();
+    src.state.now += SAMPLE_IDLE_MS;
+    src.state.files.set("/proc/stat", STAT_A.replace("cpu  624840727", "cpu  624841727"));
+    expect(sampler.tick()?.cores).toBe(1);
+    expect(asked).toBe(0);
+  });
+
+  test("a reading from /proc/stat and the next from node:os count in two units, so they give no sample", () => {
+    const src = fakeSources();
+    src.state.files.set("/proc/stat", statLine(100, 0, 100, 700, 100, 0, 0, 0));
+    src.state.files.set("/proc/meminfo", MEMINFO);
+    const sampler = new MachineSampler({ host: hostFor("linux"), readText: src.readText, os: src.os, now: src.now });
+    sampler.tick();
+    src.state.files.delete("/proc/stat");
+    src.state.now += SAMPLE_IDLE_MS;
+    expect(sampler.tick()).toBeNull();
+    // The next pair is from one source again, and samples.
+    src.state.now += SAMPLE_IDLE_MS;
+    src.state.cpus = [core(400, 100, 1000)];
+    expect(sampler.tick()?.cpu).toBe(0.6);
+  });
+
   test("an unreadable /proc falls back to node:os, and loses only the network", () => {
     const src = fakeSources();
     const sampler = new MachineSampler({ host: hostFor("linux"), readText: src.readText, os: src.os, now: src.now });
     sampler.tick();
-    src.state.now += 6000;
+    src.state.now += SAMPLE_IDLE_MS;
     src.state.cpus = [core(400, 100, 1000)];
     const sample = sampler.tick()!;
     // busy +300, idle +200.
@@ -252,7 +328,7 @@ describe("MachineSampler — a Linux host", () => {
       now: src.now,
     });
     expect(sampler.tick()).toBeNull();
-    src.state.now += 6000;
+    src.state.now += SAMPLE_IDLE_MS;
     expect(sampler.tick()).toBeNull();
     expect(sampler.latest()).toBeNull();
   });
@@ -263,7 +339,7 @@ describe("MachineSampler — a macOS-like host", () => {
     const src = fakeSources();
     const sampler = new MachineSampler({ host: hostFor("darwin"), readText: src.readText, os: src.os, now: src.now });
     sampler.tick();
-    src.state.now += 5000;
+    src.state.now += SAMPLE_IDLE_MS;
     src.state.cpus = [core(150, 150, 1000)];
     src.state.free = 2e9;
     expect(sampler.tick()).toEqual({ cpu: 100 / 300, cores: 1, memUsed: 6e9, memTotal: 8e9, load1: 0.5 });
@@ -277,7 +353,7 @@ describe("MachineSampler — a Windows-like host", () => {
     src.state.load = [0, 0, 0];
     const sampler = new MachineSampler({ host: hostFor("win32"), readText: src.readText, os: src.os, now: src.now });
     sampler.tick();
-    src.state.now += 5000;
+    src.state.now += SAMPLE_IDLE_MS;
     src.state.cpus = [core(200, 100, 900)];
     const sample = sampler.tick()!;
     expect(sample).toEqual({ cpu: 0.5, cores: 1, memUsed: 2e9, memTotal: 8e9 });

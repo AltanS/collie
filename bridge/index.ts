@@ -1647,9 +1647,11 @@ const machineWatch =
       });
 
 // The same tick the crew sweep rides (CREW_PROTOCOL.md §10.1, §11): no second timer. The sampler reads
-// at most once every five seconds whatever the cadence, and the watch judges once a minute.
+// at most once every 15 s, or every 5 s while a phone has the Machines list or the Crew tab open (the
+// watch says which, `machines.ts` holds the arithmetic); a peer has no watch and always reads at the
+// slow rate. The watch judges once a minute.
 registry.get()?.engine.onTick(() => {
-  const sample = machineSampler.tick();
+  const sample = machineSampler.tick(machineWatch?.sampleEveryMs());
   if (machineWatch === undefined) return;
   if (sample !== null) {
     const self = machineRoster().find((m) => m.isLead);

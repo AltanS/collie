@@ -131,6 +131,25 @@ describe("GET /api/machines", () => {
     });
   });
 
+  test("?spark=N adds each row's last N complete minutes; without it, or with a bad N, the answer is unchanged", async () => {
+    const { watch } = await watchOver(crewRoster());
+    for (let m = 3; m >= 1; m--) {
+      watch.observe("desk", { cpu: 0.1 * m, cores: 8, memUsed: m * 1e9, memTotal: 8e9 }, NOW - m * MINUTE_MS);
+    }
+    const plain = await (await answer(get("/api/machines"), caller().c, watch)).text();
+    for (const bad of ["0", "61", "abc", "-1", "1.5", ""]) {
+      expect(await (await answer(get(`/api/machines?spark=${bad}`), caller().c, watch)).text()).toBe(plain);
+    }
+    // SAFETY: the handler emits `MachinesResponse` (server.ts, `serveMachinesRoute`).
+    const body = (await (await answer(get("/api/machines?spark=30"), caller().c, watch)).json()) as MachinesResponse;
+    expect(body.machines[0]!.spark).toEqual({ stepMs: 60000, cpu: [0.3, 0.2, 0.1], mem: [0.38, 0.25, 0.13] });
+    // A machine with no minute recorded carries no spark at all.
+    expect("spark" in body.machines[1]!).toBe(false);
+    // SAFETY: as above.
+    const two = (await (await answer(get("/api/machines?spark=2"), caller().c, watch)).json()) as MachinesResponse;
+    expect(two.machines[0]!.spark?.cpu).toEqual([0.2, 0.1]);
+  });
+
   test("a peer has no watch and answers the /api/crew refusal on all three routes", async () => {
     for (const req of [get("/api/machines"), get("/api/machines/desk/history"), post("/api/machines/desk/alerts", "{}")]) {
       const res = await answer(req, caller().c, undefined);
@@ -167,6 +186,20 @@ describe("GET /api/machines/:id/history", () => {
         [minuteOf(NOW - MINUTE_MS), 0.7, 0.7, 0.5, null, null],
       ],
     });
+  });
+
+  test("?since keeps the minutes starting at or after it, and a bad value is ignored", async () => {
+    const { watch } = await watchOver(crewRoster());
+    for (let m = 3; m >= 1; m--) watch.observe("laptop", { cpu: 0.1 * m, cores: 4, memUsed: 2e9, memTotal: 8e9 }, NOW - m * MINUTE_MS);
+    const read = async (q: string) =>
+      // SAFETY: the handler emits `MachineHistoryResponse` (server.ts, `serveMachinesRoute`).
+      ((await (await answer(get(`/api/machines/laptop/history${q}`), caller().c, watch)).json()) as MachineHistoryResponse).points.map((p) => p[0]);
+    const all = await read("");
+    expect(all).toHaveLength(3);
+    expect(await read(`?since=${all[1]}`)).toEqual(all.slice(1));
+    expect(await read(`?since=${NOW}`)).toEqual([]);
+    expect(await read("?since=soon")).toEqual(all);
+    expect(await read("?since=-5")).toEqual(all);
   });
 
   test("an unknown machine is a 404 naming it", async () => {

@@ -96,6 +96,43 @@ describe("minute buckets", () => {
   });
 });
 
+describe("since and spark", () => {
+  test("since keeps the minutes starting at or after it", () => {
+    const h = new MachineHistory();
+    for (let m = 0; m < 5; m++) h.record("desk", sample(0.1 * (m + 1), 0.5), T0 + m * MINUTE_MS);
+    const now = T0 + 5 * MINUTE_MS;
+    expect(h.points("desk", now, T0 + 3 * MINUTE_MS).map((p) => p[0])).toEqual([T0 + 3 * MINUTE_MS, T0 + 4 * MINUTE_MS]);
+    expect(h.points("desk", now, T0 + 3 * MINUTE_MS + 1).map((p) => p[0])).toEqual([T0 + 4 * MINUTE_MS]);
+    expect(h.points("desk", now, now)).toEqual([]);
+    expect(h.points("desk", now, 0)).toEqual(h.points("desk", now));
+  });
+
+  test("a spark is the complete minutes, two places, null for a hole, and nothing before the first reading", () => {
+    const h = new MachineHistory();
+    h.record("desk", sample(0.123, 0.5), T0);
+    h.record("desk", sample(0.456, 0.25), T0 + 2 * MINUTE_MS);
+    // The open minute (T0 + 3) is left out of the spark even though it has a reading.
+    h.record("desk", sample(0.9, 0.9), T0 + 3 * MINUTE_MS);
+    const now = T0 + 3 * MINUTE_MS + 30_000;
+    expect(h.spark("desk", now, 30)).toEqual({ stepMs: 60_000, cpu: [0.12, null, 0.46], mem: [0.5, null, 0.25] });
+    // Asked for two minutes, the hole leads the window, so it is cut and one value is left.
+    expect(h.spark("desk", now, 2)).toEqual({ stepMs: 60_000, cpu: [0.46], mem: [0.25] });
+    expect(h.spark("nas", now, 30)).toBeNull();
+    // A machine whose only reading is the open minute has no spark yet.
+    const fresh = new MachineHistory();
+    fresh.record("desk", sample(0.5, 0.5), T0);
+    expect(fresh.spark("desk", T0 + 10_000, 30)).toBeNull();
+  });
+
+  test("a spark never holds more than the minutes asked for", () => {
+    const h = new MachineHistory();
+    for (let m = 0; m < 90; m++) h.record("desk", sample(0.5, 0.5), T0 + m * MINUTE_MS);
+    const spark = h.spark("desk", T0 + 90 * MINUTE_MS, 30)!;
+    expect(spark.cpu).toHaveLength(30);
+    expect(spark.mem.every((v) => v === 0.5)).toBe(true);
+  });
+});
+
 describe("the 24 h prune", () => {
   test("a bucket older than a day is gone from the next read", () => {
     const h = new MachineHistory();
@@ -160,6 +197,50 @@ describe("the persisted round trip", () => {
     expect(back.points("laptop", T0 + 10)).toEqual([]);
   });
 
+  test("version 2 is compact: the first minute, a gap per row, three places, and the last row's count", () => {
+    const h = new MachineHistory();
+    h.record("desk", sample(0.12345, 0.5, { rx: 1000.4, tx: 20 }), T0);
+    h.record("desk", sample(0.2, 0.25), T0 + MINUTE_MS);
+    h.record("desk", sample(0.4, 0.75), T0 + 4 * MINUTE_MS);
+    h.record("desk", sample(0.6, 0.75), T0 + 4 * MINUTE_MS + 30_000);
+    expect(h.toFile(T0 + 4 * MINUTE_MS + 31_000)).toEqual({
+      version: 2,
+      machines: {
+        desk: {
+          t: T0,
+          n: 2,
+          rows: [
+            [0, 0.123, 0.123, 0.5, 1000, 20],
+            [1, 0.2, 0.2, 0.25, null, null],
+            [3, 0.5, 0.6, 0.75, null, null],
+          ],
+        },
+      },
+    });
+  });
+
+  test("a minute saved half full goes on filling after a load, weighted by the samples it already had", async () => {
+    const dir = await tempDir();
+    const h = new MachineHistory();
+    h.record("desk", sample(0.2, 0.5), T0 + 1_000);
+    h.record("desk", sample(0.4, 0.5), T0 + 20_000);
+    await saveMachineHistory(dir, h, T0 + 21_000);
+    const back = await loadMachineHistory(dir, T0 + 21_000);
+    back.record("desk", sample(0.9, 0.5), T0 + 40_000);
+    // (0.2 + 0.4 + 0.9) / 3, not (0.3 + 0.9) / 2.
+    expect(back.points("desk", T0 + 41_000)).toEqual([[T0, 0.5, 0.9, 0.5, null, null]]);
+  });
+
+  test("version 1, the first builds' nine sums per minute, still loads", async () => {
+    const dir = await tempDir();
+    await writeFile(
+      join(dir, MACHINE_HISTORY_FILE),
+      JSON.stringify({ version: 1, machines: { desk: [[T0, 4, 2, 0.9, 2.4, 800, 4, 80, 2]] } }),
+    );
+    const h = await loadMachineHistory(dir, T0 + MINUTE_MS);
+    expect(h.points("desk", T0 + MINUTE_MS)).toEqual([[T0, 0.5, 0.9, 0.6, 200, 40]]);
+  });
+
   test("a missing or unreadable file is an empty store; a bad row is dropped, the rest loads", async () => {
     const dir = await tempDir();
     expect((await loadMachineHistory(dir, T0)).points("desk", T0)).toEqual([]);
@@ -190,7 +271,7 @@ describe("the persisted round trip", () => {
     await saveMachineHistory(dir, h, T0);
     // No temp file is left behind by the rename.
     await expect(stat(join(dir, `${MACHINE_HISTORY_FILE}.tmp`))).rejects.toThrow();
-    expect(JSON.parse(await readFile(join(dir, MACHINE_HISTORY_FILE), "utf8")).version).toBe(1);
+    expect(JSON.parse(await readFile(join(dir, MACHINE_HISTORY_FILE), "utf8")).version).toBe(2);
     if (process.platform === "win32") {
       expect(isOwnerOnly(join(dir, MACHINE_HISTORY_FILE), HOST)).toEqual({ state: "private" });
       return;
