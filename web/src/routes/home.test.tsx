@@ -6,6 +6,7 @@ import { vi } from "vitest";
 
 import { CrewProvider } from "@/components/crew-provider";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import { setPinned } from "@/lib/pins";
 import {
   fixtureAgents,
   fixtureCrewAgents,
@@ -409,6 +410,30 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.queryByTestId("crew-tab")).not.toBeInTheDocument();
   });
 
+  it("the Crew tab draws none of the pane chrome: no space strip, no summary line, no Pinned group", async () => {
+    const data = packed();
+    setPinned(data.agents[0]!, true, data.agents);
+    renderHome(data);
+    await settled();
+    // The Dashboard has all three, so the absence below is the tab's doing and not the fixture's.
+    expect(screen.getByRole("navigation", { name: "Spaces" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pinned" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /need you/i })).toBeInTheDocument();
+
+    await userEvent.click(tab(/^Crew$/));
+    expect(screen.getByTestId("crew-tab")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Spaces" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Pinned" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /need you/i })).not.toBeInTheDocument();
+    // The body is the first thing in the page's main: nothing sits above the machine cards.
+    expect(screen.getByRole("main").firstElementChild?.firstElementChild).toBe(screen.getByTestId("crew-tab"));
+
+    // Back on the Dashboard the chrome is as it was left.
+    await userEvent.click(tab(/^Dashboard/));
+    expect(screen.getByRole("navigation", { name: "Spaces" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pinned" })).toBeInTheDocument();
+  });
+
   it("the Crew tab still draws its body when the crew has no pane anywhere", async () => {
     localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ dashView: "crew" }));
     renderHome(homeData({ servers: fixtureServers, sessions: [] }));
@@ -545,14 +570,20 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.getByRole("heading", { name: /^Spaces/ })).toBeInTheDocument();
   });
 
-  it("Changes and Crew draw no switch, and keep an invisible slot so the summary line does not jump", async () => {
+  it("Changes draws no switch, and keeps an invisible slot so the summary line does not jump", async () => {
     renderHome(packed());
     await settled();
-    for (const name of [/^Changes$/, /^Crew$/]) {
-      await userEvent.click(tab(name));
-      expect(screen.queryByRole("button", NEEDS)).not.toBeInTheDocument();
-      expect(document.querySelector(".invisible[aria-hidden='true']")).not.toBeNull();
-    }
+    await userEvent.click(tab(/^Changes$/));
+    expect(screen.queryByRole("button", NEEDS)).not.toBeInTheDocument();
+    expect(document.querySelector(".invisible[aria-hidden='true']")).not.toBeNull();
+  });
+
+  it("Crew draws no switch and no slot at all: it lists machines, so the summary line is not there to jump", async () => {
+    renderHome(packed());
+    await settled();
+    await userEvent.click(tab(/^Crew$/));
+    expect(screen.queryByRole("button", NEEDS)).not.toBeInTheDocument();
+    expect(document.querySelector(".invisible[aria-hidden='true']")).toBeNull();
   });
 
   it("Changes lists each workspace with its counts, says No folder, and opens the workspace's Changes", async () => {

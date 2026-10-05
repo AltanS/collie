@@ -61,9 +61,12 @@ Panes and Focus, which made the pair read as two views of the same thing when on
    Collie has two tabs, Dashboard and Changes, and its chrome is otherwise as it was. `CrewFooterLink`
    stays.
 6. **Changes is unchanged**, last: third with a crew, second on a solo Collie. The keyboard and screen-reader order is the DOM order of the buttons in `TabBar`, which is the visual order; there is no separate roving focus to keep in step.
-7. **The order toggle shows on the Dashboard in both switch states.** On Changes and Crew the row's
-   controls slot stays, invisible and `aria-hidden`, so the summary line does not jump between tabs.
-   A crew with no pane anywhere still draws the Crew body, instead of the list's empty placeholder.
+7. **The order toggle shows on the Dashboard in both switch states.** On Changes the row's
+   controls slot stays, invisible and `aria-hidden`, so the summary line does not jump between the
+   two pane tabs. Crew is a different list, machines and not panes, so it carries none of the pane
+   chrome: no space strip, no summary line, no controls slot and no Pinned group, and its body starts
+   with the machine cards. This is the stated exception to ADR 0070's "Pinned on all tabs". A crew
+   with no pane anywhere draws the same Crew body, instead of the list's empty placeholder.
 8. **Migration: no one loses their view.** `DashView` is `"dashboard" | "crew" | "changes"`.
    `coerceDashView` reads a stored `"panes"` as `"dashboard"`. A stored `"focus"` (and its earlier
    names `"needs"` and `"attention"`, ADR 0068) reads as `"dashboard"` AND turns `needsYouOnly` on,
@@ -78,9 +81,8 @@ Panes and Focus, which made the pair read as two views of the same thing when on
   was. The rules, the tests of the rules and the all-clear stand.
 - **The summary row holds more.** At 375px the summary line, the switch and the three order segments
   share one row, and the counts wrap before the controls shrink. Each control keeps its 44px.
-- **A pin still leads every tab (ADR 0070).** That includes Crew, where the Pinned group sits above
-  the machines. It is the Pinned group's own rule, not a Crew rule, and a Crew tab with no pin shows
-  no group.
+- **A pin still leads every pane tab (ADR 0070).** That is Dashboard and Changes. Crew lists machines,
+  so the Pinned group is not drawn there (point 7).
 - **The footer has room for a fourth tab no more than before.** ADR 0066's "Revisit" stands: three
   words fit comfortably at 375px, a fourth would crowd the translations.
 - **ADR 0066 and 0068 are history for the tab, current for the rules.** Where they say "the Focus

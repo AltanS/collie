@@ -105,8 +105,10 @@ interface AgentListProps {
    */
   onNeedsYouOnlyChange?: (on: boolean) => void;
   /**
-   * The Changes and Crew tabs: draw their own body in place of the pane groups, from the workspaces
-   * the strip leaves shown. The strip and the summary line above stay exactly where they were.
+   * The Changes tab: draw its own body in place of the pane groups, from the workspaces the strip
+   * leaves shown. The strip and the summary line above stay exactly where they were. The Crew tab does
+   * not come through here at all: it lists machines, so the dashboard draws it without this list and
+   * with none of its pane chrome (ADR 0085).
    */
   renderBody?: (shown: readonly WorkspaceGroup[]) => ReactNode;
   /**
@@ -561,9 +563,9 @@ export function AgentList({
         // THE CONTROLS ROW (ADR 0071, "The dashboard takes the setting"; ADR 0085): the summary keeps
         // the left, where ADR 0063 point 3 puts urgency, and the controls take the right as glyphs,
         // the way the switcher draws the order: the needs-you switch, then the order toggle. The row
-        // is drawn on EVERY tab so a tab switch moves neither the strip nor this row. A tap on the
-        // order toggle, the selected segment included, asks for a new reading. Changes and Crew order
-        // nothing and filter nothing, so they draw no controls, but the slot is still there,
+        // is drawn on EVERY pane tab so a switch between them moves neither the strip nor this row. A tap on the
+        // order toggle, the selected segment included, asks for a new reading. Changes orders
+        // nothing and filters nothing, so it draws no controls, but the slot is still there,
         // invisible: the row keeps the controls' 44px AND their width, so a tab switch moves neither
         // the line beside it nor anything below it (DESIGN.md §2, `e2e/dashboard-footer.spec.ts`).
         <div className="flex min-h-11 items-center justify-between gap-2">
@@ -578,7 +580,7 @@ export function AgentList({
         summary
       )}
 
-      {/* PINNED, the first group on every tab (ADR 0070): under the summary line, so the strip and the
+      {/* PINNED, the first group on every pane tab (ADR 0070; the Crew tab lists machines and draws none): under the summary line, so the strip and the
           line keep their place on every tab. The heading is the section voice the switcher's Shells
           and Launch wear, muted, with no dot and no count: a pinned pane is counted by its own
           workspace's heading, and no two headings count one pane. The muted voice also keeps it

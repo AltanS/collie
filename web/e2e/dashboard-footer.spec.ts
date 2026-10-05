@@ -4,7 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import type { ChangesResponse, SnapshotResponse } from "@/lib/types";
 import { fixtureChanges, fixtureSnapshot } from "@/test/handlers";
 
-import { installApiStub, installCrewWorld } from "./fixtures/api";
+import { installApiStub, installCrewWorld, installMachinesWorld } from "./fixtures/api";
 
 // THE DASHBOARD'S FOOTER ON A SMALL PHONE (ADR 0066, reshaped by ADR 0085). Two tabs at 375x812,
 // Dashboard and Changes, and a Crew tab between them while a crew is configured. The claims a real
@@ -99,6 +99,43 @@ test("with a pane pinned, switching tabs still moves neither the footer nor the 
     expect(await box(footer(page))).toEqual(f0);
     expect(await box(summary(page))).toEqual(s0);
   }
+});
+
+// Crew lists machines, so it carries none of the pane chrome (ADR 0085): the space strip, the summary
+// line with its controls slot and the Pinned group filter and count panes, and sit above nothing here.
+// Dashboard and Changes keep them, and a switch between those two still moves nothing.
+test("the Crew tab starts with the machine cards, and Dashboard and Changes keep their summary line still", async ({ page }) => {
+  await installCrewWorld(page);
+  await installMachinesWorld(page);
+  await routeChanges(page);
+  await page.goto("/");
+  await page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).click({ button: "right" });
+  await page.getByRole("dialog").getByRole("button", { name: en["paneActions.pin.label"] }).click();
+  const pinned = page.getByRole("region", { name: en["home.pinned.title"] });
+  const strip = page.getByRole("navigation", { name: en["space.strip.title"] });
+  await expect(pinned).toBeVisible();
+  await expect(strip).toBeVisible();
+
+  const f0 = await box(footer(page));
+  const s0 = await box(summary(page));
+  for (const name of [CHANGES, DASHBOARD]) {
+    await tab(page, name).click();
+    await expect(tab(page, name)).toHaveAttribute("aria-current", "page");
+    expect(await box(footer(page))).toEqual(f0);
+    expect(await box(summary(page))).toEqual(s0);
+  }
+
+  await tab(page, CREW).click();
+  await expect(tab(page, CREW)).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "workshop", exact: true })).toBeVisible();
+  await expect(strip).toHaveCount(0);
+  await expect(pinned).toHaveCount(0);
+  await expect(needsYou(page)).toHaveCount(0);
+  await expect(summary(page)).toHaveCount(0);
+  // The first machine card sits right under the header, with no 44px controls row above it.
+  const main = await box(page.getByRole("main"));
+  const card = await box(page.getByRole("button", { name: "bluefin", exact: true }));
+  expect(card.y - main.y).toBeLessThan(40);
 });
 
 test("the needs-you switch shows only the panes that need you, and survives a reload", async ({ page }) => {

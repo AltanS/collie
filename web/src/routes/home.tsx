@@ -131,7 +131,6 @@ export function HomeRoute() {
   const view: DashView = prefs.dashView === "crew" && !multi ? "dashboard" : prefs.dashView;
   // The needs-you switch filters the Dashboard list only: Crew and Changes draw their own bodies.
   const needsYouOnly = view === "dashboard" && prefs.needsYouOnly;
-  const crewWithNoPanes = view === "crew" && data.agents.length === 0 && data.shellPanes.length === 0;
   // The Dashboard tab's corner mark (ADR 0066, carried by the Focus tab until ADR 0085 moved it): a red count of the panes
   // blocked on you, or, when none is blocked, a quiet dot for finished panes you have not opened. A
   // count means something waits on you; the dot only says there is something new. The list itself
@@ -234,9 +233,12 @@ export function HomeRoute() {
               Cache order (components/agent-list.tsx). Bare shells go in with the agents — grouped by
               place they sit beside the work they belong to, which is what stopped them being a pen
               of their own at the bottom of the sheet. */}
-          {crewWithNoPanes ? (
-            // A crew with no pane anywhere: the list would draw its empty placeholder and never reach
-            // its body, so the tab draws the machines itself.
+          {view === "crew" ? (
+            // Crew is a different list: machines, not panes. The pane list's chrome (the space strip,
+            // the summary line with its controls slot, the Pinned group) filters and counts panes, so
+            // none of it is drawn here and the tab's body starts with the machine cards (ADR 0085).
+            // It also covers a crew with no pane anywhere, which the pane list would answer with its
+            // empty placeholder.
             <div className="px-4 py-4">
               <CrewTab />
             </div>
@@ -286,10 +288,7 @@ export function HomeRoute() {
                         lookup={lookup}
                       />
                     )
-                  : view === "crew"
-                    ? // Mounted only while the tab is selected, so it fetches nothing otherwise.
-                      () => <CrewTab />
-                    : undefined
+                  : undefined
               }
             />
           )}
