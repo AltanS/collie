@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
 import type { PaneChangesResponse } from "@/lib/types";
@@ -22,6 +22,25 @@ test.beforeEach(async ({ page }, testInfo) => {
 const PANE = fixtureAgents[0]!;
 
 /** No box on the page is wider than the viewport: nothing scrolls sideways. */
+/**
+ * A tap target's height once the page has stopped moving. The Changes list rises into place with a
+ * 0.2 s animation (`count-arrive`, 1.13.0), and `boundingBox()` through an ancestor mid-rise reads a
+ * 44 px row as 43.99998 or 44.00002: the layout height is exactly 44 (`offsetHeight`), only the float
+ * of a moving transform differs. So the measurement waits for every finite animation to end, and the
+ * floor stays 44, unloosened.
+ */
+async function tapHeight(page: Page, target: Locator): Promise<number> {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished),
+    ),
+  );
+  return (await target.boundingBox())!.height;
+}
+
 async function noSidewaysScroll(page: Page) {
   const { scroll, width } = await page.evaluate(() => ({
     scroll: document.scrollingElement!.scrollWidth,
@@ -86,7 +105,7 @@ test("the belt's Changes pill opens Changes, the list groups by repo, and a diff
   await noSidewaysScroll(page);
 
   const next = page.getByRole("button", { name: en["changes.file.next"] });
-  expect((await next.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await tapHeight(page, next)).toBeGreaterThanOrEqual(44);
   await next.click();
   await expect(page.getByText("return items.reduce((sum, item) => sum + item.price, 0);")).toBeVisible();
 
@@ -110,7 +129,7 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await expect(page.getByText("webapp · 3 files")).toBeVisible();
 
   const tree = page.getByRole("radio", { name: en["changes.layout.tree"] });
-  expect((await tree.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await tapHeight(page, tree)).toBeGreaterThanOrEqual(44);
   await tree.click();
   await expect(tree).toHaveAttribute("aria-checked", "true");
 
@@ -118,7 +137,7 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   const chain = page.getByRole("button", { name: "server/handlers, 1 file" });
   await expect(chain).toHaveAttribute("aria-expanded", "true");
   const src = page.getByRole("button", { name: "src, 2 files" });
-  expect((await src.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await tapHeight(page, src)).toBeGreaterThanOrEqual(44);
   await src.click();
   await expect(src).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: /checkout\.tsx/ })).toHaveCount(0);
@@ -147,7 +166,7 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await expect(page.getByRole("button", { name: en["changes.filter.button"] })).toBeVisible();
 
   const modified = page.getByRole("button", { name: en["changes.status.M"], exact: true });
-  expect((await modified.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await tapHeight(page, modified)).toBeGreaterThanOrEqual(44);
   await modified.click();
   await expect(modified).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("2 of 5 files")).toBeVisible();
@@ -349,7 +368,7 @@ test("an empty list shows the last commit, its file, and back twice lands on the
   await page.goto(list);
   await expect(page.getByText(en["changes.empty"])).toBeVisible();
   const show = page.getByRole("button", { name: en["changes.commit.show"] });
-  expect((await show.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(await tapHeight(page, show)).toBeGreaterThanOrEqual(44);
   await show.click();
 
   await expect(page).toHaveURL(/\/changes\/commit\?repo=\.$/);
