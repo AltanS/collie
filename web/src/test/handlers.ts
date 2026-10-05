@@ -568,8 +568,9 @@ export function fixtureCommitDiff(repo: string, path: string): ChangeCommitDiffR
   };
 }
 
-// The Files view (ADR 0083): a small tree under the same root the Changes fixture names. Shared by
-// the unit suite, the e2e stub and the playground, so a folder or a file means the same everywhere.
+// The Changes tree (ADR 0083): a small tree under the same root the Changes fixture names, holding
+// every changed file the Changes fixture lists, so the marks join the two. Shared by the unit suite,
+// the e2e stub and the playground, so a folder or a file means the same everywhere.
 const FILES_ROOT = "/home/you/webapp";
 const FILES_HEAD = { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "webapp" };
 
@@ -578,6 +579,8 @@ const FIXTURE_FOLDERS = new Map<string, FileEntry[]>([
     "",
     [
       { name: "docs", kind: "dir" },
+      { name: "packages", kind: "dir" },
+      { name: "public", kind: "dir" },
       { name: "src", kind: "dir" },
       { name: "README.md", kind: "file", size: 1240 },
       { name: "index.html", kind: "file", size: 468 },
@@ -592,13 +595,27 @@ const FIXTURE_FOLDERS = new Map<string, FileEntry[]>([
   ],
   ["node_modules", [{ name: "react", kind: "dir", ignored: true }]],
   ["docs", [{ name: "guide.md", kind: "file", size: 640 }]],
+  // The nested repo of the Changes fixture: a renamed handler and an untracked note.
+  ["packages", [{ name: "api", kind: "dir" }]],
+  [
+    "packages/api",
+    [
+      { name: "server", kind: "dir" },
+      { name: "notes.md", kind: "file", size: 38 },
+    ],
+  ],
+  ["packages/api/server", [{ name: "handlers", kind: "dir" }]],
+  ["packages/api/server/handlers", [{ name: "orders.ts", kind: "file", size: 96 }]],
+  ["public", [{ name: "logo.png", kind: "file", size: 20480 }]],
   [
     "src",
     [
+      { name: "lib", kind: "dir" },
       { name: "routes", kind: "dir" },
       { name: "cart.ts", kind: "file", size: 214 },
     ],
   ],
+  ["src/lib", [{ name: "cart.ts", kind: "file", size: 120 }]],
   ["src/routes", [{ name: "checkout.tsx", kind: "file", size: 388 }]],
 ]);
 
@@ -627,10 +644,16 @@ const FIXTURE_FILE_TEXT = new Map<string, string>([
     '<!doctype html><html><body style="font-family:sans-serif"><h1>Hello from a file</h1><p>Scripts, forms and remote files stay off.</p></body></html>\n',
   ],
   ["src/cart.ts", 'export function cartTotal(items: { price: number }[]): number {\n  return items.reduce((sum, item) => sum + item.price, 0);\n}\n'],
+  ["src/lib/cart.ts", 'export function cartTotal(items: { price: number }[]): number {\n  return items.reduce((sum, item) => sum + item.price, 0);\n}\n'],
+  ["packages/api/notes.md", "# Notes\nOrders moved under handlers/.\n"],
+  ["packages/api/server/handlers/orders.ts", "export function orders() {\n  return [];\n}\n"],
   ["src/routes/checkout.tsx", 'export function Checkout() {\n  return <h1>Checkout</h1>;\n}\n'],
 ]);
 
-const FIXTURE_BINARY = new Map<string, number>([["logo.png", 20480]]);
+const FIXTURE_BINARY = new Map<string, number>([
+  ["logo.png", 20480],
+  ["public/logo.png", 20480],
+]);
 
 /** The fixture folder `dir`, answered the way the bridge answers it, or null for a folder it has none of. */
 export function fixtureFilesDir(dir: string): FilesListResponse | null {

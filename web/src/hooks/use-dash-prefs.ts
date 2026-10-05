@@ -52,6 +52,13 @@ export interface DashPrefs {
    */
   filesShowIgnored: boolean;
   /**
+   * Whether the Changes screen shows the changed files only, as a flat list or a tree of them, rather
+   * than the root folder with each change marked on its row (ADR 0083, 2026-10-06). OFF by default:
+   * the folder with its marks shows both what changed and what sits beside it. Per device, beside
+   * {@link filesShowIgnored}.
+   */
+  changesOnly: boolean;
+  /**
    * The composer's action belt size, one factor for the whole belt: band, pills, icons and words
    * all grow from it together (`--belt-scale`, `components/actions-row.tsx`). One of
    * {@link BELT_SCALES}. 1.15 is the baseline Altan asked for on 2026-09-23 ("slightly higher and
@@ -132,6 +139,7 @@ const DEFAULTS: DashPrefs = {
   changesDepth: 2,
   changesLayout: "list",
   filesShowIgnored: false,
+  changesOnly: false,
   beltScale: 1.15,
   dashView: "dashboard",
   needsYouOnly: false,
@@ -186,6 +194,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     changesDepth: coerceDepth(p.changesDepth),
     changesLayout: p.changesLayout === "tree" ? "tree" : DEFAULTS.changesLayout,
     filesShowIgnored: asJsonBoolean(p.filesShowIgnored) ?? DEFAULTS.filesShowIgnored,
+    changesOnly: asJsonBoolean(p.changesOnly) ?? DEFAULTS.changesOnly,
     beltScale: coerceBeltScale(p.beltScale),
     dashView: coerceDashView(p.dashView),
     // THE FOCUS MIGRATION (ADR 0085): a stored Focus tab turns the switch on, so no one loses the
@@ -236,6 +245,7 @@ export interface UseDashPrefsReturn {
   setChangesDepth: (depth: number) => void;
   setChangesLayout: (layout: ChangesLayout) => void;
   setFilesShowIgnored: (show: boolean) => void;
+  setChangesOnly: (only: boolean) => void;
   setBeltScale: (scale: number) => void;
   setDashView: (view: DashView) => void;
   setNeedsYouOnly: (on: boolean) => void;
@@ -269,6 +279,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
 
   const setChangesLayout = useCallback((changesLayout: ChangesLayout) => update({ changesLayout }), [update]);
   const setFilesShowIgnored = useCallback((filesShowIgnored: boolean) => update({ filesShowIgnored }), [update]);
+  const setChangesOnly = useCallback((changesOnly: boolean) => update({ changesOnly }), [update]);
   const setShowToolCalls = useCallback((showToolCalls: boolean) => update({ showToolCalls }), [update]);
   const setShowCompactions = useCallback((showCompactions: boolean) => update({ showCompactions }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
@@ -306,6 +317,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setChangesDepth,
     setChangesLayout,
     setFilesShowIgnored,
+    setChangesOnly,
     setBeltScale,
     setDashView,
     setNeedsYouOnly,

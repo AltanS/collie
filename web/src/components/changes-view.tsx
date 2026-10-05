@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, List, ListFilter, ListTree, Search, X } from "lucide-react";
+import { ChevronRight, ListFilter, ListTree, Search, X } from "lucide-react";
 
 import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
+import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
 import {
   buildChangeTree,
@@ -33,7 +34,8 @@ import { cn } from "@/lib/utils";
 // content: `font-mono`, rendered as text nodes (a coloured token is a span around a text node),
 // never as markup.
 
-const STATUS_WORD = {
+/** What a status letter says to a screen reader. Shared with the folder tree's marks. */
+export const STATUS_WORD = {
   M: "changes.status.M",
   A: "changes.status.A",
   D: "changes.status.D",
@@ -41,13 +43,28 @@ const STATUS_WORD = {
   "?": "changes.status.untracked",
 } satisfies Record<ChangeStatus, MessageKey>;
 
-const STATUS_TONE = {
+/** The ink of a status letter, which the folder tree also wears on a changed row's icon. */
+export const STATUS_TONE = {
   M: "text-status-working",
   A: "text-status-done",
   D: "text-status-blocked",
   R: "text-status-info",
   "?": "text-muted-foreground",
 } satisfies Record<ChangeStatus, string>;
+
+/** The same five colours as a fill, for the folder tree's dot and the Changes-only badge. */
+export const STATUS_FILL = {
+  M: "bg-status-working",
+  A: "bg-status-done",
+  D: "bg-status-blocked",
+  R: "bg-status-info",
+  // The folder tree's untracked mark: a file the agent just wrote is the change the operator looks
+  // for first, so it takes the added ink and not the list's quiet grey (ADR 0083, 2026-10-06).
+  "?": "bg-status-done",
+} satisfies Record<ChangeStatus, string>;
+
+/** The folder tree's letter and icon inks: the list's, with untracked in the added ink to match the dot. */
+export const TREE_TONE = { ...STATUS_TONE, "?": STATUS_TONE.A } satisfies Record<ChangeStatus, string>;
 
 /** A file's place in the whole list, across repos: what Previous / Next walk. */
 export interface ChangeRef {
@@ -312,9 +329,13 @@ function TreeRows({
                   aria-hidden
                   className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
                 />
-                <MiddleTruncate text={`${node.label}/`} className="font-mono text-[13px] text-muted-foreground" />
-                <span aria-hidden className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {node.fileCount}
+                {/* One baseline for the name and its count: the two sizes differ, so the row's
+                    `items-center` alone set the smaller count above the name's line. */}
+                <span className="flex min-w-0 items-baseline gap-3">
+                  <MiddleTruncate text={`${node.label}/`} className="font-mono text-[13px] text-muted-foreground" />
+                  <span aria-hidden data-slot="tree-folder-count" className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {node.fileCount}
+                  </span>
                 </span>
                 <span className="flex-1" />
                 {/* A folder of binaries or new folders has no line counts, and shows none. */}
@@ -375,7 +396,12 @@ export function ChangesTree({
   );
 }
 
-/** List or Tree: a two-way segmented choice of 44px squares, for the header. */
+/**
+ * List or Tree, for the header: ONE 44px icon toggle, pressed while the changes draw as a tree. It was
+ * a two-square List | Tree choice until 2026-10-06, when the Changes-only toggle joined the header and
+ * a sixth square left a 375 px phone about 60 px for the workspace's name (ADR 0083). Both layouts
+ * stay one tap away; the toggle wears `ui/toggle-button.tsx`'s one pressed look.
+ */
 export function ChangesLayoutToggle({
   layout,
   onChange,
@@ -384,32 +410,14 @@ export function ChangesLayoutToggle({
   onChange: (layout: ChangesLayout) => void;
 }) {
   useLocale();
-  const options = [
-    { value: "list", label: t("changes.layout.list"), Icon: List },
-    { value: "tree", label: t("changes.layout.tree"), Icon: ListTree },
-  ] as const;
   return (
-    <div role="radiogroup" aria-label={t("changes.layout.aria")} className="flex shrink-0 rounded-md">
-      {options.map(({ value, label, Icon }) => {
-        const selected = value === layout;
-        return (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-label={label}
-            onClick={() => onChange(value)}
-            className={cn(
-              "flex size-11 items-center justify-center rounded-md transition-colors",
-              selected ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
-            )}
-          >
-            <Icon className="size-5" />
-          </button>
-        );
-      })}
-    </div>
+    <ToggleButton
+      pressed={layout === "tree"}
+      onPressedChange={(tree) => onChange(tree ? "tree" : "list")}
+      label={t("changes.layout.tree")}
+      title={t("changes.layout.tree")}
+      icon={<ListTree className="size-5" />}
+    />
   );
 }
 
@@ -543,10 +551,13 @@ export function FilterRow({
           </button>
         )}
       </div>
-      <div className="flex items-center">
+      {/* The count and Clear wrap onto a line of their own when the chips leave them too little
+          room (a long Ignored label at 375 px), and the count truncates before Clear does. The
+          block is drawn, invisible, while no filter is on, so typing never re-wraps the row. */}
+      <div className="flex flex-wrap items-center gap-y-1">
         {chips}
-        <div className={cn("ml-auto flex shrink-0 items-center gap-1 pl-2", !active && "invisible")}>
-          <span aria-live="polite" className="truncate text-xs tabular-nums text-muted-foreground">
+        <div className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1 pl-2", !active && "invisible")}>
+          <span aria-live="polite" className="min-w-0 truncate text-xs tabular-nums text-muted-foreground">
             {count}
           </span>
           <button

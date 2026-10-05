@@ -23,12 +23,28 @@ export function previewKindFor(path: string): PreviewKind | null {
 }
 
 /**
- * A changed file's place under the Changes root. The Changes list names a file by its repo (`"."` for
- * the root repo, else the repo's folder below the root) and a path inside that repo; Files names it
- * by one path from the root.
+ * A changed file's path from the Changes root, or null when it lies outside the root.
+ *
+ * The Changes list names a file by its repo and a path inside that repo; Files names it by one path
+ * from the root. A repo at or below the root has a `relPath` of `.` or `a/b`. A repo ABOVE the root
+ * (the root is a folder inside a repo, such as a pane opened in `repo/web`) has `..` or `../..`, and
+ * its paths start with the folders between the repo and the root, which are the root's own last
+ * segments. A file elsewhere in that repo is not under the root, and Files cannot open it. An
+ * untracked folder's trailing slash is dropped.
  */
-export function rootPathOf(repo: string, path: string): string {
-  return repo === "." || repo === "" ? path : `${repo}/${path}`;
+export function rootPathOf(root: string, repo: string, path: string): string | null {
+  const bare = path.endsWith("/") ? path.slice(0, -1) : path;
+  if (repo === "." || repo === "") return bare;
+  const segments = repo.split("/");
+  const ups = segments.findIndex((s) => s !== "..");
+  if (ups === 0) return `${repo}/${bare}`;
+  // Only ups: `..` or `../..`. A mixed shape is not one the bridge sends.
+  if (ups !== -1) return null;
+  const tail = root.split(/[\\/]/).filter((s) => s !== "");
+  if (tail.length < segments.length) return null;
+  const prefix = `${tail.slice(-segments.length).join("/")}/`;
+  if (!bare.startsWith(prefix) || bare.length === prefix.length) return null;
+  return bare.slice(prefix.length);
 }
 
 /**

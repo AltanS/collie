@@ -5,9 +5,11 @@
 
 import { ChangesControl } from "@/components/changes-control";
 import { useState } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { FileContent, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
-import { ChangesTabs, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, IgnoredToggle, type ChangesTab } from "@/components/files-view";
+import { ChangesOnlyToggle, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, IgnoredToggle } from "@/components/files-view";
+import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 
 import {
@@ -25,6 +27,8 @@ import {
 } from "@/components/changes-view";
 import { t } from "@/lib/i18n";
 import { folderView } from "@/lib/files-filter";
+import { previewKindFor } from "@/lib/files-view";
+import { changeAt, indexChanges, markFolder } from "@/lib/files-marks";
 import { countFiles, filterRepos, type ChangesFilter, type ChangesLayout } from "@/lib/changes-tree";
 import { fixtureChangeDiff, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 import { Card, Group, Section, Stage, type SectionDef } from "../harness";
@@ -36,14 +40,31 @@ export const DEF: SectionDef = {
     "The pane's Changes view: the list of files changed since the last commit, grouped by repo, " +
     "one file's diff with both line gutters and syntax colour, and the Settings card that decides " +
     "where it looks. " +
-    "The list draws flat or as a folder tree, and a filter row narrows it by path and status. " +
-    "The Files tab beside it browses the same root folder by folder and opens a file as source or, " +
-    "for Markdown, JSON and HTML, as a Preview.",
+    "By default the screen is the root folder, one folder at a time, with every change marked on its " +
+    "row; the header's Changes-only toggle swaps it for the list of changes alone, flat or as a tree, " +
+    "with a filter row that narrows it by path and status. A file opens on Diff when it changed, " +
+    "beside Source and, for Markdown, JSON and HTML, a Preview.",
 };
 
 const repos = fixtureChanges.available ? fixtureChanges.repos : [];
+const CHANGES = indexChanges(fixtureChanges.available ? fixtureChanges.root : "", repos);
+const CHANGED = countFiles(repos);
+/** The fixture's change set with one file deleted at the root, which the disk no longer lists. */
+const DELETED_INDEX = indexChanges(fixtureChanges.available ? fixtureChanges.root : "", [
+  { ...repos[0]!, files: [...repos[0]!.files, { path: "CHANGELOG.md", status: "D", added: 0, removed: 12, binary: false }] },
+  ...repos.slice(1),
+]);
 
 /** The list screen's top controls and body, live: the layout toggle, the filter button and row. */
+/** The header's Refresh square, as the route draws it. Inert here: the cards read fixtures. */
+function RefreshSquare() {
+  return (
+    <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={t("changes.refreshAria")}>
+      <RefreshCw className="size-5" />
+    </Button>
+  );
+}
+
 function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesLayout; initialFilter?: ChangesFilter }) {
   const [layout, setLayout] = useState<ChangesLayout>(initialLayout);
   const [filter, setFilter] = useState<ChangesFilter>(initialFilter ?? { query: "", statuses: [] });
@@ -70,6 +91,8 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
             total={countFiles(repos)}
             onClick={() => setOpen((o) => !o)}
           />
+          <ChangesOnlyToggle on count={CHANGED} onChange={() => {}} />
+          <RefreshSquare />
           <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
             <ChangesFilterBar
               filter={filter}
@@ -178,29 +201,45 @@ const README_WITH_LINKS = [
 /** What the playground gives a link in a Markdown file: an address that goes nowhere, and a tap that does nothing. */
 const PLAYGROUND_LINKS: FileLinks = { hrefFor: () => "#", onOpen: () => {} };
 
-/** The file screen's sticky bar and body, live: Source | Preview is a real control. */
-function FileCard({ file, initial, height = 380 }: { file: FileText; initial: FileView; height?: number }) {
-  const [view, setView] = useState<FileView>(initial);
-  const hasChoice = initial === "preview";
+type CardView = "diff" | FileView;
+
+/**
+ * The file screen's sticky bar and body, live: the Diff | Source | Preview choice is a real control.
+ * A file the change set names shows its letter and opens on Diff; another opens on its default.
+ */
+function FileCard({ file, initial, height = 380 }: { file: FileText; initial: CardView; height?: number }) {
+  const [view, setView] = useState<CardView>(initial);
+  const change = changeAt(CHANGES, file.path);
+  const views: CardView[] = [
+    ...(change ? (["diff"] as const) : []),
+    "source",
+    ...(previewKindFor(file.path) !== null ? (["preview"] as const) : []),
+  ];
+  const diff = change ? fixtureChangeDiff(change.repo, change.path) : null;
+  const label = { diff: t("files.view.diff"), source: t("files.view.source"), preview: t("files.view.preview") };
   return (
     <Stage height={height}>
       <div className="h-full overflow-y-auto">
         <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-rule bg-background px-4 py-2">
-          <ChangePath path={file.path} className="min-h-7 items-center" />
-          {hasChoice && (
+          <div className="flex min-h-7 items-center gap-3">
+            {change && <StatusLetter status={change.status} />}
+            <ChangePath path={file.path} className="flex-1" />
+          </div>
+          {views.length > 1 && (
             <Segmented
               label={t("files.view.aria")}
               value={view}
               onChange={setView}
-              options={[
-                { value: "source", label: t("files.view.source") },
-                { value: "preview", label: t("files.view.preview") },
-              ]}
+              options={views.map((value) => ({ value, label: label[value] }))}
             />
           )}
         </div>
         <div className="py-2">
-          <FileContent file={file} view={view} links={PLAYGROUND_LINKS} />
+          {view === "diff" && diff?.available ? (
+            <DiffView diff={diff.diff} path={file.path} />
+          ) : (
+            <FileContent file={file} view={view === "preview" ? "preview" : "source"} links={PLAYGROUND_LINKS} />
+          )}
         </div>
       </div>
     </Stage>
@@ -208,34 +247,37 @@ function FileCard({ file, initial, height = 380 }: { file: FileText; initial: Fi
 }
 
 /**
- * A folder of the Files tab, live: the Show action and both Ignored toggles are real. `showIgnored`
- * and `query` set the card's starting state; `filterOpen` draws the filter row open over the list.
+ * A folder of the Changes screen's tree, live: the Show action, both Ignored toggles and the filter are
+ * real, and each row wears the change marks the fixture's Changes list gives it. `showIgnored` and
+ * `query` set the card's starting state; `filterOpen` draws the filter row open over the list.
  */
 function FolderCard({
   dir,
-  tab = "files",
   showIgnored: initialShow = false,
   query: initialQuery = "",
   filterOpen = false,
+  deleted = false,
 }: {
   dir: string;
-  tab?: ChangesTab;
   showIgnored?: boolean;
   query?: string;
   filterOpen?: boolean;
+  /** Add a deleted file to the change set, so the row the disk no longer lists shows struck through. */
+  deleted?: boolean;
 }) {
-  const [active, setActive] = useState<ChangesTab>(tab);
   const [showIgnored, setShowIgnored] = useState(initialShow);
   const [query, setQuery] = useState(initialQuery);
   const [open, setOpen] = useState(filterOpen);
   const listing = fixtureFilesDir(dir);
   const entries = listing?.available ? listing.entries : rootEntries;
-  const view = folderView(entries, query, showIgnored);
+  const index = deleted ? DELETED_INDEX : CHANGES;
+  const marked = markFolder(entries, dir, index);
+  const view = folderView(marked.entries, query, showIgnored);
   return (
-    <Stage height={filterOpen ? 520 : 440}>
+    <Stage height={filterOpen ? 520 : 480}>
       <div className="flex h-full flex-col">
         <div className="relative flex items-center gap-2 border-b border-rule px-2 py-1">
-          <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("files.title")}</span>
+          <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("changes.title")}</span>
           <IgnoredToggle showIgnored={showIgnored} onShowIgnored={setShowIgnored} />
           <ChangesFilterButton
             open={open}
@@ -244,6 +286,9 @@ function FolderCard({
             total={view.pool}
             onClick={() => setOpen((o) => !o)}
           />
+          {/* The same four squares in every folder: the header does not change with depth. */}
+          <ChangesOnlyToggle on={false} count={CHANGED} onChange={() => {}} />
+          <RefreshSquare />
           <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
             <FilesFilterBar
               query={query}
@@ -256,10 +301,10 @@ function FolderCard({
           </ChangesFilterOverlay>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-          <ChangesTabs active={active} onChange={setActive} />
           <FilesBreadcrumb dir={dir} rootName="webapp" hrefFor={() => "#"} onOpen={() => {}} />
           <FilesFolderBody
-            entries={entries}
+            entries={marked.entries}
+            marks={marked.marks}
             truncated={false}
             query={query}
             showIgnored={showIgnored}
@@ -276,12 +321,13 @@ function FolderCard({
 export function ChangesSection() {
   return (
     <Section def={DEF}>
-      <Group title="The list">
+      <Group title="The list (Changes only)">
         <Card
           state="changes-list-two-repos"
           label="changes, a workspace and a member repo"
-          reach="open a pane whose folder is a workspace repo with a member repo below it, tap ⋮, then
-            Changes. Two repos have changes, so each gets its name and count."
+          reach="open a pane whose folder is a workspace repo with a member repo below it, tap the Changes
+            pill in the belt, then the Changes-only toggle. Two repos have changes, so each gets its
+            name and count."
         >
           <Stage height={360}>
             <div className="p-4">
@@ -307,8 +353,8 @@ export function ChangesSection() {
         <Card
           state="changes-tree"
           label="changes, the tree layout"
-          reach="on the Changes list, tap the tree mark beside the filter button. Folders fold; a chain of
-            single folders is one row."
+          reach="with Changes only on, tap the tree mark beside the filter button. Folders fold; a chain
+            of single folders is one row."
         >
           <Interactive initialLayout="tree" />
         </Card>
@@ -316,7 +362,8 @@ export function ChangesSection() {
         <Card
           state="changes-tree-collapsed"
           label="changes, the tree with a folder folded"
-          reach="in the tree, tap a folder row. Its files hide; its count and line totals stay."
+          reach="in the Changes-only tree, tap a folder row. Its files hide; its count and line totals
+            stay."
         >
           <Stage height={300}>
             <div className="p-4">
@@ -372,42 +419,66 @@ export function ChangesSection() {
         </Card>
       </Group>
 
-      <Group title="Files">
+      <Group title="The folder tree">
         <Card
           state="files-folder-root"
-          label="files, the root folder"
-          reach="open Changes, then tap the Files tab. Folders come first, then files by name, with a size
-            for each file. A symlink shows as a link row and opens like a file."
+          label="changes, the root folder with its marks"
+          reach="open Changes from a pane's belt or the dashboard's Changes tab. The body is the root
+            folder: folders first, then files by name, with a size for each file. A changed file wears
+            its status letter, and its icon switches to the status's shape in the same ink: a pen
+            for modified, a plus for new, a minus for deleted. A folder with changes below it shows
+            a dot and how many. The Changes-only toggle, right of Filter, carries the number of
+            changed files, its glyph in the Modified ink, and Refresh closes the row."
         >
           <FolderCard dir="" />
         </Card>
 
         <Card
+          state="files-folder-marks"
+          label="changes, a folder of changed files"
+          reach="in the tree, tap packages, then api. The untracked note is new: a U and a file-plus icon,
+            both in the Added ink. Server holds the renamed handler, so it shows one in the Renamed
+            colour. The header is the root's, square for square."
+        >
+          <FolderCard dir="packages/api" />
+        </Card>
+
+        <Card
+          state="files-folder-deleted"
+          label="changes, a deleted file in its folder"
+          reach="delete a file the repo tracks, then open Changes. The disk no longer lists it, so the
+            row comes from the change set: its name struck through, D in the Deleted colour. It opens on
+            its Diff."
+        >
+          <FolderCard dir="" deleted />
+        </Card>
+
+        <Card
           state="files-folder-ignored-hidden"
-          label="files, ignored entries hidden"
-          reach="open Files in a folder inside a git repository that ignores node_modules and logs. Those
-            rows are left out, and one quiet line under the list says how many, with a Show action. The
-            eye-off toggle in the header, left of Filter, is the same choice, unpressed."
+          label="changes, ignored entries hidden"
+          reach="open Changes in a folder inside a git repository that ignores node_modules and logs.
+            Those rows are left out, and one quiet line under the list says how many, with a Show
+            action. The eye-off toggle in the header, left of Filter, is the same choice, unpressed."
         >
           <FolderCard dir="" />
         </Card>
 
         <Card
           state="files-folder-ignored-shown"
-          label="files, ignored entries shown"
-          reach="in Files, tap Show under the list, or the eye toggle in the header. The toggle takes the
-            primary tint and a hairline ring, as the dashboard's needs-you switch does, and its glyph
-            becomes an open eye. The ignored rows come back dimmed and still open. The choice stays on
-            this device."
+          label="changes, ignored entries shown"
+          reach="in the tree, tap Show under the list, or the eye toggle in the header. The toggle takes
+            the primary tint and a hairline ring, as the dashboard's needs-you switch does, and its
+            glyph becomes an open eye. The ignored rows come back dimmed, unmarked and still open. The
+            choice stays on this device."
         >
           <FolderCard dir="" showIgnored />
         </Card>
 
         <Card
           state="files-filter-open"
-          label="files, the filter row"
-          reach="in Files, tap the Filter button. A name field, the labelled Ignored toggle (an eye and
-            Ignored shown or Ignored hidden), and the count once a name is typed. It is the same
+          label="changes, the tree's filter row"
+          reach="in the tree, tap the Filter button. A name field, the labelled Ignored toggle (an eye
+            and Ignored shown or Ignored hidden), and the count once a name is typed. It is the same
             choice as the eye in the header."
         >
           <FolderCard dir="" showIgnored query="o" filterOpen />
@@ -415,70 +486,104 @@ export function ChangesSection() {
 
         <Card
           state="files-filter-empty"
-          label="files, a name that matches nothing"
-          reach="in Files, type a name no row has. The sentence and a way out, as Changes says it."
+          label="changes, a name that matches nothing"
+          reach="in the tree, type a name no row has. The sentence and a way out, as the list says it."
         >
           <FolderCard dir="" query="nothing-here" />
         </Card>
 
         <Card
           state="files-folder-nested"
-          label="files, a folder two levels down"
-          reach="in Files, tap src, then routes. The path above the rows is a breadcrumb; every crumb but
-            the last is a link."
+          label="changes, a folder two levels down"
+          reach="in the tree, tap src, then routes. The path above the rows is a breadcrumb; every crumb
+            but the last is a link."
         >
           <FolderCard dir="src/routes" />
+        </Card>
+      </Group>
+
+      <Group title="Changes only">
+        <Card
+          state="changes-only"
+          label="changes, the Changes-only toggle on"
+          reach="on Changes, tap the toggle right of Filter. It takes the pressed look and the body
+            becomes the list of changed files alone, with the layout toggle and the filter beside it.
+            The choice stays on this device."
+        >
+          <Interactive initialLayout="list" />
+        </Card>
+      </Group>
+
+      <Group title="One file of the tree">
+        <Card
+          state="files-diff-changed"
+          label="file, a changed file on its Diff"
+          reach="in the tree, tap checkout.tsx under src/routes. A changed file opens on Diff; Source is
+            one tap away, and Preview too when the type has one."
+        >
+          <FileCard file={fileOf("src/routes/checkout.tsx")} initial="diff" />
+        </Card>
+
+        <Card
+          state="files-diff-new-markdown"
+          label="file, a new Markdown file: Diff, Source and Preview"
+          reach="in the tree, tap notes.md under packages/api, a file the agent just wrote. Its Diff shows
+            every line added; one tap on Preview draws it as a page."
+        >
+          <FileCard file={fileOf("packages/api/notes.md")} initial="diff" />
         </Card>
 
         <Card
           state="files-source"
-          label="files, a source file"
-          reach="in Files, open a TypeScript file. Numbered lines in monospace; colour follows once the
-            highlighter loads."
+          label="file, an unchanged source file"
+          reach="in the tree, open a TypeScript file nothing changed. No Diff: numbered lines in
+            monospace; colour follows once the highlighter loads."
         >
           <FileCard file={fileOf("src/cart.ts")} initial="source" />
         </Card>
 
         <Card
           state="files-preview-markdown"
-          label="files, a Markdown preview"
-          reach="in Files, open a .md file. It opens on Preview. A relative link opens that file in Files,
-            an anchor scrolls to its heading, a web address opens in a new tab, and a badge is a link
-            labelled with its alt text. Raw HTML in the file, such as a script tag, stays as text."
+          label="file, a Markdown preview"
+          reach="in the tree, open an unchanged .md file. It opens on Preview. A relative link opens that
+            file in the tree, an anchor scrolls to its heading, a web address opens in a new tab, and a
+            badge is a link labelled with its alt text. Raw HTML in the file, such as a script tag,
+            stays as text."
         >
           <FileCard file={fileOf("README.md", { text: README_WITH_LINKS })} initial="preview" />
         </Card>
 
         <Card
           state="files-preview-json"
-          label="files, a JSON preview"
-          reach="in Files, open a .json file. The first two levels are open, deeper ones are folded with a
-            count. Tap a row to fold or open it."
+          label="file, a JSON preview"
+          reach="in the tree, open a .json file. The first two levels are open, deeper ones are folded
+            with a count. Tap a row to fold or open it."
         >
           <FileCard file={fileOf("package.json")} initial="preview" />
         </Card>
 
         <Card
           state="files-preview-json-error"
-          label="files, a JSON file that does not parse"
-          reach="in Files, open a .json file that is cut off or malformed. The error line shows, then the source."
+          label="file, a JSON file that does not parse"
+          reach="in the tree, open a .json file that is cut off or malformed. The error line shows, then
+            the source."
         >
           <FileCard file={fileOf("package.json", { text: '{\n  "name": "webapp",\n  "version": \n' })} initial="preview" />
         </Card>
 
         <Card
           state="files-preview-html"
-          label="files, an HTML preview"
-          reach="in Files, open an .html file. It draws in a sandboxed frame on a white ground, with a line
-            saying scripts, forms and remote files are off."
+          label="file, an HTML preview"
+          reach="in the tree, open an .html file. It draws in a sandboxed frame on a white ground, with a
+            line saying scripts, forms and remote files are off."
         >
           <FileCard file={fileOf("index.html")} initial="preview" height={420} />
         </Card>
 
         <Card
           state="files-binary"
-          label="files, a binary file"
-          reach="in Files, open an image or any other binary file. Its size is the whole screen."
+          label="file, a binary file"
+          reach="in the tree, open an image or any other binary file. Its size is the whole screen."
         >
           <FileCard file={fileOf("logo.png")} initial="source" height={260} />
         </Card>

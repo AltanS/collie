@@ -10,7 +10,8 @@
   `crewGate`) · `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header, `containedRealpath`) ·
   `bridge/changes-root.ts` (`workspaceRoot`, `withinBound`) · `bridge/acl-policy.ts`
   (`isStateSecretName`) · `bridge/changes.ts` (`runGit`, `gitBinary`, `discoverRepos`) ·
-  `web/src/lib/files-filter.ts` · `web/src/components/files-view.tsx` · `CREW_PROTOCOL.md` §5, §12 ·
+  `web/src/lib/files-filter.ts` · `web/src/lib/files-marks.ts` · `web/src/components/files-view.tsx` ·
+  `web/src/routes/changes.tsx` (`ChangesScreen`) · `CREW_PROTOCOL.md` §5, §12 ·
   `docs/changes.md` → *Files* · `docs/security.md`
 
 ## Context
@@ -199,3 +200,34 @@ untracked read, for the same reason. On Windows neither flag exists; the regular
 - **Revisit** if Bun exposes `openat2` or an `O_RESOLVE_BENEATH` equivalent (close the race), if an
   operator asks for writes from Files (that is a different ADR, and a write gate), or if a real
   deployment needs a deny entry beyond `.git`, the two private folders and the state secret names.
+
+## Amended 2026-10-06: one screen, Changes and Files merged
+
+The web side only; the bridge and its bound are unchanged. The operator could not find Files behind
+a tab, and a changed file meant two places to look. So the Changes screen has no Changes | Files
+switch any more. Its body is the folder tree of the Changes root, and the change set marks it:
+
+- A changed file wears its status letter, and its icon switches to that status's shape (a pen, a
+  plus, a minus, an arrow in) in that status's ink. Untracked counts as changed and takes the added
+  ink, letter, icon and dot, because a file the agent just wrote is the change looked for first.
+  Everything inside an untracked folder is marked new. A folder shows a dot and the
+  count of changed paths below it. A row git ignores is never marked.
+- A deleted file is not on disk, so the tree adds it from the change set, struck through, with `D`.
+  A folder that holds only deleted files is added the same way.
+- The join is by the path from the root (`web/src/lib/files-marks.ts`, `rootPathOf`), from the list
+  the screen already polls every 5 s. A folder outside every repo has no marks. The folder itself is
+  still never polled (rule 6 above).
+- A **Changes only** toggle in the header, the same in every folder and on a file, carries the
+  count of changed paths and shows the list as it
+  was. It is off by default, and a per-device pref beside `filesShowIgnored`. Refresh reads both.
+- A file of the tree opens on **Diff | Source | Preview**. Diff only for a changed file, and it is
+  the default there. Preview only for the types rule 9 names. A deleted file has Diff alone. The
+  Preview button in a diff opens this same screen on Preview.
+- Back still goes up one level: a file to its folder, a folder to its parent, and the root, now the
+  Changes screen itself (`…/changes`), to where Changes went before. `…/changes/files` with no query
+  is the root under its old address.
+- The List | Tree choice of the list became one icon toggle, so the header keeps room for the
+  workspace's name at 375 px with Changes only and Refresh beside it.
+- A device the read gate admits and the device gate refuses (consequence 3) still sees the change
+  set: the root offers Changes only in the tree's place. So does a pane whose folder Files does not
+  reach but Changes does.

@@ -22,8 +22,27 @@ describe("previewKindFor", () => {
 
 describe("rootPathOf", () => {
   it("joins a nested repo's folder and leaves the root repo's paths alone", () => {
-    expect(rootPathOf(".", "src/a.md")).toBe("src/a.md");
-    expect(rootPathOf("packages/api", "notes.md")).toBe("packages/api/notes.md");
+    expect(rootPathOf("/home/you/webapp", ".", "src/a.md")).toBe("src/a.md");
+    expect(rootPathOf("/home/you/webapp", "packages/api", "notes.md")).toBe("packages/api/notes.md");
+  });
+
+  it("drops an untracked folder's trailing slash", () => {
+    expect(rootPathOf("/home/you/webapp", ".", "drafts/")).toBe("drafts");
+  });
+
+  // The root is a folder INSIDE a repo: a pane opened in `proj/web` reads the repo `proj` as `..`, and
+  // the repo's paths start with `web/`. Before 2026-10-06 the path came out as `../web/…`, which
+  // Files refuses, so the diff's Preview opened "This file is not available".
+  it("strips the root's own folders from a repo above the root", () => {
+    expect(rootPathOf("/home/you/proj/web", "..", "web/src/a.md")).toBe("src/a.md");
+    expect(rootPathOf("/home/you/mono/apps/web", "../..", "apps/web/README.md")).toBe("README.md");
+    expect(rootPathOf("C:\\Users\\you\\proj\\web", "..", "web/a.md")).toBe("a.md");
+  });
+
+  it("is null for a file of that repo outside the root, and for the root itself", () => {
+    expect(rootPathOf("/home/you/proj/web", "..", "api/server.ts")).toBeNull();
+    expect(rootPathOf("/home/you/proj/web", "..", "web/")).toBeNull();
+    expect(rootPathOf("/web", "../..", "a/web/x.md")).toBeNull();
   });
 });
 

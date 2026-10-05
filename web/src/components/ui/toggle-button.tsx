@@ -13,6 +13,13 @@ interface ToggleButtonProps {
   text?: string;
   /** ALREADY TRANSLATED. The native tooltip, for the icon-only form. */
   title?: string;
+  /**
+   * A count floated on the glyph's corner, drawn `aria-hidden`, so say it in `label` too. Absent, or
+   * 0, draws nothing. It is placed absolutely, so a count arriving or changing moves nothing (§2).
+   */
+  badge?: number;
+  /** The badge's fill, a `bg-*` class with its ink. The primary fill by default. */
+  badgeClassName?: string;
   className?: string;
 }
 
@@ -28,7 +35,17 @@ interface ToggleButtonProps {
  * word when `text` is given. Both forms reserve the ring's 1px inside the box, so a press recolours
  * and re-lays-out nothing (§2).
  */
-export function ToggleButton({ pressed, onPressedChange, label, icon, text, title, className }: ToggleButtonProps) {
+export function ToggleButton({
+  pressed,
+  onPressedChange,
+  label,
+  icon,
+  text,
+  title,
+  badge,
+  badgeClassName = "bg-primary text-primary-foreground",
+  className,
+}: ToggleButtonProps) {
   return (
     <button
       type="button"
@@ -38,7 +55,7 @@ export function ToggleButton({ pressed, onPressedChange, label, icon, text, titl
       title={title}
       onClick={() => onPressedChange(!pressed)}
       className={cn(
-        "flex h-11 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "relative flex h-11 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         text === undefined ? "size-11" : "gap-2 px-3 text-xs font-medium",
         pressed ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/40" : "text-muted-foreground active:bg-muted",
         className,
@@ -48,6 +65,18 @@ export function ToggleButton({ pressed, onPressedChange, label, icon, text, titl
         {icon}
       </span>
       {text !== undefined && <span aria-hidden>{text}</span>}
+      {badge !== undefined && badge > 0 && (
+        <span
+          aria-hidden
+          data-slot="toggle-badge"
+          className={cn(
+            "absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[10px] leading-none font-semibold tabular-nums",
+            badgeClassName,
+          )}
+        >
+          {badge}
+        </span>
+      )}
     </button>
   );
 }

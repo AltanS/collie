@@ -1,15 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
 import { fixtureAgents, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 
-import { installApiStub } from "./fixtures/api";
+import { fill, installApiStub } from "./fixtures/api";
 import { serveWithShellCsp } from "./fixtures/csp";
 
-// THE FILES TAB (ADR 0083) IN A REAL ENGINE. jsdom cannot say whether a sandboxed `srcdoc` frame
-// renders under the shell's Content-Security-Policy, which is the one claim the HTML preview makes
-// that a unit test cannot check. The API is the shared fixture (`src/test/handlers.ts`), routed by
-// `fixtures/api.ts`; the CSP is the bridge's own, read from its source (`fixtures/csp.ts`).
+// THE CHANGES SCREEN'S FOLDER TREE (ADR 0083, merged with the list 2026-10-06) IN A REAL ENGINE. jsdom
+// cannot say whether a sandboxed `srcdoc` frame renders under the shell's Content-Security-Policy,
+// which is the one claim the HTML preview makes that a unit test cannot check, nor whether the
+// header still has room for its title at 375 px. The API is the shared fixture
+// (`src/test/handlers.ts`), routed by `fixtures/api.ts`; the CSP is the bridge's own, read from its
+// source (`fixtures/csp.ts`).
 
 test.use({ serviceWorkers: "block" });
 
@@ -20,10 +22,19 @@ test.beforeEach(async ({ page }, testInfo) => {
 
 const PANE = encodeURIComponent(fixtureAgents[0]!.paneId);
 
-test("open Files, enter a folder, open a Markdown file, go back twice", async ({ page }) => {
+/** No box on the page is wider than the viewport: nothing scrolls sideways. */
+async function noSidewaysScroll(page: Page) {
+  const { scroll, width } = await page.evaluate(() => ({
+    scroll: document.scrollingElement!.scrollWidth,
+    width: window.innerWidth,
+  }));
+  expect(scroll).toBeLessThanOrEqual(width);
+}
+
+test("open Changes, enter a folder, open a Markdown file, go back twice", async ({ page }) => {
   await page.goto(`/pane/${PANE}/changes`);
-  await page.getByRole("tab", { name: en["changes.tabs.files"] }).click();
-  await expect(page).toHaveURL(/\/changes\/files$/);
+  // The tree is the body: no Changes | Files switch to tap first.
+  await expect(page.getByRole("tab")).toHaveCount(0);
 
   await page.getByRole("button", { name: /^docs, folder/ }).click();
   await expect(page).toHaveURL(/\/changes\/files\?dir=docs$/);
@@ -38,14 +49,56 @@ test("open Files, enter a folder, open a Markdown file, go back twice", async ({
   // Back, once: the file's folder.
   await page.getByRole("button", { name: en["files.backAria.folder"] }).click();
   await expect(page).toHaveURL(/\/changes\/files\?dir=docs$/);
-  // Back, twice: the Files root.
+  // Back, twice: the root, which is the Changes screen itself.
   await page.getByRole("button", { name: en["files.backAria.parent"] }).click();
-  await expect(page).toHaveURL(/\/changes\/files$/);
+  await expect(page).toHaveURL(new RegExp(`/pane/${PANE}/changes$`));
   await expect(page.getByRole("button", { name: /^src, folder/ })).toBeVisible();
 });
 
+// THE OPERATOR'S ASK, 2026-10-06: changes and files on one screen, the changes marked, a way to see
+// the changes alone, and a new Markdown file one tap from its diff and one more from its preview.
+test("the tree marks what changed, Changes only swaps in the list, and a new Markdown file opens on Diff then Preview", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/pane/${PANE}/changes`);
+  const packages = page.getByRole("button", { name: "packages, folder, 2 changed files" });
+  await expect(packages).toBeVisible();
+  await expect(packages.locator('[data-slot="folder-mark"]')).toHaveText("2");
+
+  // The header keeps room for the workspace at the narrowest phone: back, the label, Changes only
+  // and Refresh, with the tree's Ignored eye and Filter beside them.
+  const only = page.locator("header").getByRole("button", { name: fill(en["changes.only.aria.other"], { count: 5 }) });
+  await expect(only).toHaveAttribute("aria-pressed", "false");
+  const title = page.locator("header h1");
+  expect((await title.boundingBox())!.width).toBeGreaterThanOrEqual(40);
+
+  // Changes only: the list, and the toggle has not moved.
+  const before = (await only.boundingBox())!;
+  await only.click();
+  await expect(only).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^docs, folder/ })).toHaveCount(0);
+  await expect(page.locator("header").getByRole("button", { name: en["changes.layout.tree"] })).toBeVisible();
+  const after = (await only.boundingBox())!;
+  expect(after.x).toBe(before.x);
+  expect(after.y).toBe(before.y);
+  // The choice is the device's: it outlives a reload.
+  await page.reload();
+  await expect(page.locator("header").getByRole("button", { name: en["changes.layout.tree"] })).toBeVisible();
+  await expect(only).toHaveAttribute("aria-pressed", "true");
+  // And back to the tree.
+  await only.click();
+  await packages.click();
+  await page.getByRole("button", { name: /^api, folder/ }).click();
+  await page.getByRole("button", { name: /^notes\.md, file/ }).click();
+  await expect(page).toHaveURL(/\/changes\/files\?path=packages%2Fapi%2Fnotes\.md$/);
+  await expect(page.getByRole("radio", { name: en["files.view.diff"] })).toBeChecked();
+  await expect(page.getByText("Orders moved under handlers/.")).toBeVisible();
+  await page.getByRole("radio", { name: en["files.view.preview"] }).click();
+  await expect(page.locator('[data-heading-level="1"]')).toHaveText("Notes");
+  await noSidewaysScroll(page);
+});
+
 test("ignored entries are hidden, Show brings them back dimmed, and the name filter narrows the folder", async ({ page }) => {
-  await page.goto(`/pane/${PANE}/changes/files`);
+  await page.goto(`/pane/${PANE}/changes`);
   await expect(page.getByRole("button", { name: /^docs, folder/ })).toBeVisible();
   // Hidden by default, with one quiet line that says how many.
   await expect(page.getByRole("button", { name: /^node_modules/ })).toHaveCount(0);
@@ -75,7 +128,7 @@ test("ignored entries are hidden, Show brings them back dimmed, and the name fil
   expect((await rows.boundingBox())!.y).toBe(top);
   await page.getByPlaceholder(en["files.filter.placeholder"]).fill("DEBUG");
   await expect(rows.getByRole("button")).toHaveCount(1);
-  await expect(page.getByText(en["files.filter.shown"].replace("{shown}", "1").replace("{total}", "9"))).toBeVisible();
+  await expect(page.getByText(en["files.filter.shown"].replace("{shown}", "1").replace("{total}", "11"))).toBeVisible();
 
   // Nothing matches: the sentence and the way out.
   await page.getByPlaceholder(en["files.filter.placeholder"]).fill("zzz");
@@ -89,10 +142,11 @@ test("ignored entries are hidden, Show brings them back dimmed, and the name fil
   await expect(page.getByRole("button", { name: /^debug\.log/ })).toHaveCount(0);
 });
 
-test("a changed Markdown file previews from its diff, in Files", async ({ page }) => {
+test("a changed Markdown file previews from its diff, on its file screen", async ({ page }) => {
   await page.goto(`/pane/${PANE}/changes?repo=packages%2Fapi&path=notes.md`);
   await page.getByRole("button", { name: en["changes.file.previewAria"] }).click();
   await expect(page).toHaveURL(/\/changes\/files\?path=packages%2Fapi%2Fnotes\.md$/);
+  await expect(page.getByRole("radio", { name: en["files.view.preview"] })).toBeChecked();
 });
 
 // LINKS IN A MARKDOWN FILE. A relative link opens the other file in Files, a `#anchor` scrolls in
@@ -145,7 +199,7 @@ test("a Markdown link opens the other file in Files, an anchor scrolls in place,
   await page.getByRole("link", { name: "the readme" }).click();
   await expect(page).toHaveURL(/\/changes\/files\?path=README\.md$/);
   await page.getByRole("button", { name: en["files.backAria.folder"] }).click();
-  await expect(page).toHaveURL(/\/changes\/files$/);
+  await expect(page).toHaveURL(new RegExp(`/pane/${PANE}/changes$`));
 });
 
 // THE HTML PREVIEW UNDER THE SHELL'S CSP. The document below tries everything a hostile page would:
@@ -232,6 +286,8 @@ test("the HTML preview renders in a sandboxed frame under the shell's CSP and no
   expect(answered.filter((url) => /\.invalid\b/.test(url))).toEqual([]);
 });
 
+// The folder line of a folder or a file of the tree; the root's own header is the glide header with
+// the short folder line (changes.spec.ts).
 test("a deep folder is cut from the left, the label is not repeated, and the last folders stay visible at 375 px", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   const root = "/var/home/altan/projects/clients/acme/storefront-monorepo/packages/webapp";
@@ -241,7 +297,7 @@ test("a deep folder is cut from the left, the label is not repeated, and the las
     const found = q.get("path") !== null ? fixtureFileRead(q.get("path")!) : fixtureFilesDir(q.get("dir") ?? "");
     await route.fulfill({ json: { ...found, root } });
   });
-  await page.goto(`/pane/${PANE}/changes/files`);
+  await page.goto(`/pane/${PANE}/changes/files?dir=docs`);
   const folder = page.getByTitle(root);
   await expect(folder).toBeVisible();
   // The label is the folder's own name, so the header says the folders above it and not `webapp` twice.
@@ -255,4 +311,47 @@ test("a deep folder is cut from the left, the label is not repeated, and the las
   // flush against the right edge instead of being the part that is lost.
   expect(box.clipped).toBe(true);
   expect(Math.abs(box.innerRight - box.outerRight)).toBeLessThan(2);
+});
+
+// Review 2026-10-06: the header is one header on every level, and at 375 px the squares win.
+test("a folder's header holds the root's four squares at 375 px, and the filter row clips nothing", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/pane/${PANE}/changes/files?dir=packages%2Fapi`);
+  await expect(page.getByRole("button", { name: /^notes\.md, file/ })).toBeVisible();
+  const header = page.locator("header");
+  const names = [
+    en["files.ignored.toggleAria"],
+    en["changes.filter.button"],
+    fill(en["changes.only.aria.other"], { count: 5 }),
+    en["changes.refreshAria"],
+  ];
+  const boxes = [];
+  for (const name of names) {
+    const square = header.getByRole("button", { name, exact: true });
+    await expect(square).toBeVisible();
+    boxes.push((await square.boundingBox())!);
+  }
+  // In that order, left to right, every one a 44 px square inside the viewport.
+  for (let i = 0; i < boxes.length; i++) {
+    expect(boxes[i]!.height).toBeGreaterThanOrEqual(44);
+    expect(boxes[i]!.x + boxes[i]!.width).toBeLessThanOrEqual(375);
+    if (i > 0) expect(boxes[i]!.x).toBeGreaterThan(boxes[i - 1]!.x);
+  }
+
+  // The longest Ignored label, a typed name: the count and Clear stay whole inside the row. At
+  // 320 px the row has the room the playground's 375 px card gives it, where "Clear filter" clipped.
+  await page.setViewportSize({ width: 320, height: 812 });
+  await header.getByRole("button", { name: en["files.ignored.toggleAria"] }).click();
+  await header.getByRole("button", { name: en["changes.filter.button"] }).click();
+  await page.getByPlaceholder(en["files.filter.placeholder"]).fill("o");
+  const row = page.locator('[data-slot="files-filter"]');
+  const clear = row.getByRole("button", { name: en["changes.filter.clear"], exact: true });
+  await expect(clear).toBeVisible();
+  const rowBox = (await row.boundingBox())!;
+  const clearBox = (await clear.boundingBox())!;
+  expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
+  expect(await clear.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const chip = row.getByRole("button", { name: en["files.ignored.toggleAria"] });
+  expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await noSidewaysScroll(page);
 });

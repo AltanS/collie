@@ -9,7 +9,7 @@ import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { clearNotPaired, isNotPaired } from "@/lib/pairing";
-import { fixtureAgents, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
+import { fixtureAgents, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 
@@ -33,9 +33,13 @@ const connected = (): HomeData => ({
   authError: false,
 });
 
+// THE CHANGES SCREEN'S FOLDER TREE (ADR 0083, merged 2026-10-06). The root is the Changes screen
+// itself (`CHANGES`); a folder or a file sits one segment below it (`FILES?dir=`, `FILES?path=`), and
+// `FILES` alone is the root under its address from before the merge.
+const CHANGES = "/pane/w1%3Ap1/changes";
 const FILES = "/pane/w1%3Ap1/changes/files";
 
-/** The Files route at `entries`, the last one current. Settings and the pane are stand-in screens. */
+/** The Changes route at `entries`, the last one current. Settings and the pane are stand-in screens. */
 function renderAt(entries: (string | { pathname: string; search?: string; state: object })[], index?: number) {
   const router = createMemoryRouter(
     [
@@ -60,6 +64,11 @@ function renderAt(entries: (string | { pathname: string; search?: string; state:
   return router;
 }
 
+/** One device pref as stored, or undefined when nothing wrote it. */
+function storedPref(key: string): boolean | undefined {
+  return asJsonBoolean(asJsonObject(JSON.parse(localStorage.getItem("collie:dash-prefs:v1") ?? "{}"))?.[key]);
+}
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -67,10 +76,10 @@ afterEach(() => {
   clearNotPaired();
 });
 
-describe("Files: the folder view", () => {
-  it("lists the root, folders first, with a size for files and the kind for a reader", async () => {
-    renderAt([FILES]);
-    const first = await screen.findByRole("button", { name: /^docs, folder/ });
+describe("Changes: the folder tree is the default body", () => {
+  it("lists the root, folders first, with a size for files, the kind and the changes below for a reader", async () => {
+    renderAt([CHANGES]);
+    const first = await screen.findByRole("button", { name: /^src, folder, 2 changed files/ });
     const rows = first.closest("ul");
     if (rows === null) throw new Error("the rows are not in a list");
     const names = within(rows)
@@ -78,13 +87,23 @@ describe("Files: the folder view", () => {
       .map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual([
       "docs, folder",
-      "src, folder",
+      "packages, folder, 2 changed files",
+      "public, folder, 1 changed file",
+      "src, folder, 2 changed files",
       "README.md, file, 1.2 KB",
       "index.html, file, 468 B",
       "logo.png, file, 20 KB",
       "package.json, file, 312 B",
       "current, link",
     ]);
+    // There is no Changes | Files switch any more: one screen, titled Changes.
+    expect(screen.queryByRole("tab")).toBeNull();
+  });
+
+  it("is also the body of the root's address from before the merge", async () => {
+    renderAt([FILES]);
+    expect(await screen.findByRole("button", { name: /^docs, folder/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toContain(en["changes.title"]);
   });
 
   it("asks the pane route for the root, then for a folder with ?dir=", async () => {
@@ -94,7 +113,7 @@ describe("Files: the folder view", () => {
         asked.push(new URL(request.url).pathname + new URL(request.url).search);
       }),
     );
-    renderAt([FILES]);
+    renderAt([CHANGES]);
     await userEvent.click(await screen.findByRole("button", { name: /^src, folder/ }));
     expect(await screen.findByRole("button", { name: /^cart\.ts/ })).toBeTruthy();
     expect(asked).toEqual(["/api/pane/w1%3Ap1/files", "/api/pane/w1%3Ap1/files?dir=src"]);
@@ -107,7 +126,7 @@ describe("Files: the folder view", () => {
         asked.push(new URL(request.url).pathname);
       }),
     );
-    renderAt(["/space/w1/changes/files"]);
+    renderAt(["/space/w1/changes"]);
     expect(await screen.findByRole("button", { name: /^docs, folder/ })).toBeTruthy();
     expect(asked).toEqual(["/api/workspace/w1/files"]);
   });
@@ -139,48 +158,196 @@ describe("Files: the folder view", () => {
     expect(await screen.findByText(en["files.truncated"])).toBeTruthy();
   });
 
-  it("reads no-folder the way Changes reads it", async () => {
+  it("reads no-folder the way Changes reads it when the list has no folder either", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files/, () => HttpResponse.json({ available: false, reason: "no-folder" })),
+      http.get(/\/api\/pane\/[^/]+\/changes/, () => HttpResponse.json({ paneId: "w1:p1", available: false, reason: "no-folder" })),
+    );
+    renderAt([CHANGES]);
+    expect(await screen.findByText(en["changes.unavailable.noFolder"])).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en["files.showChangesOnly"] })).toBeNull();
+  });
+
+  // Files is bounded tighter than Changes: a pane parked in the home folder lists its changes and
+  // cannot browse. The tree says so in its own words and offers the half that works.
+  it("says Files cannot open the folder when the list can, and offers Changes only", async () => {
     server.use(
       http.get(/\/api\/pane\/[^/]+\/files/, () => HttpResponse.json({ available: false, reason: "no-folder" })),
     );
-    renderAt([FILES]);
-    expect(await screen.findByText(en["changes.unavailable.noFolder"])).toBeTruthy();
+    renderAt([CHANGES]);
+    expect(await screen.findByText(en["files.noFolder"])).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: en["files.showChangesOnly"] }));
+    expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
+    expect(storedPref("changesOnly")).toBe(true);
   });
 
-  it("asks again only on the refresh button, never on a timer", async () => {
+  it("asks again on the refresh button, never on a timer, and refresh reads the list too", async () => {
     let asks = 0;
+    let lists = 0;
     server.use(
       http.get(/\/api\/pane\/[^/]+\/files/, () => {
         asks++;
       }),
+      http.get(/\/api\/pane\/[^/]+\/changes/, () => {
+        lists++;
+      }),
     );
-    renderAt([FILES]);
+    renderAt([CHANGES]);
     await screen.findByRole("button", { name: /^docs, folder/ });
+    await waitFor(() => expect(lists).toBe(1));
     expect(asks).toBe(1);
-    await userEvent.click(screen.getByRole("button", { name: en["files.refreshAria"] }));
+    await userEvent.click(screen.getByRole("button", { name: en["changes.refreshAria"] }));
     await waitFor(() => expect(asks).toBe(2));
-  });
-
-  it("switches to the Changes tab sideways", async () => {
-    const router = renderAt([FILES]);
-    await userEvent.click(await screen.findByRole("tab", { name: en["changes.tabs.changes"] }));
-    expect(router.state.location.pathname).toBe("/pane/w1%3Ap1/changes");
-    expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
-    // The same tab strip sits on the Changes screen and brings Files back.
-    await userEvent.click(screen.getByRole("tab", { name: en["changes.tabs.files"] }));
-    expect(router.state.location.pathname).toBe(FILES);
+    await waitFor(() => expect(lists).toBe(2));
   });
 });
 
-describe("Files: back goes up one level", () => {
+describe("Changes: the marks on the tree", () => {
+  const row = (name: RegExp) => screen.findByRole("button", { name });
+
+  it("a changed file wears its status letter and an icon in the list's colour for that status", async () => {
+    renderAt([`${FILES}?dir=src%2Froutes`]);
+    const changed = await row(/^checkout\.tsx, file, 388 B, Modified$/);
+    expect(changed.querySelector("svg")?.getAttribute("class")).toContain("text-status-working");
+    // The icon switches shape too: a pen for a modified file, not the plain file glyph.
+    expect(changed.querySelector("svg")?.getAttribute("class")).toContain("lucide-file-pen");
+    const letter = [...changed.querySelectorAll("span")].find((el) => el.textContent === "M");
+    expect(letter?.className).toContain("text-status-working");
+  });
+
+  it("an untracked file counts as new: U in the untracked ink", async () => {
+    renderAt([`${FILES}?dir=packages%2Fapi`]);
+    const note = await row(/^notes\.md, file, 38 B, Untracked$/);
+    const letter = [...note.querySelectorAll("span")].find((el) => el.textContent === "U");
+    // Not the list's quiet grey: a file the agent just wrote takes the added ink, letter and icon.
+    expect(letter?.className).toContain("text-status-done");
+    expect(note.querySelector("svg")?.getAttribute("class")).toContain("text-status-done");
+    expect(note.querySelector("svg")?.getAttribute("class")).toContain("lucide-file-plus");
+    expect(await row(/^server, folder, 1 changed file$/)).toBeTruthy();
+  });
+
+  it("a folder with changes below it shows a dot and their count; one without shows nothing", async () => {
+    renderAt([CHANGES]);
+    const src = await row(/^src, folder, 2 changed files$/);
+    expect(src.querySelector('[data-slot="folder-mark"]')?.textContent).toBe("2");
+    const docs = await row(/^docs, folder$/);
+    expect(docs.querySelector('[data-slot="folder-mark"]')).toBeNull();
+  });
+
+  it("adds a deleted file to its folder from the change set, struck through, and opens it on its Diff", async () => {
+    const withDeleted = {
+      ...fixtureChanges,
+      repos: fixtureChanges.available
+        ? [{ ...fixtureChanges.repos[0]!, files: [...fixtureChanges.repos[0]!.files, { path: "CHANGELOG.md", status: "D", added: 0, removed: 1, binary: false }] }, ...fixtureChanges.repos.slice(1)]
+        : [],
+    };
+    const asked: string[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {
+        const q = new URL(request.url).searchParams;
+        if (q.get("path") === "CHANGELOG.md") {
+          return HttpResponse.json({ available: true, repo: ".", path: "CHANGELOG.md", status: "D", binary: false, directory: false, truncated: false, diff: "@@ -1 +0,0 @@\n-# Changelog\n" });
+        }
+        return q.get("path") === null ? HttpResponse.json(withDeleted) : undefined;
+      }),
+      http.get(/\/api\/pane\/[^/]+\/files/, ({ request }) => {
+        asked.push(new URL(request.url).search);
+      }),
+    );
+    const router = renderAt([CHANGES]);
+    const gone = await row(/^CHANGELOG\.md, file, Deleted$/);
+    expect(gone.querySelector(".line-through")?.textContent).toBe("CHANGELOG.md");
+    await userEvent.click(gone);
+    expect(router.state.location.search).toBe("?path=CHANGELOG.md");
+    expect(await screen.findByText("# Changelog")).toBeTruthy();
+    // On disk no more, so it has no Source to read and no switch to show.
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(asked).toEqual([""]);
+  });
+
+  it("a folder outside any repo has no marks", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) =>
+        new URL(request.url).searchParams.get("path") === null ? HttpResponse.json({ ...fixtureChanges, repos: [] }) : undefined,
+      ),
+    );
+    renderAt([CHANGES]);
+    await row(/^src, folder$/);
+    expect(document.querySelector('[data-slot="folder-mark"]')).toBeNull();
+  });
+});
+
+describe("Changes: the Changes-only toggle", () => {
+  const toggle = () => screen.findByRole("button", { name: new RegExp(`^${en["changes.only.label"]}, `) });
+
+  it("carries the changed-file count, is off by default, and swaps the tree for the list", async () => {
+    renderAt([CHANGES]);
+    const only = await toggle();
+    await waitFor(() => expect(only.getAttribute("aria-label")).toBe(en["changes.only.aria.other"].replace("{count}", "5")));
+    expect(only.getAttribute("aria-pressed")).toBe("false");
+    expect(only.querySelector('[data-slot="toggle-badge"]')?.textContent).toBe("5");
+    await screen.findByRole("button", { name: /^docs, folder/ });
+
+    await userEvent.click(only);
+    expect(only.getAttribute("aria-pressed")).toBe("true");
+    // Today's list, exactly: grouped by repo, with its layout toggle and filter.
+    expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^docs, folder/ })).toBeNull();
+    expect(screen.getByRole("button", { name: en["changes.layout.tree"] })).toBeTruthy();
+    expect(storedPref("changesOnly")).toBe(true);
+  });
+
+  it("is remembered per device: a device that chose it opens on the list", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true }));
+    renderAt([CHANGES]);
+    expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
+    expect((await toggle()).getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(await toggle());
+    expect(await screen.findByRole("button", { name: /^docs, folder/ })).toBeTruthy();
+    expect(storedPref("changesOnly")).toBe(false);
+  });
+
+  // Review 2026-10-06: one header on every level, never a control dropped by depth.
+  it("is in every folder's header, in the root's order, and turning it on there goes up to the list", async () => {
+    const router = renderAt([CHANGES, { pathname: FILES, search: "?dir=src", state: { from: CHANGES } }]);
+    await screen.findByRole("button", { name: /^cart\.ts/ });
+    const header = screen.getByRole("heading", { level: 1 }).closest("header");
+    if (header === null) throw new Error("no header");
+    const squares = within(header)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? "")
+      .slice(1);
+    expect(squares).toEqual([
+      en["files.ignored.toggleAria"],
+      en["changes.filter.button"],
+      en["changes.only.aria.other"].replace("{count}", "5"),
+      en["changes.refreshAria"],
+    ]);
+    await userEvent.click(await toggle());
+    expect(storedPref("changesOnly")).toBe(true);
+    await waitFor(() => expect(router.state.location.pathname).toBe(CHANGES));
+    expect(router.state.location.search).toBe("");
+    expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
+  });
+
+  it("is on a file of the tree too, with Refresh", async () => {
+    renderAt([`${FILES}?path=README.md`]);
+    expect(await screen.findByText("Run it")).toBeTruthy();
+    expect(await toggle()).toBeTruthy();
+    expect(screen.getByRole("button", { name: en["changes.refreshAria"] })).toBeTruthy();
+  });
+});
+
+describe("Changes: back goes up one level through the tree", () => {
   it("steps up through the file, its folders and the root, then leaves to where Changes goes", async () => {
     const router = renderAt([
       "/pane/w1%3Ap1",
-      { pathname: FILES, state: { from: "/pane/w1%3Ap1" } },
+      { pathname: CHANGES, state: { from: "/pane/w1%3Ap1" } },
     ]);
     await userEvent.click(await screen.findByRole("button", { name: /^src, folder/ }));
     await userEvent.click(await screen.findByRole("button", { name: /^routes, folder/ }));
     await userEvent.click(await screen.findByRole("button", { name: /^checkout\.tsx/ }));
+    expect(router.state.location.pathname).toBe(FILES);
     expect(router.state.location.search).toBe("?path=src%2Froutes%2Fcheckout.tsx");
     expect(await screen.findByText("Checkout", { exact: false })).toBeTruthy();
 
@@ -190,7 +357,9 @@ describe("Files: back goes up one level", () => {
     await waitFor(() => expect(router.state.location.search).toBe("?dir=src"));
     await userEvent.click(await screen.findByRole("button", { name: en["files.backAria.parent"] }));
     await waitFor(() => expect(router.state.location.search).toBe(""));
-    expect(router.state.location.pathname).toBe(FILES);
+    // The root of the tree is the Changes screen itself, reached by a step back, not a push.
+    expect(router.state.location.pathname).toBe(CHANGES);
+    expect(router.state.historyAction).toBe("POP");
     // At the root the arrow names where Changes goes today.
     await userEvent.click(await screen.findByRole("button", { name: en["changes.backAria.pane"] }));
     expect(await screen.findByText("pane screen")).toBeTruthy();
@@ -199,7 +368,7 @@ describe("Files: back goes up one level", () => {
   it("steps BACK onto the parent folder instead of stacking another entry", async () => {
     const router = renderAt([
       "/pane/w1%3Ap1",
-      { pathname: FILES, state: { from: "/pane/w1%3Ap1" } },
+      { pathname: CHANGES, state: { from: "/pane/w1%3Ap1" } },
     ]);
     await userEvent.click(await screen.findByRole("button", { name: /^src, folder/ }));
     await screen.findByRole("button", { name: /^cart\.ts/ });
@@ -225,7 +394,53 @@ describe("Files: back goes up one level", () => {
   });
 });
 
-describe("Files: the file view", () => {
+describe("Changes: one file of the tree", () => {
+  it("opens a changed file on its Diff, with Source one tap away", async () => {
+    renderAt([`${FILES}?path=src%2Froutes%2Fcheckout.tsx`]);
+    // The diff's own lines, which the fixture's source does not have.
+    expect((await screen.findAllByText("cartTotal", { exact: false })).length).toBeGreaterThan(0);
+    const diff = screen.getByRole("radio", { name: en["files.view.diff"] });
+    expect(diff.getAttribute("aria-checked")).toBe("true");
+    // A TypeScript file has no Preview: Diff | Source.
+    expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([en["files.view.diff"], en["files.view.source"]]);
+    await userEvent.click(screen.getByRole("radio", { name: en["files.view.source"] }));
+    await waitFor(() => expect(screen.queryAllByText("cartTotal", { exact: false })).toHaveLength(0));
+    expect(screen.getAllByText("Checkout", { exact: false }).length).toBeGreaterThan(0);
+  });
+
+  it("asks the diff of the change set's repo, with the path inside that repo", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {
+        const q = new URL(request.url).searchParams;
+        if (q.get("path") !== null) asked.push(`${q.get("repo")}|${q.get("path")}`);
+      }),
+    );
+    renderAt([`${FILES}?path=packages%2Fapi%2Fserver%2Fhandlers%2Forders.ts`]);
+    expect(await screen.findByText(en["changes.file.renamedFrom"].replace("{path}", "server/orders.ts"))).toBeTruthy();
+    await waitFor(() => expect(asked).toEqual(["packages/api|server/handlers/orders.ts"]));
+  });
+
+  // The operator's case: an agent wrote a new Markdown file. Its Diff is every line added, and one tap
+  // draws it as a page.
+  it("a new Markdown file opens on Diff, all added, and Preview is one tap away", async () => {
+    renderAt([`${FILES}?path=packages%2Fapi%2Fnotes.md`]);
+    expect(await screen.findByText("Orders moved under handlers/.")).toBeTruthy();
+    expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([
+      en["files.view.diff"],
+      en["files.view.source"],
+      en["files.view.preview"],
+    ]);
+    await userEvent.click(screen.getByRole("radio", { name: en["files.view.preview"] }));
+    await waitFor(() => expect(document.querySelector('[data-heading-level="1"]')?.textContent).toBe("Notes"));
+  });
+
+  it("an unchanged file keeps Source | Preview, and no Diff", async () => {
+    renderAt([`${FILES}?path=README.md`]);
+    expect(await screen.findByText("Run it")).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: en["files.view.diff"] })).toBeNull();
+  });
+
   it("opens Markdown on its Preview, and Source is one tap away", async () => {
     renderAt([`${FILES}?path=README.md`]);
     expect(await screen.findByText("Run it")).toBeTruthy();
@@ -267,7 +482,7 @@ describe("Files: the file view", () => {
   });
 });
 
-describe("Files: what a refusal reads as", () => {
+describe("Changes tree: what a refusal reads as", () => {
   it("reads a 404 unknown-path as a file that is not available", async () => {
     renderAt([`${FILES}?path=gone.md`]);
     expect(await screen.findByText(en["files.unknown.file"])).toBeTruthy();
@@ -299,8 +514,10 @@ describe("Files: what a refusal reads as", () => {
     server.use(
       http.get(/\/api\/pane\/[^/]+\/files/, () => new HttpResponse("device not paired", { status: 403 })),
     );
-    const router = renderAt([FILES]);
+    const router = renderAt([CHANGES]);
     expect(await screen.findByText(en["files.notPaired"])).toBeTruthy();
+    // The list needs no pairing, so the root offers it in the tree's place.
+    expect(screen.getByRole("button", { name: en["files.showChangesOnly"] })).toBeTruthy();
     // The read latches the same refusal a write does, so the app's read-only strip names the remedy.
     expect(isNotPaired()).toBe(true);
     await userEvent.click(screen.getByRole("button", { name: en["files.pairLink"] }));
@@ -403,8 +620,9 @@ describe("Files: a link row that points at a folder", () => {
   });
 });
 
-describe("Changes → Files: Preview from a diff", () => {
-  it("offers Preview for a changed Markdown file and opens it from the root, with the repo's folder", async () => {
+describe("Changes only → the file screen: Preview from a diff", () => {
+  it("offers Preview for a changed Markdown file and opens its file screen on Preview, from the root", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true }));
     const router = renderAt([
       "/pane/w1%3Ap1",
       { pathname: "/pane/w1%3Ap1/changes", state: { from: "/pane/w1%3Ap1" } },
@@ -413,6 +631,54 @@ describe("Changes → Files: Preview from a diff", () => {
     await userEvent.click(await screen.findByRole("button", { name: en["changes.file.previewAria"] }));
     expect(router.state.location.pathname).toBe(FILES);
     expect(router.state.location.search).toBe("?path=packages%2Fapi%2Fnotes.md");
+    // The same file screen a tree row opens, on Preview this time, with the Diff one tap back.
+    await waitFor(() => expect(document.querySelector('[data-heading-level="1"]')?.textContent).toBe("Notes"));
+    expect(screen.getByRole("radio", { name: en["files.view.preview"] }).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("radio", { name: en["files.view.diff"] }));
+    expect(await screen.findByText("Orders moved under handlers/.")).toBeTruthy();
+  });
+
+  // A pane opened in a folder INSIDE a repo: the root is `proj/web`, the repo is `..`, and its paths
+  // start with `web/`. The Preview path is the one from the root, not `../web/…`, which Files refuses.
+  it("opens a file of a repo above the root at its path from the root", async () => {
+    const above = {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "web",
+      available: true,
+      root: "/home/you/proj/web",
+      truncated: false,
+      repos: [{ relPath: "..", name: "proj", files: [{ path: "web/docs/guide.md", status: "M", added: 1, removed: 0, binary: false }] }],
+    };
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) =>
+        new URL(request.url).searchParams.get("path") === null ? HttpResponse.json(above) : undefined,
+      ),
+    );
+    const router = renderAt(["/pane/w1%3Ap1/changes?repo=..&path=web%2Fdocs%2Fguide.md"]);
+    await userEvent.click(await screen.findByRole("button", { name: en["changes.file.previewAria"] }));
+    expect(router.state.location.pathname).toBe(FILES);
+    expect(router.state.location.search).toBe("?path=docs%2Fguide.md");
+  });
+
+  it("offers no Preview for a file of a repo above the root that lies outside the root", async () => {
+    const above = {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "web",
+      available: true,
+      root: "/home/you/proj/web",
+      truncated: false,
+      repos: [{ relPath: "..", name: "proj", files: [{ path: "api/notes.md", status: "M", added: 1, removed: 0, binary: false }] }],
+    };
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) =>
+        new URL(request.url).searchParams.get("path") === null ? HttpResponse.json(above) : HttpResponse.json({ ...above, available: false, reason: "unknown-path" }),
+      ),
+    );
+    renderAt(["/pane/w1%3Ap1/changes?repo=..&path=api%2Fnotes.md"]);
+    await screen.findByText(en["changes.file.unknown"]);
+    expect(screen.queryByRole("button", { name: en["changes.file.previewAria"] })).toBeNull();
   });
 
   it("offers no Preview for a file with none", async () => {
@@ -475,7 +741,8 @@ describe("Files: a link in a Markdown file", () => {
     guide("[the cart](../src/cart.ts#L1) and [up](../) and [root](/docs/)\n");
     renderAt([`${FILES}?path=docs%2Fguide.md`]);
     expect((await screen.findByRole("link", { name: "the cart" })).getAttribute("href")).toBe(`${FILES}?path=src%2Fcart.ts`);
-    expect(screen.getByRole("link", { name: "up" }).getAttribute("href")).toBe(FILES);
+    // The root of the tree is the Changes screen itself.
+    expect(screen.getByRole("link", { name: "up" }).getAttribute("href")).toBe(CHANGES);
     expect(screen.getByRole("link", { name: "root" }).getAttribute("href")).toBe(`${FILES}?dir=docs`);
   });
 
@@ -508,7 +775,7 @@ describe("Files: entries git ignores, and the filter", () => {
   it("hides ignored rows by default and says how many, quietly", async () => {
     renderAt([FILES]);
     await screen.findByRole("button", { name: /^docs, folder/ });
-    expect(names()).toEqual(["docs", "src", "README.md", "index.html", "logo.png", "package.json", "current"]);
+    expect(names()).toEqual(["docs", "packages", "public", "src", "README.md", "index.html", "logo.png", "package.json", "current"]);
     expect(screen.getByText(hiddenLine(2))).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^node_modules/ })).toBeNull();
   });
@@ -601,10 +868,10 @@ describe("Files: entries git ignores, and the filter", () => {
     await userEvent.type(await screen.findByPlaceholderText(en["files.filter.placeholder"]), "RE");
     // "RE" matches README.md and, case-insensitively inside the name, "current".
     expect(names()).toEqual(["README.md", "current"]);
-    expect(await screen.findByText(counted(2, 7))).toBeTruthy();
-    expect(screen.getByRole("button", { name: new RegExp(`^${en["changes.filter.button"]}, 2 of 7`) })).toBeTruthy();
+    expect(await screen.findByText(counted(2, 9))).toBeTruthy();
+    expect(screen.getByRole("button", { name: new RegExp(`^${en["changes.filter.button"]}, 2 of 9`) })).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: en["changes.filter.clear"] }));
-    expect(names()).toHaveLength(7);
+    expect(names()).toHaveLength(9);
     // The Ignored choice was never part of Clear.
     expect(stored()).toBeUndefined();
   });
@@ -617,7 +884,7 @@ describe("Files: entries git ignores, and the filter", () => {
     expect(names()).toEqual(["src"]);
     await userEvent.click(screen.getByRole("button", { name: /^src, folder/ }));
     await screen.findByRole("button", { name: /^cart\.ts/ });
-    expect(names()).toEqual(["routes", "cart.ts"]);
+    expect(names()).toEqual(["lib", "routes", "cart.ts"]);
     // The overlay closed with the folder, and the button is not tinted.
     expect(screen.queryByPlaceholderText(en["files.filter.placeholder"])).toBeNull();
     expect((await filterButton()).getAttribute("aria-label")).toBe(en["changes.filter.button"]);
@@ -630,7 +897,7 @@ describe("Files: entries git ignores, and the filter", () => {
     expect(await screen.findByText(en["changes.filter.none"])).toBeTruthy();
     // The overlay's own Clear and the screen's both read "Clear filter"; either empties the field.
     await userEvent.click(screen.getAllByRole("button", { name: en["changes.filter.clear"] }).at(-1)!);
-    await waitFor(() => expect(names()).toHaveLength(7));
+    await waitFor(() => expect(names()).toHaveLength(9));
   });
 
   it("a folder whose every entry is ignored says so and offers Show", async () => {

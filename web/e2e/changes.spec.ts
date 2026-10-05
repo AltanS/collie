@@ -4,7 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import type { PaneChangesResponse } from "@/lib/types";
 import { fixtureAgents, fixtureChanges, fixtureCleanChanges, fixtureCommit } from "@/test/handlers";
 
-import { installApiStub } from "./fixtures/api";
+import { installApiStub, seedChangesOnly } from "./fixtures/api";
 
 // THE CHANGES VIEW ON A SMALL PHONE (ADR 0065). The list and one file's diff at 375x812, the
 // narrowest iPhone still sold, in a real engine: jsdom cannot say whether a long diff line wraps or
@@ -17,6 +17,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no pane route");
   test.skip(testInfo.project.name === "app-tablet", "a phone-width case; the tablet run would repeat it");
   await installApiStub(page);
+  // These cases read the list of changes: the screen's body with the device's Changes-only toggle on.
+  // The folder tree, the default since 2026-10-06 (ADR 0083), has its own cases in changes-files.
+  await seedChangesOnly(page);
 });
 
 const PANE = fixtureAgents[0]!;
@@ -130,16 +133,34 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}/changes`);
   await expect(page.getByText("webapp · 3 files")).toBeVisible();
 
-  const tree = page.getByRole("radio", { name: en["changes.layout.tree"] });
+  // One icon toggle since 2026-10-06, pressed while the list draws as a tree.
+  const tree = page.getByRole("button", { name: en["changes.layout.tree"] });
   expect(await tapHeight(page, tree)).toBeGreaterThanOrEqual(44);
+  await expect(tree).toHaveAttribute("aria-pressed", "false");
   await tree.click();
-  await expect(tree).toHaveAttribute("aria-checked", "true");
+  await expect(tree).toHaveAttribute("aria-pressed", "true");
 
   // A chain of single folders is one row, and every folder starts open.
   const chain = page.getByRole("button", { name: "server/handlers, 1 file" });
   await expect(chain).toHaveAttribute("aria-expanded", "true");
   const src = page.getByRole("button", { name: "src, 2 files" });
   expect(await tapHeight(page, src)).toBeGreaterThanOrEqual(44);
+  // The folder's count sits on the name's baseline (review, 2026-10-06), not above it.
+  // A zero-size inline box on each one's baseline: its bottom edge is that baseline.
+  const baselines = await src.evaluate((row) => {
+    const count = row.querySelector('[data-slot="tree-folder-count"]')!;
+    const name = count.previousElementSibling!.lastElementChild ?? count.previousElementSibling!;
+    const [nameY, countY] = [name, count].map((el) => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+      el.append(probe);
+      const y = probe.getBoundingClientRect().bottom;
+      probe.remove();
+      return y;
+    });
+    return { name: nameY!, count: countY! };
+  });
+  expect(Math.abs(baselines.name - baselines.count)).toBeLessThanOrEqual(0.5);
   await src.click();
   await expect(src).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: /checkout\.tsx/ })).toHaveCount(0);

@@ -119,19 +119,40 @@ depth shows as one entry in its parent repo.
 
 ## Files
 
-Files is the second tab on the Changes screen. It browses the folder Changes reads, one folder at a
-time, and shows a file as text. It needs no git repository, so it works for a shell pane in any
-folder too. Inside a repository it also knows which entries git ignores, and hides them for you.
+Changes opens on the files of the folder it reads, one folder at a time, with the changes marked on
+them. It needs no git repository, so it works for a shell pane in any folder too. Inside a repository
+it also knows which entries git ignores, and hides them for you.
 
-Tap **Files** at the top of Changes. Tap a folder to open it and a file to read it. The path above the
-rows is a breadcrumb, and each folder in it is a link. The back arrow goes up one level: from a file
-to its folder, from a folder to the one above, and from the top to wherever Changes goes.
+- A changed file shows its status letter, and its icon changes shape and takes the same colour: a
+  pen for a changed file, a plus for a new one, a minus for a deleted one. A new file that git does
+  not track yet counts as changed, and shows in the same green as an added file.
+- A folder with changes inside it shows a dot and the number of changed files.
+- A deleted file stays in its folder, struck through, with a **D**. Tap it to see what was removed.
+- A folder outside every repository has no marks.
 
-A file opens as numbered, coloured source. Source is coloured up to 2000 lines and plain above that.
-A binary file shows its size and nothing else. A file over the size limit shows its first part and
-says so. A symlink shows as a link row and opens like a file.
+Tap a folder to open it and a file to read it. The path above the rows is a breadcrumb, and each
+folder in it is a link. The back arrow goes up one level: from a file to its folder, from a folder
+to the one above, and from the top to wherever Changes goes.
 
-Markdown, JSON and HTML files open on a **Preview**, with **Source** one tap away.
+### Changes only
+
+The **Changes only** button in the header, in every folder, shows the list of changes alone,
+grouped by repository.
+It carries the number of changed files. Your choice stays on this device, and it is off at first.
+The list has its own **Tree** button, which draws the changed files as a folder tree, and a
+**Filter** button. Refresh reads the list and the folder again.
+
+### One file
+
+A changed file opens on its **Diff**, with **Source** and, for some types, **Preview** one tap away.
+A file that did not change opens on its source or its preview. A deleted file has only its diff, and
+a new file shows as all added.
+
+Source is numbered and coloured up to 2000 lines and plain above that. A binary file shows its size
+and nothing else. A file over the size limit shows its first part and says so. A symlink shows as a
+link row and opens like a file.
+
+Markdown, JSON and HTML files open on a **Preview** when they did not change.
 
 | File | Preview |
 | --- | --- |
@@ -145,11 +166,11 @@ Markdown, JSON and HTML files open on a **Preview**, with **Source** one tap awa
 A JSON file that does not parse shows the error and its source. A tree is not drawn above 5000 values,
 and the source shows instead.
 
-A changed file whose type has a preview, and that is not deleted, shows a **Preview** button in the
-header of its diff. It opens the same file in Files.
+In **Changes only**, a changed file whose type has a preview, and that is not deleted, shows a
+**Preview** button in the header of its diff. It opens the same file screen on Preview.
 
-Files reads when you open a folder or a file, and again when you tap refresh. It never updates on a
-timer.
+A folder or a file is read when you open it, and again when you tap refresh. It never updates on a
+timer. The change marks follow the list of changes, which updates every 5 seconds while you look.
 
 ### Ignored files and the filter
 
@@ -205,8 +226,9 @@ open like any other row.
 - **1 MiB per file.** A larger file shows its first 1 MiB and says it was cut.
 - **Binary files show no text.** A file with a NUL byte in its first 8000 bytes counts as binary, git's
   own rule.
-- **No folder, no Files.** A workspace whose folder is your home folder, a folder above it, or `/`
-  has no Files tab, and neither has a zellij pane. A workspace folder that is a symlink to one of those
+- **No folder, no files.** A workspace whose folder is your home folder, a folder above it, or `/`
+  shows no folder. Changes says so and offers **Show changes only** when it still has a list of
+  changes. A zellij pane has no Changes button. A workspace folder that is a symlink to one of those
   counts as that folder.
 
 The full rules are in [ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md).
