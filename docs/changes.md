@@ -121,7 +121,7 @@ depth shows as one entry in its parent repo.
 
 Files is the second tab on the Changes screen. It browses the folder Changes reads, one folder at a
 time, and shows a file as text. It needs no git repository, so it works for a shell pane in any
-folder too.
+folder too. Inside a repository it also knows which entries git ignores, and hides them for you.
 
 Tap **Files** at the top of Changes. Tap a folder to open it and a file to read it. The path above the
 rows is a breadcrumb, and each folder in it is a link. The back arrow goes up one level: from a file
@@ -150,6 +150,26 @@ header of its diff. It opens the same file in Files.
 
 Files reads when you open a folder or a file, and again when you tap refresh. It never updates on a
 timer.
+
+### Ignored files and the filter
+
+Files hides what git ignores, such as `node_modules`, build output and logs. A quiet line under the
+list says how many rows are hidden, with a **Show** action.
+
+The **Filter** button in the header opens a row with a name field and one chip, **Ignored**. The
+name field narrows the current folder to the names that hold your text, in any case, and the button
+shows how many rows are left. The name filter clears when you open another folder. The **Ignored**
+chip turns the hidden rows on and off, and your choice stays on this device. Ignored rows show in a
+dimmer ink and open like any other row.
+
+- Collie asks git once for each folder it lists, and git's own rules decide. A tracked file is never
+  ignored, even when an ignore rule matches its name.
+- Everything inside an ignored folder is ignored too. A repository cloned inside the workspace
+  folder answers by its own rules.
+- With no repository, no git, or a git that does not answer within 2 seconds, nothing is hidden and
+  the list still shows.
+- This is a filter and not a lock. An ignored file still opens, and a request for it is answered like
+  any other.
 
 ### Who may use it
 
@@ -207,7 +227,8 @@ The full rules are in [ADR 0065](../.adr/0065-the-changes-view-reads-git-read-on
 In a [crew](crew.md), a pane or workspace on another machine is read on that machine. The lead
 forwards the request, and that machine's git answers. That machine must run Collie 1.13.0 or later.
 Files reads that machine's own disk, under that machine's own device rules, and needs Collie 1.17.0
-or later there.
+or later there. A member that is older, or one whose git does not answer, sends no ignored marks, so
+Files hides nothing for it.
 
 ## Limits
 

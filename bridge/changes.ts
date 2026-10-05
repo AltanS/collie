@@ -207,7 +207,7 @@ const HARDENING: readonly string[] = [
 ].flatMap((kv) => ["-c", kv]);
 
 /** A repo the way git is run against it: the folder that holds `.git`, and that `.git` entry. */
-interface RepoDirs {
+export interface RepoDirs {
   /** Real path of the work tree (the folder `.git` was found in). */
   workTree: string;
   /** `<workTree>/.git` — a folder, or a gitfile git follows itself. */
@@ -217,7 +217,7 @@ interface RepoDirs {
 /** How many git processes this module has started. Read by the tests that prove reads are shared. */
 export const gitRuns = { spawned: 0 };
 
-interface GitRun {
+export interface GitRun {
   code: number;
   stdout: Buffer;
   /** Output hit the cap and the process was killed. */
@@ -229,17 +229,20 @@ interface GitRun {
  * Run one git command against one repo. argv only, no shell; killed at the timeout; stdout read up
  * to `maxBytes` and the process killed past it.
  */
-async function runGit(
+export async function runGit(
   git: string,
   repo: RepoDirs,
   args: readonly string[],
   extraConfig: readonly string[],
   maxBytes: number,
+  opts: { input?: Uint8Array; timeoutMs?: number; literalPathspecs?: boolean } = {},
 ): Promise<GitRun> {
   const argv = [
     git,
     "--no-pager",
-    "--literal-pathspecs",
+    // `check-ignore` refuses this flag ("pathspec magic not supported"); its caller spells each path
+    // `./name` instead, which no magic can start with.
+    ...(opts.literalPathspecs === false ? [] : ["--literal-pathspecs"]),
     `--git-dir=${repo.gitDir}`,
     `--work-tree=${repo.workTree}`,
     ...HARDENING,
@@ -250,7 +253,8 @@ async function runGit(
   const proc = Bun.spawn(argv, {
     cwd: repo.workTree,
     env: gitEnv(process.env),
-    stdin: "ignore",
+    // `input` is how the Files view hands git file NAMES: on stdin, never in argv.
+    stdin: opts.input ?? "ignore",
     stdout: "pipe",
     stderr: "ignore",
   });
@@ -258,7 +262,7 @@ async function runGit(
   const timer = setTimeout(() => {
     timedOut = true;
     proc.kill();
-  }, GIT_TIMEOUT_MS);
+  }, opts.timeoutMs ?? GIT_TIMEOUT_MS);
   const chunks: Uint8Array[] = [];
   let size = 0;
   let capped = false;

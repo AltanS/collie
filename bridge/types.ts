@@ -918,12 +918,16 @@ export type WorkspaceChangeCommitDiffResponse = { workspaceId: string; workspace
 
 /**
  * One row of a Files listing. `link` is any symlink: it is listed and never followed by the listing.
- * `size` is present for a file only (the bytes on disk, from `lstat`).
+ * `size` is present for a file only (the bytes on disk, from `lstat`). `ignored` is present, and
+ * `true`, when git says the entry is ignored in the repository that holds the folder; absent means
+ * not ignored OR not known (no repository, no git, a timeout, an older member). A view filter, never
+ * a gate: an ignored file still reads.
  */
 export interface FileEntry {
   name: string;
   kind: "dir" | "file" | "link";
   size?: number;
+  ignored?: true;
 }
 
 /** Why a Files request has nothing to show: the Changes reasons, minus `no-git` (Files needs no git). */

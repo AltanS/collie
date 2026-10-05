@@ -20,6 +20,7 @@ import { fetchFileText, fetchFilesDir } from "../web/src/lib/api.ts";
 let base: string;
 let home: string;
 let root: string;
+let repoRoot: string;
 let fetchSpy: ReturnType<typeof spyOn> | undefined;
 
 // The phone's transport reads the mount off the page's `<meta>` and the device token out of
@@ -62,6 +63,14 @@ beforeAll(() => {
   writeFileSync(join(root, "README.md"), "# Hello\n");
   writeFileSync(join(root, "docs", "guide.md"), "guide\n");
   writeFileSync(join(root, "logo.bin"), new Uint8Array([0x89, 0x50, 0, 1, 2]));
+  // A second workspace that is a git repository with one ignored file and one ignored folder.
+  repoRoot = join(home, "repo");
+  mkdirSync(join(repoRoot, "node_modules"), { recursive: true });
+  writeFileSync(join(repoRoot, ".gitignore"), "node_modules/\n*.log\n");
+  writeFileSync(join(repoRoot, "debug.log"), "noise\n");
+  writeFileSync(join(repoRoot, "main.ts"), "export {};\n");
+  const git = Bun.spawnSync(["git", "init", "-q"], { cwd: repoRoot, stdout: "pipe", stderr: "pipe" });
+  if (git.exitCode !== 0) throw new Error(`git init: ${git.stderr.toString()}`);
 });
 
 afterAll(() => {
@@ -97,6 +106,33 @@ describe("the phone's Files fetchers read the bridge's real answers", () => {
     if (docs.outcome !== "body" || !docs.body.available) throw new Error("expected a listing");
     expect(docs.body).toMatchObject({ workspaceId: "w1", dir: "docs" });
     expect(docs.body.entries).toEqual([{ name: "guide.md", kind: "file", size: 6 }]);
+  });
+
+  test("a listing carries ignored: true on what git ignores, and none on a folder with no repository", async () => {
+    const engine2 = {
+      current: (): RootSnapshot => ({
+        agents: [pane("w2:p1", "w2", repoRoot)],
+        shellPanes: [],
+        workspaces: [space("w2", "repo")],
+      }),
+    };
+    serveFromBridge((url) => {
+      const ws = /^\/api\/workspace\/([^/]+)\/files$/.exec(url.pathname);
+      return ws ? workspaceFiles(engine2, decodeURIComponent(ws[1]!), url, asked(url), [], home) : bridge(url);
+    });
+    const repo = await fetchFilesDir({ kind: "space", spaceId: "w2" }, "");
+    if (repo.outcome !== "body" || !repo.body.available) throw new Error("expected a listing");
+    expect(repo.body.entries).toEqual([
+      { name: "node_modules", kind: "dir", ignored: true },
+      { name: ".gitignore", kind: "file", size: 20 },
+      { name: "debug.log", kind: "file", size: 6, ignored: true },
+      { name: "main.ts", kind: "file", size: 11 },
+    ]);
+    // An older member sends no field, and the first workspace has no repository: the same shape.
+    serveFromBridge(bridge);
+    const plain = await fetchFilesDir({ kind: "space", spaceId: "w1" }, "");
+    if (plain.outcome !== "body" || !plain.body.available) throw new Error("expected a listing");
+    expect(JSON.stringify(plain.body.entries)).not.toContain("ignored");
   });
 
   test("a file, as text and as binary", async () => {
