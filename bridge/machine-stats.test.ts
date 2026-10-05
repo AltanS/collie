@@ -8,6 +8,7 @@ import {
   MachineSampler,
   netRate,
   parseMeminfo,
+  isSkippedInterface,
   parseNetDev,
   parseProcStat,
   SAMPLE_MIN_INTERVAL_MS,
@@ -115,6 +116,38 @@ describe("network", () => {
     const counters = parseNetDev(NETDEV(5, [1000, 200], [30, 40]))!;
     expect([...counters.keys()]).toEqual(["eth0", "wlan0"]);
     expect(counters.get("eth0")).toEqual({ rx: 1000, tx: 200 });
+  });
+
+  test("parseNetDev counts physical interfaces only: bridges, veth and tap ends, tunnels and aggregates are left out", () => {
+    const row = (name: string) => `  ${name}: 100 1 0 0 0 0 0 0 50 1 0 0 0 0 0 0`;
+    const counted = ["eth0", "enp3s0", "eno1", "wlan0", "wlp2s0", "wwan0", "usb0", "ens5"];
+    const skipped = [
+      "lo",
+      "veth1a2b3c",
+      "docker0",
+      "br-0123abcd",
+      "br0",
+      "virbr0",
+      "vnet3",
+      "tap0",
+      "cni0",
+      "flannel.1",
+      "cali1234",
+      "cilium_host",
+      "podman0",
+      "lxdbr0",
+      "tailscale0",
+      "wg0",
+      "tun0",
+      "ztabcdef",
+      "bond0",
+      "team0",
+      "eth0.100",
+    ];
+    const text = ["Inter-|   Receive |  Transmit", " face |bytes |bytes", ...counted.map(row), ...skipped.map(row)].join("\n");
+    expect([...parseNetDev(text)!.keys()]).toEqual(counted);
+    for (const name of skipped) expect(isSkippedInterface(name)).toBe(true);
+    for (const name of counted) expect(isSkippedInterface(name)).toBe(false);
   });
 
   test("the rate is per second over the interfaces present in both readings", () => {

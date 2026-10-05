@@ -501,7 +501,10 @@ export interface MachineSample {
   memTotal: number;
   /** The one-minute load average. Absent on Windows, where there is none. */
   load1?: number;
-  /** Received bytes per second over all interfaces but loopback. Absent without counters. */
+  /**
+   * Received bytes per second over the physical interfaces (`isSkippedInterface` in
+   * bridge/machine-stats.ts leaves out loopback, bridges, veth ends and tunnels). Absent without counters.
+   */
   rxBps?: number;
   txBps?: number;
 }
