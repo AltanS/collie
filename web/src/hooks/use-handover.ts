@@ -15,11 +15,18 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 // and the layer draws whatever phase says; the body may change only at `idle` or at `covered`.
 //
 //   covering   the veil comes in and the Collie mark flies to the centre. The body is HELD.
-//   covered    the mark rests at the centre. The body may swap, and does, under the cover. The phase
-//              stays until the body that will show is ready (hooks/use-chat-ready.ts has answered) or
-//              {@link CAP_MS} has passed, so the reveal always uncovers the final body.
+//   covered    the mark rests at the centre for its dwell. The body may swap, and does, under the
+//              cover.
 //   revealing  the mark goes home, the agent's mark rises, the veil leaves. The body is HELD again.
 //
+// ── THE HANDOVER WAITS FOR NOTHING BUT ITS OWN ANIMATION ─────────────────────────────────────────
+// Until the 1.17.0 review the rest lasted until the body that would show was ready (a session
+// reported, a first chat answer in), with a 1500 ms cap. That wait held the cover over a pane for
+// the whole cap whenever the session came late, and still revealed the terminal, so Chat arrived
+// later with no cover at all. Since then the body is decided at once (lib/chat-gate.ts: a new agent
+// pane draws Chat even with nothing to read yet), so there is nothing to wait for. The rest is its
+// dwell, the reveal follows it, and the cover lifts exactly once, when the animation ends.
+
 // ── ANIMATIONEND ADVANCES IT, A TIMER GUARANTEES IT ──────────────────────────────────────────────
 // The layer reports `animationend` of the covering animation, which is what keeps the phase and the
 // picture one clock. Every phase also has a timer, and the timer is what makes the sequence finish:
@@ -33,7 +40,7 @@ export type HandoverPhase = "idle" | "covering" | "covered" | "revealing";
 interface Timings {
   /** Until the cover is complete: the mark has reached the centre. `animationend` usually beats it. */
   cover: number;
-  /** The least the cover rests for once complete, so the beat survives an answer already in hand. */
+  /** How long the cover rests once complete. The body swaps under it, and the reveal follows it. */
   dwell: number;
   /** The whole reveal, until the layer has left. */
   reveal: number;
@@ -46,35 +53,26 @@ export const MOTION_TIMINGS: Timings = { cover: 380, dwell: 380, reveal: 640, sl
 /** Reduced motion: a still picture, no keyframe to wait for, so the timers are the clock. */
 export const CALM_TIMINGS: Timings = { cover: 150, dwell: 250, reveal: 400, slack: 0 };
 
-/** The longest a covered pane waits for the body that will show. A failed read must not strand it. */
-export const CAP_MS = 1500;
-
 export interface HandoverState {
   phase: HandoverPhase;
   /** The reduced-motion reading, taken once when the sequence began. */
   calm: boolean;
-  /** The covered pane has rested its minimum. Meaningful in `covered` only. */
-  dwelled: boolean;
-  /** The covered pane has waited its cap. Meaningful in `covered` only. */
-  capped: boolean;
 }
 
 export type HandoverAction =
   | { type: "start"; calm: boolean }
   /** The cover is complete: `animationend` of the covering animation, or its timer. */
   | { type: "covered" }
+  /** The covered pane has rested its dwell: the reveal starts. */
   | { type: "dwelled" }
-  | { type: "capped" }
-  /** `ready`: the body that will show is on hand. Moves `covered` on only when it may. */
-  | { type: "reveal"; ready: boolean }
   /** The layer is gone: its last animation ended, its timer ran out, or a tap ended it. */
   | { type: "finish" };
 
-export const IDLE: HandoverState = { phase: "idle", calm: false, dwelled: false, capped: false };
+export const IDLE: HandoverState = { phase: "idle", calm: false };
 
 /** The state the sequence starts in. */
 export function covering(calm: boolean): HandoverState {
-  return { phase: "covering", calm, dwelled: false, capped: false };
+  return { phase: "covering", calm };
 }
 
 /**
@@ -89,13 +87,7 @@ export function handoverReducer(state: HandoverState, action: HandoverAction): H
     case "covered":
       return state.phase === "covering" ? { ...state, phase: "covered" } : state;
     case "dwelled":
-      return state.phase === "covered" ? { ...state, dwelled: true } : state;
-    case "capped":
-      return state.phase === "covered" ? { ...state, capped: true } : state;
-    case "reveal":
-      // Only a covered pane that has rested, and only for a body that is ready or a cap that passed.
-      if (state.phase !== "covered" || !state.dwelled) return state;
-      return action.ready || state.capped ? { ...state, phase: "revealing" } : state;
+      return state.phase === "covered" ? { ...state, phase: "revealing" } : state;
     case "finish":
       // From any phase, and at once: a tap ends the layer wherever it is.
       return IDLE;
@@ -145,17 +137,22 @@ export interface Handover {
  *
  * @param active whether the agent-start layer is on screen (`useAgentStart` has an edge). Turning on
  *   begins the sequence; turning off ends it from any phase.
- * @param ready whether the body that WILL show is ready. The reveal waits for it, up to {@link CAP_MS}.
  * @param finish how the layer is taken down: the hook only decides WHEN, the caller owns the edge.
  */
-export function useHandover(active: boolean, ready: boolean, finish: () => void): Handover {
-  const [state, dispatch] = useReducer(handoverReducer, active, (on) => (on ? covering(prefersCalm()) : IDLE));
+export function useHandover(active: boolean, finish: () => void): Handover {
+  const [reduced, dispatch] = useReducer(handoverReducer, active, (on) => (on ? covering(prefersCalm()) : IDLE));
   // `active` moving is an event of this machine, taken in the render that sees it so the layer and
-  // the body gate never disagree for a frame (the adjust-state-in-render pattern).
+  // the body gate never disagree for a frame (the adjust-state-in-render pattern). The state this
+  // render returns is the one the dispatch WILL produce, not the one the reducer still holds: a
+  // caller's own render-time state (useHeldBody) must see `covering` in this very pass, or it would
+  // take the swap as allowed at `idle` and keep it.
   const [wasActive, setWasActive] = useState(active);
+  let state = reduced;
   if (active !== wasActive) {
     setWasActive(active);
-    dispatch(active ? { type: "start", calm: prefersCalm() } : { type: "finish" });
+    const action: HandoverAction = active ? { type: "start", calm: prefersCalm() } : { type: "finish" };
+    dispatch(action);
+    state = handoverReducer(reduced, action);
   }
 
   // Read through a ref, so a caller's fresh closure every render cannot restart the revealing timer.
@@ -163,7 +160,7 @@ export function useHandover(active: boolean, ready: boolean, finish: () => void)
   finishRef.current = finish;
   const onFinish = useCallback(() => finishRef.current(), []);
 
-  const { phase, calm, dwelled } = state;
+  const { phase, calm } = state;
   const timings = calm ? CALM_TIMINGS : MOTION_TIMINGS;
 
   // Each phase's own clock. These are the guarantee; the layer's `animationend` is the fast path.
@@ -174,22 +171,13 @@ export function useHandover(active: boolean, ready: boolean, finish: () => void)
     }
     if (phase === "covered") {
       const rest = setTimeout(() => dispatch({ type: "dwelled" }), timings.dwell);
-      const cap = setTimeout(() => dispatch({ type: "capped" }), CAP_MS);
-      return () => {
-        clearTimeout(rest);
-        clearTimeout(cap);
-      };
+      return () => clearTimeout(rest);
     }
     if (phase === "revealing") {
       const id = setTimeout(onFinish, timings.reveal + timings.slack);
       return () => clearTimeout(id);
     }
   }, [phase, timings, onFinish]);
-
-  // The reveal, offered whenever something it depends on moves. The reducer decides if it may.
-  useEffect(() => {
-    if (phase === "covered") dispatch({ type: "reveal", ready });
-  }, [phase, dwelled, state.capped, ready]);
 
   const onCovered = useCallback(() => dispatch({ type: "covered" }), []);
 

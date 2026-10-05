@@ -4,7 +4,7 @@ import { useState, type ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider, useParams } from "react-router";
+import { createMemoryRouter, RouterProvider, useParams, useRevalidator } from "react-router";
 
 import { __resetConnectionHealth } from "@/lib/connection-health";
 
@@ -3250,30 +3250,45 @@ describe("AgentChat — the handover from a shell to an agent", () => {
   });
 });
 
-// ── THE HANDOVER'S CLOCK, WITH FAKE TIMERS (1.17.0 review) ───────────────────────────────────────
+// ── CHAT FROM THE FIRST FRAME: FIVE TIMELINES, WITH FAKE TIMERS (1.17.0 review) ─────────────────
 //
-// The cover waits for the body that WILL show. A harness that reports its session late must not hold
-// the pane covered for ever, and Codex, which reports its session only on the first prompt, must not
-// wait at all: nothing the bloom could wait for will arrive during it. The phases run on their
-// timers here (jsdom fires no `animationend`): covering ends at 530 ms, the cover rests until 910 ms,
-// the reveal lasts 790 ms more, and a covered pane that never gets its body is revealed at the cap,
-// 1500 ms after it was covered.
-describe("AgentChat — the handover waits only for a session that can arrive", () => {
+// The operator's report: Codex never reached Chat, handing a pane to pi took long, and the bloom did
+// not match the swap. The rule since (lib/chat-gate.ts, ADR 0082 point 4): a NEW agent pane draws
+// Chat from the first frame, with nothing to wait for, and the handover ends when its animation
+// ends. These cases replay each harness's real order of events and record two things: every body
+// drawn, in order, and every phase the layer showed. The phases run on their timers here (jsdom
+// fires no `animationend`): covering ends at 530 ms, the rest at 910 ms, the reveal at 1700 ms.
+describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
   const shell = fixtureShellPanes[0]!;
   const layer = () => screen.queryByRole("status", { name: /^Handed to / });
 
+  // What the chat route answers. `no-log` is pi before its first reply; `live` is the fixture window.
+  let chatAnswer: "live" | "no-log" = "live";
   beforeEach(() => {
     vi.useFakeTimers();
+    chatAnswer = "live";
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () =>
+        chatAnswer === "live"
+          ? undefined // fall through to the fixture window (test/handlers.ts)
+          : HttpResponse.json({ paneId: shell.paneId, available: false, reason: "no-log" }),
+      ),
+    );
   });
   afterEach(() => {
     vi.useRealTimers();
   });
 
+  /** One recorded frame: which body is drawn, and which phase the layer is in (or none). */
+  type Frame = { body: "chat" | "terminal"; phase: string };
   function renderShell() {
     let setAgent: (a: AgentView) => void = () => {};
+    let revalidate: () => void = () => {};
     function Host() {
       const [agent, set] = useState<AgentView>(shell);
       setAgent = set;
+      const r = useRevalidator();
+      revalidate = r.revalidate;
       return (
         <AgentChat
           paneId={shell.paneId}
@@ -3287,70 +3302,225 @@ describe("AgentChat — the handover waits only for a session that can arrive", 
         />
       );
     }
-    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Host />) }]);
-    render(<RouterProvider router={router} />);
-    return { setAgent: (a: AgentView) => act(() => setAgent(a)) };
+    // A loader that takes a beat, so a revalidation is a real poll: the chat window rides its
+    // loading→idle edge, and an instant loader would fold both into one render.
+    const loader = () => new Promise<null>((resolve) => setTimeout(() => resolve(null), 20));
+    const router = createMemoryRouter([{ path: "/", loader, element: withHeaderHost(<Host />) }]);
+    const { container } = render(<RouterProvider router={router} />);
+    const frames: Frame[] = [];
+    const look = () => {
+      const frame: Frame = {
+        body: container.querySelector('[data-slot="session-stream"]') ? "chat" : "terminal",
+        phase: layer()?.getAttribute("data-phase") ?? "none",
+      };
+      const last = frames.at(-1);
+      if (!last || last.body !== frame.body || last.phase !== frame.phase) frames.push(frame);
+    };
+    return {
+      container,
+      frames,
+      look,
+      set: (a: AgentView) => {
+        act(() => setAgent(a));
+        look();
+      },
+      poll: () =>
+        act(() => {
+          void revalidate();
+        }),
+    };
   }
 
-  // In steps, each its own `act`: React holds effects until `act` exits, and a phase's timer is set
-  // by an effect, so one long advance would run past timers that are not armed yet.
-  const advance = async (ms: number) => {
-    for (let left = ms; left > 0; left -= 50) await act(() => vi.advanceTimersByTimeAsync(Math.min(50, left)));
-  };
-  const agentOf = (name: string, hasSession: boolean): AgentView => ({
+  /**
+   * Advance in steps, each its own `act` (React holds effects until `act` exits, and a phase's timer
+   * is armed by an effect), and record the frame after every step.
+   */
+  async function advance(view: ReturnType<typeof renderShell>, ms: number) {
+    for (let left = ms; left > 0; left -= 50) {
+      await act(() => vi.advanceTimersByTimeAsync(Math.min(50, left)));
+      view.look();
+    }
+  }
+
+  const agentOf = (name: string, status: AgentStatus, hasSession: boolean): AgentView => ({
     ...shell,
     agent: name,
     kind: "agent",
-    status: "working",
+    status,
     hasSession,
   });
+  /** The bodies drawn, in order, with repeats folded. */
+  const bodies = (frames: Frame[]) => frames.map((f) => f.body).filter((b, i, all) => i === 0 || all[i - 1] !== b);
+  /** The layer's phases, in order, with repeats folded. */
+  const phases = (frames: Frame[]) => frames.map((f) => f.phase).filter((p, i, all) => i === 0 || all[i - 1] !== p);
+  /** The body may change only where the cover allows it: never while covering or revealing. */
+  function swapsOnlyUnderCover(frames: Frame[]) {
+    for (let i = 1; i < frames.length; i += 1) {
+      if (frames[i]!.body !== frames[i - 1]!.body) {
+        expect(["none", "covered"]).toContain(frames[i]!.phase);
+      }
+    }
+  }
+  const startLine = () => screen.queryByText("Send a message to start.");
 
-  it("Codex reveals as soon as the bloom completes, with no wait for a session", async () => {
-    const { setAgent } = renderShell();
-    await advance(50); // the capability read lands, so a missing session is the reported kind
-    setAgent(agentOf("codex", false));
+  async function handOver(view: ReturnType<typeof renderShell>, agent: AgentView) {
+    await advance(view, 50); // the capability read lands
+    view.set(agent);
     expect(layer()).toHaveAttribute("data-phase", "covering");
-
-    // Covered at 530 ms, rested at 910 ms: the reveal starts there, nowhere near the 1500 ms cap.
-    await advance(1000);
-    expect(layer()).toHaveAttribute("data-phase", "revealing");
-
-    // The layer is gone before a capped wait would even have ended (530 + 1500), the terminal under it.
-    await advance(800);
+    // The cover is gone at 1700 ms, the length of the animation and not one beat more.
+    await advance(view, 1650);
+    expect(layer()).not.toBeNull();
+    await advance(view, 100);
     expect(layer()).toBeNull();
-    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    // It lifted exactly once: one covering, one rest, one reveal, then nothing.
+    expect(phases(view.frames)).toEqual(["none", "covering", "covered", "revealing", "none"]);
+  }
+
+  it("(a) Codex: Chat from the first frame, through the first prompt, to the session two seconds later", async () => {
+    const view = renderShell();
+    await handOver(view, agentOf("codex", "idle", false));
+    expect(startLine()).toBeInTheDocument();
+    expect(screen.queryByText(/first message/)).toBeNull(); // no "reports its session" note
+
+    view.set(agentOf("codex", "working", false)); // the first prompt
+    await advance(view, 2000);
+    expect(screen.getByText("Still working…")).toBeInTheDocument();
+    view.set(agentOf("codex", "working", true)); // the hook reports the session
+    await advance(view, 200);
+    expect(screen.getByText("what changed today?")).toBeInTheDocument();
+
+    expect(bodies(view.frames)).toEqual(["terminal", "chat"]);
+    swapsOnlyUnderCover(view.frames);
   });
 
-  it("a harness that reports its session after the bloom is still revealed, never stuck covered", async () => {
-    const { setAgent } = renderShell();
-    await advance(50);
-    setAgent(agentOf("claude", false));
-    await advance(1200);
-    // Covered and resting past its minimum, waiting for a body that can still arrive: the terminal.
-    expect(layer()).toHaveAttribute("data-phase", "covered");
-    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+  it("(b) pi: the session at start, no log until the first reply, and no 'no transcript' notice", async () => {
+    chatAnswer = "no-log";
+    const view = renderShell();
+    await handOver(view, agentOf("pi", "idle", true));
+    expect(startLine()).toBeInTheDocument();
+    expect(screen.queryByText(/No transcript file/)).toBeNull();
 
-    // The session arrives, the first chat answer follows, and the reveal uncovers Chat.
-    setAgent(agentOf("claude", true));
-    await advance(300);
-    expect(layer()).toHaveAttribute("data-phase", "revealing");
-    await advance(900);
-    expect(layer()).toBeNull();
+    view.set(agentOf("pi", "working", true));
+    await advance(view, 3000);
+    view.poll();
+    await advance(view, 100);
+    expect(screen.getByText("Still working…")).toBeInTheDocument();
+    expect(screen.queryByText(/No transcript file/)).toBeNull();
+
+    chatAnswer = "live"; // the first reply wrote the log
+    view.poll();
+    await advance(view, 200);
     expect(screen.getByText("what changed today?")).toBeInTheDocument();
+
+    expect(bodies(view.frames)).toEqual(["terminal", "chat"]);
+    swapsOnlyUnderCover(view.frames);
   });
 
-  it("a session that arrives after the cap does not strand the cover, and Chat lands once it is down", async () => {
-    const { setAgent } = renderShell();
-    await advance(50);
-    setAgent(agentOf("claude", false));
-    // Covered at 530 ms, capped at 2030 ms, revealed, gone at 2820 ms. No session in all that time.
-    await advance(3000);
-    expect(layer()).toBeNull();
-    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+  it("(c) pi with its session report one poll late: still one swap, under the cover", async () => {
+    chatAnswer = "no-log";
+    const view = renderShell();
+    await handOver(view, agentOf("pi", "idle", false));
+    expect(startLine()).toBeInTheDocument();
 
-    setAgent(agentOf("claude", true));
-    await advance(300);
+    view.set(agentOf("pi", "idle", true)); // the report lands on the next poll
+    await advance(view, 200);
+    expect(startLine()).toBeInTheDocument();
+    expect(screen.queryByText(/No transcript file/)).toBeNull();
+
+    view.set(agentOf("pi", "working", true));
+    await advance(view, 2000);
+    chatAnswer = "live";
+    view.poll();
+    await advance(view, 200);
     expect(screen.getByText("what changed today?")).toBeInTheDocument();
-    expect(layer()).toBeNull();
+
+    expect(bodies(view.frames)).toEqual(["terminal", "chat"]);
+    swapsOnlyUnderCover(view.frames);
+  });
+
+  it("(d) no hook installed: Chat while the pane is new, the terminal and its hint once it has worked 15 s", async () => {
+    const view = renderShell();
+    await handOver(view, agentOf("claude", "idle", false));
+    expect(startLine()).toBeInTheDocument();
+
+    view.set(agentOf("claude", "working", false));
+    await advance(view, 14_900);
+    expect(view.container.querySelector('[data-slot="session-stream"]')).not.toBeNull();
+    await advance(view, 150);
+    // The fallback: the terminal, with the line that names the missing hook.
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    expect(screen.getByText(/has not reported a session to Herdr/i)).toBeInTheDocument();
+
+    // A session that arrives after all takes the pane back to Chat, in one more quiet swap.
+    view.set(agentOf("claude", "working", true));
+    await advance(view, 300);
+    expect(screen.getByText("what changed today?")).toBeInTheDocument();
+
+    expect(bodies(view.frames)).toEqual(["terminal", "chat", "terminal", "chat"]);
+    swapsOnlyUnderCover(view.frames);
+  });
+
+  it("(d) a log that never appears: the terminal says so after the grace, and Chat returns when it does", async () => {
+    chatAnswer = "no-log";
+    const view = renderShell();
+    await handOver(view, agentOf("pi", "idle", true));
+    view.set(agentOf("pi", "working", true));
+    await advance(view, 15_100);
+    view.poll();
+    await advance(view, 100);
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    expect(screen.getByText("No transcript file was found for this pane's session yet.")).toBeInTheDocument();
+
+    chatAnswer = "live";
+    view.poll();
+    await advance(view, 300);
+    await advance(view, 1500); // the swap back waits for its first answer, as a ⋮ switch does
+    expect(screen.getByText("what changed today?")).toBeInTheDocument();
+    expect(bodies(view.frames)).toEqual(["terminal", "chat", "terminal", "chat"]);
+  });
+
+  it("(e) a device on the terminal sees the terminal throughout, and the cover still lifts once", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+    const view = renderShell();
+    await handOver(view, agentOf("codex", "idle", false));
+    expect(screen.getByText(/reports its session to Herdr only after its first message/i)).toBeInTheDocument();
+    view.set(agentOf("codex", "working", false));
+    await advance(view, 16_000);
+    view.set(agentOf("codex", "working", true));
+    await advance(view, 300);
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    expect(bodies(view.frames)).toEqual(["terminal"]);
+  });
+
+  it("(e) on the terminal, a harness with its session at start is not drawn as Chat either", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+    const view = renderShell();
+    await handOver(view, agentOf("claude", "working", true));
+    expect(bodies(view.frames)).toEqual(["terminal"]);
+  });
+
+  it("a pane first opened already working with no session keeps the terminal at once, as before", async () => {
+    const agent = agentOf("claude", "working", false);
+    const router = createMemoryRouter([
+      {
+        path: "/",
+        element: withHeaderHost(
+          <AgentChat
+            paneId={agent.paneId}
+            agent={agent}
+            agents={[agent]}
+            shellPanes={[]}
+            tabs={[]}
+            text={paneTextWithDraft("recent pane output")}
+            onBack={vi.fn()}
+            onSelect={vi.fn()}
+          />,
+        ),
+      },
+    ]);
+    const { container } = render(<RouterProvider router={router} />);
+    await act(() => vi.advanceTimersByTimeAsync(100));
+    expect(container.querySelector('[data-slot="session-stream"]')).toBeNull();
+    expect(screen.getByText(/has not reported a session to Herdr/i)).toBeInTheDocument();
   });
 });

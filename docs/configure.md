@@ -585,8 +585,8 @@ they are part of the content stream rather than chrome.
 
 > **Note.** Chat is the default view of an agent pane since 1.17.0. Terminal is one tap away.
 
-A pane that has an agent session opens in **Chat**. Chat draws the agent's own conversation instead
-of the terminal: your turns, its replies, thinking behind a fold and a card per step. The composer,
+An agent pane opens in **Chat**. Chat draws the agent's own conversation instead of the terminal:
+your turns, its replies, thinking behind a fold and a card per step. The composer,
 the belt and the pane menu stay where they were. To read the terminal instead, open the pane's **⋮**
 menu and tap **Terminal view**. The choice is one setting for the whole device, stored in the
 browser, and a device that already chose the terminal keeps it. **Chat view** in the same menu
@@ -611,8 +611,15 @@ starts, so an agent that was already running when you installed it needs a resta
 `omp` integration, not the `pi` one: they are two agents with two hooks, and they share one log
 format.
 
-A pane whose agent never named its session keeps the terminal, and the **⋮** row says why. Chat never
-hides the row, so you can tell a missing hook from a missing feature. `collie doctor` lists those
+A new agent pane shows Chat at once, before it has anything to read, with one line: "Send a
+message to start". Codex reports its session only after your first message, and pi writes its log
+only after its first reply, so both start this way. The conversation appears as soon as there is one.
+
+A pane falls back to the terminal when it has worked for 15 seconds and still has no session, or no
+log file to read. The terminal then shows a line that names what is missing, and the **⋮** row says
+why. A pane that was already busy when you first opened it, with no session, shows the terminal at
+once. When the session or the log arrives later, the pane goes back to Chat. Chat never hides the
+row, so you can tell a missing hook from a missing feature. `collie doctor` lists those
 panes under `agent-sessions` and names the integration line (`integration-<agent>`) that fixes each.
 The [troubleshooting page](troubleshooting.md) has the steps, under **a pane has no Chat or History**.
 
