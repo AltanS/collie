@@ -1024,6 +1024,37 @@ export type ChangeCommitResponse = ChangesWorkspace & ChangeCommit;
 /** GET …/changes?view=commit&repo=&path= — one file of that commit. */
 export type ChangeCommitDiffResponse = ChangesWorkspace & ChangeCommitDiff;
 
+/** What one row of a folder listing is. `link` is any symlink: listed, never followed (ADR 0083). */
+export type FileEntryKind = "dir" | "file" | "link";
+
+/** One row of a folder listing. `size` is in bytes and present for files only. Mirrors bridge/types.ts. */
+export interface FileEntry {
+  name: string;
+  kind: FileEntryKind;
+  size?: number;
+}
+
+/**
+ * One folder of the Changes root, not recursive (ADR 0083). `dir` and every path below use `/`, never
+ * start with `/`, and `""` is the root. `truncated`: the folder held more entries than the cap.
+ */
+export type FilesListing =
+  | { available: false; reason: ChangesUnavailableReason }
+  | { available: true; root: string; dir: string; entries: FileEntry[]; truncated: boolean };
+
+/**
+ * One text file under the Changes root. `text` is `""` when `binary`; it is cut at the cap with
+ * `truncated: true`, and `size` is the whole file's bytes either way.
+ */
+export type FileRead =
+  | { available: false; reason: ChangesUnavailableReason }
+  | { available: true; root: string; path: string; size: number; binary: boolean; truncated: boolean; text: string };
+
+/** GET …/files and GET …/files?dir= — a folder, asked by pane or by workspace. */
+export type FilesListResponse = ChangesWorkspace & FilesListing;
+/** GET …/files?path= — one file, asked by pane or by workspace. */
+export type FileReadResponse = ChangesWorkspace & FileRead;
+
 /**
  * GET /api/pane/:id/history — real conversation history, read from the agent's own session log.
  *

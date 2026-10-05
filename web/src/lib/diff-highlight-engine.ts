@@ -134,3 +134,14 @@ function highlightHunk(
     out[i] = exact((side === "old" ? old : neu).get(i), row.text);
   }
 }
+
+/**
+ * Tokens per line of one whole text (the Files view's source, ADR 0083), index for index with
+ * `lines`: null for a line whose tokens do not spell it exactly, so colour never changes a glyph.
+ * The text is the lines joined by `\n`, so a block comment or a template string that spans lines
+ * colours every line it covers, which a line alone could never know. Pure, like `highlightRows`.
+ */
+export function highlightLines(lines: readonly string[], tokenize: Tokenizer): RowTokens {
+  const tokens = tokenize(lines.join("\n"));
+  return lines.map((line, i) => exact(tokens[i], line));
+}

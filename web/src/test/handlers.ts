@@ -6,6 +6,9 @@ import type {
   ChangeCommitDiffResponse,
   ChangeCommitResponse,
   CreateResponse,
+  FileEntry,
+  FileReadResponse,
+  FilesListResponse,
   CrewStatusResponse,
   PaneChangeDiffResponse,
   PaneChangesResponse,
@@ -562,6 +565,86 @@ export function fixtureCommitDiff(repo: string, path: string): ChangeCommitDiffR
   };
 }
 
+// The Files view (ADR 0083): a small tree under the same root the Changes fixture names. Shared by
+// the unit suite, the e2e stub and the playground, so a folder or a file means the same everywhere.
+const FILES_ROOT = "/home/you/webapp";
+const FILES_HEAD = { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "webapp" };
+
+const FIXTURE_FOLDERS = new Map<string, FileEntry[]>([
+  [
+    "",
+    [
+      { name: "docs", kind: "dir" },
+      { name: "src", kind: "dir" },
+      { name: "README.md", kind: "file", size: 1240 },
+      { name: "index.html", kind: "file", size: 468 },
+      { name: "logo.png", kind: "file", size: 20480 },
+      { name: "package.json", kind: "file", size: 312 },
+      { name: "current", kind: "link" },
+    ],
+  ],
+  ["docs", [{ name: "guide.md", kind: "file", size: 640 }]],
+  [
+    "src",
+    [
+      { name: "routes", kind: "dir" },
+      { name: "cart.ts", kind: "file", size: 214 },
+    ],
+  ],
+  ["src/routes", [{ name: "checkout.tsx", kind: "file", size: 388 }]],
+]);
+
+const FIXTURE_FILE_TEXT = new Map<string, string>([
+  [
+    "README.md",
+    [
+      "# Webapp",
+      "",
+      "A small shop. **Run it** with `bun dev`, then open the [docs](https://example.com/docs).",
+      "",
+      "- carts",
+      "- checkout",
+      "",
+      "<script>alert(1)</script>",
+      "",
+    ].join("\n"),
+  ],
+  ["docs/guide.md", "# Guide\n\nRead the cart code first.\n"],
+  [
+    "package.json",
+    JSON.stringify({ name: "webapp", version: "1.2.0", private: true, scripts: { dev: "vite", build: "vite build" }, files: ["dist", "src"] }, null, 2) + "\n",
+  ],
+  [
+    "index.html",
+    '<!doctype html><html><body style="font-family:sans-serif"><h1>Hello from a file</h1><p>Scripts, forms and remote files stay off.</p></body></html>\n',
+  ],
+  ["src/cart.ts", 'export function cartTotal(items: { price: number }[]): number {\n  return items.reduce((sum, item) => sum + item.price, 0);\n}\n'],
+  ["src/routes/checkout.tsx", 'export function Checkout() {\n  return <h1>Checkout</h1>;\n}\n'],
+]);
+
+const FIXTURE_BINARY = new Map<string, number>([["logo.png", 20480]]);
+
+/** The fixture folder `dir`, answered the way the bridge answers it, or null for a folder it has none of. */
+export function fixtureFilesDir(dir: string): FilesListResponse | null {
+  const entries = FIXTURE_FOLDERS.get(dir);
+  if (entries === undefined) return null;
+  return { ...FILES_HEAD, available: true, root: FILES_ROOT, dir, entries, truncated: false };
+}
+
+/** The fixture file `path`, answered the way the bridge answers it, or null for a path it has none of. */
+export function fixtureFileRead(path: string): FileReadResponse | null {
+  const bytes = FIXTURE_BINARY.get(path);
+  if (bytes !== undefined) {
+    return { ...FILES_HEAD, available: true, root: FILES_ROOT, path, size: bytes, binary: true, truncated: false, text: "" };
+  }
+  const text = FIXTURE_FILE_TEXT.get(path);
+  if (text === undefined) return null;
+  return { ...FILES_HEAD, available: true, root: FILES_ROOT, path, size: text.length, binary: false, truncated: false, text };
+}
+
+/** The route's one answer for a path that is not there, outside the root or denied. */
+export const FIXTURE_FILES_UNKNOWN = { error: "unknown-path" } as const;
+
 export const handlers = [
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
@@ -578,6 +661,13 @@ export const handlers = [
     }
     if (repo !== null && path !== null) return HttpResponse.json(fixtureChangeDiff(repo, path));
     return HttpResponse.json(fixtureChanges);
+  }),
+  // The Files view: a folder (`?dir=`, none for the root) or one file (`?path=`).
+  http.get(/\/api\/(?:pane|workspace)\/[^/]+\/files$/, ({ request }) => {
+    const q = new URL(request.url).searchParams;
+    const path = q.get("path");
+    const answer = path !== null ? fixtureFileRead(path) : fixtureFilesDir(q.get("dir") ?? "");
+    return answer === null ? HttpResponse.json(FIXTURE_FILES_UNKNOWN, { status: 404 }) : HttpResponse.json(answer);
   }),
   // Pane transcript history. Two turns, newest-anchored, with nothing older behind them.
   http.get(/\/api\/pane\/[^/]+\/history/, () =>

@@ -31,6 +31,8 @@ import type {
   ChangeCommitResponse,
   ChangeDiffResponse,
   ChangesResponse,
+  FileReadResponse,
+  FilesListResponse,
   PaneHistoryResponse,
   CrewStatusResponse,
   PaneReadResponse,
@@ -701,6 +703,101 @@ export function fetchChangeCommitDiff(
   const q = new URLSearchParams(changesQuery(lookup, file));
   q.set("view", "commit");
   return req<ChangeCommitDiffResponse>(withScope(`${changesBase(target)}?${q.toString()}`, scope), { signal });
+}
+
+// ── The Files view (ADR 0083) ─────────────────────────────────────────────────────────────────────
+// Two reads on one route: a folder (`?dir=`, or nothing for the root) and one file (`?path=`). Both
+// answer JSON only; file bytes are never served as a document. The two 404s mean different things and
+// the view must tell them apart, so this module turns each into a value instead of a throw.
+
+/**
+ * What a Files read came to. `body` is a 200. `unknown-path` is the bridge's one answer for a path
+ * that is absent, outside the root, denied, or the wrong kind. `stale` is any other 404: the route is
+ * additive-optional over a crew link, so a member one release behind has no `files` segment and
+ * answers `{ "error": "not found" }`, and the honest reading is "update this machine". The two 404s
+ * differ by the `error` value alone. `not-paired` and `not-authorised` are the two 403s: Files takes
+ * the paired-device gate that writes take, so a read can be refused too, with a plain-text body that
+ * names which gate said no (ADR 0083). No sentence here, as in {@link fetchChat}: the view resolves
+ * the words.
+ */
+export type FilesAnswer<T> =
+  | { outcome: "body"; body: T }
+  | { outcome: "unknown-path" }
+  | { outcome: "stale" }
+  | { outcome: "not-paired" }
+  | { outcome: "not-authorised" };
+
+const FILES_UNKNOWN_PATH = { outcome: "unknown-path" } as const;
+const FILES_STALE = { outcome: "stale" } as const;
+const FILES_NOT_PAIRED = { outcome: "not-paired" } as const;
+const FILES_NOT_AUTHORISED = { outcome: "not-authorised" } as const;
+
+type FilesRefusal =
+  | typeof FILES_UNKNOWN_PATH
+  | typeof FILES_STALE
+  | typeof FILES_NOT_PAIRED
+  | typeof FILES_NOT_AUTHORISED;
+
+/**
+ * A refusal on the files route, told apart by status and body: a 404 by its JSON `error` value, a
+ * 403 by its plain-text body (the same two bodies a refused write carries, lib/pairing.ts).
+ */
+function filesRefusal(status: number, detail: string): FilesRefusal | null {
+  if (status === 404) return parseJsonObject(detail)?.error === "unknown-path" ? FILES_UNKNOWN_PATH : FILES_STALE;
+  if (status !== 403) return null;
+  const body = detail.trim();
+  if (body === NOT_PAIRED_BODY) {
+    // Reads were ungated until Files, so nothing on a read could ever discover an unpaired device.
+    // Latch it as a refused write does: the app's read-only strip then names the remedy, once.
+    markNotPaired();
+    return FILES_NOT_PAIRED;
+  }
+  return body === "device not authorised" ? FILES_NOT_AUTHORISED : null;
+}
+
+const FILES_REFUSALS: ReadonlySet<unknown> = new Set([
+  FILES_UNKNOWN_PATH,
+  FILES_STALE,
+  FILES_NOT_PAIRED,
+  FILES_NOT_AUTHORISED,
+]);
+
+/** The refusal objects above are shared constants, so identity is the whole test: a parsed body is never one. */
+function isFilesRefusal<T>(got: T | FilesRefusal): got is FilesRefusal {
+  return FILES_REFUSALS.has(got);
+}
+
+async function filesRead<T>(path: string, scope: Scope | undefined, signal: AbortSignal | undefined): Promise<FilesAnswer<T>> {
+  const got = await req<T | FilesRefusal>(withScope(path, scope), { signal }, filesRefusal);
+  if (isFilesRefusal(got)) return got;
+  return { outcome: "body", body: got };
+}
+
+function filesBase(target: ChangesTarget): string {
+  return target.kind === "pane"
+    ? `/api/pane/${encodeURIComponent(target.paneId)}/files`
+    : `/api/workspace/${encodeURIComponent(target.spaceId)}/files`;
+}
+
+/** One folder of the root (`dir` is relative, `""` the root). Fetched on open and on refresh only. */
+export function fetchFilesDir(
+  target: ChangesTarget,
+  dir: string,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<FilesAnswer<FilesListResponse>> {
+  const q = dir === "" ? "" : `?${new URLSearchParams({ dir }).toString()}`;
+  return filesRead<FilesListResponse>(`${filesBase(target)}${q}`, scope, signal);
+}
+
+/** One file under the root, as text: cut at the bridge's cap, `binary` with no text. */
+export function fetchFileText(
+  target: ChangesTarget,
+  path: string,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<FilesAnswer<FileReadResponse>> {
+  return filesRead<FileReadResponse>(`${filesBase(target)}?${new URLSearchParams({ path }).toString()}`, scope, signal);
 }
 
 /**

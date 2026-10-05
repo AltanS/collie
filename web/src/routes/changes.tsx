@@ -3,7 +3,9 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
+import { FilesRoute } from "@/routes/changes-files";
 import { ChangeCountSlot } from "@/components/change-count";
+import { ChangesTabs } from "@/components/files-view";
 import { CleanRepos, CommitHead } from "@/components/changes-commit";
 import {
   ChangePath,
@@ -20,6 +22,7 @@ import {
   type ChangeRef,
 } from "@/components/changes-view";
 import { Button } from "@/components/ui/button";
+import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { Notice } from "@/components/ui/notice";
 import { SectionLabel } from "@/components/ui/section-label";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
@@ -47,6 +50,8 @@ import {
   type ChangesLayout,
 } from "@/lib/changes-tree";
 import { keepChangesList, keptChangesList } from "@/lib/changes-list-cache";
+import { unavailableKey } from "@/lib/changes-reason";
+import { previewKindFor, rootPathOf } from "@/lib/files-view";
 import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
 import { isAbortError } from "@/lib/loaders";
 import { t, tn, type MessageKey } from "@/lib/i18n";
@@ -55,10 +60,12 @@ import {
   changesCommitPath,
   changesPath,
   changesSettingsPath,
+  filesPath,
   panePath,
   readFrom,
   spaceChangesCommitPath,
   spaceChangesPath,
+  spaceFilesPath,
   spacePath,
   upTarget,
 } from "@/lib/nav";
@@ -72,7 +79,6 @@ import type {
   ChangeDiffResponse,
   ChangesResponse,
   ChangeStatus,
-  ChangesUnavailableReason,
   CleanRepo,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -175,13 +181,6 @@ function nextCommit(prev: CommitState | null, repo: string, data: ChangeCommitRe
   return { phase: "ready", repo, data: shared };
 }
 
-function unavailableKey(reason: ChangesUnavailableReason): MessageKey {
-  if (reason === "no-git") return "changes.unavailable.noGit";
-  if (reason === "no-pane") return "changes.unavailable.noPane";
-  if (reason === "no-workspace") return "changes.unavailable.noWorkspace";
-  return "changes.unavailable.noFolder";
-}
-
 /**
  * Collapsed tree folders, per route target (a pane or a space), for this session: in memory, so
  * leaving the view and coming back keeps them, and a reload opens every folder again.
@@ -203,7 +202,16 @@ interface FromList {
   fromList: true;
 }
 
+/**
+ * The Changes route. `…/changes/files` is the Files tab (ADR 0083): the same route, one segment below
+ * the list, drawn by its own screen. Everything else is the list, a file's diff or the commit view.
+ */
 export function ChangesRoute() {
+  const { "*": splat = "" } = useParams();
+  return splat === "files" ? <FilesRoute /> : <ChangesScreen />;
+}
+
+function ChangesScreen() {
   useLocale();
   const { paneId = "", spaceId = "", "*": splat = "" } = useParams();
   // Which route this is: the pane form or the space form. Both read the same list.
@@ -516,6 +524,14 @@ export function ChangesRoute() {
   };
   // Down one level to a repo's last commit (ADR 0067): a push that records the list as `from`.
   const showCommit = (repo: string) => nav.down(commitPathTo(repo));
+  // The Files tab is a sibling of this list, so switching is sideways: a replace that keeps this
+  // entry's way up (ADR 0067).
+  const openFilesTab = () => nav.side(target.kind === "pane" ? filesPath(paneId, scope) : spaceFilesPath(spaceId, scope));
+  // The diff's "Preview": the same file in Files, a level below this one (`?path=` is from the root).
+  const previewInFiles = (ref: ChangeRef) => {
+    const at = { path: rootPathOf(ref.repo, ref.path) };
+    nav.down(target.kind === "pane" ? filesPath(paneId, scope, at) : spaceFilesPath(spaceId, scope, at));
+  };
   // Up from the commit to the list: a step back onto it, or a replace when opened cold.
   const upToList = () => nav.up(pathTo());
   // Previous / Next REPLACE the entry, so browser back from any file lands on the list.
@@ -727,6 +743,7 @@ export function ChangesRoute() {
             oldPath={listedFile ? listedFile.oldPath : shownDiff?.oldPath}
             status={listedFile?.status ?? shownDiff?.status}
             gone={gone}
+            onPreview={current ? () => previewInFiles(current) : undefined}
             state={fileState}
             prev={prev}
             next={next}
@@ -753,7 +770,8 @@ export function ChangesRoute() {
             />
           </div>
         ) : (
-          <div className="p-4">
+          <div className="flex flex-col gap-4 p-4">
+            <ChangesTabs active="changes" onChange={(tab) => tab === "files" && openFilesTab()} />
             <ListBody
               state={list}
               arrive={listArrive}
@@ -942,6 +960,7 @@ function FileScreen({
   oldPath,
   status,
   gone,
+  onPreview,
   state,
   prev,
   next,
@@ -952,6 +971,8 @@ function FileScreen({
   status: ChangeStatus | undefined;
   /** A re-read found the file no longer changed; the diff below is the last one there was. */
   gone: boolean;
+  /** Open this file in Files. Set for every file; the header offers it for a previewable one that is not deleted. */
+  onPreview: (() => void) | undefined;
   state: FileState | null;
   prev: ChangeRef | undefined;
   next: ChangeRef | undefined;
@@ -974,6 +995,13 @@ function FileScreen({
         <span role="status" className="shrink-0 text-xs text-muted-foreground">
           {gone ? t("changes.file.gone") : ""}
         </span>
+        {/* A file Files can draw as a page, and that still exists. Its type is known from the path
+            before any read, so the button is there from the first frame. */}
+        {onPreview && status !== "D" && previewKindFor(path) !== null && (
+          <Button variant="outline" size="sm" className={cn("shrink-0", STRIP_TAP_TARGET)} onClick={onPreview} aria-label={t("changes.file.previewAria")}>
+            {t("changes.file.preview")}
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 py-2">

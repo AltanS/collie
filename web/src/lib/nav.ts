@@ -69,6 +69,61 @@ export function spaceChangesCommitPath(spaceId: string, scope: Scope | undefined
   return commitUnder(spaceChangesPath(spaceId, scope), repo, path);
 }
 
+/**
+ * Where the Files view is, inside the Changes root (ADR 0083): `dir` names a folder, `path` a file,
+ * both relative to the root with `/` and never a leading one. Neither is the root's own listing.
+ */
+export interface FilesAt {
+  dir?: string;
+  path?: string;
+}
+
+/**
+ * The Files view under a Changes list: `base` is the list's path (`/pane/:id/changes` or
+ * `/space/:id/changes`, scope query included). It is the same route as the list, one segment below,
+ * so the router keeps one component for both and a Files level shares the list's way up.
+ */
+function filesUnder(base: string, at?: FilesAt): string {
+  const cut = base.indexOf("?");
+  const [pathname, search] = cut === -1 ? [base, ""] : [base.slice(0, cut), base.slice(cut + 1)];
+  const q = new URLSearchParams(search);
+  if (at?.dir) q.set("dir", at.dir);
+  else if (at?.path) q.set("path", at.path);
+  const qs = q.toString();
+  return `${pathname}/files${qs === "" ? "" : `?${qs}`}`;
+}
+
+/** A pane's Files view: the root, or with `at` one folder or one file. */
+export function filesPath(paneId: string, scope?: Scope, at?: FilesAt): string {
+  return filesUnder(changesPath(paneId, scope), at);
+}
+
+/** A space's Files view: the same, asked by space. */
+export function spaceFilesPath(spaceId: string, scope?: Scope, at?: FilesAt): string {
+  return filesUnder(spaceChangesPath(spaceId, scope), at);
+}
+
+/**
+ * The level above one Files location: a file goes up to its folder, a folder to its parent, a
+ * top-level folder to the root. `null` at the root, where the way up is the Changes list's own.
+ */
+export function filesParent(at: FilesAt): FilesAt | null {
+  const rel = at.path ?? at.dir ?? "";
+  if (rel === "") return null;
+  const cut = rel.lastIndexOf("/");
+  return cut === -1 ? {} : { dir: rel.slice(0, cut) };
+}
+
+/** Every folder above a Files location, outermost first, the root excluded: `a/b/c.md` gives `a`, `a/b`. */
+export function filesFolders(at: FilesAt): string[] {
+  const rel = at.path ?? at.dir ?? "";
+  const segments = rel.split("/").filter((s) => s !== "");
+  const upTo = at.path !== undefined ? segments.length - 1 : segments.length;
+  const folders: string[] = [];
+  for (let n = 1; n <= upTo; n++) folders.push(segments.slice(0, n).join("/"));
+  return folders;
+}
+
 /** A space's detail route (its tabs + panes). Deep-linkable; carries the scope like panePath. */
 export function spacePath(spaceId: string, scope?: Scope): string {
   return `/space/${encodeURIComponent(spaceId)}${scopeSearch(scope)}`;
@@ -212,7 +267,8 @@ const ANY_SPACE = "/space/*";
  *   L1 `/space/:id`, `/settings`, `/crew`
  *   L2 `/pane/:id`, `/space/:id/changes`, `/settings/:section`, `/settings/updates`
  *   L3 `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
- *      `/space/:id/changes/commit`
+ *      `/pane/:id/changes/files` (a folder or a file is the same path with `?dir=` or `?path=`),
+ *      `/space/:id/changes/commit`, `/space/:id/changes/files`
  *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`)
  *
  * A pane's parent is whichever of the dashboard or a space opened it. `/crew` also accepts
@@ -230,6 +286,12 @@ export function ancestorsOf(pathname: string): string[] {
   }
   if (head === "pane" && seg.length === 4 && leaf === "changes" && seg[3] === "commit") {
     return [`/pane/${id}/changes`, `/pane/${id}`, ANY_SPACE, "/"];
+  }
+  // The Files view is the Changes list's sibling (ADR 0083): the same parents, and the folders inside
+  // it share one pathname, so a step between them is the Files screen's own (`filesParent`).
+  if (head === "space" && seg.length === 4 && leaf === "changes" && seg[3] === "files") return [`/space/${id}`, "/"];
+  if (head === "pane" && seg.length === 4 && leaf === "changes" && seg[3] === "files") {
+    return [`/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "pane" && seg.length === 2) return [ANY_SPACE, "/"];
   if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "changes")) {
@@ -305,6 +367,26 @@ export function resolveUpTo(from: string | undefined, target: string, canGoBack 
   return { kind: "replace", to: target };
 }
 
+/** A stored href as a comparable key: its pathname and its query pairs in a fixed order. */
+function locationKey(href: string): string {
+  const cut = href.search(/[?#]/);
+  const pathname = cut === -1 ? href : href.slice(0, cut);
+  const search = cut === -1 || href[cut] === "#" ? "" : href.slice(cut + 1).split("#")[0] ?? "";
+  const pairs = [...new URLSearchParams(search).entries()].map(([k, v]) => `${k}=${v}`).toSorted();
+  return `${pathname}?${pairs.join("&")}`;
+}
+
+/**
+ * An UP move to one exact LOCATION: it steps back only when the entry behind is that very pathname
+ * and query, and otherwise replaces this entry with it. `resolveUpTo` compares pathnames, which is
+ * right between screens and wrong inside the Files view, where every folder shares one pathname and
+ * only `?dir=` tells them apart (ADR 0083).
+ */
+export function resolveUpToExact(from: string | undefined, target: string, canGoBack = true): UpMove {
+  if (canGoBack && from !== undefined && locationKey(from) === locationKey(target)) return { kind: "back" };
+  return { kind: "replace", to: target };
+}
+
 /**
  * The structural parents of a deep link, root first, each carrying the link's machine and session:
  * what a cold start puts behind the entry so the first swipe goes up (lib/nav-entry.ts). Empty for
@@ -330,6 +412,16 @@ export function parentChain(pathname: string, search: string): string[] {
     const list = `/${head}/${id}/changes${q}`;
     const chain = [home, `/${head}/${id}${q}`, list];
     return repo !== null && params.has("path") ? [...chain, commitUnder(list, repo)] : chain;
+  }
+  // The Files view: a folder or a file sits under every folder above it, then the root of the view,
+  // then the way up the Changes list has (ADR 0083).
+  if ((head === "space" || head === "pane") && seg.length === 4 && leaf === "changes" && seg[3] === "files") {
+    const params = new URLSearchParams(search);
+    const at: FilesAt = { dir: params.get("dir") ?? undefined, path: params.get("path") ?? undefined };
+    const list = `/${head}/${id}/changes${q}`;
+    const chain = [home, `/${head}/${id}${q}`];
+    if (filesParent(at) === null) return chain;
+    return [...chain, filesUnder(list), ...filesFolders(at).slice(0, at.path !== undefined ? undefined : -1).map((dir) => filesUnder(list, { dir }))];
   }
   if (head === "pane" && seg.length === 2) return [home];
   if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "changes")) {

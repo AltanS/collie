@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { languageForPath, type SyntaxToken, type Tokenizer } from "@/lib/diff-highlight";
-import { highlightRows, loadTokenizer } from "@/lib/diff-highlight-engine";
+import { highlightLines, highlightRows, loadTokenizer } from "@/lib/diff-highlight-engine";
 import { parseUnifiedDiff } from "@/lib/unified-diff";
 
 describe("languageForPath", () => {
@@ -129,5 +129,22 @@ describe("highlightRows", () => {
       expect(out[i]?.map((t) => t.value).join("")).toBe(row.text);
     });
     expect(out[3]?.find((t) => t.value === "# why")?.type).toBe("comment");
+  });
+});
+
+describe("highlightLines: a whole file", () => {
+  it("colours every line of a block comment that spans lines, which one line alone could not know", async () => {
+    const tokenize = await loadTokenizer("typescript");
+    const lines = ["/* a", "   b */", "const x = 1;"];
+    const out = highlightLines(lines, tokenize);
+    expect(out[1]?.map((t) => t.type)).toContain("comment");
+    expect(out[2]?.map((t) => t.type)).toContain("keyword");
+  });
+
+  it("every line's tokens spell it exactly, blank lines included", async () => {
+    const tokenize = await loadTokenizer("python");
+    const lines = ["def f():", "", "    return 'a'  # why", ""];
+    const out = highlightLines(lines, tokenize);
+    lines.forEach((line, i) => expect(out[i]?.map((t) => t.value).join("")).toBe(line));
   });
 });

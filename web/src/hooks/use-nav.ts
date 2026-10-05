@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { markInAppBack } from "@/lib/nav-entry";
-import { canStepBack, isAncestor, pathOnly, readFrom, resolveUp, resolveUpTo, type NavExtras, type UpMove } from "@/lib/nav";
+import { canStepBack, isAncestor, pathOnly, readFrom, resolveUp, resolveUpTo, resolveUpToExact, type NavExtras, type UpMove } from "@/lib/nav";
 
 /**
  * The three moves of ADR 0067, for components. Every navigation in the app goes through one of
@@ -14,6 +14,8 @@ import { canStepBack, isAncestor, pathOnly, readFrom, resolveUp, resolveUpTo, ty
  *   `up(parent)` a step back when the entry behind is a legitimate parent, else a replace onto
  *                `parent`, the structural one. Back arrows, the Collie mark, closed-under-you exits.
  *   `upTo(p)`    as `up`, to one NAMED parent: the pane's space breadcrumb.
+ *   `upExact(p)` as `upTo`, but the entry behind must match `p`'s query too: one folder up inside
+ *                the Files view, where every level shares a pathname.
  *
  * The callbacks are stable: the location is read through a ref, so a hook that hands one of these
  * to a memoised child does not churn it on every navigation.
@@ -24,6 +26,7 @@ export interface Nav {
   open(to: string, state?: NavExtras): void;
   up(parent: string): void;
   upTo(parent: string): void;
+  upExact(parent: string): void;
 }
 
 export function useNav(): Nav {
@@ -61,6 +64,7 @@ export function useNav(): Nav {
       open: (to, state) => (here.current.pathname.startsWith("/pane/") ? side(to, state) : down(to, state)),
       up: (parent) => run(resolveUp(here.current.pathname, readFrom(here.current.state), parent, canStepBack())),
       upTo: (parent) => run(resolveUpTo(readFrom(here.current.state), parent, canStepBack())),
+      upExact: (parent) => run(resolveUpToExact(readFrom(here.current.state), parent, canStepBack())),
     };
   }, [navigate]);
 }

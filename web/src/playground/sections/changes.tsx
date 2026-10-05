@@ -6,6 +6,10 @@
 import { ChangesControl } from "@/components/changes-control";
 import { useState } from "react";
 
+import { FileContent, type FileText, type FileView } from "@/components/file-preview";
+import { ChangesTabs, FileRows, FilesBreadcrumb, type ChangesTab } from "@/components/files-view";
+import { Segmented } from "@/components/ui/segmented";
+
 import {
   ChangePath,
   ChangesFilterButton,
@@ -20,7 +24,7 @@ import {
 } from "@/components/changes-view";
 import { t } from "@/lib/i18n";
 import { countFiles, filterRepos, type ChangesFilter, type ChangesLayout } from "@/lib/changes-tree";
-import { fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
+import { fixtureChangeDiff, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 import { Card, Group, Section, Stage, type SectionDef } from "../harness";
 
 export const DEF: SectionDef = {
@@ -30,7 +34,9 @@ export const DEF: SectionDef = {
     "The pane's Changes view: the list of files changed since the last commit, grouped by repo, " +
     "one file's diff with both line gutters and syntax colour, and the Settings card that decides " +
     "where it looks. " +
-    "The list draws flat or as a folder tree, and a filter row narrows it by path and status.",
+    "The list draws flat or as a folder tree, and a filter row narrows it by path and status. " +
+    "The Files tab beside it browses the same root folder by folder and opens a file as source or, " +
+    "for Markdown, JSON and HTML, as a Preview.",
 };
 
 const repos = fixtureChanges.available ? fixtureChanges.repos : [];
@@ -126,6 +132,61 @@ function Diff({ repo, path, diff }: { repo: string; path: string; diff?: string 
             answer.available && <DiffView diff={answer.diff} path={path} />
           )}
         </div>
+      </div>
+    </Stage>
+  );
+}
+
+
+const rootListing = fixtureFilesDir("");
+const rootEntries = rootListing?.available ? rootListing.entries : [];
+
+/** One text file of the fixture tree, as the file screen holds it. */
+function fileOf(path: string, over: Partial<FileText> = {}): FileText {
+  const read = fixtureFileRead(path);
+  if (read === null || !read.available) throw new Error(`no fixture file ${path}`);
+  return { ...read, ...over };
+}
+
+/** The file screen's sticky bar and body, live: Source | Preview is a real control. */
+function FileCard({ file, initial, height = 380 }: { file: FileText; initial: FileView; height?: number }) {
+  const [view, setView] = useState<FileView>(initial);
+  const hasChoice = initial === "preview";
+  return (
+    <Stage height={height}>
+      <div className="h-full overflow-y-auto">
+        <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-rule bg-background px-4 py-2">
+          <ChangePath path={file.path} className="min-h-7 items-center" />
+          {hasChoice && (
+            <Segmented
+              label={t("files.view.aria")}
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "source", label: t("files.view.source") },
+                { value: "preview", label: t("files.view.preview") },
+              ]}
+            />
+          )}
+        </div>
+        <div className="py-2">
+          <FileContent file={file} view={view} />
+        </div>
+      </div>
+    </Stage>
+  );
+}
+
+function FolderCard({ dir, tab = "files" }: { dir: string; tab?: ChangesTab }) {
+  const [active, setActive] = useState<ChangesTab>(tab);
+  const listing = fixtureFilesDir(dir);
+  const entries = listing?.available ? listing.entries : rootEntries;
+  return (
+    <Stage height={440}>
+      <div className="flex flex-col gap-3 overflow-y-auto p-4">
+        <ChangesTabs active={active} onChange={setActive} />
+        <FilesBreadcrumb dir={dir} rootName="webapp" hrefFor={() => "#"} onOpen={() => {}} />
+        <FileRows entries={entries} onOpen={() => {}} />
       </div>
     </Stage>
   );
@@ -227,6 +288,78 @@ export function ChangesSection() {
             comment's second line keeps its comment colour, read from the old side."
         >
           <Diff repo="." path="src/lib/price.ts" diff={HIGHLIGHT_DIFF} />
+        </Card>
+      </Group>
+
+      <Group title="Files">
+        <Card
+          state="files-folder-root"
+          label="files, the root folder"
+          reach="open Changes, then tap the Files tab. Folders come first, then files by name, with a size
+            for each file. A symlink shows as a link row and opens like a file."
+        >
+          <FolderCard dir="" />
+        </Card>
+
+        <Card
+          state="files-folder-nested"
+          label="files, a folder two levels down"
+          reach="in Files, tap src, then routes. The path above the rows is a breadcrumb; every crumb but
+            the last is a link."
+        >
+          <FolderCard dir="src/routes" />
+        </Card>
+
+        <Card
+          state="files-source"
+          label="files, a source file"
+          reach="in Files, open a TypeScript file. Numbered lines in monospace; colour follows once the
+            highlighter loads."
+        >
+          <FileCard file={fileOf("src/cart.ts")} initial="source" />
+        </Card>
+
+        <Card
+          state="files-preview-markdown"
+          label="files, a Markdown preview"
+          reach="in Files, open a .md file. It opens on Preview. Raw HTML in the file, such as a script
+            tag, stays as text."
+        >
+          <FileCard file={fileOf("README.md")} initial="preview" />
+        </Card>
+
+        <Card
+          state="files-preview-json"
+          label="files, a JSON preview"
+          reach="in Files, open a .json file. The first two levels are open, deeper ones are folded with a
+            count. Tap a row to fold or open it."
+        >
+          <FileCard file={fileOf("package.json")} initial="preview" />
+        </Card>
+
+        <Card
+          state="files-preview-json-error"
+          label="files, a JSON file that does not parse"
+          reach="in Files, open a .json file that is cut off or malformed. The error line shows, then the source."
+        >
+          <FileCard file={fileOf("package.json", { text: '{\n  "name": "webapp",\n  "version": \n' })} initial="preview" />
+        </Card>
+
+        <Card
+          state="files-preview-html"
+          label="files, an HTML preview"
+          reach="in Files, open an .html file. It draws in a sandboxed frame on a white ground, with a line
+            saying scripts, forms and remote files are off."
+        >
+          <FileCard file={fileOf("index.html")} initial="preview" height={420} />
+        </Card>
+
+        <Card
+          state="files-binary"
+          label="files, a binary file"
+          reach="in Files, open an image or any other binary file. Its size is the whole screen."
+        >
+          <FileCard file={fileOf("logo.png")} initial="source" height={260} />
         </Card>
       </Group>
 

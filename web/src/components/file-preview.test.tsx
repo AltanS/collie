@@ -1,0 +1,149 @@
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { en } from "@/lib/i18n/messages/en";
+import { fixtureFileRead } from "@/test/handlers";
+
+import { defaultView, FileContent, type FileText } from "./file-preview";
+
+afterEach(cleanup);
+
+function file(path: string, over: Partial<FileText> = {}): FileText {
+  const read = fixtureFileRead(path);
+  if (read === null || !read.available) throw new Error(`no fixture for ${path}`);
+  return { ...read, ...over };
+}
+
+describe("defaultView", () => {
+  it("opens Preview for a type that has one, and Source for the rest", () => {
+    expect(defaultView("README.md")).toBe("preview");
+    expect(defaultView("a/b.JSON")).toBe("preview");
+    expect(defaultView("page.htm")).toBe("preview");
+    expect(defaultView("src/cart.ts")).toBe("source");
+    expect(defaultView("Makefile")).toBe("source");
+  });
+});
+
+describe("Source", () => {
+  it("numbers the lines and drops the newline that ends the last one", () => {
+    const { container } = render(<FileContent file={file("src/cart.ts")} view="source" />);
+    const rows = container.querySelectorAll("[data-slot='file-source'] > div");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.textContent).toContain("1");
+    expect(rows[2]?.textContent).toContain("3");
+    expect(container.textContent).toContain("cartTotal");
+  });
+
+  it("says so after the text when the read was cut", () => {
+    render(<FileContent file={file("src/cart.ts", { truncated: true })} view="source" />);
+    expect(screen.getByText(en["files.fileTruncated"])).toBeTruthy();
+  });
+
+  it("shows an empty file as a sentence", () => {
+    render(<FileContent file={file("src/cart.ts", { text: "", size: 0 })} view="source" />);
+    expect(screen.getByText(en["files.fileEmpty"])).toBeTruthy();
+  });
+
+  it("shows source for a file with a preview when Source is asked for", () => {
+    const { container } = render(<FileContent file={file("README.md")} view="source" />);
+    expect(container.querySelector("[data-slot='file-source']")).toBeTruthy();
+    expect(container.querySelector("[data-slot='file-markdown']")).toBeNull();
+  });
+});
+
+describe("a binary file", () => {
+  it("shows its size and nothing else", () => {
+    const { container } = render(<FileContent file={file("logo.png")} view="source" />);
+    expect(screen.getByText("Binary file, 20 KB")).toBeTruthy();
+    expect(container.querySelector("[data-slot='file-source']")).toBeNull();
+  });
+});
+
+describe("Preview: Markdown", () => {
+  it("renders structure, and keeps raw HTML as text", () => {
+    const { container } = render(<FileContent file={file("README.md")} view="preview" />);
+    expect(screen.getByText("Webapp")).toBeTruthy();
+    expect(screen.getByText("Run it").tagName).toBe("STRONG");
+    expect(screen.getByRole("link", { name: "docs" }).getAttribute("href")).toBe("https://example.com/docs");
+    // The <script> line is characters in a paragraph, never an element.
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.textContent).toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("Preview: JSON", () => {
+  it("draws a tree with the first two levels open and the rest folded, with a count", async () => {
+    render(<FileContent file={file("package.json")} view="preview" />);
+    // Level 0 (the object) and level 1 (its keys) are open: `scripts` shows its count and is folded
+    // one level further down only when it has containers inside.
+    expect(screen.getByText("name")).toBeTruthy();
+    expect(screen.getByText('"webapp"')).toBeTruthy();
+    const scripts = screen.getByRole("button", { name: /scripts/ });
+    expect(scripts.getAttribute("aria-expanded")).toBe("true");
+    expect(within(scripts).getByText("2 keys")).toBeTruthy();
+    await userEvent.click(scripts);
+    expect(scripts.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText('"vite"')).toBeNull();
+    // The count stays on the row folded or open.
+    expect(within(scripts).getByText("2 keys")).toBeTruthy();
+  });
+
+  it("folds a container at the third level and shows its count", () => {
+    const text = JSON.stringify({ a: { b: { c: 1, d: 2, e: [1, 2, 3] } } });
+    render(<FileContent file={file("package.json", { text })} view="preview" />);
+    const b = screen.getByRole("button", { name: /^b/ });
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    expect(within(b).getByText("3 keys")).toBeTruthy();
+    expect(screen.queryByText("c")).toBeNull();
+  });
+
+  it("says why on a parse error and shows the source", () => {
+    const { container } = render(<FileContent file={file("package.json", { text: '{"a": ' })} view="preview" />);
+    expect(screen.getByRole("status").textContent).toMatch(/^Not valid JSON: /);
+    expect(container.querySelector("[data-slot='file-source']")).toBeTruthy();
+    expect(container.querySelector("[data-slot='file-json']")).toBeNull();
+  });
+
+  it("falls back to the source above 5000 values", () => {
+    const text = JSON.stringify(Array.from({ length: 5001 }, (_, i) => i));
+    const { container } = render(<FileContent file={file("package.json", { text })} view="preview" />);
+    expect(screen.getByText(en["files.json.tooBig"])).toBeTruthy();
+    expect(container.querySelector("[data-slot='file-source']")).toBeTruthy();
+  });
+
+  it("draws exactly 5000 values as a tree", () => {
+    const text = JSON.stringify(Array.from({ length: 4999 }, (_, i) => i));
+    const { container } = render(<FileContent file={file("package.json", { text })} view="preview" />);
+    expect(container.querySelector("[data-slot='file-json']")).toBeTruthy();
+  });
+
+  it("puts every string in as text, never as markup", () => {
+    const text = JSON.stringify({ evil: "<img src=x onerror=alert(1)>" });
+    const { container } = render(<FileContent file={file("package.json", { text })} view="preview" />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+});
+
+describe("Preview: HTML", () => {
+  it("is a frame with an EMPTY sandbox, the file as srcdoc, and the caption", () => {
+    const { container } = render(<FileContent file={file("index.html")} view="preview" />);
+    const frame = container.querySelector("iframe");
+    expect(frame).toBeTruthy();
+    // Present and empty: every capability off. A missing attribute would be a full-power frame.
+    expect(frame?.hasAttribute("sandbox")).toBe(true);
+    expect(frame?.getAttribute("sandbox")).toBe("");
+    expect(frame?.getAttribute("srcdoc")).toContain("Hello from a file");
+    expect(frame?.getAttribute("src")).toBeNull();
+    expect(screen.getByText(en["files.html.caption"])).toBeTruthy();
+  });
+
+  it("never puts the file's markup into the app's DOM", () => {
+    const text = '<h1 id="mine">Hi</h1><script>window.pwned = 1</script>';
+    const { container } = render(<FileContent file={file("index.html", { text })} view="preview" />);
+    expect(container.querySelector("#mine")).toBeNull();
+    expect(container.querySelector("script")).toBeNull();
+    expect("pwned" in window).toBe(false);
+  });
+});

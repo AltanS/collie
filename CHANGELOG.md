@@ -43,6 +43,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **The bridge lists a folder and reads a file under the Changes root.** `GET /api/pane/:id/files` and `GET /api/workspace/:id/files` list one folder (`?dir=`) or read one text file (`?path=`) under the same folder the Changes view reads, and nowhere else. A path that leads out of it, also through a symlink, a `.git` folder, and Collie's own state and config folders are refused with one answer. It needs an authorised device, like a write, caps a folder at 2000 entries and a file at 1 MiB, and works on a crew member running 1.17.0 or later (ADR 0083).
+### Added
+
+- **Changes has a Files tab, and Markdown, JSON and HTML files open as a Preview.** Tap Files at the top of Changes to browse the folder Changes reads, one folder at a time, and open a file as numbered, coloured source. A Markdown file draws as text, a JSON file as a tree that folds, and an HTML file in a sandboxed frame that runs no scripts and loads nothing remote. A changed file of those types has a Preview button in its diff header. Files reads when you open a folder or tap refresh, never on a timer, and an older crew member answers "Update this machine to browse files".
 
 ## [1.16.2] - 2026-10-04
 

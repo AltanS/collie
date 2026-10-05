@@ -9,6 +9,9 @@ import {
   fixtureCommitDiff,
   fixtureCrewSnapshot,
   fixtureCrewStatus,
+  fixtureFileRead,
+  fixtureFilesDir,
+  FIXTURE_FILES_UNKNOWN,
   fixtureNewSpace,
   fixtureNewTab,
   fixtureSnapshot,
@@ -123,6 +126,14 @@ async function answer(route: Route, path: string, folders: FolderWorld): Promise
     }
     if (repo !== null && file !== null) return fulfillJson(route, fixtureChangeDiff(repo, file));
     return fulfillJson(route, fixtureChanges);
+  }
+
+  // The Files view (ADR 0083): a folder (`?dir=`, none for the root) or one file (`?path=`).
+  if (/^\/api\/(?:pane|workspace)\/[^/]+\/files$/.test(path)) {
+    const q = new URL(route.request().url()).searchParams;
+    const file = q.get("path");
+    const found = file !== null ? fixtureFileRead(file) : fixtureFilesDir(q.get("dir") ?? "");
+    return found === null ? fulfillJson(route, FIXTURE_FILES_UNKNOWN, 404) : fulfillJson(route, found);
   }
 
   if (/^\/api\/pane\/[^/]+\/history$/.test(path)) {

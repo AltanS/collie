@@ -150,3 +150,23 @@ export async function highlightDiff(rows: readonly DiffRow[], lang: SyntaxLang):
 export function highlightDiffNow(rows: readonly DiffRow[], lang: SyntaxLang): RowTokens | null {
   return ready.get(lang)?.(rows) ?? null;
 }
+
+/**
+ * Each language's whole-text colouring, once its tokenizer has loaded: the Files view's source
+ * (ADR 0083). Kept apart from `ready` because that one is row-oriented and this one is not, but fed
+ * by the same lazy engine and the same sugar-high language chunks.
+ */
+const readyLines = new Map<SyntaxLang, (lines: readonly string[]) => RowTokens>();
+
+/** Load the engine and the language (each once), then colour a whole file's lines. */
+export async function highlightFile(lines: readonly string[], lang: SyntaxLang): Promise<RowTokens> {
+  const engine: Engine = await import("@/lib/diff-highlight-engine");
+  const tokenize = await engine.loadTokenizer(lang);
+  readyLines.set(lang, (l) => engine.highlightLines(l, tokenize));
+  return engine.highlightLines(lines, tokenize);
+}
+
+/** The lines' tokens at once, when `lang` has loaded before; null when only `highlightFile` can say. */
+export function highlightFileNow(lines: readonly string[], lang: SyntaxLang): RowTokens | null {
+  return readyLines.get(lang)?.(lines) ?? null;
+}
