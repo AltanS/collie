@@ -55,16 +55,13 @@ export function rootPathOf(root: string, repo: string, path: string): string | n
 }
 
 /**
- * The folder as the Files header spells it beside the workspace label. The whole path, with the
- * screen cutting it from the LEFT when it does not fit (so the last folders stay readable), except
- * that a folder named like the label is not said twice: the label already is its last segment, so
- * only the folders above it show, ending in a slash.
+ * What the Files header says after the workspace label: the root folder's LAST segment when it is
+ * another name than the label, `""` when it is the label itself (or the root is `/`). Never the
+ * whole path, which a phone has no room for and the breadcrumb below already tells.
  */
 export function headerFolder(path: string, label: string): string {
-  const trimmed = path.replace(/\/+$/, "");
-  const cut = trimmed.lastIndexOf("/");
-  if (cut === -1 || trimmed.slice(cut + 1) !== label) return trimmed === "" ? path : trimmed;
-  return trimmed.slice(0, cut + 1);
+  const last = path.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) ?? "";
+  return last === label ? "" : last;
 }
 
 /** The last segment of a path: a file's name, a folder's name, or `""` for the root. */

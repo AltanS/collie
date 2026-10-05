@@ -728,6 +728,7 @@ function ChangesScreen() {
   // Both are the same folder (ADR 0083), so this only decides which answer speaks first.
   const listRoot = ready?.available ? ready.root : null;
   const rootFolder = treeFile !== null || (treeDir !== null && treeDir !== "") ? (filesRoot.current ?? listRoot) : (listRoot ?? filesRoot.current);
+  const rootSegment = rootFolder === null ? "" : headerFolder(rootFolder, workspaceLabel);
   const rootName = rootFolder === null ? null : baseName(rootFolder.replace(/[\\/]+$/, ""));
 
   // The header's count line: the tab's kept answer until this visit's first read, then what the
@@ -855,20 +856,21 @@ function ChangesScreen() {
                       {commitView ? t("changes.commit.title") : t("changes.title")}
                     </h1>
                     {treeAt !== null ? (
-                      // A folder or a file of the tree spells the whole root, cut from the LEFT:
-                      // `direction: rtl` puts the ellipsis at the start, and the `bdi` keeps the
-                      // slashes in reading order. The last folders always stay.
+                      // A folder or a file of the tree says the workspace label alone, plus the root
+                      // folder's last segment when that is another name. Never the whole path: four
+                      // icon buttons leave no room for it, and the breadcrumb below says where you are.
                       <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
-                        <span className="max-w-[45%] shrink-0 truncate">{workspaceLabel}</span>
-                        {rootFolder !== null && (
-                          <span
-                            className="min-w-0 flex-1 truncate font-mono [direction:rtl] text-left"
-                            data-slot="files-root-folder"
-                            title={rootFolder}
-                          >
-                            <bdi>{headerFolder(rootFolder, workspaceLabel)}</bdi>
-                          </span>
-                        )}
+                        <span className="min-w-0 truncate">
+                          {workspaceLabel}
+                          {rootSegment !== "" && (
+                            <>
+                              {" · "}
+                              <span className="font-mono" data-slot="files-root-folder" title={rootFolder ?? undefined}>
+                                {rootSegment}
+                              </span>
+                            </>
+                          )}
+                        </span>
                         {staleNote}
                       </div>
                     ) : (

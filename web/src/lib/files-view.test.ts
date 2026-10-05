@@ -117,18 +117,22 @@ describe("parseJsonTree", () => {
 });
 
 describe("headerFolder", () => {
-  it("does not say the label twice: a folder named like it shows the folders above it", () => {
-    expect(headerFolder("/var/home/altan/projects/storefront", "storefront")).toBe("/var/home/altan/projects/");
-    expect(headerFolder("/var/home/altan/projects/storefront/", "storefront")).toBe("/var/home/altan/projects/");
+  it("says nothing after the label when the folder is named like it", () => {
+    expect(headerFolder("/var/home/altan/projects/storefront", "storefront")).toBe("");
+    expect(headerFolder("/var/home/altan/projects/storefront/", "storefront")).toBe("");
+    expect(headerFolder("/storefront", "storefront")).toBe("");
   });
 
-  it("keeps the whole path when the label is another name, for the screen to cut from the left", () => {
-    expect(headerFolder("/var/home/altan/projects/storefront", "Shop")).toBe("/var/home/altan/projects/storefront");
-    expect(headerFolder("/home/you/webapp/", "Shop")).toBe("/home/you/webapp");
+  it("says the folder's last segment, never the whole path, when the label is another name", () => {
+    expect(headerFolder("/var/home/altan/projects/storefront", "Shop")).toBe("storefront");
+    expect(headerFolder("/home/you/webapp/", "Shop")).toBe("webapp");
+    expect(headerFolder("C:/Users/you/webapp", "Shop")).toBe("webapp");
+    expect(headerFolder("C:\\Users\\you\\webapp\\", "Shop")).toBe("webapp");
   });
 
-  it("a root folder is itself, and a relative folder named like the label shows nothing above it", () => {
-    expect(headerFolder("/", "home")).toBe("/");
-    expect(headerFolder("/storefront", "storefront")).toBe("/");
+  it("says nothing for a root with no segment", () => {
+    expect(headerFolder("/", "home")).toBe("");
+    expect(headerFolder("", "home")).toBe("");
   });
 });
+

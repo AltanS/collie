@@ -286,11 +286,12 @@ test("the HTML preview renders in a sandboxed frame under the shell's CSP and no
   expect(answered.filter((url) => /\.invalid\b/.test(url))).toEqual([]);
 });
 
-// The folder line of a folder or a file of the tree; the root's own header is the glide header with
-// the short folder line (changes.spec.ts).
-test("a deep folder is cut from the left, the label is not repeated, and the last folders stay visible at 375 px", async ({ page }) => {
+// The second line of a folder or a file of the tree: the workspace label alone, and "label · segment"
+// (the segment in mono) when the root folder's last segment is another name. Never the whole path,
+// never a cut from the left; the breadcrumb below says where you are. The root's own header is the
+// glide header with the short folder line (changes.spec.ts).
+async function deepRoot(page: import("@playwright/test").Page, root: string) {
   await page.setViewportSize({ width: 375, height: 800 });
-  const root = "/var/home/altan/projects/clients/acme/storefront-monorepo/packages/webapp";
   await page.route(/\/api\/pane\/[^/]+\/files(\?.*)?$/, async (route) => {
     // The shared fixture's own answer, with only the root made deep.
     const q = new URL(route.request().url()).searchParams;
@@ -298,19 +299,31 @@ test("a deep folder is cut from the left, the label is not repeated, and the las
     await route.fulfill({ json: { ...found, root } });
   });
   await page.goto(`/pane/${PANE}/changes/files?dir=docs`);
-  const folder = page.getByTitle(root);
-  await expect(folder).toBeVisible();
-  // The label is the folder's own name, so the header says the folders above it and not `webapp` twice.
-  await expect(folder.locator("bdi")).toHaveText("/var/home/altan/projects/clients/acme/storefront-monorepo/packages/");
-  const box = await folder.evaluate((el) => {
-    const outer = el.getBoundingClientRect();
-    const inner = el.querySelector("bdi")!.getBoundingClientRect();
-    return { clipped: el.scrollWidth > el.clientWidth, outerRight: outer.right, outerLeft: outer.left, innerRight: inner.right };
-  });
-  // Too long for the row, so it is cut, and what stays is the END of the path: its last segment sits
-  // flush against the right edge instead of being the part that is lost.
-  expect(box.clipped).toBe(true);
-  expect(Math.abs(box.innerRight - box.outerRight)).toBeLessThan(2);
+}
+
+test("a folder's header line says the label alone when the folder is named like it, at 375 px", async ({ page }) => {
+  const label = fixtureAgents[0]!.workspaceLabel;
+  await deepRoot(page, `/var/home/altan/projects/clients/acme/storefront-monorepo/packages/${label}`);
+  const line = page.locator("header").getByText(label, { exact: true }).first();
+  await expect(line).toBeVisible();
+  await expect(page.locator('[data-slot="files-root-folder"]')).toHaveCount(0);
+  expect(await line.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+  await expect(page.getByText("/var/home", { exact: false })).toHaveCount(0);
+});
+
+test("a folder named otherwise adds only its last segment in mono, never the path, at 375 px", async ({ page }) => {
+  const label = fixtureAgents[0]!.workspaceLabel;
+  // The title column is about 90 px wide beside the four squares, so a short segment is the case that
+  // must fit whole; a long one is cut at its END, never from the left.
+  await deepRoot(page, "/var/home/altan/projects/clients/acme/storefront-monorepo/packages/app");
+  const segment = page.locator('[data-slot="files-root-folder"]');
+  await expect(segment).toHaveText("app");
+  await expect(segment).toHaveCSS("font-family", /mono/i);
+  const line = segment.locator("..");
+  await expect(line).toContainText(`${label} · app`);
+  expect(await line.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+  await expect(page.getByText("/var/home", { exact: false })).toHaveCount(0);
+  expect(await line.evaluate((el) => getComputedStyle(el).direction)).toBe("ltr");
 });
 
 // Review 2026-10-06: the header is one header on every level, and at 375 px the squares win.
