@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { MuxWatchOptions } from "../types.ts";
-import { TERN_BINARY_OPTION, ternMuxFactory } from "./adapter.ts";
+import { TERN_BINARY_OPTION, TernMux, ternMuxFactory } from "./adapter.ts";
+import type { TernExec } from "./exec.ts";
 import { FakeTern, ternConformanceFixture } from "./fixture.ts";
 import { TernWatch } from "./watch.ts";
 
@@ -109,5 +110,56 @@ describe("TernWatch event kinds", () => {
     fake.emit("client_left");
     expect(seen.topology).toBe(0);
     watch.close();
+  });
+});
+
+describe("TernMux when tern does not answer", () => {
+  const down: TernExec = {
+    run: () => Promise.resolve({ code: 1, stdout: "", stderr: "the session daemon did not answer" }),
+    events: () => ({ kill: () => undefined }),
+  };
+
+  // Each of these used to throw past the port: they looked at the snapshot first, and the snapshot throws.
+  test("the writes that look first answer unreachable instead of throwing", async () => {
+    const tern = new TernMux(down);
+    const answers = [
+      await tern.renameTab("11", "x"),
+      await tern.closeTab("11"),
+      await tern.createTab({ spaceId: "1" }),
+      await tern.createSpace({ label: "x", cwd: "/tmp" }),
+    ];
+    for (const answer of answers) expect(answer).toMatchObject({ ok: false, reason: "unreachable" });
+  });
+
+  test("a call killed on its budget, and a missing binary, are unreachable", async () => {
+    for (const code of [143, 127]) {
+      const gone: TernExec = {
+        run: () => Promise.resolve({ code, stdout: "", stderr: "tern did not answer `send` within 5000ms and was killed" }),
+        events: () => ({ kill: () => undefined }),
+      };
+      expect(await new TernMux(gone).typeText("101", "hi")).toMatchObject({ ok: false, reason: "unreachable" });
+    }
+  });
+});
+
+describe("TernMux input and naming", () => {
+  test("text past the argv cap is refused, not sent or split", async () => {
+    const fake = new FakeTern();
+    const tern = new TernMux(fake);
+    const answer = await tern.typeText("101", "é".repeat(70_000));
+    expect(answer).toMatchObject({ ok: false, reason: "refused" });
+    expect(fake.writes()).toHaveLength(0);
+    expect(await tern.typeText("101", "x".repeat(1000))).toMatchObject({ ok: true });
+  });
+
+  test("a tab nobody named is labelled by its number, which the web treats as unnamed", async () => {
+    const snapshot = await new TernMux(new FakeTern()).snapshot();
+    expect(snapshot.tabs.find((t) => t.tabId === "11")?.label).toBe("1");
+  });
+
+  test("a tab asked for in a space that is gone is refused, not made in another session", async () => {
+    const fake = new FakeTern();
+    const answer = await new TernMux(fake).createTab({ spaceId: "999" });
+    expect(answer).toMatchObject({ ok: false, reason: "gone" });
   });
 });

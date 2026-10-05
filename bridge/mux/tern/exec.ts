@@ -7,7 +7,9 @@
 // SPAWN HYGIENE:
 //  • No shell interpolation: arguments passed as arrays to Bun.spawn.
 //  • Fixed binary path probe: does not assume PATH.
-//  • Safe stdin handling for text payloads.
+//  • A hung child is killed on the target's budget: SIGTERM first, SIGKILL a moment later, so a tern
+//    that ignores SIGTERM cannot hold a request open.
+//  • Text still rides argv, not stdin: tern's stdin form is not probed (see `typeText`).
 
 import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
@@ -73,6 +75,10 @@ export function defaultTernSocket(
 
 export const NO_TERN_BINARY = "no tern binary found — set COLLIE_TERN_BIN to its absolute path";
 export const TIMED_OUT_CODE = 143;
+/** The code {@link SpawnTernExec.run} answers with when there is no binary to run. */
+export const NO_BINARY_CODE = 127;
+/** How long a child gets between SIGTERM and SIGKILL when it overruns its budget. */
+export const KILL_GRACE_MS = 1000;
 
 export function timedOutMessage(args: readonly string[], timeoutMs: number): string {
   const verb = args.filter((arg) => !arg.startsWith("-")).slice(0, 2).join(" ") || "the call";
@@ -88,7 +94,7 @@ export class SpawnTernExec implements TernExec {
   ) {}
 
   async run(args: readonly string[], stdin?: string): Promise<TernRunResult> {
-    if (this.binary === null) return { code: 127, stdout: "", stderr: NO_TERN_BINARY };
+    if (this.binary === null) return { code: NO_BINARY_CODE, stdout: "", stderr: NO_TERN_BINARY };
     const env = { ...process.env };
     if (this.socketPath) env.TERN_DAEMON_SOCKET = this.socketPath;
 
@@ -100,9 +106,12 @@ export class SpawnTernExec implements TernExec {
     });
 
     let killed = false;
+    let hardKill: ReturnType<typeof setTimeout> | null = null;
     const timer = setTimeout(() => {
       killed = true;
       child.kill();
+      // A child that ignores SIGTERM would keep `stdout` open and this call pending forever.
+      hardKill = setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS);
     }, this.timeoutMs);
 
     try {
@@ -115,6 +124,7 @@ export class SpawnTernExec implements TernExec {
       return { code, stdout, stderr };
     } finally {
       clearTimeout(timer);
+      if (hardKill !== null) clearTimeout(hardKill);
     }
   }
 
@@ -126,10 +136,11 @@ export class SpawnTernExec implements TernExec {
     const env = { ...process.env };
     if (this.socketPath) env.TERN_DAEMON_SOCKET = this.socketPath;
 
+    // stderr is ignored, not piped: nothing reads it, and an undrained pipe blocks the child once full.
     const child = Bun.spawn([this.binary, "events"], {
       stdin: "ignore",
       stdout: "pipe",
-      stderr: "pipe",
+      stderr: "ignore",
       env,
     });
 

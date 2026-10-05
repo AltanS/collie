@@ -44,8 +44,8 @@ import { ternBeaconMatcher } from "./markers.ts";
 import {
   parseListing,
   saysNoBlock,
-  saysNoDaemon,
   saysNoSession,
+  saysUnreachable,
   type TernLsResult,
 } from "./protocol.ts";
 import { TernWatch } from "./watch.ts";
@@ -54,6 +54,16 @@ export const TERN_MUX = "tern";
 
 /** `MuxTarget.options` key carrying the tern binary's absolute path. Opaque to the registry, by rule. */
 export const TERN_BINARY_OPTION = "ternBin";
+
+/**
+ * The upper bound on one typed message, in UTF-8 bytes.
+ *
+ * Text rides argv, and Linux caps a single argv element at `MAX_ARG_STRLEN`, 128 KiB including the
+ * terminating NUL. Past it `Bun.spawn` throws, which would read as `unreachable`. A message past the
+ * bound is `refused` and NOT split: ADR 0010, because an agent reads a burst of input as one paste.
+ * Tern's stdin form, which would lift the cap and keep the text out of `ps`, is not probed yet.
+ */
+export const MAX_TYPED_BYTES = 128 * 1024 - 1;
 
 interface RevisionEntry {
   revision: number;
@@ -97,13 +107,26 @@ export class TernMux implements MuxAdapter {
   }
 
   async snapshot(): Promise<MuxSnapshot> {
-    const res = await this.attemptRun(["ls", "--json"]);
+    const res = await this.attemptSnapshot();
     if (!res.ok) {
       if (res.reason === "unreachable") throw new Error(res.detail);
       throw new Error(`failed to read tern snapshot: ${res.detail}`);
     }
-    const ls = parseListing(res.value.stdout);
-    return this.buildSnapshot(ls);
+    return res.value;
+  }
+
+  /**
+   * The snapshot as an outcome. The write methods that must look before they act use this one, so a
+   * tern that is down answers `unreachable` like every other write, and never throws past the port.
+   */
+  private async attemptSnapshot(): Promise<MuxOutcome<MuxSnapshot>> {
+    const res = await this.attemptRun(["ls", "--json"]);
+    if (!res.ok) return res;
+    try {
+      return muxOk(this.buildSnapshot(parseListing(res.value.stdout)));
+    } catch (err) {
+      return muxRefused(`unreadable tern listing: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   async refresh(): Promise<void> {
@@ -140,6 +163,12 @@ export class TernMux implements MuxAdapter {
 
   async typeText(paneId: string, text: string): Promise<MuxAck> {
     if (text.length === 0) return muxAck();
+    const bytes = Buffer.byteLength(text, "utf8");
+    if (bytes > MAX_TYPED_BYTES) {
+      return muxRefused(
+        `tern takes typed text as a command-line argument, which the kernel caps at ${String(MAX_TYPED_BYTES)} bytes — this message is ${String(bytes)}`,
+      );
+    }
     const args = ["send", paneId, text.includes("\n") ? "paste" : "text", text];
     const res = await this.attemptRun(args);
     if (!res.ok) return res;
@@ -180,11 +209,15 @@ export class TernMux implements MuxAdapter {
   }
 
   async createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    const before = await this.snapshot();
+    const looked = await this.attemptSnapshot();
+    if (!looked.ok) return looked;
+    const before = looked.value;
     const args = ["new", "tab"];
     if (request.spaceId) {
       const space = before.spaces.find((s) => s.spaceId === request.spaceId);
-      if (space) args.push(space.label);
+      // Without the name tern would put the tab in whichever session it defaults to.
+      if (!space) return muxGone(`space ${request.spaceId} is gone`);
+      args.push(space.label);
     }
     const cwd = requestedCwd(request.cwd);
     if (cwd) args.push("--cwd", cwd);
@@ -192,9 +225,10 @@ export class TernMux implements MuxAdapter {
     const result = await this.attemptRun(args);
     if (!result.ok) return result;
 
-    const after = await this.snapshot();
+    const afterLook = await this.attemptSnapshot();
+    if (!afterLook.ok) return afterLook;
     const beforeIds = new Set(before.panes.map((p) => p.paneId));
-    const created = after.panes.find((p) => !beforeIds.has(p.paneId));
+    const created = afterLook.value.panes.find((p) => p.alive && !beforeIds.has(p.paneId));
     if (created) {
       if (request.label && request.label.trim()) {
         await this.attemptRun(["rename", created.paneId, request.label.trim()]);
@@ -211,10 +245,12 @@ export class TernMux implements MuxAdapter {
   }
 
   async renameTab(tabId: string, label: string): Promise<MuxAck> {
-    const snap = await this.snapshot();
+    const looked = await this.attemptSnapshot();
+    if (!looked.ok) return looked;
+    const snap = looked.value;
     const tab = snap.tabs.find((t) => t.tabId === tabId);
     if (!tab) return muxGone(`tab ${tabId} is gone`);
-    const pane = snap.panes.find((p) => p.tabId === tabId);
+    const pane = snap.panes.find((p) => p.tabId === tabId && p.alive);
     if (!pane) return muxGone(`tab ${tabId} has no live panes`);
     const res = await this.attemptRun(["rename", pane.paneId, label]);
     if (!res.ok) return res;
@@ -222,8 +258,9 @@ export class TernMux implements MuxAdapter {
   }
 
   async closeTab(tabId: string): Promise<MuxAck> {
-    const snap = await this.snapshot();
-    const tabPanes = snap.panes.filter((p) => p.tabId === tabId);
+    const looked = await this.attemptSnapshot();
+    if (!looked.ok) return looked;
+    const tabPanes = looked.value.panes.filter((p) => p.tabId === tabId);
     if (tabPanes.length === 0) return muxGone(`tab ${tabId} is gone`);
     for (const pane of tabPanes) {
       const res = await this.attemptRun(["close", pane.paneId]);
@@ -233,7 +270,9 @@ export class TernMux implements MuxAdapter {
   }
 
   async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    const before = await this.snapshot();
+    const looked = await this.attemptSnapshot();
+    if (!looked.ok) return looked;
+    const before = looked.value;
     const label = request.label?.trim() || `session-${String(Date.now())}`;
     const args = ["new", "session", label];
     const cwd = requestedCwd(request.cwd);
@@ -242,9 +281,10 @@ export class TernMux implements MuxAdapter {
     const result = await this.attemptRun(args);
     if (!result.ok) return result;
 
-    const after = await this.snapshot();
+    const afterLook = await this.attemptSnapshot();
+    if (!afterLook.ok) return afterLook;
     const beforeIds = new Set(before.panes.map((p) => p.paneId));
-    const created = after.panes.find((p) => !beforeIds.has(p.paneId));
+    const created = afterLook.value.panes.find((p) => p.alive && !beforeIds.has(p.paneId));
     if (created) {
       return muxOk({
         paneId: created.paneId,
@@ -336,7 +376,9 @@ export class TernMux implements MuxAdapter {
           tabId,
           spaceId,
           number: t.number,
-          label: t.name ?? `Tab ${String(t.number)}`,
+          // The bare number, as Herdr labels an unnamed tab: the web hides a positional label
+          // (`isUnnamedTab`), and would show `Tab 1` as if somebody had chosen it.
+          label: t.name ?? String(t.number),
           focused: t.shown,
           paneCount: liveBlocksInTab.length,
         });
@@ -375,7 +417,7 @@ export class TernMux implements MuxAdapter {
 function refusalFor(result: TernRunResult): MuxRefusalOutcome {
   if (saysNoBlock(result.stderr)) return muxGone(result.stderr.trim());
   if (saysNoSession(result.stderr)) return muxGone(result.stderr.trim());
-  if (saysNoDaemon(result.stderr)) return muxUnreachable(result.stderr.trim());
+  if (saysUnreachable(result.code, result.stderr)) return muxUnreachable(result.stderr.trim());
   return muxRefused(result.stderr.trim() || `tern exited ${String(result.code)}`);
 }
 

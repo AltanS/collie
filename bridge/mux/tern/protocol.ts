@@ -1,5 +1,7 @@
 // Wire formats, argument builders and error classifiers for Tern.
 
+import { NO_BINARY_CODE, TIMED_OUT_CODE } from "./exec.ts";
+
 export interface TernBlock {
   id: number;
   title: string | null;
@@ -98,4 +100,13 @@ export function saysNoDaemon(stderr: string): boolean {
     s.includes("connection refused") ||
     s.includes("broken pipe")
   );
+}
+
+/**
+ * Whether a finished call says tern could not be asked at all: no binary, a daemon that did not
+ * answer, or a call killed on its budget. These are `unreachable` to the contract, and the banner
+ * knows that word; an ordinary non-zero exit is the daemon answering "no".
+ */
+export function saysUnreachable(code: number, stderr: string): boolean {
+  return code === NO_BINARY_CODE || code === TIMED_OUT_CODE || saysNoDaemon(stderr);
 }
