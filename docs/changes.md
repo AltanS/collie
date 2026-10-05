@@ -163,6 +163,9 @@ Markdown, JSON and HTML files open on a **Preview** when they did not change.
 > **Note.** An HTML preview runs no scripts, sends no forms and loads no remote files. A link in the
 > page does not open. Pictures stored inside the file as `data:` addresses still draw.
 
+Links in a Markdown preview work. A relative link opens that file or folder, a `#heading` link scrolls
+to the heading, and a web link opens in a new tab. A link that leaves the folder reads as plain text.
+
 A JSON file that does not parse shows the error and its source. A tree is not drawn above 5000 values,
 and the source shows instead.
 
