@@ -5,7 +5,23 @@ This file tracks all notable changes to Collie, ordered newest version first. Th
 `### Added`, `### Changed`, `### Fixed`, `### Packaging` and `### Docs`, in that order and only
 where there is content, and every bullet opens with a short bold lead sentence, which is the line
 the GitHub Release page prints. Older versions carry a single flat list. Every entry links to its commit and credits the contributor where there is one. The
-`## [Unreleased]
+`## [Unreleased]` section contains merged work waiting for release. The release
+commit renames this heading to `## [x.y.z] - YYYY-MM-DD`, adds the commit hashes, and adds a new
+empty `## [Unreleased]` section above it. The newest numbered `## [x.y.z]` heading (excluding the
+Unreleased heading) **must** match the `version` field in `herdr-plugin.toml`, `package.json`,
+and `web/package.json`, which `scripts/check-version.sh` checks. See [`CLAUDE.md`](./CLAUDE.md) →
+*Versioning* for the bump policy.
+
+## Upgrading
+
+**Already on 1.x?** Run `collie update`, or run
+`herdr plugin action invoke update --plugin herdr.collie`. Check the result with
+`bin/collie version` (or `herdr plugin action invoke version --plugin herdr.collie`). It shows the
+newest tag. The phone PWA updates itself within about a minute; no reload needed.
+Running a crew? Update the lead first; members follow on their own. Details:
+`docs/crew.md` → *Updating from 1.7.0*.
+
+## [Unreleased]
 
 ### Added
 
