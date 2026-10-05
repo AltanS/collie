@@ -609,6 +609,33 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
     expect(Object.hasOwn(answered as object, "version")).toBe(false);
   });
 
+  // ── ADR 0084 — THE MEMBER'S OWN LOAD, IN THAT SAME SEAT ─────────────────────
+  test("machineStats rides beside the body, from the sample already held, and the protocol stays 2", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    const sample = { cpu: 0.25, cores: 8, memUsed: 4e9, memTotal: 16e9, load1: 1.5, rxBps: 1200, txBps: 300 };
+    let held: typeof sample | null = sample;
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      machineStats: () => held,
+    });
+    const res = (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({ ...body, machineStats: sample });
+    // The browser's own snapshot is untouched: a crew-only fact never leaks into it.
+    expect(body).toEqual(ownSnapshot());
+
+    // Before the sampler's second reading there is nothing to say, and nothing is said.
+    held = null;
+    const answered: unknown = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json();
+    expect(answered).toEqual(body);
+    // SAFETY: `toEqual(body)` above has already established that this is the object body.
+    expect(Object.hasOwn(answered as object, "machineStats")).toBe(false);
+  });
+
   test("an UNADMITTED caller never reaches the follow headers either", async () => {
     const h = harness(peerStore());
     let seen = 0;
@@ -981,6 +1008,11 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
       "notifications/cache-watch/forget",
       "update/check",
       "config",
+      // The Machines routes (ADR 0084): the lead keeps every machine's history and rules itself, so
+      // none of the three is a route a peer serves on a lead's behalf.
+      "machines",
+      "machines/laptop/history",
+      "machines/laptop/alerts",
     ]) {
       expect((await call(handler, `${CREW_PREFIX}${route}`, { method: "POST", headers: authed }))!.status).toBe(404);
     }

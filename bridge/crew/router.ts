@@ -18,6 +18,8 @@ import {
   type PeerPreflight,
   type PeerRunReport,
 } from "../update-action.ts";
+import { CREW_MACHINE_FIELD } from "../machine-stats.ts";
+import type { MachineSample } from "../types.ts";
 import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
@@ -455,6 +457,14 @@ export interface CrewRouterDeps {
    * as "nothing to report" and never as success.
    */
   readonly updateRun?: () => PeerRunReport | null;
+  /**
+   * **This machine's own last load sample**, published beside the snapshot body (§5, §7.1, ADR 0084).
+   *
+   * The sample the sampler already HOLDS, never a fresh read: the sampler reads on the engine tick,
+   * and this answer must not wait on a file. Absent, or `null` before the second reading, ⇒ the field
+   * is omitted, which the lead reads as **not reported**, never as an idle machine.
+   */
+  readonly machineStats?: () => MachineSample | null;
   /**
    * §20's two REQUEST headers reaching through: the lead's own settled release, and the turn.
    *
@@ -1046,6 +1056,11 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // nothing" and keeps what it had; it is never read as "no version".
       const withVersion =
         deps.version === undefined ? withRun : { ...withRun, [CREW_VERSION_FIELD]: deps.version };
+      // ADR 0084: this machine's own last load sample, in that same seat and for that same reason.
+      // The one the sampler already holds — this answer reads nothing — and omitted until there is
+      // one, which the lead reads as "not reported", never as an idle machine (§7.1).
+      const load = deps.machineStats?.() ?? null;
+      const withLoad = load === null ? withVersion : { ...withVersion, [CREW_MACHINE_FIELD]: load };
       // §20's two REQUEST headers, read LAST and answered with nothing. They are additive-optional
       // and absent-means-closed: a build with no `onFollow` ignores both, which is a correct peer,
       // and a peer that reads them still decides for itself. Handed over synchronously and never
@@ -1054,7 +1069,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
         leadRelease: headerValue(req, LEAD_RELEASE_HEADER),
         turn: headerValue(req, UPDATE_TURN_HEADER),
       });
-      return new Response(JSON.stringify(withVersion), {
+      return new Response(JSON.stringify(withLoad), {
         status: 200,
         headers: crewResponseHeaders(verdict.self),
       });

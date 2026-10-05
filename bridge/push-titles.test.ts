@@ -111,6 +111,8 @@ describe("pushTitle — the English comes from the catalogue", () => {
       "herd.mixed": "{count} agents need attention",
       "update.available": "Collie update available",
       "cache.cold_soon": "Cache goes cold in about {minutes} min",
+      "machine.cpu": "CPU stays high on {machine}",
+      "machine.mem": "Memory stays high on {machine}",
     });
   });
 
@@ -125,6 +127,8 @@ describe("pushTitle — the English comes from the catalogue", () => {
       "herd.mixed": ["count"],
       "update.available": [],
       "cache.cold_soon": ["minutes"],
+      "machine.cpu": ["machine"],
+      "machine.mem": ["machine"],
     } satisfies Record<PushTitleCode, string[]>;
     for (const code of PUSH_TITLE_CODE_LIST) expect(slotsOf(PUSH_TITLES[code])).toEqual(filled[code]);
   });

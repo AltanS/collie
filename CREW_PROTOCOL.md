@@ -327,6 +327,11 @@ answering build:
   response too**, beside the body rather than inside it, for the warrant pair's reason. It names no
   secret: one integer, and one the caller itself issued.
 
+- `machineStats` is **OPTIONAL**, added 2026-10-05 (ADR 0084, §19 "The member's own load"): the
+  answering machine's last host sample, `{ cpu, cores, memUsed, memTotal, load1?, rxBps?, txBps? }`.
+  It rides **`/crew/v1/snapshot`'s response only**, beside the body for the warrant pair's reason, and
+  never `hello`. **Absent or malformed means "this member reported no load"**, never "idle" (§7.1).
+
 - `pairingDigest` is **OPTIONAL**, added 2026-08-20 (§18.14): a digest of the synced paired-device
   registry this member holds, and `null`/absent on every member that holds none — which is every peer
   that is not the deputy. **An absent field means "nothing synced here", never "up to date"** (§7.1),
@@ -591,6 +596,15 @@ updated machines, so build skew is the steady state (§7), and this section is t
   `expiring` pane, stays quiet on it on either side of the link. The label rides whole because the
   rule catalog is not forwarded (the bullet above). `CREW_PROTOCOL_VERSION` stays `1`, no new route,
   no new verb and no new header.
+
+- **A member's snapshot answer gained an optional `machineStats`** (added 2026-10-05, ADR 0084). It is
+  that machine's own load, read from the sample its sampler already holds, as a sibling of the body.
+  Additive-optional with the closed reading this section requires: **absent or malformed means no
+  load was reported**, which the lead shows as "no sample" and never as zero. An older peer omits it,
+  and an older lead passes it over untouched, so neither side refuses the other over it. The lead
+  drops the whole sample on any field out of range rather than keeping half of one. Nothing in
+  `bridge/crew/merge.ts` reads it, so it never reaches a browser's snapshot. `CREW_PROTOCOL_VERSION`
+  stays `2`, no new route, no new verb and no new header.
 
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
@@ -1420,7 +1434,7 @@ federation code exists to break it.
 
 | Surface | Solo behaviour | Decided at |
 |---|---|---|
-| Routes served to a browser | unchanged; **zero** routes added, zero status codes changed | `bridge/server.ts:165-390` |
+| Routes served to a browser | unchanged; **zero** routes added, zero status codes changed. Amended on purpose 2026-10-05 (ADR 0084): `GET /api/machines`, `GET /api/machines/:id/history` and `POST /api/machines/:id/alerts` answer on a solo collie for its one machine, id `local`; they name no crew state and are pinned in `bridge/solo-baseline.test.ts` | `bridge/server.ts:165-390` |
 | `/crew/v1/*` | **not routed at all** — no crew prefix is registered with zero peers | §5 |
 | Snapshot bytes | unchanged — `servers` is **omitted**, and no `host` field is added to sessions or panes | `bridge/types.ts:164-186` |
 | Snapshot ETag | **unchanged.** Follows from the row above: no added field, no shifted hash | `bridge/http-cache.ts:16-19` |
@@ -1430,7 +1444,7 @@ federation code exists to break it.
 | Push payload | unchanged — no `host` field, mirroring how `session` is stamped only for non-primary | `bridge/push.ts:124-131` |
 | Poll cadence | unchanged — **no second timer, no peer sweep**, same idle relaxation | `bridge/event-poker.ts`, `bridge/config.ts:212-213` |
 | Audit line bytes | unchanged — `host` is omitted, not null, exactly as `session`/`device` are today | `bridge/audit.ts:55-61` |
-| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** Amended on purpose 2026-09-27 (M40/02, #289): `folders.json` joins the set as a file written **only after the first space created with a folder or the first star** — an instance that never does either writes nothing new, and it names no crew state | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147`, `bridge/folders.ts` |
+| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** Amended on purpose 2026-09-27 (M40/02, #289): `folders.json` joins the set as a file written **only after the first space created with a folder or the first star** — an instance that never does either writes nothing new, and it names no crew state. Amended on purpose 2026-10-05 (ADR 0084): `machine-history.json` is written from the tick at most once every five minutes once a minute is recorded, and `machine-alerts.json` only after the operator sets the first rule | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147`, `bridge/folders.ts`, `bridge/machine-history.ts`, `bridge/machine-alerts.ts` |
 | Ports opened | exactly one, loopback, as today. The standby door's second listener (§18.15) is bound only when `COLLIE_STANDBY_PORT` is set **and** a trust store exists, which a solo instance has neither of | `bridge/config.ts:210-211`, `bridge/crew/standby.ts` |
 
 **Why `servers` is optional-and-absent rather than always-present.** An always-present field — even a
@@ -2838,6 +2852,30 @@ never marked done.
   §20's business, on the lead's side, from the string the member sent.
 - No new route, no new dial, no new budget. The field rides an answer §10.1 already collects, so a
   crew of any size pays nothing for it.
+
+### The member's own load, in the same seat *(added 2026-10-05, ADR 0084)*
+
+`GET /crew/v1/snapshot`'s response also carries an optional **`machineStats`**: the answering
+machine's last host sample. Same seat as `version`, `updatePreflight` and `updateRun`, same reason,
+same protocol integer: `X-Crew-Protocol` stays `2`.
+
+```json
+{ "machineStats": { "cpu": 0.42, "cores": 8, "memUsed": 6000000000, "memTotal": 16000000000, "load1": 2.5, "rxBps": 100000, "txBps": 20000 } }
+```
+
+- `cpu` is the busy share of all cores, `0..1`, since the sample before. `memUsed` and `memTotal` are
+  bytes. `load1` is absent where the OS has none (Windows). `rxBps` and `txBps` are bytes per second
+  over every interface but loopback, absent where they cannot be read (every OS but Linux today).
+- The member **reads what its sampler already holds**. The answer does no disk read and no system
+  call, and the sampler itself rides the member's own `StateEngine.onTick` at most once every five
+  seconds (§10.1: no second timer). Before its second reading there is no sample, and the field is
+  omitted.
+- The lead **stamps it on receipt**, on its own clock (§10.2), and folds it into that machine's
+  minute history. A malformed field drops the whole sample. An unknown key inside it is ignored.
+- **What the lead keeps is the lead's.** The day of minutes (`machine-history.json`) and the alert
+  rules (`machine-alerts.json`) live on the lead only. A peer writes neither, and none of the three
+  `/api/machines*` routes is forwarded with `?host=` (§9.1): a peer answers them `404 crew.not_lead`.
+- No new route, no new dial, no new budget. The field rides an answer §10.1 already collects.
 
 ### The header
 

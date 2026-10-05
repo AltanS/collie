@@ -369,9 +369,22 @@ describe("Push — per-message collapse topic (update must not share the herd sl
     await push.send({ type: "update", tag: "collie:update", title: "t", body: "b", target: "settings" });
     await push.send({ title: "claude needs you", body: "…", tag: "collie:herd", paneId: "w1:p1" });
     await push.send({ type: "clear", tag: "collie:herd" });
+    await push.send({ type: "machine", tag: "collie:machine:desk:cpu", title: "t", body: "b", host: "desk", target: "machine" });
 
-    expect(sends.length).toBe(3);
+    expect(sends.length).toBe(4);
     for (const { options } of sends) expect(topicIsSendable(options.topic)).toBe(true);
+  });
+
+  test("a load alert rides its own topic, and its tap data names the machine (ADR 0084)", async () => {
+    const cfg = await tempCfg();
+    const { sender, sends } = capturing();
+    const push = new Push(cfg, sender);
+    enable(push, [sub("a")]);
+
+    await push.send({ type: "machine", tag: "collie:machine:desk:cpu", title: "t", body: "b", host: "desk", target: "machine" });
+    // Its own collapse key: a queued load alert and a queued herd summary must not replace each other.
+    expect(sends[0]!.options).toEqual({ TTL: 3_600, topic: "collie-machines", urgency: "high" });
+    expect(JSON.parse(sends[0]!.payload).data).toEqual({ host: "desk", target: "machine" });
   });
 
   test("topicIsSendable rejects the lengths base64 cannot produce — the Apple trap", () => {

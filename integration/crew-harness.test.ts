@@ -54,7 +54,7 @@ import {
   type TrustStoreData,
 } from "../bridge/crew/trust-store.ts";
 import { collieVersionBare } from "../bridge/version.ts";
-import type { CrewStatusResponse } from "../bridge/types.ts";
+import type { CrewStatusResponse, MachinesResponse } from "../bridge/types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE TWO-INSTANCE INTEGRATION HARNESS (spec M4/08).
@@ -453,6 +453,28 @@ describe("solo zero-tax, measured rather than inferred", () => {
     expect(await res.text()).toContain('"code":"crew.not_lead"');
   });
 
+  // ADR 0084: Machines exists on a solo collie too, as one row for its own machine. The sampler rides
+  // the engine tick and needs two readings five seconds apart, so the sample arrives, it is not there.
+  test("`/api/machines` answers one row on a solo instance, and its own sample arrives on the tick", async () => {
+    const machinesOf = async (): Promise<MachinesResponse> =>
+      // SAFETY: the handler emits `MachinesResponse` (server.ts, `serveMachinesRoute`).
+      (await (await fetch(`${lead.origin()}/api/machines`)).json()) as MachinesResponse;
+    await waitFor(
+      async () => (await machinesOf()).machines[0]?.sample !== undefined,
+      15_000,
+      async () => `no sample on the solo row (saw ${JSON.stringify(await machinesOf())})`,
+    );
+    const body = await machinesOf();
+    expect(body.machines.map((m) => [m.id, m.isLead, m.health])).toEqual([["local", true, "reachable"]]);
+    expect(body.machines[0]!.sample!.cpu).toBeGreaterThanOrEqual(0);
+    expect(body.machines[0]!.sample!.cpu).toBeLessThanOrEqual(1);
+    expect(body.machines[0]!.sample!.memTotal).toBeGreaterThan(0);
+    const history = await fetch(`${lead.origin()}/api/machines/local/history`);
+    expect(history.status).toBe(200);
+    expect(await history.json()).toMatchObject({ stepMs: 60_000 });
+    expect((await fetch(`${lead.origin()}/api/machines/nas/history`)).status).toBe(404);
+  }, 30_000);
+
   test("a solo snapshot carries no crew fields", async () => {
     const body = await (await fetch(`${lead.origin()}/api/snapshot`)).text();
     expect(body).not.toMatch(/"servers"|"host":|"crew"/);
@@ -625,6 +647,34 @@ describe("the lead speaks for the crew", () => {
     expect(raw).not.toContain("BEGIN CERTIFICATE");
     expect(raw).not.toContain(lead.store()!.self.fingerprint);
   }, 60_000);
+
+  // ADR 0084: the lead lists every machine under the id `/api/crew` uses for it, and a member's load
+  // arrives as the `machineStats` sibling of the snapshot the sweep already dials.
+  test("`/api/machines` lists both machines under their crew ids, and the peer's sample arrives", async () => {
+    const leadId = lead.store()!.self.memberId;
+    const peerId = peer.store()!.self.memberId;
+    const machinesOf = async (): Promise<MachinesResponse> =>
+      // SAFETY: the handler emits `MachinesResponse` (server.ts, `serveMachinesRoute`).
+      (await (await fetch(`${lead.origin()}/api/machines`)).json()) as MachinesResponse;
+    await waitFor(
+      async () => (await machinesOf()).machines.find((m) => m.id === peerId)?.sample !== undefined,
+      15_000,
+      async () => `the peer's row never got a sample (saw ${JSON.stringify(await machinesOf())})`,
+    );
+    const body = await machinesOf();
+    // SAFETY: the handler emits `CrewStatusResponse` (server.ts, `/api/crew`).
+    const crew = (await (await fetch(`${lead.origin()}/api/crew`)).json()) as CrewStatusResponse;
+    expect(body.machines.map((m) => m.id)).toEqual(crew.members.map((m) => m.id));
+    expect(body.machines.map((m) => m.id)).toEqual([leadId, peerId]);
+    expect(body.machines.map((m) => m.isLead)).toEqual([true, false]);
+    const peerRow = body.machines[1]!;
+    expect(peerRow.health).toBe("reachable");
+    // Stamped on the LEAD's clock at receipt (§10.2), so never in the lead's future.
+    expect(peerRow.sampledAt!).toBeLessThanOrEqual(body.ts);
+    expect(peerRow.sample!.cores).toBeGreaterThan(0);
+    // The sibling never leaks into the browser's merged snapshot.
+    expect(JSON.stringify(await snapshotOf(lead.origin()))).not.toContain("machineStats");
+  }, 30_000);
 
   test("the read gate covers `/api/crew`, exactly as it covers `/api/config`", async () => {
     // A cross-origin read is refused before the body is composed — the same `guard(…, "read")` every

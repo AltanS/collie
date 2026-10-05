@@ -1,0 +1,307 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  evaluateMachineAlerts,
+  judgeAlert,
+  MACHINE_ALERTS_FILE,
+  machineAlertMessage,
+  MachineAlertStore,
+  type AlertSubject,
+} from "./machine-alerts.ts";
+import { MachineHistory, MINUTE_MS, type MinuteReading } from "./machine-history.ts";
+import { parseMachineAlerts } from "./machine-parse.ts";
+import { MachineWatch, type MachineRosterEntry } from "./machines.ts";
+import type { PushMessage } from "./push.ts";
+import type { MachineSample } from "./types.ts";
+
+// The evaluator is pure and judged as data; the store and the watch are driven over a temp folder.
+// Five promises: it fires once, it needs coverage, it closes with hysteresis, it survives a restart,
+// and it ignores a machine that is not answering.
+
+const T0 = Date.UTC(2026, 9, 5, 12, 0, 0);
+
+const dirs: string[] = [];
+async function tempDir(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "collie-machine-alerts-"));
+  dirs.push(dir);
+  return dir;
+}
+afterAll(async () => {
+  await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })));
+});
+
+/** Complete minutes ending just before `now`'s minute: `values[0]` is the oldest. */
+function minutes(values: readonly (number | null)[], now: number): MinuteReading[] {
+  const open = Math.floor(now / MINUTE_MS) * MINUTE_MS;
+  return values.flatMap((v, i) =>
+    v === null ? [] : [{ t: open - (values.length - i) * MINUTE_MS, cpu: v, mem: v }],
+  );
+}
+
+const RULE = { above: 0.9, forMin: 10 };
+const NOW = T0 + 30 * MINUTE_MS + 15_000;
+
+describe("judgeAlert — when a rule fires", () => {
+  test("every complete minute of the window at or above the line fires, with the window's average", () => {
+    const v = judgeAlert("cpu", RULE, false, minutes(Array(10).fill(0.95), NOW), NOW);
+    expect(v.kind).toBe("fire");
+    expect(v.kind === "fire" ? v.value : 0).toBeCloseTo(0.95, 10);
+    // Exactly on the line counts.
+    expect(judgeAlert("cpu", RULE, false, minutes(Array(10).fill(0.9), NOW), NOW).kind).toBe("fire");
+  });
+
+  test("one minute below the line holds", () => {
+    const values = [...Array(9).fill(0.99), 0.89];
+    expect(judgeAlert("cpu", RULE, false, minutes(values, NOW), NOW).kind).toBe("hold");
+  });
+
+  test("it needs data for at least 80 % of the window", () => {
+    const eight = [null, null, ...Array(8).fill(0.99)];
+    const seven = [null, null, null, ...Array(7).fill(0.99)];
+    expect(judgeAlert("cpu", RULE, false, minutes(eight, NOW), NOW).kind).toBe("fire");
+    expect(judgeAlert("cpu", RULE, false, minutes(seven, NOW), NOW).kind).toBe("hold");
+    expect(judgeAlert("cpu", RULE, false, [], NOW).kind).toBe("hold");
+  });
+
+  test("the open minute is never judged, and a minute before the window does not count", () => {
+    const open = Math.floor(NOW / MINUTE_MS) * MINUTE_MS;
+    const nine = minutes(Array(9).fill(0.99), NOW);
+    // Nine complete minutes is 90 % coverage of ten, so that fires on its own — but a low open minute
+    // and a low minute just outside the window change nothing.
+    const withNoise = [{ t: open - 11 * MINUTE_MS, cpu: 0.1, mem: 0.1 }, ...nine, { t: open, cpu: 0.1, mem: 0.1 }];
+    expect(judgeAlert("cpu", RULE, false, withNoise, NOW).kind).toBe("fire");
+  });
+
+  test("memory is judged on the memory fraction", () => {
+    const open = Math.floor(NOW / MINUTE_MS) * MINUTE_MS;
+    const window: MinuteReading[] = Array.from({ length: 10 }, (_, i) => ({ t: open - (10 - i) * MINUTE_MS, cpu: 0.5, mem: 0.97 }));
+    expect(judgeAlert("mem", RULE, false, window, NOW).kind).toBe("fire");
+    expect(judgeAlert("cpu", RULE, false, window, NOW).kind).toBe("hold");
+  });
+});
+
+describe("judgeAlert — when an episode closes", () => {
+  test("five straight complete minutes below the line minus 0.05 close it", () => {
+    expect(judgeAlert("cpu", RULE, true, minutes(Array(5).fill(0.84), NOW), NOW).kind).toBe("close");
+  });
+
+  test("a value between the two lines keeps it open: that gap is the hysteresis", () => {
+    expect(judgeAlert("cpu", RULE, true, minutes([0.84, 0.84, 0.87, 0.84, 0.84], NOW), NOW).kind).toBe("hold");
+  });
+
+  test("a missing minute in those five keeps it open: missing is not low", () => {
+    expect(judgeAlert("cpu", RULE, true, minutes([0.5, 0.5, null, 0.5, 0.5], NOW), NOW).kind).toBe("hold");
+  });
+
+  test("an open episode never fires again, however high", () => {
+    expect(judgeAlert("cpu", RULE, true, minutes(Array(10).fill(0.99), NOW), NOW).kind).toBe("hold");
+  });
+});
+
+describe("evaluateMachineAlerts", () => {
+  const high = (_id: string, from: number) => minutes(Array(10).fill(0.99), NOW).filter((m) => m.t >= from);
+  const low = (_id: string, from: number) => minutes(Array(10).fill(0.1), NOW).filter((m) => m.t >= from);
+  const subject = (over: Partial<AlertSubject> = {}): AlertSubject => ({
+    id: "desk",
+    name: "desk",
+    reachable: true,
+    rules: { cpu: RULE },
+    open: [],
+    ...over,
+  });
+
+  test("a reachable machine fires and closes on the same minutes", () => {
+    expect(evaluateMachineAlerts([subject()], high, NOW, true).opened.map((o) => o.metric)).toEqual(["cpu"]);
+    expect(evaluateMachineAlerts([subject({ open: ["cpu"] })], low, NOW, true).closed).toEqual([{ id: "desk", metric: "cpu" }]);
+  });
+
+  test("an unreachable machine neither fires nor closes", () => {
+    expect(evaluateMachineAlerts([subject({ reachable: false })], high, NOW, true)).toEqual({ opened: [], closed: [] });
+    expect(evaluateMachineAlerts([subject({ reachable: false, open: ["cpu"] })], low, NOW, true)).toEqual({
+      opened: [],
+      closed: [],
+    });
+  });
+
+  test("while it may not open (snoozed, or switched off) nothing opens, and an open episode still closes", () => {
+    expect(evaluateMachineAlerts([subject()], high, NOW, false).opened).toEqual([]);
+    expect(evaluateMachineAlerts([subject({ open: ["cpu"] })], low, NOW, false).closed).toEqual([
+      { id: "desk", metric: "cpu" },
+    ]);
+  });
+
+  test("a metric with no rule is never judged", () => {
+    expect(evaluateMachineAlerts([subject({ rules: {} })], high, NOW, true)).toEqual({ opened: [], closed: [] });
+  });
+});
+
+describe("the push", () => {
+  test("names the machine, the metric, the value and the minutes; one tag per machine and metric", () => {
+    const msg = machineAlertMessage({ id: "laptop", name: "laptop", metric: "mem", rule: { above: 0.9, forMin: 30 }, value: 0.934 });
+    expect(msg).toEqual({
+      type: "machine",
+      tag: "collie:machine:laptop:mem",
+      title: "Memory stays high on laptop",
+      titleCode: "machine.mem",
+      titleDetail: { machine: "laptop" },
+      body: "laptop: memory 93% for 30 min (alert at 90%).",
+      host: "laptop",
+      target: "machine",
+      renotify: true,
+    });
+  });
+});
+
+describe("parseMachineAlerts — the POST body", () => {
+  test("a missing key is no rule; a present key must be inside the bounds", () => {
+    expect(parseMachineAlerts({})).toEqual({});
+    expect(parseMachineAlerts({ cpu: { above: 0.9, forMin: 10 } })).toEqual({ cpu: { above: 0.9, forMin: 10 } });
+    expect(parseMachineAlerts({ cpu: { above: 0.5, forMin: 5 }, mem: { above: 0.99, forMin: 120 }, gpu: 1 })).toEqual({
+      cpu: { above: 0.5, forMin: 5 },
+      mem: { above: 0.99, forMin: 120 },
+    });
+    for (const bad of [
+      { cpu: { above: 0.49, forMin: 10 } },
+      { cpu: { above: 1, forMin: 10 } },
+      { cpu: { above: 0.9, forMin: 4 } },
+      { cpu: { above: 0.9, forMin: 121 } },
+      { cpu: { above: 0.9, forMin: 7.5 } },
+      { mem: null },
+      { mem: { above: "0.9", forMin: 10 } },
+    ]) {
+      expect(parseMachineAlerts(bad)).toBeNull();
+    }
+    expect(parseMachineAlerts(null)).toBeNull();
+    expect(parseMachineAlerts([])).toBeNull();
+  });
+});
+
+// ── The watch, end to end over a temp state folder ──────────────────────────
+
+function hot(cpu: number): MachineSample {
+  return { cpu, cores: 4, memUsed: 1e9, memTotal: 8e9 };
+}
+
+function rig(dir: string, history: MachineHistory, alerts: MachineAlertStore, health: MachineRosterEntry["health"] = "reachable") {
+  const state = { now: T0, muted: false, enabled: true, health };
+  const sent: PushMessage[] = [];
+  const watch = new MachineWatch({
+    now: () => state.now,
+    roster: () => [
+      { id: "desk", name: "desk", isLead: true, health: "reachable" },
+      { id: "laptop", name: "laptop", isLead: false, health: state.health },
+    ],
+    history,
+    alerts,
+    saveHistory: async () => {},
+    muted: () => state.muted,
+    enabled: () => state.enabled,
+    send: (msg) => sent.push(msg),
+  });
+  /** One sample per minute for `n` minutes on `id`, ticking at each minute. */
+  const run = async (id: string, values: readonly number[]) => {
+    for (const v of values) {
+      watch.observe(id, hot(v), state.now);
+      state.now += MINUTE_MS;
+      watch.tick();
+      // The episode write is not awaited by the tick; let it land before the next minute.
+      await Bun.sleep(1);
+    }
+  };
+  return { state, sent, watch, run, dir };
+}
+
+describe("MachineWatch — one push per episode, and a restart does not push twice", () => {
+  test("fires once, stays quiet while open, closes, and fires again on the next episode", async () => {
+    const dir = await tempDir();
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir));
+    await r.watch.setAlerts("laptop", { cpu: { above: 0.9, forMin: 5 } });
+
+    await r.run("laptop", Array(5).fill(0.95));
+    expect(r.sent.map((m) => m.tag)).toEqual(["collie:machine:laptop:cpu"]);
+    expect(r.watch.rows().machines.find((m) => m.id === "laptop")?.firing).toEqual(["cpu"]);
+
+    await r.run("laptop", Array(20).fill(0.99));
+    expect(r.sent.length).toBe(1);
+
+    await r.run("laptop", Array(5).fill(0.5));
+    expect(r.watch.rows().machines.find((m) => m.id === "laptop")?.firing).toEqual([]);
+
+    await r.run("laptop", Array(5).fill(0.95));
+    expect(r.sent.length).toBe(2);
+  });
+
+  test("an episode open before a restart is still open after it, and nothing is sent again", async () => {
+    const dir = await tempDir();
+    const history = new MachineHistory();
+    const first = rig(dir, history, await MachineAlertStore.load(dir));
+    await first.watch.setAlerts("laptop", { cpu: { above: 0.9, forMin: 5 } });
+    await first.run("laptop", Array(5).fill(0.95));
+    expect(first.sent.length).toBe(1);
+
+    // A new process: the rules and the open episode come back off disk, the minutes are the same.
+    const second = rig(dir, history, await MachineAlertStore.load(dir));
+    second.state.now = first.state.now;
+    await second.run("laptop", Array(3).fill(0.97));
+    expect(second.sent).toEqual([]);
+    expect(second.watch.rows().machines.find((m) => m.id === "laptop")?.firing).toEqual(["cpu"]);
+  });
+
+  test("an unreachable machine's episode is neither opened nor closed", async () => {
+    const dir = await tempDir();
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir), "unreachable");
+    await r.watch.setAlerts("laptop", { cpu: { above: 0.9, forMin: 5 } });
+    await r.run("laptop", Array(6).fill(0.99));
+    expect(r.sent).toEqual([]);
+  });
+
+  test("a snooze sends nothing and records nothing, so a high value that outlasts it still pushes", async () => {
+    const dir = await tempDir();
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir));
+    await r.watch.setAlerts("desk", { cpu: { above: 0.9, forMin: 5 } });
+    r.state.muted = true;
+    await r.run("desk", Array(6).fill(0.99));
+    expect(r.sent).toEqual([]);
+    expect(r.watch.rows().machines[0]!.firing).toEqual([]);
+    r.state.muted = false;
+    await r.run("desk", [0.99]);
+    expect(r.sent.map((m) => m.tag)).toEqual(["collie:machine:desk:cpu"]);
+  });
+
+  test("the operator's switch off is the same: nothing sent", async () => {
+    const dir = await tempDir();
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir));
+    await r.watch.setAlerts("desk", { mem: { above: 0.5, forMin: 5 } });
+    r.state.enabled = false;
+    await r.run("desk", Array(6).fill(0.1));
+    expect(r.sent).toEqual([]);
+  });
+});
+
+describe("MachineAlertStore — written on a change only", () => {
+  test("no rule, no file; a rule writes it; removing a rule drops its open episode", async () => {
+    const dir = await tempDir();
+    const store = await MachineAlertStore.load(dir);
+    await store.apply({ opened: [], closed: [] });
+    expect(await readdir(dir)).toEqual([]);
+
+    await store.set("desk", { cpu: { above: 0.9, forMin: 10 } });
+    expect(await readdir(dir)).toEqual([MACHINE_ALERTS_FILE]);
+    await store.apply({ opened: [{ id: "desk", name: "desk", metric: "cpu", rule: { above: 0.9, forMin: 10 }, value: 0.95 }], closed: [] });
+    expect((await MachineAlertStore.load(dir)).open("desk")).toEqual(["cpu"]);
+
+    await store.set("desk", { mem: { above: 0.8, forMin: 5 } });
+    const back = await MachineAlertStore.load(dir);
+    expect(back.rules("desk")).toEqual({ mem: { above: 0.8, forMin: 5 } });
+    expect(back.open("desk")).toEqual([]);
+  });
+
+  test("an unreadable file is no rule at all", async () => {
+    const dir = await tempDir();
+    await Bun.write(join(dir, MACHINE_ALERTS_FILE), "[]");
+    expect((await MachineAlertStore.load(dir)).rules("desk")).toEqual({});
+  });
+});

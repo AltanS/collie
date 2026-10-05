@@ -26,6 +26,10 @@ export interface NotifyPrefs {
    *  (`bridge/cache/watch.ts`, ADR 0042). There is no per-pane off that overrides it. Not an agent
    *  status either, so it never flows through {@link isNotifiable}; the cache warden reads it directly. */
   cache: boolean;
+  /** Push when a machine's load stays above the alert rule set on its Machines page (ADR 0084). Default
+   *  ON, unlike `cache`: a rule is the opt-in, set per machine, so this switch only silences rules the
+   *  operator already asked for. Not an agent status; the machine watch reads it directly. */
+  machines: boolean;
 }
 
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
@@ -33,6 +37,7 @@ export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
   done: false,
   updates: true,
   cache: false,
+  machines: true,
 };
 
 /**
@@ -47,6 +52,7 @@ export function coerceNotifyPrefs(raw: JsonValue | undefined): NotifyPrefs {
     done: typeof o.done === "boolean" ? o.done : DEFAULT_NOTIFY_PREFS.done,
     updates: typeof o.updates === "boolean" ? o.updates : DEFAULT_NOTIFY_PREFS.updates,
     cache: typeof o.cache === "boolean" ? o.cache : DEFAULT_NOTIFY_PREFS.cache,
+    machines: typeof o.machines === "boolean" ? o.machines : DEFAULT_NOTIFY_PREFS.machines,
   };
 }
 
@@ -88,6 +94,7 @@ export class NotifyPrefsStore {
     if (patch.done !== undefined) this.prefs.done = patch.done;
     if (patch.updates !== undefined) this.prefs.updates = patch.updates;
     if (patch.cache !== undefined) this.prefs.cache = patch.cache;
+    if (patch.machines !== undefined) this.prefs.machines = patch.machines;
     await this.save();
     return this.current();
   }

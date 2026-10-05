@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **The lead keeps a day of CPU and memory for every machine.** Each Collie reads its own CPU, memory, load and network about once every five seconds, on the tick it already runs. A crew member sends its last reading with the answer the lead already asks for, and the lead keeps one point per minute for 24 hours. A Collie with no crew keeps the same day for its own machine. You can set one CPU rule and one memory rule per machine, and the lead sends one push when a value stays above the line. Nothing leaves the crew. See `docs/crew.md`, *Machines*.
+
 ### Fixed
 
 - **An opencode draft and dialog read correctly with a sidebar open beside the pane.** A sidebar row that shares a row with the composer or a dialog is now skipped, so the Draft card shows what you typed, the reply guard can verify the send, and a question card is not lost behind the sidebar's box glyphs. Thanks @AndiWandHerd (#352). ([fedbe6dc](https://github.com/AltanS/collie/commit/fedbe6dc))

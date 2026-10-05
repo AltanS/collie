@@ -77,6 +77,9 @@ import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeReque
 import type { SttProvider } from "./stt/provider.ts";
 import { uploadTooLarge } from "./uploads.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
+import type { MachineAlertsResponse } from "./types.ts";
+import { parseMachineAlerts } from "./machine-parse.ts";
+import type { MachineSurface } from "./machines.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -280,6 +283,14 @@ const WORKSPACE_CHANGES_ROUTE = /^\/api\/workspace\/([^/]+)\/changes$/;
  * mirrors this shape and `forward.test.ts` pins it.
  */
 const WORKSPACE_FILES_ROUTE = /^\/api\/workspace\/([^/]+)\/files$/;
+
+/**
+ * `GET /api/machines/<id>/history` and `POST /api/machines/<id>/alerts` (ADR 0084). The id is a
+ * machine's member id, matched as an opaque segment and only ever LOOKED UP in the roster, never
+ * decoded into anything else. Not forwardable: the lead keeps every machine's history and rules
+ * itself, so `bridge/crew/forward.ts` names neither and a `?host=` here addresses nothing.
+ */
+const MACHINE_ROUTE = /^\/api\/machines\/([^/]+)\/(history|alerts)$/;
 
 /**
  * Header the web app sets on its own pane reads, and the ONLY thing that lets a read mark a pane
@@ -817,6 +828,14 @@ export function startServer(opts: {
    * exactly today's four entries.
    */
   folders?: FolderSurface;
+  /**
+   * Every machine's load, the day of minutes behind it and the alert rules (ADR 0084).
+   *
+   * Supplied on a lead and on a solo collie, and **absent on a peer**, which answers the three
+   * `/api/machines*` routes with `crew.not_lead` exactly as it answers `/api/crew`: a peer is not a
+   * front door (ADR 0013), and its own load already reaches the lead beside its snapshot.
+   */
+  machines?: MachineSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -825,6 +844,7 @@ export function startServer(opts: {
   const cache = opts.cache;
   const pairing = opts.pairing;
   const folders = opts.folders;
+  const machines = opts.machines;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
   // the same bounded process-local capacity (bridge/stt/http.ts).
@@ -2197,6 +2217,19 @@ export function startServer(opts: {
         }
         return json(body, req.headers.get("accept-encoding"));
       }
+      // ── Machines: every machine's load, kept by the lead (ADR 0084) ──────
+      // Global routes, never forwardable: see `serveMachinesRoute`.
+      const machinesAnswer = await serveMachinesRoute(
+        req,
+        pathname,
+        {
+          gate: (level) => guard(req, cfg, level, pairing),
+          device: () => whois(req).device,
+          audit: (entry) => audit.record(entry),
+        },
+        machines,
+      );
+      if (machinesAnswer !== null) return machinesAnswer;
       if (pathname === "/api/devices" && req.method === "GET") {
         if (!pairing) return text("pairing unavailable", 503);
         // Read-level, so an unpaired device can still see whether pairing is on and which devices
@@ -3851,6 +3884,85 @@ export async function serveFolderRoute(
     return json(foldersBody(folders), ae);
   }
   return null;
+}
+
+// ── Machines (ADR 0084) ──────────────────────────────────────────────────────────
+//
+// Three routes, none forwardable: the lead (or a solo collie) holds every machine's last sample, its
+// day of minutes and its alert rules, so a `?host=` addresses nothing here. A peer has no watch and
+// refuses all three with the `/api/crew` refusal, for that route's reason. Pulled out of the inline
+// dispatch so `bun test` can drive the gate, the refusals and the audit line with a fake caller.
+
+/** What the machine routes need of their caller: the gate, who is asking, and the audit trail. */
+export interface MachineRouteCaller {
+  gate(level: "read" | "write"): Response | null;
+  /** The requesting device's name across both gates, or `null` when neither names one. */
+  device(): string | null;
+  audit(entry: AuditEntry): void;
+}
+
+/** The three machine routes, or `null` when `pathname` is none of them. */
+export async function serveMachinesRoute(
+  req: Request,
+  pathname: string,
+  caller: MachineRouteCaller,
+  machines: MachineSurface | undefined,
+): Promise<Response | null> {
+  const ae = req.headers.get("accept-encoding");
+  if (pathname === "/api/machines") {
+    if (req.method !== "GET") return text("method not allowed", 405);
+    // Read-level, like `/api/crew`: a report from memory that dials nobody.
+    const denied = caller.gate("read");
+    if (denied) return denied;
+    if (machines === undefined) return jsonError(apiError("crew.not_lead"), 404, ae);
+    return json(machines.rows(), ae);
+  }
+  const route = MACHINE_ROUTE.exec(pathname);
+  if (route === null) return null;
+  const id = route[1]!;
+  const isHistory = route[2] === "history";
+  if (req.method !== (isHistory ? "GET" : "POST")) return text("method not allowed", 405);
+  // The history is a read. A rule is a WRITE: it decides what every subscribed device is told, so it
+  // takes the device gates a send takes, and it is audited.
+  const denied = caller.gate(isHistory ? "read" : "write");
+  if (denied) return denied;
+  if (machines === undefined) return jsonError(apiError("crew.not_lead"), 404, ae);
+  const unknownMachine = () => jsonError(apiError("host.unknown", { host: id }), 404, ae);
+  if (isHistory) {
+    const body = machines.history(id);
+    return body === null ? unknownMachine() : json(body, ae);
+  }
+  const entry = machines.entry(id);
+  if (entry === undefined) return unknownMachine();
+  let raw: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseMachineAlerts` re-checks
+    // every field of it before any of it is used.
+    raw = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad request", 400);
+  }
+  const alerts = parseMachineAlerts(raw);
+  if (alerts === null) return text("bad alerts", 400);
+  const stored = await machines.setAlerts(id, alerts);
+  if (stored === null) return unknownMachine();
+  // The machine rides the envelope's `host`, absent for this collie's own machine as on every other
+  // line, and the rule rides as numbers, which no `audit.content` setting redacts.
+  const detail: AuditDetail = {};
+  if (stored.cpu !== undefined) {
+    detail.cpuAbove = stored.cpu.above;
+    detail.cpuForMin = stored.cpu.forMin;
+  }
+  if (stored.mem !== undefined) {
+    detail.memAbove = stored.mem.above;
+    detail.memForMin = stored.mem.forMin;
+  }
+  const row: AuditEntry = { action: "machine.alerts", detail };
+  const device = caller.device();
+  if (device !== null) row.device = device;
+  if (!entry.isLead) row.host = id;
+  caller.audit(row);
+  return json({ alerts: stored } satisfies MachineAlertsResponse, ae);
 }
 
 // GET /api/cache-rules — the rule catalog behind every cache chip on THIS host, plus the overrides

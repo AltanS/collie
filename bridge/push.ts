@@ -60,7 +60,7 @@ export type PushDeliveryResult = { statusCode?: number; body?: string; headers?:
 export type SubscriptionRow = { endpoint: string; createdAt?: string; userAgent?: string };
 
 /** The deep-link fields the service worker reads off a push payload (see web/src/sw.ts). */
-type PushPayloadData = { paneId?: string; session?: string; host?: string; target?: "settings" };
+type PushPayloadData = { paneId?: string; session?: string; host?: string; target?: "settings" | "machine" };
 
 /** The HTTP status a `web-push` rejection carries, or undefined when it carries none. */
 function sendErrorStatus<T>(err: T): number | undefined {
@@ -121,6 +121,12 @@ const SEND_OPTIONS = { TTL: 21_600, topic: "collie-herd", urgency: "high" } as c
 // update stays relevant far longer than a transient "needs you". The trailing "s" is not a typo:
 // "collie-update" is 13 characters, which Apple refuses outright — see the base64 note above.
 const UPDATE_SEND_OPTIONS = { TTL: 259_200, topic: "collie-updates" } as const;
+// A machine's sustained load (ADR 0084) rides a third topic, for the update push's reason: sharing
+// "collie-herd" would let a queued load alert and a queued herd summary overwrite each other. One hour
+// of TTL, because a load alert older than that describes a minute the Machines page shows better, and
+// `high` urgency for the herd's reason: it is one push per episode, and a deferred one is late for the
+// only thing it is for. 15 characters, which base64 can produce (see the note above).
+const MACHINE_SEND_OPTIONS = { TTL: 3_600, topic: "collie-machines", urgency: "high" } as const;
 
 /** Whether a collapse topic is one every push service will accept: RFC 8030's alphabet and 32-char
  *  ceiling, plus the length base64 can actually produce (Apple decodes it; ≡ 1 mod 4 is impossible).
@@ -174,11 +180,12 @@ export type PushSender = (
 /**
  * A notification instruction for the service worker (see web/src/sw.ts). `type:"clear"` closes the
  * notification on `tag` instead of showing one; `type:"update"` is an update-available alert (its own
- * collapse topic; taps open Settings); otherwise the SW renders `{ title, body }` into the `tag` slot,
+ * collapse topic; taps open Settings); `type:"machine"` is a sustained-load alert (its own topic; taps
+ * open that machine's page); otherwise the SW renders `{ title, body }` into the `tag` slot,
  * deep-links to `paneId` on tap, and re-alerts when `renotify` is set.
  */
 export interface PushMessage {
-  type?: "clear" | "update";
+  type?: "clear" | "update" | "machine";
   title?: string;
   /**
    * The stable code `title` was rendered from, and the values it was filled with (`push-titles.ts`).
@@ -211,8 +218,11 @@ export interface PushMessage {
    *
    *  The client resolves this name to `/settings/updates` (web/src/lib/push-decision.ts). The name
    *  itself is frozen: an old cached service worker resolves it to `/settings` and lands one row
-   *  away from the page it wanted, which renaming the field would have turned into `/`. */
-  target?: "settings";
+   *  away from the page it wanted, which renaming the field would have turned into `/`.
+   *
+   *  `"machine"` opens `/machines/<host>` (ADR 0084). An old service worker does not know it and
+   *  takes the pane path with no pane, which is the dashboard. */
+  target?: "settings" | "machine";
   renotify?: boolean;
 }
 
@@ -330,8 +340,9 @@ export class Push {
     if (msg.session !== undefined) data.session = msg.session;
     if (msg.host !== undefined) data.host = msg.host;
     if (msg.target !== undefined) data.target = msg.target;
-    // Per-message collapse topic — update alerts must not share the herd slot (see UPDATE_SEND_OPTIONS).
-    const options = msg.type === "update" ? UPDATE_SEND_OPTIONS : SEND_OPTIONS;
+    // Per-message collapse topic — update and load alerts must not share the herd slot (see above).
+    const options =
+      msg.type === "update" ? UPDATE_SEND_OPTIONS : msg.type === "machine" ? MACHINE_SEND_OPTIONS : SEND_OPTIONS;
     await this.broadcast(JSON.stringify({ ...msg, data }), options);
   }
 

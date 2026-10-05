@@ -45,6 +45,10 @@ export const PUSH_TITLES = {
   "update.available": "Collie update available",
   /** A watched pane's prompt cache is about to expire (`cache/warn.ts`). */
   "cache.cold_soon": "Cache goes cold in about {minutes} min",
+  /** A machine's CPU stayed above its alert line for the rule's minutes (`machine-alerts.ts`). */
+  "machine.cpu": "CPU stays high on {machine}",
+  /** The same for memory. */
+  "machine.mem": "Memory stays high on {machine}",
 } as const;
 
 /** Every code a push title can carry. The client mirror restates this union verbatim. */

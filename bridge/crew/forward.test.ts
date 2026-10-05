@@ -181,6 +181,10 @@ describe("which routes cross a link", () => {
       "/api/notifications/snooze",
       "/api/notifications/prefs",
       "/api/update/check",
+      // ADR 0084: the lead holds every machine's history and rules, so `?host=` addresses nothing.
+      "/api/machines",
+      "/api/machines/laptop/history",
+      "/api/machines/laptop/alerts",
       "/api/config",
       "/api/snapshot",
       "/api/pane/w1:p1/nonsense",

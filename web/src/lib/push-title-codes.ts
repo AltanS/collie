@@ -17,6 +17,8 @@ export const PUSH_TITLE_CODES = [
   "herd.mixed",
   "update.available",
   "cache.cold_soon",
+  "machine.cpu",
+  "machine.mem",
 ] as const;
 
 /** Every code a push title can carry. Derived from the list, so there is exactly one place to edit. */

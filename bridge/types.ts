@@ -484,6 +484,85 @@ export interface CrewMemberStatus {
   linkState?: "reconnecting" | "attention";
 }
 
+// ── Machines: every machine's load, kept by the lead (ADR 0084) ──────────────────
+//
+// The wire of `GET /api/machines`, `GET /api/machines/:id/history` and `POST /api/machines/:id/alerts`,
+// and of the `machineStats` sibling a peer adds to its `/crew/v1/snapshot` answer (CREW_PROTOCOL.md
+// §5). Fractions are 0..1, bytes are plain numbers, and every time is epoch ms on the clock of the
+// bridge that answered. Optional keys are OMITTED when absent, never sent as null.
+
+/** One reading of one machine. See `bridge/machine-stats.ts` for where each number comes from. */
+export interface MachineSample {
+  /** Busy fraction of all cores since the previous reading. */
+  cpu: number;
+  cores: number;
+  /** Bytes in use, not counting reclaimable cache where the platform says how much that is. */
+  memUsed: number;
+  memTotal: number;
+  /** The one-minute load average. Absent on Windows, where there is none. */
+  load1?: number;
+  /** Received bytes per second over all interfaces but loopback. Absent without counters. */
+  rxBps?: number;
+  txBps?: number;
+}
+
+/** The two metrics an alert can watch. CPU is judged on the minute's average. */
+export type AlertMetric = "cpu" | "mem";
+
+/** Push when the metric stays at or above `above` (0.5..0.99) for `forMin` minutes (5..120). */
+export interface AlertRule {
+  above: number;
+  forMin: number;
+}
+
+/** One machine's rules. A missing key is no rule for that metric. */
+export interface MachineAlerts {
+  cpu?: AlertRule;
+  mem?: AlertRule;
+}
+
+/** One machine on `GET /api/machines`. The lead first, then members in member-id order. */
+export interface MachineRow {
+  /** Member id, the value `?h=` takes. A solo collie that never enrolled is `local`. */
+  id: string;
+  name: string;
+  /** True for the machine answering. A solo collie's one row is `isLead: true`. */
+  isLead: boolean;
+  /** {@link CrewMemberStatus.health}, the same four words. */
+  health: "reachable" | "unreachable" | "incompatible" | "conflicted";
+  /** The last sample held. Absent: not reported yet, or a member older than the field. */
+  sample?: MachineSample;
+  /** When the answering bridge took or received that sample. Present exactly when `sample` is. */
+  sampledAt?: number;
+  alerts: MachineAlerts;
+  /** The metrics whose alert episode is open now. */
+  firing: AlertMetric[];
+}
+
+/** `GET /api/machines`. */
+export interface MachinesResponse {
+  ts: number;
+  machines: MachineRow[];
+}
+
+/**
+ * One minute of history: `[t, cpuAvg, cpuMax, memFrac, rxBps | null, txBps | null]`. `t` is the
+ * minute's start. A minute with no reading is simply missing from the list.
+ */
+export type MachineHistoryPoint = [number, number, number, number, number | null, number | null];
+
+/** `GET /api/machines/:id/history`. Oldest first, at most 1440 points, one per minute. */
+export interface MachineHistoryResponse {
+  ts: number;
+  stepMs: 60000;
+  points: MachineHistoryPoint[];
+}
+
+/** `POST /api/machines/:id/alerts`. The rules as stored after the write. */
+export interface MachineAlertsResponse {
+  alerts: MachineAlerts;
+}
+
 /**
  * The crew wire version this release moves to, and the one this install speaks (M27/06).
  *

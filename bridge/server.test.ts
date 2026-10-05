@@ -1490,6 +1490,7 @@ describe("parseNotifyPrefsPatch", () => {
     // The global cache switch was dropped here from 1.9.0 on: the parser listed three keys, so
     // `{ cache: true }` became an empty patch and the bridge answered with the old value.
     expect(parseNotifyPrefsPatch({ cache: true })).toEqual({ cache: true });
+    expect(parseNotifyPrefsPatch({ machines: false })).toEqual({ machines: false });
     expect(parseNotifyPrefsPatch({ blocked: false, done: true, updates: false, cache: false })).toEqual({
       blocked: false,
       done: true,

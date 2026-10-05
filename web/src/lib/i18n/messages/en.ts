@@ -1637,6 +1637,8 @@ export const en = {
   "pushTitle.herd.mixed": "{count} agents need attention",
   "pushTitle.update.available": "Collie update available",
   "pushTitle.cache.cold_soon": "Cache goes cold in about {minutes} min",
+  "pushTitle.machine.cpu": "CPU stays high on {machine}",
+  "pushTitle.machine.mem": "Memory stays high on {machine}",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

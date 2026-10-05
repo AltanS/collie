@@ -1,6 +1,7 @@
 import type { JsonValue } from "../json.ts";
 import type { SnapshotView } from "../sessions.ts";
-import type { MuxConfig, SnapshotResponse } from "../types.ts";
+import { parsePeerMachineStats } from "../machine-parse.ts";
+import type { MachineSample, MuxConfig, SnapshotResponse } from "../types.ts";
 import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forward.ts";
 import {
   mergeSnapshot,
@@ -222,6 +223,15 @@ export interface CrewLeadDeps {
   readonly onPeerSnapshot?: (memberId: string, body: PeerSnapshotBody) => void;
   /** Called for a member the registry has dropped (`leave`/revocation/rotation) — see PeerNotifier.forget. */
   readonly onPeerGone?: (memberId: string) => void;
+  /**
+   * A member's own load sample, read off the answer this sweep just parsed (ADR 0084), with this
+   * lead's receipt time (§10.2: a peer's clock is never trusted).
+   *
+   * Called only when the answer CARRIED a sample that parsed: an absent or malformed field is "not
+   * reported" and calls nothing, so the lead keeps the last sample it had and its age says how old
+   * it is. Optional, so a lead built without the machine watch sweeps exactly as before.
+   */
+  readonly onMachineStats?: (memberId: string, sample: MachineSample, at: number) => void;
   /**
    * A member answered §18.10's named `lead_conflict`: **it follows somebody else now.**
    *
@@ -544,6 +554,11 @@ export class CrewLead {
           // the same cast and the same reason as `foldPeerMemory`'s. `parsePeerPreflight` re-checks
           // every field, and anything half-formed reads as `null`, which is unknown and blocks.
           this.deps.registry.recordPreflight(memberId, parsePeerPreflight(outcome.value as JsonValue));
+          // ADR 0084: that member's own load, off the same answer, stamped on THIS lead's clock.
+          // SAFETY: the same cast and the same reason as the line above; `parsePeerMachineStats`
+          // re-checks every field and answers `null` for anything it cannot trust.
+          const load = this.deps.onMachineStats === undefined ? null : parsePeerMachineStats(outcome.value as JsonValue);
+          if (load !== null) this.deps.onMachineStats?.(memberId, load, this.now());
         }
         const previous = this.memory.get(memberId);
         const next = foldPeerMemory(previous, outcome, this.now());

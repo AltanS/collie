@@ -1481,4 +1481,6 @@ export const ja: Dictionary = {
   "pushTitle.herd.mixed": "{count}件のエージェントに確認が必要です",
   "pushTitle.update.available": "Collie のアップデートがあります",
   "pushTitle.cache.cold_soon": "約{minutes}分後にキャッシュがコールドになります",
+  "pushTitle.machine.cpu": "{machine} の CPU が高い状態です",
+  "pushTitle.machine.mem": "{machine} のメモリが高い状態です",
 };
