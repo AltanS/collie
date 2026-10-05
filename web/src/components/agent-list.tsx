@@ -114,7 +114,7 @@ interface AgentListProps {
    */
   order?: PaneOrder;
   /**
-   * Store a new order. Given, the toggle is drawn beside the summary line on every tab; withheld, it
+   * Store a new order. Given, the toggle is drawn beside the summary line on Panes and Focus; withheld, it
    * is not, and the list keeps whatever `order` says.
    */
   onOrderChange?: (order: PaneOrder) => void;
@@ -535,17 +535,21 @@ export function AgentList({
         // THE CONTROLS ROW (ADR 0071, "The dashboard takes the setting"): the summary keeps the left,
         // where ADR 0063 point 3 puts urgency, and the order control takes the right as glyphs, the
         // way the switcher draws it. It is drawn on EVERY tab so a tab switch moves neither the strip
-        // nor this row. A tap, the selected segment included, asks for a new reading.
-        <div className="flex items-center justify-between gap-2">
+        // nor this row. A tap, the selected segment included, asks for a new reading. The Changes
+        // tab draws no toggle, since it orders nothing there, but the row keeps the toggle's 44px so
+        // a tab switch still moves nothing below it.
+        <div className="flex min-h-11 items-center justify-between gap-2">
           {summary}
-          <PaneOrderToggle
-            order={order}
-            onChange={(next) => {
-              reread();
-              onOrderChange(next);
-            }}
-            compact
-          />
+          {renderBody === undefined && (
+            <PaneOrderToggle
+              order={order}
+              onChange={(next) => {
+                reread();
+                onOrderChange(next);
+              }}
+              compact
+            />
+          )}
         </div>
       ) : (
         summary

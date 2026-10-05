@@ -123,7 +123,8 @@ Settings write, and Place is the dashboard as it was, byte for byte.
    that brings panes takes the first one. The switcher gained the tap-on-the-selected-segment reread
    from the same hook.
 
-The toggle is the compact one, in the top controls row beside the status summary, drawn on every
-tab so a tab switch moves neither the strip nor that row. The summary line's tap, in a ranked order,
+The toggle is the compact one, in the top controls row beside the status summary, drawn on Panes and
+Focus. The Changes tab orders nothing, so it draws no toggle, and the row keeps its height so a tab
+switch moves neither the strip nor that row. The summary line's tap, in a ranked order,
 jumps to the first urgent row in display order. Nothing here changes ADR 0063: no list is ordered by
 status, and urgency is still a mark with one place to go.

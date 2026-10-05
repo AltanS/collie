@@ -1356,10 +1356,11 @@ describe("AgentList — the order toggle", () => {
     expect(within(rowButtons()[0]!).getByText("beta")).toBeInTheDocument();
   });
 
-  it("order: the toggle stays on the Changes tab, and Changes keeps its own body", () => {
+  it("order: the Changes tab draws no toggle, and keeps its own body and the row's height", () => {
     render(<AgentList agents={herd} {...props} order="activity" renderBody={() => <p>changes body</p>} />);
-    expect(screen.getByRole("radiogroup", { name: "Pane order" })).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Pane order" })).toBeNull();
     expect(screen.getByText("changes body")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /newest first/i })).toBeNull();
+    expect(summaryLine().parentElement).toHaveClass("min-h-11");
   });
 });
