@@ -3507,6 +3507,23 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     swapsOnlyUnderCover(view.frames);
   });
 
+  // The server cannot read at all: reading is switched off (`disabled`, COLLIE_TRANSCRIPT=0), or a
+  // member's Collie predates the chat route (404). Chat would stay empty for good, so the terminal.
+  it.each([
+    ["disabled", () => HttpResponse.json({ paneId: shell.paneId, available: false, reason: "disabled" })],
+    ["a 404 from an older member", () => new HttpResponse(null, { status: 404 })],
+  ])("(g) a server that cannot read (%s) draws the terminal, not an empty Chat", async (_name, answer) => {
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, answer));
+    const view = renderShell();
+    await handOver(view, agentOf("claude", "idle", true));
+    await advance(view, 500);
+    view.poll();
+    await advance(view, 300);
+    expect(view.container.querySelector('[data-slot="session-stream"]')).toBeNull();
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    expect(startLine()).toBeNull();
+  });
+
   it("(f) a question with nothing to read: the terminal at once, so the dialog is on screen", async () => {
     const view = renderShell();
     await handOver(view, agentOf("codex", "idle", false));

@@ -65,7 +65,7 @@ import { PaneMeta } from "@/components/pane-meta";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
-import { SessionStream } from "@/components/session-stream";
+import { chatStatusKey, SessionStream } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -90,7 +90,7 @@ import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
-import { paneBody, type JournalReading } from "@/lib/chat-gate";
+import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { paneScopeKey } from "@/lib/scope";
 import { usePins } from "@/lib/pins";
@@ -873,12 +873,7 @@ export function AgentChat({
   const warming = historyAvailable && switchSheetOpen;
   const chatFeed = useChatWindow({ paneId, scope, enabled: chatFetch || warming });
   const chatStatus = chatFeed.window.status;
-  const journal: JournalReading =
-    chatStatus.kind === "empty"
-      ? "unasked"
-      : chatStatus.kind === "unavailable" && (chatStatus.reason === "no-log" || chatStatus.reason === "no-session")
-        ? "missing"
-        : "readable";
+  const journal: JournalReading = journalReadingOf(chatStatus);
   // What this view has seen of how the agent began, for the gate (hooks/use-pane-start.ts): the
   // events, and whether the journal read that followed the turn's end has answered.
   const paneStart = usePaneStart(
@@ -887,7 +882,7 @@ export function AgentChat({
     isShell,
     agent?.status,
     chatFeed,
-    Boolean(agent?.hasSession) && journal !== "missing",
+    Boolean(agent?.hasSession) && journal !== "missing" && journal !== "off",
     Boolean(agent?.hasSession),
   );
   // A harness draws Chat when the multiplexer keeps a session log and Collie reads this harness's
@@ -941,9 +936,12 @@ export function AgentChat({
     : chatChosen
       ? chatBody
         ? null
-        : agent?.hasSession && journal === "missing"
-          ? t("history.unavailable.noLog")
-          : t("history.unavailable.noSession")
+        : journal === "off"
+          ? // The server's own reason: reading switched off, or a member older than the chat route.
+            t(chatStatusKey(chatStatus) ?? "history.unavailable.disabled")
+          : agent?.hasSession && journal === "missing"
+            ? t("history.unavailable.noLog")
+            : t("history.unavailable.noSession")
       : historyAvailable
         ? null
         : t("history.unavailable.noSession");

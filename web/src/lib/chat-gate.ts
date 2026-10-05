@@ -1,3 +1,5 @@
+import type { ChatStatus } from "./chat-window";
+
 // WHICH BODY AN AGENT PANE DRAWS WHEN THE DEVICE CHOSE CHAT (1.17.0, ADR 0082 point 4).
 //
 // Chat reads the agent's own session log. A new pane often has none to read yet, and that is not a
@@ -14,7 +16,8 @@
 // here counts seconds, except one last resort for a pane that works and never sends another event.
 //
 // ── THE RULE, IN ORDER ───────────────────────────────────────────────────────
-//   1. The device chose the terminal, or this harness cannot draw Chat → terminal.
+//   1. The device chose the terminal, or this harness cannot draw Chat → terminal. So does a server
+//      that said it cannot read at all (`off`): there is no event to wait for.
 //   2. The pane has a session and its log is not known to be missing → chat.
 //   3. Nothing to read, and this view did not see the pane start fresh → terminal at once.
 //   4. Nothing to read, and the pane asked for input (blocked) → terminal at once. A dialog on an
@@ -46,10 +49,12 @@ export const LAST_RESORT_NO_JOURNAL_MS = 60_000;
  * What the chat route last said about the pane's log.
  *
  * `unasked`: no answer yet, or nothing was asked (no session). `readable`: the route answered with
- * a window, or with a reading the stream explains itself (switched off, an older member). `missing`:
- * the route answered `no-log` or `no-session`, so there is nothing to read YET.
+ * a window. `missing`: the route answered `no-log` or `no-session`, so there is nothing to read YET.
+ * `off`: the server says it cannot read at all, and no event will change that on this pane: reading
+ * is switched off (`disabled`, `COLLIE_TRANSCRIPT=0`), or the member's Collie predates the chat route
+ * (`stale`, a 404). Chat would only ever be empty, so the terminal is the body.
  */
-export type JournalReading = "unasked" | "readable" | "missing";
+export type JournalReading = "unasked" | "readable" | "missing" | "off";
 
 /**
  * What this view knows about how the pane began.
@@ -92,7 +97,7 @@ export interface ChatGateInput {
 export type PaneBody = "chat" | "start" | "terminal";
 
 export function paneBody(input: ChatGateInput): PaneBody {
-  if (!input.chat) return "terminal";
+  if (!input.chat || input.journal === "off") return "terminal";
   if (input.session && input.journal !== "missing") return "chat";
   if (input.history === "unknown") return "terminal";
   if (input.activity === "blocked" || input.activity === "stalled") return "terminal";
@@ -101,4 +106,19 @@ export function paneBody(input: ChatGateInput): PaneBody {
     return input.settled ? "terminal" : "start";
   }
   return "start";
+}
+
+/**
+ * The gate's reading of what the chat route last said. `empty` is nothing asked yet; `no-log` and
+ * `no-session` are nothing to read YET; `disabled` and a 404 (`stale`) are a server that cannot read
+ * at all; a window, or anything else, is readable.
+ */
+export function journalReadingOf(status: ChatStatus): JournalReading {
+  if (status.kind === "empty") return "unasked";
+  if (status.kind === "stale") return "off";
+  if (status.kind === "unavailable") {
+    if (status.reason === "no-log" || status.reason === "no-session") return "missing";
+    if (status.reason === "disabled") return "off";
+  }
+  return "readable";
 }

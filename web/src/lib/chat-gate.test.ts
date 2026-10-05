@@ -1,4 +1,4 @@
-import { LAST_RESORT_NO_JOURNAL_MS, paneBody, type ChatGateInput, type PaneBody } from "./chat-gate";
+import { LAST_RESORT_NO_JOURNAL_MS, journalReadingOf, paneBody, type ChatGateInput, type PaneBody } from "./chat-gate";
 
 // The whole rule, as a table. Each row is one pane a Chat device can meet, and the body it draws.
 // Read a row left to right: chat chosen and drawable, session reported, what the log said, how the
@@ -29,6 +29,12 @@ const rows: [string, ChatGateInput, PaneBody][] = [
   ["a readable session draws Chat after a question", row({ session: true, journal: "readable", activity: "blocked" }), "chat"],
   ["a readable session draws Chat after the last resort", row({ session: true, journal: "readable", activity: "stalled" }), "chat"],
   ["a readable session draws Chat after the turn ended", row({ session: true, journal: "readable", activity: "ended", settled: true }), "chat"],
+
+  // 2b. The server says it cannot read at all: no event will change that, so the terminal, at once.
+  ["a server that cannot read draws the terminal, over a session", row({ session: true, journal: "off" }), "terminal"],
+  ["a server that cannot read draws the terminal on a fresh pane too", row({ journal: "off" }), "terminal"],
+  ["a server that cannot read draws the terminal while the pane works",
+    row({ session: true, journal: "off", activity: "working" }), "terminal"],
 
   // 3. Nothing to read on a pane this view did not see start: it may have a past Chat cannot show.
   ["a pane first seen busy with no session keeps the terminal", row({ history: "unknown" }), "terminal"],
@@ -69,5 +75,19 @@ describe("paneBody", () => {
 
   it("names the last resort a minute, and nothing else in the rule counts time", () => {
     expect(LAST_RESORT_NO_JOURNAL_MS).toBe(60_000);
+  });
+});
+
+describe("journalReadingOf", () => {
+  it("reads each answer of the chat route", () => {
+    expect(journalReadingOf({ kind: "empty" })).toBe("unasked");
+    expect(journalReadingOf({ kind: "live" })).toBe("readable");
+    expect(journalReadingOf({ kind: "unavailable", reason: "no-log" })).toBe("missing");
+    expect(journalReadingOf({ kind: "unavailable", reason: "no-session" })).toBe("missing");
+  });
+
+  it("reads switched-off reading and a member older than the route as off", () => {
+    expect(journalReadingOf({ kind: "unavailable", reason: "disabled" })).toBe("off");
+    expect(journalReadingOf({ kind: "stale" })).toBe("off");
   });
 });
