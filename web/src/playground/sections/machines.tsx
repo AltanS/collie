@@ -77,8 +77,8 @@ const fresh: MachinesResponse = {
 const tabFresh: MachineCensusState = { kind: "census", census: fresh, failed: false };
 
 /** The Crew tab body on a memory router, in the dashboard's 16px gutter, the way the tab bar mounts it. */
-// A constant, not the literal: `e2e/handles.spec.ts` reads every `state="..."` in this folder as a
-// card handle, so a prop spelled `state="loading"` was counted as a handle no card carries.
+// A constant, not the literal: `e2e/handles.spec.ts` reads every quoted state prop in this folder as a
+// card handle, so a prop spelled with a quoted loading string was counted as a handle no card carries.
 const CREW_TAB_LOADING = "loading" as const;
 
 function CrewTabFrame({ state }: { state: MachineCensusState | typeof CREW_TAB_LOADING }) {
