@@ -124,6 +124,22 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await expect(chain).toHaveAttribute("aria-expanded", "true");
   const src = page.getByRole("button", { name: "src, 2 files" });
   expect((await src.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // The folder's count sits on the name's baseline (review, 2026-10-06), not above it.
+  // A zero-size inline box on each one's baseline: its bottom edge is that baseline.
+  const baselines = await src.evaluate((row) => {
+    const count = row.querySelector('[data-slot="tree-folder-count"]')!;
+    const name = count.previousElementSibling!.lastElementChild ?? count.previousElementSibling!;
+    const [nameY, countY] = [name, count].map((el) => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+      el.append(probe);
+      const y = probe.getBoundingClientRect().bottom;
+      probe.remove();
+      return y;
+    });
+    return { name: nameY!, count: countY! };
+  });
+  expect(Math.abs(baselines.name - baselines.count)).toBeLessThanOrEqual(0.5);
   await src.click();
   await expect(src).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: /checkout\.tsx/ })).toHaveCount(0);

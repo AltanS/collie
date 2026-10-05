@@ -324,9 +324,13 @@ function TreeRows({
                   aria-hidden
                   className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
                 />
-                <MiddleTruncate text={`${node.label}/`} className="font-mono text-[13px] text-muted-foreground" />
-                <span aria-hidden className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {node.fileCount}
+                {/* One baseline for the name and its count: the two sizes differ, so the row's
+                    `items-center` alone set the smaller count above the name's line. */}
+                <span className="flex min-w-0 items-baseline gap-3">
+                  <MiddleTruncate text={`${node.label}/`} className="font-mono text-[13px] text-muted-foreground" />
+                  <span aria-hidden data-slot="tree-folder-count" className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {node.fileCount}
+                  </span>
                 </span>
                 <span className="flex-1" />
                 {/* A folder of binaries or new folders has no line counts, and shows none. */}
