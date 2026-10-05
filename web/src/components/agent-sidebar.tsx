@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Loader2, Play, TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -10,13 +9,14 @@ import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { pinnedRows, shownGroups } from "@/lib/dash-view";
 import { paneRowKey } from "@/lib/hosts";
 import { groupPanesByWorkspace } from "@/lib/pane-groups";
-import { activityRanks, cacheRanks, inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { shortenHome } from "@/lib/shorten-home";
 import { bucketOf, isAttention, worstTriage, type TriageKey } from "@/lib/triage";
 import type { AgentView, Launcher, ServerSummary, TabView } from "@/lib/types";
 import { t } from "@/lib/i18n";
+import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { useLocale } from "@/hooks/use-locale";
 
 interface ThreadSidebarProps {
@@ -116,26 +116,6 @@ const NO_PINS: readonly Pin[] = [];
 /** The buckets that mean "a human is required here" — the same two the dashboard's line counts. */
 const URGENT: ReadonlySet<TriageKey> = new Set<TriageKey>(["needs", "ready"]);
 
-/** No reading taken, which is what place order passes to `inRankOrder` to get the identity back. */
-const NO_RANKS: ReadonlyMap<string, number> = new Map();
-
-/** One reading of the clock, tagged with the order it was taken FOR. */
-interface FrozenOrder {
-  /** The order this reading answers. A different one means the operator tapped, so re-read. */
-  order: PaneOrder;
-  /** Row key against position, newest first. Empty for place order. */
-  ranks: ReadonlyMap<string, number>;
-}
-
-function readOrder(order: PaneOrder, agents: readonly AgentView[], shells: readonly AgentView[]): FrozenOrder {
-  if (order === "place") return { order, ranks: NO_RANKS };
-  const panes = [...agents, ...shells];
-  // `Date.now()` and not the cache clock's tick: this is the FREEZE, taken once when the operator
-  // opens the list or taps. Subscribing to a clock that moves every second is the exact fault
-  // ADR 0063 closes.
-  return { order, ranks: order === "activity" ? activityRanks(panes) : cacheRanks(panes, Date.now()) };
-}
-
 /** A DOM id for a pane row, so the summary line can scroll to it and focus it. */
 function rowDomId(pane: AgentView): string {
   return `switch-row-${paneRowKey(pane).replace(/[^A-Za-z0-9_-]/gu, "_")}`;
@@ -163,6 +143,9 @@ export function ThreadSidebar({
   className,
 }: ThreadSidebarProps) {
   useLocale();
+  // THE ORDER, AND WHY IT IS READ ONCE: see `useFrozenRanks` and the long note below. Called here, above
+  // the early return, because a hook cannot sit behind one.
+  const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes]);
   const showLaunch = launchers.length > 0 && onLaunch !== undefined;
   const noPanes = agents.length === 0 && shellPanes.length === 0;
 
@@ -201,12 +184,10 @@ export function ThreadSidebar({
   // close (ui/sheet.tsx returns null), so the next open is a fresh reading by construction, and the
   // one thing that re-reads while it is open is the operator's own tap.
   //
-  // The state-adjustment-on-a-changed-prop shape, not a `useMemo` with a lie in its deps: the reading
-  // must survive a poll and must NOT survive a tap, which is exactly one dependency.
-  const [frozen, setFrozen] = useState<FrozenOrder>(() => readOrder(order, agents, shellPanes));
-  if (frozen.order !== order) setFrozen(readOrder(order, agents, shellPanes));
-
-  const pinnedShown = inRankOrder(pinned, frozen.ranks);
+  // The reading itself lives in `hooks/use-frozen-ranks.ts`, shared with the dashboard, so the two
+  // surfaces keep the one promise the one way. A tap on the toggle, the segment already selected
+  // included, asks for a new reading; nothing else does.
+  const pinnedShown = inRankOrder(pinned, ranks);
   // ONE LIST IN ACTIVITY ORDER: every workspace section and the Shells fold together, because "when
   // did anything last happen here" is not a question a workspace heading can answer, and a shell you
   // used a minute ago has to be able to outrank an agent you have not opened all day. The fold goes
@@ -216,7 +197,7 @@ export function ThreadSidebar({
   // a rank crosses every workspace, and a heading cannot answer a question asked across all of them.
   const ranked = order !== "place";
   const rankedRows = ranked
-    ? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], frozen.ranks)
+    ? inRankOrder([...sections.flatMap((g) => g.rows), ...shellRows], ranks)
     : NO_PANES;
 
   const urgent = agents.filter((a) => URGENT.has(bucketOf(a)));
@@ -260,7 +241,14 @@ export function ThreadSidebar({
             <span className="flex-1" />
           )}
           {onOrderChange && !noPanes && (
-            <PaneOrderToggle order={order} onChange={onOrderChange} compact />
+            <PaneOrderToggle
+              order={order}
+              onChange={(next) => {
+                reread();
+                onOrderChange(next);
+              }}
+              compact
+            />
           )}
         </div>
       )}

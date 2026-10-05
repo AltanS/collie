@@ -1190,3 +1190,176 @@ describe("AgentList — the pin hint", () => {
     expect(screen.queryByText(HOLD)).toBeNull();
   });
 });
+
+// THE ORDER TOGGLE (ADR 0071, "The dashboard takes the setting"): Place is the dashboard as it was,
+// byte for byte; Activity and Cache fold the workspace groups into one list under one heading. The
+// reading is frozen: a poll repaints a row where it stands, and only the operator's tap, the page
+// coming back to the foreground, or a changed order takes a new one.
+describe("AgentList — the order toggle", () => {
+  // Two workspaces, and activity order disagrees with place order on every row, so a pass cannot be
+  // an accident of the arrival order. Place order: alpha (one), beta (one), gamma (two), delta (two).
+  // `lastSeenAt` equal to the clock: the pane is seen, so only `beta` (blocked) needs you.
+  const timed = (a: AgentView, lastActiveAt: number): AgentView => ({ ...a, lastActiveAt, lastSeenAt: lastActiveAt });
+  const summaryLine = () => document.getElementById("dash-summary-line")!;
+  const ws = (n: 1 | 2) =>
+    n === 1
+      ? { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1" }
+      : { workspaceId: "w2", workspaceLabel: "two", workspaceNumber: 2, tabId: "w2:t1" };
+  const herd = [
+    timed(agent("a", "idle", { ...ws(1), sessionName: "alpha" }), 100),
+    timed(agent("b", "blocked", { ...ws(1), sessionName: "beta" }), 400),
+    timed(agent("c", "working", { ...ws(2), sessionName: "gamma" }), 300),
+    timed(agent("d", "idle", { ...ws(2), sessionName: "delta" }), 200),
+  ];
+  const names = () =>
+    rowButtons().map((b) => ["alpha", "beta", "gamma", "delta"].find((n) => within(b).queryByText(n) !== null));
+  const props = { onOpen: vi.fn(), onOrderChange: vi.fn() };
+
+  it("order: place keeps the workspace groups, and offers the toggle beside the summary line", () => {
+    render(<AgentList agents={herd} {...props} order="place" />);
+    expect(headings()).toEqual(["one", "two"]);
+    expect(names()).toEqual(["alpha", "beta", "gamma", "delta"]);
+    const group = screen.getByRole("radiogroup", { name: "Pane order" });
+    expect(within(group).getByRole("radio", { name: "Place" })).toBeChecked();
+    // The alarm and the control share one row.
+    expect(group.parentElement).toBe(summaryLine().parentElement);
+  });
+
+  it("order: draws no control, and the summary line keeps its place, when nothing can store the answer", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} />);
+    expect(screen.queryByRole("radiogroup", { name: "Pane order" })).toBeNull();
+  });
+
+  it("order: reports a tap and changes nothing itself", async () => {
+    const user = userEvent.setup();
+    const onOrderChange = vi.fn();
+    render(<AgentList agents={herd} onOpen={vi.fn()} order="place" onOrderChange={onOrderChange} />);
+    await user.click(screen.getByRole("radio", { name: "Activity" }));
+    expect(onOrderChange).toHaveBeenCalledWith("activity");
+    expect(headings()).toEqual(["one", "two"]);
+  });
+
+  it("order: activity is ONE flat list under one heading, newest first, with no workspace heading and no '+'", async () => {
+    render(
+      <AgentList
+        agents={herd}
+        {...props}
+        order="activity"
+        newTab={{ scope: {}, creating: new Set(), onNewTab: vi.fn() }}
+      />,
+    );
+    expect(headings()).toEqual(["newest first(4)"]);
+    expect(names()).toEqual(["beta", "gamma", "delta", "alpha"]);
+    expect(screen.queryByRole("button", { name: /^New tab in / })).toBeNull();
+    // Each row still names its workspace, on line 2, since no heading above it does.
+    const rows = rowButtons();
+    expect(within(rows[0]!).getByText("one")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("two")).toBeInTheDocument();
+    // The workspace strip keeps its chips.
+    expect(within(screen.getByRole("navigation")).getByText("two")).toBeInTheDocument();
+  });
+
+  it("order: cache runs soonest-to-go-cold first, with the pane that has no cache last", () => {
+    const now = Date.now();
+    const warm = (a: AgentView, msLeft: number): AgentView => ({
+      ...a,
+      cache: { state: "warm", ttlSeconds: 300, ruleId: "r", confidence: "documented", expiresAt: now + msLeft },
+    });
+    render(
+      <AgentList
+        agents={[warm(herd[0]!, 600_000), herd[1]!, warm(herd[2]!, 60_000), warm(herd[3]!, 120_000)]}
+        {...props}
+        order="cache"
+      />,
+    );
+    expect(headings()).toEqual(["going cold first(4)"]);
+    expect(names()).toEqual(["gamma", "delta", "alpha", "beta"]);
+  });
+
+  it("order: pins lead and are ranked inside themselves", () => {
+    let now = 0;
+    setPinned(herd[0]!, true, herd, ++now);
+    setPinned(herd[3]!, true, herd, ++now);
+    render(<AgentList agents={herd} {...props} order="activity" pins={currentPins()} />);
+    expect(headings()).toEqual(["pinned", "newest first(2)"]);
+    const pinnedRegion = screen.getByRole("region", { name: "Pinned" });
+    // delta (200) outranks alpha (100) inside Pinned, though alpha comes first in place order.
+    const inPinned = within(pinnedRegion)
+      .getAllByRole("button")
+      .map((b) => ["alpha", "delta"].find((n) => within(b).queryByText(n) !== null));
+    expect(inPinned).toEqual(["delta", "alpha"]);
+    // Listed once: the rest are the ranked list.
+    expect(names().slice(-2)).toEqual(["beta", "gamma"]);
+  });
+
+  it("order: the filters run first and never sort", () => {
+    // Focus keeps only the pane that needs you; isolate keeps one workspace; the ranking then runs
+    // over what is left.
+    const { rerender } = render(<AgentList agents={herd} {...props} order="activity" needsYouOnly />);
+    expect(names()).toEqual(["beta"]);
+    rerender(<AgentList agents={herd} {...props} order="activity" isolated={workspacePrefKey(groupPanesByWorkspace(herd, [], { order: "fixed" })[1]!)} />);
+    expect(names()).toEqual(["gamma", "delta"]);
+    rerender(<AgentList agents={herd} {...props} order="activity" hidden={[workspacePrefKey(groupPanesByWorkspace(herd, [], { order: "fixed" })[0]!)]} />);
+    expect(names()).toEqual(["gamma", "delta"]);
+  });
+
+  it("order: holds its order while a pane's clock moves under it (the freeze)", () => {
+    const { rerender } = render(<AgentList agents={herd} {...props} order="activity" />);
+    const before = names();
+    rerender(<AgentList agents={[timed(herd[0]!, 9_000), herd[1]!, herd[2]!, herd[3]!]} {...props} order="activity" />);
+    expect(names()).toEqual(before);
+    // A status change is a poll too: it repaints, it does not move.
+    rerender(<AgentList agents={[herd[0]!, { ...herd[1]!, status: "idle" }, herd[2]!, herd[3]!]} {...props} order="activity" />);
+    expect(names()).toEqual(before);
+  });
+
+  it("order: a pane that arrives after the reading ranks last, not first", () => {
+    const { rerender } = render(<AgentList agents={herd} {...props} order="activity" />);
+    const newest = timed(agent("e", "idle", { ...ws(1), sessionName: "epsilon" }), 99_999);
+    rerender(<AgentList agents={[...herd, newest]} {...props} order="activity" />);
+    const last = rowButtons().at(-1)!;
+    expect(within(last).getByText("epsilon")).toBeInTheDocument();
+  });
+
+  it("order: a tap on the segment already selected takes a new reading", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<AgentList agents={herd} {...props} order="activity" />);
+    rerender(<AgentList agents={[timed(herd[0]!, 9_000), herd[1]!, herd[2]!, herd[3]!]} {...props} order="activity" />);
+    expect(names()[0]).toBe("beta");
+    await user.click(screen.getByRole("radio", { name: "Activity" }));
+    expect(names()[0]).toBe("alpha");
+  });
+
+  it("order: changing the order takes a new reading", () => {
+    const { rerender } = render(<AgentList agents={herd} {...props} order="place" />);
+    rerender(<AgentList agents={herd} {...props} order="activity" />);
+    expect(names()).toEqual(["beta", "gamma", "delta", "alpha"]);
+  });
+
+  it("order: the page coming back to the foreground takes a new reading", () => {
+    const { rerender } = render(<AgentList agents={herd} {...props} order="activity" />);
+    rerender(<AgentList agents={[timed(herd[0]!, 9_000), herd[1]!, herd[2]!, herd[3]!]} {...props} order="activity" />);
+    expect(names()[0]).toBe("beta");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(names()[0]).toBe("alpha");
+  });
+
+  it("order: the summary line jumps to the first urgent row in the ranked list", async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<AgentList agents={herd} {...props} order="activity" />);
+    await user.click(summaryLine());
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(within(rowButtons()[0]!).getByText("beta")).toBeInTheDocument();
+  });
+
+  it("order: the toggle stays on the Changes tab, and Changes keeps its own body", () => {
+    render(<AgentList agents={herd} {...props} order="activity" renderBody={() => <p>changes body</p>} />);
+    expect(screen.getByRole("radiogroup", { name: "Pane order" })).toBeInTheDocument();
+    expect(screen.getByText("changes body")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /newest first/i })).toBeNull();
+  });
+});

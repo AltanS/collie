@@ -15,6 +15,9 @@ import type { AgentView, BridgeStatus, ServerSummary, SessionSummary, TabView } 
 import { HOST_TEXT_CLASSES, hostName, hostSlot, paneRowKey, paneScope } from "@/lib/hosts";
 import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
+import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
+import { PaneOrderToggle } from "@/components/pane-order-toggle";
+import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
 import type { Scope } from "@/lib/scope";
 import { tabCreateKey } from "@/hooks/use-spaces";
@@ -104,6 +107,17 @@ interface AgentListProps {
    * and leaves its workspace group. Omit, or pass none, and the list renders as it did.
    */
   pins?: readonly Pin[];
+  /**
+   * Which way the rows run (lib/pane-order.ts, ADR 0071): `place` is the dashboard as it always was,
+   * `activity` and `cache` fold the workspace groups into ONE ranked list. The reading is taken once
+   * and held (hooks/use-frozen-ranks.ts). Omit and the list runs in place order.
+   */
+  order?: PaneOrder;
+  /**
+   * Store a new order. Given, the toggle is drawn beside the summary line on every tab; withheld, it
+   * is not, and the list keeps whatever `order` says.
+   */
+  onOrderChange?: (order: PaneOrder) => void;
   /** A hold on a pane row: open that pane's actions sheet. Omit and the rows have no hold. */
   onHold?: (pane: AgentView) => void;
   /**
@@ -164,6 +178,8 @@ function rowDomId(rowKey: string): string {
 
 const PINNED_ID = "pinned-group";
 const PINNED_HEADING_ID = "pinned-group-heading";
+const RANKED_ID = "ranked-group";
+const RANKED_HEADING_ID = "ranked-group-heading";
 const SUMMARY_ID = "dash-summary-line";
 
 /**
@@ -196,6 +212,11 @@ function revealElement(el: HTMLElement): void {
 // what needs you across the whole herd and jumps to the first of it. A row is listed once, in its
 // one place, and its marks say the rest.
 //
+// THE ORDER IS THE OPERATOR'S, AND IT STILL DOES NOT MOVE (ADR 0071). Place is the default and is
+// everything above. Activity and Cache, asked for with the toggle beside the summary line, fold the
+// groups into one ranked list; the reading is taken once and held (hooks/use-frozen-ranks.ts), so a
+// poll repaints a row where it stands and never moves it.
+//
 // A PIN IS ONE MORE PLACE, THE ONE THE OPERATOR CHOSE (ADR 0070). A pinned pane leads every tab in a
 // Pinned group under the summary line, and leaves its workspace group, so it is still listed once.
 // It moves when the operator pins or unpins it, and never because of a state.
@@ -222,10 +243,17 @@ export function AgentList({
   needsYouOnly = false,
   renderBody,
   pins = NO_PINS,
+  order = "place",
+  onOrderChange,
   onHold,
   reveal = null,
 }: AgentListProps) {
   useLocale();
+  // THE FREEZE (ADR 0071 point 3, taken up by the dashboard 2026-10-05). Read once on mount, on an
+  // order change, on a tap of the segment already selected, and when the page becomes visible again;
+  // never on a poll. Above the early return, because a hook cannot sit behind one. It ranks the whole
+  // herd, not what the filters leave, so a filter changing never needs a new reading.
+  const { ranks, reread } = useFrozenRanks(order, [...agents, ...shellPanes], { rereadOnVisible: true });
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
   // sit behind the early return below, and the answer is only consulted in the empty branch.
   const agentDetection = useMuxCapability("agentDetection");
@@ -321,7 +349,10 @@ export function AgentList({
   // through the Focus filter: a pin means "always show me this one", and the summary line above
   // still says what needs you. Place order, so no state moves a pinned row.
   const isPinned = pinMatcher(pins);
-  const pinned = pinnedRows(groups, isPinned);
+  const ranked = order !== "place";
+  // A pinned pane ranks inside Pinned and leads the list (ADR 0071 point 7). Place order passes an
+  // empty reading, which is the identity.
+  const pinned = inRankOrder(pinnedRows(groups, isPinned), ranks);
   // The first urgent pane in DISPLAY order: in Pinned when a pinned pane needs you, else in the first
   // workspace holding an urgent pane, which then is not pinned and so is still in its group.
   const pinnedUrgent = pinned.some((p) => ATTENTION.has(bucketOf(p)));
@@ -330,6 +361,12 @@ export function AgentList({
   // empty is dropped; the group itself rides along whole, so its heading keeps counting every pane
   // (lib/dash-view.ts).
   const drawn = shownGroups(shown, needsYouOnly, isPinned);
+  // THE RANKED LIST (ADR 0071, rule 2 of "The dashboard takes the setting"): Activity and Cache fold
+  // the workspace groups into one list. The filters above (Focus, isolate, hide, hidden machines,
+  // pins) have already run, so they decide WHICH rows and never their order; shells are in these
+  // groups already and are ranked with everything else, as in the switcher.
+  const rankedRows = ranked && !renderBody ? inRankOrder(drawn.flatMap((d) => d.rows), ranks) : NO_PANES;
+  const firstUrgentRow = rankedRows.find((p) => ATTENTION.has(bucketOf(p)));
   const jumpTo = (g: WorkspaceGroup) => {
     // The target may be filtered out: isolate it, which is also the scroll.
     if (!drawn.some((d) => d.group === g)) {
@@ -337,6 +374,10 @@ export function AgentList({
       return;
     }
     document.getElementById(groupDomId(g.key))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const jumpToRow = (pane: AgentView) => {
+    const el = document.getElementById(rowDomId(paneRowKey(pane)));
+    if (el) revealElement(el);
   };
   const jumpToPinned = () =>
     document.getElementById(PINNED_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -347,7 +388,7 @@ export function AgentList({
   const pinHintHere = !needsYouOnly && renderBody === undefined && onHold !== undefined;
   const shownRows = drawn.reduce((n, d) => n + d.rows.length, 0);
   const pinHintOpen = showsPinHint(pinHintRetired, pins.length, shownRows);
-  const firstShownRow = drawn[0]?.rows[0];
+  const firstShownRow = ranked ? rankedRows[0] : drawn[0]?.rows[0];
   const focusFirstRow = () => {
     if (firstShownRow === undefined) return;
     document.getElementById(rowDomId(paneRowKey(firstShownRow)))?.focus({ preventScroll: true });
@@ -356,9 +397,11 @@ export function AgentList({
     ? undefined
     : pinnedUrgent
       ? jumpToPinned
-      : firstUrgent
-        ? () => jumpTo(firstUrgent)
-        : undefined;
+      : ranked && firstUrgentRow !== undefined
+        ? () => jumpToRow(firstUrgentRow)
+        : firstUrgent
+          ? () => jumpTo(firstUrgent)
+          : undefined;
 
   // A workspace heading's "+", addressed to the heading's OWN machine and session, never the ambient
   // ones: this list holds every machine in a crew, and a crew's machines number their spaces from
@@ -404,6 +447,19 @@ export function AgentList({
       density="row"
       unseen={bucketOf(a) === "ready"}
       tint
+    />
+  );
+
+  const summary = (
+    <StatusSummaryLine
+      id={SUMMARY_ID}
+      panes={agents}
+      allClear={allClear}
+      onJump={onJump}
+      // Focus lands here when an unpin takes a row off the list, so the line must be able to hold
+      // it. Only once pins are in play: with none, the line renders exactly as it did.
+      focusable={pins.length > 0 || reveal !== null}
+      className={onOrderChange ? "min-w-0 flex-1" : undefined}
     />
   );
 
@@ -475,15 +531,25 @@ export function AgentList({
           word, once for the whole dashboard (the headings below repeat the numbers, not the words).
           The all-clear check leads when nothing needs you. A tap goes to the first workspace
           holding something urgent. */}
-      <StatusSummaryLine
-        id={SUMMARY_ID}
-        panes={agents}
-        allClear={allClear}
-        onJump={onJump}
-        // Focus lands here when an unpin takes a row off the list, so the line must be able to hold
-        // it. Only once pins are in play: with none, the line renders exactly as it did.
-        focusable={pins.length > 0 || reveal !== null}
-      />
+      {onOrderChange ? (
+        // THE CONTROLS ROW (ADR 0071, "The dashboard takes the setting"): the summary keeps the left,
+        // where ADR 0063 point 3 puts urgency, and the order control takes the right as glyphs, the
+        // way the switcher draws it. It is drawn on EVERY tab so a tab switch moves neither the strip
+        // nor this row. A tap, the selected segment included, asks for a new reading.
+        <div className="flex items-center justify-between gap-2">
+          {summary}
+          <PaneOrderToggle
+            order={order}
+            onChange={(next) => {
+              reread();
+              onOrderChange(next);
+            }}
+            compact
+          />
+        </div>
+      ) : (
+        summary
+      )}
 
       {/* PINNED, the first group on every tab (ADR 0070): under the summary line, so the strip and the
           line keep their place on every tab. The heading is the section voice the switcher's Shells
@@ -522,7 +588,25 @@ export function AgentList({
           on a machine's capability or on a state (DESIGN.md §2). A workspace with no heading here (all
           its panes pinned, hidden or filtered out, or nothing of it urgent under Focus) has no "+";
           the space view keeps its own. */}
-      {!renderBody && drawn.map(({ group: g, rows }) => (
+      {/* IN ACTIVITY OR CACHE ORDER the workspace groups give way to ONE list under one heading that
+          names the order in words, as the switcher's does (ADR 0071). No workspace heading and so no
+          per-heading "+": a rank crosses every workspace, and a heading cannot answer a question
+          asked across all of them. The strip above keeps its chips. Each row is a `herd` row, whose
+          line 2 names its place (`space › tab`), so a row still says which workspace it is in. */}
+      {!renderBody && ranked && rankedRows.length > 0 && (
+        <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} className="flex scroll-mt-4 flex-col gap-2">
+          <SectionHeader
+            id={RANKED_HEADING_ID}
+            label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
+            count={rankedRows.length}
+            tone="strong"
+            className="min-h-7"
+          />
+          <ListGroup>{rankedRows.map((a) => row(a, "herd"))}</ListGroup>
+        </section>
+      )}
+
+      {!renderBody && !ranked && drawn.map(({ group: g, rows }) => (
         <section key={g.key} id={groupDomId(g.key)} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
             label={g.label}

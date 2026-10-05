@@ -352,7 +352,7 @@ export const de: Dictionary = {
   "paneOrder.cache": "Cache",
   "paneOrder.coldest": "Zuerst, was kalt wird",
   "settings.paneOrder.description":
-    "Aktivität stellt das Pane mit dem letzten Ereignis an den Anfang des Umschalters. Cache stellt das Pane dorthin, dessen Prompt-Cache zuerst kalt wird. Ort behält die Reihenfolge deines Terminals.",
+    "Aktivität stellt das Pane mit dem letzten Ereignis an den Anfang des Dashboards und des Umschalters. Cache stellt das Pane dorthin, dessen Prompt-Cache zuerst kalt wird. Ort behält die Reihenfolge deines Terminals.",
   "chat.status.feedbackSent": "Feedback gesendet",
   "chat.status.sent": "Gesendet",
   "chat.status.menuChanged": "Menü geändert, Aktualisierung läuft",

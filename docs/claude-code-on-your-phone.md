@@ -66,9 +66,11 @@ On Herdr, give each agent its own workspace while Herdr runs:
 herdr workspace create --label review --cwd ~/src/app-review
 ```
 
-Running multiple sessions creates multiple waiting prompts. Collie places panes requiring input at
-the top of the dashboard, with remaining panes grouped by workspace. Hold a row to pin that pane to
-the top. On tmux and zellij, this sorting requires the beacon hooks from
+Running multiple sessions creates multiple waiting prompts. Collie groups panes by workspace and
+marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count
+on the line at the top, which jumps to the first of them. Hold a row to pin that pane to the top. The
+clock and hourglass beside the count order the list by recent activity or by the cache that goes
+cold first. On tmux and zellij, these marks require the beacon hooks from
 [step 3](#3-run-claude-code-in-a-pane).
 
 ## Drive it from your phone with Collie
@@ -146,7 +148,7 @@ the same tailnet.
 
 ## 5. Answer Claude Code
 
-- The dashboard sorts panes that need input to the top. Tap one to open it.
+- Panes that need input carry a red mark. Tap the count at the top of the dashboard to jump to the first one, then tap a row to open it.
 - The composer uses a standard text field, so phone dictation works in it.
 - Tap **Keys** on the actions row above the keyboard. The tray includes Esc, arrow keys, Enter, Tab,
   Space, modifiers, digits, and F1 to F12. Esc and Ctrl chords do not depend on the phone keyboard.

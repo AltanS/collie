@@ -345,7 +345,7 @@ export const ko: Dictionary = {
   "paneOrder.cache": "캐시",
   "paneOrder.coldest": "식는 순",
   "settings.paneOrder.description":
-    "활동은 마지막으로 무언가 일어난 창을 전환기 맨 위에 둡니다. 캐시는 프롬프트 캐시가 가장 먼저 사라지는 창을 맨 위에 둡니다. 위치는 터미널의 순서를 그대로 둡니다.",
+    "활동은 마지막으로 무언가 일어난 창을 대시보드와 전환기 맨 위에 둡니다. 캐시는 프롬프트 캐시가 가장 먼저 사라지는 창을 맨 위에 둡니다. 위치는 터미널의 순서를 그대로 둡니다.",
   "chat.status.feedbackSent": "피드백 전송 완료",
   "chat.status.sent": "전송 완료",
   "chat.status.menuChanged": "메뉴 변경 감지, 새로고침 중",

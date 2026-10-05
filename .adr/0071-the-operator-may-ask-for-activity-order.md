@@ -5,10 +5,11 @@
   exactly this case. ADR 0063 stands in full; this ADR walks through the one door it left open, and
   narrows it on the way.
 - **Date:** 2026-09-30
-- **Shipped in:** pending
+- **Shipped in:** 1.15.0
 - **Trail:** `web/src/lib/pane-order.ts` · `web/src/components/pane-order-toggle.tsx` ·
   `web/src/components/pane-order-control.tsx` · `web/src/components/agent-sidebar.tsx` ·
-  `web/src/hooks/use-dash-prefs.ts` · DESIGN.md §2
+  `web/src/hooks/use-dash-prefs.ts` · `web/src/hooks/use-frozen-ranks.ts` ·
+  `web/src/components/agent-list.tsx` · DESIGN.md §2
 
 ## Context
 
@@ -66,6 +67,18 @@ the clock once per opening, never on a poll.**
 8. **Nothing else in ADR 0063 moves.** The bridge still sends place order, every other surface still
    recomputes it, urgency is still a mark with one place to go, and no list sorts by status at all.
 
+## Cache order
+
+Cache is the third order, and it asks a question with a deadline in it: "which of these am I about to
+pay to rebuild". A prompt cache expires on its own clock whether or not anyone is looking, so the pane
+to go to next is often neither the one just left nor the one shouting. Every rule above holds for it
+unchanged. Place is still the default, the reading is still frozen while the list is on screen, a
+window ticking down cannot pull a row out from under a thumb, and a pin still leads. It ranks by the
+soonest `expiresAt`. A pane with nothing left to lose ranks last, in place order: no reading, an
+`unknown` one, a reading already `cold`, one with no expiry, or an expiry more than `COLD_GRACE_MS`
+past, the same edge the chip reads, so a row and its own chip never disagree. The heading reads
+"Going cold first".
+
 ## Consequences
 
 - **Activity order degrades to place order rather than to noise.** A bridge older than the one that
@@ -77,7 +90,8 @@ the clock once per opening, never on a poll.**
   point 3, and it is the right way round: a stale row you tap is the row you meant, and a fresh row
   that arrived under your thumb is not.
 - **A second surface may take the setting later** (the dashboard is the obvious one) without a new
-  decision, because the preference is global and the ordering module is not the switcher's.
+  decision, because the preference is global and the ordering module is not the switcher's. The
+  dashboard took it in 1.17.0, below.
 
 ## Revisit
 
@@ -85,3 +99,31 @@ the clock once per opening, never on a poll.**
   ADR does not license it.
 - If activity turns out to be the order most operators want on arrival. The default is a decision
   about newcomers, not a statement that place is better, and it can be re-taken on evidence.
+
+## The dashboard takes the setting (1.17.0)
+
+The consequence above named the dashboard as the obvious second surface, and it needs no new decision
+beyond the three rules below. `AgentList` reads the same `DashPrefs.paneOrder` the switcher and
+Settings write, and Place is the dashboard as it was, byte for byte.
+
+1. **Activity and Cache are ONE flat list under one heading** ("Newest first", "Going cold first"),
+   as on the switcher. The workspace headings and the per-heading "+" are absent in the ranked modes,
+   because a rank crosses every workspace and a heading cannot answer a question asked across all of
+   them. The workspace strip stays, chips and all. Pinned still leads and is ranked inside itself
+   (point 7). Each row names its workspace on line 2 (`space > tab`), the way the switcher's row
+   does, since no heading above it does. Bare shells are ranked in the same list, as in point 6.
+2. **The filters run first and never sort.** Focus, isolate, hide and hidden machines decide WHICH
+   rows are shown, and the ranking then orders what is left. The reading is taken over the whole herd,
+   so a filter changing never needs a new reading.
+3. **The freeze is one hook for both surfaces** (`useFrozenRanks`). On the dashboard the clock is read
+   on mount, when the order changes, when the operator taps the segment already selected, and when
+   the document becomes visible again, because a dashboard left in a background tab is stale by hours
+   and returning to it is opening it again. It is never read on a poll. A pane the reading does not
+   know ranks last (point 4). A reading taken over an empty herd is no reading, so the first poll
+   that brings panes takes the first one. The switcher gained the tap-on-the-selected-segment reread
+   from the same hook.
+
+The toggle is the compact one, in the top controls row beside the status summary, drawn on every
+tab so a tab switch moves neither the strip nor that row. The summary line's tap, in a ranked order,
+jumps to the first urgent row in display order. Nothing here changes ADR 0063: no list is ordered by
+status, and urgency is still a mark with one place to go.

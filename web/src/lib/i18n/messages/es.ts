@@ -350,7 +350,7 @@ export const es: Dictionary = {
   "paneOrder.cache": "Caché",
   "paneOrder.coldest": "Primero lo que se enfría",
   "settings.paneOrder.description":
-    "Actividad pone arriba en el conmutador el panel donde ocurrió algo por última vez. Caché pone el que pierde antes su caché de prompts. Lugar mantiene el orden de tu terminal.",
+    "Actividad pone arriba, en el panel de control y en el conmutador, el panel donde ocurrió algo por última vez. Caché pone el que pierde antes su caché de prompts. Lugar mantiene el orden de tu terminal.",
   "chat.status.feedbackSent": "Comentarios enviados",
   "chat.status.sent": "Enviado",
   "chat.status.menuChanged": "Menú modificado: recargando",

@@ -1,11 +1,11 @@
 // THE DASHBOARD'S SECOND AXIS: a pane sits under the WORKSPACE it lives in.
 //
-// `lib/triage.ts` answers "what needs me", and that answer stays on top of the dashboard because it
-// is the dashboard's job. Everything it does NOT flag is answered here instead, by grouping: one
-// group per workspace, headed by that workspace's name and counted, so a row no longer has to repeat
-// an address eighteen times down the page. The workspace is the level the operator actually thinks
-// in — it is the project — and a tab is a divider inside it, so a group per tab cut one project into
-// three headings that each held two rows. The tab did not disappear: it moved onto the row, on line
+// `lib/triage.ts` answers "what needs me", and that answer is a MARK on the dashboard (a row's wash,
+// a heading's dot, one summary line), never a position (ADR 0063). Where a pane SITS is answered
+// here instead, by grouping: one group per workspace, headed by that workspace's name and counted,
+// so a row no longer has to repeat an address eighteen times down the page. The workspace is the
+// level the operator actually thinks in — it is the project — and a tab is a divider inside it, so a
+// group per tab cut one project into three headings that each held two rows. The tab did not disappear: it moved onto the row, on line
 // 2, where it tells two rows of one workspace apart and costs no heading.
 //
 // ── WHAT DECIDES THE ORDER ───────────────────────────────────────────────────

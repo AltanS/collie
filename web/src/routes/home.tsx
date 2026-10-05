@@ -85,13 +85,15 @@ function ChangesTabBody({
   );
 }
 
-// Dashboard home screen. Everything you might ACT on comes first — Needs you → Ready · unseen (see
-// lib/triage.ts) — then every other pane under the `space › tab` it lives in (lib/pane-groups.ts),
-// and the Spaces navigator sits last, under the thing it navigates to.
+// Dashboard home screen. Every pane sits under the workspace it lives in, in the multiplexer's own
+// order (lib/pane-groups.ts, ADR 0063); urgency is a mark on a row and a heading and one summary
+// line on top, never a position. The operator may ask for Activity or Cache order instead, with the
+// toggle beside that line (ADR 0071): one ranked list, read once and held. The Spaces navigator sits
+// last, under the thing it navigates to.
 // Launchers sit directly above Spaces: they are one-tap act-on-able actions like the herd above
-// them, but they CREATE rather than triage, so they sit under the triaged herd and above the
-// navigator their new Space will appear in. Tapping an agent opens its pane; tapping a space
-// drills into /space/:id; tapping a launcher creates a throwaway Space and types its command.
+// them, but they CREATE rather than triage, so they sit under the herd and above the navigator
+// their new Space will appear in. Tapping an agent opens its pane; tapping a space drills into
+// /space/:id; tapping a launcher creates a throwaway Space and types its command.
 export function HomeRoute() {
   const data = useRootData();
   const nav = useNav();
@@ -110,7 +112,8 @@ export function HomeRoute() {
     : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   useLocale();
-  const { prefs, setSpacesOpen, setLaunchOpen, setIsolatedSpace, toggleHiddenSpace, setDashView } = useDashPrefs();
+  const { prefs, setSpacesOpen, setLaunchOpen, setIsolatedSpace, toggleHiddenSpace, setDashView, setPaneOrder } =
+    useDashPrefs();
   const view: DashView = prefs.dashView;
   // Focus's corner mark (ADR 0066, renamed from Attention by ADR 0068): a red count of the panes
   // blocked on you, or, when none is blocked, a quiet dot for finished panes you have not opened. A
@@ -210,10 +213,10 @@ export function HomeRoute() {
         <ReadOnlyBanner device={data.device} />
 
         <main className="flex-1">
-          {/* One list: what needs you first, then every other pane under the tab it lives in
-              (components/agent-list.tsx). Bare shells go in with the agents — grouped by place they
-              sit beside the work they belong to, which is what stopped them being a pen of their
-              own at the bottom of the sheet. */}
+          {/* One list: every pane under the workspace it lives in, or one ranked list in Activity and
+              Cache order (components/agent-list.tsx). Bare shells go in with the agents — grouped by
+              place they sit beside the work they belong to, which is what stopped them being a pen
+              of their own at the bottom of the sheet. */}
           <AgentList
             agents={data.agents}
             shellPanes={data.shellPanes}
@@ -241,6 +244,9 @@ export function HomeRoute() {
             addressedHost={data.scope.host}
             onShowMachine={(host) => setMachineHidden(host, false, data.servers)}
             pins={pins}
+            // The same per-device preference the pane switcher and Settings write (ADR 0071).
+            order={prefs.paneOrder}
+            onOrderChange={setPaneOrder}
             onHold={setHeld}
             reveal={reveal}
             needsYouOnly={view === "focus"}

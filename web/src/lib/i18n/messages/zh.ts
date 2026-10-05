@@ -334,7 +334,7 @@ export const zh: Dictionary = {
   "paneOrder.cache": "缓存",
   "paneOrder.coldest": "最快变冷优先",
   "settings.paneOrder.description":
-    "活动会把最近发生过事情的窗格放在切换器顶部。缓存会把提示缓存最快失效的窗格放在顶部。位置则保持终端本身的顺序。",
+    "活动会把最近发生过事情的窗格放在仪表盘和切换器的顶部。缓存会把提示缓存最快失效的窗格放在顶部。位置则保持终端本身的顺序。",
   "chat.status.feedbackSent": "反馈已发送",
   "chat.status.sent": "已发送",
   "chat.status.menuChanged": "菜单已变动，正在刷新",

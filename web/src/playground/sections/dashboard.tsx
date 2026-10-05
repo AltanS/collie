@@ -9,6 +9,7 @@ import { BuildStamp } from "@/components/build-stamp";
 import { CrewFooterLink } from "@/components/crew-footer-link";
 import { ListGroup } from "@/components/ui/list-group";
 import { PaneStrip } from "@/components/pane-strip";
+import type { PaneOrder } from "@/lib/pane-order";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SessionSwitcher } from "@/components/session-switcher";
 import { SpaceStrip } from "@/components/space-strip";
@@ -63,6 +64,22 @@ export const DEF: SectionDef = {
  *  dashboard draws it, and a tap goes nowhere. */
 const HEADING_NEW_TAB: HeadingNewTab = { scope: {}, creating: new Set(), onNewTab: () => {} };
 
+/** The dashboard with its order toggle live (ADR 0071): tap a segment and the list re-ranks, the way
+ *  the route does, with the reading held between taps. */
+function OrderedAgentList({ initial }: { initial: PaneOrder }) {
+  const [order, setOrder] = useState<PaneOrder>(initial);
+  return (
+    <AgentList
+      agents={herd}
+      bridge="connected"
+      onOpen={() => {}}
+      newTab={HEADING_NEW_TAB}
+      order={order}
+      onOrderChange={setOrder}
+    />
+  );
+}
+
 export function DashboardSection() {
   return (
     <Section def={DEF}>
@@ -80,6 +97,18 @@ export function DashboardSection() {
         >
           <PhoneFrameCard>
             <AgentList agents={herd} bridge="connected" onOpen={() => {}} newTab={HEADING_NEW_TAB} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="agent-list-activity-order"
+          label="agent list, ordered by activity"
+          reach="the operator taps the clock beside the status line. The workspace groups give way to one list, newest first, and each row names its workspace on line 2."
+          note="The toggle is live: tap Place, Activity or Cache. The reading is taken when the order changes or the selected segment is tapped again, never on a poll. Check the controls row at 390px: the counts wrap before the toggle shrinks."
+          span={2}
+        >
+          <PhoneFrameCard>
+            <OrderedAgentList initial="activity" />
           </PhoneFrameCard>
         </Card>
 

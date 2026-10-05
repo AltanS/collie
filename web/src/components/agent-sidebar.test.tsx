@@ -721,6 +721,16 @@ describe("ThreadSidebar: the order toggle", () => {
     expect(names()[0]).toContain("codex");
   });
 
+  it("re-reads the clock when the operator taps the segment already selected", async () => {
+    const user = userEvent.setup();
+    const props = { currentPaneKey: "", onSelect: vi.fn(), order: "activity" as const, onOrderChange: vi.fn() };
+    const { rerender } = render(<ThreadSidebar {...props} agents={herd} />);
+    rerender(<ThreadSidebar {...props} agents={[timed(fixtureAgents[0]!, 9_000), herd[1]!, herd[2]!]} />);
+    expect(names()[0]).toContain("collie");
+    await user.click(screen.getByRole("radio", { name: "Activity" }));
+    expect(names()[0]).toContain("webapp");
+  });
+
   it("still leads with Pinned in activity order", () => {
     // ADR 0070 outranks the sort: a pin is a place the operator chose, and this sheet is often opened
     // to reach exactly that row.
