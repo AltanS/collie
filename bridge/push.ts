@@ -371,21 +371,21 @@ export class Push {
   }
 
   /** Send a notification instruction (render, clear, or update) to every subscribed device. */
-  async send(msg: PushMessage): Promise<void> {
+  async send(message: PushMessage): Promise<void> {
     // The SW reads deep-link fields from `data`. `session` is omitted for the primary and `host` for
     // this collie's own sessions (both absent on the message), keeping that payload identical to the
     // pre-multi-session, pre-crew shape.
-    const { topic, ...wire } = msg;
-    const data: PushPayloadData = { paneId: wire.paneId };
-    if (wire.session !== undefined) data.session = wire.session;
-    if (wire.host !== undefined) data.host = wire.host;
-    if (wire.machine !== undefined) data.machine = wire.machine;
-    if (wire.target !== undefined) data.target = wire.target;
+    const { topic, ...msg } = message;
+    const data: PushPayloadData = { paneId: msg.paneId };
+    if (msg.session !== undefined) data.session = msg.session;
+    if (msg.host !== undefined) data.host = msg.host;
+    if (msg.machine !== undefined) data.machine = msg.machine;
+    if (msg.target !== undefined) data.target = msg.target;
     // Per-message collapse topic — update and load alerts must not share the herd slot (see above).
     const base =
-      wire.type === "update" ? UPDATE_SEND_OPTIONS : wire.type === "machine" ? MACHINE_SEND_OPTIONS : SEND_OPTIONS;
+      msg.type === "update" ? UPDATE_SEND_OPTIONS : msg.type === "machine" ? MACHINE_SEND_OPTIONS : SEND_OPTIONS;
     const options = topic !== undefined && topicIsSendable(topic) ? { ...base, topic } : base;
-    await this.broadcast(JSON.stringify({ ...wire, data }), options);
+    await this.broadcast(JSON.stringify({ ...msg, data }), options);
   }
 
   /** Convenience for a one-off render (used by the manual push-test script). */
