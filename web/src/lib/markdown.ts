@@ -291,7 +291,7 @@ const QUOTE = /^\s*>\s?(.*)$/;
 // a pipe is common, `| --- | :-: |` under it is not. Both spellings agents emit are accepted —
 // with outer pipes and without — but the row must carry at least one pipe, so a bare `---` stays a
 // horizontal rule, and every cell must be dashes (optionally colon-flanked), so `|---|:` is not one.
-const TABLE_DELIM = /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*(?::?-+:?\s*\|?)?\s*$/;
+const TABLE_DELIM = /^\s*\|?(?:\s*:?-+:?\s*\|)+(?:\s*:?-+:?)?\s*\|?\s*$/;
 
 /** Split one table row into raw cell strings. `\|` is an escaped pipe, not a column break. */
 function splitRow(line: string): string[] {
@@ -351,6 +351,9 @@ function fitRow(line: string, width: number, defs: RefDefs): MdSpan[][] {
 const startsTable = (line: string, next: string | undefined) =>
   line.includes("|") &&
   next !== undefined &&
+  // A line this long is a data dump, not a table, and the delimiter test is superlinear on spaces.
+  line.length <= MAX_LINE_CHARS &&
+  next.length <= MAX_LINE_CHARS &&
   TABLE_DELIM.test(next) &&
   splitRow(next).length === splitRow(line).length;
 

@@ -389,6 +389,14 @@ describe("hostile input stays fast", () => {
     expect(time(() => parseMarkdown(line))).toBeLessThan(FAST_MS);
   });
 
+  it("a delimiter row padded with 100,000 spaces is not a table and parses in under 100 ms", () => {
+    const src = "a|b\n" + " ".repeat(100_000) + "|---|x";
+    expect(time(() => parseMarkdown(src))).toBeLessThan(100);
+    expect(parseMarkdown(src).some((b) => b.kind === "table")).toBe(false);
+    const normal = parseMarkdown("a|b\n---|---\n1|2");
+    expect(normal[0]?.kind).toBe("table");
+  });
+
   it("the inline parser alone is bounded too, for a long run of '[' and of '**a '", () => {
     expect(time(() => parseInline("[".repeat(60_000)))).toBeLessThan(FAST_MS);
     expect(time(() => parseInline("**a ".repeat(15_000)))).toBeLessThan(FAST_MS);
