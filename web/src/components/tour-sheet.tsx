@@ -235,7 +235,7 @@ export function TourSheet({
       // Full height, overriding the primitive's `max-h-[82dvh]`: this screen is the whole screen
       // while it is up, and a sheet that leaves the dashboard peeking above it invites a tap on a
       // control the operator has not been told about yet. The panel is already the scroller.
-      className="h-[100dvh] max-h-[100dvh] rounded-t-none"
+      className="h-(--app-h) max-h-(--app-h) rounded-t-none"
     >
       <div ref={panelRef} data-slot="tour-panel" className="flex min-h-full flex-col gap-6">
         {/* Skip is text, top-left. Never only an ✕: the ✕ in the sheet's own header reads as "close a

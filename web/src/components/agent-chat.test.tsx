@@ -1621,7 +1621,7 @@ describe("AgentChat — closing the current tab", () => {
 // THE BOTTOM FITS THE SCREEN IT IS ON — and the screen is measured, never assumed.
 //
 // The operator's report: "here for example the bottom is cut off, and when the keyboard is open…".
-// It is arithmetic, not a padding bug. The route column is `h-[100dvh]` (routes/root.tsx). Inside
+// It is arithmetic, not a padding bug. The route column is `h-(--app-h)` (routes/root.tsx). Inside
 // it the mirror carries `min-h-0 flex-1`, so the mirror is the row that gives — and it gives all
 // the way to zero. Everything below it is content-sized, so once the mirror is at zero the surplus
 // paints past the bottom edge of the viewport, under the soft keyboard, and the send button becomes

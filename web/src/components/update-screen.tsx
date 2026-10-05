@@ -117,7 +117,7 @@ export function UpdateScreen({
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="fixed inset-0 z-50">
+    <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="fixed inset-x-0 top-0 z-50 h-(--app-h)">
       {/* THE VEIL. The app stays in view, dimmed and softened, so the operator can see what is locked
           and that it is still there. It takes no pointer: `App.tsx` makes the app behind it inert. */}
       <div aria-hidden="true" className="absolute inset-0 bg-background/70 backdrop-blur-[2px]" />
@@ -126,7 +126,7 @@ export function UpdateScreen({
         ref={panelRef}
         tabIndex={-1}
         data-slot="update-panel"
-        className="absolute inset-x-0 bottom-0 mx-auto flex max-h-[calc(100dvh-env(safe-area-inset-top)-3.5rem)] w-full max-w-screen-sm flex-col rounded-t-md border border-rule bg-card px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-2xl"
+        className="absolute inset-x-0 bottom-0 mx-auto flex max-h-[calc(var(--app-h)-env(safe-area-inset-top)-3.5rem)] w-full max-w-screen-sm flex-col rounded-t-md border border-rule bg-card px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-2xl"
       >
         <div aria-hidden="true" className="flex h-4 shrink-0 justify-center">
           <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />

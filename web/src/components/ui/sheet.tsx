@@ -195,7 +195,7 @@ export function BottomSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-end"
+      className="fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"
       role={peeking ? undefined : "dialog"}
       aria-modal={peeking ? undefined : true}
       aria-labelledby={!peeking && title ? titleId : undefined}
@@ -345,7 +345,7 @@ export function SideSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex"
+      className="fixed inset-x-0 top-0 z-50 flex h-(--app-h)"
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? titleId : undefined}

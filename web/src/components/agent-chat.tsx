@@ -2216,7 +2216,7 @@ export function AgentChat({
               up-levelled prompt buttons) — it now lives as a slim row just below the header.
 
               ── `shrink-0`, STATED, AND WHY IT IS NOT `min-h-0` ──────────────────────────
-              This is the flex sibling of the mirror inside a `h-[100dvh]` column. The mirror above
+              This is the flex sibling of the mirror inside a `h-(--app-h)` column. The mirror above
               carries `min-h-0 flex-1`, so IT is the row that gives — and it gives all the way to
               zero. What happens after that is what the operator reported as "the bottom is cut off":
               nothing else in this column can shrink, so the surplus paints past the bottom edge of
