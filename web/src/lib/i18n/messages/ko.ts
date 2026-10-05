@@ -1504,6 +1504,7 @@ export const ko: Dictionary = {
   "files.binary": "바이너리 파일, {size}",
   "files.fileEmpty": "이 파일은 비어 있습니다.",
   "files.fileTruncated": "파일이 여기서 끝납니다. 전체를 표시하기에는 너무 깁니다.",
+  "files.linesCapped": "처음 5,000줄을 표시합니다.",
   "files.view.aria": "보기",
   "files.view.source": "소스",
   "files.view.preview": "미리보기",

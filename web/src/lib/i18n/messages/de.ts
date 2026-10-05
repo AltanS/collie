@@ -1525,6 +1525,7 @@ export const de: Dictionary = {
   "files.binary": "Binärdatei, {size}",
   "files.fileEmpty": "Diese Datei ist leer.",
   "files.fileTruncated": "Die Datei endet hier. Sie ist zu lang, um sie vollständig anzuzeigen.",
+  "files.linesCapped": "Die ersten 5.000 Zeilen werden angezeigt.",
   "files.view.aria": "Ansicht",
   "files.view.source": "Quelltext",
   "files.view.preview": "Vorschau",

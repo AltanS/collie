@@ -58,6 +58,13 @@ export function formatBytes(bytes: number): string {
  * A file's text as the lines a reader counts. CRLF reads as one break, and the newline that ends the
  * last line does not start another empty one. An empty file has no lines.
  */
+/**
+ * The most lines the Files view puts in the DOM for one file. A 1 MiB file of short lines is a
+ * quarter of a million rows, and the tab stops answering well before that. Past the cap the screen
+ * says so in one plain line. Markdown past it shows its source instead of a rendered page.
+ */
+export const RENDER_MAX_LINES = 5000;
+
 export function splitLines(text: string): string[] {
   if (text === "") return [];
   const normal = text.replace(/\r\n/g, "\n");

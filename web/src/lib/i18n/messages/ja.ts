@@ -1512,6 +1512,7 @@ export const ja: Dictionary = {
   "files.binary": "バイナリファイル、{size}",
   "files.fileEmpty": "このファイルは空です。",
   "files.fileTruncated": "ファイルはここで終わっています。長すぎるため全体は表示できません。",
+  "files.linesCapped": "最初の5,000行を表示しています。",
   "files.view.aria": "表示",
   "files.view.source": "ソース",
   "files.view.preview": "プレビュー",

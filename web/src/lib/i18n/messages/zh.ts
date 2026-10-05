@@ -1490,6 +1490,7 @@ export const zh: Dictionary = {
   "files.binary": "二进制文件，{size}",
   "files.fileEmpty": "此文件为空。",
   "files.fileTruncated": "文件到此为止。内容过长，无法完整显示。",
+  "files.linesCapped": "显示前 5,000 行。",
   "files.view.aria": "视图",
   "files.view.source": "源码",
   "files.view.preview": "预览",

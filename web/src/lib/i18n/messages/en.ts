@@ -1663,6 +1663,7 @@ export const en = {
   "files.binary": "Binary file, {size}",
   "files.fileEmpty": "This file is empty.",
   "files.fileTruncated": "The file stops here. It is too long to show in full.",
+  "files.linesCapped": "Showing the first 5,000 lines.",
   "files.view.aria": "View",
   "files.view.source": "Source",
   "files.view.preview": "Preview",

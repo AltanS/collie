@@ -52,6 +52,24 @@ describe("Source", () => {
   });
 });
 
+describe("Source: the 5000-line cap", () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
+
+  it("renders 5000 lines in full, with no note", () => {
+    const { container } = render(<FileContent file={file("src/cart.ts", { text: lines(5000) })} view="source" />);
+    expect(container.querySelectorAll("[data-slot='file-source'] > div")).toHaveLength(5000);
+    expect(screen.queryByText(en["files.linesCapped"])).toBeNull();
+  });
+
+  it("renders the first 5000 lines of a longer file and one plain line after them", () => {
+    const { container } = render(<FileContent file={file("src/cart.ts", { text: lines(5001) })} view="source" />);
+    expect(container.querySelectorAll("[data-slot='file-source'] > div")).toHaveLength(5000);
+    expect(container.textContent).toContain("line 5000");
+    expect(container.textContent).not.toContain("line 5001");
+    expect(screen.getByText(en["files.linesCapped"])).toBeTruthy();
+  });
+});
+
 describe("a binary file", () => {
   it("shows its size and nothing else", () => {
     const { container } = render(<FileContent file={file("logo.png")} view="source" />);
@@ -69,6 +87,22 @@ describe("Preview: Markdown", () => {
     // The <script> line is characters in a paragraph, never an element.
     expect(container.querySelector("script")).toBeNull();
     expect(container.textContent).toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("Preview: Markdown past 5000 lines", () => {
+  const long = (n: number) => Array.from({ length: n }, (_, i) => `row ${i + 1}`).join("\n");
+
+  it("falls back to the source, and the note says the source is cut", () => {
+    const { container } = render(<FileContent file={file("README.md", { text: long(5001) })} view="preview" />);
+    expect(container.querySelector("[data-slot='file-markdown']")).toBeNull();
+    expect(container.querySelectorAll("[data-slot='file-source'] > div")).toHaveLength(5000);
+    expect(screen.getByText(en["files.linesCapped"])).toBeTruthy();
+  });
+
+  it("still renders a Markdown file of exactly 5000 lines as a page", () => {
+    const { container } = render(<FileContent file={file("README.md", { text: long(5000) })} view="preview" />);
+    expect(container.querySelector("[data-slot='file-markdown']")).toBeTruthy();
   });
 });
 

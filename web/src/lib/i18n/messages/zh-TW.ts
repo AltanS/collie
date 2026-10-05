@@ -1484,6 +1484,7 @@ export const zhTW: Dictionary = {
   "files.binary": "二進位檔案，{size}",
   "files.fileEmpty": "此檔案是空的。",
   "files.fileTruncated": "檔案到此為止。內容太長，無法完整顯示。",
+  "files.linesCapped": "顯示前 5,000 行。",
   "files.view.aria": "檢視",
   "files.view.source": "原始碼",
   "files.view.preview": "預覽",

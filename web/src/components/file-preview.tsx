@@ -5,7 +5,7 @@ import { MarkdownText } from "@/components/markdown-text";
 import { TokenLine } from "@/components/changes-view";
 import { useLocale } from "@/hooks/use-locale";
 import { HIGHLIGHT_MAX_LINES, highlightFile, highlightFileNow, languageForPath, type RowTokens } from "@/lib/diff-highlight";
-import { formatBytes, previewKindFor, splitLines, type PreviewKind } from "@/lib/files-view";
+import { RENDER_MAX_LINES, formatBytes, previewKindFor, splitLines, type PreviewKind } from "@/lib/files-view";
 import { t, tn } from "@/lib/i18n";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 import { parseJsonTree } from "@/lib/json-tree";
@@ -37,6 +37,13 @@ function Quiet({ children }: { children: React.ReactNode }) {
 /** One quiet line under a drawing, for the bound a read hit. */
 function Note({ children }: { children: React.ReactNode }) {
   return <p className="px-4 pt-3 text-xs text-muted-foreground">{children}</p>;
+}
+
+/** The number of lines in `text`, without building the array. */
+function countLines(text: string): number {
+  let n = 1;
+  for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) n++;
+  return n;
 }
 
 // ── Source ─────────────────────────────────────────────────────────────────────────────────────
@@ -78,14 +85,15 @@ function useFileTokens(lines: readonly string[], path: string): RowTokens | null
 export function SourceView({ text, path }: { text: string; path: string }) {
   const lines = useMemo(() => splitLines(text), [text]);
   const syntax = useFileTokens(lines, path);
-  const gutter = { width: `calc(${Math.max(String(lines.length).length, 2)}ch + 0.5rem)` };
+  const shown = lines.length > RENDER_MAX_LINES ? lines.slice(0, RENDER_MAX_LINES) : lines;
+  const gutter = { width: `calc(${Math.max(String(shown.length).length, 2)}ch + 0.5rem)` };
   return (
     <div
       className="font-mono text-xs leading-5 [font-variant-ligatures:none]"
       data-slot="file-source"
       data-highlighted={syntax ? "" : undefined}
     >
-      {lines.map((line, i) => (
+      {shown.map((line, i) => (
         <div key={i} className="flex pl-1">
           <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
             {i + 1}
@@ -95,6 +103,7 @@ export function SourceView({ text, path }: { text: string; path: string }) {
           </span>
         </div>
       ))}
+      {shown.length < lines.length && <Note>{t("files.linesCapped")}</Note>}
     </div>
   );
 }
@@ -221,8 +230,10 @@ export function JsonPreview({ text, path }: { text: string; path: string }) {
  * (because `allow-same-origin` is absent) an opaque origin, so the file cannot read this app's
  * storage or call its API either. `srcDoc` hands the frame its text without a request. A srcdoc
  * document INHERITS the shell's Content-Security-Policy, which is what keeps remote files off:
- * `default-src 'self'` has nothing to match for an opaque origin, so a remote image, style, font or
- * navigation is refused. The caption says so, because a blank space where an image would be reads
+ * `img-src 'self'` and the other `'self'` sources still apply, so a remote image, style, font or
+ * navigation is refused. What a hostile file CAN still do is cause blind same-origin GET requests
+ * (an `<img src="/api/...">` is allowed by `'self'`), but it cannot read an answer and it cannot run
+ * script. The caption says so, because a blank space where an image would be reads
  * as a bug. The white ground is the page the file was written against; a transparent one would show
  * a dark theme through a document that assumed white.
  */
@@ -251,7 +262,10 @@ export function FileContent({ file, view }: { file: FileText; view: FileView }) 
   useLocale();
   if (file.binary) return <Quiet>{t("files.binary", { size: formatBytes(file.size) })}</Quiet>;
   if (file.text === "") return <Quiet>{t("files.fileEmpty")}</Quiet>;
-  const kind: PreviewKind | null = view === "preview" ? previewKindFor(file.path) : null;
+  let kind: PreviewKind | null = view === "preview" ? previewKindFor(file.path) : null;
+  // A Markdown file of more than 5000 lines is too much to parse and lay out as a page. It reads as
+  // source, and the Source | Preview control stays, so the choice is still the reader's.
+  if (kind === "markdown" && countLines(file.text) > RENDER_MAX_LINES) kind = null;
   return (
     <>
       {kind === "markdown" && <MarkdownPreview text={file.text} />}

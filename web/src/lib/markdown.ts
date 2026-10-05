@@ -84,9 +84,9 @@ const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"']*[^\\s<>`\"'.,
 const INLINE_RE = new RegExp(
   [
     "(`+)([^`]+?)\\1", // 1,2  inline code
-    "\\*\\*(\\S(?:[^\\n]*?\\S)?)\\*\\*", // 3    bold
+    "\\*\\*(\\S(?:[^\\n]{0,500}?\\S)?)\\*\\*", // 3    bold
     "\\*(\\S(?:[^\\n*]*?\\S)?)\\*", // 4    italic
-    "\\[([^\\]\\n]*)\\]\\(([^)\\s]+)\\)", // 5,6  link
+    "\\[([^\\]\\n]{0,500})\\]\\(([^)\\s]{1,500})\\)", // 5,6  link
     BARE_URL, // 7    a bare URL
   ].join("|"),
   "g",
@@ -144,6 +144,21 @@ export function parseInline(text: string, depth = 0, inLink = false): MdSpan[] {
   return spans;
 }
 
+// A SOURCE LINE this long is a minified file or a data dump, not prose, and every inline branch is
+// superlinear in the worst case. It renders as plain text. The Files view reaches this parser with a
+// whole 1 MiB file, so the bound is the guard, not a nicety. The joined-paragraph bound catches the
+// other door: a million short lines of `[` that a paragraph glues into one run.
+const MAX_LINE_CHARS = 2000;
+const MAX_JOINED_CHARS = 50_000;
+
+/** Inline-parse `text`, unless any of the source `lines` it came from is too long to try. */
+function parseBounded(text: string, lines: readonly string[]): MdSpan[] {
+  if (text.length > MAX_JOINED_CHARS || lines.some((l) => l.length > MAX_LINE_CHARS)) {
+    return text === "" ? [] : [{ kind: "text", text }];
+  }
+  return parseInline(text);
+}
+
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const FENCE = /^\s*(?:```|~~~)\s*(\S*)/;
 const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
@@ -196,7 +211,7 @@ function parseAlign(line: string): MdAlign[] {
 function fitRow(line: string, width: number): MdSpan[][] {
   const cells = splitRow(line)
     .slice(0, width)
-    .map((cell) => parseInline(cell));
+    .map((cell) => parseBounded(cell, [line]));
   while (cells.length < width) cells.push([]);
   return cells;
 }
@@ -259,7 +274,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       blocks.push({
         kind: "heading",
         level: heading[1]!.length,
-        spans: parseInline(heading[2] ?? ""),
+        spans: parseBounded(heading[2] ?? "", [line]),
       });
       i++;
       continue;
@@ -273,7 +288,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         body.push(q[1] ?? "");
         i++;
       }
-      blocks.push({ kind: "quote", spans: parseInline(body.join(" ").trim()) });
+      blocks.push({ kind: "quote", spans: parseBounded(body.join(" ").trim(), body) });
       continue;
     }
 
@@ -286,7 +301,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         const item = isItem(lines[i]!);
         // A run stays one list only while its marker kind holds — a switch starts a new block.
         if (!item || OL_ITEM.test(lines[i]!) !== ordered) break;
-        items.push(parseInline(item[1] ?? ""));
+        items.push(parseBounded(item[1] ?? "", [lines[i]!]));
         i++;
       }
       blocks.push({ kind: "list", ordered, items });
@@ -296,7 +311,7 @@ export function parseMarkdown(source: string): MdBlock[] {
     // Tables come last of the recognised blocks: every other construct wins a line that could be
     // read as either, and a table is the only one that needs to look ahead.
     if (startsTable(line, lines[i + 1])) {
-      const header = splitRow(line).map((cell) => parseInline(cell));
+      const header = splitRow(line).map((cell) => parseBounded(cell, [line]));
       // Widths already match — `startsTable` refused the row otherwise — so the columns line up
       // without padding either side.
       const align = parseAlign(lines[i + 1]!);
@@ -331,7 +346,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       para.push(l.trim());
       i++;
     }
-    blocks.push({ kind: "paragraph", spans: parseInline(para.join(" ")) });
+    blocks.push({ kind: "paragraph", spans: parseBounded(para.join(" "), para) });
   }
 
   return blocks;

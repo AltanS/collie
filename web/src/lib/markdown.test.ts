@@ -346,3 +346,50 @@ describe("parseMarkdown", () => {
     expect(parseMarkdown("\n\n  \n")).toEqual([]);
   });
 });
+
+// The Files view hands this parser a whole 1 MiB file, so a hostile line must not freeze the tab. The
+// 200 ms ceiling is two orders over a healthy run and an order under the 3.7 s the unbounded link
+// branch took on 80,000 `[` (review, 1.17.0).
+describe("hostile input stays fast", () => {
+  const FAST_MS = 200;
+  const time = (run: () => void): number => {
+    const start = performance.now();
+    run();
+    return performance.now() - start;
+  };
+
+  it("a 200,000 character line of '[' parses in under 200 ms", () => {
+    const line = "[".repeat(200_000);
+    expect(time(() => parseMarkdown(line))).toBeLessThan(FAST_MS);
+  });
+
+  it("a 200,000 character line of '**a ' parses in under 200 ms", () => {
+    const line = "**a ".repeat(50_000);
+    expect(time(() => parseMarkdown(line))).toBeLessThan(FAST_MS);
+  });
+
+  it("the inline parser alone is bounded too, for a long run of '[' and of '**a '", () => {
+    expect(time(() => parseInline("[".repeat(60_000)))).toBeLessThan(FAST_MS);
+    expect(time(() => parseInline("**a ".repeat(15_000)))).toBeLessThan(FAST_MS);
+  });
+
+  it("many short lines that glue into one paragraph stay fast", () => {
+    const source = "[[[[[[[[[[\n".repeat(100_000);
+    expect(time(() => parseMarkdown(source))).toBeLessThan(FAST_MS);
+  });
+
+  it("a line over 2000 characters renders as plain text, a shorter one still formats", () => {
+    const long = `**bold** ${"x".repeat(2000)}`;
+    expect(parseMarkdown(long)).toEqual([{ kind: "paragraph", spans: [{ kind: "text", text: long }] }]);
+    expect(parseMarkdown("**bold** short")[0]).toEqual({
+      kind: "paragraph",
+      spans: [{ kind: "bold", spans: [{ kind: "text", text: "bold" }] }, { kind: "text", text: " short" }],
+    });
+  });
+
+  it("a link label past 500 characters is not a link", () => {
+    const label = "a".repeat(501);
+    expect(parseInline(`[${label}](/x)`).some((s) => s.kind === "link")).toBe(false);
+    expect(parseInline(`[${"a".repeat(500)}](/x)`).some((s) => s.kind === "link")).toBe(true);
+  });
+});
