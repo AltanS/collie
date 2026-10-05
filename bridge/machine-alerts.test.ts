@@ -397,6 +397,25 @@ describe("MachineWatch — what it takes in, and what it lets go", () => {
     expect((await MachineAlertStore.load(dir)).rules("desk")).toEqual({ mem: { above: 0.9, forMin: 5 } });
   });
 
+  test("a clock that steps back does not hold the history save until the old time comes round", async () => {
+    const dir = await tempDir();
+    const saved: number[] = [];
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir), "reachable", async (_h, now) => {
+      saved.push(now);
+    });
+    r.watch.observe("desk", hot(0.2), r.state.now);
+    r.state.now += 6 * MINUTE_MS;
+    r.watch.tick();
+    await Bun.sleep(1);
+    expect(saved).toHaveLength(1);
+    // An hour back, with something new to save: the save is due now, not an hour from now.
+    r.state.now -= 60 * MINUTE_MS;
+    r.watch.observe("desk", hot(0.3), r.state.now);
+    r.watch.tick();
+    await Bun.sleep(1);
+    expect(saved).toHaveLength(2);
+  });
+
   test("history writes run one after another, and flush waits for the one under way", async () => {
     const dir = await tempDir();
     const log: string[] = [];

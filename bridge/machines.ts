@@ -176,7 +176,9 @@ export class MachineWatch implements MachineSurface {
       this.lastJudgedMinute = minute;
       this.judge(now);
     }
-    if (this.deps.history.dirty() && now - this.lastSave >= HISTORY_SAVE_EVERY_MS) void this.save(now);
+    // A negative gap is a clock that stepped back: a save is due, not held until it catches up.
+    const sinceSave = now - this.lastSave;
+    if (this.deps.history.dirty() && (sinceSave >= HISTORY_SAVE_EVERY_MS || sinceSave < 0)) void this.save(now);
   }
 
   /**
