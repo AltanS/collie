@@ -3249,3 +3249,108 @@ describe("AgentChat — the handover from a shell to an agent", () => {
     expect(await screen.findByText("what changed today?")).toBeInTheDocument();
   });
 });
+
+// ── THE HANDOVER'S CLOCK, WITH FAKE TIMERS (1.17.0 review) ───────────────────────────────────────
+//
+// The cover waits for the body that WILL show. A harness that reports its session late must not hold
+// the pane covered for ever, and Codex, which reports its session only on the first prompt, must not
+// wait at all: nothing the bloom could wait for will arrive during it. The phases run on their
+// timers here (jsdom fires no `animationend`): covering ends at 530 ms, the cover rests until 910 ms,
+// the reveal lasts 790 ms more, and a covered pane that never gets its body is revealed at the cap,
+// 1500 ms after it was covered.
+describe("AgentChat — the handover waits only for a session that can arrive", () => {
+  const shell = fixtureShellPanes[0]!;
+  const layer = () => screen.queryByRole("status", { name: /^Handed to / });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function renderShell() {
+    let setAgent: (a: AgentView) => void = () => {};
+    function Host() {
+      const [agent, set] = useState<AgentView>(shell);
+      setAgent = set;
+      return (
+        <AgentChat
+          paneId={shell.paneId}
+          agent={agent}
+          agents={agent.kind === "shell" ? [] : [agent]}
+          shellPanes={agent.kind === "shell" ? [agent] : []}
+          tabs={[]}
+          text={paneTextWithDraft("recent pane output")}
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Host />) }]);
+    render(<RouterProvider router={router} />);
+    return { setAgent: (a: AgentView) => act(() => setAgent(a)) };
+  }
+
+  // In steps, each its own `act`: React holds effects until `act` exits, and a phase's timer is set
+  // by an effect, so one long advance would run past timers that are not armed yet.
+  const advance = async (ms: number) => {
+    for (let left = ms; left > 0; left -= 50) await act(() => vi.advanceTimersByTimeAsync(Math.min(50, left)));
+  };
+  const agentOf = (name: string, hasSession: boolean): AgentView => ({
+    ...shell,
+    agent: name,
+    kind: "agent",
+    status: "working",
+    hasSession,
+  });
+
+  it("Codex reveals as soon as the bloom completes, with no wait for a session", async () => {
+    const { setAgent } = renderShell();
+    await advance(50); // the capability read lands, so a missing session is the reported kind
+    setAgent(agentOf("codex", false));
+    expect(layer()).toHaveAttribute("data-phase", "covering");
+
+    // Covered at 530 ms, rested at 910 ms: the reveal starts there, nowhere near the 1500 ms cap.
+    await advance(1000);
+    expect(layer()).toHaveAttribute("data-phase", "revealing");
+
+    // The layer is gone before a capped wait would even have ended (530 + 1500), the terminal under it.
+    await advance(800);
+    expect(layer()).toBeNull();
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+  });
+
+  it("a harness that reports its session after the bloom is still revealed, never stuck covered", async () => {
+    const { setAgent } = renderShell();
+    await advance(50);
+    setAgent(agentOf("claude", false));
+    await advance(1200);
+    // Covered and resting past its minimum, waiting for a body that can still arrive: the terminal.
+    expect(layer()).toHaveAttribute("data-phase", "covered");
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+
+    // The session arrives, the first chat answer follows, and the reveal uncovers Chat.
+    setAgent(agentOf("claude", true));
+    await advance(300);
+    expect(layer()).toHaveAttribute("data-phase", "revealing");
+    await advance(900);
+    expect(layer()).toBeNull();
+    expect(screen.getByText("what changed today?")).toBeInTheDocument();
+  });
+
+  it("a session that arrives after the cap does not strand the cover, and Chat lands once it is down", async () => {
+    const { setAgent } = renderShell();
+    await advance(50);
+    setAgent(agentOf("claude", false));
+    // Covered at 530 ms, capped at 2030 ms, revealed, gone at 2820 ms. No session in all that time.
+    await advance(3000);
+    expect(layer()).toBeNull();
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+
+    setAgent(agentOf("claude", true));
+    await advance(300);
+    expect(screen.getByText("what changed today?")).toBeInTheDocument();
+    expect(layer()).toBeNull();
+  });
+});

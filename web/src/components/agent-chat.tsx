@@ -886,8 +886,13 @@ export function AgentChat({
   // rest, and the reveal waits for the body that WILL show. That is Chat once the session is
   // reported and its first answer is in, the terminal when this pane will not draw Chat, and still
   // "not yet" while the device wants Chat and a journal pane has reported no session (the hook's own
-  // cap ends that wait). With no layer up the phase is idle and this is `chatReadyBody` as it was.
-  const bodyReady = chatChosen && noSessionReported ? false : chatBody ? chatReadyBody : true;
+  // cap ends that wait). A harness that reports its session only on the FIRST PROMPT (Codex) is the
+  // exception: its session cannot arrive during the bloom, so waiting for it would only hold the
+  // cover for the whole cap. It reveals as soon as the bloom completes, with the terminal under it,
+  // and Chat takes the body when the first prompt makes the session appear. With no layer up the
+  // phase is idle and this is `chatReadyBody` as it was.
+  const waitsForSession = chatChosen && noSessionReported && !reportsSessionOnFirstPrompt(agent?.agent);
+  const bodyReady = waitsForSession ? false : chatBody ? chatReadyBody : true;
   const handover = useHandover(agentStart.started !== null, bodyReady, agentStart.clear);
   const chatShown = useHeldBody(chatReadyBody, handover.phase);
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
