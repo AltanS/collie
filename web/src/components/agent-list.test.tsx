@@ -550,7 +550,7 @@ describe("AgentList — the Spaces filter strip", () => {
 });
 
 // PINNED PANES (ADR 0070): a Pinned group under the summary line on every tab, drawn from every
-// workspace before isolate and hide, deaf to the Focus filter, and each pinned pane listed once.
+// workspace before isolate and hide, deaf to the needs-you switch, and each pinned pane listed once.
 describe("AgentList — pinned panes", () => {
   const herd = [
     agent("a1", "idle", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", sessionName: "orchestrator" }),
@@ -636,14 +636,14 @@ describe("AgentList — pinned panes", () => {
     expect(headings()).toEqual(["pinned"]);
   });
 
-  it("ignores the Focus filter: an idle pinned pane leads, and the groups keep only what needs you", () => {
+  it("ignores the needs-you switch: an idle pinned pane leads, and the groups keep only what needs you", () => {
     render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("orchestrator")} needsYouOnly />);
     expect(rowNames(pinnedRegion())).toEqual(["orchestrator"]);
     expect(headings()).toEqual(["pinned", "one"]);
     expect(rowNames(groupSection("one"))).toEqual(["stuck"]);
   });
 
-  it("shows only the Pinned group under an all-clear Focus when every urgent pane is pinned", () => {
+  it("shows only the Pinned group under an all-clear needs-you switch when every urgent pane is pinned", () => {
     render(<AgentList agents={herd} onOpen={vi.fn()} pins={pinned("stuck")} needsYouOnly />);
     expect(headings()).toEqual(["pinned"]);
   });
@@ -692,7 +692,7 @@ describe("AgentList — pinned panes", () => {
       <AgentList agents={herd} onOpen={vi.fn()} pins={pins} reveal={{ rowKey: paneRowKey(byName("orchestrator")) }} />,
     );
     expect(within(pinnedRegion()).getByRole("button")).toHaveFocus();
-    // Unpinned on Focus: an idle pane leaves the list, and focus goes to the summary line.
+    // Unpinned with the switch on: an idle pane leaves the list, and focus goes to the summary line.
     setPinned(byName("orchestrator"), false, herd);
     rerender(
       <AgentList
@@ -719,7 +719,7 @@ describe("AgentList — pinned panes", () => {
 });
 
 // HIDING A MACHINE (issue #288, M40/01): a crew's dashboard can leave a machine out. Its workspace
-// groups leave Panes, Focus and Changes, its chips give way to one dimmed stand-in chip with its worst
+// groups leave the Dashboard, Crew and Changes, its chips give way to one dimmed stand-in chip with its worst
 // dot, pins and isolate still win, the addressed machine always shows, and solo renders as before.
 describe("AgentList — hiding a machine", () => {
   const member = (id: string, isLead = false): ServerSummary => ({
@@ -753,7 +753,7 @@ describe("AgentList — hiding a machine", () => {
     expect(summaryLine()).toHaveAccessibleName(/^2 needs you/);
   });
 
-  it("leaves a hidden machine out of Focus too", () => {
+  it("leaves a hidden machine out of the needs-you list too", () => {
     render(<AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} needsYouOnly onOpen={vi.fn()} />);
     expect(headings()).toEqual(["collie"]);
     expect(rowButtons()).toHaveLength(1);
@@ -1104,7 +1104,7 @@ describe("AgentList — the pin hint", () => {
     expect(line.closest('[data-slot="collapse"]')).not.toBeNull();
   });
 
-  it("hint: never on Focus or Changes", () => {
+  it("hint: never with the needs-you switch on, or on Changes and Crew", () => {
     const { container, rerender } = render(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} needsYouOnly />);
     expect(hint(container)).toBeNull();
     rerender(<AgentList agents={herd} onOpen={vi.fn()} onHold={vi.fn()} renderBody={() => <p>changes body</p>} />);
@@ -1221,8 +1221,8 @@ describe("AgentList — the order toggle", () => {
     expect(names()).toEqual(["alpha", "beta", "gamma", "delta"]);
     const group = screen.getByRole("radiogroup", { name: "Pane order" });
     expect(within(group).getByRole("radio", { name: "Place" })).toBeChecked();
-    // The alarm and the control share one row.
-    expect(group.parentElement).toBe(summaryLine().parentElement);
+    // The alarm and the controls share one row.
+    expect(group.parentElement!.parentElement).toBe(summaryLine().parentElement);
   });
 
   it("order: draws no control, and the summary line keeps its place, when nothing can store the answer", () => {
@@ -1293,7 +1293,7 @@ describe("AgentList — the order toggle", () => {
   });
 
   it("order: the filters run first and never sort", () => {
-    // Focus keeps only the pane that needs you; isolate keeps one workspace; the ranking then runs
+    // The switch keeps only the pane that needs you; isolate keeps one workspace; the ranking then runs
     // over what is left.
     const { rerender } = render(<AgentList agents={herd} {...props} order="activity" needsYouOnly />);
     expect(names()).toEqual(["beta"]);
@@ -1362,5 +1362,32 @@ describe("AgentList — the order toggle", () => {
     expect(screen.getByText("changes body")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /newest first/i })).toBeNull();
     expect(summaryLine().parentElement).toHaveClass("min-h-11");
+  });
+
+  it("needs-you switch: drawn beside the order toggle only when given a way to flip, and reports a tap", async () => {
+    const user = userEvent.setup();
+    const onNeedsYouOnlyChange = vi.fn();
+    const { rerender } = render(<AgentList agents={herd} {...props} />);
+    expect(screen.queryByRole("button", { name: "Show only panes that need you" })).toBeNull();
+    rerender(<AgentList agents={herd} {...props} onNeedsYouOnlyChange={onNeedsYouOnlyChange} />);
+    const sw = screen.getByRole("button", { name: "Show only panes that need you" });
+    expect(sw).toHaveAttribute("aria-pressed", "false");
+    // One row with the summary line and the order toggle.
+    expect(sw.parentElement).toBe(screen.getByRole("radiogroup", { name: "Pane order" }).parentElement);
+    await user.click(sw);
+    expect(onNeedsYouOnlyChange).toHaveBeenCalledWith(true);
+    rerender(<AgentList agents={herd} {...props} needsYouOnly onNeedsYouOnlyChange={onNeedsYouOnlyChange} />);
+    expect(screen.getByRole("button", { name: "Show only panes that need you" })).toHaveAttribute("aria-pressed", "true");
+    // Pressed again, it asks for off.
+    await user.click(screen.getByRole("button", { name: "Show only panes that need you" }));
+    expect(onNeedsYouOnlyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("needs-you switch: a tab with its own body hides the switch and the toggle, and keeps the slot", () => {
+    render(<AgentList agents={herd} {...props} onNeedsYouOnlyChange={vi.fn()} renderBody={() => <p>crew body</p>} />);
+    expect(screen.queryByRole("button", { name: "Show only panes that need you" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Pane order" })).toBeNull();
+    expect(summaryLine().parentElement).toHaveClass("min-h-11");
+    expect(summaryLine().parentElement!.querySelector(".invisible")).not.toBeNull();
   });
 });

@@ -3,6 +3,9 @@
 - **Status:** Accepted
 - **Date:** 2026-09-23
 - **Shipped in:** pending
+- **Amended in scope by:** [ADR 0085](./0085-the-dashboards-tabs-are-dashboard-crew-and-changes.md):
+  Focus stops being a tab and becomes a switch in the summary line, wearing the same `CircleDot`; a
+  stored `"focus"` reads as Dashboard with the switch on.
 - **Amends:** [ADR 0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md), in scope. The
   footer, the filter, the corner mark's count/dot/nothing rule, the Changes tab and the per-device
   storage all stand. Only the second tab's name and icon change.

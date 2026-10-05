@@ -4,13 +4,14 @@ import { en } from "@/lib/i18n/messages/en";
 import type { ChangesResponse, SnapshotResponse } from "@/lib/types";
 import { fixtureChanges, fixtureSnapshot } from "@/test/handlers";
 
-import { installApiStub } from "./fixtures/api";
+import { installApiStub, installCrewWorld } from "./fixtures/api";
 
-// THE DASHBOARD'S FOOTER ON A SMALL PHONE (ADR 0066, tab renamed Focus by ADR 0068). Three tabs at
-// 375x812: Panes, Focus, Changes. The claims a real engine has to check: a switch moves neither the
-// footer nor the summary line, Focus shows only what needs you (and the all-clear when nothing
-// does), and Changes lists the workspaces with their counts and taps through to one workspace's
-// Changes.
+// THE DASHBOARD'S FOOTER ON A SMALL PHONE (ADR 0066, reshaped by ADR 0085). Two tabs at 375x812,
+// Dashboard and Changes, and a Crew tab between them while a crew is configured. The claims a real
+// engine has to check: a switch moves neither the footer nor the summary line, the needs-you switch
+// in the summary line shows only what needs you (and the all-clear when nothing does), Crew exists
+// only with a crew, and Changes lists the workspaces with their counts and taps through to one
+// workspace's Changes.
 
 test.use({ serviceWorkers: "block", viewport: { width: 375, height: 812 } });
 
@@ -22,8 +23,10 @@ test.beforeEach(async ({ page }, testInfo) => {
 
 const footer = (page: Page) => page.getByRole("navigation", { name: en["home.tabs.aria"] });
 const tab = (page: Page, name: RegExp) => footer(page).getByRole("button", { name });
-const PANES = new RegExp(`^${en["home.tabs.panes"]}$`, "u");
-const FOCUS = new RegExp(`^${en["home.tabs.focus"]}`, "u");
+const DASHBOARD = new RegExp(`^${en["home.tabs.dashboard"]}`, "u");
+const CREW = new RegExp(`^${en["crew.title"]}$`, "u");
+/** The needs-you switch in the summary line's row (ADR 0085). */
+const needsYou = (page: Page) => page.getByRole("button", { name: en["home.needsYouOnly"] });
 const CHANGES = new RegExp(`^${en["changes.title"]}$`, "u");
 /** The summary line: the one button in the list that opens on a count of what needs you, or the all-clear. */
 const summary = (page: Page) => page.getByRole("main").getByRole("button", { name: /^(\d+ needs you|Nothing needs you)/u });
@@ -46,13 +49,13 @@ async function routeChanges(page: Page) {
 test("switching tabs moves neither the footer nor the summary line", async ({ page }) => {
   await routeChanges(page);
   await page.goto("/");
-  await expect(tab(page, PANES)).toHaveAttribute("aria-current", "page");
+  await expect(tab(page, DASHBOARD)).toHaveAttribute("aria-current", "page");
   const f0 = await box(footer(page));
   const s0 = await box(summary(page));
   // The footer sits on the viewport's bottom edge.
   expect(Math.round(f0.y + f0.height)).toBe(812);
 
-  for (const name of [FOCUS, CHANGES, PANES]) {
+  for (const name of [CHANGES, DASHBOARD]) {
     await tab(page, name).click();
     await expect(tab(page, name)).toHaveAttribute("aria-current", "page");
     expect(await box(footer(page))).toEqual(f0);
@@ -62,6 +65,22 @@ test("switching tabs moves neither the footer nor the summary line", async ({ pa
 
 // A pinned pane (ADR 0070) leads every tab in a Pinned group, and that group sits UNDER the summary
 // line, so the line and the footer still hold still across a switch with a pin set.
+test("the needs-you switch moves neither the footer nor the summary line, and the row keeps its height", async ({ page }) => {
+  await page.goto("/");
+  const f0 = await box(footer(page));
+  const s0 = await box(summary(page));
+  const row0 = await box(needsYou(page).locator(".."));
+  await needsYou(page).click();
+  await expect(needsYou(page)).toHaveAttribute("aria-pressed", "true");
+  expect(await box(footer(page))).toEqual(f0);
+  expect(await box(summary(page))).toEqual(s0);
+  expect(await box(needsYou(page).locator(".."))).toEqual(row0);
+  // The switch is a 44px target.
+  const target = await box(needsYou(page));
+  expect(target.width).toBeGreaterThanOrEqual(44);
+  expect(target.height).toBeGreaterThanOrEqual(44);
+});
+
 test("with a pane pinned, switching tabs still moves neither the footer nor the summary line", async ({ page }) => {
   await routeChanges(page);
   await page.goto("/");
@@ -73,7 +92,7 @@ test("with a pane pinned, switching tabs still moves neither the footer nor the 
   const f0 = await box(footer(page));
   const s0 = await box(summary(page));
 
-  for (const name of [FOCUS, CHANGES, PANES]) {
+  for (const name of [CHANGES, DASHBOARD]) {
     await tab(page, name).click();
     await expect(tab(page, name)).toHaveAttribute("aria-current", "page");
     await expect(pinned).toBeVisible();
@@ -82,44 +101,94 @@ test("with a pane pinned, switching tabs still moves neither the footer nor the 
   }
 });
 
-test("Focus shows only the panes that need you, and survives a reload", async ({ page }) => {
+test("the needs-you switch shows only the panes that need you, and survives a reload", async ({ page }) => {
   await page.goto("/");
-  // Both workspaces under Panes.
+  // Both workspaces with the switch off.
   await expect(page.getByRole("heading", { name: "webapp" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "collie" })).toBeVisible();
-  // One blocked pane (webapp), so the tab carries a red 1.
-  await expect(tab(page, FOCUS)).toContainText("1");
+  // One blocked pane (webapp), so the Dashboard tab carries a red 1.
+  await expect(tab(page, DASHBOARD)).toContainText("1");
 
-  await tab(page, FOCUS).click();
+  await needsYou(page).click();
   await expect(page.getByRole("heading", { name: "webapp" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "collie" })).toHaveCount(0);
   // The strip still offers every workspace: a filter removes rows, it never places.
   await expect(page.getByRole("navigation", { name: en["space.strip.title"] }).getByRole("button", { name: /collie/u })).toBeVisible();
+  // The mark stays on the Dashboard tab with the switch on.
+  await expect(tab(page, DASHBOARD)).toContainText("1");
 
   await page.reload();
-  await expect(tab(page, FOCUS)).toHaveAttribute("aria-current", "page");
+  await expect(needsYou(page)).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("heading", { name: "collie" })).toHaveCount(0);
 });
 
-test("Focus with nothing urgent shows the all-clear line, not an empty list", async ({ page }) => {
+test("the needs-you switch hides the Spaces navigator, and Changes and Crew draw no switch", async ({ page }) => {
+  await installCrewWorld(page);
+  await routeChanges(page);
+  await page.goto("/");
+  const spaces = page.getByRole("button", { name: new RegExp(`^${en["space.overview.title"]}`, "u") });
+  await expect(spaces).toBeVisible();
+  await needsYou(page).click();
+  await expect(spaces).toHaveCount(0);
+  await tab(page, CHANGES).click();
+  await expect(needsYou(page)).toHaveCount(0);
+  await tab(page, CREW).click();
+  await expect(needsYou(page)).toHaveCount(0);
+  // Back on the Dashboard the switch is as it was left: on.
+  await tab(page, DASHBOARD).click();
+  await expect(needsYou(page)).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a stored Focus tab opens the Dashboard with the switch on, once", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem("seeded") === null) {
+      localStorage.setItem("seeded", "1");
+      localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ dashView: "focus" }));
+    }
+  });
+  await page.goto("/");
+  await expect(tab(page, DASHBOARD)).toHaveAttribute("aria-current", "page");
+  await expect(needsYou(page)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "collie" })).toHaveCount(0);
+  // Turned off, it stays off after a reload: the migrated blob was written back.
+  await needsYou(page).click();
+  await page.reload();
+  await expect(needsYou(page)).toHaveAttribute("aria-pressed", "false");
+});
+
+test("a solo Collie has no Crew tab; a crew has one, between Dashboard and Changes", async ({ page }) => {
+  await page.goto("/");
+  await expect(footer(page).getByRole("button")).toHaveCount(2);
+  await expect(tab(page, CREW)).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installApiStub(page);
+  await installCrewWorld(page);
+  await page.goto("/");
+  await expect(footer(page).getByRole("button")).toHaveCount(3);
+  await expect(footer(page).getByRole("button").nth(1)).toHaveAccessibleName(CREW);
+  await tab(page, CREW).click();
+  await expect(tab(page, CREW)).toHaveAttribute("aria-current", "page");
+});
+
+test("the needs-you switch with nothing urgent shows the all-clear line, not an empty list", async ({ page }) => {
   const calm: SnapshotResponse = structuredClone(fixtureSnapshot);
   for (const a of calm.agents) a.status = "working";
   await page.route("**/api/snapshot*", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(calm) }),
   );
   await page.goto("/");
-  await tab(page, FOCUS).click();
+  await needsYou(page).click();
   await expect(page.getByText(en["home.allClear"])).toBeVisible();
   await expect(page.getByRole("heading", { name: "webapp" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "collie" })).toHaveCount(0);
   // No badge when nothing needs you.
-  await expect(tab(page, FOCUS)).toHaveText(en["home.tabs.focus"]);
+  await expect(tab(page, DASHBOARD)).toHaveText(en["home.tabs.dashboard"]);
 });
 
-// The badge rule (ADR 0066): a red count means panes blocked on you; a finished pane you have not
+// The badge rule (ADR 0066, on the Dashboard tab since ADR 0085): a red count means panes blocked on you; a finished pane you have not
 // opened gets a quiet dot and no number; neither gets nothing. The mark is addressed by the tab's
 // accessible name and its text, never by a class.
-const named = (mark: string) => new RegExp(`^${en["home.tabs.focus"]}\\s*, ${mark}$`, "u");
+const named = (mark: string) => new RegExp(`^${en["home.tabs.dashboard"]}\\s*, ${mark}$`, "u");
 
 async function withSnapshot(page: Page, edit: (snap: SnapshotResponse) => void) {
   const snap: SnapshotResponse = structuredClone(fixtureSnapshot);
@@ -129,17 +198,17 @@ async function withSnapshot(page: Page, edit: (snap: SnapshotResponse) => void) 
   );
 }
 
-test("Focus's badge: a red count only for blocked panes", async ({ page }) => {
+test("The Dashboard badge: a red count only for blocked panes", async ({ page }) => {
   // One blocked pane (webapp) and one finished pane nobody opened: the count is 1, not 2.
   await withSnapshot(page, (snap) => {
     const other = snap.agents.find((a) => a.status !== "blocked")!;
     Object.assign(other, { status: "done", lastActiveAt: 2, lastSeenAt: 1 });
   });
   await page.goto("/");
-  const focus = tab(page, FOCUS);
-  // Chromium joins the word and the screen-reader span with a space: "Focus , 1 blocked".
-  await expect(focus).toHaveAccessibleName(named("1 blocked"));
-  const count = focus.getByText("1", { exact: true });
+  const dash = tab(page, DASHBOARD);
+  // Chromium joins the word and the screen-reader span with a space: "Dashboard , 1 blocked".
+  await expect(dash).toHaveAccessibleName(named("1 blocked"));
+  const count = dash.getByText("1", { exact: true });
   await expect(count).toBeVisible();
   // Red: the badge wears the blocked status colour, the same token the status dot uses.
   const red = await page.evaluate(() => {
@@ -153,30 +222,30 @@ test("Focus's badge: a red count only for blocked panes", async ({ page }) => {
   await expect(count).toHaveCSS("background-color", red);
 });
 
-test("Focus's badge: a quiet dot and no number when only finished panes wait unseen", async ({ page }) => {
+test("The Dashboard badge: a quiet dot and no number when only finished panes wait unseen", async ({ page }) => {
   await withSnapshot(page, (snap) => {
     for (const a of snap.agents) a.status = "working";
     Object.assign(snap.agents[0]!, { status: "done", lastActiveAt: 2, lastSeenAt: 1 });
   });
   await page.goto("/");
-  const focus = tab(page, FOCUS);
-  await expect(focus).toHaveAccessibleName(named(en["home.tabs.unseen"]));
-  await expect(focus).not.toContainText(/\d/u);
+  const dash = tab(page, DASHBOARD);
+  await expect(dash).toHaveAccessibleName(named(en["home.tabs.unseen"]));
+  await expect(dash).not.toContainText(/\d/u);
   // The dot is the unseen mark (ui/unseen-mark.tsx), drawn inside the icon's aria-hidden corner:
   // the tab's own name already says it, so a screen reader hears it once.
-  const dot = focus.getByRole("img", { name: en["home.row.unseen"], includeHidden: true });
+  const dot = dash.getByRole("img", { name: en["home.row.unseen"], includeHidden: true });
   await expect(dot).toBeVisible();
 });
 
-test("Focus's badge: nothing when no pane is blocked or unseen", async ({ page }) => {
+test("The Dashboard badge: nothing when no pane is blocked or unseen", async ({ page }) => {
   await withSnapshot(page, (snap) => {
     for (const a of snap.agents) a.status = "working";
   });
   await page.goto("/");
-  const focus = tab(page, FOCUS);
-  await expect(focus).toHaveAccessibleName(en["home.tabs.focus"]);
-  await expect(focus).toHaveText(en["home.tabs.focus"]);
-  await expect(focus.getByRole("img", { name: en["home.row.unseen"], includeHidden: true })).toHaveCount(0);
+  const dash = tab(page, DASHBOARD);
+  await expect(dash).toHaveAccessibleName(en["home.tabs.dashboard"]);
+  await expect(dash).toHaveText(en["home.tabs.dashboard"]);
+  await expect(dash.getByRole("img", { name: en["home.row.unseen"], includeHidden: true })).toHaveCount(0);
 });
 
 test("Changes lists each workspace with its counts and opens the workspace's Changes", async ({ page }) => {
@@ -233,8 +302,8 @@ test("Changes shows the last numbers at once when the tab is entered again", asy
   await tab(page, CHANGES).click();
   const rows = page.getByRole("list", { name: en["home.changes.listAria"] }).getByRole("button");
   await expect(rows.first()).toContainText("5 files");
-  await tab(page, PANES).click();
-  await expect(tab(page, PANES)).toHaveAttribute("aria-current", "page");
+  await tab(page, DASHBOARD).click();
+  await expect(tab(page, DASHBOARD)).toHaveAttribute("aria-current", "page");
   // The answers now take far longer than the check below waits: only the kept numbers can pass it.
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await routeChangesSlowly(page, 5000);

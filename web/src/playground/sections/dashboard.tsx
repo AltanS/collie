@@ -1,6 +1,7 @@
 // Dashboard section of the states playground. Split out of app.tsx; see that file's header comment
 // for the whole page's rules.
 
+import { GitCompare, Network, Rows3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MemoryRouter } from "react-router";
 
@@ -8,6 +9,10 @@ import { AgentList, type HeadingNewTab } from "@/components/agent-list";
 import { BuildStamp } from "@/components/build-stamp";
 import { CrewFooterLink } from "@/components/crew-footer-link";
 import { ListGroup } from "@/components/ui/list-group";
+import { TabBar } from "@/components/ui/tab-bar";
+import type { DashView } from "@/lib/dash-view";
+import { countBlocked, hasReady } from "@/lib/triage";
+import { t, tn } from "@/lib/i18n";
 import { PaneStrip } from "@/components/pane-strip";
 import type { PaneOrder } from "@/lib/pane-order";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -80,6 +85,76 @@ function OrderedAgentList({ initial }: { initial: PaneOrder }) {
   );
 }
 
+/** A tab body this card does not build for real: one quiet line saying what the tab would hold. */
+const body = (label: string) => () => (
+  <p className="rounded-md border border-border px-3 py-6 text-center text-sm text-muted-foreground">{label}</p>
+);
+
+/**
+ * The dashboard's footer tabs and its needs-you switch (ADR 0085), composed from the real parts: the
+ * real `AgentList` with the switch live, and the real `TabBar` with the items `routes/home.tsx`
+ * builds. A mock of the route, not a mount of it: the route reads its tab and its switch from
+ * localStorage, and four cards cannot share one store. The Crew tab's body is a placeholder, because
+ * its own component (`components/crew-tab.tsx`) fetches the machines and this page has no API.
+ */
+function DashboardTabsPhone({
+  crew,
+  initialOn,
+  initialView = "dashboard",
+}: {
+  crew: boolean;
+  initialOn: boolean;
+  initialView?: DashView;
+}) {
+  const [on, setOn] = useState(initialOn);
+  const [view, setView] = useState<DashView>(initialView);
+  const [order, setOrder] = useState<PaneOrder>("place");
+  const blocked = countBlocked(herd);
+  return (
+    <>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <AgentList
+          agents={herd}
+          bridge="connected"
+          onOpen={() => {}}
+          newTab={HEADING_NEW_TAB}
+          order={order}
+          onOrderChange={setOrder}
+          needsYouOnly={view === "dashboard" && on}
+          onNeedsYouOnlyChange={setOn}
+          renderBody={
+            view === "crew"
+              ? body("The Crew tab's body, the machine cards (components/crew-tab.tsx)")
+              : view === "changes"
+                ? body("The Changes tab's body, one row per workspace")
+                : undefined
+          }
+        />
+      </div>
+      <TabBar<DashView>
+        label={t("home.tabs.aria")}
+        active={view}
+        onSelect={setView}
+        items={[
+          {
+            value: "dashboard",
+            label: t("home.tabs.dashboard"),
+            icon: <Rows3 className="size-5" />,
+            badge: blocked,
+            dot: blocked === 0 && hasReady(herd),
+            badgeLabel: blocked > 0 ? tn("home.tabs.blocked", blocked) : t("home.tabs.unseen"),
+          },
+          ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
+          { value: "changes", label: t("changes.title"), icon: <GitCompare className="size-5" /> },
+        ]}
+      />
+    </>
+  );
+}
+
+const TABS_REACH =
+  "the dashboard's footer. Dashboard is the list; Crew sits between it and Changes only while a crew is configured; the old Focus tab is the circle-dot switch in the summary line's row, beside the order toggle.";
+
 export function DashboardSection() {
   return (
     <Section def={DEF}>
@@ -141,6 +216,52 @@ export function DashboardSection() {
 
       <Group title="Write gate">
         <WriteGateCard />
+      </Group>
+
+      <Group title="Tabs and the needs-you switch">
+        <Card
+          state="dashboard-tabs-solo-switch-off"
+          label="tabs, solo, switch off"
+          reach={TABS_REACH}
+          note="Two tabs, Dashboard and Changes. The switch is off: the Spaces navigator and the launch strip trail the list on the real route, and the pin hint sits under the summary line. The footer's red count is on Dashboard."
+        >
+          <PhoneFrameCard height={640}>
+            <DashboardTabsPhone crew={false} initialOn={false} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="dashboard-tabs-solo-switch-on"
+          label="tabs, solo, switch on"
+          reach={TABS_REACH}
+          note="The switch wears the primary tint and reads pressed. Each workspace keeps only its panes that need you, a group with none is dropped, and every heading still counts its whole workspace. The mark stays on Dashboard."
+        >
+          <PhoneFrameCard height={640}>
+            <DashboardTabsPhone crew={false} initialOn />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="dashboard-tabs-crew-switch-off"
+          label="tabs, with a crew, switch off"
+          reach={TABS_REACH}
+          note="Three tabs: Dashboard, Crew, Changes. Tap Crew and Changes: the summary line holds its place on both, and the controls slot keeps its width, invisible."
+        >
+          <PhoneFrameCard height={640}>
+            <DashboardTabsPhone crew initialOn={false} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="dashboard-tabs-crew-switch-on"
+          label="tabs, with a crew, switch on"
+          reach={TABS_REACH}
+          note="The switch is a Dashboard filter and nothing else: tap Crew and the list gives way to the machines, tap Dashboard and the switch is as you left it."
+        >
+          <PhoneFrameCard height={640}>
+            <DashboardTabsPhone crew initialOn />
+          </PhoneFrameCard>
+        </Card>
       </Group>
 
       <Group title="Navigation strips">

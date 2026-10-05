@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { coerceDashView, pinnedRows, shownGroups, stripEntries, type StripEntry } from "./dash-view";
+import {
+  coerceDashView,
+  isLegacyDashView,
+  pinnedRows,
+  shownGroups,
+  stripEntries,
+  wasFocusView,
+  type StripEntry,
+} from "./dash-view";
 import { groupPanesByWorkspace } from "./pane-groups";
 import { currentPins, pinMatcher, setPinned } from "./pins";
 import type { AgentView } from "./types";
@@ -138,19 +146,34 @@ describe("pinned rows", () => {
 });
 
 describe("coerceDashView", () => {
-  it("keeps the three views and turns anything else into Panes", () => {
-    expect(coerceDashView("panes")).toBe("panes");
-    expect(coerceDashView("focus")).toBe("focus");
-    expect(coerceDashView("changes")).toBe("changes");
-    expect(coerceDashView("all")).toBe("panes");
-    expect(coerceDashView(undefined)).toBe("panes");
+  it.each([
+    ["dashboard", "dashboard"],
+    ["crew", "crew"],
+    ["changes", "changes"],
+    // The retired names (ADR 0085): the first tab was renamed, and Focus is a switch now.
+    ["panes", "dashboard"],
+    ["focus", "dashboard"],
+    ["needs", "dashboard"],
+    ["attention", "dashboard"],
+    ["all", "dashboard"],
+    [2, "dashboard"],
+    [undefined, "dashboard"],
+  ] as const)("reads %s as %s", (stored, view) => {
+    expect(coerceDashView(stored)).toBe(view);
   });
 
-  it("reads a pre-rename stored value as Focus (ADR 0068)", () => {
-    // "needs" is what a device stored before the tab was named Attention; "attention" is handled
-    // the same way in case any build ever wrote the label instead of the internal name.
-    expect(coerceDashView("needs")).toBe("focus");
-    expect(coerceDashView("attention")).toBe("focus");
+  it("names the retired values, and which of them was Focus", () => {
+    expect(["panes", "focus", "needs", "attention", "dashboard", "crew", "changes", "all"].map(isLegacyDashView)).toEqual(
+      [true, true, true, true, false, false, false, false],
+    );
+    expect(["panes", "focus", "needs", "attention", "dashboard", "crew"].map(wasFocusView)).toEqual([
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
   });
 });
 

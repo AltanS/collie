@@ -14,6 +14,11 @@
 // even in its quiet state (ADR 0068). Option 1's phones below carry that second rename too, since
 // they mount the real `TabBar`; options 2 to 4 still say "Needs you", as they were drawn.
 //
+// Since 2026-10-05 the first tab is named Dashboard and the Focus tab is a switch in the summary
+// line, with a Crew tab between Dashboard and Changes while a crew is configured (ADR 0085). The
+// phones below are the round as it was drawn and picked; the Dashboard section's "Tabs and the
+// needs-you switch" cards show the shipped footer.
+//
 // HONESTY: this is a mock composed from the app's own parts, not a mount of `AgentList`. The rows
 // (`AgentCard`), headings (`SectionHeader`), counts (`StatusCounts`, `StatusSummaryLine`), chips
 // (`Chip`), list frames (`ListGroup`), the Changes list (`ChangesList`), `Switch` and `BottomSheet`
