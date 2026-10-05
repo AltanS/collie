@@ -1,7 +1,7 @@
 # Multiplexers
 
-Collie drives one multiplexer per install: Herdr, tmux, zellij or tuios. Herdr is the default. This
-page covers pointing Collie at any of the four, what each backend can answer, and the beacons Collie
+Collie drives one multiplexer per install: Herdr, tmux, zellij, tuios or tern. Herdr is the default. This
+page covers pointing Collie at any of them, what each backend can answer, and the beacons Collie
 uses to detect an agent in a pane.
 
 ## Pointing Collie at a multiplexer
@@ -9,10 +9,11 @@ uses to detect an agent in a pane.
 Name the backend in `COLLIE_MUX`, point it at an endpoint, restart, and install the beacon hooks.
 
 > **Experimental.** tmux and zellij (since 1.0) were tested on **tmux 3.6b** and **zellij 0.44.2**,
-> on a single host. tuios (since 1.15.0) was tested on **tuios 0.8.4**.
+> on a single host. tuios (since 1.15.0) was tested on **tuios 0.8.4**. Tern was probed by its
+> contributor on **tern 0.4.5**, a closed beta that the maintainers cannot run.
 > Herdr is the default and the primary supported backend. **Testers wanted:** open an issue on
-> [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …`, `zellij: …` or
-> `tuios: …`, with your multiplexer, version, OS, and what you saw.
+> [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …`, `zellij: …`,
+> `tuios: …` or `tern: …`, with your multiplexer, version, OS, and what you saw.
 
 Name the multiplexer on the command line:
 
@@ -21,6 +22,7 @@ COLLIE_MUX=herdr collie start
 COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
 COLLIE_MUX=tuios collie start
+COLLIE_MUX=tern collie start
 ```
 
 Set the endpoint when the default target is not the one you want:
@@ -39,7 +41,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 
 | variable | value | what it means |
 | --- | --- | --- |
-| `COLLIE_MUX` | `herdr`, `tmux`, `zellij` or `tuios` | which backend this install drives |
+| `COLLIE_MUX` | `herdr`, `tern`, `tmux`, `zellij` or `tuios` | which backend this install drives |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `/run/user/1000/collie-tmux.sock` | a socket PATH (`tmux -S`), because it has a `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `work` | a socket NAME (`tmux -L work`), no `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | empty | tmux's own default server |
@@ -47,6 +49,9 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_ZELLIJ` | empty | the single running session |
 | `COLLIE_MUX_ENDPOINT_TUIOS` | `/run/user/1000/tuios/tuios.sock` | the tuios daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TUIOS` | empty | `$XDG_RUNTIME_DIR/tuios/tuios.sock`, else `/tmp/tuios-<uid>/tuios.sock` |
+| `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
+| `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
+| `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
 
@@ -130,6 +135,21 @@ Zellij sessions persist independently of their initial terminal. Create a sessio
 zellij 0.44.2).
 
 > **Note.** Collie manages active sessions, but it does not create or restart them.
+
+### tern notes
+
+Point Collie at Tern:
+
+```bash
+COLLIE_MUX=tern collie start
+collie hooks install claude   # beacon hooks for agent detection
+```
+
+Collie reads Tern sessions as spaces, tabs as tabs, and blocks as panes. The endpoint is the Tern daemon's socket, defaulting to `$XDG_RUNTIME_DIR/tern/daemon.sock` (or `/tmp/tern-<uid>/daemon.sock`). Inside a Tern pane, `$TERN_PANE` identifies the block and `$TERN_PANE_SOCKET` points at the daemon socket.
+
+Tern reports lifecycle events via `tern events`, enabling immediate topology change notifications.
+
+Collie does not detect Tern on its own, as it does not detect tuios: name it with `COLLIE_MUX=tern`. Typed text longer than 128 KiB is refused, because it travels as one command-line argument.
 
 ### tuios notes
 

@@ -32,6 +32,7 @@ import {
   tmuxServerLabel,
 } from "../bridge/mux/tmux/exec.ts";
 import { ZELLIJ_BINARY_OPTION, ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
+import { TERN_BINARY_OPTION } from "../bridge/mux/tern/adapter.ts";
 import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zellij/exec.ts";
 import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
@@ -1442,6 +1443,7 @@ interface MuxSettings {
   readonly endpoint: string;
   readonly tmuxBin: string;
   readonly zellijBin: string;
+  readonly ternBin: string;
   readonly origin: MuxOrigin;
 }
 
@@ -1460,6 +1462,7 @@ function muxSettings(deps: DoctorDeps): MuxSettings {
   const env = deps.ctx.env;
   const tmuxBin = (env.COLLIE_TMUX_BIN ?? "").trim();
   const zellijBin = (env.COLLIE_ZELLIJ_BIN ?? "").trim();
+  const ternBin = (env.COLLIE_TERN_BIN ?? "").trim();
   const named = explicitMux(env);
   if (named !== null) {
     return {
@@ -1467,19 +1470,21 @@ function muxSettings(deps: DoctorDeps): MuxSettings {
       endpoint: named === DEFAULT_MUX ? deps.ctx.socket : (env[muxEndpointVar(named)] ?? "").trim(),
       tmuxBin,
       zellijBin,
+      ternBin,
       origin: { kind: "explicit" },
     };
   }
   const found = probeMuxes(deps);
   const only = found.length === 1 ? found[0] : undefined;
   if (only === undefined) {
-    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, origin: { kind: "undecided", found } };
+    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, ternBin, origin: { kind: "undecided", found } };
   }
   return {
     name: only.mux,
     endpoint: only.mux === DEFAULT_MUX ? deps.ctx.socket : only.endpoint,
     tmuxBin,
     zellijBin,
+    ternBin,
     origin: { kind: "auto", evidence: only.evidence },
   };
 }
@@ -1498,7 +1503,11 @@ function muxTarget(settings: MuxSettings): MuxTarget {
     // Zero means "the adapter's own default" (`createMux`'s factories read `timeoutMs || DEFAULT`),
     // and nothing here ever calls the adapter, so no budget of this verb's is being declared.
     timeoutMs: 0,
-    options: { [TMUX_BINARY_OPTION]: settings.tmuxBin, [ZELLIJ_BINARY_OPTION]: settings.zellijBin },
+    options: {
+      [TMUX_BINARY_OPTION]: settings.tmuxBin,
+      [ZELLIJ_BINARY_OPTION]: settings.zellijBin,
+      [TERN_BINARY_OPTION]: settings.ternBin,
+    },
   };
 }
 
