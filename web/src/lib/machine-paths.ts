@@ -12,7 +12,27 @@ export function machinesPath(scope?: Scope): string {
   return `/machines${scopeSearch(scope)}`;
 }
 
-/** One machine's page: the numbers, the last hour and day, and its alert rules. A child of Machines. */
-export function machinePath(id: string, scope?: Scope): string {
-  return `/machines/${encodeURIComponent(id)}${scopeSearch(scope)}`;
+/**
+ * The two views of one machine's page: `status` (the numbers now and the charts) and `alerts` (its
+ * rules). Status is the default and has no parameter, so every link that predates the views, a push
+ * tap included, still opens Status.
+ */
+export type MachineTab = "status" | "alerts";
+
+/** The query key the view rides in. */
+const TAB_PARAM = "tab";
+
+/**
+ * One machine's page, a child of Machines. With `tab: "alerts"` it opens on the Alerts view
+ * (`?tab=alerts`, after the scope). Status is the page without the parameter.
+ */
+export function machinePath(id: string, scope?: Scope, tab: MachineTab = "status"): string {
+  const base = `/machines/${encodeURIComponent(id)}${scopeSearch(scope)}`;
+  if (tab === "status") return base;
+  return `${base}${base.includes("?") ? "&" : "?"}${TAB_PARAM}=${tab}`;
+}
+
+/** The view a machine page's query names. Anything but `alerts` is Status: an unknown value is not an error. */
+export function machineTabOf(search: string): MachineTab {
+  return new URLSearchParams(search).get(TAB_PARAM) === "alerts" ? "alerts" : "status";
 }

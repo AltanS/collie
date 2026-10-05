@@ -41,6 +41,7 @@ export function MachinesRoute() {
   // The wire already puts the lead first; this keeps it so if a bridge ever stops doing that.
   const machines = census === null ? [] : census.machines.toSorted((a, b) => Number(b.isLead) - Number(a.isLead));
   const open = useCallback((row: MachineRow) => nav.down(machinePath(row.id, scope)), [nav, scope]);
+  const openAlerts = useCallback((row: MachineRow) => nav.down(machinePath(row.id, scope, "alerts")), [nav, scope]);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -77,6 +78,7 @@ export function MachinesRoute() {
               showRole={machines.length > 1}
               sparkMinutes={MACHINE_SPARK_MINUTES}
               onOpen={open}
+              onOpenAlerts={openAlerts}
             />
           ))
         )}

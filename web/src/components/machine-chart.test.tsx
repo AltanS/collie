@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 
 import { FIXTURE_MACHINES_TS, fixtureMachineHistory } from "@/test/machine-fixtures";
 
+import type { MachineHistoryPoint } from "@/lib/types";
+
 import { MachineChart } from "./machine-chart";
 
 // The charts are drawn from the day of history in the fixtures: a thirty-minute hole 300 minutes ago (a
@@ -97,6 +99,24 @@ describe("MachineChart threshold", () => {
       <MachineChart kind="net" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" threshold={0.9} />,
     );
     expect(container.querySelector('line[data-series="threshold"]')).toBeNull();
+  });
+});
+
+describe("MachineChart disk", () => {
+  it("draws the fullest disk's fraction on the percent scale, with its threshold and legend", () => {
+    const { container } = render(
+      <MachineChart kind="disk" points={day.points} ts={TS} stepMs={day.stepMs} range="hour" threshold={0.9} />,
+    );
+    expect(lines(container, "avg")).toHaveLength(1);
+    expect(container.querySelector('line[data-series="threshold"]')).not.toBeNull();
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^Disk, last hour: now 66%/);
+    expect(screen.getByText("Fullest disk")).toBeInTheDocument();
+  });
+
+  it("says the machine reports no disk when its minutes carry none, and an older bridge's six-value points read the same", () => {
+    const sixes = day.points.map((p): MachineHistoryPoint => [p[0], p[1], p[2], p[3], p[4], p[5]]);
+    render(<MachineChart kind="disk" points={sixes} ts={TS} stepMs={day.stepMs} range="hour" />);
+    expect(screen.getByText("This machine reports no disk usage.")).toBeInTheDocument();
   });
 });
 

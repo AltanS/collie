@@ -70,6 +70,17 @@ describe("Segmented", () => {
     for (const radio of screen.getAllByRole("radio")) expect(radio.hasAttribute("disabled")).toBe(true);
   });
 
+  it("draws a mark after a label, said in words to a screen reader", () => {
+    const marked = [
+      { value: "a", label: "Status" },
+      { value: "b", label: "Alerts", mark: "alert firing" },
+    ];
+    render(<Segmented options={marked} value="a" onChange={() => {}} label="View" semantics="tabs" />);
+    const tab = screen.getByRole("tab", { name: "Alerts, alert firing" });
+    expect(tab.querySelector('[data-slot="segmented-mark"]')).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("tab", { name: "Status" }).querySelector('[data-slot="segmented-mark"]')).toBeNull();
+  });
+
   it("keeps the 44px floor on every segment, selected or not", () => {
     render(<Segmented options={OPTIONS} value="a" onChange={() => {}} label="Pick" />);
     for (const radio of screen.getAllByRole("radio")) {

@@ -1,20 +1,27 @@
-import { TriangleAlert } from "lucide-react";
+import { ChevronRight, TriangleAlert } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { timeAgo } from "@/lib/format";
 import { t, tn } from "@/lib/i18n";
+import { diskFraction, fullestDisk } from "@/lib/machine-reading";
 import { formatBytesOf, formatBytesPerSecond, formatLoad, formatPercent } from "@/lib/machine-units";
-import type { MachineMetric, MachineRow, MachineSample } from "@/lib/types";
+import type { MachineDisk, MachineMetric, MachineRow, MachineSample } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// A machine's load NOW: a CPU bar, a memory bar, network down and up, and the one-minute load. It is
-// the body of a card on /machines and the big numbers at the top of /machines/:id, so the two cannot
-// disagree about a number; `size` is the only difference between them.
+// A machine's load NOW, the big numbers at the top of the Status view of /machines/:id: a CPU bar, a
+// memory bar, one bar per disk, network down and up, and the one-minute load.
+//
+// ── ONE BAR PER DISK ─────────────────────────────────────────────────────────
+// Each filesystem the machine reports (home, root, the state folder, one per device) gets its mount,
+// used and total in one unit, the percent, and a bar. The fullest one is the disk the alert judges, so
+// its bar alone turns the blocked colour while a disk alert fires. A mount label may be cut short; a
+// number never is.
 //
 // ── A FIRING METRIC SAYS SO IN WORDS ─────────────────────────────────────────
 // The bar of a metric whose alert is firing turns the blocked colour, and a line under the numbers
 // names it ("Alert firing: CPU"). Colour alone is not a state (WCAG 1.4.1), and the push that got the
-// operator here said the same words.
+// operator here said the same words. Where the page can show the rules, the line is a link to the
+// Alerts view.
 //
 // ── NO NUMBERS FROM A MACHINE THAT IS NOT ANSWERING ──────────────────────────
 // An unreachable, incompatible or conflicted machine shows its last reading's AGE and no numbers: a
@@ -24,7 +31,7 @@ import { cn } from "@/lib/utils";
 
 export type MachineLoadSize = "card" | "large";
 
-const METRIC_KEY = { cpu: "machines.metric.cpu", mem: "machines.metric.mem" } as const;
+const METRIC_KEY = { cpu: "machines.metric.cpu", mem: "machines.metric.mem", disk: "machines.metric.disk" } as const;
 
 /** The sentence that names the firing metrics, or `null` when none fires. */
 export function firingWords(firing: readonly MachineMetric[]): string | null {
@@ -43,7 +50,18 @@ export function readingLine(row: MachineRow, ts: number): string {
   return t("machines.lastReading", { time: timeAgo(row.sampledAt, ts) });
 }
 
-export function MachineLoad({ row, ts, size }: { row: MachineRow; ts: number; size: MachineLoadSize }) {
+export function MachineLoad({
+  row,
+  ts,
+  size,
+  onOpenAlerts,
+}: {
+  row: MachineRow;
+  ts: number;
+  size: MachineLoadSize;
+  /** Opens the Alerts view. With it, the firing line is a link there. */
+  onOpenAlerts?: () => void;
+}) {
   useLocale();
   const large = size === "large";
   const { sample } = row;
@@ -76,6 +94,9 @@ export function MachineLoad({ row, ts, size }: { row: MachineRow; ts: number; si
         firing={row.firing.includes("mem")}
         large={large}
       />
+      {sample.disks !== undefined && sample.disks.length > 0 && (
+        <DiskBars disks={sample.disks} firing={row.firing.includes("disk")} />
+      )}
       {(hasRate || sample.load1 !== undefined) && (
         <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
           {sample.rxBps !== undefined && <Fact label={t("machines.net.down")} value={formatBytesPerSecond(sample.rxBps)} large={large} />}
@@ -83,12 +104,75 @@ export function MachineLoad({ row, ts, size }: { row: MachineRow; ts: number; si
           {sample.load1 !== undefined && <Fact label={t("machines.load")} value={formatLoad(sample.load1)} large={large} />}
         </dl>
       )}
-      {firing !== null && (
-        <p className="flex items-center gap-1.5 text-sm font-medium text-status-blocked">
-          <TriangleAlert className="size-4 shrink-0" aria-hidden />
-          {firing}
-        </p>
+      {firing !== null && <FiringLine words={firing} onOpen={onOpenAlerts} />}
+    </div>
+  );
+}
+
+/**
+ * "Alert firing: CPU" in the blocked colour with its mark. With `onOpen`, a link to the Alerts view:
+ * a 44px row, the chevron saying it goes somewhere. Shared by the page and the machine card.
+ */
+export function FiringLine({ words, onOpen, className }: { words: string; onOpen?: () => void; className?: string }) {
+  const body = (
+    <>
+      <TriangleAlert className="size-4 shrink-0" aria-hidden />
+      <span className="min-w-0">{words}</span>
+    </>
+  );
+  if (onOpen === undefined) {
+    return <p className={cn("flex items-center gap-1.5 text-sm font-medium text-status-blocked", className)}>{body}</p>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-slot="machine-firing-link"
+      className={cn(
+        "-my-2 flex min-h-11 items-center gap-1.5 text-left text-sm font-medium text-status-blocked underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        className,
       )}
+    >
+      {body}
+      <ChevronRight className="size-4 shrink-0" aria-hidden />
+    </button>
+  );
+}
+
+/** One bar per filesystem: mount, used / total, percent. The fullest one carries a firing disk alert. */
+function DiskBars({ disks, firing }: { disks: readonly MachineDisk[]; firing: boolean }) {
+  const fullest = fullestDisk(disks)?.disk;
+  return (
+    <div className="space-y-2" data-slot="machine-disks">
+      <div className="text-xs text-muted-foreground">{t("machines.metric.disk")}</div>
+      {disks.map((disk) => {
+        const fraction = diskFraction(disk);
+        const percent = formatPercent(fraction);
+        const bytes = formatBytesOf(disk.used, disk.total);
+        const hot = firing && disk === fullest;
+        return (
+          <div key={disk.mount}>
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate font-mono text-xs">{disk.mount}</span>
+              <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
+                <span className="text-xs text-muted-foreground">{bytes}</span>
+                <span className={cn("font-medium", hot && "text-status-blocked")}>{percent}</span>
+              </span>
+            </div>
+            <div
+              role="meter"
+              aria-label={t("machines.disk.label", { mount: disk.mount })}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(fraction * 100)}
+              aria-valuetext={`${percent}, ${bytes}`}
+              className="mt-1 h-1.5 w-full overflow-hidden rounded-sm bg-muted"
+            >
+              <div className={cn("h-full", hot ? "bg-status-blocked" : "bg-status-info")} style={{ width: `${Math.round(fraction * 100)}%` }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

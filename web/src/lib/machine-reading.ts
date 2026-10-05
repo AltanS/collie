@@ -11,7 +11,7 @@
 //
 // Every age is against the answer's own `ts`, never `Date.now()` (lib/host-health.ts argues why).
 
-import type { MachineRow } from "./types";
+import type { MachineDisk, MachineRow } from "./types";
 
 /**
  * How old a reachable machine's reading may get before it is called stale. A member samples about
@@ -27,4 +27,22 @@ export function machineReading(row: MachineRow, ts: number): MachineReading {
   if (row.sample === undefined) return "older";
   if (row.sampledAt !== undefined && ts - row.sampledAt > STALE_AFTER_MS) return "stale";
   return "live";
+}
+
+/**
+ * The fullest filesystem a sample reports, and its fraction: what the card's "Disk" figure, the disk
+ * chart and the disk alert all read, so the three name the same disk. `null` with no disks.
+ */
+export function fullestDisk(disks: readonly MachineDisk[] | undefined): { disk: MachineDisk; fraction: number } | null {
+  let best: { disk: MachineDisk; fraction: number } | null = null;
+  for (const disk of disks ?? []) {
+    const fraction = diskFraction(disk);
+    if (best === null || fraction > best.fraction) best = { disk, fraction };
+  }
+  return best;
+}
+
+/** One filesystem's used fraction, 0 to 1, guarded against a zero total. */
+export function diskFraction(disk: MachineDisk): number {
+  return disk.total > 0 ? Math.min(1, Math.max(0, disk.used / disk.total)) : 0;
 }

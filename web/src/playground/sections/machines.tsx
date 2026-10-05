@@ -29,7 +29,7 @@ export const DEF: SectionDef = {
   id: "machines",
   title: "Machines",
   intent:
-    "What every machine is doing now, and the last hour and day of it. The list at the phone's width with each machine's last half hour, a card whose alert is firing, a machine whose reading stopped, the detail page with its three charts and its alert rules, an older machine that does not report load yet, and the dashboard's Crew tab, which draws the same cards.",
+    "What every machine is doing now, and the last hour and day of it. The list at the phone's width with each machine's last half hour and its fullest disk, a card whose alert is firing, a machine whose reading stopped, the detail page in its two views (Status: numbers, a bar per disk, four charts; Alerts: the rules), an older machine that does not report load yet, and the dashboard's Crew tab, which draws the same cards.",
 };
 
 // The list asks for each card's last half hour (`?spark=30`), so its fixtures carry it too.
@@ -58,6 +58,13 @@ const olderOnly = only(fixtureMachineRows[3]!);
 /** The lead, but its last reading is five minutes old while the link is fine: a sampler that hung. */
 const stuckRow = { ...fixtureMachineRows[0]!, sampledAt: FIXTURE_MACHINES_TS - 5 * 60_000 };
 const staleOnly = only(stuckRow);
+/** The peer whose backup disk is nearly full, with a disk rule at 80 % that has fired. */
+const diskFiringRow = {
+  ...fixtureMachineRows[1]!,
+  alerts: { ...fixtureMachineRows[1]!.alerts, disk: { above: 0.8, forMin: 30 } },
+  firing: ["disk" as const],
+};
+const diskFiringOnly = only(diskFiringRow);
 
 /** The Crew tab's states, handed in: the tab itself reads its own census, and the playground has no bridge. */
 const tabCrew: MachineCensusState = { kind: "census", census: withSpark(fixtureMachines), failed: false };
@@ -124,6 +131,17 @@ export function MachinesSection() {
         </Card>
 
         <Card
+          state="machines-list-disk-firing"
+          label="machines, a disk alert is firing"
+          reach="a peer's fullest disk stays at or above its disk rule's line (80 % here) for 30 minutes. 'Disk 89%' in the facts row turns the blocked colour, and the line under it says so in words and opens the machine's Alerts view."
+          note="Disk has no spark: it moves over days, not half hours. The facts row wraps at 390 px rather than cut a number."
+        >
+          <PhoneFrameCard height={420}>
+            <MachinesRouter home={homeCrew} machines={diskFiringOnly} start="/machines" />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
           state="machines-list-older-machine"
           label="machines, an older machine"
           reach="a crew member that still runs a Collie from before 1.17. It answers, so it is reachable, but it sends no load: no numbers, no spark, one line saying to update it."
@@ -157,24 +175,45 @@ export function MachinesSection() {
       <Group title="One machine">
         <Card
           state="machine-detail-charts"
-          label="a machine, the last hour"
-          reach="tap a card on the list. The numbers large, the 1 h and 24 h switch, CPU with its peak band, memory, network with down and up, and the alert rules at the bottom."
+          label="a machine, Status"
+          reach="tap a card on the list. Status and Alerts under the header; Status is the numbers large, one bar per disk, the 1 h and 24 h switch, CPU with its peak band, memory, the fullest disk, and network with down and up."
           note="The dashed line is the alert threshold from the stored rule. A hole in the history is a hole in the line, never a line across it: switch to 24 h to see the thirty minutes the fixture lead was restarting."
           span={2}
         >
-          <PhoneFrameCard height={1200}>
+          <PhoneFrameCard height={1500}>
             <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={day} />
           </PhoneFrameCard>
         </Card>
 
         <Card
           state="machine-detail-firing"
-          label="a machine, an alert firing"
-          reach="open a machine whose alert is firing. The history shows the climb the rule fired on, the numbers say so in words, and the switch in the alert card is marked 'Firing now'."
+          label="a machine, an alert firing, Status"
+          reach="open a machine whose alert is firing (a push opens Status). The history shows the climb the rule fired on, the numbers say so in words, the line opens Alerts, and the Alerts segment carries a dot that a screen reader hears as 'alert firing'."
           span={2}
         >
-          <PhoneFrameCard height={1200}>
+          <PhoneFrameCard height={1500}>
             <MachinesRouter home={homeCrew} machines={crew} start="/machines/workshop" history={hot} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="machine-detail-alerts"
+          label="a machine, Alerts"
+          reach="the Alerts segment of a machine, or the 'Alert firing' line on its card. The rules for CPU, memory and disk, the one that fires marked 'Firing now', the push note and the link to Settings, Alerts. No chart, so no history is read."
+          note="The view is ?tab=alerts. A switch replaces the entry, so Back leaves the machine and never lands on the other view."
+        >
+          <PhoneFrameCard height={900}>
+            <MachinesRouter home={homeCrew} machines={crew} start="/machines/workshop?tab=alerts" />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="machine-detail-disk-firing"
+          label="a machine, a disk alert firing"
+          reach="open a machine whose fullest disk set off its rule. The fullest disk's bar alone turns the blocked colour; the disk chart carries the 80 % line."
+        >
+          <PhoneFrameCard height={1500}>
+            <MachinesRouter home={homeCrew} machines={diskFiringOnly} start="/machines/workshop" history={day} />
           </PhoneFrameCard>
         </Card>
 
@@ -183,7 +222,7 @@ export function MachinesSection() {
           label="a machine, nothing happening"
           reach="open an idle machine. The same charts at a low level, so the axis and the legend can be read without the lines in the way."
         >
-          <PhoneFrameCard height={1200}>
+          <PhoneFrameCard height={1500}>
             <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={calm} />
           </PhoneFrameCard>
         </Card>
@@ -193,27 +232,37 @@ export function MachinesSection() {
           label="a machine with no network counters"
           reach="open a machine on a platform that gives no interface counters. The network chart says so instead of drawing an empty plot."
         >
-          <PhoneFrameCard height={1200}>
+          <PhoneFrameCard height={1500}>
             <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={noCounters} />
           </PhoneFrameCard>
         </Card>
 
         <Card
           state="machine-detail-older-machine"
-          label="a machine, an older Collie"
-          reach="open the page of a member that does not report load yet. One line saying to update it, no range switch and no chart (the lead holds no minute of it, so the page reads no history), and the alert card holds one line saying the machine needs updating, with no switch."
+          label="a machine, an older Collie, Status"
+          reach="open the page of a member that does not report load yet. One line saying to update it, no range switch and no chart (the lead holds no minute of it, so the page reads no history)."
         >
-          <PhoneFrameCard height={420}>
+          <PhoneFrameCard height={300}>
             <MachinesRouter home={homeCrew} machines={crew} start="/machines/pantry" />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="machine-detail-older-alerts"
+          label="a machine, an older Collie, Alerts"
+          reach="the Alerts view of a member that does not report load yet. The alert card holds one line saying the machine needs updating, and no switch."
+        >
+          <PhoneFrameCard height={300}>
+            <MachinesRouter home={homeCrew} machines={crew} start="/machines/pantry?tab=alerts" />
           </PhoneFrameCard>
         </Card>
 
         <Card
           state="machine-detail-history-failed"
           label="a machine, the history could not load"
-          reach="open a machine while the bridge cannot answer the history. The numbers and the alert rules above and below still work; each chart box says it could not load."
+          reach="open a machine while the bridge cannot answer the history. The numbers above still show; each chart box says it could not load."
         >
-          <PhoneFrameCard height={900}>
+          <PhoneFrameCard height={1300}>
             <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={failed} />
           </PhoneFrameCard>
         </Card>

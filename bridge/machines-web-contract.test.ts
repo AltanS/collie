@@ -106,6 +106,32 @@ describe("the phone's Machines fetchers read the bridge's real answers", () => {
     expect("sample" in pantry!).toBe(false);
   });
 
+  test("disks ride the census as sent, and the history's seventh value is the fullest disk, null without one", async () => {
+    const watch = await watchOf(ROSTER);
+    const start = minuteOf(NOW) - 4 * MINUTE_MS;
+    const base = { cores: 4, memUsed: 2e9, memTotal: 8e9 };
+    const disks = [
+      { mount: "/var/home", used: 600e9, total: 1000e9 },
+      { mount: "/", used: 30e9, total: 100e9 },
+    ];
+    watch.observe("desk", { ...base, cpu: 0.1 }, start + 5000);
+    watch.observe("desk", { ...base, cpu: 0.2, disks }, start + MINUTE_MS + 5000);
+    serve(watch);
+    const census = await fetchMachines();
+    expect(census.machines[0]!.sample?.disks).toEqual(disks);
+    const history = await fetchMachineHistory("desk");
+    expect(history.points.map((p) => p[6])).toEqual([null, 0.6]);
+    expect(runsOf(history.points, (p) => p[6] ?? null, history.stepMs).flat().map((pt) => pt.v)).toEqual([0.6]);
+  });
+
+  test("the disk rule the phone offers is the disk rule the bridge keeps", async () => {
+    const watch = await watchOf(ROSTER);
+    serve(watch);
+    const res = await setMachineAlerts("desk", { disk: { above: 0.9, forMin: 30 } });
+    expect(res.alerts).toEqual({ disk: { above: 0.9, forMin: 30 } });
+    expect((await fetchMachines()).machines[0]!.alerts).toEqual({ disk: { above: 0.9, forMin: 30 } });
+  });
+
   test("a solo collie is one row with the id `local`, and the loader reads it as a census", async () => {
     serve(await watchOf([{ id: SOLO_MACHINE_ID, name: "bluefin", isLead: true, health: "reachable" }]));
     const data = await machinesLoader();

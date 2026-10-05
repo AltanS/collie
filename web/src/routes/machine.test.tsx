@@ -11,17 +11,24 @@ import { withHeaderHost } from "@/test/header-host";
 
 import { MachineRoute } from "./machine";
 
-// One machine's page. The row comes from the loader (the poll loop's), the history from the page's own
-// timed read, and the 1 h and 24 h views are one answer sliced client-side.
+// One machine's page, in two views. The row comes from the loader (the poll loop's), the history from
+// the page's own timed read while Status shows, and the 1 h and 24 h views are one answer sliced
+// client-side. Alerts is `?tab=alerts`.
 
-function renderMachine(id: string, data: MachinesData = { census: fixtureMachines, error: false }, entry = `/machines/${id}`) {
+function renderMachine(
+  id: string,
+  data: MachinesData = { census: fixtureMachines, error: false },
+  entry = `/machines/${id}`,
+  before: string[] = [],
+) {
   const router = createMemoryRouter(
     [
       { path: "/machines/:id", loader: () => data, element: withHeaderHost(<MachineRoute />) },
       { path: "/machines", element: <div data-testid="machines" /> },
+      { path: "/", element: <div data-testid="home" /> },
       { path: "/settings/:section", element: <div data-testid="section" /> },
     ],
-    { initialEntries: [entry] },
+    { initialEntries: [...before, entry], initialIndex: before.length },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -49,11 +56,11 @@ describe("the machine page", () => {
     expect(screen.getByText("Last reading just now")).toBeInTheDocument();
   });
 
-  it("draws CPU, memory and network charts from the history", async () => {
+  it("draws CPU, memory, disk and network charts from the history", async () => {
     renderMachine("bluefin");
     const imgs = await charts();
-    expect(imgs).toHaveLength(3);
-    expect(imgs.map((i) => i.getAttribute("data-kind"))).toEqual(["cpu", "mem", "net"]);
+    expect(imgs).toHaveLength(4);
+    expect(imgs.map((i) => i.getAttribute("data-kind"))).toEqual(["cpu", "mem", "disk", "net"]);
     for (const img of imgs) expect(img.getAttribute("aria-label")).toContain("last hour");
   });
 
@@ -83,7 +90,7 @@ describe("the machine page", () => {
 
   it("draws the alert threshold on the chart from the stored rule", async () => {
     renderMachine("workshop");
-    const [cpu, mem, net] = await charts();
+    const [cpu, mem, , net] = await charts();
     expect(cpu!.querySelector('line[data-series="threshold"]')).not.toBeNull();
     expect(mem!.querySelector('line[data-series="threshold"]')).not.toBeNull();
     expect(net!.querySelector('line[data-series="threshold"]')).toBeNull();
@@ -100,11 +107,21 @@ describe("the machine page", () => {
   it("says in words that an alert is firing, on the numbers and on the switch", async () => {
     renderMachine("workshop");
     expect(await screen.findByText("Alert firing: CPU")).toBeInTheDocument();
-    expect(screen.getByText("Firing now")).toBeInTheDocument();
+    renderMachine("workshop", undefined, "/machines/workshop?tab=alerts");
+    expect(await screen.findByText("Firing now")).toBeInTheDocument();
+  });
+
+  it("shows one bar per disk with its mount, used and total, and percent", async () => {
+    renderMachine("workshop");
+    const backups = await screen.findByRole("meter", { name: "Disk /srv/backups" });
+    expect(backups).toHaveAttribute("aria-valuenow", "89");
+    expect(backups.getAttribute("aria-valuetext")).toMatch(/^89%, 1\.6 \/ 1\.8 TB$/);
+    expect(screen.getByRole("meter", { name: "Disk /" })).toHaveAttribute("aria-valuenow", "41");
+    expect(screen.getByText("/srv/backups")).toBeInTheDocument();
   });
 
   it("holds the alert card with the stored rules", async () => {
-    renderMachine("workshop");
+    renderMachine("workshop", undefined, "/machines/workshop?tab=alerts");
     expect(await screen.findByRole("switch", { name: "CPU alert" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Memory alert" })).toBeChecked();
     const memAbove = screen.getByRole("radiogroup", { name: "Memory alert threshold" });
@@ -113,7 +130,7 @@ describe("the machine page", () => {
 
   it("opens Settings, Alerts from the alert card", async () => {
     const user = userEvent.setup();
-    const router = renderMachine("bluefin");
+    const router = renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
     await user.click(await screen.findByRole("button", { name: "Settings, Alerts" }));
     expect(router.state.location.pathname).toBe("/settings/alerts");
   });
@@ -143,7 +160,7 @@ describe("the machine page", () => {
   });
 
   it("hides the alert controls on an older machine and says it needs updating", async () => {
-    renderMachine("pantry");
+    renderMachine("pantry", undefined, "/machines/pantry?tab=alerts");
     expect(await screen.findByText(/Alerts need this machine to be updated/)).toBeInTheDocument();
     expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByRole("radiogroup", { name: /threshold/ })).toBeNull();
@@ -154,7 +171,7 @@ describe("the machine page", () => {
       ...fixtureMachines,
       machines: fixtureMachines.machines.map((m) => (m.id === "attic" ? Object.assign({}, m, { sample: undefined }) : m)),
     };
-    renderMachine("attic", { census: down, error: false });
+    renderMachine("attic", { census: down, error: false }, "/machines/attic?tab=alerts");
     expect(await screen.findByRole("switch", { name: "CPU alert" })).toBeInTheDocument();
     expect(screen.queryByText(/Alerts need this machine to be updated/)).toBeNull();
   });
@@ -163,6 +180,104 @@ describe("the machine page", () => {
     renderMachine("attic");
     expect(await screen.findByText("unreachable")).toBeInTheDocument();
     expect(screen.getByText("Last reading 25m ago")).toBeInTheDocument();
+  });
+});
+
+describe("the two views", () => {
+  it("opens on Status, with no parameter, and the Alerts view holds the rules and no chart", async () => {
+    renderMachine("bluefin");
+    const status = await screen.findByRole("tab", { name: "Status" });
+    expect(status).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("switch")).toBeNull();
+    renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
+    expect(await screen.findAllByRole("switch", { name: "CPU alert" })).toHaveLength(1);
+  });
+
+  it("a switch replaces the entry, so Back leaves the machine and never lands on the other view", async () => {
+    const user = userEvent.setup();
+    const router = renderMachine("bluefin", undefined, "/machines/bluefin", ["/"]);
+    await user.click(await screen.findByRole("tab", { name: "Alerts" }));
+    expect(router.state.location.search).toBe("?tab=alerts");
+    expect(router.state.historyAction).toBe("REPLACE");
+    expect(await screen.findByRole("switch", { name: "CPU alert" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Status" }));
+    expect(router.state.location.search).toBe("");
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    expect(router.state.location.pathname).toBe("/");
+  });
+
+  it("a switch keeps where the machine was opened from, so the back arrow still steps back", async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [
+        { path: "/machines/:id", loader: () => ({ census: fixtureMachines, error: false }), element: withHeaderHost(<MachineRoute />) },
+        { path: "/", element: <div data-testid="home" /> },
+        { path: "/machines", element: <div data-testid="machines" /> },
+      ],
+      { initialEntries: ["/", { pathname: "/machines/bluefin", state: { from: "/" } }], initialIndex: 1 },
+    );
+    render(<RouterProvider router={router} />);
+    await user.click(await screen.findByRole("tab", { name: "Alerts" }));
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+  });
+
+  it("reads history only while Status shows, and coming back asks only for the newer minutes", async () => {
+    const user = userEvent.setup();
+    const asked: (string | null)[] = [];
+    server.use(
+      http.get("/api/machines/:id/history", ({ request }) => {
+        historyReads += 1;
+        asked.push(new URL(request.url).searchParams.get("since"));
+        return HttpResponse.json(fixtureMachineHistory());
+      }),
+    );
+    renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
+    await screen.findByRole("switch", { name: "CPU alert" });
+    expect(historyReads).toBe(0);
+    await user.click(screen.getByRole("tab", { name: "Status" }));
+    await charts();
+    expect(historyReads).toBe(1);
+    await user.click(screen.getByRole("tab", { name: "Alerts" }));
+    await user.click(screen.getByRole("tab", { name: "Status" }));
+    await waitFor(() => expect(historyReads).toBe(2));
+    expect(asked[0]).toBeNull();
+    expect(asked[1]).toBe(String(fixtureMachineHistory().points.at(-1)![0]));
+  });
+
+  it("marks the Alerts segment while a rule fires, in words for a screen reader", async () => {
+    renderMachine("workshop");
+    const alerts = await screen.findByRole("tab", { name: "Alerts, alert firing" });
+    expect(alerts.querySelector('[data-slot="segmented-mark"]')).not.toBeNull();
+    renderMachine("bluefin");
+    expect(await screen.findByRole("tab", { name: "Alerts" })).toBeInTheDocument();
+  });
+
+  it("the firing line on Status opens the Alerts view", async () => {
+    const user = userEvent.setup();
+    const router = renderMachine("workshop");
+    await user.click(await screen.findByRole("button", { name: /Alert firing: CPU/ }));
+    expect(router.state.location.search).toBe("?tab=alerts");
+    expect(await screen.findByText("Firing now")).toBeInTheDocument();
+  });
+
+  it("an older machine says to update on Status, and keeps the needs-an-update line on Alerts", async () => {
+    const user = userEvent.setup();
+    renderMachine("pantry");
+    expect(await screen.findByText("Update this machine to see its load")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Alerts" }));
+    expect(await screen.findByText(/Alerts need this machine to be updated/)).toBeInTheDocument();
+    expect(historyReads).toBe(0);
+  });
+
+  it("offers a disk rule only for a machine that reports disks", async () => {
+    renderMachine("attic", undefined, "/machines/attic?tab=alerts");
+    expect(await screen.findByRole("switch", { name: "CPU alert" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Disk alert" })).toBeNull();
+    renderMachine("bluefin", undefined, "/machines/bluefin?tab=alerts");
+    expect(await screen.findByRole("switch", { name: "Disk alert" })).toBeInTheDocument();
   });
 });
 
@@ -187,9 +302,9 @@ describe("the machine page without its data", () => {
   it("says the history could not load, in each chart's own place", async () => {
     server.use(http.get("/api/machines/:id/history", () => HttpResponse.json({ error: "x" }, { status: 500 })));
     renderMachine("bluefin");
-    expect(await screen.findAllByText(/Could not load the history/)).toHaveLength(3);
-    // The numbers above and the alert card below still work.
-    expect(screen.getByRole("switch", { name: "CPU alert" })).toBeInTheDocument();
+    expect(await screen.findAllByText(/Could not load the history/)).toHaveLength(4);
+    // The numbers above still show.
+    expect(screen.getAllByRole("meter", { name: "CPU" })[0]).toHaveAttribute("aria-valuetext", "34%");
   });
 });
 

@@ -16,14 +16,15 @@ import { mutate } from "@/lib/mutate";
 import type { MachineAlertRule, MachineAlerts, MachineMetric } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// The alert rules of ONE machine, on its page: for CPU and for memory a switch, a threshold and a
-// duration. The bridge holds one rule per metric per machine and pushes once when a value stays at or
+// The alert rules of ONE machine, on the Alerts view of its page: for CPU, memory and disk a switch, a
+// threshold and a duration. Disk is judged on the fullest filesystem, and its row shows only for a
+// machine that reports disks (or already holds a disk rule, so a rule is never hidden while it lives). The bridge holds one rule per metric per machine and pushes once when a value stays at or
 // above the threshold for that long.
 //
 // ── A CHANGE POSTS THE WHOLE OBJECT ──────────────────────────────────────────
 // The bridge replaces a machine's rules from the body, and a missing key removes that rule. So every
-// change builds the complete `MachineAlerts` (the other metric's rule included) and posts that; a
-// partial body would silently delete the metric the operator did not touch.
+// change builds the complete `MachineAlerts` (the other metrics' rules included) and posts that; a
+// partial body would silently delete a metric the operator did not touch.
 //
 // ── SAVING, SAVED, COULD NOT SAVE: IN THE CARD ───────────────────────────────
 // The answer outlives the operator's next tap and belongs beside the control that asked
@@ -43,7 +44,13 @@ import { cn } from "@/lib/utils";
 // a local copy only until the prop moves, so the controls do not flash the old rules between the answer
 // and the next poll.
 
-const METRICS = ["cpu", "mem"] as const satisfies readonly MachineMetric[];
+const METRICS = ["cpu", "mem", "disk"] as const satisfies readonly MachineMetric[];
+
+const RULE_LABEL = {
+  cpu: "machines.alerts.cpu",
+  mem: "machines.alerts.mem",
+  disk: "machines.alerts.disk",
+} as const satisfies Record<MachineMetric, string>;
 
 /** A stable empty list for the `firing` default, so the prop keeps one identity across renders. */
 const NOT_FIRING: readonly MachineMetric[] = [];
@@ -69,6 +76,8 @@ export interface MachineAlertsControlProps {
    * that saves a rule nothing will evaluate is a promise the machine cannot keep.
    */
   needsUpdate?: boolean;
+  /** The machine reports disks, so a disk rule can be judged. Without it the disk row is hidden. */
+  hasDisks?: boolean;
 }
 
 export function MachineAlertsControl({
@@ -78,6 +87,7 @@ export function MachineAlertsControl({
   onSaved,
   onOpenAlerts,
   needsUpdate = false,
+  hasDisks = false,
 }: MachineAlertsControlProps) {
   useLocale();
   const [state, setState] = useState<SaveState>("idle");
@@ -157,7 +167,7 @@ export function MachineAlertsControl({
         </div>
       </div>
 
-      {METRICS.map((metric) => (
+      {METRICS.filter((metric) => metric !== "disk" || hasDisks || shown.disk !== undefined).map((metric) => (
         <RuleRow
           key={metric}
           metric={metric}
@@ -226,7 +236,7 @@ function RuleRow({
   onToggle: (on: boolean) => void;
   onChange: (rule: MachineAlertRule) => void;
 }) {
-  const label = t(metric === "cpu" ? "machines.alerts.cpu" : "machines.alerts.mem");
+  const label = t(RULE_LABEL[metric]);
   return (
     <div className="border-t border-border px-4 py-3">
       <div className="flex items-center justify-between gap-4">

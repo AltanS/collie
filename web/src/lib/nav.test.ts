@@ -8,6 +8,7 @@ import {
   isAncestor,
   machinePath,
   machinesPath,
+  machineTabOf,
   pairLandingPath,
   panePath,
   parentChain,
@@ -36,6 +37,21 @@ describe("the machines paths", () => {
     expect(machinePath("bluefin")).toBe("/machines/bluefin");
     expect(machinePath("a b/c")).toBe("/machines/a%20b%2Fc");
     expect(machinesPath({ host: "badger", session: undefined })).toBe("/machines?h=badger");
+  });
+
+  it("names the Alerts view in the query, after the scope, and Status with no parameter", () => {
+    expect(machinePath("bluefin", undefined, "alerts")).toBe("/machines/bluefin?tab=alerts");
+    expect(machinePath("bluefin", undefined, "status")).toBe("/machines/bluefin");
+    expect(machinePath("bluefin", { host: "badger", session: undefined }, "alerts")).toBe("/machines/bluefin?h=badger&tab=alerts");
+    expect(machineTabOf("?tab=alerts")).toBe("alerts");
+    expect(machineTabOf("?h=badger&tab=alerts")).toBe("alerts");
+    expect(machineTabOf("")).toBe("status");
+    expect(machineTabOf("?tab=charts")).toBe("status");
+  });
+
+  it("keeps both views one level: their parents are the same, so a switch is a side move", () => {
+    expect(ancestorsOf("/machines/bluefin")).toContain("/");
+    expect(isAncestor("/machines/bluefin?tab=alerts", "/machines/bluefin")).toBe(false);
   });
 });
 

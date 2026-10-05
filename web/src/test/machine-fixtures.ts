@@ -14,14 +14,26 @@ const GIB = 1024 * MIB;
 /** The lead's clock for every fixture below. */
 export const FIXTURE_MACHINES_TS = 5_000_000_000;
 
-/** Four machines: a busy lead, a peer whose CPU alert is firing, one that went quiet, and an older one. */
+/**
+ * Four machines: a busy lead with one disk, a peer whose CPU alert is firing and whose backup disk is
+ * nearly full, one that went quiet, and an older one.
+ */
 export const fixtureMachineRows: MachineRow[] = [
   {
     id: "bluefin",
     name: "bluefin",
     isLead: true,
     health: "reachable",
-    sample: { cpu: 0.34, cores: 8, memUsed: 7.4 * GIB, memTotal: 16 * GIB, load1: 1.42, rxBps: 1.2 * MIB, txBps: 340 * KIB },
+    sample: {
+      cpu: 0.34,
+      cores: 8,
+      memUsed: 7.4 * GIB,
+      memTotal: 16 * GIB,
+      load1: 1.42,
+      rxBps: 1.2 * MIB,
+      txBps: 340 * KIB,
+      disks: [{ mount: "/var/home", used: 592 * GIB, total: 900 * GIB }],
+    },
     sampledAt: FIXTURE_MACHINES_TS - 4_000,
     alerts: { cpu: { above: 0.9, forMin: 10 } },
     firing: [],
@@ -31,7 +43,19 @@ export const fixtureMachineRows: MachineRow[] = [
     name: "workshop",
     isLead: false,
     health: "reachable",
-    sample: { cpu: 0.96, cores: 4, memUsed: 3.1 * GIB, memTotal: 8 * GIB, load1: 4.8, rxBps: 12 * KIB, txBps: 3 * KIB },
+    sample: {
+      cpu: 0.96,
+      cores: 4,
+      memUsed: 3.1 * GIB,
+      memTotal: 8 * GIB,
+      load1: 4.8,
+      rxBps: 12 * KIB,
+      txBps: 3 * KIB,
+      disks: [
+        { mount: "/", used: 41 * GIB, total: 100 * GIB },
+        { mount: "/srv/backups", used: 1.62 * 1024 * GIB, total: 1.82 * 1024 * GIB },
+      ],
+    },
     sampledAt: FIXTURE_MACHINES_TS - 6_000,
     alerts: { cpu: { above: 0.9, forMin: 10 }, mem: { above: 0.95, forMin: 30 } },
     firing: ["cpu"],
@@ -72,15 +96,16 @@ export const fixtureMachinesSolo: MachinesResponse = {
  *
  * Two kinds of hole, because the charts must draw both as gaps: a missing stretch of minutes (a lead that
  * restarted, `gapFrom`..`gapTo` minutes ago, so the last hour is whole) and a stretch with no network
- * counters (`null`), one hour ago.
+ * counters (`null`), one hour ago. The seventh value, the fullest disk, climbs slowly all day.
  */
 export function fixtureMachineHistory(
-  options: { ts?: number; minutes?: number; cpuLevel?: number; network?: boolean } = {},
+  options: { ts?: number; minutes?: number; cpuLevel?: number; network?: boolean; disk?: boolean } = {},
 ): MachineHistoryResponse {
   const ts = options.ts ?? FIXTURE_MACHINES_TS;
   const minutes = options.minutes ?? 1440;
   const level = options.cpuLevel ?? 0.3;
   const network = options.network ?? true;
+  const disk = options.disk ?? true;
   const points: MachineHistoryResponse["points"] = [];
   for (let ago = minutes - 1; ago >= 0; ago -= 1) {
     if (ago >= 300 && ago < 330) continue; // the restart: thirty minutes with no points at all
@@ -91,7 +116,9 @@ export function fixtureMachineHistory(
     const noCounters = !network || (ago >= 60 && ago < 70);
     const rx = noCounters ? null : Math.round(200 * KIB * (0.2 + wave) + (ago % 7) * 10 * KIB);
     const tx = noCounters ? null : Math.round(60 * KIB * (0.3 + wave));
-    points.push([ts - ago * 60_000, avg, max, mem, rx, tx]);
+    // The fullest disk fills slowly over the day, to the bar's 66 % now.
+    const diskFrac = disk ? Math.round((0.658 - (ago / 1440) * 0.04) * 1000) / 1000 : null;
+    points.push([ts - ago * 60_000, avg, max, mem, rx, tx, diskFrac]);
   }
   return { ts, stepMs: 60_000, points };
 }

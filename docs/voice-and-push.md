@@ -287,13 +287,13 @@ Five kinds, each with its own switch under **Settings → Alerts → Notify when
 | Needs input | an agent is waiting on you | on |
 | Finished | an agent completes its task | off |
 | App updates | a newer Collie release is available | on |
-| Machine load stays high | a machine's CPU or memory stays above a rule you set for it | on |
+| Machine load stays high | a machine's CPU, memory or fullest disk stays above a rule you set for it | on |
 | Cache about to go cold | a pane's prompt cache expires in about five minutes | off |
 
 Finished fires when an agent goes from working to idle, so an agent you interrupt also counts as finished.
 
 Machine load sends nothing until you set a rule on a machine's page. The switch turns off every rule at
-once. One alert is sent each time a value climbs and stays high, and a tap opens that machine. See
+once. One alert is sent each time a value climbs and stays high, and a tap opens that machine's Status view. See
 [Machines](crew.md#machines).
 
 Each device shows an alert's title in its own [language](configure.md#language), and English on a

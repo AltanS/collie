@@ -5,6 +5,12 @@ export interface SegmentedOption<V extends string | number> {
   value: V;
   /** ALREADY TRANSLATED. */
   label: string;
+  /**
+   * ALREADY TRANSLATED. A state the segment's view is in that the operator should see before opening
+   * it (an alert firing behind the Alerts tab). Drawn as a small dot after the label in the blocked
+   * colour, and said as these words to a screen reader, so it is never colour alone.
+   */
+  mark?: string;
 }
 
 export interface SegmentedProps<V extends string | number> {
@@ -60,6 +66,8 @@ export function Segmented<V extends string | number>({
             role={tabs ? "tab" : "radio"}
             aria-selected={tabs ? on : undefined}
             aria-checked={tabs ? undefined : on}
+            // A mark is said in words: the name becomes "Alerts, alert firing" rather than a dot.
+            aria-label={option.mark === undefined ? undefined : `${option.label}, ${option.mark}`}
             disabled={disabled}
             onClick={() => {
               // A choice is never un-picked, and a caller that posts on change is not asked to post
@@ -72,6 +80,9 @@ export function Segmented<V extends string | number>({
             )}
           >
             {option.label}
+            {option.mark !== undefined && (
+              <span aria-hidden data-slot="segmented-mark" className="ml-1.5 inline-block size-2 rounded-full bg-status-blocked align-middle" />
+            )}
           </button>
         );
       })}

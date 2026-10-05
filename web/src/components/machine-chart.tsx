@@ -27,7 +27,8 @@ import type { MachineHistoryPoint } from "@/lib/types";
 // An SVG of paths says nothing to a screen reader. The `<svg>` is `role="img"` and its name is a
 // sentence: the metric, the range, now, average and peak, and the alert line when a rule is set. The
 // drawing is the same facts for the eye, and the legend under it names every mark in words, so the
-// chart never relies on colour alone.
+// chart never relies on colour alone. The disk chart draws the fullest filesystem of each minute, the
+// value the disk alert judges; the bars above the charts say which filesystem that is.
 //
 // ── THE SHAPE IS FIXED, SO NOTHING MOVES ─────────────────────────────────────
 // The viewBox is 360 by 150 and the svg is `w-full h-auto`: at the 390px phone width the page gutter
@@ -43,7 +44,7 @@ const BOX_PERCENT: PlotBox = { width: VIEW_W, height: VIEW_H, left: 34, right: 8
 /** Network: "200 KB/s" is wider, so the left margin grows and the plot gives the width back. */
 const BOX_RATE: PlotBox = { width: VIEW_W, height: VIEW_H, left: 56, right: 8, top: 8, bottom: 22 };
 
-export type MachineChartKind = "cpu" | "mem" | "net";
+export type MachineChartKind = "cpu" | "mem" | "disk" | "net";
 
 export interface MachineChartProps {
   kind: MachineChartKind;
@@ -52,11 +53,24 @@ export interface MachineChartProps {
   ts: number;
   stepMs: number;
   range: MachineRange;
-  /** The alert rule's `above` as a 0..1 fraction, or none when no rule is set. CPU and memory only. */
+  /** The alert rule's `above` as a 0..1 fraction, or none when no rule is set. Not on network. */
   threshold?: number | null;
 }
 
-const METRIC_KEY = { cpu: "machines.metric.cpu", mem: "machines.metric.mem", net: "machines.metric.net" } as const;
+const METRIC_KEY = {
+  cpu: "machines.metric.cpu",
+  mem: "machines.metric.mem",
+  disk: "machines.metric.disk",
+  net: "machines.metric.net",
+} as const;
+
+/** The value a percent chart draws off a point: CPU average, memory, or the fullest disk. */
+function percentOf(kind: MachineChartKind, p: MachineHistoryPoint): number | null {
+  if (kind === "mem") return p[3];
+  // A bridge older than the disk value sends six elements; the seventh reads `undefined`, no reading.
+  if (kind === "disk") return p[6] ?? null;
+  return p[1];
+}
 
 /** The same-height box a chart's place holds while there is nothing to draw. */
 export function ChartPlaceholder({ children }: { children: string }) {
@@ -77,7 +91,7 @@ function tickLabel(tick: XTick): string {
 // ── IT DRAWS WHEN ITS DATA MOVES, NOT ON THE POLL ────────────────────────────
 // Memoised on its props, which are plain values or the history answer's own array. The page renders
 // again on every poll tick (the census rides the loop), but the history moves once a minute, so the
-// three charts of up to 1440 points draw once a minute, not every 4 to 6 seconds.
+// four charts of up to 1440 points draw once a minute, not every 4 to 6 seconds.
 
 /** A chart, memoised: see the header. */
 export const MachineChart = memo(function MachineChart({ kind, points, ts, stepMs, range, threshold = null }: MachineChartProps) {
@@ -86,7 +100,7 @@ export const MachineChart = memo(function MachineChart({ kind, points, ts, stepM
   const metric = t(METRIC_KEY[kind]);
   const rangeWord = t(range === "hour" ? "machines.range.hour.long" : "machines.range.day.long");
 
-  const avgRuns = runsOf(inRange, (p) => (kind === "mem" ? p[3] : p[1]), stepMs);
+  const avgRuns = kind === "net" ? [] : runsOf(inRange, (p) => percentOf(kind, p), stepMs);
   const peakRuns = kind === "cpu" ? runsOf(inRange, (p) => p[2], stepMs) : [];
   const rxRuns = kind === "net" ? runsOf(inRange, (p) => p[4], stepMs) : [];
   const txRuns = kind === "net" ? runsOf(inRange, (p) => p[5], stepMs) : [];
@@ -96,7 +110,8 @@ export const MachineChart = memo(function MachineChart({ kind, points, ts, stepM
       return <ChartPlaceholder>{inRange.length === 0 ? t("machines.history.empty") : t("machines.net.none")}</ChartPlaceholder>;
     }
   } else if (avgRuns.length === 0) {
-    return <ChartPlaceholder>{t("machines.history.empty")}</ChartPlaceholder>;
+    const none = kind === "disk" && inRange.length > 0;
+    return <ChartPlaceholder>{none ? t("machines.disk.none") : t("machines.history.empty")}</ChartPlaceholder>;
   }
 
   const box = kind === "net" ? BOX_RATE : BOX_PERCENT;
@@ -253,6 +268,8 @@ function Legend({ kind, threshold }: { kind: MachineChartKind; threshold: number
     items.push({ key: "peak", label: t("machines.legend.peak"), swatch: "peak" });
   } else if (kind === "mem") {
     items.push({ key: "used", label: t("machines.legend.used"), swatch: "avg" });
+  } else if (kind === "disk") {
+    items.push({ key: "fullest", label: t("machines.legend.fullest"), swatch: "avg" });
   } else {
     items.push({ key: "down", label: t("machines.legend.down"), swatch: "rx" });
     items.push({ key: "up", label: t("machines.legend.up"), swatch: "tx" });

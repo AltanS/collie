@@ -2,12 +2,15 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
 
-import { installApiStub, installMachinesWorld } from "./fixtures/api";
+import { installApiStub, installCrewWorld, installMachinesWorld } from "./fixtures/api";
 
-// THE MACHINES PAGES, END TO END. Settings, Machines, one machine, a CPU alert set, and back twice
-// (ADR 0067): the arrow steps back onto the list, and the phone's edge swipe (`page.goBack`) onto
-// Settings. The API is the shared fixture, with the four-machine census and alert rules that stick
-// (`installMachinesWorld`), so the POST's body is what the case asserts on.
+// THE MACHINES PAGES, END TO END. Settings, Machines, one machine's Status, its Alerts view, a CPU alert
+// set, and back twice (ADR 0067): the view switch replaced its entry, so the arrow steps back onto the
+// list, not onto Status, and the phone's edge swipe (`page.goBack`) onto Settings. Then the dashboard's
+// Crew tab: a card opens a machine, and Back returns to the tab. Tabs are picked by name, never by
+// place: the dashboard's tab order is not this file's to know. The API is the shared fixture, with the
+// four-machine census and alert rules that stick (`installMachinesWorld`), so the POST's body is what
+// the case asserts on.
 //
 // NO SERVICE WORKER, for the reason `e2e/issue-180.spec.ts` states: `page.route` cannot see a request
 // the worker makes on the page's behalf.
@@ -28,7 +31,7 @@ async function landed(page: Page, path: string) {
   await expect.poll(() => at(page)).toBe(path);
 }
 
-test("Settings to Machines to a machine, set a CPU alert, back twice", async ({ page }) => {
+test("Settings to Machines to a machine, its Alerts view, set a CPU alert, back twice", async ({ page }) => {
   const { posted } = await installMachinesWorld(page);
 
   await page.goto("/settings");
@@ -44,12 +47,21 @@ test("Settings to Machines to a machine, set a CPU alert, back twice", async ({ 
   await page.getByRole("button", { name: "workshop", exact: true }).click();
   await landed(page, "/machines/workshop");
 
-  // The last hour first, then the day: three charts either way, each named in one sentence.
+  // Status first: a bar per disk, then the last hour, then the day, four charts each named in one
+  // sentence.
+  await expect(page.getByRole("tab", { name: en["machines.view.status"] })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("meter", { name: "Disk /srv/backups" })).toHaveAttribute("aria-valuenow", "89");
   await expect(page.getByRole("img", { name: /^CPU, last hour:/u })).toBeVisible();
   await expect(page.getByRole("img", { name: /^Memory, last hour:/u })).toBeVisible();
+  await expect(page.getByRole("img", { name: /^Disk, last hour:/u })).toBeVisible();
   await expect(page.getByRole("img", { name: /^Network, last hour:/u })).toBeVisible();
   await page.getByRole("radio", { name: en["machines.range.day"] }).click();
   await expect(page.getByRole("img", { name: /^CPU, last 24 hours:/u })).toBeVisible();
+
+  // The rules are on the Alerts view, whose segment is marked while a rule fires.
+  await page.getByRole("tab", { name: `${en["machines.view.alerts"]}, ${en["machines.view.firing"]}` }).click();
+  await landed(page, "/machines/workshop?tab=alerts");
+  await expect(page.getByRole("img", { name: /^CPU, last hour:/u })).toHaveCount(0);
 
   // The 95% segment of the CPU threshold posts the WHOLE object: the memory rule rides along.
   await page.getByRole("radiogroup", { name: "CPU alert threshold" }).getByRole("radio", { name: "95%" }).click();
@@ -65,11 +77,42 @@ test("Settings to Machines to a machine, set a CPU alert, back twice", async ({ 
     page.getByRole("radiogroup", { name: "CPU alert threshold" }).getByRole("radio", { name: "95%" }),
   ).toHaveAttribute("aria-checked", "true");
 
-  // Back twice: the arrow onto the list, the edge swipe onto Settings.
+  // Back twice: the arrow onto the list (the view switch replaced its entry), the edge swipe onto Settings.
   await page.getByRole("button", { name: en["machines.nav.back"] }).click();
   await landed(page, "/machines");
   await page.goBack();
   await landed(page, "/settings");
+});
+
+test("a card's firing line opens the machine on its Alerts view", async ({ page }) => {
+  await installMachinesWorld(page);
+  await page.goto("/machines");
+  await page.getByRole("button", { name: /^Alert firing: CPU/u }).click();
+  await landed(page, "/machines/workshop?tab=alerts");
+  await expect(page.getByRole("switch", { name: "CPU alert" })).toBeChecked();
+  await expect(page.getByText(en["machines.alerts.firingNow"])).toBeVisible();
+  await page.getByRole("button", { name: en["machines.nav.back"] }).click();
+  await landed(page, "/machines");
+});
+
+test("the dashboard's Crew tab: a card opens its machine, and Back returns to the tab", async ({ page }) => {
+  await installCrewWorld(page);
+  await installMachinesWorld(page);
+  await page.goto("/");
+  const tabs = page.locator('[data-slot="tab-bar"]');
+  await tabs.getByRole("button", { name: en["crew.title"], exact: true }).click();
+  await expect(tabs.getByRole("button", { name: en["crew.title"], exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "bluefin", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "workshop", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "workshop", exact: true }).click();
+  await landed(page, "/machines/workshop");
+  await expect(page.getByRole("img", { name: /^CPU, last hour:/u })).toBeVisible();
+
+  await page.getByRole("button", { name: en["machines.nav.back"] }).click();
+  await landed(page, "/");
+  await expect(tabs.getByRole("button", { name: en["crew.title"], exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "workshop", exact: true })).toBeVisible();
 });
 
 test("a solo collie lists its one machine and opens it", async ({ page }) => {
@@ -121,4 +164,10 @@ test("the list asks for the half hour, a machine's page reads its day once, and 
   await page.clock.runFor(61_000);
   await expect.poll(() => asked.filter((a) => a.includes("/history")).length).toBe(2);
   expect(asked.filter((a) => a.includes("/history"))[1]).toMatch(/^\/api\/machines\/bluefin\/history\?since=\d+$/u);
+
+  // The Alerts view draws no chart and reads no history, not even on the minute.
+  await page.getByRole("tab", { name: en["machines.view.alerts"] }).click();
+  await landed(page, "/machines/bluefin?tab=alerts");
+  await page.clock.runFor(125_000);
+  expect(asked.filter((a) => a.includes("/history"))).toHaveLength(2);
 });
