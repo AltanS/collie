@@ -13,8 +13,8 @@ There are two ways in.
 
 - **From a pane.** Tap the Changes button on the pane's actions belt, the icon left of the Switch
   mark. The list covers the pane's whole workspace and marks the pane's own repo.
-- **From the dashboard.** Tap **Changes** in the dashboard's footer, beside **Dashboard** (and
-  **Crew**, when you run a crew). It lists one row per workspace with its changed-file count and the summed added and
+- **From the dashboard.** Tap **Changes** in the dashboard's footer, after **Dashboard** (and
+  **Crew** before it, when you run a crew). It lists one row per workspace with its changed-file count and the summed added and
   removed lines. A workspace with no changes stays in its place, dimmed. Tap a row to open that
   workspace's list.
 

@@ -385,15 +385,16 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(within(footer()).queryByRole("button", { name: /^Crew/ })).not.toBeInTheDocument();
   });
 
-  it("a crew has three: Dashboard, Crew, Changes, in that order", async () => {
+  it("a crew has three: Crew, Dashboard, Changes, in that order, and Dashboard stays the default", async () => {
     renderHome(packed());
     await settled();
     // The word is the tab's one truncated line; the mark and its screen-reader text sit beside it.
     expect(within(footer()).getAllByRole("button").map((b) => b.querySelector("span.truncate")?.textContent)).toEqual([
-      "Dashboard",
       "Crew",
+      "Dashboard",
       "Changes",
     ]);
+    expect(tab(/^Dashboard/)).toHaveAttribute("aria-current", "page");
   });
 
   it("the Crew tab mounts its body only while it is selected", async () => {

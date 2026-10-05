@@ -136,6 +136,7 @@ function DashboardTabsPhone({
         active={view}
         onSelect={setView}
         items={[
+          ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
           {
             value: "dashboard",
             label: t("home.tabs.dashboard"),
@@ -144,7 +145,6 @@ function DashboardTabsPhone({
             dot: blocked === 0 && hasReady(herd),
             badgeLabel: blocked > 0 ? tn("home.tabs.blocked", blocked) : t("home.tabs.unseen"),
           },
-          ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Network className="size-5" /> }] : []),
           { value: "changes", label: t("changes.title"), icon: <GitCompare className="size-5" /> },
         ]}
       />
@@ -153,7 +153,7 @@ function DashboardTabsPhone({
 }
 
 const TABS_REACH =
-  "the dashboard's footer. Dashboard is the list; Crew sits between it and Changes only while a crew is configured; the old Focus tab is the circle-dot switch in the summary line's row, beside the order toggle.";
+  "the dashboard's footer. Dashboard is the list and the default, in the middle; Crew leads it, drawn only while a crew is configured; the old Focus tab is the circle-dot switch in the summary line's row, beside the order toggle.";
 
 export function DashboardSection() {
   return (
@@ -245,7 +245,7 @@ export function DashboardSection() {
           state="dashboard-tabs-crew-switch-off"
           label="tabs, with a crew, switch off"
           reach={TABS_REACH}
-          note="Three tabs: Dashboard, Crew, Changes. Tap Crew and Changes: the summary line holds its place on both, and the controls slot keeps its width, invisible."
+          note="Three tabs: Crew, Dashboard, Changes, with Dashboard in the middle under the thumb. Tap Crew and Changes: the summary line holds its place on both, and the controls slot keeps its width, invisible."
         >
           <PhoneFrameCard height={640}>
             <DashboardTabsPhone crew initialOn={false} />
