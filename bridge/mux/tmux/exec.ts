@@ -126,9 +126,9 @@ export function tmuxServerLabel(endpoint: string): string {
  *
  * `-u` tells the tmux CLIENT its output is UTF-8 whatever the ambient locale says. Without it, a
  * client started with no UTF-8 locale — a minimal container sets none at all, and systemd hands a
- * unit `C` — has its `-F` output sanitized on the way out, and from tmux 3.7 that turns the U+001F
- * field separator into `_` (probed on 3.7c: `S_$0_1_repro` where a UTF-8 locale gives
- * `S^_$0^_1^_repro`). No un-escaper can recover that: the separator is simply gone, every line
+ * unit `C` — has its `-F` output sanitized on the way out, and that turns the U+001F
+ * field separator into `_` (probed on 3.7c and again on 3.6b with `env -i`: `S_$0_1_repro` where a
+ * UTF-8 locale gives `S^_$0^_1^_repro`). No un-escaper can recover that: the separator is simply gone, every line
  * parses to nothing and the bridge reads a healthy server as disconnected.
  *
  * The flag rather than `LC_ALL=C.UTF-8` in the child's environment, for two reasons: it needs no
