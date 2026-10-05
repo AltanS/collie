@@ -156,11 +156,13 @@ timer.
 Files hides what git ignores, such as `node_modules`, build output and logs. A quiet line under the
 list says how many rows are hidden, with a **Show** action.
 
-The **Filter** button in the header opens a row with a name field and one chip, **Ignored**. The
-name field narrows the current folder to the names that hold your text, in any case, and the button
-shows how many rows are left. The name filter clears when you open another folder. The **Ignored**
-chip turns the hidden rows on and off, and your choice stays on this device. Ignored rows show in a
-dimmer ink and open like any other row.
+The eye button in the header, left of **Filter**, turns the hidden rows on and off. It is an eye
+with a slash while they are hidden, and an open eye with a tinted background while they are shown.
+Your choice stays on this device. The **Filter** button opens a row with a name field and the same
+toggle with its state in words, **Ignored hidden** or **Ignored shown**. The name field narrows the
+current folder to the names that hold your text, in any case, and the button shows how many rows are
+left. The name filter clears when you open another folder. Ignored rows show in a dimmer ink and
+open like any other row.
 
 - Collie asks git once for each folder it lists, and git's own rules decide. A tracked file is never
   ignored, even when an ignore rule matches its name.

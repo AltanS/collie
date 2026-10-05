@@ -59,11 +59,19 @@ test("ignored entries are hidden, Show brings them back dimmed, and the name fil
   expect(await ink(/^debug\.log/)).not.toBe(await ink(/^README\.md/));
   await expect(page.getByText(en["files.ignored.hidden"].replace("{count}", "2"))).toHaveCount(0);
 
-  // The filter opens over the list without moving it, the Ignored chip is pressed, and a name narrows.
+  // The eye in the header, left of Filter, is the same choice and is pressed without opening anything.
+  const eye = page.locator("header").getByRole("button", { name: en["files.ignored.toggleAria"] });
+  await expect(eye).toHaveAttribute("aria-pressed", "true");
+  await expect(eye).toHaveAttribute("title", en["files.ignored.stateShown"]);
+
+  // The filter opens over the list without moving it, its labelled Ignored toggle is pressed and says
+  // so in words, and a name narrows.
   const rows = page.locator('[data-slot="file-rows"]');
   const top = (await rows.boundingBox())!.y;
   await page.getByRole("button", { name: en["changes.filter.button"] }).click();
-  await expect(page.getByRole("button", { name: en["files.filter.ignored"], exact: true })).toHaveAttribute("aria-pressed", "true");
+  const labelled = page.locator('[data-slot="files-filter"]').getByRole("button", { name: en["files.ignored.toggleAria"] });
+  await expect(labelled).toHaveAttribute("aria-pressed", "true");
+  await expect(labelled).toHaveText(en["files.ignored.stateShown"]);
   expect((await rows.boundingBox())!.y).toBe(top);
   await page.getByPlaceholder(en["files.filter.placeholder"]).fill("DEBUG");
   await expect(rows.getByRole("button")).toHaveCount(1);
@@ -74,9 +82,11 @@ test("ignored entries are hidden, Show brings them back dimmed, and the name fil
   await expect(page.getByText(en["changes.filter.none"])).toBeVisible();
   await page.getByPlaceholder(en["files.filter.placeholder"]).fill("");
 
-  // The Ignored choice is the device's: it outlives a reload.
+  // The Ignored choice is the device's: it outlives a reload, and the header eye turns it off again.
   await page.reload();
   await expect(page.getByRole("button", { name: /^debug\.log/ })).toBeVisible();
+  await page.locator("header").getByRole("button", { name: en["files.ignored.toggleAria"] }).click();
+  await expect(page.getByRole("button", { name: /^debug\.log/ })).toHaveCount(0);
 });
 
 test("a changed Markdown file previews from its diff, in Files", async ({ page }) => {
