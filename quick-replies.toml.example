@@ -23,7 +23,7 @@
 #
 # [[replies]]
 # title = "common"
-# items = ["continue", "commit and push", "retry", "skip"]
+# items = ["continue", "commit and push", "retry", "skip", "drastically simplify"]
 
 # Working in another language? Replace the phrases; the harness reads them as prose either way.
 # [[replies]]

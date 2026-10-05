@@ -27,7 +27,7 @@ export interface QuickReplyGroup {
 // no "stop" that just duplicates Esc in the Keys pad.
 const AGENT: readonly QuickReplyGroup[] = [
   { title: "confirm", items: ["yes", "no"] },
-  { title: "common", items: ["continue", "commit and push", "retry", "skip"] },
+  { title: "common", items: ["continue", "commit and push", "retry", "skip", "drastically simplify"] },
 ];
 
 // A bare shell has no notion of continuing or skipping a turn — the only near-universal one-tap

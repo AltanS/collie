@@ -268,7 +268,7 @@ items = ["yes", "no"]        # sent verbatim, one per button
 
 When a pane matches your rules, your groups replace the default ones
 ([ADR 0018](../.adr/0018-operator-command-rows-replace-the-catalog.md)). The default phrases are
-English (`yes`, `commit and push`).
+English (`yes`, `commit and push`, `drastically simplify`).
 
 Use this file to run in other languages, or to send words like `approve` to specific harnesses.
 Setting `scope = "shell"` targets standard shell panes, which otherwise only receive `y`/`n`.
