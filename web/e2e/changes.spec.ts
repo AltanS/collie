@@ -98,8 +98,10 @@ test("the belt's Changes pill opens Changes, the list groups by repo, and a diff
   await expect(page).toHaveURL(/\?repo=\.&path=src%2Froutes%2Fcheckout\.tsx$/);
   const long = page.getByText(/including shipping to/);
   await expect(long).toBeVisible();
-  // The long line wraps inside the column rather than widening the page.
-  const line = await long.boundingBox();
+  // The long line wraps inside the column rather than widening the page. The ROW is measured, not the
+  // matched text: once syntax colour lands the text splits into token spans, and under WebKit the one
+  // that holds these words can be a single 14 px line of a row that wraps over two (1 run in 8).
+  const line = await page.locator("[data-slot='diff'] > div").filter({ hasText: /including shipping to/ }).boundingBox();
   expect(line!.x + line!.width).toBeLessThanOrEqual(375);
   expect(line!.height).toBeGreaterThan(20);
   await noSidewaysScroll(page);
