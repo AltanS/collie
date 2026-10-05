@@ -66,13 +66,26 @@ describe("minute buckets", () => {
     expect(h.points("nas", T0)).toEqual([]);
   });
 
-  test("a clock that stepped back folds into the newest minute, so the list stays ordered", () => {
+  test("a clock that stepped back a little folds into the newest minute, so the list stays ordered", () => {
     const h = new MachineHistory();
-    h.record("desk", sample(0.2, 0.5), T0 + 5 * MINUTE_MS);
-    h.record("desk", sample(0.4, 0.5), T0);
-    const points = h.points("desk", T0 + 6 * MINUTE_MS);
-    expect(points.map((p) => p[0])).toEqual([T0 + 5 * MINUTE_MS]);
+    h.record("desk", sample(0.2, 0.5), T0 + MINUTE_MS + 10);
+    h.record("desk", sample(0.4, 0.5), T0 + 50_000);
+    const points = h.points("desk", T0 + 2 * MINUTE_MS);
+    expect(points.map((p) => p[0])).toEqual([T0 + MINUTE_MS]);
     expect(points[0]![1]).toBeCloseTo(0.3, 10);
+  });
+
+  test("a clock that jumped back by more than a minute drops the buckets now in the future", () => {
+    const h = new MachineHistory();
+    h.record("desk", sample(0.1, 0.5), T0 - MINUTE_MS);
+    h.record("desk", sample(0.2, 0.5), T0 + 5 * 60 * MINUTE_MS);
+    h.record("desk", sample(0.3, 0.5), T0 + 5 * 60 * MINUTE_MS + MINUTE_MS);
+    h.markSaved();
+    // The clock comes back five hours: the two minutes it wrote ahead go, the one before stays.
+    h.record("desk", sample(0.4, 0.5), T0);
+    expect(h.dirty()).toBe(true);
+    expect(h.points("desk", T0 + 30_000).map((p) => p[0])).toEqual([T0 - MINUTE_MS, T0]);
+    expect(h.minutes("desk", T0 - 10 * MINUTE_MS, T0 + MINUTE_MS).map((m) => m.cpu)).toEqual([0.1, 0.4]);
   });
 
   test("the evaluator's view leaves the open minute out", () => {
@@ -130,6 +143,21 @@ describe("the persisted round trip", () => {
     const later = await loadMachineHistory(dir, T0 + DAY_MS + 30 * 1000);
     expect(later.points("desk", T0 + DAY_MS + 30 * 1000)).toEqual([]);
     expect(later.points("laptop", T0 + DAY_MS + 30 * 1000).length).toBe(1);
+  });
+
+  test("a bucket in the future is not loaded back: one minute of slack, no more", async () => {
+    const dir = await tempDir();
+    const h = new MachineHistory();
+    h.record("desk", sample(0.1, 0.5), T0);
+    h.record("desk", sample(0.2, 0.5), T0 + MINUTE_MS);
+    h.record("desk", sample(0.3, 0.5), T0 + 2 * MINUTE_MS);
+    h.record("laptop", sample(0.3, 0.5), T0 + 3 * 60 * MINUTE_MS);
+    await saveMachineHistory(dir, h, T0 + 3 * 60 * MINUTE_MS);
+
+    // The machine boots with its clock back at T0.
+    const back = await loadMachineHistory(dir, T0 + 10);
+    expect(back.points("desk", T0 + 10).map((p) => p[0])).toEqual([T0, T0 + MINUTE_MS]);
+    expect(back.points("laptop", T0 + 10)).toEqual([]);
   });
 
   test("a missing or unreadable file is an empty store; a bad row is dropped, the rest loads", async () => {

@@ -1641,6 +1641,9 @@ const machineWatch =
         muted: () => snooze.isMuted(),
         enabled: () => notifyPrefs.current().machines,
         send: (msg) => void push.send(msg),
+        // A deposed lead's roster is void (§18.12): it stops sweeping, and it must stop judging and
+        // pushing about machines it no longer answers for, and stop recording its own minutes too.
+        active: () => deposed === null,
       });
 
 // The same tick the crew sweep rides (CREW_PROTOCOL.md §10.1, §11): no second timer. The sampler reads

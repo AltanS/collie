@@ -225,6 +225,32 @@ export class MachineAlertStore {
     await this.save();
   }
 
+  /**
+   * Forget one machine's rules and open episodes: a member that left the crew takes them with it.
+   * Writes only when it held any.
+   */
+  async drop(id: string): Promise<void> {
+    if (!this.entries.delete(id)) return;
+    await this.save();
+  }
+
+  /** Keep only the machines in `ids`. A member removed while this bridge was down goes here. */
+  async retain(ids: ReadonlySet<string>): Promise<void> {
+    let changed = false;
+    // Deleting the entry being visited is safe in a Map iteration; the walk skips nothing.
+    for (const id of this.entries.keys()) {
+      if (ids.has(id)) continue;
+      this.entries.delete(id);
+      changed = true;
+    }
+    if (changed) await this.save();
+  }
+
+  /** Resolves when every write handed to the chain so far is done. The shutdown path awaits it. */
+  settled(): Promise<void> {
+    return this.saveChain;
+  }
+
   private mark(id: string, metric: AlertMetric, open: boolean): void {
     const entry = this.entries.get(id);
     if (entry === undefined) return;
