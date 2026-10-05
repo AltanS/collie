@@ -1,7 +1,8 @@
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { ChangePath, diffRowKeys, DiffView } from "@/components/changes-view";
+import { ChangePath, ChangesList, diffRowKeys, DiffView, StatusLetter } from "@/components/changes-view";
+import type { ChangedRepo } from "@/lib/types";
 import { parseUnifiedDiff } from "@/lib/unified-diff";
 
 const DIFF = [
@@ -110,5 +111,32 @@ describe("a long file name keeps both ends", () => {
     const { container } = render(<ChangePath path="src/a.ts" />);
     const exact = [...container.querySelectorAll("span")].filter((el) => el.textContent === "a.ts");
     expect(exact).toHaveLength(1);
+  });
+});
+
+describe("untracked is one colour on the Changes screen", () => {
+  const repos: ChangedRepo[] = [
+    {
+      relPath: ".",
+      name: "webapp",
+      files: [
+        { path: "notes.md", status: "?", added: 0, removed: 0, binary: false },
+        { path: "src/a.ts", status: "A", added: 1, removed: 0, binary: false },
+      ],
+    },
+  ];
+
+  it("a list row's U wears the added ink, the same as an A", () => {
+    const { container } = render(<ChangesList repos={repos} onOpen={() => {}} />);
+    const letters = [...container.querySelectorAll("span[aria-hidden]")].filter((el) => el.textContent === "U" || el.textContent === "A");
+    const u = letters.find((el) => el.textContent === "U")!;
+    expect(u.className).toContain("text-status-done");
+    expect(u.className).not.toContain("text-muted-foreground");
+    expect(letters.find((el) => el.textContent === "A")!.className).toContain("text-status-done");
+  });
+
+  it("the letter the file header draws is the same ink", () => {
+    const { container } = render(<StatusLetter status="?" />);
+    expect(container.querySelector("span[aria-hidden]")!.className).toContain("text-status-done");
   });
 });

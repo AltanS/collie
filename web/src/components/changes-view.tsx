@@ -43,13 +43,18 @@ export const STATUS_WORD = {
   "?": "changes.status.untracked",
 } satisfies Record<ChangeStatus, MessageKey>;
 
-/** The ink of a status letter, which the folder tree also wears on a changed row's icon. */
+/**
+ * The ink of a status letter on the Changes screen: the list's rows, the file header and the folder
+ * tree's icons all wear it. Untracked takes the added ink (a file the agent just wrote is the change
+ * the operator looks for first), so `U` is one colour on one screen (ADR 0083, 2026-10-06). The
+ * dashboard's Changes tab is another component and keeps its own.
+ */
 export const STATUS_TONE = {
   M: "text-status-working",
   A: "text-status-done",
   D: "text-status-blocked",
   R: "text-status-info",
-  "?": "text-muted-foreground",
+  "?": "text-status-done",
 } satisfies Record<ChangeStatus, string>;
 
 /** The same five colours as a fill, for the folder tree's dot and the Changes-only badge. */
@@ -58,13 +63,12 @@ export const STATUS_FILL = {
   A: "bg-status-done",
   D: "bg-status-blocked",
   R: "bg-status-info",
-  // The folder tree's untracked mark: a file the agent just wrote is the change the operator looks
-  // for first, so it takes the added ink and not the list's quiet grey (ADR 0083, 2026-10-06).
+  // The untracked mark takes the added ink, as the letter does (ADR 0083, 2026-10-06).
   "?": "bg-status-done",
 } satisfies Record<ChangeStatus, string>;
 
-/** The folder tree's letter and icon inks: the list's, with untracked in the added ink to match the dot. */
-export const TREE_TONE = { ...STATUS_TONE, "?": STATUS_TONE.A } satisfies Record<ChangeStatus, string>;
+/** The folder tree's letter and icon inks: the same as every other letter on the screen. */
+export const TREE_TONE = STATUS_TONE;
 
 /** A file's place in the whole list, across repos: what Previous / Next walk. */
 export interface ChangeRef {
