@@ -405,6 +405,13 @@ each is thirty pixels of list the operator stops seeing — and a target does no
 visible to be hit. Two measured numbers hold it together, both documented at the constant;
 change the scroller's padding or the pill's border and you must re-measure.
 
+**The one exception: the pane header's two lines (1.17.0).** The name line opens Pane
+settings and the workspace line opens the space, so the 60px row holds two targets, each
+30px tall and as wide as the identity block. Two 44px targets do not fit in one 60px row.
+Each button extends its hit area with a pseudo-element, the `STRIP_TAP_TARGET` idea, so a
+thumb that lands a little above or below its line still reaches it. Do not copy this for a
+new control: a single target in a row still owes the full 44px.
+
 **A row states its own floor with `min-h`, never `h`.** `app-header.tsx:212` is
 `min-h-15` — 60px. It is a floor, not a sum: the row's own padding is `py-1`, and the
 floor stands above whatever the content needs so the row cannot shrink when a route

@@ -101,8 +101,35 @@ export function parseMeminfo(text: string): { used: number; total: number } | nu
 export type NetCounters = ReadonlyMap<string, { readonly rx: number; readonly tx: number }>;
 
 /**
+ * The interfaces whose bytes also cross another interface this reader counts, so counting them would
+ * count the same traffic twice. The machine's load on its links is what the physical interfaces
+ * carry (`eth*`, `en*`, `wl*`, `ww*`, `usb*` and the rest), and only they are summed.
+ *
+ *   - `lo`: traffic between two processes on this machine, on no link at all.
+ *   - Bridges and their ports: `br*` (a host bridge `br0`, Docker's `br-<id>`), `docker*`, `virbr*`,
+ *     `lxcbr*`, `lxdbr*`, `incusbr*`, `podman*`, `cni*`, `flannel*`, `cali*`, `cilium*`, `weave*`,
+ *     `vxlan*`, and the veth and tap ends a container or VM plugs into them: `veth*`, `vnet*`, `tap*`.
+ *     A container's traffic to the outside crosses its veth, the bridge AND the physical interface.
+ *   - Tunnels: `tailscale*`, `wg*`, `tun*`, `zt*` (ZeroTier). Their traffic leaves through the
+ *     physical interface too, encrypted, so the crew link's own bytes are counted once, there.
+ *   - Aggregates: `bond*` and `team*`, whose member interfaces are physical and counted, and a VLAN
+ *     on top of one, `eth0.100`, any name with a dot.
+ *
+ * A name that matches nothing here counts. A link this list does not know is counted twice at worst,
+ * which reads as busier than it is; leaving a physical interface out would read as idle.
+ */
+const SKIPPED_INTERFACE =
+  /^(?:lo$|br|docker|virbr|lxcbr|lxdbr|incusbr|podman|cni|flannel|cali|cilium|weave|vxlan|veth|vnet|tap|tailscale|wg|tun|zt|bond|team)|\./;
+
+/** Whether `/proc/net/dev`'s interface `name` is one {@link parseNetDev} leaves out. */
+export function isSkippedInterface(name: string): boolean {
+  return SKIPPED_INTERFACE.test(name);
+}
+
+/**
  * `/proc/net/dev`: two header lines, then `iface: rx_bytes … (8 receive columns) tx_bytes …`.
- * Loopback is left out: it is traffic between two processes on this machine, not load on a link.
+ * Loopback, bridges, veth and tap ends, tunnels and aggregates are left out
+ * ({@link isSkippedInterface}): their bytes are counted on a physical interface already.
  */
 export function parseNetDev(text: string): NetCounters | null {
   const out = new Map<string, { rx: number; tx: number }>();
@@ -110,7 +137,7 @@ export function parseNetDev(text: string): NetCounters | null {
     const colon = line.indexOf(":");
     if (colon < 0) continue;
     const name = line.slice(0, colon).trim();
-    if (name === "" || name === "lo") continue;
+    if (name === "" || isSkippedInterface(name)) continue;
     const cols = line.slice(colon + 1).trim().split(/\s+/).map(Number);
     if (cols.length < 9) continue;
     const rx = cols[0]!;

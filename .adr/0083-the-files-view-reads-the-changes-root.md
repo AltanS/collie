@@ -8,7 +8,8 @@
 - **Trail:** `bridge/files-view.ts` · `bridge/server.ts` (`PANE_ROUTE`, `WORKSPACE_FILES_ROUTE`,
   `paneFiles`, `workspaceFiles`, `paneGateLevel`, `guard`) · `bridge/crew/peer-gate.ts` (`GateLevel`,
   `crewGate`) · `bridge/crew/forward.ts` · `bridge/journal/files.ts` (header, `containedRealpath`) ·
-  `bridge/changes-root.ts` (`workspaceRoot`, `withinBound`) · `CREW_PROTOCOL.md` §5, §12 ·
+  `bridge/changes-root.ts` (`workspaceRoot`, `withinBound`) · `bridge/acl-policy.ts`
+  (`isStateSecretName`) · `CREW_PROTOCOL.md` §5, §12 ·
   `docs/changes.md` → *Files* · `docs/security.md`
 
 ## Context
@@ -57,11 +58,13 @@ Facts that shaped it:
    host's rules (case-folded on Windows). That is a fix of the shared function, not a copy: the
    journal and the untracked read get it too. A symlink that leads out of the root, a chain that
    ends outside, and a loop are `unknown-path` on read; the listing still shows each as `link`.
-5. **The deny list, for list and read alike, hidden from listings:** any `.git` segment, and
-   anything inside the bridge's state folder or config folder. Both are checked on the requested
-   segments and again on the real path, and the deny checks fold case on every host, so `.GIT`, a
-   link into `.git`, and a link into the state folder all land on the same refusal. Every other
-   dot-file is shown: the operator's own files are the operator's to read.
+5. **The deny list, for list and read alike, hidden from listings:** any `.git` segment, anything
+   inside the bridge's state folder or config folder, and any file whose basename is a state
+   secret's, wherever it sits. All are checked on the requested segments and again on the real
+   path, and the deny checks fold case on every host, so `.GIT`, a link into `.git`, a link into the
+   state folder, and a link named `notes` that leads to a `crew-trust.json` all land on the same
+   refusal. Every other dot-file is shown: the operator's own files are the operator's to read.
+   See *The sibling instance* below for what the basename rule covers.
 6. **One refusal.** Absent, outside, denied, a folder read as a file and a file listed as a folder
    are all `404 { "error": "unknown-path" }`. The `error` is the machine word, as Changes'
    `reason: "unknown-path"` is, and it is what the web tells an older member's 404 apart by. It
@@ -98,6 +101,29 @@ paired and no device header, every device is authorised, exactly as for writes, 
 loses nothing; pairing the phone closes it. No audit line is written per read: the audit log
 records what reaches a terminal, and a log line per folder tap would bury the lines that matter.
 
+### The sibling instance
+
+The private folders are THIS bridge's. A second Collie on the same machine (the dev lane beside the
+release lane, or `collie-next` beside `collie`) keeps its state in a sibling folder such as
+`~/.local/state/collie-next`, and a workspace opened in `~/.local/state`, or in a dotfiles repo
+that holds a linked state folder, would list the sibling's pairing records and crew trust.
+
+So a file is also refused and hidden when its basename is one of the state folder's secrets, the
+`state` entry of `PRIVATE_ROOTS` (`crew-trust.json`, `paired-devices.json`,
+`pairing-pending.json`, `push-subscriptions.json`, `standby-devices.json`, `stt.json`), plus
+`pack-trust.json`, the trust store's 1.7.0 name, alone or followed by one of Collie's own
+temporary or rotation suffixes (`crew-trust.json.tmp`). One function decides it,
+`isStateSecretName` in `bridge/acl-policy.ts`, and it reads that list, so a new state secret is
+covered the day it is named there. The rule is checked on the real path's basename, so a link with
+another name that leads to one of these files is refused as well.
+
+It does not cover a sibling's CONFIG folder. `.env` and `config.toml` are common names for a file
+the operator owns, and hiding every `.env` under a root would hide the operator's own. A sibling's
+`~/.config/herdr/plugins/config/herdr.collie-next/.env`, with its VAPID private key, is readable
+when the root contains it. So is every other credential file under a legal root: a workspace opened
+in `~/.claude`, `~/.codex`, `~/.config/gh` or `~/.ssh` shows what is there. The device gate is the
+guard for those, and pairing is what closes it.
+
 ### The race this accepts
 
 Between the containment check and the read, a component of the path can be swapped for a symlink.
@@ -127,4 +153,4 @@ untracked read, for the same reason. On Windows neither flag exists; the regular
   The deny checks fold case on every host, so they err towards refusing.
 - **Revisit** if Bun exposes `openat2` or an `O_RESOLVE_BENEATH` equivalent (close the race), if an
   operator asks for writes from Files (that is a different ADR, and a write gate), or if a real
-  deployment needs a deny entry beyond `.git` and the two private folders.
+  deployment needs a deny entry beyond `.git`, the two private folders and the state secret names.

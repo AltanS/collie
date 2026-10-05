@@ -236,7 +236,7 @@ collie restart
 On Collie up to 1.8.x, an update tapped on the phone could stop the launchd agent and never load it
 again, so the phone lost the service and `launchctl print gui/$(id -u)/herdr.collie` found nothing.
 The runner shared the agent's process group, and restarting the agent killed it half way.
-`collie restart` writes the agent's plist again and loads it. From the next release on, the bridge
+`collie restart` writes the agent's plist again and loads it. From 1.9.0 on, the bridge
 starts the runner in a session of its own. If a phone update still unloads the agent after that, run
 the same command and add a note to [#213](https://github.com/AltanS/collie/issues/213).
 
@@ -248,7 +248,7 @@ launchctl kickstart gui/$(id -u)/herdr.collie
 collie status
 ```
 
-A suffixed instance has its own label, for example `herdr.collie-next`. From the next release on, `collie start`
+A suffixed instance has its own label, for example `herdr.collie-next`. From 1.17.0 on, `collie start`
 and `collie restart` do this step for you and print a warning with this command when no process
 shows up. If the job stays "loaded, not running" after that, read the log with `collie logs`, then
 add a note to [#213](https://github.com/AltanS/collie/issues/213).

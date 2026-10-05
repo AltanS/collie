@@ -24,6 +24,13 @@ export const MINUTE_MS = 60_000;
 export const HISTORY_MINUTES = 1440;
 const DAY_MS = HISTORY_MINUTES * MINUTE_MS;
 
+/**
+ * How far past the current minute a bucket may start before it is dropped as written by a clock that
+ * has since stepped back. One minute: the open minute itself, and the next, for a clock that moved a
+ * few seconds between two reads.
+ */
+export const FUTURE_SLACK_MS = MINUTE_MS;
+
 /** The file in the state folder. Named here so `solo-baseline.test.ts`'s scan can read it. */
 export const MACHINE_HISTORY_FILE = "machine-history.json";
 
@@ -70,6 +77,19 @@ export function minuteOf(at: number): number {
 /** Round to four places: a fraction to a hundredth of a percent, which no chart can draw finer. */
 const round4 = (n: number): number => Math.round(n * 10_000) / 10_000;
 
+/**
+ * Cut the buckets that start more than {@link FUTURE_SLACK_MS} after the minute `now` falls in. The list
+ * is ordered, so they are a tail. Whether anything was cut.
+ */
+function dropFuture(buckets: MinuteBucket[], now: number): boolean {
+  const ceiling = minuteOf(now) + FUTURE_SLACK_MS;
+  let cut = buckets.length;
+  while (cut > 0 && buckets[cut - 1]!.t > ceiling) cut -= 1;
+  if (cut === buckets.length) return false;
+  buckets.length = cut;
+  return true;
+}
+
 export class MachineHistory {
   private readonly machines = new Map<string, MinuteBucket[]>();
   private changed = false;
@@ -95,9 +115,13 @@ export class MachineHistory {
       buckets = [];
       this.machines.set(id, buckets);
     }
+    // A clock that jumped back by more than the slack leaves buckets "in the future". Folding into
+    // them would hide every new sample in a minute the chart draws hours ahead, and an alert would
+    // judge nothing until the clock caught up, so they go.
+    if (dropFuture(buckets, at)) this.changed = true;
     let last = buckets.at(-1);
-    // A clock that stepped backwards lands its sample in a minute already closed. Folding it into the
-    // newest bucket keeps the list ordered, which is what every reader below relies on.
+    // A clock that stepped backwards a little lands its sample in a minute already closed. Folding it
+    // into the newest bucket keeps the list ordered, which is what every reader below relies on.
     if (last === undefined || last.t < t) {
       last = { t, n: 0, cpuSum: 0, cpuMax: 0, memSum: 0, rxSum: 0, rxN: 0, txSum: 0, txN: 0 };
       buckets.push(last);
@@ -118,10 +142,20 @@ export class MachineHistory {
     this.changed = true;
   }
 
-  /** Drop every bucket older than a day. Called before every read and every save. */
+  /**
+   * Drop every bucket older than a day, and every bucket in the future beyond {@link FUTURE_SLACK_MS}.
+   * Called before every read and every save, and on load.
+   */
   prune(now: number): void {
     const floor = minuteOf(now) - DAY_MS;
     for (const [id, buckets] of this.machines) {
+      if (dropFuture(buckets, now)) {
+        this.changed = true;
+        if (buckets.length === 0) {
+          this.machines.delete(id);
+          continue;
+        }
+      }
       const keep = buckets.findIndex((b) => b.t > floor);
       if (keep === 0) continue;
       this.changed = true;

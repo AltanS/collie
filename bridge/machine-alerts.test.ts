@@ -13,8 +13,8 @@ import {
 } from "./machine-alerts.ts";
 import { MachineHistory, MINUTE_MS, type MinuteReading } from "./machine-history.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
-import { MachineWatch, type MachineRosterEntry } from "./machines.ts";
-import type { PushMessage } from "./push.ts";
+import { MachineWatch, type MachineRosterEntry, sameSample } from "./machines.ts";
+import { machineTopic, type PushMessage } from "./push.ts";
 import type { MachineSample } from "./types.ts";
 
 // The evaluator is pure and judged as data; the store and the watch are driven over a temp folder.
@@ -148,8 +148,9 @@ describe("the push", () => {
       titleCode: "machine.mem",
       titleDetail: { machine: "laptop" },
       body: "laptop: memory 93% for 30 min (alert at 90%).",
-      host: "laptop",
+      machine: "laptop",
       target: "machine",
+      topic: machineTopic("laptop", "mem"),
       renotify: true,
     });
   });
@@ -181,25 +182,36 @@ describe("parseMachineAlerts — the POST body", () => {
 
 // ── The watch, end to end over a temp state folder ──────────────────────────
 
+// Every reading differs from the one before by a byte of memory, as a real machine's does: the watch
+// skips a sample equal in every field to the last one, which is how a hung sampler looks.
+let reading = 0;
 function hot(cpu: number): MachineSample {
-  return { cpu, cores: 4, memUsed: 1e9, memTotal: 8e9 };
+  reading += 1;
+  return { cpu, cores: 4, memUsed: 1e9 + reading, memTotal: 8e9 };
 }
 
-function rig(dir: string, history: MachineHistory, alerts: MachineAlertStore, health: MachineRosterEntry["health"] = "reachable") {
-  const state = { now: T0, muted: false, enabled: true, health };
+function rig(
+  dir: string,
+  history: MachineHistory,
+  alerts: MachineAlertStore,
+  health: MachineRosterEntry["health"] = "reachable",
+  saveHistory: (history: MachineHistory, now: number) => Promise<void> = async () => {},
+) {
+  const state = { now: T0, muted: false, enabled: true, health, active: true, laptop: true };
   const sent: PushMessage[] = [];
   const watch = new MachineWatch({
     now: () => state.now,
     roster: () => [
       { id: "desk", name: "desk", isLead: true, health: "reachable" },
-      { id: "laptop", name: "laptop", isLead: false, health: state.health },
+      ...(state.laptop ? [{ id: "laptop", name: "laptop", isLead: false, health: state.health }] : []),
     ],
     history,
     alerts,
-    saveHistory: async () => {},
+    saveHistory,
     muted: () => state.muted,
     enabled: () => state.enabled,
     send: (msg) => sent.push(msg),
+    active: () => state.active,
   });
   /** One sample per minute for `n` minutes on `id`, ticking at each minute. */
   const run = async (id: string, values: readonly number[]) => {
@@ -278,6 +290,100 @@ describe("MachineWatch — one push per episode, and a restart does not push twi
     r.state.enabled = false;
     await r.run("desk", Array(6).fill(0.1));
     expect(r.sent).toEqual([]);
+  });
+});
+
+describe("MachineWatch — what it takes in, and what it lets go", () => {
+  test("a sample equal in every field to the last is skipped: not recorded, and sampledAt does not move", async () => {
+    const dir = await tempDir();
+    const history = new MachineHistory();
+    const r = rig(dir, history, await MachineAlertStore.load(dir));
+    const stuck: MachineSample = { cpu: 0.4, cores: 4, memUsed: 2e9, memTotal: 8e9, load1: 0.5, rxBps: 1200, txBps: 300 };
+    r.watch.observe("laptop", stuck, T0);
+    // A hung sampler keeps answering with this very reading; the lead must not stamp it fresh.
+    for (let i = 1; i <= 10; i++) r.watch.observe("laptop", { ...stuck }, T0 + i * MINUTE_MS);
+    const row = r.watch.rows().machines.find((m) => m.id === "laptop")!;
+    expect(row.sampledAt).toBe(T0);
+    expect(history.points("laptop", T0 + 11 * MINUTE_MS).map((p) => p[0])).toEqual([T0]);
+    // The next reading that differs in any field records as usual.
+    r.watch.observe("laptop", { ...stuck, txBps: 301 }, T0 + 11 * MINUTE_MS);
+    expect(r.watch.rows().machines.find((m) => m.id === "laptop")!.sampledAt).toBe(T0 + 11 * MINUTE_MS);
+    // A missing optional field differs from a present one.
+    const { load1: _dropped, ...noLoad } = stuck;
+    expect(sameSample(stuck, noLoad)).toBe(false);
+    expect(sameSample(stuck, { ...stuck })).toBe(true);
+  });
+
+  test("a deposed lead records, judges and pushes nothing", async () => {
+    const dir = await tempDir();
+    const history = new MachineHistory();
+    const r = rig(dir, history, await MachineAlertStore.load(dir));
+    await r.watch.setAlerts("laptop", { cpu: { above: 0.9, forMin: 5 } });
+    r.state.active = false;
+    await r.run("laptop", Array(8).fill(0.99));
+    expect(r.sent).toEqual([]);
+    expect(history.points("laptop", r.state.now)).toEqual([]);
+    expect(r.watch.rows().machines.find((m) => m.id === "laptop")!.sample).toBeUndefined();
+  });
+
+  test("a member that leaves takes its alert rules and open episode with it, live and on the next save", async () => {
+    const dir = await tempDir();
+    const store = await MachineAlertStore.load(dir);
+    const r = rig(dir, new MachineHistory(), store);
+    await r.watch.setAlerts("laptop", { cpu: { above: 0.9, forMin: 5 } });
+    await r.watch.setAlerts("desk", { mem: { above: 0.9, forMin: 5 } });
+    await r.run("laptop", Array(5).fill(0.95));
+    expect(store.open("laptop")).toEqual(["cpu"]);
+
+    r.watch.forget("laptop");
+    await store.settled();
+    expect(store.rules("laptop")).toEqual({});
+    expect(store.open("laptop")).toEqual([]);
+    expect((await MachineAlertStore.load(dir)).rules("laptop")).toEqual({});
+
+    // Removed while the bridge was down: the save's prune to the roster drops it too.
+    await r.watch.setAlerts("laptop", { cpu: { above: 0.9, forMin: 5 } });
+    r.state.laptop = false;
+    r.watch.observe("desk", hot(0.1), r.state.now);
+    await r.watch.flush();
+    expect((await MachineAlertStore.load(dir)).rules("laptop")).toEqual({});
+    expect((await MachineAlertStore.load(dir)).rules("desk")).toEqual({ mem: { above: 0.9, forMin: 5 } });
+  });
+
+  test("history writes run one after another, and flush waits for the one under way", async () => {
+    const dir = await tempDir();
+    const log: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const save = async (_h: MachineHistory, now: number) => {
+      calls += 1;
+      const n = calls;
+      log.push(`start ${n}`);
+      if (n === 1) await gate;
+      log.push(`end ${n} ${now}`);
+    };
+    const r = rig(dir, new MachineHistory(), await MachineAlertStore.load(dir), "reachable", save);
+    // A tick past the five-minute mark starts a save that hangs on the gate.
+    r.watch.observe("desk", hot(0.2), r.state.now);
+    r.state.now += 6 * MINUTE_MS;
+    r.watch.tick();
+    await Bun.sleep(1);
+    // More arrives, and shutdown flushes while the first write is still open.
+    r.watch.observe("desk", hot(0.3), r.state.now);
+    let flushed = false;
+    const done = (async () => {
+      await r.watch.flush();
+      flushed = true;
+    })();
+    await Bun.sleep(1);
+    expect(log).toEqual(["start 1"]);
+    expect(flushed).toBe(false);
+    release();
+    await done;
+    expect(log).toEqual(["start 1", `end 1 ${T0 + 6 * MINUTE_MS}`, "start 2", `end 2 ${T0 + 6 * MINUTE_MS}`]);
   });
 });
 

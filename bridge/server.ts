@@ -2737,7 +2737,8 @@ export async function workspaceChanges(
 /**
  * The folders the Files view never shows (ADR 0083): this bridge's state folder and its config folder
  * (`PRIVATE_ROOTS` in bridge/acl-policy.ts). The config folder is where `commands.toml` lives, beside
- * the `.env`. On a crew member this is the MEMBER's own config, because the member runs this.
+ * the `.env`. On a crew member this is the MEMBER's own config, because the member runs this. A
+ * SIBLING instance's state secrets are refused by basename in bridge/files-view.ts instead.
  */
 export function filesPrivateFolders(cfg: Pick<Config, "stateDir" | "commandsFile">): string[] {
   return [cfg.stateDir, dirname(cfg.commandsFile)];

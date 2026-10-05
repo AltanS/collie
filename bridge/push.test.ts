@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Push, topicIsSendable } from "./push.ts";
+import { machineAlertMessage } from "./machine-alerts.ts";
+import { machineTopic, Push, topicIsSendable } from "./push.ts";
 import type { PushSender, PushSubscription } from "./push.ts";
 import { loadConfig } from "./config.ts";
 import { HOST } from "./host.ts";
@@ -369,22 +370,51 @@ describe("Push — per-message collapse topic (update must not share the herd sl
     await push.send({ type: "update", tag: "collie:update", title: "t", body: "b", target: "settings" });
     await push.send({ title: "claude needs you", body: "…", tag: "collie:herd", paneId: "w1:p1" });
     await push.send({ type: "clear", tag: "collie:herd" });
-    await push.send({ type: "machine", tag: "collie:machine:desk:cpu", title: "t", body: "b", host: "desk", target: "machine" });
+    await push.send(machineAlertMessage({ id: "desk", name: "desk", metric: "cpu", rule: { above: 0.9, forMin: 10 }, value: 0.95 }));
+    await push.send({ type: "machine", tag: "collie:machine:desk:cpu", title: "t", body: "b", machine: "desk", target: "machine" });
 
-    expect(sends.length).toBe(4);
+    expect(sends.length).toBe(5);
     for (const { options } of sends) expect(topicIsSendable(options.topic)).toBe(true);
   });
 
-  test("a load alert rides its own topic, and its tap data names the machine (ADR 0084)", async () => {
+  test("a load alert rides a topic per machine and metric, and its tap data names the machine, not a host (ADR 0084)", async () => {
     const cfg = await tempCfg();
     const { sender, sends } = capturing();
     const push = new Push(cfg, sender);
     enable(push, [sub("a")]);
 
-    await push.send({ type: "machine", tag: "collie:machine:desk:cpu", title: "t", body: "b", host: "desk", target: "machine" });
-    // Its own collapse key: a queued load alert and a queued herd summary must not replace each other.
-    expect(sends[0]!.options).toEqual({ TTL: 3_600, topic: "collie-machines", urgency: "high" });
-    expect(JSON.parse(sends[0]!.payload).data).toEqual({ host: "desk", target: "machine" });
+    const rule = { above: 0.9, forMin: 10 };
+    await push.send(machineAlertMessage({ id: "local", name: "desk", metric: "cpu", rule, value: 0.95 }));
+    await push.send(machineAlertMessage({ id: "local", name: "desk", metric: "mem", rule, value: 0.95 }));
+    await push.send(machineAlertMessage({ id: "laptop", name: "laptop", metric: "cpu", rule, value: 0.95 }));
+    // Its own collapse keys: a queued load alert must replace neither a queued herd summary nor
+    // another machine's or metric's alert.
+    const topics = sends.map((s) => s.options.topic);
+    expect(new Set(topics).size).toBe(3);
+    for (const topic of topics) {
+      expect(topic).toMatch(/^collie-machines-[A-Za-z0-9_-]{12}$/);
+      expect(topicIsSendable(topic)).toBe(true);
+    }
+    expect(topics[0]).toBe(machineTopic("local", "cpu"));
+    expect(machineTopic("local", "cpu")).toBe(machineTopic("local", "cpu"));
+    expect(sends[0]!.options).toEqual({ TTL: 3_600, topic: machineTopic("local", "cpu"), urgency: "high" });
+    // `machine`, never `host`: an old service worker reads `host` and would open `/?h=local`.
+    const payload = JSON.parse(sends[0]!.payload);
+    expect(payload.data).toEqual({ target: "machine", machine: "local" });
+    expect("host" in payload).toBe(false);
+    // The topic is the push service's, never the device's.
+    expect("topic" in payload).toBe(false);
+  });
+
+  test("a machine message with no topic, or one no push service accepts, falls back to collie-machines", async () => {
+    const cfg = await tempCfg();
+    const { sender, sends } = capturing();
+    const push = new Push(cfg, sender);
+    enable(push, [sub("a")]);
+
+    await push.send({ type: "machine", tag: "collie:machine:desk:cpu", title: "t", body: "b", machine: "desk", target: "machine" });
+    await push.send({ type: "machine", tag: "collie:machine:desk:cpu", title: "t", body: "b", machine: "desk", target: "machine", topic: "collie-update" });
+    expect(sends.map((s) => s.options.topic)).toEqual(["collie-machines", "collie-machines"]);
   });
 
   test("topicIsSendable rejects the lengths base64 cannot produce — the Apple trap", () => {

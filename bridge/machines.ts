@@ -69,6 +69,12 @@ export interface MachineWatchDeps {
   readonly enabled: () => boolean;
   /** `push.send`. */
   readonly send: (msg: PushMessage) => void;
+  /**
+   * Whether this collie still answers for its machines, read live. False once it is deposed
+   * (CREW_PROTOCOL.md §18.12): a deposed lead's roster is void, so it records, judges and pushes
+   * nothing. Absent means always.
+   */
+  readonly active?: () => boolean;
   readonly log?: (line: string) => void;
 }
 
@@ -85,6 +91,8 @@ export class MachineWatch implements MachineSurface {
   private lastJudgedMinute: number | null = null;
   private lastSave: number;
   private judging = false;
+  /** Every history write, one after another: a tick's save and the shutdown flush never interleave. */
+  private saveChain: Promise<void> = Promise.resolve();
   private readonly log: (line: string) => void;
 
   constructor(private readonly deps: MachineWatchDeps) {
@@ -92,16 +100,37 @@ export class MachineWatch implements MachineSurface {
     this.log = deps.log ?? ((line) => console.warn(line));
   }
 
-  /** One sample for one machine, stamped with THIS bridge's clock (CREW_PROTOCOL.md §10.2). */
+  /**
+   * One sample for one machine, stamped with THIS bridge's clock (CREW_PROTOCOL.md §10.2).
+   *
+   * A sample equal in every field to the last one taken for that machine is skipped: not recorded,
+   * and `sampledAt` does not move. It is the same reading served again. That is the ordinary case when
+   * the lead sweeps faster than a member samples (the member serves the sample it holds), and the
+   * only signature a member whose sampler hangs leaves: it keeps answering with its last sample, and
+   * stamping that fresh on every sweep would draw a live, flat machine forever and let an alert judge
+   * a minute nobody measured.
+   *
+   * A real reading that repeats another in every field is not expected. `cpu` and the network rates
+   * are ratios of counters over the time between two reads, and memory is counted in bytes. The
+   * likeliest real repeat is a machine pinned at 100 % CPU (`cpu` is exactly 1) on a host with no
+   * network counters, whose memory also held still to the byte; skipping that one sample costs a
+   * point, and the next one that differs records as usual.
+   */
   observe(id: string, sample: MachineSample, at: number): void {
+    if (!this.isActive()) return;
+    const previous = this.latest.get(id);
+    if (previous !== undefined && sameSample(previous.sample, sample)) return;
     this.latest.set(id, { sample, at });
     this.deps.history.record(id, sample, at);
   }
 
-  /** A member that left the crew takes its last sample and its history with it. */
+  /** A member that left the crew takes its last sample, its history and its alert rules with it. */
   forget(id: string): void {
     this.latest.delete(id);
     this.deps.history.drop(id);
+    void this.deps.alerts
+      .drop(id)
+      .catch((err) => this.log(`[machines] could not save the alert rules: ${String(err)}`));
   }
 
   /**
@@ -109,6 +138,7 @@ export class MachineWatch implements MachineSurface {
    * due. Never throws and never awaits: the poll it rides must not wait on a file.
    */
   tick(): void {
+    if (!this.isActive()) return;
     const now = this.deps.now();
     const minute = minuteOf(now);
     if (minute !== this.lastJudgedMinute && !this.judging) {
@@ -118,9 +148,14 @@ export class MachineWatch implements MachineSurface {
     if (this.deps.history.dirty() && now - this.lastSave >= HISTORY_SAVE_EVERY_MS) void this.save(now);
   }
 
-  /** Save now, whatever the clock says. The shutdown path; a store with nothing new writes nothing. */
+  /**
+   * Save now, whatever the clock says, after any write already under way. The shutdown path; a store
+   * with nothing new writes nothing. The alert store's pending write is waited for too.
+   */
   async flush(): Promise<void> {
-    if (this.deps.history.dirty()) await this.save(this.deps.now());
+    if (this.deps.history.dirty()) void this.save(this.deps.now());
+    await this.saveChain;
+    await this.deps.alerts.settled();
   }
 
   /** `GET /api/machines`. */
@@ -196,14 +231,43 @@ export class MachineWatch implements MachineSurface {
       });
   }
 
-  private async save(now: number): Promise<void> {
-    this.lastSave = now;
-    this.deps.history.retain(new Set(this.deps.roster().map((entry) => entry.id)));
-    this.deps.history.markSaved();
-    try {
-      await this.deps.saveHistory(this.deps.history, now);
-    } catch (err) {
-      this.log(`[machines] could not save the history: ${String(err)}`);
-    }
+  private isActive(): boolean {
+    return this.deps.active?.() ?? true;
   }
+
+  /**
+   * Prune to the roster and queue one history write behind the last. Never rejects: a failed write is
+   * logged, and the chain goes on.
+   */
+  private save(now: number): Promise<void> {
+    this.lastSave = now;
+    const ids = new Set(this.deps.roster().map((entry) => entry.id));
+    this.deps.history.retain(ids);
+    void this.deps.alerts
+      .retain(ids)
+      .catch((err) => this.log(`[machines] could not save the alert rules: ${String(err)}`));
+    this.deps.history.markSaved();
+    const write = async (): Promise<void> => {
+      try {
+        await this.deps.saveHistory(this.deps.history, now);
+      } catch (err) {
+        this.log(`[machines] could not save the history: ${String(err)}`);
+      }
+    };
+    this.saveChain = this.saveChain.then(write);
+    return this.saveChain;
+  }
+}
+
+/** Whether two samples say the same thing in every field, absent fields included. */
+export function sameSample(a: MachineSample, b: MachineSample): boolean {
+  return (
+    a.cpu === b.cpu &&
+    a.cores === b.cores &&
+    a.memUsed === b.memUsed &&
+    a.memTotal === b.memTotal &&
+    a.load1 === b.load1 &&
+    a.rxBps === b.rxBps &&
+    a.txBps === b.txBps
+  );
 }

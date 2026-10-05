@@ -2865,13 +2865,18 @@ same protocol integer: `X-Crew-Protocol` stays `2`.
 
 - `cpu` is the busy share of all cores, `0..1`, since the sample before. `memUsed` and `memTotal` are
   bytes. `load1` is absent where the OS has none (Windows). `rxBps` and `txBps` are bytes per second
-  over every interface but loopback, absent where they cannot be read (every OS but Linux today).
+  over the physical interfaces (loopback, bridges, veth and tap ends, tunnels and bonds are left out,
+  because their bytes cross a physical interface too), absent where they cannot be read (every OS
+  but Linux today).
 - The member **reads what its sampler already holds**. The answer does no disk read and no system
   call, and the sampler itself rides the member's own `StateEngine.onTick` at most once every five
   seconds (§10.1: no second timer). Before its second reading there is no sample, and the field is
   omitted.
 - The lead **stamps it on receipt**, on its own clock (§10.2), and folds it into that machine's
-  minute history. A malformed field drops the whole sample. An unknown key inside it is ignored.
+  minute history. A malformed field drops the whole sample. An unknown key inside it is ignored. A
+  sample equal in every field to the last one the lead took from that member is the same reading
+  served again (the lead swept faster than the member samples, or the member's sampler stopped), so
+  the lead neither records it nor stamps it: the minutes stay empty and the reading ages.
 - **What the lead keeps is the lead's.** The day of minutes (`machine-history.json`) and the alert
   rules (`machine-alerts.json`) live on the lead only. A peer writes neither, and none of the three
   `/api/machines*` routes is forwarded with `?host=` (§9.1): a peer answers them `404 crew.not_lead`.

@@ -153,10 +153,13 @@ timer.
 
 ### Who may use it
 
-- **Files needs an authorised device**, the same check as typing into a pane. When you have paired a
-  device ([Security](security.md#pair-a-device--the-write-credential)) or set
-  `COLLIE_DEVICE_ALLOWLIST`, a device that is not paired or not on the list cannot open Files. Changes
-  stays open to any device that can read, because it shows only what changed.
+- **Files needs an authorised device**, the same check as typing into a pane. The check is on only
+  when a device is paired ([Security](security.md#pair-a-device--the-write-credential)) or
+  `COLLIE_DEVICE_HEADER` is set. Then a device that is not paired, or not on
+  `COLLIE_DEVICE_ALLOWLIST`, cannot open Files.
+- **Until then, every device that can read panes can use Files.** It can browse the workspace's
+  folder and read any file in it, `.env` files included. Pair your phone to close it.
+- Changes stays open to any device that can read, because it shows only what changed.
 
 ### What it shows, and what it never shows
 
@@ -164,7 +167,14 @@ timer.
   is refused. A symlink is listed as a link and opens only when it points inside the folder.
 - Never a `.git` folder, and never Collie's own state folder or config folder, also when they sit
   inside the workspace's folder. They are left out of the list, and a request for them is refused.
-- Dot-files such as `.env` are shown. They are your own files.
+- Never a file named like a Collie state secret, such as `paired-devices.json` or
+  `crew-trust.json`, wherever it sits. This hides the secrets of a second Collie on the same machine.
+- Dot-files such as `.env` are shown. They are your own files. This includes the `.env` of a second
+  Collie when the folder holds its config folder.
+- **Credential files are shown.** A workspace opened in `~/.claude`, `~/.codex`, `~/.config/gh` or
+  `~/.ssh` shows the files there, keys and tokens included.
+- **A hard link is not caught.** A hard link inside the folder to a file outside it opens like any
+  other file in the folder.
 - A refused file gets the same answer as a missing one.
 
 ### Limits

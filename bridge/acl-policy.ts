@@ -148,6 +148,30 @@ export function isCollieName(name: string): boolean {
   return false;
 }
 
+/**
+ * The state folder's secret names, case-folded: {@link PRIVATE_ROOTS}' `state` secrets, plus
+ * `pack-trust.json`, the name 1.7.0 wrote the trust store under, which a folder that never saw 1.8.x
+ * still holds (ADR 0045).
+ */
+const STATE_SECRET_NAMES: ReadonlySet<string> = new Set(
+  [...privateRoot("state").secrets, "pack-trust.json"].map((n) => n.toLowerCase()),
+);
+
+/**
+ * Whether a file NAME is one of a Collie state folder's secrets, wherever it sits: a state secret,
+ * alone or followed by one of Collie's own suffixes (`crew-trust.json.tmp`). Case-folded on every
+ * host. The Files view refuses and hides these by basename (ADR 0083), because a root that holds a
+ * SIBLING instance's state folder is not one of this bridge's private folders.
+ */
+export function isStateSecretName(name: string): boolean {
+  const folded = name.toLowerCase();
+  if (STATE_SECRET_NAMES.has(folded)) return true;
+  for (let dot = folded.indexOf(".", 1); dot > 0; dot = folded.indexOf(".", dot + 1)) {
+    if (STATE_SECRET_NAMES.has(folded.slice(0, dot)) && OWN_SUFFIX.test(folded.slice(dot))) return true;
+  }
+  return false;
+}
+
 /** What one entry of a folder is, as {@link ScopeFacts.look} reports it. A link is never followed. */
 export type EntryKind =
   | { readonly kind: "file" }
