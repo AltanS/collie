@@ -8,7 +8,8 @@
 // no dependency to a phone bundle that currently has seven.
 //
 // SCOPE. The subset agents actually emit: headings, fenced code, lists, blockquotes, rules,
-// paragraphs, GFM tables; inline bold/italic/code/links. Not images, not HTML passthrough.
+// paragraphs, GFM tables; inline bold/italic/code/links. Not HTML passthrough. An image is never
+// loaded: it reads as its alt text (a badge is a link whose label is the alt text).
 //
 // FLAT BY DESIGN. Blocks don't nest: a table or a list inside a blockquote or a list item is read as
 // the outer block's text, so a quoted table still collapses into a run-on line. Closing that means a
@@ -33,8 +34,14 @@ export type MdSpan =
   | { kind: "code"; text: string }
   | { kind: "bold"; spans: MdSpan[] }
   | { kind: "italic"; spans: MdSpan[] }
-  /** `href` is already scheme-checked; anything unsafe never becomes a link (see `safeHref`). */
-  | { kind: "link"; href: string; spans: MdSpan[] };
+  /**
+   * `href` is already scheme-checked; anything unsafe never becomes a link (see `classifyHref`).
+   * `rel` marks a link that is NOT a web address: a relative path (`./other.md`, `docs/x.md`), a
+   * root-absolute one (`/x`) or a fragment (`#top`). The parser cannot say where those lead, only
+   * the screen that shows the text can, so the renderer asks a resolver and, with none, shows the
+   * label as plain text.
+   */
+  | { kind: "link"; href: string; spans: MdSpan[]; rel?: true };
 
 export type MdBlock =
   | { kind: "heading"; level: number; spans: MdSpan[] }
@@ -52,19 +59,36 @@ export type MdBlock =
 
 export type MdAlign = "left" | "center" | "right" | null;
 
-// Only these schemes may become a real link. Everything else (javascript:, data:, vbscript:, or a
-// bare word) renders as plain text — a link is the one place this view could otherwise hand a URL
-// straight to the browser.
+// Only these schemes may become a real link. Everything else (javascript:, data:, file:, vbscript:,
+// or a made-up one) renders as its label, never as an anchor and never as its raw source: a link is
+// the one place this view could otherwise hand a URL straight to the browser.
 const SAFE_SCHEME = /^(https?:|mailto:)/i;
+// Any scheme at all: letters first, then letters, digits, `+`, `-`, `.`, then the colon.
+const ANY_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+// A C0 control or DEL anywhere in a target. Browsers strip some of these before they read a scheme
+// (`java\x01script:`), so a target holding one is refused outright rather than reasoned about.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR = /[\x00-\x1f\x7f]/;
 
-/** The href to use for a link, or null when it must not become one. */
-export function safeHref(raw: string): string | null {
+/**
+ * What a link target is: `external` for http(s) and mailto, `rel` for a scheme-less target (a
+ * relative path, a root-absolute one or a fragment, kept as written), and null for everything else,
+ * which must not become a link at all. A protocol-relative `//host` is null: it inherits the page
+ * scheme and is a real navigation to a stranger's host, so it is as unsafe as a scheme.
+ */
+export function classifyHref(raw: string): { href: string; rel: boolean } | null {
   const href = raw.trim();
-  if (href === "") return null;
-  // Scheme-relative ("//evil.com") inherits the page scheme and is a real navigation — allow it, it
-  // can only ever be http(s) here. A rooted or relative path stays same-origin, which is harmless.
-  if (href.startsWith("/") || href.startsWith("#")) return href;
-  return SAFE_SCHEME.test(href) ? href : null;
+  if (href === "" || CONTROL_CHAR.test(href)) return null;
+  if (SAFE_SCHEME.test(href)) return { href, rel: false };
+  if (ANY_SCHEME.test(href)) return null;
+  if (href.startsWith("//") || href.startsWith("/\\") || href.startsWith("\\")) return null;
+  return { href, rel: true };
+}
+
+/** The href of an EXTERNAL link (http, https, mailto), or null for anything else. */
+function externalHref(raw: string): string | null {
+  const target = classifyHref(raw);
+  return target !== null && !target.rel ? target.href : null;
 }
 
 // A URL AN AGENT WROTE AS ITSELF, with no brackets around it. Agents do this constantly — a server
@@ -79,15 +103,32 @@ export function safeHref(raw: string): string | null {
 // punctuation, though it may contain it.
 const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"']*[^\\s<>`\"'.,:;!?)\\]}])";
 
+// The pieces of a link, each bounded, each with a branch that cannot match what the other can:
+//  - LABEL holds anything but a bracket, or ONE image (`![alt](src)`), which is how a badge is
+//    written: `[![build](badge.svg)](https://ci)`. An image always opens with `![`, and a plain
+//    character can never be `[`, so the two branches never match the same text.
+//  - URL_BODY holds anything but a paren or a space, or one level of balanced parens, which is how
+//    a wiki address is written: `https://en.wikipedia.org/wiki/Foo_(bar)`.
+//  - TITLE is the optional `"title"` or `'title'` after the address. It is dropped.
+// Excluding `[` from a label also makes a run of `[` fail in one step each instead of 500.
+const LABEL = String.raw`(?:[^\[\]\n]|!\[[^\[\]\n]{0,500}\]\([^)\s]{0,500}\)){0,500}`;
+const URL_BODY = String.raw`(?:[^()\s]|\([^()\s]{0,200}\)){1,500}`;
+const TITLE = String.raw`(?:\s{1,20}(?:"[^"\n]{0,300}"|'[^'\n]{0,300}'))?`;
+const DEST = String.raw`\(\s{0,20}(${URL_BODY})${TITLE}\s{0,20}\)`;
+
 // Ordered so the greedier delimiters win: ``code`` before **bold** before *italic*.
 // Emphasis bodies forbid a leading/trailing space (see the glob note above) and can't span a newline.
 const INLINE_RE = new RegExp(
   [
-    "(`+)([^`]+?)\\1", // 1,2  inline code
-    "\\*\\*(\\S(?:[^\\n]{0,500}?\\S)?)\\*\\*", // 3    bold
-    "\\*(\\S(?:[^\\n*]*?\\S)?)\\*", // 4    italic
-    "\\[([^\\]\\n]{0,500})\\]\\(([^)\\s]{1,500})\\)", // 5,6  link
-    BARE_URL, // 7    a bare URL
+    "(`+)([^`]+?)\\1", // 1,2   inline code
+    "\\*\\*(\\S(?:[^\\n]{0,500}?\\S)?)\\*\\*", // 3     bold
+    "\\*(\\S(?:[^\\n*]*?\\S)?)\\*", // 4     italic
+    String.raw`!\[([^\[\]\n]{0,500})\]\(\s{0,20}(?:${URL_BODY})${TITLE}\s{0,20}\)`, // 5     an image, read as its alt text
+    String.raw`\[(${LABEL})\]${DEST}`, // 6,7   [label](url "title")
+    String.raw`\[(${LABEL})\]\[([^\[\]\n]{0,200})\]`, // 8,9   [label][ref] and [label][]
+    String.raw`\[([^\[\]\n]{1,200})\]`, // 10    [ref], when a definition names it
+    "<((?:https?://|mailto:)[^\\s<>]{1,500})>", // 11    <https://x>
+    BARE_URL, // 12    a bare URL
   ].join("|"),
   "g",
 );
@@ -97,23 +138,56 @@ const INLINE_RE = new RegExp(
 // remaining text is simply left as text.
 const MAX_INLINE_DEPTH = 6;
 
+/** Link reference definitions of one document: normalised label to the address it names. */
+export type RefDefs = ReadonlyMap<string, string>;
+
+/** `[Foo  Bar]` and `[foo bar]` name the same definition. */
+const refKey = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
+
 /**
  * Parse one line/paragraph of inline Markdown. Pure, and recursive through emphasis/link bodies.
  *
  * `inLink` is off everywhere but inside a link's own body, where it turns the bare-URL branch back
  * into plain text. `[the docs](https://a)` recurses into its label, and a label that is itself a URL
  * (or holds one) would otherwise nest an anchor inside an anchor, which is not a thing the DOM has.
+ *
+ * `defs` are the document's `[ref]: url` definitions, from `parseMarkdown`'s first pass. Without
+ * them `[a][ref]` and `[ref]` stay text, which is also what they are when no definition names them.
  */
-export function parseInline(text: string, depth = 0, inLink = false): MdSpan[] {
+export function parseInline(text: string, depth = 0, inLink = false, defs?: RefDefs): MdSpan[] {
   const spans: MdSpan[] = [];
   const push = (span: MdSpan) => {
     if (span.kind === "text" && span.text === "") return;
-    spans.push(span);
+    // Two runs of text side by side are one run: a bracket that turned out to be prose is pushed on
+    // its own, and the reader (and a test) should not see where the parser changed its mind.
+    const prev = spans[spans.length - 1];
+    if (span.kind === "text" && prev?.kind === "text") spans[spans.length - 1] = { kind: "text", text: prev.text + span.text };
+    else spans.push(span);
   };
   if (depth >= MAX_INLINE_DEPTH) {
     push({ kind: "text", text });
     return spans;
   }
+
+  /**
+   * One link to `rawHref` with `label` read as Markdown. A target that may not become a link leaves
+   * its LABEL (never the `[a](javascript:...)` source, which would show the address it refused);
+   * a label with nothing in it falls back to the address.
+   */
+  const pushLink = (label: string, rawHref: string) => {
+    const target = classifyHref(rawHref);
+    const body = parseInline(label, depth + 1, true, defs);
+    if (target === null) {
+      for (const span of body) push(span);
+      return;
+    }
+    const labelSpans = body.length > 0 ? body : [{ kind: "text" as const, text: target.href }];
+    push(
+      target.rel
+        ? { kind: "link", href: target.href, spans: labelSpans, rel: true }
+        : { kind: "link", href: target.href, spans: labelSpans },
+    );
+  };
 
   // A fresh regex per call: INLINE_RE is stateful (`g`), and recursion would otherwise clobber the
   // parent's lastIndex mid-scan.
@@ -123,22 +197,37 @@ export function parseInline(text: string, depth = 0, inLink = false): MdSpan[] {
 
   while ((m = re.exec(text)) !== null) {
     push({ kind: "text", text: text.slice(last, m.index) });
-    if (m[2] !== undefined) push({ kind: "code", text: m[2] }); // leaf: content is verbatim
-    else if (m[3] !== undefined) push({ kind: "bold", spans: parseInline(m[3], depth + 1, inLink) });
-    else if (m[4] !== undefined) push({ kind: "italic", spans: parseInline(m[4], depth + 1, inLink) });
-    else if (m[5] !== undefined && m[6] !== undefined) {
-      const href = safeHref(m[6]);
-      // An unsafe target keeps its literal Markdown, so nothing silently disappears from the text.
-      if (href) push({ kind: "link", href, spans: parseInline(m[5] || href, depth + 1, true) });
-      else push({ kind: "text", text: m[0] });
-    } else if (m[7] !== undefined) {
-      // Its own text is its label, so the reader sees the address they would tap. Through `safeHref`
-      // like every other link, even though the pattern already limited the scheme: one gate.
-      const href = inLink ? null : safeHref(m[7]);
-      if (href) push({ kind: "link", href, spans: [{ kind: "text", text: m[7] }] });
-      else push({ kind: "text", text: m[7] });
-    }
     last = m.index + m[0].length;
+    if (m[2] !== undefined) push({ kind: "code", text: m[2] }); // leaf: content is verbatim
+    else if (m[3] !== undefined) push({ kind: "bold", spans: parseInline(m[3], depth + 1, inLink, defs) });
+    else if (m[4] !== undefined) push({ kind: "italic", spans: parseInline(m[4], depth + 1, inLink, defs) });
+    else if (m[5] !== undefined) push({ kind: "text", text: m[5] }); // an image is its alt text, never loaded
+    else if (m[6] !== undefined && m[7] !== undefined) pushLink(m[6], m[7]);
+    else if (m[8] !== undefined || m[10] !== undefined) {
+      // `[label][ref]`, `[label][]` and `[ref]`: the address is a definition's, found by its key.
+      const label = m[8] ?? m[10]!;
+      const key = refKey(m[9] === undefined || m[9].trim() === "" ? label : m[9]);
+      const rawHref = defs?.get(key);
+      if (rawHref !== undefined && !inLink) pushLink(label, rawHref);
+      else if (rawHref !== undefined) push({ kind: "text", text: label });
+      else {
+        // No such definition: it is a bracket in prose. Take the `[` as text and rescan after it, so
+        // `[**a**]` keeps its bold and a link further along the line still links.
+        push({ kind: "text", text: "[" });
+        last = re.lastIndex = m.index + 1;
+      }
+    } else if (m[11] !== undefined) {
+      // `<https://x>` reads as the address itself, without the angle brackets.
+      const href = inLink ? null : externalHref(m[11]);
+      if (href) push({ kind: "link", href, spans: [{ kind: "text", text: m[11] }] });
+      else push({ kind: "text", text: m[11] });
+    } else if (m[12] !== undefined) {
+      // Its own text is its label, so the reader sees the address they would tap. Through the same
+      // gate as every other link, even though the pattern already limited the scheme: one gate.
+      const href = inLink ? null : externalHref(m[12]);
+      if (href) push({ kind: "link", href, spans: [{ kind: "text", text: m[12] }] });
+      else push({ kind: "text", text: m[12] });
+    }
   }
   push({ kind: "text", text: text.slice(last) });
   return spans;
@@ -152,11 +241,43 @@ const MAX_LINE_CHARS = 2000;
 const MAX_JOINED_CHARS = 50_000;
 
 /** Inline-parse `text`, unless any of the source `lines` it came from is too long to try. */
-function parseBounded(text: string, lines: readonly string[]): MdSpan[] {
+function parseBounded(text: string, lines: readonly string[], defs: RefDefs): MdSpan[] {
   if (text.length > MAX_JOINED_CHARS || lines.some((l) => l.length > MAX_LINE_CHARS)) {
     return text === "" ? [] : [{ kind: "text", text }];
   }
-  return parseInline(text);
+  return parseInline(text, 0, false, defs);
+}
+
+// A LINK REFERENCE DEFINITION: `[ref]: https://x "Title"` on a line of its own, up to three spaces in.
+// It names an address for `[text][ref]` and `[ref]`, and is not itself drawn. `[^1]:` is a footnote,
+// not a definition, and stays a paragraph. Every part is bounded.
+const REF_DEF = /^ {0,3}\[([^[\]\n^][^[\]\n]{0,199})\]:[ \t]{1,20}(<[^<>\s]{1,500}>|\S{1,500})(?:[ \t]{1,20}(?:"[^"\n]{0,300}"|'[^'\n]{0,300}'|\([^()\n]{0,300}\)))?[ \t]{0,20}$/;
+// More definitions than any README holds is a hostile file; the rest are left as paragraphs.
+const MAX_REF_DEFS = 1000;
+
+/** The definition on `line`, as `[key, address]`, or null. */
+function readRefDef(line: string): [string, string] | null {
+  if (line.length > MAX_LINE_CHARS) return null;
+  const m = REF_DEF.exec(line);
+  if (!m) return null;
+  const target = m[2]!;
+  return [refKey(m[1]!), target.startsWith("<") ? target.slice(1, -1) : target];
+}
+
+/** First pass: every definition outside a fenced block. The first definition of a label wins. */
+function collectRefDefs(lines: readonly string[]): RefDefs {
+  const defs = new Map<string, string>();
+  let fenced = false;
+  for (const line of lines) {
+    if (FENCE.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced || defs.size >= MAX_REF_DEFS) continue;
+    const def = readRefDef(line);
+    if (def !== null && !defs.has(def[0])) defs.set(def[0], def[1]);
+  }
+  return defs;
 }
 
 const HEADING = /^(#{1,6})\s+(.*)$/;
@@ -208,10 +329,10 @@ function parseAlign(line: string): MdAlign[] {
  * Pad/truncate a BODY row to the header's width, so the renderer can assume a rectangle. Ragged body
  * rows are legal GFM and agents emit them; a ragged delimiter row is not — see `startsTable`.
  */
-function fitRow(line: string, width: number): MdSpan[][] {
+function fitRow(line: string, width: number, defs: RefDefs): MdSpan[][] {
   const cells = splitRow(line)
     .slice(0, width)
-    .map((cell) => parseBounded(cell, [line]));
+    .map((cell) => parseBounded(cell, [line], defs));
   while (cells.length < width) cells.push([]);
   return cells;
 }
@@ -239,6 +360,7 @@ const startsTable = (line: string, next: string | undefined) =>
  */
 export function parseMarkdown(source: string): MdBlock[] {
   const lines = source.split("\n");
+  const defs = collectRefDefs(lines);
   const blocks: MdBlock[] = [];
   let i = 0;
 
@@ -262,6 +384,12 @@ export function parseMarkdown(source: string): MdBlock[] {
       continue;
     }
 
+    // A definition names an address for the links that use it and draws nothing itself.
+    if (readRefDef(line) !== null) {
+      i++;
+      continue;
+    }
+
     // A rule must be checked before list items, or "---" reads as a bullet.
     if (RULE.test(line)) {
       blocks.push({ kind: "rule" });
@@ -274,7 +402,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       blocks.push({
         kind: "heading",
         level: heading[1]!.length,
-        spans: parseBounded(heading[2] ?? "", [line]),
+        spans: parseBounded(heading[2] ?? "", [line], defs),
       });
       i++;
       continue;
@@ -288,7 +416,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         body.push(q[1] ?? "");
         i++;
       }
-      blocks.push({ kind: "quote", spans: parseBounded(body.join(" ").trim(), body) });
+      blocks.push({ kind: "quote", spans: parseBounded(body.join(" ").trim(), body, defs) });
       continue;
     }
 
@@ -301,7 +429,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         const item = isItem(lines[i]!);
         // A run stays one list only while its marker kind holds — a switch starts a new block.
         if (!item || OL_ITEM.test(lines[i]!) !== ordered) break;
-        items.push(parseBounded(item[1] ?? "", [lines[i]!]));
+        items.push(parseBounded(item[1] ?? "", [lines[i]!], defs));
         i++;
       }
       blocks.push({ kind: "list", ordered, items });
@@ -311,7 +439,7 @@ export function parseMarkdown(source: string): MdBlock[] {
     // Tables come last of the recognised blocks: every other construct wins a line that could be
     // read as either, and a table is the only one that needs to look ahead.
     if (startsTable(line, lines[i + 1])) {
-      const header = splitRow(line).map((cell) => parseBounded(cell, [line]));
+      const header = splitRow(line).map((cell) => parseBounded(cell, [line], defs));
       // Widths already match — `startsTable` refused the row otherwise — so the columns line up
       // without padding either side.
       const align = parseAlign(lines[i + 1]!);
@@ -320,7 +448,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       // The body runs until a blank line or anything that isn't a pipe row — a table that bumps
       // into a heading or a fence ends there rather than swallowing it.
       while (i < lines.length && lines[i]!.trim() !== "" && lines[i]!.includes("|")) {
-        rows.push(fitRow(lines[i]!, header.length));
+        rows.push(fitRow(lines[i]!, header.length, defs));
         i++;
       }
       blocks.push({ kind: "table", align, header, rows });
@@ -340,14 +468,48 @@ export function parseMarkdown(source: string): MdBlock[] {
         RULE.test(l) ||
         QUOTE.test(l) ||
         isItem(l) ||
+        readRefDef(l) !== null ||
         startsTable(l, lines[i + 1])
       )
         break;
       para.push(l.trim());
       i++;
     }
-    blocks.push({ kind: "paragraph", spans: parseBounded(para.join(" "), para) });
+    blocks.push({ kind: "paragraph", spans: parseBounded(para.join(" "), para, defs) });
   }
 
   return blocks;
+}
+
+/** What a run of spans reads as, flattened: the text a heading slug or a length check is made of. */
+export function spansText(spans: readonly MdSpan[]): string {
+  return spans.map((s) => (s.kind === "text" || s.kind === "code" ? s.text : spansText(s.spans))).join("");
+}
+
+/**
+ * The anchor name GitHub gives a heading: lowercase, spaces to `-`, and every character that is not
+ * a letter, a digit, `_` or `-` dropped. Bounded: a heading is one source line, already capped.
+ */
+export function headingSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}_\- ]/gu, "")
+    .replace(/ /g, "-");
+}
+
+/**
+ * One anchor per block, in document order: the slug for a heading, null for any other block. A slug
+ * that was already taken gets `-1`, then `-2`, as GitHub does, and a heading that slugs to nothing
+ * gets no anchor.
+ */
+export function headingAnchors(blocks: readonly MdBlock[]): (string | null)[] {
+  const taken = new Map<string, number>();
+  return blocks.map((block) => {
+    if (block.kind !== "heading") return null;
+    const slug = headingSlug(spansText(block.spans));
+    if (slug === "") return null;
+    const seen = taken.get(slug) ?? 0;
+    taken.set(slug, seen + 1);
+    return seen === 0 ? slug : `${slug}-${seen}`;
+  });
 }

@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { MarkdownText } from "@/components/markdown-text";
+import { MarkdownText, type LinkResolver } from "@/components/markdown-text";
 import { TokenLine } from "@/components/changes-view";
 import { useLocale } from "@/hooks/use-locale";
 import { HIGHLIGHT_MAX_LINES, highlightFile, highlightFileNow, languageForPath, type RowTokens } from "@/lib/diff-highlight";
+import { resolveFileLink } from "@/lib/files-link";
 import { RENDER_MAX_LINES, formatBytes, previewKindFor, splitLines, type PreviewKind } from "@/lib/files-view";
 import { t, tn } from "@/lib/i18n";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 import { parseJsonTree } from "@/lib/json-tree";
+import type { FilesAt } from "@/lib/nav";
 import type { FileRead } from "@/lib/types";
 
 // What the Files view draws for ONE file (ADR 0083): the source as numbered, coloured lines, or a
@@ -111,13 +113,62 @@ export function SourceView({ text, path }: { text: string; path: string }) {
 // ── Markdown ───────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * How a link in a Markdown file opens another file or folder of the Files view. The route owns the
+ * router, so it hands over both halves: the address (for a middle-click or a long-press) and the tap
+ * (a move that goes down a level, so Back works by ADR 0067). Without it, such a link reads as text.
+ */
+export interface FileLinks {
+  hrefFor(at: FilesAt): string;
+  onOpen(at: FilesAt): void;
+}
+
+/** The element of `root` whose `id` is the fragment `hash` names, or null. Compared, never selected. */
+function anchorIn(root: HTMLElement, hash: string): HTMLElement | null {
+  let id = hash;
+  try {
+    id = decodeURIComponent(hash);
+  } catch {
+    // A malformed escape is taken as written.
+  }
+  id = id.toLowerCase();
+  if (id === "") return null;
+  for (const el of root.querySelectorAll<HTMLElement>("[id]")) if (el.id === id) return el;
+  return null;
+}
+
+/**
  * The renderer the transcript uses, in a document's width and rhythm. Raw HTML in the file is not
  * markdown's to run: the parser reads it as text, so `<script>` shows as the characters it is.
+ *
+ * LINKS ARE RELATIVE TO THE FILE. A web address opens in a new tab as it does in the transcript. A
+ * relative path opens that file or folder in Files; a root-absolute one is read from the Files root,
+ * never the app's origin; a `#fragment` scrolls to the heading with that anchor, in place, and does
+ * nothing when there is none. A link that climbs past the root, or that no one gave a way to open,
+ * reads as its label.
  */
-export function MarkdownPreview({ text }: { text: string }) {
+export function MarkdownPreview({ text, path, links }: { text: string; path: string; links?: FileLinks }) {
+  const root = useRef<HTMLDivElement>(null);
+  const resolve = useCallback<LinkResolver>(
+    (href) => {
+      if (href.startsWith("#")) {
+        return {
+          kind: "local",
+          href,
+          onOpen: () => {
+            const target = root.current === null ? null : anchorIn(root.current, href.slice(1));
+            target?.scrollIntoView({ block: "start" });
+          },
+        };
+      }
+      const at = links === undefined ? null : resolveFileLink(href, path);
+      if (links === undefined || at === null) return { kind: "text" };
+      return { kind: "local", href: links.hrefFor(at), onOpen: () => links.onOpen(at) };
+    },
+    [links, path],
+  );
   return (
-    <div className="mx-auto w-full max-w-prose px-4 py-4" data-slot="file-markdown">
-      <MarkdownText text={text} className="space-y-3 leading-relaxed" />
+    <div ref={root} className="mx-auto w-full max-w-prose px-4 py-4" data-slot="file-markdown">
+      <MarkdownText text={text} className="space-y-3 leading-relaxed" resolveLink={resolve} headingIds />
     </div>
   );
 }
@@ -258,7 +309,7 @@ export function HtmlPreview({ text }: { text: string }) {
  * What the file screen shows under its header. `view` is ignored for a type with no preview. A binary
  * file shows its size and nothing else; a read cut at the cap says so after the drawing.
  */
-export function FileContent({ file, view }: { file: FileText; view: FileView }) {
+export function FileContent({ file, view, links }: { file: FileText; view: FileView; links?: FileLinks }) {
   useLocale();
   if (file.binary) return <Quiet>{t("files.binary", { size: formatBytes(file.size) })}</Quiet>;
   if (file.text === "") return <Quiet>{t("files.fileEmpty")}</Quiet>;
@@ -268,7 +319,7 @@ export function FileContent({ file, view }: { file: FileText; view: FileView }) 
   if (kind === "markdown" && countLines(file.text) > RENDER_MAX_LINES) kind = null;
   return (
     <>
-      {kind === "markdown" && <MarkdownPreview text={file.text} />}
+      {kind === "markdown" && <MarkdownPreview text={file.text} path={file.path} links={links} />}
       {kind === "json" && <JsonPreview text={file.text} path={file.path} />}
       {kind === "html" && <HtmlPreview text={file.text} />}
       {kind === null && <SourceView text={file.text} path={file.path} />}

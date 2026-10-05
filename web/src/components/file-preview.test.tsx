@@ -1,11 +1,12 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { en } from "@/lib/i18n/messages/en";
+import type { FilesAt } from "@/lib/nav";
 import { fixtureFileRead } from "@/test/handlers";
 
-import { defaultView, FileContent, type FileText } from "./file-preview";
+import { defaultView, FileContent, type FileLinks, type FileText } from "./file-preview";
 
 afterEach(cleanup);
 
@@ -179,5 +180,108 @@ describe("Preview: HTML", () => {
     expect(container.querySelector("#mine")).toBeNull();
     expect(container.querySelector("script")).toBeNull();
     expect("pwned" in window).toBe(false);
+  });
+});
+
+// A link in a Markdown file is read where the file lives: relative to its folder, with `/x` from the
+// Files root, and a `#fragment` scrolling in place.
+describe("Preview: Markdown links", () => {
+  const FROM = "docs/guide.md";
+  const md = (text: string) => file("README.md", { path: FROM, text });
+  const open = vi.fn<(at: FilesAt) => void>();
+  const links: FileLinks = {
+    hrefFor: (at) => `/files?${at.path !== undefined ? `path=${at.path}` : `dir=${at.dir ?? ""}`}`,
+    onOpen: open,
+  };
+  const show = (text: string, over: { links?: FileLinks } = { links }) =>
+    render(<FileContent file={md(text)} view="preview" links={over.links} />);
+  beforeEach(() => open.mockClear());
+
+  it.each([
+    ["a sibling", "./other.md", { path: "docs/other.md" }],
+    ["a parent's file", "../README.md", { path: "README.md" }],
+    ["a root-absolute path, from the Files root", "/src/cart.ts", { path: "src/cart.ts" }],
+    ["an encoded space", "my%20notes.md", { path: "docs/my notes.md" }],
+    ["a fragment on a file", "other.md#install", { path: "docs/other.md" }],
+    ["a folder", "../src/", { dir: "src" }],
+    ["the root", "../", { dir: "" }],
+  ])("%s opens in Files, one level down", (_label, href, expected) => {
+    show(`[go](${href})`);
+    const a = screen.getByRole("link", { name: "go" });
+    expect(a.getAttribute("target")).toBeNull();
+    expect(a.getAttribute("href")).toBe(links.hrefFor(expected));
+    fireEvent.click(a);
+    expect(open).toHaveBeenCalledWith(expected);
+  });
+
+  it("a link that climbs past the root reads as text", () => {
+    const { container } = show("[out](../../x.md)");
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toBe("out");
+  });
+
+  it("a web address keeps opening in a new tab, and a refused scheme shows its label", () => {
+    const { container } = show("[web](https://example.com/a) and [bad](javascript:alert(1))");
+    expect(screen.getByRole("link", { name: "web" }).getAttribute("target")).toBe("_blank");
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(container.textContent).toBe("web and bad");
+  });
+
+  it("a reference link to a sibling opens it", () => {
+    show("[go][g]\n\n[g]: ./other.md");
+    fireEvent.click(screen.getByRole("link", { name: "go" }));
+    expect(open).toHaveBeenCalledWith({ path: "docs/other.md" });
+  });
+
+  it("without a way to open files, a relative link reads as its label", () => {
+    const { container } = show("[go](./other.md)", {});
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toBe("go");
+  });
+
+  describe("a fragment", () => {
+    const scrolled: string[] = [];
+    beforeEach(() => {
+      scrolled.length = 0;
+      Element.prototype.scrollIntoView = function (this: Element) {
+        scrolled.push(this.id);
+      };
+    });
+
+    it("scrolls to the heading with that anchor, in place, with no navigation", () => {
+      show("[top](#getting-started) and [jump](#usage-1)\n\n# Getting Started\n\n## Usage\n\n## Usage");
+      const a = screen.getByRole("link", { name: "top" });
+      expect(a.getAttribute("target")).toBeNull();
+      expect(fireEvent.click(a)).toBe(false);
+      fireEvent.click(screen.getByRole("link", { name: "jump" }));
+      expect(scrolled).toEqual(["getting-started", "usage-1"]);
+      expect(open).not.toHaveBeenCalled();
+    });
+
+    it("matches a percent-encoded or capitalised fragment", () => {
+      show("[a](#Getting%20Started) [b](#GETTING-STARTED)\n\n# Getting Started");
+      // `%20` is a space, and no heading slugs to a name with a space in it: nothing to scroll to.
+      fireEvent.click(screen.getByRole("link", { name: "a" }));
+      expect(scrolled).toEqual([]);
+      fireEvent.click(screen.getByRole("link", { name: "b" }));
+      expect(scrolled).toEqual(["getting-started"]);
+    });
+
+    it("an anchor nobody has does nothing", () => {
+      show("[nope](#nowhere)\n\n# Heading");
+      fireEvent.click(screen.getByRole("link", { name: "nope" }));
+      expect(scrolled).toEqual([]);
+      expect(open).not.toHaveBeenCalled();
+    });
+
+    it("works with no way to open files, and never reaches an element outside the preview", () => {
+      const outside = document.createElement("div");
+      outside.id = "root";
+      document.body.append(outside);
+      show("[r](#root)\n\n# Root", {});
+      fireEvent.click(screen.getByRole("link", { name: "r" }));
+      expect(scrolled).toEqual(["root"]);
+      outside.remove();
+    });
   });
 });

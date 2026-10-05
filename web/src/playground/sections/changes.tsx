@@ -6,7 +6,7 @@
 import { ChangesControl } from "@/components/changes-control";
 import { useState } from "react";
 
-import { FileContent, type FileText, type FileView } from "@/components/file-preview";
+import { FileContent, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
 import { ChangesTabs, FileRows, FilesBreadcrumb, type ChangesTab } from "@/components/files-view";
 import { Segmented } from "@/components/ui/segmented";
 
@@ -148,6 +148,33 @@ function fileOf(path: string, over: Partial<FileText> = {}): FileText {
   return { ...read, ...over };
 }
 
+/**
+ * A README that shows every kind of link a Markdown preview handles: a relative path, a folder, an
+ * anchor, a reference link, a web address and a badge. The script line stays, to show raw HTML as text.
+ */
+const README_WITH_LINKS = [
+  "# Webapp",
+  "",
+  "[![Build](https://example.com/badge.svg)](https://example.com/ci) [![Tests](badge.svg)](./docs/guide.md)",
+  "",
+  "A small shop. **Run it** with `bun dev`, then open the [docs](https://example.com/docs).",
+  "",
+  "Jump to [Install](#install), read the [guide](./docs/guide.md) or browse [the source](src/). The [API notes][api] live in a reference link.",
+  "",
+  "## Install",
+  "",
+  "- carts",
+  "- checkout, see [routes](src/routes/checkout.tsx)",
+  "",
+  "<script>alert(1)</script>",
+  "",
+  "[api]: ./docs/guide.md \"The API notes\"",
+  "",
+].join("\n");
+
+/** What the playground gives a link in a Markdown file: an address that goes nowhere, and a tap that does nothing. */
+const PLAYGROUND_LINKS: FileLinks = { hrefFor: () => "#", onOpen: () => {} };
+
 /** The file screen's sticky bar and body, live: Source | Preview is a real control. */
 function FileCard({ file, initial, height = 380 }: { file: FileText; initial: FileView; height?: number }) {
   const [view, setView] = useState<FileView>(initial);
@@ -170,7 +197,7 @@ function FileCard({ file, initial, height = 380 }: { file: FileText; initial: Fi
           )}
         </div>
         <div className="py-2">
-          <FileContent file={file} view={view} />
+          <FileContent file={file} view={view} links={PLAYGROUND_LINKS} />
         </div>
       </div>
     </Stage>
@@ -322,10 +349,11 @@ export function ChangesSection() {
         <Card
           state="files-preview-markdown"
           label="files, a Markdown preview"
-          reach="in Files, open a .md file. It opens on Preview. Raw HTML in the file, such as a script
-            tag, stays as text."
+          reach="in Files, open a .md file. It opens on Preview. A relative link opens that file in Files,
+            an anchor scrolls to its heading, a web address opens in a new tab, and a badge is a link
+            labelled with its alt text. Raw HTML in the file, such as a script tag, stays as text."
         >
-          <FileCard file={fileOf("README.md")} initial="preview" />
+          <FileCard file={fileOf("README.md", { text: README_WITH_LINKS })} initial="preview" />
         </Card>
 
         <Card

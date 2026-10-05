@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -8,7 +8,7 @@ import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { clearNotPaired, isNotPaired } from "@/lib/pairing";
-import { fixtureAgents, fixtureFilesDir } from "@/test/handlers";
+import { fixtureAgents, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 
@@ -440,5 +440,56 @@ describe("Changes → Files: Preview from a diff", () => {
     renderAt(["/pane/w1%3Ap1/changes?repo=.&path=gone.md"]);
     await screen.findByText("# gone");
     expect(screen.queryByRole("button", { name: en["changes.file.previewAria"] })).toBeNull();
+  });
+});
+
+// A link in a Markdown file opens the other file in Files: one level down, in this machine's scope,
+// so Back keeps the reader where they were.
+describe("Files: a link in a Markdown file", () => {
+  const guide = (text: string) => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files/, ({ request }) => {
+        const path = new URL(request.url).searchParams.get("path");
+        const read = path === null ? null : fixtureFileRead(path);
+        if (path !== "docs/guide.md" || read === null || !read.available) return undefined;
+        return HttpResponse.json({ ...read, text, size: text.length });
+      }),
+    );
+  };
+
+  it("a relative link opens that file, as a push that keeps the machine in the address", async () => {
+    guide("# Guide\n\nSee [the readme](../README.md) and [the cart](../src/cart.ts#L1).\n");
+    const router = renderAt([`${FILES}?h=minibuch&path=docs%2Fguide.md`]);
+    await userEvent.click(await screen.findByRole("link", { name: "the readme" }));
+    await waitFor(() => expect(router.state.location.search).toBe("?h=minibuch&path=README.md"));
+    expect(router.state.historyAction).toBe("PUSH");
+    expect(await screen.findByText("Run it")).toBeTruthy();
+    // The browser's own Back is the first file again.
+    await act(() => router.navigate(-1));
+    expect(await screen.findByRole("link", { name: "the readme" })).toBeTruthy();
+    expect(router.state.location.search).toBe("?h=minibuch&path=docs%2Fguide.md");
+  });
+
+  it("the link's address is the Files address, so a long-press or a new tab lands in the same place", async () => {
+    guide("[the cart](../src/cart.ts#L1) and [up](../) and [root](/docs/)\n");
+    renderAt([`${FILES}?path=docs%2Fguide.md`]);
+    expect((await screen.findByRole("link", { name: "the cart" })).getAttribute("href")).toBe(`${FILES}?path=src%2Fcart.ts`);
+    expect(screen.getByRole("link", { name: "up" }).getAttribute("href")).toBe(FILES);
+    expect(screen.getByRole("link", { name: "root" }).getAttribute("href")).toBe(`${FILES}?dir=docs`);
+  });
+
+  it("a link ending in a slash opens the folder", async () => {
+    guide("[the source](../src/)\n");
+    const router = renderAt([`${FILES}?path=docs%2Fguide.md`]);
+    await userEvent.click(await screen.findByRole("link", { name: "the source" }));
+    await waitFor(() => expect(router.state.location.search).toBe("?dir=src"));
+    expect(await screen.findByRole("button", { name: /^cart\.ts/ })).toBeTruthy();
+  });
+
+  it("a link that climbs past the root is text, not a dead link", async () => {
+    guide("[out](../../etc/passwd)\n");
+    renderAt([`${FILES}?path=docs%2Fguide.md`]);
+    await screen.findByText("out");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

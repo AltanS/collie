@@ -4,7 +4,7 @@ import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
 import { ChangePath } from "@/components/changes-view";
-import { FileContent, defaultView, type FileView } from "@/components/file-preview";
+import { FileContent, defaultView, type FileLinks, type FileView } from "@/components/file-preview";
 import { ChangesTabs, FileRows, FilesBreadcrumb, entryPath } from "@/components/files-view";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
@@ -208,6 +208,12 @@ export function FilesRoute() {
       entry.kind === "link" ? { viaLink: true } : undefined,
     );
   };
+  // A link in a Markdown file opens another file or folder, one level down like a row does. The name
+  // may be a folder written without its slash, so the read is allowed to fall back (`viaLink`).
+  const fileLinks: FileLinks = {
+    hrefFor: (to) => pathTo(to),
+    onOpen: (to) => nav.down(pathTo(to), { viaLink: true }),
+  };
   const openCrumb = (to: string) => nav.side(pathTo(to === "" ? undefined : { dir: to }));
   const pair = () => nav.down(pairedDevicesPath(scope));
 
@@ -238,7 +244,7 @@ export function FilesRoute() {
           {data.truncated && <p className="pt-3 text-xs text-muted-foreground">{t("files.truncated")}</p>}
         </>
       );
-  } else body = <FileContent file={state.data} view={view} />;
+  } else body = <FileContent file={state.data} view={view} links={fileLinks} />;
 
   const size = state.phase === "ready" && state.data.available && "size" in state.data ? state.data.size : null;
   const hasPreview = filePath !== null && previewKindFor(filePath) !== null;

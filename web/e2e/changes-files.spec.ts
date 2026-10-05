@@ -50,6 +50,59 @@ test("a changed Markdown file previews from its diff, in Files", async ({ page }
   await expect(page).toHaveURL(/\/changes\/files\?path=packages%2Fapi%2Fnotes\.md$/);
 });
 
+// LINKS IN A MARKDOWN FILE. A relative link opens the other file in Files, a `#anchor` scrolls in
+// place, and a web address still leaves for a new tab. The guide is swapped for one that has all
+// three, with enough text under the first heading that the anchor really has to scroll.
+test("a Markdown link opens the other file in Files, an anchor scrolls in place, and Back returns", async ({ page }) => {
+  const filler = Array.from({ length: 60 }, (_, n) => `Paragraph ${n + 1} of filler, so the page is taller than the screen.`).join("\n\n");
+  const guide = `# Guide\n\nRead [the readme](../README.md) or [jump down](#the-end).\n\nA [site](https://example.com/docs "Docs").\n\n${filler}\n\n## The end\n\nLast words.\n`;
+  await page.route(/\/api\/pane\/[^/]+\/files\?path=docs%2Fguide\.md$/, (route) => {
+    const read = fixtureFileRead("docs/guide.md");
+    if (read === null || !read.available) throw new Error("no fixture docs/guide.md");
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ...read, text: guide, size: guide.length }),
+    });
+  });
+
+  await page.goto(`/pane/${PANE}/changes/files?path=docs%2Fguide.md`);
+  await expect(page.getByText("Last words.")).toBeAttached();
+  await expect(page.getByText("Last words.")).not.toBeInViewport();
+
+  // A web address keeps its new tab; nothing about it changed.
+  const site = page.getByRole("link", { name: "site" });
+  await expect(site).toHaveAttribute("target", "_blank");
+  await expect(site).toHaveAttribute("href", "https://example.com/docs");
+
+  // An anchor scrolls to its heading in place: same address, no new tab, heading on screen.
+  await page.getByRole("link", { name: "jump down" }).click();
+  const heading = page.getByText("The end", { exact: true });
+  await expect(heading).toBeInViewport();
+  // Not under the sticky file bar: the heading starts below where the bar ends.
+  const bar = await page.locator("main .sticky").first().boundingBox();
+  const at = await heading.boundingBox();
+  expect(at!.y).toBeGreaterThanOrEqual(bar!.y + bar!.height - 1);
+  await expect(page).toHaveURL(/\/changes\/files\?path=docs%2Fguide\.md$/);
+  expect(page.context().pages()).toHaveLength(1);
+
+  // A relative link lands on the other file.
+  await page.getByRole("link", { name: "the readme" }).click();
+  await expect(page).toHaveURL(/\/changes\/files\?path=README\.md$/);
+  await expect(page.getByText("Run it")).toBeVisible();
+
+  // The browser's Back, which is also the edge swipe, returns to the first file.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/changes\/files\?path=docs%2Fguide\.md$/);
+  await expect(page.getByRole("link", { name: "the readme" })).toBeVisible();
+
+  // And the arrow, by the back-level rules, goes up from a file to its folder.
+  await page.getByRole("link", { name: "the readme" }).click();
+  await expect(page).toHaveURL(/\/changes\/files\?path=README\.md$/);
+  await page.getByRole("button", { name: en["files.backAria.folder"] }).click();
+  await expect(page).toHaveURL(/\/changes\/files$/);
+});
+
 // THE HTML PREVIEW UNDER THE SHELL'S CSP. The document below tries everything a hostile page would:
 // a script, a remote image, a remote stylesheet, a link, a form and a meta refresh. Only the inline
 // style may work (the CSP allows it), and nothing may reach the network or the app.
