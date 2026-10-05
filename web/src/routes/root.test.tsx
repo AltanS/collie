@@ -145,7 +145,7 @@ describe("RootLayout — the document itself never scrolls", () => {
     // The loader resolves on a microtask even though it's synchronous — the route isn't hydrated yet
     // on the first render.
     const column = await waitFor(() => {
-      const el = container.querySelector(".flex.h-\\[100dvh\\].flex-col");
+      const el = container.querySelector(".flex.h-\\(--app-h\\).flex-col");
       expect(el).not.toBeNull();
       return el!;
     });

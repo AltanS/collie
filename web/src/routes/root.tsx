@@ -140,7 +140,7 @@ export function RootLayout() {
           inside it because it is not a strip: it covers the screen, it does not share the top of
           it. */}
       <TourHost home={data} onDecision={setTourDecision} />
-      <div className="flex h-[100dvh] flex-col overflow-hidden">
+      <div className="flex h-(--app-h) flex-col overflow-hidden">
         {/* THE BAND, and the rule that there is only ever one strip in it. Four facts can be true at
             once above the header — the auth refusal, a lost connection, a degraded one, an update on
             offer — and none of them excludes another. Before this host arbitrated them, each row
@@ -222,7 +222,7 @@ export function BootSplash() {
   const stuck = useConnectionLost(true);
   if (!stuck) {
     return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
+      <div className="flex h-(--app-h) flex-col items-center justify-center gap-3 text-muted-foreground">
         {/* The bloom: the same mark as the rest state below, but turning and at full chroma. It is
             a COLOUR as well as motion, which is the half a reduced-motion reader still gets —
             `prefers-reduced-motion` stops the orbit and cannot stop the accents. `paper` is this
@@ -235,7 +235,7 @@ export function BootSplash() {
     );
   }
   return (
-    <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 p-6 text-center">
+    <div className="flex h-(--app-h) flex-col items-center justify-center gap-3 p-6 text-center">
       {/* Rest = the Collie mark still, muted (grayscale + dimmed) to read asleep
           — never the gallop's own rest frame, whose full-stretch mid-stride pose looks frozen
           mid-run. No `loading`: we have stopped trying, and a blooming mark would say otherwise.
@@ -265,7 +265,7 @@ export function RootError() {
   // language; anything else (a render-phase throw, a router error) keeps its own message.
   const message = error instanceof Error ? describeThrownError(error) : t("error.root.unknown");
   return (
-    <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 p-6 text-center">
+    <div className="flex h-(--app-h) flex-col items-center justify-center gap-3 p-6 text-center">
       <p className="font-medium text-destructive">{t("error.root.title")}</p>
       <p className="max-w-xs text-sm text-muted-foreground">{message}</p>
       <button

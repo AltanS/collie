@@ -40,7 +40,7 @@ import { isInAppBack } from "@/lib/nav-entry";
  * nothing and lays out nothing new — it takes exactly the flex-child classes the outlet region had
  * when it was `<Outlet/>` alone, so the pane's own scroller and the composer's sticky footer still
  * measure against the same column they always did. Nothing here clips either: the app's one
- * `h-[100dvh] overflow-hidden` column already does that, and an `overflow` of our own would be a
+ * `h-(--app-h) overflow-hidden` column already does that, and an `overflow` of our own would be a
  * second scrollport in the middle of the route's.
  *
  * ONE CONSEQUENCE, STATED. A running transform makes this wrapper the containing block for any
