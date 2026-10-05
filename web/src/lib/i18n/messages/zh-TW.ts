@@ -29,7 +29,7 @@ export const zhTW: Dictionary = {
   "settings.section.experiments.title": "實驗功能",
   "settings.section.experiments.blurb": "仍在測試中的功能",
   "settings.section.machines.title": "主機",
-  "settings.section.machines.blurb": "CPU、記憶體、網路、提醒規則",
+  "settings.section.machines.blurb": "CPU、記憶體、磁碟、網路、提醒規則",
   "settings.nav.back": "返回",
 
   // --- settings.theme ---

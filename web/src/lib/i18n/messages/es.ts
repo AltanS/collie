@@ -28,7 +28,7 @@ export const es: Dictionary = {
   "settings.section.experiments.title": "Experimentos",
   "settings.section.experiments.blurb": "Funciones aún en pruebas",
   "settings.section.machines.title": "Máquinas",
-  "settings.section.machines.blurb": "CPU, memoria, red, avisos",
+  "settings.section.machines.blurb": "CPU, memoria, disco, red, avisos",
   "settings.nav.back": "Atrás",
 
   // --- settings.theme ---

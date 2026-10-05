@@ -48,7 +48,7 @@ export const en = {
   "settings.section.experiments.title": "Experiments",
   "settings.section.experiments.blurb": "Features still being tested",
   "settings.section.machines.title": "Machines",
-  "settings.section.machines.blurb": "CPU, memory, network, alert rules",
+  "settings.section.machines.blurb": "CPU, memory, disk, network, alert rules",
   "settings.nav.back": "Back",
 
   // --- settings.theme ---

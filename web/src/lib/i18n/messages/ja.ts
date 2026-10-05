@@ -28,7 +28,7 @@ export const ja: Dictionary = {
   "settings.section.experiments.title": "実験機能",
   "settings.section.experiments.blurb": "テスト中の機能",
   "settings.section.machines.title": "マシン",
-  "settings.section.machines.blurb": "CPU、メモリ、ネットワーク、通知ルール",
+  "settings.section.machines.blurb": "CPU、メモリ、ディスク、ネットワーク、通知ルール",
   "settings.nav.back": "戻る",
 
   // --- settings.theme ---

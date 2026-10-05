@@ -29,7 +29,7 @@ export const zh: Dictionary = {
   "settings.section.experiments.title": "实验功能",
   "settings.section.experiments.blurb": "仍在测试中的功能",
   "settings.section.machines.title": "主机",
-  "settings.section.machines.blurb": "CPU、内存、网络、提醒规则",
+  "settings.section.machines.blurb": "CPU、内存、磁盘、网络、提醒规则",
   "settings.nav.back": "返回",
 
   // --- settings.theme ---

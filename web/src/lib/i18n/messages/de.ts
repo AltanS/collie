@@ -29,7 +29,7 @@ export const de: Dictionary = {
   "settings.section.experiments.title": "Experimente",
   "settings.section.experiments.blurb": "Funktionen, die noch getestet werden",
   "settings.section.machines.title": "Rechner",
-  "settings.section.machines.blurb": "CPU, Speicher, Netzwerk, Hinweise",
+  "settings.section.machines.blurb": "CPU, Speicher, Festplatte, Netzwerk, Hinweise",
   "settings.nav.back": "Zurück",
 
   // --- settings.theme ---

@@ -29,7 +29,7 @@ export const ko: Dictionary = {
   "settings.section.experiments.title": "실험 기능",
   "settings.section.experiments.blurb": "아직 테스트 중인 기능",
   "settings.section.machines.title": "머신",
-  "settings.section.machines.blurb": "CPU, 메모리, 네트워크, 알림 규칙",
+  "settings.section.machines.blurb": "CPU, 메모리, 디스크, 네트워크, 알림 규칙",
   "settings.nav.back": "뒤로",
 
   // --- settings.theme ---
