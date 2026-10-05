@@ -4003,6 +4003,10 @@ export async function serveMachinesRoute(
     detail.memAbove = stored.mem.above;
     detail.memForMin = stored.mem.forMin;
   }
+  if (stored.disk !== undefined) {
+    detail.diskAbove = stored.disk.above;
+    detail.diskForMin = stored.disk.forMin;
+  }
   const row: AuditEntry = { action: "machine.alerts", detail };
   const device = caller.device();
   if (device !== null) row.device = device;

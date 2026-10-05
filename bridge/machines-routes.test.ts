@@ -230,7 +230,7 @@ describe("POST /api/machines/:id/alerts — a write, gated and audited", () => {
   test("the whole rule set is stored, answered, shown on the row, and audited with the machine", async () => {
     const { watch } = await watchOver(crewRoster());
     const { c, audited } = caller();
-    const rules = { cpu: { above: 0.9, forMin: 10 }, mem: { above: 0.8, forMin: 30 } };
+    const rules = { cpu: { above: 0.9, forMin: 10 }, mem: { above: 0.8, forMin: 30 }, disk: { above: 0.95, forMin: 15 } };
     const res = await answer(post("/api/machines/laptop/alerts", JSON.stringify(rules)), c, watch);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ alerts: rules });
@@ -240,7 +240,7 @@ describe("POST /api/machines/:id/alerts — a write, gated and audited", () => {
         action: "machine.alerts",
         device: "phone",
         host: "laptop",
-        detail: { cpuAbove: 0.9, cpuForMin: 10, memAbove: 0.8, memForMin: 30 },
+        detail: { cpuAbove: 0.9, cpuForMin: 10, memAbove: 0.8, memForMin: 30, diskAbove: 0.95, diskForMin: 15 },
       },
     ]);
 
