@@ -1,24 +1,12 @@
 // Crew facts the home surfaces share, as pure functions.
 //
-// Tier-2 health of the crew's members, derived on demand from the snapshot. web/ derives it once at
-// the data root (`CrewProvider`) and publishes it through a context; this shell has no provider, and
-// the three surfaces that need it (the machine switcher, the launch strip, the new-space sheet) each
-// subscribe to `snapshot` themselves, so each one calls this in render.
-//
-// The clock is the LEAD's (`SnapshotResponse.ts`), never `Date.now()`: lib/host-health.ts says why.
-// `pollMs` is the cadence the scheduler runs on (crew-health.ts reads it).
-import { hostHealth, hostHealthMap, writeRefusal as hostRefusal, type HostHealth } from "@web/lib/host-health";
+// The members' tier-2 health is NOT derived here: chips/crew.ts (`crewOf(body).health`, `currentCrew()`) is
+// the one place it is computed, cached per snapshot body, and the machine switcher, the launch strip and
+// the new-space sheet read it from there. The clock is the LEAD's (`SnapshotResponse.ts`), never
+// `Date.now()`: lib/host-health.ts says why.
+import { hostHealth, writeRefusal as hostRefusal, type HostHealth } from "@web/lib/host-health";
 import { isMultiHost, leadHost } from "@web/lib/hosts";
-import type { ServerSummary, SnapshotResponse } from "@web/lib/types";
-
-const NO_HEALTH: ReadonlyMap<string, HostHealth> = new Map();
-
-/** Every member's health, keyed by member id. Empty for a solo snapshot. */
-export function crewHealth(body: SnapshotResponse | undefined, pollMs: number): ReadonlyMap<string, HostHealth> {
-  const servers = body?.servers;
-  if (body === undefined || servers === undefined || servers.length === 0) return NO_HEALTH;
-  return hostHealthMap(servers, { at: body.ts, pollMs });
-}
+import type { ServerSummary } from "@web/lib/types";
 
 /**
  * One member's health, with web/'s fallback for a map that lacks it: re-derive with no clock at all,

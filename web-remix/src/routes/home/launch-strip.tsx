@@ -9,6 +9,7 @@ import { shortenHome } from "@web/lib/shorten-home";
 import type { Launcher } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
+import { crewOf } from "../../chips/crew";
 import { creating, launch, launchKey } from "../../chips/space-actions";
 import { address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
@@ -16,7 +17,6 @@ import { scheduleUpdate, useStore } from "../../lib/store";
 import { Button } from "../../ui/button";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
-import { crewHealthFor } from "./crew-health";
 import { FoldHeader } from "./fold-header";
 
 // Port of web/src/components/launch-strip.tsx: the operator's own launcher rows (`launchers.toml`),
@@ -84,7 +84,7 @@ export function LaunchStrip(handle: Handle<LaunchStripProps>) {
     }
 
     const expanded = openForCount(handle.props.open ?? null, rows.length);
-    const refusal = scope.host === undefined || rows.length === 0 ? undefined : hostRefusal(crewHealthFor(snap().data).get(scope.host));
+    const refusal = scope.host === undefined || rows.length === 0 ? undefined : hostRefusal(crewOf(snap().data).health.get(scope.host));
     const flying = inFlight();
 
     return (

@@ -3,7 +3,7 @@ import { Server, Star } from "lucide";
 
 import { createWorktree, fetchFolders, listWorktrees, openWorktree, starFolder } from "@web/lib/api";
 import { describeApiError, describeThrownError } from "@web/lib/api-error-message";
-import { writeRefusal as hostRefusal } from "@web/lib/host-health";
+import { writeRefusal as hostRefusal, type HostHealth } from "@web/lib/host-health";
 import { HOST_TEXT_CLASSES, ambientSpaces, hostSlot, isMultiHost, leadHost } from "@web/lib/hosts";
 import { t } from "@web/lib/i18n";
 import { panePath } from "@web/lib/nav";
@@ -12,6 +12,7 @@ import { shortenHome } from "@web/lib/shorten-home";
 import type { WorktreeOpenResponse, WorktreeView } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
+import { crewOf } from "../../chips/crew";
 import { SPACE_CREATE_KEY, creating, newSpace } from "../../chips/space-actions";
 import { bridgeWrite, writeRefusal } from "../../chips/writes";
 import { address, config, snapshot } from "../../lib/data";
@@ -27,7 +28,6 @@ import { Icon } from "../../ui/icon";
 import { ListGroup } from "../../ui/list-group";
 import { SectionLabel } from "../../ui/section-label";
 import { BottomSheet } from "../../ui/sheet";
-import { crewHealthFor } from "./crew-health";
 import { defaultHost, memberHealth } from "./crew-model";
 import {
   NO_FOLDERS,
@@ -60,6 +60,8 @@ import {
 // The sheet holds the self-update reload while it is open, so a half-typed directory survives.
 
 const RELOAD_HOLD = "new-space";
+/** Nothing to read while the sheet is shut; a constant, so the shared crew cache is left alone. */
+const NO_HEALTH: ReadonlyMap<string, HostHealth> = new Map();
 
 const FIELD =
   "h-11 rounded-lg border border-border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
@@ -208,7 +210,7 @@ export function NewSpaceSheet(handle: Handle<NewSpaceSheetProps>) {
     const servers = body?.servers ?? [];
     const ambient = where().scope;
     const multiHost = isMultiHost(servers);
-    const health = open ? crewHealthFor(body) : crewHealthFor(undefined);
+    const health = open ? crewOf(body).health : NO_HEALTH;
 
     if (open && !wasOpen) {
       label = "";

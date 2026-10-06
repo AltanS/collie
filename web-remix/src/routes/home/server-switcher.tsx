@@ -16,8 +16,11 @@ import { href } from "../../routes";
 import { Icon } from "../../ui/icon";
 import { BottomSheet } from "../../ui/sheet";
 import { Switch } from "../../ui/switch";
-import { crewHealthNow } from "./crew-health";
-import { crewHealth, memberHealth, nextHiddenMachines } from "./crew-model";
+import { currentCrew } from "../../chips/crew";
+import { memberHealth, nextHiddenMachines } from "./crew-model";
+
+/** Nothing to read while the sheet is shut; a constant, so the shared crew cache is left alone. */
+const NO_HEALTH: ReadonlyMap<string, HostHealth> = new Map();
 
 // Port of web/src/components/server-switcher.tsx: the machine switcher in the header's right
 // cluster. It gets no props and reads `snapshot` and `address` itself, because the header draws it
@@ -79,7 +82,7 @@ export function ServerSwitcher(handle: Handle) {
 
     // Only while the sheet is open: counts are a pass over every pane and health a pass over every member.
     const counts = hostCounts(open ? (body?.agents ?? []) : []);
-    const health = open ? crewHealthNow() : crewHealth(undefined, 0);
+    const health = open ? currentCrew().health : NO_HEALTH;
 
     return (
       <>

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import type { SnapshotResponse } from "@web/lib/types";
+import { statusLabel, type SnapshotResponse } from "@web/lib/types";
 
 import { homeHandlers, homeSnapshot } from "./home-api";
 import { installRoutesApi, type RoutesStub } from "./routes-api";
@@ -188,6 +188,34 @@ test("prefs survive a reload: the cold open draws the same list", async ({ page 
   await expect(page.getByTestId("needs-you-switch")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("ranked-group")).toBeVisible();
   expect(await listOrder(page.getByTestId("agent-list"))).toEqual(before);
+});
+
+test("space rows are cards: a status pill ends the row and the working directory is line 2", async ({ page }) => {
+  // A solo bridge: the dashboard fixture is a crew, whose lead's untagged panes the tab grouping cannot place.
+  const crew = snap;
+  snap = { ...crew, agents: crew.agents.filter((a) => a.host === undefined), workspaces: crew.workspaces.filter((w) => w.host === undefined), tabs: crew.tabs.filter((tab) => tab.host === undefined) };
+  delete snap.servers;
+  delete snap.sessions;
+  await page.goto("/space/w1");
+  const rows = page.getByTestId("space-view").getByTestId("pane-row");
+  await expect(rows).toHaveCount(3);
+  const blocked = rows.and(page.locator('[data-pane-id="w1:p1"]'));
+  await expect(blocked.getByTestId("status-pill")).toHaveText(statusLabel("blocked"));
+  for (const id of ["w1:p1", "w1:p2", "w1:p3"]) {
+    const one = page.locator(`[data-testid="space-view"] [data-pane-id="${id}"]`);
+    await expect(one.getByTestId("status-pill")).toBeVisible();
+    // Line 2 is the path, in mono, and no status dot leads line 1 (the pill says it).
+    await expect(one.locator('[data-slot="agent-row-detail"] span.font-mono')).toContainText("project");
+    await expect(one.locator('[data-glide="dot"]')).toHaveCount(0);
+  }
+  // A card: bordered, rounded and shadowed, not a flat row in a bordered group.
+  const card = blocked.locator("> div");
+  await expect(card).toHaveClass(/rounded-xl/u);
+  await expect(card).toHaveClass(/shadow-sm/u);
+  await expect(page.getByTestId("space-view").locator('[data-slot="list-group"]')).toHaveCount(0);
+  // The dashboard's own rows are still flat dot rows, with no pill.
+  await page.goto("/");
+  await expect(page.getByTestId("status-pill")).toHaveCount(0);
 });
 
 test("the space screen: strips, a held tab pill opens its sheet, and the tab '+' posts", async ({ page }) => {

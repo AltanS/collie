@@ -4,20 +4,16 @@ import { paneRowKey } from "@web/lib/hosts";
 import { t, tn } from "@web/lib/i18n";
 import { tabTitle } from "@web/lib/pane-name";
 import { groupPanesByTab } from "@web/lib/spaces";
-import { bucketOf } from "@web/lib/triage";
 import type { AgentView, TabView, WorkspaceView } from "@web/lib/types";
 
 import { useLocale } from "../../lib/i18n-store";
-import { ListGroup } from "../../ui/list-group";
 import { AgentRow } from "../home/agent-row";
 
 // Port of web/src/components/space-view.tsx: one space's panes (agents AND bare shells) grouped by
 // tab. The open tab shows its panes alone; "All" shows every tab as a labelled section. A fresh tab's
-// shell shows up here so it can be opened. Rows are `AgentRow`s in a `ListGroup`, in the order
-// `groupPanesByTab` gives (by place in the tab, never by status), so a poll moves nothing.
-//
-// Differences from web/: the kit's row is the flat 44 px row with a dot (web drew cards with a status
-// badge here), and its second line is the tab (`scope="place"`), not the working directory.
+// shell shows up here so it can be opened. Rows are `AgentRow` cards (`density="card"`, `statusStyle="badge"`, `scope="tab"`), as web/'s
+// `AgentCard` draws them here: a status pill at the end and the working directory on line 2. The
+// order is still `groupPanesByTab`'s, by place in the tab, never by status, so a poll moves nothing.
 export interface SpaceViewProps {
   workspace: WorkspaceView;
   tabs: readonly TabView[];
@@ -59,20 +55,23 @@ export function SpaceView(handle: Handle<SpaceViewProps>) {
             {g.panes.length === 0 ? (
               <p class="text-xs text-muted-foreground">{t("space.view.emptyTab")}</p>
             ) : (
-              <ListGroup>
+              <div class="flex flex-col gap-2">
+                {/* scope="tab": this list already sits under its space heading and per-tab section,
+                    so the cards lead with each pane's own name and carry its path on line 2. */}
                 {g.panes.map((p) => (
                   <AgentRow
                     key={paneRowKey(p)}
                     agent={p}
-                    scope="place"
-                    unseen={bucketOf(p) === "ready"}
+                    scope="tab"
+                    density="card"
+                    statusStyle="badge"
                     glideKey={glideKeyOf(p)}
                     onOpen={(pane, row) => handle.props.onOpen(pane, row)}
                     onPress={(pane) => handle.props.onPress(pane)}
                     onHold={(pane) => handle.props.onHold(pane)}
                   />
                 ))}
-              </ListGroup>
+              </div>
             )}
           </section>
         ))}

@@ -1,9 +1,10 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
 
-import type { ServerSummary, SnapshotResponse } from "@web/lib/types";
+import { hostHealthMap } from "@web/lib/host-health";
+import type { ServerSummary } from "@web/lib/types";
 
-import { MAX_HIDDEN_MACHINES, crewHealth, defaultHost, nextHiddenMachines } from "./crew-model";
+import { MAX_HIDDEN_MACHINES, defaultHost, nextHiddenMachines } from "./crew-model";
 
 const server = (id: string, extra: Partial<ServerSummary> = {}): ServerSummary => ({
   id,
@@ -17,11 +18,8 @@ const server = (id: string, extra: Partial<ServerSummary> = {}): ServerSummary =
 
 const lead = server("lead", { isLead: true });
 const roster = [lead, server("a"), server("b")];
-function snap(ts: number, servers?: ServerSummary[]): SnapshotResponse {
-  const body: SnapshotResponse = { bridge: "connected", ts, agents: [], shellPanes: [], workspaces: [], tabs: [] };
-  if (servers !== undefined) body.servers = servers;
-  return body;
-}
+/** The members' health as chips/crew.ts derives it: the lead's clock, one cadence. */
+const crewHealth = (servers: ServerSummary[]) => hostHealthMap(servers, { at: 1_000, pollMs: 3_000 });
 
 describe("nextHiddenMachines", () => {
   test("hiding adds the machine, showing removes it", () => {
@@ -48,25 +46,13 @@ describe("defaultHost", () => {
     expect(defaultHost([lead], new Map(), undefined)).toBeUndefined();
   });
   test("an absent host is the lead", () => {
-    expect(defaultHost(roster, crewHealth(snap(1_000, roster), 3_000), undefined)).toBe("lead");
+    expect(defaultHost(roster, crewHealth(roster), undefined)).toBe("lead");
   });
   test("the scope's host, when it takes writes", () => {
-    expect(defaultHost(roster, crewHealth(snap(1_000, roster), 3_000), "a")).toBe("a");
+    expect(defaultHost(roster, crewHealth(roster), "a")).toBe("a");
   });
   test("moves off a member that refuses writes to the first that does not", () => {
     const down = [lead, server("a", { reachable: false }), server("b")];
-    expect(defaultHost(down, crewHealth(snap(1_000, down), 3_000), "a")).toBe("lead");
-  });
-});
-
-describe("crewHealth", () => {
-  test("is empty for a solo snapshot", () => {
-    expect(crewHealth(undefined, 3_000).size).toBe(0);
-    expect(crewHealth(snap(1), 3_000).size).toBe(0);
-  });
-  test("keys every member by id, the lead always live", () => {
-    const map = crewHealth(snap(1_000, roster), 3_000);
-    expect([...map.keys()]).toEqual(["lead", "a", "b"]);
-    expect(map.get("lead")?.state).toBe("live");
+    expect(defaultHost(down, crewHealth(down), "a")).toBe("lead");
   });
 });

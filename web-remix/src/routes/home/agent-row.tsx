@@ -1,8 +1,8 @@
 import { on, type Handle } from "remix/component";
-import { SquareTerminal } from "lucide";
+import { Info, SquareTerminal } from "lucide";
 
 import { t } from "@web/lib/i18n";
-import { paneName, panePlaceParts, soleTabName } from "@web/lib/pane-name";
+import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@web/lib/pane-name";
 import { statusLabel, type AgentView } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
@@ -12,6 +12,7 @@ import { Icon } from "../../ui/icon";
 import { StatusDot } from "../../ui/status-dot";
 import { UnseenMark } from "../../ui/unseen-mark";
 import { AgentIcon } from "./agent-icon";
+import { StatusBadge } from "./status-badge";
 
 // Port of web/src/components/agent-card.tsx at the dashboard's settings: `density="row"`,
 // `statusStyle="dot"`, `tint`. A 44px flat row: the status dot, the agent's tile, the name, the
@@ -25,12 +26,21 @@ import { AgentIcon } from "./agent-icon";
 // would wait for starts on `pointerdown` (`onPress`). The dot, the tile and the name carry `data-glide`
 // parts, and the row is a `pane` glide origin keyed by `glideKey` (lib/glide.ts).
 //
+// THE SPACE SCREEN'S CARD (`density="card"`, `statusStyle="badge"`, `scope="tab"`): the same body in a
+// bordered, shadowed card with the status spelled out as a pill at the end and, on line 2, the working
+// directory in mono (web/ draws the space screen's rows this way; the dashboard's grouped list is
+// where the flat, dot-led form belongs). A card row has no stated height, and carries the bridge's hint.
+//
 // NO TRANSITION ON THE ROW (REMIX3.md rule 7): rows are reorderable, so only colour and the press
 // scale are animated, never position.
 export interface AgentRowProps {
   agent: AgentView;
   id?: string;
-  scope?: "herd" | "place";
+  scope?: "herd" | "place" | "tab";
+  /** "row" (default) is the flat 44 px row; "card" is the bordered, shadowed treatment. */
+  density?: "row" | "card";
+  /** "dot" (default) leads line 1 with the status dot; "badge" ends the row with the status pill. */
+  statusStyle?: "dot" | "badge";
   unseen?: boolean;
   glideKey?: string;
   onOpen: (agent: AgentView, row: HTMLElement) => void;
@@ -40,16 +50,19 @@ export interface AgentRowProps {
 
 export function AgentRow(handle: Handle<AgentRowProps>) {
   return () => {
-    const { agent, id, scope = "place", unseen = false, glideKey, onHold } = handle.props;
+    const { agent, id, scope = "place", density = "row", statusStyle = "dot", unseen = false, glideKey, onHold } = handle.props;
+    const flat = density === "row";
+    const cornerDot = statusStyle === "dot";
+    const inTab = scope === "tab";
     const isShell = agent.kind === "shell";
     const blocked = agent.status === "blocked";
     const inPlace = scope === "place";
     const place = panePlaceParts(agent);
     const nameIsTab = soleTabName(agent) !== null && paneName(agent) === soleTabName(agent);
     const liveTitle = agent.terminalTitle && agent.terminalTitleStale !== true ? agent.terminalTitle : null;
-    const detailLead = inPlace ? null : place.space;
-    const detailTail = inPlace ? (nameIsTab ? liveTitle : (place.tab?.text ?? null)) : (place.tab?.text ?? null);
-    const tailPositional = inPlace && nameIsTab ? false : (place.tab?.positional ?? false);
+    const detailLead = inPlace || inTab ? null : place.space;
+    const detailTail = inTab ? paneCwdLine(agent) : inPlace ? (nameIsTab ? liveTitle : (place.tab?.text ?? null)) : (place.tab?.text ?? null);
+    const tailPositional = inTab || (inPlace && nameIsTab) ? false : (place.tab?.positional ?? false);
     const skipBlankSlot = inPlace && detailTail === null;
     return (
       <button
@@ -66,16 +79,23 @@ export function AgentRow(handle: Handle<AgentRowProps>) {
           on(LONG_PRESS_EVENT, () => handle.props.onHold?.(handle.props.agent)),
         ]}
         class={cn(
-          "w-full text-left transition-colors hover:bg-muted/50 active:scale-[0.99]",
+          "w-full text-left active:scale-[0.99]",
+          flat ? "transition-colors hover:bg-muted/50" : "transition-transform",
           onHold && "select-none [-webkit-touch-callout:none]",
         )}
       >
-        <div class={cn("flex h-11 flex-row items-center gap-3 px-3.5 py-0", blocked && "bg-status-blocked/10")}>
+        <div
+          class={cn(
+            "flex flex-row items-center gap-3 px-3.5",
+            flat ? "h-11 py-0" : "rounded-xl border bg-card py-3 text-card-foreground shadow-sm",
+            blocked && (flat ? "bg-status-blocked/10" : "border-status-blocked/40 bg-status-blocked/5"),
+          )}
+        >
           <div class="min-w-0 flex-1">
             <div data-slot="agent-row-title" class="flex min-w-0 items-center gap-2">
-              {!isShell && (
+              {!isShell && cornerDot && (
                 <span data-glide="dot" class="flex shrink-0 rounded-full">
-                  <StatusDot status={agent.status} surface="bg-background" />
+                  <StatusDot status={agent.status} surface={flat ? "bg-background" : "bg-card"} />
                 </span>
               )}
               {isShell ? (
@@ -92,7 +112,10 @@ export function AgentRow(handle: Handle<AgentRowProps>) {
               <PaneMeta host={agent.host} session={agent.session} cache={agent.cache} class="ml-auto self-baseline" />
             </div>
             {!skipBlankSlot && (inPlace || detailLead !== null || detailTail !== null) && (
-              <div data-slot="agent-row-detail" class="flex h-4 min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              <div
+                data-slot="agent-row-detail"
+                class={cn("flex min-w-0 gap-1 text-xs text-muted-foreground", flat ? "h-4 items-center" : "items-baseline")}
+              >
                 {inPlace && tailPositional && detailTail !== null ? (
                   <span class="min-w-0 flex-1 truncate text-muted-foreground/70">{detailTail}</span>
                 ) : (
@@ -104,19 +127,31 @@ export function AgentRow(handle: Handle<AgentRowProps>) {
                       </span>
                     )}
                     {detailTail !== null && (
-                      <span class={cn("min-w-0 flex-1 truncate", tailPositional && "text-muted-foreground/70")}>{detailTail}</span>
+                      <span class={cn("min-w-0 flex-1 truncate", inTab && "font-mono", tailPositional && "text-muted-foreground/70")}>
+                        {detailTail}
+                      </span>
                     )}
                   </>
                 )}
               </div>
+            )}
+            {!flat && agent.hint && (
+              <p class="mt-1 flex items-start gap-1.5 overflow-hidden text-xs leading-snug text-muted-foreground">
+                <Icon icon={Info} class="mt-px size-3.5 shrink-0" />
+                <span class="min-w-0 truncate" title={agent.hint}>
+                  {agent.hint}
+                </span>
+              </p>
             )}
           </div>
           {isShell ? (
             <span class="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {t("status.shellBadge")}
             </span>
-          ) : (
+          ) : cornerDot ? (
             <span class="sr-only">{statusLabel(agent.status)}</span>
+          ) : (
+            <StatusBadge status={agent.status} />
           )}
         </div>
       </button>
