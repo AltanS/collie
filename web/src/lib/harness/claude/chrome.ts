@@ -21,6 +21,7 @@ import {
   isInputBoxTopBorder,
   isMultiStepHeader,
   lineText,
+  namesPlanDialog,
 } from "./markers";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPreviewSelectRegion } from "./preview-select";
@@ -426,7 +427,7 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
   // 4. No modal on screen.
   for (let j = b + 1; j < end; j++) {
     if (classifyFooter(texts[j]!, texts) !== null) return null;
-    if (tail !== "autocomplete" && tailNamesAMenu(texts[j]!)) return null;
+    if (tail !== "autocomplete" && tailNamesAMenu(texts[j]!, texts)) return null;
     if (tail === "unknown" && tailLooksModal(texts[j]!)) return null;
   }
   if (dialogOnScreen(lines)) return null;
@@ -499,8 +500,8 @@ function steppedMarksAreOwned(
  *  `statusline` tail as well as an `unknown` one: a dialog under a stale box can fit the statusline
  *  walk (its footer split off by a blank, like the background-agents footer), and only these rows
  *  tell it apart. A popup tail is exempt, because its grammar named every row. */
-function tailNamesAMenu(text: string): boolean {
-  return NUMBERED_OPTION_ROW.test(text) || namesAModalKey(text);
+function tailNamesAMenu(text: string, texts: string[]): boolean {
+  return NUMBERED_OPTION_ROW.test(text) || namesAModalKey(text, texts);
 }
 
 // Claude's own status hints. They read like a modal's "<key> to <verb>" footer but belong to the
@@ -511,9 +512,16 @@ function tailNamesAMenu(text: string): boolean {
 const ESC_TO_INTERRUPT = /^esc to (?:interrupt|i(?:n(?:t(?:e(?:r(?:r(?:u(?:p)?)?)?)?)?)?)?…|…)$/i;
 const DOWN_TO_MANAGE = /^↓ to (?:manage|m(?:a(?:n(?:a(?:g)?)?)?)?…|…)$/i;
 
-function isStatusHint(segment: string): boolean {
+// Claude Code 2.1.291 prints "ctrl+g to edit in <editor>" while the draft holds more than one line:
+// right-aligned on the statusline's row, or on a row of its own at 40 columns
+// (`claude-lab--draft-adversarial--w*.txt`). The plan dialog's footer opens with the same words, so
+// the hint is the composer's only while that dialog's own words are NOT on screen (namesPlanDialog),
+// the rule classifyFooter applies to the plan family (ADR 0053).
+const DRAFT_EDIT_HINT = /^ctrl\+g to edit\b[^·]*$/i;
+
+function isStatusHint(segment: string, draftEditHint: boolean): boolean {
   const t = segment.trim();
-  return ESC_TO_INTERRUPT.test(t) || DOWN_TO_MANAGE.test(t);
+  return ESC_TO_INTERRUPT.test(t) || DOWN_TO_MANAGE.test(t) || (draftEditHint && DRAFT_EDIT_HINT.test(t));
 }
 
 /**
@@ -521,10 +529,15 @@ function isStatusHint(segment: string): boolean {
  * purpose (a lone "Esc to cancel" must refuse), so the exemption is a closed list of the hints the
  * composer's footer prints, not a loosening of the key grammar. Shared with the adapter's
  * `modalOnScreen` so the box locator and the unread-dialog card agree on what a modal footer is.
+ *
+ * `texts`, the screen's rows, admits the draft's "ctrl+g to edit" hint as a status hint when no plan
+ * dialog is on screen. Without it the hint still names a key, so a caller that cannot see the screen
+ * refuses rather than types.
  */
-export function namesAModalKey(text: string): boolean {
+export function namesAModalKey(text: string, texts?: string[]): boolean {
+  const draftEditHint = texts !== undefined && !namesPlanDialog(texts);
   const segments = text.trim().split(SEGMENT_SPLIT);
-  const kept = segments.filter((segment) => !isStatusHint(segment));
+  const kept = segments.filter((segment) => !isStatusHint(segment, draftEditHint));
   if (kept.length === segments.length) return namesAMenuKey(text);
   return kept.length > 0 && namesAMenuKey(kept.join(" · "));
 }

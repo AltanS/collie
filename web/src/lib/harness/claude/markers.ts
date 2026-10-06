@@ -236,6 +236,92 @@ export function namesPermissionDialog(texts: string[]): boolean {
   return false;
 }
 
+// The plan-approval dialog's own words, read off `claude--plan-approval*.txt` and
+// `claude-lab--plan-approval*.txt` (Claude Code 2.1.27x to 2.1.291):
+// "Claude has written up a plan and is ready to execute. Would you like to proceed?", which wraps
+// onto three rows at 40 columns, then a numbered menu that opens on `1.` and goes on to `2.`. The
+// footer is NOT that evidence: 2.1.291 prints "ctrl+g to edit in nano" on the statusline row under
+// any multi-line draft (`claude-lab--draft-adversarial--w*.txt`).
+const PLAN_QUESTION = /\bready\s+to\s+execute\.\s+would\s+you\s+like\s+to\s+proceed\?$/i;
+const PLAN_FIRST_ROW = /^\s*(?:❯\s*)?1\.\s+\S/;
+const PLAN_SECOND_ROW = /^\s*(?:❯\s*)?2\.\s+\S/;
+// The question, a menu of up to five options, a feedback value wrapped onto a few rows, the hint and
+// the footer with its wrapped path all sit in the last rows of the screen.
+const PLAN_SCAN_ROWS = 30;
+// The question reaches its "?" within three rows at 40 columns.
+const PLAN_QUESTION_ROWS = 4;
+
+/**
+ * True when the screen's last rows are the plan-approval dialog by its own words: the question
+ * ending "ready to execute. Would you like to proceed?" (it may wrap), then a `1.` row, then a `2.`
+ * row. The evidence `classifyFooter` needs before it may claim the `plan` family from the "ctrl+g to
+ * edit" hint or the plan file's path (ADR 0053: a family claim is answered from the dialog, never
+ * from one phrase any screen may print).
+ */
+export function namesPlanDialog(texts: string[]): boolean {
+  let end = texts.length - 1;
+  while (end >= 0 && isBlank(texts[end]!)) end--;
+  const from = Math.max(0, end - PLAN_SCAN_ROWS);
+  for (let i = from; i <= end; i++) {
+    let joined = "";
+    for (let j = i; j <= Math.min(end, i + PLAN_QUESTION_ROWS - 1); j++) {
+      if (isBlank(texts[j]!)) break;
+      joined = joined === "" ? texts[j]!.trim() : `${joined} ${texts[j]!.trim()}`;
+      if (PLAN_QUESTION.test(joined)) return hasPlanMenu(texts, j + 1, end);
+    }
+  }
+  return false;
+}
+
+/** A `1.` row and then a `2.` row between `from` and `end`, inclusive. */
+function hasPlanMenu(texts: string[], from: number, end: number): boolean {
+  let first = -1;
+  for (let i = from; i <= end; i++) {
+    if (first < 0 && PLAN_FIRST_ROW.test(texts[i]!)) first = i;
+    else if (first >= 0 && PLAN_SECOND_ROW.test(texts[i]!)) return true;
+  }
+  return false;
+}
+
+// The plan footer's "ctrl+g to edit in <editor> ·" row, when the plan file's path did not fit beside
+// it and moved to the rows below.
+const PLAN_FOOTER_LEAD = /ctrl\+g to edit\b.*·\s*$/i;
+// The whole path, once its rows are joined back: `<config dir>/plans/<slug>.md`.
+const PLAN_FILE_PATH = /^\S*\/plans\/[\w.-]+\.md$/;
+// A long path under a custom CLAUDE_CONFIG_DIR breaks onto a second row at 40 columns.
+const PLAN_PATH_ROWS = 3;
+
+/**
+ * The rows the plan file's path fills under the footer's "ctrl+g to edit … ·" row, when the path
+ * sits there on its own: one row at 82 columns, two at 40, where it breaks mid-word with no space.
+ * Empty when the screen does not end that way. The rows must join, with nothing between them, into
+ * a `…/plans/<slug>.md` path, so a stray `.md` row or a path to some other file claims nothing.
+ */
+function planPathRows(texts: string[]): number[] {
+  let end = texts.length - 1;
+  while (end >= 0 && isBlank(texts[end]!)) end--;
+  const rows: number[] = [];
+  for (let i = end; i >= 0 && rows.length < PLAN_PATH_ROWS; i--) {
+    const t = texts[i]!.trim();
+    if (t === "" || /\s/.test(t)) break;
+    rows.unshift(i);
+  }
+  const first = rows[0];
+  if (first === undefined || first === 0) return [];
+  if (!PLAN_FOOTER_LEAD.test(texts[first - 1]!)) return [];
+  return PLAN_FILE_PATH.test(rows.map((i) => texts[i]!.trim()).join("")) ? rows : [];
+}
+
+/**
+ * The row of the plan footer's "ctrl+g to edit … ·" lead when the plan file's path sits below it on
+ * rows of its own, else -1. The prompt-select grammar measures the gap to the options from this row,
+ * because the path rows under it are the same footer, wrapped.
+ */
+export function planFooterLeadRow(texts: string[]): number {
+  const rows = planPathRows(texts);
+  return rows.length === 0 ? -1 : rows[0]! - 1;
+}
+
 // The gutter Claude Code 2.1.283 paints down the left of a question that spans more than one row
 // ("│ Which fruit do you want?" / "│ Pick the one you like best."). It is chrome, not question text.
 const QUESTION_GUTTER = /^\s*│\s?/;
@@ -255,7 +341,8 @@ export function questionRowText(text: string): string {
  *   - "… Tab to amend …"   → permission (edit/bash "Do you want to proceed?": the digit alone)
  *   - a bare "Esc to cancel" → permission, but only when `namesPermissionDialog` finds the dialog's
  *     own question and Yes/No rows (the hint bar a permission dialog shows off its Yes/No rows)
- *   - "ctrl+g to edit …" or a "~/.claude/plans/…" path → plan (ExitPlanMode: the digit alone)
+ *   - "ctrl+g to edit …" or the plan file's path → plan (ExitPlanMode: the digit alone), but only
+ *     when `namesPlanDialog` finds the dialog's own question and numbered menu
  *
  * The fourth, `trust` (folder-trust prompt: the digit alone), needs MORE than its footer. Its phrase
  * "Enter to confirm" is ordinary Claude wording that other screens print — the /effort slider prints
@@ -271,20 +358,20 @@ export function questionRowText(text: string): string {
  * Case-insensitive and anchored only on the confirm phrase, so per-install extra hints
  * (ctrl+e to explain, ↑/↓ to navigate, …) don't disturb the classification.
  */
-// A plan file's path on a row of its own: `<config dir>/plans/<slug>.md`.
-const PLAN_FILE_ROW = /^\s*\S*\/plans\/[\w.-]+\.md\s*$/;
-
 export function classifyFooter(text: string, texts: string[]): PromptFamily | null {
   const t = text.toLowerCase();
   if (/\benter to select\b/.test(t)) return "select";
   if (/\benter to confirm\b/.test(t)) {
     return namesTrustDialog(texts) ? "trust" : null;
   }
-  if (/ctrl\+g to edit\b/.test(t) || /\.claude\/plans\//.test(t)) return "plan";
-  // The plan file lives under CLAUDE_CONFIG_DIR, which need not be `.claude`, and a long path wraps
-  // the footer so the path is alone on the last row. Claimed only beside the footer's own
-  // "ctrl+g to edit …·" row, so a stray path to some plans/*.md file claims nothing.
-  if (PLAN_FILE_ROW.test(t) && texts.some((row) => /ctrl\+g to edit\b.*·\s*$/i.test(row))) return "plan";
+  // The plan arms need the plan dialog's own words. Claude Code 2.1.291 prints "ctrl+g to edit in
+  // nano" on the statusline row under any multi-line draft, and reading that as `plan` took the
+  // input box away from every send (ADR 0053).
+  const planFooter = /ctrl\+g to edit\b/.test(t) || /\.claude\/plans\//.test(t);
+  // The plan file lives under CLAUDE_CONFIG_DIR, which need not be `.claude`, and a long path moves
+  // below the footer's own "ctrl+g to edit …·" row, alone on one row or broken across two.
+  const planPath = !planFooter && planPathRows(texts).some((i) => texts[i] === text);
+  if ((planFooter || planPath) && namesPlanDialog(texts)) return "plan";
   if (/\btab to amend\b/.test(t)) return "permission";
   // The same dialog with its pointer off the Yes and No rows, or with an amend note open: the hint
   // bar shrinks to "Esc to cancel". The phrase alone proves nothing, so the dialog's words must.

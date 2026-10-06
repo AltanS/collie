@@ -173,10 +173,11 @@ describe("a real box is found, with its draft and its tail", () => {
   );
 
   it("the check is not vacuous", () => {
-    // 48 today. The 2.1.291 run moved box-bearing captures with multi-line drafts into the recorded
-    // tail gaps (the `ctrl+g to edit in nano` statusline hint), and the slash-popup grammar fix
-    // brought eleven popup captures back (37 to 48), so the floor sits just under that.
-    expect(CLEAN.length).toBeGreaterThan(45);
+    // 51 today. The 2.1.291 run moved box-bearing captures with multi-line drafts into the recorded
+    // tail gaps (the `ctrl+g to edit in nano` statusline hint), the slash-popup grammar fix brought
+    // eleven popup captures back (37 to 48), and the draft-hint fix the three `draft-adversarial`
+    // stalls (48 to 51), so the floor sits just under that.
+    expect(CLEAN.length).toBeGreaterThan(48);
   });
 
   it.each(CLEAN.map((e) => [e.fixture, e] as const))("%s", (_name, entry) => {
@@ -263,13 +264,13 @@ describe("the pipeline lifts the kind the screen shows", () => {
   });
 
   it("every knownRaw carries a reason naming a candidate grammar, and pins its reading", () => {
-    // Five: the four the 2026-09-26 grammar work left (the agents-screen pair, the /status screen
-    // and the 40-column /tasks panel), plus the 40-column plan-approval screen the 2.1.291
-    // capture-lab run recorded, whose footer wraps. The ten 2.1.291 slash-popup captures left this
-    // list when the popup grammar learned the pointer and the four-space entry rows. When a grammar
-    // lands, the repair is to delete that entry's `knownRaw` and its `actualToday`, and to lower
-    // this number.
-    expect(RAW_GAPS.length).toBe(5);
+    // Four: what the 2026-09-26 grammar work left (the agents-screen pair, the /status screen and the
+    // 40-column /tasks panel). The ten 2.1.291 slash-popup captures left this list when the popup
+    // grammar learned the pointer and the four-space entry rows, and the 40-column plan-approval
+    // screen left it when prompt-select learned to rejoin its wrapped question and footer. When a
+    // grammar lands, the repair is to delete that entry's `knownRaw` and its `actualToday`, and to
+    // lower this number.
+    expect(RAW_GAPS.length).toBe(4);
     for (const entry of RAW_GAPS) {
       expect(entry.knownRaw!.length, entry.fixture).toBeGreaterThan(40);
       expect(entry.expected.blockKind, entry.fixture).not.toBe("raw");

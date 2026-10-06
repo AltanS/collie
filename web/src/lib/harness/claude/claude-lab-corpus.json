@@ -71,19 +71,13 @@
       "cols": 120,
       "rows": 49,
       "state": "draft-adversarial",
-      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box",
+      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box [2026-10-06, Claude Code 2.1.291: the 'ctrl+g to edit in <editor>' statusline hint of a multi-line draft no longer hides the box, so the composer stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "2.1.291 prints 'ctrl+g to edit in nano' at the right end of the statusline row whenever the draft spans more than one line. Blanking exactly that phrase in the capture makes the locator find the box and the whole draft again (probed 2026-10-06), so the phrase is read as a plan-dialog footer (classifyFooter takes 'ctrl+g to edit' as the plan family) and the box is refused: any multi-line draft would stall a send. Candidate fix: a 'ctrl+g to edit' suffix on the statusline row is chrome, not a modal footer.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -91,19 +85,13 @@
       "cols": 40,
       "rows": 49,
       "state": "draft-adversarial",
-      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box",
+      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box [2026-10-06, Claude Code 2.1.291: the 'ctrl+g to edit in <editor>' statusline hint of a multi-line draft no longer hides the box, so the composer stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "2.1.291 prints 'ctrl+g to edit in nano' at the right end of the statusline row whenever the draft spans more than one line. Blanking exactly that phrase in the capture makes the locator find the box and the whole draft again (probed 2026-10-06), so the phrase is read as a plan-dialog footer (classifyFooter takes 'ctrl+g to edit' as the plan family) and the box is refused: any multi-line draft would stall a send. Candidate fix: a 'ctrl+g to edit' suffix on the statusline row is chrome, not a modal footer.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -111,19 +99,13 @@
       "cols": 82,
       "rows": 49,
       "state": "draft-adversarial",
-      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box",
+      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box [2026-10-06, Claude Code 2.1.291: the 'ctrl+g to edit in <editor>' statusline hint of a multi-line draft no longer hides the box, so the composer stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
-      },
-      "knownStall": "2.1.291 prints 'ctrl+g to edit in nano' at the right end of the statusline row whenever the draft spans more than one line. Blanking exactly that phrase in the capture makes the locator find the box and the whole draft again (probed 2026-10-06), so the phrase is read as a plan-dialog footer (classifyFooter takes 'ctrl+g to edit' as the plan family) and the box is refused: any multi-line draft would stall a send. Candidate fix: a 'ctrl+g to edit' suffix on the statusline row is chrome, not a modal footer.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -1056,7 +1038,7 @@
       "cols": 40,
       "rows": 49,
       "state": "plan-approval",
-      "notes": "plan approval at 40 columns on 2.1.291: the question wraps over three rows ('Claude has written up a plan and is / ready to execute. Would you like to / proceed?'), the options keep their numbers, the feedback hint wraps, and the path footer wraps over two rows. The prompt-select grammar returns only raw blocks on it (the 82-column dialog lifts). Captured 2026-10-06.",
+      "notes": "plan approval at 40 columns on 2.1.291: the question wraps over three rows ('Claude has written up a plan and is / ready to execute. Would you like to / proceed?'), the options keep their numbers, the feedback hint wraps, and the path footer wraps over two rows. The prompt-select grammar now rejoins the wrapped question and footer rows and lifts it, as at 82 columns. Captured 2026-10-06.",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -1069,12 +1051,11 @@
           "3"
         ]
       },
-      "knownRaw": "At 40 columns the plan question wraps onto three rows and the path footer onto two, and prompt-select.ts returns no block, although the same dialog lifts at 82 columns (where key 3 is the feedback field and is left to the verified feedback flow). The wrap is the only difference. Candidate grammar: the prompt-select question and footer readers rejoin wrapped rows before matching.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
-      }
+      "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
+      "actualKeys": [
+        "1",
+        "2"
+      ]
     },
     {
       "fixture": "claude-lab--plan-approval--w82--h30.txt",

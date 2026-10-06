@@ -181,6 +181,10 @@ describe("the plan dialog under a custom config dir, its footer wrapped onto the
       "claude-lab--plan-approval--w82.txt",
       "claude-lab--plan-approval--w82--h30.txt",
       "claude-lab--plan-approval-feedback-typed--w82.txt",
+      "claude-lab--plan-approval-v2291--w82.txt",
+      "claude-lab--plan-approval-v2291--w82--h30.txt",
+      "claude-lab--plan-approval-feedback-typed-v2291--w82.txt",
+      "claude-lab--plan-approval--w40.txt",
     ]) {
       expect(detectPromptSelect(fixtureLines(name))?.family, name).toBe("plan");
     }
@@ -188,6 +192,69 @@ describe("the plan dialog under a custom config dir, its footer wrapped onto the
 
   it("a plans/*.md path alone claims nothing without the footer's own ctrl+g row", () => {
     expect(classifyFooter("/tmp/x/plans/a-plan.md", ["notes", "/tmp/x/plans/a-plan.md"])).toBeNull();
+  });
+
+  // Claude Code 2.1.291 at 40 columns wraps the question onto three rows, the input row's hint onto
+  // two ("shift+tab to approve with this" / "feedback") and the plan path onto two, broken mid-word.
+  // It is the same dialog as at 82 columns, so it lifts with the same buttons, keys and input.
+  it("lifts the 40-column capture exactly as the 82-column one", () => {
+    const narrow = detectPromptSelect(fixtureLines("claude-lab--plan-approval--w40.txt"))!;
+    const wide = detectPromptSelect(fixtureLines("claude-lab--plan-approval-v2291--w82.txt"))!;
+    expect(narrow.question).toBe(
+      "Claude has written up a plan and is ready to execute. Would you like to proceed?",
+    );
+    expect(narrow.question).toBe(wide.question);
+    expect(narrow.options).toEqual(wide.options);
+    expect(narrow.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    expect(narrow.feedback).toEqual(wide.feedback);
+    expect(narrow.feedback).toMatchObject({ key: "3", focused: false, text: "" });
+    const lines = fixtureLines("claude-lab--plan-approval--w40.txt");
+    expect(kinds(buildBlocks(lines, { agent: "claude" }))).toEqual(["raw", "prompt-select"]);
+  });
+
+  it("a typed value above a wrapped hint stays the input's value, never a button", () => {
+    const rows = [
+      " Claude has written up a plan and is",
+      " ready to execute. Would you like to",
+      " proceed?",
+      "",
+      "   1. Yes, and use auto mode",
+      "   2. Yes, manually approve edits",
+      " ❯ 3. keep the heading untouched and",
+      "      only add one line",
+      "      shift+tab to approve with this",
+      "      feedback",
+      "",
+      " ctrl+g to edit in nano ·",
+      " /tmp/cfg/plans/plan-",
+      " a-tiny-change.md",
+    ];
+    const model = detectPromptSelect(splitLines(parseAnsi(rows.join("\n"))))!;
+    expect(model.family).toBe("plan");
+    expect(model.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    expect(model.feedback).toMatchObject({
+      key: "3",
+      focused: true,
+      text: "keep the heading untouched and only add one line",
+    });
+  });
+
+  it("a path broken across rows claims plan only under the footer's own ctrl+g row", () => {
+    const dialog = [
+      " Claude has written up a plan and is",
+      " ready to execute. Would you like to",
+      " proceed?",
+      "",
+      " ❯ 1. Yes, and use auto mode",
+      "   2. Yes, manually approve edits",
+      "",
+    ];
+    const footer = [...dialog, " ctrl+g to edit in nano ·", " /tmp/cfg/plans/plan-", " a-tiny-change.md"];
+    expect(classifyFooter(footer.at(-1)!, footer)).toBe("plan");
+    const noLead = [...dialog, " some output", " /tmp/cfg/plans/plan-", " a-tiny-change.md"];
+    expect(classifyFooter(noLead.at(-1)!, noLead)).toBeNull();
+    const otherFile = [...dialog, " ctrl+g to edit in nano ·", " /tmp/cfg/drafts/plan-", " a-tiny-change.md"];
+    expect(classifyFooter(otherFile.at(-1)!, otherFile)).toBeNull();
   });
 });
 

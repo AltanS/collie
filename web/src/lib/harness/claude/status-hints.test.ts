@@ -5,8 +5,9 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines } from "../../blocks";
 import { withUnreadDialog } from "../index";
-import { hasInputBox, inputBoxTail, namesAModalKey } from "./chrome";
+import { extractInputDraft, hasInputBox, inputBoxTail, namesAModalKey } from "./chrome";
 import { claudeAdapter } from "./index";
+import { lineText } from "./markers";
 
 // Claude's default footer prints two hints that read like a modal's "<key> to <verb>" row but belong
 // to the live composer: "esc to interrupt" while a turn runs, and "↓ to manage" while background
@@ -66,5 +67,45 @@ describe("namesAModalKey", () => {
     "esc to interrupt the dialog",
   ])("still takes %j for a modal footer", (row) => {
     expect(namesAModalKey(row)).toBe(true);
+  });
+});
+
+// Claude Code 2.1.291 prints "ctrl+g to edit in nano" while the draft holds more than one line:
+// right-aligned on the statusline's row at 82 and 120 columns, on a row of its own at 40. The plan
+// dialog's footer opens with the same words, and Collie read the hint as that dialog: the box
+// vanished, the unread-dialog card was drawn, and a send from the phone stalled. The hint is the
+// composer's whenever the plan dialog's own words are not on screen.
+describe("the multi-line draft's ctrl+g hint (Claude Code 2.1.291)", () => {
+  const DRAFTS = [
+    "claude-lab--draft-adversarial--w40.txt",
+    "claude-lab--draft-adversarial--w82.txt",
+    "claude-lab--draft-adversarial--w120.txt",
+  ];
+
+  it.each(DRAFTS)("%s is an idle screen with its input box", (fixture) => {
+    const lines = read(fixture);
+    expect(hasInputBox(lines)).toBe(true);
+    expect(inputBoxTail(lines)).toBe("statusline");
+    expect(claudeAdapter.composerReady!(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toContain("compare these two lines:");
+  });
+
+  it.each(DRAFTS)("%s draws no unread-dialog card and lifts nothing", (fixture) => {
+    const lines = read(fixture);
+    const blocks = withUnreadDialog(claudeAdapter, lines, claudeAdapter.buildBlocks(lines));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw"]);
+  });
+
+  it("the hint is a status hint beside the draft, and a modal key with no screen to read", () => {
+    const draft = read("claude-lab--draft-adversarial--w40.txt").map(lineText);
+    expect(namesAModalKey("ctrl+g to edit in nano", draft)).toBe(false);
+    expect(namesAModalKey("ctrl+g to edit in nano")).toBe(true);
+    // Only the hint is exempt: a modal key beside it still names a modal.
+    expect(namesAModalKey("ctrl+g to edit in nano · Esc to cancel", draft)).toBe(true);
+  });
+
+  it("the same words still name the plan dialog's footer when that dialog is on screen", () => {
+    const plan = read("claude-lab--plan-approval--w40.txt").map(lineText);
+    expect(namesAModalKey("ctrl+g to edit in nano", plan)).toBe(true);
   });
 });

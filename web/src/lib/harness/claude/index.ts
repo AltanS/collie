@@ -202,7 +202,8 @@ function tailNamesAKey(lines: StyledLine[]): boolean {
     const text = lineText(lines[i]!);
     if (text.trim() !== "") rows.push(text);
   }
-  return rows.some((t) => namesAModalKey(t) || POINTED_OPTION_ROW.test(t) || PRESS_KEY_PROMPT.test(t));
+  const texts = lines.map(lineText);
+  return rows.some((t) => namesAModalKey(t, texts) || POINTED_OPTION_ROW.test(t) || PRESS_KEY_PROMPT.test(t));
 }
 
 export const claudeAdapter: HarnessAdapter = {

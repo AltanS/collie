@@ -28,6 +28,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The question shows once on a prompt card.** In the Terminal view, a Codex, Grok, opencode, omp or Antigravity card whose rows the card already shows no longer prints the question twice, above the card and on it. A fade now shows at the bottom of the card's command or diff while more of it continues below.
 - **The slash-command list is read again on Claude Code 2.1.291.** That version marks the selected command with a pointer and indents the list differently, so the list stayed on the raw terminal view, and with a long list open the phone could not send at all. Collie now reads both layouts, and the composer stays sendable while the list is open.
 - **The effort card shows only real levels on Claude Code 2.1.291.** That build replaced the `ultracode` level with a toggle beside the `/effort` slider, and the card listed the words of its `Tab to toggle` hint as three more levels. The `/tasks`, `/resume` and rewind panels on Claude Code 2.1.291 are now checked against captures of that build, and read as before.
+- **A multi-line draft no longer reads as a plan dialog.** On Claude Code 2.1.291 a multi-line draft printed a `ctrl+g` hint that Collie read as a plan dialog, so the phone showed the unread-dialog card and a send stalled. The plan family is now claimed only when the plan dialog's own words are on screen. The plan dialog at 40 columns, whose question, hint and plan path wrap onto extra rows, now lifts with the same buttons as at 82 columns.
 
 ## [1.17.1] - 2026-10-06
 
