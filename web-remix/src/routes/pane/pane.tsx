@@ -35,6 +35,7 @@ import { paneScopeKey } from "@web/lib/scope";
 import { isReadOnly, type AgentView, type TranscriptEntry } from "@web/lib/types";
 
 import { CacheSheet } from "../../chips/cache-sheet";
+import { crewOf, hostHealthOf } from "../../chips/crew";
 import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
 import { address, config, paneStore, snapshot } from "../../lib/data";
 import { createFind } from "../../lib/find";
@@ -47,6 +48,7 @@ import { setStatus } from "../../lib/status";
 import { scheduleUpdate, useStore } from "../../lib/store";
 import { href } from "../../routes";
 import { headerOf } from "../../shell/context";
+import { HostStaleBanner, hostStaleSpeaks } from "../../shell/connection-banner";
 import type { CustomSlot } from "../../shell/header-model";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
@@ -528,10 +530,17 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     const others = all.filter((p) => p.paneId !== paneId);
     const switcher = others.length > 0 ? { onOpen: () => setSheet("switcher"), peek, label: t("chat.switcher.aria"), needsYou: needsYouElsewhere(pane, all) } : null;
     const hasStrips = pane !== undefined && stripsExist(pane, tabs, all);
+    const hostHealth = hostHealthOf(crewOf(data), pane?.host ?? scope.host);
+    const hostStale = hostStaleSpeaks(hostHealth);
     const body = chatShown ? "chat" : "terminal";
 
     return (
       <main class="flex min-h-0 flex-1 flex-col" data-testid="pane-view" data-tab={body} data-body={reading.body} data-zen={zenOn ? "" : undefined}>
+        {/* The pane's MACHINE is not answering the lead (tier 2; the tier-1 strip is the band's). Above the
+            strips, as in web, and it leaves with zen. Nothing on a solo install or a live host. */}
+        <Collapse open={!zenOn && hostStale}>
+          <HostStaleBanner health={hostHealth} class="mx-3 mt-1.5" />
+        </Collapse>
         <Collapse open={!zenOn && hasStrips}>
           {pane !== undefined ? (
             <Strips

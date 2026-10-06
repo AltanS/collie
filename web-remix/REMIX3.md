@@ -342,7 +342,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   `{ signal: handle.signal }`. At `reloadStart`, `frame.src` is the new URL (`demos/spa:
   app-shell.tsx:14`).
 - Our actions do no fetching (`R/router.tsx`), so most navigations finish in one frame. Show the busy
-  bar only after 120 ms, as `W/index.css:895` does.
+  bar only after 120 ms, as `W/index.css:895` does. The bar is fed by `R/lib/busy.ts`, not by
+  navigation alone: every write for its whole flight, a first read past 500 ms, a poll past 6 s.
 - Measured (P5 Q3): on a 300 ms route the bar is on from about 20 to 30 ms and off at 320 to 330 ms;
   on an instant route it toggles in the same millisecond and never paints. A bar inside the Shell
   costs two extra Shell renders per navigation, so it is its own component (`BusyBar`, `R/shell.tsx`).
@@ -424,7 +425,9 @@ scale and a 12% tint of the element's own ink, tint alone under reduced motion (
 
 A row IS the next screen's header (D §12, ADR 0069). Forward is the tap on that row. Reverse is the
 in-app back arrow only, never the edge swipe. 250 ms ease-out, parts dot, tile and name, prefetch on
-`pointerdown`, wait at most 120 ms for the parts, else a plain slide (`W/lib/glide.ts`).
+`pointerdown`, wait at most 120 ms for the parts, else a plain slide (`W/lib/glide.ts`). The pane
+prefetch asks for the screen's own `?lines=600` read and seeds the pane store on the tap, so one tap
+costs one read (`R/routes/home/open-pane.ts`).
 
 - Port the rules of `W/lib/glide.ts` to `R/lib/glide.ts`. The move runs inside
   `document.startViewTransition`'s update callback, and each part gets its `view-transition-name`
@@ -460,10 +463,11 @@ what a glide's callback needs to see.
   `R/ui/sheet.tsx` does this with CSS classes today. Keep it.
 - Drag-dismiss: the panel follows the finger by `style.transform`; past 90 px it closes; short of
   it, it snaps back.
-- The snap-back uses `spring("snappy")` from `@remix-run/ui/animation` (pinned at 0.12.1, exempt
-  from the age gate like `remix`).
+- The snap-back is a CSS transition, `transform 200ms ease-out`, as `W/components/ui/sheet.tsx`
+  has it (`snapBackTransition()` in `R/lib/motion.ts`). It is not a spring: `spring("snappy")`
+  settles in 350 ms, 150 ms longer than web (commit aca27316).
 - Peek-to-open continues the finger's motion over 180 ms (`SheetPeek`, `R/ui/sheet.tsx`).
-- Measured (P5 Q6): a preset's name is not its length. `spring(p).duration` is the settle time and
+- Measured (P5 Q6, so the snap-back above is not a spring): a preset's name is not its length. `spring(p).duration` is the settle time and
   the exit holds the node that long: snappy 350 ms, bouncy 550 ms, smooth 1050 ms. Plan with
   `spring(p).duration`. An exit uses the config of the last render that showed the node, so render
   the exit settings before the node goes.
@@ -472,7 +476,7 @@ what a glide's callback needs to see.
 
 Fade in over 200 ms, no exit animation, 2.5 s TTL, errors persist (`W/components/status-area.tsx`).
 A toast floats in the overlay layer and holds no space (D §2). Use the CSS `animate-in fade-in`
-classes or `animateEntrance({ opacity: 0, duration: 200 })`. Every publish also spins the mark one
+classes or `animateEntrance(toastEntrance())` (200 ms, easing `ease`, from `R/lib/motion.ts`). Every publish also spins the mark one
 orbit.
 
 ### `animateLayout` and keyed motion
@@ -652,7 +656,7 @@ the work; a file marked *new* does not exist yet.
 | 7 | Row details: cache chip, hold-fill, host chip, unseen square, alarm edge | `longPress` mixin; reserved slots; one shared 1 s clock store | `R/routes/home/agent-row.tsx`, `R/lib/clock.ts` (*new*) |
 | 8 | Summary line, needs-you switch, order toggle, Pinned group | persisted module stores (same `localStorage` keys); frozen ranks | `R/routes/home/prefs.ts`, `R/lib/frozen-ranks.ts`, `R/lib/pins.ts` (*new*) |
 | 9 | `Collapse` and the no-shift rule | `Collapse`, `CollapseSwap`, `OneOf`; pane status moves to the header | `R/ui/collapse.tsx`, `R/ui/one-of.tsx` (*new*) |
-| 10 | Sheets: peek-pull, drag-dismiss, action sheets | native-listener drag in `ref`; spring snap-back; no history entry | `R/ui/sheet.tsx`, `R/routes/home/pane-actions-sheet.tsx` (*new*) |
+| 10 | Sheets: peek-pull, drag-dismiss, action sheets | native-listener drag in `ref`; CSS 200 ms ease-out snap-back; no history entry | `R/ui/sheet.tsx`, `R/routes/home/pane-actions-sheet.tsx` (*new*) |
 | 11 | Strip band: connection, update, read-only, notch rule | `StripModel` in context, priority table, one live region pair kept mounted | `R/shell/strip-host.tsx` (*new*) |
 | 12 | Pane tab and pane strips with the fold bar | `CollapseSwap`; pref `collie:strips-collapsed:v1`; stand down while composing | `R/routes/pane/strips.tsx` (*new*) |
 | 13 | Chat polish: start state and gate, tool folding, question notes, font, Load older | keyed blocks; gate reused read-only from `W/lib/chat-gate.ts`; anchor on Load older | `R/routes/pane/chat.tsx`, `R/chat/*` |

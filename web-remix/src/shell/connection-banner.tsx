@@ -281,13 +281,17 @@ export function ConnectionBanner(handle: Handle) {
  * whether this surface speaks at all (one missed sweep must not flash a banner), `writable` decides
  * what it says. A merely old receipt on a machine the lead still believes up says nothing.
  */
+export function hostStaleSpeaks(health: HostHealth | undefined): boolean {
+  if (!health || health.state === "live") return false;
+  return health.incompatible === true || !health.writable || health.state === "unknown";
+}
+
 export function HostStaleBanner(handle: Handle<{ health: HostHealth | undefined; class?: string }>) {
   useLocale(handle);
   return () => {
     const { health, class: className } = handle.props;
-    if (!health || health.state === "live") return null;
+    if (!health || !hostStaleSpeaks(health)) return null;
     const nothingCached = health.state === "unknown";
-    if (!health.incompatible && health.writable && !nothingCached) return null;
     const reason = health.incompatible
       ? t("connection.stale.incompatible", { name: health.name })
       : t("connection.stale.unreachable", { name: health.name, label: health.lastSeenLabel });

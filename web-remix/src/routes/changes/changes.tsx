@@ -110,6 +110,7 @@ import {
 import {
   changePath,
   changesFilterBar,
+  changesLoading,
   changesList,
   changesListSkeleton,
   changesNoMatch,
@@ -789,9 +790,9 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
     };
 
     const commitBody = (): RemixNode => {
-      if (v.commitRepo !== null && commitState === null) return quiet(t("changes.commit.loading"));
+      if (v.commitRepo !== null && commitState === null) return changesLoading(t("changes.commit.loading"));
       if (commitState === null) return quiet(t("changes.commit.unknown"));
-      if (commitState.phase === "loading") return quiet(t("changes.commit.loading"));
+      if (commitState.phase === "loading") return changesLoading(t("changes.commit.loading"));
       if (commitState.phase === "error") {
         return (
           <Notice variant="box" tone="danger" announce="alert">

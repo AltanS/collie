@@ -7,7 +7,8 @@ import { tourSeen } from "./e2e/tour-seen";
 // ~/.cache/ms-playwright; nothing here downloads one.
 //
 // Port 5194 is in the range this rewrite owns (5190-5196) and collides with no Collie instance.
-const PORT = 5194;
+// `E2E_PORT` and `E2E_DIST` let two runs go at once on their own port and build (`DIST` is `e2e/serve.ts`'s).
+const PORT = Number(process.env.E2E_PORT ?? "5194");
 
 export default defineConfig({
   testDir: "e2e",
@@ -23,7 +24,7 @@ export default defineConfig({
   },
   projects: [{ name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } }],
   webServer: {
-    command: `PORT=${String(PORT)} bun e2e/serve.ts`,
+    command: `PORT=${String(PORT)} ${process.env.E2E_DIST ? `DIST=${process.env.E2E_DIST} ` : ""}bun e2e/serve.ts`,
     url: `http://127.0.0.1:${String(PORT)}/`,
     reuseExistingServer: false,
     timeout: 20_000,
