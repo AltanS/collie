@@ -1,29 +1,31 @@
 # Changes: see what an agent changed
 
-The Changes view shows what changed in a workspace's git repos since the last commit. You read it
-on your phone while the agent works: the changed files, their added and removed lines, and each
-file's diff with syntax colour. When the agent has already committed, it shows the last commit.
+The Files screen shows a workspace's folder, with what changed in its git repos since the last commit
+marked on it. You read it on your phone while the agent works: the changed files, their added and
+removed lines, and each file's diff with syntax colour. When the agent has already committed, it
+shows the last commit. A control under the header switches between **All files**, the folder as a
+tree, and **Changes**, the list of changed files alone ([below](#the-all-files--changes-control)).
 
-> **Note.** Changes only reads. It never stages, commits, edits or checks out a file
+> **Note.** Files only reads. It never stages, commits, edits or checks out a file
 > ([below](#read-only-and-safe)).
 
 ## Open it
 
 There are two ways in.
 
-- **From a pane.** Tap the Changes button on the pane's actions belt, the icon left of the Switch
-  mark. The list covers the pane's whole workspace and marks the pane's own repo.
-- **From the dashboard.** Tap **Changes** in the dashboard's footer, after **Dashboard** (and
+- **From a pane.** Tap the Files button on the pane's actions belt, the tree icon left of the Switch
+  mark. The screen covers the pane's whole workspace and marks the pane's own repo.
+- **From the dashboard.** Tap **Files** in the dashboard's footer, after **Dashboard** (and
   **Crew** before it, when you run a crew). It lists one row per workspace with its changed-file count and the summed added and
   removed lines. A workspace with no changes stays in its place, dimmed. Tap a row to open that
-  workspace's list.
+  workspace's Files screen.
 
-The dashboard counts refresh every 5 seconds, and only while the Changes tab is on screen. The tab
+The dashboard counts refresh every 5 seconds, and only while the Files tab is on screen. The tab
 you pick is kept per device.
 
 ## The list
 
-The list groups the changed files by git repo. Each file shows its status and its `+added −removed`
+The Changes segment shows a list that groups the changed files by git repo. Each file shows its status and its `+added −removed`
 line counts.
 
 | Status | Meaning |
@@ -119,8 +121,8 @@ depth shows as one entry in its parent repo.
 
 ## Files
 
-Changes opens on the files of the folder it reads, one folder at a time, with the changes marked on
-them. It needs no git repository, so it works for a shell pane in any folder too. Inside a repository
+Files opens on the folder it reads, one folder at a time, with the changes marked on
+them. The header says **Files** on every level, with the workspace and its folder under it. It needs no git repository, so it works for a shell pane in any folder too. Inside a repository
 it also knows which entries git ignores, and hides them for you.
 
 - A changed file shows its status letter, and its icon changes shape and takes the same colour: a
@@ -132,15 +134,19 @@ it also knows which entries git ignores, and hides them for you.
 
 Tap a folder to open it and a file to read it. The path above the rows is a breadcrumb, and each
 folder in it is a link. The back arrow goes up one level: from a file to its folder, from a folder
-to the one above, and from the top to wherever Changes goes.
+to the one above, and from the top to wherever Files was opened from.
 
-### Changes only
+### The All files | Changes control
 
-The **Changes only** button in the header, in every folder, shows the list of changes alone,
-grouped by repository.
-It carries the number of changed files. Your choice stays on this device, and it is off at first.
-The list has its own **Tree** button, which draws the changed files as a folder tree, and a
-**Filter** button. Refresh reads the list and the folder again.
+A two-part control sits directly under the header, in every folder. It looks like the **Diff |
+Source | Preview** control on a file. **All files** shows the folder with the changes marked.
+**Changes** shows the list of changes alone, grouped by repository, and carries the number of
+changed files in a small badge on its corner. The badge is not drawn when nothing changed. Your
+choice stays on this device, and **All files** is on at first.
+
+The list starts with a line that names the root folder on the left and the added and removed line
+totals on the right. The header has a **Tree** button, which draws the changed files as a folder
+tree, a **Filter** button, and a refresh button. Refresh reads the list and the folder again.
 
 ### One file
 
@@ -169,7 +175,7 @@ to the heading, and a web link opens in a new tab. A link that leaves the folder
 A JSON file that does not parse shows the error and its source. A tree is not drawn above 5000 values,
 and the source shows instead.
 
-In **Changes only**, a changed file whose type has a preview, and that is not deleted, shows a
+In **Changes**, a changed file whose type has a preview, and that is not deleted, shows a
 **Preview** button in the header of its diff. It opens the same file screen on Preview.
 
 A folder or a file is read when you open it, and again when you tap refresh. It never updates on a
@@ -178,12 +184,10 @@ timer. The change marks follow the list of changes, which updates every 5 second
 ### Ignored files and the filter
 
 Files hides what git ignores, such as `node_modules`, build output and logs. A quiet line under the
-list says how many rows are hidden, with a **Show** action.
-
-The eye button in the header, left of **Filter**, turns the hidden rows on and off. It is an eye
-with a slash while they are hidden, and an open eye with a tinted background while they are shown.
-Your choice stays on this device. The **Filter** button opens a row with a name field and the same
-toggle with its state in words, **Ignored hidden** or **Ignored shown**. The name field narrows the
+list says how many rows are hidden, with a **Show** action. That line is the switch: once the
+ignored rows are shown, it says how many are shown and offers **Hide**. Your choice stays on this
+device. The **Filter** button opens a row with a name field and a toggle with its state in words,
+**Ignored hidden** or **Ignored shown**, which makes the same choice. The name field narrows the
 current folder to the names that hold your text, in any case, and the button shows how many rows are
 left. The name filter clears when you open another folder. Ignored rows show in a dimmer ink and
 open like any other row.
@@ -230,8 +234,8 @@ open like any other row.
 - **Binary files show no text.** A file with a NUL byte in its first 8000 bytes counts as binary, git's
   own rule.
 - **No folder, no files.** A workspace whose folder is your home folder, a folder above it, or `/`
-  shows no folder. Changes says so and offers **Show changes only** when it still has a list of
-  changes. A zellij pane has no Changes button. A workspace folder that is a symlink to one of those
+  shows no folder. Files says so and offers **Show changes** when it still has a list of
+  changes. A zellij pane has no Files button. A workspace folder that is a symlink to one of those
   counts as that folder.
 
 The full rules are in [ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md).
@@ -259,7 +263,7 @@ Files hides nothing for it.
 
 ## Limits
 
-- **zellij panes have no Changes button.** zellij does not report a pane's folder. The dashboard row
+- **zellij panes have no Files button.** zellij does not report a pane's folder. The dashboard row
   for a zellij workspace reads "No folder".
 - **Git must be installed** on the machine that owns the pane.
 - **Git LFS files may show as modified.** With filters off, Collie compares an LFS file with its
