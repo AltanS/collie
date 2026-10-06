@@ -1,0 +1,46 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mread README.md and reply with one short sentence[0m[48;2;55;55;55m                               [0m
+
+  [0m[38;2;153;153;153mRead [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m file (ctrl+o to expand)[0m
+
+[0m[38;2;255;255;255m● [0mThe README says this is a throwaway lab project used for screen captures.
+
+[0m[38;2;153;153;153m✻ Baked for 3s · done 6:36 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55m/config[0m[48;2;55;55;55m                                                                        [0m
+
+[0m[38;2;177;185;249m─────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mSettings[0m  Status  [0m[1m[7m Config [0m  Usage   Stats
+
+
+  [0m[38;2;177;185;249m╭───────────────────────────────────────────────────────────────────────────╮[0m
+  [0m[38;2;177;185;249m│ [0m⌕ [0m[38;2;153;153;153mSearch settings…                                                        [0m[38;2;177;185;249m│[0m
+  [0m[38;2;177;185;249m╰───────────────────────────────────────────────────────────────────────────╯[0m
+
+  [0m[38;2;153;153;153m❯ [0mAuto-compact                                true
+    Continue automatically at usage limit       true
+    Switch models when a message is flagged     Not asked yet[0m[38;2;153;153;153m ›[0m
+    Show tips                                   true
+    Claude-drafted feedback                     notify
+    Reduce motion                               false
+    Thinking mode                               [0m[38;2;153;153;153mtrue[0m
+    [0m[38;2;153;153;153mThinking can't be turned off for Sonnet 5.5[0m
+    Prompt suggestions                          true
+    Session recap                               true
+    Rewind code (checkpoints)                   true
+    Dynamic workflows                           true
+    Ultracode keyword trigger                   true
+    Dynamic workflow size                       medium (default)
+    Artifacts                                   true
+    Verbose output                              false
+    Terminal progress bar                       true
+    Show turn duration                          true
+    Precompute compaction                       true
+    Time format                                 auto[0m[38;2;153;153;153m ›[0m
+    [0m[38;2;153;153;153m↓ 25 more[0m
+
+  [0m[38;2;153;153;153mType to filter · Enter/↓ to select · ↑ to tabs · Esc to clear[0m

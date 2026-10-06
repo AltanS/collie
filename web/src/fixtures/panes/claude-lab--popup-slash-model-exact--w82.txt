@@ -1,45 +1,37 @@
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
 
-  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
-  with [0m[38;5;153m/model[0m.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                               [0m
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mread README.md and reply with one short sentence[0m[48;2;55;55;55m                               [0m
 
-  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+  [0m[38;2;153;153;153mRead [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m file (ctrl+o to expand)[0m
 
-[0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
+[0m[38;2;255;255;255m● [0mThe README says this is a throwaway lab project used for screen captures.
 
-[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
+[0m[38;2;153;153;153m✻ Sautéed for 2s · done 6:34 PM[0m
 
-[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
-❯ [0m[38;5;153m/model[0m
-[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;153m/[0m[1m[38;5;153mmodel[0m[38;5;153m                          Set the AI [0m[1m[38;5;153mmodel[0m[38;5;153m for Claude Code (currently[0m
-                                  [0m[38;5;153mSonnet 5)[0m
-  [0m[38;5;246m/[0m[1mmodel[0m[38;5;246mcheck                     Print a note about [0m[1mmodel[0m[38;5;246m configuration for[0m
-                                  [0m[38;5;246mthis lab (project)[0m
-  [0m[38;5;246m/claude-api                     Reference for the Claude API / Anthropic SDK[0m
-                                  [0m[38;5;246m— [0m[1mmodel[0m[38;5;246m ids, pricing, params, streaming, too…[0m
-  [0m[38;5;246m/loop                           Run a prompt or slash command on a recurring[0m
-                                  [0m[38;5;246minterval (e.g. /loop 5m /foo). Omit the inte…[0m
-  [0m[38;5;246m/advisor                        Let Claude consult a stronger [0m[1mmodel[0m[38;5;246m at key[0m
-                                  [0m[38;5;246mmoments[0m
-  [0m[38;5;246m/effort                         Set effort level for [0m[1mmodel[0m[38;5;246m usage[0m
-  [0m[38;5;246m/status                         Show Claude Code status including version,[0m
-                                  [0m[1mmodel[0m[38;5;246m, account, API connectivity, and tool s…[0m
-  [0m[38;5;246m/refactor-module-boundaries     Move code between modules so each module owns[0m
-                                  [0m[38;5;246mone concern (project)[0m
-  [0m[38;5;246m/auto-mode-setup                Teach auto mode about your environment, plus[0m
-                                  [0m[38;5;246moptional rule tweaks[0m
-  [0m[38;5;246m/code-review                    3 free /ultrareview · Review the current[0m
-                                  [0m[38;5;246mdiff, or a PR number/branch/path target, for…[0m
-  [0m[38;5;246m/doctor                         Health-check the user's Claude Code setup and[0m
-                                  [0m[38;5;246mfix issues: diagnose installation health — w…[0m
-  [0m[38;5;246m/update-config                  Use this skill to configure the Claude Code[0m
-                                  [0m[38;5;246mharness via settings.json. Automated behavio…[0m
-  [0m[38;5;246m/fast                           Toggle fast mode (Opus 5)[0m
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[38;2;177;185;249m/model[0m
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;177;185;249m❯ /[0m[1m[38;2;177;185;249mmodel[0m[38;2;177;185;249m                          Set the AI [0m[1m[38;2;177;185;249mmodel[0m[38;2;177;185;249m for Claude Code (currently[0m
+                                    [0m[38;2;177;185;249mSonnet 5.5)[0m
+  [0m[38;2;153;153;153m  /[0m[1mmodel[0m[38;2;153;153;153mcheck                     Print a note about [0m[1mmodel[0m[38;2;153;153;153m configuration for[0m
+                                    [0m[38;2;153;153;153mthis lab (project)[0m
+  [0m[38;2;153;153;153m  /auto-mode-setup                Teach auto mode about your environment,[0m
+                                    [0m[38;2;153;153;153mplus optional rule tweaks[0m
+  [0m[38;2;153;153;153m  /refactor-module-boundaries     Move code between modules so each module[0m
+                                    [0m[38;2;153;153;153mowns one concern (project)[0m
+  [0m[38;2;153;153;153m  /code-review                    3 free /ultrareview · Review the current[0m
+                                    [0m[38;2;153;153;153mdiff, or a PR number/branch/path target, f…[0m
+  [0m[38;2;153;153;153m  /update-config                  Use this skill to configure the Claude Code[0m
+                                    [0m[38;2;153;153;153mharness via settings.json. Automated behav…[0m
+  [0m[38;2;153;153;153m  /loop                           Run a prompt or slash command on a[0m
+                                    [0m[38;2;153;153;153mrecurring interval (e.g. /loop 5m /foo). O…[0m
+  [0m[38;2;153;153;153m  /claude-api                     Reference for the Claude API / Anthropic[0m
+                                    [0m[38;2;153;153;153mSDK — [0m[1mmodel[0m[38;2;153;153;153m ids, pricing, params, streamin…[0m
+  [0m[38;2;153;153;153m  /advisor                        Let Claude consult a stronger [0m[1mmodel[0m[38;2;153;153;153m at key[0m
+                                    [0m[38;2;153;153;153mmoments[0m
+  [0m[38;2;153;153;153m  /effort                         Set effort level for [0m[1mmodel[0m[38;2;153;153;153m usage[0m
+  [0m[38;2;153;153;153m  /status                         Show Claude Code status including version,[0m
+                                    [0m[1mmodel[0m[38;2;153;153;153m, account, API connectivity, and tool…[0m

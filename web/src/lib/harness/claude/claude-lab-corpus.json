@@ -1,7 +1,7 @@
 {
-  "$comment": "Generated from the capture lab's manifest (spec 04) for the 66 promoted captures, then checked against the locator. Edit by hand when behaviour changes on purpose; see claude-lab-corpus.test.ts for what each field means.",
-  "claudeCodeVersion": "2.1.278",
-  "captured": "2026-09-22",
+  "$comment": "Generated from the capture lab's manifest (spec 04) for the 66 promoted captures, then checked against the locator, and re-run on Claude Code 2.1.291 (2026-10-06), which added the -v2291 siblings of the files other suites pin by byte and the new permission, plan, trust, notice and 132-column states. Edit by hand when behaviour changes on purpose; see claude-lab-corpus.test.ts for what each field means.",
+  "claudeCodeVersion": "2.1.291",
+  "captured": "2026-10-06",
   "entries": [
     {
       "fixture": "claude-lab--agents-screen--w40.txt",
@@ -78,6 +78,12 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
+      },
+      "knownStall": "2.1.291 prints 'ctrl+g to edit in nano' at the right end of the statusline row whenever the draft spans more than one line. Blanking exactly that phrase in the capture makes the locator find the box and the whole draft again (probed 2026-10-06), so the phrase is read as a plan-dialog footer (classifyFooter takes 'ctrl+g to edit' as the plan family) and the box is refused: any multi-line draft would stall a send. Candidate fix: a 'ctrl+g to edit' suffix on the statusline row is chrome, not a modal footer.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -92,6 +98,12 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
+      },
+      "knownStall": "2.1.291 prints 'ctrl+g to edit in nano' at the right end of the statusline row whenever the draft spans more than one line. Blanking exactly that phrase in the capture makes the locator find the box and the whole draft again (probed 2026-10-06), so the phrase is read as a plan-dialog footer (classifyFooter takes 'ctrl+g to edit' as the plan family) and the box is refused: any multi-line draft would stall a send. Candidate fix: a 'ctrl+g to edit' suffix on the statusline row is chrome, not a modal footer.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -106,6 +118,12 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
+      },
+      "knownStall": "2.1.291 prints 'ctrl+g to edit in nano' at the right end of the statusline row whenever the draft spans more than one line. Blanking exactly that phrase in the capture makes the locator find the box and the whole draft again (probed 2026-10-06), so the phrase is read as a plan-dialog footer (classifyFooter takes 'ctrl+g to edit' as the plan family) and the box is refused: any multi-line draft would stall a send. Candidate fix: a 'ctrl+g to edit' suffix on the statusline row is chrome, not a modal footer.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -141,10 +159,10 @@
       "cols": 82,
       "rows": 49,
       "state": "draft-paste-placeholder",
-      "notes": "pasted block collapsed to a placeholder token in the box; hint row reads 'paste again to expand'",
+      "notes": "pasted block collapsed to a placeholder token in the box; hint row reads 'paste again to expand' [2026-10-06: re-captured with the lab's own paste, so the placeholder reads '#1 +28 lines' where the 2.1.278 session reached '#3'.]",
       "expected": {
         "hasInputBox": true,
-        "draft": "[Pasted text #3 +28 lines]",
+        "draft": "[Pasted text #1 +28 lines]",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
@@ -155,10 +173,10 @@
       "cols": 82,
       "rows": 49,
       "state": "draft-paste-plus-text",
-      "notes": "paste placeholder followed by typed text",
+      "notes": "paste placeholder followed by typed text [2026-10-06: re-captured with the lab's own paste, so the placeholder reads '#1 +28 lines' where the 2.1.278 session reached '#3'.]",
       "expected": {
         "hasInputBox": true,
-        "draft": "[Pasted text #3 +28 lines] summarise this",
+        "draft": "[Pasted text #1 +28 lines] summarise this",
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
@@ -291,6 +309,34 @@
       }
     },
     {
+      "fixture": "claude-lab--idle-fresh-auto-notice--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "idle-fresh-auto-notice",
+      "notes": "Fresh session on 2.1.291 with the one-time 'Auto mode is now Claude Code's default permission mode.' notice: four ▎-gutter rows under the banner, the empty box with its Try \"…\" ghost, and the hint row '⏵⏵ auto mode on (shift+tab to cycle) · ← for agents' (auto mode is the new default; the lab pins manual with --permission-mode default). Taken by clearing hasSeenAutoDefaultNotice in the isolated config.",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false,
+        "blockKind": "raw"
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-fresh-auto-notice--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "idle-fresh-auto-notice",
+      "notes": "Fresh session on 2.1.291 with the one-time 'Auto mode is now Claude Code's default permission mode.' notice: four ▎-gutter rows under the banner, the empty box with its Try \"…\" ghost, and the hint row '⏵⏵ auto mode on (shift+tab to cycle) · ← for agents' (auto mode is the new default; the lab pins manual with --permission-mode default). Taken by clearing hasSeenAutoDefaultNotice in the isolated config.",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false,
+        "blockKind": "raw"
+      }
+    },
+    {
       "fixture": "claude-lab--idle-ghost-suggestion--w82.txt",
       "cols": 82,
       "rows": 49,
@@ -351,7 +397,7 @@
       "cols": 82,
       "rows": 49,
       "state": "menu-config-panel",
-      "notes": "/config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer The generic menu grammar finds its region top by walking up from the footer for the nearest rule or box border within REGION_SCAN_WINDOW (30 rows, menu.ts). Here that rule is the search box's ╰─╯ bottom border: 24 rows above the footer at 82 columns, and 32 above it on a 120-column live capture (2026-09-22), whose taller list fits 30 setting rows between the two. Past the window the walk finds nothing, detectMenuRegion returns null, and the screen falls to the unread-dialog card instead. A fix has to stop measuring the region top in a fixed row count — size the window to the pane's own height, or anchor on the panel's tab row rather than the nearest rule — and it must still decline a borderless buffer, which is what the bound is there for.",
+      "notes": "/config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer The generic menu grammar finds its region top by walking up from the footer for the nearest rule or box border within REGION_SCAN_WINDOW (30 rows, menu.ts). Here that rule is the search box's ╰─╯ bottom border: 24 rows above the footer at 82 columns, and 32 above it on a 120-column live capture (2026-09-22), whose taller list fits 30 setting rows between the two. Past the window the walk finds nothing, detectMenuRegion returns null, and the screen falls to the unread-dialog card instead. A fix has to stop measuring the region top in a fixed row count — size the window to the pane's own height, or anchor on the panel's tab row rather than the nearest rule — and it must still decline a borderless buffer, which is what the bound is there for. [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--menu-config-panel-v2291--w82.txt.]",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -372,11 +418,79 @@
       ]
     },
     {
+      "fixture": "claude-lab--menu-config-panel-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-config-panel-v2291",
+      "notes": "/config panel on 2.1.291 (82 columns): a different settings list (Auto-compact, Prompt suggestions, Session recap, Dynamic workflows, Artifacts, …) and the footer 'Type to filter · Enter/↓ to select · ↑ to tabs · Esc to clear'.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Up"
+        ]
+      },
+      "knownKeyGap": "The footer names 'Enter/↓ to select' as ONE compound token. On 2.1.291 the menu now offers Down, Up and Escape, but Enter is still dropped. Candidate grammar: a compound-token reader for key-hint footers, which the '↑/↓' form of the same hint needs too.",
+      "actualKeys": [
+        "Down",
+        "Escape",
+        "Up"
+      ]
+    },
+    {
+      "fixture": "claude-lab--menu-effort-slider--w132.txt",
+      "cols": 132,
+      "rows": 49,
+      "state": "menu-effort-slider",
+      "notes": "/effort slider at 132 columns on 2.1.291: ─ rule, 'Effort', 'Faster … Smarter' heading, the scale low, medium, high, xhigh, max with '▲' under the current one, 'Tab to toggle' at the right of the label row and the footer '←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel'. No 'ultracode' or 'workflows' label on this install.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "s"
+        ]
+      }
+    },
+    {
       "fixture": "claude-lab--menu-effort-slider--w82.txt",
       "cols": 82,
       "rows": 49,
       "state": "menu-effort-slider",
-      "notes": "/effort picker: a ─── slider row with ▲ marker, no numbered options, key-hint footer",
+      "notes": "/effort picker: a ─── slider row with ▲ marker, no numbered options, key-hint footer [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--menu-effort-slider-v2291--w82.txt.]",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "s"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-effort-slider-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-effort-slider-v2291",
+      "notes": "/effort slider on 2.1.291 (82 columns): the label row now ends with 'Tab to toggle', a heading 'Faster ... Smarter' sits above the scale and the scale reads low, medium, high, xhigh, max. The Effort grammar lifts it with the same keys, but its scale read now carries the three words of the 'Tab to toggle' hint as labels (effort.test.ts fails on this capture: 8 labels, the five real ones plus the three words of the hint, where the test pins the 2.1.278 scale of six ending in `ultracode`). Note for the grammar: that is a finding, not a corpus gap.",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -397,7 +511,30 @@
       "cols": 82,
       "rows": 49,
       "state": "menu-model-picker",
-      "notes": "/model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer",
+      "notes": "/model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--menu-model-picker-v2291--w82.txt.]",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Left",
+          "Right",
+          "Up",
+          "s"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-model-picker-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-model-picker-v2291",
+      "notes": "/model picker on 2.1.291 (82 columns): heading 'Select model' with a two-line blurb, ten visible models (Default Opus 5.5, Fable 5.1, Sonnet 5.5 ✔, Haiku 4.5, …, '… +2 models'), a '↓' scroll marker, the effort row '◐ Medium effort (default) ←/→ to adjust' and the same footer.",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -420,7 +557,36 @@
       "cols": 83,
       "rows": 49,
       "state": "menu-resume-picker",
-      "notes": "/resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer",
+      "notes": "/resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--menu-resume-picker-v2291--w83.txt.]",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Up",
+          "ctrl+a",
+          "ctrl+b",
+          "ctrl+r"
+        ]
+      },
+      "knownKeyGap": "The /resume grammar (resume.ts, ADR 0058) lifts each session as a row whose tap walks the pointer and sends Enter, plus the footer's Esc row. PromptModel has no place for footer actions, so Ctrl+A, Ctrl+B and Ctrl+R stay on the Keys drawer, and with the pointer on the top row no tap needs Up.",
+      "actualKeys": [
+        "Down",
+        "Enter",
+        "Escape"
+      ]
+    },
+    {
+      "fixture": "claude-lab--menu-resume-picker-v2291--w83.txt",
+      "cols": 83,
+      "rows": 49,
+      "state": "menu-resume-picker-v2291",
+      "notes": "/resume picker on 2.1.291 (83 columns): the ▔ top edge is now a ─ rule, rows are indented two spaces (were three), the list is long and scrolls (a ↓ marker in the pointer column of the last visible row), and the same two-row key-hint footer. The sessions are the lab's own earlier runs.",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -449,7 +615,27 @@
       "cols": 82,
       "rows": 49,
       "state": "menu-rewind",
-      "notes": "esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer",
+      "notes": "esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--menu-rewind-v2291--w82.txt.]",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Down",
+          "Enter",
+          "Escape",
+          "Up"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-rewind-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-rewind-v2291",
+      "notes": "Esc-Esc Rewind picker on 2.1.291 (82 columns): the ▔ top edge is now a ─ rule and rows are indented two spaces (were three).",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -492,7 +678,7 @@
       "cols": 40,
       "rows": 49,
       "state": "mode-bash",
-      "notes": "shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live",
+      "notes": "shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--mode-bash-v2291--w40.txt.]",
       "expected": {
         "hasInputBox": true,
         "draft": "ls -1 src | head -3",
@@ -506,7 +692,35 @@
       "cols": 82,
       "rows": 49,
       "state": "mode-bash",
-      "notes": "shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live",
+      "notes": "shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--mode-bash-v2291--w82.txt.]",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "ls -1 src | head -3",
+        "tail": "statusline",
+        "dialogLive": false,
+        "blockKind": "raw"
+      }
+    },
+    {
+      "fixture": "claude-lab--mode-bash-v2291--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "mode-bash-v2291",
+      "notes": "shell (!) mode on 2.1.291 (40 columns): the prompt row starts with '!' and has no ❯; the hint row now reads '! for shell mode' with the effort chip '◐ medium · /effort' at its right end (input-box-frame.test.ts pins the bare hint and fails on this capture).",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "ls -1 src | head -3",
+        "tail": "statusline",
+        "dialogLive": false,
+        "blockKind": "raw"
+      }
+    },
+    {
+      "fixture": "claude-lab--mode-bash-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "mode-bash-v2291",
+      "notes": "shell (!) mode on 2.1.291 (82 columns): the prompt row starts with '!' and has no ❯; the hint row now reads '! for shell mode' with the effort chip '◐ medium · /effort' at its right end (input-box-frame.test.ts pins the bare hint and fails on this capture).",
       "expected": {
         "hasInputBox": true,
         "draft": "ls -1 src | head -3",
@@ -534,7 +748,7 @@
       "cols": 40,
       "rows": 49,
       "state": "permission-bash",
-      "notes": "Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer",
+      "notes": "Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--permission-bash-v2291--w40.txt.]",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -554,7 +768,7 @@
       "cols": 82,
       "rows": 49,
       "state": "permission-bash",
-      "notes": "Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer",
+      "notes": "Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--permission-bash-v2291--w82.txt.]",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -570,11 +784,222 @@
       }
     },
     {
+      "fixture": "claude-lab--permission-bash-subagent--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "permission-bash-subagent",
+      "notes": "Bash command permission raised by a SUBAGENT (the Agent tool, general-purpose): header 'Bash command · from the general-purpose agent', a one-line description, the command between ╌ rules, FOUR options (Yes, always allow access to <dir> from this project, switch to auto mode, No) and the footer 'Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents'. A `touch` command, so no │ gutter and no 'Dangerous rm' warning; the plain Yes/No shape appears only with a warning row (see permission-dangerous-rm). Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-bash-subagent--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-bash-subagent",
+      "notes": "Bash command permission raised by a SUBAGENT (the Agent tool, general-purpose): header 'Bash command · from the general-purpose agent', a one-line description, the command between ╌ rules, FOUR options (Yes, always allow access to <dir> from this project, switch to auto mode, No) and the footer 'Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents'. A `touch` command, so no │ gutter and no 'Dangerous rm' warning; the plain Yes/No shape appears only with a warning row (see permission-dangerous-rm). Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-bash-v2291--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "permission-bash-v2291",
+      "notes": "Bash command permission dialog raised by the MAIN agent, 2.1.291, 40 columns: a ─ top rule, header 'Bash command', a one-line description ('Create empty scratch file'), the command between ╌ dashed rules (no │ gutter on it), a tip about auto mode, 'Do you want to proceed?' and FOUR options, the second still 'Yes, and always allow access to <dir> from this project' (a directory scope, since the command is `touch`), the third 'Yes, and switch to auto mode', then 'Esc to cancel · Tab to amend'.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-bash-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-bash-v2291",
+      "notes": "Bash command permission dialog raised by the MAIN agent, 2.1.291, 82 columns: a ─ top rule, header 'Bash command', a one-line description ('Create empty scratch file'), the command between ╌ dashed rules (no │ gutter on it), a tip about auto mode, 'Do you want to proceed?' and FOUR options, the second still 'Yes, and always allow access to <dir> from this project' (a directory scope, since the command is `touch`), the third 'Yes, and switch to auto mode', then 'Esc to cancel · Tab to amend'. Answers the question: yes, the main agent still offers the 'always allow' row.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-dangerous-rm--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "permission-dangerous-rm",
+      "notes": "Bash `rm -rf ./*` in the lab project: header 'Bash command', description 'Remove all files in current directory', the command between ╌ rules, then a '│ Dangerous rm operation on working directory or its ancestor: <path>/*' warning row behind a │ gutter, and a plain TWO-option Yes / No list (no 'always allow', no auto-mode row). Footer 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-dangerous-rm--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-dangerous-rm",
+      "notes": "Bash `rm -rf ./*` in the lab project: header 'Bash command', description 'Remove all files in current directory', the command between ╌ rules, then a '│ Dangerous rm operation on working directory or its ancestor: <path>/*' warning row behind a │ gutter, and a plain TWO-option Yes / No list (no 'always allow', no auto-mode row). Footer 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-edit--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "permission-edit",
+      "notes": "Edit permission: header 'Edit file', the path, a diff preview between ╌ rules ('1 -old', '1 +new'), 'Do you want to make this edit to <file>?', three options (Yes; Yes, and switch to accept edits … for this session (shift+tab); No) and 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-edit--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-edit",
+      "notes": "Edit permission: header 'Edit file', the path, a diff preview between ╌ rules ('1 -old', '1 +new'), 'Do you want to make this edit to <file>?', three options (Yes; Yes, and switch to accept edits … for this session (shift+tab); No) and 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-webfetch--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "permission-webfetch",
+      "notes": "WebFetch permission at 40 columns on 2.1.291: header 'Fetch', 'Claude wants to fetch content from <host>', url/prompt rows between ╌ rules, 'Do you want to allow Claude to fetch this content?' and three options, the last ending '(esc)'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    },
+    {
       "fixture": "claude-lab--permission-webfetch--w82.txt",
       "cols": 82,
       "rows": 49,
       "state": "permission-webfetch",
-      "notes": "WebFetch permission dialog; last option ends with '(esc)' and there is no separate footer row",
+      "notes": "WebFetch permission dialog; last option ends with '(esc)' and there is no separate footer row [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--permission-webfetch-v2291--w82.txt.]",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-webfetch-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-webfetch-v2291",
+      "notes": "WebFetch permission on 2.1.291 (82 columns): header 'Fetch' and 'Claude wants to fetch content from <host>' now sit ABOVE the ╌ rule, the url/prompt rows between ╌ rules, then 'Do you want to allow Claude to fetch this content?' and three options, the last ending '(esc)'.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-write--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "permission-write",
+      "notes": "Create-file (Write) permission at 40 columns on 2.1.291: header 'Create file', the path, a numbered preview between ╌ rules, 'Do you want to create <file>?', three options, 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed.",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -593,7 +1018,7 @@
       "cols": 82,
       "rows": 49,
       "state": "permission-write",
-      "notes": "Create-file permission dialog with a numbered new-file preview between ╌ rules",
+      "notes": "Create-file permission dialog with a numbered new-file preview between ╌ rules [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--permission-write-v2291--w82.txt.]",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -608,11 +1033,55 @@
       }
     },
     {
+      "fixture": "claude-lab--permission-write-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-write-v2291",
+      "notes": "Create-file (Write) permission on 2.1.291 (82 columns): ─ top rule, header 'Create file', the path, a numbered preview between ╌ rules, 'Do you want to create <file>?', three options (the second 'Yes, and switch to accept edits … for this session (shift+tab)'), 'Esc to cancel · Tab to amend'.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--plan-approval--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "plan-approval",
+      "notes": "plan approval at 40 columns on 2.1.291: the question wraps over three rows ('Claude has written up a plan and is / ready to execute. Would you like to / proceed?'), the options keep their numbers, the feedback hint wraps, and the path footer wraps over two rows. The prompt-select grammar returns only raw blocks on it (the 82-column dialog lifts). Captured 2026-10-06.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownRaw": "At 40 columns the plan question wraps onto three rows and the path footer onto two, and prompt-select.ts returns no block, although the same dialog lifts at 82 columns (where key 3 is the feedback field and is left to the verified feedback flow). The wrap is the only difference. Candidate grammar: the prompt-select question and footer readers rejoin wrapped rows before matching.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
       "fixture": "claude-lab--plan-approval--w82--h30.txt",
       "cols": 82,
       "rows": 30,
       "state": "plan-approval",
-      "notes": "plan approval on a 30-row pane",
+      "notes": "plan approval on a 30-row pane [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--plan-approval-v2291--w82--h30.txt.]",
       "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
       "actualKeys": [
         "1",
@@ -636,7 +1105,7 @@
       "cols": 82,
       "rows": 49,
       "state": "plan-approval",
-      "notes": "plan approval dialog: plan body between ╌ rules, three numbered options, path footer",
+      "notes": "plan approval dialog: plan body between ╌ rules, three numbered options, path footer [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--plan-approval-v2291--w82.txt.]",
       "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
       "actualKeys": [
         "1",
@@ -660,7 +1129,7 @@
       "cols": 82,
       "rows": 49,
       "state": "plan-approval-feedback-typed",
-      "notes": "plan approval with feedback text typed into option 3",
+      "notes": "plan approval with feedback text typed into option 3 [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--plan-approval-feedback-typed-v2291--w82.txt.]",
       "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
       "actualKeys": [
         "1",
@@ -678,6 +1147,78 @@
           "3"
         ]
       }
+    },
+    {
+      "fixture": "claude-lab--plan-approval-feedback-typed-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "plan-approval-feedback-typed-v2291",
+      "notes": "plan approval on 2.1.291 with feedback typed into option 3 ('use a guard clause instead'), pointer on it.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
+      "actualKeys": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "fixture": "claude-lab--plan-approval-v2291--w82--h30.txt",
+      "cols": 82,
+      "rows": 30,
+      "state": "plan-approval-v2291",
+      "notes": "plan approval on 2.1.291 on a 30-row pane: same dialog, plan body clipped above the question.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
+      "actualKeys": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "fixture": "claude-lab--plan-approval-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "plan-approval-v2291",
+      "notes": "plan approval on 2.1.291 (82 columns): 'Ready to code?' header, plan between ╌ rules, 'Claude has written up a plan and is ready to execute. Would you like to proceed?', options 'Yes, and use auto mode', 'Yes, manually approve edits', 'Tell Claude what to change' with its feedback hint, path footer.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "knownKeyGap": "Key 3 is the plan's feedback field, not an option: prompt-select models it as `feedback` and the verified feedback flow (lib/prompt-action.ts) sends it, so no option button carries it.",
+      "actualKeys": [
+        "1",
+        "2"
+      ]
     },
     {
       "fixture": "claude-lab--popup-at-file--w40.txt",
@@ -719,6 +1260,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -733,6 +1281,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -747,6 +1302,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -761,6 +1323,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": true,
+        "draft": "/packages",
+        "tail": "statusline"
       }
     },
     {
@@ -775,6 +1344,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "statusline"
       }
     },
     {
@@ -789,6 +1365,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "statusline"
       }
     },
     {
@@ -803,6 +1386,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "statusline"
       }
     },
     {
@@ -817,6 +1407,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "statusline"
       }
     },
     {
@@ -831,6 +1428,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -845,6 +1449,13 @@
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
+      },
+      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
+      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {
@@ -976,7 +1587,7 @@
       "cols": 82,
       "rows": 49,
       "state": "survey-rating-above-box",
-      "notes": "session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey",
+      "notes": "session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey [2026-10-06: not reproduced on 2.1.291 (the survey is time- and sample-gated); the 2.1.278 bytes stay. The strings are still in the 2.1.291 binary, and its options now read '1: Learn more   2: Know this already   0: Dismiss' in one variant.]",
       "expected": {
         "hasInputBox": true,
         "draft": null,
@@ -1014,7 +1625,25 @@
       "cols": 82,
       "rows": 49,
       "state": "tasks-panel",
-      "notes": "/tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, a 'Background' title, an empty-state row, and a one-line key-hint footer; no input box",
+      "notes": "/tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, a 'Background' title, an empty-state row, and a one-line key-hint footer; no input box [2026-10-06, Claude Code 2.1.291: this file keeps its 2.1.278 bytes because other suites pin them; the 2.1.291 capture of the same state is claude-lab--tasks-panel-v2291--w82.txt.]",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "menu",
+        "keys": [
+          "Enter",
+          "Escape"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--tasks-panel-v2291--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "tasks-panel-v2291",
+      "notes": "/tasks panel on 2.1.291 (82 columns): the ▔ top edge is now a ─ rule and rows are indented two spaces (were three); the 'Background' title, empty-state row and one-line footer are unchanged.",
       "expected": {
         "hasInputBox": false,
         "draft": null,
@@ -1042,6 +1671,42 @@
       }
     },
     {
+      "fixture": "claude-lab--trust-prompt--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "trust-prompt",
+      "notes": "Folder-trust prompt on a never-opened folder: ─ top rule, 'Accessing workspace:', the path, the safety paragraph, then an UNNUMBERED pointed list with the pointer on 'No, exit' above 'Yes, I trust this folder', footer 'Enter to confirm · Esc to cancel'. Lifted as a pointed list (ADR 0055): Down walks to Yes, Enter confirms; no digit is synthesised. Captured 2026-10-06 on 2.1.291.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "Down",
+          "Enter"
+        ]
+      }
+    },
+    {
+      "fixture": "claude-lab--trust-prompt--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "trust-prompt",
+      "notes": "Folder-trust prompt on a never-opened folder: ─ top rule, 'Accessing workspace:', the path, the safety paragraph, then an UNNUMBERED pointed list with the pointer on 'No, exit' above 'Yes, I trust this folder', footer 'Enter to confirm · Esc to cancel'. Lifted as a pointed list (ADR 0055): Down walks to Yes, Enter confirms; no digit is synthesised. Captured 2026-10-06 on 2.1.291.",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true,
+        "blockKind": "prompt-select",
+        "keys": [
+          "Down",
+          "Enter"
+        ]
+      }
+    },
+    {
       "fixture": "claude-lab--working-popup-open--w82.txt",
       "cols": 82,
       "rows": 49,
@@ -1053,6 +1718,12 @@
         "tail": "statusline",
         "dialogLive": false,
         "blockKind": "raw"
+      },
+      "knownStall": "A slash popup painted while a tool runs, in the 2.1.291 shape (❯ pointer, four-space entry rows). The locator reports no box on it (hasInputBox false), so a send typed over the open popup would stall; the 2.1.278 capture of the same state found the box and the '/ref' draft.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
       }
     },
     {

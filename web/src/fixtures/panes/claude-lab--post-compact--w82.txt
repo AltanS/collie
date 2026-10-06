@@ -1,49 +1,21 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
 
 
-[0m[38;5;246m✻ Sautéed for 1s · done 12:47 AM[0m
+[0m[38;2;153;153;153m✻ Conversation compacted (ctrl+o for history)[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
 
-[0m[38;5;231m● [0mHi — I'm here. Let me know what you'd like to work on.
+[0m[38;2;255;255;255m● [0mHi! Still here. Tell me what you'd like to do, such as exploring the repo,
+  fixing something, or reviewing [0m[38;2;177;185;249mdocs/lab-notes.md[0m, and I'll get started.
 
-[0m[38;5;246m✻ Cogitated for 1s · done 12:47 AM[0m
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mSautéed for 1s · done 7:17 PM[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+[0m[38;2;153;153;153m[48;2;55;55;55m❯[0m[48;2;55;55;55m [0m[38;2;255;255;255m[48;2;55;55;55m/compact[0m[48;2;55;55;55m                                                                        [0m
+[0m[38;2;153;153;153m  ⎿  [0m[2mCompacted (ctrl+o to see full summary)[0m
 
-[0m[38;5;231m● [0mHi! Just say the word whenever you're ready to dive into something.
-
-[0m[38;5;246m✻ Churned for 2s · done 12:47 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m● [0mHi 👋 — what can I help with?
-
-[0m[38;5;246m✻ Cooked for 1s · done 12:48 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m● [0mHi — I'm ready whenever you have a task or question.
-
-[0m[38;5;246m✻ Sautéed for 2s · done 12:48 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m● [0mHi there.
-
-[0m[38;5;246m✻ Cooked for 2s · done 12:50 AM[0m
-
-[0m[38;5;239m[48;5;237m❯[0m[48;5;237m [0m[38;5;231m[48;5;237m/compact[0m[48;5;237m                                                                        [0m
-[0m[38;5;246m  ⎿  [0m[2mCompacted (ctrl+o to see full summary)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246mdocs/lab-notes.md[0m[38;5;246m (6 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-12.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-10.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-8.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-6.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Plan file referenced [0m
-     [0m[38;5;246m(/tmp/claude-lab-run/config/plans/plan-how-to-append-reactive-forest.md)[0m
-                                  
-[0m[38;5;244m────────────────────────────────────────────────────────────────────── README.md ─[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
 ❯ 
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;246msonnet · lab-project · main · ctx 12%[0m
-  [0m[38;5;246m⏸ manual mode on · ← for agents[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153msonnet · lab-project · main · ctx 12%[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← for agents[0m

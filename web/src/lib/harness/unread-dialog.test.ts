@@ -229,8 +229,18 @@ const CARD_FIXTURES = {
       // field no grammar reads; the Marketplaces grammar does not claim it (no `Manage marketplaces`
       // title), so the card and its Escape are the way back to the tab.
       "claude--v2283-plugin-marketplaces-add-form--w82.txt",
+      // RECORDED GAP, not accepted behaviour (2.1.291): the plan-approval footer wraps at 40
+      // columns, so no grammar lifts the dialog and only the card is left. Corpus `knownRaw`.
+      "claude-lab--plan-approval--w40.txt",
     ],
     notModals: [
+      // RECORDED GAP, not accepted behaviour (2.1.291 capture-lab run): the unread-dialog card
+      // appears over a LIVE composer (a `knownStall`). Claude Code 2.1.291 prints a `ctrl+g to edit in
+      // nano` statusline hint on a multi-line draft, and the input-box probe answers
+      // `hasInputBox: false` there. All three widths; see the corpus `knownStall` entries.
+      "claude-lab--draft-adversarial--w120.txt",
+      "claude-lab--draft-adversarial--w40.txt",
+      "claude-lab--draft-adversarial--w82.txt",
       // corpus, DELIBERATE: a statusline printing numbered rows is refused by ADR 0048 step 4
       // because it cannot be told from a live menu. Box live.
       "claude-lab--statusline-numbered-rows--w82.txt",

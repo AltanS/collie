@@ -447,9 +447,9 @@ hostname, home path, email, session id or credential-shaped string appears in th
 `model` key in `~/.claude/settings.json` really moved. Put it back by hand after capturing, or capture
 with an isolated `CLAUDE_CONFIG_DIR`.
 
-## Capture lab corpus (captured 2026-09-17, re-verified 2026-09-22 against Claude Code 2.1.278, throwaway Herdr session)
+## Capture lab corpus (captured 2026-09-17, re-verified 2026-09-22 against Claude Code 2.1.278 and 2026-10-06 against Claude Code 2.1.291, throwaway Herdr session)
 
-66 byte-faithful `pane.read format:ansi` captures from ONE real Claude Code session, driven through
+The first 66 byte-faithful `pane.read format:ansi` captures from ONE real Claude Code session, driven through
 a throwaway Herdr session (`--session claude-lab`) in a `/tmp` git project seeded with fake
 commands and skills, at seven pane widths from 40 to 200 columns. Taken for tracker M31 to prove the
 box-anchored locator ([ADR 0048](../../../../.adr/0048-the-input-box-is-found-by-its-own-frame.md))
@@ -470,6 +470,50 @@ is held for the same reason. One state, `survey-rating-above-box`, could not be 
 session-quality survey is time- and sample-gated, and it did not fire during the run. Its string is
 still in the 2.1.278 binary, so the screen still exists; the fixture is left alone.
 
+**The 2026-10-06 ritual run.** The lab was stood up a third time, against Claude Code 2.1.291 (Sonnet 5.5, auto mode now the
+default permission mode). Every state in the table was re-captured at its recorded widths except
+`survey-rating-above-box`, which did not fire again, and the table grew from 66 to 95 files. The
+lab differed from 2026-09-22 in four ways that show in the captures: the panes are hosted in a
+detached tmux window sized `cols + 26` by `rows + 1` with a Herdr client attached (the pane then
+reads `cols - 1` columns, which is why a `w82` rule is 81 wide), the session runs with
+`--permission-mode default` (2.1.291 rewrites a saved `defaultMode` to `auto` and prints a notice,
+see `idle-fresh-auto-notice`), ghost suggestions need `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=1`, and
+every capture is a `herdr pane read --source recent --lines 300 --format ansi` rather than
+`scripts/capture-fixture.sh`, because no Collie bridge sees the throwaway Herdr session.
+
+What changed on screen, and how the corpus records it:
+
+- **Slash popups lost their autocomplete reading.** The highlighted row carries a `❯` pointer and
+  every entry row is indented four spaces, so `autocomplete.ts` (two leading spaces, no pointer)
+  lifts nothing: ten captures went `autocomplete` to `raw`, and five of them also lost their box
+  (`popup-slash-all` at 40, 82 and 82 × 30, `popup-slash-mo`, `popup-slash-model-exact`).
+  `working-popup-open` lost its box too. Recorded as `knownRaw` and `knownStall` with the shape.
+- **A multi-line draft hides the box.** 2.1.291 prints `ctrl+g to edit in nano` on the statusline
+  row while a draft spans several lines, and the locator reads that phrase as a plan footer. The three
+  `draft-adversarial` captures report no box (`knownStall`); blanking the phrase restores the box.
+- **Three panels lost their `▔` edge.** `/tasks`, `/resume` and the rewind picker open under a plain `─`
+  rule and indent two spaces, not three, and `/config`, `/model` and `/effort` changed their own
+  content, so the regions pinned in `prompt-binding-regions.json` no longer match. The 2.1.278 bytes stay under the old names and the
+  new bytes sit beside them as `-v2291` files, as for the permission, plan and effort captures.
+- **The `/effort` slider swapped `ultracode` and its `xhigh + workflows` row for `Tab to toggle`** at the
+  right of its label row; the Effort grammar's scale read picks the three words of the hint up as labels
+  (`effort.test.ts` pins the old scale of six).
+- **New permission shapes, all lifted.** The Bash dialog has a `─` top rule, a header, a one-line
+  description and the command between `╌` rules. The main agent still offers `Yes, and always allow
+  access to <dir> from this project` and `Yes, and switch to auto mode` (four options). A subagent's
+  dialog adds `· from the general-purpose agent` to the header and `ctrl+x ctrl+k twice to stop
+  background agents` to the footer; its options stay four unless a `│ Dangerous rm operation …` warning
+  row (behind a `│` gutter) turns the list into plain Yes / No. The Edit, Write and WebFetch dialogs
+  keep their three options.
+- **The plan dialog at 40 columns is raw** (`plan-approval--w40`): the question and the path footer
+  wrap and `prompt-select.ts` returns no block.
+- **New first-run notice and trust prompt**: `idle-fresh-auto-notice` and `trust-prompt` at 40 and 82.
+
+All the new permission captures come from FRESH sessions, so the welcome banner is still in the
+buffer and `isAlienBuffer` names Claude; none of them is claimed by agy (checked against
+`agyAdapter`). The two 82-column Edit-permission screens that earlier runs could not promote are
+therefore on disk now (`permission-edit`), taken from a short session instead of a long one.
+
 Kept fresh by a standing tracker ritual, owned and scheduled:
 `tracker ritual run claude-capture-lab`. The ritual's trigger is a Claude Code
 version change, not the calendar; its first step compares the machine's
@@ -480,7 +524,8 @@ below.
 [`harness/claude/claude-lab-corpus.test.ts`](../../lib/harness/claude/claude-lab-corpus.test.ts)
 carries the reading a CORRECT locator would produce for every file here, written from the screen
 rather than from the code, and the test asserts it. The critical line it holds: on every capture
-with a live dialog the locator reports **no** box. Four screens are pinned as known gaps, each with
+with a live dialog the locator reports **no** box. Four screens were pinned as known gaps on 2026-09-17 (the
+2026-10-06 run added more, listed under its own heading above), each with
 its reason in the table entry — the background-agents screen, a wrapped draft whose continuation row
 opens with `❯`, shell (`!`) mode, and a statusline printing numbered rows. Deleting a gap's fields
 when a fix lands is how the table signals the fix.
@@ -493,6 +538,10 @@ mirror. An entry whose screen shows a dialog the pipeline still returns raw carr
 reason that names the grammar which would claim it, and one whose kind is right but whose key set is
 short carries `knownKeyGap` with the set it emits today. Both follow the same ritual as the other
 gaps: when the grammar lands, delete the field, do not edit the expectation.
+
+**Update 2026-10-06:** `permission-edit` at 82 and 40 columns is on disk now, taken from a fresh session whose
+banner still names Claude; the rest of this paragraph is the 2026-09-17 record of why a LONG session cannot
+be promoted.
 
 **Two captures the lab recommended are deliberately NOT here:** its 82-column Edit-permission
 screens, at 49 and at 30 rows. Every other Claude capture in this directory names Claude somewhere
@@ -520,68 +569,97 @@ username, hostname, home path or real project path appears in any file: the sess
 |---|---|---|
 | `claude-lab--agents-screen--w40.txt` | 40 × 49 | background agents screen (← from the composer): a typeable box whose Enter returns to the conversation, one-row key-hint footer under the box |
 | `claude-lab--agents-screen--w82.txt` | 82 × 49 | background agents screen (← from the composer): a typeable box whose Enter returns to the conversation, key-hint footer under the box (enter · space · ctrl+x · ?) |
-| `claude-lab--compacting--w82.txt` | 82 × 49 | /compact running: progress bar row above a live empty box |
-| `claude-lab--draft-adversarial--w120.txt` | 120 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
-| `claude-lab--draft-adversarial--w40.txt` | 40 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
-| `claude-lab--draft-adversarial--w82.txt` | 82 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
+| `claude-lab--compacting--w82.txt` | 82 × 49 | /compact running: progress bar row above a live empty box [2.1.291: the progress-bar row is gone; the running state is one `✻ Compacting conversation… (0s)` row above the box.] |
+| `claude-lab--draft-adversarial--w120.txt` | 120 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box [2.1.291: the statusline row gains `ctrl+g to edit in nano` for a multi-line draft, and the locator then reports NO box (recorded as `knownStall`).] |
+| `claude-lab--draft-adversarial--w40.txt` | 40 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box [2.1.291: the statusline row gains `ctrl+g to edit in nano` for a multi-line draft, and the locator then reports NO box (recorded as `knownStall`).] |
+| `claude-lab--draft-adversarial--w82.txt` | 82 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box [2.1.291: the statusline row gains `ctrl+g to edit in nano` for a multi-line draft, and the locator then reports NO box (recorded as `knownStall`).] |
 | `claude-lab--draft-long-wrapped--w40.txt` | 40 × 49 | long draft wrapped over several rows in the box |
 | `claude-lab--draft-long-wrapped--w82.txt` | 82 × 49 | long draft wrapped over several rows in the box |
-| `claude-lab--draft-paste-placeholder--w82.txt` | 82 × 49 | pasted block collapsed to a placeholder token in the box; hint row reads 'paste again to expand' |
-| `claude-lab--draft-paste-plus-text--w82.txt` | 82 × 49 | paste placeholder followed by typed text |
+| `claude-lab--draft-paste-placeholder--w82.txt` | 82 × 49 | pasted block collapsed to a placeholder token in the box; hint row reads 'paste again to expand' [2.1.291: re-captured with the lab's own paste, so the placeholder reads `#1 +28 lines`.] |
+| `claude-lab--draft-paste-plus-text--w82.txt` | 82 × 49 | paste placeholder followed by typed text [2.1.291: re-captured with the lab's own paste, so the placeholder reads `#1 +28 lines`.] |
 | `claude-lab--draft-short--w40.txt` | 40 × 49 | one-line draft after a turn |
 | `claude-lab--draft-short--w82.txt` | 82 × 49 | one-line draft after a turn |
 | `claude-lab--history-search-match--w82.txt` | 82 × 49 | ctrl+r search with a match filled into the box; the box text is a recalled prompt, not typed |
-| `claude-lab--idle-after-turn--w200.txt` | 200 × 49 | box after a finished turn, transcript above, ghost suggestion in box |
-| `claude-lab--idle-after-turn--w40.txt` | 40 × 49 | box after a finished turn, transcript above, ghost suggestion in box |
-| `claude-lab--idle-after-turn--w82.txt` | 82 × 49 | box after a finished turn, transcript above, ghost suggestion in box |
-| `claude-lab--idle-fresh--w200.txt` | 200 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint |
-| `claude-lab--idle-fresh--w40.txt` | 40 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint |
-| `claude-lab--idle-fresh--w82.txt` | 82 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint |
-| `claude-lab--idle-ghost-suggestion--w82.txt` | 82 × 49 | empty box painted with a faint ghost suggestion; draft must read null |
-| `claude-lab--idle-labelled-top-border--w41.txt` | 41 × 49 | top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank |
-| `claude-lab--idle-labelled-top-border--w83.txt` | 83 × 49 | top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank |
+| `claude-lab--idle-after-turn--w200.txt` | 200 × 49 | box after a finished turn, transcript above, ghost suggestion in box [2.1.291: the ghost suggestion shows only with `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=1` in this lab, and it is a real, model-written suggestion; the draft still reads null.] |
+| `claude-lab--idle-after-turn--w40.txt` | 40 × 49 | box after a finished turn, transcript above, ghost suggestion in box [2.1.291: the ghost suggestion shows only with `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=1` in this lab, and it is a real, model-written suggestion; the draft still reads null.] |
+| `claude-lab--idle-after-turn--w82.txt` | 82 × 49 | box after a finished turn, transcript above, ghost suggestion in box [2.1.291: the ghost suggestion shows only with `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=1` in this lab, and it is a real, model-written suggestion; the draft still reads null.] |
+| `claude-lab--idle-fresh--w200.txt` | 200 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint [2.1.291: banner reads `Sonnet 5.5`, the box holds a `Try "…"` placeholder, a notice block sits under the banner and the statusline gains `◐ medium · /effort` on the right.] |
+| `claude-lab--idle-fresh--w40.txt` | 40 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint [2.1.291: banner reads `Sonnet 5.5`, the box holds a `Try "…"` placeholder, a notice block sits under the banner and the statusline gains `◐ medium · /effort` on the right.] |
+| `claude-lab--idle-fresh--w82.txt` | 82 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint [2.1.291: banner reads `Sonnet 5.5`, the box holds a `Try "…"` placeholder, a notice block sits under the banner and the statusline gains `◐ medium · /effort` on the right.] |
+| `claude-lab--idle-fresh-auto-notice--w40.txt` | 40 × 49 | Fresh session on 2.1.291 with the one-time 'Auto mode is now Claude Code's default permission mode.' notice: four ▎-gutter rows under the banner, the empty box with its Try "…" ghost, and the hint row '⏵⏵ auto mode on (shift+tab to cycle) · ← for agents' (auto mode is the new default; the lab pins manual with --permission-mode default). Taken by clearing hasSeenAutoDefaultNotice in the isolated config. |
+| `claude-lab--idle-fresh-auto-notice--w82.txt` | 82 × 49 | Fresh session on 2.1.291 with the one-time 'Auto mode is now Claude Code's default permission mode.' notice: four ▎-gutter rows under the banner, the empty box with its Try "…" ghost, and the hint row '⏵⏵ auto mode on (shift+tab to cycle) · ← for agents' (auto mode is the new default; the lab pins manual with --permission-mode default). Taken by clearing hasSeenAutoDefaultNotice in the isolated config. |
+| `claude-lab--idle-ghost-suggestion--w82.txt` | 82 × 49 | empty box painted with a faint ghost suggestion; draft must read null [2.1.291: the ghost shows only with `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=1`; a plain 2.1.291 session paints an empty box after a turn.] |
+| `claude-lab--idle-labelled-top-border--w41.txt` | 41 × 49 | top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank [2.1.291: the label appears in the top rule about four seconds after `/rename Read README.md` (a rule with no label before that).] |
+| `claude-lab--idle-labelled-top-border--w83.txt` | 83 × 49 | top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank [2.1.291: the label appears in the top rule about four seconds after `/rename Read README.md` (a rule with no label before that).] |
 | `claude-lab--interrupted--w82.txt` | 82 × 49 | after Esc: 'Interrupted · What should Claude do instead?' row above a live empty box |
-| `claude-lab--menu-config-panel--w82.txt` | 82 × 49 | /config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer |
-| `claude-lab--menu-effort-slider--w82.txt` | 82 × 49 | /effort picker: a ─── slider row with ▲ marker, no numbered options, key-hint footer |
-| `claude-lab--menu-model-picker--w82.txt` | 82 × 49 | /model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer |
-| `claude-lab--menu-resume-picker--w83.txt` | 83 × 49 | /resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer |
-| `claude-lab--menu-rewind--w82.txt` | 82 × 49 | esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer |
-| `claude-lab--menu-status-screen--w82.txt` | 82 × 49 | /status screen: tab row, key/value rows, 'Esc to cancel' footer (contains account identity — sanitized) |
-| `claude-lab--mode-bash--w40.txt` | 40 × 49 | shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live |
-| `claude-lab--mode-bash--w82.txt` | 82 × 49 | shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live |
+| `claude-lab--menu-config-panel--w82.txt` | 82 × 49 | /config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-config-panel-v2291--w82.txt`.] |
+| `claude-lab--menu-config-panel-v2291--w82.txt` | 82 × 49 | /config panel on 2.1.291 (82 columns): a different settings list (Auto-compact, Prompt suggestions, Session recap, Dynamic workflows, Artifacts, …) and the footer 'Type to filter · Enter/↓ to select · ↑ to tabs · Esc to clear'. |
+| `claude-lab--menu-effort-slider--w132.txt` | 132 × 49 | /effort slider at 132 columns on 2.1.291: ─ rule, 'Effort', 'Faster … Smarter' heading, the scale low, medium, high, xhigh, max with '▲' under the current one, 'Tab to toggle' at the right of the label row and the footer '←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel'. No 'ultracode' or 'workflows' label on this install. |
+| `claude-lab--menu-effort-slider--w82.txt` | 82 × 49 | /effort picker: a ─── slider row with ▲ marker, no numbered options, key-hint footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-effort-slider-v2291--w82.txt`.] |
+| `claude-lab--menu-effort-slider-v2291--w82.txt` | 82 × 49 | /effort slider on 2.1.291 (82 columns): the label row now ends with 'Tab to toggle', a heading 'Faster ... Smarter' sits above the scale and the scale reads low, medium, high, xhigh, max. The Effort grammar lifts it with the same keys, but its scale read now carries the three words of the 'Tab to toggle' hint as labels (effort.test.ts fails on this capture: 8 labels, the five real ones plus the three words of the hint, where the test pins the 2.1.278 scale of six ending in `ultracode`). Note for the grammar: that is a finding, not a corpus gap. |
+| `claude-lab--menu-model-picker--w82.txt` | 82 × 49 | /model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-model-picker-v2291--w82.txt`.] |
+| `claude-lab--menu-model-picker-v2291--w82.txt` | 82 × 49 | /model picker on 2.1.291 (82 columns): heading 'Select model' with a two-line blurb, ten visible models (Default Opus 5.5, Fable 5.1, Sonnet 5.5 ✔, Haiku 4.5, …, '… +2 models'), a '↓' scroll marker, the effort row '◐ Medium effort (default) ←/→ to adjust' and the same footer. |
+| `claude-lab--menu-resume-picker--w83.txt` | 83 × 49 | /resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-resume-picker-v2291--w83.txt`.] |
+| `claude-lab--menu-resume-picker-v2291--w83.txt` | 83 × 49 | /resume picker on 2.1.291 (83 columns): the ▔ top edge is now a ─ rule, rows are indented two spaces (were three), the list is long and scrolls (a ↓ marker in the pointer column of the last visible row), and the same two-row key-hint footer. The sessions are the lab's own earlier runs. |
+| `claude-lab--menu-rewind--w82.txt` | 82 × 49 | esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--menu-rewind-v2291--w82.txt`.] |
+| `claude-lab--menu-rewind-v2291--w82.txt` | 82 × 49 | Esc-Esc Rewind picker on 2.1.291 (82 columns): the ▔ top edge is now a ─ rule and rows are indented two spaces (were three). |
+| `claude-lab--menu-status-screen--w82.txt` | 82 × 49 | /status screen: tab row, key/value rows, 'Esc to cancel' footer (contains account identity — sanitized) [2.1.291: gains `Session kind`, `Peer address`, `Cloud sessions` and `MCP servers` rows; identity, the session id, the peer path and the MCP counts are sanitized.] |
+| `claude-lab--mode-bash--w40.txt` | 40 × 49 | shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--mode-bash-v2291--w40.txt`.] |
+| `claude-lab--mode-bash--w82.txt` | 82 × 49 | shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--mode-bash-v2291--w82.txt`.] |
+| `claude-lab--mode-bash-v2291--w40.txt` | 40 × 49 | shell (!) mode on 2.1.291 (40 columns): the prompt row starts with '!' and has no ❯; the hint row now reads '! for shell mode' with the effort chip '◐ medium · /effort' at its right end (input-box-frame.test.ts pins the bare hint and fails on this capture). |
+| `claude-lab--mode-bash-v2291--w82.txt` | 82 × 49 | shell (!) mode on 2.1.291 (82 columns): the prompt row starts with '!' and has no ❯; the hint row now reads '! for shell mode' with the effort chip '◐ medium · /effort' at its right end (input-box-frame.test.ts pins the bare hint and fails on this capture). |
 | `claude-lab--mode-memory--w82.txt` | 82 × 49 | memory (#) draft in the box |
-| `claude-lab--permission-bash--w40.txt` | 40 × 49 | Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer |
-| `claude-lab--permission-bash--w82.txt` | 82 × 49 | Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer |
-| `claude-lab--permission-webfetch--w82.txt` | 82 × 49 | WebFetch permission dialog; last option ends with '(esc)' and there is no separate footer row |
-| `claude-lab--permission-write--w82.txt` | 82 × 49 | Create-file permission dialog with a numbered new-file preview between ╌ rules |
-| `claude-lab--plan-approval--w82--h30.txt` | 82 × 30 | plan approval on a 30-row pane |
-| `claude-lab--plan-approval--w82.txt` | 82 × 49 | plan approval dialog: plan body between ╌ rules, three numbered options, path footer |
-| `claude-lab--plan-approval-feedback-typed--w82.txt` | 82 × 49 | plan approval with feedback text typed into option 3 |
+| `claude-lab--permission-bash--w40.txt` | 40 × 49 | Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--permission-bash-v2291--w40.txt`.] |
+| `claude-lab--permission-bash--w82.txt` | 82 × 49 | Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--permission-bash-v2291--w82.txt`.] |
+| `claude-lab--permission-bash-subagent--w40.txt` | 40 × 49 | Bash command permission raised by a SUBAGENT (the Agent tool, general-purpose): header 'Bash command · from the general-purpose agent', a one-line description, the command between ╌ rules, FOUR options (Yes, always allow access to <dir> from this project, switch to auto mode, No) and the footer 'Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents'. A `touch` command, so no │ gutter and no 'Dangerous rm' warning; the plain Yes/No shape appears only with a warning row (see permission-dangerous-rm). Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-bash-subagent--w82.txt` | 82 × 49 | Bash command permission raised by a SUBAGENT (the Agent tool, general-purpose): header 'Bash command · from the general-purpose agent', a one-line description, the command between ╌ rules, FOUR options (Yes, always allow access to <dir> from this project, switch to auto mode, No) and the footer 'Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents'. A `touch` command, so no │ gutter and no 'Dangerous rm' warning; the plain Yes/No shape appears only with a warning row (see permission-dangerous-rm). Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-bash-v2291--w40.txt` | 40 × 49 | Bash command permission dialog raised by the MAIN agent, 2.1.291, 40 columns: a ─ top rule, header 'Bash command', a one-line description ('Create empty scratch file'), the command between ╌ dashed rules (no │ gutter on it), a tip about auto mode, 'Do you want to proceed?' and FOUR options, the second still 'Yes, and always allow access to <dir> from this project' (a directory scope, since the command is `touch`), the third 'Yes, and switch to auto mode', then 'Esc to cancel · Tab to amend'. |
+| `claude-lab--permission-bash-v2291--w82.txt` | 82 × 49 | Bash command permission dialog raised by the MAIN agent, 2.1.291, 82 columns: a ─ top rule, header 'Bash command', a one-line description ('Create empty scratch file'), the command between ╌ dashed rules (no │ gutter on it), a tip about auto mode, 'Do you want to proceed?' and FOUR options, the second still 'Yes, and always allow access to <dir> from this project' (a directory scope, since the command is `touch`), the third 'Yes, and switch to auto mode', then 'Esc to cancel · Tab to amend'. Answers the question: yes, the main agent still offers the 'always allow' row. |
+| `claude-lab--permission-dangerous-rm--w40.txt` | 40 × 49 | Bash `rm -rf ./*` in the lab project: header 'Bash command', description 'Remove all files in current directory', the command between ╌ rules, then a '│ Dangerous rm operation on working directory or its ancestor: <path>/*' warning row behind a │ gutter, and a plain TWO-option Yes / No list (no 'always allow', no auto-mode row). Footer 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-dangerous-rm--w82.txt` | 82 × 49 | Bash `rm -rf ./*` in the lab project: header 'Bash command', description 'Remove all files in current directory', the command between ╌ rules, then a '│ Dangerous rm operation on working directory or its ancestor: <path>/*' warning row behind a │ gutter, and a plain TWO-option Yes / No list (no 'always allow', no auto-mode row). Footer 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-edit--w40.txt` | 40 × 49 | Edit permission: header 'Edit file', the path, a diff preview between ╌ rules ('1 -old', '1 +new'), 'Do you want to make this edit to <file>?', three options (Yes; Yes, and switch to accept edits … for this session (shift+tab); No) and 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-edit--w82.txt` | 82 × 49 | Edit permission: header 'Edit file', the path, a diff preview between ╌ rules ('1 -old', '1 +new'), 'Do you want to make this edit to <file>?', three options (Yes; Yes, and switch to accept edits … for this session (shift+tab); No) and 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-webfetch--w40.txt` | 40 × 49 | WebFetch permission at 40 columns on 2.1.291: header 'Fetch', 'Claude wants to fetch content from <host>', url/prompt rows between ╌ rules, 'Do you want to allow Claude to fetch this content?' and three options, the last ending '(esc)'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-webfetch--w82.txt` | 82 × 49 | WebFetch permission dialog; last option ends with '(esc)' and there is no separate footer row [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--permission-webfetch-v2291--w82.txt`.] |
+| `claude-lab--permission-webfetch-v2291--w82.txt` | 82 × 49 | WebFetch permission on 2.1.291 (82 columns): header 'Fetch' and 'Claude wants to fetch content from <host>' now sit ABOVE the ╌ rule, the url/prompt rows between ╌ rules, then 'Do you want to allow Claude to fetch this content?' and three options, the last ending '(esc)'. |
+| `claude-lab--permission-write--w40.txt` | 40 × 49 | Create-file (Write) permission at 40 columns on 2.1.291: header 'Create file', the path, a numbered preview between ╌ rules, 'Do you want to create <file>?', three options, 'Esc to cancel · Tab to amend'. Captured 2026-10-06 on Claude Code 2.1.291 from a FRESH lab session (the welcome banner is still on screen, so the isAlienBuffer guard names Claude). Answered with Esc, never confirmed. |
+| `claude-lab--permission-write--w82.txt` | 82 × 49 | Create-file permission dialog with a numbered new-file preview between ╌ rules [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--permission-write-v2291--w82.txt`.] |
+| `claude-lab--permission-write-v2291--w82.txt` | 82 × 49 | Create-file (Write) permission on 2.1.291 (82 columns): ─ top rule, header 'Create file', the path, a numbered preview between ╌ rules, 'Do you want to create <file>?', three options (the second 'Yes, and switch to accept edits … for this session (shift+tab)'), 'Esc to cancel · Tab to amend'. |
+| `claude-lab--plan-approval--w40.txt` | 40 × 49 | plan approval at 40 columns on 2.1.291: the question wraps over three rows ('Claude has written up a plan and is / ready to execute. Would you like to / proceed?'), the options keep their numbers, the feedback hint wraps, and the path footer wraps over two rows. The prompt-select grammar returns only raw blocks on it (the 82-column dialog lifts). Captured 2026-10-06. |
+| `claude-lab--plan-approval--w82--h30.txt` | 82 × 30 | plan approval on a 30-row pane [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--plan-approval-v2291--w82--h30.txt`.] |
+| `claude-lab--plan-approval--w82.txt` | 82 × 49 | plan approval dialog: plan body between ╌ rules, three numbered options, path footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--plan-approval-v2291--w82.txt`.] |
+| `claude-lab--plan-approval-feedback-typed--w82.txt` | 82 × 49 | plan approval with feedback text typed into option 3 [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--plan-approval-feedback-typed-v2291--w82.txt`.] |
+| `claude-lab--plan-approval-feedback-typed-v2291--w82.txt` | 82 × 49 | plan approval on 2.1.291 with feedback typed into option 3 ('use a guard clause instead'), pointer on it. |
+| `claude-lab--plan-approval-v2291--w82--h30.txt` | 82 × 30 | plan approval on 2.1.291 on a 30-row pane: same dialog, plan body clipped above the question. |
+| `claude-lab--plan-approval-v2291--w82.txt` | 82 × 49 | plan approval on 2.1.291 (82 columns): 'Ready to code?' header, plan between ╌ rules, 'Claude has written up a plan and is ready to execute. Would you like to proceed?', options 'Yes, and use auto mode', 'Yes, manually approve edits', 'Tell Claude what to change' with its feedback hint, path footer. |
 | `claude-lab--popup-at-file--w40.txt` | 40 × 49 | @-file mention popup ('+ path' rows) under the box; no popup grammar exists for it |
 | `claude-lab--popup-at-file--w82.txt` | 82 × 49 | @-file mention popup ('+ path' rows) under the box; no popup grammar exists for it |
-| `claude-lab--popup-slash-all--w40.txt` | 40 × 49 | '/' alone: full command list popup under the box |
-| `claude-lab--popup-slash-all--w82--h30.txt` | 82 × 30 | '/' alone on a 30-row pane: popup taller than the pane, clipped |
-| `claude-lab--popup-slash-all--w82.txt` | 82 × 49 | '/' alone: full command list popup under the box |
-| `claude-lab--popup-slash-all-clipped--w82.txt` | 82 × 49 | '/packages': every visible name left-clipped with '…' |
-| `claude-lab--popup-slash-clipped--w120.txt` | 120 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
-| `claude-lab--popup-slash-clipped--w200.txt` | 200 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
-| `claude-lab--popup-slash-clipped--w60.txt` | 60 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
-| `claude-lab--popup-slash-clipped--w82.txt` | 82 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
-| `claude-lab--popup-slash-mo--w82.txt` | 82 × 49 | '/mo' prefix popup; contains a left-clipped name '…nthropic-skills:import-memory' |
-| `claude-lab--popup-slash-model-exact--w82.txt` | 82 × 49 | '/model' typed exactly, fuzzy popup still open |
+| `claude-lab--popup-slash-all--w40.txt` | 40 × 49 | '/' alone: full command list popup under the box [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The locator also reports no box here (`knownStall`).] |
+| `claude-lab--popup-slash-all--w82--h30.txt` | 82 × 30 | '/' alone on a 30-row pane: popup taller than the pane, clipped [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The locator also reports no box here (`knownStall`).] |
+| `claude-lab--popup-slash-all--w82.txt` | 82 × 49 | '/' alone: full command list popup under the box [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The locator also reports no box here (`knownStall`).] |
+| `claude-lab--popup-slash-all-clipped--w82.txt` | 82 × 49 | '/packages': every visible name left-clipped with '…' [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The box and the draft read correctly; the tail label is `statusline` (`knownTailGap`).] |
+| `claude-lab--popup-slash-clipped--w120.txt` | 120 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The box and the draft read correctly; the tail label is `statusline` (`knownTailGap`).] |
+| `claude-lab--popup-slash-clipped--w200.txt` | 200 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The box and the draft read correctly; the tail label is `statusline` (`knownTailGap`).] |
+| `claude-lab--popup-slash-clipped--w60.txt` | 60 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The box and the draft read correctly; the tail label is `statusline` (`knownTailGap`).] |
+| `claude-lab--popup-slash-clipped--w82.txt` | 82 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The box and the draft read correctly; the tail label is `statusline` (`knownTailGap`).] |
+| `claude-lab--popup-slash-mo--w82.txt` | 82 × 49 | '/mo' prefix popup; contains a left-clipped name '…nthropic-skills:import-memory' [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The locator also reports no box here (`knownStall`).] |
+| `claude-lab--popup-slash-model-exact--w82.txt` | 82 × 49 | '/model' typed exactly, fuzzy popup still open [2.1.291: the highlighted entry carries a `❯` pointer and entry rows are indented four spaces; autocomplete.ts does not read that shape (recorded as `knownRaw`). The locator also reports no box here (`knownStall`).] |
 | `claude-lab--popup-slash-nomatch--w82.txt` | 82 × 49 | popup with a single 'No commands match' row and no statusline; truth is a popup, a statusline reading is tolerable |
 | `claude-lab--post-compact--w82.txt` | 82 × 49 | screen right after /compact finished: compacted summary rows above a live empty box |
-| `claude-lab--statusline-10row--w82.txt` | 82 × 49 | 10-row statusline + hint: taller than MAX_STATUS_LINES, so the tail cannot be a statusline; box is live |
-| `claude-lab--statusline-3row--w82.txt` | 82 × 49 | 3-row statusline plus the mode hint row (4 rows under the box) |
-| `claude-lab--statusline-none--w82.txt` | 82 × 49 | no statusline at all: only the mode hint row under the box |
+| `claude-lab--statusline-10row--w82.txt` | 82 × 49 | 10-row statusline + hint: taller than MAX_STATUS_LINES, so the tail cannot be a statusline; box is live [2.1.291: the box holds a ghost suggestion (draft null).] |
+| `claude-lab--statusline-3row--w82.txt` | 82 × 49 | 3-row statusline plus the mode hint row (4 rows under the box) [2.1.291: the box holds a ghost suggestion (draft null).] |
+| `claude-lab--statusline-none--w82.txt` | 82 × 49 | no statusline at all: only the mode hint row under the box [2.1.291: the box holds a ghost suggestion (draft null).] |
 | `claude-lab--statusline-numbered-rows--w82.txt` | 82 × 49 | statusline rows holding '1. ' items and the words 'Esc to'; still a statusline, box is live |
-| `claude-lab--statusline-prompt-row--w82.txt` | 82 × 49 | statusline whose first row starts with '❯ ' — a frame mark below the box |
-| `claude-lab--statusline-rule-row--w82.txt` | 82 × 49 | statusline whose first row is '─ main ─────' — a rule below the box |
-| `claude-lab--survey-rating-above-box--w82.txt` | 82 × 49 | session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey |
+| `claude-lab--statusline-prompt-row--w82.txt` | 82 × 49 | statusline whose first row starts with '❯ ' — a frame mark below the box [2.1.291: the box holds a ghost suggestion (draft null).] |
+| `claude-lab--statusline-rule-row--w82.txt` | 82 × 49 | statusline whose first row is '─ main ─────' — a rule below the box [2.1.291: the box holds a ghost suggestion (draft null).] |
+| `claude-lab--survey-rating-above-box--w82.txt` | 82 × 49 | session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey [2026-10-06: not reproduced on 2.1.291; the 2.1.278 bytes stay.] |
 | `claude-lab--tasks-panel--w40.txt` | 40 × 49 | /tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, 'Background' title, empty-state row, key-hint footer wrapped onto two rows |
-| `claude-lab--tasks-panel--w82.txt` | 82 × 49 | /tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, 'Background' title, empty-state row, one-line key-hint footer |
-| `claude-lab--transcript-dialog-lookalike--w82.txt` | 82 × 49 | the transcript above the box holds '1. Yes / 2. No / Enter to select' rows: a dialog lookalike that must not refuse the live box |
-| `claude-lab--working-popup-open--w82.txt` | 82 × 49 | slash popup with clipped names painted ABOVE the box while a tool runs; the tail under the box is the statusline |
+| `claude-lab--tasks-panel--w82.txt` | 82 × 49 | /tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, 'Background' title, empty-state row, one-line key-hint footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--tasks-panel-v2291--w82.txt`.] |
+| `claude-lab--tasks-panel-v2291--w82.txt` | 82 × 49 | /tasks panel on 2.1.291 (82 columns): the ▔ top edge is now a ─ rule and rows are indented two spaces (were three); the 'Background' title, empty-state row and one-line footer are unchanged. |
+| `claude-lab--transcript-dialog-lookalike--w82.txt` | 82 × 49 | the transcript above the box holds '1. Yes / 2. No / Enter to select' rows: a dialog lookalike that must not refuse the live box [2.1.291: the box holds a ghost suggestion (draft null).] |
+| `claude-lab--trust-prompt--w40.txt` | 40 × 49 | Folder-trust prompt on a never-opened folder: ─ top rule, 'Accessing workspace:', the path, the safety paragraph, then an UNNUMBERED pointed list with the pointer on 'No, exit' above 'Yes, I trust this folder', footer 'Enter to confirm · Esc to cancel'. Lifted as a pointed list (ADR 0055): Down walks to Yes, Enter confirms; no digit is synthesised. Captured 2026-10-06 on 2.1.291. |
+| `claude-lab--trust-prompt--w82.txt` | 82 × 49 | Folder-trust prompt on a never-opened folder: ─ top rule, 'Accessing workspace:', the path, the safety paragraph, then an UNNUMBERED pointed list with the pointer on 'No, exit' above 'Yes, I trust this folder', footer 'Enter to confirm · Esc to cancel'. Lifted as a pointed list (ADR 0055): Down walks to Yes, Enter confirms; no digit is synthesised. Captured 2026-10-06 on 2.1.291. |
+| `claude-lab--working-popup-open--w82.txt` | 82 × 49 | slash popup with clipped names painted ABOVE the box while a tool runs; the tail under the box is the statusline [2.1.291: the popup is in the new shape and the locator reports no box on it (`knownStall`).] |
 | `claude-lab--working-queued-message--w82.txt` | 82 × 49 | queued '❯ …' row above the box while working; the box is empty under it (draft must read null) |
 | `claude-lab--working-spinner--w82.txt` | 82 × 49 | tool running, spinner line above a live empty box |
 

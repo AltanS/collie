@@ -1,0 +1,30 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mcreate a new file docs/lab-notes.md with three short lines about this lab [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mproject[0m[48;2;55;55;55m                                                                         [0m
+  
+[0m[38;2;78;186;101m●[0m [0m[1mSkill[0m(lab-notes)
+[0m[38;2;153;153;153m  ⎿  [0mSuccessfully loaded skill
+
+  [0m[38;2;153;153;153mRead [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m file, listed [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m directory (ctrl+o to expand)[0m
+
+[0m[38;2;153;153;153m● [0m[1mWrite[0m(docs/lab-notes.md)
+
+[0m[38;2;177;185;249m──────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mCreate file[0m
+ [0m[38;2;153;153;153mdocs/lab-notes.md[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m[38;2;248;248;242m 1 [0m[38;2;248;248;242mThis is a small lab project used to try out Claude Code workflows.[0m
+ [0m[2m[38;2;248;248;242m 2 [0m[38;2;248;248;242mIt currently holds little more than a notes file and a few lab skills.[0m
+ [0m[2m[38;2;248;248;242m 3 [0m[38;2;248;248;242mNothing here is production code; it is a sandbox for experiments.[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ Do you want to create [0m[1mlab-notes.md[0m?
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mYes, and switch to [0m[1maccept edits (auto-approve file edits and common file[0m
+      [0m[1mcommands) [0mfor this session [0m[1m(shift+tab)[0m
+   [0m[38;2;153;153;153m3. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend[0m

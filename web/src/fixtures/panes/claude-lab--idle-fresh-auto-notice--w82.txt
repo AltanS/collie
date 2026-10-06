@@ -1,0 +1,15 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
+
+[0m[38;2;215;119;87m▎ [0m[1mAuto mode is now Claude Code's default permission mode.[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mAuto mode lets Claude handle permission prompts automatically. Claude checks[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153meach tool call for risky actions and prompt injection before executing, runs the[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mones it assesses as lower-risk, and blocks the rest.[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mhttps://code.claude.com/docs/en/permission-modes[0m
+
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[2mTry "fix lint errors"[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153msonnet · lab-project · main · ctx 12%[0m                       [0m[38;2;153;153;153m◐ medium · /effort[0m
+  [0m[38;2;255;193;7m⏵⏵ auto mode on[0m[38;2;153;153;153m (shift+tab to cycle) · ← for agents[0m

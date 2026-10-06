@@ -1,49 +1,48 @@
-  What's interesting is that terminal interfaces didn't stagnate during the GUI
-  revolution. They evolved. The modern TUI—exemplified by tools like vim, tmux,
-  htop, lazygit, and increasingly sophisticated frameworks like Textual, Ratatui,
-  and Bubble Tea—represents a mature design tradition with its own conventions,
-  patterns, and aesthetic sensibilities, distinct from but informed by graphical
-  interface design.
+  retreated into a niche and thrived there. Unix systems, servers, and developer
+  workflows relied on shells, and the rise of the internet meant that
+  administrators connected to remote machines through SSH, a text channel. The
+  terminal emulator became a window inside the GUI, and the pairing proved
+  remarkably durable.
 
-  [0m[1mWhy Text Endures[0m
- 
-  The most obvious advantage of terminal interfaces is efficiency for those who
-  invest in
-[0m[38;5;246m  ⎿  Interrupted · What should Claude do instead?[0m
+  [0m[1mThe Modern Revival[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mecho back exactly these four lines and nothing else: ---- then 1. Yes then 2. [0m[48;5;237m  [0m
-[0m[48;5;237m  [0m[38;5;231m[48;5;237mNo then Enter to select[0m[48;5;237m                                                         [0m
+  Since roughly 2010, terminal interfaces have enjoyed a renaissance. Several
+  forces contributed. Developers spend much of their day in version control,
+  containers, and cloud tooling, all command-driven. Terminal multiplexers like
+  tmux and editors like Vim and Neovim built loyal followings. Modern terminals
+  gained truecolor support, Unicode, images, hyperlinks, and GPU rendering, as
+  with Kitty, Alacritty, WezTerm, and iTerm2.
 
-[0m[38;5;231m● [0m--- 
-  1. Yes 
-  2. No
-     Enter to select
+  New toolkits reflect this energy: Rust's ratatui, Go's Bubble Tea, Python's
+  Textual, and JavaScript's Ink. Applications such as lazygit, k9s, btop, and htop
+  offer rich, keyboard-driven dashboards that start instantly and work over SSH.
+  More recently, AI coding assistants have chosen the terminal as their home, a
+  sign that the medium still fits workflows that value speed, scriptability, and
+  composition.
 
-[0m[38;5;246m✻[0m [0m[38;5;246mCogitated for 3s · done 12:45 AM[0m
+  [0m[1mConclusion[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-  
-[0m[38;5;231m●[0m Hi! What would you like to do next?
-  
-[0m[38;5;246m✻ Cooked for 1s · done 12:46 AM[0m
+  The history of the terminal user interface is a story of constraints turning
+  into virtues. Teletypes gave us the command line; glass terminals gave us cursor
+  addressing; the VT100 gave us a shared standard; curses gave us portability;
+  and the PC gave us the text-mode application. Today's terminal tools inherit all
+  of it. Beneath their polish, they still send escape sequences to a grid of
+  character cells, much as a 1978 VT100 did, which suggests that the idea has
+  staying power.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mCogitated for 18s · done 7:13 PM[0m
 
-[0m[38;5;231m● [0mHi again — how can I help?
-
-[0m[38;5;246m✻ Sautéed for 1s · done 12:47 AM[0m
-
-[0m[38;5;244m────────────────────────────────────────────────────────────────────── README.md ─[0m
-❯ [0m[2mfinish the terminal user interfaces essay[0m
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;246mstatus row 1 of ten · lab[0m
-  [0m[38;5;246mstatus row 2 of ten · lab[0m
-  [0m[38;5;246mstatus row 3 of ten · lab[0m
-  [0m[38;5;246mstatus row 4 of ten · lab[0m
-  [0m[38;5;246mstatus row 5 of ten · lab[0m
-  [0m[38;5;246mstatus row 6 of ten · lab[0m
-  [0m[38;5;246mstatus row 7 of ten · lab[0m
-  [0m[38;5;246mstatus row 8 of ten · lab[0m
-  [0m[38;5;246mstatus row 9 of ten · lab[0m
-  [0m[38;5;246mstatus row 10 of ten · lab[0m
-  [0m[38;5;246m⏸ manual mode on · ← for agents[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[2msave it to docs/terminal-history.md[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153mstatus row 1 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 2 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 3 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 4 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 5 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 6 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 7 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 8 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 9 of ten · lab[0m
+  [0m[38;2;153;153;153mstatus row 10 of ten · lab[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← for agents[0m

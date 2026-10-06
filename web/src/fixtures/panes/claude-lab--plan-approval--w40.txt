@@ -1,0 +1,48 @@
+
+[0m[38;2;78;186;101m● [0m[1mUpdated plan[0m
+[0m[38;2;153;153;153m  ⎿  /plan to preview[0m
+
+[0m[38;2;72;150;140m────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mReady to code?[0m
+
+ Here is Claude's plan:
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[1m[3m[4mPlan: add a fourth line to [0m
+ [0m[1m[3m[4mdocs/lab-notes.md[0m
+
+ [0m[1mContext[0m
+
+ [0m[38;2;177;185;249mdocs/lab-notes.md [0mis an untracked
+ throwaway file with a title, a blank
+ line, and three text lines (lines 4-6
+ currently, file is 6 lines). The user
+ wants one more line appended.
+
+ - Append a single new sentence as the
+   last line of [0m[38;2;177;185;249mdocs/lab-notes.md[0m,
+   matching the existing short
+   plain-sentence style (e.g. "Add new
+   notes below as the lab evolves.").
+ - Use Edit to add it after line 5,
+   keeping the trailing newline and not
+   touching the existing lines.
+ - Verify by reading the file back (or
+   [0m[38;2;177;185;249mgit diff --no-index[0m/[0m[38;2;177;185;249mcat[0m) and confirm
+   the new line is present; no commit
+   unless asked.
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+
+[0m[38;2;72;150;140m────────────────────────────────────────[0m
+ [0m[38;2;153;153;153mClaude has written up a plan and is[0m
+ [0m[38;2;153;153;153mready to execute. Would you like to[0m
+ [0m[38;2;153;153;153mproceed?[0m
+
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes, and use auto mode[0m
+   [0m[38;2;153;153;153m2. [0mYes, manually approve edits
+   [0m[38;2;153;153;153m3. Tell Claude what to change[0m
+      [0m[38;2;153;153;153mshift+tab to approve with this[0m
+      [0m[38;2;153;153;153mfeedback[0m
+
+ [0m[38;2;153;153;153mctrl+g to edit in nano ·[0m
+ [0m[38;2;153;153;153m/tmp/claude-lab-run/config/plans/plan-[0m
+ [0m[38;2;153;153;153ma-tiny-change-declarative-hinton.md[0m

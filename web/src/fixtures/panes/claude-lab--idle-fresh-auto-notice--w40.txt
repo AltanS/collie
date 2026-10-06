@@ -1,0 +1,21 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
+
+[0m[38;2;215;119;87m▎ [0m[1mAuto mode is now Claude Code's default[0m
+[0m[38;2;215;119;87m▎ [0m[1mpermission mode.[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mAuto mode lets Claude handle[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mpermission prompts automatically.[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mClaude checks each tool call for risky[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mactions and prompt injection before[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mexecuting, runs the ones it assesses[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mas lower-risk, and blocks the rest.[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153mhttps://code.claude.com/docs/en/permis[0m
+[0m[38;2;215;119;87m▎ [0m[38;2;153;153;153msion-modes[0m
+
+[0m[38;2;136;136;136m────────────────────────────────────────[0m
+❯ [0m[2mTry "how does <filepath> work?"[0m
+[0m[38;2;136;136;136m────────────────────────────────────────[0m
+  [0m[38;2;153;153;153msonnet · lab-project · main · ctx 1…[0m
+  [0m[38;2;255;193;7m⏵⏵ auto mode on[0m[38;2;153;153;153m (shift+tab to cycle)[0m
+                    [0m[38;2;153;153;153m◐ medium · /effort[0m

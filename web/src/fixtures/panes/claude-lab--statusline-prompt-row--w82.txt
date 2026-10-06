@@ -1,49 +1,47 @@
-  patterns, and aesthetic sensibilities, distinct from but informed by graphical
-  interface design.
+  carried the tradition forward. Terminal multiplexers in particular made the
+  terminal a persistent workspace that could survive disconnection.
 
-  [0m[1mWhy Text Endures[0m
-  
-  The most obvious advantage of terminal interfaces is efficiency for those who
-  invest in
-[0m[38;5;246m  ⎿  Interrupted · What should Claude do instead?[0m
+  [0m[1mRevival[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mecho back exactly these four lines and nothing else: ---- then 1. Yes then 2. [0m[48;5;237m  [0m
-[0m[48;5;237m  [0m[38;5;231m[48;5;237mNo then Enter to select[0m[48;5;237m                                                         [0m
-  
-[0m[38;5;231m● [0m---
-  1. Yes
-  2. No
-     Enter to select
+  Beginning around the 2010s, TUIs saw a genuine renaissance. Several forces
+  contributed. Terminal emulators improved dramatically, gaining 256-color and
+  then 24-bit "true color" support, Unicode, mouse reporting, and GPU-accelerated
+  rendering. Developers spent more of their day in the terminal, working with
+  containers, cloud tooling, and version control, so there was demand for better
+  interfaces there. And new languages with strong ecosystems offered fresh ways to
+  build them.
 
-[0m[38;5;246m✻[0m [0m[38;5;246mCogitated for 3s · done 12:45 AM[0m
+  [0m[38;2;177;185;249mtig [0mand later [0m[38;2;177;185;249mlazygit [0mgave Git a navigable visual layer. [0m[38;2;177;185;249mk9s [0mdid the same for
+  Kubernetes. [0m[38;2;177;185;249mbtop [0mand [0m[38;2;177;185;249mbottom [0mturned system monitoring into something attractive.
+  In the editor world, Neovim revitalized the modal-editing tradition and spawned
+  a large plugin ecosystem. Libraries proliferated across languages: Rust's
+  [0m[38;2;177;185;249mratatui[0m, Go's Bubble Tea, Python's Textual and Rich, and JavaScript's Ink, which
+  brought React-style component models into the terminal. Newer terminals such as
+  Kitty, WezTerm, and Alacritty pushed capabilities further, adding image
+  protocols and richer keyboard input.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+  [0m[1mThe Agentic Era[0m
 
-[0m[38;5;231m● [0mHi! What would you like to do next?
+  Most recently, TUIs have become a natural home for AI coding assistants. Tools
+  in this category pair a conversational interface with direct access to files,
+  shells, and version control, which is exactly what a terminal already provides.
+  They sit beside the developer's existing workflow rather than replacing it.
 
-[0m[38;5;246m✻[0m [0m[38;5;246mCooked for 1s · done 12:46 AM[0m
+  [0m[1mConclusion[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+  The terminal's longevity comes from a few durable strengths. It is lightweight,
+  works over any connection, composes well with other tools, and rewards keyboard
+  fluency. Each generation has rediscovered these virtues while adding new ones,
+  from cursor addressing to true color to component frameworks. From the teletype
+  to the modern terminal emulator, the TUI has repeatedly been declared obsolete
+  and has repeatedly returned, because the idea of efficiently talking to a
+  machine in text remains hard to improve on.
 
-[0m[38;5;231m● [0mHi again — how can I help?
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mCogitated for 17s · done 7:16 PM[0m
 
-[0m[38;5;246m✻[0m [0m[38;5;246mSautéed for 1s · done 12:47 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m●[0m Hi — I'm here. Let me know what you'd like to work on.
-
-[0m[38;5;246m✻[0m [0m[38;5;246mCogitated for 1s · done 12:47 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
- 
-[0m[38;5;231m● [0mHi! Just say the word whenever you're ready to dive into something.
-
-[0m[38;5;246m✻ Churned for 2s · done 12:47 AM[0m
-  
-[0m[38;5;244m────────────────────────────────────────────────────────────────────── README.md ─[0m
-❯ [0m[2mfinish the terminal user interfaces essay[0m
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;246m❯ lab-project main[0m
-  [0m[38;5;246mctx 12%[0m
-  [0m[38;5;246m⏸ manual mode on · ← for agents[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[2msave it to docs/essay.md[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153m❯ lab-project main[0m
+  [0m[38;2;153;153;153mctx 12%[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← for agents[0m

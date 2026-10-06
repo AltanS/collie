@@ -75,6 +75,17 @@ const EFFORT_FIXTURES = [
   EDGE_FIXTURE,
 ];
 
+// RECORDED GAP, not accepted behaviour (Claude Code 2.1.291 capture-lab run). These two captures are
+// claimed by `detectEffort`, but the new `Tab to toggle` hint shares the label row with the scale, so
+// its words `Tab`, `to`, `toggle` are read as three more labels and `ultracode` is dropped. The
+// marker and the selected label are right. They stay OUT of `EFFORT_FIXTURES` because the scale
+// checks there would fail on them; the pin below is meant to go red when the grammar learns to stop
+// at the hint, and the repair is then to move both names into `EFFORT_FIXTURES`.
+const LABEL_DRIFT_FIXTURES = [
+  "claude-lab--menu-effort-slider--w132.txt",
+  "claude-lab--menu-effort-slider-v2291--w82.txt",
+];
+
 function lines(text: string): StyledLine[] {
   return splitLines(parseAnsi(text));
 }
@@ -462,7 +473,15 @@ describe("detectEffort — what it declines", () => {
       .filter((n) => n.endsWith(".txt"))
       .filter((n) => detectEffort(load(n)) !== null)
       .toSorted();
-    expect(claimed).toEqual(EFFORT_FIXTURES.toSorted());
+    expect(claimed).toEqual([...EFFORT_FIXTURES, ...LABEL_DRIFT_FIXTURES].toSorted());
+  });
+
+  it("pins the 2.1.291 label drift as it behaves today (a gap, see LABEL_DRIFT_FIXTURES)", () => {
+    for (const fixture of LABEL_DRIFT_FIXTURES) {
+      const leftRight = detectEffort(load(fixture))!.nav.leftRight!;
+      expect(leftRight.label, fixture).toBe("medium");
+      expect(leftRight.values, fixture).toEqual(["low", "medium", "high", "xhigh", "max", "Tab", "to", "toggle"]);
+    }
   });
 });
 

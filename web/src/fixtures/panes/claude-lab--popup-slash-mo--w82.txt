@@ -1,44 +1,39 @@
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
-[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.278[0m
-[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
-[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
 
-  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
-  with [0m[38;5;153m/model[0m.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                               [0m
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mread README.md and reply with one short sentence[0m[48;2;55;55;55m                               [0m
 
-  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+  [0m[38;2;153;153;153mRead [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m file (ctrl+o to expand)[0m
 
-[0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
+[0m[38;2;255;255;255m● [0mThe README says this is a throwaway lab project used for screen captures.
 
-[0m[38;5;246m✻ Brewed for 2s · done 12:25 AM[0m
+[0m[38;2;153;153;153m✻ Worked for 4s · done 6:34 PM[0m
 
-[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────[0m
 ❯ /mo
-[0m[38;5;244m─────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;153m/[0m[1m[38;5;153mmo[0m[38;5;153mdel                          Set the AI [0m[1m[38;5;153mmo[0m[38;5;153mdel for Claude Code (currently[0m
-                                  [0m[38;5;153mSonnet 5)[0m
-  [0m[38;5;246m/[0m[1mmo[0m[38;5;246mbile                         Show QR code to download the Claude [0m[1mmo[0m[38;5;246mbile[0m
-                                  [0m[38;5;246mapp[0m
-  [0m[38;5;246m/[0m[1mmo[0m[38;5;246mdelcheck                     Print a note about [0m[1mmo[0m[38;5;246mdel configuration for[0m
-                                  [0m[38;5;246mthis lab (project)[0m
-  [0m[38;5;246m…opic-skills:[0m[1mmo[0m[38;5;246mrning (morning)  Render the user's [0m[1mmo[0m[38;5;246mrning brief as a styled[0m
-                                  [0m[38;5;246mHTML artifact, or set it up as a recurring w…[0m
-  [0m[38;5;246m/refactor-[0m[1mmo[0m[38;5;246mdule-boundaries     [0m[1mMo[0m[38;5;246mve code between modules so each module owns[0m
-                                  [0m[38;5;246mone concern (project)[0m
-  [0m[38;5;246m/auto-[0m[1mmo[0m[38;5;246mde-setup                Teach auto [0m[1mmo[0m[38;5;246mde about your environment, plus[0m
-                                  [0m[38;5;246moptional rule tweaks[0m
-  [0m[38;5;246m/re[0m[1mmo[0m[38;5;246mte-env                     Choose the default environment for cloud[0m
-                                  [0m[38;5;246magents[0m
-  [0m[38;5;246m/re[0m[1mmo[0m[38;5;246mte-control                 Control this session from your phone or[0m
-                                  [0m[38;5;246mclaude.ai/code[0m
-  [0m[38;5;246m…nthropic-skills:import-me[0m[1mmo[0m[38;5;246mry  Import a me[0m[1mmo[0m[38;5;246mry export from another AI[0m
-                                  [0m[38;5;246massistant into Claude's me[0m[1mmo[0m[38;5;246mry — conversatio…[0m
-  [0m[38;5;246m/me[0m[1mmo[0m[38;5;246mry                         Edit CLAUDE.md files and me[0m[1mmo[0m[38;5;246mry settings[0m
-  [0m[38;5;246m/update-config                  Use this skill to configure the Claude Code[0m
-                                  [0m[38;5;246mharness via settings.json. Automated behavio…[0m
-  [0m[38;5;246m/claude-api                     Reference for the Claude API / Anthropic SDK[0m
-                                  [0m[38;5;246m— [0m[1mmo[0m[38;5;246mdel ids, pricing, params, streaming, too…[0m
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;177;185;249m❯ /[0m[1m[38;2;177;185;249mmo[0m[38;2;177;185;249mdel                          Set the AI [0m[1m[38;2;177;185;249mmo[0m[38;2;177;185;249mdel for Claude Code (currently[0m
+                                    [0m[38;2;177;185;249mSonnet 5.5)[0m
+  [0m[38;2;153;153;153m  /[0m[1mmo[0m[38;2;153;153;153mbile                         Show QR code to download the Claude [0m[1mmo[0m[38;2;153;153;153mbile[0m
+                                    [0m[38;2;153;153;153mapp[0m
+  [0m[38;2;153;153;153m  /[0m[1mmo[0m[38;2;153;153;153mrning                        Render the user's [0m[1mmo[0m[38;2;153;153;153mrning brief as a styled[0m
+                                    [0m[38;2;153;153;153mHTML artifact, or set it up as a recurring…[0m
+  [0m[38;2;153;153;153m  /[0m[1mmo[0m[38;2;153;153;153mdelcheck                     Print a note about [0m[1mmo[0m[38;2;153;153;153mdel configuration for[0m
+                                    [0m[38;2;153;153;153mthis lab (project)[0m
+  [0m[38;2;153;153;153m  /auto-[0m[1mmo[0m[38;2;153;153;153mde-setup                Teach auto [0m[1mmo[0m[38;2;153;153;153mde about your environment,[0m
+                                    [0m[38;2;153;153;153mplus optional rule tweaks[0m
+  [0m[38;2;153;153;153m  /re[0m[1mmo[0m[38;2;153;153;153mte-env                     Choose the default environment for cloud[0m
+                                    [0m[38;2;153;153;153magents[0m
+  [0m[38;2;153;153;153m  /re[0m[1mmo[0m[38;2;153;153;153mte-control                 Control this session from your phone or[0m
+                                    [0m[38;2;153;153;153mclaude.ai/code[0m
+  [0m[38;2;153;153;153m  /refactor-[0m[1mmo[0m[38;2;153;153;153mdule-boundaries     [0m[1mMo[0m[38;2;153;153;153mve code between modules so each module[0m
+                                    [0m[38;2;153;153;153mowns one concern (project)[0m
+  [0m[38;2;153;153;153m  /import-me[0m[1mmo[0m[38;2;153;153;153mry                  Import a me[0m[1mmo[0m[38;2;153;153;153mry export from another AI[0m
+                                    [0m[38;2;153;153;153massistant into Claude's me[0m[1mmo[0m[38;2;153;153;153mry — conversat…[0m
+  [0m[38;2;153;153;153m  /me[0m[1mmo[0m[38;2;153;153;153mry                         Edit CLAUDE.md files and me[0m[1mmo[0m[38;2;153;153;153mry settings[0m
+  [0m[38;2;153;153;153m  /code-review                    3 free /ultrareview · Review the current[0m
+                                    [0m[38;2;153;153;153mdiff, or a PR number/branch/path target, f…[0m
+  [0m[38;2;153;153;153m  /artifact-capabilities          Runtime capabilities a published Artifact[0m
+                                    [0m[38;2;153;153;153mpage can be granted — behavior static HTML…[0m

@@ -147,8 +147,8 @@ describe("the table and the fixture directory stay in lockstep", () => {
   });
 
   it("the corpus is not vacuous", () => {
-    expect(ENTRIES.length).toBe(66);
-    expect(new Set(ENTRIES.map((e) => e.cols))).toEqual(new Set([40, 41, 60, 82, 83, 120, 200]));
+    expect(ENTRIES.length).toBe(95);
+    expect(new Set(ENTRIES.map((e) => e.cols))).toEqual(new Set([40, 41, 60, 82, 83, 120, 132, 200]));
     expect(new Set(ENTRIES.map((e) => e.state)).size).toBeGreaterThan(25);
   });
 });
@@ -173,7 +173,9 @@ describe("a real box is found, with its draft and its tail", () => {
   );
 
   it("the check is not vacuous", () => {
-    expect(CLEAN.length).toBeGreaterThan(40);
+    // 37 today. The 2.1.291 run moved box-bearing captures with multi-line drafts into the recorded
+    // tail gaps (the `ctrl+g to edit in nano` statusline hint), so the floor sits just under that.
+    expect(CLEAN.length).toBeGreaterThan(34);
   });
 
   it.each(CLEAN.map((e) => [e.fixture, e] as const))("%s", (_name, entry) => {
@@ -260,11 +262,12 @@ describe("the pipeline lifts the kind the screen shows", () => {
   });
 
   it("every knownRaw carries a reason naming a candidate grammar, and pins its reading", () => {
-    // Four: the seven the register in M34 spec 03 argues, plus the 40-column /tasks panel the
-    // 2026-09-22 capture-lab run added, less the WebFetch dialog and the three plan-approval
-    // captures the 2026-09-26 grammar work lifted. When a grammar lands, the repair is to delete that
-    // entry's `knownRaw` and its `actualToday`, and to lower this number.
-    expect(RAW_GAPS.length).toBe(4);
+    // Fifteen: the four the 2026-09-26 grammar work left (the agents-screen pair, the /status screen
+    // and the 40-column /tasks panel), plus eleven the 2.1.291 capture-lab run recorded: ten
+    // slash-popup captures and the 40-column plan-approval screen, whose footer wraps. When a
+    // grammar lands, the repair is to delete that entry's `knownRaw` and its `actualToday`, and to
+    // lower this number.
+    expect(RAW_GAPS.length).toBe(15);
     for (const entry of RAW_GAPS) {
       expect(entry.knownRaw!.length, entry.fixture).toBeGreaterThan(40);
       expect(entry.expected.blockKind, entry.fixture).not.toBe("raw");

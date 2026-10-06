@@ -1,49 +1,47 @@
 
-[0m[38;5;231m● [0mHi! Just say the word whenever you're ready to dive into something.
+  By the 1990s, graphical interfaces on Windows, Macintosh, and X11 had taken over
+  the desktop. The mainstream view was that text interfaces were a relic. Yet
+  they never disappeared. Unix administrators, programmers, and embedded-systems
+  engineers kept using them, because text interfaces had real advantages: they
+  worked over slow network links, they could be scripted, and they used few
+  resources. SSH, introduced in 1995, made remote terminal sessions secure and
+  ubiquitous, and the terminal became the standard window into servers.
 
-[0m[38;5;246m✻ Churned for 2s · done 12:47 AM[0m
+  Tools matured through this period. Terminal multiplexers such as GNU Screen
+  (1987) and tmux (2007) let users run several sessions and survive disconnects.
+  Text-mode programs such as htop, mutt, irssi, midnight commander, and later
+  ranger and ncdu showed that a TUI could be both powerful and pleasant. Terminal
+  emulators gained 256-color and eventually 24-bit "true color" support, Unicode,
+  and mouse reporting, which removed many of the old limits.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+  [0m[1mThe Modern Renaissance[0m
 
-[0m[38;5;231m● [0mHi 👋 — what can I help with?
+  Since the 2010s, TUIs have enjoyed a real revival. Developers who spend their
+  days in a terminal want tools that live there too. Projects like lazygit, k9s,
+  and btop offer polished, discoverable interfaces for Git, Kubernetes, and system
+  monitoring. New libraries have made building them far easier, including Rust's
+  Ratatui, Go's Bubble Tea, Python's Textual, and JavaScript's Ink. Modern
+  terminals such as Kitty, WezTerm, and Alacritty add GPU rendering, image
+  protocols, and better input handling, which narrows the gap with graphical
+  applications.
 
-[0m[38;5;246m✻ Cooked for 1s · done 12:48 AM[0m
+  The rise of AI coding assistants has added another chapter. Tools that run
+  conversationally inside the terminal, reading files, running commands, and
+  streaming responses, show that the medium suits workflows built around text,
+  code, and automation.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+  [0m[1mConclusion[0m
 
-[0m[38;5;231m● [0mHi — I'm ready whenever you have a task or question.
+  The terminal interface has lasted more than seventy years because it fits how
+  programmers work: text is composable, scriptable, and lightweight. It began as
+  ink on paper, became a glowing grid of characters, was declared obsolete, and is
+  now being reinvented with modern tools. The VT100's escape codes are still at
+  the foundation of it all, which shows how well a simple and flexible design can
+  age.
 
-[0m[38;5;246m✻ Sautéed for 2s · done 12:48 AM[0m
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mCrunched for 17s · done 7:14 PM[0m
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m● [0mHi there.
-
-[0m[38;5;246m✻ Cooked for 2s · done 12:50 AM[0m
-
-[0m[38;5;239m[48;5;237m❯[0m[48;5;237m [0m[38;5;231m[48;5;237m/compact[0m[48;5;237m                                                                        [0m
-[0m[38;5;246m  ⎿  [0m[2mCompacted (ctrl+o to see full summary)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246mdocs/lab-notes.md[0m[38;5;246m (6 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-12.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-10.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-8.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Read [0m[1m[38;5;246msrc/module-6.ts[0m[38;5;246m (2 lines)[0m
-[0m[38;5;246m  ⎿  Plan file referenced [0m
-     [0m[38;5;246m(/tmp/claude-lab-run/config/plans/plan-how-to-append-reactive-forest.md)[0m
-
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;211m● [0m[1mUpdate[0m(docs/lab-notes.md)
-[0m[38;5;246m  ⎿  [0m[38;5;239mUser rejected update to [0m[1m[38;5;239mdocs/lab-notes.md[0m
-     [0m[2m[38;5;231m 3  This is a throwaway lab project used for screen captures.[0m
-     [0m[2m[38;5;231m 4  It contains sample modules under `src/` for demo purposes.[0m
-     [0m[2m[38;5;231m 5  No production code or real data lives here.[0m
-     [0m[2m[38;5;77m[48;5;233m 6 +[0m[2m[38;5;231m[48;5;233mFeel free to modify or delete anything in this repo.              [0m
-
-[0m[38;5;246m✻ Churned for 3s · done 12:53 AM[0m
-
-[0m[38;5;244m────────────────────────────────────────────────────────────────────── README.md ─[0m
-❯ 
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;246m⏸ manual mode on · ← 1 agent[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[2msave it to docs/essay.md[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← for agents[0m

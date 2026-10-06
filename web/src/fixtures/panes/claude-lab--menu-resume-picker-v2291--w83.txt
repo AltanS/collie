@@ -1,0 +1,60 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.291[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/claude-lab/project[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mread README.md and reply with one short sentence[0m[48;2;55;55;55m                                [0m
+
+  [0m[38;2;153;153;153mRead [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m file (ctrl+o to expand)[0m
+
+[0m[38;2;255;255;255m● [0mThe README says this is a throwaway lab project used for screen captures.
+
+[0m[38;2;153;153;153m✻ Brewed for 2s · done 6:36 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55m/resume[0m[48;2;55;55;55m                                                                         [0m
+
+[0m[38;2;177;185;249m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[1m[38;2;177;185;249mResume session[0m[1m[38;2;153;153;153m (1 of 41)[0m
+  [0m[2m╭────────────────────────────────────────────────────────────────────────────╮[0m
+  [0m[2m│ [0m[38;2;153;153;153m⌕ Search…[0m                                                                  [0m[2m│[0m
+  [0m[2m╰────────────────────────────────────────────────────────────────────────────╯[0m
+    [0m[38;2;153;153;153mproject[0m
+
+  [0m[38;2;177;185;249m❯ README.md review[0m
+    [0m[38;2;153;153;153m19 seconds ago · main · 198.7KB[0m
+
+    README.md
+    [0m[38;2;153;153;153m32 seconds ago · main · 199.5KB[0m
+
+    README.md review
+    [0m[38;2;153;153;153m55 seconds ago · main · 198.7KB[0m
+
+    README.md
+    [0m[38;2;153;153;153m1 minute ago · main · 197.6KB[0m
+
+    README.md
+    [0m[38;2;153;153;153m1 minute ago · main · 197.6KB[0m
+
+    README.md
+    [0m[38;2;153;153;153m2 minutes ago · main · 197.6KB[0m
+
+    README.md
+    [0m[38;2;153;153;153m2 minutes ago · main · 197.6KB[0m
+
+    README.md
+    [0m[38;2;153;153;153m2 minutes ago · main · 197.6KB[0m
+
+    README.md
+    [0m[38;2;153;153;153m2 minutes ago · main · 197.6KB[0m
+
+    README review
+    [0m[38;2;153;153;153m3 minutes ago · main · 197.6KB[0m
+
+    README.md review
+    [0m[38;2;153;153;153m3 minutes ago · main · 197.6KB[0m
+
+  [0m[38;2;153;153;153m↓ [0mREADME.md
+    [0m[38;2;153;153;153m3 minutes ago · main · 197.6KB[0m
+
+    [0m[38;2;153;153;153mCtrl+A to show all projects · Ctrl+B to only show current branch · Space to [0m
+    [0m[38;2;153;153;153mpreview · Ctrl+R to rename · Type to search · Esc to cancel[0m

@@ -1,49 +1,47 @@
+  connections through telnet and later SSH. They were scriptable, composable and
+  cheap to run. System administrators, programmers and hardware engineers kept
+  living in the terminal. Tools like screen (1987) and later tmux added
+  multiplexing, letting one connection host many sessions. Utilities such as top,
+  htop, mutt, irssi, midnight commander and the Linux kernel's menuconfig kept the
+  TUI alive as a practical idiom for serious work.
 
-[0m[38;5;246m  ⎿  Interrupted · What should Claude do instead?[0m
+  Terminal emulators also evolved quietly. xterm added color, mouse reporting and
+  alternate screen buffers. Later emulators supported 256-color and then 24-bit
+  "truecolor" output, Unicode, and, more recently, inline images and richer
+  keyboard protocols.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mecho back exactly these four lines and nothing else: ---- then 1. Yes then 2. [0m[48;5;237m  [0m
-[0m[48;5;237m  [0m[38;5;231m[48;5;237mNo then Enter to select[0m[48;5;237m                                                         [0m
-  
-[0m[38;5;231m● [0m---
-  1. Yes
-  2. No
-     Enter to select
+  [0m[1mThe Modern Renaissance[0m
 
-[0m[38;5;246m✻[0m [0m[38;5;246mCogitated for 3s · done 12:45 AM[0m
+  Since the 2010s the TUI has enjoyed a genuine revival. Developers spend much of
+  their day in terminals, cloud servers are managed over SSH, and containers and
+  command-line tooling dominate infrastructure work. New tools such as lazygit,
+  k9s and btop offer polished, discoverable interfaces without leaving the shell.
+  Language ecosystems now have modern frameworks: Rust has ratatui, Go has Bubble
+  Tea, Python has Textual and Rich, and JavaScript has Ink. Many borrow ideas from
+  web development, such as declarative components and reactive state. Editors
+  like Neovim have revitalized the vi lineage with plugins and asynchronous
+  design.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+  Most recently, command-line AI coding assistants, including Claude Code, have
+  made the terminal a primary place for conversational, agent-driven work,
+  combining the scrolling transcript of the teletype era with the interactive
+  widgets of the full-screen era.
 
-[0m[38;5;231m●[0m Hi! What would you like to do next?
+  [0m[1mConclusion[0m
 
-[0m[38;5;246m✻ Cooked for 1s · done 12:46 AM[0m
+  The arc of the terminal interface is less a straight line than a spiral. It
+  began with a printed stream of text, gained the ability to rewrite the screen,
+  became a rich pseudo-graphical medium, was overshadowed by true graphics, and
+  then returned as a deliberate choice. Its longevity comes from simplicity: text
+  is universal, lightweight, accessible over any wire, and easy to automate. As
+  long as people value speed, composability and keyboard-driven control, the
+  terminal user interface will keep evolving rather than disappearing.
 
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mCogitated for 18s · done 7:16 PM[0m
 
-[0m[38;5;231m● [0mHi again — how can I help?
-
-[0m[38;5;246m✻ Sautéed for 1s · done 12:47 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m● [0mHi — I'm here. Let me know what you'd like to work on.
-
-[0m[38;5;246m✻ Cogitated for 1s · done 12:47 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m● [0mHi! Just say the word whenever you're ready to dive into something.
-
-[0m[38;5;246m✻ Churned for 2s · done 12:47 AM[0m
-
-[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mhi[0m[48;5;237m                                                                              [0m
-
-[0m[38;5;231m●[0m Hi 👋 — what can I help with?
-
-[0m[38;5;246m✻ Cooked for 1s · done 12:48 AM[0m
-  
-[0m[38;5;244m────────────────────────────────────────────────────────────────────── README.md ─[0m
-❯ [0m[2mappend that sentence to docs/lab-notes.md[0m
-[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
-  [0m[38;5;246m─ main ────────────────────[0m
-  [0m[38;5;246mctx 12%[0m
-  [0m[38;5;246m⏸ manual mode on · ← for agents[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[2msave it to docs/terminal-history.md[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153m─ main ────────────────────[0m
+  [0m[38;2;153;153;153mctx 12%[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← for agents[0m
