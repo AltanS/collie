@@ -93,7 +93,7 @@ test("settings, its back arrow, then back does not reopen settings", async ({ pa
 
 test("C: the dashboard's Changes tab, a workspace's Changes, then the header back is the dashboard", async ({ page }) => {
   await page.goto("/");
-  await dashboard(page).getByRole("button", { name: new RegExp(`^${en["changes.title"]}$`, "u") }).click();
+  await dashboard(page).getByRole("button", { name: new RegExp(`^${en["files.title"]}$`, "u") }).click();
   await page.getByRole("list", { name: en["home.changes.listAria"] }).getByRole("button").first().click();
   await landed(page, "/space/w1/changes");
 

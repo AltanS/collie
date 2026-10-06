@@ -377,23 +377,23 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
   });
 
-  it("a solo Collie has two tabs, Dashboard and Changes, and no Crew", async () => {
+  it("a solo Collie has two tabs, Dashboard and Files, and no Crew", async () => {
     renderHome(solo());
     await settled();
     expect(tabNames()).toHaveLength(2);
     expect(tab(/^Dashboard/)).toBeInTheDocument();
-    expect(tab(/^Changes$/)).toBeInTheDocument();
+    expect(tab(/^Files$/)).toBeInTheDocument();
     expect(within(footer()).queryByRole("button", { name: /^Crew/ })).not.toBeInTheDocument();
   });
 
-  it("a crew has three: Crew, Dashboard, Changes, in that order, and Dashboard stays the default", async () => {
+  it("a crew has three: Crew, Dashboard, Files, in that order, and Dashboard stays the default", async () => {
     renderHome(packed());
     await settled();
     // The word is the tab's one truncated line; the mark and its screen-reader text sit beside it.
     expect(within(footer()).getAllByRole("button").map((b) => b.querySelector("span.truncate")?.textContent)).toEqual([
       "Crew",
       "Dashboard",
-      "Changes",
+      "Files",
     ]);
     expect(tab(/^Dashboard/)).toHaveAttribute("aria-current", "page");
   });
@@ -476,7 +476,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     await settled();
     expect(tab(/^Dashboard/)).toHaveAccessibleName("Dashboard, 1 blocked");
     expect(tab(/^Dashboard/).querySelector('[data-slot="tab-badge"]')).toHaveTextContent("1");
-    expect(tab(/^Changes$/)).toHaveTextContent(/^Changes$/);
+    expect(tab(/^Files$/)).toHaveTextContent(/^Files$/);
   });
 
   // The red count means something waits on you. A finished pane you have not opened is news, not a
@@ -508,12 +508,12 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(tab(/^Dashboard/).querySelector('[data-slot="tab-dot"], [data-slot="tab-badge"]')).toBeNull();
   });
 
-  it("keeps the mark on the Dashboard tab with the switch on, and on Changes", async () => {
+  it("keeps the mark on the Dashboard tab with the switch on, and on Files", async () => {
     renderHome(solo());
     await settled();
     await userEvent.click(needsSwitch());
     expect(tab(/^Dashboard/)).toHaveAccessibleName("Dashboard, 1 blocked");
-    await userEvent.click(tab(/^Changes$/));
+    await userEvent.click(tab(/^Files$/));
     expect(tab(/^Dashboard/)).toHaveAccessibleName("Dashboard, 1 blocked");
   });
 
@@ -570,10 +570,10 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.getByRole("heading", { name: /^Spaces/ })).toBeInTheDocument();
   });
 
-  it("Changes draws no switch, and keeps an invisible slot so the summary line does not jump", async () => {
+  it("Files draws no switch, and keeps an invisible slot so the summary line does not jump", async () => {
     renderHome(packed());
     await settled();
-    await userEvent.click(tab(/^Changes$/));
+    await userEvent.click(tab(/^Files$/));
     expect(screen.queryByRole("button", NEEDS)).not.toBeInTheDocument();
     expect(document.querySelector(".invisible[aria-hidden='true']")).not.toBeNull();
   });
@@ -586,13 +586,13 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(document.querySelector(".invisible[aria-hidden='true']")).toBeNull();
   });
 
-  it("Changes lists each workspace with its counts, says No folder, and opens the workspace's Changes", async () => {
+  it("Files lists each workspace with its counts, says No folder, and opens the workspace's Files screen", async () => {
     server.use(
       http.get(/\/api\/workspace\/w2\/changes/, () => HttpResponse.json({ workspaceId: "w2", available: false, reason: "no-folder" })),
     );
     const router = renderHome(solo());
     await settled();
-    await userEvent.click(tab(/^Changes$/));
+    await userEvent.click(tab(/^Files$/));
     const list = await screen.findByRole("list", { name: "Changes by workspace" });
     // fixtureChanges: 3 files in webapp's root repo and 2 in packages/api, +10 −2 over all five.
     await within(list).findByText("5 files");

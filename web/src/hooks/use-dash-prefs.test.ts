@@ -117,7 +117,7 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({ filesShowIgnored: "yes" }).filesShowIgnored).toBe(false);
   });
 
-  it("keeps the Changes-only toggle to a boolean, off by default", () => {
+  it("keeps the Changes segment's pref (changesOnly) to a boolean, off by default", () => {
     expect(coerceDashPrefs({}).changesOnly).toBe(false);
     expect(coerceDashPrefs({ changesOnly: true }).changesOnly).toBe(true);
     expect(coerceDashPrefs({ changesOnly: "yes" }).changesOnly).toBe(false);

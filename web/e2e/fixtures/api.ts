@@ -380,7 +380,7 @@ export async function pinLocale(page: Page, locale: Locale): Promise<void> {
 }
 
 /**
- * Turn the device's Changes-only toggle on before the first navigation, so the Changes screen's body
+ * Turn the device's Changes segment (the changesOnly pref) on before the first navigation, so the Changes screen's body
  * is the list of changes rather than the folder tree, its default since 2026-10-06 (ADR 0083). For a
  * case that tests the list itself. Written only while nothing is stored, so a reload keeps whatever
  * the page wrote since.

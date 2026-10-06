@@ -2921,19 +2921,20 @@ describe("AgentChat — the terminal draft notice floats (ADR 0061)", () => {
 
 // EXPERIMENT (operator, 2026-09-23): the Changes entry (ADR 0065) moved off the ⋮ sheet onto the
 // belt's pinned block, beside the switcher mark. Still gated on the pane reporting a folder.
-describe("AgentChat — the belt's Changes pill", () => {
+// Named Files since 2026-10-06 (ADR 0083), with the list-tree glyph; same place, same gate.
+describe("AgentChat — the belt's Files pill", () => {
   it("shows on the belt when the pane has a folder, and not in the pane menu", async () => {
     const user = userEvent.setup();
     const { container } = renderChat();
     const belt = container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
-    expect(within(belt).getByRole("button", { name: "Changes" })).toBeInTheDocument();
+    expect(within(belt).getByRole("button", { name: "Files" })).toBeInTheDocument();
     await openPaneMenu(user);
-    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Changes" })).toBeNull();
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Files" })).toBeNull();
   });
 
   it("is hidden when the pane reports no folder", () => {
     renderChat({ agent: { ...fixtureAgents[0]!, cwd: "" } });
-    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Files" })).toBeNull();
   });
 });
 

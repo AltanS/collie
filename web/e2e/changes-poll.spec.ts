@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no Changes route");
   test.skip(testInfo.project.name === "app-tablet", "a phone-width case; the tablet run would repeat it");
   await installApiStub(page);
-  // These cases read the list of changes: the screen's body with the device's Changes-only toggle on.
+  // These cases read the list of changes: the screen's body with the device's Changes segment on.
   // The folder tree, the default since 2026-10-06 (ADR 0083), has its own cases in changes-files.
   await seedChangesOnly(page);
 });
@@ -169,7 +169,7 @@ test("the dashboard's Changes tab takes three identical beats without one DOM ch
   await page.clock.install();
   const reads = counter(page, /\/api\/workspace\/[^/]+\/changes/);
   await page.goto("/");
-  await page.getByRole("navigation", { name: en["home.tabs.aria"] }).getByRole("button", { name: new RegExp(`^${en["changes.title"]}$`) }).click();
+  await page.getByRole("navigation", { name: en["home.tabs.aria"] }).getByRole("button", { name: new RegExp(`^${en["files.title"]}$`) }).click();
   const rows = page.getByRole("list", { name: en["home.changes.listAria"] }).getByRole("button");
   await expect(rows.first()).toContainText("files");
   await expectQuietBeats(page, reads);
