@@ -23,9 +23,13 @@ export interface ChatState {
   status: number | undefined;
   /** At least one live poll has answered (or failed): the empty state may speak. */
   answered: boolean;
+  /** Live reads started and answered, numbered (use-chat-window.ts `asked`/`answered`): the chat
+   * gate's "a read started after the turn ended has answered" test reads these. */
+  asked: number;
+  replies: number;
 }
 
-const INITIAL: ChatState = { window: EMPTY_CHAT_WINDOW, loadingOlder: false, error: undefined, status: undefined, answered: false };
+const INITIAL: ChatState = { window: EMPTY_CHAT_WINDOW, loadingOlder: false, error: undefined, status: undefined, answered: false, asked: 0, replies: 0 };
 
 const stores = new Map<string, Store<ChatState>>();
 
@@ -42,11 +46,13 @@ export function chatStore(key: string): Store<ChatState> {
 export async function pollChat(key: string, paneId: string, scope: Scope, signal: AbortSignal): Promise<boolean> {
   const store = chatStore(key);
   const held = store.get().window;
+  const number = store.get().asked + 1;
+  store.update((s) => ({ ...s, asked: number }));
   try {
     const answer = await fetchChat(paneId, held.gen === 0 ? {} : { after: { gen: held.gen, rev: held.rev } }, scope, signal);
     const next = mergeChat(store.get().window, answer);
     const moved = next !== store.get().window;
-    store.update((s) => ({ ...s, window: next, error: undefined, status: undefined, answered: true }));
+    store.update((s) => ({ ...s, window: next, error: undefined, status: undefined, answered: true, replies: Math.max(s.replies, number) }));
     return moved;
   } catch (error) {
     if (!(error instanceof Error) || error.name === "AbortError") return false;

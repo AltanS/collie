@@ -19,7 +19,7 @@ import { settleAfterSend, type ActionResult } from "@web/lib/harness/guard";
 import { t } from "@web/lib/i18n";
 import { submitMenuKeys } from "@web/lib/menu-action";
 import { submitPromptFeedback, submitPromptOption } from "@web/lib/prompt-action";
-import { sendGuardedReply, type ReplyOutcome } from "@web/lib/reply-action";
+import { sendGuardedReply, type GuardedReplyArgs, type ReplyOutcome } from "@web/lib/reply-action";
 import type { Scope } from "@web/lib/scope";
 
 import { notePairing } from "../../lib/pairing";
@@ -37,11 +37,13 @@ export interface WriteTarget {
   revision: number;
   /** Why the pane refuses a write right now, or undefined when it takes one. */
   refusal: string | undefined;
+  /** The window the mirror was read with (it grows with Load older); the guard re-reads the same. */
+  lines?: number;
 }
 
 /** After a tap that SENT: wait for the TUI to repaint, then poll, so the card is not left stale. */
 async function showAfterSend(target: WriteTarget): Promise<void> {
-  await settleAfterSend({ paneId: target.paneId, requestedLines: PANE_LINES, scope: target.scope });
+  await settleAfterSend({ paneId: target.paneId, requestedLines: target.lines ?? PANE_LINES, scope: target.scope });
   kick();
 }
 
@@ -83,7 +85,7 @@ function guardArgs(target: WriteTarget): GuardArgs {
   return {
     paneId: target.paneId,
     scope: target.scope,
-    requestedLines: PANE_LINES,
+    requestedLines: target.lines ?? PANE_LINES,
     detectedRevision: target.revision,
     agent: target.agent,
   };
@@ -141,7 +143,12 @@ export async function pressKeys(target: WriteTarget, keys: string[]): Promise<bo
 }
 
 /** Send a typed reply: pre-flight, type, verify the words reached the input box, then submit. */
-export async function sendTypedReply(target: WriteTarget, text: string, force: boolean): Promise<ReplyOutcome> {
+export async function sendTypedReply(
+  target: WriteTarget,
+  text: string,
+  force: boolean,
+  onComposerSeen?: GuardedReplyArgs["onComposerSeen"],
+): Promise<ReplyOutcome> {
   if (target.refusal !== undefined) return { status: "blocked", error: target.refusal };
   noteSend(target.paneId);
   try {
@@ -150,8 +157,9 @@ export async function sendTypedReply(target: WriteTarget, text: string, force: b
       text,
       agent: target.agent,
       scope: target.scope,
-      requestedLines: PANE_LINES,
+      requestedLines: target.lines ?? PANE_LINES,
       force,
+      onComposerSeen,
     });
     if (outcome.status === "sent") notePairing("POST", 200);
     kick();

@@ -24,6 +24,9 @@ import { paneStore } from "../../lib/data";
 
 /** The tail web's pane loader asks for (web/src/lib/loaders.ts), and what the guard re-reads. */
 export const PANE_LINES = 600;
+/** Load older grows the window by this much, up to the cap (web/src/lib/loaders.ts). */
+export const PANE_LINES_STEP = 600;
+export const PANE_LINES_MAX = 1000;
 
 /** The statuses the screen branches on. Anything else is "the bridge did not answer". */
 const KNOWN_STATUSES = [401, 403, 404, 409, 502, 503] as const;
@@ -34,10 +37,10 @@ export function statusOf(error: Error): number | undefined {
 }
 
 /** One poll of a pane's mirror into `paneStore(key)`. Resolves true when the text changed. */
-export async function pollPane(key: string, paneId: string, scope: Scope, signal: AbortSignal): Promise<boolean> {
+export async function pollPane(key: string, paneId: string, scope: Scope, signal: AbortSignal, lines = PANE_LINES): Promise<boolean> {
   const store = paneStore(key);
   try {
-    const body = await fetchPane(paneId, PANE_LINES, scope, signal);
+    const body = await fetchPane(paneId, lines, scope, signal);
     const changed = body.text !== store.get().data?.text;
     store.set({ data: body, error: undefined, status: undefined, at: Date.now() });
     return changed;

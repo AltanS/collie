@@ -1,13 +1,14 @@
 // The Chat view: the pane's session as a stream of whole turns (ADR 0073). Port of
 // web/src/components/session-stream.tsx without React.
 //
-// The window is polled on the shared beat while this view is mounted (routes/pane/chat-store.ts:
-// web's `fetchChat` + `mergeChat`). The bridge pages by whole turns, so a block on screen is never
-// half a turn; abandoned turns stay in the window and are not drawn. Steps fold into runs as the
-// React stream folds them (chat/steps.ts), and "Load older" pages earlier turns in above, holding
-// the reader's place: the distance from the bottom is kept across the insert.
+// The window is polled by the pane route while the chat gate wants it (pane-start.ts), not by this
+// view: the gate needs answers even while the Terminal or the start state is on screen. The bridge
+// pages by whole turns, so a block on screen is never half a turn; abandoned turns stay in the
+// window and are not drawn. Steps fold into runs as the React stream folds them (chat/steps.ts), and
+// "Load older" pages earlier turns in above, holding the reader's place: the distance from the
+// bottom is kept across the insert.
 import { on, ref, type Handle, type RemixNode } from "remix/component";
-import { ArrowDown } from "lucide";
+import { ArrowDown, ArrowUpToLine, LoaderCircle } from "lucide";
 
 import { itemsOf, type ChatItem } from "@web/lib/chat-items";
 import type { ChatStatus } from "@web/lib/chat-window";
@@ -15,14 +16,15 @@ import { t, type MessageKey } from "@web/lib/i18n";
 import type { Scope } from "@web/lib/scope";
 import type { ChatEntry } from "@web/lib/types";
 
-import { want } from "../../lib/polling";
+import { setStatus } from "../../lib/status";
 import { useStore } from "../../lib/store";
 import { groupRuns } from "../../chat/steps";
 import { ItemView, ToolGroup } from "../../chat/tool-card";
 import { isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
+import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
-import { chatStore, loadOlder, pollChat } from "./chat-store";
-import { setPaneStatus } from "./status";
+import { StatusDot } from "../../ui/status-dot";
+import { chatStore, loadOlder } from "./chat-store";
 
 /** The sentence for a window that has nothing to stream (session-stream.tsx `chatStatusKey`). */
 export function chatStatusKey(status: ChatStatus): MessageKey | null {
@@ -38,6 +40,27 @@ export function chatStatusKey(status: ChatStatus): MessageKey | null {
   }
 }
 
+/**
+ * The reader's text size as three token overrides (session-stream.tsx `textTokens`): `text-sm` is
+ * `var(--text-sm)`, and a custom property cascades, so every card inside follows with no prop.
+ */
+export interface TextTokens {
+  [token: string]: string;
+  "--text-xs": string;
+  "--text-sm": string;
+  "--text-base": string;
+}
+
+export function textTokens(size: number): TextTokens {
+  return {
+    "--text-xs": `${((size * 12) / 14).toFixed(2)}px`,
+    "--text-sm": `${String(size)}px`,
+    "--text-base": `${((size * 16) / 14).toFixed(2)}px`,
+  };
+}
+
+const NO_NOTES: Readonly<Record<string, string>> = {};
+
 export interface ChatViewProps {
   /** The pane's (host, session, pane) key: the window's and the scroll memory's key. */
   paneKey: string;
@@ -45,13 +68,23 @@ export interface ChatViewProps {
   scope: Scope;
   /** The agent is working: the stream ends in a "Still working…" row. */
   working: boolean;
+  /** The pane is new and has nothing to read yet (the gate's `start` body). */
+  starting: boolean;
+  /** Settings → Appearance. Off folds every run, including a lone step. */
+  showToolCalls: boolean;
+  showCompactions: boolean;
+  /** The stream's text size in px (`displayPrefs.chatFontSize`). */
+  fontSize: number;
+  /** Question notes per item id (web's `waitingQuestionNote`). */
+  notes?: Readonly<Record<string, string>>;
+  /** Bumped by the owner after a send: snap back to the tail. */
+  tailRev: number;
   onFollowChange: (following: boolean) => void;
 }
 
 export function ChatView(handle: Handle<ChatViewProps>) {
   const { paneKey, paneId, scope } = handle.props;
   const store = chatStore(paneKey);
-  want({ key: `chat:${paneKey}`, poll: (signal) => pollChat(paneKey, paneId, scope, signal) }, handle.signal);
   const read = useStore(handle, store);
 
   const spot = recallSpot(`chat:${paneKey}`);
@@ -61,7 +94,9 @@ export function ChatView(handle: Handle<ChatViewProps>) {
   /** Distance from the bottom before an older page lands, so the reader's place is held. */
   let anchor: number | null = null;
   let lastEntries: readonly ChatEntry[] | undefined;
+  let lastFold = "";
   let groups: ChatItem[][] = [];
+  let seenTail = handle.props.tailRev;
 
   const save = (): void => {
     if (scroller) rememberSpot(`chat:${paneKey}`, { following, top: scroller.scrollTop });
@@ -96,20 +131,33 @@ export function ChatView(handle: Handle<ChatViewProps>) {
     const failed = await loadOlder(paneKey, paneId, scope);
     if (failed !== undefined) {
       anchor = null;
-      setPaneStatus(t("chat.stream.loadOlderFailed"), "error");
+      setStatus(t("chat.stream.loadOlderFailed"), "error");
     }
   };
 
   return () => {
+    const { working, starting, showToolCalls, showCompactions, fontSize, tailRev } = handle.props;
+    const notes = handle.props.notes ?? NO_NOTES;
     const { window, loadingOlder, error, answered } = read();
-    if (window.entries !== lastEntries) {
+    if (tailRev !== seenTail) {
+      seenTail = tailRev;
+      following = true;
+      restoreTop = null;
+    }
+    const fold = `${String(showToolCalls)}:${String(showCompactions)}`;
+    if (window.entries !== lastEntries || fold !== lastFold) {
       lastEntries = window.entries;
-      const items = window.entries.filter((e) => !e.abandoned).flatMap((e) => itemsOf(e));
-      groups = groupRuns(items, 3);
+      lastFold = fold;
+      const items = window.entries.filter((e) => !e.abandoned).flatMap((e) => itemsOf(e, showCompactions));
+      groups = groupRuns(items, showToolCalls ? 3 : 1);
     }
     handle.queueTask(pin);
-    const statusKey = chatStatusKey(window.status);
-    const live = window.status.kind === "live";
+    const status = window.status;
+    const missing = status.kind === "unavailable" && (status.reason === "no-log" || status.reason === "no-session");
+    const explain = starting && missing ? null : chatStatusKey(status);
+    const empty = groups.length === 0;
+    const live = status.kind === "live";
+    const reading = live || (starting && (status.kind === "empty" || missing));
     let top: RemixNode = null;
     if (window.hasOlder) {
       top = (
@@ -117,21 +165,24 @@ export function ChatView(handle: Handle<ChatViewProps>) {
           type="button"
           data-testid="chat-load-older"
           disabled={loadingOlder}
-          class="flex min-h-11 w-full items-center justify-center text-xs font-medium text-muted-foreground active:bg-muted disabled:opacity-60"
+          class="mb-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
           mix={on("click", () => void older())}
         >
+          <Icon icon={loadingOlder ? LoaderCircle : ArrowUpToLine} class={loadingOlder ? "size-3.5 animate-spin" : "size-3.5"} />
           {loadingOlder ? t("chat.scrollback.loading") : t("chat.scrollback.loadOlder")}
         </button>
       );
-    } else if (live && window.entries.length > 0) {
-      top = <p class="py-2 text-center text-xs text-muted-foreground">{t("history.startOfConversation")}</p>;
+    } else if (!empty) {
+      top = <p class="mb-3 text-center text-[11px] text-muted-foreground">{t("history.startOfConversation")}</p>;
     }
+    const emptyLine = empty && explain === null && reading && !working && answered;
     return (
-      <div class="relative flex min-h-0 flex-1 flex-col" data-slot="chat-view">
+      <div class="relative flex min-h-0 flex-1 flex-col" data-slot="chat-view" data-starting={starting ? "" : undefined}>
         <div
           data-slot="session-stream"
           data-testid="chat-stream"
-          class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2"
+          class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3"
+          style={textTokens(fontSize)}
           mix={[
             ref((node: HTMLDivElement) => {
               scroller = node;
@@ -142,36 +193,27 @@ export function ChatView(handle: Handle<ChatViewProps>) {
             }),
           ]}
         >
-          <div class="flex flex-col gap-3">
+          <div class="flex flex-col gap-3 pt-2">
             {top}
             {groups.map((group) =>
-              group.length === 1 ? (
+              group.length === 1 && (showToolCalls || group[0]!.kind !== "tool") ? (
                 <div key={group[0]!.id} data-block data-n={1} class="flex min-w-0 flex-col">
-                  <ItemView item={group[0]!} />
+                  <ItemView item={group[0]!} note={notes[group[0]!.id]} />
                 </div>
               ) : (
                 <div key={group[0]!.id} data-block data-n={group.length} class="flex min-w-0 flex-col">
-                  <ToolGroup items={group} />
+                  <ToolGroup items={group} liveOpens={showToolCalls} notes={notes} />
                 </div>
               ),
             )}
-            {statusKey !== null && <p class="py-6 text-center text-sm text-muted-foreground">{t(statusKey)}</p>}
-            {error !== undefined && window.entries.length === 0 && statusKey === null && (
-              <p class="py-6 text-center text-sm text-muted-foreground" data-testid="chat-error">
-                {t("connection.cantReach")}
-              </p>
-            )}
-            {answered && live && window.entries.length === 0 && (
-              <p class="py-6 text-center text-sm text-muted-foreground">{t("chat.stream.empty")}</p>
-            )}
-            {handle.props.working && live && (
+            <Collapse open={working && reading}>
               <p data-slot="stream-live" class="mt-1 flex items-center gap-2 py-2 text-xs font-medium text-muted-foreground">
-                <span class="status-breathe size-2 rounded-full bg-status-working" aria-hidden="true" />
+                <StatusDot status="working" live class="size-2" />
                 {t("chat.stream.working")}
               </p>
-            )}
-            {live && window.queued.length > 0 && (
-              <div data-slot="stream-queued" class="flex flex-col gap-1 rounded-md border border-dashed border-status-working/40 px-3 py-2">
+            </Collapse>
+            <Collapse open={live && window.queued.length > 0}>
+              <div data-slot="stream-queued" class="flex flex-col gap-1 rounded-md border border-dashed border-status-working/40 bg-status-working/5 px-3 py-2">
                 <span class="text-xs font-medium text-status-working">{t("chat.stream.queued")}</span>
                 {window.queued.map((text, i) => (
                   <p key={`q-${String(i)}`} class="text-sm break-words whitespace-pre-wrap text-foreground/80">
@@ -179,13 +221,29 @@ export function ChatView(handle: Handle<ChatViewProps>) {
                   </p>
                 ))}
               </div>
-            )}
+            </Collapse>
+            <Collapse open={explain !== null}>
+              <p class={empty ? "px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground" : "px-2 py-4 text-center text-sm leading-relaxed text-muted-foreground"}>
+                {explain !== null ? t(explain) : ""}
+              </p>
+            </Collapse>
+            <Collapse open={error !== undefined && empty && explain === null && !reading}>
+              <p class="py-6 text-center text-sm text-muted-foreground" data-testid="chat-error">
+                {t("connection.cantReach")}
+              </p>
+            </Collapse>
+            <Collapse open={emptyLine}>
+              <p data-testid="chat-empty" class="py-16 text-center text-sm text-muted-foreground">
+                {t("chat.stream.empty")}
+              </p>
+            </Collapse>
           </div>
         </div>
-        {!following && (
+        {!following ? (
           <button
             type="button"
             aria-label={t("common.scrollToLatestAria")}
+            data-testid="scroll-to-latest"
             class="absolute right-3 bottom-3 flex size-11 items-center justify-center rounded-full border border-border bg-background/90 shadow-md backdrop-blur"
             mix={on("click", () => {
               follow(true);
@@ -194,7 +252,7 @@ export function ChatView(handle: Handle<ChatViewProps>) {
           >
             <Icon icon={ArrowDown} class="size-4" />
           </button>
-        )}
+        ) : null}
       </div>
     );
   };

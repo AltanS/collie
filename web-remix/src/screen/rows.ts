@@ -43,6 +43,10 @@ export interface Span {
   class: string | undefined;
   /** Block and Powerline glyphs painted as boxes (lib/cell-glyphs.ts), or null for a plain run. */
   pieces: CellPiece[] | null;
+  /** A find hit on this run (screen/decorate.ts): the focused one, or another. */
+  mark?: "current" | "other";
+  /** An autolinked URL this run is part of (screen/decorate.ts). */
+  href?: string;
 }
 
 export interface Row {

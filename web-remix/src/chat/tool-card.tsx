@@ -25,6 +25,7 @@ import { clockTime } from "@web/lib/format";
 import { t, tn } from "@web/lib/i18n";
 import { cn } from "@web/lib/utils";
 
+import { Collapse } from "../ui/collapse";
 import { Icon } from "../ui/icon";
 import { StatusDot } from "../ui/status-dot";
 import { MarkdownText } from "./markdown";
@@ -112,10 +113,10 @@ function subjectOf(tool: ChatToolCall): { text: string; mono: boolean } | null {
   }
 }
 
-export function ToolCard(handle: Handle<{ tool: ChatToolCall; status: ChatToolStatus }>) {
+export function ToolCard(handle: Handle<{ tool: ChatToolCall; status: ChatToolStatus; note?: string }>) {
   let open = false;
   return () => {
-    const { tool, status } = handle.props;
+    const { tool, status, note } = handle.props;
     const subject = subjectOf(tool);
     const body = bodyOf(tool);
     const icon = tool.kind === "edit" && tool.created ? FilePlus : KIND_ICON[tool.kind];
@@ -158,6 +159,12 @@ export function ToolCard(handle: Handle<{ tool: ChatToolCall; status: ChatToolSt
             {body}
           </pre>
         )}
+        <Collapse open={note !== undefined}>
+          <p data-slot="question-note" class="flex items-start gap-2 border-t border-border px-3 py-2.5 text-xs text-muted-foreground">
+            <Icon icon={SquareTerminal} class="mt-px size-3.5 shrink-0" />
+            <span class="min-w-0">{note ?? ""}</span>
+          </p>
+        </Collapse>
       </div>
     );
   };
@@ -192,9 +199,11 @@ function Disclosure(handle: Handle<{ label: string; text: string; italic?: boole
 
 const NOTICE_FOLD_CHARS = 160;
 
-export function ItemView(handle: Handle<{ item: ChatItem }>) {
+const NO_NOTES: Readonly<Record<string, string>> = {};
+
+export function ItemView(handle: Handle<{ item: ChatItem; note?: string }>) {
   return () => {
-    const { item } = handle.props;
+    const { item, note } = handle.props;
     switch (item.kind) {
       case "user": {
         const time = clockTimeOf(item.ts);
@@ -230,7 +239,7 @@ export function ItemView(handle: Handle<{ item: ChatItem }>) {
         }
         return <Disclosure label={t("transcript.summaryLabel")} text={item.text} />;
       case "tool":
-        return <ToolCard tool={item.tool} status={item.status} />;
+        return <ToolCard tool={item.tool} status={item.status} note={note} />;
     }
   };
 }
@@ -239,7 +248,13 @@ export function ItemView(handle: Handle<{ item: ChatItem }>) {
  * A run of steps. Folded to one summary row when it is finished; a run with a step still running
  * shows its newest {@link LIVE_TAIL} steps, the earlier ones behind one tap.
  */
-export function ToolGroup(handle: Handle<{ items: readonly ChatItem[] }>) {
+export function ToolGroup(handle: Handle<{
+  items: readonly ChatItem[];
+  /** Settings → Appearance "Tool calls": off, a running run does not open itself (a tap still does). */
+  liveOpens?: boolean;
+  /** Per item id, a "waiting on the dialog below" note (web/src/lib/question-waiting.ts). */
+  notes?: Readonly<Record<string, string>>;
+}>) {
   let open = false;
   let held = false;
   const toggle = (next: boolean) => {
@@ -247,14 +262,15 @@ export function ToolGroup(handle: Handle<{ items: readonly ChatItem[] }>) {
     void handle.update();
   };
   return () => {
-    const { items } = handle.props;
-    const live = items.some((i) => i.kind === "tool" && i.status === "running");
+    const { items, liveOpens = true, notes = NO_NOTES } = handle.props;
+    const live = liveOpens && items.some((i) => (i.kind === "tool" && i.status === "running") || notes[i.id] !== undefined);
     // A run that was live on screen keeps its layout once it finishes, so the card is not pulled out
     // from under the eye.
     if (live) held = true;
     const summary = runSummary(items);
-    if (open || live || held) {
-      const start = open ? 0 : Math.max(0, items.length - LIVE_TAIL);
+    if (open || live || (held && liveOpens)) {
+      const firstWaiting = items.findIndex((i) => notes[i.id] !== undefined);
+      const start = open ? 0 : Math.max(0, Math.min(items.length - LIVE_TAIL, firstWaiting >= 0 ? firstWaiting : items.length));
       return (
         <div data-slot="tool-group" class="flex flex-col gap-1.5">
           {open ? (
@@ -276,7 +292,7 @@ export function ToolGroup(handle: Handle<{ items: readonly ChatItem[] }>) {
             )
           )}
           {items.slice(start).map((item) => (
-            <ItemView key={item.id} item={item} />
+            <ItemView key={item.id} item={item} note={notes[item.id]} />
           ))}
         </div>
       );

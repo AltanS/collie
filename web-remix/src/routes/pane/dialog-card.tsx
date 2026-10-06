@@ -8,6 +8,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, LoaderCircle, MessageSquareP
 import type { PromptOption } from "@web/lib/blocks";
 import { MENU_DOWN_KEYS, MENU_LEFT_KEYS, MENU_RIGHT_KEYS, MENU_UP_KEYS } from "@web/lib/harness/menu-hints";
 import { t } from "@web/lib/i18n";
+import type { MultiSelectIntent } from "@web/lib/multi-select-action";
 import { FEEDBACK_MAX_LENGTH } from "@web/lib/prompt-action";
 import { cn } from "@web/lib/utils";
 
@@ -15,7 +16,11 @@ import { toRows } from "../../screen/rows";
 import { Screen } from "../../screen/screen";
 import { Icon } from "../../ui/icon";
 import { OptionButton, OptionCaption, PromptPanel } from "../../ui/prompt-panel";
-import type { DialogCard, KeysOnlyCard, MenuCard, PromptCard, UnreadCard } from "./cards";
+import type { DialogCard, MenuCard, PromptCard, UnreadCard } from "./cards";
+import type { PreviewCardAction } from "./dialogs/actions";
+import { MultiSelectDialogCard } from "./dialogs/multi-select-card";
+import { PreviewSelectDialogCard } from "./dialogs/preview-select-card";
+import { WizardDialogCard } from "./dialogs/wizard-card";
 
 /** The handlers a card calls. Each resolves true when its keys went out. */
 export interface CardActions {
@@ -23,6 +28,9 @@ export interface CardActions {
   feedback: (text: string) => Promise<boolean>;
   menu: (keys: string[], nav: boolean) => Promise<boolean>;
   unread: () => Promise<boolean>;
+  wizard: (keys: string[]) => Promise<boolean>;
+  multiSelect: (intent: MultiSelectIntent) => Promise<boolean>;
+  preview: (action: PreviewCardAction) => Promise<boolean>;
 }
 
 function spinner(size = "size-3.5"): RemixNode {
@@ -367,31 +375,19 @@ function UnreadDialogCard(handle: Handle<{ card: UnreadCard; disabled: boolean; 
   };
 }
 
-// ── wizard, multi-select, preview-select: the region, answered from the Keys row ─────────────────
-
-function KeysOnlyDialogCard(handle: Handle<{ card: KeysOnlyCard }>) {
-  return () => {
-    const { card } = handle.props;
-    return (
-      <PromptPanel ariaLabel={card.caption}>
-        <OptionCaption>{card.caption}</OptionCaption>
-        <Screen rows={toRows(card.block.lines)} inset />
-      </PromptPanel>
-    );
-  };
-}
-
 // ── the dock ─────────────────────────────────────────────────────────────────────────────────────
 
 export interface CardDockProps {
   card: DialogCard;
   disabled: boolean;
   actions: CardActions;
+  /** The soft keyboard is up: the dock's cap drops from 55dvh to 40dvh (card-dock.tsx). */
+  composing?: boolean;
 }
 
 export function CardDock(handle: Handle<CardDockProps>) {
   return () => {
-    const { card, disabled, actions } = handle.props;
+    const { card, disabled, actions, composing } = handle.props;
     // Keyed by kind: the same dialog re-rendered by a poll keeps its card (and its Terminal choice);
     // a different kind is a fresh card.
     let body: RemixNode;
@@ -405,12 +401,25 @@ export function CardDock(handle: Handle<CardDockProps>) {
       case "unread-dialog":
         body = <UnreadDialogCard key="unread-dialog" card={card} disabled={disabled} actions={actions} />;
         break;
-      case "keys-only":
-        body = <KeysOnlyDialogCard key="keys-only" card={card} />;
+      case "wizard":
+        body = <WizardDialogCard key="wizard" card={card} disabled={disabled} actions={actions} />;
+        break;
+      case "multi-select":
+        body = <MultiSelectDialogCard key="multi-select" card={card} disabled={disabled} actions={actions} />;
+        break;
+      case "preview-select":
+        body = <PreviewSelectDialogCard key="preview-select" card={card} disabled={disabled} actions={actions} />;
         break;
     }
     return (
-      <div data-slot="card-dock" data-card={card.kind} class="max-h-[55dvh] shrink-0 overflow-y-auto border-t border-rule px-2">
+      <div
+        data-slot="card-dock"
+        data-card={card.kind}
+        class={cn(
+          "shrink-0 overflow-y-auto overscroll-contain border-t border-rule px-2",
+          composing === true ? "max-h-[40dvh]" : "max-h-[55dvh]",
+        )}
+      >
         {body}
       </div>
     );

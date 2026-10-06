@@ -1,93 +1,218 @@
-// The pane screen, `/pane/:paneId`: header, the Chat or Terminal body, the lifted dialog card, the
-// status line and the composer. Port of web/src/routes/pane.tsx + components/agent-chat.tsx.
+// The pane screen, `/pane/:paneId`. Port of web/src/routes/detail.tsx + components/agent-chat.tsx.
+//
+// LAYOUT, top to bottom: the header (a claim on the shell's header, REMIX3.md rule 6: the identity
+// block, the ⋮, the find bar as an override), the strips (tabs and panes, folding to a summary), one
+// notice, the body (Chat, the Chat start state, or the Terminal, chosen by the chat gate), the
+// docked dialog card, and the chrome block (composer.tsx: drawers, belt, field). Zen takes the
+// header, the strips and the chrome block out through Collapse and leaves one floating exit; the
+// card dock stays, because it is the pane's own dialog and not Collie's chrome.
 //
 // DATA. The mirror is polled through web's `fetchPane` into the shell's `paneStore` (data.ts says
-// why); the snapshot and the config come from the shell's own sources. The open pane is published
-// to `focus`, so the scheduler polls it hot while the view follows the tail, and every write calls
-// `noteSend` (answer.ts) for the 300 ms burst.
+// why), with the window Load older grows. The chat window is polled only while the gate wants it
+// (pane-start.ts). The open pane is published to `focus`, so the scheduler polls it hot while the
+// view follows the tail, and every write calls `noteSend` (answer.ts) for the 300 ms burst.
 //
-// BLOCKS. One screen is parsed once per text (web's `parseAnsi` → `splitLines` → `buildBlocks`
-// with the pane's agent string). The first dialog block becomes the card (cards.ts); the rest is the
-// mirror the Terminal tab draws. Nothing here names a harness or a multiplexer.
-import { on, type Handle } from "remix/component";
-import { KeyRound, Lock, TriangleAlert, WifiOff } from "lucide";
+// LEAVING. A pane that is gone from a healthy snapshot taken after this screen opened says "Pane
+// closed" once and goes up (ADR 0067); a pane that never showed up waits for that same proof.
+import { on, navigate, type Handle } from "remix/component";
+import { Check, KeyRound, Lock, Minimize2, SquareTerminal, TriangleAlert, WifiOff } from "lucide";
 
-import { isNotPaired as webRefused, subscribePairing } from "@web/lib/pairing";
-import { paneScopeKey } from "@web/lib/scope";
-import { t } from "@web/lib/i18n";
+import { mirrorFont } from "@web/hooks/use-display-prefs";
 import type { Block, StyledLine } from "@web/lib/blocks";
-import { paneName } from "@web/lib/pane-name";
+import { adapterFor, rendersNativeMirror } from "@web/lib/harness";
+import { splitLines } from "@web/lib/blocks";
+import { parseAnsi } from "@web/lib/ansi";
+import { t } from "@web/lib/i18n";
+import { paneMirrorOverride } from "@web/lib/mirror-invert";
+import { muxCapability } from "@web/lib/mux-capability";
+import { changesPath, historyPath, panePath, spacePath } from "@web/lib/nav";
+import { paneName, panePlaceParts } from "@web/lib/pane-name";
+import { isNotPaired as webRefused, subscribePairing } from "@web/lib/pairing";
+import { reportsSessionOnFirstPrompt, hasJournalAdapter } from "@web/lib/journal-agents";
+import { paneScope } from "@web/lib/hosts";
+import { paneScopeKey } from "@web/lib/scope";
+import { isReadOnly, type AgentView } from "@web/lib/types";
 
+import { CacheSheet } from "../../chips/cache-sheet";
+import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
 import { address, config, paneStore, snapshot } from "../../lib/data";
-import { focus, kick, want } from "../../lib/polling";
+import { createFind } from "../../lib/find";
+import { glideBack } from "../../lib/glide";
+import { useLocale } from "../../lib/i18n-store";
 import { clearNotPaired, markNotPaired, pairing } from "../../lib/pairing";
-import { dashPrefs } from "../../lib/prefs";
+import { focus, kick, want } from "../../lib/polling";
+import { buzz, dashPrefs, displayPrefs, setDashPref, stripsCollapsed, zen as zenPref } from "../../lib/prefs";
 import { setStatus } from "../../lib/status";
-import { useStore } from "../../lib/store";
+import { scheduleUpdate, useStore } from "../../lib/store";
 import { href } from "../../routes";
 import { headerOf } from "../../shell/context";
+import type { CustomSlot } from "../../shell/header-model";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { Notice } from "../../ui/notice";
+import { SheetPeek } from "../../ui/sheet";
 import { answerFeedback, answerMenu, answerOption, answerUnread, type WriteTarget } from "./answer";
 import { goUp, upPath } from "./back";
 import { dialogCardOf, dialogOwnsKeyboard, mirrorLines, type DialogCard } from "./cards";
 import { ChatView } from "./chat";
-import { chatStore } from "./chat-store";
+import { chatStore, pollChat } from "./chat-store";
 import { Composer } from "./composer";
-import { blockBuilder, findPane, pollPane, writeGate } from "./data";
+import { blockBuilder, findPane, PANE_LINES, PANE_LINES_MAX, PANE_LINES_STEP, pollPane, writeGate } from "./data";
 import { CardDock, type CardActions } from "./dialog-card";
-import { clearPaneStatus, paneStatus } from "./status";
-import { TerminalView } from "./terminal";
+import { answerMultiSelect, answerPreview, answerWizard } from "./dialogs/actions";
+import { FindBar } from "./find-bar";
+import { PaneIdentity } from "./identity";
+import type { PaneIdentityProps } from "./identity";
+import { questionNotes } from "./question-note";
+import { createGate } from "./pane-start";
+import { PaneSettingsSheet } from "./settings-sheet";
+import { Strips, stripsExist } from "./strips";
+import { needsYouElsewhere, SwitcherSheet } from "./switcher-sheet";
+import { TerminalView, type MirrorTop } from "./terminal";
+import { autoZenSetting, watchViewport } from "./viewport";
 
-type PaneTab = "chat" | "terminal";
+/** What the header slot draws: the identity props minus the handlers the slot binds itself. */
+type IdentityState = Omit<PaneIdentityProps, "onName" | "onWorkspace" | "onCache">;
+
+type Sheet = "actions" | "settings" | "cache" | "switcher" | null;
 
 export function PaneRoute(handle: Handle<{ paneId: string }>) {
+  useLocale(handle);
   const { scope } = address.get();
   const paneId = handle.props.paneId;
   const key = paneScopeKey(scope, paneId);
   const store = paneStore(key);
-  want({ key: `pane-screen:${key}`, poll: (signal) => pollPane(key, paneId, scope, signal) }, handle.signal);
+  const mountedAt = Date.now();
+
+  // ── Reads ─────────────────────────────────────────────────────────────────────────────────────
+  /** The mirror window: 600 rows, grown by Load older up to 1000 (web/src/lib/loaders.ts). */
+  let lines = PANE_LINES;
+  let olderLoading = false;
+  want({ key: `pane-screen:${key}`, poll: (signal) => pollPane(key, paneId, scope, signal, lines) }, handle.signal);
   focus.set({ paneId, following: true });
 
-  // Every write on this screen goes through web's api.ts (the guarded taps, the reply, the keys),
-  // which reads each answer into WEB's pairing latch (`notePairing`: a 403 "device not paired" sets
-  // it, a 2xx write clears it). This shell keeps its own latch (lib/pairing.ts) that every other
-  // screen reads, so each move of web's latch is carried into it: a refusal seen here shows the
-  // pairing notice everywhere, and a write that went through clears it everywhere.
+  // Every write here goes through web's api.ts, which reads each answer into WEB's pairing latch.
+  // Each move of that latch is carried into this shell's own (lib/pairing.ts).
   const unsubscribe = subscribePairing(() => (webRefused() ? markNotPaired() : clearNotPaired()));
   handle.signal.addEventListener("abort", () => {
     unsubscribe();
-    clearPaneStatus();
     if (focus.get().paneId === paneId) focus.set({ paneId: null, following: true });
   });
 
   const readPane = useStore(handle, store);
   const readSnapshot = useStore(handle, snapshot);
   const readConfig = useStore(handle, config);
-  // The header is the Shell's; this route claims it (REMIX3.md rule 6). The status line moved into
-  // the header's title slot (web/'s HeaderStatus): every pane status is published to lib/status.
-  const header = headerOf(handle).owner(handle.signal);
-  const goUpHere = (): void => goUp(scope);
-  paneStatus.subscribe(() => {
-    const said = paneStatus.get();
-    if (said) setStatus(said.text, said.tone);
-  }, handle.signal);
-  const readView = useStore(handle, dashPrefs);
+  const readDash = useStore(handle, dashPrefs);
+  const readDisplay = useStore(handle, displayPrefs);
   const readPairing = useStore(handle, pairing);
   const readChat = useStore(handle, chatStore(key));
+  const readStripsPref = useStore(handle, stripsCollapsed);
+  const readZenAvailable = useStore(handle, zenPref);
+  const find = createFind();
+  const readFind = useStore(handle, find.state);
+  const gate = createGate(() => scheduleUpdate(handle), handle.signal);
+  const viewport = watchViewport(() => scheduleUpdate(handle), handle.signal);
+
+  // ── Local state ───────────────────────────────────────────────────────────────────────────────
+  let sheet: Sheet = null;
+  const peek = new SheetPeek();
+  let zenOn = false;
+  let autoZen = false;
+  let wasLandscape = viewport.read().landscape;
+  let composerFocused = false;
+  let composerKeyboard = false;
+  /** While the composer's keyboard is up the strips fold; a tap can open them for that stretch. */
+  let keyboardFold: boolean | null = null;
+  let tailRev = 0;
+  let seenInSnapshot = false;
+  let exited = false;
+  let chatPoll: AbortController | null = null;
 
   const blocksOf = blockBuilder();
   let lastBlocks: Block[] | undefined;
   let card: DialogCard | null = null;
   let mirror: StyledLine[] = [];
+  let rawDraft: string | null = null;
 
+  const wake = (): void => scheduleUpdate(handle);
+  const setSheet = (next: Sheet): void => {
+    sheet = next;
+    wake();
+  };
+
+  const header = headerOf(handle).owner(handle.signal);
+  // The reverse glide finds the dashboard row by the key the row was opened with: its pane path.
+  const glideKey = panePath(paneId, scope);
+  const goUpHere = (): void => glideBack("pane", glideKey, () => goUp(scope));
   const onFollow = (following: boolean): void => focus.set({ paneId, following });
+
+  const enterZen = (): void => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement || active instanceof SVGElement) active.blur();
+    sheet = null;
+    find.close();
+    zenOn = true;
+    buzz();
+    wake();
+  };
+  const leaveZen = (): void => {
+    zenOn = false;
+    autoZen = false;
+    wake();
+  };
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (zenOn && event.key === "Escape") leaveZen();
+    },
+    { signal: handle.signal },
+  );
+
+  const toggleStrips = (): void => {
+    const folded = composerKeyboard ? (keyboardFold ?? true) : stripsCollapsed.get();
+    if (composerKeyboard) {
+      keyboardFold = !folded;
+      wake();
+      return;
+    }
+    stripsCollapsed.set(!folded);
+  };
+
+  const herd = (): AgentView[] => {
+    const data = readSnapshot().data;
+    return [...(data?.agents ?? []), ...(data?.shellPanes ?? [])];
+  };
+  const goToPane = (pane: AgentView): void => {
+    if (pane.paneId === paneId) return;
+    const data = readSnapshot().data;
+    sheet = null;
+    void navigate(href(panePath(pane.paneId, paneScope(scope, pane, data?.servers, data?.sessions))), { history: "replace" });
+  };
+  const openSpace = (): void => {
+    const pane = findPane(readSnapshot().data, paneId);
+    if (pane) void navigate(href(spacePath(pane.workspaceId, scope)));
+  };
+  const loadOlder = (): void => {
+    if (olderLoading || lines >= PANE_LINES_MAX) return;
+    lines = Math.min(lines + PANE_LINES_STEP, PANE_LINES_MAX);
+    olderLoading = true;
+    wake();
+    void pollPane(key, paneId, scope, new AbortController().signal, lines).finally(() => {
+      olderLoading = false;
+      wake();
+    });
+  };
+  const onSent = (): void => {
+    gate.markSent();
+    tailRev++;
+    focus.set({ paneId, following: true });
+    wake();
+  };
 
   /** The write target as it is NOW: a tap uses the read it was drawn from, never an older one. */
   const target = (): WriteTarget => {
     const pane = findPane(readSnapshot().data, paneId);
-    const gate = writeGate({
+    const g = writeGate({
       gone: readPane().status === 404,
       shell: pane?.kind === "shell",
       snapshot: readSnapshot().data,
@@ -99,7 +224,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
       scope,
       agent: pane?.agent,
       revision: readPane().data?.revision ?? 0,
-      refusal: gate.locked ? (gate.unpaired ? t("chat.status.readOnly") : gate.placeholder) : undefined,
+      refusal: g.locked ? (g.unpaired ? t("chat.status.readOnly") : g.placeholder) : undefined,
+      lines,
     };
   };
 
@@ -108,33 +234,179 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     feedback: (text) => (card?.kind === "prompt-select" ? answerFeedback(target(), card.block.prompt, text) : Promise.resolve(false)),
     menu: (keys, nav) => (card?.kind === "menu" ? answerMenu(target(), card.block.menu, keys, nav) : Promise.resolve(false)),
     unread: () => (card?.kind === "unread-dialog" ? answerUnread(target(), card.block.cancel) : Promise.resolve(false)),
+    wizard: (keys) => (card?.kind === "wizard" ? answerWizard(target(), card.block.wizard, keys) : Promise.resolve(false)),
+    multiSelect: (intent) => (card?.kind === "multi-select" ? answerMultiSelect(target(), card.block.multi, intent) : Promise.resolve(false)),
+    preview: (action) => (card?.kind === "preview-select" ? answerPreview(target(), card.block.preview, action) : Promise.resolve(false)),
   };
+
+  // The header slots are made ONCE, so the claim's shallow compare sees the same functions; what
+  // they draw is read from these lets at render time, and `rev` tells the header when it moved.
+  let identity: IdentityState = {
+    name: "",
+    workspace: "",
+    agent: undefined,
+    status: undefined,
+    host: undefined,
+    session: undefined,
+    cache: undefined,
+    gone: false,
+  };
+  const identitySlot = (): CustomSlot["render"] extends () => infer R ? R : never => (
+    <PaneIdentity
+      {...identity}
+      onName={() => setSheet("settings")}
+      onWorkspace={openSpace}
+      onCache={() => setSheet("cache")}
+    />
+  );
+  const findSlot = (): CustomSlot["render"] extends () => infer R ? R : never => <FindBar find={find} />;
+  const openActions = (): void => setSheet("actions");
+  const closeFind = (): void => find.close();
 
   return () => {
     const read = readPane();
     const snap = readSnapshot();
-    const pane = findPane(snap.data, paneId);
+    const cfg = readConfig().data;
+    const dash = readDash();
+    const display = readDisplay();
+    const data = snap.data;
+    const pane = findPane(data, paneId);
+    if (pane) seenInSnapshot = true;
     const shell = pane?.kind === "shell";
-    const gone = read.status === 404;
+    const gone = read.status === 404 || (pane === undefined && seenInSnapshot);
     const refused = readPairing().refused || read.status === 401 || snap.status === 401;
-    const gate = writeGate({ gone, shell, snapshot: snap.data, config: readConfig().data, notPaired: refused });
+    const wg = writeGate({ gone, shell, snapshot: data, config: cfg, notPaired: refused });
+    const readOnly = refused || isReadOnly(data?.device);
 
-    const blocks = blocksOf(read.data?.text ?? "", pane?.agent);
+    // ── Auto-exit (ADR 0067): only on a healthy snapshot taken after this screen opened ────────
+    const healthy = data !== undefined && snap.error === undefined && snap.at > mountedAt;
+    if (!exited && pane === undefined && healthy && (seenInSnapshot || read.status === 404 || read.at > 0)) {
+      exited = true;
+      handle.queueTask(() => {
+        // web/src/routes/detail.tsx says this in English and through no catalog key; kept as is.
+        setStatus("Pane closed", "info");
+        goUp(scope);
+      });
+    }
+
+    // ── Blocks: one parse per text ───────────────────────────────────────────────────────────────
+    const rawMirror = display.rawTerminal;
+    const override = paneMirrorOverride(scope, paneId);
+    const native = rendersNativeMirror(pane?.agent, override);
+    const text = read.data?.text ?? "";
+    const agentForBlocks = !rawMirror || rendersNativeMirror(pane?.agent) ? pane?.agent : undefined;
+    const blocks = blocksOf(text, rawMirror ? undefined : agentForBlocks);
     if (blocks !== lastBlocks) {
       lastBlocks = blocks;
       card = dialogCardOf(blocks);
       mirror = mirrorLines(blocks);
+      rawDraft = rawMirror ? null : (adapterFor(pane?.agent)?.extractInputDraft(splitLines(parseAnsi(text))) ?? null);
     }
 
-    // Chat when the pane has a session to read; the terminal otherwise, and whenever the server
-    // says it cannot read this pane at all (reading off, or a member too old for the chat route).
-    const chatStatus = readChat().window.status;
-    const chatOff = chatStatus.kind === "stale" || (chatStatus.kind === "unavailable" && chatStatus.reason === "disabled");
-    const canChat = pane !== undefined && !shell;
-    // The view is a device pref (`paneView`, ADR 0082), switched in the ⋮ sheet; no tab bar.
-    const tab: PaneTab = canChat && pane.hasSession === true && !chatOff && readView().paneView === "chat" ? "chat" : "terminal";
+    // ── The chat gate (ADR 0082) ─────────────────────────────────────────────────────────────────
+    const chat = readChat();
+    const sessionLog = muxCapability(cfg?.mux ?? null, "agentSessionRef");
+    const reading = gate.read({
+      paneId,
+      harness: pane === undefined ? undefined : shell ? "" : pane.agent,
+      isShell: shell,
+      status: pane?.status,
+      hasSession: pane?.hasSession === true,
+      chatChosen: dash.paneView === "chat",
+      sessionLog: sessionLog.capable,
+      chat: chat.window.status,
+      asked: chat.asked,
+      answered: chat.replies,
+    });
+    if (reading.fetch && chatPoll === null && !handle.signal.aborted) {
+      chatPoll = new AbortController();
+      const until = chatPoll.signal;
+      handle.signal.addEventListener("abort", () => chatPoll?.abort(), { signal: until });
+      want({ key: `chat:${key}`, poll: (signal) => pollChat(key, paneId, scope, signal) }, until);
+    } else if (!reading.fetch && chatPoll !== null) {
+      chatPoll.abort();
+      chatPoll = null;
+    }
+    const chatAnswered = chat.window.status.kind !== "empty" || chat.answered;
+    const chatShown = reading.body !== "terminal" && chatAnswered;
+    const historyAvailable = pane?.hasSession === true && sessionLog.capable;
+    const chatReason =
+      !sessionLog.capable
+        ? sessionLog.note || t("history.unavailable.noLog")
+        : reading.body !== "terminal"
+          ? null
+          : reading.journal === "off"
+            ? t("history.unavailable.disabled")
+            : pane?.hasSession && reading.journal === "missing"
+              ? t("history.unavailable.noLog")
+              : t("history.unavailable.noSession");
+    const chatNote = chatReason === null || dash.paneView !== "chat" ? undefined : t("chat.mode.noChat", { reason: chatReason });
 
-    // One notice at a time, most fundamental first.
+    // ── The terminal's top: History for a session, Load older for scrollback ────────────────────
+    const scrollback = muxCapability(cfg?.mux ?? null, "gridScrollback");
+    let top: MirrorTop = null;
+    if (historyAvailable) top = { kind: "history", onOpen: () => void navigate(href(historyPath(paneId, scope))) };
+    else if (scrollback.capable && pane?.readableLines !== undefined && lines < pane.readableLines && lines < PANE_LINES_MAX) {
+      top = { kind: "older", loading: olderLoading, onOlder: loadOlder };
+    }
+    const notes: string[] = [];
+    if (!sessionLog.capable && sessionLog.note !== "") notes.push(sessionLog.note);
+    if (sessionLog.capable && !shell && hasJournalAdapter(pane?.agent) && pane !== undefined && !pane.hasSession) {
+      notes.push(t(reportsSessionOnFirstPrompt(pane.agent) ? "chat.scrollback.noSessionYet" : "chat.scrollback.noSessionReported", { agent: pane.agent }));
+    }
+    if (dash.paneView === "chat" && reading.body === "terminal" && pane?.hasSession && reading.journal === "missing") notes.push(t("history.unavailable.noLog"));
+
+    // ── Viewport: keyboard, landscape, zen ──────────────────────────────────────────────────────
+    const vp = viewport.read();
+    if (!vp.keyboard) composerKeyboard = false;
+    else if (composerFocused) composerKeyboard = true;
+    if (!composerKeyboard) keyboardFold = null;
+    const folded = composerKeyboard ? (keyboardFold ?? true) : readStripsPref();
+    const zenAvailable = readZenAvailable();
+    if (vp.landscape !== wasLandscape) {
+      wasLandscape = vp.landscape;
+      if (zenAvailable && autoZenSetting()) {
+        if (vp.landscape && !zenOn) {
+          zenOn = true;
+          autoZen = true;
+        } else if (!vp.landscape && zenOn && autoZen) {
+          zenOn = false;
+          autoZen = false;
+        }
+      }
+    }
+    if (!zenAvailable && zenOn) zenOn = false;
+
+    // ── Header claim ─────────────────────────────────────────────────────────────────────────────
+    const name = pane ? paneName(pane) : paneId;
+    identity = {
+      name,
+      workspace: pane ? panePlaceParts(pane, data?.tabs).space : "",
+      agent: shell ? undefined : (pane?.agent ?? ""),
+      status: shell ? undefined : pane?.status,
+      host: pane?.host,
+      session: pane?.session,
+      cache: pane?.cache,
+      gone,
+    };
+    const findState = readFind();
+    const rev = JSON.stringify(identity);
+    handle.queueTask(() =>
+      header.claim({
+        center: { kind: "custom", render: identitySlot, rev },
+        right: { kind: "menu", label: t("chat.paneMenu.aria"), onOpen: gone ? undefined : openActions },
+        override: findState.open
+          ? { title: "", backLabel: t("find.closeAria"), onBack: closeFind, trailing: { kind: "custom", render: findSlot, rev: "find" } }
+          : null,
+        hidden: zenOn,
+        width: "wide",
+        home: goUpHere,
+        homeLabel: upPath(scope).startsWith("/space/") ? t("changes.backAria.workspace") : t("changes.backAria.dashboard"),
+        glideKey,
+      }),
+    );
+
+    // ── One notice at a time, most fundamental first ─────────────────────────────────────────────
     let notice = null;
     if (refused) {
       notice = (
@@ -144,7 +416,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
           </Notice>
         </a>
       );
-    } else if (read.status === 403 || gate.unpaired) {
+    } else if (read.status === 403 || wg.unpaired) {
       notice = (
         <Notice variant="strip" tone="caution" announce="status" icon={<Icon icon={Lock} />}>
           {t("space.readOnly.deviceUnauthorised")}
@@ -153,13 +425,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     } else if (gone) {
       notice = (
         <div data-testid="pane-gone">
-          <Notice
-            variant="strip"
-            tone="neutral"
-            announce="status"
-            icon={<Icon icon={TriangleAlert} />}
-            onActivate={() => goUp(scope)}
-          >
+          <Notice variant="strip" tone="neutral" announce="status" icon={<Icon icon={TriangleAlert} />} onActivate={() => goUp(scope)}>
             {t("chat.header.agentGone")}
           </Notice>
         </div>
@@ -184,50 +450,155 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
       );
     }
 
-    const name = gone ? t("chat.header.agentGone") : pane ? paneName(pane) : paneId;
-    handle.queueTask(() =>
-      header.claim({
-        center: { kind: "pane", name, workspace: pane?.workspaceLabel ?? "", status: shell ? undefined : pane?.status, agent: shell ? "" : (pane?.agent ?? "") },
-        right: { kind: "menu", label: t("chat.paneMenu.aria") },
-        width: "wide",
-        home: goUpHere,
-        homeLabel: upPath(scope).startsWith("/space/") ? t("changes.backAria.workspace") : t("changes.backAria.dashboard"),
-        glideKey: key,
-      }),
-    );
-    const unreadKey = card?.kind === "unread-dialog" ? card.keyName : "";
+    const all = herd();
+    const notesForQuestions = questionNotes(chat.window.entries, lastBlocks ?? []);
+    const face = mirrorFont(display.fontFamily);
+    const tabs = data?.tabs ?? [];
+    const others = all.filter((p) => p.paneId !== paneId);
+    const switcher = others.length > 0 ? { onOpen: () => setSheet("switcher"), peek, label: t("chat.switcher.aria"), needsYou: needsYouElsewhere(pane, all) } : null;
+    const hasStrips = pane !== undefined && stripsExist(pane, tabs, all);
+    const body = chatShown ? "chat" : "terminal";
+
     return (
-      <main class="flex min-h-0 flex-1 flex-col" data-testid="pane-view" data-tab={tab}>
+      <main class="flex min-h-0 flex-1 flex-col" data-testid="pane-view" data-tab={body} data-body={reading.body} data-zen={zenOn ? "" : undefined}>
+        <Collapse open={!zenOn && hasStrips}>
+          {pane !== undefined ? (
+            <Strips
+              pane={pane}
+              agents={data?.agents ?? []}
+              shellPanes={data?.shellPanes ?? []}
+              tabs={tabs}
+              scope={scope}
+              readOnly={readOnly}
+              folded={folded}
+              onToggleFold={toggleStrips}
+              onSelectPane={goToPane}
+              onPaneClosed={(id) => (id === paneId ? goUp(scope) : kick())}
+              onTabClosed={(tabId) => (pane.tabId === tabId ? goUp(scope) : kick())}
+            />
+          ) : null}
+        </Collapse>
         <Collapse open={notice !== null}>{notice}</Collapse>
-        {tab === "chat" ? (
-          <ChatView
-            key={`chat:${key}`}
-            paneKey={key}
+        <div class="relative flex min-h-0 min-w-0 flex-1 flex-col border-t border-rule">
+          {zenOn ? (
+            <button
+              type="button"
+              data-testid="zen-exit"
+              aria-label={t("chat.zen.exitAria")}
+              class="absolute top-3 right-3 z-30 flex size-11 items-center justify-center rounded-full border border-border bg-background/90 shadow-md backdrop-blur"
+              mix={on("click", leaveZen)}
+            >
+              <Icon icon={Minimize2} class="size-4" />
+            </button>
+          ) : null}
+          {chatShown ? (
+            <ChatView
+              key={`chat:${key}`}
+              paneKey={key}
+              paneId={paneId}
+              scope={scope}
+              working={pane?.status === "working"}
+              starting={reading.body === "start"}
+              showToolCalls={dash.showToolCalls}
+              showCompactions={dash.showCompactions}
+              fontSize={display.chatFontSize}
+              notes={notesForQuestions}
+              tailRev={tailRev}
+              onFollowChange={onFollow}
+            />
+          ) : (
+            <TerminalView
+              key={`terminal:${key}`}
+              spotKey={key}
+              lines={mirror}
+              logicalText={read.data?.logicalText}
+              loading={read.at === 0 && read.error === undefined}
+              wrap={display.wrap}
+              fontSize={display.fontSize}
+              native={native}
+              faceClass={face.className}
+              faceFamily={face.style?.fontFamily}
+              find={find}
+              top={top}
+              notes={notes}
+              tailRev={tailRev}
+              onFollowChange={onFollow}
+            />
+          )}
+        </div>
+        <Collapse open={card !== null}>
+          {card !== null ? <CardDock card={card} disabled={wg.locked} actions={actions} composing={vp.keyboard} /> : null}
+        </Collapse>
+        <Collapse open={!zenOn}>
+          <Composer
+            key={`composer:${key}`}
             paneId={paneId}
             scope={scope}
-            working={pane?.status === "working"}
-            onFollowChange={onFollow}
+            agent={shell ? undefined : pane?.agent}
+            isShell={shell}
+            gate={wg}
+            dialogOwns={dialogOwnsKeyboard(lastBlocks ?? [])}
+            dialogUnread={card?.kind === "unread-dialog"}
+            unsupportedKeys={cfg?.mux?.unsupportedKeys ?? []}
+            target={target}
+            rawDraft={rawDraft}
+            paneText={text}
+            chatShown={chatShown}
+            chatNote={chatNote}
+            changes={pane?.cwd ? { label: t("chat.changes.label"), onClick: () => void navigate(href(changesPath(paneId, scope))) } : undefined}
+            switcher={switcher}
+            onSent={onSent}
+            onFocusChange={(focused) => {
+              composerFocused = focused;
+              wake();
+            }}
           />
-        ) : (
-          <TerminalView
-            key={`terminal:${key}`}
-            spotKey={key}
-            lines={mirror}
-            loading={read.at === 0 && read.error === undefined}
-            onFollowChange={onFollow}
-          />
-        )}
-        <Collapse open={card !== null}>{card !== null ? <CardDock card={card} disabled={gate.locked} actions={actions} /> : null}</Collapse>
-        <Composer
-          key={`composer:${key}`}
-          paneId={paneId}
+        </Collapse>
+        <PaneActionsSheet
+          open={sheet === "actions"}
+          onClose={() => setSheet(null)}
+          pane={pane ?? null}
           scope={scope}
-          gate={gate}
-          dialogOwns={dialogOwnsKeyboard(lastBlocks ?? [])}
-          dialogUnread={card?.kind === "unread-dialog"}
-          unreadKey={unreadKey}
-          unsupportedKeys={readConfig().data?.mux?.unsupportedKeys ?? []}
-          target={target}
+          readOnly={readOnly}
+          herd={all}
+          onRenamed={kick}
+          onClosed={() => goUp(scope)}
+          onFind={chatShown ? undefined : () => find.open()}
+          onHistory={historyAvailable ? () => void navigate(href(historyPath(paneId, scope))) : undefined}
+          paneView={dash.paneView}
+          onPaneViewChange={(view) => setDashPref("paneView", view)}
+          paneViewNote={chatNote}
+          onSettings={() => setSheet("settings")}
+          onZen={zenAvailable ? enterZen : undefined}
+          extraRows={
+            <button
+              type="button"
+              data-testid="raw-mirror-toggle"
+              aria-pressed={rawMirror}
+              class="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left text-sm active:bg-muted"
+              mix={on("click", () => {
+                displayPrefs.update((p) => ({ ...p, rawTerminal: !p.rawTerminal }));
+                setSheet(null);
+              })}
+            >
+              <Icon icon={SquareTerminal} class="size-4 shrink-0 text-muted-foreground" />
+              <span class="min-w-0 flex-1">{t("settings.display.rawTerminal.label")}</span>
+              <Icon icon={Check} class={rawMirror ? "size-4 shrink-0 text-primary" : "size-4 shrink-0 opacity-0"} />
+            </button>
+          }
+        />
+        <PaneSettingsSheet open={sheet === "settings"} onClose={() => setSheet(null)} pane={pane ?? null} scope={scope} />
+        <CacheSheet open={sheet === "cache"} onClose={() => setSheet(null)} cache={pane?.cache} host={pane?.host} />
+        <SwitcherSheet
+          open={sheet === "switcher"}
+          onClose={() => setSheet(null)}
+          peek={peek}
+          here={pane}
+          agents={data?.agents ?? []}
+          shellPanes={data?.shellPanes ?? []}
+          scope={scope}
+          readOnly={readOnly}
+          onPick={goToPane}
         />
       </main>
     );
