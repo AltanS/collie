@@ -343,7 +343,7 @@ describe("buildBlocks", () => {
 });
 
 describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
-  it("splits a tail menu into [raw before, prompt-select], keeping the question above the buttons", () => {
+  it("splits a tail menu into [raw before, prompt-select], the whole dialog inside the card's region", () => {
     const lines = fixtureLines("claude--select-menu.txt");
     const blocks = buildBlocks(lines, { agent: "claude" });
     expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
@@ -351,8 +351,12 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     const raw = blocks[0]!;
     const prompt = blocks[1]!;
     if (raw.kind !== "raw" || prompt.kind !== "prompt-select") throw new Error("unexpected block kinds");
-    // The question stays in the raw block above (not duplicated inside the button group).
-    expect(blockText(raw.lines)).toContain("Which color theme should the dashboard use?");
+    // The region starts at the dialog's own top edge, so the question is in the card's region, which
+    // the card shows as text, and not in the raw block above it: shown once, not twice. It used to
+    // stay raw, which the docked card (ADR 0059) and the Chat view no longer show.
+    expect(blockText(raw.lines)).not.toContain("Which color theme should the dashboard use?");
+    expect(blockText(prompt.lines)).toContain("Which color theme should the dashboard use?");
+    expect(prompt.prompt.question).toBe("Which color theme should the dashboard use?");
     // The typed payload carries the detected model + the raw region it replaced.
     expect(prompt.prompt.family).toBe("select");
     expect(prompt.prompt.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Chat about this"]);

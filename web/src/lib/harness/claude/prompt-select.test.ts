@@ -336,14 +336,226 @@ describe("detectPromptSelect — false-positive gate (no menu at the tail)", () 
 });
 
 describe("detectPromptSelectRegion — render boundary", () => {
-  it("starts the menu region at the first option row (question + preamble stay above it)", () => {
+  // The region used to start at the first option row and leave the question and the dialog's
+  // subject in the raw mirror above the card. The card docks above the belt now (ADR 0059) and the
+  // Chat view shows no mirror at all, so the card carries the subject and the question itself, and
+  // the region starts at the dialog's own `─` top edge so the mirror does not repeat them.
+  it("starts the region at the dialog's top edge (the card shows the question itself)", () => {
     const lines = fixtureLines("claude--select-menu.txt");
     const region = detectPromptSelectRegion(lines);
     expect(region).not.toBeNull();
-    // The region's first line is the first option; the question sits on the line just above it.
-    expect(lineText(lines[region!.startLine]!).trim()).toMatch(/^❯?\s*1\.\s+Red$/);
-    expect(lineText(lines[region!.startLine - 1]!).trim()).toBe("");
+    expect(lineText(lines[region!.startLine]!).trim()).toMatch(/^─+$/);
+    // Everything from the edge to the footer is the dialog: the chip header, the question, the options.
+    const inside = lines.slice(region!.startLine).map((l) => lineText(l).trim());
+    expect(inside).toContain("Which color theme should the dashboard use?");
+    expect(inside.some((t) => /^❯?\s*1\.\s+Red$/.test(t))).toBe(true);
     expect(region!.model).toEqual(detectPromptSelect(lines));
+  });
+
+  it("keeps the first option row as the start when no edge is in reach", () => {
+    // A dialog with no `─` rule above its question: nothing to frame it, so nothing moves.
+    const text = ["Pick a colour?", "❯ 1. Red", "  2. Blue", "", "Enter to select · Esc to cancel"].join("\n");
+    const lines = splitLines(parseAnsi(text));
+    const region = detectPromptSelectRegion(lines);
+    expect(region).not.toBeNull();
+    expect(region!.startLine).toBe(1);
+    expect(region!.model.subject).toBeUndefined();
+  });
+});
+
+// ── THE DIALOG'S SUBJECT ─────────────────────────────────────────────────────────────────────────
+// What the dialog asks about, read between its `─` top edge and its question, chrome removed,
+// styles kept. The card shows it; on the phone a subagent's permission used to read "Yes / No" alone.
+describe("detectPromptSelectRegion — the dialog's subject", () => {
+  const subjectTexts = (name: string) =>
+    detectPromptSelectRegion(fixtureLines(name))!.model.subject?.map((l) => l.segments.map((s) => s.text).join(""));
+
+  it("Claude Code 2.1.291 subagent Bash permission: header, description, command, warning", () => {
+    const lines = fixtureLines("claude--v2291-permission-bash-subagent.txt");
+    const region = detectPromptSelectRegion(lines);
+    expect(region).not.toBeNull();
+    const { model, startLine } = region!;
+    expect(model.family).toBe("permission");
+    expect(model.question).toBe("Do you want to proceed?");
+    expect(model.options.map((o) => o.label)).toEqual(["Yes", "No"]);
+    expect(model.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    // The region starts at the dialog's `─` edge, so the raw mirror above ends before it.
+    expect(lineText(lines[startLine]!)).toMatch(/^─+$/);
+    expect(lineText(lines[startLine + 1]!).trim()).toBe("Bash command · from the general-purpose agent");
+
+    const subject = model.subject!.map((l) => l.segments.map((s) => s.text).join(""));
+    expect(subject).toEqual([
+      "Bash command · from the general-purpose agent",
+      "Restore committed pane route in copy and build",
+      "set -e; R=/var/home/devel/apps/sample-forge; T=/tmp/forge-home-build; cd $T/web-forge/src/routes/pane && rm -rf ./* && cd $R && for f in $(git ls-tree -r",
+      "--name-only HEAD web-forge/src/routes/pane); do mkdir -p $T/$(dirname $f); git show HEAD:$f > $T/$f; done; cd $T/web-forge && bunx vite build --outDir",
+      '/tmp/sample-forge-home --emptyOutDir 2>&1 | grep -E "MISSING|rror|built in" | head -5',
+      "Dangerous rm operation on statically-unresolvable target: /var/home/devel/projects/sample-workspace/*",
+    ]);
+    // No dashed rule and no `│` gutter survives.
+    expect(subject.some((t) => /╌/.test(t))).toBe(false);
+    expect(subject.some((t) => /^\s*│/.test(t))).toBe(false);
+    // The styles are kept: the header's own words stay bold, as the terminal painted them.
+    expect(model.subject![0]!.segments.find((s) => s.text.trim() !== "")!.bold).toBe(true);
+  });
+
+  it("the subject plays no part in identity: signature and coreSignature are what they were", () => {
+    const lines = fixtureLines("claude--v2291-permission-bash-subagent.txt");
+    const { model } = detectPromptSelectRegion(lines)!;
+    const texts = lines.map(lineText);
+    const firstOpt = texts.findIndex((t) => t.endsWith("1. Yes"));
+    const footer = texts.length - 1;
+    // signature: 40 rows above the first option through the footer; coreSignature: from the question.
+    expect(model.signature).toBe(texts.slice(firstOpt - 40, footer + 1).join("\n"));
+    expect(model.coreSignature.split("\n")[0]).toBe(" Do you want to proceed?");
+  });
+
+  it("2.1.285 lab Bash permission: the auto-mode tip and its wrapped row are not subject", () => {
+    expect(subjectTexts("claude-lab--permission-bash--w82.txt")).toEqual([
+      "Bash command",
+      "",
+      "  touch /tmp/claude-lab/project/scratch-one.txt",
+      "  Create empty file scratch-one.txt",
+    ]);
+  });
+
+  it("2.1.283 amend dialog: the tip wrapped at the dash is dropped as well", () => {
+    expect(subjectTexts("claude--v2283-permission-amend-focused.txt")).toEqual([
+      "Bash command",
+      "",
+      '  echo "a" >',
+      "  /tmp/collie-dialog-debug/amend.txt",
+      '  Write "a" to amend.txt',
+    ]);
+  });
+
+  it("Edit permission: the edge is in reach, so the subject is the file and its diff", () => {
+    const lines = fixtureLines("claude--permission-edit.txt");
+    const region = detectPromptSelectRegion(lines)!;
+    expect(lineText(lines[region.startLine]!)).toMatch(/^─+$/);
+    expect(subjectTexts("claude--permission-edit.txt")).toEqual(["Create file", "hello.txt", " 1 hello"]);
+  });
+
+  it("plan approval: the edge sits right above the question, so there is no subject", () => {
+    expect(subjectTexts("claude--plan-approval.txt")).toBeUndefined();
+  });
+
+  // ── The edge reaches into the signature ──────────────────────────────────────────────────────
+  // The edge scan stops 30 rows above the question, and the question can sit up to a dozen rows
+  // above the first option, so the dialog's top can be 40+ rows above the first option: past the
+  // SIGNATURE_LOOKBACK window. A synthetic dialog with a note block between question and options.
+  const BOLD = "\x1b[1m";
+  const OFF = "\x1b[0m";
+  const OPTIONS = [
+    " \x1b[0m\x1b[38;2;177;185;249m❯ \x1b[0m1. Yes",
+    "   2. Yes, allow all edits during this session (shift+tab)",
+    "   3. No",
+    "",
+    " Esc to cancel · Tab to amend",
+  ];
+  /** A tall Edit dialog: `header` is the row right under the edge, 28 diff rows, the question, a note block. */
+  function tallEdit(header: string): StyledLine[] {
+    return splitLines(
+      parseAnsi(
+        [
+          "─".repeat(60),
+          ` ${BOLD}${header}${OFF}`,
+          " web/src/foo.ts",
+          ...Array.from({ length: 27 }, (_, k) => ` ${k + 1} unchanged line ${k + 1}`),
+          " Do you want to make this edit to foo.ts?",
+          "",
+          ...Array.from({ length: 10 }, (_, k) => `   note ${k + 1}`),
+          ...OPTIONS,
+        ].join("\n"),
+      ),
+    );
+  }
+
+  it("signature starts at the edge when the subject reaches past the lookback window", () => {
+    const a = tallEdit("Edit file foo.ts");
+    const b = tallEdit("Edit file bar.ts");
+    const ra = detectPromptSelectRegion(a)!;
+    const rb = detectPromptSelectRegion(b)!;
+    const firstOpt = a.findIndex((l) => /1\. Yes/.test(lineText(l)));
+    // Precondition: the one row that differs is above the 40-row lookback, inside the subject.
+    expect(firstOpt - ra.startLine).toBeGreaterThan(41);
+    expect(ra.model.subject?.[0]?.segments.map((s) => s.text).join("")).toBe("Edit file foo.ts");
+    expect(ra.model.signature).not.toBe(rb.model.signature);
+    expect(ra.model.signature).toContain("Edit file foo.ts");
+    expect(ra.model.coreSignature).toBe(rb.model.coreSignature);
+    expect(promptsEqual(ra.model, rb.model)).toBe(false);
+  });
+
+  it("a screen with no edge keeps its lookback-window signature", () => {
+    // The same dialog under no rule of its own, with transcript prose above instead.
+    const texts = [
+      ...Array.from({ length: 60 }, (_, k) => `transcript line ${k}`),
+      " Do you want to make this edit to foo.ts?",
+      ...OPTIONS,
+    ];
+    const lines = splitLines(parseAnsi(texts.join("\n")));
+    const region = detectPromptSelectRegion(lines)!;
+    const firstOpt = texts.findIndex((t) => /1\. Yes/.test(t));
+    expect(region.startLine).toBe(firstOpt);
+    expect(region.model.subject).toBeUndefined();
+    expect(region.model.signature).toBe(lines.slice(firstOpt - 40).map(lineText).join("\n"));
+  });
+
+  // ── The edge must open a dialog ──────────────────────────────────────────────────────────────
+  it("a stray transcript rule above a bare Yes/No is not the dialog's edge", () => {
+    const texts = [
+      "● Some earlier output",
+      "─".repeat(40),
+      "A plain prose row that is not a dialog header",
+      ...Array.from({ length: 5 }, (_, k) => `more prose ${k}`),
+      "",
+      "Do you want to proceed?",
+      "❯ 1. Yes",
+      "  2. No",
+      "",
+      "Esc to cancel",
+    ];
+    const lines = splitLines(parseAnsi(texts.join("\n")));
+    const region = detectPromptSelectRegion(lines)!;
+    expect(region).not.toBeNull();
+    expect(region.model.family).toBe("permission");
+    expect(region.model.subject).toBeUndefined();
+    expect(region.startLine).toBe(texts.findIndex((t) => t.startsWith("❯ 1.")));
+  });
+
+  it("every captured dialog with a subject keeps it", () => {
+    for (const name of [
+      "claude--permission-bash.txt",
+      "claude--permission-edit.txt",
+      "claude-lab--permission-bash--w40.txt",
+      "claude-lab--permission-bash--w82.txt",
+      "claude-lab--permission-webfetch--w82.txt",
+      "claude-lab--permission-write--w82.txt",
+      "claude--v2283-permission-amend-focused.txt",
+      "claude--v2283-permission-amend-no-off-row.txt",
+      "claude--v2283-permission-amend-typed.txt",
+      "claude--v2291-permission-bash-subagent.txt",
+      "claude--trust-prompt.txt",
+      "claude--trust-prompt-unnumbered.txt",
+      "claude--v2283-trust--w50.txt",
+    ]) {
+      expect(subjectTexts(name), name).toBeDefined();
+    }
+  });
+
+  // ── The stepper chip is chrome ───────────────────────────────────────────────────────────────
+  it("AskUserQuestion: the `☐ Color Theme` chip is not subject, and the question is unchanged", () => {
+    const lines = fixtureLines("claude--select-menu.txt");
+    const region = detectPromptSelectRegion(lines)!;
+    expect(region.model.subject).toBeUndefined();
+    expect(region.model.question).toBe("Which color theme should the dashboard use?");
+    for (const name of [
+      "claude--v2283-ask-two-line-question.txt",
+      "claude--v2283-ask-long-question--w50.txt",
+      "claude--v2283-ask-type-something-focused.txt",
+    ]) {
+      expect(subjectTexts(name), name).toBeUndefined();
+    }
   });
 });
 

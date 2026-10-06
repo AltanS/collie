@@ -41,6 +41,7 @@ export type {
   PromptOption,
   PromptFamily,
   PromptFeedbackPurpose,
+  PromptSubjectLine,
 } from "./harness/prompt-model";
 export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./harness/wizard-model";
 export type { PreviewSelectModel, PreviewOption, PreviewNote } from "./harness/preview-model";

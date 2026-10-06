@@ -6,8 +6,22 @@
 // are written against these types alone, never against a harness's internals.
 //
 // Types + the pure IDENTITY COMPARATOR, no detection and no harness conventions. Claude's reference
-// detector is harness/claude/prompt-select.ts. This module imports nothing, so `lib/blocks.ts` can
-// re-export it without a cycle.
+// detector is harness/claude/prompt-select.ts. This module imports nothing at runtime, so
+// `lib/blocks.ts` can re-export it without a cycle. Its one import is the TYPE of a styled segment
+// from `lib/ansi.ts`, a leaf that imports neither blocks.ts nor harness/, so not even a type-level
+// cycle exists: {@link PromptSubjectLine} spells a StyledLine's shape over it instead of importing
+// StyledLine from blocks.ts.
+
+import type { AnsiSegment } from "../ansi";
+
+/**
+ * One row of a dialog's SUBJECT ({@link PromptModel.subject}), styles kept. Structurally a
+ * `StyledLine` (lib/blocks.ts), which is assignable to it and from it, spelled here so this module
+ * need not import blocks.ts, which re-exports it.
+ */
+export interface PromptSubjectLine {
+  segments: AnsiSegment[];
+}
 
 /** The single-choice dialog families a harness can report, discriminated by its footer hint bar.
  *  The family is what pins the keystroke recipe (digit-then-Enter vs digit alone), so it is part of
@@ -90,6 +104,19 @@ export interface PromptModel {
   caption?: string;
   /** The dialog's inline free-text input row, when it has one. Absent on dialogs without one. */
   feedback?: PromptFeedback;
+  /**
+   * What the dialog asks about: the rows it paints between its own top edge and its question, with
+   * the dialog's chrome removed (its indent, a `│` gutter, dashed rules, a stock tip) and the
+   * terminal's styles kept. A permission dialog's header (`Bash command · from the … agent`), its
+   * description, the command or diff, and any warning. Leading and trailing blank rows are trimmed
+   * and a run of blank rows is one. No row cap: the renderer bounds the height.
+   *
+   * Absent when the grammar found no top edge in reach, or nothing between the edge and the
+   * question. Display only: it plays no part in identity, `signature` already covers these rows.
+   * The card used to leave the subject in the raw mirror above it, which the docked card (ADR 0059)
+   * and the journal-based Chat view no longer show.
+   */
+  subject?: PromptSubjectLine[];
   /**
    * The grammar's declared FACT that its pointed list clamps at both ends: Up on the first row and
    * Down on the last row leave the pointer where it is. The action layer then commits an edge row

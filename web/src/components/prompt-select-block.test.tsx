@@ -21,7 +21,7 @@ import { buildBlocks } from "@/lib/harness";
 import { detectPromptSelect } from "@/lib/harness/claude/prompt-select";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
-import { keyBadgeFallback, PromptSelectBlock, type PromptBlockAction } from "./prompt-select-block";
+import { isHeaderRow, keyBadgeFallback, PromptSelectBlock, type PromptBlockAction } from "./prompt-select-block";
 
 const mockFetchPane = vi.mocked(fetchPane);
 const mockSendKeys = vi.mocked(sendKeys);
@@ -97,6 +97,76 @@ describe("PromptSelectBlock — presentation", () => {
 
 // ADR 0056, driven off a real capture through the real pipeline: a lifted card carries the way
 // back to the region it replaced.
+// The card carries what the dialog asks about and the question itself. It used to show the family
+// caption and the buttons only, trusting the raw scrollback above it for the rest; docked above the
+// belt (ADR 0059) and in the Chat view that scrollback is not on screen, so a subagent's permission
+// read "PERMISSION REQUIRED / 1 Yes / 2 No" and nothing else (Claude Code 2.1.291, 2026-10-06).
+describe("PromptSelectBlock — the subject and the question are on the card", () => {
+  it("shows the question as text on a card with no subject, and keeps it as the group's name", () => {
+    const { container } = render(<PromptSelectBlock prompt={selectModel} onAction={vi.fn()} />);
+    const question = container.querySelector('[data-slot="prompt-question"]');
+    expect(question?.textContent).toBe("Which color theme should the dashboard use?");
+    expect(within(container).getByRole("group", { name: "Which color theme should the dashboard use?" })).toBeInTheDocument();
+    expect(container.querySelector('[data-slot="prompt-subject"]')).toBeNull();
+  });
+
+  it("2.1.291 subagent Bash permission: header as title, command and warning, then the question", () => {
+    const model = fixtureModel("claude--v2291-permission-bash-subagent.txt");
+    const { container } = render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    const card = within(container);
+
+    const title = container.querySelector('[data-slot="prompt-subject-title"]')!;
+    expect(title.textContent).toBe("Bash command · from the general-purpose agent");
+    // A title in the card's text face, not a mono terminal row.
+    expect(title.closest("pre")).toBeNull();
+
+    const subject = container.querySelector('[data-slot="prompt-subject"] pre')!;
+    expect(subject.textContent).toContain("Restore committed pane route in copy and build");
+    expect(subject.textContent).toContain("set -e; R=/var/home/devel/apps/sample-forge;");
+    expect(subject.textContent).toContain(
+      "Dangerous rm operation on statically-unresolvable target: /var/home/devel/projects/sample-workspace/*",
+    );
+    expect(subject.textContent).not.toMatch(/[╌│]/);
+    // Wraps at phone width instead of panning, and scrolls on its own past its cap, so a long diff
+    // never pushes the buttons out of the dock.
+    expect(subject.className).toContain("whitespace-pre-wrap");
+    expect(subject.className).toContain("max-h-[22dvh]");
+    expect(subject.className).toContain("overflow-y-auto");
+
+    expect(container.querySelector('[data-slot="prompt-question"]')!.textContent).toBe("Do you want to proceed?");
+    expect(card.getAllByRole("button").map((b) => b.textContent)).toEqual(["1Yes", "2No"]);
+
+    // Reading order: caption, title, subject, question, options.
+    const order = [title, subject, container.querySelector('[data-slot="prompt-question"]')!, card.getAllByRole("button")[0]!];
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it("an Edit permission shows the file and its diff under the title", () => {
+    const model = fixtureModel("claude--permission-edit.txt");
+    const { container } = render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    expect(container.querySelector('[data-slot="prompt-subject-title"]')!.textContent).toBe("Create file");
+    expect(container.querySelector('[data-slot="prompt-subject"] pre')!.textContent).toBe("hello.txt\n 1 hello");
+    expect(container.querySelector('[data-slot="prompt-question"]')!.textContent).toBe("Do you want to create hello.txt?");
+  });
+
+  it("does not repeat a question the caption already says", () => {
+    const { container } = render(
+      <PromptSelectBlock prompt={{ ...selectModel, question: "Resume session", caption: "Resume session" }} onAction={vi.fn()} />,
+    );
+    expect(container.querySelector('[data-slot="prompt-question"]')).toBeNull();
+    expect(within(container).getAllByText("Resume session")).toHaveLength(1);
+  });
+
+  it("isHeaderRow: a row whose first painted run is bold", () => {
+    const seg = (text: string, bold = false) => ({ text, bold, style: {}, muted: false });
+    expect(isHeaderRow({ segments: [seg(" "), seg("Bash command", true), seg(" · from x")] })).toBe(true);
+    expect(isHeaderRow({ segments: [seg("touch a.txt")] })).toBe(false);
+    expect(isHeaderRow(undefined)).toBe(false);
+  });
+});
+
 describe("PromptSelectBlock — the way back to the terminal (ADR 0056)", () => {
   it("shows the Terminal control, and puts the card down to the raw rows on a tap", async () => {
     const user = userEvent.setup();

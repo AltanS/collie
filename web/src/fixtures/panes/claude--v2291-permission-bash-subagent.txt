@@ -1,0 +1,45 @@
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mWaiting for [0m[1m[38;2;153;153;153m6[0m[38;2;153;153;153m background agents to finish[0m
+
+[0m[38;2;78;186;101m● [0mAgent "W1: shell kit, header host, motion" finished[0m[38;2;153;153;153m · 29m 5s[0m
+
+[0m[38;2;255;255;255m● [0mThe kit is complete with the gated glide. I'll relay the adoption notes to the dashboard and pane workers, since both are mid-build.
+[0m[38;2;153;153;153m  ⎿  Message queued for delivery to a9f6575e3611d23a4 at its next tool round.[0m
+[0m[38;2;153;153;153m  ⎿  Message queued for delivery to aed5f6a6248aa99e2 at its next tool round.[0m
+
+[0m[38;2;255;255;255m●[0m Three builders remain: dashboard, pane, routes. Everything after them depends on their commits. I wait.
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mWaiting for [0m[1m[38;2;153;153;153m9[0m[38;2;153;153;153m background agents to finish[0m
+
+[0m[38;2;78;186;101m●[0m Agent "W4: remaining routes and settings" finished[0m[38;2;153;153;153m · 18m 30s[0m
+
+[0m[38;2;255;255;255m●[0m Routes wave is in: eleven routes with override headers, 192 unit tests and 68 browser specs green in a clean build. The shared tree is mid-edit by the pane
+  worker, which is expected. Two builders remain, dashboard and pane. I wait.
+
+[0m[38;2;153;153;153m✻ Waiting for [0m[1m[38;2;153;153;153m3[0m[38;2;153;153;153m background agents to finish[0m
+
+[0m[38;2;78;186;101m● [0mAgent "W4: remaining routes and settings" finished[0m[38;2;153;153;153m · 21m 9s[0m
+
+[0m[38;2;255;255;255m● [0mNoted. Waiting on the dashboard and pane builders.
+
+[0m[38;2;153;153;153m✻ Waiting for [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m background agents to finish[0m
+
+[0m[38;2;78;186;101m● [0mAgent "W4: remaining routes and settings" finished[0m[38;2;153;153;153m · 22m 7s[0m
+
+[0m[38;2;255;255;255m● [0mStill waiting on the dashboard and pane builders.
+  
+[0m[38;2;177;185;249m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m [0m[38;2;153;153;153m· [0mfrom the general-purpose agent
+ [0m[38;2;153;153;153mRestore committed pane route in copy and build[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m│ [0mset -e; R=/var/home/devel/apps/sample-forge; T=/tmp/forge-home-build; cd $T/web-forge/src/routes/pane && rm -rf ./* && cd $R && for f in $(git ls-tree -r
+ [0m[2m│[0m --name-only HEAD web-forge/src/routes/pane); do mkdir -p $T/$(dirname $f); git show HEAD:$f > $T/$f; done; cd $T/web-forge && bunx vite build --outDir
+ [0m[2m│[0m /tmp/sample-forge-home --emptyOutDir 2>&1 | grep -E "MISSING|rror|built in" | head -5
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m│[0m Dangerous rm operation on statically-unresolvable target: /var/home/devel/projects/sample-workspace/*
+
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents[0m

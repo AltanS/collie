@@ -171,9 +171,9 @@ export function PromptPanel({
 // separating the block from the raw mirror above it. Shared by both group headers below.
 const accentTick = <span aria-hidden className="h-3 w-0.5 shrink-0 rounded-md bg-primary/60" />;
 
-/** The compact caption above an option group — a short uppercase label, for the single-question
- *  dialogs whose actual question stays visible in the raw scrollback just above. Non-semantic (the
- *  group is already aria-labelled by its question). */
+/** The compact caption above an option group — a short uppercase label naming the dialog's family
+ *  (or its own title). The prompt-select card shows its question under it as text. Non-semantic
+ *  (the group is already aria-labelled by its question). */
 export function OptionGroupCaption({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 pl-0.5">

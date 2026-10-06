@@ -683,6 +683,41 @@ row 2 (the list wraps), Esc cancels. The digits were not probed and are never se
 | `claude--v2289-switch-model-yes--w50.txt` | 50 columns: the sub-title and the prose wrap over two and three rows, the edge carries the label. Pointer on row 1 |
 | `claude--v2289-switch-model-no--w50.txt` | 50 columns, pointer on row 2, the edge bare. The walk pair of the capture above |
 
+## Claude Code 2.1.291 permission dialog (captured 2026-10-06 from a live pane)
+
+A Bash permission raised by a SUBAGENT, read off a live Herdr pane on the dev lane with
+`herdr pane read --ansi`, the call the bridge's `/api/pane` route makes. The phone showed
+`PERMISSION REQUIRED / 1 Yes / 2 No` and nothing else: the card kept the question and the command in
+the raw mirror above it, which the docked card (ADR 0059) and the Chat view do not show, and a
+subagent's request has no journal step either. The prompt-select grammar now reads the dialog's
+subject between its top edge and its question (`PromptModel.subject`), and the card shows it.
+
+Byte-faithful, CRLF, no trailing newline, 45 rows. **One sanitization pass, LENGTH-PRESERVING, on
+every row it touches:** the home path's user name (`/var/home/devel/`), and the project names in the
+command and the warning (`collie-` to `sample-`, `remix` to `forge`). The worker names and the two
+agent ids in the transcript above the dialog are kept.
+
+What is new in the layout, against the 2.1.283 permission screens above:
+
+- a `─` rule as the dialog's top edge, the row the region now starts on;
+- a header naming the requester, `Bash command · from the general-purpose agent` (bold, then a
+  muted `· from …`);
+- a one-line description under it, `Restore committed pane route in copy and build`;
+- `╌` dashed rules above and below the command, and again above the warning;
+- a `│` gutter (dim) down the left of the three command rows and of the warning row
+  `Dangerous rm operation on statically-unresolvable target: …`;
+- bare `1. Yes` / `2. No` rows, no "always allow" row and no `tell Claude` row;
+- the footer `Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents`.
+
+The screen names Claude nowhere (the banner has scrolled away and the rows are bare), so agy's
+grammar lifts it, the gap recorded for the lab's Edit-permission screens in the capture-lab section.
+It stays in the corpus as a named exception, `KNOWN_FOREIGN_CLAIMS` in `harness/agy/agy.test.ts`,
+which fails the day agy stops claiming it.
+
+| Fixture | State / what's in it | Grammar state |
+|---|---|---|
+| `claude--v2291-permission-bash-subagent.txt` | A subagent's Bash permission, pointer on `1. Yes`. Lifts `prompt-select` (`permission`, `Do you want to proceed?`, Yes `1`, No `2`) from the `─` edge, with the header, the description, the three command rows and the warning as its subject, no `╌` row and no `│` gutter | `blocked` |
+
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 
 | Fixture | State / what's in it |

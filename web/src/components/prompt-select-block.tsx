@@ -6,10 +6,12 @@ import type {
   PromptFeedbackPurpose,
   PromptModel,
   PromptOption,
+  PromptSubjectLine,
   StyledLine,
 } from "@/lib/blocks";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { RawMirror } from "@/components/raw-mirror";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 
@@ -19,7 +21,7 @@ export type PromptBlockAction =
   | { kind: "feedback"; text: string };
 
 export interface PromptSelectBlockProps {
-  /** The detected dialog: question (screen-reader label) + selectable options as buttons. */
+  /** The detected dialog: its subject and question (shown, and the group's label) + options. */
   prompt: PromptModel;
   /** The region this block replaced — passed through to PromptPanel as its way back (ADR 0056).
    *  Absent in a handful of presentational tests that construct a `PromptModel` by hand; those
@@ -36,8 +38,8 @@ export interface PromptSelectBlockProps {
   disabled?: boolean;
 }
 
-// Family-aware caption above the options — orients the reader ("the terminal is asking you
-// something") without repeating the question, which stays in the raw scrollback just above.
+// Family-aware caption at the top of the card — orients the reader ("the terminal is asking you
+// something"). The subject and the question follow it on the card itself.
 // A function, not a module-level object, so it re-reads the current locale on every call — a
 // component that calls `useLocale()` re-renders on a language switch and this is called fresh.
 function familyCaption(family: PromptFamily): string {
@@ -68,6 +70,49 @@ export function keyBadgeFallback(key: string): string {
   if (key === "Escape") return "Esc";
   if (key === "Tab") return "Tab";
   return key;
+}
+
+/** Whether a subject row is the dialog's HEADER: its first painted run is bold, the way Claude
+ *  paints `Bash command` or `Create file`. Exported for its own unit test. */
+export function isHeaderRow(line: PromptSubjectLine | undefined): boolean {
+  const first = line?.segments.find((s) => s.text.trim() !== "");
+  return first?.bold === true;
+}
+
+/**
+ * What the dialog asks about (`PromptModel.subject`), above the question. The card used to leave it
+ * in the raw scrollback above itself, which the docked card (ADR 0059) and the Chat view no longer
+ * show, so a subagent's permission read "Yes / No" and nothing else.
+ *
+ * A header row (bold in the terminal) is the card's title, in text weight: its bold runs in the
+ * foreground, the rest (` · from the general-purpose agent`) muted. Every other row is the command,
+ * diff or warning, drawn as the mirror draws it (RawMirror: mono, the agent's own colours, React text
+ * nodes only) but wrapping, and capped at about 40% of the dock's 55dvh with its own scroll, so a
+ * long diff never pushes the buttons out of the dock.
+ */
+function PromptSubject({ subject }: { subject: PromptSubjectLine[] }) {
+  const header = isHeaderRow(subject[0]) ? subject[0]! : null;
+  const rest = header ? subject.slice(1) : subject;
+  // A blank row right under the header is the gap the terminal left after it; the card has its own.
+  const body = rest[0]?.segments.every((s) => s.text.trim() === "") ? rest.slice(1) : rest;
+  return (
+    <>
+      {header ? (
+        <p data-slot="prompt-subject-title" className="font-content pl-0.5 text-sm leading-snug wrap-anywhere">
+          {header.segments.map((s, i) => (
+            <span key={i} className={s.bold ? "font-medium text-foreground" : "text-muted-foreground"}>
+              {i === 0 ? s.text.trimStart() : s.text}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      {body.length > 0 ? (
+        <div data-slot="prompt-subject">
+          <RawMirror lines={body} wrap className="max-h-[22dvh] overflow-y-auto overscroll-contain" />
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 interface FeedbackCopy {
@@ -110,11 +155,14 @@ function feedbackCopyFor(purpose: PromptFeedbackPurpose): FeedbackCopy {
   };
 }
 
-// Native, tappable rendering of a Claude single-choice dialog. Every visible string — the option
-// label and its description — is a React text node (the XSS boundary is unchanged; nothing is ever
-// set as innerHTML). Real <button>s, so they're keyboard-focusable and screen-reader-announced; the
-// group is labelled by the question (which stays visible in the raw scrollback just above, so it's
-// not repeated here). Each row leads with its terminal-menu digit (KeyBadge) so the mapping is
+// Native, tappable rendering of a Claude single-choice dialog. Every visible string — the subject,
+// the question, the option label and its description — is a React text node (the XSS boundary is
+// unchanged; nothing is ever set as innerHTML). The card reads top to bottom as the dialog does: the
+// family caption, the subject (what is asked about, when the grammar found it), the question, the
+// options. The question is shown on every card, and it still labels the group for a screen reader:
+// the raw scrollback that used to show it sits off screen once the card docks (ADR 0059), and the
+// Chat view never shows it. Real <button>s, so they're keyboard-focusable and screen-reader-announced.
+// Each row leads with its terminal-menu digit (KeyBadge) so the mapping is
 // visible. One option can be in flight at a time — its spinner shows and the rest lock, preventing a
 // double-send.
 //
@@ -179,6 +227,17 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled }: PromptS
   return (
     <PromptPanel ariaLabel={prompt.question} raw={lines}>
       <OptionGroupCaption>{prompt.caption ?? familyCaption(prompt.family)}</OptionGroupCaption>
+      {prompt.subject && prompt.subject.length > 0 ? <PromptSubject subject={prompt.subject} /> : null}
+      {/* A dialog that names itself (`/resume`'s "Resume session") already shows its title as the
+          caption; saying it twice adds nothing. */}
+      {prompt.question !== prompt.caption ? (
+        <p
+          data-slot="prompt-question"
+          className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-foreground wrap-anywhere"
+        >
+          {prompt.question}
+        </p>
+      ) : null}
       <div className="flex flex-col gap-1">
         {prompt.options.map((option, index) => {
           const id = `opt-${index}`;
