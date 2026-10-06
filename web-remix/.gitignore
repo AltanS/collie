@@ -1,2 +1,4 @@
 test-results/
 playwright-report/
+# Live screenshots show the operator's own workspace names; they stay on this disk.
+e2e/shots/
