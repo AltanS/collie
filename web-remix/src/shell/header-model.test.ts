@@ -80,6 +80,23 @@ describe("HeaderModel", () => {
     expect(model.current.center).toMatchObject({ kind: "pane", name: "codex" });
   });
 
+  test("an override's subtitle is compared: a new one wakes the header, the same one does not", () => {
+    const model = new HeaderModel();
+    const changes = counted(model);
+    const owner = model.owner();
+    const onBack = (): void => {};
+    const claim = (subtitle?: string): HeaderClaim => ({ override: { title: "Files", subtitle, backLabel: "Back", onBack }, width: "wide" });
+    owner.claim(claim("collie-workspace"));
+    owner.claim(claim("collie-workspace"));
+    expect(changes()).toBe(1);
+    owner.claim(claim("collie-workspace · web"));
+    expect(changes()).toBe(2);
+    expect(model.current.override?.subtitle).toBe("collie-workspace · web");
+    owner.claim(claim());
+    expect(changes()).toBe(3);
+    expect(model.current.override?.subtitle).toBeUndefined();
+  });
+
   test("a fresh callback is a change (claims carry callbacks made once in setup)", () => {
     const model = new HeaderModel();
     const changes = counted(model);

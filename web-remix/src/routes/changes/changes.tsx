@@ -712,8 +712,10 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
     // or the host never learns that the filter button, the layout toggle or the spinner changed.
     if (trailing.rev !== rev) trailing = { ...trailing, rev };
     const title = v.commitView ? t("changes.commit.title") : t("files.title");
+    // web/ prints the workspace, the root folder's last name and the stale note on the line under the h1.
+    const subtitle = [workspaceLabel, rootSegment, stale ? t("changes.stale") : ""].filter((part) => part !== "").join(" · ");
     handle.queueTask(() => {
-      header.claim({ override: { title, backLabel: backAria, onBack, trailing }, width: "wide" });
+      header.claim({ override: { title, subtitle, backLabel: backAria, onBack, trailing }, width: "wide" });
       sync();
     });
 
@@ -884,19 +886,10 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
           </FilterOverlay>
         ) : null}
 
-        {/* The scope: the workspace, then the root folder's last name, on a line that is always
-            there. The stale note shares it, so neither moves anything. */}
-        <div data-testid="changes-scope" class="flex h-6 shrink-0 items-baseline gap-1.5 px-4 pt-1 text-xs leading-tight text-muted-foreground">
-          <span class="max-w-full min-w-0 shrink truncate">{workspaceLabel}</span>
-          {rootSegment === "" ? null : (
-            <span class="min-w-0 shrink-0 truncate font-mono" title={rootFolder ?? undefined}>
-              · {rootSegment}
-            </span>
-          )}
-          <span role="status" class="ml-auto shrink-0">
-            {stale ? t("changes.stale") : ""}
-          </span>
-        </div>
+        {/* The scope sits in the header's second line; the stale note also speaks to a screen reader here. */}
+        <span role="status" class="sr-only">
+          {stale ? t("changes.stale") : ""}
+        </span>
 
         {rootScreen || treeAt !== null ? filesModeControl(prefs.changesOnly, countFiles(listRepos), changeChangesOnly) : null}
 

@@ -232,14 +232,14 @@ function PaneIdentity(handle: Handle<{ center: PaneCenter }>) {
 
 function OverrideRow(handle: Handle<{ override: HeaderOverride }>) {
   return () => {
-    const { title, backLabel, trailing } = handle.props.override;
+    const { title, subtitle = "", backLabel, trailing } = handle.props.override;
     return (
       <>
         <button
           type="button"
           data-testid="header-back"
           aria-label={backLabel}
-          class="-ml-2 grid size-11 shrink-0 place-items-center rounded-md text-foreground active:bg-muted/60"
+          class="grid size-11 shrink-0 place-items-center rounded-md text-foreground active:bg-muted/60"
           mix={on("click", () => {
             noteInAppBack();
             handle.props.override.onBack();
@@ -247,7 +247,16 @@ function OverrideRow(handle: Handle<{ override: HeaderOverride }>) {
         >
           <Icon icon={ArrowLeft} class="size-5" />
         </button>
-        <h1 class="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">{title}</h1>
+        {subtitle === "" ? (
+          <h1 class="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">{title}</h1>
+        ) : (
+          <div data-slot="header-title" class="min-w-0 flex-1">
+            <h1 class="truncate text-lg leading-tight font-semibold tracking-tight">{title}</h1>
+            <div data-slot="header-subtitle" class="h-[0.9375rem] truncate text-xs leading-tight text-muted-foreground">
+              {subtitle}
+            </div>
+          </div>
+        )}
         {trailing ? trailing.render() : null}
       </>
     );

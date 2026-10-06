@@ -85,6 +85,19 @@ test("the pane claims the header: name and workspace, no gear, no tab bar; the m
   await expect(page.getByTestId("settings-gear")).toBeVisible();
 });
 
+test("the override row's back arrow starts where the mark starts (web/ aligns both at the row's 16 px inset)", async ({ page }) => {
+  await stubPaneBridge(page, { [PANES.plain]: "ready\n> " });
+  await openHome(page);
+  const markLeft = await page.locator('[data-testid="header-home"] [data-slot="collie-mark"]').evaluate((el) => el.getBoundingClientRect().left);
+  expect(markLeft).toBe(16);
+  await page.getByTestId("settings-gear").click();
+  const back = page.getByTestId("header-back");
+  await expect(back).toBeVisible();
+  const backLeft = await back.evaluate((el) => el.getBoundingClientRect().left);
+  // web/ draws the arrow as a plain size-11 button in a `pl-4` row, no negative margin.
+  expect(backLeft).toBe(markLeft);
+});
+
 test("dashboard to pane slides in, the browser's own back does not", async ({ page }) => {
   // A row tap glides by default; the kill switch keeps this case on the plain screen slide.
   await page.addInitScript(() => {

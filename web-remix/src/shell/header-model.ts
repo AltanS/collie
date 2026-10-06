@@ -65,6 +65,8 @@ export type HeaderRight = MenuRight | CustomSlot;
 export interface HeaderOverride {
   /** The h1. */
   title: string;
+  /** A second line under the h1 (web/ Files: the workspace label and the root folder), 12 px muted. */
+  subtitle?: string;
   /** The back arrow's accessible name. */
   backLabel: string;
   onBack: () => void;
@@ -168,7 +170,7 @@ export function sameClaim(a: ResolvedClaim, b: ResolvedClaim): boolean {
 
 function sameOverride(a: HeaderOverride | null, b: HeaderOverride | null): boolean {
   if (a === null || b === null) return a === b;
-  return a.title === b.title && a.backLabel === b.backLabel && a.onBack === b.onBack && sameSlot(a.trailing ?? null, b.trailing ?? null);
+  return a.title === b.title && a.subtitle === b.subtitle && a.backLabel === b.backLabel && a.onBack === b.onBack && sameSlot(a.trailing ?? null, b.trailing ?? null);
 }
 
 export interface HeaderOwner {
