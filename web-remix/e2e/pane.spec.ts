@@ -19,6 +19,8 @@ test("Chat renders the session's turns and Terminal renders the mirror rows", as
   const stream = page.getByTestId("chat-stream");
   await expect(stream).toContainText("Fix the flaky poll test");
   await expect(stream.locator("strong")).toHaveText("the poll test");
+  // Tool calls are folded by default (dash pref showToolCalls off): one tap opens the run.
+  await stream.locator('[data-slot="tool-group"]').click();
   await expect(stream.locator('[data-slot="tool-card"][data-kind="execute"]')).toContainText("bun test web/poll.test.ts");
   await expect(stream).toContainText("Fixed: the test now waits for the poll.");
 
@@ -81,11 +83,13 @@ test("the composer sends a reply", async ({ page }) => {
   await expect(box).toHaveValue("");
 });
 
-test("the keys row sends one special key", async ({ page }) => {
+test("the Keys tray sends one special key", async ({ page }) => {
   const stub = await stubPaneBridge(page, { [PANES.plain]: "ready\n> " });
   await page.goto(path(PANES.plain));
-  await page.getByTestId("keys-toggle").click();
-  await page.getByTestId("key-esc").click();
+  await page.getByTestId("belt-pill-keys").click();
+  const tray = page.getByTestId("keys-tray");
+  await expect(tray).toBeVisible();
+  await tray.getByTestId("key-Escape").click();
   await expect.poll(() => stub.writes.map((w) => [w.path, w.body.keys])).toEqual([["keys", ["Escape"]]]);
 });
 

@@ -39,6 +39,12 @@ export const PANES = {
   permission: "w1:p4",
   walk: "w1:p3",
   plain: "w2:p1",
+  wizard: "w1:p5",
+  multi: "w1:p6",
+  /** A Claude pane that named a session whose log is not there: the gate draws the Terminal. */
+  noLog: "w1:p7",
+  /** Present on the first snapshot; `closePane` takes it away. */
+  closing: "w3:p1",
 } as const;
 
 export const PANE_SNAPSHOT: SnapshotResponse = {
@@ -49,19 +55,35 @@ export const PANE_SNAPSHOT: SnapshotResponse = {
     row({ paneId: PANES.walk, agent: "opencode", status: "blocked" }),
     row({ paneId: PANES.permission, agent: "claude", status: "blocked" }),
     row({ paneId: PANES.plain, agent: "some-new-harness", workspaceId: "w2", workspaceLabel: "website", tabId: "w2:t1" }),
+    row({ paneId: PANES.wizard, agent: "claude", status: "blocked" }),
+    row({ paneId: PANES.multi, agent: "claude", status: "blocked" }),
+    row({ paneId: PANES.noLog, agent: "claude", hasSession: true, status: "idle" }),
+    row({ paneId: PANES.closing, agent: "some-new-harness", workspaceId: "w3", workspaceLabel: "scratch", tabId: "w3:t1" }),
   ],
   shellPanes: [],
   workspaces: [
     { workspaceId: "w1", number: 1, label: "collie", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 3 },
     { workspaceId: "w2", number: 2, label: "website", focused: false, activeTabId: "w2:t1", tabCount: 1, paneCount: 1 },
+    { workspaceId: "w3", number: 3, label: "scratch", focused: false, activeTabId: "w3:t1", tabCount: 1, paneCount: 1 },
   ],
   tabs: [
     { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "build", focused: true, paneCount: 3 },
     { tabId: "w2:t1", workspaceId: "w2", number: 1, label: "docs", focused: true, paneCount: 1 },
+    { tabId: "w3:t1", workspaceId: "w3", number: 1, label: "tmp", focused: true, paneCount: 1 },
   ],
 };
 
 const PANE_CONFIG: BridgeConfig = { push: false, vapidPublicKey: "" };
+
+/** The same bridge with speech to text and uploads switched on (ADR 0029, ADR 0060). */
+const PANE_CONFIG_STT: BridgeConfig = {
+  ...PANE_CONFIG,
+  stt: { provider: "stub", available: true },
+  upload: { maxBytes: 10 * 1024 * 1024, imageTypes: ["image/png", "image/jpeg"], textTypes: [".md", ".txt"] },
+};
+
+/** Where the stub says an upload landed on the host. */
+export const UPLOAD_PATH = "/tmp/collie-upload/shot.png";
 
 /** Plain terminal output with colour, for the Terminal tab. */
 export const TERMINAL_TEXT = "\u001b[32m✓ 12 tests passed\u001b[0m\n\u001b[1mDone in 3.1s\u001b[0m\n$ ";
@@ -101,7 +123,7 @@ export const CHAT_BODY: PaneChatResponse = {
 };
 
 export interface Write {
-  path: "keys" | "reply";
+  path: "keys" | "reply" | "upload";
   paneId: string;
   body: { keys?: string[]; text?: string; submit?: boolean; expected_prompt?: string };
 }
@@ -112,6 +134,10 @@ export interface StubBridge {
   setScreen(paneId: string, text: string): void;
   /** Called on every write, after it is recorded: a spec repaints the screen here. */
   onWrite(fn: (write: Write) => void): void;
+  /** Take a pane out of the snapshot, as closing it in the terminal would. */
+  closePane(paneId: string): void;
+  /** How many snapshot reads were answered. */
+  snapshots(): number;
 }
 
 export interface StubOptions {
@@ -119,12 +145,16 @@ export interface StubOptions {
   refuse?: number;
   /** Refuse every write with the bridge's 403 "device not paired". */
   unpaired?: boolean;
+  /** Serve the config with STT and uploads on. */
+  stt?: boolean;
 }
 
 export async function stubPaneBridge(page: Page, screens: Record<string, string>, opts: StubOptions = {}): Promise<StubBridge> {
   const texts = new Map(Object.entries(screens));
   const revisions = new Map<string, number>();
   const writes: Write[] = [];
+  const closed = new Set<string>();
+  let snapshotReads = 0;
   let hook: ((write: Write) => void) | undefined;
   const stub: StubBridge = {
     writes,
@@ -135,21 +165,35 @@ export async function stubPaneBridge(page: Page, screens: Record<string, string>
     onWrite(fn) {
       hook = fn;
     },
+    closePane(paneId) {
+      closed.add(paneId);
+      texts.delete(paneId);
+    },
+    snapshots: () => snapshotReads,
   };
 
   await page.route("**/api/**", async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
     if (opts.refuse !== undefined) return route.fulfill({ status: opts.refuse, body: "access refused" });
-    if (url.pathname === "/api/snapshot") return route.fulfill({ json: PANE_SNAPSHOT });
-    if (url.pathname === "/api/config") return route.fulfill({ json: PANE_CONFIG });
-    const m = /^\/api\/pane\/([^/]+)(?:\/(chat|keys|reply))?$/u.exec(url.pathname);
+    if (url.pathname === "/api/snapshot") {
+      snapshotReads++;
+      const agents = PANE_SNAPSHOT.agents.filter((a) => !closed.has(a.paneId));
+      return route.fulfill({ json: { ...PANE_SNAPSHOT, ts: Date.now(), agents } });
+    }
+    if (url.pathname === "/api/config") return route.fulfill({ json: opts.stt ? PANE_CONFIG_STT : PANE_CONFIG });
+    const m = /^\/api\/pane\/([^/]+)(?:\/(chat|keys|reply|upload))?$/u.exec(url.pathname);
     if (m?.[1] !== undefined) {
       const paneId = decodeURIComponent(m[1]);
       const sub = m[2];
       if (sub === "chat") {
         if (paneId === PANES.chat) return route.fulfill({ json: CHAT_BODY });
+        if (paneId === PANES.noLog) return route.fulfill({ json: { paneId, available: false, reason: "no-log" } });
         return route.fulfill({ json: { paneId, available: false, reason: "no-session" } });
+      }
+      if (sub === "upload") {
+        writes.push({ path: "upload", paneId, body: {} });
+        return route.fulfill({ json: { ok: true, path: UPLOAD_PATH } });
       }
       if (sub === "keys" || sub === "reply") {
         // SAFETY: the stub only records what the app posted; the spec asserts on each field it reads.
