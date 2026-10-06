@@ -919,7 +919,9 @@ function ChangesScreen() {
         )}
       </div>
 
-      {(rootScreen || treeAt !== null) && (
+      {/* Not while a file is open (2026-10-06): the control swaps the LIST's body, and a reader of
+          one file wants the screen for the file. It is back the moment the file closes. */}
+      {treeFile === null && (rootScreen || treeAt !== null) && (
         <FilesModeControl changesOnly={prefs.changesOnly} count={changedFiles} onChange={changeChangesOnly} />
       )}
 
@@ -1336,29 +1338,36 @@ function TreeFileScreen({
   else body = <FileContent file={read.data} view={view} links={links} />;
   return (
     <>
-      {/* Sticky, so the reader always knows which file this is, however far down the page. */}
-      <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-rule bg-background px-4 py-2">
-        <div className="flex min-h-7 items-center gap-3">
-          {change && <StatusLetter status={change.status} />}
-          <div className="min-w-0 flex-1">
-            <ChangePath path={path} />
-            {change?.oldPath && (
-              <div className="truncate font-mono text-xs text-muted-foreground">
-                {t("changes.file.renamedFrom", { path: change.oldPath })}
-              </div>
-            )}
-          </div>
-          {/* In the row that is already there, so the page under it does not move. */}
-          <span role="status" className="shrink-0 text-xs text-muted-foreground">
-            {gone ? t("changes.file.gone") : ""}
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{size === null ? "" : formatBytes(size)}</span>
+      {/* Sticky, so the reader always knows which file this is, however far down the page. ONE ROW
+          (2026-10-06): the path, its size, and the view control at the right, each segment as wide as
+          its word. Two rows and the mode control above them held 166 px of a phone's 844 before the
+          first line of the file; this row holds 60. The name keeps its middle truncation and the
+          folder gives way first, so the control never pushes the file's name off the row. */}
+      <div className="sticky top-0 z-10 flex min-h-11 items-center gap-3 border-b border-rule bg-background px-4 py-2">
+        {change && <StatusLetter status={change.status} />}
+        <div className="min-w-0 flex-1">
+          <ChangePath path={path} />
+          {change?.oldPath && (
+            <div className="truncate font-mono text-xs text-muted-foreground">
+              {t("changes.file.renamedFrom", { path: change.oldPath })}
+            </div>
+          )}
         </div>
+        {/* In the row that is already there, so the page under it does not move. */}
+        <span role="status" className="shrink-0 text-xs text-muted-foreground">
+          {gone ? t("changes.file.gone") : ""}
+        </span>
+        {/* Three segments and the size would leave the name about 60 px at 390: the size, the least
+            needed word on the row, waits for a wider screen. */}
+        <span className={cn("shrink-0 text-xs text-muted-foreground tabular-nums", views.length >= 3 && "hidden sm:inline")}>
+          {size === null ? "" : formatBytes(size)}
+        </span>
         {!waiting && views.length > 1 && (
           <Segmented
             label={t("files.view.aria")}
             value={view}
             onChange={onView}
+            className="shrink-0 [&>button]:flex-none [&>button]:px-3"
             options={views.map((value) => ({ value, label: t(TREE_VIEW_LABEL[value]) }))}
           />
         )}

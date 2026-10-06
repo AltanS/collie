@@ -23,6 +23,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **A file in Files gets the screen.** On a phone the All files | Changes control and the two-row
+  file bar held the top 227 px of 844 before the first line of the file, and stayed pinned while
+  you read. While a file is open the control leaves, and the file's name, size and Source | Preview
+  control share one 44 px row, so the file starts 122 px higher.
+
 ### Fixed
 
 - **Typed characters never reach the audit log.** Type mode sends one key per character, and the

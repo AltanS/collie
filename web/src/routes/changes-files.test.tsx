@@ -358,10 +358,12 @@ describe("Files: the All files | Changes control", () => {
     expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
   });
 
-  it("is on a file of the tree too, with Refresh", async () => {
+  // 2026-10-06: a file gets the screen. The control swaps the list's body, so it leaves with the
+  // list and is back the moment the file closes; Refresh stays in the header.
+  it("is not on a file of the tree, where Refresh stays", async () => {
     renderAt([`${FILES}?path=README.md`]);
     expect(await screen.findByText("Run it")).toBeTruthy();
-    expect(await changesSegment()).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: en["files.mode.aria"] })).toBeNull();
     expect(screen.getByRole("button", { name: en["changes.refreshAria"] })).toBeTruthy();
   });
 });
