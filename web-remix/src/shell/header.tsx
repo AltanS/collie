@@ -26,16 +26,14 @@ import { address, config } from "../lib/data";
 import { useLocale } from "../lib/i18n-store";
 import { clearStatus, status, type StatusTone } from "../lib/status";
 import { scheduleUpdate, useStore } from "../lib/store";
-import { AgentIcon } from "../routes/home/agent-icon";
 import { href } from "../routes";
 import { BottomSheet } from "../ui/sheet";
 import { Collapse } from "../ui/collapse";
 import { Icon } from "../ui/icon";
 import { SectionLabel } from "../ui/section-label";
-import { StatusDot } from "../ui/status-dot";
 import { CollieHome } from "./collie-mark";
 import { headerOf, stripsOf } from "./context";
-import type { HeaderCenter, HeaderOverride, HeaderRight, PaneCenter, ResolvedClaim } from "./header-model";
+import type { HeaderCenter, HeaderOverride, HeaderRight, OverrideGlide, ResolvedClaim } from "./header-model";
 import { noteInAppBack } from "./screen-transition";
 
 const WIDTH = {
@@ -136,7 +134,7 @@ export function HeaderHost(handle: Handle) {
 }
 
 function center(slot: HeaderCenter): RemixNode {
-  return slot.kind === "pane" ? <PaneIdentity center={slot} /> : slot.render();
+  return slot.render();
 }
 
 function right(slot: HeaderRight): RemixNode {
@@ -182,57 +180,9 @@ function MuxLine(handle: Handle) {
   };
 }
 
-/** The pane's identity block: tile and dot, the name, then workspace and meta on one 12 px line. */
-function PaneIdentity(handle: Handle<{ center: PaneCenter }>) {
-  return () => {
-    const { name, workspace, meta = "", status: dot, agent = "", onName, onWorkspace } = handle.props.center;
-    return (
-      <div data-slot="pane-identity" data-glide-destination="pane" class="relative flex min-h-11 min-w-0 flex-1 flex-col justify-center">
-        <div class="flex min-w-0 items-center gap-1.5">
-          {agent !== "" ? (
-            <span data-glide="tile" class="relative flex shrink-0">
-              <AgentIcon agent={agent} class="size-4" />
-              {dot ? (
-                <span data-glide="dot" class="absolute -right-1 -bottom-1 rounded-full ring-2 ring-background">
-                  <StatusDot status={dot} live class="size-2" />
-                </span>
-              ) : null}
-            </span>
-          ) : null}
-          <h1 data-testid="pane-title" data-glide="name" class="min-w-0 truncate text-base leading-5 font-semibold">
-            {name}
-          </h1>
-        </div>
-        <div class="mt-1 flex h-3 min-w-0 items-baseline justify-between gap-2 text-[11px] leading-3 text-muted-foreground">
-          <span data-testid="pane-place" class="min-w-0 truncate">
-            {workspace}
-          </span>
-          {meta !== "" ? <span class="shrink-0">{meta}</span> : null}
-        </div>
-        {onName ? (
-          <button
-            type="button"
-            aria-label={name}
-            class="absolute inset-x-0 -top-2 h-[30px]"
-            mix={on("click", () => handle.props.center.onName?.())}
-          />
-        ) : null}
-        {onWorkspace ? (
-          <button
-            type="button"
-            aria-label={workspace}
-            class="absolute inset-x-0 -bottom-2 h-[30px]"
-            mix={on("click", () => handle.props.center.onWorkspace?.())}
-          />
-        ) : null}
-      </div>
-    );
-  };
-}
-
 function OverrideRow(handle: Handle<{ override: HeaderOverride }>) {
   return () => {
-    const { title, subtitle = "", backLabel, trailing } = handle.props.override;
+    const { title, subtitle = "", backLabel, trailing, glide } = handle.props.override;
     return (
       <>
         <button
@@ -250,10 +200,10 @@ function OverrideRow(handle: Handle<{ override: HeaderOverride }>) {
         {subtitle === "" ? (
           <h1 class="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">{title}</h1>
         ) : (
-          <div data-slot="header-title" class="min-w-0 flex-1">
+          <div data-slot="header-title" data-glide-destination={glide?.pair} class="min-w-0 flex-1">
             <h1 class="truncate text-lg leading-tight font-semibold tracking-tight">{title}</h1>
             <div data-slot="header-subtitle" class="h-[0.9375rem] truncate text-xs leading-tight text-muted-foreground">
-              {subtitle}
+              {subtitleLine(subtitle, glide)}
             </div>
           </div>
         )}
@@ -261,6 +211,23 @@ function OverrideRow(handle: Handle<{ override: HeaderOverride }>) {
       </>
     );
   };
+}
+
+/**
+ * The subtitle, with a glide's label drawn as its own box when the subtitle leads with it: the part
+ * that flies needs a box shaped like its text (web/'s `max-w-full truncate` span), and the rest of
+ * the line follows it unchanged.
+ */
+function subtitleLine(subtitle: string, glide: OverrideGlide | undefined): RemixNode {
+  if (glide === undefined || glide.label === "" || !subtitle.startsWith(glide.label)) return subtitle;
+  return (
+    <>
+      <span data-glide="label" class="inline-block max-w-full truncate align-top">
+        {glide.label}
+      </span>
+      {subtitle.slice(glide.label.length)}
+    </>
+  );
 }
 
 const TONE = {

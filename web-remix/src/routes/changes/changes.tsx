@@ -23,8 +23,12 @@
 // or "Last commit") and puts the layout toggle, the filter button and Refresh in the claim's trailing
 // slot; the workspace's label and the root folder's last name sit on the quiet line under it.
 //
-// WHAT IS NOT PORTED (see the report): the glide of the workspace label into the dashboard's Changes
-// tab row (a shared mechanism), the seeded header count from the Changes tab's kept answer, and
+// THE GLIDE (lib/glide.ts, the `changes` pair; web/src/routes/changes.tsx `rootScreen`, `backOut`): a
+// space's root screen claims the override with `glide`, so its subtitle's workspace label is where the
+// dashboard's Files row lands; its back arrow glides the label back down into that row, but only when
+// the arrow lands on the dashboard and the dashboard shows the Files tab, where the row lives.
+//
+// WHAT IS NOT PORTED (see the report): the seeded header count from the Changes tab's kept answer, and
 // `history.state`: a Files link row's "this may be a folder" hint and the diff's "open on Preview"
 // ask are held in memory for the click that made them instead (Remix stores nothing in history.state).
 import { on, type Handle, type RemixNode } from "remix/component";
@@ -68,11 +72,12 @@ import { cn } from "@web/lib/utils";
 import { address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { isLocked } from "../../lib/idle";
+import { GLIDE_PAIRS, glideBack } from "../../lib/glide";
 import { dashPrefs, setDashPref } from "../../lib/prefs";
 import { scrollMemory } from "../../lib/scroll";
 import { scheduleUpdate, useStore } from "../../lib/store";
 import { headerOf } from "../../shell/context";
-import type { CustomSlot } from "../../shell/header-model";
+import type { CustomSlot, OverrideGlide } from "../../shell/header-model";
 import { Button } from "../../ui/button";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
@@ -218,6 +223,19 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
   const filesPathTo = (to?: FilesAt): string =>
     target.kind === "pane" ? filesPath(target.paneId, scope, to) : spaceFilesPath(target.spaceId, scope, to);
   const backFallback = target.kind === "pane" ? panePath(target.paneId, scope) : spacePath(target.spaceId, scope);
+  /** The dashboard Files row this space's screen was opened from (files-tab.tsx `data-glide-key`). */
+  const glideKey = target.kind === "space" ? spaceChangesPath(target.spaceId, scope) : "";
+  /** Where the arrow lands from the root level: the entry behind when it is a parent, else the fallback. */
+  const upDestination = (): string => {
+    const from = previousEntry();
+    return upTarget(hereNow(), from, backFallback, from !== undefined);
+  };
+  /** Up from the root level; to the dashboard's Files tab it is the `changes` pair's back glide. */
+  const upFromRoot = (): void => {
+    const home = target.kind === "space" && GLIDE_PAIRS.changes.origin(upDestination()) && readPrefs().dashView === "changes";
+    if (home) glideBack("changes", glideKey, () => goUp(backFallback));
+    else goUp(backFallback);
+  };
 
   // ── The list ──────────────────────────────────────────────────────────────────────────────────
   // A screen this page has read before opens on that list, and the open read replaces it only if the
@@ -635,15 +653,14 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
       if (v.commitOpen) return t("changes.commit.backAria");
       if (v.open || v.commitView) return t("changes.listBackAria");
       if (treeParent !== null) return t(v.treeFile !== null ? "files.backAria.folder" : "files.backAria.parent");
-      const from = previousEntry();
-      const dest = upTarget(hereNow(), from, backFallback, from !== undefined);
+      const dest = upDestination();
       return t(dest.startsWith("/pane/") ? "changes.backAria.pane" : dest.startsWith("/space/") ? "changes.backAria.workspace" : "changes.backAria.dashboard");
     })();
     backNow = (): void => {
       if (v.current) upToList();
       else if (v.commitView) upToList();
       else if (treeParent !== null) upTree(treeParent);
-      else goUp(backFallback);
+      else upFromRoot();
     };
 
     // ── The pane's repo opened once, on the first list the tree-less list shows ──
@@ -714,8 +731,10 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
     const title = v.commitView ? t("changes.commit.title") : t("files.title");
     // web/ prints the workspace, the root folder's last name and the stale note on the line under the h1.
     const subtitle = [workspaceLabel, rootSegment, stale ? t("changes.stale") : ""].filter((part) => part !== "").join(" · ");
+    // A space's root screen is the `changes` glide's destination; the label is the subtitle's lead.
+    const glide: OverrideGlide | undefined = target.kind === "space" && v.atRoot ? { pair: "changes", label: workspaceLabel } : undefined;
     handle.queueTask(() => {
-      header.claim({ override: { title, subtitle, backLabel: backAria, onBack, trailing }, width: "wide" });
+      header.claim({ override: { title, subtitle, backLabel: backAria, onBack, trailing, glide }, width: "wide" });
       sync();
     });
 

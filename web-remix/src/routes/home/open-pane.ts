@@ -1,39 +1,76 @@
 // Open a pane from a row (web/'s usePaneOpen): at the pane's own scope, with the `pane` glide when
-// the mirror is ready in time. The read starts on `pointerdown` (`prefetchPane`, `seen: false`, so a
-// prefetch never clears the unseen mark) and warms lib/api.ts's conditional cache the pane screen
-// reads first; the tap waits READY_WAIT_MS for it at most, else it goes with the plain slide.
+// the mirror is ready in time. The read starts on `pointerdown` (`prefetchPane`) and the tap waits
+// READY_WAIT_MS for it at most, else it goes with the plain slide.
+//
+// THE PREFETCH IS THE SCREEN'S OWN FIRST READ (web/src/lib/pane-prefetch.ts): the same `?lines=600`
+// window through web's `fetchPane` (routes/pane/data.ts says why the pane reads through that module),
+// with `seen: false` so a finger that lands on a row on its way to a scroll never clears the unseen
+// mark; the pane screen's own first poll sends the seen read once it is up. On the tap, the answer is
+// written into the pane's store, so the screen draws its text on its first frame instead of waiting
+// for a second round trip. It used to read `/api/pane/:id` with the bridge's default window through
+// this shell's api.ts, which warmed neither web's ETag cache nor the store: every tap paid two serial
+// reads, and a Herdr read that misses its fast path costs about 100 ms each (measured 2026-10-06).
 import { navigate } from "remix/component";
 
+import { fetchPane } from "@web/lib/api";
 import { paneScope } from "@web/lib/hosts";
 import { panePath } from "@web/lib/nav";
-import type { AgentView } from "@web/lib/types";
+import { paneScopeKey, type Scope } from "@web/lib/scope";
+import type { AgentView, PaneReadResponse } from "@web/lib/types";
 
-import { fetchPane } from "../../lib/api";
-import { address, snapshot } from "../../lib/data";
+import { address, paneStore, snapshot } from "../../lib/data";
 import { glideForwardWhenReady } from "../../lib/glide";
 import { href } from "../../routes";
+import { PANE_LINES } from "../pane/data";
 
-let warming: { key: string; ready: Promise<unknown> } | null = null;
+/** How long a started read stays on offer to a tap (web/'s PREFETCH_TTL_MS). */
+const PREFETCH_TTL_MS = 2000;
+
+interface Warming {
+  /** The pane's path at its scope: the tap's URL and the row's glide key. */
+  key: string;
+  /** The pane store's key (`paneScopeKey`), the one the pane route reads. */
+  storeKey: string;
+  at: number;
+  read: Promise<PaneReadResponse | undefined>;
+}
+
+let warming: Warming | null = null;
+
+function scopeOf(pane: AgentView): Scope {
+  const body = snapshot.get().data;
+  return paneScope(address.get().scope, pane, body?.servers, body?.sessions);
+}
 
 /** The pane's path at its own scope: the URL a tap goes to, and the row's glide key. */
 export function paneTarget(pane: AgentView): string {
-  const body = snapshot.get().data;
-  return panePath(pane.paneId, paneScope(address.get().scope, pane, body?.servers, body?.sessions));
+  return panePath(pane.paneId, scopeOf(pane));
 }
 
-/** Start the mirror read a tap would wait for. */
+/** Start the mirror read a tap would wait for; a fresh one for the same pane is reused. */
 export function prefetchPane(pane: AgentView): void {
-  const key = paneTarget(pane);
-  if (warming?.key === key) return;
-  const body = snapshot.get().data;
-  const scope = paneScope(address.get().scope, pane, body?.servers, body?.sessions);
-  warming = { key, ready: fetchPane(pane.paneId, scope, undefined, false).catch(() => undefined) };
+  const scope = scopeOf(pane);
+  const key = panePath(pane.paneId, scope);
+  const now = Date.now();
+  if (warming?.key === key && now - warming.at < PREFETCH_TTL_MS) return;
+  const read = fetchPane(pane.paneId, PANE_LINES, scope, undefined, { seen: false }).catch(() => undefined);
+  warming = { key, storeKey: paneScopeKey(scope, pane.paneId), at: now, read };
 }
 
 /** Open `pane` in-page; `row` is the glide's origin. */
 export function openPane(pane: AgentView, row?: HTMLElement): void {
   const key = paneTarget(pane);
-  const ready = warming?.key === key ? warming.ready : Promise.resolve();
+  const held = warming?.key === key && Date.now() - warming.at < PREFETCH_TTL_MS ? warming : null;
   warming = null;
+  const ready = held === null ? Promise.resolve() : held.read.then((body) => seed(held.storeKey, body));
   glideForwardWhenReady("pane", key, ready, () => void navigate(href(key)), row);
+}
+
+/**
+ * The prefetched answer into the pane's store. Nothing reads that store before the pane screen
+ * mounts, and the read started on this tap's own `pointerdown`, so it is the newest answer there is.
+ */
+function seed(storeKey: string, body: PaneReadResponse | undefined): void {
+  if (body === undefined) return;
+  paneStore(storeKey).set({ data: body, error: undefined, status: undefined, at: Date.now() });
 }

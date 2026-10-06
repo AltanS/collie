@@ -7,7 +7,8 @@
 // refuses more than 50 cascading updates in one turn ("handle.update() infinite loop detected") and
 // DROPS the excess, so a burst of notifications (a poll that writes three stores, a socket that
 // writes sixty frames) leaves the screen stale. Every notification goes through `scheduleUpdate`,
-// which coalesces a component's updates into one per animation frame.
+// which coalesces a component's updates into one per animation frame (one per timer while a view
+// transition holds frames, `holdFrames`).
 
 /** The part of a Remix `Handle` the coalescer needs. Every `Handle<Props>` satisfies it. */
 export interface Updatable {
@@ -60,14 +61,57 @@ export function createStore<T>(initial: T, equal: (a: T, b: T) => boolean = Obje
 
 // ── The per-component animation-frame coalescer ──────────────────────────────────────────────────
 
-const pending = new WeakMap<Updatable, number>();
+interface Pending {
+  /** "frame" for a requestAnimationFrame id, "timer" for a setTimeout id. */
+  kind: "frame" | "timer";
+  id: number;
+  run: () => void;
+}
 
-/** Frame scheduler, swappable so a hidden tab (no animation frames) still settles. */
-function nextFrame(run: () => void): number {
-  if (document.visibilityState === "visible") return requestAnimationFrame(run);
-  // A hidden page gets no animation frames; a timer keeps the store and the DOM in step, and a
-  // hidden page polls nothing anyway, so this path is rare and cheap.
-  return window.setTimeout(run, 50);
+const pending = new Map<Updatable, Pending>();
+/** Holders of `holdFrames`; above zero, updates run on timers instead of animation frames. */
+let holds = 0;
+
+/**
+ * Frame scheduler: an animation frame normally; a timer when no frame will come. A hidden page gets
+ * no animation frames, and a hidden page polls nothing anyway, so that timer is rare and slow.
+ */
+function arm(run: () => void): Pending {
+  if (holds > 0) return { kind: "timer", id: window.setTimeout(run, 0), run };
+  if (document.visibilityState === "visible") return { kind: "frame", id: requestAnimationFrame(run), run };
+  return { kind: "timer", id: window.setTimeout(run, 50), run };
+}
+
+/**
+ * Run every scheduled update on a timer until the returned release is called (REMIX3.md, "Frames
+ * during a view transition"). Chromium runs no animation frames while a view transition's update
+ * callback is pending, so an update waiting for a frame waits for the whole callback: the glide's
+ * arriving header never drew and the glide fell back to a crossfade after a 430 ms freeze. A timer
+ * ends the turn, so the scheduler's 50-update guard is as safe as with frames, and the per-handle
+ * coalescing is unchanged. Turning it on re-arms the updates already waiting for a frame. The store
+ * knows nothing of the glide: `lib/glide.ts` holds it from `startViewTransition` to the end of the
+ * update callback. The release is idempotent.
+ */
+export function holdFrames(): () => void {
+  holds++;
+  if (holds === 1) {
+    for (const [handle, entry] of pending) {
+      if (entry.kind !== "frame") continue;
+      cancelAnimationFrame(entry.id);
+      pending.set(handle, arm(entry.run));
+    }
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holds--;
+  };
+}
+
+/** True while some caller holds frames; for tests. */
+export function framesHeld(): boolean {
+  return holds > 0;
 }
 
 /**
@@ -76,12 +120,14 @@ function nextFrame(run: () => void): number {
  */
 export function scheduleUpdate(handle: Updatable): void {
   if (handle.signal.aborted || pending.has(handle)) return;
-  const id = nextFrame(() => {
-    pending.delete(handle);
-    if (handle.signal.aborted) return;
-    void handle.update();
-  });
-  pending.set(handle, id);
+  pending.set(
+    handle,
+    arm(() => {
+      pending.delete(handle);
+      if (handle.signal.aborted) return;
+      void handle.update();
+    }),
+  );
 }
 
 /**

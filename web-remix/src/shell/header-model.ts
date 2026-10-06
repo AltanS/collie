@@ -18,27 +18,7 @@
 import { TypedEventTarget } from "remix/component";
 import type { RemixNode } from "remix/component";
 
-import type { AgentStatus } from "@web/lib/types";
-
 export type HeaderWidth = "column" | "wide" | "full";
-
-/** The pane's identity block (web/src/components/agent-chat.tsx, the header's center). */
-export interface PaneCenter {
-  kind: "pane";
-  /** The pane's name, or the gone line. Carries `data-glide="name"`. */
-  name: string;
-  /** Line 2, left: the workspace label as the multiplexer reported it. */
-  workspace: string;
-  /** Line 2, right: host, session and cache, already formatted; "" draws nothing. */
-  meta?: string;
-  status?: AgentStatus;
-  /** The harness name for the 16 px tile; "" or absent draws no tile. */
-  agent?: string;
-  /** Tap on the name line (web/: Pane settings). */
-  onName?: () => void;
-  /** Tap on the workspace line (web/: the space overview). */
-  onWorkspace?: () => void;
-}
 
 /**
  * Anything else: a render function made once in setup and drawn by the host. Bump `rev` when what
@@ -50,7 +30,11 @@ export interface CustomSlot {
   rev?: number | string;
 }
 
-export type HeaderCenter = PaneCenter | CustomSlot;
+/**
+ * The center slot. The pane draws its identity block itself (routes/pane/identity.tsx) as a custom
+ * slot, and that block is the `pane` glide's destination: the host has no pane center of its own.
+ */
+export type HeaderCenter = CustomSlot;
 
 /** The pane's ⋮: one 44 px button; `onOpen` absent keeps the column empty (the pane is gone). */
 export interface MenuRight {
@@ -72,6 +56,18 @@ export interface HeaderOverride {
   onBack: () => void;
   /** Extra controls after the title (the find bar's arrows), drawn by the host. */
   trailing?: CustomSlot;
+  /**
+   * This row is a glide's destination (lib/glide.ts): the text column carries
+   * `data-glide-destination`, and `label`, the subtitle's lead, is drawn as the part that flies
+   * (`data-glide="label"`). A space's Files root claims `{ pair: "changes", label: <workspace> }`,
+   * the line the dashboard's Files row glides into (web/src/routes/changes.tsx, `rootScreen`).
+   */
+  glide?: OverrideGlide;
+}
+
+export interface OverrideGlide {
+  pair: "changes";
+  label: string;
 }
 
 export interface HeaderClaim {
@@ -139,17 +135,6 @@ export function sameSlot(a: HeaderSlot | null, b: HeaderSlot | null): boolean {
   if (a === null || b === null) return false;
   if (a.kind === "custom" && b.kind === "custom") return a.render === b.render && a.rev === b.rev;
   if (a.kind === "menu" && b.kind === "menu") return a.label === b.label && a.onOpen === b.onOpen;
-  if (a.kind === "pane" && b.kind === "pane") {
-    return (
-      a.name === b.name &&
-      a.workspace === b.workspace &&
-      a.meta === b.meta &&
-      a.status === b.status &&
-      a.agent === b.agent &&
-      a.onName === b.onName &&
-      a.onWorkspace === b.onWorkspace
-    );
-  }
   return false;
 }
 
@@ -170,7 +155,15 @@ export function sameClaim(a: ResolvedClaim, b: ResolvedClaim): boolean {
 
 function sameOverride(a: HeaderOverride | null, b: HeaderOverride | null): boolean {
   if (a === null || b === null) return a === b;
-  return a.title === b.title && a.subtitle === b.subtitle && a.backLabel === b.backLabel && a.onBack === b.onBack && sameSlot(a.trailing ?? null, b.trailing ?? null);
+  return (
+    a.title === b.title &&
+    a.subtitle === b.subtitle &&
+    a.backLabel === b.backLabel &&
+    a.onBack === b.onBack &&
+    a.glide?.pair === b.glide?.pair &&
+    a.glide?.label === b.glide?.label &&
+    sameSlot(a.trailing ?? null, b.trailing ?? null)
+  );
 }
 
 export interface HeaderOwner {

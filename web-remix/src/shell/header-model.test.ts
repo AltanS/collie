@@ -65,8 +65,9 @@ describe("HeaderModel", () => {
     const changes = counted(model);
     const owner = model.owner();
     const home = (): void => {};
+    const render = (): null => null;
     const claim = (name: string): HeaderClaim => ({
-      center: { kind: "pane", name, workspace: "collie", status: "working", agent: "claude" },
+      center: { kind: "custom", render, rev: name },
       right: { kind: "menu", label: "Pane menu" },
       width: "wide",
       home,
@@ -77,7 +78,7 @@ describe("HeaderModel", () => {
     expect(changes()).toBe(1);
     owner.claim(claim("codex"));
     expect(changes()).toBe(2);
-    expect(model.current.center).toMatchObject({ kind: "pane", name: "codex" });
+    expect(model.current.center).toMatchObject({ kind: "custom", rev: "codex" });
   });
 
   test("an override's subtitle is compared: a new one wakes the header, the same one does not", () => {
@@ -95,6 +96,25 @@ describe("HeaderModel", () => {
     owner.claim(claim());
     expect(changes()).toBe(3);
     expect(model.current.override?.subtitle).toBeUndefined();
+  });
+
+  test("an override's glide is compared by value: the same pair and label wake nobody", () => {
+    const model = new HeaderModel();
+    const changes = counted(model);
+    const owner = model.owner();
+    const onBack = (): void => {};
+    const claim = (label?: string): HeaderClaim => ({
+      override: { title: "Files", subtitle: "collie", backLabel: "Back", onBack, glide: label === undefined ? undefined : { pair: "changes", label } },
+    });
+    owner.claim(claim("collie"));
+    owner.claim(claim("collie"));
+    expect(changes()).toBe(1);
+    expect(model.current.override?.glide).toEqual({ pair: "changes", label: "collie" });
+    owner.claim(claim("website"));
+    expect(changes()).toBe(2);
+    owner.claim(claim());
+    expect(changes()).toBe(3);
+    expect(model.current.override?.glide).toBeUndefined();
   });
 
   test("a fresh callback is a change (claims carry callbacks made once in setup)", () => {

@@ -163,7 +163,7 @@ The upstream example calls `handle.update()` in the listener. We route it throug
 | --- | --- | --- |
 | `createStore` | a value plus listeners, equality-gated | no wake on no change |
 | `useStore(handle, store)` | subscribes after the first commit, ends on `handle.signal`, catches a missed change by version | rules 1 and 5 |
-| `scheduleUpdate(handle)` | one `update()` per component per animation frame; a timer when the page is hidden | rule 1, the guard |
+| `scheduleUpdate(handle)` | one `update()` per component per animation frame; a timer when the page is hidden or frames are held (`holdFrames`) | rule 1, the guard |
 | `want(source, handle.signal)` | keeps a read on the polling beat while mounted | rule 5 |
 
 - `useStore` is not a hook. Call it in setup only, once per store. A call in render subscribes again
@@ -439,6 +439,20 @@ in-app back arrow only, never the edge swipe. 250 ms ease-out, parts dot, tile a
   Chromium; WebKit's old snapshot is right, its morph is unconfirmed by eye. `R/lib/glide.ts` and
   the first middleware in `R/router.tsx` implement it. Name only the parts that morph: named rows
   escape their scroller's clip.
+
+#### Frames during a view transition
+
+Chromium runs no animation frames while a view transition's update callback is pending. Every
+store and model update waits for one (`scheduleUpdate`), so before this rule the arriving pane
+header never drew inside the callback: the screen froze for 433 to 450 ms, then crossfaded instead
+of the morph (React: 66 to 95 ms). So the glide holds frames from `startViewTransition` until the
+callback settles (`holdFrames()` in `R/lib/store.ts`, released in `R/lib/glide.ts`). While held,
+`scheduleUpdate` runs on `setTimeout(0)`, and the updates already waiting for a frame move to a
+timer. A timer ends the turn, so the 50-update guard stays safe; never use a microtask here.
+Measured 2026-10-06, Chromium, loopback: longest frame gap after a row tap 33 to 67 ms, the parts
+morph, `html.glide` gone at 400 to 470 ms, the 40 ms busy-bar flash is gone. Anything else that
+waits on rAF (the Collapse two-frame start) still waits for the callback to end; keep it out of
+what a glide's callback needs to see.
 
 ### Sheets
 

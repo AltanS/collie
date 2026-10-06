@@ -25,10 +25,18 @@
 // `globalThis.__collieGlide = false` before boot. The Shell binds the top frame (`bindGlideFrame`);
 // without one, nothing glides.
 //
-// A route marks its parts with `data-glide="dot" | "tile" | "name"`, the origin row with
-// `data-glide-origin="pane"` + `data-glide-key`, and the destination with
-// `data-glide-destination="pane"`. `shell/header.tsx` marks the pane header.
+// FRAMES: Chromium runs no animation frames while the update callback is pending, and every store
+// and model update waits for one (`scheduleUpdate`). So the glide holds frames (`holdFrames`, in
+// lib/store.ts) from `startViewTransition` to the end of the callback: updates run on timers, the
+// arriving header draws inside the callback, and the parts morph (REMIX3.md, "Frames during a view
+// transition"). Without it the callback waited the full ARRIVE_TIMEOUT_MS and crossfaded.
+//
+// A route marks its parts with `data-glide="dot" | "tile" | "name"` (pane) or `"label" | "count"`
+// (changes), the origin row with `data-glide-origin` + `data-glide-key`, and the destination with
+// `data-glide-destination`. The pane's identity block (routes/pane/identity.tsx) is the pane
+// destination; the override row of a space's Files root (shell/header.tsx) is the changes one.
 import { reducedMotion } from "./motion";
+import { holdFrames } from "./store";
 
 declare global {
   var __collieGlide: boolean | undefined;
@@ -230,6 +238,7 @@ function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from
   const classes = [GLIDE_CLASS, glidePairClass(id), ...(move === "back" ? [GLIDE_BACK_CLASS] : [])];
   const me: Active = { id, move, landed: false, superseded: false };
   const clean = (): void => {
+    releaseFrames();
     root.classList.remove(...classes, GLIDE_CROSSFADE_CLASS);
     unname(before);
     unname(after);
@@ -251,6 +260,9 @@ function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from
     if (gate === opened) gate = null;
   };
   const gateTimer = setTimeout(openGate, GATE_MAX_MS);
+  // Updates run on timers while the callback is pending (see the file header). Released when the
+  // callback settles; `clean` and the catch release too, so no path leaves frames held.
+  const releaseFrames = holdFrames();
   try {
     // 2. The transition first; the navigation right after it.
     me.transition = document.startViewTransition(async () => {
@@ -279,7 +291,10 @@ function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from
   go();
   me.transition.ready.catch(() => {});
   void me.transition.finished.then(clean, clean);
-  void me.transition.updateCallbackDone.catch(openGate);
+  void me.transition.updateCallbackDone.then(releaseFrames, () => {
+    releaseFrames();
+    openGate();
+  });
 }
 
 export function glideForward(id: GlidePairId, key: string, go: () => void, from?: HTMLElement): void {
