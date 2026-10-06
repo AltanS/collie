@@ -27,7 +27,7 @@ await context.route(/\/api\//, (route) => {
 });
 const page = await context.newPage();
 const devices = page.waitForResponse((res) => res.url().includes("/api/devices"));
-await page.goto(`${BASE}/settings/device`);
+await page.goto(`${BASE}/settings/system`);
 const res = await devices;
 await page.getByTestId("paired-devices").waitFor();
 await page.waitForTimeout(500);

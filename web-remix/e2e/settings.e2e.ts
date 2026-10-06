@@ -35,7 +35,7 @@ test.describe("settings, worker blocked", () => {
   test.use({ serviceWorkers: "block" });
 
   test("pair this phone, see it listed as this device, then revoke it", async ({ page }) => {
-    await page.goto("/settings/device");
+    await page.goto("/settings/system");
     const card = page.getByTestId("paired-devices");
     await expect(card.getByText(en["settings.devices.description.open"])).toBeVisible();
 
@@ -69,7 +69,7 @@ test.describe("settings, worker blocked", () => {
   });
 
   test("a refused code says why, and stores nothing", async ({ page }) => {
-    await page.goto("/settings/device");
+    await page.goto("/settings/system");
     await page.getByLabel(en["settings.devices.pair.codeLabel"]).fill("WRONG000");
     await page.getByLabel(en["settings.devices.pair.nameLabel"]).fill("test phone");
     await page.getByTestId("paired-devices").getByRole("button", { name: en["settings.devices.pair.title"] }).click();
