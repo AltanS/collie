@@ -1078,6 +1078,55 @@ describe("opencode tab-bar question dialogs lift", () => {
       expect(detectQuestionTabs(odd)).toBeNull();
     });
 
+    it("a committed free-text row sharing its row with a sidebar tail still lifts (#347)", () => {
+      // Grafted: the committed "mine" row plus a Models-panel tail. The ink check reads
+      // the dialog part only; the full row stays in the model and the signature.
+      const lines = loadLines("oc--question--multi--free-text--committed.txt");
+      const row = lines.findIndex((l) => lineText(l).trim() === "┃     mine");
+      expect(row).toBeGreaterThan(0);
+      const tail = splitLines(parseAnsi(`${" ".repeat(30)}│ artistry muse-spark-1.3-contributor │\n`))[0]!;
+      const grafted = lines.slice();
+      grafted[row] = { segments: [...grafted[row]!.segments, ...tail.segments] };
+      const region = detectQuestionTabs(grafted);
+      if (region?.kind !== "multi-select" || region.model.phase !== "checkbox") {
+        throw new Error("committed+tail multi did not lift as checkbox");
+      }
+      const plain = checkbox("multi--free-text--committed");
+      expect(region.model.options.map((o) => o.label)).toEqual(plain.options.map((o) => o.label));
+      expect(region.model.pointer).toBe("other");
+      expect(region.model.regionSignature).toContain("│ artistry");
+    });
+
+    it("an open placeholder sharing its row with a sidebar tail still refuses (#347)", () => {
+      // Fail-safe pin for the placeholder gate: the comparison reads the dialog part, so
+      // a tail cannot smuggle an open input past it into a committed lift.
+      const lines = loadLines("oc--question--multi--free-text.txt");
+      const row = lines.findIndex((l) => lineText(l).trim() === "┃     Type your own answer");
+      expect(row).toBeGreaterThan(0);
+      const tail = splitLines(parseAnsi(`${" ".repeat(30)}│ artistry muse-spark-1.3-contributor │\n`))[0]!;
+      const grafted = lines.slice();
+      grafted[row] = { segments: [...grafted[row]!.segments, ...tail.segments] };
+      expect(detectQuestionTabs(grafted)).toBeNull();
+    });
+
+    it("bright typed text sharing its row with a sidebar tail still refuses (#347)", () => {
+      // Uncommitted input stays refused whatever shares its row.
+      const lines = loadLines("oc--question--multi--free-text--committed.txt");
+      const row = lines.findIndex((l) => lineText(l).trim() === "┃     mine");
+      expect(row).toBeGreaterThan(0);
+      const footer = lines.findLast((l) => lineText(l).includes("esc dismiss"))!;
+      const bright = footer.segments.find((s) => s.text.startsWith("esc"))!.fg;
+      const tail = splitLines(parseAnsi(`${" ".repeat(30)}│ artistry muse-spark-1.3-contributor │\n`))[0]!;
+      const grafted = lines.slice();
+      grafted[row] = {
+        segments: [
+          ...grafted[row]!.segments.map((s) => (s.text === "mine" ? Object.assign({}, s, { fg: bright }) : s)),
+          ...tail.segments,
+        ],
+      };
+      expect(detectQuestionTabs(grafted)).toBeNull();
+    });
+
     it("an overlay row under the free-text row lifts with it, not raw", () => {
       // The shared walk skips far-right rows, so the tabbed flow sees a closed free-text row
       // and lifts: the remaining #347 follow-up covers only near-gutter rows no geometry
@@ -1296,6 +1345,49 @@ describe("opencode tab-bar question dialogs lift", () => {
     const open = [...lines.slice(0, freeRow + 1), lines[description]!, ...lines.slice(freeRow + 1)];
     expect(detectQuestionTabs(lines)).not.toBeNull();
     expect(detectQuestionTabs(open)).toBeNull();
+  });
+
+  it("a tabbed single-select step lifts with a sidebar tail under the free-text row (#347)", () => {
+    // Grafted, not captured: no tabbed+overlay screen was measurable (/models opens a
+    // transient picker since 1.18.32). The graft combines two measured shapes — the
+    // two--q1 dialog and a Models-panel tail row (oc--question--single--overlay.txt).
+    // The chip sits on option 1, so the pure tail is foreign chrome, never input.
+    const lines = loadLines("oc--question--two--q1.txt");
+    const at = lines.findIndex((l) => lineText(l).includes("4. Type your own answer"));
+    expect(at).toBeGreaterThan(0);
+    const chrome = splitLines(parseAnsi(`  ┃     │ artistry muse-spark-1.3-contributor │\n`))[0]!;
+    const region = detectQuestionTabs([...lines.slice(0, at + 1), chrome, ...lines.slice(at + 1)]);
+    if (region?.kind !== "wizard" || region.model.phase !== "question") {
+      throw new Error("tabbed overlay single-select did not lift as wizard");
+    }
+    expect(region.model.question).toBe("Which colour?");
+    expect(region.model.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue"]);
+    // The signature stays screen-faithful for the byte-exact bind.
+    expect(region.model.signature).toContain("│ artistry");
+  });
+
+  it("a tabbed single-select step still refuses chrome with the chip on the free-text row (#347)", () => {
+    // Fail-safe: an open input holds the chip, so the chrome gate stays off there.
+    const lines = loadLines("oc--question--two--q1.txt");
+    const one = lines.map((l) => lineText(l)).findIndex((t) => t.includes("1. Red"));
+    const four = lines.map((l) => lineText(l)).findIndex((t) => t.includes("4. Type your own answer"));
+    const footer = lines.findLast((l) => lineText(l).includes("esc dismiss"))!;
+    const footerBg = footer.segments.find((s) => s.text.startsWith("esc"))!.bg;
+    const pointedBg = lines[one]!.segments.find((s) => s.text.includes("1."))!.bg;
+    const moved = repaint(repaint(lines, one, footerBg), four, pointedBg);
+    expect(detectQuestionTabs(moved)).not.toBeNull();
+    const at = moved.findIndex((l) => lineText(l).includes("4. Type your own answer"));
+    const chrome = splitLines(parseAnsi(`  ┃     │ artistry muse-spark-1.3-contributor │\n`))[0]!;
+    expect(detectQuestionTabs([...moved.slice(0, at + 1), chrome, ...moved.slice(at + 1)])).toBeNull();
+  });
+
+  it("a tabbed single-select step still refuses a tail row carrying dialog text (#347)", () => {
+    // The gate only drops pure chrome: a sub row with dialog words may be an open input.
+    const lines = loadLines("oc--question--two--q1.txt");
+    const at = lines.findIndex((l) => lineText(l).includes("4. Type your own answer"));
+    expect(at).toBeGreaterThan(0);
+    const chrome = splitLines(parseAnsi(`  ┃     warm${" ".repeat(30)}│ artistry muse-spark-1.3-contributor │\n`))[0]!;
+    expect(detectQuestionTabs([...lines.slice(0, at + 1), chrome, ...lines.slice(at + 1)])).toBeNull();
   });
 
   it("refuses a review whose row is not `Header: value` in tab order", () => {
