@@ -87,7 +87,9 @@ Key security boundaries and risks:
 - **Writes are recorded to `<state-dir>/audit.log`**, which is `~/.local/state/collie/audit.log`
   unless `COLLIE_STATE_DIR` moves it. The server logs all incoming keystrokes,
   replies, file uploads, and pane/tab lifecycle events. Note that an audit log provides visibility
-  after the fact rather than access control
+  after the fact rather than access control. Characters sent in Type mode are never written to the
+  log: `COLLIE_AUDIT_CONTENT=none` redacts each one, and the default preview records only a count of
+  `•` marks. Named keys such as Enter and Ctrl+C stay readable.
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
 - **Default defensive controls.** Collie binds strictly to loopback interfaces, routes traffic
   solely through `tailscale serve` or an equivalent reverse proxy, and applies strict CSP rules,

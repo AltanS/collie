@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Typed characters never reach the audit log.** Type mode sends one key per character, and the
+  audit trail listed `keys` as a parameter, so a password typed on the phone landed in `audit.log`
+  character by character, even with `COLLIE_AUDIT_CONTENT=none`. Typed characters, spaces and tabs
+  are now a body: redacted under `none`, a count of `•` marks under the default preview. Named keys
+  such as Enter and Ctrl+C stay readable.
+
 ## [1.17.2] - 2026-10-06
 
 ### Fixed

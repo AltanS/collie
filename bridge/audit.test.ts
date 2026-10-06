@@ -7,6 +7,7 @@ import {
   type AppendFn,
   type AuditEntry,
   type AuditFileIo,
+  isNamedKey,
 } from "./audit.ts";
 
 // formatAuditLine is the pure, load-bearing bit (stable order, truncation, single-line output); the
@@ -82,6 +83,50 @@ describe("formatAuditLine", () => {
     expect(lineA).not.toBe(lineB);
     expect(JSON.parse(lineA).host).toBe("peer-a");
     expect(JSON.parse(lineB).host).toBe("peer-b");
+  });
+});
+
+describe("keys content (Type mode sends one key per character)", () => {
+  const typed = ["p", "a", "s", "s", "Enter"];
+  const keysOf = (keys: string[], content: "preview" | "none") =>
+    JSON.parse(formatAuditLine({ action: "keys", detail: { keys } }, 0, content)).detail.keys;
+
+  test("isNamedKey: longer than one character is a name, a single character is a body", () => {
+    for (const k of ["Enter", "ctrl+c", "Escape", "Up"]) expect(isNamedKey(k)).toBe(true);
+    for (const k of ["p", "7", "$", "é", "😀", "Space", "Tab"]) expect(isNamedKey(k)).toBe(false);
+  });
+
+  test("none redacts each typed character and keeps the named key", () => {
+    expect(keysOf(typed, "none")).toEqual(["⟨redacted⟩", "⟨redacted⟩", "⟨redacted⟩", "⟨redacted⟩", "Enter"]);
+  });
+
+  test("preview masks a run of typed characters and keeps the named key", () => {
+    const raw = formatAuditLine({ action: "keys", detail: { keys: typed } }, 0);
+    expect(keysOf(typed, "preview")).toEqual(["••••", "Enter"]);
+    expect(raw).not.toContain('"p"');
+    expect(raw).not.toContain("pass");
+  });
+
+  test("preview cuts a long typed run at the string cap", () => {
+    const long = Array.from({ length: 300 }, () => "x");
+    const [only] = keysOf(long, "preview");
+    expect(only).toBe(`${"•".repeat(120)}…`);
+  });
+
+  test("a named key between typed runs splits them in order", () => {
+    expect(keysOf(["a", "b", "Escape", "c"], "preview")).toEqual(["••", "Escape", "•"]);
+  });
+
+  test("Space and Tab are typed text, so word boundaries do not leak", () => {
+    const keys = ["a", "b", "Space", "c", "Enter"];
+    expect(keysOf(keys, "none")).toEqual(["⟨redacted⟩", "⟨redacted⟩", "⟨redacted⟩", "⟨redacted⟩", "Enter"]);
+    expect(keysOf(keys, "preview")).toEqual(["••••", "Enter"]);
+    expect(keysOf(["Tab"], "none")).toEqual(["⟨redacted⟩"]);
+  });
+
+  test("ctrl+c stays literal in both modes", () => {
+    expect(keysOf(["ctrl+c"], "preview")).toEqual(["ctrl+c"]);
+    expect(keysOf(["ctrl+c"], "none")).toEqual(["ctrl+c"]);
   });
 });
 

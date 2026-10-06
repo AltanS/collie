@@ -34,12 +34,13 @@ export type AuditContent = "preview" | "none";
  *
  * ⛔ The direction of the default is the whole feature. A detail field added later under a new name
  * redacts until someone deliberately adds it here, so a content-bearing field can never leak into a
- * redacted trail by being forgotten. Members of an array inherit the array's own key ("keys" carries
- * "ctrl+c", not a body).
+ * redacted trail by being forgotten. Members of an array inherit the array's own key.
+ *
+ * `keys` is deliberately NOT listed: Type mode turns typed text into one key per character, so the
+ * array can carry a body. It gets its own rule, {@link sanitizeKeys}, which keeps only named keys.
  */
 const METADATA_KEYS: ReadonlySet<string> = new Set([
   "checked",
-  "keys",
   "passed",
   "reason",
   "saved",
@@ -107,6 +108,51 @@ function errorText<T>(err: T): string {
 export type AppendFn = (line: string) => void | Promise<void>;
 
 /**
+ * A named key is a key NAME ("Enter", "ctrl+c", "Escape", "Up"), not typed text: longer than one
+ * character. A single character is always a body.
+ *
+ * ⛔ "Space" and "Tab" are bodies too. Type mode maps a typed space and a typed tab to those two
+ * names (`textToKeySequence`), so keeping them literal would write the word boundaries of a password.
+ */
+export function isNamedKey(key: string): boolean {
+  if (key === "Space" || key === "Tab") return false;
+  return Array.from(key).length > 1;
+}
+
+/**
+ * The `keys` array of a `keys` action, which can be a key list OR typed text.
+ *
+ * Type mode (`textToKeySequence` in the web app) sends one key per character, and ADR 0017 sends a
+ * password down that path. So a single-character key, "Space" or "Tab" is a body:
+ * - `none`: each one becomes `⟨redacted⟩`; named keys stay literal.
+ * - `preview`: each run of single characters collapses into one string of `•` (one per character,
+ *   cut at {@link MAX_STR}), so the line records how many were typed and which named keys followed,
+ *   never the characters themselves.
+ */
+function sanitizeKeys(keys: AuditDetailValue[], content: AuditContent): JsonValue[] {
+  const out: JsonValue[] = [];
+  let run = 0;
+  const flush = () => {
+    if (run === 0) return;
+    const masked = "•".repeat(run);
+    out.push(masked.length > MAX_STR ? `${masked.slice(0, MAX_STR)}…` : masked);
+    run = 0;
+  };
+  for (const key of keys) {
+    if (typeof key !== "string" || isNamedKey(key)) {
+      flush();
+      out.push(sanitize(key, content, true) ?? null);
+    } else if (content === "none") {
+      out.push("⟨redacted⟩");
+    } else {
+      run += 1;
+    }
+  }
+  flush();
+  return out;
+}
+
+/**
  * Collapse newlines and truncate long strings so every value is a single-line, bounded preview.
  * JSON.stringify already escapes a literal newline to `\n` (keeping the output single-line), but we
  * still fold embedded newlines to a space so a multi-line reply reads as one legible preview rather
@@ -141,7 +187,7 @@ function sanitize(
     const out: JsonObject = {};
     for (const [k, v] of Object.entries(value)) {
       if (typeof v === "function") continue;
-      out[k] = sanitize(v, content, METADATA_KEYS.has(k));
+      out[k] = k === "keys" && Array.isArray(v) ? sanitizeKeys(v, content) : sanitize(v, content, METADATA_KEYS.has(k));
     }
     return out;
   }

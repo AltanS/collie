@@ -103,4 +103,18 @@ describe("audit content redaction", () => {
     expect(line.detail.text).toBe("hello");
     expect(line.detail.cb).toBeUndefined();
   });
+
+  test("none redacts typed keys (hunter2-placeholder never reaches the line), named keys stay", () => {
+    const keys = [..."hunter2-placeholder", "Enter"];
+    const raw = formatAuditLine({ action: "keys", detail: { keys } }, 0, "none");
+    expect(raw).not.toContain("hunter2");
+    expect(JSON.parse(raw).detail.keys.at(-1)).toBe("Enter");
+  });
+
+  test("preview never writes typed keys either", () => {
+    const keys = [..."hunter2-placeholder", "Enter"];
+    const raw = formatAuditLine({ action: "keys", detail: { keys } }, 0);
+    expect(raw).not.toContain("hunter2");
+    expect(JSON.parse(raw).detail.keys).toEqual(["•".repeat("hunter2-placeholder".length), "Enter"]);
+  });
 });
