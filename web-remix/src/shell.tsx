@@ -16,6 +16,7 @@ import { on, type Handle, type RemixNode } from "remix/component";
 import { t } from "@web/lib/i18n";
 
 import { loadConfig, loadSnapshot } from "./lib/data";
+import { bindGlideFrame } from "./lib/glide";
 import { idle, unlock } from "./lib/idle";
 import { want } from "./lib/polling";
 import { scheduleUpdate, useStore } from "./lib/store";
@@ -39,6 +40,7 @@ export interface ShellProps {
 export function Shell(handle: Handle<ShellProps>) {
   want(SNAPSHOT_SOURCE, handle.signal);
   want(CONFIG_SOURCE, handle.signal);
+  bindGlideFrame(handle.frames.top, handle.signal);
   const readIdle = useStore(handle, idle);
   useLocale(handle);
   return () => {

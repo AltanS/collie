@@ -1,10 +1,13 @@
-// Inner scroll memory, per URL (REMIX3.md, "Scroll"). The Shell is `h-(--app-h) overflow-hidden`, so
-// every route scrolls an inner element, and the runtime restores nothing there: it only resets or
-// restores WINDOW scroll. So each route scroller wears `scrollMemory()`: it records `scrollTop` per
-// URL as the reader scrolls, and puts it back in a `queueTask` after the first commit (the DOM the
-// offset refers to exists by then). The terminal keeps its own, finer memory (`screen/follow.ts`).
+// Inner scroll memory, per history entry (REMIX3.md, "Scroll"; P5 Q8). The Shell is
+// `h-(--app-h) overflow-hidden`, so every route scrolls an inner element, and the runtime restores
+// nothing there: it only restores WINDOW scroll (the Navigation API). So each route scroller wears
+// `scrollMemory()`: it records `scrollTop` as the reader scrolls, under the key of the history entry
+// it was drawn for (`navigation.currentEntry.key`), and puts it back after the commit with
+// `queueTask` PAIRED WITH `update()` (a task alone never runs; P5 Q1).
 //
-// In memory for the page's life, bounded. A cold open starts at the top, as web/ does.
+// Keyed by entry, not URL: back and forward land where the reader left, a fresh push to the same URL
+// starts at the top (P5 Q8, measured in both engines). Without the Navigation API the URL is the key.
+// The terminal keeps its own, finer memory (`screen/follow.ts`). In memory for the page's life, bounded.
 import { createMixin } from "remix/component";
 
 import { basePath } from "@web/lib/base-path";
@@ -13,11 +16,17 @@ const MAX_SPOTS = 64;
 const spots = new Map<string, number>();
 
 /** This document's URL as the routes read it: mount off, path and query. */
-export function currentScrollKey(): string {
+export function currentScrollUrl(): string {
   const base = basePath();
   let path = window.location.pathname;
   if (base !== "/" && path.startsWith(base)) path = `/${path.slice(base.length)}`;
   return `${path}${window.location.search}`;
+}
+
+/** The history entry on screen now: its Navigation API key, else its URL. */
+export function currentScrollKey(): string {
+  const entry = window.navigation?.currentEntry;
+  return entry ? `entry:${entry.key}` : `url:${currentScrollUrl()}`;
 }
 
 export function rememberScroll(key: string, top: number): void {
@@ -33,38 +42,48 @@ export function recallScroll(key: string): number | undefined {
   return spots.get(key);
 }
 
-const scrollMemoryMixin = createMixin<HTMLElement, [key: string | undefined]>((handle) => {
+const scrollMemoryMixin = createMixin<HTMLElement, [slot: string | undefined]>((handle) => {
   let key = "";
-  let node: HTMLElement | null = null;
+  let url = "";
   let bound: AbortController | null = null;
   const restore = (el: HTMLElement): void => {
-    const top = recallScroll(key);
-    el.scrollTop = top ?? 0;
+    el.scrollTop = recallScroll(key) ?? 0;
   };
+  const restoreAfterCommit = (): void => {
+    handle.queueTask((el) => restore(el));
+    void handle.update();
+  };
+  const rekey = (slot: string | undefined): void => {
+    url = currentScrollUrl();
+    key = slot === undefined ? currentScrollKey() : `${currentScrollKey()}#${slot}`;
+  };
+  let slotNow: string | undefined;
   handle.addEventListener("insert", (event) => {
-    node = event.node;
     bound?.abort();
     bound = new AbortController();
     const el = event.node;
+    rekey(slotNow);
     el.addEventListener("scroll", () => rememberScroll(key, el.scrollTop), { passive: true, signal: bound.signal });
-    handle.queueTask((target) => restore(target));
+    restoreAfterCommit();
   });
   handle.addEventListener("remove", () => {
     bound?.abort();
     bound = null;
-    node = null;
   });
-  return (explicit) => {
-    const next = explicit ?? currentScrollKey();
-    if (next === key) return;
-    const changed = key !== "";
-    key = next;
-    // The same scroller now shows another URL (a keyed route would have remounted instead).
-    if (changed && node !== null) handle.queueTask((target) => restore(target));
+  return (slot) => {
+    slotNow = slot;
+    // The same scroller now shows another entry (a keyed route would have remounted instead).
+    if (bound !== null && currentScrollUrl() !== url) {
+      rekey(slot);
+      restoreAfterCommit();
+    }
   };
 });
 
-/** Remember and restore this scroller's offset per URL (or per `key`, when one URL has several). */
-export function scrollMemory(key?: string) {
-  return scrollMemoryMixin(key);
+/**
+ * Remember and restore this scroller's offset per history entry. `slot` tells several scrollers on
+ * one screen apart.
+ */
+export function scrollMemory(slot?: string) {
+  return scrollMemoryMixin(slot);
 }

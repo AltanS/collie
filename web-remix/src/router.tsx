@@ -15,6 +15,7 @@ import { basePath } from "@web/lib/base-path";
 import { paneScopeKey } from "@web/lib/scope";
 
 import { address, noteAddress } from "./lib/data";
+import { glideGate } from "./lib/glide";
 import { homeAction } from "./routes/home/action";
 import { PaneRoute } from "./routes/pane/pane";
 import { settingsAction, settingsDeviceAction, settingsSectionAction, settingsUpdatesAction } from "./routes/settings/action";
@@ -25,6 +26,9 @@ import { NotFound, Shell } from "./shell";
 export const router = createRouter({
   middleware: [
     async (context, next) => {
+      // A glide in flight holds the route until its old snapshot exists (lib/glide.ts; P5 Q4).
+      const gate = glideGate();
+      if (gate) await gate;
       noteAddress(context.url);
       return next();
     },

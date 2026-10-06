@@ -5,17 +5,25 @@
 // next screen's data (`glideForwardWhenReady`, prefetch on `pointerdown`), else a plain slide.
 // Skipped under reduced motion and where `document.startViewTransition` is missing.
 //
-// THE SEAM. No Remix package has view transitions (research note 01, section 4). This uses the one
-// seam that does not depend on the router's timing: `document.startViewTransition` FIRST (the old
-// screen is captured), then the navigation INSIDE the update callback, which waits until the
-// destination element is in the DOM (a MutationObserver, capped at ARRIVE_TIMEOUT_MS). It is web/'s
-// own seam, and it needs nothing from the router. The other seam, a transition started from
-// `frames.top` `reloadStart`, is what probe 5 is measuring (its "naive" and "gated" Q4 runs).
+// THE SEAM: probe 5's gated seam (spike/remix/probe5-motion/README.md, Q4). A navigation under
+// `remix/spa` commits in microtasks when its route is instant, so a transition that WAITS for
+// `reloadComplete` inside its update callback captures the new page as the "old" one, misses the event,
+// and freezes Chromium's frames for 4 s (P5 Q4, "naive"). So, in this order:
+//   1. listen for the top frame's `reloadComplete` FIRST;
+//   2. `document.startViewTransition(cb)`, and only then navigate;
+//   3. the router's first middleware (router.tsx) awaits `glideGate()`, which resolves when `cb`
+//      runs, that is, once the old snapshot exists; only then does the route render;
+//   4. `cb` waits for that `reloadComplete`, then names the arriving parts.
+// A skipped transition never leaves the router waiting: the gate also opens after GATE_MAX_MS.
+// Measured in Chromium for links, `navigate()` and back; WebKit's old snapshot is right, its morph is
+// confirmed by the pseudo-element pairs only, not by eye (P5 Q4).
 //
-// BEHIND A FLAG. `spike/remix/probe5-motion/README.md` had not landed when this was written, so the
-// glide is OFF by default (`glideEnabled()`), and every caller falls through to the plain slide.
-// Turn it on with `setGlideEnabled(true)`, or `globalThis.__collieGlide = true` before boot (tests).
-// When probe 5 confirms the seam in both engines, flip the default here.
+// Only the parts that fly carry a `view-transition-name`, and only for one transition: a name on every
+// row draws the rows below a scroller's clip outside it (P5 Q4, side finding).
+//
+// ON BY DEFAULT since probe 5. `setGlideEnabled(false)` is the kill switch; tests can set
+// `globalThis.__collieGlide = false` before boot. The Shell binds the top frame (`bindGlideFrame`);
+// without one, nothing glides.
 //
 // A route marks its parts with `data-glide="dot" | "tile" | "name"`, the origin row with
 // `data-glide-origin="pane"` + `data-glide-key`, and the destination with
@@ -28,9 +36,9 @@ declare global {
 
 let enabled: boolean | null = null;
 
-/** The flag. Default off until probe 5 confirms the seam (see the file header). */
+/** The flag. On by default since probe 5 measured the gated seam (see the file header). */
 export function glideEnabled(): boolean {
-  return enabled ?? globalThis.__collieGlide === true;
+  return enabled ?? globalThis.__collieGlide !== false;
 }
 
 export function setGlideEnabled(on: boolean): void {
@@ -71,9 +79,28 @@ export const ARRIVE_TIMEOUT_MS = 400;
 /** How long a forward tap waits for the next screen's data before it plain-slides instead. */
 export const READY_WAIT_MS = 120;
 
-/** The glide can run here and now: flag on, API present, no reduced motion (rule 10). */
+/** The longest the router waits for the old snapshot, even if the transition never calls back. */
+export const GATE_MAX_MS = 500;
+
+let frame: EventTarget | null = null;
+let gate: Promise<void> | null = null;
+
+/** The Shell hands over `handle.frames.top`, whose `reloadComplete` ends each navigation. */
+export function bindGlideFrame(top: EventTarget, signal: AbortSignal): void {
+  frame = top;
+  signal.addEventListener("abort", () => {
+    if (frame === top) frame = null;
+  });
+}
+
+/** What the router's first middleware awaits: the old snapshot of a glide in flight, or null. */
+export function glideGate(): Promise<void> | null {
+  return gate;
+}
+
+/** The glide can run here and now: flag on, frame bound, API present, no reduced motion (rule 10). */
 export function canGlide(): boolean {
-  if (!glideEnabled()) return false;
+  if (!glideEnabled() || frame === null) return false;
   if (!("startViewTransition" in document)) return false;
   return !reducedMotion();
 }
@@ -212,10 +239,26 @@ function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from
   root.classList.add(...classes);
   active = me;
   const landing = move === "forward" ? `[data-glide-destination="${id}"]` : `[data-glide-origin="${id}"]`;
+  // 1. The end of the navigation, listened for BEFORE anything starts (P5 Q4).
+  const done = Promise.withResolvers<void>();
+  frame?.addEventListener("reloadComplete", () => done.resolve(), { once: true });
+  // 3. The router holds the route until the callback runs.
+  const captured = Promise.withResolvers<void>();
+  const opened = captured.promise;
+  gate = opened;
+  const openGate = (): void => {
+    captured.resolve();
+    if (gate === opened) gate = null;
+  };
+  const gateTimer = setTimeout(openGate, GATE_MAX_MS);
   try {
+    // 2. The transition first; the navigation right after it.
     me.transition = document.startViewTransition(async () => {
+      clearTimeout(gateTimer);
+      openGate();
       if (me.superseded) return;
-      go();
+      // 4. The new route has committed.
+      await Promise.race([done.promise, arrived(landing)]);
       await arrived(landing);
       unname(before);
       const arriving = move === "forward" ? destination(id) : (origins(id, key).find(isOnScreen) ?? null);
@@ -227,12 +270,16 @@ function run(id: GlidePairId, move: GlideMove, key: string, go: () => void, from
       name(after);
     });
   } catch {
+    clearTimeout(gateTimer);
+    openGate();
     clean();
     go();
     return;
   }
+  go();
   me.transition.ready.catch(() => {});
   void me.transition.finished.then(clean, clean);
+  void me.transition.updateCallbackDone.catch(openGate);
 }
 
 export function glideForward(id: GlidePairId, key: string, go: () => void, from?: HTMLElement): void {

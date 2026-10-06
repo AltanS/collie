@@ -5,7 +5,7 @@ import { TRIAGE_STATUS, type TriageKey } from "@web/lib/triage";
 import { statusLabel } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
-import { longPress } from "../lib/long-press";
+import { LONG_PRESS_EVENT, longPress } from "../lib/gestures";
 import { STRIP_TAP_TARGET } from "./labelled-strip";
 import { StatusDot } from "./status-dot";
 import { UnseenMark } from "./unseen-mark";
@@ -27,8 +27,8 @@ export interface ChipProps {
 
 export function Chip(handle: Handle<ChipProps>) {
   const descriptionId = `chip-${handle.id}`;
-  // The hold's mixins are built once; they call the CURRENT prop at fire time.
-  const hold = longPress(() => handle.props.onLongPress?.());
+  // The shell kit's hold (lib/gestures.ts): `data-holding` and the fill from 150 ms, the event at
+  // 450 ms, the click that ends a hold swallowed. Off when the chip has no long-press action.
   return () => {
     const { label, glyph, ariaLabel, active, ring, status, dimmed, onLongPress } = handle.props;
     const named = ariaLabel !== undefined;
@@ -48,7 +48,8 @@ export function Chip(handle: Handle<ChipProps>) {
             }
             handle.props.onClick();
           }),
-          ...(onLongPress ? hold : []),
+          longPress({ disabled: onLongPress === undefined }),
+          on(LONG_PRESS_EVENT, () => handle.props.onLongPress?.()),
         ]}
         class={cn(
           STRIP_TAP_TARGET,
