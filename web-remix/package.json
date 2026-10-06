@@ -13,6 +13,7 @@
     "e2e": "vite build && playwright test"
   },
   "dependencies": {
+    "@remix-run/ui": "0.12.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide": "^1.22.0",

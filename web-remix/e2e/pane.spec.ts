@@ -22,7 +22,9 @@ test("Chat renders the session's turns and Terminal renders the mirror rows", as
   await expect(stream.locator('[data-slot="tool-card"][data-kind="execute"]')).toContainText("bun test web/poll.test.ts");
   await expect(stream).toContainText("Fixed: the test now waits for the poll.");
 
-  await page.getByRole("navigation").getByRole("button", { name: "Terminal" }).click();
+  // The view is the device pref `paneView` in collie:dash-prefs:v1 (ADR 0082), not a tab bar.
+  await page.evaluate(() => localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" })));
+  await page.reload();
   const screen = page.getByTestId("pane-text");
   await expect(screen).toContainText("✓ 12 tests passed");
   await expect(screen).toContainText("Done in 3.1s");

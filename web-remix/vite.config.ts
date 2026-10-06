@@ -126,6 +126,58 @@ const mountReadyShellPlugin: Plugin = {
   },
 };
 
+// The Collie mark is GENERATED in the collie-brand repo and lands in web/ as a sealed React file
+// (DESIGN.md §8; REMIX3.md, "The mark orbit"). This shell must not hand-port it, so its data (the
+// stylesheet, the two bodies, the view boxes and the turn rates) is read out of that file here, at
+// build time, and served as `virtual:collie-mark` (types in src/shell/collie-mark-data.d.ts). A
+// regenerated mark reaches this shell on the next build with no edit; a file whose constants change
+// shape fails the build here instead of drawing nothing.
+const COLLIE_MARK = resolve(WEB, "src/components/collie-mark.tsx");
+const COLLIE_MARK_ID = "virtual:collie-mark";
+const JS_STRING = /"(?:[^"\\]|\\.)*"/.source;
+
+function readCollieMark(): string {
+  const src = readFileSync(COLLIE_MARK, "utf8");
+  const pick = (name: string, pattern: string): string => {
+    const found = new RegExp(pattern, "m").exec(src)?.[1];
+    if (found === undefined) throw new Error(`collie-mark-data: ${name} not found in ${COLLIE_MARK}`);
+    return found;
+  };
+  // SAFETY: `pick` matched a double-quoted JS string literal with JSON-compatible escapes, and
+  // JSON.parse of a JSON string literal is always a string.
+  const text = (name: string, pattern: string): string => JSON.parse(pick(name, pattern)) as string;
+  const data = {
+    STYLE: text("STYLE", `^const STYLE = (${JS_STRING});$`),
+    BODY: {
+      full: text("BODY.full", `^const BODY = \\{\\s*full: (${JS_STRING}),`),
+      header: text("BODY.header", `^\\s+header: (${JS_STRING}),?\\s*\\};`),
+    },
+    VIEW: {
+      full: text("VIEW.full", `^const VIEW = \\{ full: (${JS_STRING}),`),
+      header: text("VIEW.header", `^const VIEW = \\{ full: ${JS_STRING}, header: (${JS_STRING}) \\};`),
+    },
+    TURN: {
+      rest: Number(pick("TURN.rest", `^const TURN = \\{ rest: ([\\d.]+), live: [\\d.]+ \\};`)),
+      live: Number(pick("TURN.live", `^const TURN = \\{ rest: [\\d.]+, live: ([\\d.]+) \\};`)),
+    },
+  };
+  return Object.entries(data)
+    .map(([key, value]) => `export const ${key} = ${JSON.stringify(value)};`)
+    .join("\n");
+}
+
+const collieMarkPlugin: Plugin = {
+  name: "collie-mark-data",
+  resolveId(id) {
+    return id === COLLIE_MARK_ID ? `\0${COLLIE_MARK_ID}` : undefined;
+  },
+  load(id) {
+    if (id !== `\0${COLLIE_MARK_ID}`) return undefined;
+    this.addWatchFile(COLLIE_MARK);
+    return readCollieMark();
+  },
+};
+
 const channelManifest = manifestFor(channel);
 
 export default defineConfig({
@@ -147,6 +199,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    collieMarkPlugin,
     tailwindcss(),
     buildInfoPlugin,
     channelIconsPlugin,

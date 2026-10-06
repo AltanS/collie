@@ -21,8 +21,12 @@ export interface Store<T> {
   set(next: T): void;
   /** Rewrites the value from the current one. */
   update(change: (current: T) => T): void;
-  /** Calls `listener` after every change; returns the unsubscribe. */
-  subscribe(listener: () => void): () => void;
+  /**
+   * Calls `listener` after every change; returns the unsubscribe. With a `signal` the listener also
+   * ends when it aborts, so a component writes `store.subscribe(fn, handle.signal)` and cannot forget
+   * the cleanup (REMIX3.md, "A module store is right when").
+   */
+  subscribe(listener: () => void, signal?: AbortSignal): () => void;
   /** Bumped on every change, so a late subscriber can tell it missed one. */
   version(): number;
 }
@@ -41,11 +45,14 @@ export function createStore<T>(initial: T, equal: (a: T, b: T) => boolean = Obje
     get: () => value,
     set,
     update: (change) => set(change(value)),
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
+    subscribe(listener, signal) {
+      const stop = (): void => {
         listeners.delete(listener);
       };
+      if (signal?.aborted) return stop;
+      listeners.add(listener);
+      signal?.addEventListener("abort", stop, { once: true });
+      return stop;
     },
     version: () => version,
   };
@@ -91,8 +98,7 @@ export function useStore<T>(handle: Updatable, store: Store<T>): () => T {
   handle.queueTask(() => {
     if (started || handle.signal.aborted) return;
     started = true;
-    const stop = store.subscribe(() => scheduleUpdate(handle));
-    handle.signal.addEventListener("abort", stop, { once: true });
+    store.subscribe(() => scheduleUpdate(handle), handle.signal);
     if (store.version() !== seen) scheduleUpdate(handle);
   });
   return store.get;

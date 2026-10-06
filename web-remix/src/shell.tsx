@@ -1,5 +1,11 @@
 // The app shell: wraps every route's content (router.tsx installs it through `render()`), keeps the
-// snapshot and config on the polling beat for the page's lifetime, and draws the idle lock.
+// snapshot and config on the polling beat for the page's lifetime, and draws what every screen
+// shares: the strip band, the ONE header, the screen slide, the toast, the busy bar and the idle lock.
+//
+// IT DOES NOT SUBSCRIBE TO DATA (REMIX3.md rule 4). A Shell update re-renders every route, so the
+// Shell renders from the URL and the idle lock only. The header, the band and the toast each
+// subscribe to their own model or store and re-render alone; the models are provided once, by
+// `ShellProvider`, and never followed by an update.
 //
 // THE COVER SITS OVER A MOUNTED TREE (ADR 0007). The route content stays mounted under the lock, in
 // an `inert` wrapper with `display: contents`, so a draft, a scroll position or an open sheet survive
@@ -9,13 +15,18 @@ import { on, type Handle, type RemixNode } from "remix/component";
 
 import { t } from "@web/lib/i18n";
 
-import { config, loadConfig, loadSnapshot, snapshot } from "./lib/data";
+import { loadConfig, loadSnapshot } from "./lib/data";
 import { idle, unlock } from "./lib/idle";
 import { want } from "./lib/polling";
-import { useStore } from "./lib/store";
+import { scheduleUpdate, useStore } from "./lib/store";
 import { Button } from "./ui/button";
 import { useLocale } from "./lib/i18n-store";
+import { StatusToast, ToastViewport } from "./ui/toast-viewport";
 import { UpdateSheet } from "./update/update-sheet";
+import { headerOf, ShellProvider } from "./shell/context";
+import { HeaderHost, headerShowsStatus } from "./shell/header";
+import { ScreenTransition } from "./shell/screen-transition";
+import { StripHost } from "./shell/strip-host";
 
 export const SNAPSHOT_SOURCE = { key: "snapshot", poll: loadSnapshot };
 export const CONFIG_SOURCE = { key: "config", poll: loadConfig };
@@ -29,23 +40,80 @@ export function Shell(handle: Handle<ShellProps>) {
   want(SNAPSHOT_SOURCE, handle.signal);
   want(CONFIG_SOURCE, handle.signal);
   const readIdle = useStore(handle, idle);
-  // Read here only so the shell re-renders when they land; routes read them themselves.
-  useStore(handle, snapshot);
-  useStore(handle, config);
   useLocale(handle);
   return () => {
     const { locked, catchingUp } = readIdle();
     const covered = locked || catchingUp;
     return (
-      <>
+      <ShellProvider>
         <div style={{ display: "contents" }} inert={covered} data-slot="app">
-          <div class="flex h-(--app-h) flex-col overflow-hidden">{handle.props.children}</div>
+          <div class="flex h-(--app-h) flex-col overflow-hidden">
+            <StripHost />
+            <HeaderHost />
+            <ScreenTransition pathname={handle.props.url.pathname}>{handle.props.children}</ScreenTransition>
+          </div>
+          <ShellToast />
         </div>
+        <BusyBar />
         {covered && <IdleCover catchingUp={catchingUp} />}
         <UpdateSheet />
-      </>
+      </ShellProvider>
     );
   };
+}
+
+/** The status as a toast, on the screens whose header has no title slot for it. */
+function ShellToast(handle: Handle) {
+  const header = headerOf(handle);
+  let inHeader = headerShowsStatus(header.current);
+  handle.queueTask(() => {
+    header.addEventListener(
+      "change",
+      () => {
+        if (headerShowsStatus(header.current) !== inHeader) scheduleUpdate(handle);
+      },
+      { signal: handle.signal },
+    );
+  });
+  return () => {
+    inHeader = headerShowsStatus(header.current);
+    return <ToastViewport>{inHeader ? null : <StatusToast />}</ToastViewport>;
+  };
+}
+
+/**
+ * The pending bar (REMIX3.md, "Pending UI"): on while the top frame reloads, from `reloadStart` to
+ * `reloadComplete`. Our actions fetch nothing, so most navigations finish inside one frame and the
+ * bar never mounts; `.busy-bar` (web/src/index.css) also holds itself invisible for its first 120 ms,
+ * so a navigation that ends in time never paints it.
+ */
+function BusyBar(handle: Handle) {
+  let pending = false;
+  handle.queueTask(() => {
+    const top = handle.frames.top;
+    top.addEventListener(
+      "reloadStart",
+      () => {
+        pending = true;
+        scheduleUpdate(handle);
+      },
+      { signal: handle.signal },
+    );
+    top.addEventListener(
+      "reloadComplete",
+      () => {
+        pending = false;
+        scheduleUpdate(handle);
+      },
+      { signal: handle.signal },
+    );
+  });
+  return () =>
+    pending ? (
+      <div class="busy-bar" data-testid="busy-bar" role="progressbar" aria-label={t("error.boot.connecting")}>
+        <span class="busy-bar__indicator" />
+      </div>
+    ) : null;
 }
 
 function IdleCover(handle: Handle<{ catchingUp: boolean }>) {

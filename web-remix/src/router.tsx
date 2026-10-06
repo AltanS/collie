@@ -8,16 +8,17 @@
 //
 // Adding a route: add its pattern to routes.ts and one `router.map` line below. Keep edits here
 // additive; the route's own code lives under routes/<area>/.
-import { createRouter, type RouterContext } from "remix/router";
+import { createAction, createRouter, type RouterContext } from "remix/router";
 import { render, type Router } from "remix/spa";
 
 import { basePath } from "@web/lib/base-path";
+import { paneScopeKey } from "@web/lib/scope";
 
-import { noteAddress } from "./lib/data";
+import { address, noteAddress } from "./lib/data";
 import { homeAction } from "./routes/home/action";
-import { paneAction } from "./routes/pane/action";
+import { PaneRoute } from "./routes/pane/pane";
 import { settingsAction, settingsDeviceAction, settingsSectionAction, settingsUpdatesAction } from "./routes/settings/action";
-import { spaceAction } from "./routes/space/action";
+import { SpaceRoute } from "./routes/space/space";
 import { routes } from "./routes";
 import { NotFound, Shell } from "./shell";
 
@@ -41,6 +42,17 @@ declare module "remix" {
     context: AppContext;
   }
 }
+
+// A route whose state belongs to one entity renders keyed by that entity (REMIX3.md rule 3): a
+// sideways move from one pane to another, or to the same pane id on another machine (`?h=`), is a
+// new instance with its own setup, never the old one with a stale `paneId` and scope. The scope is
+// the one `noteAddress` just read off this URL, in the middleware above.
+const paneAction = createAction(routes.pane, ({ render: draw, params }) =>
+  draw(<PaneRoute key={paneScopeKey(address.get().scope, params.paneId)} paneId={params.paneId} />),
+);
+const spaceAction = createAction(routes.space, ({ render: draw, params }) =>
+  draw(<SpaceRoute key={`space:${paneScopeKey(address.get().scope, params.spaceId)}`} spaceId={params.spaceId} />),
+);
 
 router.map(routes.home, homeAction);
 router.map(routes.space, spaceAction);

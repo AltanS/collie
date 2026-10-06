@@ -1,15 +1,22 @@
 // Boot. Starts the polling beat and the idle lock, then the remix/spa runtime over the module-scope
 // router. The runtime renders into the document's top frame (<body>); the router outlives it.
+//
+// The per-device prefs (lib/prefs.ts) load synchronously when that module evaluates, which is
+// before `run()` below, so the first render paints the stored choices and never the defaults.
 import "./app.css";
 
 import { run, type Runtime } from "remix/spa";
 
 import { startIdleLock } from "./lib/idle";
+import { startPrefSync } from "./lib/prefs";
 import { startPolling } from "./lib/polling";
 import { mountedRouter } from "./router";
 import { startUpdates } from "./update/boot";
 import { BootSplash } from "./shell";
+import { startNavTracking } from "./shell/screen-transition";
 
+startPrefSync();
+startNavTracking();
 let app: Runtime = start();
 
 function start(): Runtime {

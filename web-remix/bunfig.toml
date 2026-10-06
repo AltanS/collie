@@ -2,11 +2,13 @@
 # The 7-day minimumReleaseAge gate stays on for every package. remix@3.0.0 and its 48
 # @remix-run/* dependencies were published 2026-10-01, inside the window, so exactly those
 # 49 names are exempt (the same list as the root bunfig.toml). The window clears on
-# 2026-10-08, after which this list can go.
+# 2026-10-08, after which this list can go. @remix-run/ui 0.12.1 (the animation helpers, pinned
+# exactly; REMIX3.md "Known rough edges") was published the same day and is exempt for the same reason.
 [install]
 minimumReleaseAge = 604800
 minimumReleaseAgeExcludes = [
   "remix",
+  "@remix-run/ui",
   "@remix-run/fs",
   "@remix-run/cli",
   "@remix-run/spa",

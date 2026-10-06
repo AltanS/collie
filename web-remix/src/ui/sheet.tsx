@@ -1,17 +1,28 @@
-import { on, ref, type Handle, type RemixNode } from "remix/component";
+import { on, ref, TypedEventTarget, type Handle, type RemixNode } from "remix/component";
 import { X } from "lucide";
 
 import { t } from "@web/lib/i18n";
 import { cn } from "@web/lib/utils";
 
+import { reducedMotion, spring } from "../lib/motion";
+import { scheduleUpdate } from "../lib/store";
 import { Button } from "./button";
 import { Icon } from "./icon";
 
 // Port of web/src/components/ui/sheet.tsx: the bottom sheet and the side sheet. Same classes, the
 // same dialog semantics (focus moves into the panel on open and back on close, Escape closes, the
-// backdrop dismisses only when the pointer also went DOWN on it), and the bottom sheet's
-// pull-down-to-close. Not ported yet: the bottom sheet's peek (`pull`/`pullFrom`), which only the
-// pane screen's composer drives; it lands with that screen.
+// backdrop dismisses only when the pointer also went DOWN on it), and no history entry: a sheet is
+// state, never a URL (D §12, REMIX3.md rule 9).
+//
+// THE BOTTOM SHEET MOVES AS web/'s DOES:
+//   - open: backdrop fade 200 ms, panel slide from the bottom 200 ms (tw-animate classes);
+//   - drag-dismiss: from the top of its scroll, the panel follows the finger (`style.transform`,
+//     written by native non-passive listeners in `ref`, never by a re-render); released past 90 px it
+//     closes, short of it it snaps back on `spring("snappy")` (200 ms, no overshoot);
+//   - peek-to-open: a `SheetPeek` (fed by the `pull` gesture) mounts the panel following the finger
+//     up from its anchor, with no entrance and no focus; when `open` flips true the panel continues
+//     from where the finger left it over 180 ms.
+// Reduced motion: the classes drop their animation, the snap-back and the continuation are instant.
 
 /**
  * Focus bookkeeping across `open` flips: on the opening render, focus the panel after the commit
@@ -51,37 +62,119 @@ function escapeCloses(handle: Handle<{ open: boolean; onClose: () => void }>): v
   });
 }
 
+/**
+ * The live half of a peek-to-open, written per pointer move by the owner of the `pull` gesture and
+ * read by the sheet straight into its panel's transform. It never causes a render per move: the
+ * sheet re-renders once when a peek starts (to mount the panel) and once when it ends.
+ */
+export class SheetPeek extends TypedEventTarget<{ start: Event; move: Event; end: Event }> {
+  pull = 0;
+  /** The pulled element's distance from the viewport bottom; the panel's top starts there. */
+  anchor = 0;
+  active = false;
+
+  move(pull: number, anchor: number): void {
+    this.pull = pull;
+    this.anchor = anchor;
+    if (!this.active) {
+      this.active = true;
+      this.dispatchEvent(new Event("start"));
+    }
+    this.dispatchEvent(new Event("move"));
+  }
+
+  /** The finger lifted. If the owner opens the sheet in the same turn, the panel continues. */
+  end(): void {
+    if (!this.active) return;
+    this.active = false;
+    this.dispatchEvent(new Event("end"));
+  }
+}
+
 export interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
   title?: RemixNode;
   children?: RemixNode;
   class?: string;
+  /** Peek-to-open: the panel follows this while the sheet is not open yet. */
+  peek?: SheetPeek;
 }
 
 const SLOP = 6;
-const CLOSE = 90;
+/** Released past this many px of pull-down, the sheet closes; short of it, it snaps back. */
+export const SHEET_CLOSE_PX = 90;
+const SNAP_BACK = (): string => (reducedMotion() ? "none" : spring.transition("transform", "snappy"));
 
 export function BottomSheet(handle: Handle<BottomSheetProps>) {
   const titleId = `sheet-${handle.id}`;
   const focus = dialogFocus(handle);
   escapeCloses(handle);
   let backdropArmed = false;
-  let dragY = 0;
-  let drag = { startY: 0, atTop: false, engaged: false };
+  let drag = { startY: 0, atTop: false, engaged: false, dy: 0 };
+  let panel: HTMLDivElement | null = null;
+  let backdrop: HTMLButtonElement | null = null;
+  /** A peek is on screen (mounted by a peek, not by `open`). */
+  let peeking = false;
+  /** The sheet opened out of a peek: no entrance classes, continue the transform instead. */
+  let fromPeek = false;
 
-  const wireDrag = (panel: HTMLDivElement, signal: AbortSignal): void => {
-    focus.setPanel(panel);
-    const opts = { signal, passive: true };
-    panel.addEventListener(
+  const paintPeek = (): void => {
+    const peek = handle.props.peek;
+    if (!peek || !panel || handle.props.open) return;
+    panel.style.transition = "none";
+    panel.style.transform = `translateY(max(0px, calc(100% - ${String(peek.anchor + peek.pull)}px)))`;
+    if (backdrop) backdrop.style.opacity = String(Math.min(1, peek.pull / 120) * 0.5);
+  };
+
+  // The peek's events, wired once for whichever SheetPeek the props carry at mount.
+  handle.queueTask(() => {
+    const peek = handle.props.peek;
+    if (!peek) return;
+    peek.addEventListener(
+      "start",
+      () => {
+        if (handle.props.open) return;
+        peeking = true;
+        scheduleUpdate(handle);
+      },
+      { signal: handle.signal },
+    );
+    peek.addEventListener("move", paintPeek, { signal: handle.signal });
+    peek.addEventListener(
+      "end",
+      () => {
+        // Let the owner decide in this turn; a peek that did not open goes away on the next frame.
+        queueMicrotask(() => {
+          if (handle.props.open) return;
+          peeking = false;
+          scheduleUpdate(handle);
+        });
+      },
+      { signal: handle.signal },
+    );
+  });
+
+  const wireBackdrop = (node: HTMLButtonElement): void => {
+    backdrop = node;
+  };
+
+  const wirePanel = (node: HTMLDivElement, signal: AbortSignal): void => {
+    panel = node;
+    focus.setPanel(node);
+    signal.addEventListener("abort", () => {
+      if (panel === node) panel = null;
+    });
+    if (peeking && !handle.props.open) paintPeek();
+    node.addEventListener(
       "touchstart",
       (e) => {
         const touch = e.touches[0];
-        if (touch) drag = { startY: touch.clientY, atTop: panel.scrollTop <= 0, engaged: false };
+        if (touch && handle.props.open) drag = { startY: touch.clientY, atTop: node.scrollTop <= 0, engaged: false, dy: 0 };
       },
-      opts,
+      { signal, passive: true },
     );
-    panel.addEventListener(
+    node.addEventListener(
       "touchmove",
       (e) => {
         const touch = e.touches[0];
@@ -90,41 +183,69 @@ export function BottomSheet(handle: Handle<BottomSheetProps>) {
         if (!drag.engaged && dy > SLOP) drag.engaged = true;
         if (!drag.engaged) return;
         e.preventDefault();
-        dragY = Math.max(0, dy);
-        panel.style.transform = `translateY(${String(dragY)}px)`;
-        panel.style.transition = "none";
+        drag.dy = Math.max(0, dy);
+        node.style.transition = "none";
+        node.style.transform = `translateY(${String(drag.dy)}px)`;
       },
       { signal, passive: false },
     );
     const end = (): void => {
-      const off = dragY;
-      drag = { startY: 0, atTop: false, engaged: false };
-      dragY = 0;
-      panel.style.transition = "transform 0.2s ease-out";
-      panel.style.transform = "";
-      if (off > CLOSE) handle.props.onClose();
+      if (!drag.engaged) return;
+      const off = drag.dy;
+      drag = { startY: 0, atTop: false, engaged: false, dy: 0 };
+      if (off > SHEET_CLOSE_PX) {
+        handle.props.onClose();
+        return;
+      }
+      node.style.transition = SNAP_BACK();
+      node.style.transform = "";
     };
-    panel.addEventListener("touchend", end, opts);
-    panel.addEventListener("touchcancel", end, opts);
+    node.addEventListener("touchend", end, { signal, passive: true });
+    node.addEventListener("touchcancel", end, { signal, passive: true });
   };
+
+  let wasOpen = handle.props.open;
 
   return () => {
     const { open, title, children } = handle.props;
     focus.track(open);
-    if (!open) return null;
+    if (open && !wasOpen) {
+      fromPeek = peeking;
+      peeking = false;
+      backdropArmed = false;
+      if (fromPeek) {
+        // Continue from wherever the finger left the panel, after this render commits.
+        handle.queueTask(() => {
+          if (!panel) return;
+          panel.style.transition = reducedMotion() ? "none" : "transform 180ms ease-out";
+          panel.style.transform = "translateY(0)";
+          if (backdrop) backdrop.style.opacity = "";
+        });
+      }
+    }
+    if (!open && wasOpen) fromPeek = false;
+    wasOpen = open;
+    const peekOnly = !open && peeking;
+    if (!open && !peekOnly) return null;
+    const entrance = !peekOnly && !fromPeek;
     return (
       <div
         class="fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={title ? titleId : undefined}
+        role={peekOnly ? undefined : "dialog"}
+        aria-modal={peekOnly ? undefined : "true"}
+        aria-labelledby={!peekOnly && title ? titleId : undefined}
+        aria-hidden={peekOnly ? "true" : undefined}
+        data-testid="bottom-sheet"
+        data-state={peekOnly ? "peek" : "open"}
+        style={peekOnly ? { pointerEvents: "none" } : undefined}
       >
         <button
           type="button"
           aria-hidden="true"
           tabIndex={-1}
-          class="absolute inset-0 bg-black/50 duration-200 animate-in fade-in"
+          class={cn("absolute inset-0 bg-black/50", entrance && "duration-200 animate-in fade-in")}
           mix={[
+            ref(wireBackdrop),
             on("pointerdown", () => {
               backdropArmed = true;
             }),
@@ -136,11 +257,12 @@ export function BottomSheet(handle: Handle<BottomSheetProps>) {
           ]}
         />
         <div
-          tabIndex={-1}
-          mix={ref(wireDrag)}
+          tabIndex={peekOnly ? undefined : -1}
+          data-slot="sheet-panel"
+          mix={ref(wirePanel)}
           class={cn(
             "relative z-10 mx-auto max-h-[82dvh] w-full max-w-screen-sm overflow-y-auto overscroll-contain rounded-t-md border-t border-rule bg-card shadow-2xl",
-            "duration-200 animate-in slide-in-from-bottom",
+            entrance && "duration-200 animate-in slide-in-from-bottom",
             "pb-[calc(env(safe-area-inset-bottom)_+_1rem)]",
             handle.props.class,
           )}

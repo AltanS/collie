@@ -5,6 +5,7 @@
     "": {
       "name": "collie-web-remix",
       "dependencies": {
+        "@remix-run/ui": "0.12.1",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "lucide": "^1.22.0",
@@ -547,6 +548,8 @@
     "@remix-run/terminal": ["@remix-run/terminal@1.0.0", "", {}, "sha512-3O310KO1kIlAx6S1plIQ0z8nM3zbuEQc13+QBLeHJZ6+zqBqQePu3M4U/JLodYqqnhNCVUN9xALMP8QHEOgdEg=="],
 
     "@remix-run/test": ["@remix-run/test@1.0.0", "", { "dependencies": { "@remix-run/node-tsx": "^1.0.0", "@remix-run/terminal": "^1.0.0", "es-module-lexer": "^2.0.0", "esbuild": "^0.27.1", "get-tsconfig": "^4.13.6", "istanbul-lib-coverage": "^3.2.2", "istanbul-lib-report": "^3.0.1", "istanbul-reports": "^3.2.0", "magic-string": "^0.30.21", "oxc-resolver": "^11.19.1", "source-map-js": "^1.2.1", "v8-to-istanbul": "^9.3.0" }, "peerDependencies": { "playwright": "^1.60.0" }, "optionalPeers": ["playwright"] }, "sha512-+thIAxJuQc8HRIQnfCxFK0t57qHo1mDDL6MIkBmJoJCNCgNR4IH/gERDZesELokq/0wd7pRn/yzkEX8g7oIoCw=="],
+
+    "@remix-run/ui": ["@remix-run/ui@0.12.1", "", { "dependencies": { "@remix-run/component": "^1.0.0" } }, "sha512-eB1qhDODNXPFQFb7Zomn8c+DlIlPwz+c6Uk70nqnEUjNxCF8GM0tcG+USG/XjaaBfdvFhvvd2GWzoINnTekxRA=="],
 
     "@rolldown/binding-android-arm-eabi": ["@rolldown/binding-android-arm-eabi@1.2.11", "", { "os": "android", "cpu": "arm" }, "sha512-A5kXfGKvKWWZE0TtPrfsvT+q4Y5d1QG8gGUzpYjGydM+fARM9MuX90PrXYXe0XbsDVgyxxNzHo6giCj90bsFNw=="],
 

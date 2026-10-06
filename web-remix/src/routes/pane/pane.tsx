@@ -10,22 +10,25 @@
 // with the pane's agent string). The first dialog block becomes the card (cards.ts); the rest is the
 // mirror the Terminal tab draws. Nothing here names a harness or a multiplexer.
 import { on, type Handle } from "remix/component";
-import { KeyRound, Lock, MessageSquare, SquareTerminal, TriangleAlert, WifiOff } from "lucide";
+import { KeyRound, Lock, TriangleAlert, WifiOff } from "lucide";
 
 import { isNotPaired as webRefused, subscribePairing } from "@web/lib/pairing";
 import { paneScopeKey } from "@web/lib/scope";
 import { t } from "@web/lib/i18n";
 import type { Block, StyledLine } from "@web/lib/blocks";
-import { cn } from "@web/lib/utils";
+import { paneName } from "@web/lib/pane-name";
 
 import { address, config, paneStore, snapshot } from "../../lib/data";
 import { focus, kick, want } from "../../lib/polling";
 import { clearNotPaired, markNotPaired, pairing } from "../../lib/pairing";
+import { dashPrefs } from "../../lib/prefs";
+import { setStatus } from "../../lib/status";
 import { useStore } from "../../lib/store";
 import { href } from "../../routes";
+import { headerOf } from "../../shell/context";
+import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { Notice } from "../../ui/notice";
-import { TabBar } from "../../ui/tab-bar";
 import { answerFeedback, answerMenu, answerOption, answerUnread, type WriteTarget } from "./answer";
 import { goUp, upPath } from "./back";
 import { dialogCardOf, dialogOwnsKeyboard, mirrorLines, type DialogCard } from "./cards";
@@ -34,18 +37,10 @@ import { chatStore } from "./chat-store";
 import { Composer } from "./composer";
 import { blockBuilder, findPane, pollPane, writeGate } from "./data";
 import { CardDock, type CardActions } from "./dialog-card";
-import { PaneHeader } from "./header";
 import { clearPaneStatus, paneStatus } from "./status";
 import { TerminalView } from "./terminal";
 
 type PaneTab = "chat" | "terminal";
-
-const STATUS_TONE = {
-  info: "text-muted-foreground",
-  success: "text-status-done",
-  warn: "text-status-working",
-  error: "text-status-blocked",
-} as const;
 
 export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const { scope } = address.get();
@@ -70,7 +65,15 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const readPane = useStore(handle, store);
   const readSnapshot = useStore(handle, snapshot);
   const readConfig = useStore(handle, config);
-  const readStatus = useStore(handle, paneStatus);
+  // The header is the Shell's; this route claims it (REMIX3.md rule 6). The status line moved into
+  // the header's title slot (web/'s HeaderStatus): every pane status is published to lib/status.
+  const header = headerOf(handle).owner(handle.signal);
+  const goUpHere = (): void => goUp(scope);
+  paneStatus.subscribe(() => {
+    const said = paneStatus.get();
+    if (said) setStatus(said.text, said.tone);
+  }, handle.signal);
+  const readView = useStore(handle, dashPrefs);
   const readPairing = useStore(handle, pairing);
   const readChat = useStore(handle, chatStore(key));
 
@@ -78,8 +81,6 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   let lastBlocks: Block[] | undefined;
   let card: DialogCard | null = null;
   let mirror: StyledLine[] = [];
-  /** The tab the reader picked; null until they pick one, so the default can follow the pane. */
-  let picked: PaneTab | null = null;
 
   const onFollow = (following: boolean): void => focus.set({ paneId, following });
 
@@ -130,7 +131,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     const chatStatus = readChat().window.status;
     const chatOff = chatStatus.kind === "stale" || (chatStatus.kind === "unavailable" && chatStatus.reason === "disabled");
     const canChat = pane !== undefined && !shell;
-    const tab: PaneTab = picked ?? (canChat && pane.hasSession === true && !chatOff ? "chat" : "terminal");
+    // The view is a device pref (`paneView`, ADR 0082), switched in the ⋮ sheet; no tab bar.
+    const tab: PaneTab = canChat && pane.hasSession === true && !chatOff && readView().paneView === "chat" ? "chat" : "terminal";
 
     // One notice at a time, most fundamental first.
     let notice = null;
@@ -182,12 +184,21 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
       );
     }
 
-    const status = readStatus();
+    const name = gone ? t("chat.header.agentGone") : pane ? paneName(pane) : paneId;
+    handle.queueTask(() =>
+      header.claim({
+        center: { kind: "pane", name, workspace: pane?.workspaceLabel ?? "", status: shell ? undefined : pane?.status, agent: shell ? "" : (pane?.agent ?? "") },
+        right: { kind: "menu", label: t("chat.paneMenu.aria") },
+        width: "wide",
+        home: goUpHere,
+        homeLabel: upPath(scope).startsWith("/space/") ? t("changes.backAria.workspace") : t("changes.backAria.dashboard"),
+        glideKey: key,
+      }),
+    );
     const unreadKey = card?.kind === "unread-dialog" ? card.keyName : "";
     return (
       <main class="flex min-h-0 flex-1 flex-col" data-testid="pane-view" data-tab={tab}>
-        <PaneHeader paneId={paneId} pane={pane} gone={gone} upPath={upPath(scope)} onUp={() => goUp(scope)} />
-        {notice}
+        <Collapse open={notice !== null}>{notice}</Collapse>
         {tab === "chat" ? (
           <ChatView
             key={`chat:${key}`}
@@ -206,14 +217,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
             onFollowChange={onFollow}
           />
         )}
-        {card !== null && <CardDock card={card} disabled={gate.locked} actions={actions} />}
-        <p
-          role="status"
-          data-testid="pane-status"
-          class={cn("min-h-0 shrink-0 px-3 text-xs", status ? "py-1" : "", status ? STATUS_TONE[status.tone] : "")}
-        >
-          {status?.text ?? ""}
-        </p>
+        <Collapse open={card !== null}>{card !== null ? <CardDock card={card} disabled={gate.locked} actions={actions} /> : null}</Collapse>
         <Composer
           key={`composer:${key}`}
           paneId={paneId}
@@ -225,20 +229,6 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
           unsupportedKeys={readConfig().data?.mux?.unsupportedKeys ?? []}
           target={target}
         />
-        {canChat && (
-          <TabBar
-            label={t("chat.mode.view.label")}
-            active={tab}
-            onSelect={(value) => {
-              picked = value === "chat" ? "chat" : "terminal";
-              void handle.update();
-            }}
-            items={[
-              { value: "chat", label: t("chat.mode.option.chat"), icon: <Icon icon={MessageSquare} class="size-5" /> },
-              { value: "terminal", label: t("chat.mode.option.terminal"), icon: <Icon icon={SquareTerminal} class="size-5" /> },
-            ]}
-          />
-        )}
       </main>
     );
   };

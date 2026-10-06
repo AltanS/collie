@@ -12,6 +12,9 @@ import type { AgentView, BridgeConfig } from "@web/lib/types";
 import { address, config, snapshot } from "../../lib/data";
 import { useStore } from "../../lib/store";
 import { href } from "../../routes";
+import { headerOf } from "../../shell/context";
+import { SettingsGear } from "../../shell/header";
+import type { CustomSlot } from "../../shell/header-model";
 import { Icon } from "../../ui/icon";
 import { TabBar } from "../../ui/tab-bar";
 import { AgentList } from "./agent-list";
@@ -43,8 +46,12 @@ export function HomeRoute(handle: Handle) {
   const cfg = useStore(handle, config);
   const where = useStore(handle, address);
   const prefs = useStore(handle, dashPrefs);
+  // The Shell's header, claimed: the wordmark, the content column's width, the gear (rule 6).
+  const header = headerOf(handle).owner(handle.signal);
+  const gear: CustomSlot = { kind: "custom", render: () => <SettingsGear /> };
 
   return () => {
+    handle.queueTask(() => header.claim({ wordmark: true, width: "column", right: gear }));
     const loaded = snap();
     const body = loaded.data;
     const scope = where().scope;
