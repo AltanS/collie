@@ -670,7 +670,20 @@ describe("StateEngine — session name enrichment", () => {
     await poll();
     // The count is not the safety-critical half — `visible` clamps to the viewport however large it
     // is — so it is pinned only to keep the whole call in one assertion. Change it freely, here too.
-    expect(herdr.reads).toEqual([["w1:p1", "visible", 40, "text"]]);
+    // `ansi`, because colour tells a name from a mode badge; it is also the format that never makes
+    // Herdr harvest scrollback (see readPane in server.ts).
+    expect(herdr.reads).toEqual([["w1:p1", "visible", 40, "ansi"]]);
+  });
+
+  test("forgets the name once the input box shows a plain rule again", async () => {
+    const { herdr, poll, agent } = makeNameEngine();
+    herdr.panes = [{ ...pane("w1:p1", "w1", "idle", "claude"), revision: 1 }];
+    herdr.texts.set("w1:p1", named("ultracode"));
+    await poll();
+    herdr.panes = [{ ...pane("w1:p1", "w1", "idle", "claude"), revision: 2 }];
+    herdr.texts.set("w1:p1", plainBox);
+    await poll();
+    expect(agent("w1:p1").sessionName).toBeUndefined();
   });
 
   test("leaves sessionName absent for an unnamed claude session (plain rule)", async () => {
