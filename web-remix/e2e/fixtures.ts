@@ -1,7 +1,8 @@
 // The stub bridge the smoke reads: two workspaces on one machine, one blocked agent (so the summary
 // line and the heading dot have something to say), one finished agent that was never opened (the
 // unseen square), and one bare shell. Harness and multiplexer names are plain data here, never a list
-// the app matches against.
+// the app matches against. The working pane has a harness name no adapter knows: nothing reads its
+// mirror, so the stub text stays plain terminal text and never turns into a dialog card.
 import type { AgentView, BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
 
 function pane(over: Partial<AgentView> & Pick<AgentView, "paneId" | "workspaceId" | "workspaceLabel" | "tabId">): AgentView {
@@ -21,7 +22,7 @@ export const SNAPSHOT: SnapshotResponse = {
   ts: 1_790_000_000_000,
   agents: [
     pane({ paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "collie", tabId: "w1:t1", tabLabel: "build", status: "blocked" }),
-    pane({ paneId: "w1:p2", workspaceId: "w1", workspaceLabel: "collie", tabId: "w1:t1", tabLabel: "build", agent: "codex", status: "working" }),
+    pane({ paneId: "w1:p2", workspaceId: "w1", workspaceLabel: "collie", tabId: "w1:t1", tabLabel: "build", agent: "some-new-harness", status: "working" }),
     pane({
       paneId: "w2:p1",
       workspaceId: "w2",
