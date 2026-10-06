@@ -39,7 +39,7 @@ import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { markPollResult } from "@/lib/poll-intent";
 import { shareEqual } from "@/lib/share-equal";
 import { prefetchPane, takePanePrefetch } from "@/lib/pane-prefetch";
-import { clearNotPaired, markNotPaired } from "@/lib/pairing";
+import { clearNotPaired, markExpired, markNotPaired } from "@/lib/pairing";
 import {
   internScope,
   paneScopeKey,
@@ -572,6 +572,7 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
     // write: it is the one endpoint that reports back who our token authenticated as. Enforcement
     // off means there is nothing to be unpaired from.
     if (!res.enforced || res.current !== null) clearNotPaired();
+    else if (res.currentExpired === true) markExpired();
     else markNotPaired();
     return { enforced: res.enforced, current: res.current, devices: res.devices, error: false };
   } catch (e) {

@@ -5,8 +5,11 @@ import {
   __resetPairing,
   authHeader,
   clearDeviceToken,
+  EXPIRED_BODY,
   getDeviceToken,
   isNotPaired,
+  isPairingExpired,
+  markExpired,
   markNotPaired,
   NOT_PAIRED_BODY,
   setDeviceToken,
@@ -14,6 +17,7 @@ import {
   TOKEN_STORAGE_KEY,
 } from "./pairing";
 import { closePane, fetchDevices, fetchPane, fetchSnapshot, pairDevice, revokeDevice } from "./api";
+import { devicesLoader } from "./loaders";
 
 // Two things are pinned here, and they are the whole client half of the pairing gate:
 //   1. The bearer is injected in ONE place — every request carries it when a token is stored and
@@ -170,6 +174,76 @@ describe("the not-paired latch", () => {
     __resetPairing();
     expect(hits).toBe(0);
     unsub();
+  });
+});
+
+// M46 spec 01: a token past the expiry the operator gave it is refused with its own body.
+describe("the expired latch", () => {
+  it("latches expired on a write refused with the expired body, and drops the dead token", async () => {
+    setDeviceToken("tok-old");
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/close$/, () => new HttpResponse(EXPIRED_BODY, { status: 403 })),
+    );
+    await expect(closePane("w1:p1")).rejects.toThrow(/403/);
+    expect(isNotPaired()).toBe(true);
+    expect(isPairingExpired()).toBe(true);
+    // Until spec 02's wipe lands, the token is the one thing cleared.
+    expect(getDeviceToken()).toBeNull();
+  });
+
+  it("is not set by the plain not-paired body", async () => {
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/close$/, () => new HttpResponse(NOT_PAIRED_BODY, { status: 403 })),
+    );
+    await expect(closePane("w1:p1")).rejects.toThrow(/403/);
+    expect(isNotPaired()).toBe(true);
+    expect(isPairingExpired()).toBe(false);
+  });
+
+  it("survives the not-paired refusal that follows once the token is gone", () => {
+    markExpired();
+    markNotPaired();
+    expect(isPairingExpired()).toBe(true);
+  });
+
+  it("clears on a fresh pairing and on a write that goes through", async () => {
+    markExpired();
+    setDeviceToken("tok-new");
+    expect(isPairingExpired()).toBe(false);
+    expect(isNotPaired()).toBe(false);
+
+    markExpired();
+    await closePane("w1:p1");
+    expect(isPairingExpired()).toBe(false);
+  });
+
+  it("notifies subscribers once per change", () => {
+    setDeviceToken("tok-old");
+    let hits = 0;
+    const unsub = subscribePairing(() => hits++);
+    markExpired();
+    expect(hits).toBe(1);
+    markExpired();
+    expect(hits).toBe(1);
+    unsub();
+  });
+
+  it("a devices answer naming this token as expired latches it on a cold open, with no write", async () => {
+    setDeviceToken("tok-old");
+    server.use(
+      http.get("/api/devices", () =>
+        HttpResponse.json({
+          enforced: true,
+          current: null,
+          currentExpired: true,
+          devices: [{ label: "phone", createdAt: 1, lastSeenAt: 2, expiresAt: 3, expired: true, current: false }],
+        }),
+      ),
+    );
+    const data = await devicesLoader();
+    expect(data.devices[0]?.expired).toBe(true);
+    expect(isPairingExpired()).toBe(true);
+    expect(getDeviceToken()).toBeNull();
   });
 });
 

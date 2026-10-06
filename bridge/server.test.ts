@@ -25,6 +25,7 @@ import {
   SEEN_HEADER,
   deviceAuth,
   guard,
+  type PairingGate,
   historyParams,
   isHostAllowed,
   isLoopbackPeer,
@@ -63,6 +64,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
+import { PairingStore, sha256Hex, type PairingIo } from "./pairing.ts";
 import { FolderStore, MAX_FAVOURITES, MAX_FOLDER_CHARS } from "./folders.ts";
 import type { SessionRuntime } from "./sessions.ts";
 import type { Config } from "./config.ts";
@@ -1312,9 +1314,9 @@ describe("guard — the pairing gate composes with the header gate", () => {
   const paired = gateOf({ "tok-phone": "phone" });
   const nothingPaired = gateOf({});
 
-  const write = (c: Config, headers: Record<string, string>, gate?: ReturnType<typeof gateOf>) =>
+  const write = (c: Config, headers: Record<string, string>, gate?: PairingGate) =>
     guard(req({ host: "collie.ts.net", origin: "https://collie.ts.net", ...headers }), c, "write", gate);
-  const read = (c: Config, headers: Record<string, string>, gate?: ReturnType<typeof gateOf>) =>
+  const read = (c: Config, headers: Record<string, string>, gate?: PairingGate) =>
     guard(req({ host: "collie.ts.net", ...headers }), c, "read", gate);
 
   test("an empty registry enforces nothing — the feature is off until something is paired", () => {
@@ -1348,7 +1350,7 @@ describe("guard — the pairing gate composes with the header gate", () => {
 
   // The Files view (ADR 0083): a read that needs the write level's device factors, both of them,
   // without the write level's `Origin` rule — a browser sends no `Origin` on a same-origin GET.
-  const deviceRead = (c: Config, headers: Record<string, string>, gate?: ReturnType<typeof gateOf>) =>
+  const deviceRead = (c: Config, headers: Record<string, string>, gate?: PairingGate) =>
     guard(req({ host: "collie.ts.net", ...headers }), c, "device-read", gate);
 
   test("device-read: pairing refuses an unpaired device and lets a paired one read, with no Origin", async () => {
@@ -1403,6 +1405,36 @@ describe("guard — the pairing gate composes with the header gate", () => {
     );
     expect(denied).not.toBeNull();
     expect(denied!.status).toBe(403);
+  // M46 spec 01: the real PairingStore, not a stub, so the refusal text is the one the phone gets.
+  test("an expired token is refused with its own text, on a write and on a device-read", async () => {
+    const hash = sha256Hex;
+    const registry = {
+      devices: [
+        { label: "old", tokenHash: hash("tok-old"), createdAt: 1, lastSeenAt: 1, expiresAt: 1000 },
+        { label: "phone", tokenHash: hash("tok-phone"), createdAt: 1, lastSeenAt: 1 },
+      ],
+    };
+    const io: PairingIo = {
+      readPending: async () => null,
+      writePending: async () => {},
+      deletePending: async () => {},
+      readRegistry: async () => registry,
+      writeRegistry: async () => {},
+      readRegistrySync: () => registry,
+    };
+    const store = new PairingStore(io, () => 2000);
+    const expired = write(cfg(), { authorization: "Bearer tok-old" }, store)!;
+    expect(expired.status).toBe(403);
+    expect(await expired.text()).toBe("device expired");
+    expect(await deviceRead(cfg(), { authorization: "Bearer tok-old" }, store)!.text()).toBe("device expired");
+    // Not paired stays "not paired", and a live token still passes.
+    expect(await write(cfg(), { authorization: "Bearer nope" }, store)!.text()).toBe("device not paired");
+    expect(await write(cfg(), {}, store)!.text()).toBe("device not paired");
+    expect(write(cfg(), { authorization: "Bearer tok-phone" }, store)).toBeNull();
+    // Reads stay open, as for every other refusal.
+    expect(read(cfg(), { authorization: "Bearer tok-old" }, store)).toBeNull();
+  });
+
   });
 });
 

@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { pairDevice, revokeDevice } from "@/lib/api";
-import { timeAgo } from "@/lib/format";
+import { dateTime, timeAgo } from "@/lib/format";
 import { PAIRED_DEVICES_HASH } from "@/lib/nav";
 import { clearDeviceToken, setDeviceToken, usePairing } from "@/lib/pairing";
 import type { DevicesData } from "@/lib/loaders";
@@ -37,7 +37,7 @@ function splitAroundValue(message: string, value: string): [string, string] {
 export function PairedDevices({ data }: { data: DevicesData }) {
   useLocale();
   const revalidator = useRevalidator();
-  const { token, refused } = usePairing();
+  const { token, refused, expired } = usePairing();
 
   // THE CARD ANSWERS TO ITS OWN FRAGMENT. `read-only-banner.tsx` links to
   // `/settings/system#paired-devices` (lib/nav.ts owns the spelling), and the fragment still earns
@@ -122,6 +122,8 @@ export function PairedDevices({ data }: { data: DevicesData }) {
               label={d.label}
               createdAt={d.createdAt}
               lastSeenAt={d.lastSeenAt}
+              expiresAt={d.expiresAt ?? null}
+              expired={d.expired === true}
               current={d.current}
               onRevoked={() => {
                 // Revoking yourself is allowed and self-unpairs: the token we still hold now
@@ -134,21 +136,37 @@ export function PairedDevices({ data }: { data: DevicesData }) {
         </ul>
       )}
 
-      {unpaired && <PairForm nameRef={nameRef} onPaired={() => revalidator.revalidate()} />}
+      {unpaired && (
+        <PairForm nameRef={nameRef} expired={expired} onPaired={() => revalidator.revalidate()} />
+      )}
     </Card>
   );
+}
+
+/** One row's expiry, in words: none, a date ahead, or the date it passed (M46 spec 01). */
+function expiryText(expiresAt: number | null, expired: boolean): string {
+  if (expiresAt === null) return t("settings.devices.row.noExpiry");
+  return expired
+    ? t("settings.devices.row.expiredOn", { date: dateTime(expiresAt) })
+    : t("settings.devices.row.expires", { date: dateTime(expiresAt) });
 }
 
 function DeviceRow({
   label,
   createdAt,
   lastSeenAt,
+  expiresAt,
+  expired,
   current,
   onRevoked,
 }: {
   label: string;
   createdAt: number;
   lastSeenAt: number;
+  /** Epoch ms the token stops working, or null for no expiry. */
+  expiresAt: number | null;
+  /** The bridge's verdict that `expiresAt` has passed — not re-derived from this phone's clock. */
+  expired: boolean;
   current: boolean;
   onRevoked: () => void;
 }) {
@@ -188,12 +206,20 @@ function DeviceRow({
               {t("settings.devices.thisDevice")}
             </span>
           )}
+          {expired && (
+            <span className="shrink-0 rounded bg-status-blocked/15 px-1.5 py-0.5 text-[11px] font-medium text-status-blocked">
+              {t("settings.devices.row.expired")}
+            </span>
+          )}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {t("settings.devices.row.meta", {
             paired: timeAgo(createdAt),
             lastSeen: timeAgo(lastSeenAt),
           })}
+        </p>
+        <p className={`mt-0.5 text-xs ${expired ? "text-status-blocked" : "text-muted-foreground"}`}>
+          {expiryText(expiresAt, expired)}
         </p>
         {error && <p className="mt-0.5 text-xs text-status-blocked">{error}</p>}
       </div>
@@ -224,10 +250,17 @@ function DeviceRow({
 
 function PairForm({
   nameRef,
+  expired,
   onPaired,
 }: {
   /** Owned by the card above, which decides where focus lands on each way in. */
   nameRef: RefObject<HTMLInputElement | null>;
+  /**
+   * The bridge refused this phone's token as EXPIRED (M46 spec 01). The form is the same — a fresh
+   * code from `collie pair` is the only way back — but it is titled "Pair again" and says why, so
+   * the operator does not wonder whether someone revoked the phone.
+   */
+  expired: boolean;
   onPaired: () => void;
 }) {
   useLocale();
@@ -276,13 +309,16 @@ function PairForm({
   // sentence is, so the command is placed via the same "locate the interpolated value" split as the
   // paired-as sentence above, letting it keep its own <code> styling.
   const command = "bin/collie pair";
-  const hintMessage = t("settings.devices.pair.hint", { command });
+  const hintMessage = expired
+    ? t("settings.devices.pair.expired", { command })
+    : t("settings.devices.pair.hint", { command });
   const [hintBefore, hintAfter] = splitAroundValue(hintMessage, command);
+  const title = expired ? t("settings.devices.pair.againTitle") : t("settings.devices.pair.title");
 
   return (
     <div className="flex flex-col gap-3 border-t border-border p-4">
       <div>
-        <div className="font-medium">{t("settings.devices.pair.title")}</div>
+        <div className="font-medium">{title}</div>
         <p className="text-sm text-muted-foreground">
           {hintBefore}
           <code className="font-mono text-[13px]">{command}</code>
@@ -323,7 +359,7 @@ function PairForm({
       {error && <p className="text-xs text-status-blocked">{error}</p>}
       <Button className="h-11" disabled={!ready} onClick={submit}>
         {busy && <Loader2 className="size-4 animate-spin" />}
-        {t("settings.devices.pair.title")}
+        {title}
       </Button>
     </div>
   );

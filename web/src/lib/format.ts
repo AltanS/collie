@@ -105,3 +105,13 @@ export function clockTime(ts: number): string {
   const locale = getLocaleSnapshot().locale;
   return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
 }
+
+/**
+ * A date and a time, medium and short, in the active APP locale — for a moment that may be weeks
+ * away, like a paired device's expiry. An age ("in 3 days") would have to be recomputed to stay
+ * true; a date stays true however long the screen sits there.
+ */
+export function dateTime(ts: number): string {
+  const locale = getLocaleSnapshot().locale;
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(ts));
+}

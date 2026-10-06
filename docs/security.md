@@ -48,6 +48,24 @@ phone first. Revoking the final device disables the gate again to prevent lockou
 
 Five failed code attempts invalidate the code, which requires running `collie pair` again.
 
+### Give a device an expiry
+
+A paired device keeps its token until you revoke it. To limit that, pass a lifetime when you pair:
+
+```bash
+bin/collie pair --expires 30d             # also 12h, 2w; at most 3650d
+bin/collie devices set-expiry pixel 90d   # a new lifetime, counted from now
+bin/collie devices clear-expiry pixel     # no expiry again
+```
+
+The lifetime counts from the moment the phone claims the code. Without `--expires`, a token never
+expires, exactly as before, and no existing token changes. After the expiry, the bridge refuses the
+token with `device expired` instead of `device not paired`. The phone then drops the token and shows
+**Pair again** in Settings, so run `collie pair` for a new code. `collie devices list` and the
+Settings screen show each device's expiry. An expired device stays in the list, and it still keeps
+pairing on, until you revoke it or give it a new expiry with `set-expiry`. A crew deputy's standby
+door refuses an expired token too.
+
 On a host running multiple instances, prefix commands with `COLLIE_INSTANCE=<name>` and open that
 specific instance URL on the phone
 ([Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host)).

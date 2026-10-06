@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { PairedDevices } from "@/components/paired-devices";
-import { getDeviceToken, setDeviceToken, TOKEN_STORAGE_KEY } from "@/lib/pairing";
+import { getDeviceToken, markExpired, setDeviceToken, TOKEN_STORAGE_KEY } from "@/lib/pairing";
 import type { DevicesData } from "@/lib/loaders";
 
 // PairedDevices calls useRevalidator() to re-run the settings loader after a pair/revoke, and
@@ -124,6 +124,53 @@ describe("PairedDevices — pairing", () => {
     render(<PairedDevices data={{ ...PAIRED, current: null }} />);
 
     expect(screen.getByLabelText(/pairing code/i)).toBeInTheDocument();
+  });
+});
+
+// M46 spec 01: each row shows its expiry, and an expired pairing gets the pair-again form.
+describe("PairedDevices — expiry", () => {
+  const NOW = Date.now();
+  const WITH_EXPIRY: DevicesData = {
+    enforced: true,
+    current: "my phone",
+    devices: [
+      { label: "my phone", createdAt: 1_000, lastSeenAt: 2_000, expiresAt: null, expired: false, current: true },
+      { label: "tablet", createdAt: 1_000, lastSeenAt: 2_000, expiresAt: NOW + 30 * 86_400_000, expired: false, current: false },
+      { label: "old phone", createdAt: 1_000, lastSeenAt: 2_000, expiresAt: NOW - 86_400_000, expired: true, current: false },
+    ],
+    error: false,
+  };
+
+  test("each row shows no expiry, a date ahead, or an expired mark", () => {
+    setDeviceToken("tok-secret");
+    render(<PairedDevices data={WITH_EXPIRY} />);
+    expect(screen.getByText("No expiry")).toBeInTheDocument();
+    expect(screen.getByText(/^Expires /)).toBeInTheDocument();
+    // The expired row carries a badge AND says when it passed.
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.getByText(/^Expired .+/)).toBeInTheDocument();
+  });
+
+  test("a row from an answer without the field reads as no expiry", () => {
+    setDeviceToken("tok-secret");
+    render(<PairedDevices data={PAIRED} />);
+    expect(screen.getByText("No expiry")).toBeInTheDocument();
+  });
+
+  test("an expired pairing draws the pair-again form, which names the next step", () => {
+    setDeviceToken("tok-old");
+    markExpired();
+    render(<PairedDevices data={{ ...WITH_EXPIRY, current: null }} />);
+    expect(screen.getByText(/pairing expired/i)).toBeInTheDocument();
+    expect(screen.getByText("bin/collie pair")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /pair again/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/pairing code/i)).toBeInTheDocument();
+  });
+
+  test("without the expired latch the form keeps its first-pair wording", () => {
+    render(<PairedDevices data={UNPAIRED} />);
+    expect(screen.getByRole("button", { name: /pair this device/i })).toBeInTheDocument();
+    expect(screen.queryByText(/pairing expired/i)).not.toBeInTheDocument();
   });
 });
 

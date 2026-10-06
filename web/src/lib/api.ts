@@ -6,7 +6,7 @@ import { trackBusy } from "./busy";
 import { beginLongUpload, endLongUpload, markLive } from "./connection-health";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
-import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
+import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
@@ -284,6 +284,12 @@ function notePairing(method: string, status: number, detail?: string): void {
   if (method === "GET") return;
   if (status === 403 && detail?.trim() === NOT_PAIRED_BODY) {
     markNotPaired();
+    return;
+  }
+  // An expired pairing (M46 spec 01): the same refusal, with the pair-again reason, and the dead
+  // token dropped.
+  if (status === 403 && detail?.trim() === EXPIRED_BODY) {
+    markExpired();
     return;
   }
   if (status >= 200 && status < 300) clearNotPaired();
@@ -756,6 +762,11 @@ function filesRefusal(status: number, detail: string): FilesRefusal | null {
     // Reads were ungated until Files, so nothing on a read could ever discover an unpaired device.
     // Latch it as a refused write does: the app's read-only strip then names the remedy, once.
     markNotPaired();
+    return FILES_NOT_PAIRED;
+  }
+  if (body.startsWith(EXPIRED_BODY)) {
+    // The same refusal for the view's purpose; the latch carries the pair-again reason.
+    markExpired();
     return FILES_NOT_PAIRED;
   }
   return body.startsWith(NOT_AUTHORISED_BODY) ? FILES_NOT_AUTHORISED : null;

@@ -2510,8 +2510,8 @@ token the *lead* minted, so the lead pushes its registry.
 |---|---|
 | **Route** | `POST /crew/v1/pairing`, lead → **deputy only** |
 | **Gate** | the crew's two factors (§8.1), plus a role check: the caller must be *this collie's own lead*, **and this collie must hold a verified warrant naming itself**. Every other peer that ever receives one refuses it. |
-| **Body** | `{ crewId, leadMemberId, devices: [{ label, tokenHash, createdAt }] }` — every field required, because the route is new and a new route may require its own fields (§7.1). |
-| **Sent** | at designation and on every change — a `pair`, a `devices revoke`, nothing else. |
+| **Body** | `{ crewId, leadMemberId, devices: [{ label, tokenHash, createdAt, expiresAt? }] }`. Every field is required except `expiresAt`, because the route is new and a new route may require its own fields (§7.1). `expiresAt` *(added 2026-10-06, M46)* is additive-optional: sent only for a device paired with `collie pair --expires` or given one by `devices set-expiry`, and folded into `pairingDigest` only then, so a registry without expiries digests exactly as before. A non-numeric value refuses the body. The standby door refuses a token past its `expiresAt`, and a takeover adopts the field with the device. A deputy one release behind ignores it and honours the token until it updates. |
+| **Sent** | at designation and on every change: a `pair`, a `devices revoke`, a `devices set-expiry` or `clear-expiry`, nothing else. |
 | **Absent (404)** | no credential to verify ⇒ **the standby door refuses to arm.** Closed. |
 
 - **Only hashes cross.** The token was shown once, at claim time, and is not recoverable

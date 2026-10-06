@@ -15,8 +15,10 @@ import { capture, context, type FakeFiles, fakeExec, fakeFiles, type SeededFiles
 import { EXIT } from "./io.ts";
 import {
   cmdDevices,
+  cmdDevicesClearExpiry,
   cmdDevicesList,
   cmdDevicesRevoke,
+  cmdDevicesSetExpiry,
   cmdPair,
   type PairingDeps,
 } from "./pairing.ts";
@@ -148,6 +150,47 @@ describe("collie pair", () => {
     expect(d.io.stderr.join("\n")).toContain("tailnet front door isn't up");
   });
 
+  test("no --expires writes the pending file without a token lifetime, exactly as before", async () => {
+    const d = deps();
+    expect(await cmdPair(d)).toBe(EXIT.OK);
+    expect(Object.keys(JSON.parse(d.files.entries.get(PENDING)!.text))).toEqual([
+      "codeHash",
+      "expiresAt",
+      "attemptsLeft",
+    ]);
+    expect(d.io.stdout.join("\n")).not.toContain("stops working");
+  });
+
+  test("--expires 30d puts the token lifetime on the pending code and says so", async () => {
+    for (const args of [["--expires", "30d"], ["--expires=30d"]]) {
+      const d = deps();
+      expect(await cmdPair(d, args)).toBe(EXIT.OK);
+      const pending = coercePending(JSON.parse(d.files.entries.get(PENDING)!.text));
+      expect(pending!.tokenLifetimeMs).toBe(30 * 86_400_000);
+      // The CODE's own ten minutes are untouched by the token's lifetime.
+      expect(pending!.expiresAt).toBe(NOW + CODE_TTL_MS);
+      expect(d.io.stdout.join("\n")).toContain("30 days after it pairs");
+    }
+  });
+
+  test("a bad duration is a usage error and mints no code", async () => {
+    for (const bad of ["0d", "-1d", "30", "30m", "abc", "1.5d", "99999w"]) {
+      const d = deps();
+      expect(await cmdPair(d, ["--expires", bad])).toBe(EXIT.USAGE);
+      expect(d.files.entries.has(PENDING)).toBe(false);
+      expect(d.io.stdout).toEqual([]);
+      expect(d.io.stderr.join("\n")).toContain("usage: collie pair [--expires <duration>]");
+    }
+  });
+
+  test("--expires with no value, and an unknown argument, are refused rather than ignored", async () => {
+    for (const args of [["--expires"], ["--expire", "30d"], ["30d"]]) {
+      const d = deps();
+      expect(await cmdPair(d, args)).toBe(EXIT.USAGE);
+      expect(d.files.entries.has(PENDING)).toBe(false);
+    }
+  });
+
   test("an unwritable state dir is an operational failure, not a code the phone can never spend", async () => {
     const d = deps();
     d.files.write = () => {
@@ -189,6 +232,22 @@ describe("collie devices list", () => {
     // A device that has never made a request reads as `never`, not as the epoch.
     expect(d.io.stdout[1]).toContain("never");
     expect(d.io.stdout[1]).not.toContain("1970");
+  });
+
+  test("the expiry column: no expiry, a date ahead, or EXPIRED", () => {
+    const d = deps(
+      registryFile(
+        device({ label: "pixel" }),
+        device({ label: "ipad", expiresAt: NOW + 86_400_000 }),
+        device({ label: "old", expiresAt: NOW - 1 }),
+      ),
+    );
+    expect(cmdDevicesList(d)).toBe(EXIT.OK);
+    expect(d.io.stdout[0]).toContain("no expiry");
+    expect(d.io.stdout[1]).toContain(`expires ${new Date(NOW + 86_400_000).toISOString()}`);
+    expect(d.io.stdout[2]).toContain(`EXPIRED ${new Date(NOW - 1).toISOString()}`);
+    // One closing line says what an expired entry still does, and what to do about it.
+    expect(d.io.stdout[3]).toContain("revoke it");
   });
 
   test("no token hash is ever printed — the registry's secrets stay in the file", () => {
@@ -265,8 +324,93 @@ describe("collie devices revoke", () => {
   });
 });
 
+/** The registry `deps` holds after a verb wrote it. */
+function writtenDevices(d: ReturnType<typeof deps>): PairedDevice[] {
+  // SAFETY: the file is the registry the verb under test just wrote — `{ devices: [...] }` is the
+  // only shape it serialises.
+  return (JSON.parse(d.files.entries.get(REGISTRY)!.text) as { devices: PairedDevice[] }).devices;
+}
+
+describe("collie devices set-expiry / clear-expiry", () => {
+  test("set-expiry stamps now + duration on that device only, owner-only", () => {
+    const d = deps(registryFile(device({ label: "pixel" }), device({ label: "ipad" })));
+    expect(cmdDevicesSetExpiry(d, ["pixel", "12h"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(REGISTRY)!.mode).toBe(0o600);
+    const [pixel, ipad] = writtenDevices(d);
+    expect(pixel!.expiresAt).toBe(NOW + 12 * 3_600_000);
+    expect("expiresAt" in ipad!).toBe(false);
+    const out = d.io.stdout.join("\n");
+    expect(out).toContain(new Date(NOW + 12 * 3_600_000).toISOString());
+    expect(out).toContain("12 hours from now");
+  });
+
+  test("set-expiry gives an expired device a fresh lifetime", () => {
+    const d = deps(registryFile(device({ label: "pixel", expiresAt: NOW - 1 })));
+    expect(cmdDevicesSetExpiry(d, ["pixel", "2w"])).toBe(EXIT.OK);
+    expect(writtenDevices(d)[0]!.expiresAt).toBe(NOW + 14 * 86_400_000);
+  });
+
+  test("clear-expiry removes the key, so the entry is shaped like one that never had it", () => {
+    const d = deps(registryFile(device({ label: "pixel", expiresAt: NOW + 1000 })));
+    expect(cmdDevicesClearExpiry(d, ["pixel"])).toBe(EXIT.OK);
+    expect(writtenDevices(d)).toEqual([device({ label: "pixel" })]);
+    expect(d.io.stdout.join("\n")).toContain("no longer expires");
+  });
+
+  test("clear-expiry on a device without one says so and writes nothing", () => {
+    const seed = registryFile(device({ label: "pixel" }));
+    const d = deps(seed);
+    expect(cmdDevicesClearExpiry(d, ["pixel"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(REGISTRY)!.text).toBe(seed[REGISTRY]!);
+    expect(d.io.stdout.join("\n")).toContain("nothing to clear");
+  });
+
+  test("an unknown label fails, names the paired labels, and writes nothing", () => {
+    for (const run of [
+      (d: ReturnType<typeof deps>) => cmdDevicesSetExpiry(d, ["nope", "30d"]),
+      (d: ReturnType<typeof deps>) => cmdDevicesClearExpiry(d, ["nope"]),
+    ]) {
+      const seed = registryFile(device({ label: "pixel", expiresAt: NOW + 1 }));
+      const d = deps(seed);
+      expect(run(d)).toBe(EXIT.FAIL);
+      expect(d.io.stderr.join("\n")).toContain("no paired device labelled `nope`");
+      expect(d.io.stderr.join("\n")).toContain("pixel");
+      expect(d.files.entries.get(REGISTRY)!.text).toBe(seed[REGISTRY]!);
+    }
+  });
+
+  test("a case-insensitive label is accepted when unique, and an ambiguous one lists the matches", () => {
+    const unique = deps(registryFile(device({ label: "Pixel" })));
+    expect(cmdDevicesSetExpiry(unique, ["pixel", "1d"])).toBe(EXIT.OK);
+    expect(writtenDevices(unique)[0]!.expiresAt).toBe(NOW + 86_400_000);
+
+    const seed = registryFile(device({ label: "Pixel" }), device({ label: "PIXEL" }));
+    const ambiguous = deps(seed);
+    expect(cmdDevicesSetExpiry(ambiguous, ["pixel", "1d"])).toBe(EXIT.FAIL);
+    const err = ambiguous.io.stderr.join("\n");
+    expect(err).toContain("more than one paired device: Pixel, PIXEL");
+    expect(ambiguous.files.entries.get(REGISTRY)!.text).toBe(seed[REGISTRY]!);
+    // An exact match always wins over the folded ones.
+    const exact = deps(seed);
+    expect(cmdDevicesSetExpiry(exact, ["PIXEL", "1d"])).toBe(EXIT.OK);
+    expect(writtenDevices(exact).map((x) => x.expiresAt)).toEqual([undefined, NOW + 86_400_000]);
+  });
+
+  test("a bad duration or a missing argument is a usage error and writes nothing", () => {
+    for (const args of [["pixel", "0d"], ["pixel", "-3d"], ["pixel", "soon"], ["pixel"], [], ["pixel", "1d", "extra"]]) {
+      const seed = registryFile(device({ label: "pixel" }));
+      const d = deps(seed);
+      expect(cmdDevicesSetExpiry(d, args)).toBe(EXIT.USAGE);
+      expect(d.files.entries.get(REGISTRY)!.text).toBe(seed[REGISTRY]!);
+    }
+    const clear = deps(registryFile(device()));
+    expect(cmdDevicesClearExpiry(clear, [])).toBe(EXIT.USAGE);
+    expect(clear.io.stderr.join("\n")).toContain("usage: collie devices clear-expiry <label>");
+  });
+});
+
 describe("the devices parent verb", () => {
-  test("routes its two sub-verbs", () => {
+  test("routes its sub-verbs", () => {
     const list = deps();
     expect(cmdDevices(list, ["list"])).toBe(EXIT.OK);
     expect(list.io.stdout.join("\n")).toContain("no devices paired");
@@ -274,6 +418,11 @@ describe("the devices parent verb", () => {
     const revoke = deps(registryFile(device({ label: "pixel" })));
     expect(cmdDevices(revoke, ["revoke", "pixel"])).toBe(EXIT.OK);
     expect(revoke.io.stdout.join("\n")).toContain("revoked");
+
+    const set = deps(registryFile(device({ label: "pixel" })));
+    expect(cmdDevices(set, ["set-expiry", "pixel", "30d"])).toBe(EXIT.OK);
+    const clear = deps(registryFile(device({ label: "pixel", expiresAt: NOW })));
+    expect(cmdDevices(clear, ["clear-expiry", "pixel"])).toBe(EXIT.OK);
   });
 
   test("bare, `help` and a misspelt sub-verb all print the usage block naming every sub-verb", () => {
@@ -281,9 +430,11 @@ describe("the devices parent verb", () => {
       const d = deps();
       expect(cmdDevices(d, args)).toBe(EXIT.USAGE);
       const err = d.io.stderr.join("\n");
-      expect(err).toContain("usage: collie devices {list|revoke}");
+      expect(err).toContain("usage: collie devices {list|revoke|set-expiry|clear-expiry}");
       expect(err).toContain("list ");
       expect(err).toContain("revoke ");
+      expect(err).toContain("set-expiry ");
+      expect(err).toContain("clear-expiry ");
       // Only a real mistake is called one.
       expect(err.includes("unknown devices subcommand")).toBe(args[0] === "lst");
     }

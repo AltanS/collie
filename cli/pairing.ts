@@ -1,13 +1,18 @@
 import { join } from "node:path";
 
 import {
+  CODE_TTL_MS,
   coerceRegistry,
   DEVICES_FILENAME,
   generateCode,
+  isExpired,
   newPending,
+  type PairedDevice,
   type PairedRegistry,
+  parseLifetime,
   PENDING_FILENAME,
   removeDevice,
+  setDeviceExpiry,
 } from "../bridge/pairing.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -41,7 +46,7 @@ import { renderQr } from "../scripts/qr.ts";
 // write access on its very next call.
 
 /** The `devices` sub-verbs, in the order the usage block prints them. */
-export const DEVICES_SUBCOMMANDS = ["list", "revoke"] as const;
+export const DEVICES_SUBCOMMANDS = ["list", "revoke", "set-expiry", "clear-expiry"] as const;
 
 export interface PairingDeps {
   ctx: CliContext;
@@ -87,6 +92,56 @@ function writeOwnerOnly<TDocument>(deps: PairingDeps, path: string, value: TDocu
 
 const stamp = (ms: number): string => (ms > 0 ? new Date(ms).toISOString() : "never");
 
+/** One device's expiry, as the operator reads it: no expiry, a date ahead, or a date passed. */
+function expiryText(device: PairedDevice, now: number): string {
+  if (device.expiresAt === undefined) return "no expiry";
+  const at = new Date(device.expiresAt).toISOString();
+  return isExpired(device, now) ? `EXPIRED ${at}` : `expires ${at}`;
+}
+
+/** A lifetime in the operator's own unit back: `30 days`, `12 hours`, `2 weeks`. */
+function lifetimeText(ms: number): string {
+  const units: [number, string][] = [
+    [7 * 86_400_000, "week"],
+    [86_400_000, "day"],
+    [3_600_000, "hour"],
+  ];
+  for (const [size, name] of units) {
+    if (ms % size === 0) {
+      const n = ms / size;
+      return `${n} ${name}${n === 1 ? "" : "s"}`;
+    }
+  }
+  return `${Math.round(ms / 3_600_000)} hours`;
+}
+
+/**
+ * `pair`'s own arguments: nothing, or `--expires <duration>` (also `--expires=<duration>`). Anything
+ * else is refused rather than ignored — `--expire 30d` silently minting a token that never expires
+ * is the one typo this verb must not forgive.
+ */
+function parsePairArgs(args: readonly string[]): { ok: true; lifetimeMs?: number } | { ok: false; reason: string } {
+  let raw: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--expires") {
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith("--")) return { ok: false, reason: "--expires needs a duration, for example `--expires 30d`" };
+      raw = next;
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--expires=")) {
+      raw = arg.slice("--expires=".length);
+      continue;
+    }
+    return { ok: false, reason: `unknown argument \`${arg}\`` };
+  }
+  if (raw === undefined) return { ok: true };
+  const parsed = parseLifetime(raw);
+  return parsed.ok ? { ok: true, lifetimeMs: parsed.ms } : { ok: false, reason: parsed.reason };
+}
+
 // ── pair ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -99,10 +154,16 @@ const stamp = (ms: number): string => (ms > 0 ? new Date(ms).toISOString() : "ne
  * The QR below the code is best-effort and never a failure: the pending file is already on disk by
  * the time it is drawn, so a missing URL or a broken renderer would only cost a keyboard shortcut.
  */
-export async function cmdPair(deps: PairingDeps): Promise<number> {
+export async function cmdPair(deps: PairingDeps, args: readonly string[] = []): Promise<number> {
+  const parsed = parsePairArgs(args);
+  if (!parsed.ok) {
+    deps.io.err(`error: ${parsed.reason}`);
+    deps.io.err("usage: collie pair [--expires <duration>]   durations: 12h, 30d, 2w");
+    return EXIT.USAGE;
+  }
   const now = (deps.now ?? Date.now)();
   const code = generateCode(deps.random);
-  const pending = newPending(code, now);
+  const pending = newPending(code, now, CODE_TTL_MS, parsed.lifetimeMs);
   const path = pendingPath(deps.ctx);
   const replaced = deps.files.exists(path);
 
@@ -119,6 +180,12 @@ export async function cmdPair(deps: PairingDeps): Promise<number> {
   deps.io.out(
     `  single-use · expires ${new Date(pending.expiresAt).toISOString()} (${minutes} minutes)`,
   );
+  if (parsed.lifetimeMs !== undefined) {
+    deps.io.out(
+      `  The device this pairs stops working ${lifetimeText(parsed.lifetimeMs)} after it pairs; ` +
+        "`collie devices set-expiry` or `clear-expiry` changes that later.",
+    );
+  }
   deps.io.out("  Open Collie on your phone, go to Settings, and enter this code there.");
   deps.io.out("  Shown once — only its hash is stored, and the bridge picks it up without a restart.");
   if (replaced) {
@@ -170,10 +237,127 @@ export function cmdDevicesList(deps: PairingDeps): number {
     deps.io.out("Run `collie pair` to enrol the first device; that is also what turns the requirement on.");
     return EXIT.OK;
   }
+  const now = (deps.now ?? Date.now)();
   const width = Math.max(...devices.map((d) => d.label.length));
   for (const d of devices) {
-    deps.io.out(`${d.label.padEnd(width)}  created ${stamp(d.createdAt)}  last seen ${stamp(d.lastSeenAt)}`);
+    deps.io.out(
+      `${d.label.padEnd(width)}  created ${stamp(d.createdAt)}  last seen ${stamp(d.lastSeenAt)}  ${expiryText(d, now)}`,
+    );
   }
+  if (devices.some((d) => isExpired(d, now))) {
+    deps.io.out(
+      "An expired device is refused but still listed, and still keeps pairing on; revoke it, or give it a new expiry.",
+    );
+  }
+  return EXIT.OK;
+}
+
+/** How a label typed on the command line names a device: exactly one, none, or several. */
+type LabelMatch =
+  | { kind: "one"; label: string }
+  | { kind: "none" }
+  | { kind: "many"; labels: string[] };
+
+/**
+ * Find the device a typed label names. An exact match always wins. Without one, a case-insensitive
+ * match is accepted only when it is unique — `Phone` and `phone` can both exist, and choosing between
+ * them is the operator's call, not this verb's.
+ */
+function matchLabel(registry: PairedRegistry, typed: string): LabelMatch {
+  if (registry.devices.some((d) => d.label === typed)) return { kind: "one", label: typed };
+  const folded = typed.toLowerCase();
+  const labels = registry.devices.filter((d) => d.label.toLowerCase() === folded).map((d) => d.label);
+  if (labels.length === 1) return { kind: "one", label: labels[0]! };
+  return labels.length === 0 ? { kind: "none" } : { kind: "many", labels };
+}
+
+/** Say why a label named nothing (or too much) on stderr, in revoke's words. */
+function reportLabelMiss(deps: PairingDeps, registry: PairedRegistry, typed: string, match: LabelMatch): void {
+  if (match.kind === "many") {
+    deps.io.err(`error: \`${typed}\` matches more than one paired device: ${match.labels.join(", ")}`);
+    deps.io.err("  type the label exactly as `collie devices list` prints it.");
+    return;
+  }
+  deps.io.err(`error: no paired device labelled \`${typed}\``);
+  deps.io.err(
+    registry.devices.length === 0
+      ? "  nothing is paired on this machine, see `collie devices list`."
+      : `  paired: ${registry.devices.map((d) => d.label).join(", ")}`,
+  );
+}
+
+/** Write the registry, or say why not. True on success. */
+function writeRegistryOrReport(deps: PairingDeps, next: PairedRegistry): boolean {
+  try {
+    writeOwnerOnly(deps, registryPath(deps.ctx), next);
+    return true;
+  } catch (err) {
+    deps.io.err(
+      `error: could not write ${registryPath(deps.ctx)}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+}
+
+/**
+ * `collie devices set-expiry <label> <duration>` — give a paired device a lifetime counted from now.
+ * Also the way back for an expired device the operator still trusts: a fresh lifetime revives it.
+ */
+export function cmdDevicesSetExpiry(deps: PairingDeps, args: readonly string[]): number {
+  const [typed, duration] = args;
+  if (typed === undefined || typed === "" || duration === undefined || duration === "" || args.length > 2) {
+    deps.io.err("usage: collie devices set-expiry <label> <duration>   durations: 12h, 30d, 2w");
+    return EXIT.USAGE;
+  }
+  const lifetime = parseLifetime(duration);
+  if (!lifetime.ok) {
+    deps.io.err(`error: ${lifetime.reason}`);
+    return EXIT.USAGE;
+  }
+  const registry = readRegistry(deps);
+  const match = matchLabel(registry, typed);
+  if (match.kind !== "one") {
+    reportLabelMiss(deps, registry, typed, match);
+    return EXIT.FAIL;
+  }
+  const expiresAt = (deps.now ?? Date.now)() + lifetime.ms;
+  const next = setDeviceExpiry(registry, match.label, expiresAt);
+  if (next === null) {
+    reportLabelMiss(deps, registry, typed, { kind: "none" });
+    return EXIT.FAIL;
+  }
+  if (!writeRegistryOrReport(deps, next)) return EXIT.FAIL;
+  deps.io.out(
+    `✓ "${match.label}" expires ${new Date(expiresAt).toISOString()} (${lifetimeText(lifetime.ms)} from now). No restart needed.`,
+  );
+  return EXIT.OK;
+}
+
+/** `collie devices clear-expiry <label>` — the device's token works until it is revoked. */
+export function cmdDevicesClearExpiry(deps: PairingDeps, args: readonly string[]): number {
+  const [typed] = args;
+  if (typed === undefined || typed === "" || args.length > 1) {
+    deps.io.err("usage: collie devices clear-expiry <label>");
+    return EXIT.USAGE;
+  }
+  const registry = readRegistry(deps);
+  const match = matchLabel(registry, typed);
+  if (match.kind !== "one") {
+    reportLabelMiss(deps, registry, typed, match);
+    return EXIT.FAIL;
+  }
+  const had = registry.devices.find((d) => d.label === match.label)?.expiresAt;
+  if (had === undefined) {
+    deps.io.out(`"${match.label}" has no expiry, so there is nothing to clear.`);
+    return EXIT.OK;
+  }
+  const next = setDeviceExpiry(registry, match.label, null);
+  if (next === null) {
+    reportLabelMiss(deps, registry, typed, { kind: "none" });
+    return EXIT.FAIL;
+  }
+  if (!writeRegistryOrReport(deps, next)) return EXIT.FAIL;
+  deps.io.out(`✓ "${match.label}" no longer expires. Its token works until you revoke it.`);
   return EXIT.OK;
 }
 
@@ -227,13 +411,19 @@ export function cmdDevices(deps: PairingDeps, args: readonly string[]): number {
       return cmdDevicesList(deps);
     case "revoke":
       return cmdDevicesRevoke(deps, rest);
+    case "set-expiry":
+      return cmdDevicesSetExpiry(deps, rest);
+    case "clear-expiry":
+      return cmdDevicesClearExpiry(deps, rest);
     default:
       if (sub !== undefined && sub !== "" && sub !== "help") {
         deps.io.err(`error: unknown devices subcommand \`${sub}\``);
       }
       deps.io.err(devicesUsage());
-      deps.io.err("  list     the paired devices, with when each was paired and last seen");
-      deps.io.err("  revoke   drop one device by label: `devices revoke <label>`");
+      deps.io.err("  list           the paired devices, with when each was paired, last seen, and expires");
+      deps.io.err("  revoke         drop one device by label: `devices revoke <label>`");
+      deps.io.err("  set-expiry     give a device a lifetime from now: `devices set-expiry <label> 30d`");
+      deps.io.err("  clear-expiry   remove a device's expiry: `devices clear-expiry <label>`");
       return EXIT.USAGE;
   }
 }

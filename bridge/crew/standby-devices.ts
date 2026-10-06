@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { hashesEqual, sha256Hex, type PairedDevice, type PairedRegistry } from "../pairing.ts";
+import { hashesEqual, isExpired, sha256Hex, type PairedDevice, type PairedRegistry } from "../pairing.ts";
 import { isMemberId } from "./identity.ts";
 
 // The lead's paired-device registry, synced to the DEPUTY and to nobody else (RFC §6.5,
@@ -48,6 +48,12 @@ export interface SyncedDevice {
   /** SHA-256 (hex) of the bearer token the phone holds. 64 hex characters or it is not a device. */
   readonly tokenHash: string;
   readonly createdAt: number;
+  /**
+   * Epoch ms from which the token is refused (M46 spec 01). Sent only for a device that has one, so
+   * a registry without expiries crosses — and digests — exactly as before. A deputy one release
+   * behind ignores the key and keeps honouring the token until it updates; that is the one gap.
+   */
+  readonly expiresAt?: number;
 }
 
 /**
@@ -91,7 +97,12 @@ function parseDevice(value: JsonValue | undefined): SyncedDevice | null {
   if (d === null) return null;
   if (typeof d.label !== "string" || d.label.trim() === "") return null;
   if (typeof d.tokenHash !== "string" || d.tokenHash.length !== 64) return null;
-  return { label: d.label, tokenHash: d.tokenHash, createdAt: typeof d.createdAt === "number" ? d.createdAt : 0 };
+  const createdAt = typeof d.createdAt === "number" ? d.createdAt : 0;
+  if (d.expiresAt === undefined || d.expiresAt === null) return { label: d.label, tokenHash: d.tokenHash, createdAt };
+  // Present but not a number is refused with the rest of the row, for the same fail-closed reason
+  // as a short hash: guessing "no expiry" would un-expire a phone.
+  if (typeof d.expiresAt !== "number" || !Number.isFinite(d.expiresAt)) return null;
+  return { label: d.label, tokenHash: d.tokenHash, createdAt, expiresAt: d.expiresAt };
 }
 
 /**
@@ -172,7 +183,11 @@ export function serializeStandbyDevices(data: StandbyDevices): string {
  * throttle, so including it would make every sixty-second stamp look like a registry change.
  */
 export function syncedDevicesOf(registry: PairedRegistry): SyncedDevice[] {
-  return registry.devices.map((d) => ({ label: d.label, tokenHash: d.tokenHash, createdAt: d.createdAt }));
+  return registry.devices.map((d) =>
+    d.expiresAt === undefined
+      ? { label: d.label, tokenHash: d.tokenHash, createdAt: d.createdAt }
+      : { label: d.label, tokenHash: d.tokenHash, createdAt: d.createdAt, expiresAt: d.expiresAt },
+  );
 }
 
 /**
@@ -185,7 +200,13 @@ export function syncedDevicesOf(registry: PairedRegistry): SyncedDevice[] {
  * this changes when and only when the deputy's copy would.
  */
 export function syncDigest(devices: readonly SyncedDevice[]): string {
-  return sha256Hex(devices.map((d) => `${d.label} ${d.tokenHash} ${d.createdAt}`).join(""));
+  // The expiry joins the line only when there is one, so every registry without expiries keeps the
+  // digest it always had and an upgrade alone never triggers a push.
+  return sha256Hex(
+    devices
+      .map((d) => `${d.label} ${d.tokenHash} ${d.createdAt}${d.expiresAt === undefined ? "" : ` ${d.expiresAt}`}`)
+      .join(""),
+  );
 }
 
 /**
@@ -274,14 +295,20 @@ export function collidingLabels(own: PairedRegistry, incoming: readonly SyncedDe
  * timing signal is how far down the list a label sits, which is not a secret and has nothing to do
  * with the token's bytes.
  */
-export function resolveSyncedToken(devices: readonly SyncedDevice[], token: string | null): SyncedDevice | null {
+export function resolveSyncedToken(
+  devices: readonly SyncedDevice[],
+  token: string | null,
+  now: number = Date.now(),
+): SyncedDevice | null {
   if (token === null || token === "") return null;
   const hash = sha256Hex(token);
   let found: SyncedDevice | null = null;
   for (const d of devices) {
     if (hashesEqual(d.tokenHash, hash)) found = d;
   }
-  return found;
+  // An expired token cannot take over either: the door honours the lead's expiry exactly as the
+  // lead's own write gate does (M46 spec 01).
+  return found !== null && isExpired(found, now) ? null : found;
 }
 
 /**
@@ -296,14 +323,19 @@ export function resolveSyncedToken(devices: readonly SyncedDevice[], token: stri
  */
 export function adoptedRegistry(own: PairedRegistry, synced: readonly SyncedDevice[]): PairedRegistry | null {
   if (collidingLabels(own, synced).length > 0) return null;
-  const adopted: PairedDevice[] = synced.map((d) => ({
-    label: d.label,
-    tokenHash: d.tokenHash,
-    createdAt: d.createdAt,
-    // Never contacted THIS machine — and `lastSeenAt: 0` is the honest way to say so. Copying the
-    // lead's stamp would be this machine asserting traffic it never saw.
-    lastSeenAt: 0,
-  }));
+  const adopted: PairedDevice[] = synced.map((d) => {
+    const entry: PairedDevice = {
+      label: d.label,
+      tokenHash: d.tokenHash,
+      createdAt: d.createdAt,
+      // Never contacted THIS machine — and `lastSeenAt: 0` is the honest way to say so. Copying the
+      // lead's stamp would be this machine asserting traffic it never saw.
+      lastSeenAt: 0,
+    };
+    // The expiry is the operator's limit on the credential, so it survives adoption.
+    if (d.expiresAt !== undefined) entry.expiresAt = d.expiresAt;
+    return entry;
+  });
   return { devices: [...own.devices, ...adopted] };
 }
 

@@ -24,7 +24,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Rollback** | `collie update --rollback` | Put the previous version back (not on a Herdr-managed checkout, which has none staged) |
 | **Uninstall** | `collie uninstall` | Remove the service; keep `.env` and the install |
 | **Pair** | `collie pair` | Print an 8-character code and a QR code, good for 10 minutes; scan the QR code to open Settings → System → Paired devices with the code filled in, or enter the code manually to get it [paired](security.md#pair-a-device--the-write-credential) |
-| **Devices** | `collie devices list` · `collie devices revoke <label>` | List / revoke paired devices |
+| **Devices** | `collie devices list` · `collie devices revoke <label>` · `collie devices set-expiry <label> <duration>` · `collie devices clear-expiry <label>` | List / revoke paired devices, or change when one [expires](security.md#give-a-device-an-expiry) (`collie pair --expires 30d` sets it at pairing) |
 | **Link** | `collie link` · `collie unlink` | Put `collie` on your PATH ([below](#put-collie-on-your-path)) |
 | **Logs** | `collie logs` | Tail the service log |
 | **Config** | `collie config show` · `collie config check` · `collie config init` | Print every setting with its source, validate the file, or write a commented `config.toml` ([the config file](configure.md#the-config-file)) |

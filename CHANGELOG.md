@@ -23,6 +23,15 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A paired device can carry an expiry you chose.** `collie pair --expires 30d` (also `h`, `w`)
+  puts a lifetime on the token the phone claims. Without the flag a token never expires, exactly as
+  before, and no existing token changes. `collie devices set-expiry` and `clear-expiry` adjust a
+  paired device by label, `devices list` and the Settings screen show each expiry, and an expired
+  token is refused as `device expired` so the phone offers **Pair again**. An expired device still
+  keeps pairing on until you revoke it.
+
 ### Changed
 
 - **A file in Files gets the screen.** On a phone the All files | Changes control and the two-row

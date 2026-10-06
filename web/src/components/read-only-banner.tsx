@@ -65,7 +65,7 @@ type Gate = "pairing" | "device";
 // "none", because that latch is a real change and dropping the region would make it silent.
 export function ReadOnlyBanner({ device }: { device: DeviceAuth | undefined }) {
   useLocale();
-  const { refused } = usePairing();
+  const { refused, expired } = usePairing();
   // The scope rides the link like every other navigation in the app (lib/nav.ts): Settings' own back
   // button goes to `homePath(scope)`, so a scope-less link here would strand the operator on the
   // lead's dashboard after they paired. The banner is never mounted outside the router.
@@ -116,7 +116,8 @@ export function ReadOnlyBanner({ device }: { device: DeviceAuth | undefined }) {
             icon={<KeyRound />}
             action={<ChevronRight aria-hidden className="size-3.5 opacity-70" />}
           >
-            {t("space.readOnly.notPaired")}
+            {/* An expired pairing names its own remedy: "pair again", not "pair" (M46 spec 01). */}
+            {expired ? t("space.readOnly.expired") : t("space.readOnly.notPaired")}
           </Notice>
         </Link>
       ) : gate === "device" ? (

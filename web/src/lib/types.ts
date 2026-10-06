@@ -287,6 +287,13 @@ export interface PairedDeviceWire {
   label: string;
   createdAt: number;
   lastSeenAt: number;
+  /**
+   * When the token stops working (epoch ms), or null for no expiry (M46 spec 01). Optional on this
+   * side so a fixture or an older answer without it reads as "no expiry".
+   */
+  expiresAt?: number | null;
+  /** True once `expiresAt` has passed. The device stays listed until it is revoked. */
+  expired?: boolean;
   /** True for the device making the request — i.e. the one you're reading this on. */
   current: boolean;
 }
@@ -300,6 +307,11 @@ export interface DevicesResponse {
   enforced: boolean;
   /** The label this request's token authenticated as, or null when it authenticated as nobody. */
   current: string | null;
+  /**
+   * True when this request's token belongs to a paired device whose expiry passed — so a cold open
+   * can say "pairing expired" without first failing a write. Absent reads as false.
+   */
+  currentExpired?: boolean;
   devices: PairedDeviceWire[];
 }
 

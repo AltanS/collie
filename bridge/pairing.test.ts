@@ -22,12 +22,16 @@ import {
   generateCode,
   generateToken,
   hashesEqual,
+  isExpired,
+  MAX_LIFETIME_MS,
   newPending,
   normalizeCode,
   normalizeLabel,
   PairingStore,
+  parseLifetime,
   PENDING_FILENAME,
   removeDevice,
+  setDeviceExpiry,
   sha256Hex,
   toDeviceWire,
   touchDevice,
@@ -451,6 +455,186 @@ describe("PairingStore", () => {
   });
 });
 
+// ── Token expiry (M46 spec 01) ───────────────────────────────────────────────────────────────
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
+describe("parseLifetime", () => {
+  test("a whole number and h, d or w", () => {
+    expect(parseLifetime("12h")).toEqual({ ok: true, ms: 12 * HOUR });
+    expect(parseLifetime("30d")).toEqual({ ok: true, ms: 30 * DAY });
+    expect(parseLifetime("90d")).toEqual({ ok: true, ms: 90 * DAY });
+    expect(parseLifetime("2w")).toEqual({ ok: true, ms: 14 * DAY });
+    expect(parseLifetime(" 7D ")).toEqual({ ok: true, ms: 7 * DAY });
+  });
+
+  test("zero, negative, fractional, unit-less, minutes and junk are refused with a sentence", () => {
+    for (const bad of ["0d", "0h", "-1d", "1.5d", "30", "30m", "30 days", "d", "", "abc", "1e3d"]) {
+      const parsed = parseLifetime(bad);
+      expect({ bad, ok: parsed.ok }).toEqual({ bad, ok: false });
+      if (!parsed.ok) expect(parsed.reason.length).toBeGreaterThan(10);
+    }
+  });
+
+  test("more than ten years is refused — that is what leaving the flag out means", () => {
+    expect(parseLifetime("3650d")).toEqual({ ok: true, ms: MAX_LIFETIME_MS });
+    expect(parseLifetime("3651d").ok).toBe(false);
+    expect(parseLifetime("99999999999999999999w").ok).toBe(false);
+  });
+});
+
+describe("token expiry in the registry", () => {
+  const live = { label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1 };
+
+  test("isExpired: no expiry never expires; the instant of expiry is already expired", () => {
+    expect(isExpired(live, Number.MAX_SAFE_INTEGER)).toBe(false);
+    expect(isExpired({ ...live, expiresAt: 1000 }, 999)).toBe(false);
+    expect(isExpired({ ...live, expiresAt: 1000 }, 1000)).toBe(true);
+  });
+
+  test("coerceRegistry keeps a numeric expiresAt, reads null as none, and garbage as expired", () => {
+    const reg = coerceRegistry({
+      devices: [
+        { ...live, label: "a", expiresAt: 5000 },
+        { ...live, label: "b", expiresAt: null },
+        { ...live, label: "c", expiresAt: "2030-01-01" },
+        { ...live, label: "d" },
+      ],
+    });
+    expect(reg.devices[0]!.expiresAt).toBe(5000);
+    expect("expiresAt" in reg.devices[1]!).toBe(false);
+    // A garbled limit fails closed: an expiry of 0 is long past.
+    expect(reg.devices[2]!.expiresAt).toBe(0);
+    expect("expiresAt" in reg.devices[3]!).toBe(false);
+  });
+
+  test("a registry with no expiry loads unchanged and is written back byte for byte", async () => {
+    // The file exactly as every release before expiry wrote it.
+    const dir = await tempStateDir();
+    const before = JSON.stringify(
+      {
+        devices: [
+          { label: "pixel", tokenHash: sha256Hex("a"), createdAt: 1_700_000_000_000, lastSeenAt: 1_700_000_100_000 },
+          { label: "ipad", tokenHash: sha256Hex("b"), createdAt: 1_700_000_000_001, lastSeenAt: 0 },
+        ],
+      },
+      null,
+      2,
+    );
+    await writeFile(join(dir, DEVICES_FILENAME), before);
+    const io = filePairingIo(dir);
+    const loaded = coerceRegistry(await io.readRegistry());
+    for (const d of loaded.devices) expect(Object.keys(d)).toEqual(["label", "tokenHash", "createdAt", "lastSeenAt"]);
+    await io.writeRegistry(loaded);
+    expect(await readFile(join(dir, DEVICES_FILENAME), "utf8")).toBe(before);
+
+    // And through the store's own read-modify-write: a lastSeenAt stamp leaves the shape alone.
+    const store = new PairingStore(io, () => 1_800_000_000_000);
+    expect(store.resolve("a")?.label).toBe("pixel");
+    await store.idle();
+    const stamped = JSON.parse(await readFile(join(dir, DEVICES_FILENAME), "utf8"));
+    expect(Object.keys(stamped.devices[0])).toEqual(["label", "tokenHash", "createdAt", "lastSeenAt"]);
+    expect(stamped.devices[0].lastSeenAt).toBe(1_800_000_000_000);
+    expect(JSON.stringify(stamped.devices[1])).toBe(JSON.stringify(JSON.parse(before).devices[1]));
+  });
+
+  test("a token with no expiry is accepted as before, at any time", async () => {
+    const { io } = memoryIo({ pending: newPending("ABCD2345", 0) });
+    let now = 1000;
+    const store = new PairingStore(io, () => now);
+    const claimed = await store.claim("ABCD2345", "phone");
+    if (!claimed.ok) throw new Error("claim failed");
+    now = 100 * 365 * DAY;
+    expect(store.resolve(claimed.token)?.label).toBe("phone");
+    expect(store.expired(claimed.token)).toBe(false);
+  });
+
+  test("the pending code's lifetime becomes the token's expiry, counted from the claim", async () => {
+    const { io, state } = memoryIo({ pending: newPending("ABCD2345", 0, undefined, 30 * DAY) });
+    let now = 5 * 60_000; // claimed five minutes after `collie pair`
+    const store = new PairingStore(io, () => now);
+    const claimed = await store.claim("ABCD2345", "phone");
+    if (!claimed.ok) throw new Error("claim failed");
+    const entry = coerceRegistry(state.registry).devices[0]!;
+    expect(entry.expiresAt).toBe(5 * 60_000 + 30 * DAY);
+
+    now = entry.expiresAt! - 1;
+    expect(store.resolve(claimed.token)?.label).toBe("phone");
+    now = entry.expiresAt!;
+    expect(store.resolve(claimed.token)).toBeNull();
+    expect(store.expired(claimed.token)).toBe(true);
+  });
+
+  test("an expired device is refused but still listed, and still keeps pairing enforced", async () => {
+    const { io, state } = memoryIo({
+      registry: { devices: [{ ...live, expiresAt: 1000 }] },
+    });
+    const store = new PairingStore(io, () => 2000 + SEEN_WINDOW);
+    expect(store.resolve("t")).toBeNull();
+    expect(store.expired("t")).toBe(true);
+    expect(store.expired("other")).toBe(false);
+    expect(store.expired(null)).toBe(false);
+    expect(store.enforced()).toBe(true);
+    // A refused request is not the device being seen: no stamp.
+    await store.idle();
+    expect(state.writes).toBe(0);
+    expect(store.registry().devices).toHaveLength(1);
+  });
+
+  test("a pending file's lifetime is kept only when it is a positive number", () => {
+    const base = { codeHash: "h", expiresAt: 1, attemptsLeft: 5 };
+    expect(coercePending({ ...base, tokenLifetimeMs: DAY })?.tokenLifetimeMs).toBe(DAY);
+    for (const bad of [0, -1, "30d", null]) {
+      const p = coercePending({ ...base, tokenLifetimeMs: bad });
+      expect(p).not.toBeNull();
+      expect("tokenLifetimeMs" in p!).toBe(false);
+    }
+    expect(Object.keys(newPending("ABCD2345", 0))).toEqual(["codeHash", "expiresAt", "attemptsLeft"]);
+  });
+
+  test("setDeviceExpiry sets or removes the key on one device; an unknown label is null", () => {
+    const reg = { devices: [live, { ...live, label: "tablet" }] };
+    const set = setDeviceExpiry(reg, "phone", 9000)!;
+    expect(set.devices[0]!.expiresAt).toBe(9000);
+    expect("expiresAt" in set.devices[1]!).toBe(false);
+    const cleared = setDeviceExpiry(set, "phone", null)!;
+    expect(cleared.devices[0]).toEqual(live);
+    expect(Object.keys(cleared.devices[0]!)).toEqual(["label", "tokenHash", "createdAt", "lastSeenAt"]);
+    expect(setDeviceExpiry(reg, "nope", 1)).toBeNull();
+    // Never mutates its input.
+    expect("expiresAt" in reg.devices[0]!).toBe(false);
+  });
+
+  test("toDeviceWire carries expiresAt (null when none) and an expired flag", () => {
+    const reg = { devices: [live, { ...live, label: "old", expiresAt: 500 }, { ...live, label: "new", expiresAt: 5000 }] };
+    const wire = toDeviceWire(reg, "phone", 1000);
+    expect(wire.map((w) => [w.label, w.expiresAt, w.expired])).toEqual([
+      ["phone", null, false],
+      ["old", 500, true],
+      ["new", 5000, false],
+    ]);
+    expect(JSON.stringify(wire)).not.toContain(live.tokenHash);
+  });
+
+  test("adopt carries a synced expiry, and adds none where there was none", async () => {
+    const { io, state } = memoryIo();
+    const store = new PairingStore(io, () => 1000);
+    expect(
+      await store.adopt([
+        { label: "a", tokenHash: sha256Hex("a"), createdAt: 1, expiresAt: 7000 },
+        { label: "b", tokenHash: sha256Hex("b"), createdAt: 1 },
+      ]),
+    ).toEqual([]);
+    const devices = coerceRegistry(state.registry).devices;
+    expect(devices[0]!.expiresAt).toBe(7000);
+    expect("expiresAt" in devices[1]!).toBe(false);
+  });
+});
+
+/** Past the lastSeenAt throttle, so a resolve WOULD stamp if it were going to. */
+const SEEN_WINDOW = 61_000;
+
 // ── The crew surface is not a pairing surface ────────────────────────────────────────────────
 // A lead is admitted by pinned mutual TLS plus the crew secret (CREW_PROTOCOL.md §6, ADR 0013) and
 // holds none of this collie's pairing tokens. If pairing ever leaked into the peer's dispatch, every
@@ -543,7 +727,9 @@ describe("pairing never crosses the crew seam", () => {
     const ALLOWED = new Map<string, readonly string[]>([
       // Hashes and compares a synced token digest; carries pairing's registry TYPES so the projection
       // and the collision check cannot drift from the shape they project.
-      ["standby-devices.ts", ["hashesEqual", "sha256Hex", "PairedDevice", "PairedRegistry"]],
+      // `isExpired` is the one expiry rule, so the standby door refuses an expired token by the same
+      // test the lead's write gate uses (M46 spec 01).
+      ["standby-devices.ts", ["hashesEqual", "isExpired", "sha256Hex", "PairedDevice", "PairedRegistry"]],
       // Reads `Authorization: Bearer …` off the standby door's confirm. One parser, not two.
       ["standby.ts", ["bearerToken"]],
     ]);

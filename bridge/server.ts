@@ -2268,9 +2268,18 @@ export function startServer(opts: {
         // hashes never reach this shape (see toDeviceWire).
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
-        const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
+        const token = bearerToken(req.headers);
+        const current = pairing.resolve(token)?.label ?? null;
+        // `currentExpired` lets a cold open tell "your pairing expired" from "you never paired"
+        // without first having to fail a write. It says nothing the caller's own token did not
+        // already prove: it is true only for the holder of that expired token.
         return json(
-          { enforced: pairing.enforced(), current, devices: toDeviceWire(pairing.registry(), current) },
+          {
+            enforced: pairing.enforced(),
+            current,
+            currentExpired: current === null && pairing.expired(token),
+            devices: toDeviceWire(pairing.registry(), current),
+          },
           req.headers.get("accept-encoding"),
         );
       }
@@ -2300,11 +2309,12 @@ export function startServer(opts: {
         audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
         const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
         return json(
-          { enforced: pairing.enforced(), current, devices: toDeviceWire(pairing.registry(), current) },
+          { enforced: pairing.enforced(), current, currentExpired: false, devices: toDeviceWire(pairing.registry(), current) },
           req.headers.get("accept-encoding"),
         );
       }
 
+        // A revoke is a write, so the caller's own token just passed the gate: it is not expired.
       // ── Reserved for a fronting proxy's sign-in page ─────────────────────
       // `/auth/` is the one path the service worker always passes to the network (web/src/lib/
       // sw-routes.ts), so it is the only address an installed PWA can reach when a proxy in front of
@@ -4414,9 +4424,14 @@ export function guard(
   if (!deviceAuth(req, cfg).authorized) return text("device not authorised", 403);
   // The second, independent write factor. Distinct refusal text on purpose: "not authorised" is the
   // operator's proxy allowlist, "not paired" is this device's own missing credential, and the two
-  // are fixed in completely different places.
-  if (pairing !== undefined && pairing.enforced() && pairing.resolve(bearerToken(req.headers)) === null) {
-    return text("device not paired", 403);
+  // are fixed in completely different places. "expired" is a third (M46 spec 01): the credential is
+  // real and was the operator's own, but its lifetime ran out — the phone says "pair again", not
+  // "pair", and the operator knows no-one guessed at a token.
+  if (pairing !== undefined && pairing.enforced()) {
+    const token = bearerToken(req.headers);
+    if (pairing.resolve(token) === null) {
+      return text(pairing.expired?.(token) === true ? "device expired" : "device not paired", 403);
+    }
   }
   return null;
 }
@@ -4429,7 +4444,7 @@ export function guard(
 export interface PairingGate {
   /** Whether a bearer token is required for writes (i.e. at least one device is paired). */
   enforced(): boolean;
-  /** The device this token belongs to, or null. */
+  /** The device this token belongs to, or null. An expired token resolves to null. */
   resolve(token: string | null): { label: string } | null;
 }
 
@@ -4461,6 +4476,11 @@ export function requestDevice(req: Request, cfg: Config, pairing?: PairingGate):
  * by setting COLLIE_DEVICE_HEADER to the header a trusted upstream proxy injects, carrying an opaque
  * device identifier. The header is trusted only because the bridge binds loopback behind the proxy,
  * so a direct client can't forge it (the same trust basis as the Tailscale identity header). Matrix:
+  /**
+   * Whether this token belongs to a device whose expiry passed. Optional so a test may still pass a
+   * two-line gate; {@link PairingStore} always answers it.
+   */
+  expired?(token: string | null): boolean;
  *
  *   - feature off (no header configured) → not enforced, fully authorised (today's behaviour).
  *   - header absent                      → read-only, same as an unlisted device. Configuring the

@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach } from "vitest";
 
-import { __resetPairing, clearNotPaired, markNotPaired } from "@/lib/pairing";
+import { __resetPairing, clearNotPaired, markExpired, markNotPaired } from "@/lib/pairing";
 import type { DeviceAuth } from "@/lib/types";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { ReadOnlyBanner } from "./read-only-banner";
@@ -85,6 +85,15 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     expect(link.firstElementChild).toHaveClass("min-h-[33px]");
     // …and the live region survives the wrapping — it rides the Notice's body, inside the anchor.
     expect(container.querySelector('[role="status"]')).toHaveTextContent(/Not paired/);
+  });
+
+  it("an expired pairing says so and still links to the pair-again card", () => {
+    // M46 spec 01: the remedy is the same card, but the reason differs, so the words do too.
+    markExpired();
+    render(<ReadOnlyBanner device={REFUSED} />);
+    const link = screen.getByRole("link", { name: /Pairing expired/ });
+    expect(link).toHaveAttribute("href", "/settings/system#paired-devices");
+    expect(screen.queryByText(/Not paired/)).toBeNull();
   });
 
   it("the DEVICE gate is a plain strip — no link, because the phone has no remedy", () => {

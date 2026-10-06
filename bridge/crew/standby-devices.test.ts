@@ -241,6 +241,64 @@ describe("the credential check", () => {
   });
 });
 
+// M46 spec 01: an operator's expiry holds on the standby door and survives a takeover.
+describe("token expiry crosses with the device", () => {
+  const T_EXP = T0 + 86_400_000;
+
+  test("the projection carries expiresAt only for a device that has one", () => {
+    const projected = syncedDevicesOf({
+      devices: [
+        { label: "phone", tokenHash: HASH_A, createdAt: T0, lastSeenAt: T0, expiresAt: T_EXP },
+        { label: "tablet", tokenHash: HASH_B, createdAt: T0, lastSeenAt: T0 },
+      ],
+    });
+    expect(projected).toEqual([
+      { label: "phone", tokenHash: HASH_A, createdAt: T0, expiresAt: T_EXP },
+      { label: "tablet", tokenHash: HASH_B, createdAt: T0 },
+    ]);
+    expect("expiresAt" in projected[1]!).toBe(false);
+  });
+
+  test("a registry with no expiry keeps the digest it always had — an upgrade alone pushes nothing", () => {
+    const rows = syncedDevicesOf(registry("phone", "tablet"));
+    const before = sha256Hex(rows.map((d) => `${d.label}\0${d.tokenHash}\0${d.createdAt}`).join("\x01"));
+    expect(syncDigest(rows)).toBe(before);
+  });
+
+  test("setting, changing or clearing an expiry changes the digest, so the deputy is pushed", () => {
+    const none = syncDigest(devices(device("phone", HASH_A)));
+    const set = syncDigest(devices({ ...device("phone", HASH_A), expiresAt: T_EXP }));
+    const moved = syncDigest(devices({ ...device("phone", HASH_A), expiresAt: T_EXP + 1 }));
+    expect(new Set([none, set, moved]).size).toBe(3);
+  });
+
+  test("the sync body round-trips an expiry, and a non-numeric one refuses the whole body", () => {
+    const row: SyncedDevice = { ...device("phone", HASH_A), expiresAt: T_EXP };
+    expect(parsePairingSync(wireSync("crew-1", "desk", [wireDevice(row)]))?.devices).toEqual([row]);
+    // `null` reads as no expiry, the shape an older lead never sends anyway.
+    expect(parsePairingSync(wireSync("crew-1", "desk", [{ ...wireDevice(device("phone", HASH_A)), expiresAt: null }]))?.devices)
+      .toEqual([device("phone", HASH_A)]);
+    expect(parsePairingSync(wireSync("crew-1", "desk", [{ ...wireDevice(row), expiresAt: "soon" }]))).toBeNull();
+  });
+
+  test("the standby door refuses an expired token and accepts it before then", () => {
+    const list = devices({ ...device("phone", HASH_A), expiresAt: T_EXP }, device("tablet", HASH_B));
+    expect(resolveSyncedToken(list, "token-a", T_EXP - 1)?.label).toBe("phone");
+    expect(resolveSyncedToken(list, "token-a", T_EXP)).toBeNull();
+    // A device without an expiry is untouched by the clock.
+    expect(resolveSyncedToken(list, "token-b", Number.MAX_SAFE_INTEGER)?.label).toBe("tablet");
+  });
+
+  test("adoption keeps the expiry, and adds none where there was none", () => {
+    const adopted = adoptedRegistry(
+      EMPTY_REGISTRY,
+      devices({ ...device("phone", HASH_A), expiresAt: T_EXP }, device("tablet", HASH_B)),
+    );
+    expect(adopted!.devices[0]!.expiresAt).toBe(T_EXP);
+    expect("expiresAt" in adopted!.devices[1]!).toBe(false);
+  });
+});
+
 describe("label collisions refuse and report (RFC §16, decision 6)", () => {
   test("a collision is named, and adoption writes nothing", () => {
     const own = registry("phone");

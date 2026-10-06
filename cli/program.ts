@@ -56,8 +56,10 @@ import {
 } from "./crew.ts";
 import {
   cmdDevices,
+  cmdDevicesClearExpiry,
   cmdDevicesList,
   cmdDevicesRevoke,
+  cmdDevicesSetExpiry,
   cmdPair,
   DEVICES_SUBCOMMANDS,
   type PairingDeps,
@@ -566,8 +568,9 @@ export const COMMANDS: readonly Command[] = [
   // re-reads per request, so neither restarts anything.
   {
     name: "pair",
-    summary: "mint a one-time code and a QR for a phone to pair with (scan it, or enter the code in Settings)",
-    run: (_args, s) => cmdPair(pairingDeps(s.io)),
+    summary:
+      "mint a one-time code and a QR for a phone to pair with (scan it, or enter the code in Settings); `--expires 30d` limits its lifetime",
+    run: (args, s) => cmdPair(pairingDeps(s.io), args),
   },
   {
     name: "devices",
@@ -575,13 +578,23 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "list",
-        summary: "the paired devices, with when each was paired and last seen",
+        summary: "the paired devices, with when each was paired, last seen, and expires",
         run: (_args, s) => cmdDevicesList(pairingDeps(s.io)),
       },
       {
         name: "revoke",
         summary: "drop one device by label: `devices revoke <label>`",
         run: (args, s) => cmdDevicesRevoke(pairingDeps(s.io), args),
+      },
+      {
+        name: "set-expiry",
+        summary: "give a device a lifetime from now: `devices set-expiry <label> 30d`",
+        run: (args, s) => cmdDevicesSetExpiry(pairingDeps(s.io), args),
+      },
+      {
+        name: "clear-expiry",
+        summary: "remove a device's expiry: `devices clear-expiry <label>`",
+        run: (args, s) => cmdDevicesClearExpiry(pairingDeps(s.io), args),
       },
     ],
     // Bare or misspelt lands here, and `cmdDevices` owns that message — as `cmdCrew` does.
