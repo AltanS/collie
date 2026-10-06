@@ -64,11 +64,8 @@ function setStage(next: UpdateStage): void {
   updateStage.set(next);
 }
 
-/**
- * The marker remix/component's navigation listener lets through untouched (its
- * `runtime/document-reload.js`). Not exported by the package, so it is spelled here.
- */
-const DOCUMENT_RELOAD_INFO = "remix-document-reload";
+// remix/component does not export its document-reload marker (runtime/document-reload.js), so the literal is copied here.
+export const DOCUMENT_RELOAD_INFO = "remix-document-reload";
 
 /**
  * A REAL document reload. `location.reload()` is not one in this shell: remix/spa listens to the
