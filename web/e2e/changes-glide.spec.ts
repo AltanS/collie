@@ -6,8 +6,9 @@ import { fixtureChanges } from "@/test/handlers";
 
 import { installApiStub, seedChangesOnly } from "./fixtures/api";
 
-// A TAP ON A CHANGES TAB ROW CARRIES ITS NUMBERS INTO THE SCREEN (operator, 2026-09-23). On a phone
-// at 375x812: the workspace screen's header shows the row's own count on its first frame, the list
+// A TAP ON A FILES TAB ROW CARRIES ITS NUMBERS INTO THE SCREEN (operator, 2026-09-23; the numbers
+// moved from the header to the head of the list on 2026-10-06, and only the label still glides). On a
+// phone at 375x812: the workspace screen's list head shows the row's own totals on its first frame, the list
 // waits on skeleton rows and then shows the real ones without moving the header, identical
 // re-reads touch nothing, and the tap starts one view transition where the engine has them while
 // the phone's own back starts none. The header's back arrow runs the glide in reverse, from the
@@ -20,14 +21,16 @@ test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no dashboard route");
   test.skip(testInfo.project.name === "app-tablet", "a phone-width case; the tablet run would repeat it");
   await installApiStub(page);
-  // These cases read the list of changes: the screen's body with the device's Changes-only toggle on.
+  // These cases read the list of changes: the screen's body with the device's Changes segment on.
   // The folder tree, the default since 2026-10-06 (ADR 0083), has its own cases in changes-files.
   await seedChangesOnly(page);
 });
 
-const CHANGES = new RegExp(`^${en["changes.title"]}$`, "u");
+const CHANGES = new RegExp(`^${en["files.title"]}$`, "u");
 const tabRows = (page: Page) => page.getByRole("list", { name: en["home.changes.listAria"] }).getByRole("button");
-const HEADER_COUNT = '[data-slot="header-row"] [data-slot="count-line"]';
+// The workspace's totals, `+10 −2`, stand at the head of the Changes list since the Files screen
+// (2026-10-06); the header's second line is the workspace label alone.
+const HEAD_TOTALS = '[data-slot="changes-head"] [data-slot="changes-totals"]';
 
 /**
  * Answer each workspace's list: webapp (w1) has the shared fixture, collie is clean. While
@@ -69,7 +72,6 @@ interface GlideRecord {
 
 interface Frame {
   count: string;
-  state: string;
   skeleton: boolean;
   rows: boolean;
   top: number;
@@ -78,7 +80,7 @@ interface Frame {
 
 declare global {
   interface Window {
-    /** One entry per animation frame in which the Changes header's count line was on screen. */
+    /** One entry per animation frame in which the Changes list's totals were on screen. */
     glideFrames?: Frame[];
     /** How many view transitions the page started. */
     glideStarts?: number;
@@ -89,18 +91,17 @@ declare global {
   }
 }
 
-/** Sample the header's count line on every frame from now on. */
+/** Sample the list head's totals on every frame from now on. */
 async function sampleFrames(page: Page) {
   await page.evaluate(() => {
     const frames: Frame[] = [];
     window.glideFrames = frames;
     const tick = () => {
-      const line = document.querySelector<HTMLElement>('[data-slot="header-row"] [data-slot="count-line"]');
+      const line = document.querySelector<HTMLElement>('[data-slot="changes-head"] [data-slot="changes-totals"]');
       if (line) {
         const r = line.getBoundingClientRect();
         frames.push({
           count: line.textContent ?? "",
-          state: line.dataset.state ?? "",
           skeleton: document.querySelector('[data-slot="changes-skeleton"]') !== null,
           rows: document.querySelector('main [data-slot="list-group"] button') !== null,
           top: r.top,
@@ -113,7 +114,7 @@ async function sampleFrames(page: Page) {
   });
 }
 
-test("the header shows the tab's numbers on its first frame, and the list's skeleton gives way without moving it", async ({
+test("the list head shows the tab's totals on its first frame, and the list's skeleton gives way without moving it", async ({
   page,
 }) => {
   const slow = { ms: 0 };
@@ -122,6 +123,7 @@ test("the header shows the tab's numbers on its first frame, and the list's skel
   const tabCount = (await tabRows(page).first().locator('[data-slot="count-line"]').textContent()) ?? "";
   expect(tabCount).toContain("5 files");
   expect(tabCount).toContain("+10 −2");
+  const totals = "+10 −2";
 
   slow.ms = 900;
   await sampleFrames(page);
@@ -132,11 +134,11 @@ test("the header shows the tab's numbers on its first frame, and the list's skel
 
   const frames = (await page.evaluate(() => window.glideFrames)) ?? [];
   expect(frames.length).toBeGreaterThan(2);
-  // The first frame: the tab's own numbers, without motion, over a list still on its skeleton.
-  expect(frames[0]).toMatchObject({ count: tabCount, state: "still", skeleton: true, rows: false });
-  // Skeleton rows first, real rows after, and the header's count line never moved on the way.
+  // The first frame: the tab's own totals, without motion, over a list still on its skeleton.
+  expect(frames[0]).toMatchObject({ count: totals, skeleton: true, rows: false });
+  // Skeleton rows first, real rows after, and the totals never moved on the way.
   expect(frames.some((f) => f.skeleton)).toBe(true);
-  expect(frames.at(-1)).toMatchObject({ skeleton: false, rows: true, count: tabCount, state: "still" });
+  expect(frames.at(-1)).toMatchObject({ skeleton: false, rows: true, count: totals });
   for (const f of frames) {
     expect(Math.abs(f.top - frames[0]!.top)).toBeLessThanOrEqual(0.5);
     expect(Math.abs(f.left - frames[0]!.left)).toBeLessThanOrEqual(0.5);
@@ -147,16 +149,15 @@ test("the header shows the tab's numbers on its first frame, and the list's skel
   expect(await arrive.evaluate((e) => getComputedStyle(e).animationName)).toBe("count-arrive");
 });
 
-test("a first visit with nothing kept holds a skeleton in the header's count line too", async ({ page }) => {
+test("a first visit with nothing kept draws the totals when the first answer lands, and moves nothing", async ({ page }) => {
   await routeChanges(page, { ms: 900 });
   await page.goto("/space/w1/changes");
-  const line = page.locator(HEADER_COUNT);
-  await expect(line).toHaveAttribute("data-state", "loading");
+  const head = page.locator('[data-slot="changes-head"]');
   await expect(page.locator('[data-slot="changes-skeleton"]')).toBeVisible();
-  const before = (await line.boundingBox())!;
-  await expect(line).toHaveAttribute("data-state", "arrive");
-  await expect(line).toContainText("5 files");
-  const after = (await line.boundingBox())!;
+  await expect(page.locator(HEAD_TOTALS)).toHaveCount(0);
+  const before = (await head.boundingBox())!;
+  await expect(page.locator(HEAD_TOTALS)).toHaveText("+10 −2");
+  const after = (await head.boundingBox())!;
   for (const k of ["x", "y", "height"] as const) expect(Math.abs(after[k] - before[k])).toBeLessThanOrEqual(0.5);
 });
 
@@ -268,14 +269,15 @@ test("the tap starts one view transition, and the phone's own back starts none",
   const supported = await page.evaluate(() => "startViewTransition" in document);
   await tabRows(page).first().click();
   await expect(page).toHaveURL(/\/space\/w1\/changes$/u);
-  await expect(page.locator(HEADER_COUNT)).toContainText("5 files");
+  await expect(page.locator(HEAD_TOTALS)).toHaveText("+10 −2");
   expect(await page.evaluate(() => window.glideStarts)).toBe(supported ? 1 : 0);
   if (supported) {
     const [forward] = await glidesDone(page, 1);
     expect(forward!.startClasses.split(" ")).toEqual(expect.arrayContaining(["glide", "glide-changes"]));
     expect(forward!.startClasses.split(" ")).not.toContain("glide-back");
     expect(forward!.oldNames).toEqual([`glide-changes-count@${W1}`, `glide-changes-label@${W1}`]);
-    expect(forward!.newNames).toEqual(["glide-changes-count@destination", "glide-changes-label@destination"]);
+    // The count has no twin on the Files screen's header any more: it fades where it stood.
+    expect(forward!.newNames).toEqual(["glide-changes-label@destination"]);
     expect(forward!.skipped).toBe(false);
   }
   await expectNoGlideLeft(page);
@@ -287,14 +289,14 @@ test("the tap starts one view transition, and the phone's own back starts none",
   await expectNoGlideLeft(page);
 });
 
-test("the header's back arrow glides the label and count back down into the tab row", async ({ page }) => {
+test("the header's back arrow glides the label back down into the tab row", async ({ page }) => {
   await countStarts(page);
   await routeChanges(page, { ms: 0 });
   await openTab(page);
   const supported = await page.evaluate(() => "startViewTransition" in document);
   await tabRows(page).first().click();
   await expect(page).toHaveURL(new RegExp(`${W1}$`, "u"));
-  await expect(page.locator(HEADER_COUNT)).toContainText("5 files");
+  await expect(page.locator(HEAD_TOTALS)).toHaveText("+10 −2");
   if (supported) await glidesDone(page, 1);
 
   await backArrow(page).click();
@@ -304,8 +306,8 @@ test("the header's back arrow glides the label and count back down into the tab 
   if (!supported) return;
   const back = (await glidesDone(page, 2))[1]!;
   expect(back.startClasses.split(" ")).toEqual(expect.arrayContaining(["glide", "glide-changes", "glide-back"]));
-  // The header's two parts leave, and the very row that was tapped takes them.
-  expect(back.oldNames).toEqual(["glide-changes-count@destination", "glide-changes-label@destination"]);
+  // The header's one part leaves, and the very row that was tapped takes it, with its count fading in.
+  expect(back.oldNames).toEqual(["glide-changes-label@destination"]);
   expect(back.readyClasses).not.toContain("glide-crossfade");
   expect(back.newNames).toEqual([`glide-changes-count@${W1}`, `glide-changes-label@${W1}`]);
   expect(back.skipped).toBe(false);
@@ -329,7 +331,7 @@ test("the back arrow crossfades without names when the tab row is off screen", a
   const supported = await page.evaluate(() => "startViewTransition" in document);
   test.skip(!supported, "no view transitions in this engine: covered by the plain-navigation cases");
   await tabRows(page).first().click();
-  await expect(page.locator(HEADER_COUNT)).toContainText("5 files");
+  await expect(page.locator(HEAD_TOTALS)).toHaveText("+10 −2");
   await glidesDone(page, 1);
   // The phone turns, or the keyboard takes the bottom of the screen: the dashboard comes back too
   // short to show the row where scroll memory keeps the list.
@@ -376,6 +378,6 @@ test("with reduced motion the tap navigates with no view transition", async ({ p
   await routeChanges(page, { ms: 0 });
   await openTab(page);
   await tabRows(page).first().click();
-  await expect(page.locator(HEADER_COUNT)).toContainText("5 files");
+  await expect(page.locator(HEAD_TOTALS)).toHaveText("+10 −2");
   expect(await page.evaluate(() => window.glideStarts)).toBe(0);
 });

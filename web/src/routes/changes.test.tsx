@@ -115,7 +115,8 @@ describe("ChangesRoute — the list", () => {
       ),
     );
     renderAt("/pane/w1%3Ap1/changes");
-    expect(await screen.findByText("collie-workspace")).toBeTruthy();
+    // The header's second line says it once; the list's head carries the count and no name.
+    expect((await screen.findAllByText("collie-workspace")).length).toBe(1);
     expect(document.querySelector('[data-slot="files-root-folder"]')).toBeNull();
     expect(screen.queryByText(/projects\//)).toBeNull();
   });
@@ -269,8 +270,9 @@ const diffLine = (text: string) => {
   return (_: string, el: Element | null) => el !== null && reads(el) && ![...el.children].some(reads);
 };
 
-// The first frame (the operator's ask, 2026-09-23): the header carries the tab's count line, seeded
-// from the tab's kept answer, and the list waits on skeleton rows only when nothing is kept.
+// The first frame (the operator's ask, 2026-09-23, moved 2026-10-06): the head of the Changes list
+// carries the workspace's totals, seeded from the tab's kept answer, and the list waits on skeleton
+// rows only when nothing is kept. The totals left the header with the Files screen's mode control.
 describe("ChangesRoute — the first frame", () => {
   const LOOKUP = { depth: 2, nested: true };
   const fixtureCount = summarizeChanges(fixtureChanges);
@@ -289,47 +291,45 @@ describe("ChangesRoute — the first frame", () => {
     return () => act(() => release());
   }
 
-  const headerLine = () => {
-    const line = document.querySelector<HTMLElement>('[data-slot="header-row"] [data-slot="count-line"]');
-    expect(line).not.toBeNull();
-    return line!;
-  };
+  /** The totals at the head of the list, `+10 −2`, or null while none are known. */
+  const totals = () => document.querySelector<HTMLElement>('[data-slot="changes-head"] [data-slot="changes-totals"]');
+  const totalsText = () => totals()?.textContent ?? null;
 
-  it("shows the tab's kept count in the header before the list answers, and keeps it when the answer agrees", async () => {
+  it("shows the tab's kept totals at the head of the list before it answers, and keeps them when the answer agrees", async () => {
     expect(fixtureCount.kind).toBe("changed");
     keepChangeCount({ scope: {}, workspaceId: "w1" }, LOOKUP, fixtureCount);
     const release = holdLists();
     renderAt("/space/w1/changes");
     // The list is still on its skeleton.
     await waitFor(() => expect(document.querySelector('[data-slot="changes-skeleton"]')).not.toBeNull());
-    expect(headerLine().dataset.state).toBe("still");
-    expect(headerLine().textContent).toContain("5 files");
-    const before = headerLine().innerHTML;
+    expect(totalsText()).toBe("+10 −2");
+    const node = totals();
     await release();
     expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
     expect(document.querySelector('[data-slot="changes-skeleton"]')).toBeNull();
-    expect(headerLine().innerHTML).toBe(before);
+    expect(totalsText()).toBe("+10 −2");
+    // The same node: an answer that agrees touches nothing.
+    expect(totals()).toBe(node);
   });
 
-  it("changes the seeded count in place when the list sums to another one", async () => {
+  it("changes the seeded totals in place when the list sums to another one", async () => {
     keepChangeCount({ scope: {}, workspaceId: "w1" }, LOOKUP, { kind: "changed", files: 9, added: 1, removed: 1 });
     const release = holdLists();
     renderAt("/space/w1/changes");
-    await waitFor(() => expect(headerLine().textContent).toContain("9 files"));
+    await waitFor(() => expect(totalsText()).toBe("+1 −1"));
     await release();
-    await waitFor(() => expect(headerLine().textContent).toContain("5 files"));
-    expect(headerLine().dataset.state).toBe("update");
+    await waitFor(() => expect(totalsText()).toBe("+10 −2"));
   });
 
-  it("with nothing kept, holds skeletons in header and list, then fades the answer in", async () => {
+  it("with nothing kept, draws no totals and a skeleton list, then both once the answer lands", async () => {
     const release = holdLists();
     renderAt("/space/w1/changes");
     await waitFor(() => expect(document.querySelector('[data-slot="changes-skeleton"]')).not.toBeNull());
-    expect(headerLine().dataset.state).toBe("loading");
+    expect(totals()).toBeNull();
     expect(screen.getByText(en["changes.loading"])).toBeTruthy();
     await release();
     expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
-    expect(headerLine().dataset.state).toBe("arrive");
+    expect(totalsText()).toBe("+10 −2");
     expect(document.querySelector('[data-slot="changes-skeleton"]')).toBeNull();
     expect(document.querySelector("main .count-arrive")).not.toBeNull();
   });
@@ -341,12 +341,21 @@ describe("ChangesRoute — the first frame", () => {
     cleanup();
     const release = holdLists();
     renderAt("/space/w1/changes");
-    // Before any read answers: the kept list, and the header's count from it.
+    // Before any read answers: the kept list, and the totals from it.
     expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
     expect(document.querySelector('[data-slot="changes-skeleton"]')).toBeNull();
     expect(document.querySelector("main .count-arrive")).toBeNull();
-    expect(headerLine().dataset.state).toBe("still");
+    expect(totalsText()).toBe("+10 −2");
     await release();
+  });
+
+  it("keeps the totals out of the header: its second line is the workspace label alone", async () => {
+    renderAt("/space/w1/changes");
+    expect(await screen.findByText("webapp · 3 files")).toBeTruthy();
+    const header = document.querySelector<HTMLElement>('[data-slot="header-row"]')!;
+    expect(header.querySelector('[data-slot="count-line"]')).toBeNull();
+    expect(header.querySelector("h1")?.textContent).toBe(en["files.title"]);
+    expect(within(header).getByText("webapp")).toBeTruthy();
   });
 });
 

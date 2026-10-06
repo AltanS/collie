@@ -27,7 +27,7 @@ const DASHBOARD = new RegExp(`^${en["home.tabs.dashboard"]}`, "u");
 const CREW = new RegExp(`^${en["crew.title"]}$`, "u");
 /** The needs-you switch in the summary line's row (ADR 0085). */
 const needsYou = (page: Page) => page.getByRole("button", { name: en["home.needsYouOnly"] });
-const CHANGES = new RegExp(`^${en["changes.title"]}$`, "u");
+const CHANGES = new RegExp(`^${en["files.title"]}$`, "u");
 /** The summary line: the one button in the list that opens on a count of what needs you, or the all-clear. */
 const summary = (page: Page) => page.getByRole("main").getByRole("button", { name: /^(\d+ needs you|Nothing needs you)/u });
 

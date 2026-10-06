@@ -232,3 +232,15 @@ switch any more. Its body is the folder tree of the Changes root, and the change
 - A device the read gate admits and the device gate refuses (consequence 3) still sees the change
   set: the root offers Changes only in the tree's place. So does a pane whose folder Files does not
   reach but Changes does.
+
+## Amended 2026-10-06 (later): the screen is Files, and the mode is a segment
+
+The web side only, by the operator's call. The merged screen is called **Files**, in its header on
+every level (root, a folder, a file), on a pane's route and on a space's. The **Changes only**
+icon toggle and the Ignored eye leave the header. A two-segment control directly under it, **All
+files | Changes**, drawn by the file screen's own `Segmented`, writes the same `changesOnly` pref;
+the Changes segment carries the changed-file count as the small amber badge the toggle drew. The
+list's head line names the root at the left and the `+added −removed` totals at the right, which
+left the header's second line. The header keeps Filter, the Tree toggle (Changes only) and Refresh.
+The "{count} ignored hidden" footer is the only switch for ignored rows: once they are shown it
+reads "{count} ignored shown" and offers **Hide**. Read "Changes only" above as the Changes segment.

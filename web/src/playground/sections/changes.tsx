@@ -8,7 +8,7 @@ import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { FileContent, type FileLinks, type FileText, type FileView } from "@/components/file-preview";
-import { ChangesOnlyToggle, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, IgnoredToggle } from "@/components/files-view";
+import { ChangesListHead, FilesBreadcrumb, FilesFilterBar, FilesFolderBody, FilesModeControl } from "@/components/files-view";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 
@@ -26,6 +26,7 @@ import {
   StatusLetter,
 } from "@/components/changes-view";
 import { t } from "@/lib/i18n";
+import { summarizeChanges } from "@/lib/workspace-changes";
 import { folderView } from "@/lib/files-filter";
 import { previewKindFor } from "@/lib/files-view";
 import { changeAt, indexChanges, markFolder } from "@/lib/files-marks";
@@ -37,11 +38,11 @@ export const DEF: SectionDef = {
   id: "changes",
   title: "Changes",
   intent:
-    "The pane's Changes view: the list of files changed since the last commit, grouped by repo, " +
+    "The pane's Files screen: the list of files changed since the last commit, grouped by repo, " +
     "one file's diff with both line gutters and syntax colour, and the Settings card that decides " +
     "where it looks. " +
     "By default the screen is the root folder, one folder at a time, with every change marked on its " +
-    "row; the header's Changes-only toggle swaps it for the list of changes alone, flat or as a tree, " +
+    "row; the Changes segment under the header swaps it for the list of changes alone, flat or as a tree, " +
     "with a filter row that narrows it by path and status. A file opens on Diff when it changed, " +
     "beside Source and, for Markdown, JSON and HTML, a Preview.",
 };
@@ -49,6 +50,8 @@ export const DEF: SectionDef = {
 const repos = fixtureChanges.available ? fixtureChanges.repos : [];
 const CHANGES = indexChanges(fixtureChanges.available ? fixtureChanges.root : "", repos);
 const CHANGED = countFiles(repos);
+/** The workspace totals the Changes list's head prints: `+added −removed`. */
+const TOTALS = fixtureChanges.available ? summarizeChanges(fixtureChanges) : { kind: "clean" as const };
 /** The fixture's change set with one file deleted at the root, which the disk no longer lists. */
 const DELETED_INDEX = indexChanges(fixtureChanges.available ? fixtureChanges.root : "", [
   { ...repos[0]!, files: [...repos[0]!.files, { path: "CHANGELOG.md", status: "D", added: 0, removed: 12, binary: false }] },
@@ -82,7 +85,7 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
     <Stage height={520}>
       <div className="flex h-full flex-col">
         <div className="relative flex items-center gap-2 border-b border-rule px-2 py-1">
-          <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("changes.title")}</span>
+          <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("files.title")}</span>
           <ChangesLayoutToggle layout={layout} onChange={setLayout} />
           <ChangesFilterButton
             open={open}
@@ -91,7 +94,6 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
             total={countFiles(repos)}
             onClick={() => setOpen((o) => !o)}
           />
-          <ChangesOnlyToggle on count={CHANGED} onChange={() => {}} />
           <RefreshSquare />
           <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
             <ChangesFilterBar
@@ -104,7 +106,9 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
             />
           </ChangesFilterOverlay>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <FilesModeControl changesOnly count={CHANGED} onChange={() => {}} />
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+          <ChangesListHead count={TOTALS} />
           {shown.length === 0 ? (
             <ChangesNoMatch onClear={clear} />
           ) : layout === "tree" ? (
@@ -277,8 +281,7 @@ function FolderCard({
     <Stage height={filterOpen ? 520 : 480}>
       <div className="flex h-full flex-col">
         <div className="relative flex items-center gap-2 border-b border-rule px-2 py-1">
-          <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("changes.title")}</span>
-          <IgnoredToggle showIgnored={showIgnored} onShowIgnored={setShowIgnored} />
+          <span className="min-w-0 flex-1 truncate px-2 text-lg font-semibold">{t("files.title")}</span>
           <ChangesFilterButton
             open={open}
             active={query.trim() !== ""}
@@ -286,8 +289,7 @@ function FolderCard({
             total={view.pool}
             onClick={() => setOpen((o) => !o)}
           />
-          {/* The same four squares in every folder: the header does not change with depth. */}
-          <ChangesOnlyToggle on={false} count={CHANGED} onChange={() => {}} />
+          {/* The same two squares in every folder: the header does not change with depth. */}
           <RefreshSquare />
           <ChangesFilterOverlay open={open} onClose={() => setOpen(false)}>
             <FilesFilterBar
@@ -300,6 +302,7 @@ function FolderCard({
             />
           </ChangesFilterOverlay>
         </div>
+        <FilesModeControl changesOnly={false} count={CHANGED} onChange={() => {}} />
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
           <FilesBreadcrumb dir={dir} rootName="webapp" hrefFor={() => "#"} onOpen={() => {}} />
           <FilesFolderBody
@@ -321,12 +324,12 @@ function FolderCard({
 export function ChangesSection() {
   return (
     <Section def={DEF}>
-      <Group title="The list (Changes only)">
+      <Group title="The list (Changes segment)">
         <Card
           state="changes-list-two-repos"
           label="changes, a workspace and a member repo"
-          reach="open a pane whose folder is a workspace repo with a member repo below it, tap the Changes
-            pill in the belt, then the Changes-only toggle. Two repos have changes, so each gets its
+          reach="open a pane whose folder is a workspace repo with a member repo below it, tap the Files
+            pill in the belt, then the Changes segment. Two repos have changes, so each gets its
             name and count."
         >
           <Stage height={360}>
@@ -353,7 +356,7 @@ export function ChangesSection() {
         <Card
           state="changes-tree"
           label="changes, the tree layout"
-          reach="with Changes only on, tap the tree mark beside the filter button. Folders fold; a chain
+          reach="with the Changes segment on, tap the tree mark beside the filter button. Folders fold; a chain
             of single folders is one row."
         >
           <Interactive initialLayout="tree" />
@@ -362,7 +365,7 @@ export function ChangesSection() {
         <Card
           state="changes-tree-collapsed"
           label="changes, the tree with a folder folded"
-          reach="in the Changes-only tree, tap a folder row. Its files hide; its count and line totals
+          reach="in the Changes tree, tap a folder row. Its files hide; its count and line totals
             stay."
         >
           <Stage height={300}>
@@ -423,12 +426,12 @@ export function ChangesSection() {
         <Card
           state="files-folder-root"
           label="changes, the root folder with its marks"
-          reach="open Changes from a pane's belt or the dashboard's Changes tab. The body is the root
+          reach="open Files from a pane's belt or the dashboard's Files tab. The body is the root
             folder: folders first, then files by name, with a size for each file. A changed file wears
             its status letter, and its icon switches to the status's shape in the same ink: a pen
             for modified, a plus for new, a minus for deleted. A folder with changes below it shows
-            a dot and how many. The Changes-only toggle, right of Filter, carries the number of
-            changed files, its glyph in the Modified ink, and Refresh closes the row."
+            a dot and how many. The All files | Changes control under the header carries the number of
+            changed files on its Changes segment, in a small amber badge. Filter and Refresh close the header."
         >
           <FolderCard dir="" />
         </Card>
@@ -438,7 +441,7 @@ export function ChangesSection() {
           label="changes, a folder of changed files"
           reach="in the tree, tap packages, then api. The untracked note is new: a U and a file-plus icon,
             both in the Added ink. Server holds the renamed handler, so it shows one in the Renamed
-            colour. The header is the root's, square for square."
+            colour. The header and the control under it are the root's, whatever the depth."
         >
           <FolderCard dir="packages/api" />
         </Card>
@@ -446,7 +449,7 @@ export function ChangesSection() {
         <Card
           state="files-folder-deleted"
           label="changes, a deleted file in its folder"
-          reach="delete a file the repo tracks, then open Changes. The disk no longer lists it, so the
+          reach="delete a file the repo tracks, then open Files. The disk no longer lists it, so the
             row comes from the change set: its name struck through, D in the Deleted colour. It opens on
             its Diff."
         >
@@ -456,9 +459,9 @@ export function ChangesSection() {
         <Card
           state="files-folder-ignored-hidden"
           label="changes, ignored entries hidden"
-          reach="open Changes in a folder inside a git repository that ignores node_modules and logs.
+          reach="open Files in a folder inside a git repository that ignores node_modules and logs.
             Those rows are left out, and one quiet line under the list says how many, with a Show
-            action. The eye-off toggle in the header, left of Filter, is the same choice, unpressed."
+            action. That line is the screen's switch for ignored entries."
         >
           <FolderCard dir="" />
         </Card>
@@ -466,10 +469,9 @@ export function ChangesSection() {
         <Card
           state="files-folder-ignored-shown"
           label="changes, ignored entries shown"
-          reach="in the tree, tap Show under the list, or the eye toggle in the header. The toggle takes
-            the primary tint and a hairline ring, as the dashboard's needs-you switch does, and its
-            glyph becomes an open eye. The ignored rows come back dimmed, unmarked and still open. The
-            choice stays on this device."
+          reach="in the tree, tap Show under the list. The ignored rows come back dimmed, unmarked and
+            still open, and the quiet line now says how many are shown, with a Hide action to put
+            them away. The choice stays on this device."
         >
           <FolderCard dir="" showIgnored />
         </Card>
@@ -479,7 +481,7 @@ export function ChangesSection() {
           label="changes, the tree's filter row"
           reach="in the tree, tap the Filter button. A name field, the labelled Ignored toggle (an eye
             and Ignored shown or Ignored hidden), and the count once a name is typed. It is the same
-            choice as the eye in the header."
+            choice as the Show and Hide line under the list."
         >
           <FolderCard dir="" showIgnored query="o" filterOpen />
         </Card>
@@ -502,13 +504,13 @@ export function ChangesSection() {
         </Card>
       </Group>
 
-      <Group title="Changes only">
+      <Group title="The Changes segment">
         <Card
           state="changes-only"
-          label="changes, the Changes-only toggle on"
-          reach="on Changes, tap the toggle right of Filter. It takes the pressed look and the body
-            becomes the list of changed files alone, with the layout toggle and the filter beside it.
-            The choice stays on this device."
+          label="changes, the Changes segment on"
+          reach="on Files, tap the Changes segment under the header. It takes the selected look and the
+            body becomes the list of changed files alone, headed by the changed-file count and the totals,
+            with the layout toggle and the filter beside it. The choice stays on this device."
         >
           <Interactive initialLayout="list" />
         </Card>

@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no pane route");
   test.skip(testInfo.project.name === "app-tablet", "a phone-width case; the tablet run would repeat it");
   await installApiStub(page);
-  // These cases read the list of changes: the screen's body with the device's Changes-only toggle on.
+  // These cases read the list of changes: the screen's body with the device's Changes segment on.
   // The folder tree, the default since 2026-10-06 (ADR 0083), has its own cases in changes-files.
   await seedChangesOnly(page);
 });
@@ -66,7 +66,7 @@ async function listSettled(page: Page) {
 
 // EXPERIMENT (operator, 2026-09-23): the entry is a pill on the belt's pinned block, immediately
 // left of the switcher mark, no longer a row in the pane menu.
-test("the belt's Changes pill opens Changes, the list groups by repo, and a diff wraps", async ({ page }) => {
+test("the belt's Files pill opens Files, the list groups by repo, and a diff wraps", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}`);
   const pill = page.getByRole("button", { name: en["chat.changes.label"] });
   const switcher = page.getByRole("button", { name: en["chat.switcher.aria"] });
@@ -169,7 +169,7 @@ test("the tree folds, the filter narrows, and Previous / Next walk only what is 
   await expect(page.getByRole("button", { name: /checkout\.tsx/ })).toBeVisible();
 
   // The filter row opens under the header and leaves the header where it was.
-  const title = page.getByRole("heading", { name: en["changes.title"] });
+  const title = page.getByRole("heading", { name: en["files.title"] });
   const before = (await title.boundingBox())!;
   await page.getByRole("button", { name: en["changes.filter.button"] }).click();
   const field = page.getByRole("textbox", { name: en["changes.filter.placeholder"] });
@@ -238,7 +238,7 @@ test("opening and closing the filter never moves the list or the header", async 
   await expect(page.getByText("webapp · 3 files")).toBeVisible();
   await listSettled(page);
 
-  const title = page.getByRole("heading", { name: en["changes.title"] });
+  const title = page.getByRole("heading", { name: en["files.title"] });
   const firstRow = page.getByRole("button", { name: /checkout\.tsx/ });
   const titleBefore = (await title.boundingBox())!;
   const rowBefore = (await firstRow.boundingBox())!;

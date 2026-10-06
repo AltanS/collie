@@ -1,4 +1,4 @@
-import { GitCompare, Network, Rows3 } from "lucide-react";
+import { ListTree, Network, Rows3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRevalidator } from "react-router";
 
@@ -324,7 +324,7 @@ export function HomeRoute() {
 
       {/* The dashboard's footer (ADR 0066, ADR 0085): lists, each named for what it holds. Crew
           first while a crew is configured, then Dashboard, the default, in the middle under the
-          thumb, then Changes. It sits OUTSIDE the scroller, so the content scrolls above it and a
+          thumb, then Files. It sits OUTSIDE the scroller, so the content scrolls above it and a
           switch moves neither it nor the strip and summary line at the top of the list. At every width: the dashboard has no sidebar on a wide screen (it is one
           centred column), so nothing else offers these views. */}
       <TabBar<DashView>
@@ -345,8 +345,9 @@ export function HomeRoute() {
             dot: readyUnseen,
             badgeLabel: blockedCount > 0 ? tn("home.tabs.blocked", blockedCount) : t("home.tabs.unseen"),
           },
-          // GitCompare is the one Changes icon: the pane belt's Changes pill and the Settings row wear it.
-          { value: "changes", label: t("changes.title"), icon: <GitCompare className="size-5" /> },
+          // The Files tab (2026-10-06, ADR 0085): the stored value stays `changes`. ListTree is the
+          // one Files icon: the pane belt's pill and the Files screen's Tree toggle wear it.
+          { value: "changes", label: t("files.title"), icon: <ListTree className="size-5" /> },
         ]}
       />
 

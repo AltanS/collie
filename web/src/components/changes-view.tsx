@@ -57,7 +57,7 @@ export const STATUS_TONE = {
   "?": "text-status-done",
 } satisfies Record<ChangeStatus, string>;
 
-/** The same five colours as a fill, for the folder tree's dot and the Changes-only badge. */
+/** The same five colours as a fill, for the folder tree's dot and the Changes segment's badge. */
 export const STATUS_FILL = {
   M: "bg-status-working",
   A: "bg-status-done",

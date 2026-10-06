@@ -96,14 +96,14 @@ describe("Changes: the folder tree is the default body", () => {
       "package.json, file, 312 B",
       "current, link",
     ]);
-    // There is no Changes | Files switch any more: one screen, titled Changes.
+    // There is no Changes | Files switch any more: one screen, titled Files.
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
   it("is also the body of the root's address from before the merge", async () => {
     renderAt([FILES]);
     expect(await screen.findByRole("button", { name: /^docs, folder/ })).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toContain(en["changes.title"]);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toContain(en["files.title"]);
   });
 
   it("asks the pane route for the root, then for a folder with ?dir=", async () => {
@@ -261,7 +261,7 @@ describe("Changes: the marks on the tree", () => {
     expect(router.state.location.search).toBe("?path=CHANGELOG.md");
     expect(await screen.findByText("# Changelog")).toBeTruthy();
     // On disk no more, so it has no Source to read and no switch to show.
-    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: en["files.view.aria"] })).toBeNull();
     expect(asked).toEqual([""]);
   });
 
@@ -277,19 +277,21 @@ describe("Changes: the marks on the tree", () => {
   });
 });
 
-describe("Changes: the Changes-only toggle", () => {
-  const toggle = () => screen.findByRole("button", { name: new RegExp(`^${en["changes.only.label"]}, `) });
+describe("Files: the All files | Changes control", () => {
+  const changesSegment = () => screen.findByRole("radio", { name: new RegExp(`^${en["files.mode.changes"]}`) });
+  const allSegment = () => screen.findByRole("radio", { name: en["files.mode.all"] });
 
-  it("carries the changed-file count, is off by default, and swaps the tree for the list", async () => {
+  it("carries the changed-file count on Changes, is on All files by default, and swaps the tree for the list", async () => {
     renderAt([CHANGES]);
-    const only = await toggle();
-    await waitFor(() => expect(only.getAttribute("aria-label")).toBe(en["changes.only.aria.other"].replace("{count}", "5")));
-    expect(only.getAttribute("aria-pressed")).toBe("false");
-    expect(only.querySelector('[data-slot="toggle-badge"]')?.textContent).toBe("5");
+    const only = await changesSegment();
+    await waitFor(() => expect(only.getAttribute("aria-label")).toBe(`${en["files.mode.changes"]}, ${en["files.changed.other"].replace("{count}", "5")}`));
+    expect(only.getAttribute("aria-checked")).toBe("false");
+    expect(only.querySelector('[data-slot="segmented-badge"]')?.textContent).toBe("5");
+    expect((await allSegment()).getAttribute("aria-checked")).toBe("true");
     await screen.findByRole("button", { name: /^docs, folder/ });
 
     await userEvent.click(only);
-    expect(only.getAttribute("aria-pressed")).toBe("true");
+    expect(only.getAttribute("aria-checked")).toBe("true");
     // Today's list, exactly: grouped by repo, with its layout toggle and filter.
     expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^docs, folder/ })).toBeNull();
@@ -297,18 +299,47 @@ describe("Changes: the Changes-only toggle", () => {
     expect(storedPref("changesOnly")).toBe(true);
   });
 
+  it("heads the list with the changed-file count and the totals, and no longer the header", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true }));
+    renderAt([CHANGES]);
+    const head = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-slot="changes-head"]');
+      expect(el).not.toBeNull();
+      expect(el!.querySelector('[data-slot="changes-totals"]')).not.toBeNull();
+      return el!;
+    });
+    expect(head.textContent).toBe(`${en["files.changed.other"].replace("{count}", "5")}+10 −2`);
+    // The root's name is the first repo group's to say, not the head's.
+    expect(head.textContent).not.toContain("webapp");
+    expect(screen.getByRole("heading", { level: 1 }).closest("header")?.textContent).not.toContain("+10");
+  });
+
+  it("draws no badge when nothing changed", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) =>
+        new URL(request.url).searchParams.get("path") === null ? HttpResponse.json({ ...fixtureChanges, repos: [] }) : undefined,
+      ),
+    );
+    renderAt([CHANGES]);
+    const only = await changesSegment();
+    await screen.findByRole("button", { name: /^docs, folder/ });
+    expect(only.querySelector('[data-slot="segmented-badge"]')).toBeNull();
+    expect(only.getAttribute("aria-label")).toBeNull();
+  });
+
   it("is remembered per device: a device that chose it opens on the list", async () => {
     localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true }));
     renderAt([CHANGES]);
     expect(await screen.findByRole("button", { name: /checkout\.tsx/ })).toBeTruthy();
-    expect((await toggle()).getAttribute("aria-pressed")).toBe("true");
-    await userEvent.click(await toggle());
+    expect((await changesSegment()).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(await allSegment());
     expect(await screen.findByRole("button", { name: /^docs, folder/ })).toBeTruthy();
     expect(storedPref("changesOnly")).toBe(false);
   });
 
-  // Review 2026-10-06: one header on every level, never a control dropped by depth.
-  it("is in every folder's header, in the root's order, and turning it on there goes up to the list", async () => {
+  // Review 2026-10-06: one header on every level, never a control dropped by depth. The Ignored eye
+  // and Changes-only toggle left it that day; the segment control sits under it.
+  it("is under every folder's header, whose buttons are Filter and Refresh, and turning it on there goes up to the list", async () => {
     const router = renderAt([CHANGES, { pathname: FILES, search: "?dir=src", state: { from: CHANGES } }]);
     await screen.findByRole("button", { name: /^cart\.ts/ });
     const header = screen.getByRole("heading", { level: 1 }).closest("header");
@@ -317,13 +348,10 @@ describe("Changes: the Changes-only toggle", () => {
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label") ?? "")
       .slice(1);
-    expect(squares).toEqual([
-      en["files.ignored.toggleAria"],
-      en["changes.filter.button"],
-      en["changes.only.aria.other"].replace("{count}", "5"),
-      en["changes.refreshAria"],
-    ]);
-    await userEvent.click(await toggle());
+    expect(squares).toEqual([en["changes.filter.button"], en["changes.refreshAria"]]);
+    expect(within(header).queryByRole("radiogroup")).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: en["files.mode.aria"] })).toBeTruthy();
+    await userEvent.click(await changesSegment());
     expect(storedPref("changesOnly")).toBe(true);
     await waitFor(() => expect(router.state.location.pathname).toBe(CHANGES));
     expect(router.state.location.search).toBe("");
@@ -333,7 +361,7 @@ describe("Changes: the Changes-only toggle", () => {
   it("is on a file of the tree too, with Refresh", async () => {
     renderAt([`${FILES}?path=README.md`]);
     expect(await screen.findByText("Run it")).toBeTruthy();
-    expect(await toggle()).toBeTruthy();
+    expect(await changesSegment()).toBeTruthy();
     expect(screen.getByRole("button", { name: en["changes.refreshAria"] })).toBeTruthy();
   });
 });
@@ -402,7 +430,7 @@ describe("Changes: one file of the tree", () => {
     const diff = screen.getByRole("radio", { name: en["files.view.diff"] });
     expect(diff.getAttribute("aria-checked")).toBe("true");
     // A TypeScript file has no Preview: Diff | Source.
-    expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([en["files.view.diff"], en["files.view.source"]]);
+    expect(within(screen.getByRole("radiogroup", { name: en["files.view.aria"] })).getAllByRole("radio").map((r) => r.textContent)).toEqual([en["files.view.diff"], en["files.view.source"]]);
     await userEvent.click(screen.getByRole("radio", { name: en["files.view.source"] }));
     await waitFor(() => expect(screen.queryAllByText("cartTotal", { exact: false })).toHaveLength(0));
     expect(screen.getAllByText("Checkout", { exact: false }).length).toBeGreaterThan(0);
@@ -426,7 +454,7 @@ describe("Changes: one file of the tree", () => {
   it("a new Markdown file opens on Diff, all added, and Preview is one tap away", async () => {
     renderAt([`${FILES}?path=packages%2Fapi%2Fnotes.md`]);
     expect(await screen.findByText("Orders moved under handlers/.")).toBeTruthy();
-    expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([
+    expect(within(screen.getByRole("radiogroup", { name: en["files.view.aria"] })).getAllByRole("radio").map((r) => r.textContent)).toEqual([
       en["files.view.diff"],
       en["files.view.source"],
       en["files.view.preview"],
@@ -459,7 +487,7 @@ describe("Changes: one file of the tree", () => {
   it("offers no Preview control for a type with none, and opens on Source", async () => {
     renderAt([`${FILES}?path=src%2Fcart.ts`]);
     expect(await screen.findByText(/cartTotal/)).toBeTruthy();
-    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: en["files.view.aria"] })).toBeNull();
   });
 
   it("shows a binary file as its size and nothing else", async () => {
@@ -801,28 +829,31 @@ describe("Files: entries git ignores, and the filter", () => {
     expect(screen.queryByText(hiddenLine(2))).toBeNull();
   });
 
-  // The toggle is drawn twice, by design: icon-only in the header, labelled in the filter row. Both
-  // carry the one accessible name and write the one pref.
-  const headerToggle = () => within(document.querySelector<HTMLElement>("header")!).getByRole("button", { name: en["files.ignored.toggleAria"] });
+  // The eye left the header on 2026-10-06. What is left: the labelled toggle in the filter row, and the
+  // footer line's Show and Hide. All of them write the one pref.
   const rowToggle = () => within(document.querySelector<HTMLElement>('[data-slot="files-filter"]')!).getByRole("button", { name: en["files.ignored.toggleAria"] });
+  const shownLine = (count: number) => en["files.ignored.shown"].replace("{count}", String(count));
 
-  it("the header toggle is found without opening the filter, and says its state", async () => {
+  it("has no ignored button in the header: the footer line is the switch", async () => {
     renderAt([FILES]);
     await screen.findByRole("button", { name: /^docs, folder/ });
-    const toggle = headerToggle();
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    expect(toggle.getAttribute("title")).toBe(en["files.ignored.stateHidden"]);
-    expect(toggle.className).toContain("size-11");
-    expect(toggle.querySelector("svg.lucide-eye-off")).not.toBeNull();
-    await userEvent.click(toggle);
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(toggle.getAttribute("title")).toBe(en["files.ignored.stateShown"]);
-    expect(toggle.querySelector("svg.lucide-eye")).not.toBeNull();
-    // The pressed look is the needs-you switch's: the primary tint and the hairline ring.
-    expect(toggle.className).toContain("bg-primary/10");
-    expect(toggle.className).toContain("ring-primary/40");
+    const header = document.querySelector<HTMLElement>("header")!;
+    expect(within(header).queryByRole("button", { name: en["files.ignored.toggleAria"] })).toBeNull();
+    expect(screen.queryByRole("button", { name: en["files.ignored.hideAria"] })).toBeNull();
+  });
+
+  it("Hide stands in the footer while ignored entries are shown, and puts them away again", async () => {
+    renderAt([FILES]);
+    await userEvent.click(await screen.findByRole("button", { name: en["files.ignored.showAria"] }));
     expect(names()).toContain("debug.log");
-    expect(stored()).toBe(true);
+    // The line says how many are shown and offers the way back; the hidden line is gone.
+    expect(screen.getByText(shownLine(2))).toBeTruthy();
+    expect(screen.queryByText(hiddenLine(2))).toBeNull();
+    expect(screen.queryByRole("button", { name: en["files.ignored.showAria"] })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: en["files.ignored.hideAria"] }));
+    expect(names()).not.toContain("debug.log");
+    expect(screen.getByText(hiddenLine(2))).toBeTruthy();
+    expect(stored()).toBe(false);
   });
 
   it("the labelled toggle in the filter row writes the same choice and names the state in words", async () => {
@@ -837,18 +868,20 @@ describe("Files: entries git ignores, and the filter", () => {
     expect(chip.textContent).toBe(en["files.ignored.stateShown"]);
     expect(names()).toContain("debug.log");
     expect(stored()).toBe(true);
-    // The header's twin follows: one pref, two doors.
-    expect(headerToggle().getAttribute("aria-pressed")).toBe("true");
+    // The footer follows: one pref, two doors.
+    expect(screen.getByRole("button", { name: en["files.ignored.hideAria"] })).toBeTruthy();
     await userEvent.click(chip);
     expect(names()).not.toContain("debug.log");
     expect(stored()).toBe(false);
-    expect(headerToggle().getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: en["files.ignored.showAria"] })).toBeTruthy();
   });
 
-  it("the Show action under the list flips the same pref the toggles read", async () => {
+  it("the Show action under the list flips the same pref the filter row's toggle reads", async () => {
     renderAt([FILES]);
     await userEvent.click(await screen.findByRole("button", { name: en["files.ignored.showAria"] }));
-    expect(headerToggle().getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(await filterButton());
+    await screen.findByPlaceholderText(en["files.filter.placeholder"]);
+    expect(rowToggle().getAttribute("aria-pressed")).toBe("true");
   });
 
   it("the Ignored choice survives opening a folder", async () => {
@@ -859,7 +892,6 @@ describe("Files: entries git ignores, and the filter", () => {
     await userEvent.click(await filterButton());
     await screen.findByPlaceholderText(en["files.filter.placeholder"]);
     expect(rowToggle().getAttribute("aria-pressed")).toBe("true");
-    expect(headerToggle().getAttribute("aria-pressed")).toBe("true");
   });
 
   it("filters the folder's names by a case-insensitive substring, with the count, and Clear resets it", async () => {

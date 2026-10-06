@@ -87,3 +87,11 @@ Panes and Focus, which made the pair read as two views of the same thing when on
   words fit comfortably at 375px, a fourth would crowd the translations.
 - **ADR 0066 and 0068 are history for the tab, current for the rules.** Where they say "the Focus
   tab", read "the needs-you switch".
+
+## Amended 2026-10-06: the tab is Files
+
+The third tab is called **Files** and wears the `list-tree` glyph, the one the Files screen's Tree
+toggle uses, because the screen it opens is Files now ([ADR 0083](./0083-the-files-view-reads-the-changes-root.md)).
+With a crew the footer reads Crew, Dashboard, Files. The route, the paths, the `DashView` value
+`changes` and the stored tab are unchanged, so a device that stored the tab keeps it, and the tab
+still lists each workspace with its changed-file count. Read "Changes" above, for the tab, as Files.

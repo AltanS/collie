@@ -81,6 +81,29 @@ describe("Segmented", () => {
     expect(screen.getByRole("tab", { name: "Status" }).querySelector('[data-slot="segmented-mark"]')).toBeNull();
   });
 
+  it("floats a count on a segment's corner, says it in the name, and draws nothing for zero", () => {
+    const counted = [
+      { value: "a", label: "All files" },
+      { value: "b", label: "Changes", badge: 5, badgeLabel: "5 changed files" },
+    ];
+    const { rerender } = render(
+      <Segmented options={counted} value="a" onChange={() => {}} label="Show" badgeClassName="bg-status-modified text-background" />,
+    );
+    const radio = screen.getByRole("radio", { name: "Changes, 5 changed files" });
+    const badge = radio.querySelector('[data-slot="segmented-badge"]');
+    expect(badge).toHaveAttribute("aria-hidden", "true");
+    expect(badge?.textContent).toBe("5");
+    expect(badge?.className).toContain("absolute");
+    expect(badge?.className).toContain("bg-status-modified");
+    expect(screen.getByRole("radio", { name: "All files" }).querySelector('[data-slot="segmented-badge"]')).toBeNull();
+    rerender(
+      <Segmented options={[counted[0]!, { ...counted[1]!, badge: 0 }]} value="a" onChange={() => {}} label="Show" />,
+    );
+    const quiet = screen.getByRole("radio", { name: "Changes" });
+    expect(quiet.querySelector('[data-slot="segmented-badge"]')).toBeNull();
+    expect(quiet.getAttribute("aria-label")).toBeNull();
+  });
+
   it("keeps the 44px floor on every segment, selected or not", () => {
     render(<Segmented options={OPTIONS} value="a" onChange={() => {}} label="Pick" />);
     for (const radio of screen.getAllByRole("radio")) {

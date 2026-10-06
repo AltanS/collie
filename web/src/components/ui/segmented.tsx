@@ -11,6 +11,14 @@ export interface SegmentedOption<V extends string | number> {
    * colour, and said as these words to a screen reader, so it is never colour alone.
    */
   mark?: string;
+  /**
+   * A count floated on the segment's top-right corner, in the fill `badgeClassName` names (the same
+   * small badge the icon toggle button draws). Absent or 0 draws nothing. Placed absolutely, so a
+   * count arriving or changing moves nothing (DESIGN.md §2).
+   */
+  badge?: number;
+  /** ALREADY TRANSLATED. The count in words, appended to the segment's accessible name. */
+  badgeLabel?: string;
 }
 
 export interface SegmentedProps<V extends string | number> {
@@ -27,6 +35,8 @@ export interface SegmentedProps<V extends string | number> {
   semantics?: "tabs" | "choice";
   /** Every segment is inert together, for a choice that is being saved. */
   disabled?: boolean;
+  /** The badge's fill, a `bg-*` class with its ink. The primary fill by default. */
+  badgeClassName?: string;
   className?: string;
 }
 
@@ -52,6 +62,7 @@ export function Segmented<V extends string | number>({
   label,
   semantics = "choice",
   disabled = false,
+  badgeClassName = "bg-primary text-primary-foreground",
   className,
 }: SegmentedProps<V>) {
   const tabs = semantics === "tabs";
@@ -63,6 +74,9 @@ export function Segmented<V extends string | number>({
     <div role={tabs ? "tablist" : "radiogroup"} aria-label={label} data-slot="segmented" className={cn("flex", className)}>
       {options.map((option) => {
         const on = option.value === value;
+        const badged = option.badge !== undefined && option.badge > 0;
+        // A mark and a count are said in words: the name becomes "Changes, 5 changed files".
+        const said = [option.mark, badged ? option.badgeLabel : undefined].filter((w): w is string => w !== undefined);
         return (
           <button
             key={option.value}
@@ -71,7 +85,7 @@ export function Segmented<V extends string | number>({
             aria-selected={tabs ? on : undefined}
             aria-checked={tabs ? undefined : on}
             // A mark is said in words: the name becomes "Alerts, alert firing" rather than a dot.
-            aria-label={option.mark === undefined ? undefined : `${option.label}, ${option.mark}`}
+            aria-label={said.length === 0 ? undefined : `${option.label}, ${said.join(", ")}`}
             disabled={disabled}
             onClick={() => {
               // A choice is never un-picked, and a caller that posts on change is not asked to post
@@ -87,6 +101,18 @@ export function Segmented<V extends string | number>({
             {option.label}
             {option.mark !== undefined && (
               <span aria-hidden data-slot="segmented-mark" className="ml-1.5 inline-block size-2 rounded-full bg-status-blocked align-middle" />
+            )}
+            {badged && (
+              <span
+                aria-hidden
+                data-slot="segmented-badge"
+                className={cn(
+                  "absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-sm px-1 text-[10px] leading-none font-semibold tabular-nums",
+                  badgeClassName,
+                )}
+              >
+                {option.badge}
+              </span>
             )}
           </button>
         );

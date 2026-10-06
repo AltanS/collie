@@ -57,24 +57,29 @@ test("open Changes, enter a folder, open a Markdown file, go back twice", async 
 
 // THE OPERATOR'S ASK, 2026-10-06: changes and files on one screen, the changes marked, a way to see
 // the changes alone, and a new Markdown file one tap from its diff and one more from its preview.
-test("the tree marks what changed, Changes only swaps in the list, and a new Markdown file opens on Diff then Preview", async ({ page }) => {
+test("the tree marks what changed, the Changes segment swaps in the list, and a new Markdown file opens on Diff then Preview", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`/pane/${PANE}/changes`);
   const packages = page.getByRole("button", { name: "packages, folder, 2 changed files" });
   await expect(packages).toBeVisible();
   await expect(packages.locator('[data-slot="folder-mark"]')).toHaveText("2");
 
-  // The header keeps room for the workspace at the narrowest phone: back, the label, Changes only
-  // and Refresh, with the tree's Ignored eye and Filter beside them.
-  const only = page.locator("header").getByRole("button", { name: fill(en["changes.only.aria.other"], { count: 5 }) });
-  await expect(only).toHaveAttribute("aria-pressed", "false");
+  // The header keeps room for the workspace at the narrowest phone: back, the title and its label,
+  // Filter and Refresh. The All files | Changes control sits under it, with the count on Changes.
+  const only = page.getByRole("radio", { name: `${en["files.mode.changes"]}, ${fill(en["files.changed.other"], { count: 5 })}` });
+  await expect(only).toHaveAttribute("aria-checked", "false");
+  await expect(only.locator('[data-slot="segmented-badge"]')).toHaveText("5");
+  await expect(page.locator("header").getByRole("radiogroup")).toHaveCount(0);
+  await expect(page.locator("header h1")).toHaveText(en["files.title"]);
   const title = page.locator("header h1");
   expect((await title.boundingBox())!.width).toBeGreaterThanOrEqual(40);
 
-  // Changes only: the list, and the toggle has not moved.
+  // Changes: the list headed by the changed-file count and the totals, and the control has not moved.
   const before = (await only.boundingBox())!;
   await only.click();
-  await expect(only).toHaveAttribute("aria-pressed", "true");
+  await expect(only).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator('[data-slot="changes-head"] [data-slot="changes-totals"]')).toBeVisible();
+  await expect(page.locator('[data-slot="changes-head"] [data-slot="changes-files"]')).toHaveText(en["files.changed.other"].replace("{count}", "5"));
   await expect(page.getByRole("button", { name: /^docs, folder/ })).toHaveCount(0);
   await expect(page.locator("header").getByRole("button", { name: en["changes.layout.tree"] })).toBeVisible();
   const after = (await only.boundingBox())!;
@@ -83,9 +88,9 @@ test("the tree marks what changed, Changes only swaps in the list, and a new Mar
   // The choice is the device's: it outlives a reload.
   await page.reload();
   await expect(page.locator("header").getByRole("button", { name: en["changes.layout.tree"] })).toBeVisible();
-  await expect(only).toHaveAttribute("aria-pressed", "true");
+  await expect(only).toHaveAttribute("aria-checked", "true");
   // And back to the tree.
-  await only.click();
+  await page.getByRole("radio", { name: en["files.mode.all"] }).click();
   await packages.click();
   await page.getByRole("button", { name: /^api, folder/ }).click();
   await page.getByRole("button", { name: /^notes\.md, file/ }).click();
@@ -112,10 +117,9 @@ test("ignored entries are hidden, Show brings them back dimmed, and the name fil
   expect(await ink(/^debug\.log/)).not.toBe(await ink(/^README\.md/));
   await expect(page.getByText(en["files.ignored.hidden"].replace("{count}", "2"))).toHaveCount(0);
 
-  // The eye in the header, left of Filter, is the same choice and is pressed without opening anything.
-  const eye = page.locator("header").getByRole("button", { name: en["files.ignored.toggleAria"] });
-  await expect(eye).toHaveAttribute("aria-pressed", "true");
-  await expect(eye).toHaveAttribute("title", en["files.ignored.stateShown"]);
+  // The footer line says how many are shown and offers Hide: no eye in the header any more.
+  await expect(page.getByText(en["files.ignored.shown"].replace("{count}", "2"))).toBeVisible();
+  await expect(page.locator("header").getByRole("button", { name: en["files.ignored.toggleAria"] })).toHaveCount(0);
 
   // The filter opens over the list without moving it, its labelled Ignored toggle is pressed and says
   // so in words, and a name narrows.
@@ -135,11 +139,12 @@ test("ignored entries are hidden, Show brings them back dimmed, and the name fil
   await expect(page.getByText(en["changes.filter.none"])).toBeVisible();
   await page.getByPlaceholder(en["files.filter.placeholder"]).fill("");
 
-  // The Ignored choice is the device's: it outlives a reload, and the header eye turns it off again.
+  // The Ignored choice is the device's: it outlives a reload, and Hide in the footer turns it off again.
   await page.reload();
   await expect(page.getByRole("button", { name: /^debug\.log/ })).toBeVisible();
-  await page.locator("header").getByRole("button", { name: en["files.ignored.toggleAria"] }).click();
+  await page.getByRole("button", { name: en["files.ignored.hideAria"] }).click();
   await expect(page.getByRole("button", { name: /^debug\.log/ })).toHaveCount(0);
+  await expect(page.getByText(en["files.ignored.hidden"].replace("{count}", "2"))).toBeVisible();
 });
 
 test("a changed Markdown file previews from its diff, on its file screen", async ({ page }) => {
@@ -326,8 +331,9 @@ test("a folder named otherwise adds only its last segment in mono, never the pat
   expect(await line.evaluate((el) => getComputedStyle(el).direction)).toBe("ltr");
 });
 
-// The root's header: the same RootSegment as the folder screens, beside the larger label. The column
-// is about 90 px beside the four squares, so a segment shows WHOLE or not at all, never as "· …".
+// The root's header: the same RootSegment as the folder screens, beside the workspace label on the
+// header's second line, under the title Files. The column is about 220 px beside the two squares
+// (Filter and Refresh), so a segment shows WHOLE or not at all, never as "· …".
 async function rootWith(page: import("@playwright/test").Page, workspaceLabel: string, root: string) {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.route(/\/api\/pane\/[^/]+\/changes(\?|$)/, async (route) => {
@@ -343,8 +349,11 @@ test("the root's header says the label and the folder's last name in mono, never
   await expect(segment).toHaveText("· shop");
   await expect(segment).toHaveAttribute("title", "/home/you/clients/acme/shop");
   await expect(segment).toHaveCSS("font-family", /mono/i);
-  const h1 = page.getByRole("heading", { level: 1 });
-  const [s, h] = await Promise.all([segment.boundingBox(), h1.boundingBox()]);
+  // The title is Files on every level; the workspace label is the line under it.
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(en["files.title"]);
+  const label = segment.locator("xpath=preceding-sibling::span[1]");
+  await expect(label).toHaveText("ui");
+  const [s, h] = await Promise.all([segment.boundingBox(), label.boundingBox()]);
   // On the label's own line, to its right, and cut by nothing.
   expect(Math.abs(s!.y + s!.height - (h!.y + h!.height))).toBeLessThan(8);
   expect(s!.x).toBeGreaterThan(h!.x + h!.width - 1);
@@ -355,7 +364,7 @@ test("the root's header says the label and the folder's last name in mono, never
 });
 
 test("a root segment that does not fit beside the label is left out whole, not cut to an ellipsis, at 375 px", async ({ page }) => {
-  await rootWith(page, "webapp", "/home/you/clients/acme/shop");
+  await rootWith(page, "a-fairly-long-workspace-label", "/home/you/clients/acme/shop-api");
   const segment = page.locator('[data-slot="files-root-folder"]');
   const line = segment.locator("..");
   // Wrapped below the one-line box the label sits in, and the box hides it.
@@ -363,22 +372,19 @@ test("a root segment that does not fit beside the label is left out whole, not c
   expect(s!.y).toBeGreaterThanOrEqual(l!.y + l!.height - 1);
   expect(await line.evaluate((el) => getComputedStyle(el).overflow)).toBe("hidden");
   expect(await segment.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("webapp");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(en["files.title"]);
+  await expect(line).toContainText("a-fairly-long-workspace-label");
   await expect(page.getByText("…/", { exact: false })).toHaveCount(0);
 });
 
-// Review 2026-10-06: the header is one header on every level, and at 375 px the squares win.
-test("a folder's header holds the root's four squares at 375 px, and the filter row clips nothing", async ({ page }) => {
+// Review 2026-10-06: the header is one header on every level, and at 375 px the squares win. The
+// Ignored eye and the Changes toggle left it that day for the control under it and the footer line.
+test("a folder's header holds the root's two squares at 375 px, and the filter row clips nothing", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`/pane/${PANE}/changes/files?dir=packages%2Fapi`);
   await expect(page.getByRole("button", { name: /^notes\.md, file/ })).toBeVisible();
   const header = page.locator("header");
-  const names = [
-    en["files.ignored.toggleAria"],
-    en["changes.filter.button"],
-    fill(en["changes.only.aria.other"], { count: 5 }),
-    en["changes.refreshAria"],
-  ];
+  const names = [en["changes.filter.button"], en["changes.refreshAria"]];
   const boxes = [];
   for (const name of names) {
     const square = header.getByRole("button", { name, exact: true });
@@ -395,10 +401,11 @@ test("a folder's header holds the root's four squares at 375 px, and the filter 
   // The longest Ignored label, a typed name: the count and Clear stay whole inside the row. At
   // 320 px the row has the room the playground's 375 px card gives it, where "Clear filter" clipped.
   await page.setViewportSize({ width: 320, height: 812 });
-  await header.getByRole("button", { name: en["files.ignored.toggleAria"] }).click();
   await header.getByRole("button", { name: en["changes.filter.button"] }).click();
   await page.getByPlaceholder(en["files.filter.placeholder"]).fill("o");
   const row = page.locator('[data-slot="files-filter"]');
+  // Shown is the longer of the two words, so the row is measured in that state.
+  await row.getByRole("button", { name: en["files.ignored.toggleAria"] }).click();
   const clear = row.getByRole("button", { name: en["changes.filter.clear"], exact: true });
   await expect(clear).toBeVisible();
   const rowBox = (await row.boundingBox())!;

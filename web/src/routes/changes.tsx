@@ -4,13 +4,12 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide
 
 import { RouteHeader } from "@/components/app-header";
 import { FilesLoading, RefusedBody, TreeFolderBody, useFilesRead, type FilesReadState, type TreeRead } from "@/routes/changes-files";
-import { ChangeCountSlot } from "@/components/change-count";
 import {
-  ChangesOnlyToggle,
+  ChangesListHead,
   entryPath,
   FilesBreadcrumb,
   FilesFilterBar,
-  IgnoredToggle,
+  FilesModeControl,
   useFilesFilter,
 } from "@/components/files-view";
 import { FileContent, defaultView, type FileLinks, type FileView } from "@/components/file-preview";
@@ -113,9 +112,10 @@ import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-cha
 // one folder at a time, with every change marked on its row: a changed file wears its status letter
 // and an icon in that colour, a folder says how many changed files sit below it, and a deleted file,
 // which the disk no longer lists, is added back from the change set, struck through. The change set
-// is this screen's own Changes list, joined by path (lib/files-marks.ts). The header's "Changes only"
-// toggle (a per-device pref) swaps the tree for the list of changes alone, flat or as a tree, with
-// its filter, its depth note and the way to the last commit, exactly as it was before the merge.
+// is this screen's own Changes list, joined by path (lib/files-marks.ts). The screen is called Files.
+// The two-segment control under the header, All files | Changes (a per-device pref), swaps the tree
+// for the list of changes alone, flat or as a tree, with its filter, its depth note and the way to
+// the last commit, exactly as it was before the merge.
 // A folder is `…/changes/files?dir=`, a file `…/changes/files?path=`; a changed file opens on its
 // Diff, beside Source and, for Markdown, JSON and HTML, a Preview.
 //
@@ -140,10 +140,10 @@ import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-cha
 // and sugar-high does not re-colour. A changed diff keeps its colour on every unchanged line
 // (DiffView). A failed re-read keeps the last good data on screen. Refresh stays as the manual "now".
 //
-// THE FIRST FRAME. The header carries the workspace's count line (`3 files +12 −4`), the same line
-// the dashboard's Changes tab draws on the row that was tapped, seeded from the tab's kept answer so
-// it is right before any read; the tab row's label and count glide into it, and back down into the
-// row on the back arrow (lib/glide.ts).
+// THE FIRST FRAME. The head of the Changes list carries the workspace's totals (`+12 −4`), seeded
+// from the Changes tab's kept answer so it is right before any read; on the way in, the tab row's
+// workspace label glides into the label under the header's title, and back down into the row on the
+// back arrow (lib/glide.ts). The row's count line has no twin in the header any more, so it fades.
 // The list starts on the last list this page read for the screen (lib/changes-list-cache.ts), or,
 // on a first visit, on skeleton rows in the real rows' box, which the first answer fades out of. A
 // re-read never shows the skeleton again.
@@ -694,7 +694,7 @@ function ChangesScreen() {
   };
   const openCrumb = (to: string) => nav.side(filesPathTo(to === "" ? undefined : { dir: to }));
   const pair = () => nav.down(pairedDevicesPath(scope));
-  // Changes only is one header control on every level of the tree. The list is the root's body, so
+  // The Changes segment is one control under the header on every level of the tree. The list is the root's body, so
   // turning it on from a folder or a file also goes up to the root, the way back from there does.
   const changeChangesOnly = (on: boolean) => {
     setChangesOnly(on);
@@ -832,55 +832,29 @@ function ChangesScreen() {
               >
                 <ArrowLeft className="size-5" />
               </Button>
-              {/* The root's header, tree or list, is the tab row it was opened from, larger: the
-                  workspace on the first line (the heading still says "Changes" to a screen reader),
-                  its count line under it, so the row's two lines glide straight into these two
-                  (lib/glide.ts). A folder, a file and the commit view keep the screen's title with
-                  the workspace under it. At 375px the column is about 60px wide, too narrow for a
-                  title, a label and a count side by side. */}
+              {/* ONE header on every level of the screen (2026-10-06): the title "Files", and under it
+                  the workspace's label and the root folder's last name. The totals `+12 −4` left it
+                  for the head of the Changes list. At the root this column is still the tab row's
+                  destination, and the workspace label is the one part that glides into it. */}
               <div className="min-w-0 flex-1" data-glide-destination={rootScreen ? "changes" : undefined}>
-                {rootScreen ? (
-                  <>
-                    {/* One line tall (1.125rem at leading-tight): a segment that does not fit beside
-                        the label wraps out of sight. */}
-                    <div className={`${LABEL_LINE} h-[1.40625rem]`}>
-                      <h1
-                        data-glide="label"
-                        className="max-w-full shrink-0 truncate text-lg font-semibold leading-tight tracking-tight"
-                      >
-                        <span className="sr-only">{t("changes.title")} </span>
-                        {workspaceLabel}
-                      </h1>
-                      {folderLine}
-                    </div>
-                    {/* A fixed 16px count line, so a skeleton, a value or a change of value moves
-                        nothing; the stale note shares it, as it shared the folder's line before. */}
-                    <div className="flex h-4 min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground tabular-nums">
-                      <ChangeCountSlot count={headerCount} glide="count" className="shrink-0" />
-                      {staleNote}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">
-                      {commitView ? t("changes.commit.title") : t("changes.title")}
-                    </h1>
-                    {/* The workspace label, plus the root folder's last name when it differs: the
-                        same RootSegment as the root's header. Four icon buttons leave no room for more. */}
-                    <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
-                      <div className={`${LABEL_LINE} h-[0.9375rem]`}>
-                        <span className="max-w-full shrink-0 truncate">{workspaceLabel}</span>
-                        {folderLine}
-                      </div>
-                      {staleNote}
-                    </div>
-                  </>
-                )}
+                <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">
+                  {commitView ? t("changes.commit.title") : t("files.title")}
+                </h1>
+                {/* The workspace label, plus the root folder's last name when it differs: the same
+                    RootSegment on every screen. Icon buttons leave no room for more. */}
+                <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
+                  <div className={`${LABEL_LINE} h-[0.9375rem]`}>
+                    <span data-glide={rootScreen ? "label" : undefined} className="max-w-full shrink-0 truncate">
+                      {workspaceLabel}
+                    </span>
+                    {folderLine}
+                  </div>
+                  {staleNote}
+                </div>
               </div>
-              {/* ONE header on every level of the tree (review, 2026-10-06): the Ignored eye and
-                  Filter once a folder has rows to filter, then Changes only and Refresh, which hold
-                  their place in both bodies, in every folder, on a file and while a folder loads.
-                  At 375 px the squares win and the workspace line cuts its tail. */}
+              {/* The header's buttons hold their place in both bodies and in every folder: Filter once
+                  a folder has rows to filter, then Refresh. The Tree toggle joins them in the list.
+                  The mode control (All files | Changes) is not here: it sits under the header. */}
               {(showList || commitView) && !current && (
                 <>
                   <ChangesLayoutToggle layout={layout} onChange={setChangesLayout} />
@@ -894,19 +868,13 @@ function ChangesScreen() {
                 </>
               )}
               {treeDir !== null && counted !== null && (
-                <>
-                  <IgnoredToggle showIgnored={prefs.filesShowIgnored} onShowIgnored={setFilesShowIgnored} />
-                  <ChangesFilterButton
-                    open={filesFilter.open}
-                    active={isNameFilterOn(filesFilter.query)}
-                    shown={counted.rows.length}
-                    total={counted.pool}
-                    onClick={() => filesFilter.setOpen(!filesFilter.open)}
-                  />
-                </>
-              )}
-              {(rootScreen || treeAt !== null) && (
-                <ChangesOnlyToggle on={prefs.changesOnly} count={changedFiles} onChange={changeChangesOnly} />
+                <ChangesFilterButton
+                  open={filesFilter.open}
+                  active={isNameFilterOn(filesFilter.query)}
+                  shown={counted.rows.length}
+                  total={counted.pool}
+                  onClick={() => filesFilter.setOpen(!filesFilter.open)}
+                />
               )}
               <Button
                 variant="ghost"
@@ -950,6 +918,10 @@ function ChangesScreen() {
           </ChangesFilterOverlay>
         )}
       </div>
+
+      {(rootScreen || treeAt !== null) && (
+        <FilesModeControl changesOnly={prefs.changesOnly} count={changedFiles} onChange={changeChangesOnly} />
+      )}
 
       <main ref={mainRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {current ? (
@@ -1023,6 +995,7 @@ function ChangesScreen() {
           </div>
         ) : (
           <div className="flex flex-col gap-4 p-4">
+            <ChangesListHead count={headerCount} />
             <ListBody
               state={list}
               arrive={listArrive}

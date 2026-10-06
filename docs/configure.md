@@ -626,8 +626,8 @@ The [troubleshooting page](troubleshooting.md) has the steps, under **a pane has
 
 ## Changes
 
-The [Changes view](changes.md) shows what an agent changed in its workspace's git repos. Two
-per-device settings decide how far it looks for repos, in **Settings → Device → Changes**:
+The [Files screen](changes.md) shows what an agent changed in its workspace's git repos, under its
+**Changes** segment. Two per-device settings decide how far it looks for repos, in **Settings → Device → Changes**:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
