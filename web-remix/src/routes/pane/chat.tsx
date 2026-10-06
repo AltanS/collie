@@ -21,6 +21,7 @@ import { useStore } from "../../lib/store";
 import { groupRuns } from "../../chat/steps";
 import { ItemView, ToolGroup } from "../../chat/tool-card";
 import { createTailPin, isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
+import { Button } from "../../ui/button";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { StatusDot } from "../../ui/status-dot";
@@ -256,18 +257,20 @@ export function ChatView(handle: Handle<ChatViewProps>) {
           </div>
         </div>
         {!following ? (
-          <button
-            type="button"
+          // The shared Button, as web's pill is: it wears the press (`active:scale-[0.98]`, `transition-all`).
+          <Button
+            variant="outline"
+            size="icon"
             aria-label={t("common.scrollToLatestAria")}
             data-testid="scroll-to-latest"
-            class="absolute right-3 bottom-3 flex size-11 items-center justify-center rounded-full border border-border bg-background/90 shadow-md backdrop-blur"
+            class="absolute right-3 bottom-3 size-11 rounded-full bg-background/90 shadow-md backdrop-blur"
             mix={on("click", () => {
               follow(true);
               handle.queueTask(pin);
             })}
           >
             <Icon icon={ArrowDown} class="size-4" />
-          </button>
+          </Button>
         ) : null}
       </div>
     );

@@ -4,7 +4,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide";
 import { t } from "@web/lib/i18n";
 import { cn } from "@web/lib/utils";
 
-import { animateEntrance, reducedMotion } from "../lib/motion";
+import { animateEntrance, toastEntrance } from "../lib/motion";
 import { useLocale } from "../lib/i18n-store";
 import { clearStatus, status, type StatusTone } from "../lib/status";
 import { useStore } from "../lib/store";
@@ -39,7 +39,7 @@ const TONE_ICON = { info: Info, success: CheckCircle2, warn: AlertTriangle, erro
 
 /**
  * The status as a toast (web/src/components/status-area.tsx), for a screen whose header has no
- * title slot. Fades in over 200 ms through `animateEntrance` (none under reduced motion), has no
+ * title slot. Fades in over 200 ms on `ease` through `animateEntrance` (web's timing; none under reduced motion), has no
  * exit animation, and lives as long as the status model says: 2.5 s, errors until tapped.
  */
 export function StatusToast(handle: Handle) {
@@ -54,7 +54,7 @@ export function StatusToast(handle: Handle) {
         key={message.id}
         data-testid="status-toast"
         class={cn("relative mx-auto w-fit max-w-full", error && "pointer-events-auto")}
-        mix={animateEntrance(reducedMotion() ? false : { opacity: 0, duration: 200 })}
+        mix={animateEntrance(toastEntrance())}
       >
         <output
           aria-live="polite"

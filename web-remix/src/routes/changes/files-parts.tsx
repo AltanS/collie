@@ -16,7 +16,7 @@ import type { EntryMark, MarkedFolder } from "@web/lib/files-marks";
 import { formatBytes, joinRel } from "@web/lib/files-view";
 import { t, tn, type MessageKey } from "@web/lib/i18n";
 import type { ChangeStatus, ChangesUnavailableReason, FileEntry, FileEntryKind, FileReadResponse, FilesListResponse } from "@web/lib/types";
-import type { WorkspaceChangeCount } from "@web/lib/workspace-changes";
+import { countSignature, type WorkspaceChangeCount } from "@web/lib/workspace-changes";
 import { cn } from "@web/lib/utils";
 
 import { Button } from "../../ui/button";
@@ -63,23 +63,33 @@ export function filesModeControl(changesOnly: boolean, count: number, onChange: 
 /**
  * The line at the head of the Changes list: the changed-file count at the left, the workspace's
  * totals `+12 −4` at the right in the diff's inks. One line tall in every state, so numbers arriving
- * move nothing; while the first read is out it shows two bars in the same box (a skeleton).
+ * move nothing. While the first read is out each side holds a bar (a skeleton, `.count-skeleton`);
+ * the bar and the text share ONE grid cell, exactly as the Changes tab's count line does
+ * (web's `ChangeCountSlot`), so the answer arriving swaps them in place: the bar fades out under
+ * `.count-skeleton--done` (200 ms, none under reduced motion) and the text dips in with
+ * `.count-update`. The bars are never unmounted, so nothing leaves the flow.
  */
 export function changesListHead(count: WorkspaceChangeCount): RemixNode {
   const loading = count.kind === "loading";
+  const sig = countSignature(count);
   return (
-    <div class="flex min-h-6 items-baseline justify-between gap-3 font-mono text-xs leading-6 text-muted-foreground" data-slot="changes-head">
-      <span data-slot="changes-files" class="min-w-0">
-        {count.kind === "changed" ? tn("files.changed", count.files) : null}
-        {loading ? <span aria-hidden="true" class="count-skeleton inline-block h-2.5 w-16 rounded-full bg-muted align-middle" /> : null}
+    <div class="flex min-h-6 items-baseline justify-between gap-3 font-mono text-xs leading-6 text-muted-foreground" data-slot="changes-head" data-state={loading ? "loading" : "ready"}>
+      <span data-slot="changes-files" class="grid min-w-0 items-center [grid-template-areas:'slot'] *:[grid-area:slot]">
+        {count.kind === "changed" ? (
+          <span key={sig} class="count-update">
+            {tn("files.changed", count.files)}
+          </span>
+        ) : null}
+        <span aria-hidden="true" data-slot="count-skeleton" class={cn("count-skeleton h-2.5 w-16 justify-self-start rounded-full bg-muted", !loading && "count-skeleton--done")} />
       </span>
-      {count.kind === "changed" ? (
-        <span data-slot="changes-totals" class="shrink-0 tabular-nums">
-          <span class="text-status-done">+{count.added}</span> <span class="text-status-blocked">−{count.removed}</span>
-        </span>
-      ) : loading ? (
-        <span aria-hidden="true" class="count-skeleton h-2.5 w-12 shrink-0 rounded-full bg-muted" />
-      ) : null}
+      <span data-slot="changes-totals" class="grid shrink-0 items-center tabular-nums [grid-template-areas:'slot'] *:[grid-area:slot]">
+        {count.kind === "changed" ? (
+          <span key={sig} class="count-update">
+            <span class="text-status-done">+{count.added}</span> <span class="text-status-blocked">−{count.removed}</span>
+          </span>
+        ) : null}
+        <span aria-hidden="true" data-slot="count-skeleton" class={cn("count-skeleton h-2.5 w-12 justify-self-end rounded-full bg-muted", !loading && "count-skeleton--done")} />
+      </span>
     </div>
   );
 }

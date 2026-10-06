@@ -4,7 +4,7 @@ import { X } from "lucide";
 import { t } from "@web/lib/i18n";
 import { cn } from "@web/lib/utils";
 
-import { reducedMotion, spring } from "../lib/motion";
+import { peekContinueTransition, reducedMotion, snapBackTransition } from "../lib/motion";
 import { scheduleUpdate } from "../lib/store";
 import { Button } from "./button";
 import { Icon } from "./icon";
@@ -18,7 +18,8 @@ import { Icon } from "./icon";
 //   - open: backdrop fade 200 ms, panel slide from the bottom 200 ms (tw-animate classes);
 //   - drag-dismiss: from the top of its scroll, the panel follows the finger (`style.transform`,
 //     written by native non-passive listeners in `ref`, never by a re-render); released past 90 px it
-//     closes, short of it it snaps back on `spring("snappy")` (200 ms, no overshoot);
+//     closes, short of it it snaps back over 200 ms, `ease-out` (web's `transform 0.2s ease-out`; the
+//     `snappy` spring settles in 350 ms, so it is NOT used here, see lib/motion.ts);
 //   - peek-to-open: a `SheetPeek` (fed by the `pull` gesture) mounts the panel following the finger
 //     up from its anchor, with no entrance and no focus; when `open` flips true the panel continues
 //     from where the finger left it over 180 ms.
@@ -104,7 +105,7 @@ export interface BottomSheetProps {
 const SLOP = 6;
 /** Released past this many px of pull-down, the sheet closes; short of it, it snaps back. */
 export const SHEET_CLOSE_PX = 90;
-const SNAP_BACK = (): string => (reducedMotion() ? "none" : spring.transition("transform", "snappy"));
+const SNAP_BACK = (): string => (reducedMotion() ? "none" : snapBackTransition());
 
 export function BottomSheet(handle: Handle<BottomSheetProps>) {
   const titleId = `sheet-${handle.id}`;
@@ -217,7 +218,7 @@ export function BottomSheet(handle: Handle<BottomSheetProps>) {
         // Continue from wherever the finger left the panel, after this render commits.
         handle.queueTask(() => {
           if (!panel) return;
-          panel.style.transition = reducedMotion() ? "none" : "transform 180ms ease-out";
+          panel.style.transition = reducedMotion() ? "none" : peekContinueTransition();
           panel.style.transform = "translateY(0)";
           if (backdrop) backdrop.style.opacity = "";
         });

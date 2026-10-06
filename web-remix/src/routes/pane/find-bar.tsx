@@ -1,6 +1,7 @@
 // The find bar, drawn in the header's row while find is open (the override claim's trailing slot;
 // the override's own back arrow closes it). Port of web/src/components/find-bar.tsx. The input is
-// uncontrolled: it owns its value and reports each change to the find store (lib/find.ts).
+// uncontrolled: it owns its value and reports each change to the find store (lib/find.ts). The step
+// buttons are the shared ghost icon Button, as web's are, so they wear its press (`active:scale-[0.98]`).
 import { on, ref, type Handle } from "remix/component";
 import { ChevronDown, ChevronUp, Search } from "lucide";
 
@@ -9,6 +10,7 @@ import { t } from "@web/lib/i18n";
 import type { Find } from "../../lib/find";
 import { useLocale } from "../../lib/i18n-store";
 import { useStore } from "../../lib/store";
+import { Button } from "../../ui/button";
 import { Icon } from "../../ui/icon";
 
 export function FindBar(handle: Handle<{ find: Find; subject?: string }>) {
@@ -54,24 +56,26 @@ export function FindBar(handle: Handle<{ find: Find; subject?: string }>) {
         <span data-testid="find-count" class="shrink-0 px-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
           {label}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={t("find.prevAria")}
           disabled={count === 0}
-          class="flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-muted disabled:opacity-50"
+          class="size-9 shrink-0 text-muted-foreground"
           mix={on("click", () => find.prev())}
         >
           <Icon icon={ChevronUp} class="size-4" />
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={t("find.nextAria")}
           disabled={count === 0}
-          class="flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground active:bg-muted disabled:opacity-50"
+          class="size-9 shrink-0 text-muted-foreground"
           mix={on("click", () => find.next())}
         >
           <Icon icon={ChevronDown} class="size-4" />
-        </button>
+        </Button>
       </div>
     );
   };

@@ -120,6 +120,10 @@ export function ToolCard(handle: Handle<{ tool: ChatToolCall; status: ChatToolSt
     const subject = subjectOf(tool);
     const body = bodyOf(tool);
     const icon = tool.kind === "edit" && tool.created ? FilePlus : KIND_ICON[tool.kind];
+    // The line under a question card (web's `QuestionTool`): the host's note when it has one, else
+    // "Waiting for an answer" while the question is out, or "Dismissed" once it was refused.
+    const line =
+      note ?? (tool.kind !== "question" ? undefined : status === "running" ? t("chat.question.waiting") : status === "denied" ? t("chat.question.dismissed") : undefined);
     return (
       <div data-slot="tool-card" data-kind={tool.kind} class="overflow-hidden rounded-lg border border-border bg-card">
         <button
@@ -154,15 +158,19 @@ export function ToolCard(handle: Handle<{ tool: ChatToolCall; status: ChatToolSt
           )}
           {statusNode(status, tool.kind === "execute" ? tool.exitCode : undefined)}
         </button>
-        {open && body !== null && (
-          <pre class="max-h-80 overflow-auto border-t border-border bg-muted/30 px-3 py-2 font-mono text-[11px] leading-snug whitespace-pre-wrap break-words">
-            {body}
-          </pre>
-        )}
-        <Collapse open={note !== undefined}>
+        {/* What a call printed folds in and out through Collapse (240 ms, grid rows): the card moves
+            where the reader tapped, never pops (REMIX3.md rule 7). */}
+        <Collapse open={open && body !== null}>
+          {body !== null ? (
+            <pre data-slot="tool-output" class="max-h-80 overflow-auto border-t border-border bg-muted/30 px-3 py-2 font-mono text-[11px] leading-snug whitespace-pre-wrap break-words">
+              {body}
+            </pre>
+          ) : null}
+        </Collapse>
+        <Collapse open={line !== undefined}>
           <p data-slot="question-note" class="flex items-start gap-2 border-t border-border px-3 py-2.5 text-xs text-muted-foreground">
             <Icon icon={SquareTerminal} class="mt-px size-3.5 shrink-0" />
-            <span class="min-w-0">{note ?? ""}</span>
+            <span class="min-w-0">{line ?? ""}</span>
           </p>
         </Collapse>
       </div>
@@ -170,7 +178,7 @@ export function ToolCard(handle: Handle<{ tool: ChatToolCall; status: ChatToolSt
   };
 }
 
-/** A fold whose body enters the DOM only while it is open. */
+/** A fold whose body enters the DOM only while it is open, and moves in through Collapse. */
 function Disclosure(handle: Handle<{ label: string; text: string; italic?: boolean }>) {
   let open = false;
   return () => (
@@ -187,12 +195,12 @@ function Disclosure(handle: Handle<{ label: string; text: string; italic?: boole
         <Icon icon={ChevronRight} class={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
         {handle.props.label}
       </button>
-      {open && (
+      <Collapse open={open}>
         <MarkdownText
           text={handle.props.text}
           class={cn("px-5 pb-1 text-muted-foreground", handle.props.italic && "italic")}
         />
-      )}
+      </Collapse>
     </div>
   );
 }

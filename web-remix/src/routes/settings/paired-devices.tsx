@@ -6,6 +6,10 @@
 //   * The form shows when this device has no credential the bridge would accept: no token, a token a
 //     write was refused for, or a registry that says it authenticated as nobody while pairing is on.
 //     NOT on a failed read: an unreachable bridge is no evidence this device is unpaired.
+//   * Until the first registry read answers the description is a breathing bar and the card says it is
+//     loading (a spinner), not the "open" sentence and an absent form: that read is the card's own
+//     (web's route loader holds the screen instead). What arrives after it (the signed-in line, the
+//     list, the form) comes in through Collapse, so no row under it moves.
 //   * The token comes back from `POST /api/pair` exactly once; it is stored before anything else.
 //   * `?pair=<code>` (the QR `collie pair` prints) prefills the code once and focuses the name; the
 //     spent code leaves the URL with a replace, so Back does not walk into it.
@@ -27,6 +31,7 @@ import { want } from "../../lib/polling";
 import { useStore } from "../../lib/store";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
+import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 
 export const DEVICES_SOURCE = { key: "devices", poll: loadDevices };
@@ -80,25 +85,35 @@ export function PairedDevices(handle: Handle) {
           <Icon icon={KeyRound} class="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div class="min-w-0">
             <div class="font-medium">{t("settings.devices.title")}</div>
-            <p class="text-sm text-muted-foreground">
-              {data.enforced ? t("settings.devices.description.enforced") : t("settings.devices.description.open")}
-            </p>
+            {data.loaded ? (
+              <p class="text-sm text-muted-foreground">
+                {data.enforced ? t("settings.devices.description.enforced") : t("settings.devices.description.open")}
+              </p>
+            ) : (
+              <p role="status" data-testid="devices-loading" class="flex min-h-5 items-center gap-2 text-sm text-muted-foreground">
+                <span aria-hidden="true" class="count-skeleton h-2.5 w-40 rounded-full bg-muted" />
+                <Icon icon={LoaderCircle} class="size-3.5 shrink-0 animate-spin" />
+                <span class="sr-only">{t("chat.scrollback.loading")}</span>
+              </p>
+            )}
           </div>
         </div>
 
-        {data.current ? (
-          <p class="border-t border-border px-4 py-2.5 text-sm">
-            {before}
-            <span class="text-[13px] font-medium text-status-done">{data.current}</span>
-            {after}
-          </p>
-        ) : null}
+        <Collapse open={data.current !== null}>
+          {data.current ? (
+            <p class="border-t border-border px-4 py-2.5 text-sm">
+              {before}
+              <span class="text-[13px] font-medium text-status-done">{data.current}</span>
+              {after}
+            </p>
+          ) : null}
+        </Collapse>
 
-        {data.error ? (
+        <Collapse open={data.error}>
           <p class="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">{t("settings.devices.loadError")}</p>
-        ) : null}
+        </Collapse>
 
-        {data.devices.length > 0 ? (
+        <Collapse open={data.devices.length > 0}>
           <ul class="divide-y divide-border border-t border-border">
             {data.devices.map((d) => (
               <DeviceRow
@@ -116,11 +131,11 @@ export function PairedDevices(handle: Handle) {
               />
             ))}
           </ul>
-        ) : null}
+        </Collapse>
 
-        {unpaired ? (
+        <Collapse open={unpaired}>
           <PairForm prefilled={codeFromUrl()} onPaired={() => void loadDevices()} />
-        ) : null}
+        </Collapse>
       </Card>
     );
   };

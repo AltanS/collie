@@ -71,7 +71,7 @@ import { PaneSettingsSheet } from "./settings-sheet";
 import { AgentsFooter, StatusStrip } from "./statusline";
 import { Strips, stripsExist } from "./strips";
 import { needsYouElsewhere, SwitcherSheet } from "./switcher-sheet";
-import { TerminalView, type MirrorTop } from "./terminal";
+import { ScreenSkeleton, TerminalView, type MirrorTop } from "./terminal";
 import { autoZenSetting, watchViewport } from "./viewport";
 
 /** What the header slot draws: the identity props minus the handlers the slot binds itself. */
@@ -361,6 +361,14 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     }
     const chatAnswered = chat.window.status.kind !== "empty" || chat.answered;
     const chatShown = reading.body !== "terminal" && chatAnswered;
+    // THE VIEW IS PICKED FROM THE STORED PREFERENCE, BEFORE ANY ANSWER. While Chat is the chosen view
+    // and its first answer is out, the screen draws Chat's skeleton, never the mirror: the mirror
+    // would show for the 38 ms (a phone: one read) until Chat replaced it. That holds while the
+    // snapshot has not yet said what the pane is (the gate cannot pick Chat without a pane row), unless
+    // the snapshot already failed, when the Terminal and its notice are the honest screen.
+    const chatChosen = dash.paneView === "chat";
+    const awaitingPane = pane === undefined && snap.at === 0 && snap.error === undefined;
+    const chatSkeleton = chatChosen && !gone && (awaitingPane || (reading.body !== "terminal" && !chatAnswered));
     const historyAvailable = pane?.hasSession === true && sessionLog.capable;
     const chatReason =
       !sessionLog.capable
@@ -541,7 +549,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
             />
           ) : null}
         </Collapse>
-        <Collapse open={notice !== null}>{notice}</Collapse>
+        {/* Zen is the screen and nothing else: the notice leaves with the strips, and comes back with them. */}
+        <Collapse open={!zenOn && notice !== null}>{notice}</Collapse>
         <div class="relative flex min-h-0 min-w-0 flex-1 flex-col border-t border-rule">
           {zenOn ? (
             <button
@@ -554,7 +563,9 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
               <Icon icon={Minimize2} class="size-4" />
             </button>
           ) : null}
-          {chatShown ? (
+          {chatSkeleton ? (
+            <ScreenSkeleton key="skeleton:chat" kind="chat" />
+          ) : chatShown ? (
             <ChatView
               key={`chat:${key}`}
               paneKey={key}

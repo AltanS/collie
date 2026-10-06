@@ -36,12 +36,67 @@ import { decorateRows, haystackOf } from "../../screen/decorate";
 import { createTailPin, isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
 import { toRows, type Row } from "../../screen/rows";
 import { MUSE_MIRROR, Screen } from "../../screen/screen";
+import { Button } from "../../ui/button";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { UnseenMark } from "../../ui/unseen-mark";
 
 /** The top-of-mirror affordance (agent-chat.tsx): History for a session, Load older for scrollback. */
 export type MirrorTop = { kind: "history"; onOpen: () => void } | { kind: "older"; loading: boolean; onOlder: () => void } | null;
+
+/** Widths of the bars, cycled down the screen so the rows read as lines of output, not as a block. */
+const BAR_WIDTHS = ["72%", "48%", "86%", "30%", "64%", "92%", "40%", "78%", "56%", "68%", "34%", "84%", "52%", "74%", "44%", "62%"] as const;
+/** More rows than any phone shows (the clip cuts the rest), so a tall screen is never half empty. */
+const TERMINAL_BARS = [...BAR_WIDTHS, ...BAR_WIDTHS, ...BAR_WIDTHS] as const;
+/** One user turn (a boxed head, then its lines), then replies: bars only, no box. */
+const CHAT_TURN: readonly (readonly string[])[] = [["82%", "58%"], ["94%", "88%", "71%", "40%"], ["46%"], ["90%", "76%", "52%"]];
+/** Three turns' worth, more than a phone shows (the clip cuts the rest). The first block is the boxed one. */
+const CHAT_BLOCKS: readonly (readonly string[])[] = [...CHAT_TURN, ...CHAT_TURN, ...CHAT_TURN];
+
+/**
+ * What a pane's screen draws from the first frame until its first text: muted bars in `.count-skeleton`
+ * (the breathing the Changes list and the Crew tab use, still under reduced motion), never an empty
+ * box. It fills the screen region it stands in (the region is `flex-1`, so the composer, the belt and
+ * the strips under it keep their place when the text arrives) and clips what does not fit, so a tall
+ * phone and a short one both end on a whole row. `kind` is the view the operator chose: "terminal"
+ * draws lines of output, "chat" draws a user turn and a reply, so the Chat view never shows the
+ * mirror's shape first (the 38 ms Terminal flash before Chat replaced it).
+ */
+export function ScreenSkeleton(handle: Handle<{ kind: "terminal" | "chat"; fontSize?: number }>) {
+  return () => {
+    const { kind, fontSize = 13 } = handle.props;
+    return (
+      <div
+        role="status"
+        data-slot="screen-skeleton"
+        data-kind={kind}
+        class={`relative min-h-0 flex-1 overflow-hidden ${kind === "chat" ? "px-3 pt-2" : "px-2 pb-3"}`}
+      >
+        <span class="sr-only">{t("chat.scrollback.loading")}</span>
+        {kind === "terminal" ? (
+          <div aria-hidden="true" class="flex flex-col">
+            {TERMINAL_BARS.map((width, i) => (
+              <div key={String(i)} class="flex items-center" style={{ height: `${(fontSize * 1.5).toFixed(1)}px` }}>
+                <span class="count-skeleton h-2.5 rounded-full bg-muted" style={{ width }} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div aria-hidden="true" class="flex flex-col gap-3">
+            {CHAT_BLOCKS.map((lines, i) => (
+              <div key={String(i)} class={i === 0 ? "flex flex-col gap-2 rounded-md border border-border px-3 py-2.5" : "flex flex-col gap-2 px-0.5"}>
+                {i === 0 ? <span class="count-skeleton h-2.5 rounded-full bg-muted" style={{ width: "24%" }} /> : null}
+                {lines.map((width, j) => (
+                  <span key={String(j)} class="count-skeleton h-2.5 rounded-full bg-muted" style={{ width }} />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+}
 
 const EDGE_ROW =
   "mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
@@ -52,7 +107,7 @@ export interface TerminalViewProps {
   lines: readonly StyledLine[];
   /** The pane read's unwrapped text, so a URL broken across rows still links whole. */
   logicalText?: string;
-  /** The mirror has never answered: draw nothing rather than "(no recent output)". */
+  /** The mirror has never answered: draw the skeleton, never "(no recent output)" and never a blank box. */
   loading: boolean;
   /** The pane's raw screen text is empty (web's `!display`): the only case that says "(no recent output)". */
   blank: boolean;
@@ -93,6 +148,8 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
   let lastLogical: string | undefined;
   let links: LinkMatch[] = [];
   let cut: { rows: Row[]; n: number; outRows: Row[]; outLines: readonly StyledLine[] } | null = null;
+  /** This view drew its skeleton first: the first text fades in over it (`.count-arrive`, still under reduced motion). */
+  let sawSkeleton = false;
 
   const save = (): void => {
     if (scroller) rememberSpot(spotKey, { following, top: scroller.scrollTop });
@@ -198,11 +255,14 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
       );
     }
 
+    if (loading) sawSkeleton = true;
     return (
       <div class="relative flex min-h-0 flex-1 flex-col" data-slot="terminal-view">
+        {loading ? <ScreenSkeleton kind="terminal" fontSize={fontSize} /> : null}
+        {loading ? null : (
         <div
           data-testid="pane-scroller"
-          class={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 ${native ? MUSE_MIRROR : "bg-background"}`}
+          class={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 ${native ? MUSE_MIRROR : "bg-background"}${sawSkeleton ? " count-arrive" : ""}`}
           mix={[
             ref((node: HTMLDivElement, signal: AbortSignal) => {
               scroller = node;
@@ -241,22 +301,23 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
             </div>
             <Collapse open={lead !== undefined && lead !== null}>{lead}</Collapse>
             {blank ? (
-              loading ? null : (
-                <p class="py-16 text-center text-sm text-muted-foreground" data-testid="mirror-empty">
-                  {t("chat.output.empty")}
-                </p>
-              )
+              <p class="py-16 text-center text-sm text-muted-foreground" data-testid="mirror-empty">
+                {t("chat.output.empty")}
+              </p>
             ) : drawn.length > 0 ? (
               <Screen rows={drawn} wrap={wrap} fontSize={fontSize} native={native} faceClass={faceClass} faceFamily={faceFamily} testId="pane-text" />
             ) : null}
           </div>
         </div>
-        {!following ? (
-          <button
-            type="button"
+        )}
+        {!following && !loading ? (
+          // The shared Button: web's pill is one, so it wears its press (`active:scale-[0.98]`, `transition-all`).
+          <Button
+            variant="outline"
+            size="icon"
             aria-label={t("common.scrollToLatestAria")}
             data-testid="scroll-to-latest"
-            class="absolute right-3 bottom-3 flex size-11 items-center justify-center rounded-full border border-border bg-background/90 shadow-md backdrop-blur"
+            class="absolute right-3 bottom-3 size-11 rounded-full bg-background/90 shadow-md backdrop-blur"
             mix={on("click", () => {
               anchor = null;
               follow(true);
@@ -269,7 +330,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
                 <UnseenMark />
               </span>
             ) : null}
-          </button>
+          </Button>
         ) : null}
       </div>
     );

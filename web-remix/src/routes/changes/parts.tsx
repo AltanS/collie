@@ -7,7 +7,7 @@
 // token is a span around a text node), never as markup. Stateless drawings are plain functions that
 // return nodes; only the diff (it colours itself once the highlighter loads) is a component.
 import { on, ref, type Handle, type RemixNode } from "remix/component";
-import { ChevronRight, GitCommitHorizontal, ListFilter, ListTree, Search, X } from "lucide";
+import { ChevronRight, GitCommitHorizontal, ListFilter, ListTree, LoaderCircle, Search, X } from "lucide";
 
 import { timeAgo } from "@web/lib/format";
 import { t, tn, type MessageKey } from "@web/lib/i18n";
@@ -181,6 +181,20 @@ export function changesList(repos: readonly ChangedRepo[], paneRepo: string | un
       ))}
     </ListGroup>
   ));
+}
+
+/**
+ * A read in flight with no list to show yet (the commit view's "Reading the commit…"): web's `Loading`,
+ * a spinning glyph and the label centred in the screen's own box. `role="status"` announces it once.
+ * The route draws it where it drew `quiet(label)`.
+ */
+export function changesLoading(label: string): RemixNode {
+  return (
+    <div role="status" data-slot="changes-loading" class="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+      <Icon icon={LoaderCircle} class="size-4 animate-spin" />
+      {label}
+    </div>
+  );
 }
 
 /** How wide each skeleton row's path bar is, so the rows read as a list and not as one block. */
