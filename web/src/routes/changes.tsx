@@ -995,7 +995,7 @@ function ChangesScreen() {
           </div>
         ) : (
           <div className="flex flex-col gap-4 p-4">
-            <ChangesListHead root={rootName ?? t("files.root")} count={headerCount} />
+            <ChangesListHead root={rootName ?? workspaceLabel} count={headerCount} />
             <ListBody
               state={list}
               arrive={listArrive}

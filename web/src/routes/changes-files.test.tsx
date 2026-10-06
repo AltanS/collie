@@ -308,7 +308,8 @@ describe("Files: the All files | Changes control", () => {
       expect(el!.querySelector('[data-slot="changes-totals"]')).not.toBeNull();
       return el!;
     });
-    expect(head.textContent).toBe("webapp+10 −2");
+    // The root's name is the list's own answer; a kept count may show the totals a beat earlier.
+    await waitFor(() => expect(head.textContent).toBe("webapp+10 −2"));
     expect(screen.getByRole("heading", { level: 1 }).closest("header")?.textContent).not.toContain("+10");
   });
 
