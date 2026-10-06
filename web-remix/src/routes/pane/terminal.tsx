@@ -14,6 +14,13 @@
 // web's `findMatches` for the find bar, web's `findLinks` for autolinked URLs. Only the rows a range
 // touches are rebuilt. The focused hit is scrolled to the middle after each step.
 //
+// EMPTY. "(no recent output)" is said only when the pane's RAW screen is empty (`blank`), as web tests
+// its `display` text. The rows drawn here can be none while the screen is not empty: a lifted dialog
+// block is not a mirror row, and its card is the answer on screen, so no sentence goes under it.
+//
+// THE REPLY CARD (`lead`, latest-reply.tsx) stands above the rows it replaced, below the top
+// affordance and its notes, as web draws it.
+//
 // LOAD OLDER. A pane with real scrollback grows its requested window (`onOlder`); the reader's place
 // is held by keeping the distance from the bottom across the longer text. A pane with an agent
 // session links to its History instead, because its alternate screen keeps no scrollback.
@@ -29,6 +36,7 @@ import { decorateRows, haystackOf } from "../../screen/decorate";
 import { isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
 import { toRows, type Row } from "../../screen/rows";
 import { MUSE_MIRROR, Screen } from "../../screen/screen";
+import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { UnseenMark } from "../../ui/unseen-mark";
 
@@ -46,6 +54,12 @@ export interface TerminalViewProps {
   logicalText?: string;
   /** The mirror has never answered: draw nothing rather than "(no recent output)". */
   loading: boolean;
+  /** The pane's raw screen text is empty (web's `!display`): the only case that says "(no recent output)". */
+  blank: boolean;
+  /** The newest reply's card, drawn in place of the rows it covers. */
+  lead?: RemixNode;
+  /** How many leading rows the card covers (web's `hideLeadingLines`), cut from the rows as drawn. */
+  hideLeading: number;
   wrap: boolean;
   fontSize: number;
   /** Muse's native mirror (ADR 0047): light space, never inverted. */
@@ -78,6 +92,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
   let lastHaystack = "";
   let lastLogical: string | undefined;
   let links: LinkMatch[] = [];
+  let cut: { rows: Row[]; n: number; outRows: Row[]; outLines: readonly StyledLine[] } | null = null;
 
   const save = (): void => {
     if (scroller) rememberSpot(spotKey, { following, top: scroller.scrollTop });
@@ -107,7 +122,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
   handle.signal.addEventListener("abort", save);
 
   return () => {
-    const { lines, loading, wrap, fontSize, native, faceClass, faceFamily, find, top, notes, tailRev, logicalText } = handle.props;
+    const { lines, loading, blank, lead, hideLeading, wrap, fontSize, native, faceClass, faceFamily, find, top, notes, tailRev, logicalText } = handle.props;
     if (tailRev !== seenTail) {
       seenTail = tailRev;
       following = true;
@@ -131,15 +146,22 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
       });
     }
     const hasNew = !following && shown !== rows;
+    // The reply card's rows come off what is SHOWN, frozen or live, so folding the card gives them
+    // back at once even while the reader is scrolled up (web hides them off its frozen `display`).
+    if (cut === null || cut.rows !== shown || cut.n !== hideLeading) {
+      cut = hideLeading > 0 ? { rows: shown, n: hideLeading, outRows: shown.slice(hideLeading), outLines: shownLines.slice(hideLeading) } : { rows: shown, n: 0, outRows: shown, outLines: shownLines };
+    }
+    const visibleRows = cut.outRows;
+    const visibleLines = cut.outLines;
 
-    const hay = haystackOf(shownLines);
+    const hay = haystackOf(visibleLines);
     if (hay.text !== lastHaystack || logicalText !== lastLogical) {
       lastHaystack = hay.text;
       lastLogical = logicalText;
       links = findLinks(hay.text, logicalText);
     }
     const found = find.measure(hay.text);
-    const drawn = decorateRows(shown, shownLines, hay.starts, found.matches, found.current, links);
+    const drawn = decorateRows(visibleRows, visibleLines, hay.starts, found.matches, found.current, links);
     handle.queueTask(() => {
       pin();
       find.report(found.matches.length, found.current);
@@ -198,11 +220,16 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
               </p>
             ))}
           </div>
-          {drawn.length > 0 ? (
+          <Collapse open={lead !== undefined && lead !== null}>{lead}</Collapse>
+          {blank ? (
+            loading ? null : (
+              <p class="py-16 text-center text-sm text-muted-foreground" data-testid="mirror-empty">
+                {t("chat.output.empty")}
+              </p>
+            )
+          ) : drawn.length > 0 ? (
             <Screen rows={drawn} wrap={wrap} fontSize={fontSize} native={native} faceClass={faceClass} faceFamily={faceFamily} testId="pane-text" />
-          ) : loading ? null : (
-            <p class="py-16 text-center text-sm text-muted-foreground">{t("chat.output.empty")}</p>
-          )}
+          ) : null}
         </div>
         {!following ? (
           <button

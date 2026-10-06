@@ -20,6 +20,7 @@
 import { on, ref, type Handle, type RemixNode } from "remix/component";
 import { Check, FileText, Image, Keyboard, LoaderCircle, Mic, Paperclip, Send, Settings2, Slash, Square, Terminal, Zap } from "lucide";
 
+import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@web/hooks/use-display-prefs";
 import { sendKeys } from "@web/lib/api";
 import { describeApiError } from "@web/lib/api-error-message";
 import { composeLine, insertMarker, markerMissing, removeMarker } from "@web/lib/attachments";
@@ -45,6 +46,7 @@ import { createDirectTyping } from "../../lib/direct-typing";
 import { clearDraft, fitsDraftStore, holdDraft, loadDraft, saveDraft } from "../../lib/drafts";
 import { LONG_PRESS_EVENT, longPress } from "../../lib/gestures";
 import { useLocale } from "../../lib/i18n-store";
+import { displayPrefs } from "../../lib/prefs";
 import { setStatus } from "../../lib/status";
 import { scheduleUpdate, useStore } from "../../lib/store";
 import { handsFree, sttCapability } from "../../lib/stt";
@@ -151,6 +153,7 @@ export function Composer(handle: Handle<ComposerProps>) {
   const readAttachments = useStore(handle, attachments.list);
   const readConfig = useStore(handle, config);
   const readHandsFree = useStore(handle, handsFree);
+  const readDisplay = useStore(handle, displayPrefs);
   const draftPreview = createStableDraft(handle.signal);
   const readStable = useStore(handle, draftPreview.value);
 
@@ -466,6 +469,12 @@ export function Composer(handle: Handle<ComposerProps>) {
     const hasDraft = text.trim() !== "" || list.length > 0;
     const rec = readRecorder();
     const micIsPrimary = stt !== null && !direct.active && !hasDraft;
+    // The draft field's size and face (composer.tsx `draftStyle`): the operator's draft size with
+    // the iOS no-zoom floor, and the mirror's family only when a non-default one was chosen.
+    const prefs = readDisplay();
+    const face = fontStack(prefs.fontFamily);
+    const draftPx = `${String(applyDraftFontSize(prefs.draftFontSize, inputFocusZoomsPage()))}px`;
+    const draftStyle = face === undefined ? { fontSize: draftPx } : { fontSize: draftPx, fontFamily: face };
 
     // The Sent strip ends when the mirror moves past the words, or its 6 s pass.
     if (lastSent !== null && lastSent.paneText !== paneText) lastSent = null;
@@ -548,8 +557,15 @@ export function Composer(handle: Handle<ComposerProps>) {
           type="button"
           data-testid="composer-mic"
           aria-pressed={rec.phase !== "idle"}
-          aria-label={rec.phase === "recording" ? t("composer.mic.stopAria") : t("composer.mic.recordAria")}
-          disabled={locked || sending || rec.phase === "transcribing"}
+          aria-label={
+            !stt.available
+              ? (stt.reason ?? t("composer.mic.unavailable"))
+              : rec.phase === "recording"
+                ? t("composer.mic.stopAria")
+                : t("composer.mic.recordAria")
+          }
+          title={stt.available ? undefined : stt.reason}
+          disabled={!stt.available || locked || sending || rec.phase === "transcribing"}
           class={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-full disabled:opacity-50",
             rec.phase === "idle" ? "bg-primary text-primary-foreground" : "bg-destructive text-white",
@@ -573,8 +589,10 @@ export function Composer(handle: Handle<ComposerProps>) {
           data-sent={justSent ? "" : undefined}
           aria-label={direct.active ? t("composer.send.stopTypingAria") : t("composer.send.sendAria")}
           aria-pressed={direct.active}
-          disabled={locked || sending || (!direct.active && !hasDraft)}
-          class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-50"
+          // web/src/components/composer.tsx: `disabled={locked || sending}`. An empty draft keeps
+          // the primary ink; `send` refuses a blank value on its own.
+          disabled={locked || sending}
+          class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
           mix={[
             longPress({ disabled: locked || direct.active }),
             on(LONG_PRESS_EVENT, () => {
@@ -747,7 +765,8 @@ export function Composer(handle: Handle<ComposerProps>) {
               autoCorrect={direct.active ? "off" : undefined}
               spellCheck={direct.active ? false : undefined}
               enterkeyhint="enter"
-              class="block max-h-[min(10rem,30dvh)] min-h-9 min-w-0 flex-1 resize-none bg-transparent py-1.5 pl-2 font-mono text-sm [field-sizing:content] wrap-anywhere outline-none placeholder:truncate placeholder:font-sans placeholder:text-muted-foreground disabled:opacity-60"
+              class="block max-h-[min(10rem,30dvh)] min-h-9 min-w-0 flex-1 resize-none bg-transparent py-1.5 pl-2 font-mono text-base [field-sizing:content] wrap-anywhere outline-none placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              style={draftStyle}
               mix={[
                 ref((node: HTMLTextAreaElement) => {
                   field = node;

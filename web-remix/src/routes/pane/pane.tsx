@@ -15,7 +15,7 @@
 // LEAVING. A pane that is gone from a healthy snapshot taken after this screen opened says "Pane
 // closed" once and goes up (ADR 0067); a pane that never showed up waits for that same proof.
 import { on, navigate, type Handle } from "remix/component";
-import { Check, KeyRound, Lock, Minimize2, SquareTerminal, TriangleAlert, WifiOff } from "lucide";
+import { KeyRound, Lock, Minimize2, TriangleAlert, WifiOff } from "lucide";
 
 import { mirrorFont } from "@web/hooks/use-display-prefs";
 import type { Block, StyledLine } from "@web/lib/blocks";
@@ -23,6 +23,7 @@ import { adapterFor, rendersNativeMirror } from "@web/lib/harness";
 import { splitLines } from "@web/lib/blocks";
 import { parseAnsi } from "@web/lib/ansi";
 import { t } from "@web/lib/i18n";
+import { locateReply, type ReplyPlacement } from "@web/lib/latest-reply";
 import { paneMirrorOverride } from "@web/lib/mirror-invert";
 import { muxCapability } from "@web/lib/mux-capability";
 import { changesPath, historyPath, panePath, spacePath } from "@web/lib/nav";
@@ -31,7 +32,7 @@ import { isNotPaired as webRefused, subscribePairing } from "@web/lib/pairing";
 import { reportsSessionOnFirstPrompt, hasJournalAdapter } from "@web/lib/journal-agents";
 import { paneScope } from "@web/lib/hosts";
 import { paneScopeKey } from "@web/lib/scope";
-import { isReadOnly, type AgentView } from "@web/lib/types";
+import { isReadOnly, type AgentView, type TranscriptEntry } from "@web/lib/types";
 
 import { CacheSheet } from "../../chips/cache-sheet";
 import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
@@ -61,11 +62,13 @@ import { blockBuilder, findPane, PANE_LINES, PANE_LINES_MAX, PANE_LINES_STEP, po
 import { CardDock, type CardActions } from "./dialog-card";
 import { answerMultiSelect, answerPreview, answerWizard } from "./dialogs/actions";
 import { FindBar } from "./find-bar";
+import { createLatestReply, LatestReplyCard } from "./latest-reply";
 import { PaneIdentity } from "./identity";
 import type { PaneIdentityProps } from "./identity";
 import { questionNotes } from "./question-note";
 import { createGate } from "./pane-start";
 import { PaneSettingsSheet } from "./settings-sheet";
+import { AgentsFooter, StatusStrip } from "./statusline";
 import { Strips, stripsExist } from "./strips";
 import { needsYouElsewhere, SwitcherSheet } from "./switcher-sheet";
 import { TerminalView, type MirrorTop } from "./terminal";
@@ -133,8 +136,31 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   let card: DialogCard | null = null;
   let mirror: StyledLine[] = [];
   let rawDraft: string | null = null;
+  /** The agent's statusline rows and background-agents block (agent-chat.tsx `statusLines`, `agentsFooter`). */
+  let statusLines: StyledLine[] = [];
+  let agentsFooter: StyledLine[] = [];
 
   const wake = (): void => scheduleUpdate(handle);
+
+  // The newest reply in full over the rows that only hold its end (agent-chat.tsx `useLatestReply`).
+  const latest = createLatestReply(paneId, scope, wake, handle.signal);
+  let placedFor: { text: string; reply: TranscriptEntry } | null = null;
+  let placement: ReplyPlacement | null = null;
+  /** A collapsed card is a judgement about ONE message, so it is remembered by uuid. */
+  let collapsedReply: string | null = null;
+
+  /** Copy the buffered output (agent-chat.tsx `copyOutput`): the unwrapped text when the read has it.
+   *  The row is offered only where `navigator.clipboard` exists; plain HTTP has none (a SecureContext API). */
+  const copyOutput = async (): Promise<void> => {
+    const data = readPane().data;
+    try {
+      await navigator.clipboard.writeText(data?.logicalText || (data?.text ?? ""));
+      setStatus(t("chat.copyOutput.done"), "success");
+    } catch {
+      setStatus(t("chat.copyOutput.failed"), "error");
+    }
+  };
+
   const setSheet = (next: Sheet): void => {
     sheet = next;
     wake();
@@ -300,7 +326,13 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
       lastBlocks = blocks;
       card = dialogCardOf(blocks);
       mirror = mirrorLines(blocks);
-      rawDraft = rawMirror ? null : (adapterFor(pane?.agent)?.extractInputDraft(splitLines(parseAnsi(text))) ?? null);
+      // One parse for the three tail reads, through the same adapter whose buildBlocks stripped them
+      // (agent-chat.tsx): none of them with the raw mirror on (web's `grammarsOn`).
+      const adapter = rawMirror ? undefined : adapterFor(pane?.agent);
+      const screen = adapter === undefined ? [] : splitLines(parseAnsi(text));
+      rawDraft = adapter?.extractInputDraft(screen) ?? null;
+      statusLines = adapter?.extractStatusLines(screen) ?? [];
+      agentsFooter = adapter?.extractAgentsFooter?.(screen) ?? [];
     }
 
     // ── The chat gate (ADR 0082) ─────────────────────────────────────────────────────────────────
@@ -405,6 +437,37 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
         glideKey,
       }),
     );
+
+    // ── The newest reply over the rows it covers (agent-chat.tsx `clippedReply`) ───────────────────
+    // Read only while the Terminal is the body: the card lives in the mirror and nowhere else.
+    const replyOn = historyAvailable && display.expandClippedReply && !chatShown;
+    handle.queueTask(() => latest.see(text, replyOn));
+    const reply = latest.reply(replyOn);
+    if (reply === null) {
+      placedFor = null;
+      placement = null;
+    } else if (placedFor === null || placedFor.text !== text || placedFor.reply !== reply) {
+      placedFor = { text, reply };
+      placement = locateReply(text, reply);
+    }
+    // Find searches the mirror, so while it is open the mirror is whole and the card stands down.
+    const clippedReply = placement?.fit === "clipped" && !findState.open ? reply : null;
+    const replyOpen = clippedReply !== null && collapsedReply !== clippedReply.uuid;
+    const hiddenRows = replyOpen && placement !== null ? placement.endLine + 1 : 0;
+    const lead =
+      clippedReply === null ? undefined : (
+        <LatestReplyCard
+          key={clippedReply.uuid}
+          entry={clippedReply}
+          agent={pane?.agent}
+          open={replyOpen}
+          scope={scope}
+          onToggle={() => {
+            collapsedReply = replyOpen ? clippedReply.uuid : null;
+            wake();
+          }}
+        />
+      );
 
     // ── One notice at a time, most fundamental first ─────────────────────────────────────────────
     let notice = null;
@@ -513,6 +576,9 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
               lines={mirror}
               logicalText={read.data?.logicalText}
               loading={read.at === 0 && read.error === undefined}
+              blank={text === ""}
+              lead={lead}
+              hideLeading={hiddenRows}
               wrap={display.wrap}
               fontSize={display.fontSize}
               native={native}
@@ -529,7 +595,17 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
         <Collapse open={card !== null}>
           {card !== null ? <CardDock card={card} disabled={wg.locked} actions={actions} composing={vp.keyboard} /> : null}
         </Collapse>
+        {/* THE BOTTOM REGION, one row of this column that zen takes out whole (agent-chat.tsx): the
+            agent's statusline, its background agents, then the chrome block. The two bands stand
+            down while the keyboard is up (web's `composing`), through Collapse. */}
         <Collapse open={!zenOn}>
+          <div class="relative shrink-0" data-slot="bottom-region">
+          <Collapse open={!vp.keyboard && statusLines.length > 0}>
+            {statusLines.length > 0 ? <StatusStrip rows={statusLines} native={rendersNativeMirror(pane?.agent)} faceClass={face.className} faceFamily={face.style?.fontFamily} /> : null}
+          </Collapse>
+          <Collapse open={!vp.keyboard && agentsFooter.length > 0}>
+            {agentsFooter.length > 0 ? <AgentsFooter rows={agentsFooter} faceClass={face.className} faceFamily={face.style?.fontFamily} /> : null}
+          </Collapse>
           <Composer
             key={`composer:${key}`}
             paneId={paneId}
@@ -553,6 +629,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
               wake();
             }}
           />
+          </div>
         </Collapse>
         <PaneActionsSheet
           open={sheet === "actions"}
@@ -563,29 +640,14 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
           herd={all}
           onRenamed={kick}
           onClosed={() => goUp(scope)}
-          onFind={chatShown ? undefined : () => find.open()}
+          onFind={text !== "" && !chatShown ? () => find.open() : undefined}
           onHistory={historyAvailable ? () => void navigate(href(historyPath(paneId, scope))) : undefined}
+          onCopyOutput={text !== "" && "clipboard" in navigator ? () => void copyOutput() : undefined}
           paneView={dash.paneView}
           onPaneViewChange={(view) => setDashPref("paneView", view)}
           paneViewNote={chatNote}
           onSettings={() => setSheet("settings")}
-          onZen={zenAvailable ? enterZen : undefined}
-          extraRows={
-            <button
-              type="button"
-              data-testid="raw-mirror-toggle"
-              aria-pressed={rawMirror}
-              class="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left text-sm active:bg-muted"
-              mix={on("click", () => {
-                displayPrefs.update((p) => ({ ...p, rawTerminal: !p.rawTerminal }));
-                setSheet(null);
-              })}
-            >
-              <Icon icon={SquareTerminal} class="size-4 shrink-0 text-muted-foreground" />
-              <span class="min-w-0 flex-1">{t("settings.display.rawTerminal.label")}</span>
-              <Icon icon={Check} class={rawMirror ? "size-4 shrink-0 text-primary" : "size-4 shrink-0 opacity-0"} />
-            </button>
-          }
+          onZen={zenAvailable && text !== "" ? enterZen : undefined}
         />
         <PaneSettingsSheet open={sheet === "settings"} onClose={() => setSheet(null)} pane={pane ?? null} scope={scope} />
         <CacheSheet open={sheet === "cache"} onClose={() => setSheet(null)} cache={pane?.cache} host={pane?.host} />
