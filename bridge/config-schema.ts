@@ -679,6 +679,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     min: 1,
     doc: "How long an update waits for the restarted bridge to answer.",
   },
+  {
+    key: "web_src",
+    env: "COLLIE_WEB_SRC",
+    section: "update",
+    kind: "string",
+    default: "web",
+    doc: "The directory `collie build` builds the web app from, a plain name next to web/ that holds a package.json. A `.collie-web-src` file at the checkout root sets it when this is unset. The bundle is served from web/dist either way.",
+  },
 
   // ── serve ──────────────────────────────────────────────────────────────────
   {
