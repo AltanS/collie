@@ -207,6 +207,28 @@ test("the newest reply replaces the clipped rows with a Markdown card, and folds
   await expect(page.getByTestId("pane-text")).not.toContainText(REPLY_TAIL);
   expect(reads).toBeGreaterThan(0);
 
+  // The mirror is its rows and nothing else (web's <pre> has no padding and reserves no height): the
+  // scroller's own 8 px is the inset, so the text starts at x = 8, and the tail sits right under the card.
+  const pre = page.getByTestId("pane-text");
+  const box = await pre.evaluate((node) => {
+    const style = getComputedStyle(node);
+    const scroller = node.closest<HTMLElement>('[data-testid="pane-scroller"]')!;
+    return {
+      padding: style.padding,
+      minHeight: style.minHeight,
+      left: node.getBoundingClientRect().left,
+      rows: Number(node.getAttribute("data-rows")),
+      height: node.getBoundingClientRect().height,
+      scrollerHeight: scroller.clientHeight,
+      gapBelowCard: node.getBoundingClientRect().top - document.querySelector('[data-testid="latest-reply"]')!.getBoundingClientRect().bottom,
+    };
+  });
+  expect(box.padding).toBe("0px");
+  expect(box.minHeight).toBe("0px");
+  expect(box.left).toBe(8);
+  expect(box.height).toBeLessThan(box.rows * 20);
+  expect(box.gapBelowCard).toBeLessThanOrEqual(8);
+
   await card.getByRole("button", { expanded: true }).click();
   await expect(card).not.toHaveAttribute("data-open", "");
   await expect(page.getByTestId("pane-text")).toContainText(REPLY_TAIL);

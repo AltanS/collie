@@ -13,7 +13,6 @@ import { isReadOnly, type AgentView, type BridgeConfig } from "@web/lib/types";
 import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
 import { creating, newTab, SPACE_CREATE_KEY } from "../../chips/space-actions";
 import { UpdateBanner } from "../../chips/update-banner";
-import { UpdateRibbon } from "../../chips/update-ribbon";
 import { address, config, snapshot } from "../../lib/data";
 import { hiddenMachines, setMachineHidden } from "../../lib/hidden-machines";
 import { useLocale } from "../../lib/i18n-store";
@@ -139,7 +138,6 @@ export function HomeRoute(handle: Handle) {
     const newTabProps: HeadingNewTab = { scope, sessions, creating: readCreating(), onNewTab };
     return (
       <div class="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col" data-testid="home">
-        <UpdateRibbon />
         <div class="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto" data-testid="home-scroller" mix={scrollMemory()}>
           <main class="flex-1">
             {view === "crew" ? (

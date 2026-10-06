@@ -7,7 +7,6 @@ import { isReadOnly, type AgentView } from "@web/lib/types";
 
 import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
 import { UpdateBanner } from "../../chips/update-banner";
-import { UpdateRibbon } from "../../chips/update-ribbon";
 import { address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { isNotPaired } from "../../lib/pairing";
@@ -117,7 +116,6 @@ export function SpaceRoute(handle: Handle<{ spaceId: string }>) {
 
     return (
       <div class="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col" data-testid="space">
-        <UpdateRibbon />
         <div class="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto" data-testid="space-scroller" mix={scrollMemory()}>
           {selectedWs !== undefined && (
             <>

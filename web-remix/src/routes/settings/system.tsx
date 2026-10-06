@@ -17,7 +17,6 @@ import { Card } from "../../ui/card";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { goDown } from "../frame/up";
-import { CardHead } from "./parts";
 import { loadUpdateCheck, updateCheck } from "./update-check";
 import { updatesStatusLine } from "./updates-status";
 
@@ -157,7 +156,15 @@ export function ConnectionInfo(handle: Handle) {
     const device = deviceLabel(snap?.device);
     return (
       <Card class="gap-0 py-0" data-testid="connection-info">
-        <CardHead icon={Plug} title={t("settings.connection.title")} description={t("settings.connection.description")} />
+        {/* web's ConnectionInfo head, not CardHead: the glyph is centred on the two lines and the
+            row's bottom padding is 12 px, which puts the first row 4 px higher. */}
+        <div class="flex items-center gap-3 p-4 pb-3">
+          <Icon icon={Plug} class="size-5 shrink-0 text-muted-foreground" />
+          <div>
+            <div class="font-medium">{t("settings.connection.title")}</div>
+            <p class="text-sm text-muted-foreground">{t("settings.connection.description")}</p>
+          </div>
+        </div>
         <dl class="divide-y divide-border border-t border-border">
           <Row label={t("settings.connection.row.endpoint")} mono>
             {window.location.host}

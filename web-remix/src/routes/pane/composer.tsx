@@ -630,7 +630,7 @@ export function Composer(handle: Handle<ComposerProps>) {
             </div>
           ) : null}
         </div>
-        <div data-slot="composer" class="px-2 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div data-slot="composer" class="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <Collapse open={lastSent !== null}>
             <div data-testid="sent-preview" class="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
               <Icon icon={LoaderCircle} class="size-3 shrink-0 animate-spin" />

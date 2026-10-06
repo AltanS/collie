@@ -44,7 +44,7 @@ import { UnseenMark } from "../../ui/unseen-mark";
 export type MirrorTop = { kind: "history"; onOpen: () => void } | { kind: "older"; loading: boolean; onOlder: () => void } | null;
 
 const EDGE_ROW =
-  "mb-2 flex min-h-9 w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
+  "mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
 
 export interface TerminalViewProps {
   /** The scroll-memory key: the pane's (host, session, pane) key. */
@@ -213,6 +213,11 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
                 if (following && anchor === null) tail.pin(node);
               });
               keep.observe(node);
+              // The CONTENT too: the reply card's transcript settles a few px after the render-time
+              // pin (images, fonts, its Collapse), which moves no scroll event and left the tail
+              // short of the end until the next poll re-pinned. One block wrapper, so no layout moves.
+              const content = node.firstElementChild;
+              if (content) keep.observe(content);
               signal.addEventListener("abort", () => keep.disconnect(), { once: true });
             }),
             on("scroll", (event) => {
@@ -225,24 +230,26 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
             }),
           ]}
         >
-          <div class="pt-1">
-            {edge}
-            {notes.map((note) => (
-              <p key={note} class="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
-                {note}
-              </p>
-            ))}
+          <div data-slot="terminal-content">
+            <div>
+              {edge}
+              {notes.map((note) => (
+                <p key={note} class="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
+                  {note}
+                </p>
+              ))}
+            </div>
+            <Collapse open={lead !== undefined && lead !== null}>{lead}</Collapse>
+            {blank ? (
+              loading ? null : (
+                <p class="py-16 text-center text-sm text-muted-foreground" data-testid="mirror-empty">
+                  {t("chat.output.empty")}
+                </p>
+              )
+            ) : drawn.length > 0 ? (
+              <Screen rows={drawn} wrap={wrap} fontSize={fontSize} native={native} faceClass={faceClass} faceFamily={faceFamily} testId="pane-text" />
+            ) : null}
           </div>
-          <Collapse open={lead !== undefined && lead !== null}>{lead}</Collapse>
-          {blank ? (
-            loading ? null : (
-              <p class="py-16 text-center text-sm text-muted-foreground" data-testid="mirror-empty">
-                {t("chat.output.empty")}
-              </p>
-            )
-          ) : drawn.length > 0 ? (
-            <Screen rows={drawn} wrap={wrap} fontSize={fontSize} native={native} faceClass={faceClass} faceFamily={faceFamily} testId="pane-text" />
-          ) : null}
         </div>
         {!following ? (
           <button

@@ -10,6 +10,15 @@ import type { Handle, RemixNode } from "remix/component";
 import { parseMarkdown, type MdBlock, type MdSpan } from "@web/lib/markdown";
 import { cn } from "@web/lib/utils";
 
+/** web's breakClass: a short chip never breaks, a long one breaks only where it cannot fit a line. */
+const NO_BREAK_MAX = 24;
+function breakClass(text: string): string {
+  return text.length <= NO_BREAK_MAX ? "whitespace-nowrap" : "wrap-anywhere";
+}
+
+/** web's ALIGN_CLASS: a column's alignment, left when the table names none. */
+const ALIGN_CLASS = { left: "text-left", center: "text-center", right: "text-right" } as const;
+
 function spans(list: readonly MdSpan[]): RemixNode[] {
   return list.map((span, i) => {
     const key = String(i);
@@ -17,7 +26,14 @@ function spans(list: readonly MdSpan[]): RemixNode[] {
       case "text":
         return span.text;
       case "code":
-        return <code key={key} class="rounded-sm bg-status-info/12 px-1 font-mono text-[0.9em] text-status-info">{span.text}</code>;
+        return (
+          <code
+            key={key}
+            class={`rounded-sm border border-status-info/20 bg-status-info/10 px-1 py-px font-mono text-[0.9em] [font-variant-ligatures:none] text-status-info ${breakClass(span.text)}`}
+          >
+            {span.text}
+          </code>
+        );
       case "bold":
         return <strong key={key} class="font-semibold">{spans(span.spans)}</strong>;
       case "italic":
@@ -41,7 +57,7 @@ function block(md: MdBlock): RemixNode {
       return <p>{spans(md.spans)}</p>;
     case "code":
       return (
-        <pre class="overflow-x-auto rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-snug whitespace-pre">
+        <pre class="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]">
           {md.text}
         </pre>
       );
@@ -64,11 +80,11 @@ function block(md: MdBlock): RemixNode {
     case "table":
       return (
         <div class="overflow-x-auto">
-          <table class="text-xs">
+          <table class="w-max border-collapse text-xs">
             <thead>
               <tr>
                 {md.header.map((cell, i) => (
-                  <th key={String(i)} class="border-b border-border px-2 py-1 text-left font-semibold">{spans(cell)}</th>
+                  <th key={String(i)} class={`border px-2 py-1 font-semibold ${ALIGN_CLASS[md.align[i] ?? "left"]}`}>{spans(cell)}</th>
                 ))}
               </tr>
             </thead>
@@ -76,7 +92,7 @@ function block(md: MdBlock): RemixNode {
               {md.rows.map((row, r) => (
                 <tr key={String(r)}>
                   {row.map((cell, i) => (
-                    <td key={String(i)} class="border-b border-border/50 px-2 py-1 align-top">{spans(cell)}</td>
+                    <td key={String(i)} class={`border px-2 py-1 align-top ${ALIGN_CLASS[md.align[i] ?? "left"]}`}>{spans(cell)}</td>
                   ))}
                 </tr>
               ))}

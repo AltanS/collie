@@ -1,7 +1,8 @@
 // The update ribbon: web/src/components/update-ribbon.tsx on the Remix 3 shell.
 //
 // It registers a slot in the top band (`shell/strip-model.ts`, priority UPDATE, the quietest of the
-// four) and draws NOTHING in place: `UpdateRibbon` renders null and drives the slot. What the strip
+// four) and draws NOTHING in place. `shell.tsx` mounts it ONCE for every route (web's RootLayout does
+// the same), so no route mounts it; it subscribes to the stores it reads and the Shell to none: `UpdateRibbon` renders null and drives the slot. What the strip
 // says and which of its five states it is in is `ribbonView` from web/'s `lib/update-ribbon.ts`, used
 // as it stands; `stripOf` below only maps that reading to what the strip draws, so a test can pin it.
 //

@@ -99,12 +99,18 @@ export function Screen(handle: Handle<ScreenProps>) {
         data-slot="screen"
         data-rows={rows.length}
         class={cn(
-          "m-0 font-mono leading-[1.25] [font-variant-ligatures:none]",
+          "m-0 font-mono leading-[1.25] [font-variant-ligatures:none] select-text [-webkit-user-select:text]",
           native ? MUSE_MIRROR : MIRROR_SPACE,
           native ? null : MIRROR_INVERT,
           faceClass,
-          inset ? "overflow-x-auto rounded-lg px-2 py-1.5" : "min-h-full px-2 py-1.5",
-          wrap ? "whitespace-pre-wrap break-words" : "overflow-x-auto whitespace-pre",
+          // The terminal view's <pre> wears no padding of its own (web's preClass): the scroller's px-2
+          // is the inset, the rows are the only height (no `min-h-full`, which left a blank panel under
+          // the reply card), and `text-pretty` is part of the wrap width (#302). Only the dialog
+          // card's rounded region (`inset`) pads, as web's raw-mirror.
+          inset ? "overflow-x-auto rounded-lg px-2 py-1.5" : null,
+          wrap
+            ? cn("whitespace-pre-wrap break-words", !inset && "text-pretty")
+            : cn("overflow-x-auto whitespace-pre", !inset && "min-w-0 w-full max-w-full shrink-0 overscroll-x-contain [touch-action:pan-x_pan-y]"),
         )}
         style={faceFamily === undefined ? { fontSize: `${String(fontSize)}px` } : { fontSize: `${String(fontSize)}px`, fontFamily: faceFamily }}
       >

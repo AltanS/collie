@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installRoutesApi } from "./routes-api";
+import { installRoutesApi, SNAPSHOT, type StubHandler } from "./routes-api";
 import { changesStub } from "./routes-changes-api";
 import { crewStub } from "./routes-crew-api";
 import { historyStub } from "./routes-history-api";
@@ -49,5 +49,34 @@ for (const level of LEVELS) {
     await page.getByTestId(back).click();
     await expect(page).toHaveURL(level.up);
     expect(errors).toEqual([]);
+  });
+}
+
+// The update ribbon is the Shell's, not a route's: web mounts it once in RootLayout, so every route starts
+// below the same 33 px band when the snapshot reports a release. (Remix mounted it from home and space
+// only, which put every other screen 33 px higher than web's.)
+const OFFER: StubHandler = (ctx) => {
+  if (ctx.method !== "GET" || ctx.url.pathname !== "/api/snapshot") return false;
+  void ctx.json(200, {
+    ...SNAPSHOT,
+    update: { current: "1.17.0", latest: "1.17.1", latestUrl: null, releaseAvailable: true, majorAvailable: null, majorUrl: null, bridgeStale: false, checkedAt: null },
+  });
+  return true;
+};
+
+const RIBBON_ROUTES: readonly { name: string; path: string }[] = [
+  { name: "home", path: "/" },
+  { name: "space", path: "/space/w1" },
+  { name: "pane", path: "/pane/w1%3Ap1" },
+  ...LEVELS.map(({ name, path }) => ({ name, path })),
+];
+
+for (const route of RIBBON_ROUTES) {
+  test(`${route.name}: the update ribbon draws above the header`, async ({ page }) => {
+    await installRoutesApi(page, [OFFER, crewStub("crew"), machinesStub().handler, historyStub("long"), changesStub(), settingsStub().handler]);
+    await page.goto(route.path);
+    await expect(page.getByTestId("update-ribbon")).toContainText("1.17.1");
+    // The header starts where the band ends: 33 px down on every route, web's measure at this width.
+    await expect.poll(async () => (await page.locator("header").first().boundingBox())?.y).toBeCloseTo(33, 0);
   });
 }

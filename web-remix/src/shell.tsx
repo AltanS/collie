@@ -29,6 +29,7 @@ import { headerOf, ShellProvider } from "./shell/context";
 import { HeaderHost, headerShowsStatus } from "./shell/header";
 import { ScreenTransition } from "./shell/screen-transition";
 import { StripHost } from "./shell/strip-host";
+import { UpdateRibbon } from "./chips/update-ribbon";
 
 export const SNAPSHOT_SOURCE = { key: "snapshot", poll: loadSnapshot };
 export const CONFIG_SOURCE = { key: "config", poll: loadConfig };
@@ -52,6 +53,9 @@ export function Shell(handle: Handle<ShellProps>) {
         <div style={{ display: "contents" }} inert={covered} data-slot="app">
           <div class="flex h-(--app-h) flex-col overflow-hidden">
             <StripHost />
+            {/* The update offer: one slot in the band for every route, as web's RootLayout. Draws nothing in
+                place; it subscribes to its own stores, never the Shell. */}
+            <UpdateRibbon />
             <HeaderHost />
             <ScreenTransition pathname={handle.props.url.pathname}>{handle.props.children}</ScreenTransition>
           </div>
