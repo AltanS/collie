@@ -571,7 +571,7 @@ export function AgentList({
         <div className="flex min-h-11 items-center justify-between gap-2">
           {summary}
           {renderBody === undefined ? controls : (
-            <div className="invisible" aria-hidden="true">
+            <div className="invisible shrink-0" aria-hidden="true">
               {controls}
             </div>
           )}

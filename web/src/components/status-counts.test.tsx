@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 
-import { countStates, StatusCounts } from "./status-counts";
+import { countStates, StatusCounts, StatusSummaryLine } from "./status-counts";
 import type { AgentStatus, AgentView } from "@/lib/types";
 
 /** A minimal pane. Only the fields `countStates`/`isUnseen` read are ever varied per case. */
@@ -129,15 +129,66 @@ describe("StatusCounts — labelled (the dashboard's one summary line)", () => {
     expect(item).not.toHaveAttribute("aria-label");
   });
 
-  it("spells every non-zero state, each on its own", () => {
+  it("spells the first count in words and draws every later one bare, each still named in words", () => {
     render(<StatusCounts panes={[pane("blocked"), pane("working"), pane("working")]} labelled />);
     expect(screen.getByText("1 needs you")).toBeInTheDocument();
-    expect(screen.getByText("2 working")).toBeInTheDocument();
+    expect(screen.queryByText("2 working")).not.toBeInTheDocument();
+    const later = screen.getByLabelText("2 working");
+    expect(later).toHaveTextContent("2");
+    expect(later).not.toHaveTextContent("working");
   });
 
   it("keeps the unseen mark decorative here too — the spelled word carries the meaning", () => {
     render(<StatusCounts panes={[pane("idle", { lastActiveAt: 200, lastSeenAt: 100 })]} labelled />);
     expect(screen.getByText("1 unseen")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "unseen" })).not.toBeInTheDocument();
+  });
+});
+
+// THE SLOT IS NARROW (2026-10-06): the controls beside the summary are 188px and `shrink-0`, which
+// leaves 92px of line at 320 wide. jsdom has no layout, so the guard is the classes that make the
+// browser keep ONE row: no wrap, clipped, every count `shrink-0`, the first count in words only
+// while the row holds two counts or fewer.
+describe("StatusCounts — the summary is one row, always", () => {
+  const three = [pane("blocked"), pane("working"), pane("done", { lastActiveAt: 1, lastSeenAt: 200 })];
+
+  it("is one nowrap row that clips, and may shrink inside its button", () => {
+    render(<StatusCounts panes={three} labelled />);
+    const row = screen.getByLabelText("1 needs you").closest("span.tabular-nums")!;
+    expect(row).toHaveClass("flex-nowrap", "overflow-hidden", "min-w-0");
+    expect(row).not.toHaveClass("flex-wrap");
+  });
+
+  it("keeps every count in one piece, so a number never cuts mid-digit", () => {
+    render(<StatusCounts panes={three} labelled />);
+    for (const piece of [screen.getByLabelText("1 needs you"), screen.getByLabelText("1 working"), screen.getByLabelText("1 done")]) {
+      expect(piece).toHaveClass("shrink-0", "whitespace-nowrap");
+    }
+  });
+
+  it("puts the word on the first count only while the row holds two counts or fewer", () => {
+    render(<StatusCounts panes={[pane("blocked"), pane("working")]} labelled />);
+    expect(screen.getByText("1 needs you")).toBeInTheDocument();
+    expect(screen.getByLabelText("1 working")).not.toHaveTextContent("working");
+  });
+
+  it("draws every count bare once the row holds three, each still named in words", () => {
+    render(<StatusCounts panes={three} labelled />);
+    expect(screen.queryByText("1 needs you")).not.toBeInTheDocument();
+    for (const name of ["1 needs you", "1 working", "1 done"]) {
+      const piece = screen.getByLabelText(name);
+      expect(piece).toHaveTextContent(/^1$/);
+    }
+  });
+
+  it("leaves the summary button reading every count in words", () => {
+    render(<StatusSummaryLine panes={three} allClear={false} onJump={() => {}} />);
+    expect(screen.getByRole("button")).toHaveClass("min-w-0", "max-w-full");
+    expect(screen.getByRole("button", { name: /^1 needs you\s*1 working\s*1 done$/ })).toBeInTheDocument();
+  });
+
+  it("truncates the all-clear words too", () => {
+    render(<StatusSummaryLine panes={[pane("working")]} allClear />);
+    expect(screen.getByText("Nothing needs you")).toHaveClass("min-w-0", "truncate");
   });
 });
