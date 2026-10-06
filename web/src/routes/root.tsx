@@ -52,6 +52,15 @@ export function shownLastSeenAt(home: HomeData, pane: PaneData | undefined): num
   return home.lastSeenAt;
 }
 
+/**
+ * Whether what the connection surface describes is the SAVED COPY (M46 spec 10), by the same rule as
+ * {@link shownLastSeenAt}: the stale pane's own flag while its mirror is what is read, else the herd's.
+ */
+export function shownStale(home: HomeData, pane: PaneData | undefined): boolean {
+  if (pane?.error && pane.text) return pane.stale === true;
+  return home.stale === true;
+}
+
 // The data root: owns the snapshot loader, drives polling, and fans the herd out to the child
 // routes (home + pane detail) via the router's loader data. Mounted only while unlocked (the
 // idle-lock in App swaps the whole RouterProvider out), so polling pauses when the app is locked.
@@ -175,6 +184,7 @@ export function RootLayout() {
             error={data.error}
             authError={data.authError}
             lastSeenAt={shownLastSeenAt(data, pane)}
+            stale={shownStale(data, pane)}
           />
           {/* THE ONE HEADER, and the third thing on this shelf. The two banners above it have always
             survived a navigation because they are rendered HERE rather than inside `<Outlet/>`; the

@@ -20,6 +20,8 @@ import { splitLines, type PromptModel } from "@/lib/blocks";
 import { buildBlocks } from "@/lib/harness";
 import { detectPromptSelect } from "@/lib/harness/claude/prompt-select";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
+import { act } from "@testing-library/react";
+import { markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { isHeaderRow, keyBadgeFallback, PromptSelectBlock, type PromptBlockAction } from "./prompt-select-block";
 
@@ -766,5 +768,61 @@ describe("PromptSelectBlock — Grok's z row is not Claude's plan-feedback compo
     expect(screen.getByText(/free-text row has the keyboard/)).toBeInTheDocument();
     expect(screen.queryByText(/feedback box has the keyboard/)).toBeNull();
     for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+  });
+});
+
+// M46 spec 11: a card drawn from cached state is readable and cannot be answered. With a `paneId`
+// the card enables only while the bridge has answered a read for that pane lately; a parent that drew
+// the screen from the cache says `stale`. Nothing is queued: a tap on a disabled option sends nothing.
+describe("PromptSelectBlock, no action from cached state (M46 spec 11)", () => {
+  beforeEach(() => resetLiveness());
+
+  it("shows the question and options, disables them, and says to reconnect when the pane is not live", async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={selectModel} paneId="w1:p1" onAction={onAction} />);
+
+    expect(screen.getByText("Which color theme should the dashboard use?")).toBeInTheDocument();
+    expect(screen.getByText("Reconnect to answer.")).toBeInTheDocument();
+    const red = screen.getByRole("button", { name: /Red/ });
+    const green = screen.getByRole("button", { name: /Green/ });
+    expect(red).toBeDisabled();
+    expect(green).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Reconnect to answer.");
+
+    await user.click(red);
+    await user.click(green);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("enables the options and drops the note once a live read lands", async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={selectModel} paneId="w1:p1" onAction={onAction} />);
+    expect(screen.getByRole("button", { name: /Red/ })).toBeDisabled();
+
+    act(() => markLive("w1:p1"));
+
+    expect(screen.queryByText("Reconnect to answer.")).toBeNull();
+    expect(screen.getByRole("button", { name: /Red/ })).toBeEnabled();
+    expect(onAction).not.toHaveBeenCalled(); // reconnecting answers nothing by itself
+    await user.click(screen.getByRole("button", { name: /Green/ }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "option", option: selectModel.options[1] });
+  });
+
+  it("stays locked while the parent says the screen is stale, even for a live pane", async () => {
+    markLive("w1:p1");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={selectModel} paneId="w1:p1" stale onAction={onAction} />);
+    expect(screen.getByText("Reconnect to answer.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Red/ }));
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("asks nothing of liveness when no paneId is given (a presentational card)", () => {
+    render(<PromptSelectBlock prompt={selectModel} onAction={vi.fn()} />);
+    expect(screen.queryByText("Reconnect to answer.")).toBeNull();
+    expect(screen.getByRole("button", { name: /Red/ })).toBeEnabled();
   });
 });

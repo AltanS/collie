@@ -62,6 +62,15 @@ export const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 /** What the records of one pane may hold together, in bytes of JSON. */
 export const PANE_CAP_BYTES = 256 * 1024;
 
+/**
+ * What one KIND of a pane's records may take of {@link PANE_CAP_BYTES}. A pane holds two kinds that
+ * are written on every poll, its last-seen text and its Chat tail, and the cap evicts the older of
+ * the two when they cross it together. Each writer fits its value into half, so the two together
+ * always fit and neither write ever evicts the other: without it a full mirror and a full tail would
+ * take turns deleting each other, once a poll.
+ */
+export const PANE_KIND_SHARE_BYTES = PANE_CAP_BYTES / 2;
+
 /** What the whole store may hold, in bytes of JSON. */
 export const TOTAL_CAP_BYTES = 10 * 1024 * 1024;
 
@@ -698,6 +707,25 @@ export function deleteRecord(kind: RecordKind, key: string): Promise<void> {
     lastWrites.delete(id);
     return backend.run(true, async (tx) => tx.remove(id));
   }, undefined);
+}
+
+/**
+ * Delete every record of one kind, on EVERY instance. The Chat tail setting calls it when the operator
+ * turns the tail off: the setting lives in localStorage, which every mount on the origin shares, so
+ * "keep nothing" is about the phone and not about one mount.
+ */
+export function deleteKind(kind: RecordKind): Promise<void> {
+  return enqueue(
+    (backend) =>
+      backend.run(true, async (tx) => {
+        for (const meta of await tx.metas()) {
+          if (meta.kind !== kind) continue;
+          tx.remove(meta.id);
+          lastWrites.delete(meta.id);
+        }
+      }),
+    undefined,
+  );
 }
 
 /** Delete every record of one pane on this instance, of every kind: the password-prompt wipe. */

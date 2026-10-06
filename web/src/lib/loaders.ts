@@ -39,7 +39,7 @@ import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { markPollResult } from "@/lib/poll-intent";
 import { shareEqual } from "@/lib/share-equal";
 import { prefetchPane, takePanePrefetch } from "@/lib/pane-prefetch";
-import { clearNotPaired, markNotPaired } from "@/lib/pairing";
+import { clearNotPaired, isNotPaired, markNotPaired } from "@/lib/pairing";
 import { pairingRefused, wipeDevice } from "@/lib/wipe";
 import {
   internScope,
@@ -152,6 +152,17 @@ export interface HomeData {
    * showing an undated old screen; absent means live data, or stale data we cannot date.
    */
   lastSeenAt?: number;
+  /**
+   * THE SAVED COPY IS ON SCREEN (M46 spec 10): this herd was drawn from what the phone kept, dated
+   * by {@link lastSeenAt}, because the bridge did not answer. True on a cold open before any live
+   * answer this page session, and on any failed run once the shared connection clock has latched
+   * the outage. A blip between two good polls is NOT this: it keeps the in-session herd undimmed
+   * and leaves the connection strip its own escalation. The dashboard dims every row and speaks
+   * their status in the past tense while it is set; the next live answer clears it.
+   *
+   * Optional in the TYPE only, so hand-built fixtures stay valid; every loader return sets it.
+   */
+  stale?: boolean;
 }
 
 export interface PaneData {
@@ -177,6 +188,61 @@ export interface PaneData {
   authError: boolean;
   /** When this mirror was actually fetched — set only on a datable stale render, as on HomeData. */
   lastSeenAt?: number;
+  /**
+   * The pane's text is the saved copy, under the same rule as {@link HomeData.stale}. The pane view
+   * draws the saved-copy notice from it, and nothing on a stale pane may act (M46 spec 11): it is
+   * handed down to the pane view for exactly that reading.
+   */
+  stale?: boolean;
+}
+
+// ── THE COLD OPEN (M46 spec 10) ───────────────────────────────────────────────
+//
+// A phone kills the PWA all the time, so a cold open is the normal case. Before this, the first
+// loader run waited for its fetch, and over a dead tunnel that is the whole 10s GET timeout spent on
+// the boot splash before the saved herd could draw. Now a NAVIGATION on a page that has not had one
+// live answer yet gives its fetch {@link COLD_OPEN_WAIT_MS}: if the bridge has not answered by then
+// and the phone kept a copy, the copy draws at once, marked stale, and the poll that already runs
+// swaps the live answer in when it comes. With no copy kept, the run waits for its fetch as before.
+// Only a navigation, and only before the first live answer: a poll that answered early would start
+// its next fetch on top of the one still hanging.
+
+/** How long a cold navigation waits for the bridge before it draws the saved copy instead. */
+export const COLD_OPEN_WAIT_MS = 1_500;
+
+let coldOpenWaitMs = COLD_OPEN_WAIT_MS;
+
+/** Whether a live answer (a snapshot or a pane read) has come back on this page. */
+let answeredLive = false;
+
+/** Note a live answer. Returns true so it can close a promise chain. */
+function markAnsweredLive(): true {
+  answeredLive = true;
+  return true;
+}
+
+const COLD = Symbol("cold-open");
+
+/** The fetch, or {@link COLD} when it has not answered within the cold-open wait. */
+function raceColdOpen<T>(work: Promise<T>): Promise<T | typeof COLD> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const wait = new Promise<typeof COLD>((resolve) => {
+    timer = setTimeout(() => resolve(COLD), coldOpenWaitMs);
+  });
+  return Promise.race([work, wait]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Whether a datable cached render IS the saved copy (see {@link HomeData.stale}): before the first
+ * live answer of this page, or once the outage is latched.
+ */
+function drawnFromSave(lastSeenAt: number | undefined): boolean {
+  return lastSeenAt !== undefined && (!answeredLive || isLostLatched());
+}
+
+/** Test seam: shorten the cold-open wait. */
+export function __setColdOpenWait(ms: number): void {
+  coldOpenWaitMs = ms;
 }
 
 // Keep-previous-data cache is PER-SCOPE: switching host or session must not show the other one's
@@ -253,6 +319,7 @@ function toHomeData(
   paneCacheHold = new Map([...agents.held, ...shells.held]);
   return {
     lastSeenAt,
+    stale: error && drawnFromSave(lastSeenAt),
     bridge: snap.bridge,
     device: snap.device,
     agents: agents.panes,
@@ -286,8 +353,12 @@ function toHomeData(
 // operator gets an empty herd instead of the screen they left. A restored snapshot is promoted into the module cache so
 // the rest of this page session behaves exactly as if we had fetched it.
 async function staleHome(scope: Scope, viewAll: boolean): Promise<HomeData> {
-  const restored = await loadLastSnapshot(scope, viewAll);
-  const cached = lastSnapshot.get(snapshotKey(scope, viewAll)) ?? restored?.value;
+  // A device the bridge refused for want of pairing draws NOTHING it kept (M46 spec 10, the third
+  // state): the wipe has already deleted the store, and the module cache is this page's memory of a
+  // herd the phone is no longer entitled to. The pair screen is the whole answer.
+  const refused = isNotPaired();
+  const restored = refused ? null : await loadLastSnapshot(scope, viewAll);
+  const cached = refused ? undefined : (lastSnapshot.get(snapshotKey(scope, viewAll)) ?? restored?.value);
   if (cached) {
     lastSnapshot.set(snapshotKey(scope, viewAll), cached);
     return toHomeData(cached, scope, viewAll, true, restored?.at);
@@ -297,6 +368,7 @@ async function staleHome(scope: Scope, viewAll: boolean): Promise<HomeData> {
   // "No agents running" when the bridge really answered (components/agent-list.tsx).
   return {
     lastSeenAt: undefined,
+    stale: false,
     bridge: undefined,
     device: undefined,
     agents: [],
@@ -336,7 +408,23 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
   if (isNavigation && isLostLatched()) return staleHome(scope, viewAll);
 
   try {
-    const snap = await fetchSnapshot(scope, request?.signal, viewAll);
+    const fetching = fetchSnapshot(scope, request?.signal, viewAll);
+    let snap: SnapshotResponse;
+    if (isNavigation && !answeredLive) {
+      // The cold open (see COLD_OPEN_WAIT_MS). A fetch that answers after the copy drew still marks
+      // the page live, so the next poll's failure is an in-session blip and not a saved copy.
+      void fetching.then(
+        () => markAnsweredLive(),
+        () => false,
+      );
+      const outcome = await raceColdOpen(fetching);
+      if (outcome === COLD) {
+        const saved = await staleHome(scope, viewAll);
+        if (saved.stale === true) return saved;
+        snap = await fetching;
+      } else snap = outcome;
+    } else snap = await fetching;
+    answeredLive = true;
     lastSnapshot.set(snapshotKey(scope, viewAll), snap);
     // Write-through: the same body, dated, in a store that outlives this page (lib/last-seen.ts).
     saveLastSnapshot(scope, snap, undefined, viewAll);
@@ -425,8 +513,10 @@ export function resetRequestedLines(paneId?: string, scope?: Scope): void {
 // survives the page being discarded. A restored mirror is promoted into the module cache.
 async function stalePane(paneId: string, scope: Scope, lines: number): Promise<PaneData> {
   const key = paneKey(paneId, scope);
-  const restored = await loadLastPaneText(scope, paneId);
-  const text = lastPaneText.get(key) ?? restored?.value ?? "";
+  // Refused for want of pairing: no kept text, for the reason staleHome gives.
+  const refused = isNotPaired();
+  const restored = refused ? null : await loadLastPaneText(scope, paneId);
+  const text = refused ? "" : (lastPaneText.get(key) ?? restored?.value ?? "");
   if (text) rememberPaneText(key, text);
   return {
     paneId,
@@ -438,6 +528,7 @@ async function stalePane(paneId: string, scope: Scope, lines: number): Promise<P
     error: true,
     authError: hasAuthError(scope),
     lastSeenAt: text ? restored?.at : undefined,
+    stale: drawnFromSave(text ? restored?.at : undefined),
   };
 }
 
@@ -510,7 +601,23 @@ export async function paneLoader({
       const markSeen = () => fetchPane(paneId, lines, scope).catch(() => {});
       void prefetched.then(markSeen, markSeen);
     }
-    const read: PaneReadResponse = await (prefetched ?? fetchPane(paneId, lines, scope, request?.signal));
+    const reading = prefetched ?? fetchPane(paneId, lines, scope, request?.signal);
+    let read: PaneReadResponse;
+    if (isNavigation && !answeredLive) {
+      // The cold open, as in rootLoader: a pane opened straight from a killed PWA draws its saved
+      // text at once when the bridge is slow to answer.
+      void reading.then(
+        () => markAnsweredLive(),
+        () => false,
+      );
+      const outcome = await raceColdOpen(reading);
+      if (outcome === COLD) {
+        const saved = await stalePane(paneId, scope, lines);
+        if (saved.stale === true) return saved;
+        read = await reading;
+      } else read = outcome;
+    } else read = await reading;
+    answeredLive = true;
     const text = read.text || lastPaneText.get(key) || "";
     // THE "IS THE SCREEN STILL MOVING" SIGNAL, taken at the one place that can honestly answer it.
     //
@@ -539,6 +646,7 @@ export async function paneLoader({
       revision: read.revision,
       error: false,
       authError: false,
+      stale: false,
     };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it

@@ -15,6 +15,15 @@ import { CrewProvider } from "./crew-provider";
 import { Composer, TUI_SETTLE_MS } from "./composer";
 import { type ServerSummary } from "@/lib/types";
 
+// M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
+// These suites drive sends against a mocked network and never poll first, so they pin the pane live;
+// the gating itself is covered by liveness.test.ts and the *-offline suites.
+vi.mock("@/lib/liveness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveness")>()),
+  isLive: () => true,
+  useLive: () => true,
+}));
+
 // A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
 // input line — submit-only (empty text). Overriding the reply handler therefore has to keep the fake
 // pane's input line honest via recordReply, or the verification poll never passes. Helper so each

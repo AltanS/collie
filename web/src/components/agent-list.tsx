@@ -63,6 +63,12 @@ interface AgentListProps {
   notPaired?: boolean;
   /** When the stale data was fetched, for the "last seen HH:MM" half of the disconnected placeholder. */
   lastSeenAt?: number;
+  /**
+   * The herd is the SAVED COPY (M46 spec 10, `HomeData.stale`): every row dims and says its status in
+   * the past tense, and the summary line dims with them. The rows stay tappable; the pane they open
+   * draws its own saved copy.
+   */
+  stale?: boolean;
   /** The raw tab list, for the multiplexer's own tab order inside a workspace. */
   tabs?: readonly TabView[];
   /** The snapshot's machine list, for the order machines run in: the lead first (lib/pane-groups.ts). */
@@ -247,6 +253,7 @@ export function AgentList({
   error = false,
   notPaired = false,
   lastSeenAt,
+  stale = false,
   tabs,
   servers,
   newTab,
@@ -476,6 +483,7 @@ export function AgentList({
       density="row"
       unseen={bucketOf(a) === "ready"}
       tint
+      stale={stale}
     />
   );
 
@@ -488,7 +496,7 @@ export function AgentList({
       // Focus (the keyboard's) lands here when an unpin takes a row off the list, so the line must be able to hold
       // it. Only once pins are in play: with none, the line renders exactly as it did.
       focusable={pins.length > 0 || reveal !== null}
-      className={onOrderChange ? "min-w-0 flex-1" : undefined}
+      className={cn(onOrderChange && "min-w-0 flex-1", "transition-opacity", stale && "opacity-50")}
     />
   );
 

@@ -8,7 +8,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
 import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-name";
-import { statusLabel } from "@/lib/types";
+import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -71,6 +71,13 @@ interface AgentCardProps {
    * 5 percent blocked tint alone. The row is the mark; nothing on its edge and nothing moves.
    */
   tint?: boolean;
+  /**
+   * The row is drawn from the SAVED COPY (M46 spec 10, `HomeData.stale`): the bridge did not answer
+   * and this is what the phone last heard. The whole row dims and its status is said in the past
+   * tense, "was working", because a cached row must never read as live. The tap still opens the pane,
+   * which draws its own saved copy; nothing on it acts from cache (spec 11).
+   */
+  stale?: boolean;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -120,6 +127,7 @@ export function AgentCard({
   density = "card",
   unseen = false,
   tint = false,
+  stale = false,
 }: AgentCardProps) {
   useLocale();
   // Inert when `onHold` is undefined: every handler returns at once, the native context menu stays,
@@ -245,6 +253,10 @@ export function AgentCard({
           // dot (`cornerDot`) and this tint alone, nothing on the edge.
           blocked && (flat ? "bg-status-blocked/5" : "border-status-blocked/40 bg-status-blocked/5"),
           tint && flat && blocked && "bg-status-blocked/10",
+          // The saved copy: dimmed as one piece, so no part of the row reads as live. Opacity only,
+          // so nothing moves when the live answer brings it back (DESIGN.md §2).
+          "transition-opacity",
+          stale && "opacity-50",
         )}
       >
         <div className="min-w-0 flex-1">
@@ -367,9 +379,9 @@ export function AgentCard({
           <ShellBadge />
         ) : cornerDot ? (
           /* The dot itself is colour-only and lives on line 1; give SR users the word. */
-          <span className="sr-only">{statusLabel(agent.status)}</span>
+          <span className="sr-only">{stale ? statusLabelPast(agent.status) : statusLabel(agent.status)}</span>
         ) : (
-          <StatusBadge status={agent.status} />
+          <StatusBadge status={agent.status} past={stale} />
         )}
       </Shell>
     </button>

@@ -88,6 +88,16 @@ export interface ChatWindow {
    * A `?before=` page leaves it alone. An older page cannot see the tail, so it says nothing about it.
    */
   readonly queued: readonly string[];
+  /**
+   * When the bridge answered with these turns, set ONLY while the window is the SAVED COPY: the tail
+   * the phone kept (lib/chat-tail.ts), read back because a live read failed (M46 spec 09). `null` for
+   * every window a live answer built. The view says "Saved copy from {time}" while it is set, and
+   * any live answer clears it.
+   *
+   * Not folded into {@link status}: `stale` there already means a 404 from a release-behind machine,
+   * and a saved copy is drawn exactly like a live window. Only its age and its banner differ.
+   */
+  readonly savedAt: number | null;
 }
 
 /**
@@ -123,7 +133,38 @@ export const EMPTY_CHAT_WINDOW: ChatWindow = {
   hasOlder: false,
   entries: [],
   queued: EMPTY_QUEUE,
+  savedAt: null,
 };
+
+/**
+ * The saved copy of a pane's tail, as a window the Chat body draws (M46 spec 09).
+ *
+ * It carries NO numbering: `gen` and `rev` are 0, so the next read asks for a first page and its answer
+ * replaces this window whole (rule 1), never merges into it. `hasOlder` is false, because a `?before=`
+ * cursor taken from a copy would ask the bridge about a numbering it may no longer hold; older text is
+ * on the bridge, and the banner says so. The queue is empty: what was waiting then is not waiting now.
+ */
+export function savedChatWindow(entries: readonly ChatEntry[], savedAt: number): ChatWindow {
+  return {
+    status: LIVE,
+    gen: 0,
+    rev: 0,
+    head: entries.at(-1)?.seq ?? 0,
+    oldest: entries[0]?.seq ?? 0,
+    hasOlder: false,
+    entries,
+    queued: EMPTY_QUEUE,
+    savedAt,
+  };
+}
+
+/**
+ * The window held, marked as a saved copy from `savedAt`: the bridge stopped answering and what is on
+ * screen is now only as current as the last answer. The same object when it is already marked.
+ */
+export function markSaved(held: ChatWindow, savedAt: number): ChatWindow {
+  return held.savedAt === null ? { ...held, savedAt } : held;
+}
 
 /**
  * What the client now holds, given what it held and one answer.
@@ -133,8 +174,9 @@ export const EMPTY_CHAT_WINDOW: ChatWindow = {
  */
 export function mergeChat(held: ChatWindow, answer: ChatAnswer): ChatWindow {
   // A 304 is neither an error nor a change. Returned by IDENTITY on purpose: a poll that found
-  // nothing must not hand a view a new object and make it re-render over it.
-  if (answer.outcome === "unchanged") return held;
+  // nothing must not hand a view a new object and make it re-render over it. The one exception is a
+  // window marked as a saved copy: a 304 is a live answer that it is still current, so the mark goes.
+  if (answer.outcome === "unchanged") return held.savedAt === null ? held : { ...held, savedAt: null };
   // A 404 restates the status and keeps the turns. They were true when they arrived, and a version
   // skew does not unsay them.
   if (answer.outcome === "stale") return restate(held, STALE);
@@ -171,6 +213,8 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
     // `?? EMPTY_QUEUE`: a member one release behind sends no `queued` at all, and "nothing waiting"
     // is the honest reading of a bridge that does not know the question.
     queued: nextQueue(held.queued, body.queued ?? EMPTY_QUEUE),
+    // A live answer: whatever the window was before, it is current now.
+    savedAt: null,
   };
 }
 

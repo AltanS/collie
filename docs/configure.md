@@ -641,6 +641,45 @@ row, so you can tell a missing hook from a missing feature. `collie doctor` list
 panes under `agent-sessions` and names the integration line (`integration-<agent>`) that fixes each.
 The [troubleshooting page](troubleshooting.md) has the steps, under **a pane has no Chat or History**.
 
+## Reading offline
+
+When the bridge is out of reach, the phone shows the last copy it saved, and you can read it but not act on it.
+
+The phone keeps two things for each pane: the last terminal text it saw, and the newest Chat turns as
+Chat drew them. It never keeps the raw terminal screen as Chat. When you open Collie and the bridge
+does not answer within about a second and a half, the phone draws this saved copy at once, and
+replaces it with live data when the bridge answers.
+
+A saved copy looks different from a live screen:
+
+- The agent list is dimmed, each status is in the past tense ("was working", "needed you"), and the
+  header shows **as of** and the time it was saved.
+- A Chat pane shows "Saved copy from" and the time. The bridge still holds the older turns.
+- Prompt buttons, cards and the send button are off. A tap on a saved copy cannot reach the agent.
+
+The connection bar names one of three causes:
+
+| Bar | Cause | What the phone shows |
+| --- | --- | --- |
+| You are offline | The phone has no network | The saved copy, with its time |
+| Bridge not reachable. Is Tailscale connected? | The phone is online, the bridge does not answer | The saved copy, with its time |
+| Pair screen | The bridge refused this device: not paired, revoked or expired | Nothing saved. The refusal deletes the copy |
+
+**Keep chat on this phone**, in **Settings → Device**, sets how long the Chat turns stay on the phone:
+
+| Value | What it does |
+| --- | --- |
+| Off | Keeps no Chat turns, and deletes the ones already kept |
+| 1 day | The default |
+| 7 days | Keeps them for a week |
+
+The terminal text has its own lifetime of 24 hours, and this setting does not change it. In the
+terminal view, the only offline copy is that terminal text.
+
+> **Note.** The phone keeps only text the bridge already masked, and drops a pane's copy while the
+> pane asks for a password. [What the phone keeps](security.md#what-the-phone-keeps) lists every
+> item, its size bound and its lifetime.
+
 ## Changes
 
 The [Files screen](changes.md) shows what an agent changed in its workspace's git repos, under its

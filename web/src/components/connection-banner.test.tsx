@@ -8,6 +8,7 @@ import { CrewProvider } from "@/components/crew-provider";
 import * as api from "@/lib/api";
 import type { ServerSummary } from "@/lib/types";
 import { fixtureServers } from "@/test/handlers";
+import { markNotPaired } from "@/lib/pairing";
 import { ConnectionBanner, GREEN_MS } from "./connection-banner";
 
 // THE BAR IS A STRIP, and this file mounts the band it appears in. `ConnectionBanner` registers a
@@ -50,6 +51,8 @@ function setOnline(value: boolean) {
 // A harness whose own state forces the banner to re-render (creating a fresh element so the mocked
 // hooks are re-read) — RouterProvider re-rendered with the same static route element would bail out.
 let rerenderBanner: () => void = () => {};
+// The saved-copy flag, mutable so a case can let the live answer clear it and re-render.
+let liveStale = false;
 
 function renderBanner(
   props: {
@@ -59,8 +62,10 @@ function renderBanner(
     error?: boolean;
     authError?: boolean;
     lastSeenAt?: number;
+    stale?: boolean;
   } = {},
 ) {
+  liveStale = props.stale ?? false;
   function Harness() {
     const [, setN] = useState(0);
     rerenderBanner = () => setN((n) => n + 1);
@@ -71,6 +76,7 @@ function renderBanner(
         error={props.error ?? false}
         authError={props.authError ?? false}
         lastSeenAt={props.lastSeenAt}
+        stale={liveStale}
       />
     );
   }
@@ -366,6 +372,57 @@ describe("ConnectionBanner — the single connection surface", () => {
     act(() => rerenderBanner());
     act(() => vi.advanceTimersByTime(GREEN_MS + COLLAPSE_MS + 16));
     expect(screen.queryByText("Connected")).toBeNull();
+    expect(row()).toBeNull();
+  });
+});
+
+// ── M46 spec 10: three offline states, told apart in this one banner ─────────────
+describe("ConnectionBanner — offline states", () => {
+  const SAVED_AT = new Date(2026, 0, 2, 14, 32).getTime();
+
+  it("offline states: the phone is offline, says so at once with the saved time, no escalation wait", () => {
+    setOnline(false);
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    expect(row()).toHaveTextContent(/^You are offline\. Showing what was saved at .+\./);
+    expect(row()).toHaveTextContent(/14.32|2:32/);
+    // Quiet: a saved copy is not an error, so it is announced politely.
+    expect(announced("alert")).toBeNull();
+    expect(announced("status")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("offline states: online but the bridge does not answer, names Tailscale", () => {
+    setOnline(true);
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    expect(row()).toHaveTextContent(
+      /^Bridge not reachable\. Is Tailscale connected\? Showing what was saved at .+\./,
+    );
+  });
+
+  it("offline states: a device refused for want of pairing shows no connection strip and no saved copy", () => {
+    markNotPaired();
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    expect(row()).toBeNull();
+    expect(screen.queryByText(/Showing what was saved/)).toBeNull();
+  });
+
+  it("offline states: a probe that finds the bridge answering falls back to the named cause", async () => {
+    h.lost = true;
+    cfg.reachable = true;
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    await act(async () => {});
+    expect(row()).not.toHaveTextContent(/Bridge not reachable/);
+    expect(row()).toHaveTextContent(/Can't reach Collie — last seen/);
+  });
+
+  it("the stale marks clear when the bridge answers: a green flash, then nothing", () => {
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    expect(row()).toHaveTextContent(/Showing what was saved/);
+    liveStale = false;
+    act(() => rerenderBanner());
+    expect(announced("status")).toHaveTextContent("Connected");
+    act(() => vi.advanceTimersByTime(GREEN_MS));
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
     expect(row()).toBeNull();
   });
 });

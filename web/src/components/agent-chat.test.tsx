@@ -39,6 +39,16 @@ import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types
 import { withHeaderHost } from "@/test/header-host";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
+import { saveChatTail } from "@/lib/chat-tail";
+
+// M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
+// These suites drive sends against a mocked network and never poll first, so they pin the pane live;
+// the gating itself is covered by liveness.test.ts and the *-offline suites.
+vi.mock("@/lib/liveness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveness")>()),
+  isLive: () => true,
+  useLive: () => true,
+}));
 
 // The detail view's core job: type a reply and submit it to the bridge. This drives the whole wired
 // path (composer → api.sendReply → MSW → optimistic clear / error surfacing) end-to-end, which no
@@ -557,6 +567,34 @@ describe("AgentChat — read-only device", () => {
     renderChat({ device: { enforced: true, device: "my-phone", authorized: true } });
     expect(screen.queryByText(/read-only/i)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/type a reply/i)).not.toBeDisabled();
+  });
+});
+
+// M46 specs 10 and 11: a pane drawn from the saved copy can be read and cannot be acted on. The pane
+// view dates it with one notice and hands `stale` to the card dock and the composer.
+describe("AgentChat — a stale saved copy", () => {
+  const SAVED_AT = new Date(2026, 0, 2, 14, 32).getTime();
+
+  it("dates the saved copy, and a stale render disables the card options", async () => {
+    renderChat({ text: MENU_TEXT, stale: true, lastSeenAt: SAVED_AT, error: true });
+    expect(screen.getByText(/^Saved copy from .+\. Older text is on the bridge\.$/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "No" })).toBeDisabled();
+  });
+
+  it("disables the send button on a stale render of a pane with a composer", async () => {
+    const user = userEvent.setup();
+    renderChat({ stale: true, lastSeenAt: SAVED_AT, error: true });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "hello");
+    // Spec 11 names why: the send button says what it waits for, and stays off.
+    expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+  });
+
+  it("draws no notice and leaves the controls alone on a live render", async () => {
+    renderChat({ text: MENU_TEXT });
+    expect(await screen.findByRole("button", { name: "Yes" })).not.toBeDisabled();
+    expect(screen.queryByText(/Saved copy from/)).toBeNull();
   });
 });
 
@@ -3134,6 +3172,23 @@ describe("AgentChat — the chat body", () => {
     expect(await screen.findByText("what changed today?")).toBeInTheDocument();
     expect(screen.getByText("One commit: abc1234.")).toBeInTheDocument();
     expect(screen.queryByText(/recent pane output/)).toBeNull();
+  });
+
+  // M46 spec 09: no bridge, and the phone kept this pane's Chat tail. The body draws it, dated, with
+  // nothing to act on.
+  it("stale render: draws the saved Chat tail with its notice when the chat read fails", async () => {
+    chooseChat("chat");
+    // Within the 1-day lifetime: an older record would read as a miss.
+    const at = Date.now() - 60_000;
+    await saveChatTail(undefined, fixtureAgents[0]!.paneId, [
+      { uuid: "s1", seq: 7, ts: "", role: "assistant", parts: [{ kind: "text", text: "the saved reply" }] },
+    ], "1d", at);
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => HttpResponse.error()));
+    renderChat({ agent: journalAgent(), stale: true, lastSeenAt: at, error: true });
+    expect(await screen.findByText("the saved reply")).toBeInTheDocument();
+    expect(screen.getByText(/^Saved copy from .+\. Older text is on the bridge\.$/)).toBeInTheDocument();
+    expect(screen.queryByText(/recent pane output/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
   });
 
   it("keeps the composer, the belt and the header in the chat body", async () => {

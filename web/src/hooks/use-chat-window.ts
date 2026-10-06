@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRevalidator } from "react-router";
 
-import { fetchChat } from "@/lib/api";
+import { keepChatOf, loadDisplayPrefs } from "@/hooks/use-display-prefs";
+import { fetchChat, isRefusalStatus } from "@/lib/api";
+import { loadChatTail, saveChatTail } from "@/lib/chat-tail";
 import {
   EMPTY_CHAT_WINDOW,
+  markSaved,
   mergeChat,
+  savedChatWindow,
   type ChatAnswer,
   type ChatWindow,
 } from "@/lib/chat-window";
+import { isLostLatched } from "@/lib/connection-health";
 import { t } from "@/lib/i18n";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
+import { REWRITE_AFTER_MS } from "@/lib/store";
 
 // One pane's live session, held on the phone and moved by the poll that already exists.
 //
@@ -33,6 +39,19 @@ import { setStatus } from "@/lib/status";
 // §11), and a second sentence inside the stream would be the same fact twice. A 404 and an
 // `available: false` are NOT failures: they are readings, they come back as {@link ChatWindow.status},
 // and the view says them in words.
+//
+// ── THE SAVED COPY (M46 spec 09, lib/chat-tail.ts) ──────────────────────────
+// Every live answer writes the newest turns through to the on-device store, under the lifetime
+// "Keep chat on this phone" asks for. A read that fails for want of a bridge (a transport failure, a
+// timeout, a 5xx from a proxy whose bridge is down; never a 4xx refusal, never a 404 or a "no log",
+// which are answers) then reads the copy back, but only into a window that holds nothing: a cold
+// open, or a pane opened while the bridge is out of reach. The copy is marked with `savedAt` and the
+// view says so. A window that already holds turns keeps them, and is marked only once the shared
+// connection clock has latched the outage, so a blip between two good polls marks nothing. The next
+// live answer replaces or clears it.
+//
+// The raw mirror is never cached here: the Terminal body has no offline read beyond the last-seen
+// pane text the loaders already keep (lib/last-seen.ts).
 
 /** How many older turns one "load older" tap asks for. The live first page takes the bridge's own
  *  default (40), which is what ADR 0073 sized a first paint at. */
@@ -93,6 +112,11 @@ export function useChatWindow({
   const [answered, setAnswered] = useState(0);
   // The address the last read that came back was for, so `tried` is about this pane and no other.
   const [triedAddress, setTriedAddress] = useState<string | null>(null);
+  // When the last live answer came back, for the saved-copy mark of a window that already holds turns.
+  const lastAnsweredAt = useRef<number | null>(null);
+  // The window last written through, and when: an unchanged window is not serialised again until
+  // the store itself would write it again (REWRITE_AFTER_MS).
+  const lastSaved = useRef<{ window: ChatWindow; at: number } | null>(null);
 
   // A window belongs to the pane it was read from. Keyed on the ADDRESS, not the pane id: `w1:p1`
   // is a different terminal in every session and on every machine, and merging one machine's turns
@@ -106,6 +130,12 @@ export function useChatWindow({
     setHeld(EMPTY_CHAT_WINDOW);
     setLoadingOlder(false);
   }
+  // The address the effects below are working for, read after an await: a saved copy that comes back
+  // from the store after a pane switch belongs to the pane that asked, not the one on screen.
+  const addressNow = useRef(address);
+  useEffect(() => {
+    addressNow.current = address;
+  }, [address]);
 
   useEffect(() => {
     alive.current = true;
@@ -119,6 +149,41 @@ export function useChatWindow({
     window.current = next;
     if (alive.current) setHeld(next);
   }, []);
+
+  /** Write the held window through to the store (see the header). Live windows with turns only. */
+  const writeThrough = useCallback(() => {
+    const current = window.current;
+    if (current.status.kind !== "live" || current.savedAt !== null || current.entries.length === 0) return;
+    const at = Date.now();
+    const last = lastSaved.current;
+    if (last !== null && last.window === current && at - last.at < REWRITE_AFTER_MS) return;
+    lastSaved.current = { window: current, at };
+    void saveChatTail(scope, paneId, current.entries, keepChatOf(loadDisplayPrefs()), at);
+  }, [paneId, scope]);
+
+  /** A read failed for want of a bridge: draw the saved copy, or mark what is held (see the header). */
+  const readBack = useCallback(async () => {
+    const current = window.current;
+    if (current.entries.length > 0) {
+      const answeredAt = lastAnsweredAt.current;
+      if (!isLostLatched() || answeredAt === null) return;
+      const marked = markSaved(current, answeredAt);
+      if (marked === current) return;
+      window.current = marked;
+      if (alive.current) setHeld(marked);
+      return;
+    }
+    const askedFor = address;
+    const saved = await loadChatTail(scope, paneId);
+    // Only into the same empty window it was asked for: a pane switch, or a live answer that landed
+    // while the store was being read, wins.
+    if (saved === null || !alive.current || addressNow.current !== askedFor || window.current.entries.length > 0) {
+      return;
+    }
+    const copy = savedChatWindow(saved.entries, saved.at);
+    window.current = copy;
+    setHeld(copy);
+  }, [address, paneId, scope]);
 
   // The poll's own edge. `idle` flips false while a revalidation is in flight and true when it
   // lands, so this effect runs once per poll — and once on mount, which is the first paint.
@@ -140,9 +205,13 @@ export function useChatWindow({
           scope,
         );
         apply(answer);
+        lastAnsweredAt.current = Date.now();
+        writeThrough();
         if (alive.current) setAnswered(number);
-      } catch {
-        // Keep what we hold — see the module header.
+      } catch (error) {
+        // Keep what we hold — see the module header. A failure for want of a bridge may draw the
+        // saved copy; a refusal is an answer and draws nothing it did not draw before.
+        if (!isRefusalStatus(error)) await readBack();
       } finally {
         busy.current = false;
         if (alive.current) setTriedAddress(address);
@@ -150,7 +219,7 @@ export function useChatWindow({
     })();
     // `scope` is safe in a dependency array: scopes read off a URL are interned to one frozen
     // instance per (host, session), so its identity is as stable as the string it replaced.
-  }, [enabled, idle, paneId, scope, address, apply]);
+  }, [enabled, idle, paneId, scope, address, apply, writeThrough, readBack]);
 
   const loadOlder = useCallback(() => {
     const cursor = window.current;

@@ -25,6 +25,7 @@ import { t } from "./i18n";
 import { graphemeSegmenter } from "./env";
 import { adapterFor, type HarnessAdapter } from "./harness";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
+import { LIVE_WINDOW_MS, isLive } from "./liveness";
 import { detectNoEchoPrompt } from "./no-echo";
 import type { Scope } from "./scope";
 
@@ -48,7 +49,13 @@ export type ReplyOutcome =
    *  that the screen is deliberately not showing it — see lib/no-echo.ts. */
   | { status: "stalled"; error: string; noEcho?: string }
   /** Transport/RPC failure. `textDelivered` = text is in the pane but unsubmitted; don't resend. */
-  | { status: "error"; error: string; textDelivered?: boolean };
+  | { status: "error"; error: string; textDelivered?: boolean }
+  /**
+   * Nothing was read, typed or sent: the bridge has not answered a read for this pane lately, so the
+   * screen the caller acted on may be cached or hours old (M46 spec 11). The caller keeps the draft.
+   * There is no queue and no retry: a person sends again once the pane reads live.
+   */
+  | { status: "refused"; reason: "offline"; error: string };
 
 /** Minimum visible characters that must match before we believe the input box holds OUR text. */
 export const MIN_MATCH_CHARS = 8;
@@ -276,6 +283,11 @@ function carriesReplyTail(sent: string, draft: string | null): boolean {
 }
 
 export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOutcome> {
+  // M46 spec 11: the backstop behind every disabled Send. A UI that slipped through (a stale render,
+  // a handler held across an outage) still cannot reach the bridge from a pane it has not just read.
+  if (!isLive(args.paneId, LIVE_WINDOW_MS, args.scope)) {
+    return { status: "refused", reason: "offline", error: t("composer.send.reconnect") };
+  }
   const adapter = adapterFor(args.agent ?? undefined);
   // No grammar for this harness → the input box is unreadable, so there is nothing to verify
   // against and the guard cannot run. Keep the legacy one-shot send rather than guess: a heuristic

@@ -7,6 +7,15 @@ import { server } from "@/test/setup";
 import * as registry from "./harness/registry";
 import { bracketPaste, draftCarriesSend, sendGuardedReply } from "./reply-action";
 
+// M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
+// These suites drive sends against a mocked network and never poll first, so they pin the pane live;
+// the gating itself is covered by liveness.test.ts and the *-offline suites.
+vi.mock("@/lib/liveness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveness")>()),
+  isLive: () => true,
+  useLive: () => true,
+}));
+
 // The regression suite for #34: a free-text reply must never fire the submit key until the text is
 // verifiably sitting in the harness's input box. Before this, the reply path typed and then submitted
 // blind, so with a dialog focused the text was swallowed and the submit key ANSWERED the dialog —

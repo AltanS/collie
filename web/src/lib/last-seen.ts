@@ -24,7 +24,7 @@
 // able to say WHEN — "Disconnected — last seen 14:32" is honest, an undated old screen is not.
 
 import { paneScopeKey, type Scope, snapshotKey } from "@/lib/scope";
-import { getRecord, PANE_CAP_BYTES, putRecord, utf8Bytes } from "@/lib/store";
+import { getRecord, PANE_KIND_SHARE_BYTES, putRecord, utf8Bytes } from "@/lib/store";
 import type { SnapshotResponse } from "@/lib/types";
 
 /** A cached payload and the wall-clock of the successful fetch that produced it. */
@@ -34,16 +34,18 @@ export interface Cached<T> {
 }
 
 /**
- * The newest lines of `text` whose JSON fits the store's per-pane cap. A mirror past the cap keeps its
- * tail, cut at a line start, because the tail is what the pane view opens on. Exported for the tests.
+ * The newest lines of `text` whose JSON fits this kind's share of the store's per-pane cap. A mirror
+ * past it keeps its tail, cut at a line start, because the tail is what the pane view opens on. The
+ * share is half the cap: the pane's Chat tail (lib/chat-tail.ts) takes the other half, so neither
+ * write evicts the other. Exported for the tests.
  */
 export function fitPaneText(text: string): string {
   let fitted = text;
   let size = utf8Bytes(JSON.stringify(fitted));
-  while (size > PANE_CAP_BYTES && fitted.length > 0) {
+  while (size > PANE_KIND_SHARE_BYTES && fitted.length > 0) {
     // Keep a share of the characters in proportion to the overshoot, with a margin, then start at
     // the next whole line. Converges in a step or two; the loop guards a text of wide characters.
-    const keep = Math.floor((fitted.length * PANE_CAP_BYTES * 0.9) / size);
+    const keep = Math.floor((fitted.length * PANE_KIND_SHARE_BYTES * 0.9) / size);
     const tail = fitted.slice(fitted.length - keep);
     const cut = tail.indexOf("\n");
     fitted = cut < 0 ? tail : tail.slice(cut + 1);

@@ -18,6 +18,15 @@ import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
 import { composerPrompt, extractInputDraft, extractStatusLines, hasComposer, stripChrome } from "../harness/omp/index";
 
+// M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
+// These suites drive sends against a mocked network and never poll first, so they pin the pane live;
+// the gating itself is covered by liveness.test.ts and the *-offline suites.
+vi.mock("@/lib/liveness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveness")>()),
+  isLive: () => true,
+  useLive: () => true,
+}));
+
 const dir = join(import.meta.dirname, "../../fixtures/omp-pi-shape");
 const idle = readFileSync(join(dir, "idle.txt"), "utf8");
 const parse = (text: string) => splitLines(parseAnsi(text));

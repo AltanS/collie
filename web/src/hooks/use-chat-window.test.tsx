@@ -2,6 +2,11 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
 import { useChatWindow } from "./use-chat-window";
+import { latchLost } from "@/lib/connection-health";
+import { loadChatTail, saveChatTail } from "@/lib/chat-tail";
+import { paneScopeKey } from "@/lib/scope";
+import { __resetStore, getRecord } from "@/lib/store";
+import { wipeDevice } from "@/lib/wipe";
 import { server } from "@/test/setup";
 import type { ChatEntry, PaneChatResponse } from "@/lib/types";
 
@@ -162,5 +167,121 @@ describe("useChatWindow", () => {
     rerender({ paneId: "w2:p1" });
     expect(result.current.window.entries).toEqual([]);
     expect(result.current.window.status.kind).toBe("empty");
+  });
+});
+
+// ── THE SAVED COPY (M46 spec 09, lib/chat-tail.ts) ────────────────────────────
+// Each live answer writes the newest turns through; a read that fails for want of a bridge reads them
+// back into an empty window, marked with `savedAt`. Store-backed: jsdom has no IndexedDB, so these run
+// on the store's memory map, which the test setup resets before every case.
+describe("useChatWindow — the saved Chat tail", () => {
+  const DISPLAY_PREFS = "collie:display-prefs:v4";
+  const failChat = () => server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => HttpResponse.error()));
+
+  /** One poll: the revalidator goes loading, then idle again. */
+  function poll(rerender: () => void): void {
+    rr.state = "loading";
+    rerender();
+    rr.state = "idle";
+    rerender();
+  }
+
+  it("draws the stale saved copy, dated, when the bridge does not answer, and a live answer replaces it", async () => {
+    const at = Date.now() - 3_600_000;
+    await saveChatTail(undefined, "w1:p1", [entry("s", 5, "saved turn")], "1d", at);
+    let fail = true;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () => (fail ? HttpResponse.error() : HttpResponse.json(firstPage))),
+    );
+    const { result, rerender } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.savedAt).toBe(at));
+    expect(result.current.window.entries.map((e) => e.uuid)).toEqual(["s"]);
+    expect(result.current.window.status.kind).toBe("live");
+    expect(result.current.window.hasOlder).toBe(false);
+    expect(result.current.tried).toBe(true);
+
+    fail = false;
+    poll(rerender);
+    await waitFor(() => expect(result.current.window.savedAt).toBeNull());
+    expect(result.current.window.entries.map((e) => e.uuid)).toEqual(["a"]);
+  });
+
+  it("reads nothing back on a refusal: a 403 is an answer, not an outage (stale)", async () => {
+    await saveChatTail(undefined, "w1:p1", [entry("s", 5, "saved turn")], "1d");
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => new HttpResponse("nope", { status: 403 })));
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.tried).toBe(true));
+    expect(result.current.window.entries).toEqual([]);
+    expect(result.current.window.savedAt).toBeNull();
+  });
+
+  it("marks a window it already holds as stale only once the outage is latched", async () => {
+    let fail = false;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () => (fail ? HttpResponse.error() : HttpResponse.json(firstPage))),
+    );
+    const { result, rerender } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+
+    fail = true;
+    poll(rerender);
+    await waitFor(() => expect(result.current.answered).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // A blip: nothing is marked, the connection strip owns the escalation.
+    expect(result.current.window.savedAt).toBeNull();
+
+    latchLost();
+    poll(rerender);
+    await waitFor(() => expect(result.current.window.savedAt).toBeTypeOf("number"));
+    expect(result.current.window.entries).toHaveLength(1);
+  });
+
+  it("writes the rendered entries through, never the raw mirror", async () => {
+    recordChat([firstPage]);
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+    await waitFor(async () => expect(await loadChatTail(undefined, "w1:p1")).not.toBeNull());
+    const record = await getRecord("chat-tail", paneScopeKey(undefined, "w1:p1"));
+    expect(record?.value).toEqual({ v: 1, entries: [entry("a", BASE, "hello")] });
+    // The hook writes no mirror text of its own: the only pane-text writer is the loader.
+    expect(await getRecord("pane-text", paneScopeKey(undefined, "w1:p1"))).toBeNull();
+  });
+
+  it("honours the setting: off writes nothing", async () => {
+    localStorage.setItem(DISPLAY_PREFS, JSON.stringify({ keepChat: "off" }));
+    recordChat([firstPage]);
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await loadChatTail(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("honours the setting: 7 days outlives a day, 1 day does not", async () => {
+    let clock = Date.now();
+    __resetStore({ now: () => clock });
+    localStorage.setItem(DISPLAY_PREFS, JSON.stringify({ keepChat: "7d" }));
+    recordChat([firstPage]);
+    const { result, unmount } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
+    await waitFor(async () => expect(await loadChatTail(undefined, "w1:p1")).not.toBeNull());
+    unmount();
+
+    localStorage.setItem(DISPLAY_PREFS, JSON.stringify({ keepChat: "1d" }));
+    const second = renderHook(() => useChatWindow({ paneId: "w1:p2", enabled: true }));
+    await waitFor(() => expect(second.result.current.window.entries).toHaveLength(1));
+    await waitFor(async () => expect(await loadChatTail(undefined, "w1:p2")).not.toBeNull());
+
+    clock += 2 * 24 * 3_600_000;
+    expect(await loadChatTail(undefined, "w1:p1")).not.toBeNull();
+    expect(await loadChatTail(undefined, "w1:p2")).toBeNull();
+  });
+
+  it("is gone after a wipe, and a failed read then draws nothing", async () => {
+    await saveChatTail(undefined, "w1:p1", [entry("s", 5, "saved turn")], "1d");
+    await wipeDevice("unpair");
+    failChat();
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(result.current.tried).toBe(true));
+    expect(result.current.window.entries).toEqual([]);
   });
 });

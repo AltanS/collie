@@ -4,6 +4,7 @@
 import { parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
 import { beginLongUpload, endLongUpload, markLive } from "./connection-health";
+import { markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -107,6 +108,16 @@ class ApiError extends Error {
 /** True when an API request failed with the given HTTP status. */
 export function isApiErrorStatus<TThrown>(error: TThrown, status: number): boolean {
   return error instanceof ApiError && error.status === status;
+}
+
+/**
+ * True when the bridge (or a proxy in front of it) answered and REFUSED the request: a 4xx. A pairing
+ * refusal, a proxy's sign-in, a gone pane. Not a transport failure, not a timeout and not a 5xx, which
+ * is what a proxy answers when the bridge behind it is down. The Chat tail reads its saved copy back
+ * only on the other kind (hooks/use-chat-window.ts): a refusal is an answer, not an outage.
+ */
+export function isRefusalStatus<TThrown>(error: TThrown): boolean {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500;
 }
 
 /**
@@ -522,6 +533,7 @@ export async function fetchPane(
 
   const res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
   captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
+  if (res.ok || res.status === 304) markPaneLive(paneId, Date.now(), scope); // M46 spec 11: controls on this pane may act (lib/liveness.ts)
 
   if (res.status === 304 && cached) {
     // Unchanged — hand back the cached body (text included) so the mirror keeps its content. An

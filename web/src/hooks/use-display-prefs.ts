@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 import { asJsonBoolean, asJsonNumber, asJsonString, parseJsonObject } from "@/lib/json";
+import { dropChatTails, isKeepChat, KEEP_CHAT_DEFAULT, type KeepChat } from "@/lib/chat-tail";
 
 // Terminal mirror display preferences, persisted in localStorage.
 // Safe to call in SSR contexts (localStorage guarded throughout).
@@ -80,6 +81,15 @@ export interface DisplayPrefs {
    * is why it is a pref at all rather than unconditional.
    */
   expandClippedReply: boolean;
+  /**
+   * How long this phone keeps the Chat tail of each pane, to read with the bridge out of reach:
+   * `off`, `1d` (the default) or `7d` (M46 spec 09, lib/chat-tail.ts). Read at each write, so a change
+   * applies from the next write on. Choosing `off` also deletes every tail already kept.
+   *
+   * Optional in the TYPE only, so the many literal prefs in the component tests stay valid: every
+   * read goes through {@link keepChatOf}, and `loadPrefs` always fills it.
+   */
+  keepChat?: KeepChat;
 }
 
 /** The terminal font families offered in Settings. A closed list, not a free-text box: an
@@ -207,10 +217,20 @@ const DEFAULTS: DisplayPrefs = {
   rawTerminal: false,
   tapToFocus: true,
   expandClippedReply: true,
+  keepChat: KEEP_CHAT_DEFAULT,
 };
 
 function readFontFamily(value: string | undefined): FontFamily {
   return value !== undefined && isFontFamily(value) ? value : DEFAULTS.fontFamily;
+}
+
+function readKeepChat(value: string | undefined): KeepChat {
+  return isKeepChat(value) ? value : KEEP_CHAT_DEFAULT;
+}
+
+/** The Chat tail setting of a prefs value, with the default where a literal left it out. */
+export function keepChatOf(prefs: DisplayPrefs): KeepChat {
+  return prefs.keepChat ?? KEEP_CHAT_DEFAULT;
 }
 
 function clampChatFont(n: number): number {
@@ -279,6 +299,15 @@ export function applyDraftFontSize(pref: number, zoomsOnSmallInput: boolean): nu
   return zoomsOnSmallInput ? Math.max(size, IOS_NO_ZOOM_FONT_PX) : size;
 }
 
+/**
+ * The stored display preferences, read now. For a module that needs one value at the moment it acts
+ * rather than a subscription: the Chat tail's write-through (hooks/use-chat-window.ts) reads
+ * `keepChat` here on each write, so a change made in Settings applies to the very next write.
+ */
+export function loadDisplayPrefs(): DisplayPrefs {
+  return loadPrefs();
+}
+
 function loadPrefs(): DisplayPrefs {
   try {
     const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
@@ -304,6 +333,8 @@ function loadPrefs(): DisplayPrefs {
       rawTerminal: asJsonBoolean(p.rawTerminal) ?? DEFAULTS.rawTerminal,
       tapToFocus: asJsonBoolean(p.tapToFocus) ?? DEFAULTS.tapToFocus,
       expandClippedReply: asJsonBoolean(p.expandClippedReply) ?? DEFAULTS.expandClippedReply,
+      // The same independent default: a payload written before the setting existed reads 1 day.
+      keepChat: readKeepChat(asJsonString(p.keepChat)),
     };
   } catch {
     return DEFAULTS;
@@ -340,6 +371,8 @@ export interface UseDisplayPrefsReturn {
   setTapToFocus: (tapToFocus: boolean) => void;
   /** Toggle or explicitly set whether a clipped reply is re-shown in full above the mirror. */
   setExpandClippedReply: (expandClippedReply: boolean) => void;
+  /** How long this phone keeps the Chat tail. `off` also deletes every tail already kept. */
+  setKeepChat: (keepChat: KeepChat) => void;
 }
 
 export function useDisplayPrefs(): UseDisplayPrefsReturn {
@@ -417,6 +450,17 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
+  const setKeepChat = useCallback((keepChat: KeepChat) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, keepChat };
+      savePrefs(next);
+      return next;
+    });
+    // Outside the updater, which React may run twice: the delete is a side effect, and "off" means
+    // nothing is kept from this moment, not from the next write.
+    if (keepChat === "off") void dropChatTails();
+  }, []);
+
   return {
     prefs,
     setWrap,
@@ -428,5 +472,6 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     setRawTerminal,
     setTapToFocus,
     setExpandClippedReply,
+    setKeepChat,
   };
 }

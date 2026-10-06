@@ -1666,6 +1666,14 @@ export function statusLabel(status: AgentStatus): string {
   return t(`status.label.${status}`);
 }
 
+/**
+ * The same status in the PAST tense, for a herd drawn from the saved copy (M46 spec 10): a cached
+ * row says what the pane was doing when the phone last heard, never what it is doing now.
+ */
+export function statusLabelPast(status: AgentStatus): string {
+  return t(`status.past.${status}`);
+}
+
 /** One Git worktree of the repo a space sits in. Mirrors `WorktreeView` in bridge/types.ts. */
 export interface WorktreeView {
   path: string;

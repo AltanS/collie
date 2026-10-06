@@ -301,3 +301,29 @@ describe("AgentCard's hold", () => {
     expect(row.className).not.toMatch(/select-none/);
   });
 });
+
+// M46 spec 10: a row drawn from the saved copy dims and says its status in the past tense, so a
+// cached herd never reads as live.
+describe("AgentCard — the saved copy", () => {
+  const working: AgentView = { ...fixtureAgents[0]!, status: "working" };
+
+  it("says the status in the past tense and dims the row when stale", () => {
+    const { container } = render(
+      <AgentCard agent={working} onClick={() => {}} density="row" statusStyle="dot" stale />,
+    );
+    expect(within(container).getByText("was working")).toBeInTheDocument();
+    expect(within(container).queryByText("working")).toBeNull();
+    expect(container.querySelector(".opacity-50")).not.toBeNull();
+  });
+
+  it("speaks the badge in the past tense too", () => {
+    const { container } = render(<AgentCard agent={working} onClick={() => {}} stale />);
+    expect(within(container).getByText("was working")).toBeInTheDocument();
+  });
+
+  it("stays in the present and undimmed when live", () => {
+    const { container } = render(<AgentCard agent={working} onClick={() => {}} density="row" statusStyle="dot" />);
+    expect(within(container).getByText("working")).toBeInTheDocument();
+    expect(container.querySelector(".opacity-50")).toBeNull();
+  });
+});

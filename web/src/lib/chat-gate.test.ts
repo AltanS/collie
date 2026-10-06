@@ -1,4 +1,5 @@
 import { LAST_RESORT_NO_JOURNAL_MS, journalReadingOf, paneBody, type ChatGateInput, type PaneBody } from "./chat-gate";
+import { savedChatWindow } from "./chat-window";
 
 // The whole rule, as a table. Each row is one pane a Chat device can meet, and the body it draws.
 // Read a row left to right: chat chosen and drawable, session reported, what the log said, how the
@@ -89,5 +90,25 @@ describe("journalReadingOf", () => {
   it("reads switched-off reading and a member older than the route as off", () => {
     expect(journalReadingOf({ kind: "unavailable", reason: "disabled" })).toBe("off");
     expect(journalReadingOf({ kind: "stale" })).toBe("off");
+  });
+});
+
+// M46 spec 09: a saved copy read back with no bridge in reach is a window to draw. It must not read as
+// "no log" and push the pane to the terminal, or a phone with no bridge would lose Chat exactly when
+// Chat is the only thing it still has.
+describe("the gate over a stale saved copy", () => {
+  const saved = savedChatWindow(
+    [{ uuid: "a", seq: 1, ts: "", role: "assistant", parts: [{ kind: "text", text: "kept" }] }],
+    1_000,
+  );
+
+  it("reads a stale saved copy as readable, never as missing", () => {
+    expect(saved.savedAt).toBe(1_000);
+    expect(journalReadingOf(saved.status)).toBe("readable");
+  });
+
+  it("draws Chat for a stale saved copy, and does not fall back to the terminal", () => {
+    const input = row({ session: true, journal: journalReadingOf(saved.status), history: "unknown" });
+    expect(paneBody(input)).toBe("chat");
   });
 });

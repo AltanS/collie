@@ -53,6 +53,16 @@ Running a crew? Update the lead first; members follow on their own. Details:
   256 KiB cap per pane and a 10 MiB cap in all, purged on open and deleted whole on unpair
   (ADR 0087). A cold open can read it back; nothing in it can trigger an action. Without IndexedDB
   the store falls back to memory for the session.
+- **Read a session offline.** The phone keeps the newest Chat turns of each pane on the device
+  (Settings → Device → "Keep chat on this phone": off, 1 day, 7 days; 1 day is the default) and
+  reads them back when the bridge does not answer, under "Saved copy from {time}". A cold open with
+  no bridge shows the saved herd, dimmed, with every status in the past tense and "as of {time}" in
+  the header. The banner tells you whether the phone is offline or the bridge is unreachable. The
+  raw terminal mirror is never kept as chat, and a password prompt drops that pane's saved turns.
+- **Nothing saved on the phone can act.** While the bridge has not answered for a pane in the last
+  15 seconds, or the screen is a saved copy, dialog options and the send button are disabled with
+  "Reconnect to answer" and "Reconnect to send". Typing still works and the draft still saves.
+  There is no queue, no retry and no send on reconnect.
 
 ### Changed
 

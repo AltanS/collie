@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRevalidator } from "react-router";
 import {
   CheckCircle2,
+  CloudOff,
   Loader2,
   LogIn,
   Plug,
@@ -22,7 +23,7 @@ import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
 import { isConnecting } from "@/lib/connection";
-import { clockTime } from "@/lib/format";
+import { clockTime, savedAtLabel } from "@/lib/format";
 import { writeRefusal } from "@/lib/host-health";
 import * as api from "@/lib/api";
 import type { BridgeStatus } from "@/lib/types";
@@ -46,6 +47,13 @@ interface ConnectionBannerProps {
    * re-renders the herd from cache, and an undated old screen is indistinguishable from a live one.
    */
   lastSeenAt?: number;
+  /**
+   * What is on screen is the SAVED COPY (M46 spec 10, `HomeData.stale` / `PaneData.stale`): a cold
+   * open before any live answer, or an outage the shared clock has latched. The strip then says so
+   * at once, in one of two sentences (see {@link resolveView}), instead of waiting out the amber
+   * and red escalation that exists to keep a blip quiet: a cold open with no bridge is not a blip.
+   */
+  stale?: boolean;
 }
 
 // /api/config probes the lead's HTTP surface, never a member or a mux.
@@ -76,13 +84,24 @@ export const GREEN_MS = 1_800;
 // slot's PRIORITY moves with it: a lost connection is `OUTAGE`, trouble and the recovery flash are
 // `DEGRADED` (`lib/strip-priority.ts`). Green is not a fifth level — it is this same fact, resolved,
 // and it outranks the update offer for the second it stands for exactly the reason amber does.
-export function ConnectionBanner({ bridge, host, error, authError, lastSeenAt }: ConnectionBannerProps) {
+//
+// THREE OFFLINE STATES, TOLD APART HERE AND NOWHERE ELSE (M46 spec 10):
+//   1. The phone is offline (`navigator.onLine` false): "You are offline. Showing what was saved at …".
+//   2. The phone is online and the bridge does not answer: "Bridge not reachable. Is Tailscale
+//      connected? Showing what was saved at …".
+//   3. The bridge answered and refused this device (a 403 `device not paired` or `device expired`
+//      while a token was held): the wipe has run, nothing kept is drawn, and the pair screen is the
+//      answer. No connection strip at all, below.
+// The first two draw the saved copy and date it by the record's own `fetchedAt`.
+export function ConnectionBanner({ bridge, host, error, authError, lastSeenAt, stale = false }: ConnectionBannerProps) {
   const { refused: notPaired } = usePairing();
   if (authError) return <AuthErrorBanner />;
   // Refused for want of pairing (ADR 0086: reads need the token). The bridge answered, so this is not
   // an outage, and the pairing strip on the route names the remedy. No connection strip at all.
   if (notPaired && error) return null;
-  return <ConnectionStateBanner bridge={bridge} host={host} error={error} lastSeenAt={lastSeenAt} />;
+  return (
+    <ConnectionStateBanner bridge={bridge} host={host} error={error} lastSeenAt={lastSeenAt} stale={stale} />
+  );
 }
 
 // A refusal is not an outage, so it gets its own surface ahead of the connection state machine: no
@@ -150,6 +169,7 @@ function ConnectionStateBanner({
   host,
   error,
   lastSeenAt,
+  stale = false,
 }: Omit<ConnectionBannerProps, "authError">) {
   useLocale();
   const { lead } = useCrew();
@@ -162,7 +182,11 @@ function ConnectionStateBanner({
   // What the live signals want on screen right now — red wins over amber; null = healthy (or a blip
   // that never reached trouble). Green is NOT derived here: it's a timed confirmation the state machine
   // adds only when a VISIBLE bar recovers, so it can't come from the instantaneous signals.
-  const activeTone: Exclude<Tone, "green"> | null = lost ? "red" : trouble ? "amber" : null;
+  //
+  // A saved copy on screen is red at once (see `stale`): the escalation clock exists to keep a blip
+  // quiet, and a herd drawn from the store is already past being one. Recovery from it flashes green
+  // like any other visible bar.
+  const activeTone: Exclude<Tone, "green"> | null = stale || lost ? "red" : trouble ? "amber" : null;
 
   // The rendered tone. Adds the recovery "connected" flash on top of the live signals.
   const [tone, setTone] = useState<Tone | null>(null);
@@ -235,7 +259,7 @@ function ConnectionStateBanner({
   // that member is down, and the sentence for it exists (`connection.stale.*`, the one the pane
   // notice and a refused write use). Read only to NAME the cause; it feeds no clock and no latch.
   const memberFault = host !== undefined && host !== lead ? writeRefusal(memberHealth) : undefined;
-  const view = resolveView(tone, online, probe, muxDisconnected, memberFault, lastSeenAt);
+  const view = resolveView(tone, online, probe, muxDisconnected, memberFault, lastSeenAt, stale);
 
   return (
     // A lost connection outranks trouble, and both outrank the update offer. Green rides at
@@ -247,7 +271,7 @@ function ConnectionStateBanner({
         // Red is an actionable error (assertive); amber and green are ambient. One attribute either
         // way — the `aria-live="polite"` that used to sit beside the role is gone, and cannot come
         // back: `ui/notice.tsx` has no way to spell a role and a liveness at the same time.
-        announce={tone === "red" ? "alert" : "status"}
+        announce={view.tone === "danger" ? "alert" : "status"}
         icon={<view.Icon />}
         // Actions only in red — amber is ambient (no buttons), green is a passing confirmation.
         action={
@@ -305,6 +329,7 @@ function resolveView(
   muxDisconnected: boolean,
   memberFault: string | undefined,
   lastSeenAt?: number,
+  stale = false,
 ) {
   if (tone === "green") {
     return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success" } as const;
@@ -320,6 +345,16 @@ function resolveView(
   // sentence carries its own "last seen", so it is not dated a second time below.
   if (probe === "reachable" && !muxDisconnected && memberFault !== undefined) {
     return { copy: memberFault, Icon: TriangleAlert, tone: "danger" } as const;
+  }
+  // THE SAVED COPY, in the quiet tone: it is not an error state, it is the screen the operator left,
+  // dated (M46 spec 10). Offline is the phone's own fact and needs no probe; otherwise the bridge did
+  // not answer, and the likeliest cause on a phone is the tunnel. A probe that says the bridge DOES
+  // answer HTTP falls through to the named cause below, because "not reachable" would then be false.
+  if (stale && lastSeenAt !== undefined && probe !== "reachable") {
+    const time = savedAtLabel(lastSeenAt);
+    return online
+      ? ({ copy: t("connection.saved.unreachable", { time }), Icon: CloudOff, tone: "neutral" } as const)
+      : ({ copy: t("connection.saved.offline", { time }), Icon: WifiOff, tone: "neutral" } as const);
   }
   const cause =
     probe === "reachable" && muxDisconnected

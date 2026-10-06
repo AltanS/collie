@@ -112,11 +112,14 @@ bridge is out of reach. Every item below has a size bound and a lifetime.
 | App shell | Cache Storage | until the next build | kept |
 | Fonts and push titles | Cache Storage | until replaced | deleted |
 | Herd and pane text, as last seen | IndexedDB `collie-store` | 24 hours | deleted |
+| Newest Chat turns of each pane | IndexedDB `collie-store` | 1 day, or the "Keep chat on this phone" setting | deleted |
 
-The last row is the on-device store. It holds only text the bridge already
+The last two rows are the on-device store. It holds only text the bridge already
 [masked](#what-leaves-the-machine-is-masked), at most 256 KiB per pane and 10 MiB in all, and it
-drops the oldest entries first. When a pane asks for a password, the phone drops that pane's
-entries. Nothing in the store can send a key or a reply. The deletions at unpair are the ones in
+drops the oldest entries first. The pane text and the Chat turns each get half of a pane's 256 KiB,
+so one never pushes the other out. The Chat turns are kept whole, as Chat drew them, never as the
+raw terminal screen. "Keep chat on this phone" set to Off keeps none and deletes the ones kept.
+When a pane asks for a password, the phone drops that pane's entries. Nothing in the store can send a key or a reply. The deletions at unpair are the ones in
 [What unpair clears on the phone](#what-unpair-clears-on-the-phone).
 
 ## Risk model

@@ -119,6 +119,9 @@ export function DetailRoute() {
       bridge={root.bridge}
       error={root.error}
       stalled={stalled}
+      // The saved copy (M46 spec 10): the pane view dates it, and nothing on it may act (spec 11).
+      stale={pane.stale === true}
+      lastSeenAt={pane.lastSeenAt}
       onBack={up}
       onBackArrow={backArrow}
       // Pane to pane is a sideways move: it replaces, and the pane's way up comes along.

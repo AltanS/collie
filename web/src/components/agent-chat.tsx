@@ -5,6 +5,7 @@ import {
   ArrowUpToLine,
   ChevronUp,
   EllipsisVertical,
+  History,
   Loader2,
   Minimize2,
   ScrollText,
@@ -29,6 +30,8 @@ import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
 import { t, type MessageKey } from "@/lib/i18n";
+import { savedAtLabel } from "@/lib/format";
+import { Notice } from "@/components/ui/notice";
 import { settleAfterSend } from "@/lib/harness/guard";
 import { setStatus } from "@/lib/status";
 import { setFollowing as publishFollowing } from "@/lib/poll-intent";
@@ -138,6 +141,14 @@ interface AgentChatProps {
   bridge?: BridgeStatus | undefined;
   error?: boolean;
   stalled?: boolean;
+  /**
+   * The pane's text is the SAVED COPY (M46 spec 10, `PaneData.stale`): the bridge did not answer and
+   * this is what the phone kept. The view draws the saved-copy notice over either body, and hands the
+   * flag to the card dock and the composer, which act on nothing while it is set (spec 11).
+   */
+  stale?: boolean;
+  /** When the saved mirror was fetched, for the notice's "Saved copy from {time}". */
+  lastSeenAt?: number;
   /** Up one level: the header's back arrow (the Collie mark) and every exit from a pane that closed. */
   onBack: () => void;
   /**
@@ -221,6 +232,8 @@ export function AgentChat({
   bridge = "connected",
   error = false,
   stalled = false,
+  stale = false,
+  lastSeenAt,
   onBack,
   onBackArrow,
   onSelect,
@@ -922,6 +935,14 @@ export function AgentChat({
     !chatFetch || chatStatus.kind !== "empty" || chatFeed.tried || handover.phase !== "idle";
   const chatReadyBody = useChatReady(chatBody, chatAnswered);
   const chatShown = useHeldBody(chatReadyBody, handover.phase);
+  // THE SAVED COPY'S DATE, for whichever body is on screen (M46 specs 09 and 10). Chat dates its own
+  // window, read back from the Chat tail the phone kept; the terminal dates the last-seen mirror the
+  // loader restored. The Terminal body has no offline read beyond that mirror: the raw screen is
+  // never cached as Chat. `null` while what is drawn is live.
+  const savedCopyAt = chatShown ? chatFeed.window.savedAt : stale ? (lastSeenAt ?? null) : null;
+  // Nothing on a saved copy may act (spec 11): the dock and the composer read this. A Chat window
+  // read back from the store is a saved copy even when the mirror's own read is not.
+  const actsDisabledByCache = stale || savedCopyAt !== null;
   // Why this pane keeps the terminal, in the operator's own terms — and ONLY for the half of that
   // question this side can answer. There are two layers and the split is deliberate: a pane that
   // draws Chat says what it is waiting for in the stream, in its own words, while a pane that keeps
@@ -2088,6 +2109,14 @@ export function AgentChat({
               composer is what a keyboard user already has (the textarea is the next tabbable thing),
               and `focusFromMirror` deliberately declines a tap that landed on a control or a text
               selection. It is a touch convenience layered over an already-reachable action. */}
+          {/* THE SAVED-COPY NOTICE (M46 specs 09 and 10): above either body, never inside it, so it
+              does not scroll away with the text it dates. Quiet, because a saved copy is the screen
+              the operator left, not an error; the strip above the header says why it is there. */}
+          {savedCopyAt !== null && (
+            <Notice tone="neutral" variant="box" announce="status" icon={<History />} className="mt-1 mb-1">
+              {t("chat.savedCopy", { time: savedAtLabel(savedCopyAt) })}
+            </Notice>
+          )}
           <div
             role="presentation"
             className={cn(
@@ -2304,6 +2333,9 @@ export function AgentChat({
               onMenuAction={handleMenuAction}
               onUnreadDialogAction={handleUnreadDialogAction}
               promptDisabled={readOnly || gone}
+              paneId={paneId}
+              scope={scope}
+              stale={actsDisabledByCache}
               composing={composing}
               faceClassName={mirrorFace.className}
               faceStyle={mirrorFace.style}
@@ -2469,6 +2501,7 @@ export function AgentChat({
                   ref={composerRef}
                   paneId={paneId}
                   scope={scope}
+                  stale={actsDisabledByCache}
                   agent={agent?.agent}
                   isShell={isShell}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a

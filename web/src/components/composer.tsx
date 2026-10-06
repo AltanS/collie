@@ -56,6 +56,7 @@ import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { keyLabel } from "@/lib/key-queue";
 import { sendGuardedReply } from "@/lib/reply-action";
+import { useLive } from "@/lib/liveness";
 import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
@@ -170,6 +171,14 @@ interface ComposerProps {
   /** EXPERIMENT (operator, 2026-09-23): the Changes pill on the belt's pinned block, beside the
    *  switcher mark (actions-row.tsx's `changes`). Absent when the pane reports no folder. */
   changesPill?: { onClick: () => void; label: string };
+
+  /**
+   * The parent drew this pane from the on-device cache (M46 spec 10), so nothing it shows is proven
+   * current. Together with a lapsed liveness stamp (lib/liveness.ts) it turns the SEND paths off while
+   * typing, and the draft's own save, stay on. M46 spec 11: no queue, no retry and no auto-send when
+   * the bridge comes back, because the words may answer a screen that has moved on.
+   */
+  stale?: boolean;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -299,7 +308,7 @@ interface ClearedDraft {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -350,6 +359,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // or funnelled through `pressKeys`, which is synchronous with its own check.
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
+  // M46 spec 11: nothing is sent from cached state. Deliberately NOT folded into `locked`: that one
+  // also disables the field, and a person may keep typing while the bridge is away (the draft saves
+  // as before, drafts.ts). It gates every path that reaches the pane (send, raw keys, the belt) and
+  // nothing else. There is no outbox: a send refused here is gone, the draft stays in the box.
+  const live = useLive(paneId, scope);
+  const offline = stale === true || !live;
+  const offlineRef = useRef(offline);
+  offlineRef.current = offline;
 
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
   // pane view is keyed by paneId, so without this, stepping over to another tab mid-reply ate the
@@ -643,7 +660,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function acceptTranscript(transcript: string) {
     const draftEmpty = inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0;
     const mayHandsFree =
-      handsFree && draftEmpty && noEchoRef.current === null && !locked && !dialogPresent;
+      handsFree && draftEmpty && noEchoRef.current === null && !locked && !offline && !dialogPresent;
     if (mayHandsFree) {
       void send(transcript, false);
       return;
@@ -891,6 +908,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
     const t = value.trim();
     if (!t || locked || sending) return false;
+    if (offlineRef.current) {
+      setStatus(translate("composer.send.reconnect"), "error");
+      return false;
+    }
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
     // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
     // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
@@ -1140,6 +1161,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the status channel; the echo just falls back to idle.
   async function pressKeys(k: string[]): Promise<boolean> {
     if (locked) return false;
+    if (offlineRef.current) {
+      setStatus(translate("composer.send.reconnect"), "error");
+      return false;
+    }
     // Every raw key reaches the pane through here — the Keys dock (NavTray's `onSend`), the direct
     // typing mode (useDirectTyping's `sendKeys`) and the prompt buttons that hand keys to the tray.
     // No stamp here: `api.sendKeys` starts the poll burst for every key written.
@@ -1447,7 +1472,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onSend={pressKeys}
               presets={keyPresets}
               onQueueChange={setQueuedKeys}
-              disabled={locked}
+              disabled={locked || offline}
             />
           </ComposerDock>
         )}
@@ -1458,7 +1483,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onClose={closeDrawer}
               agent={agent}
               isShell={isShell}
-              disabled={locked || sending}
+              disabled={locked || offline || sending}
             />
           </ComposerDock>
         )}
@@ -1955,8 +1980,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               variant="destructive"
               className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
               onClick={onSendClick}
-              disabled={locked || !hasDraft || sending}
-              aria-label={translate("composer.send.typeAnyway")}
+              disabled={locked || offline || !hasDraft || sending}
+              title={offline ? translate("composer.send.reconnect") : undefined}
+              aria-label={offline ? translate("composer.send.reconnect") : translate("composer.send.typeAnyway")}
             >
               {translate("composer.send.typeAnyway")}
             </Button>
@@ -1965,8 +1991,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               variant="destructive"
               className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
               onClick={onSendClick}
-              disabled={locked || !hasDraft || sending}
-              aria-label={translate("composer.send.reallySend")}
+              disabled={locked || offline || !hasDraft || sending}
+              title={offline ? translate("composer.send.reconnect") : undefined}
+              aria-label={offline ? translate("composer.send.reconnect") : translate("composer.send.reallySend")}
             >
               {translate("composer.send.reallySend")}
             </Button>
@@ -1983,7 +2010,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               size="icon"
               variant={recorder.busy ? "destructive" : "default"}
               className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
-              disabled={!stt.available || locked || sending || recorder.phase === "transcribing"}
+              disabled={!stt.available || locked || offline || sending || recorder.phase === "transcribing"}
               aria-pressed={recorder.busy}
               // The bridge's own words when it cannot serve — the operator's next move is on the
               // host, so the button says what is wrong rather than just refusing.
@@ -2011,11 +2038,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               size="icon"
               className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
               onClick={direct.active ? () => direct.deactivate() : onSendClick}
-              disabled={locked || sending}
+              disabled={locked || sending || (offline && !direct.active)}
+              title={offline && !direct.active ? translate("composer.send.reconnect") : undefined}
               aria-label={
                 direct.active
                   ? translate("composer.send.stopTypingAria")
-                  : translate("composer.send.sendAria")
+                  : offline
+                    ? translate("composer.send.reconnect")
+                    : translate("composer.send.sendAria")
               }
               aria-pressed={direct.active}
             >

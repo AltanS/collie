@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 
 import { paneScopeKey, scopeKey } from "@/lib/scope";
 import { FakeIDBFactory, uninstallFakeIndexedDB } from "@/test/fake-indexeddb";
@@ -903,6 +903,116 @@ describe("cold boot with no network", () => {
     const data = await rootLoader();
     expect(data.error).toBe(true);
     expect(data.agents).toEqual([]);
+  });
+
+  // ── M46 spec 10: the cold open draws the saved copy, marked stale ───────────
+  /** A warm page that saw the herd and one pane, then went away. */
+  async function warmThenKill(): Promise<void> {
+    const warm = await import("./loaders");
+    await warm.rootLoader();
+    await warm.paneLoader({ params: { paneId: "w1:p1" } });
+    await settle();
+    vi.resetModules();
+  }
+
+  it("cold: a fresh page that cannot reach the bridge marks the saved herd stale, with its age", async () => {
+    await warmThenKill();
+    failSnapshot();
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.stale).toBe(true);
+    expect(data.lastSeenAt).toBeTypeOf("number");
+    expect(data.agents.map((a) => a.status)).toEqual(fixtureAgents.map((a) => a.status));
+  });
+
+  it("cold: a fresh page draws the saved herd at once while the bridge hangs", async () => {
+    await warmThenKill();
+    server.use(http.get("/api/snapshot", async () => {
+      await delay(600);
+      return HttpResponse.json(fixtureSnapshot);
+    }));
+    const loaders = await import("./loaders");
+    loaders.__setColdOpenWait(20);
+    const started = Date.now();
+    // A real request: a cold open is a NAVIGATION, which a loader tells by its url.
+    const data = await loaders.rootLoader({ request: new Request("http://localhost/") });
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(data.stale).toBe(true);
+    expect(data.error).toBe(true);
+    expect(data.agents).toHaveLength(2);
+  });
+
+  it("cold: a fresh page with nothing saved waits for the slow bridge instead", async () => {
+    server.use(http.get("/api/snapshot", async () => {
+      await delay(80);
+      return HttpResponse.json(fixtureSnapshot);
+    }));
+    const loaders = await import("./loaders");
+    loaders.__setColdOpenWait(10);
+    const data = await loaders.rootLoader({ request: new Request("http://localhost/") });
+    expect(data.error).toBe(false);
+    expect(data.stale).toBe(false);
+  });
+
+  it("cold: a pane opened on a fresh page draws its saved text at once, marked stale", async () => {
+    await warmThenKill();
+    server.use(http.get(/\/api\/pane\/[^/]+$/, async () => {
+      await delay(600);
+      return HttpResponse.json({ paneId: "w1:p1", text: "live", truncated: false, revision: 9 });
+    }));
+    const loaders = await import("./loaders");
+    loaders.__setColdOpenWait(20);
+    const data = await loaders.paneLoader({
+      params: { paneId: "w1:p1" },
+      request: new Request("http://localhost/pane/w1:p1"),
+    });
+    expect(data.stale).toBe(true);
+    expect(data.text).toContain("hello from the pane");
+    expect(data.lastSeenAt).toBeTypeOf("number");
+  });
+
+  it("cold: the stale mark clears with the first live answer, without a reload", async () => {
+    await warmThenKill();
+    failSnapshot();
+    const { rootLoader } = await import("./loaders");
+    expect((await rootLoader()).stale).toBe(true);
+    server.resetHandlers();
+    const live = await rootLoader();
+    expect(live.error).toBe(false);
+    expect(live.stale).toBe(false);
+  });
+
+  it("cold: an in-session blip after a live answer is not the saved copy", async () => {
+    const { rootLoader } = await import("./loaders");
+    await rootLoader();
+    await settle();
+    failSnapshot();
+    const blip = await rootLoader();
+    expect(blip.error).toBe(true);
+    expect(blip.stale).toBe(false);
+  });
+
+  it("cold: a device refused for want of pairing draws nothing it kept", async () => {
+    await warmThenKill();
+    server.use(http.get("/api/snapshot", () => new HttpResponse("device not paired", { status: 403 })));
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.error).toBe(true);
+    expect(data.agents).toEqual([]);
+    expect(data.stale).toBe(false);
+    expect(data.lastSeenAt).toBeUndefined();
+  });
+
+  it("past its lifetime, a saved herd is not drawn", async () => {
+    await warmThenKill();
+    const store = await import("./store");
+    store.__resetStore({ now: () => Date.now() + store.DEFAULT_TTL_MS + 60_000 });
+    failSnapshot();
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.agents).toEqual([]);
+    expect(data.stale).toBe(false);
+    expect(data.lastSeenAt).toBeUndefined();
   });
 
   // ADR 0017: recognising a password prompt changes what Collie says — and this, the one other thing

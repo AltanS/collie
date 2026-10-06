@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { type AgentStatus, statusLabel } from "@/lib/types";
+import { type AgentStatus, statusLabel, statusLabelPast } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -114,9 +114,12 @@ export function StatusDot({
 export function StatusBadge({
   status,
   stale,
+  past = false,
   className,
 }: {
   status: AgentStatus;
+  /** The reading is from the saved copy (M46 spec 10): say it in the past tense, "was working". */
+  past?: boolean;
   /** The badge is showing the LAST snapshot's status while the connection is not live — dim it so
    *  frozen data doesn't read as current. No animation to remove here (the badge dot never pulses),
    *  so opacity alone carries it; the transition restores it instantly on recovery. */
@@ -130,7 +133,7 @@ export function StatusBadge({
       className={cn("gap-1.5 transition-opacity", CHIP[status], stale && "opacity-40", className)}
     >
       <span className={cn("size-1.5 rounded-full", DOT[status])} />
-      {statusLabel(status)}
+      {past ? statusLabelPast(status) : statusLabel(status)}
     </Badge>
   );
 }

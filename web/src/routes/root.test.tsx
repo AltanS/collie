@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { BootSplash, RootLayout, shownLastSeenAt } from "./root";
+import { BootSplash, RootLayout, shownLastSeenAt, shownStale } from "./root";
 import { RouteHeader } from "@/components/app-header";
 import { server } from "@/test/setup";
 import { __resetOperatorCommands } from "@/lib/operator-config";
@@ -102,6 +102,25 @@ function pane(overrides: Partial<PaneData>): PaneData {
     ...overrides,
   };
 }
+
+// M46 spec 10: the banner tells a saved copy from a live screen by the data on screen, the pane's
+// own mark inside a pane and the herd's mark on the dashboard.
+describe("whether the screen is the saved copy", () => {
+  it("follows the herd on the dashboard", () => {
+    expect(shownStale({ ...home(AFTERNOON), stale: true }, undefined)).toBe(true);
+    expect(shownStale(home(AFTERNOON), undefined)).toBe(false);
+  });
+
+  it("follows the pane while a stale mirror is what is being read", () => {
+    expect(shownStale({ ...home(AFTERNOON), stale: true }, pane({ stale: false }))).toBe(false);
+    expect(shownStale(home(AFTERNOON), pane({ stale: true }))).toBe(true);
+  });
+
+  it("falls back to the herd when the pane is live or has no text", () => {
+    expect(shownStale({ ...home(AFTERNOON), stale: true }, pane({ error: false }))).toBe(true);
+    expect(shownStale({ ...home(AFTERNOON), stale: true }, pane({ text: "" }))).toBe(true);
+  });
+});
 
 describe("which 'last seen' the connection bar shows", () => {
   it("uses the snapshot's stamp on the dashboard (no pane route active)", () => {

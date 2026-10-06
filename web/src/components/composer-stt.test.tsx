@@ -18,6 +18,15 @@ import {
 } from "@/test/media-recorder";
 import { Composer } from "./composer";
 
+// M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
+// These suites drive sends against a mocked network and never poll first, so they pin the pane live;
+// the gating itself is covered by liveness.test.ts and the *-offline suites.
+vi.mock("@/lib/liveness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveness")>()),
+  isLive: () => true,
+  useLive: () => true,
+}));
+
 // The composer's microphone (ADR 0029). Two gates decide whether it is drawn at all — the bridge
 // publishing a provider, and this browser being able to record — and jsdom fails the second one by
 // default, so every case that wants a button installs the fake recorder first.

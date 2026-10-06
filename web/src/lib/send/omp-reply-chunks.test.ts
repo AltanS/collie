@@ -16,6 +16,15 @@ import { server } from "@/test/msw";
 import { sendGuardedReply } from "../reply-action";
 import { ompOpaqueDraft, ompReplyChunks } from "../harness/omp/reply-chunks";
 
+// M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
+// These suites drive sends against a mocked network and never poll first, so they pin the pane live;
+// the gating itself is covered by liveness.test.ts and the *-offline suites.
+vi.mock("@/lib/liveness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveness")>()),
+  isLive: () => true,
+  useLive: () => true,
+}));
+
 const idle = readFileSync(join(import.meta.dirname, "../../fixtures/omp-pi-shape/idle.txt"), "utf8");
 const screen = (draft: string) => idle.split("\n").map((row, i) => i === 1 ? ` ${draft.replaceAll("\n", "\n ")}` : row).join("\n");
 const text = Array.from({ length: 30 }, (_, i) => `한글 테스트 ${i} 👨‍💻`).join("\n");

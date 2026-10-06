@@ -19,7 +19,7 @@ describe("useDisplayPrefs", () => {
 
   it("returns defaults when localStorage is empty", () => {
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
   });
 
   it("persists wrap=true and reloads it on mount", () => {
@@ -42,7 +42,7 @@ describe("useDisplayPrefs", () => {
       JSON.stringify({ wrap: false, fontSize: 14, rawTerminal: true, tapToFocus: false, expandClippedReply: false }),
     );
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: false, expandClippedReply: false });
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: false, expandClippedReply: false, keepChat: "1d" });
   });
 
   it("persists rawTerminal and reloads it on mount (the escape hatch survives a reload)", () => {
@@ -69,7 +69,7 @@ describe("useDisplayPrefs", () => {
   it("reads a pre-tapToFocus payload without discarding the prefs it does have", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, fontSize: 15, rawTerminal: true }));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 15, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: true, expandClippedReply: true });
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 15, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
   });
 
   it("persists fontFamily and reloads it on mount", () => {
@@ -279,12 +279,35 @@ describe("useDisplayPrefs — the rest", () => {
   it("falls back to defaults on malformed JSON", () => {
     localStorage.setItem(STORAGE_KEY, "not-json{{{");
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
   });
 
   it("falls back to defaults when stored value is not an object", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(42));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
+  });
+});
+
+// ── "Keep chat on this phone" (M46 spec 09, lib/chat-tail.ts) ─────────────────
+describe("useDisplayPrefs — keepChat", () => {
+  it("defaults to 1 day, and a payload written before the setting existed reads the default", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false }));
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs.keepChat).toBe("1d");
+  });
+
+  it("persists a choice and reads it back on mount", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    act(() => result.current.setKeepChat("7d"));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).keepChat).toBe("7d");
+    const { result: reloaded } = renderHook(() => useDisplayPrefs());
+    expect(reloaded.current.prefs.keepChat).toBe("7d");
+  });
+
+  it("reads an unknown stored value as the default", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepChat: "forever" }));
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs.keepChat).toBe("1d");
   });
 });
