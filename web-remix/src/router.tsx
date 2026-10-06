@@ -16,7 +16,7 @@ import { basePath } from "@web/lib/base-path";
 import { noteAddress } from "./lib/data";
 import { homeAction } from "./routes/home/action";
 import { paneAction } from "./routes/pane/action";
-import { settingsAction, settingsDeviceAction } from "./routes/settings/action";
+import { settingsAction, settingsDeviceAction, settingsSectionAction, settingsUpdatesAction } from "./routes/settings/action";
 import { spaceAction } from "./routes/space/action";
 import { routes } from "./routes";
 import { NotFound, Shell } from "./shell";
@@ -47,6 +47,8 @@ router.map(routes.space, spaceAction);
 router.map(routes.pane, paneAction);
 router.map(routes.settings, settingsAction);
 router.map(routes.settingsDevice, settingsDeviceAction);
+router.map(routes.settingsUpdates, settingsUpdatesAction);
+router.map(routes.settingsSection, settingsSectionAction);
 
 /**
  * The router as the runtime sees it, with the mount taken off (ADR 0052). The bridge serves this

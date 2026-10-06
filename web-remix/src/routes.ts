@@ -10,6 +10,8 @@ export const routes = route({
   pane: get("/pane/:paneId"),
   settings: get("/settings"),
   settingsDevice: get("/settings/device"),
+  settingsUpdates: get("/settings/updates"),
+  settingsSection: get("/settings/:section"),
 });
 
 /** A root-relative app path as the mounted origin serves it, query included. */

@@ -7,6 +7,7 @@ import { run, type Runtime } from "remix/spa";
 import { startIdleLock } from "./lib/idle";
 import { startPolling } from "./lib/polling";
 import { mountedRouter } from "./router";
+import { startUpdates } from "./update/boot";
 import { BootSplash } from "./shell";
 
 let app: Runtime = start();
@@ -34,4 +35,5 @@ export async function remount(): Promise<void> {
 
 startPolling();
 startIdleLock();
+startUpdates();
 await app.ready();

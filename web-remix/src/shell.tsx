@@ -14,6 +14,8 @@ import { idle, unlock } from "./lib/idle";
 import { want } from "./lib/polling";
 import { useStore } from "./lib/store";
 import { Button } from "./ui/button";
+import { useLocale } from "./lib/i18n-store";
+import { UpdateSheet } from "./update/update-sheet";
 
 export const SNAPSHOT_SOURCE = { key: "snapshot", poll: loadSnapshot };
 export const CONFIG_SOURCE = { key: "config", poll: loadConfig };
@@ -30,6 +32,7 @@ export function Shell(handle: Handle<ShellProps>) {
   // Read here only so the shell re-renders when they land; routes read them themselves.
   useStore(handle, snapshot);
   useStore(handle, config);
+  useLocale(handle);
   return () => {
     const { locked, catchingUp } = readIdle();
     const covered = locked || catchingUp;
@@ -39,6 +42,7 @@ export function Shell(handle: Handle<ShellProps>) {
           <div class="flex h-(--app-h) flex-col overflow-hidden">{handle.props.children}</div>
         </div>
         {covered && <IdleCover catchingUp={catchingUp} />}
+        <UpdateSheet />
       </>
     );
   };
