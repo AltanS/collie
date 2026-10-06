@@ -641,8 +641,9 @@ const gridReadAnswersTheContract: MuxReadCheck = {
     if (!Number.isFinite(stripped.value.revision) || stripped.value.revision < 0) {
       problems.push(`revision ${String(stripped.value.revision)} is not a usable race-guard token`);
     }
-    // `styling:"strip"` exists because one caller only wants words (the session-name scrape). An
-    // adapter that ignores it hands an ANSI-laced string to a consumer that will not parse it.
+    // `styling:"strip"` exists for a caller that only wants words (the session-name scrape used to
+    // be one; it now reads `preserve`). An adapter that ignores it hands an ANSI-laced string to a
+    // consumer that will not parse it.
     if (stripped.value.text.includes(ESCAPE)) {
       problems.push("a `strip` read carried escape sequences — the styling request was ignored");
     }

@@ -293,7 +293,7 @@ export class HerdrMux implements MuxAdapter {
    * `scope` picks Herdr's read source and `styling` its format, and the pairing is not cosmetic: a
    * `recent` read in `text` format makes Herdr harvest the pages above an alt-screen pane by driving
    * the agent's own scroll interface — the operator watches their terminal jump and snap back. The
-   * mirror asks for `recent` + `preserve`; the session-name scrape asks for `viewport` + `strip`.
+   * mirror asks for `recent` + `preserve`; the session-name scrape asks for `viewport` + `preserve`.
    * See HERDR_API.md → `pane.read` and the note above SESSION_NAME_READ_LINES.
    */
   async readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> {

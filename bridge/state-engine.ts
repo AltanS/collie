@@ -327,8 +327,10 @@ export class StateEngine {
   private bridge: BridgeStatus = "disconnected";
   private readonly prevStatus = new Map<string, AgentStatus>();
   // Last-known claude `/rename` session name per pane. Kept sticky so the name doesn't flicker away
-  // when a pane momentarily hides its input box (a dialog / working spinner) — only cleared when the
-  // pane itself vanishes (see the removal loop). Enriched from pane text each poll (see enrichSessionNames).
+  // when a pane momentarily hides its input box (a dialog / working spinner). A styled read sets it
+  // from a name, deletes it when the input box shows no name (or only a mode badge), and keeps it
+  // when no input box is in view (`undefined`). It is also cleared when the pane itself vanishes
+  // (see the removal loop). Enriched from pane text each poll (see enrichSessionNames).
   private readonly sessionNames = new Map<string, string>();
   // Revision at which each pane was last enriched. enrichSessionNames skips the readGrid RPC for
   // any pane whose revision hasn't moved — O(claude_panes) socket calls per poll → O(changed).

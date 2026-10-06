@@ -319,7 +319,8 @@ export interface MuxSnapshot {
  * `styling` is on the contract because it is BEHAVIOURAL, not cosmetic: on at least one multiplexer
  * the two formats take different paths through the terminal core, and one of them can move the
  * operator's own screen (see the note above the read in bridge/server.ts). A caller that only wants
- * words — the session-name scrape in state-engine.ts — must be able to say so.
+ * words must be able to say so. The session-name scrape in state-engine.ts reads `preserve`, because
+ * colour is what tells a `/rename` name from a mode badge.
  */
 export interface MuxGridRequest {
   readonly scope: "viewport" | "recent";

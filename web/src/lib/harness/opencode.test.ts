@@ -1130,8 +1130,8 @@ describe("opencode tab-bar question dialogs lift", () => {
 
     it("an overlay row under the free-text row lifts with it, not raw", () => {
       // The shared walk skips far-right rows, so the tabbed flow sees a closed free-text row
-      // and lifts: the remaining #347 follow-up covers only near-gutter rows no geometry
-      // can tell apart.
+      // and lifts. Near-gutter rows, which geometry cannot tell apart, are covered by the
+      // pointer-gated overlay rule (#347).
       const lines = loadLines("oc--question--multi.txt");
       const at = lines.findIndex((l) => lineText(l).includes("5. [ ] Type your own answer"));
       expect(at).toBeGreaterThan(0);
