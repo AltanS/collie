@@ -88,17 +88,22 @@ export interface StatusSummaryLineProps {
   allClear: boolean;
   onJump?: (() => void) | undefined;
   id?: string;
+  /** Keep a line with no `onJump` reachable by script (`aria-disabled`, `tabindex=-1`), web/'s rule. */
+  focusable?: boolean;
   class?: string;
 }
 
 export function StatusSummaryLine(handle: Handle<StatusSummaryLineProps>) {
   return () => {
-    const { panes, allClear, onJump, id } = handle.props;
+    const { panes, allClear, onJump, id, focusable = false } = handle.props;
+    const inert = onJump === undefined;
     return (
       <button
         id={id}
         type="button"
-        disabled={onJump === undefined}
+        disabled={inert && !focusable}
+        aria-disabled={inert && focusable ? "true" : undefined}
+        tabIndex={inert && focusable ? -1 : undefined}
         data-testid="summary-line"
         mix={on("click", () => handle.props.onJump?.())}
         class={cn(

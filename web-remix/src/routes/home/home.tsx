@@ -2,14 +2,26 @@ import { navigate, type Handle } from "remix/component";
 import { ListTree, Network, Rows3 } from "lucide";
 
 import { buildLabel } from "@web/lib/build";
-import { coerceDashView } from "@web/lib/dash-view";
-import { ambientPanes, isMultiHost, paneScope } from "@web/lib/hosts";
+import { coerceDashView, type DashView } from "@web/lib/dash-view";
+import { ambientHost, ambientPanes, isMultiHost, paneRowKey, paneScope } from "@web/lib/hosts";
 import { t, tn } from "@web/lib/i18n";
-import { panePath } from "@web/lib/nav";
+import { spacePath } from "@web/lib/nav";
+import { isolateSpaces } from "@web/lib/spaces";
 import { countBlocked, hasReady } from "@web/lib/triage";
-import type { AgentView, BridgeConfig } from "@web/lib/types";
+import { isReadOnly, type AgentView, type BridgeConfig } from "@web/lib/types";
 
+import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
+import { creating, newTab, SPACE_CREATE_KEY } from "../../chips/space-actions";
+import { UpdateBanner } from "../../chips/update-banner";
+import { UpdateRibbon } from "../../chips/update-ribbon";
 import { address, config, snapshot } from "../../lib/data";
+import { hiddenMachines, setMachineHidden } from "../../lib/hidden-machines";
+import { useLocale } from "../../lib/i18n-store";
+import { isNotPaired } from "../../lib/pairing";
+import type { PaneOrder } from "../../lib/pane-order";
+import { pins } from "../../lib/pins";
+import { dashPrefs, setDashPref } from "../../lib/prefs";
+import { scrollMemory } from "../../lib/scroll";
 import { useStore } from "../../lib/store";
 import { href } from "../../routes";
 import { headerOf } from "../../shell/context";
@@ -17,15 +29,27 @@ import { SettingsGear } from "../../shell/header";
 import type { CustomSlot } from "../../shell/header-model";
 import { Icon } from "../../ui/icon";
 import { TabBar } from "../../ui/tab-bar";
-import { AgentList } from "./agent-list";
-import { dashPrefs, setDashView, setIsolated, toggleHidden } from "./prefs";
+import { AgentList, type HeadingNewTab } from "./agent-list";
+import { CrewFooterLink } from "./crew-footer-link";
+import { CrewTab } from "./crew-tab";
+import { FilesTab } from "./files-tab";
+import { LaunchStrip } from "./launch-strip";
+import { NewSpaceSheet } from "./new-space-sheet";
+import { openPane, paneTarget, prefetchPane } from "./open-pane";
+import { ServerSwitcher } from "./server-switcher";
+import { SessionSwitcher } from "./session-switcher";
+import { SpaceOverview } from "./space-overview";
 
-// Port of web/src/routes/home.tsx: the list in a scroller, the footer under it, and the tab bar
-// outside the scroller. Crew and Files are placeholders here; the dashboard is the full list.
+// Port of web/src/routes/home.tsx: the dashboard. The header is CLAIMED (wordmark, the column width,
+// and the right cluster: server switcher, session switcher, gear; each switcher hides itself on one
+// machine or one session). Under it one inner scroller (scroll memory per history entry) holds the
+// list, Launch and Spaces, then the footer zone: the crew line, the update banner and the build
+// stamp. The tab bar (Crew while a crew exists, Dashboard, Files) sits outside the scroller.
 //
-// Every read is a store (lib/data.ts), refreshed by the Shell's polling sources, so this screen
-// fetches nothing itself. A tap opens the pane in-page through the Navigation API (remix/spa owns
-// the transition), at the pane's own scope, as web/'s usePaneOpen does.
+// Every read is a store (lib/data.ts, lib/prefs.ts), so this screen fetches nothing for the list;
+// the Files tab and the Crew tab read their own while they are up. Prefs are the same localStorage
+// keys web/ writes (`collie:dash-prefs:v1`, `collie:pins:v1`, `collie:hidden-machines:v1`), read
+// before the first render, so a cold open draws what the last session left.
 
 /** The multiplexer's sentence for why it cannot tell agents apart, or "" when it can (mux-capability.ts). */
 function agentDetectionNote(cfg: BridgeConfig | undefined): string {
@@ -34,72 +58,159 @@ function agentDetectionNote(cfg: BridgeConfig | undefined): string {
   return mux.notes?.agentDetection ?? "";
 }
 
-/** Open a pane in-page, at the pane's own scope (web/'s usePaneOpen without the glide). */
-function openPane(pane: AgentView): void {
-  const body = snapshot.get().data;
-  const scope = paneScope(address.get().scope, pane, body?.servers, body?.sessions);
-  void navigate(href(panePath(pane.paneId, scope)));
+/** web/'s `openForCount`: an explicit fold choice wins, else a short list opens (COLLAPSE_THRESHOLD). */
+const COLLAPSE_THRESHOLD = 8;
+const NO_PANES: AgentView[] = [];
+function openForCount(pref: boolean | null, count: number): boolean {
+  return pref ?? count <= COLLAPSE_THRESHOLD;
 }
 
+function toggleHiddenSpace(key: string): void {
+  const hidden = dashPrefs.get().hiddenSpaces;
+  setDashPref("hiddenSpaces", hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key]);
+}
+
+const onNewTab: HeadingNewTab["onNewTab"] = (workspaceId, at) => void newTab(workspaceId, at);
+const setOrder = (order: PaneOrder): void => setDashPref("paneOrder", order);
+const setView = (value: string): void => setDashPref("dashView", coerceDashView(value));
+
 export function HomeRoute(handle: Handle) {
+  useLocale(handle);
   const snap = useStore(handle, snapshot);
   const cfg = useStore(handle, config);
   const where = useStore(handle, address);
   const prefs = useStore(handle, dashPrefs);
-  // The Shell's header, claimed: the wordmark, the content column's width, the gear (rule 6).
+  const readPins = useStore(handle, pins);
+  const readHidden = useStore(handle, hiddenMachines);
+  const readCreating = useStore(handle, creating);
+
+  let held: AgentView | null = null;
+  let reveal: { rowKey: string } | null = null;
+  let newSpaceOpen = false;
+
+  // The header claim: plain data and slots made ONCE here (a fresh closure per render is a change).
   const header = headerOf(handle).owner(handle.signal);
-  const gear: CustomSlot = { kind: "custom", render: () => <SettingsGear /> };
+  const right: CustomSlot = {
+    kind: "custom",
+    render: () => (
+      <>
+        <ServerSwitcher />
+        <SessionSwitcher />
+        <SettingsGear />
+      </>
+    ),
+  };
+
+  const onHold = (pane: AgentView): void => {
+    held = pane;
+    void handle.update();
+  };
+  const closeHeld = (): void => {
+    held = null;
+    void handle.update();
+  };
+  const onPinChange = (pane: AgentView): void => {
+    reveal = { rowKey: paneRowKey(pane) };
+    void handle.update();
+  };
 
   return () => {
-    handle.queueTask(() => header.claim({ wordmark: true, width: "column", right: gear }));
+    handle.queueTask(() => header.claim({ wordmark: true, width: "column", right }));
     const loaded = snap();
     const body = loaded.data;
+    const p = prefs();
     const scope = where().scope;
     const servers = body?.servers;
     const sessions = body?.sessions;
     const multi = isMultiHost(servers);
-    const view = prefs().dashView === "crew" && !multi ? "dashboard" : prefs().dashView;
-    const panes = ambientPanes(body?.agents ?? [], body?.shellPanes ?? [], scope, servers, sessions);
-    const blocked = countBlocked(panes.agents);
-    const readyUnseen = blocked === 0 && hasReady(panes.agents);
+    const view: DashView = p.dashView === "crew" && !multi ? "dashboard" : p.dashView;
+    const needsYouOnly = view === "dashboard" && p.needsYouOnly;
+    // The list takes the whole herd the snapshot carries (every machine; a hidden machine folds into
+    // its stand-in chip); the Spaces navigator takes the addressed machine's panes only, as web/ does.
+    const agents = body?.agents ?? NO_PANES;
+    const shellPanes = body?.shellPanes ?? NO_PANES;
+    const nav = ambientPanes(agents, shellPanes, scope, servers, sessions);
+    const herd = [...agents, ...shellPanes];
+    const blocked = countBlocked(agents);
+    const readyUnseen = blocked === 0 && hasReady(agents);
+    const workspaces = body?.workspaces ?? [];
+    const readOnly = isReadOnly(body?.device) || isNotPaired();
+    const lookup = { depth: p.changesDepth, nested: p.changesNested };
+    const newTabProps: HeadingNewTab = { scope, sessions, creating: readCreating(), onNewTab };
     return (
-      <div class="flex min-h-0 flex-1 flex-col" data-testid="home">
-        <div class="min-h-0 flex-1 overflow-y-auto">
-          <main class="mx-auto w-full max-w-screen-sm">
-            {view === "dashboard" ? (
+      <div class="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col" data-testid="home">
+        <UpdateRibbon />
+        <div class="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto" data-testid="home-scroller" mix={scrollMemory()}>
+          <main class="flex-1">
+            {view === "crew" ? (
+              <div class="px-4 py-4">
+                <CrewTab />
+              </div>
+            ) : (
               <AgentList
-                agents={panes.agents}
-                shellPanes={panes.shellPanes}
+                agents={agents}
+                shellPanes={shellPanes}
                 bridge={body?.bridge}
                 error={loaded.error !== undefined || body === undefined}
                 lastSeenAt={loaded.at === 0 ? undefined : loaded.at}
                 tabs={body?.tabs ?? []}
                 servers={servers}
-                sessions={sessions}
                 agentDetectionNote={agentDetectionNote(cfg().data)}
-                isolated={prefs().isolated}
-                hidden={prefs().hidden}
-                onIsolate={setIsolated}
-                onToggleHidden={toggleHidden}
+                isolated={p.isolatedSpace}
+                hidden={p.hiddenSpaces}
+                onIsolate={(key) => setDashPref("isolatedSpace", key)}
+                onToggleHidden={toggleHiddenSpace}
+                hiddenMachines={readHidden()}
+                addressedHost={scope.host}
+                onShowMachine={(host) => setMachineHidden(host, false, snapshot.get().data?.servers)}
+                needsYouOnly={needsYouOnly}
+                onNeedsYouOnlyChange={(on) => setDashPref("needsYouOnly", on)}
+                pins={readPins()}
+                order={p.paneOrder}
+                onOrderChange={setOrder}
+                newTab={newTabProps}
                 onOpen={openPane}
+                onPress={prefetchPane}
+                glideKeyOf={paneTarget}
+                onHold={onHold}
+                reveal={reveal}
+                renderBody={
+                  view === "changes"
+                    ? (shown) => <FilesTab groups={shown} scope={scope} servers={servers} sessions={sessions} lookup={lookup} />
+                    : undefined
+                }
               />
-            ) : (
-              <p class="px-4 py-24 text-center text-sm text-muted-foreground" data-testid="tab-placeholder">
-                {view === "crew" ? t("crew.title") : t("files.title")}
-              </p>
+            )}
+            {view === "dashboard" && !needsYouOnly && (
+              <>
+                <LaunchStrip open={p.launchOpen} onOpenChange={(open) => setDashPref("launchOpen", open)} />
+                <SpaceOverview
+                  workspaces={isolateSpaces(workspaces, p.isolatedSpace)}
+                  agents={nav.agents}
+                  shellPanes={nav.shellPanes}
+                  host={ambientHost(servers, scope.host)}
+                  onOpen={(id) => void navigate(href(spacePath(id, scope)))}
+                  onNewSpace={() => {
+                    newSpaceOpen = true;
+                    void handle.update();
+                  }}
+                  creatingSpace={readCreating().has(SPACE_CREATE_KEY)}
+                  open={openForCount(p.spacesOpen, workspaces.length)}
+                  onOpenChange={(open) => setDashPref("spacesOpen", open)}
+                />
+              </>
             )}
           </main>
-          {/* The crew line and the update ribbon go here (web/'s CrewFooterLink and UpdateBanner);
-              both are later work. The build stamp is the static half of web/'s BuildStamp. */}
-          <div data-slot="update-ribbon" />
-          <div class="px-4 pt-3 pb-2 text-center text-[11px] leading-relaxed text-muted-foreground">
+          <CrewFooterLink class="px-4 pt-3" />
+          <UpdateBanner class="px-4 pt-3" />
+          <div class="px-4 pt-3 pb-2 text-center text-[11px] leading-relaxed text-muted-foreground" data-testid="build-stamp">
             <span class="font-mono">{buildLabel()}</span>
           </div>
         </div>
         <TabBar
           label={t("home.tabs.aria")}
           active={view}
-          onSelect={(value) => setDashView(coerceDashView(value))}
+          onSelect={setView}
           items={[
             ...(multi ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon icon={Network} class="size-5" /> }] : []),
             {
@@ -112,6 +223,22 @@ export function HomeRoute(handle: Handle) {
             },
             { value: "changes" as const, label: t("files.title"), icon: <Icon icon={ListTree} class="size-5" /> },
           ]}
+        />
+        <PaneActionsSheet
+          open={held !== null}
+          onClose={closeHeld}
+          pane={held}
+          scope={held === null ? scope : paneScope(scope, held, servers, sessions)}
+          readOnly={readOnly}
+          herd={herd}
+          onPinChange={onPinChange}
+        />
+        <NewSpaceSheet
+          open={newSpaceOpen}
+          onClose={() => {
+            newSpaceOpen = false;
+            void handle.update();
+          }}
         />
       </div>
     );

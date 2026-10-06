@@ -19,7 +19,7 @@ function brandFor(agent: string): AgentBrand | undefined {
   return best === undefined ? undefined : AGENT_BRANDS.get(best);
 }
 
-export function AgentIcon(handle: Handle<{ agent: string; class?: string }>) {
+export function AgentIcon(handle: Handle<{ agent: string; class?: string; glide?: string }>) {
   const gradId = `agent-icon-${handle.id.replace(/[^A-Za-z0-9_-]/g, "")}`;
   return () => {
     const { agent } = handle.props;
@@ -32,6 +32,7 @@ export function AgentIcon(handle: Handle<{ agent: string; class?: string }>) {
             handle.props.class,
           )}
           role="img"
+          data-glide={handle.props.glide}
           aria-label={`${agent} icon`}
         >
           {initials(agent)}
@@ -42,7 +43,7 @@ export function AgentIcon(handle: Handle<{ agent: string; class?: string }>) {
     const grad = brand.grad;
     const paint = grad ? `url(#${gradId})` : brand.fg;
     return (
-      <svg viewBox="0 0 24 24" class={cn("shrink-0", handle.props.class)} role="img" aria-label={`${agent} logo`}>
+      <svg viewBox="0 0 24 24" class={cn("shrink-0", handle.props.class)} data-glide={handle.props.glide} role="img" aria-label={`${agent} logo`}>
         {grad && (
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
