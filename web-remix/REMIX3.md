@@ -156,6 +156,16 @@ The upstream example calls `handle.update()` in the listener. We route it throug
   landing-scroll.ts:165`).
 - Ours is `createStore(initial, equal)` in `R/lib/store.ts`: `get`, `set`, `update`, `subscribe`,
   `version`. `set` skips equal values, so a 304 poll wakes nobody.
+- **Publish only on change; freshness is its own store.** A polled store compares by field, and a
+  poll that brings the same payload keeps the HELD object (`R/lib/same.ts`: a 304, a mirror with
+  the same text and revision, a snapshot that differs only in `ts`). When the bridge last answered
+  is never part of a value many components read: it is `snapshotAt` (`R/lib/data.ts`), and only
+  the readers that draw or act on freshness subscribe to it, with a filter in the listener (the
+  connection strip while red, the stale-app watch, the pane's auto-exit proof). Counters that move
+  on every poll stay out of the store too (`chatReads`, `R/routes/pane/chat-store.ts`). Before this
+  rule, `at: Date.now()` in every poll woke every subscriber: 4 dashboard and about 9 pane passes
+  per 14 s idle, with no DOM change (research note 05, rank 1). `e2e/pane-quiet.spec.ts` holds an
+  idle pane and the dashboard at zero route renders over 10 s of identical polls.
 
 ### How our helpers map
 
@@ -350,8 +360,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
 
 ### Navigating
 
-- Use `navigate(href(path), { history, resetScroll })` from `remix/component`. `href()` in
-  `R/routes.ts` puts the ADR 0052 mount back on.
+- Use `navigate(href(path), { history })` from `R/lib/navigate.ts`, which is remix/component's with
+  `resetScroll: false` always (see "Scroll"). `href()` in `R/routes.ts` puts the ADR 0052 mount back on.
 - Down pushes. Sideways (pane to pane, tab to tab) replaces. Up steps back when the entry behind is a
   parent, else replaces onto the parent. Never push a parent (D §12, ADR 0067).
 - `R/routes/pane/back.ts` already does up correctly for the pane. Lift it into one `R/lib/nav.ts`
@@ -363,8 +373,9 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
 
 ### Scroll
 
-- On push and replace the runtime resets window scroll after the first commit. On back and forward
-  the browser restores window scroll (research note 01, section 5).
+- With `resetScroll` on (the runtime's default), push and replace reset window scroll after the
+  first commit, and back and forward let the browser restore it (research note 01, section 5). This
+  shell turns it off on every navigation (below): there is no window scroll to reset.
 - Our Shell is `h-(--app-h) overflow-hidden`, so every route scrolls an inner pane, and the runtime
   restores nothing there.
 - Every inner scroller keeps its own spot, keyed by route and entity, as `R/screen/follow.ts`
@@ -373,6 +384,35 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
 - Measured (P5 Q8): the runtime restores nothing inside; a module `Map` keyed by
   `navigation.currentEntry.key`, restored in `queueTask`, lands back on the same row in both engines,
   and a fresh push starts at the top. `R/lib/scroll.ts` `scrollMemory()` is that idiom as a mixin.
+- Every `navigate()` passes `resetScroll: false`, through `R/lib/navigate.ts` (import `navigate`
+  from there, never from `remix/component`). Left on, the runtime guards a window scroll this Shell
+  never does: a forced layout and an `adoptedStyleSheets` swap on each back move, an
+  `overflow-anchor` sheet on each push (research note 06, item 1). A back move reads the flag from
+  the entry it lands on, so `quietCurrentEntry()` rewrites the first entry after boot, and an
+  internal `<a>` carries `data-rmx-reset-scroll="false"`.
+
+### Layout in insert callbacks
+
+**An insert callback, a `ref` or a commit `queueTask` neither reads layout nor writes a scroll
+offset unless it must.** They run inside the runtime's flush, while the new screen's DOM is fresh,
+so one read of `scrollHeight`, `scrollWidth` or `getBoundingClientRect`, or one write of
+`scrollTop`, forces the whole new screen's style and layout inside the tap's task. Measured at 4x
+CPU: 36 ms of the 93 ms back flush was a `scrollTop = 0` on a scroller already at 0, 13 to 18 ms of
+the tap was the belt's first `scrollWidth`, 10 ms and more per commit was the tail pin (research
+note 05, rank 2).
+
+- Write only when there is something to change, and track the value you wrote instead of reading
+  it back (`R/lib/scroll.ts` restores only a stored spot that differs).
+- Let a `ResizeObserver` take the first measurement: it fires after the browser's own layout of
+  that frame, so the numbers are free (`R/routes/pane/belt.tsx` `edgeWatch`). A following tail is
+  pinned by the scroller's `ResizeObserver` on any size change, the first frame included; a commit
+  pins only for an anchor, a spot to restore or an explicit "go to the tail"
+  (`R/routes/pane/terminal.tsx`, `R/routes/pane/chat.tsx`). Without an observer, one
+  `requestAnimationFrame` after insert.
+- Inside one measurement, all reads first, then one write, skipped when the value did not move.
+- `getAnimations()` flushes style for the whole document. Collect animation handles once, after
+  the first paint, and refresh them on `animationstart` or `animationcancel`
+  (`R/shell/collie-mark.tsx`).
 
 ### Reloads
 

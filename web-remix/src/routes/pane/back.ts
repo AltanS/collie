@@ -6,12 +6,12 @@
 // (`ancestorsOf` and `resolveUp` in web/src/lib/nav.ts, read-only); this module only reads the entry
 // behind from the Navigation API, which the Remix runtime navigates with, and takes the ADR 0052
 // mount off both paths before asking.
-import { navigate } from "remix/component";
 
 import { basePath } from "@web/lib/base-path";
 import { homePath, resolveUp, upTarget } from "@web/lib/nav";
 import type { Scope } from "@web/lib/scope";
 
+import { navigate } from "../../lib/navigate";
 import { href } from "../../routes";
 
 /** A same-origin URL's path and query with the mount taken off: the form web's nav rules read. */

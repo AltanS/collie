@@ -1,4 +1,4 @@
-import { navigate, on, type Handle } from "remix/component";
+import { on, type Handle } from "remix/component";
 import { Check, Layers } from "lucide";
 
 import { sessionsOnHost } from "@web/lib/hosts";
@@ -7,6 +7,7 @@ import { homePath } from "@web/lib/nav";
 import type { SessionSummary } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
+import { navigate } from "../../lib/navigate";
 import { address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { useStore } from "../../lib/store";

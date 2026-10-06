@@ -2,8 +2,9 @@
 // sheet when the bridge serves a different app than the one running here.
 //
 // One observation per snapshot answer: the shell polls `/api/snapshot` on the beat (lib/polling.ts),
-// lib/api.ts records the `X-Collie-Build` header into `serverBuild`, and `loadSnapshot` writes the
-// `snapshot` store, which notifies on every answer (a 304 included). The comparison and its two-poll
+// lib/api.ts records the `X-Collie-Build` header into `serverBuild`, and `loadSnapshot` stamps
+// `snapshotAt`, which notifies on every answer (a 304 and an unchanged body included; the `snapshot`
+// store itself publishes only on a change). The comparison and its two-poll
 // hysteresis are pure (update/build-check.ts).
 //
 // What differs from web/src/lib/self-update.ts, on purpose (phase B3 brief): web/ reloads on its own
@@ -12,7 +13,7 @@
 // sessionStorage key, and it changes what the SECOND tap does: a page that already reloaded for this
 // build and came back stale drops the precache (update/pwa.ts `forceReload`) instead of looping.
 import { serverBuild } from "../lib/api";
-import { snapshot } from "../lib/data";
+import { snapshot, snapshotAt } from "../lib/data";
 import { createStore } from "../lib/store";
 import { FRESH, observeBuild, type BuildWatch } from "./build-check";
 import { checkForUpdate } from "./pwa";
@@ -51,7 +52,7 @@ let watch: BuildWatch = FRESH;
 
 function observe(): void {
   const loaded = snapshot.get();
-  if (loaded.error !== undefined || loaded.at === 0) return;
+  if (loaded.error !== undefined || snapshotAt.get() === 0) return;
   watch = observeBuild(watch, bundleId(), serverBuild.get());
   staleBuild.set(watch.confirmed ?? null);
 }
@@ -61,7 +62,7 @@ export function reloadOntoServerBuild(): void {
   const id = staleBuild.get();
   const bypass = id !== null && reloadedFor(id);
   if (id !== null) markReloadedFor(id);
-  const at = snapshot.get().at;
+  const at = snapshotAt.get();
   void checkForUpdate({ bypass, bridgeAnswering: at > 0 && Date.now() - at < BRIDGE_FRESH_MS });
 }
 
@@ -70,6 +71,8 @@ let started = false;
 export function startSelfUpdate(): void {
   if (started) return;
   started = true;
-  snapshot.subscribe(observe);
+  // Freshness, not the snapshot: the snapshot store publishes only on a changed body, and the
+  // two-poll hysteresis needs one observation per ANSWER.
+  snapshotAt.subscribe(observe);
   observe();
 }

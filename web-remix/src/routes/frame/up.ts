@@ -5,11 +5,11 @@
 // Navigation API (the Remix runtime navigates with it), takes the ADR 0052 mount off both paths
 // before asking, and performs the move. `pane/back.ts` does the same for the pane; it is the pane
 // route's file, so this one stands beside it until both lift into one `lib/nav.ts`.
-import { navigate } from "remix/component";
 
 import { basePath } from "@web/lib/base-path";
 import { pathOnly, resolveUp, resolveUpToExact, type UpMove } from "@web/lib/nav";
 
+import { navigate } from "../../lib/navigate";
 import { href } from "../../routes";
 
 /** A same-origin URL's path and query with the mount taken off: the form web's nav rules read. */

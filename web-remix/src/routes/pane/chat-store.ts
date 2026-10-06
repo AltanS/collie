@@ -23,36 +23,61 @@ export interface ChatState {
   status: number | undefined;
   /** At least one live poll has answered (or failed): the empty state may speak. */
   answered: boolean;
-  /** Live reads started and answered, numbered (use-chat-window.ts `asked`/`answered`): the chat
-   * gate's "a read started after the turn ended has answered" test reads these. */
-  asked: number;
-  replies: number;
 }
 
-const INITIAL: ChatState = { window: EMPTY_CHAT_WINDOW, loadingOlder: false, error: undefined, status: undefined, answered: false, asked: 0, replies: 0 };
+const INITIAL: ChatState = { window: EMPTY_CHAT_WINDOW, loadingOlder: false, error: undefined, status: undefined, answered: false };
+
+/** The gate: field by field, so a poll that changed nothing (a 304, the same window) wakes nobody. */
+function sameChat(a: ChatState, b: ChatState): boolean {
+  return a.window === b.window && a.loadingOlder === b.loadingOlder && a.error === b.error && a.status === b.status && a.answered === b.answered;
+}
 
 const stores = new Map<string, Store<ChatState>>();
 
 export function chatStore(key: string): Store<ChatState> {
   let store = stores.get(key);
   if (!store) {
-    store = createStore<ChatState>(INITIAL);
+    store = createStore<ChatState>(INITIAL, sameChat);
     stores.set(key, store);
   }
   return store;
 }
 
+/**
+ * Live reads started and answered, numbered (use-chat-window.ts `asked`/`answered`): the chat gate's
+ * "a read started after the turn ended has answered" test reads these. They move on EVERY poll, so
+ * they live outside `ChatState` (two wakes per poll before): `asked` is a plain counter read at
+ * render time, and `replies` a store only the pane subscribes to, and only wakes for when the
+ * answer crosses the gate's end mark (routes/pane/pane.tsx).
+ */
+export interface ChatReads {
+  asked: number;
+  readonly replies: Store<number>;
+}
+
+const reads = new Map<string, ChatReads>();
+
+export function chatReads(key: string): ChatReads {
+  let entry = reads.get(key);
+  if (!entry) {
+    entry = { asked: 0, replies: createStore(0) };
+    reads.set(key, entry);
+  }
+  return entry;
+}
+
 /** One live poll. Resolves true when the window moved. */
 export async function pollChat(key: string, paneId: string, scope: Scope, signal: AbortSignal): Promise<boolean> {
   const store = chatStore(key);
+  const counters = chatReads(key);
   const held = store.get().window;
-  const number = store.get().asked + 1;
-  store.update((s) => ({ ...s, asked: number }));
+  const number = ++counters.asked;
   try {
     const answer = await fetchChat(paneId, held.gen === 0 ? {} : { after: { gen: held.gen, rev: held.rev } }, scope, signal);
     const next = mergeChat(store.get().window, answer);
     const moved = next !== store.get().window;
-    store.update((s) => ({ ...s, window: next, error: undefined, status: undefined, answered: true, replies: Math.max(s.replies, number) }));
+    store.update((s) => ({ ...s, window: next, error: undefined, status: undefined, answered: true }));
+    counters.replies.update((replies) => Math.max(replies, number));
     return moved;
   } catch (error) {
     if (!(error instanceof Error) || error.name === "AbortError") return false;

@@ -16,7 +16,7 @@
 //   * `#paired-devices` scrolls to the card and focuses it (the read-only strip's link).
 //   * Revoke is a two-tap confirm; revoking THIS device self-unpairs (the token is dropped).
 // Enrolment is out-of-band on purpose: nothing here can mint a code.
-import { navigate, on, ref, type Handle } from "remix/component";
+import { on, ref, type Handle } from "remix/component";
 import { KeyRound, LoaderCircle, Smartphone } from "lucide";
 
 import { timeAgo } from "@web/lib/format";
@@ -24,6 +24,7 @@ import { t } from "@web/lib/i18n";
 import { PAIRED_DEVICES_HASH } from "@web/lib/nav";
 import type { PairFailure } from "@web/lib/types";
 
+import { navigate } from "../../lib/navigate";
 import { useLocale } from "../../lib/i18n-store";
 import { clearDeviceToken, pairing, setDeviceToken } from "../../lib/pairing";
 import { devices, loadDevices, pairDevice, revokeDevice } from "../../lib/pairing-api";
@@ -282,7 +283,7 @@ function PairForm(handle: Handle<PairFormProps>) {
       const url = new URL(window.location.href);
       if (url.searchParams.has("pair")) {
         url.searchParams.delete("pair");
-        void navigate(`${url.pathname}${url.search}${url.hash}`, { history: "replace", resetScroll: false });
+        void navigate(`${url.pathname}${url.search}${url.hash}`, { history: "replace" });
       }
       handle.props.onPaired();
     } catch {

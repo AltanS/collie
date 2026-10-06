@@ -8,7 +8,7 @@
 //
 // `?pair=<code>` is the QR `collie pair` prints. web/ forwards it to System with a replace, the whole
 // query intact (`pairLandingPath`), so Back does not return to the index; so does this one.
-import { navigate, on, type Handle } from "remix/component";
+import { on, type Handle } from "remix/component";
 import { Activity, Bell, ChevronRight, FlaskConical, Palette, Server, SlidersHorizontal, type IconNode } from "lucide";
 
 import { hasExperiments } from "@web/lib/experiments";
@@ -16,6 +16,7 @@ import { t, type MessageKey } from "@web/lib/i18n";
 import { homePath, machinesPath, pairLandingPath, settingsSectionPath } from "@web/lib/nav";
 import type { Scope } from "@web/lib/scope";
 
+import { navigate } from "../../lib/navigate";
 import { address } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { useStore } from "../../lib/store";

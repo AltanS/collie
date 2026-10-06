@@ -31,6 +31,7 @@ import type { StyledLine } from "@web/lib/blocks";
 import { findLinks, type LinkMatch } from "@web/lib/links";
 import { t } from "@web/lib/i18n";
 
+import { countRender } from "../../lib/render-count";
 import type { Find } from "../../lib/find";
 import { decorateRows, haystackOf } from "../../screen/decorate";
 import { createTailPin, isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
@@ -170,6 +171,20 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
     if (following) tail.pin(scroller);
   };
 
+  /** A send asked for the tail: pin after this commit even if no size moved. */
+  let pinNext = false;
+  // AFTER EACH COMMIT, ONLY WHAT A SIZE CHANGE WOULD NOT DO (REMIX3.md, "Layout in insert callbacks").
+  // Pinning reads `scrollHeight`, which inside the flush forces the layout of everything the commit
+  // changed (10 ms and more per pin at 4x CPU, research note 05). While following, the scroller's
+  // ResizeObserver below already pins after the browser's own layout whenever the box or the content
+  // changes size, the first frame included; so the commit pins only for an anchor, a spot to restore,
+  // or a send that asked for the tail.
+  const pinAfterCommit = (): void => {
+    if (anchor === null && restoreTop === null && !pinNext) return;
+    pinNext = false;
+    pin();
+  };
+
   const follow = (next: boolean): void => {
     if (next === following) return;
     following = next;
@@ -180,12 +195,14 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
   handle.signal.addEventListener("abort", save);
 
   return () => {
+    countRender("TerminalView");
     const { lines, loading, blank, lead, hideLeading, wrap, fontSize, native, faceClass, faceFamily, find, top, notes, tailRev, logicalText } = handle.props;
     if (tailRev !== seenTail) {
       seenTail = tailRev;
       following = true;
       restoreTop = null;
       anchor = null;
+      pinNext = true;
     }
     if (lines !== lastLines) {
       lastLines = lines;
@@ -221,7 +238,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
     const found = find.measure(hay.text);
     const drawn = decorateRows(visibleRows, visibleLines, hay.starts, found.matches, found.current, links);
     handle.queueTask(() => {
-      pin();
+      pinAfterCommit();
       find.report(found.matches.length, found.current);
       if (found.current >= 0 && found.current !== lastFocus) {
         scroller?.querySelector('[data-find-match="current"]')?.scrollIntoView({ block: "center", behavior: "auto" });

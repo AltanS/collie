@@ -1,4 +1,4 @@
-import { navigate, on, ref, type Handle } from "remix/component";
+import { on, ref, type Handle } from "remix/component";
 import { Server, Star } from "lucide";
 
 import { createWorktree, fetchFolders, listWorktrees, openWorktree, starFolder } from "@web/lib/api";
@@ -12,6 +12,7 @@ import { shortenHome } from "@web/lib/shorten-home";
 import type { WorktreeOpenResponse, WorktreeView } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
+import { navigate } from "../../lib/navigate";
 import { crewOf } from "../../chips/crew";
 import { SPACE_CREATE_KEY, creating, newSpace } from "../../chips/space-actions";
 import { bridgeWrite, writeRefusal } from "../../chips/writes";

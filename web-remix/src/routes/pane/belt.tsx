@@ -164,35 +164,46 @@ export function overflowEdge(scrollLeft: number, clientWidth: number, scrollWidt
  * Measured on scroll, on any size change of the scroller or its children, and when children arrive
  * (a locale change or the harness section landing changes widths with no scroll). Written to the DOM,
  * not rendered, so a scroll costs no render.
+ *
+ * NEVER MEASURED IN THE INSERT CALLBACK (REMIX3.md, "Layout in insert callbacks"). This runs from a
+ * `ref` while the pane is being inserted; a synchronous read of `scrollWidth` there forced the whole
+ * new screen's layout inside the tap's task (13 to 18 ms at 4x CPU, research note 05). The first
+ * measure is the ResizeObserver's own first observation, which the browser delivers after its layout
+ * of that frame, when the numbers are already known; a scroll event comes after layout too. A child
+ * that arrives is only observed, and its observation measures. Without ResizeObserver, one
+ * animation frame after insert. The three reads come first and the one write last, and the write is
+ * skipped when the edge did not move.
  */
 function edgeWatch(node: HTMLElement, signal: AbortSignal): void {
   const wrapper = node.parentElement;
   if (!wrapper) return;
   const measure = (): void => {
-    wrapper.dataset.edge = overflowEdge(node.scrollLeft, node.clientWidth, node.scrollWidth);
+    const edge = overflowEdge(node.scrollLeft, node.clientWidth, node.scrollWidth);
+    if (wrapper.dataset.edge !== edge) wrapper.dataset.edge = edge;
   };
   node.addEventListener("scroll", measure, { passive: true, signal });
-  if (hasResizeObserver()) {
-    const resize = new ResizeObserver(measure);
-    resize.observe(node);
-    for (const child of Array.from(node.children)) resize.observe(child);
-    const added = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const child of mutation.addedNodes) if (child instanceof Element) resize.observe(child);
-      }
-      measure();
-    });
-    added.observe(node, { childList: true });
-    signal.addEventListener(
-      "abort",
-      () => {
-        resize.disconnect();
-        added.disconnect();
-      },
-      { once: true },
-    );
+  if (!hasResizeObserver()) {
+    const frame = requestAnimationFrame(measure);
+    signal.addEventListener("abort", () => cancelAnimationFrame(frame), { once: true });
+    return;
   }
-  measure();
+  const resize = new ResizeObserver(measure);
+  resize.observe(node);
+  for (const child of Array.from(node.children)) resize.observe(child);
+  const added = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const child of mutation.addedNodes) if (child instanceof Element) resize.observe(child);
+    }
+  });
+  added.observe(node, { childList: true });
+  signal.addEventListener(
+    "abort",
+    () => {
+      resize.disconnect();
+      added.disconnect();
+    },
+    { once: true },
+  );
 }
 
 /** `aria-expanded` and `aria-pressed` are absent unless the control is that kind. */

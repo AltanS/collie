@@ -1,4 +1,4 @@
-import { navigate, on, type Handle } from "remix/component";
+import { on, type Handle } from "remix/component";
 import { Check, Crown, Network, Server } from "lucide";
 
 import { crewPath, homePath } from "@web/lib/nav";
@@ -8,6 +8,7 @@ import { t, tn } from "@web/lib/i18n";
 import type { ServerSummary } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
+import { navigate } from "../../lib/navigate";
 import { address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { hiddenMachines } from "../../lib/prefs";

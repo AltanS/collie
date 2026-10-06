@@ -42,6 +42,7 @@ import { KeysTray } from "../../composer/keys-tray";
 import { NoEchoNotice } from "../../composer/no-echo-notice";
 import { createRecorder, elapsedLabel } from "../../composer/recorder";
 import { RecordingStrip } from "../../composer/recording-strip";
+import { countRender } from "../../lib/render-count";
 import { beginBusy } from "../../lib/busy";
 import { config } from "../../lib/data";
 import { createDirectTyping } from "../../lib/direct-typing";
@@ -489,6 +490,7 @@ export function Composer(handle: Handle<ComposerProps>) {
   handle.signal.addEventListener("abort", () => holdDraft(scope, paneId, false));
 
   return () => {
+    countRender("Composer");
     const { gate, agent, isShell, unsupportedKeys, rawDraft, paneText, chatShown, chatNote, changes, switcher } = handle.props;
     const locked = gate.locked;
     const cfg = readConfig().data;

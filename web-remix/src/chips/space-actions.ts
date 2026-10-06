@@ -6,7 +6,6 @@
 //
 // The in-flight marks are one store (`creating`), so a "+" re-renders through `useStore` and never
 // through a parent: rule 4.
-import { navigate } from "remix/component";
 
 import { createTab, createWorkspace, launch as launchCommand } from "@web/lib/api";
 import { describeApiError, describeThrownError } from "@web/lib/api-error-message";
@@ -15,6 +14,7 @@ import { panePath } from "@web/lib/nav";
 import { scopeKey, type Scope } from "@web/lib/scope";
 import type { CreateResponse } from "@web/lib/types";
 
+import { navigate } from "../lib/navigate";
 import { address } from "../lib/data";
 import { kick, noteTopology } from "../lib/polling";
 import { setStatus } from "../lib/status";

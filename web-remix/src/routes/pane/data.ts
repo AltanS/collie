@@ -12,9 +12,6 @@
 // Nothing is sent for a revision: neither shell sends one. `revision` comes back on every read and
 // rides into the guard as `detectedRevision`.
 import { fetchPane, isApiErrorStatus } from "@web/lib/api";
-import { parseAnsi } from "@web/lib/ansi";
-import { splitLines, type Block } from "@web/lib/blocks";
-import { buildBlocks } from "@web/lib/harness";
 import { muxCapability } from "@web/lib/mux-capability";
 import type { Scope } from "@web/lib/scope";
 import { isReadOnly, type AgentView, type BridgeConfig, type SnapshotResponse } from "@web/lib/types";
@@ -49,7 +46,8 @@ export async function pollPane(key: string, paneId: string, scope: Scope, signal
   try {
     const body = await fetchPane(paneId, lines, scope, signal);
     const changed = body.text !== store.get().data?.text;
-    store.set({ data: body, error: undefined, status: undefined, at: Date.now() });
+    // The store compares by value (lib/data.ts `paneStore`): a 304 or the same screen wakes nobody.
+    store.set({ data: body, error: undefined, status: undefined });
     markPollResult(changed);
     return changed;
   } catch (error) {
@@ -64,24 +62,6 @@ export function findPane(data: SnapshotResponse | undefined, paneId: string): Ag
   return (
     data?.agents.find((p) => p.paneId === paneId) ?? data?.shellPanes?.find((p) => p.paneId === paneId)
   );
-}
-
-/**
- * Blocks for one screen, built once per (text, agent) and reused while neither moves. The agent
- * string goes to web's adapter registry as it came in the payload: an agent with no adapter gets the
- * plain mirror and no card, by the registry's own rule.
- */
-export function blockBuilder(): (text: string, agent: string | undefined) => Block[] {
-  let lastText: string | undefined;
-  let lastAgent: string | undefined;
-  let last: Block[] = [];
-  return (text, agent) => {
-    if (text === lastText && agent === lastAgent) return last;
-    lastText = text;
-    lastAgent = agent;
-    last = buildBlocks(splitLines(parseAnsi(text)), { agent });
-    return last;
-  };
 }
 
 /** What the write gate reads. */

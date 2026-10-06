@@ -19,7 +19,7 @@
 //
 // What it does not do: it starts nothing on the host (a tap goes to /settings/updates, where the
 // confirm lives), and the download row's close is for this document only, never posted.
-import { navigate, type Handle, type RemixNode } from "remix/component";
+import { type Handle, type RemixNode } from "remix/component";
 import { ArrowUpCircle, Loader2, RefreshCw, TriangleAlert } from "lucide";
 import type { IconNode } from "lucide";
 
@@ -36,6 +36,7 @@ import {
   type RibbonView,
 } from "@web/lib/update-ribbon";
 
+import { navigate } from "../lib/navigate";
 import { address, snapshot } from "../lib/data";
 import { useLocale } from "../lib/i18n-store";
 import { useStore } from "../lib/store";

@@ -1,8 +1,8 @@
 # CADENCE.md: what this shell reads, on which screen, and how often
 
 The rules are web's. This table mirrors `web/src` and gives the line in each app. `W/` is
-`web/src/`, `R/` is `web-remix/src/`. Line numbers are as of commit "poll cadence follows the React
-rules" (2026-10-06). If one side moves, fix this file in the same change.
+`web/src/`, `R/` is `web-remix/src/`. Line numbers are as of commit "quiet polls, no forced layouts on
+insert" (2026-10-07). If one side moves, fix this file in the same change.
 
 ## One beat, five rules
 
@@ -20,17 +20,24 @@ REMIX3.md rule 4); web's one `revalidate()` re-runs the loaders of the routes th
 | Otherwise (an idle pane under a busy herd too) | 6 s | `hooks/use-polling.ts:135` | `lib/polling.ts:116` |
 
 "Changed" is the pane mirror read's verdict, and nothing else's: web calls `markPollResult` only
-from `paneLoader` (`W/lib/loaders.ts:519`), here only `pollPane` does (`R/routes/pane/data.ts:53`).
+from `paneLoader` (`W/lib/loaders.ts:519`), here only `pollPane` does (`R/routes/pane/data.ts:51`).
 The snapshot, the chat window and the config never feed it.
+
+The beat and the renders are separate questions. Every read still runs on the beat above and still
+reports to the cadence; what it WRITES is quiet: a store publishes only when the payload changed
+(a 304, or a snapshot that differs only in `ts`, keeps the held object; `R/lib/same.ts`), and when
+the bridge last answered is its own store, `snapshotAt` (`R/lib/data.ts`). So an unchanged poll
+moves the cadence and the freshness readers, and renders nothing (REMIX3.md, "A module store is
+right when").
 
 ## Screen × endpoint
 
 | Screen | Endpoint | When | W/ | R/ |
 | --- | --- | --- | --- | --- |
-| every screen | `GET /api/snapshot` | each beat | `lib/loaders.ts:334` (root loader) | `lib/data.ts:95`, `shell.tsx:54` |
-| every screen | `GET /api/config` | once per page; a failed read retries | `lib/operator-config.ts:31` | `lib/data.ts:120` (`shell.tsx:55` keeps it on the beat until one read lands) |
-| pane | `GET /api/pane/:id?lines=600` | each beat, ETag / 304 | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:96`, `routes/pane/data.ts:50` (web's `fetchPane`) |
-| pane, Chat gate open | `GET /api/pane/:id/chat` | each beat, after-cursor + ETag | `hooks/use-chat-window.ts:125`, `lib/api.ts:587` | `routes/pane/pane.tsx:359`, `routes/pane/chat-store.ts:52` (web's `fetchChat`) |
+| every screen | `GET /api/snapshot` | each beat | `lib/loaders.ts:334` (root loader) | `lib/data.ts:121`, `shell.tsx:54` |
+| every screen | `GET /api/config` | once per page; a failed read retries | `lib/operator-config.ts:31` | `lib/data.ts:153` (`shell.tsx:55` keeps it on the beat until one read lands) |
+| pane | `GET /api/pane/:id?lines=600` | each beat, ETag / 304 | `lib/loaders.ts:508`, `lib/api.ts:455` | `routes/pane/pane.tsx:97`, `routes/pane/data.ts:47` (web's `fetchPane`) |
+| pane, Chat gate open | `GET /api/pane/:id/chat` | each beat, after-cursor + ETag | `hooks/use-chat-window.ts:125`, `lib/api.ts:587` | `routes/pane/pane.tsx:376`, `routes/pane/chat-store.ts:76` (web's `fetchChat`) |
 | home, Crew tab; machines | `GET /api/machines` | each beat while mounted | `lib/loaders.ts:650` | `routes/home/crew-tab.tsx:61`, `routes/machines/machines.tsx:30` |
 | crew | `GET /api/crew` | each beat while mounted | `lib/loaders.ts:604` | `routes/crew/crew.tsx:64` |
 | settings | `GET /api/devices`, update check | each beat while mounted | `lib/loaders.ts:568` | `routes/settings/paired-devices.tsx:52`, `routes/settings/updates.tsx:58` |

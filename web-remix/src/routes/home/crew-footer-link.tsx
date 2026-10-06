@@ -1,4 +1,4 @@
-import { navigate, on, type Handle } from "remix/component";
+import { on, type Handle } from "remix/component";
 import { ChevronRight, Network } from "lucide";
 
 import { isMultiHost } from "@web/lib/hosts";
@@ -6,6 +6,7 @@ import { t, tn } from "@web/lib/i18n";
 import { crewPath } from "@web/lib/nav";
 import { cn } from "@web/lib/utils";
 
+import { navigate } from "../../lib/navigate";
 import { address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { useStore } from "../../lib/store";

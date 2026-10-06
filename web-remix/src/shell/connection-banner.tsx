@@ -34,7 +34,7 @@ import { cn } from "@web/lib/utils";
 
 import { crewOf, hostWriteBlock } from "../chips/crew";
 import { fetchConfig } from "../lib/api";
-import { address, snapshot } from "../lib/data";
+import { address, snapshot, snapshotAt } from "../lib/data";
 import { useLocale } from "../lib/i18n-store";
 import { pairing } from "../lib/pairing";
 import { refreshNow } from "../lib/polling";
@@ -158,6 +158,10 @@ export function ConnectionBanner(handle: Handle) {
 
   handle.queueTask(() => {
     connection.subscribe(follow, handle.signal);
+    // Freshness is its own store (lib/data.ts); only red dates what is on screen, so only red wakes for it.
+    snapshotAt.subscribe(() => {
+      if (tone === "red") scheduleUpdate(handle);
+    }, handle.signal);
     window.addEventListener("online", () => scheduleUpdate(handle), { signal: handle.signal });
     window.addEventListener("offline", () => scheduleUpdate(handle), { signal: handle.signal });
     follow();
@@ -253,7 +257,7 @@ export function ConnectionBanner(handle: Handle) {
       const memberFault = host !== undefined && host !== crew.lead ? hostWriteBlock(crew, host) : undefined;
       next = {
         tone,
-        view: resolveView(tone, navigator.onLine, probe, muxDisconnected, memberFault, loaded.at === 0 ? undefined : loaded.at),
+        view: resolveView(tone, navigator.onLine, probe, muxDisconnected, memberFault, snapshotAt.get() === 0 ? undefined : snapshotAt.get()),
       };
       priority = tone === "red" ? OUTAGE : DEGRADED;
     }

@@ -1,4 +1,4 @@
-import { navigate, on, type Handle } from "remix/component";
+import { on, type Handle } from "remix/component";
 import { ChevronRight } from "lucide";
 
 import { paneScope } from "@web/lib/hosts";
@@ -20,6 +20,7 @@ import {
   type WorkspaceChangeCount,
   type WorkspaceChangeTarget,
 } from "../../lib/change-counts";
+import { navigate } from "../../lib/navigate";
 import { glideForward } from "../../lib/glide";
 import { useLocale } from "../../lib/i18n-store";
 import { scheduleUpdate } from "../../lib/store";

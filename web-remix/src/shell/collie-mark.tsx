@@ -76,6 +76,13 @@ interface Painted {
   animations(): Animation[] | null;
 }
 
+/** One of the mark's CSS animations, with the timing it had when collected. */
+interface Held {
+  animation: Animation;
+  delay: number;
+  span: number;
+}
+
 function paint(host: HTMLElement, size = 40, paper = "var(--background)"): Painted {
   host.innerHTML = markup(size);
   const svg = host.querySelector("svg");
@@ -89,26 +96,66 @@ function paint(host: HTMLElement, size = 40, paper = "var(--background)"): Paint
     svg.style.setProperty("--cm-paper", paper);
   };
   vars(false);
+
+  // THE ANIMATION HANDLES ARE COLLECTED ONCE, not per state flip. `getAnimations()` flushes style
+  // for the whole document, and a flip lands on a tap, while the next screen's DOM is fresh: that
+  // flush cost 20 to 26 ms of the tap window at 4x CPU (research note 05, rank 4). Every timing in
+  // the generated stylesheet is a multiple of `--cm-turn` (durations and delays alike), so the
+  // timing collected in one state gives the timing in the other by the ratio of the two turns, and a
+  // flip needs no read of the new style. The cache is collected one frame after paint, and again one
+  // frame after any animation of the mark starts or is cancelled (a regenerated or re-styled SVG).
+  let held: { list: Held[]; turn: number } | null = null;
+  let collecting = 0;
+  const collect = (): { list: Held[]; turn: number } | null => {
+    if (held !== null) return held;
+    if (!("getAnimations" in svg)) return null;
+    const list: Held[] = [];
+    for (const animation of svg.getAnimations({ subtree: true })) {
+      if (!(animation instanceof CSSAnimation) || !animation.animationName.startsWith("cm-")) continue;
+      const timing = animation.effect?.getTiming();
+      const span = Number(timing?.duration ?? 0);
+      if (!(span > 0)) continue;
+      list.push({ animation, delay: timing?.delay ?? 0, span });
+    }
+    held = { list, turn: loading ? TURN.live : TURN.rest };
+    return held;
+  };
+  const collectSoon = (): void => {
+    if (collecting !== 0) return;
+    collecting = requestAnimationFrame(() => {
+      collecting = 0;
+      collect();
+    });
+  };
+  const forget = (): void => {
+    held = null;
+    collectSoon();
+  };
+  svg.addEventListener("animationstart", forget);
+  svg.addEventListener("animationcancel", forget);
+  collectSoon();
+
   return {
     setLoading(live) {
       if (live === loading) return;
-      const ratio = (loading ? TURN.live : TURN.rest) / (live ? TURN.live : TURN.rest);
+      // Before the flip: a flip that beats the first collection (one frame after paint) pays the read once.
+      const timing = held ?? collect();
+      const from = loading ? TURN.live : TURN.rest;
+      const to = live ? TURN.live : TURN.rest;
       loading = live;
       svg.classList.toggle("cm-live", live);
       body.classList.toggle("cm-drift", !live);
       vars(live);
+      if (timing === null) return;
       // KEEP THE PHASE (web/'s CollieMark effect): a running CSS animation keeps its elapsed time,
-      // not its progress, when the duration changes; carry the progress across by hand, once.
-      if (!("getAnimations" in svg)) return;
-      for (const a of svg.getAnimations({ subtree: true })) {
-        const timing = a.effect?.getTiming();
-        if (timing === undefined || a.currentTime === null) continue;
-        const now = Number(a.currentTime);
-        const delay = timing.delay ?? 0;
-        const span = Number(timing.duration ?? 0);
-        if (!(span > 0)) continue;
-        const before = (now - delay * ratio) / (span * ratio);
-        a.currentTime = delay + (before - Math.floor(before)) * span;
+      // not its progress, when the duration changes; carry the progress across by hand, once. The new
+      // style is not applied yet, and it need not be: the elapsed time written now survives it.
+      const was = from / timing.turn;
+      const will = to / timing.turn;
+      for (const { animation, delay, span } of timing.list) {
+        if (animation.currentTime === null) continue;
+        const progress = (Number(animation.currentTime) - delay * was) / (span * was);
+        animation.currentTime = delay * will + (progress - Math.floor(progress)) * span * will;
       }
     },
     setLost(muted) {
@@ -116,8 +163,8 @@ function paint(host: HTMLElement, size = 40, paper = "var(--background)"): Paint
       svg.classList.toggle("grayscale", muted);
     },
     animations() {
-      if (!("getAnimations" in svg) || reducedMotion()) return null;
-      return svg.getAnimations({ subtree: true }).filter((a) => a instanceof CSSAnimation && a.animationName.startsWith("cm-"));
+      if (reducedMotion()) return null;
+      return collect()?.list.map((h) => h.animation) ?? null;
     },
   };
 }

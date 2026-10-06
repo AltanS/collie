@@ -1,4 +1,4 @@
-import { navigate, type Handle } from "remix/component";
+import { type Handle } from "remix/component";
 import { ListTree, Network, Rows3 } from "lucide";
 
 import { buildLabel } from "@web/lib/build";
@@ -10,10 +10,11 @@ import { isolateSpaces } from "@web/lib/spaces";
 import { countBlocked, hasReady } from "@web/lib/triage";
 import { isReadOnly, type AgentView, type BridgeConfig } from "@web/lib/types";
 
+import { navigate } from "../../lib/navigate";
 import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
 import { creating, newTab, SPACE_CREATE_KEY } from "../../chips/space-actions";
 import { UpdateBanner } from "../../chips/update-banner";
-import { address, config, snapshot } from "../../lib/data";
+import { address, config, snapshot, snapshotAt } from "../../lib/data";
 import { hiddenMachines, setMachineHidden } from "../../lib/hidden-machines";
 import { useLocale } from "../../lib/i18n-store";
 import { isNotPaired } from "../../lib/pairing";
@@ -21,6 +22,7 @@ import type { PaneOrder } from "../../lib/pane-order";
 import { pins } from "../../lib/pins";
 import { dashPrefs, setDashPref } from "../../lib/prefs";
 import { scrollMemory } from "../../lib/scroll";
+import { countRender } from "../../lib/render-count";
 import { useStore } from "../../lib/store";
 import { href } from "../../routes";
 import { ReadOnlyBanner } from "../../shell/connection-banner";
@@ -115,6 +117,7 @@ export function HomeRoute(handle: Handle) {
   };
 
   return () => {
+    countRender("HomeRoute");
     handle.queueTask(() => header.claim({ wordmark: true, width: "column", right }));
     const loaded = snap();
     const body = loaded.data;
@@ -158,7 +161,9 @@ export function HomeRoute(handle: Handle) {
                 bridge={body?.bridge}
                 error={loaded.error !== undefined}
                 pending={pending}
-                lastSeenAt={loaded.at === 0 ? undefined : loaded.at}
+                // Read, not subscribed: the time shows only beside a failed poll, and the failure itself
+                // is what re-renders this screen (freshness cannot move while polls fail).
+                lastSeenAt={snapshotAt.get() === 0 ? undefined : snapshotAt.get()}
                 tabs={body?.tabs ?? []}
                 servers={servers}
                 agentDetectionNote={agentDetectionNote(cfg().data)}

@@ -8,6 +8,7 @@ import "./app.css";
 import { run, type Runtime } from "remix/spa";
 
 import { startIdleLock } from "./lib/idle";
+import { quietCurrentEntry } from "./lib/navigate";
 import { startPrefSync } from "./lib/prefs";
 import { startPolling } from "./lib/polling";
 import { mountedRouter } from "./router";
@@ -38,9 +39,12 @@ export async function remount(): Promise<void> {
   document.body.replaceChildren();
   app = start();
   await app.ready();
+  quietCurrentEntry();
 }
 
 startPolling();
 startIdleLock();
 startUpdates();
 await app.ready();
+// The runtime stamped the first entry `resetScroll: true` as it started; a back move onto it reads that.
+quietCurrentEntry();

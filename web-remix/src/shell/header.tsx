@@ -14,7 +14,7 @@
 //
 // The host subscribes to the header model, the strip model (for the inset alone) and the locale.
 // Nothing else: the mux line and the status slot are their own components with their own stores.
-import { navigate, on, type Handle, type RemixNode } from "remix/component";
+import { on, type Handle, type RemixNode } from "remix/component";
 import { AlertCircle, AlertTriangle, ArrowLeft, CheckCircle2, EllipsisVertical, Info, Settings, X } from "lucide";
 
 import { t } from "@web/lib/i18n";
@@ -22,6 +22,7 @@ import { mounted } from "@web/lib/base-path";
 import { homePath, settingsPath } from "@web/lib/nav";
 import { cn } from "@web/lib/utils";
 
+import { navigate } from "../lib/navigate";
 import { address, config } from "../lib/data";
 import { useLocale } from "../lib/i18n-store";
 import { clearStatus, status, type StatusTone } from "../lib/status";

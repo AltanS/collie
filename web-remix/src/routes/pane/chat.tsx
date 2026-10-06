@@ -16,6 +16,7 @@ import { t, type MessageKey } from "@web/lib/i18n";
 import type { Scope } from "@web/lib/scope";
 import type { ChatEntry } from "@web/lib/types";
 
+import { countRender } from "../../lib/render-count";
 import { setStatus } from "../../lib/status";
 import { useStore } from "../../lib/store";
 import { groupRuns } from "../../chat/steps";
@@ -120,6 +121,16 @@ export function ChatView(handle: Handle<ChatViewProps>) {
     if (following) tail.pin(scroller);
   };
 
+  /** A send asked for the tail: pin after this commit even if no size moved. */
+  let pinNext = false;
+  // Only what a size change would not do; while following, the ResizeObserver below pins after the
+  // browser's own layout (the terminal's rule, terminal.tsx `pinAfterCommit`).
+  const pinAfterCommit = (): void => {
+    if (anchor === null && restoreTop === null && !pinNext) return;
+    pinNext = false;
+    pin();
+  };
+
   const follow = (next: boolean): void => {
     if (next === following) return;
     following = next;
@@ -138,6 +149,7 @@ export function ChatView(handle: Handle<ChatViewProps>) {
   };
 
   return () => {
+    countRender("ChatView");
     const { working, starting, showToolCalls, showCompactions, fontSize, tailRev } = handle.props;
     const notes = handle.props.notes ?? NO_NOTES;
     const { window, loadingOlder, error, answered } = read();
@@ -145,6 +157,7 @@ export function ChatView(handle: Handle<ChatViewProps>) {
       seenTail = tailRev;
       following = true;
       restoreTop = null;
+      pinNext = true;
     }
     const fold = `${String(showToolCalls)}:${String(showCompactions)}`;
     if (window.entries !== lastEntries || fold !== lastFold) {
@@ -153,7 +166,7 @@ export function ChatView(handle: Handle<ChatViewProps>) {
       const items = window.entries.filter((e) => !e.abandoned).flatMap((e) => itemsOf(e, showCompactions));
       groups = groupRuns(items, showToolCalls ? 3 : 1);
     }
-    handle.queueTask(pin);
+    handle.queueTask(pinAfterCommit);
     const status = window.status;
     const missing = status.kind === "unavailable" && (status.reason === "no-log" || status.reason === "no-session");
     const explain = starting && missing ? null : chatStatusKey(status);

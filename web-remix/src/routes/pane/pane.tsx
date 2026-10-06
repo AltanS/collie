@@ -14,14 +14,12 @@
 //
 // LEAVING. A pane that is gone from a healthy snapshot taken after this screen opened says "Pane
 // closed" once and goes up (ADR 0067); a pane that never showed up waits for that same proof.
-import { on, navigate, type Handle } from "remix/component";
+import { on, type Handle } from "remix/component";
 import { KeyRound, Lock, Minimize2, TriangleAlert, WifiOff } from "lucide";
 
 import { mirrorFont } from "@web/hooks/use-display-prefs";
 import type { Block, StyledLine } from "@web/lib/blocks";
-import { adapterFor, rendersNativeMirror } from "@web/lib/harness";
-import { splitLines } from "@web/lib/blocks";
-import { parseAnsi } from "@web/lib/ansi";
+import { rendersNativeMirror } from "@web/lib/harness";
 import { t } from "@web/lib/i18n";
 import { locateReply, type ReplyPlacement } from "@web/lib/latest-reply";
 import { paneMirrorOverride } from "@web/lib/mirror-invert";
@@ -34,16 +32,18 @@ import { paneScope } from "@web/lib/hosts";
 import { paneScopeKey } from "@web/lib/scope";
 import { isReadOnly, type AgentView, type TranscriptEntry } from "@web/lib/types";
 
+import { navigate } from "../../lib/navigate";
 import { CacheSheet } from "../../chips/cache-sheet";
 import { crewOf, hostHealthOf } from "../../chips/crew";
 import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
-import { address, config, paneStore, snapshot } from "../../lib/data";
+import { address, config, paneStore, snapshot, snapshotAt } from "../../lib/data";
 import { createFind } from "../../lib/find";
 import { glideBack } from "../../lib/glide";
 import { useLocale } from "../../lib/i18n-store";
 import { clearNotPaired, markNotPaired, pairing } from "../../lib/pairing";
 import { focus, kick, want } from "../../lib/polling";
 import { buzz, dashPrefs, displayPrefs, setDashPref, stripsCollapsed, zen as zenPref } from "../../lib/prefs";
+import { countRender } from "../../lib/render-count";
 import { setStatus } from "../../lib/status";
 import { scheduleUpdate, useStore } from "../../lib/store";
 import { href } from "../../routes";
@@ -56,15 +56,16 @@ import { Notice } from "../../ui/notice";
 import { SheetPeek } from "../../ui/sheet";
 import { answerFeedback, answerMenu, answerOption, answerUnread, type WriteTarget } from "./answer";
 import { goUp, upPath } from "./back";
-import { dialogCardOf, dialogOwnsKeyboard, mirrorLines, type DialogCard } from "./cards";
+import { dialogOwnsKeyboard, type DialogCard } from "./cards";
 import { ChatView } from "./chat";
-import { chatStore, pollChat } from "./chat-store";
+import { chatReads, chatStore, pollChat } from "./chat-store";
 import { Composer } from "./composer";
-import { blockBuilder, findPane, PANE_LINES, PANE_LINES_MAX, PANE_LINES_STEP, pollPane, writeGate } from "./data";
+import { findPane, PANE_LINES, PANE_LINES_MAX, PANE_LINES_STEP, pollPane, writeGate } from "./data";
 import { CardDock, type CardActions } from "./dialog-card";
 import { answerMultiSelect, answerPreview, answerWizard } from "./dialogs/actions";
 import { FindBar } from "./find-bar";
 import { createLatestReply, LatestReplyCard } from "./latest-reply";
+import { parseAgent, parseScreen } from "./parse";
 import { PaneIdentity } from "./identity";
 import type { PaneIdentityProps } from "./identity";
 import { questionNotes } from "./question-note";
@@ -111,11 +112,31 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const readDisplay = useStore(handle, displayPrefs);
   const readPairing = useStore(handle, pairing);
   const readChat = useStore(handle, chatStore(key));
+  const chatCounters = chatReads(key);
   const readStripsPref = useStore(handle, stripsCollapsed);
   const readZenAvailable = useStore(handle, zenPref);
   const find = createFind();
   const readFind = useStore(handle, find.state);
   const gate = createGate(() => scheduleUpdate(handle), handle.signal);
+  /** The `answered` count the gate last read: a reply wakes this screen only when it settles the gate. */
+  let gateAnswered = chatCounters.replies.get();
+  /** A snapshot answered after this screen opened: the proof auto-exit waits for (ADR 0067). */
+  let freshSinceMount = false;
+  // Freshness moves on every answer, so it is not a `useStore`: these two listeners wake this screen
+  // only when the answer can change what it draws (REMIX3.md, "A module store is right when").
+  handle.queueTask(() => {
+    if (handle.signal.aborted) return;
+    chatCounters.replies.subscribe(() => {
+      const end = gate.record.endMark;
+      if (end !== null && gateAnswered <= end && chatCounters.replies.get() > end) scheduleUpdate(handle);
+    }, handle.signal);
+    snapshotAt.subscribe(() => {
+      if (freshSinceMount || snapshotAt.get() <= mountedAt) return;
+      freshSinceMount = true;
+      // A pane in the snapshot needs no proof now; one that goes missing later changes the snapshot.
+      if (findPane(snapshot.get().data, paneId) === undefined) scheduleUpdate(handle);
+    }, handle.signal);
+  });
   const viewport = watchViewport(() => scheduleUpdate(handle), handle.signal);
 
   // ── Local state ───────────────────────────────────────────────────────────────────────────────
@@ -133,7 +154,6 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   let exited = false;
   let chatPoll: AbortController | null = null;
 
-  const blocksOf = blockBuilder();
   let lastBlocks: Block[] | undefined;
   let card: DialogCard | null = null;
   let mirror: StyledLine[] = [];
@@ -292,6 +312,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   const closeFind = (): void => find.close();
 
   return () => {
+    countRender("PaneRoute");
     const read = readPane();
     const snap = readSnapshot();
     const cfg = readConfig().data;
@@ -307,8 +328,9 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     const readOnly = refused || isReadOnly(data?.device);
 
     // ── Auto-exit (ADR 0067): only on a healthy snapshot taken after this screen opened ────────
-    const healthy = data !== undefined && snap.error === undefined && snap.at > mountedAt;
-    if (!exited && pane === undefined && healthy && (seenInSnapshot || read.status === 404 || read.at > 0)) {
+    if (!freshSinceMount && snapshotAt.get() > mountedAt) freshSinceMount = true;
+    const healthy = data !== undefined && snap.error === undefined && freshSinceMount;
+    if (!exited && pane === undefined && healthy && (seenInSnapshot || read.status === 404 || read.data !== undefined)) {
       exited = true;
       handle.queueTask(() => {
         // web/src/routes/detail.tsx says this in English and through no catalog key; kept as is.
@@ -317,24 +339,19 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
       });
     }
 
-    // ── Blocks: one parse per text ───────────────────────────────────────────────────────────────
+    // ── Blocks: one parse per text, shared with the dashboard's prefetch (parse.ts) ───────────────
     const rawMirror = display.rawTerminal;
     const override = paneMirrorOverride(scope, paneId);
     const native = rendersNativeMirror(pane?.agent, override);
     const text = read.data?.text ?? "";
-    const agentForBlocks = !rawMirror || rendersNativeMirror(pane?.agent) ? pane?.agent : undefined;
-    const blocks = blocksOf(text, rawMirror ? undefined : agentForBlocks);
-    if (blocks !== lastBlocks) {
-      lastBlocks = blocks;
-      card = dialogCardOf(blocks);
-      mirror = mirrorLines(blocks);
-      // One parse for the three tail reads, through the same adapter whose buildBlocks stripped them
-      // (agent-chat.tsx): none of them with the raw mirror on (web's `grammarsOn`).
-      const adapter = rawMirror ? undefined : adapterFor(pane?.agent);
-      const screen = adapter === undefined ? [] : splitLines(parseAnsi(text));
-      rawDraft = adapter?.extractInputDraft(screen) ?? null;
-      statusLines = adapter?.extractStatusLines(screen) ?? [];
-      agentsFooter = adapter?.extractAgentsFooter?.(screen) ?? [];
+    const parsed = parseScreen(text, parseAgent(pane?.agent, rawMirror));
+    if (parsed.blocks !== lastBlocks) {
+      lastBlocks = parsed.blocks;
+      card = parsed.card;
+      mirror = parsed.mirror;
+      rawDraft = parsed.rawDraft;
+      statusLines = parsed.statusLines;
+      agentsFooter = parsed.agentsFooter;
     }
 
     // ── The chat gate (ADR 0082) ─────────────────────────────────────────────────────────────────
@@ -349,8 +366,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
       chatChosen: dash.paneView === "chat",
       sessionLog: sessionLog.capable,
       chat: chat.window.status,
-      asked: chat.asked,
-      answered: chat.replies,
+      asked: chatCounters.asked,
+      answered: (gateAnswered = chatCounters.replies.get()),
     });
     if (reading.fetch && chatPoll === null && !handle.signal.aborted) {
       chatPoll = new AbortController();
@@ -369,7 +386,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     // snapshot has not yet said what the pane is (the gate cannot pick Chat without a pane row), unless
     // the snapshot already failed, when the Terminal and its notice are the honest screen.
     const chatChosen = dash.paneView === "chat";
-    const awaitingPane = pane === undefined && snap.at === 0 && snap.error === undefined;
+    const awaitingPane = pane === undefined && data === undefined && snap.error === undefined;
     const chatSkeleton = chatChosen && !gone && (awaitingPane || (reading.body !== "terminal" && !chatAnswered));
     const historyAvailable = pane?.hasSession === true && sessionLog.capable;
     const chatReason =
@@ -483,7 +500,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
     let notice = null;
     if (refused) {
       notice = (
-        <a href={href("/settings/device")} class="block" data-testid="pane-unpaired">
+        <a href={href("/settings/device")} class="block" data-testid="pane-unpaired" data-rmx-reset-scroll="false">
           <Notice variant="strip" tone="caution" announce="status" icon={<Icon icon={KeyRound} />}>
             {t("space.readOnly.notPaired")}
           </Notice>
@@ -595,7 +612,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
               spotKey={key}
               lines={mirror}
               logicalText={read.data?.logicalText}
-              loading={read.at === 0 && read.error === undefined}
+              loading={read.data === undefined && read.error === undefined}
               blank={text === ""}
               lead={lead}
               hideLeading={hiddenRows}

@@ -1,4 +1,4 @@
-import { navigate, on, type Handle, type RemixNode } from "remix/component";
+import { on, type Handle, type RemixNode } from "remix/component";
 import { ChevronRight, Clock, Crown, Server, TriangleAlert } from "lucide";
 
 import { timeAgo } from "@web/lib/format";
@@ -9,6 +9,7 @@ import { machinePath } from "@web/lib/nav";
 import type { MachineMetric, MachineRow, MachineSample } from "@web/lib/types";
 import { cn } from "@web/lib/utils";
 
+import { navigate } from "../../lib/navigate";
 import { address } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { want } from "../../lib/polling";

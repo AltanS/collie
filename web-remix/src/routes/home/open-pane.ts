@@ -10,7 +10,11 @@
 // for a second round trip. It used to read `/api/pane/:id` with the bridge's default window through
 // this shell's api.ts, which warmed neither web's ETag cache nor the store: every tap paid two serial
 // reads, and a Herdr read that misses its fast path costs about 100 ms each (measured 2026-10-06).
-import { navigate } from "remix/component";
+//
+// THE PREFETCH ALSO PARSES. As soon as the read lands, its text goes through the pane's own parse
+// (routes/pane/parse.ts: blocks, card, mirror rows, tail reads), in that network task, between the
+// finger going down and the tap. The pane's first render finds the parse in the shared cache and only
+// draws, so the parse (about 35 ms at 4x CPU) leaves the tap's render task.
 
 import { fetchPane } from "@web/lib/api";
 import { paneScope } from "@web/lib/hosts";
@@ -18,10 +22,13 @@ import { panePath } from "@web/lib/nav";
 import { paneScopeKey, type Scope } from "@web/lib/scope";
 import type { AgentView, PaneReadResponse } from "@web/lib/types";
 
+import { navigate } from "../../lib/navigate";
 import { address, paneStore, snapshot } from "../../lib/data";
+import { displayPrefs } from "../../lib/prefs";
 import { glideForwardWhenReady } from "../../lib/glide";
 import { href } from "../../routes";
 import { PANE_LINES } from "../pane/data";
+import { parseAgent, warmParse } from "../pane/parse";
 
 /** How long a started read stays on offer to a tap (web/'s PREFETCH_TTL_MS). */
 const PREFETCH_TTL_MS = 2000;
@@ -53,7 +60,14 @@ export function prefetchPane(pane: AgentView): void {
   const key = panePath(pane.paneId, scope);
   const now = Date.now();
   if (warming?.key === key && now - warming.at < PREFETCH_TTL_MS) return;
-  const read = fetchPane(pane.paneId, PANE_LINES, scope, undefined, { seen: false }).catch(() => undefined);
+  const agent = parseAgent(pane.agent, displayPrefs.get().rawTerminal);
+  const read = fetchPane(pane.paneId, PANE_LINES, scope, undefined, { seen: false }).then(
+    (body) => {
+      warmParse(body.text, agent);
+      return body;
+    },
+    () => undefined,
+  );
   warming = { key, storeKey: paneScopeKey(scope, pane.paneId), at: now, read };
 }
 
@@ -72,5 +86,5 @@ export function openPane(pane: AgentView, row?: HTMLElement): void {
  */
 function seed(storeKey: string, body: PaneReadResponse | undefined): void {
   if (body === undefined) return;
-  paneStore(storeKey).set({ data: body, error: undefined, status: undefined, at: Date.now() });
+  paneStore(storeKey).set({ data: body, error: undefined, status: undefined });
 }

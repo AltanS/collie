@@ -2,6 +2,13 @@
 //
 // Each store keeps the last good body beside the last error, so a failed poll shows stale data
 // flagged, never an empty screen: the keep-previous-data rule web/src/lib/loaders.ts follows.
+//
+// QUIET POLLS (REMIX3.md, "A module store is right when"). A store publishes only on a real change:
+// a poll that brings the same body keeps the HELD object (lib/same.ts decides "same"), and the
+// stores compare by field, so every subscriber sleeps through it. WHEN the bridge last answered is
+// not part of any body: it is `snapshotAt`, its own store, which moves on every answer. Only the
+// readers that show or act on freshness subscribe to it (the connection strip, the stale-app watch,
+// the pane's "gone from a fresh snapshot" proof); a 6 s beat no longer re-renders every screen.
 import { markLive } from "@web/lib/connection-health";
 import { loadLastSnapshot, saveLastSnapshot } from "@web/lib/last-seen";
 import { internScope, scopeFromUrl, viewAllFromUrl, type Scope } from "@web/lib/scope";
@@ -9,6 +16,7 @@ import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/
 
 import { ApiError, fetchConfig, fetchSnapshot, isAbort } from "./api";
 import { busy } from "./busy";
+import { samePaneRead, sameSnapshot } from "./same";
 import { createStore, type Store } from "./store";
 
 export interface Loaded<T> {
@@ -18,14 +26,22 @@ export interface Loaded<T> {
   error: string | undefined;
   /** The HTTP status of that failure, when the bridge answered one (401 and 403 matter). */
   status: number | undefined;
-  /** When `data` was fetched (epoch ms); 0 before the first answer. */
-  at: number;
 }
 
-const EMPTY = { data: undefined, error: undefined, status: undefined, at: 0 } as const;
+const EMPTY = { data: undefined, error: undefined, status: undefined } as const;
 
 function empty<T>(): Loaded<T> {
   return { ...EMPTY };
+}
+
+/** The stores' gate: the same body object (a quiet poll keeps the held one), error and status. */
+export function sameLoaded<T>(a: Loaded<T>, b: Loaded<T>): boolean {
+  return a.data === b.data && a.error === b.error && a.status === b.status;
+}
+
+/** The mirror's gate: the same screen by value, since web's `fetchPane` hands back a new object per read. */
+function samePaneLoaded(a: Loaded<PaneReadResponse>, b: Loaded<PaneReadResponse>): boolean {
+  return samePaneRead(a.data, b.data) && a.error === b.error && a.status === b.status;
 }
 
 /** Where the open screen points: the `?h=` / `?s=` scope and the `?all=1` breadth of its URL. */
@@ -44,8 +60,15 @@ export function noteAddress(url: URL): void {
   address.set({ scope: internScope(scopeFromUrl(url.href)), all: viewAllFromUrl(url.href) });
 }
 
-export const snapshot = createStore<Loaded<SnapshotResponse>>(empty());
-export const config = createStore<Loaded<BridgeConfig>>(empty());
+export const snapshot = createStore<Loaded<SnapshotResponse>>(empty(), sameLoaded);
+export const config = createStore<Loaded<BridgeConfig>>(empty(), sameLoaded);
+/**
+ * When the held snapshot was last confirmed by the bridge (epoch ms), 0 before the first answer. It
+ * moves on EVERY answer, a quiet one included, so subscribe only where freshness is drawn or acted
+ * on. A cold boot drawn from the last-seen cache carries that cache's own date. It never compares:
+ * two answers in one millisecond are still two answers (the stale-app watch counts them).
+ */
+export const snapshotAt = createStore<number>(0, () => false);
 
 const paneStores = new Map<string, Store<Loaded<PaneReadResponse>>>();
 
@@ -53,7 +76,7 @@ const paneStores = new Map<string, Store<Loaded<PaneReadResponse>>>();
 export function paneStore(key: string): Store<Loaded<PaneReadResponse>> {
   let store = paneStores.get(key);
   if (!store) {
-    store = createStore<Loaded<PaneReadResponse>>(empty());
+    store = createStore<Loaded<PaneReadResponse>>(empty(), samePaneLoaded);
     paneStores.set(key, store);
   }
   return store;
@@ -80,11 +103,14 @@ let lastSavedAt = 0;
 function restoreLastSeen(scope: Scope, all: boolean): void {
   if (snapshot.get().data !== undefined) return;
   const cached = loadLastSnapshot(scope, all);
-  if (cached) snapshot.set({ data: cached.value, error: undefined, status: undefined, at: cached.at });
+  if (!cached) return;
+  snapshot.set({ data: cached.value, error: undefined, status: undefined });
+  snapshotAt.set(cached.at);
 }
 
 /**
- * One poll of the snapshot. Resolves true when the body changed. It counts as a POLL load for the bar
+ * One poll of the snapshot. Resolves true when the body changed (a 304, or a body `sameSnapshot`
+ * calls the same, keeps the held object and wakes nobody). It counts as a POLL load for the bar
  * and the stalled check (lib/busy.ts): one hung past 6 s shows the bar, past 2.5 s the app looks
  * stalled. A live answer stamps the shared connection clock (`markLive`, web's own).
  */
@@ -93,13 +119,16 @@ export async function loadSnapshot(signal: AbortSignal): Promise<boolean> {
   const release = busy.beginLoad("poll");
   try {
     const got = await fetchSnapshot(scope, signal, all);
-    snapshot.set({ data: got.body, error: undefined, status: undefined, at: Date.now() });
+    const held = snapshot.get().data;
+    const same = held !== undefined && sameSnapshot(held, got.body);
+    snapshot.set({ data: same ? held : got.body, error: undefined, status: undefined });
+    snapshotAt.set(Date.now());
     if (got.body.bridge !== "disconnected") markLive();
-    if (!got.notModified || Date.now() - lastSavedAt >= SAVE_EVERY_MS) {
+    if (!same || Date.now() - lastSavedAt >= SAVE_EVERY_MS) {
       lastSavedAt = Date.now();
       saveLastSnapshot(scope, got.body, undefined, all);
     }
-    return !got.notModified;
+    return !same;
   } catch (error) {
     if (error instanceof Error && !isAbort(error)) restoreLastSeen(scope, all);
     if (error instanceof Error) failed(snapshot, error);
@@ -122,7 +151,7 @@ export async function loadConfig(signal: AbortSignal): Promise<boolean> {
   if (held.data !== undefined && held.error === undefined) return false;
   try {
     const body = await fetchConfig(undefined, signal);
-    config.set({ data: body, error: undefined, status: undefined, at: Date.now() });
+    config.set({ data: body, error: undefined, status: undefined });
     return true;
   } catch (error) {
     if (error instanceof Error) failed(config, error);
