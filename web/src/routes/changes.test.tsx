@@ -95,7 +95,20 @@ describe("ChangesRoute — the list", () => {
     expect(screen.getByText(en["changes.binaryShort"])).toBeTruthy();
   });
 
-  it("names the workspace and its folder in the header", async () => {
+  it("names the workspace and, when the folder has another name, only its last segment", async () => {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, () =>
+        HttpResponse.json({ ...fixtureChanges, workspaceLabel: "ui", root: "/home/you/projects/shop" }),
+      ),
+    );
+    renderAt("/pane/w1%3Ap1/changes");
+    expect(await screen.findByText("ui")).toBeTruthy();
+    const folder = screen.getByText("· shop");
+    expect(folder.getAttribute("title")).toBe("/home/you/projects/shop");
+    expect(screen.queryByText(/projects\//)).toBeNull();
+  });
+
+  it("says the workspace alone when its folder is named like it", async () => {
     server.use(
       http.get(/\/api\/pane\/[^/]+\/changes/, () =>
         HttpResponse.json({ ...fixtureChanges, workspaceLabel: "collie-workspace", root: "/home/you/projects/collie-workspace" }),
@@ -103,8 +116,8 @@ describe("ChangesRoute — the list", () => {
     );
     renderAt("/pane/w1%3Ap1/changes");
     expect(await screen.findByText("collie-workspace")).toBeTruthy();
-    const folder = screen.getByText("…/projects/collie-workspace");
-    expect(folder.getAttribute("title")).toBe("/home/you/projects/collie-workspace");
+    expect(document.querySelector('[data-slot="files-root-folder"]')).toBeNull();
+    expect(screen.queryByText(/projects\//)).toBeNull();
   });
 
   it("the space form asks by workspace, shows the same list, and goes back to the space", async () => {

@@ -219,13 +219,26 @@ function nextCommit(prev: CommitState | null, repo: string, data: ChangeCommitRe
 const collapsedByPane = new Map<string, ReadonlySet<string>>();
 
 /**
- * The last two segments of a folder, for the header: `…/projects/collie-workspace`. The full path
- * rides in the `title`, so a long-press or hover still shows it whole.
+ * The header's one place for the root folder, on every screen of this route (the root, a folder, a
+ * file, the commit view): `· segment` in mono after the workspace label, where the segment is the
+ * root folder's last name and only when it differs from the label. Never the path, never a cut from
+ * the left; the breadcrumb says where you are, and the full path rides in the `title`. One function,
+ * so the root and the folder screens cannot drift.
+ *
+ * It sits in a one-line `flex-wrap` box with `overflow-hidden` ({@link LABEL_LINE}): beside four icon
+ * buttons the column is about 90px, and a segment that does not fit WHOLE wraps out of sight instead
+ * of showing as "· …". The label never gives way to it.
  */
-function shortFolder(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length <= 2) return path;
-  return `…/${parts.slice(-2).join("/")}`;
+const LABEL_LINE = "flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5 overflow-hidden";
+
+function RootSegment({ folder, label }: { folder: string | null; label: string }) {
+  const segment = folder === null ? "" : headerFolder(folder, label);
+  if (folder === null || segment === "") return null;
+  return (
+    <span className="max-w-full shrink-0 truncate font-mono text-xs leading-tight text-muted-foreground" data-slot="files-root-folder" title={folder}>
+      · {segment}
+    </span>
+  );
 }
 
 /** Where the back arrow of a file view goes: the list entry it came from, when there is one. */
@@ -728,7 +741,6 @@ function ChangesScreen() {
   // Both are the same folder (ADR 0083), so this only decides which answer speaks first.
   const listRoot = ready?.available ? ready.root : null;
   const rootFolder = treeFile !== null || (treeDir !== null && treeDir !== "") ? (filesRoot.current ?? listRoot) : (listRoot ?? filesRoot.current);
-  const rootSegment = rootFolder === null ? "" : headerFolder(rootFolder, workspaceLabel);
   const rootName = rootFolder === null ? null : baseName(rootFolder.replace(/[\\/]+$/, ""));
 
   // The header's count line: the tab's kept answer until this visit's first read, then what the
@@ -779,11 +791,7 @@ function ChangesScreen() {
   const rootScreen = atRoot;
   const previewOf = open === null ? null : previewPath(open);
   const changedFiles = countFiles(listRepos);
-  const folderLine = rootFolder && (
-    <span className="min-w-0 truncate font-mono text-xs leading-tight text-muted-foreground" title={rootFolder}>
-      {shortFolder(rootFolder)}
-    </span>
-  );
+  const folderLine = <RootSegment folder={rootFolder} label={workspaceLabel} />;
   // Quiet, on a line that is already there, so it moves nothing.
   const staleNote = (
     <span role="status" className="shrink-0">
@@ -833,7 +841,9 @@ function ChangesScreen() {
               <div className="min-w-0 flex-1" data-glide-destination={rootScreen ? "changes" : undefined}>
                 {rootScreen ? (
                   <>
-                    <div className="flex min-w-0 items-baseline gap-1.5">
+                    {/* One line tall (1.125rem at leading-tight): a segment that does not fit beside
+                        the label wraps out of sight. */}
+                    <div className={`${LABEL_LINE} h-[1.40625rem]`}>
                       <h1
                         data-glide="label"
                         className="max-w-full shrink-0 truncate text-lg font-semibold leading-tight tracking-tight"
@@ -855,31 +865,15 @@ function ChangesScreen() {
                     <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">
                       {commitView ? t("changes.commit.title") : t("changes.title")}
                     </h1>
-                    {treeAt !== null ? (
-                      // A folder or a file of the tree says the workspace label alone, plus the root
-                      // folder's last segment when that is another name. Never the whole path: four
-                      // icon buttons leave no room for it, and the breadcrumb below says where you are.
-                      <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
-                        <span className="min-w-0 truncate">
-                          {workspaceLabel}
-                          {rootSegment !== "" && (
-                            <>
-                              {" · "}
-                              <span className="font-mono" data-slot="files-root-folder" title={rootFolder ?? undefined}>
-                                {rootSegment}
-                              </span>
-                            </>
-                          )}
-                        </span>
-                        {staleNote}
-                      </div>
-                    ) : (
-                      <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
-                        <span className="shrink-0 truncate">{workspaceLabel}</span>
+                    {/* The workspace label, plus the root folder's last name when it differs: the
+                        same RootSegment as the root's header. Four icon buttons leave no room for more. */}
+                    <div className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-muted-foreground">
+                      <div className={`${LABEL_LINE} h-[0.9375rem]`}>
+                        <span className="max-w-full shrink-0 truncate">{workspaceLabel}</span>
                         {folderLine}
-                        {staleNote}
                       </div>
-                    )}
+                      {staleNote}
+                    </div>
                   </>
                 )}
               </div>

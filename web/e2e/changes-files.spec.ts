@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
-import { fixtureAgents, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
+import { fixtureAgents, fixtureChanges, fixtureFileRead, fixtureFilesDir } from "@/test/handlers";
 
 import { fill, installApiStub } from "./fixtures/api";
 import { serveWithShellCsp } from "./fixtures/csp";
@@ -288,8 +288,8 @@ test("the HTML preview renders in a sandboxed frame under the shell's CSP and no
 
 // The second line of a folder or a file of the tree: the workspace label alone, and "label · segment"
 // (the segment in mono) when the root folder's last segment is another name. Never the whole path,
-// never a cut from the left; the breadcrumb below says where you are. The root's own header is the
-// glide header with the short folder line (changes.spec.ts).
+// never a cut from the left; the breadcrumb below says where you are. The root's header draws the
+// same RootSegment beside its larger label (routes/changes.tsx), so the two cannot drift.
 async function deepRoot(page: import("@playwright/test").Page, root: string) {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.route(/\/api\/pane\/[^/]+\/files(\?.*)?$/, async (route) => {
@@ -317,13 +317,54 @@ test("a folder named otherwise adds only its last segment in mono, never the pat
   // must fit whole; a long one is cut at its END, never from the left.
   await deepRoot(page, "/var/home/altan/projects/clients/acme/storefront-monorepo/packages/app");
   const segment = page.locator('[data-slot="files-root-folder"]');
-  await expect(segment).toHaveText("app");
+  await expect(segment).toHaveText("· app");
   await expect(segment).toHaveCSS("font-family", /mono/i);
   const line = segment.locator("..");
-  await expect(line).toContainText(`${label} · app`);
+  await expect(line).toContainText(label);
   expect(await line.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
   await expect(page.getByText("/var/home", { exact: false })).toHaveCount(0);
   expect(await line.evaluate((el) => getComputedStyle(el).direction)).toBe("ltr");
+});
+
+// The root's header: the same RootSegment as the folder screens, beside the larger label. The column
+// is about 90 px beside the four squares, so a segment shows WHOLE or not at all, never as "· …".
+async function rootWith(page: import("@playwright/test").Page, workspaceLabel: string, root: string) {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.route(/\/api\/pane\/[^/]+\/changes(\?|$)/, async (route) => {
+    if (new URL(route.request().url()).searchParams.has("path")) return route.fallback();
+    await route.fulfill({ json: { ...fixtureChanges, workspaceLabel, root } });
+  });
+  await page.goto(`/pane/${PANE}/changes`);
+}
+
+test("the root's header says the label and the folder's last name in mono, never the path, at 375 px", async ({ page }) => {
+  await rootWith(page, "ui", "/home/you/clients/acme/shop");
+  const segment = page.locator('[data-slot="files-root-folder"]');
+  await expect(segment).toHaveText("· shop");
+  await expect(segment).toHaveAttribute("title", "/home/you/clients/acme/shop");
+  await expect(segment).toHaveCSS("font-family", /mono/i);
+  const h1 = page.getByRole("heading", { level: 1 });
+  const [s, h] = await Promise.all([segment.boundingBox(), h1.boundingBox()]);
+  // On the label's own line, to its right, and cut by nothing.
+  expect(Math.abs(s!.y + s!.height - (h!.y + h!.height))).toBeLessThan(8);
+  expect(s!.x).toBeGreaterThan(h!.x + h!.width - 1);
+  expect(await segment.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+  expect(await segment.evaluate((el) => getComputedStyle(el).direction)).toBe("ltr");
+  await expect(page.getByText("/home/you", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("…/", { exact: false })).toHaveCount(0);
+});
+
+test("a root segment that does not fit beside the label is left out whole, not cut to an ellipsis, at 375 px", async ({ page }) => {
+  await rootWith(page, "webapp", "/home/you/clients/acme/shop");
+  const segment = page.locator('[data-slot="files-root-folder"]');
+  const line = segment.locator("..");
+  // Wrapped below the one-line box the label sits in, and the box hides it.
+  const [s, l] = await Promise.all([segment.boundingBox(), line.boundingBox()]);
+  expect(s!.y).toBeGreaterThanOrEqual(l!.y + l!.height - 1);
+  expect(await line.evaluate((el) => getComputedStyle(el).overflow)).toBe("hidden");
+  expect(await segment.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("webapp");
+  await expect(page.getByText("…/", { exact: false })).toHaveCount(0);
 });
 
 // Review 2026-10-06: the header is one header on every level, and at 375 px the squares win.
