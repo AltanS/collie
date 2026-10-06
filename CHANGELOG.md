@@ -220,6 +220,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   of the thread, until you tapped the X. The strip now tells the scrolling list how far it reaches
   into it, and the list starts below it. Settings, Crew, Machines, Updates and History keep their
   first row clear the same way.
+- **A photo send no longer flashes the draft card while it is checked.** Sending a photo types its
+  path into the terminal's input line, and the "Draft in terminal" card read that as a draft of yours
+  until the send was verified. The card now waits while a send is in flight, and a draft that is still
+  there afterwards shows again. Thanks @AndiWandHerd (#370).
 
 ## [1.17.2] - 2026-10-06
 

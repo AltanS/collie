@@ -792,13 +792,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // this is the ONLY gate that waits for the 1.5s stability, so a blip or an in-flight send never
   // flashes it. Deliberately one-directional: once latched, rapid host typing (which keeps blanking
   // the stabilised value) can't turn it back off — the raw-tracking + unlatch effects own the hide
-  // side. Skipped when the pane is gone.
+  // side. Skipped when the pane is gone, and while a send is in flight: the staged line then
+  // carries our own text (attachments go out as host paths), and even a foreign draft waits until
+  // the send completes rather than fighting it for the mirror.
   useEffect(() => {
-    if (gone) return;
+    if (gone || sending) return;
     if (effectiveStable !== null && normalizeDraft(effectiveStable) !== handledKey) {
       setPreviewLatched(true);
     }
-  }, [effectiveStable, handledKey, gone]);
+  }, [effectiveStable, handledKey, gone, sending]);
 
   // Unlatch when the host clears the "❯" line — the draft was submitted or wiped on the host, or our
   // own send echoed back and got suppressed to null. The preview unmounts on the next render. Also
@@ -822,7 +824,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // or sent, not a fresh one to re-show. Not gated on `locked`: read-only devices get the preview +
   // Take over (a local text copy); only the actual Send stays gated.
   const showPreview =
-    !gone && previewLatched && effectiveRaw !== null && normalizeDraft(effectiveRaw) !== handledKey;
+    !gone &&
+    !sending &&
+    previewLatched &&
+    effectiveRaw !== null &&
+    normalizeDraft(effectiveRaw) !== handledKey;
 
   // The floating notice (ADR 0061). The wrapper passes touches through (`pointer-events-none`) and
   // the notice takes them back, so the mirror under the empty part of the slot still scrolls.
