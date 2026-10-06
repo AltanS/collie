@@ -1,5 +1,6 @@
 // The app shell: wraps every route's content (router.tsx installs it through `render()`), keeps the
-// snapshot and config on the polling beat for the page's lifetime, and draws what every screen
+// snapshot on the polling beat for the page's lifetime and the config there until its one read
+// lands (lib/data.ts `loadConfig`, lib/CADENCE.md), and draws what every screen
 // shares: the strip band, the ONE header, the screen slide, the toast, the busy bar, the first-connect
 // cover and the idle lock.
 //

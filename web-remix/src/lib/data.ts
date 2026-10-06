@@ -7,7 +7,7 @@ import { loadLastSnapshot, saveLastSnapshot } from "@web/lib/last-seen";
 import { internScope, scopeFromUrl, viewAllFromUrl, type Scope } from "@web/lib/scope";
 import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
 
-import { ApiError, fetchConfig, fetchPane, fetchSnapshot, isAbort } from "./api";
+import { ApiError, fetchConfig, fetchSnapshot, isAbort } from "./api";
 import { busy } from "./busy";
 import { createStore, type Store } from "./store";
 
@@ -109,34 +109,23 @@ export async function loadSnapshot(signal: AbortSignal): Promise<boolean> {
   }
 }
 
-/** One read of the config. Resolves true when it changed. */
+/**
+ * The config, read ONCE per page load (web/src/lib/operator-config.ts, "THE CONTRACT"): it is
+ * startup config on the bridge side, so it cannot change without a bridge restart, and re-reading it
+ * on the beat only spent a request per tick. It sits on the beat until one read succeeds; after that
+ * this fetches nothing. A failed read is not kept, so the next beat tries again (web retries on the
+ * next mount). Unscoped, as web reads it: `/api/config` describes THIS bridge, whatever scope the
+ * screen views (web/src/components/app-header.tsx). Resolves true when the store took a body.
+ */
 export async function loadConfig(signal: AbortSignal): Promise<boolean> {
+  const held = config.get();
+  if (held.data !== undefined && held.error === undefined) return false;
   try {
-    const body = await fetchConfig(address.get().scope, signal);
-    const changed = JSON.stringify(body) !== JSON.stringify(config.get().data);
-    if (changed || config.get().error !== undefined) {
-      config.set({ data: body, error: undefined, status: undefined, at: Date.now() });
-    }
-    return changed;
+    const body = await fetchConfig(undefined, signal);
+    config.set({ data: body, error: undefined, status: undefined, at: Date.now() });
+    return true;
   } catch (error) {
     if (error instanceof Error) failed(config, error);
     return false;
-  }
-}
-
-/** One poll of a pane's mirror into `paneStore(key)`. Resolves true when the text changed. */
-export async function loadPane(key: string, paneId: string, scope: Scope, signal: AbortSignal): Promise<boolean> {
-  const store = paneStore(key);
-  const release = busy.beginLoad("poll");
-  try {
-    const got = await fetchPane(paneId, scope, signal);
-    const changed = got.body.text !== store.get().data?.text;
-    store.set({ data: got.body, error: undefined, status: undefined, at: Date.now() });
-    return changed;
-  } catch (error) {
-    if (error instanceof Error) failed(store, error);
-    return false;
-  } finally {
-    release();
   }
 }

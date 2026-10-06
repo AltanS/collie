@@ -21,6 +21,7 @@ import { isReadOnly, type AgentView, type BridgeConfig, type SnapshotResponse } 
 import { t } from "@web/lib/i18n";
 
 import { paneStore } from "../../lib/data";
+import { markPollResult } from "../../lib/polling";
 
 /** The tail web's pane loader asks for (web/src/lib/loaders.ts), and what the guard re-reads. */
 export const PANE_LINES = 600;
@@ -36,13 +37,20 @@ export function statusOf(error: Error): number | undefined {
   return KNOWN_STATUSES.find((status) => isApiErrorStatus(error, status));
 }
 
-/** One poll of a pane's mirror into `paneStore(key)`. Resolves true when the text changed. */
+/**
+ * One poll of a pane's mirror into `paneStore(key)`. Resolves true when the text changed.
+ *
+ * It is the cadence's one "is the screen still moving" signal (`markPollResult`, web's paneLoader):
+ * a 304 hands back the held body, so the text compare is false then, and also on a bridge with no
+ * ETag. A failed read reports nothing, as web's loader does.
+ */
 export async function pollPane(key: string, paneId: string, scope: Scope, signal: AbortSignal, lines = PANE_LINES): Promise<boolean> {
   const store = paneStore(key);
   try {
     const body = await fetchPane(paneId, lines, scope, signal);
     const changed = body.text !== store.get().data?.text;
     store.set({ data: body, error: undefined, status: undefined, at: Date.now() });
+    markPollResult(changed);
     return changed;
   } catch (error) {
     if (!(error instanceof Error) || error.name === "AbortError") return false;

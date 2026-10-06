@@ -7,15 +7,24 @@
 //
 // The gap is resolved from what the OPERATOR is doing, in the same five rules (`intervalFor`):
 //   0/1. a send (or a create/close) just happened → BURST_MS for a few polls;
-//   2/3. a pane is open, followed, and its agent is busy or its mirror moved → HOT_MS;
+//   2/3. a pane is open, followed, and its agent is busy or its MIRROR moved → HOT_MS;
 //   3b.  an update run is moving on this machine or its crew → HOT_MS;
 //   4.   no pane open and some agent is working or blocked → HOME_BUSY_MS;
 //   5.   otherwise → IDLE_MS.
-// No tick fetches while the page is hidden or the idle lock is up.
+// No tick fetches while the page is hidden, the idle lock is up, or a long upload is on the wire.
+//
+// "THE MIRROR MOVED" IS THE PANE READ'S ANSWER, AND NOBODY ELSE'S. web's paneLoader is the only
+// caller of `markPollResult` (web/src/lib/loaders.ts); the snapshot, the chat window and the config
+// never feed it. A busy herd changes the snapshot on every read (its `ts` alone moves), so letting any
+// source's change count held an idle pane at HOT_MS forever: 76 requests in 30 s against web's 14
+// (bench 2026-10-06). The mirror read reports through `markPollResult` (routes/pane/data.ts).
+// CADENCE.md beside this file is the table of which screen reads what, and when.
+import { refreshNow as lookNowOnBridge } from "@web/lib/api";
+import { isLongUpload } from "@web/lib/connection-health";
 import { crewMoving, runInFlight } from "@web/lib/update-ribbon";
 import type { SnapshotResponse } from "@web/lib/types";
 
-import { snapshot } from "./data";
+import { address, snapshot } from "./data";
 import { endCatchUp, isLocked, setReleaseRefresh } from "./idle";
 import { createStore } from "./store";
 
@@ -26,11 +35,14 @@ export const IDLE_MS = 6000;
 /** A tick in flight this long is a black-holed fetch: abort it and start the next one. */
 export const SUPERSEDE_MS = 12_000;
 /** A burst lasts at least this many polls (web/src/lib/poll-intent.ts). */
-const BURST_MIN_POLLS = 5;
+export const BURST_MIN_POLLS = 5;
 /** …and ends after this many consecutive unchanged polls past the minimum. */
-const BURST_QUIET_POLLS = 2;
+export const BURST_QUIET_POLLS = 2;
 
-/** One read the scheduler runs on every beat. `poll` resolves true when its data changed. */
+/**
+ * One read the scheduler runs on every beat. `poll` resolves true when its data changed; the
+ * scheduler does not time the beat from that (only `markPollResult` does), it is for callers.
+ */
 export interface PollSource {
   /** Identity: two registrations with one key are one read. */
   readonly key: string;
@@ -50,7 +62,7 @@ export const focus = createStore<Focus>(
   (a, b) => a.paneId === b.paneId && a.following === b.following,
 );
 
-interface Burst {
+export interface Burst {
   paneId: string | null;
   polls: number;
   quiet: number;
@@ -59,7 +71,33 @@ interface Burst {
 }
 
 let burst: Burst = { paneId: null, polls: 0, quiet: 0, topology: 0 };
+/** The last MIRROR read came back with text not seen before (web's `lastPollChanged`). */
 let lastChanged = false;
+
+/**
+ * Fold one mirror read's verdict into the send burst (web/src/lib/poll-intent.ts `burstOnPoll`):
+ * at least BURST_MIN_POLLS reads, then BURST_QUIET_POLLS unchanged reads in a row end it. Pure.
+ */
+export function burstOnPoll(state: Burst, changed: boolean): Burst {
+  if (state.paneId === null) return state;
+  const polls = state.polls + 1;
+  const quiet = changed ? 0 : state.quiet + 1;
+  if (polls >= BURST_MIN_POLLS && quiet >= BURST_QUIET_POLLS) return { ...state, paneId: null, polls: 0, quiet: 0 };
+  return { ...state, polls, quiet };
+}
+
+/**
+ * One pane mirror read came back: `changed` false when the text is the one already held (a 304, or
+ * the same body). The only input of rules 3 and the burst, as web's `markPollResult`. A flip re-times
+ * the beat when no tick is in flight (web re-creates its interval when the gap changes).
+ */
+export function markPollResult(changed: boolean): void {
+  const next = burstOnPoll(burst, changed);
+  if (next === burst && lastChanged === changed) return;
+  burst = next;
+  lastChanged = changed;
+  if (started && !inFlight) schedule();
+}
 
 /** Pure cadence resolver, exported for tests. Rules in the header. */
 export function intervalFor(
@@ -117,7 +155,9 @@ function schedule(ms = currentInterval()): void {
 
 /** Run every registered read once, now, unless one beat is already in flight. */
 async function tick(force = false): Promise<void> {
-  if (!force && (document.hidden || isLocked())) {
+  // Hidden: battery. Locked: nobody is reading. A long upload (a voice clip) owns the narrow uplink,
+  // and a poll fired now only slows it down (web's tick skips it the same way).
+  if (!force && (document.hidden || isLocked() || isLongUpload())) {
     schedule();
     return;
   }
@@ -128,18 +168,11 @@ async function tick(force = false): Promise<void> {
   }
   const controller = new AbortController();
   const run = async (): Promise<void> => {
-    const results = await Promise.allSettled([...sources.values()].map(({ source }) => source.poll(controller.signal)));
-    if (controller.signal.aborted) return;
-    const changed = results.some((r) => r.status === "fulfilled" && r.value);
-    lastChanged = changed;
+    // A topology burst is spent per tick, wherever the operator looks (web's `consumeTopologyPoll`).
     if (burst.topology > 0) burst = { ...burst, topology: burst.topology - 1 };
-    if (burst.paneId !== null) {
-      const polls = burst.polls + 1;
-      const quiet = changed ? 0 : burst.quiet + 1;
-      burst = polls >= BURST_MIN_POLLS && quiet >= BURST_QUIET_POLLS
-        ? { ...burst, paneId: null, polls: 0, quiet: 0 }
-        : { ...burst, polls, quiet };
-    }
+    // What each read resolves does not time the beat: only the mirror read does, through
+    // `markPollResult`, as it runs inside this same tick.
+    await Promise.allSettled([...sources.values()].map(({ source }) => source.poll(controller.signal)));
   };
   const done = run().finally(() => {
     if (inFlight?.controller === controller) inFlight = undefined;
@@ -193,13 +226,29 @@ export function noteTopology(): void {
   schedule(BURST_MS);
 }
 
+/**
+ * "Look now": ask the bridge to re-read its multiplexer before the next read (web's `lookNow`,
+ * hooks/use-polling.ts). Fired, not awaited, on the two moments that mean "I am looking again": the
+ * page coming back to the foreground and the idle lock being released. Not on `focus` or `online`.
+ * web's `refreshNow` is a no-op for a peer scope and never throws.
+ */
+function lookNow(): void {
+  void lookNowOnBridge(address.get().scope);
+}
+
 /** Start the beat. Called once at boot (main.tsx); routes register their reads with `want`. */
 export function startPolling(): void {
   if (started) return;
   started = true;
-  setReleaseRefresh(() => refreshNow().finally(endCatchUp));
+  setReleaseRefresh(() => {
+    lookNow();
+    return refreshNow().finally(endCatchUp);
+  });
+  // Back in the foreground: look now, and read at once rather than after the rest of the gap.
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) kick();
+    if (document.hidden) return;
+    lookNow();
+    kick();
   });
   window.addEventListener("focus", kick);
   window.addEventListener("online", kick);
