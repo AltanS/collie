@@ -10,6 +10,10 @@ import { loadConfig, type Config } from "./config.ts";
 import { CONFIG_SETTINGS } from "./config-schema.ts";
 import { computeEtag } from "./http-cache.ts";
 import { muxOk } from "./mux/types.ts";
+import { Route, type RouteMap } from "remix/routes";
+import { rawPathMatcher } from "./http/middleware/raw-path.ts";
+import { routes } from "./http/routes.ts";
+import { SESSION_ROUTE_GRAMMAR } from "./server.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
@@ -582,50 +586,35 @@ describe("solo zero-tax — ETag", () => {
 });
 
 // ── 4. Routes ────────────────────────────────────────────────────────────────
-// §11: zero routes added, no `/crew` prefix registered. The dispatch lives inside `Bun.serve`, which
-// `bun test` cannot stand up (CLAUDE.md), so the route table is pinned by reading the source's route
-// literals. Crude, but it is the actual registration site — a new `if (pathname === "/crew/…")` in
-// server.ts fails here even though no server was started.
+// §11: zero routes added, no `/crew` prefix registered. Since the dispatch moved onto `remix/router`
+// (2026-10-06) the route table is a typed map (`bridge/http/routes.ts`), and this reads the map
+// itself rather than grepping the source for route literals. A new route in that map fails here even
+// though no server was started.
+//
+// The grep this replaces could not see two routes that were always there, because their paths were
+// constants rather than literals: the multiplexer's mark (`MUX_LOGO_PATH`) and the operator's fonts
+// (`OPERATOR_FONTS_PATH`). The map names them, so the list does. And where the grep listed one regex
+// per route family, the map lists one pattern per route: the pane family's ten actions, the two tab
+// actions and the two worktree actions are each their own route now.
 
+/** Every route in the map, as `"<path pattern>"`, with the raw-path matcher's `%2E` read back as `.`. */
 function declaredRoutes(): string[] {
-  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-  const exact = [...src.matchAll(/pathname === "([^"]+)"/g)].map((m) => m[1]!);
-  const prefixes = [...src.matchAll(/pathname\.startsWith\("([^"]+)"\)/g)].map((m) => `${m[1]}*`);
-  const patterns = [...src.matchAll(/^const \w*ROUTE = (\/\^.+\/);$/gm)].map((m) => m[1]!);
-  return [...new Set([...exact, ...prefixes, ...patterns])].toSorted();
+  const walk = (map: RouteMap): Route[] =>
+    Object.values(map).flatMap((v) => (v instanceof Route ? [v] : walk(v)));
+  return [...new Set(walk(routes).map((r) => decodeURIComponent(r.pattern.source)))].toSorted();
 }
 
 describe("solo zero-tax — routes", () => {
-  test("server.ts registers exactly today's routes", () => {
+  test("the route map registers exactly today's routes", () => {
     expect(declaredRoutes()).toEqual([
-      "/",
-      // `focus` is the pane action that moves the OPERATOR's own terminal, and it is named here for
-      // the reason every other one is: a route arrives on purpose or it does not arrive.
+      // The app: every other path, every method — the PWA with its SPA fallback, and the catch-all a
+      // wrong method on a known path falls through to, as it always did.
+      "/*path",
       // One content-addressed image out of a pi/omp journal's blob store — a SOLO route that
       // legitimately extends this list, named here rather than exempted. Session-scoped and
       // read-gated like the pane read beside it, so a `?host=` call forwards to the member whose
       // journal named the file (CREW_PROTOCOL.md §9.1).
-      "/^\\/api\\/blobs\\/([^/]+)$/",
-      // Machines (ADR 0084): one machine's day of minutes, and its alert rules. A lead and a solo
-      // collie answer for every machine they keep watch over; a peer 404s (`crew.not_lead`), and none
-      // is forwardable — `bridge/crew/router.test.ts` pins all three as 404 across a link.
-      "/^\\/api\\/machines\\/([^/]+)\\/(history|alerts)$/",
-      // `changes` is the Changes view (ADR 0065): read-only git over the pane's folder, read-gated
-      // like `history` beside it and forwarded to the member that owns the pane. `chat` is the live
-      // half of `history` (journal/live.ts): the same log, asked "anything after this?" — a read, on
-      // the poll path, forwarded to the owning member and taxing a solo instance with nothing.
-      // `files` is the Files view (ADR 0083): one folder or one file under the Changes root, a read
-      // gated on an authorised device and forwarded to the owning member like `changes`.
-      "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus))?$/",
-      "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
-      // The Changes view asked by workspace (ADR 0065): the same read as the pane route's `changes`,
-      // read-gated and forwarded with `?host=` to the member that owns the space.
-      "/^\\/api\\/workspace\\/([^/]+)\\/changes$/",
-      // The Files view asked by workspace (ADR 0083): the pane route's `files`, by space, gated and
-      // forwarded the same way.
-      "/^\\/api\\/workspace\\/([^/]+)\\/files$/",
-      "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
-      "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
+      "/api/blobs/:hash",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
       // is, and the only route this feature adds. Not forwarded across the crew link.
       "/api/cache-rules",
@@ -641,29 +630,38 @@ describe("solo zero-tax — routes", () => {
       "/api/devices",
       "/api/devices/revoke",
       // The new-space sheet's folder list (M40/02, #289) — two SOLO routes that legitimately extend
-      // this list, named here rather than exempted. Session-scoped through the same closure
+      // this list, named here rather than exempted. Session-scoped through the same controller
       // `/api/launchers` rides, the read gated as a read and the star as a write, so a `?host=` call
       // forwards to the member whose folders they are. A solo instance registers both and answers
       // about its own `folders.json`, which it writes only once the operator uses it (see §6 below).
       "/api/folders",
       "/api/folders/star",
+      // The operator's own typefaces (theme.toml) — always registered, invisible to the old grep.
+      "/api/fonts/*name",
       // The detached updater's probe (M15/04) — a solo feature that legitimately extends this list,
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
       // updater holding no credential, and what it answers is `{ ok, version, deposed, mode }`.
       "/api/health",
       // The operator's own launcher rows (`launchers.toml`) — a SOLO route that legitimately
       // extends this list, named here rather than exempted. It is session-scoped and write-gated
-      // through the same closure `/api/workspace` rides, and the configured rows are its allowlist:
-      // the client names a row, never a command line. An operator who declares none can call it,
-      // and every call is refused.
+      // through the same controller `/api/workspace` rides, and the configured rows are its
+      // allowlist: the client names a row, never a command line. An operator who declares none can
+      // call it, and every call is refused.
       "/api/launch",
       // This host's own launcher rows, read live off its `launchers.toml` — a SOLO route that
       // legitimately extends this list, named here rather than exempted. Session-scoped and
-      // read-gated through the same closure `/api/launch` rides, so a `?host=` call forwards to
-      // the peer that runs the rows rather than reading the lead's own file.
+      // read-gated, so a `?host=` call forwards to the peer that runs the rows rather than reading
+      // the lead's own file.
       "/api/launchers",
-      // Machines (ADR 0084): the list with each machine's latest sample. A read, gated as one.
+      // Machines (ADR 0084): the list with each machine's latest sample, one machine's day of
+      // minutes, and its alert rules. A lead and a solo collie answer for every machine they keep
+      // watch over; a peer 404s (`crew.not_lead`), and none is forwardable —
+      // `bridge/crew/router.test.ts` pins all three as 404 across a link.
       "/api/machines",
+      "/api/machines/:machineId/alerts",
+      "/api/machines/:machineId/history",
+      // The multiplexer's mark (`MUX_LOGO_PATH`) — always registered, invisible to the old grep.
+      "/api/mux/logo.svg",
       // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
       // named here rather than exempted: the preference lives on the collie holding the subscription, so
       // none of the three is forwardable and `bridge/crew/router.test.ts` pins all three as 404 across a
@@ -673,12 +671,27 @@ describe("solo zero-tax — routes", () => {
       "/api/notifications/cache-watch/list",
       "/api/notifications/prefs",
       "/api/notifications/snooze",
-      // The Crew overview (bridge/crew/status-wire.ts) — a FRONT-DOOR route, and it legitimately
-      // extends this list rather than being exempted, exactly as pairing and STT do. It is not a
-      // crew route: `/crew/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
-      // browser answering its own operator. A solo instance registers it and 404s
-      // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
       "/api/pair",
+      // The pane family: the read, and one route per action. `focus` is the pane action that moves
+      // the OPERATOR's own terminal, and it is named here for the reason every other one is: a route
+      // arrives on purpose or it does not arrive. `changes` is the Changes view (ADR 0065): read-only
+      // git over the pane's folder, read-gated like `history` beside it and forwarded to the member
+      // that owns the pane. `chat` is the live half of `history` (journal/live.ts): the same log,
+      // asked "anything after this?" — a read, on the poll path, forwarded to the owning member and
+      // taxing a solo instance with nothing. `files` is the Files view (ADR 0083): one folder or one
+      // file under the Changes root, a read gated on an authorised device and forwarded to the
+      // owning member like `changes`.
+      "/api/pane/:paneId",
+      "/api/pane/:paneId/changes",
+      "/api/pane/:paneId/chat",
+      "/api/pane/:paneId/close",
+      "/api/pane/:paneId/files",
+      "/api/pane/:paneId/focus",
+      "/api/pane/:paneId/history",
+      "/api/pane/:paneId/keys",
+      "/api/pane/:paneId/rename",
+      "/api/pane/:paneId/reply",
+      "/api/pane/:paneId/upload",
       // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
       // than exempted. It is session-scoped and read-gated, and it registers no crew route of its
       // own: a lead reaches a peer's through the peer's existing `/crew/v1/*` dispatch.
@@ -690,8 +703,10 @@ describe("solo zero-tax — routes", () => {
       "/api/stt",
       "/api/subscribe",
       "/api/tab",
+      "/api/tab/:tabId/close",
+      "/api/tab/:tabId/rename",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
-      // list, named here rather than exempted. Write-gated through the same closure a send rides,
+      // list, named here rather than exempted. Write-gated through the same gate a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
       // (`collie crew update`), never over the link (ADR 0016).
       "/api/update",
@@ -703,25 +718,87 @@ describe("solo zero-tax — routes", () => {
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",
       "/api/workspace",
+      // The Changes view asked by workspace (ADR 0065): the same read as the pane route's `changes`,
+      // read-gated and forwarded with `?host=` to the member that owns the space.
+      "/api/workspace/:workspaceId/changes",
+      // The Files view asked by workspace (ADR 0083): the pane route's `files`, by space, gated and
+      // forwarded the same way.
+      "/api/workspace/:workspaceId/files",
+      "/api/workspace/:workspaceId/worktree",
+      "/api/workspace/:workspaceId/worktree/open",
+      "/api/workspace/:workspaceId/worktrees",
       "/auth",
-      "/auth/*",
+      "/auth/*path",
     ]);
+  });
+
+  // The routes moved onto a matcher, and the regex grammar stayed in server.ts as the one written
+  // statement of the session routes' shape (`SESSION_ROUTE_GRAMMAR`), which `crew/forward.test.ts`
+  // pins the crew grammar to. This pins the route map to the same grammar, over paths chosen to sit
+  // on every edge the old `([^/]+)` regexes had: dots, percent-escapes (a malformed one included),
+  // an empty segment, a trailing slash, an unknown action, one segment too many.
+  test("the session routes accept exactly what their regex grammar accepts", () => {
+    const matcher = rawPathMatcher<string>();
+    const walk = (map: RouteMap, prefix: string): void => {
+      for (const [k, v] of Object.entries(map)) {
+        if (v instanceof Route) matcher.add(v.pattern, `${prefix}${k}`);
+        else walk(v, `${prefix}${k}.`);
+      }
+    };
+    walk(routes, "");
+    const routedTo = (path: string) => matcher.match(new URL(`http://collie.invalid${path}`))?.data;
+    const ids = ["w1:p1", "w1.p1", "a%2Fb", "%E0%A4%A", "..x", "x."];
+    const tails = ["", "/", "/reply", "/bogus", "/reply/x", "/changes", "/files", "/worktree", "/worktree/open",
+      "/worktrees", "/rename", "/close", "/history"];
+    const grammar: [RegExp, string][] = [
+      [SESSION_ROUTE_GRAMMAR.pane, "/api/pane/"],
+      [SESSION_ROUTE_GRAMMAR.tab, "/api/tab/"],
+      [SESSION_ROUTE_GRAMMAR.blob, "/api/blobs/"],
+      [SESSION_ROUTE_GRAMMAR.worktrees, "/api/workspace/"],
+      [SESSION_ROUTE_GRAMMAR.worktree, "/api/workspace/"],
+      [SESSION_ROUTE_GRAMMAR.workspaceChanges, "/api/workspace/"],
+      [SESSION_ROUTE_GRAMMAR.workspaceFiles, "/api/workspace/"],
+    ];
+    let checked = 0;
+    for (const [regex, base] of grammar) {
+      for (const id of [...ids, ""]) {
+        for (const tail of tails) {
+          const path = `${base}${id}${tail}`;
+          if (!regex.test(path)) continue;
+          // A path the grammar accepts lands on a session route, never on the app shell.
+          expect(routedTo(path) ?? "nothing").not.toBe("app.shell");
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(40);
+    // And the reverse: a path no regex accepts lands on the app shell, as it fell to `serveStatic`.
+    for (const path of ["/api/pane/", "/api/pane/x/", "/api/pane/x/bogus", "/api/pane/x/reply/y", "/api/tab/x",
+      "/api/tab/x/open", "/api/blobs/", "/api/blobs/x/y", "/api/workspace/x", "/api/workspace/x/changes/y",
+      "/API/snapshot", "/api/snapshot/", "//api/snapshot"]) {
+      expect(grammar.some(([regex]) => regex.test(path))).toBe(false);
+      expect(routedTo(path)).toBe("app.shell");
+    }
   });
 
   // §11's actual promise, and it is about the PREFIX: `/crew/v1/*` is not routed here on any
   // instance, solo or otherwise — it is declared in `bridge/crew/router.ts` and reached through the
-  // `crewRouter` closure, which is what lets this file prove by grep that server.ts names no crew
-  // path. A front-door route whose NAME merely contained the word would be a different thing
-  // entirely and would be pinned by the list above; matching on the substring would have conflated
-  // the two.
+  // `crewRouter` closure, which is what lets this test prove that the front door names no crew path.
+  // A front-door route whose NAME merely contained the word would be a different thing entirely and
+  // would be pinned by the list above; matching on the substring would have conflated the two.
   //
   // 1.7.0's prefix is asserted too, and since 1.9.0 dropped the overlap (ADR 0039) it is absent on
-  // both counts: server.ts never named it, and now nothing routes it either.
+  // both counts: the front door never named it, and now nothing routes it either.
   test("no crew prefix is routed at all, and 1.7.0's is gone with the overlap", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     expect(declaredRoutes().filter((r) => r.startsWith("/crew") || r.startsWith("/pack"))).toEqual([]);
-    expect(src).not.toMatch(/"\/crew/);
-    expect(src).not.toMatch(/"\/pack/);
+    const httpLayer = readdirSync(join(import.meta.dir, "http"), { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => join("http", f));
+    for (const rel of ["server.ts", ...httpLayer]) {
+      const src = readFileSync(join(import.meta.dir, rel), "utf8");
+      expect(src).not.toMatch(/"\/crew/);
+      expect(src).not.toMatch(/"\/pack/);
+    }
   });
 });
 

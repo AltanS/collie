@@ -28,6 +28,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie build` can build the web app from another directory.** Set `COLLIE_WEB_SRC` to a directory name next to `web/`, or put that name on one line in a `.collie-web-src` file at the checkout root, and the install, typecheck and Vite build run there instead. The bundle still lands in `web/dist`, so the bridge serves it the same way. The environment variable wins over the file, and the file wins over `web`. A value that is not a plain directory name holding a `package.json` stops the build right after the version gate and names the setting. The build now prints which web source it uses.
 - **`COLLIE_WEB_SRC` is a setting in `config.toml`.** It sits under `[update]` as `web_src`, so `collie config show` lists it with its source and `collie config check` validates the file that holds it.
 
+### Changed
+
+- **The bridge routes its HTTP requests through `remix/router`.** Each route now lives in one typed table, `bridge/http/routes.ts`, with one controller per family and the gates as middleware. Every path, method, status, header and body answers as before, so nothing changes for a phone, a browser or a crew lead.
+
 ## [1.17.0] - 2026-10-06
 
 ### Added

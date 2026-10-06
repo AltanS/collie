@@ -105,6 +105,58 @@ import {
   type SnapshotResponse,
 } from "./types.ts";
 import type { StateEngine } from "./state-engine.ts";
+import { routes } from "./http/routes.ts";
+
+// ── Reading the HTTP layer's source ──────────────────────────────────────────────────────────
+// `bun test` cannot stand up `Bun.serve` (CLAUDE.md), so the wiring the tests below care about is
+// pinned on the source. Since the dispatch moved onto `remix/router` (2026-10-06) that source is
+// server.ts plus `bridge/http/`: the route map, the middleware, and one controller per family.
+const HTTP_FILES = [
+  "server.ts",
+  "http/deps.ts",
+  "http/respond.ts",
+  "http/routes.ts",
+  "http/router.ts",
+  "http/scope.ts",
+  "http/middleware/access.ts",
+  "http/middleware/deposed.ts",
+  "http/middleware/guard.ts",
+  "http/middleware/loopback-peer.ts",
+  "http/middleware/method-parity.ts",
+  "http/middleware/raw-path.ts",
+  "http/middleware/secure.ts",
+  "http/controllers/config.ts",
+  "http/controllers/crew-and-machines.ts",
+  "http/controllers/health.ts",
+  "http/controllers/launch.ts",
+  "http/controllers/notifications.ts",
+  "http/controllers/pairing.ts",
+  "http/controllers/pane.ts",
+  "http/controllers/snapshot.ts",
+  "http/controllers/static.ts",
+  "http/controllers/stt.ts",
+  "http/controllers/tab.ts",
+  "http/controllers/update.ts",
+  "http/controllers/workspace.ts",
+];
+
+/** One file of the HTTP layer, relative to `bridge/`. */
+function httpFile(rel: string): string {
+  return readFileSync(join(import.meta.dir, rel), "utf8");
+}
+
+/** The whole HTTP layer's source, every file in {@link HTTP_FILES}, concatenated. */
+function httpSource(): string {
+  return HTTP_FILES.map(httpFile).join("\n");
+}
+
+/** One action of a controller: from its key to the close of its entry in `actions`. */
+function actionSource(controller: string, action: string): string {
+  const src = httpFile(`http/controllers/${controller}`);
+  const start = src.search(new RegExp(`^      (async )?${action}(: \\{|\\()`, "m"));
+  expect(start).toBeGreaterThan(-1);
+  return src.slice(start, src.indexOf("\n      },\n", start));
+}
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -1657,12 +1709,17 @@ describe("isLoopbackPeer", () => {
   // would be refused before the surface that actually admits it — pinned mutual TLS plus the crew
   // secret — ever ran, and the crew link would be dead on a peer.
   test("the peer check runs AFTER the federated surface, so /crew/v1/* is never refused by it", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    // The crew surface answers in server.ts BEFORE the front door's router is consulted, and the peer
+    // check is that router's middleware — so it only ever sees what the crew surface declined.
+    const src = httpFile("server.ts");
     const dispatch = src.indexOf("const packed = await crewHandler(req, url);");
-    const peerCheck = src.indexOf("isLoopbackPeer(server.requestIP(req)?.address)");
+    const frontDoor = src.indexOf("return dispatchRouted(router, req, url);");
     expect(dispatch).toBeGreaterThan(-1);
-    expect(peerCheck).toBeGreaterThan(-1);
-    expect(peerCheck).toBeGreaterThan(dispatch);
+    expect(frontDoor).toBeGreaterThan(dispatch);
+    expect(httpFile("http/router.ts")).toContain("loopbackPeer(deps),");
+    // The address is the kernel's, read off the Bun server, never a header.
+    expect(httpFile("http/middleware/loopback-peer.ts")).toContain("isLoopbackPeer(requestIP(req)?.address)");
+    expect(src).toContain("requestIP: (req) => server.requestIP(req),");
   });
 });
 
@@ -2398,8 +2455,7 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
   });
 
   test("the route reads the resolved host together with the view, and hands both to the merge", () => {
-    const handler = src.slice(src.indexOf('if (pathname === "/api/snapshot")'));
-    const route = handler.slice(0, handler.indexOf("// ── Session-scoped routes"));
+    const route = httpFile("http/controllers/snapshot.ts");
     // The two params compose in ONE expression, from the host the request already resolved.
     expect(route).toContain('const plan = snapshotPlan(host.kind === "member" ? host.id : null, selectView(url));');
     expect(route).toContain("localSnapshot(plan.local.session, device.enforced ? device : null, plan.local.widen)");
@@ -2417,7 +2473,7 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
 });
 
 describe("the host gate — `?host=` selects among enrolled members and nothing else", () => {
-  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+  const src = httpSource();
 
   test("the selector is parsed only when a crew surface is mounted", () => {
     // The same trust-store-existence predicate the crew router mounts on: a solo instance never
@@ -2471,8 +2527,15 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
   test("a peer's own routes are the SAME closure the browser's are (§5), with two callers", () => {
     // The 1:1 rule: `/crew/v1/pane/:id/reply` and `/api/pane/:id/reply` are not two handlers that
     // agree — they are one block reached by two callers. Exactly one definition, exactly two calls.
-    expect([...src.matchAll(/const serveSessionRoute = async/g)]).toHaveLength(1);
-    expect([...src.matchAll(/serveSessionRoute\(\s*req/g)]).toHaveLength(2);
+    // Since the routes moved onto `remix/router`: ONE set of session controllers, mapped by one
+    // function onto exactly two routers — the front door's (the browser caller) and the crew's own
+    // session router (the crew caller) — and the crew dispatch reaches the latter through
+    // `serveSessionRoute`, defined once and called once.
+    const router = httpFile("http/router.ts");
+    expect([...router.matchAll(/function mapSessionRoutes\(/g)]).toHaveLength(1);
+    expect([...router.matchAll(/mapSessionRoutes\(router, deps, \{/g)]).toHaveLength(2);
+    expect([...src.matchAll(/const serveSessionRoute = \(/g)]).toHaveLength(1);
+    expect([...src.matchAll(/serveSessionRoute\(\s*req/g)]).toHaveLength(1);
     // The peer's caller supplies its OWN gate and its OWN audit attribution — the lead's verdict is
     // never an input, and the write lands in the peer's log marked crew-originated (§12).
     expect(src).toContain("crewGate(level, cfg, device)");
@@ -2486,7 +2549,8 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // be exactly the "one shared fact" ADR 0003 forbids.
     const calls = [...src.matchAll(/activity\.noteSeen\(/g)];
     expect(calls).toHaveLength(1);
-    expect(src.indexOf("activity.noteSeen(")).toBeGreaterThan(src.indexOf("await caller.resolve();"));
+    const pane = httpFile("http/controllers/pane.ts");
+    expect(pane.indexOf("activity.noteSeen(")).toBeGreaterThan(pane.indexOf("await caller.resolve();"));
     // And it is still keyed by (session, paneId) alone: the ledger's host dimension exists for the
     // LEAD's own bookkeeping, not for a peer marking its own panes (bridge/activity.ts).
     expect(src).toContain("activity.noteSeen(session, paneId)");
@@ -2517,40 +2581,40 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   // `guard(req, cfg, …)`, the two checks drift and this catches it, which is the thing a behavioural
   // matrix over one closure never could.
   test("same device auth as pane input: one gate expression, two call sites, no second guard() call", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const src = httpSource();
     // Defined once…
-    expect([...src.matchAll(/const browserGate = \(level: GateLevel\)/g)]).toHaveLength(1);
+    expect([...src.matchAll(/export function browserGate\(/g)]).toHaveLength(1);
     // …handed to the pane family…
-    expect(src).toContain("gate: browserGate,");
-    // …and used by the update route. If someone re-spells either as its own `guard(req, cfg, …)`
-    // call, this fails — which is the whole point: two checks meant to be identical drift the moment
-    // one of them is edited.
-    expect(src).toContain('const denied = browserGate("write");');
-    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
-    expect(updateAt).toBeGreaterThan(0);
-    const handler = src.slice(updateAt, updateAt + 2000);
+    expect(httpFile("http/scope.ts")).toContain("gate: browserGate(req, cfg, pairing),");
+    // …and used by the update route, through the `gate()` middleware, which calls that same
+    // function. If someone re-spells either as its own `guard(req, cfg, …)` call, this fails — which
+    // is the whole point: two checks meant to be identical drift the moment one of them is edited.
+    expect(httpFile("http/middleware/guard.ts")).toContain(
+      "browserGate(context.request, deps.cfg, deps.pairing)(level) ?? next()",
+    );
+    const handler = actionSource("update.ts", "start");
+    expect(handler).toContain('middleware: [gate(deps, "write")],');
     expect(handler).not.toContain("checkAccess(");
     expect(handler).not.toContain("deviceAuth(");
     expect(handler).not.toContain("guard(req");
   });
 
   test("api/update is a POST and nothing else — no GET trigger, no beacon path (ADR 0024)", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const routes = [...src.matchAll(/pathname === "\/api\/update"[^)]*\)/g)].map((m) => m[0]);
-    expect(routes).toHaveLength(1);
-    expect(routes[0]).toContain('req.method === "POST"');
+    // One route at `/api/update` in the whole map, and it is a POST.
+    const all = Object.values(routes).flatMap((r) => ("pattern" in r ? [r] : Object.values(r)));
+    const atUpdate = all.filter((r) => r.pattern.source === "/api/update");
+    expect(atUpdate).toHaveLength(1);
+    expect(atUpdate[0]?.method).toBe("POST");
     // And the read beside it is a read: the card's poll target takes no action and starts nothing.
-    expect(src).toContain('if (pathname === "/api/update/check" && req.method === "GET")');
-    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
-    const checkHandler = src.slice(checkAt, checkAt + 1200);
-    expect(checkHandler).toContain('guard(req, cfg, "read", pairing)');
+    expect(routes.update.status.method).toBe("GET");
+    expect(routes.update.status.pattern.source).toBe("/api/update/check");
+    const checkHandler = actionSource("update.ts", "status");
+    expect(checkHandler).toContain('middleware: [gate(deps, "read")],');
     expect(checkHandler).not.toContain("updateAction.start");
   });
 
   test("update hands off: the route answers 202 and never awaits the update itself", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
-    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    const handler = actionSource("update.ts", "start");
     // The handoff is a plain call — nothing here awaits the child, and the answer carries the 202
     // that says "started", not the 200 that would say "finished".
     expect(handler).toContain("const started = action.start({ major: verdict.major, runId });");
@@ -2559,9 +2623,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   });
 
   test("update check GET: an unknown latest triggers a bounded on-demand poll before answering", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
-    const checkHandler = src.slice(checkAt, checkAt + 2000);
+    const checkHandler = actionSource("update.ts", "status");
     // Right after a restart `latest` is null until the monitor's own delayed first poll — this read
     // must not answer "isn't known yet" over a healthy network just because it landed a second early,
     // so it triggers the SAME `checkRelease()` the timer would eventually run (de-duped there, not
@@ -2578,9 +2640,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   // the same way every other assertion in this block is — and the decisions it delegates to are
   // exercised for real in `update-action.test.ts` and `lead.test.ts`.
   test("update check crew array: the key is always present, [] on a solo instance and on a peer", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
-    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    const checkHandler = actionSource("update.ts", "status");
     // `?? []` is the whole of it: a solo instance and a peer build no `crewLead`, so the key is an
     // empty array rather than an absent one — `preflight: null`'s stated reason, one field over.
     expect(checkHandler).toContain("crew: opts.crewLead?.updateRows() ?? []");
@@ -2589,9 +2649,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   });
 
   test("update check dials nobody: the rows are read from the sweep's bank, never fetched", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
-    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    const checkHandler = actionSource("update.ts", "status");
     // The shape `status-wire.test.ts` uses: the surface the phone polls must not be able to make the
     // lead dial a member. The ONE thing here that reaches a peer is the sweep — the same sweep the
     // poll tick already runs, asked for one immediate pass and bounded — and nothing else.
@@ -2602,17 +2660,13 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   });
 
   test("update check preflight fresh: the on-demand read fires ONE sweep asking for a fresh check", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
-    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    const checkHandler = actionSource("update.ts", "status");
     expect(checkHandler).toContain("opts.crewLead?.sweep({ freshPreflight: true })");
     expect([...checkHandler.matchAll(/sweep\(/g)]).toHaveLength(1);
   });
 
   test("update check answers a stale asOf, never a fabricated green: the wait is the existing bound", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
-    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    const checkHandler = actionSource("update.ts", "status");
     // The same race and the same constant the release check already uses. Past it the route answers
     // with what the lead has — whose `asOf` is the peer's own stamp and says how old it is.
     const races = [...checkHandler.matchAll(/Promise\.race\(\[/g)];
@@ -2623,22 +2677,17 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   });
 
   test("the crew gates the confirm too: POST api/update reads the same banked rows", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
-    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    const handler = actionSource("update.ts", "start");
     // One confirm covers the crew, so one verdict covers the crew — and it is the SAME rows the
     // card showed, from the same bank, decided by the one merge function in `update-action.ts`.
     expect(handler).toContain("crew: opts.crewLead?.updateRows() ?? []");
   });
 
   test("the band's dismiss carries a scope, and the monitor decides what it costs", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const at = src.indexOf('if (pathname === "/api/update/dismiss" && req.method === "POST")');
-    expect(at).toBeGreaterThan(0);
-    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    const handler = actionSource("update.ts", "dismiss");
     // Read-level, exactly like the snooze beside it — declining a notification about your own
     // machine is not terminal-driving.
-    expect(handler).toContain('guard(req, cfg, "read", pairing)');
+    expect(handler).toContain('middleware: [gate(deps, "read")],');
     // One call, and the monitor is what decides whether the digest is snoozed with it. If the route
     // ever spells that itself, the rule can be edited apart from the record it belongs to.
     expect(handler).toContain('await updateMonitor.dismiss(version, scope ?? "offer")');
@@ -2659,7 +2708,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
   });
 
   test("update status: the run record reaches the phone through the status the card already polls", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const src = httpSource();
     // One status object, three surfaces: the snapshot's `update`, the forced check, and the card's
     // read. The run record rides all three rather than acquiring a fourth endpoint with its own
     // shape — the nine states are `bridge/update-run.ts`'s, and nothing re-spells them here.
@@ -3421,8 +3470,9 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
   });
 
   test("the session dispatch reaches the folder routes through this one function", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    // Wired once, inside serveSessionRoute, so a crew peer's dispatch reaches it too (§5).
+    const src = httpSource();
+    // Wired once, in the workspace controller both routers map, so a crew peer's dispatch reaches it
+    // too (§5).
     expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders\)/g)]).toHaveLength(1);
     // And the create is handed the same store, so a peer records into its OWN list.
     expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);");
@@ -3599,10 +3649,7 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
   // that the route asks for the read tier and resolves through the host gate, so a `?host=` blob is
   // fetched from the member whose journal named it rather than off the lead's own disk.
   test("the route is gated as a READ and resolves through the host gate", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const start = src.indexOf("const blobMatch = pathname.match(BLOB_ROUTE);");
-    expect(start).toBeGreaterThan(0);
-    const block = src.slice(start, src.indexOf("\n    }", start));
+    const block = actionSource("pane.ts", "blob");
     expect(block).toContain('caller.gate("read")');
     expect(block).not.toContain('caller.gate("write")');
     expect(block).toContain("await caller.resolve()");
@@ -3615,7 +3662,7 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
 
 describe("update status peers — the legs of a crew-wide run", () => {
   test("update status peers ride the run record BOTH surfaces already poll, from one composer", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const src = httpSource();
     // ONE composer, and both readers take it. The band reads the snapshot's `update`; the Updates
     // page reads `GET /api/update/check`. Two compositions would be two objects that could disagree
     // about the same run.
@@ -3738,9 +3785,7 @@ describe("update status peers — the legs of a crew-wide run", () => {
   });
 
   test("the run id is minted once per confirm, on the server, and rides both legs of the start", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
-    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    const handler = actionSource("update.ts", "start");
     expect(handler).toContain("const runId = action.newRunId();");
     expect(handler).toContain("action.beginCrewRun?.({ runId, to: verdict.to })");
     // A peers-only run starts no updater on this machine.
@@ -3752,9 +3797,7 @@ describe("update status peers — the legs of a crew-wide run", () => {
     // `run` in the 202 is `status.run`, read BEFORE the start: on a lead that has updated before it is
     // the LAST run's record, and the new run writes its own a beat later. So the new run's id travels
     // on its own, or the phone keys its claim on the old record and shows its Done (2026-09-26).
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
-    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    const handler = actionSource("update.ts", "start");
     const accepted = [...handler.matchAll(/return json\(\s*(\{[^}]*\})/g)].map((m) => m[1] ?? "");
     expect(accepted).toHaveLength(2);
     for (const body of accepted) {
@@ -3873,7 +3916,7 @@ describe("an input written to a pane makes its engine hot", () => {
   });
 
   test("the reply and keys routes, and the lead's forward of them, all pass through it", () => {
-    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const src = httpSource();
     // On the owning host: the browser's request and a member's crew dispatch share this block.
     expect(src).toContain("return afterPaneInput(rt.engine, await replyPane(");
     expect(src).toContain("return afterPaneInput(rt.engine, await keysPane(");

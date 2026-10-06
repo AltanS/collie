@@ -36,7 +36,8 @@
     "commander": "^15.0.0",
     "ink": "^7.1.1",
     "qrcode-terminal": "^0.12.0",
-    "react": "^19.2.8"
+    "react": "^19.2.8",
+    "remix": "3.0.0"
   },
   "optionalDependencies": {
     "web-push": "^3.6.7"

@@ -490,10 +490,15 @@ describe("pairing never crosses the crew seam", () => {
   // So the arity is pinned here, at the source, exactly as the crew seam above is. If you are
   // reading this because the test failed: you added a `guard(` call without `pairing`, and unless
   // your route is genuinely not a write path, that is the bug.
-  test("every guard() call in server.ts passes the pairing gate", () => {
-    // Comment lines are dropped first — this file's prose mentions `guard()` and `guard(…, "write")`
-    // many times, and those are not call sites.
-    const code = source
+  test("every guard() call in server.ts and bridge/http/ passes the pairing gate", () => {
+    // The browser routes live in `bridge/http/` since the dispatch moved onto `remix/router`
+    // (2026-10-06), so the scan covers that tree too. Comment lines are dropped first — this prose
+    // mentions `guard()` and `guard(…, "write")` many times, and those are not call sites.
+    const httpLayer = readdirSync(join(import.meta.dir, "http"), { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => readFileSync(join(import.meta.dir, "http", f), "utf8"));
+    const code = [source, ...httpLayer]
+      .join("\n")
       .split("\n")
       .filter((line) => {
         const t = line.trim();
@@ -516,7 +521,9 @@ describe("pairing never crosses the crew seam", () => {
 
     // A negative control on the scanner itself: if it found nothing, it is broken, and a broken
     // scanner passes this test vacuously forever.
-    expect(callArgs.length).toBeGreaterThanOrEqual(8);
+    // Four since the gate became one middleware (`browserGate`) plus the three routes that keep it
+    // inline because they answer something first (devices, revoke, machines).
+    expect(callArgs.length).toBeGreaterThanOrEqual(4);
     const unguarded = callArgs.filter((args) => !/\bpairing\b/.test(args));
     expect(unguarded).toEqual([]);
     // Every call is the browser gate, and the browser gate is the only caller — a crew caller

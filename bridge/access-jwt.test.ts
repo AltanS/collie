@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { JsonObject, JsonValue } from "./json.ts";
 import {
@@ -543,21 +543,37 @@ describe("AccessGate", () => {
 });
 
 // The wiring, pinned by source: no `startServer` harness exists in this suite, so this proves the
-// gate sits after the peer check and before the deposed page and every route.
+// gate sits after the peer check and before the deposed page and every route. Since the dispatch
+// moved onto `remix/router` (2026-10-06) the order is the front door's middleware array, and every
+// route — `/api/health` included — runs after all of it.
 test("server.ts consults the Access gate before the deposed page and the routes", () => {
-  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-  const peer = src.indexOf('text("non-loopback peer rejected", 403)');
-  const gate = src.indexOf("await accessGate.admit(req, pathname)");
-  const deposed = src.indexOf("opts.deposed?.(req, url)");
-  const health = src.indexOf('pathname === "/api/health"');
+  const read = (rel: string) => readFileSync(join(import.meta.dir, rel), "utf8");
+  const router = read("http/router.ts");
+  const chain = router.slice(router.indexOf("middleware: [\n      routedUrl(),"));
+  const peer = chain.indexOf("loopbackPeer(deps),");
+  const gate = chain.indexOf("accessJwt(deps),");
+  const deposed = chain.indexOf("deposedPage(deps.opts),");
+  const firstRoute = router.indexOf("router.map(", router.indexOf("export function createBridgeRouter"));
+  const health = router.indexOf("router.map(routes.health, healthAction(deps));");
   expect(peer).toBeGreaterThan(0);
   expect(gate).toBeGreaterThan(peer);
   expect(deposed).toBeGreaterThan(gate);
-  expect(health).toBeGreaterThan(gate);
+  // Router middleware runs before any route; the health check is a route, mapped after the chain.
+  expect(health).toBeGreaterThan(router.indexOf("deposedPage(deps.opts),"));
+  expect(firstRoute).toBe(health);
+  // Each middleware does what its name says, through the existing helpers.
+  expect(read("http/middleware/loopback-peer.ts")).toContain('text("non-loopback peer rejected", 403)');
+  expect(read("http/middleware/access.ts")).toContain("await accessGate.admit(req, pathname)");
+  expect(read("http/middleware/deposed.ts")).toContain("opts.deposed?.(req, url)");
   // ADR 0081 says the gate checks every request, including each poll, because the bridge holds no
   // stream open. A WebSocket upgrade or an event stream would be checked once, at connect, and keep
   // running past the token's expiry: adding one must revisit the ADR, and this line fails first.
-  expect(src).not.toMatch(/\.upgrade\(|websocket\s*:|text\/event-stream/);
+  const httpLayer = readdirSync(join(import.meta.dir, "http"), { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => join("http", f));
+  for (const rel of ["server.ts", ...httpLayer]) {
+    expect(read(rel)).not.toMatch(/\.upgrade\(|websocket\s*:|text\/event-stream/);
+  }
 });
 
 describe("DOOR_PRESETS", () => {
