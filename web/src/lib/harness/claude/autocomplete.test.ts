@@ -6,7 +6,7 @@ import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectAutocompleteRegion } from "./autocomplete";
 import { extractInputDraft, extractStatusLines, hasInputBox, inputBoxTail, stripChrome } from "./chrome";
-import { claudeBuildBlocks } from "./index";
+import { claudeAdapter, claudeBuildBlocks } from "./index";
 
 // The slash-autocomplete grammar and, more importantly, what it must NOT cost: the input box under
 // the popup has to stay detectable. That is the bug this module exists for — the popup is taller than
@@ -271,5 +271,85 @@ describe("claudeBuildBlocks", () => {
     // claude--send-inflight.txt carries the same list painted ABOVE the input box. It is chrome, it
     // has always been stripped as chrome, and this tail-anchored grammar must not claim it.
     expect(claudeBuildBlocks(load("claude--send-inflight.txt")).map((b) => b.kind)).toEqual(["raw"]);
+  });
+});
+
+describe("the pointed shape (Claude Code 2.1.291)", () => {
+  // 2.1.291 marks the selected entry with "❯" and indents every entry four columns ("  ❯ /model …",
+  // "    /mobile …"). Before the grammar learned it, ten lab captures fell to raw, and on six of them the
+  // pointer row also hid the box: step 1 of the locator stepped over the "❯" row as a statusline mark,
+  // the tail was not a statusline, so the box was refused and `composerReady` read false while the
+  // operator typed a slash command. The old two-space captures above still lift unchanged.
+  const POINTED: { fixture: string; draft: string; entries: number }[] = [
+    { fixture: "claude-lab--popup-slash-all--w40.txt", draft: "/", entries: 12 },
+    { fixture: "claude-lab--popup-slash-all--w82.txt", draft: "/", entries: 14 },
+    { fixture: "claude-lab--popup-slash-all--w82--h30.txt", draft: "/", entries: 8 },
+    { fixture: "claude-lab--popup-slash-all-clipped--w82.txt", draft: "/packages", entries: 2 },
+    { fixture: "claude-lab--popup-slash-clipped--w60.txt", draft: "/refactor", entries: 4 },
+    { fixture: "claude-lab--popup-slash-clipped--w82.txt", draft: "/refactor", entries: 4 },
+    { fixture: "claude-lab--popup-slash-clipped--w120.txt", draft: "/refactor", entries: 4 },
+    { fixture: "claude-lab--popup-slash-clipped--w200.txt", draft: "/refactor", entries: 4 },
+    { fixture: "claude-lab--popup-slash-mo--w82.txt", draft: "/mo", entries: 12 },
+    { fixture: "claude-lab--popup-slash-model-exact--w82.txt", draft: "/model", entries: 11 },
+    { fixture: "claude-lab--working-popup-open--w82.txt", draft: "/ref", entries: 8 },
+  ];
+
+  it.each(POINTED)("$fixture: the box stands and the popup lifts", ({ fixture, draft, entries }) => {
+    const screenLines = load(fixture);
+    expect(claudeAdapter.composerReady!(screenLines)).toBe(true);
+    expect(inputBoxTail(screenLines)).toBe("autocomplete");
+    expect(extractInputDraft(screenLines)).toBe(draft);
+    expect(claudeBuildBlocks(screenLines).map((b) => b.kind)).toEqual(["raw", "autocomplete"]);
+    const model = detectAutocompleteRegion(screenLines)!.model;
+    expect(model.entries).toHaveLength(entries);
+    // The pointer is a selection mark: it never reaches a name, and every entry keeps its blurb.
+    expect(model.entries.every((e) => e.name.startsWith("/") || e.name.startsWith("…"))).toBe(true);
+    expect(model.entries.every((e) => e.description.length > 0)).toBe(true);
+  });
+
+  it("reads the pointed entry and its wrapped description like any other", () => {
+    const entries = detectAutocompleteRegion(load("claude-lab--popup-slash-model-exact--w82.txt"))!.model.entries;
+    expect(entries[0]).toEqual({ name: "/model", description: "Set the AI model for Claude Code (currently Sonnet 5.5)" });
+    expect(entries[1]).toEqual({
+      name: "/modelcheck",
+      description: "Print a note about model configuration for this lab (project)",
+    });
+  });
+
+  const pointed = (name: string, description: string) => `  ❯ ${name.padEnd(16)}${description}`;
+  const plain = (name: string, description: string) => `    ${name.padEnd(16)}${description}`;
+
+  it("the pointer may sit on any entry, and a continuation lands on the four-column layout", () => {
+    const rows = [plain("/rename", "Rename the"), " ".repeat(20) + "conversation", pointed("/resume", "Resume it")];
+    const region = detectAutocompleteRegion(screen("/re", rows));
+    expect(region!.model.entries).toEqual([
+      { name: "/rename", description: "Rename the conversation" },
+      { name: "/resume", description: "Resume it" },
+    ]);
+    expect(hasInputBox(screen("/re", rows))).toBe(true);
+  });
+
+  it("a four-column run needs exactly one pointer", () => {
+    expect(detectAutocompleteRegion(screen("/re", [plain("/rename", "Rename"), plain("/resume", "Resume")]))).toBeNull();
+    expect(
+      detectAutocompleteRegion(screen("/re", [pointed("/rename", "Rename"), pointed("/resume", "Resume")])),
+    ).toBeNull();
+  });
+
+  it("the two shapes never mix in one run", () => {
+    const old = `  ${"/resume".padEnd(18)}Resume`; // two-space lead, same description column
+    expect(detectAutocompleteRegion(screen("/re", [pointed("/rename", "Rename"), old]))).toBeNull();
+  });
+
+  it("a pointer row the popup grammar did not read is stepped over only inside a statusline", () => {
+    // Taller than MAX_STATUS_LINES, so no statusline can own the "❯" rows. Two pointers are not a
+    // popup, and a pointed run under a prose draft is not one either: the rows are nobody's and the
+    // box is refused, the designed failure (a stalled send), never a send typed under something unread.
+    const rest = Array.from({ length: 9 }, (_, i) => plain(`/cmd${i}`, "Does the thing"));
+    expect(hasInputBox(screen("/c", [pointed("/rename", "Rename"), ...rest]))).toBe(true);
+    expect(hasInputBox(screen("/c", [pointed("/rename", "Rename"), pointed("/resume", "Resume"), ...rest]))).toBe(
+      false,
+    );
+    expect(hasInputBox(screen("write the tests", [pointed("/rename", "Rename"), ...rest]))).toBe(false);
   });
 });

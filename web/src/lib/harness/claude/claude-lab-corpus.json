@@ -1253,20 +1253,13 @@
       "cols": 40,
       "rows": 49,
       "state": "popup-slash-all",
-      "notes": "'/' alone: full command list popup under the box",
+      "notes": "'/' alone: full command list popup under the box [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -1274,20 +1267,13 @@
       "cols": 82,
       "rows": 30,
       "state": "popup-slash-all",
-      "notes": "'/' alone on a 30-row pane: popup taller than the pane, clipped",
+      "notes": "'/' alone on a 30-row pane: popup taller than the pane, clipped [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -1295,20 +1281,13 @@
       "cols": 82,
       "rows": 49,
       "state": "popup-slash-all",
-      "notes": "'/' alone: full command list popup under the box",
+      "notes": "'/' alone: full command list popup under the box [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -1316,20 +1295,13 @@
       "cols": 82,
       "rows": 49,
       "state": "popup-slash-all-clipped",
-      "notes": "'/packages': every visible name left-clipped with '…'",
+      "notes": "'/packages': every visible name left-clipped with '…' [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/packages",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": true,
-        "draft": "/packages",
-        "tail": "statusline"
       }
     },
     {
@@ -1337,20 +1309,13 @@
       "cols": 120,
       "rows": 49,
       "state": "popup-slash-clipped",
-      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": true,
-        "draft": "/refactor",
-        "tail": "statusline"
       }
     },
     {
@@ -1358,20 +1323,13 @@
       "cols": 200,
       "rows": 49,
       "state": "popup-slash-clipped",
-      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": true,
-        "draft": "/refactor",
-        "tail": "statusline"
       }
     },
     {
@@ -1379,20 +1337,13 @@
       "cols": 60,
       "rows": 49,
       "state": "popup-slash-clipped",
-      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": true,
-        "draft": "/refactor",
-        "tail": "statusline"
       }
     },
     {
@@ -1400,20 +1351,13 @@
       "cols": 82,
       "rows": 49,
       "state": "popup-slash-clipped",
-      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/refactor",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownTailGap": "2.1.291 paints the popup in a shape autocomplete.ts does not read (❯ pointer on the first entry, four-space entry rows), so the rows under the box fall to the bounded statusline run. The box and the draft are read correctly; only the tail label differs, and the popup stays on the raw mirror.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": true,
-        "draft": "/refactor",
-        "tail": "statusline"
       }
     },
     {
@@ -1421,20 +1365,13 @@
       "cols": 82,
       "rows": 49,
       "state": "popup-slash-mo",
-      "notes": "'/mo' prefix popup; contains a left-clipped name '…nthropic-skills:import-memory'",
+      "notes": "'/mo' prefix popup; contains a left-clipped name '…nthropic-skills:import-memory' [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/mo",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -1442,20 +1379,13 @@
       "cols": 82,
       "rows": 49,
       "state": "popup-slash-model-exact",
-      "notes": "'/model' typed exactly, fuzzy popup still open",
+      "notes": "'/model' typed exactly, fuzzy popup still open [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/model",
         "tail": "autocomplete",
         "dialogLive": false,
         "blockKind": "autocomplete"
-      },
-      "knownStall": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape. The locator also reports no box on this capture (hasInputBox false, probed 2026-10-06), so composerReady is false and a send from the phone would stall while the popup is open. Removing the pointer alone does not bring the box back, so the stall is not the pointer glyph by itself.",
-      "knownRaw": "2.1.291 paints a ❯ pointer in front of the highlighted popup row and indents every entry row to four spaces ('  ❯ /refactor-module-boundaries', '    /…'). autocomplete.ts reads an entry as exactly two leading spaces and documents that selection has no pointer glyph or indent change, so the run is no longer recognised and the popup stays on the raw mirror. Candidate grammar: the same autocomplete grammar taught the '  ❯ ' first row and the four-space entry shape.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
       }
     },
     {
@@ -1711,19 +1641,13 @@
       "cols": 82,
       "rows": 49,
       "state": "working-popup-open",
-      "notes": "slash popup with clipped names painted ABOVE the box while a tool runs; the tail under the box is the statusline",
+      "notes": "slash popup with clipped names painted ABOVE the box while a tool runs [2026-10-06, Claude Code 2.1.291 shape (❯ pointer on the selected row, four-space entry rows): read as an autocomplete popup, the box stays sendable.]",
       "expected": {
         "hasInputBox": true,
         "draft": "/ref",
-        "tail": "statusline",
+        "tail": "autocomplete",
         "dialogLive": false,
-        "blockKind": "raw"
-      },
-      "knownStall": "A slash popup painted while a tool runs, in the 2.1.291 shape (❯ pointer, four-space entry rows). The locator reports no box on it (hasInputBox false), so a send typed over the open popup would stall; the 2.1.278 capture of the same state found the box and the '/ref' draft.",
-      "actualToday": {
-        "hasInputBox": false,
-        "draft": null,
-        "tail": null
+        "blockKind": "autocomplete"
       }
     },
     {

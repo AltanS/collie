@@ -198,6 +198,26 @@ describe("shell mode paints the prompt row with a bang", () => {
   });
 });
 
+describe("the completion popup's pointer row does not hide the box (Claude Code 2.1.291)", () => {
+  // 2.1.291 paints the selected popup entry as "  ❯ /model …". Step 1 steps over a "❯"-led row and
+  // used to keep the box only under a statusline tail, so on these six captures, each taller than
+  // MAX_STATUS_LINES, the box was refused and `composerReady` read false while a slash command was
+  // typed. The row is now kept as the popup's own pointer, and only that row.
+  it.each([
+    ["claude-lab--popup-slash-all--w40.txt", "/"],
+    ["claude-lab--popup-slash-all--w82.txt", "/"],
+    ["claude-lab--popup-slash-all--w82--h30.txt", "/"],
+    ["claude-lab--popup-slash-mo--w82.txt", "/mo"],
+    ["claude-lab--popup-slash-model-exact--w82.txt", "/model"],
+    ["claude-lab--working-popup-open--w82.txt", "/ref"],
+  ])("%s: the box stands under the popup", (name, draft) => {
+    const lines = load(name);
+    expect(claudeAdapter.composerReady?.(lines)).toBe(true);
+    expect(inputBoxTail(lines)).toBe("autocomplete");
+    expect(extractInputDraft(lines)).toBe(draft);
+  });
+});
+
 describe("a bang is a prompt row only with a separator", () => {
   it.each([
     ["a bang glued to a word", "!important"],

@@ -364,7 +364,9 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  *     main", a "─ main ───" separator): an un-numbered "❯"-led row or a labelled rule is stepped over
  *     (isStatuslineFrameMark), but the box is then kept only when every such row sits inside a
  *     `statusline` tail's run, at most MAX_STATUS_LINES rows under the border, and no labelled rule
- *     sits directly on a "❯" row (a second box's top border and prompt).
+ *     sits directly on a "❯" row (a second box's top border and prompt). The same step-over serves
+ *     the completion popup's pointed entry ("  ❯ /model …", Claude Code 2.1.291): that row is kept
+ *     only when the tail is `autocomplete` and it is the one pointer the popup grammar read.
  *  2. THE FRAME CLOSES: a prompt line above the bottom border and a top border above that, inside
  *     the shared MAX_DRAFT_LINES budget. The prompt line carries "❯", or "!" in shell mode
  *     (isPromptRow). Only this step learned the bang; step 1's marks stay chevron-only. Both sit at
@@ -414,8 +416,12 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
   if (frame === null) return null;
 
   // 3. The tail is accounted for.
-  const { tail, statusEnd, agentsStart } = classifyTail(texts, { prompt: frame.prompt, bottomBorder: b }, end);
-  if (!steppedMarksAreStatusline(texts, stepped, tail, b, statusEnd)) return null;
+  const { tail, statusEnd, agentsStart, popupPointer } = classifyTail(
+    texts,
+    { prompt: frame.prompt, bottomBorder: b },
+    end,
+  );
+  if (!steppedMarksAreOwned(texts, stepped, tail, b, statusEnd, popupPointer)) return null;
 
   // 4. No modal on screen.
   for (let j = b + 1; j < end; j++) {
@@ -460,19 +466,24 @@ function isStatuslineFrameMark(text: string): boolean {
 }
 
 /**
- * Whether the marks step 1 stepped over (`stepped`, bottom-up) all belong to the statusline run: the
- * tail is `statusline`, each mark sits inside its run (`bottomBorder + 1` to `statusEnd`) and at most
- * MAX_STATUS_LINES rows under the border, and no labelled rule sits directly on a "❯" row, the shape
- * of a second box's top border and prompt. True when nothing was stepped over.
+ * Whether the marks step 1 stepped over (`stepped`, bottom-up) all belong to a run that draws them.
+ * Under an `autocomplete` tail that is the popup's own pointed entry row (Claude Code 2.1.291 marks
+ * the selected completion with "❯", autocomplete.ts), and nothing else: the popup grammar named every
+ * row and allows exactly one pointer, so any other stepped mark refuses. Otherwise it is the statusline
+ * run: the tail is `statusline`, each mark sits inside its run (`bottomBorder + 1` to `statusEnd`) and
+ * at most MAX_STATUS_LINES rows under the border, and no labelled rule sits directly on a "❯" row, the
+ * shape of a second box's top border and prompt. True when nothing was stepped over.
  */
-function steppedMarksAreStatusline(
+function steppedMarksAreOwned(
   texts: string[],
   stepped: number[],
   tail: InputBoxTail,
   bottomBorder: number,
   statusEnd: number,
+  popupPointer: number,
 ): boolean {
   if (stepped.length === 0) return true;
+  if (tail === "autocomplete") return stepped.every((j) => j === popupPointer);
   if (tail !== "statusline") return false;
   for (const j of stepped) {
     if (j >= statusEnd || j - bottomBorder > MAX_STATUS_LINES) return false;
@@ -546,11 +557,13 @@ interface TailOwner {
   bottomBorder: number;
 }
 
-/** classifyTail's answer: the tail's label, and the statusline run's exclusive end (InputBox.statusEnd). */
+/** classifyTail's answer: the tail's label, the statusline run's exclusive end (InputBox.statusEnd),
+ *  and the popup's "❯"-pointed row when the tail is a 2.1.291 popup (-1 otherwise). */
 interface TailReading {
   tail: InputBoxTail;
   statusEnd: number;
   agentsStart: number;
+  popupPointer: number;
 }
 
 /**
@@ -561,17 +574,17 @@ interface TailReading {
  */
 function classifyTail(texts: string[], box: TailOwner, end: number): TailReading {
   const first = box.bottomBorder + 1;
-  if (first >= end) return { tail: "statusline", statusEnd: first, agentsStart: end };
+  if (first >= end) return { tail: "statusline", statusEnd: first, agentsStart: end, popupPointer: -1 };
 
   // The popup is confirmed, not assumed: Claude paints it only while the draft STARTS WITH "/".
   const popup = findAutocompleteRun(texts, end);
   if (popup !== null && popup.start === first && promptIsSlashCommand(texts, box.prompt)) {
-    return { tail: "autocomplete", statusEnd: first, agentsStart: end };
+    return { tail: "autocomplete", statusEnd: first, agentsStart: end, popupPointer: popup.pointer };
   }
 
   const run = walkStatusline(texts, box.bottomBorder, end);
-  if (run !== null) return { tail: "statusline", ...run };
-  return { tail: "unknown", statusEnd: first, agentsStart: end };
+  if (run !== null) return { tail: "statusline", ...run, popupPointer: -1 };
+  return { tail: "unknown", statusEnd: first, agentsStart: end, popupPointer: -1 };
 }
 
 /** Whether the "❯" line holds a slash command — the draft state that puts the completion popup on

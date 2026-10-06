@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The question shows once on a prompt card.** In the Terminal view, a Codex, Grok, opencode, omp or Antigravity card whose rows the card already shows no longer prints the question twice, above the card and on it. A fade now shows at the bottom of the card's command or diff while more of it continues below.
+- **The slash-command list is read again on Claude Code 2.1.291.** That version marks the selected command with a pointer and indents the list differently, so the list stayed on the raw terminal view, and with a long list open the phone could not send at all. Collie now reads both layouts, and the composer stays sendable while the list is open.
 
 ## [1.17.1] - 2026-10-06
 
