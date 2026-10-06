@@ -77,9 +77,10 @@ One flush runs: renders, work tasks, focus restore, commit-phase tasks, `commit`
 
 - `queueTask(task)` runs after the DOM commit and gets a signal. A raw `queueMicrotask` runs before
   the flush and sees the old DOM.
-- `queueTask` only enqueues. By code reading, a task queued from a click handler with no `update()`
-  waits for the next render. Pair it with `update()`. `TODO(probe5)`: confirm queueTask-alone
-  semantics in a real browser.
+- `queueTask` only enqueues. A task queued from a click handler with no `update()` never runs until
+  something renders that component again (measured 500 ms of nothing, P5 Q1). Pair it with
+  `update()`: then render, commit, task, all in one microtask, in either call order (P5 Q1). A task
+  queued in setup or in render runs after that render's commit.
 - Do not create a flag only to react to it in a task (`C/docs/handle.md`, "Anti-patterns").
 
 ### The guard
@@ -101,7 +102,8 @@ One flush runs: renders, work tasks, focus restore, commit-phase tasks, `commit`
 - Make children cheap instead: derive data once per input identity in setup, as
   `R/routes/pane/pane.tsx` does with `blocks !== lastBlocks` and `R/routes/pane/terminal.tsx` does
   with `lines !== lastLines`.
-- `TODO(probe5)`: the measured render cost of the no-bail-out rule under streaming updates.
+- Measured: a Shell update re-renders all 200 trivial rows in 0.6 ms (p50, Chromium), a leaf clock's
+  own update renders 0 rows (P5 Q9). Real rows cost more, so the rule stands: keep the Shell static.
 
 ### Where state lives
 
@@ -258,8 +260,12 @@ export const longPress = createMixin<HTMLElement>((handle) => {
   `R/app.css`. Do not give a hold surface a look of its own (D §2).
 - Keep state in the mixin's setup, not in a function called from render. Mixin setups live at module
   scope and keep a stable order in `mix` (`C/docs/mixins.md`).
-- Today `R/lib/long-press.ts` returns a plain `on()` array with no `data-holding`. Port it.
-- `TODO(probe5)`: the long-press and swipe mixins, measured on a touch device.
+- `R/lib/gestures.ts` has the mixins: `longPress`, `pull`, `swipeUp`. `R/ui/chip.tsx` uses
+  `longPress`; `R/lib/long-press.ts` is the old `on()` array, still used by the home rows.
+- Measured (P5 Q10): a `createMixin` hold with a bubbling `app:longpress` fires once at its mark for
+  mouse in both engines and for CDP touch in Chromium. With pointer capture, `pointerleave` only
+  fires after release, so a hold needs its own move tolerance. A touch drag on a `pan-y` box scrolls
+  the page and sends the mixin `pointercancel`.
 
 ### Swipe and pull
 
@@ -289,7 +295,10 @@ that, and the router lives at module scope so `remount()` in `R/main.tsx` keeps 
 
 - The Shell renders from the URL and the idle lock. It does not subscribe to `snapshot` or `config`.
 - Route bodies of one type at one position keep their instance. Rule 3 says when to add a `key`.
-- `TODO(probe5)`: shell persistence across routes, measured (setup count and mark DOM identity).
+- Measured (P5 Q2): Shell setup runs once per run; the header is the same node across four
+  navigations and keeps attributes it does not own. Unkeyed, a same-type route body keeps its state
+  across `/pane/1` to `/pane/2`; keyed, it remounts. `R/e2e/shell.spec.ts` pins the mark's node and
+  its running animation across home to pane.
 
 ### The header is a claim, not a child
 
@@ -331,7 +340,9 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   app-shell.tsx:14`).
 - Our actions do no fetching (`R/router.tsx`), so most navigations finish in one frame. Show the busy
   bar only after 120 ms, as `W/index.css:895` does.
-- `TODO(probe5)`: pending UI from frame events, timed against a slow lazy chunk.
+- Measured (P5 Q3): on a 300 ms route the bar is on from about 20 to 30 ms and off at 320 to 330 ms;
+  on an instant route it toggles in the same millisecond and never paints. A bar inside the Shell
+  costs two extra Shell renders per navigation, so it is its own component (`BusyBar`, `R/shell.tsx`).
 
 ### Navigating
 
@@ -355,7 +366,9 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
 - Every inner scroller keeps its own spot, keyed by route and entity, as `R/screen/follow.ts`
   (`recallSpot`, `rememberSpot`) does for the terminal. Restore in a `queueTask` after the first
   commit. The dashboard and Settings have no spot memory yet.
-- `TODO(probe5)`: inner scroll restoration on back, measured in both engines.
+- Measured (P5 Q8): the runtime restores nothing inside; a module `Map` keyed by
+  `navigation.currentEntry.key`, restored in `queueTask`, lands back on the same row in both engines,
+  and a fresh push starts at the top. `R/lib/scroll.ts` `scrollMemory()` is that idiom as a mixin.
 
 ### Reloads
 
@@ -413,12 +426,16 @@ in-app back arrow only, never the edge swipe. 250 ms ease-out, parts dot, tile a
 - Port the rules of `W/lib/glide.ts` to `R/lib/glide.ts`. The move runs inside
   `document.startViewTransition`'s update callback, and each part gets its `view-transition-name`
   for one transition only.
-- No Remix package has view transitions. The seam is either the update callback awaiting
-  `navigate(...)`, or `reloadStart` and `reloadComplete` on `frames.top`
-  (research note 01, section 4; `sergiodxa/monorepo: packages/ui/src/mixins/view-transition.ts`).
+- No Remix package has view transitions (research note 01, section 4).
 - The 240 ms screen slide (`W/components/screen-transition.tsx`) runs only dashboard to pane and
   back, not on a POP, and stands down while a glide runs.
-- `TODO(probe5)`: which seam works in both engines, and the measured alternative if neither does.
+- Use the gated seam (P5 Q4): add the `reloadComplete` listener first, then `startViewTransition`,
+  then navigate; a first router middleware awaits "old snapshot taken" before the route renders. The
+  naive seam (the callback waits for `reloadComplete`) captures the new page on an instant route and
+  freezes Chromium's frames for 4 s. The gated seam works for links, `navigate()` and back in
+  Chromium; WebKit's old snapshot is right, its morph is unconfirmed by eye. `R/lib/glide.ts` and
+  the first middleware in `R/router.tsx` implement it. Name only the parts that morph: named rows
+  escape their scroller's clip.
 
 ### Sheets
 
@@ -426,12 +443,13 @@ in-app back arrow only, never the edge swipe. 250 ms ease-out, parts dot, tile a
   `R/ui/sheet.tsx` does this with CSS classes today. Keep it.
 - Drag-dismiss: the panel follows the finger by `style.transform`; past 90 px it closes; short of
   it, it snaps back.
-- The snap-back uses `spring("snappy")` (200 ms, no overshoot) from `@remix-run/ui/animation` once
-  that package is installed (`U/`, "Spring"). Until then, `transform 200ms ease-out` in CSS.
-- `@remix-run/ui` is not in `package.json` yet. Add it pinned to an exact version, after the age
-  gate clears.
-- Peek-to-open continues the finger's motion over 180 ms. Not ported yet.
-- `TODO(probe5)`: entrance and exit springs, measured.
+- The snap-back uses `spring("snappy")` from `@remix-run/ui/animation` (pinned at 0.12.1, exempt
+  from the age gate like `remix`).
+- Peek-to-open continues the finger's motion over 180 ms (`SheetPeek`, `R/ui/sheet.tsx`).
+- Measured (P5 Q6): a preset's name is not its length. `spring(p).duration` is the settle time and
+  the exit holds the node that long: snappy 350 ms, bouncy 550 ms, smooth 1050 ms. Plan with
+  `spring(p).duration`. An exit uses the config of the last render that showed the node, so render
+  the exit settings before the node goes.
 
 ### Toasts
 
@@ -447,8 +465,10 @@ orbit.
   use of `animateLayout` needs a line in D first.
 - `animateExit` needs a keyed node, and a keyed node that returns during the exit is reclaimed
   (`C/docs/mixins.md`, `persistNode`).
-- A keyed move uses `insertBefore`, which may cancel a running CSS transition on that node.
-  `TODO(probe5)`: keyed reorder against `animateLayout`, measured.
+- A keyed move uses `insertBefore`, which cancels a running CSS transition on the moved node: it
+  snaps to its end value (P5 Q5, 21 of 21 moved rows). No CSS transitions on reorderable rows.
+  `animateLayout` is smooth and survives interruption but costs about 0.12 ms per row per reorder
+  (24 ms at 200 rows in Chromium, 32 ms in WebKit), so use it only up to about 50 rows (P5 Q5).
 
 ### Reduced motion
 
@@ -489,7 +509,9 @@ orbit.
 - Use a frame governor: 60 fps while active, 30 fps after 5 s idle (`remix-particle-visualizer`).
 - Write `textContent` for a ticking label, as the remix website does every 500 ms.
 - Never measure or write the DOM in render.
-- `TODO(probe5)`: imperative children under a parent that re-renders per frame.
+- Measured (P5 Q7): a host with no vdom children keeps 100 imperative rows, the same nodes, across
+  60 parent renders, and its attributes still patch. Imperative siblings beside vdom children also
+  survive. `data-rmx-preserve-dom` changes nothing on client renders.
 
 ### The burst rule
 
@@ -665,6 +687,5 @@ Cold open must look the same as `W/`. That means prefs load before the first ren
 
 ## Probe 5 status
 
-`spike/remix/probe5-motion/README.md` did not exist when this file was written. Every point it is
-meant to settle is marked `TODO(probe5)` above, with no numbers guessed. When it lands, replace each
-marker with the finding and its path, in one change.
+Landed 2026-10-06 (commit 0aa41190). Each former `TODO(probe5)` marker above now states the
+measured answer and cites its section as `P5 Qn`.

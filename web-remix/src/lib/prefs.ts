@@ -260,14 +260,19 @@ export const hiddenMachines = persisted<readonly string[]>(PREF_KEYS.hiddenMachi
 
 let syncing = false;
 
+/** Where `storage` events come from: the window, or a test's fake. Only `key` is read. */
+export interface StorageEventSource {
+  addEventListener(type: "storage", listener: (event: { readonly key: string | null }) => void): void;
+}
+
 /**
  * Re-read a key when another tab writes it (`key === null` is a `localStorage.clear()`). Started once
  * from main.tsx for the page's life; idempotent.
  */
-export function startPrefSync(target: Pick<Window, "addEventListener"> = window): void {
+export function startPrefSync(target: StorageEventSource = window): void {
   if (syncing) return;
   syncing = true;
-  target.addEventListener("storage", (event: StorageEvent) => {
+  target.addEventListener("storage", (event) => {
     for (const store of registry) {
       if (event.key === null || event.key === store.key) store.reload();
     }
