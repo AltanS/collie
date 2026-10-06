@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { tourSeen } from "./tour-seen";
 
 // The wave-4 route specs (Crew, Machines, History, Changes, Files, Settings sections). A config of
 // its own so several runs can go at once without fighting for a port or a `dist`:
@@ -19,7 +20,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["list"]],
-  use: { baseURL: `http://127.0.0.1:${String(PORT)}`, trace: "off" },
+  use: { baseURL: `http://127.0.0.1:${String(PORT)}`, trace: "off", storageState: tourSeen(`http://127.0.0.1:${String(PORT)}`) },
   projects: [{ name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } }],
   webServer: {
     command: "bun serve.ts",

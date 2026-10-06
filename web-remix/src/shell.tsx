@@ -23,6 +23,7 @@ import { scheduleUpdate, useStore } from "./lib/store";
 import { Button } from "./ui/button";
 import { useLocale } from "./lib/i18n-store";
 import { StatusToast, ToastViewport } from "./ui/toast-viewport";
+import { TourHost } from "./tour/tour-host";
 import { UpdateSheet } from "./update/update-sheet";
 import { headerOf, ShellProvider } from "./shell/context";
 import { HeaderHost, headerShowsStatus } from "./shell/header";
@@ -59,6 +60,7 @@ export function Shell(handle: Handle<ShellProps>) {
         <BusyBar />
         {covered && <IdleCover catchingUp={catchingUp} />}
         <UpdateSheet />
+        <TourHost />
       </ShellProvider>
     );
   };

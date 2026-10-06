@@ -1,6 +1,7 @@
 // The pane screen's Playwright run on its own port and its own build, so it races no other worker:
 //   bunx vite build --outDir /tmp/remix-w3-dist && PANE_DIST=/tmp/remix-w3-dist bunx playwright test -c e2e/pane.config.ts
 import { defineConfig, devices } from "@playwright/test";
+import { tourSeen } from "./tour-seen";
 
 const PORT = Number(process.env.PANE_PORT ?? "5196");
 const DIST = process.env.PANE_DIST ?? "";
@@ -12,7 +13,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["list"]],
-  use: { baseURL: `http://127.0.0.1:${String(PORT)}`, trace: "off", serviceWorkers: "block" },
+  use: { baseURL: `http://127.0.0.1:${String(PORT)}`, trace: "off", storageState: tourSeen(`http://127.0.0.1:${String(PORT)}`), serviceWorkers: "block" },
   projects: [{ name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } }],
   webServer: {
     command: "bun serve.ts",

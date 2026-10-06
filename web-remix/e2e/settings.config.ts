@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 import { SETTINGS_PORT } from "./settings-builds";
+import { tourSeen } from "./tour-seen";
 
 // Phase B3's own browser pass: settings, pairing, locale, service worker and the update sheet.
 //
@@ -23,6 +24,7 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${String(SETTINGS_PORT)}`,
     trace: "off",
+    storageState: tourSeen(`http://127.0.0.1:${String(SETTINGS_PORT)}`),
   },
   projects: [{ name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } }],
   webServer: {

@@ -44,7 +44,7 @@ window.addEventListener("appinstalled", () => {
   installOffered.set(false);
 });
 
-async function promptInstall(): Promise<void> {
+export async function promptInstall(): Promise<void> {
   const offer = held;
   if (offer === null) return;
   held = null;

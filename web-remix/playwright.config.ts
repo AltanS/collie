@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { tourSeen } from "./e2e/tour-seen";
 
 // The browser smoke for web-remix: the built bundle from `dist`, served by `e2e/serve.ts`, with
 // every `/api/*` answered by the spec itself (`page.route`). Chromium only, at the phone size web/'s
@@ -18,6 +19,7 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${String(PORT)}`,
     trace: "off",
+    storageState: tourSeen(`http://127.0.0.1:${String(PORT)}`),
   },
   projects: [{ name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } }],
   webServer: {

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { tourSeen } from "./tour-seen";
 
 // The dashboard's own browser pass (wave 2): home.spec.ts against the stub bridge in home-api.ts.
 // A config of its own, on port 5195 by default, so it never fights the smoke for 5194 or the
@@ -19,7 +20,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["list"]],
-  use: { baseURL: `http://127.0.0.1:${String(PORT)}`, trace: "off", serviceWorkers: "block" },
+  use: { baseURL: `http://127.0.0.1:${String(PORT)}`, trace: "off", storageState: tourSeen(`http://127.0.0.1:${String(PORT)}`), serviceWorkers: "block" },
   projects: [{ name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } }],
   webServer: {
     command: "bun serve.ts",
