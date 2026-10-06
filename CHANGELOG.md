@@ -23,6 +23,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-10-06
+
 ### Fixed
 
 - **Permission cards show what the agent asks for.** The card now shows the dialog's header, the command or diff, any warning, and the question above the buttons. A permission raised by a subagent used to show only Yes and No in the Chat view, because the card left the rest in the terminal rows above it, which are off screen. A long command or diff scrolls inside the card, so the buttons stay in reach. Every other question card shows its question as text too.
