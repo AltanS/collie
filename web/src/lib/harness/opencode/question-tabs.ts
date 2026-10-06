@@ -45,7 +45,8 @@
 //   * a free-text input that is OPEN. A digit is typed into it as text there, and nothing on the
 //     card could say so. A checkbox step's COMMITTED free text (the input closed, the text grey
 //     under the row) lifts, the row still not an option; a single-select step has no committed
-//     state, so any row under its free-text row refuses.
+//     state, so any row under its free-text row refuses — except a pure sidebar tail while the
+//     pointer chip sits on a real option, which is foreign chrome, never input (#347).
 //   * more than nine options, a numbering that does not run 1..n, no pointer chip or two, and a
 //     Confirm body whose rows are not `Header: value` in tab order.
 //
@@ -190,11 +191,12 @@ function detectStep(screen: Screen, checkbox: boolean): QuestionTabsRegion | nul
   if (choices.some((r) => r.label === FREE_TEXT_LABEL)) return null;
   // A single-select step marks an answered option, never the free-text row (nothing measured does).
   if (free !== null && !checkbox && free.marked) return null;
-  if (free !== null && !freeTextClosed(screen, free.entry, checkbox)) return null;
-
-  // The pointer: exactly one numbered row on another background than the footer's.
+  // The pointer: exactly one numbered row on another background than the footer's. It is
+  // read BEFORE the free-text gate: the open input holds the chip, so the gate needs it
+  // to tell foreign chrome from input (#347).
   const pointed = pointedEntry(lines, texts, entries, base);
   if (pointed < 0) return null;
+  if (free !== null && !freeTextClosed(screen, free.entry, checkbox, pointed)) return null;
 
   const head = locateHead(screen, entries[0]!.row);
   if (head === null) return null;
@@ -282,23 +284,39 @@ function parseRow(entry: Entry, checkbox: boolean): ParsedRow | null {
  * Typed text that is not yet committed is bright, and the placeholder is the label itself. A
  * single-select step has no committed state, so any row under its free-text row means open.
  *
- * Shared-exposure note: this shares walkEntries with the single-select lift, so a far-right
- * panel-overlay row under the free-text row lifts with it (the walk skips it before this
- * check ever sees it). Only near-gutter rows no geometry can tell apart still refuse here
- * (fail-safe: raw + unread card, never a mis-lift) — tracked as a follow-up (#347).
+ * Pointer-gated overlay rule (#347 — the same invariant the single lift reads): the open input
+ * holds the chip, so with the chip on a real option the rows under the free-text row are foreign
+ * chrome, not input. Pure tail rows drop out; anything carrying dialog text still refuses below,
+ * because an open input whose chip opencode never moved stays refused, fail-safe.
  */
-function freeTextClosed(screen: Screen, free: Entry, checkbox: boolean): boolean {
+function freeTextClosed(screen: Screen, free: Entry, checkbox: boolean, pointed: number): boolean {
   if (free.sub.length === 0) return true;
+  let at = free.sub.map((sub, k) => ({ row: free.row + 1 + k, sub }));
+  if (pointed >= 0 && pointed !== free.n) {
+    at = at.filter(({ sub }) => !isOverlayChromeSub(sub));
+    if (at.length === 0) return true;
+  }
   if (!checkbox) return false;
-  if (free.sub.join(" ") === FREE_TEXT_LABEL) return false;
-  for (let k = 0; k < free.sub.length; k++) {
-    const row = free.row + 1 + k;
-    const span = contentSpan(screen.texts[row]!);
+  // The placeholder comparison reads the dialog part too: an open placeholder row sharing
+  // its row with a sidebar tail must still refuse as placeholder, never lift as committed.
+  if (at.map(({ sub }) => stripOverlayShared(sub).text.trim()).join(" ") === FREE_TEXT_LABEL) return false;
+  for (const { row } of at) {
+    // A sidebar tail sharing the committed row paints a second ink; read the dialog part only.
+    // The full row stays in the model and the signature, so no word is ever dropped.
+    const text = stripOverlayShared(screen.texts[row]!).text;
+    const span = contentSpan(text);
     if (span === null) return false;
     // Anything but the grey ink is open (bright, typed) or unknown: refuse either way.
     if (foregroundOf(screen.lines[row]!, span.start, span.end) !== screen.inks.grey) return false;
   }
   return true;
+}
+
+/** True when a free-text sub-row is pure panel chrome: nothing but a sidebar tail. Dialog
+ *  chrome never uses light verticals (heavy ┃ only, see markers.ts), so a trimmed row starting
+ *  with │ is panel chrome — while the chip in {@link freeTextClosed} proves no input is open. */
+function isOverlayChromeSub(sub: string): boolean {
+  return sub.trim().startsWith("│");
 }
 
 // ---------------------------------------------------------------------------------------------
