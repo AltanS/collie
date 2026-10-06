@@ -141,9 +141,9 @@ const isRuleGlyph = (ch: string): boolean => ch === "─" || ch === "━";
  * An observed rendering, not a format Claude promises: Claude Code 2.1.290 draws a session name in
  * the rule's own colour, or, after `/color`, as a chip whose background is that colour, and draws a
  * mode badge such as `ultracode` (`/effort ultracode`) in a colour of its own. A read with no styling
- * at all leaves nothing to compare, so it reads as a name, which is how every name was read before
- * colour was looked at; a badge is then still mistaken for one. A rule whose colour cannot be told
- * (an unparsed sequence, rule glyphs in more than one colour) is unknown.
+ * at all leaves nothing to compare, so the words read as a name and a badge is mistaken for one there.
+ * A rule whose colour cannot be told (an unparsed sequence, rule glyphs in more than one colour) is
+ * unknown.
  */
 function ruleLabel(lines: readonly string[], row: number): "name" | "badge" | "unknown" {
   if (!lines.slice(0, row + 1).some((l) => l.includes(ESC))) return "name";
@@ -164,12 +164,11 @@ function ruleLabel(lines: readonly string[], row: number): "name" | "badge" | "u
  * Returns the name; `null` when the input box is in view and carries no name (a plain rule, or a mode
  * badge, which Claude only shows on an unnamed session); `undefined` when the pane isn't showing its
  * input box (a dialog, a working spinner) or the rule's colours cannot be read, so nothing can be
- * said either way. Claude draws the name
- * INTO the horizontal rule directly above the ❯ prompt, e.g. `────────── my-name ──`; we accept that
- * rule ONLY when the very next line is the ❯ prompt, so a decorative rule anywhere else in the output
- * can never be mistaken for it (no false positives). Derived from Claude's UI grammar — claude-only;
- * other harnesses never call this. Pure + exported so it's unit-tested against the pane fixtures
- * without standing up the socket client.
+ * said either way. Claude draws the name INTO the horizontal rule directly above the ❯ prompt, e.g.
+ * `────────── my-name ──`; we accept that rule ONLY when the very next line is the ❯ prompt, so a
+ * decorative rule anywhere else in the output can never be mistaken for it (no false positives).
+ * Derived from Claude's UI grammar — claude-only; other harnesses never call this. Pure + exported so
+ * it's unit-tested against the pane fixtures without standing up the socket client.
  */
 export function extractClaudeSessionName(text: string): string | null | undefined {
   if (!text) return undefined;

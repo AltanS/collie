@@ -123,8 +123,8 @@ describe("extractClaudeSessionName — styled reads", () => {
   });
 
   test("without any colour the badge still reads as a name (the known limit)", () => {
-    // A multiplexer that drops colour leaves nothing to tell the two apart, so this keeps the
-    // behaviour every name was read with before colour was looked at.
+    // A multiplexer that drops colour leaves nothing to tell the two apart, so the words are taken
+    // as a name rather than lose a real one.
     expect(extractClaudeSessionName(["──── ultracode ─", "❯"].join("\n"))).toBe("ultracode");
   });
 });
