@@ -56,16 +56,19 @@ export function FilesModeControl({
 }
 
 /**
- * The line at the head of the Changes list: the root folder's name at the left, as the tree's
- * breadcrumb names it, and the workspace's totals `+12 −4` at the right in the diff's own inks. The
- * totals once stood on the header's second line; they moved here with the mode control (2026-10-06).
- * One line tall in every state, so the numbers arriving move nothing, and they show only once a
- * read has said there is something changed.
+ * The line at the head of the Changes list: the changed-file count at the left in the muted ink, and
+ * the workspace's totals `+12 −4` at the right in the diff's own inks. The root's name is not here,
+ * because the first repo group below names it already. The totals once stood on the header's second
+ * line; they moved here with the mode control (2026-10-06). One line tall in every state, so the
+ * numbers arriving move nothing, and both show only once a read has said there is something changed.
  */
-export function ChangesListHead({ root, count }: { root: string; count: WorkspaceChangeCount }) {
+export function ChangesListHead({ count }: { count: WorkspaceChangeCount }) {
+  useLocale();
   return (
     <div className="flex min-h-6 items-baseline justify-between gap-3 font-mono text-xs leading-6 text-muted-foreground" data-slot="changes-head">
-      <span className="min-w-0 wrap-anywhere text-foreground">{root}</span>
+      <span data-slot="changes-files" className="min-w-0">
+        {count.kind === "changed" ? tn("files.changed", count.files) : null}
+      </span>
       {count.kind === "changed" && (
         <span data-slot="changes-totals" className="shrink-0 tabular-nums">
           <span className="text-status-done">+{count.added}</span> <span className="text-status-blocked">−{count.removed}</span>

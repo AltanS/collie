@@ -108,7 +108,7 @@ function Interactive({ initialLayout, initialFilter }: { initialLayout: ChangesL
         </div>
         <FilesModeControl changesOnly count={CHANGED} onChange={() => {}} />
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          <ChangesListHead root="webapp" count={TOTALS} />
+          <ChangesListHead count={TOTALS} />
           {shown.length === 0 ? (
             <ChangesNoMatch onClear={clear} />
           ) : layout === "tree" ? (
@@ -509,7 +509,7 @@ export function ChangesSection() {
           state="changes-only"
           label="changes, the Changes segment on"
           reach="on Files, tap the Changes segment under the header. It takes the selected look and the
-            body becomes the list of changed files alone, headed by the root's name and the totals,
+            body becomes the list of changed files alone, headed by the changed-file count and the totals,
             with the layout toggle and the filter beside it. The choice stays on this device."
         >
           <Interactive initialLayout="list" />

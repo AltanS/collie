@@ -74,11 +74,12 @@ test("the tree marks what changed, the Changes segment swaps in the list, and a 
   const title = page.locator("header h1");
   expect((await title.boundingBox())!.width).toBeGreaterThanOrEqual(40);
 
-  // Changes: the list headed by the root's name and the totals, and the control has not moved.
+  // Changes: the list headed by the changed-file count and the totals, and the control has not moved.
   const before = (await only.boundingBox())!;
   await only.click();
   await expect(only).toHaveAttribute("aria-checked", "true");
   await expect(page.locator('[data-slot="changes-head"] [data-slot="changes-totals"]')).toBeVisible();
+  await expect(page.locator('[data-slot="changes-head"] [data-slot="changes-files"]')).toHaveText(en["files.changed.other"].replace("{count}", "5"));
   await expect(page.getByRole("button", { name: /^docs, folder/ })).toHaveCount(0);
   await expect(page.locator("header").getByRole("button", { name: en["changes.layout.tree"] })).toBeVisible();
   const after = (await only.boundingBox())!;

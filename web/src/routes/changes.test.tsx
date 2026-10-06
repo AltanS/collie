@@ -115,8 +115,8 @@ describe("ChangesRoute — the list", () => {
       ),
     );
     renderAt("/pane/w1%3Ap1/changes");
-    // The header's second line, and the list's head, which names the root folder the same way.
-    expect((await screen.findAllByText("collie-workspace")).length).toBe(2);
+    // The header's second line says it once; the list's head carries the count and no name.
+    expect((await screen.findAllByText("collie-workspace")).length).toBe(1);
     expect(document.querySelector('[data-slot="files-root-folder"]')).toBeNull();
     expect(screen.queryByText(/projects\//)).toBeNull();
   });

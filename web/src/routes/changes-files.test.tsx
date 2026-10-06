@@ -299,7 +299,7 @@ describe("Files: the All files | Changes control", () => {
     expect(storedPref("changesOnly")).toBe(true);
   });
 
-  it("heads the list with the root's name and the totals, and no longer the header", async () => {
+  it("heads the list with the changed-file count and the totals, and no longer the header", async () => {
     localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ changesOnly: true }));
     renderAt([CHANGES]);
     const head = await waitFor(() => {
@@ -308,8 +308,9 @@ describe("Files: the All files | Changes control", () => {
       expect(el!.querySelector('[data-slot="changes-totals"]')).not.toBeNull();
       return el!;
     });
-    // The root's name is the list's own answer; a kept count may show the totals a beat earlier.
-    await waitFor(() => expect(head.textContent).toBe("webapp+10 −2"));
+    expect(head.textContent).toBe(`${en["files.changed.other"].replace("{count}", "5")}+10 −2`);
+    // The root's name is the first repo group's to say, not the head's.
+    expect(head.textContent).not.toContain("webapp");
     expect(screen.getByRole("heading", { level: 1 }).closest("header")?.textContent).not.toContain("+10");
   });
 
