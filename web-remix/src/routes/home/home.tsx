@@ -23,6 +23,7 @@ import { dashPrefs, setDashPref } from "../../lib/prefs";
 import { scrollMemory } from "../../lib/scroll";
 import { useStore } from "../../lib/store";
 import { href } from "../../routes";
+import { ReadOnlyBanner } from "../../shell/connection-banner";
 import { headerOf } from "../../shell/context";
 import { SettingsGear } from "../../shell/header";
 import type { CustomSlot } from "../../shell/header-model";
@@ -117,6 +118,10 @@ export function HomeRoute(handle: Handle) {
     handle.queueTask(() => header.claim({ wordmark: true, width: "column", right }));
     const loaded = snap();
     const body = loaded.data;
+    // Nothing has answered yet: no verdict is drawn (not "Disconnected", not "No spaces yet."). The
+    // first-connect cover holds the screen until the bridge says something (shell/boot-splash.tsx);
+    // an HTTP answer, even a refusal, ends the wait.
+    const pending = body === undefined && loaded.status === undefined;
     const p = prefs();
     const scope = where().scope;
     const servers = body?.servers;
@@ -139,6 +144,8 @@ export function HomeRoute(handle: Handle) {
     return (
       <div class="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col" data-testid="home">
         <div class="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto" data-testid="home-scroller" mix={scrollMemory()}>
+          {/* Content below the header, not viewport chrome: an inset strip on the page, as web/'s. */}
+          <ReadOnlyBanner />
           <main class="flex-1">
             {view === "crew" ? (
               <div class="px-4 py-4">
@@ -149,7 +156,8 @@ export function HomeRoute(handle: Handle) {
                 agents={agents}
                 shellPanes={shellPanes}
                 bridge={body?.bridge}
-                error={loaded.error !== undefined || body === undefined}
+                error={loaded.error !== undefined}
+                pending={pending}
                 lastSeenAt={loaded.at === 0 ? undefined : loaded.at}
                 tabs={body?.tabs ?? []}
                 servers={servers}
@@ -179,7 +187,7 @@ export function HomeRoute(handle: Handle) {
                 }
               />
             )}
-            {view === "dashboard" && !needsYouOnly && (
+            {view === "dashboard" && !needsYouOnly && !pending && (
               <>
                 <LaunchStrip open={p.launchOpen} onOpenChange={(open) => setDashPref("launchOpen", open)} />
                 <SpaceOverview

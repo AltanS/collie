@@ -10,6 +10,7 @@ import { scheduleUpdate } from "../lib/store";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Collapse } from "../ui/collapse";
+import { CollieMark } from "../shell/collie-mark";
 import { Icon } from "../ui/icon";
 import { ListGroup } from "../ui/list-group";
 import { SectionLabel } from "../ui/section-label";
@@ -195,10 +196,9 @@ export function TourSheet(handle: Handle<TourSheetProps>) {
           {/* 1. MARK AND CLAIM. The splash's own mark, so the first thing here is the thing the
               operator just watched bloom. */}
           <div class="flex flex-col items-center gap-3 px-2 text-center">
-            <span class="grid size-16 shrink-0 place-items-center">
-              {/* At rest: the splash's breathing is for a wait, and this screen is not one. */}
-              <span class="boot-splash__mark" style={{ animation: "none" }} aria-hidden="true" />
-            </span>
+            {/* At rest: the mark drifts, as web/'s `<CollieMark size={64} weight="header" paper="var(--card)" />`.
+                The splash's bloom is for a wait, and this screen is not one. */}
+            <CollieMark size={64} paper="var(--card)" />
             <h2 class="text-balance text-xl font-semibold tracking-tight">{t("tour.title")}</h2>
             <p class="max-w-sm text-sm leading-relaxed text-muted-foreground">{lead}</p>
           </div>

@@ -2,10 +2,13 @@
 //
 // Each store keeps the last good body beside the last error, so a failed poll shows stale data
 // flagged, never an empty screen: the keep-previous-data rule web/src/lib/loaders.ts follows.
+import { markLive } from "@web/lib/connection-health";
+import { loadLastSnapshot, saveLastSnapshot } from "@web/lib/last-seen";
 import { internScope, scopeFromUrl, viewAllFromUrl, type Scope } from "@web/lib/scope";
 import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
 
 import { ApiError, fetchConfig, fetchPane, fetchSnapshot, isAbort } from "./api";
+import { busy } from "./busy";
 import { createStore, type Store } from "./store";
 
 export interface Loaded<T> {
@@ -65,16 +68,44 @@ function failed<T>(store: Store<Loaded<T>>, error: Error): void {
   }));
 }
 
-/** One poll of the snapshot. Resolves true when the body changed. */
+/** How often an unchanged snapshot is written through to the last-seen cache (a changed one always is). */
+const SAVE_EVERY_MS = 15_000;
+let lastSavedAt = 0;
+
+/**
+ * A cold boot with no network has an empty store and a failing first read. The write-through cache
+ * (web's lib/last-seen.ts, sessionStorage) holds the herd the operator left, dated, so it is drawn
+ * flagged stale instead of an empty herd; the next live poll replaces it.
+ */
+function restoreLastSeen(scope: Scope, all: boolean): void {
+  if (snapshot.get().data !== undefined) return;
+  const cached = loadLastSnapshot(scope, all);
+  if (cached) snapshot.set({ data: cached.value, error: undefined, status: undefined, at: cached.at });
+}
+
+/**
+ * One poll of the snapshot. Resolves true when the body changed. It counts as a POLL load for the bar
+ * and the stalled check (lib/busy.ts): one hung past 6 s shows the bar, past 2.5 s the app looks
+ * stalled. A live answer stamps the shared connection clock (`markLive`, web's own).
+ */
 export async function loadSnapshot(signal: AbortSignal): Promise<boolean> {
   const { scope, all } = address.get();
+  const release = busy.beginLoad("poll");
   try {
     const got = await fetchSnapshot(scope, signal, all);
     snapshot.set({ data: got.body, error: undefined, status: undefined, at: Date.now() });
+    if (got.body.bridge !== "disconnected") markLive();
+    if (!got.notModified || Date.now() - lastSavedAt >= SAVE_EVERY_MS) {
+      lastSavedAt = Date.now();
+      saveLastSnapshot(scope, got.body, undefined, all);
+    }
     return !got.notModified;
   } catch (error) {
+    if (error instanceof Error && !isAbort(error)) restoreLastSeen(scope, all);
     if (error instanceof Error) failed(snapshot, error);
     return false;
+  } finally {
+    release();
   }
 }
 
@@ -96,6 +127,7 @@ export async function loadConfig(signal: AbortSignal): Promise<boolean> {
 /** One poll of a pane's mirror into `paneStore(key)`. Resolves true when the text changed. */
 export async function loadPane(key: string, paneId: string, scope: Scope, signal: AbortSignal): Promise<boolean> {
   const store = paneStore(key);
+  const release = busy.beginLoad("poll");
   try {
     const got = await fetchPane(paneId, scope, signal);
     const changed = got.body.text !== store.get().data?.text;
@@ -104,5 +136,7 @@ export async function loadPane(key: string, paneId: string, scope: Scope, signal
   } catch (error) {
     if (error instanceof Error) failed(store, error);
     return false;
+  } finally {
+    release();
   }
 }

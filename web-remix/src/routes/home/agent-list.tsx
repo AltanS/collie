@@ -56,8 +56,13 @@ export interface AgentListProps {
   agents: AgentView[];
   shellPanes: AgentView[];
   bridge: BridgeStatus | undefined;
-  /** The snapshot on screen is stale (the last poll failed, or none has landed). */
+  /** The snapshot on screen is stale: the last poll failed and there is a (cached) body to show. */
   error: boolean;
+  /**
+   * The bridge has not answered yet. NOT a verdict: no "Disconnected", no "No agents running.", only
+   * a quiet placeholder while the first-connect cover (shell/boot-splash.tsx) holds the screen.
+   */
+  pending?: boolean;
   lastSeenAt: number | undefined;
   tabs: readonly TabView[];
   servers: readonly ServerSummary[] | undefined;
@@ -363,7 +368,8 @@ export function AgentList(handle: Handle<AgentListProps>) {
 
 function EmptyHerd(handle: Handle<AgentListProps>) {
   return () => {
-    const { error, lastSeenAt, bridge, agentDetectionNote } = handle.props;
+    const { error, pending, lastSeenAt, bridge, agentDetectionNote } = handle.props;
+    if (pending) return <div class="min-h-48" data-testid="herd-pending" aria-busy="true" />;
     if (error) {
       return (
         <div class="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground" data-testid="herd-empty">

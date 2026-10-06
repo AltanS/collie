@@ -13,25 +13,31 @@
 // orbit's rate) is a class, a custom property or `updatePlaybackRate` on that same DOM. The
 // component re-renders only for the button's accessible name, which never touches the drawing.
 //
-// THREE INPUTS, as web/ has them:
-//   - bloom: the snapshot has not been live for TROUBLE_MS (4 s); the orbit turns steadily.
+// FOUR INPUTS, as web/ has them (web/src/components/collie-home.tsx `loading={bloom || ((round || busy) && !lost)}`):
+//   - bloom: not live for TROUBLE_MS (4 s), a stalled load (2.5 s) counting as not live; the orbit
+//     turns steadily. The reading is `shell/connection-state.ts`, shared with the strip and splash.
 //   - lost: not live for CONNECTION_LOST_MS (15 s), latched until a live poll; still, muted.
+//   - busy: operator-started work (lib/busy.ts): the first read of a tapped screen, a send, an
+//     upload, a transcription. The fast orbit starts on the first frame, with no threshold.
 //   - the round: every `setStatus` publish turns the orbit ONE round of ORBIT_TURN_MS, ramped by
 //     `spinRate` (a raised cosine on a warped clock), one round per burst, never over bloom or lost.
 // Under reduced motion the generated stylesheet stops the turning and the round is colour only.
+//
+// `CollieMark` below is the same drawing as a plain, sized mark for the boot splash, the idle cover
+// and the tour (web's `<CollieMark size={64} weight="header" />`): painted once, `loading` and `lost`
+// switch the same classes on the same DOM.
 import { on, ref, type Handle } from "remix/component";
 import { BODY, STYLE, TURN, VIEW } from "virtual:collie-mark";
 
-import { CONNECTION_LOST_MS, TROUBLE_MS } from "@web/lib/connection-health";
-import { isConnecting } from "@web/lib/connection";
 import { t } from "@web/lib/i18n";
 import { cn } from "@web/lib/utils";
 
-import { snapshot } from "../lib/data";
+import { busy } from "../lib/busy";
 import { useLocale } from "../lib/i18n-store";
 import { reducedMotion } from "../lib/motion";
 import { status } from "../lib/status";
 import { scheduleUpdate } from "../lib/store";
+import { connection } from "./connection-state";
 
 /** One round at the loading rate, in ms: `TURN.live` seconds (web/'s ORBIT_TURN_MS copy). */
 export const ORBIT_TURN_MS = TURN.live * 1000;
@@ -70,8 +76,8 @@ interface Painted {
   animations(): Animation[] | null;
 }
 
-function paint(host: HTMLElement): Painted {
-  host.innerHTML = markup(40);
+function paint(host: HTMLElement, size = 40, paper = "var(--background)"): Painted {
+  host.innerHTML = markup(size);
   const svg = host.querySelector("svg");
   const body = svg?.querySelector("g");
   if (!svg || !body) throw new Error("collie-mark: the generated markup has no <svg><g>");
@@ -80,7 +86,7 @@ function paint(host: HTMLElement): Painted {
     svg.style.setProperty("--cm-turn", `${String(live ? TURN.live : TURN.rest)}s`);
     svg.style.setProperty("--cm-a1", live ? "oklch(0.74 0.16 295)" : "oklch(0.698 0.127 295)");
     svg.style.setProperty("--cm-a2", live ? "oklch(0.75 0.17 340)" : "oklch(0.711 0.134 340)");
-    svg.style.setProperty("--cm-paper", "var(--background)");
+    svg.style.setProperty("--cm-paper", paper);
   };
   vars(false);
   return {
@@ -129,46 +135,44 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
   let lost = false;
   let painted: Painted | null = null;
   let round = false;
+  let working = false;
+  let frame = 0;
 
   const sync = (): void => {
     painted?.setLost(lost);
-    painted?.setLoading((trouble && !lost) || (round && !lost));
+    painted?.setLoading(!lost && (trouble || round || working));
   };
 
+  // The fast orbit starts on the FIRST frame after a tap, with no threshold (web: `useBusyWhile`). A
+  // reading that comes and goes inside one frame (an instant navigation) is folded into that frame
+  // and never reaches the DOM, so the mark does not flick. A hidden page has no frames: apply now.
+  const syncSoon = (): void => {
+    if (document.visibilityState !== "visible") {
+      sync();
+      return;
+    }
+    if (frame !== 0) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      sync();
+    });
+  };
+  handle.signal.addEventListener("abort", () => cancelAnimationFrame(frame), { once: true });
+
   // ── Connection: bloom at 4 s not live, lost at 15 s (latched until a live poll) ────────────────
-  let since: number | null = null;
-  let troubleTimer: ReturnType<typeof setTimeout> | undefined;
-  let lostTimer: ReturnType<typeof setTimeout> | undefined;
-  const setConn = (nextTrouble: boolean, nextLost: boolean): void => {
-    if (nextTrouble === trouble && nextLost === lost) return;
-    trouble = nextTrouble;
-    lost = nextLost;
+  const readConnection = (): void => {
+    const next = connection.state;
+    if (next.trouble === trouble && next.lost === lost) return;
+    trouble = next.trouble;
+    lost = next.lost;
     sync();
     scheduleUpdate(handle); // the button's accessible name
   };
-  const readConnection = (): void => {
-    const s = snapshot.get();
-    const connecting = isConnecting({ bridge: s.data?.bridge, error: s.error !== undefined });
-    if (!connecting) {
-      since = null;
-      clearTimeout(troubleTimer);
-      clearTimeout(lostTimer);
-      setConn(false, false);
-      return;
-    }
-    if (since !== null) return;
-    since = Date.now();
-    troubleTimer = setTimeout(() => setConn(true, lost), TROUBLE_MS);
-    lostTimer = setTimeout(() => setConn(true, true), CONNECTION_LOST_MS);
+  const readBusy = (): void => {
+    if (busy.view.orbit === working) return;
+    working = busy.view.orbit;
+    syncSoon();
   };
-  handle.signal.addEventListener(
-    "abort",
-    () => {
-      clearTimeout(troubleTimer);
-      clearTimeout(lostTimer);
-    },
-    { once: true },
-  );
 
   // ── The round: one per burst of `setStatus` ─────────────────────────────────────────────────
   const startRound = (signal: AbortSignal): void => {
@@ -177,7 +181,7 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
     sync();
     const started = performance.now();
     let ramp: ((rate: number) => void) | null = null;
-    let frame = 0;
+    let roundFrame = 0; // this round's own frame, not the busy sync's
     // Collected on the first frame, after the loading switch has re-timed the animations.
     const step = (): void => {
       if (signal.aborted) return;
@@ -187,11 +191,11 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
       }
       const elapsed = performance.now() - started;
       ramp(spinRate(elapsed));
-      if (elapsed < ORBIT_TURN_MS) frame = requestAnimationFrame(step);
+      if (elapsed < ORBIT_TURN_MS) roundFrame = requestAnimationFrame(step);
     };
-    frame = requestAnimationFrame(step);
+    roundFrame = requestAnimationFrame(step);
     const timer = setTimeout(() => {
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(roundFrame);
       ramp?.(1); // back to rate 1 BEFORE the switch back, which carries the phase at rate 1
       round = false;
       sync();
@@ -199,7 +203,7 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
     signal.addEventListener(
       "abort",
       () => {
-        cancelAnimationFrame(frame);
+        cancelAnimationFrame(roundFrame);
         clearTimeout(timer);
       },
       { once: true },
@@ -208,9 +212,12 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
 
   const mount = (host: HTMLSpanElement, signal: AbortSignal): void => {
     painted = paint(host);
-    readConnection();
+    trouble = connection.state.trouble;
+    lost = connection.state.lost;
+    working = busy.view.orbit;
     sync();
-    snapshot.subscribe(readConnection, signal);
+    connection.subscribe(readConnection, signal);
+    busy.addEventListener("change", readBusy, { signal });
     let seen = status.get()?.id ?? 0;
     status.subscribe(() => {
       const id = status.get()?.id ?? 0;
@@ -236,6 +243,50 @@ export function CollieHome(handle: Handle<CollieHomeProps>) {
       >
         <span data-slot="collie-mark" class="grid size-11 shrink-0 place-items-center" mix={ref(mount)} />
       </button>
+    );
+  };
+}
+
+export interface CollieMarkProps {
+  /** Width and height in px. Read once, when the drawing is painted. */
+  size?: number;
+  /** While something is fetching: the orbit turns fast and the accents come to full chroma. */
+  loading?: boolean;
+  /** Not connected: still, dimmed and grey. Wins over `loading`. */
+  lost?: boolean;
+  /** The ground the mark sits on: the knockout colour that puts a near bead in front of the head. */
+  paper?: string;
+  class?: string;
+}
+
+/**
+ * The mark as a sized picture (web's `<CollieMark size weight="header" paper />`): the boot splash,
+ * the idle cover and the tour. Painted ONCE into a host with no vdom children, so a re-render never
+ * restarts its animations; `loading` and `lost` are classes on that same DOM, set after each commit.
+ */
+export function CollieMark(handle: Handle<CollieMarkProps>) {
+  let painted: Painted | null = null;
+  const apply = (): void => {
+    const { loading = false, lost = false } = handle.props;
+    painted?.setLost(lost);
+    painted?.setLoading(loading && !lost);
+  };
+  const mount = (host: HTMLSpanElement, signal: AbortSignal): void => {
+    painted = paint(host, handle.props.size ?? 64, handle.props.paper ?? "var(--background)");
+    apply();
+    signal.addEventListener("abort", () => (painted = null), { once: true });
+  };
+  return () => {
+    handle.queueTask(apply);
+    const size = handle.props.size ?? 64;
+    return (
+      <span
+        data-slot="collie-mark"
+        aria-hidden="true"
+        class={cn("grid shrink-0 place-items-center", handle.props.class)}
+        style={{ width: `${String(size)}px`, height: `${String(size)}px` }}
+        mix={ref(mount)}
+      />
     );
   };
 }

@@ -13,6 +13,7 @@ import { isNotPaired } from "../../lib/pairing";
 import { scrollMemory } from "../../lib/scroll";
 import { setStatus } from "../../lib/status";
 import { useStore } from "../../lib/store";
+import { ReadOnlyBanner } from "../../shell/connection-banner";
 import { headerOf } from "../../shell/context";
 import { SettingsGear } from "../../shell/header";
 import type { CustomSlot } from "../../shell/header-model";
@@ -117,6 +118,8 @@ export function SpaceRoute(handle: Handle<{ spaceId: string }>) {
     return (
       <div class="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col" data-testid="space">
         <div class="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto" data-testid="space-scroller" mix={scrollMemory()}>
+          {/* Below the header, so content, not viewport chrome: an inset strip on this route's page. */}
+          <ReadOnlyBanner />
           {selectedWs !== undefined && (
             <>
               <SpaceStrip

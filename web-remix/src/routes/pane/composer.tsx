@@ -26,6 +26,7 @@ import { describeApiError } from "@web/lib/api-error-message";
 import { composeLine, insertMarker, markerMissing, removeMarker } from "@web/lib/attachments";
 import { isDestructiveInput } from "@web/lib/destructive";
 import { adapterFor } from "@web/lib/harness";
+import { buzz } from "@web/lib/haptics";
 import { t, tn } from "@web/lib/i18n";
 import { keyLabel } from "@web/lib/key-queue";
 import { ctrlPresetsFor } from "@web/lib/operator-keys";
@@ -41,6 +42,7 @@ import { KeysTray } from "../../composer/keys-tray";
 import { NoEchoNotice } from "../../composer/no-echo-notice";
 import { createRecorder, elapsedLabel } from "../../composer/recorder";
 import { RecordingStrip } from "../../composer/recording-strip";
+import { beginBusy } from "../../lib/busy";
 import { config } from "../../lib/data";
 import { createDirectTyping } from "../../lib/direct-typing";
 import { clearDraft, fitsDraftStore, holdDraft, loadDraft, saveDraft } from "../../lib/drafts";
@@ -63,6 +65,8 @@ const CONFIRM_MS = 3000;
 /** The unread-dialog override waits longer: the operator reads the card first (web: 10 s). */
 const FORCE_MS = 10_000;
 const JUST_SENT_MS = 1500;
+/** How long the attach button holds its pressed tone (web: ATTACH_PRESS_MS). */
+const ATTACH_PRESS_MS = 220;
 const LAST_SENT_MS = 6000;
 /** A draft in the terminal's box this soon after a send is our own echo (composer.tsx). */
 const SENT_ECHO_GRACE_MS = 5000;
@@ -119,6 +123,21 @@ export function Composer(handle: Handle<ComposerProps>) {
   let fileInput: HTMLInputElement | undefined;
   let sending = false;
   let justSent = false;
+  // The attach button's press echo (web's ATTACH_PRESS_MS): lit for 220 ms after a tap.
+  let attachPressed = false;
+  let attachTimer: ReturnType<typeof setTimeout> | undefined;
+  // The mark's fast orbit turns for exactly as long as OPERATOR work runs: a send, an upload, a
+  // transcription (web's `useBusyWhile`). Held and released after each commit, from the three
+  // readings the render already has; the release is idempotent and the pane leaving lets go.
+  let releaseWork: (() => void) | null = null;
+  const holdWork = (working: boolean): void => {
+    if (working && releaseWork === null) releaseWork = beginBusy();
+    else if (!working && releaseWork !== null) {
+      releaseWork();
+      releaseWork = null;
+    }
+  };
+  handle.signal.addEventListener("abort", () => holdWork(false), { once: true });
   let lastSent: { text: string; at: number; paneText: string } | null = null;
   let armed: Armed = "none";
   let drawer: Drawer = null;
@@ -343,6 +362,16 @@ export function Composer(handle: Handle<ComposerProps>) {
     setText(next, next.length);
   };
 
+  function echoAttachPress(): void {
+    buzz();
+    attachPressed = true;
+    clearTimeout(attachTimer);
+    attachTimer = later(() => {
+      attachPressed = false;
+      wake();
+    }, ATTACH_PRESS_MS);
+  }
+
   // ── Send ─────────────────────────────────────────────────────────────────────────────────────
   async function send(value: string, isDraft: boolean, force: boolean): Promise<boolean> {
     const line = value.trim();
@@ -468,6 +497,8 @@ export function Composer(handle: Handle<ComposerProps>) {
     const uploading = attachments.uploading();
     const hasDraft = text.trim() !== "" || list.length > 0;
     const rec = readRecorder();
+    const working = sending || uploading || rec.phase === "transcribing";
+    handle.queueTask(() => holdWork(working));
     const micIsPrimary = stt !== null && !direct.active && !hasDraft;
     // The draft field's size and face (composer.tsx `draftStyle`): the operator's draft size with
     // the iOS no-zoom floor, and the mirror's family only when a non-default one was chosen.
@@ -545,7 +576,7 @@ export function Composer(handle: Handle<ComposerProps>) {
           data-testid="composer-send"
           aria-label={words}
           disabled={locked || !hasDraft || sending}
-          class="h-9 shrink-0 rounded-md bg-destructive px-3 text-sm font-semibold text-white disabled:opacity-50"
+          class="h-9 shrink-0 rounded-md bg-destructive px-3 text-sm font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-50"
           mix={on("click", onSendClick)}
         >
           {words}
@@ -567,7 +598,7 @@ export function Composer(handle: Handle<ComposerProps>) {
           title={stt.available ? undefined : stt.reason}
           disabled={!stt.available || locked || sending || rec.phase === "transcribing"}
           class={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-full disabled:opacity-50",
+            "flex size-9 shrink-0 items-center justify-center rounded-full transition-all active:scale-[0.98] disabled:opacity-50",
             rec.phase === "idle" ? "bg-primary text-primary-foreground" : "bg-destructive text-white",
           )}
           mix={[
@@ -592,7 +623,7 @@ export function Composer(handle: Handle<ComposerProps>) {
           // web/src/components/composer.tsx: `disabled={locked || sending}`. An empty draft keeps
           // the primary ink; `send` refuses a blank value on its own.
           disabled={locked || sending}
-          class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
+          class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-all active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
           mix={[
             longPress({ disabled: locked || direct.active }),
             on(LONG_PRESS_EVENT, () => {
@@ -820,10 +851,16 @@ export function Composer(handle: Handle<ComposerProps>) {
               aria-haspopup={asksWhich ? "dialog" : undefined}
               aria-expanded={asksWhich ? picking : undefined}
               disabled={uploading || locked || direct.active}
-              class="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground active:bg-muted disabled:opacity-50"
+              class={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-all active:bg-muted active:scale-[0.98] disabled:opacity-50",
+                // The press echo: `duration-0` on the way in (a press must answer at once), the base
+                // duration on the way out. Lit while its menu stands, as web/'s.
+                (attachPressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
+              )}
               mix={[
                 on("pointerdown", (event) => event.preventDefault()),
                 on("click", () => {
+                  echoAttachPress();
                   if (asksWhich) {
                     picking = !picking;
                     handle.update();
