@@ -87,7 +87,7 @@ function harness(over: HarnessOptions = {}): Harness {
   const exec = fakeExec(over);
   // The binary exists unless a test deliberately removes it — every other test would otherwise be
   // asserting the "no binary" guard by accident.
-  const files = fakeFiles({ [BINARY]: "", [collieBinary(ROOT, over.host ?? hostFor("linux"))]: "", ...over.files });
+  const files = fakeFiles({ [BINARY]: "", [`${ROOT}/web/package.json`]: "{}", [collieBinary(ROOT, over.host ?? hostFor("linux"))]: "", ...over.files });
   const readyCalls: Array<{ port: number; host: string }> = [];
   const deps: LifecycleDeps = {
     // Every fixture here is a Collie that has already chosen its multiplexer, so `start`'s first-run
@@ -1980,7 +1980,7 @@ describe("restart off Windows, golden", () => {
     "    tailnet   http://127.0.0.1:8787 (Tailscale name unavailable)",
     "",
   ];
-  const head = ["took COLLIE_MUX=herdr from your environment; wrote COLLIE_MUX=herdr to /cfg/.env", "bridge stopped", "building web UI (first run)…"];
+  const head = ["took COLLIE_MUX=herdr from your environment; wrote COLLIE_MUX=herdr to /cfg/.env", "bridge stopped", "building web UI (first run)…", "web source: web/ (default)"];
   const noTailnet = [
     "error: 'tailscale status' named no host for this node — the allowlist was not discovered.",
     "       no allowlist is set, so the Host gate will refuse every request. Set",

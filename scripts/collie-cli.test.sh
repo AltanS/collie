@@ -1106,6 +1106,7 @@ B_SIDECARS="${TMP_ROOT}/build-sidecars.before"
 mkdir -p "${B_ROOT}/web/dist/assets" "${B_ROOT}/scripts" "${B_ROOT}/bin" "$B_BIN" "$B_CONFIG"
 printf 'id = "herdr.collie"\nversion = "9.9.9"\n' > "${B_ROOT}/herdr-plugin.toml"
 printf 'legacy sidecar\n' > "$B_LEGACY_SIDECAR"
+printf '{}\n' > "${B_ROOT}/web/package.json"
 printf 'LIVE BUNDLE\n' > "${B_ROOT}/web/dist/index.html"
 printf 'LIVE ASSET\n' > "${B_ROOT}/web/dist/assets/app.js"
 printf 'OLD BINARY\n' > "${B_ROOT}/bin/collie"
@@ -1209,6 +1210,7 @@ assert_eq "$(cat "$B_LEGACY_SIDECAR")" "legacy sidecar"
 
 # A failed compile also leaves the live artifacts and checkout clean. The fake creates Bun's normal
 # cwd sidecar before failing, proving cleanup is not a success-only path.
+printf '{}\n' > "${B_ROOT}/web/package.json"
 printf 'LIVE BUNDLE\n' > "${B_ROOT}/web/dist/index.html"
 printf 'LIVE ASSET\n' > "${B_ROOT}/web/dist/assets/app.js"
 printf 'OLD BINARY\n' > "${B_ROOT}/bin/collie"
@@ -1226,6 +1228,7 @@ assert_eq "$(cat "$B_LEGACY_SIDECAR")" "legacy sidecar"
 rm -f "$B_COMPILE_FAIL"
 
 # A failed web build changes NOTHING: same served bundle, same binary, no staging leftovers.
+printf '{}\n' > "${B_ROOT}/web/package.json"
 printf 'LIVE BUNDLE\n' > "${B_ROOT}/web/dist/index.html"
 printf 'LIVE ASSET\n' > "${B_ROOT}/web/dist/assets/app.js"
 printf 'OLD BINARY\n' > "${B_ROOT}/bin/collie"

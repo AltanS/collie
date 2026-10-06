@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **`collie build` can build the web app from another directory.** Set `COLLIE_WEB_SRC` to a directory name next to `web/`, or put that name on one line in a `.collie-web-src` file at the checkout root, and the install, typecheck and Vite build run there instead. The bundle still lands in `web/dist`, so the bridge serves it the same way. The environment variable wins over the file, and the file wins over `web`. A value that is not a plain directory name holding a `package.json` stops the build right after the version gate and names the setting. The build now prints which web source it uses.
+
 ## [1.17.0] - 2026-10-06
 
 ### Added

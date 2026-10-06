@@ -192,7 +192,7 @@ function harness(
     ...over,
     answers: [...(over.answers ?? []), ["/fake/bun --version", { stdout: "1.4.0\n" }], ...ORIGIN],
   });
-  const seed: SeededFiles = { [`${DIST}/index.html`]: "OLD", [BINARY]: "OLD BINARY" };
+  const seed: SeededFiles = { [`${DIST}/index.html`]: "OLD", [`${ROOT}/web/package.json`]: "{}", [BINARY]: "OLD BINARY" };
   if (over.installed !== undefined) {
     seed[`${ROOT}/herdr-plugin.toml`] = `id = "herdr.collie"\nversion = "${over.installed}"\n`;
   }

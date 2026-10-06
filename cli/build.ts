@@ -1,4 +1,4 @@
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import type { CliContext } from "./context.ts";
@@ -20,6 +20,11 @@ import type { Exec, Files } from "./sys.ts";
 //   5. build the web    — into `web/dist-staging`, never into `web/dist`: Vite empties its output
 //      bundle             dir first, and the bridge serves `web/dist` FROM DISK at request time, so
 //                         building in place would leave the served directory empty with no rollback.
+//
+// Steps 2, 3 and 5 run in the web source directory, `web` unless `COLLIE_WEB_SRC` or a
+// `.collie-web-src` file at the checkout root names another ({@link resolveWebSrc}). Whichever
+// directory built it, the bundle is staged at `web/dist-staging` and swapped to `web/dist`, the one
+// path the bridge serves.
 //
 // The swaps are LAST, after every step that can fail, and each is a same-filesystem rename. That is
 // the invariant this module exists for: a build that fails leaves the previously served bundle
@@ -54,6 +59,53 @@ export interface CliCompileOptions {
   target?: string;
   /** Where the compiled binary is written. */
   outfile?: string;
+}
+
+/** The directory the web app is built from when nothing else is set. */
+export const DEFAULT_WEB_SRC = "web";
+/** The env var that names the web source directory. It wins over {@link WEB_SRC_FILE}. */
+export const WEB_SRC_ENV = "COLLIE_WEB_SRC";
+/** A one-line file at the checkout root that pins the web source directory when the env var is unset. */
+export const WEB_SRC_FILE = ".collie-web-src";
+
+/** Which web source directory a build uses, and which setting chose it. */
+export interface WebSrc {
+  /** The plain directory name, as set. */
+  name: string;
+  /** The absolute directory. */
+  dir: string;
+  from: "default" | `env ${typeof WEB_SRC_ENV}` | `file ${typeof WEB_SRC_FILE}`;
+}
+
+/**
+ * Pick the web source directory: `COLLIE_WEB_SRC`, else the first line of `.collie-web-src`, else
+ * `web`. A blank value counts as unset. The value must be a plain directory name that exists under
+ * the checkout root and holds a `package.json`; anything else is an error naming the setting, so a
+ * typo fails before the first install rather than after a long build.
+ */
+export function resolveWebSrc(
+  root: string,
+  env: Readonly<Record<string, string | undefined>>,
+  files: Pick<Files, "exists" | "read">,
+): { ok: true; src: WebSrc } | { ok: false; error: string } {
+  const fromEnv = env[WEB_SRC_ENV]?.trim() ?? "";
+  const fromFile = (files.read(join(root, WEB_SRC_FILE)) ?? "").split(/\r?\n/, 1)[0]!.trim();
+  const [name, setting, from] =
+    fromEnv !== ""
+      ? [fromEnv, WEB_SRC_ENV, `env ${WEB_SRC_ENV}` as const]
+      : fromFile !== ""
+        ? [fromFile, WEB_SRC_FILE, `file ${WEB_SRC_FILE}` as const]
+        : [DEFAULT_WEB_SRC, WEB_SRC_ENV, "default" as const];
+  const bad = (why: string) => ({
+    ok: false as const,
+    error: `${setting} is "${name}": ${why}. Set it to a plain directory name under ${root} that holds a package.json (default "${DEFAULT_WEB_SRC}").`,
+  });
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name === "." || name === "..") {
+    return bad("not a plain directory name (no slash, no path)");
+  }
+  const dir = join(root, name);
+  if (!files.exists(join(dir, "package.json"))) return bad(`${join(dir, "package.json")} does not exist`);
+  return { ok: true, src: { name, dir, from } };
 }
 
 /** The checkout-relative locations `build` writes. */
@@ -404,7 +456,6 @@ export function compileCliToLive(
 
 export function cmdBuild(deps: BuildDeps): number {
   const root = deps.ctx.root;
-  const web = join(root, "web");
   if (requireBun(deps) === null) return EXIT.FAIL;
 
   // 1. The version gate stays `scripts/check-version.sh` — ONE implementation. It is also the
@@ -414,6 +465,16 @@ export function cmdBuild(deps: BuildDeps): number {
     const gate = join(root, "scripts", "check-version.sh");
     if (!step(deps, "the version gate", "bash", [gate], root)) return EXIT.FAIL;
   }
+
+  // The web source directory is settled right after the gate, before any install runs: a bad
+  // setting fails in a moment instead of after the long steps.
+  const picked = resolveWebSrc(root, deps.ctx.env, deps.files);
+  if (!picked.ok) {
+    deps.io.err(`error: ${picked.error}`);
+    return EXIT.FAIL;
+  }
+  const web = picked.src.dir;
+  deps.io.out(`web source: ${picked.src.name}/ (${picked.src.from})`);
 
   // 2. Both dependency trees, root first.
   for (const dir of [root, web]) {
@@ -464,7 +525,9 @@ export function cmdBuild(deps: BuildDeps): number {
     deps,
     "building the web UI",
     "bun",
-    ["run", "build", "--", "--outDir", "dist-staging", "--emptyOutDir"],
+    // `--outDir` is relative to the Vite root: `dist-staging` for `web`, `../web/dist-staging` for a
+    // sibling, so every source lands in the one staging path the swap below renames.
+    ["run", "build", "--", "--outDir", relative(web, staging), "--emptyOutDir"],
     web,
   );
   if (!built) {

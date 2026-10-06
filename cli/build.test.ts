@@ -92,6 +92,7 @@ function harness(
   const files = fakeFiles({
     [`${DIST}/index.html`]: "<!doctype html>OLD",
     [`${DIST}/assets/app.js`]: "OLD BUNDLE",
+    [`${WEB}/package.json`]: "{}",
     [BINARY]: "OLD BINARY",
     ...over.files,
   });
