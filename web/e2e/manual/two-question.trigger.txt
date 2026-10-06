@@ -1,0 +1,1 @@
+Use the question tool ONCE with two questions in the same call. Question 1: header 'Colour', question 'Which colour?', options Red (warm), Green (calm), Blue (cool), single select. Question 2: header 'Size', question 'Which size?', options Small (tiny), Large (huge), single select.
