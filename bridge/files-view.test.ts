@@ -47,7 +47,7 @@ function write(path: string, body: string | Uint8Array): void {
 beforeAll(() => {
   // realpath: macOS's tmpdir is itself a link (/var → /private/var), and the root's real path is
   // what containment compares against.
-  base = realpathSync(mkdtempSync(join(tmpdir(), "collie-files-view-")));
+  base = realpathSync.native(mkdtempSync(join(tmpdir(), "collie-files-view-")));
   home = join(base, "home");
   root = join(home, "projects", "ws");
   outside = join(base, "outside");
@@ -613,7 +613,7 @@ describe("list: entries git ignores carry ignored: true", () => {
   };
 
   beforeAll(() => {
-    ibase = realpathSync(mkdtempSync(join(tmpdir(), "collie-files-ignored-")));
+    ibase = realpathSync.native(mkdtempSync(join(tmpdir(), "collie-files-ignored-")));
     ihome = join(ibase, "home");
     repoRoot = join(ihome, "ws");
     plainRoot = join(ihome, "plain");

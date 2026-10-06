@@ -427,7 +427,7 @@ describe("start, on launchd", () => {
     const err = h.io.stderr.join("\n");
     expect(err).toContain("warn: launchd loaded herdr.collie but no process is running");
     expect(err).toContain("launchctl kickstart gui/501/herdr.collie");
-    expect(err).toContain(`${CONFIG}/collie.log`);
+    expect(err).toContain(join(CONFIG, "collie.log"));
     // Five reads of the job, one more than the waits between them.
     expect(h.exec.calls.filter((c) => c === JOB).length).toBeGreaterThanOrEqual(5);
     // It must not fall back to a second, unsupervised bridge beside the loaded job.
