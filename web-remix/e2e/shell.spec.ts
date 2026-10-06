@@ -13,6 +13,7 @@ declare global {
     __anim?: Animation;
     __hold?: string[];
     __tops?: number[];
+    __vt?: number;
   }
 }
 
@@ -85,6 +86,10 @@ test("the pane claims the header: name and workspace, no gear, no tab bar; the m
 });
 
 test("dashboard to pane slides in, the browser's own back does not", async ({ page }) => {
+  // A row tap glides by default; the kill switch keeps this case on the plain screen slide.
+  await page.addInitScript(() => {
+    Object.assign(globalThis, { __collieGlide: false });
+  });
   await stubPaneBridge(page, { [PANES.plain]: "ready\n> " });
   await openHome(page);
   await openPaneFromHome(page, PANES.plain);
@@ -94,6 +99,26 @@ test("dashboard to pane slides in, the browser's own back does not", async ({ pa
   await page.goBack();
   await expect(page.getByTestId("pane-row").first()).toBeVisible();
   await expect(screen).toHaveAttribute("data-move", "none");
+});
+
+test("a row tap on the dashboard runs the glide, a view transition, not the slide", async ({ page }) => {
+  // Count the document's view transitions: only glideForwardWhenReady starts one on a row tap.
+  await page.addInitScript(() => {
+    window.__vt = 0;
+    const start = document.startViewTransition.bind(document);
+    document.startViewTransition = (cb) => {
+      window.__vt = (window.__vt ?? 0) + 1;
+      return start(cb);
+    };
+  });
+  await stubPaneBridge(page, { [PANES.plain]: "ready\n> " });
+  await openHome(page);
+  await openPaneFromHome(page, PANES.plain);
+  expect(await page.evaluate(() => window.__vt)).toBeGreaterThanOrEqual(1);
+  // The glide names its parts for one transition only, and clears them when it ends.
+  await expect
+    .poll(() => page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-glide]")].filter((el) => el.style.viewTransitionName !== "").length))
+    .toBe(0);
 });
 
 test("reduced motion disables the slide", async ({ page }) => {
