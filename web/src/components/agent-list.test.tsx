@@ -290,9 +290,11 @@ describe("AgentList — the workspace headings", () => {
     expect(within(headerRow()).getByLabelText("1 needs you")).toBeInTheDocument();
     expect(within(headerRow()).getByLabelText("2 idle")).toBeInTheDocument();
     expect(within(headerRow()).queryByText(/needs you|idle/)).not.toBeInTheDocument();
-    // The one summary slot at the top spells the very same counts in words.
+    // The one summary slot at the top spells the worst count in words and draws the rest bare, and
+    // its button still names every count in words.
     expect(screen.getByText("1 needs you")).toBeInTheDocument();
-    expect(screen.getByText("2 idle")).toBeInTheDocument();
+    expect(screen.queryByText("2 idle")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^1 needs you\s*2 idle$/ })).toBeInTheDocument();
   });
 
   // A workspace whose every pane is blocked used to earn no heading at all — the group WAS the
