@@ -1,3 +1,5 @@
+// FIRST, before anything reads storage: finish a half-done wipe and check the pairing's expiry.
+import "./lib/wipe-resume";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 

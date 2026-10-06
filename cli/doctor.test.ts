@@ -1322,6 +1322,30 @@ describe("collie doctor — the crew checks", () => {
     expect(own?.headers["tailscale-user-login"]).toBeUndefined();
   });
 
+  // Reads need a pairing token since ADR 0086, and this process holds none: the bridge writes a local
+  // read credential to `<stateDir>/local-secret` at start, and this verb sends it on its own read.
+  test("the bridge's own snapshot carries the local read credential when the file is there", async () => {
+    const secret = "A".repeat(43);
+    const h = harness(LEAD, [hello(), hello()], {
+      files: { ...healthyFiles(), ...markerFile(LEAD), [`${STATE}/local-secret`]: `${secret}\n` },
+    });
+    await findings(h);
+    const own = h.sent.find((r) => r.url === "http://127.0.0.1:8787/api/snapshot");
+    expect(own?.headers.authorization).toBe(`Bearer ${secret}`);
+    // Never on a crew leg (those carry the crew secret): the credential is this host's own bridge's.
+    for (const r of h.sent.filter((x) => x.url.startsWith("https://"))) expect(r.headers.authorization).not.toContain(secret);
+  });
+
+  test("no local-secret file, or one that is not secret-shaped, means no Authorization header", async () => {
+    const extras: Record<string, string>[] = [{}, { [`${STATE}/local-secret`]: "not-a-secret\n" }];
+    for (const extra of extras) {
+      const h = harness(LEAD, [hello(), hello()], { files: { ...healthyFiles(), ...markerFile(LEAD), ...extra } });
+      await findings(h);
+      const own = h.sent.find((r) => r.url === "http://127.0.0.1:8787/api/snapshot");
+      expect(own?.headers.authorization).toBeUndefined();
+    }
+  });
+
   test("member-versions: skew WARNS naming both versions — §7.1 refuses nothing, so nor does this", async () => {
     const { code, byCheck } = await findings(
       harness(LEAD, [hello({ version: "1.0.0-alpha.9" })], {
@@ -1576,11 +1600,18 @@ describe("pairing — doctor points to collie pair", () => {
     expect(code).toBe(EXIT.OK);
   });
 
-  test("an unreadable registry counts as no device paired, and still names collie pair", async () => {
-    const files = { ...healthyFiles(), [PAIRED_DEVICES]: "{ not json" };
-    const pairing = (await findings(harness(null, [], { files }))).byCheck.get("pairing");
-    expect(pairing?.status).toBe("warn");
-    expect(pairing?.remedy).toContain("`collie pair`");
+  // The bridge answers 503 `pairing unavailable` over such a file, never `device not paired`
+  // (bridge/pairing.ts, RegistryUnreadableError), so doctor must not call it "no device paired".
+  test("an unreadable registry is its own warning, not \"no device paired\"", async () => {
+    for (const body of ["{ not json", "", "[]", "null"]) {
+      const files = { ...healthyFiles(), [PAIRED_DEVICES]: body };
+      const pairing = (await findings(harness(null, [], { files }))).byCheck.get("pairing");
+      expect(pairing?.status).toBe("warn");
+      expect(pairing?.detail).toContain("cannot be read");
+      expect(pairing?.detail).toContain("pairing unavailable");
+      expect(pairing?.detail).not.toContain("no device paired");
+      expect(pairing?.remedy).toContain("`collie pair`");
+    }
   });
 
   test("every pairing expired: a warning that names collie pair", async () => {

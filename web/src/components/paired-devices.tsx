@@ -10,7 +10,7 @@ import { pairDevice, revokeDevice } from "@/lib/api";
 import { dateTime, timeAgo } from "@/lib/format";
 import { PAIRED_DEVICES_HASH } from "@/lib/nav";
 import { setDeviceToken, usePairing } from "@/lib/pairing";
-import { wipeDevice } from "@/lib/wipe";
+import { clearLastWipe, lastWipeReason, type PairingEndReason, wipeDevice } from "@/lib/wipe";
 import type { DevicesData } from "@/lib/loaders";
 import type { PairFailure } from "@/lib/types";
 
@@ -137,7 +137,12 @@ export function PairedDevices({ data }: { data: DevicesData }) {
       )}
 
       {unpaired && (
-        <PairForm nameRef={nameRef} expired={expired} onPaired={() => revalidator.revalidate()} />
+        <PairForm
+          nameRef={nameRef}
+          expired={expired}
+          heldToken={token !== null}
+          onPaired={() => revalidator.revalidate()}
+        />
       )}
     </Card>
   );
@@ -258,6 +263,7 @@ function DeviceRow({
 function PairForm({
   nameRef,
   expired,
+  heldToken,
   onPaired,
 }: {
   /** Owned by the card above, which decides where focus lands on each way in. */
@@ -268,9 +274,17 @@ function PairForm({
    * the operator does not wonder whether someone revoked the phone.
    */
   expired: boolean;
+  /** This browser holds a token right now. With none and no wipe to name, it was never paired here. */
+  heldToken: boolean;
   onPaired: () => void;
 }) {
   useLocale();
+  // The cause of the last wipe, shown once (lib/wipe.ts writes it): read on mount, then taken, so the
+  // next visit to this screen does not repeat a sentence about the past.
+  const [wipeCause] = useState(lastWipeReason);
+  useEffect(() => {
+    if (wipeCause !== null) clearLastWipe();
+  }, [wipeCause]);
   // `?pair=` is what the QR `collie pair` prints carries — the phone arrives with the code already
   // spelled, so the only thing left to type is the device name, and that is where focus goes.
   // Read once, as the initial state: after this the field is the operator's, and a re-render must
@@ -315,10 +329,16 @@ function PairForm({
   // The CLI command itself is never translated (rule: CLI commands stay literal); the surrounding
   // sentence is, so the command is placed via the same "locate the interpolated value" split as the
   // paired-as sentence above, letting it keep its own <code> styling.
-  const command = "bin/collie pair";
+  //
+  // A browser that never held a token gets its own sentence, which says plainly that it is not paired
+  // and names the verb as the operator types it on a binary install, `collie pair`.
+  const neverPaired = !expired && !heldToken && wipeCause === null;
+  const command = neverPaired ? "collie pair" : "bin/collie pair";
   const hintMessage = expired
     ? t("settings.devices.pair.expired", { command })
-    : t("settings.devices.pair.hint", { command });
+    : neverPaired
+      ? t("settings.devices.pair.never", { command })
+      : t("settings.devices.pair.hint", { command });
   const [hintBefore, hintAfter] = splitAroundValue(hintMessage, command);
   const title = expired ? t("settings.devices.pair.againTitle") : t("settings.devices.pair.title");
 
@@ -326,6 +346,7 @@ function PairForm({
     <div className="flex flex-col gap-3 border-t border-border p-4">
       <div>
         <div className="font-medium">{title}</div>
+        {wipeCause !== null && <p className="text-sm">{wipeCauseText(wipeCause)}</p>}
         <p className="text-sm text-muted-foreground">
           {hintBefore}
           <code className="font-mono text-[13px]">{command}</code>
@@ -370,6 +391,18 @@ function PairForm({
       </Button>
     </div>
   );
+}
+
+/** The one line that names why this phone's saved data was cleared. */
+function wipeCauseText(reason: PairingEndReason): string {
+  switch (reason) {
+    case "unpair":
+      return t("settings.devices.pair.cleared.unpair");
+    case "expired":
+      return t("settings.devices.pair.cleared.expired");
+    case "revoked":
+      return t("settings.devices.pair.cleared.revoked");
+  }
 }
 
 // One actionable sentence per refusal the bridge names. Each says what happened AND what to do next

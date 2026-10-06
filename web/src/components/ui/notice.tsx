@@ -79,6 +79,13 @@ export type NoticeProps = {
   icon?: ReactNode;
   children: ReactNode;
   className?: string;
+  /**
+   * A strip only: let the copy wrap instead of truncating. The one exception to "strips never wrap"
+   * (see STRIP), for a sentence the reader must see whole to act on, like the dated saved-copy line
+   * at 390px beside Retry. The strip then grows past its floor, which `min-h` allows on purpose.
+   * Ignored by a box, which always wraps.
+   */
+  wrap?: boolean;
 } & NoticeInteraction;
 
 /**
@@ -222,6 +229,7 @@ export function Notice({
   action,
   onDismiss,
   dismissLabel,
+  wrap = false,
 }: NoticeProps) {
   const { surface, accent } = TONE[tone];
   const strip = variant === "strip";
@@ -243,7 +251,8 @@ export function Notice({
     <span
       role={role}
       id={onActivate ? bodyId : undefined}
-      className="min-w-0 flex-1 truncate font-medium"
+      // `wrap`: the opt-in exception, a sentence that must read whole (see NoticeProps.wrap).
+      className={cn("min-w-0 flex-1 font-medium", wrap ? "break-words text-pretty" : "truncate")}
     >
       {children}
     </span>

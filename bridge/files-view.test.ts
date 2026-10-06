@@ -775,3 +775,57 @@ describe("list: entries git ignores carry ignored: true", () => {
     expect(answer.text).toBe("x\n");
   });
 });
+
+// A file body is file content, and the Files view opens `.env` files on request. The mirror's mask
+// (bridge/redact.ts) runs on every body the Files routes serve, gated by `cfg.redact` as the mirror
+// is. Placeholder secrets only.
+describe("Files view bodies are masked like the mirror", () => {
+  let maskBase: string;
+  let maskHome: string;
+  let app: string;
+  let snap: RootSnapshot;
+  const engine = { current: () => snap };
+  const req = new Request("http://x/");
+  const at = (q = "") => new URL(`http://x/api/x/files${q}`);
+  const BODY = "NAME=collie\npassword=placeholder1234\nAuthorization: Bearer placeholderplaceholder0000\n";
+
+  beforeAll(() => {
+    maskBase = realpathSync.native(mkdtempSync(join(tmpdir(), "collie-files-mask-")));
+    maskHome = join(maskBase, "home");
+    app = join(maskHome, "projects", "app");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "settings.env"), BODY);
+    snap = {
+      agents: [pane("w1:p1", "w1", app)],
+      shellPanes: [],
+      workspaces: [space("w1", "app", app)],
+    };
+  });
+  afterAll(() => rmSync(maskBase, { recursive: true, force: true }));
+
+  test("a file read hides the values, keeps the names, and keeps every line and column", async () => {
+    for (const res of [
+      await workspaceFiles(engine, "w1", at("?path=settings.env"), req, [], maskHome, true),
+      await paneFiles(engine, "w1:p1", at("?path=settings.env"), req, [], maskHome, true),
+    ]) {
+      const body = await res.json();
+      expect(body.available).toBe(true);
+      expect(body.text).not.toContain("placeholder1234");
+      expect(body.text).not.toContain("placeholderplaceholder0000");
+      expect(body.text).toContain("NAME=collie\npassword=•");
+      expect(body.text.split("\n").map((l: string) => l.length)).toEqual(BODY.split("\n").map((l) => l.length));
+    }
+  });
+
+  test("COLLIE_REDACT=off serves the body as it is on disk", async () => {
+    const body = await (await workspaceFiles(engine, "w1", at("?path=settings.env"), req, [], maskHome, false)).json();
+    expect(body.text).toBe(BODY);
+  });
+
+  test("a listing is names only, and is answered as before", async () => {
+    const masked = await (await workspaceFiles(engine, "w1", at(), req, [], maskHome, true)).json();
+    const plain = await (await workspaceFiles(engine, "w1", at(), req, [], maskHome, false)).json();
+    expect(masked).toEqual(plain);
+    expect(masked.entries.map((e: { name: string }) => e.name)).toEqual(["settings.env"]);
+  });
+});

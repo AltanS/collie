@@ -408,15 +408,18 @@ function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead): 
     // A REFUSAL IS NOT A SILENCE (issue #238). The bridge fails closed on a request carrying no
     // identity when `tailscale serve` is in front, and an absent header cannot be read as "a local
     // caller" — a tagged node arrives without one too (`checkAccess`, bridge/server.ts). This verb
-    // sends the login it is configured with (`ownSnapshot`, doctor.ts), so a 403 here says that
-    // login is empty or is not the one the bridge was given, NOT that the bridge is down.
+    // sends the login it is configured with and the bridge's local read credential
+    // (`ownReadHeaders`, doctor.ts; reads need a pairing token since ADR 0086). So a 403 here says
+    // the login is empty or wrong, or the bridge wrote no `local-secret` (it predates the credential,
+    // or could not write its state folder), NOT that the bridge is down.
     if (read.kind === "refused") {
       return skipped(
         check,
         `the bridge refused this check's own read of \`/api/snapshot\` (${String(read.status)}) — it is up and` +
           " serving, and no pane can be checked from here",
-        "name your tailnet login in `COLLIE_TRUSTED_USER` for this instance (`collie config` shows what" +
-          " is set), restart the bridge so it reads the change, then re-run `collie doctor`",
+        "`collie restart` so the bridge writes its local read credential; if it still refuses, name your" +
+          " tailnet login in `COLLIE_TRUSTED_USER` for this instance (`collie config` shows what is set)," +
+          " restart again, then re-run `collie doctor`",
       );
     }
     return skipped(

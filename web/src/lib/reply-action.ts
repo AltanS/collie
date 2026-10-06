@@ -25,7 +25,7 @@ import { t } from "./i18n";
 import { graphemeSegmenter } from "./env";
 import { adapterFor, type HarnessAdapter } from "./harness";
 import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
-import { LIVE_WINDOW_MS, isLive } from "./liveness";
+import { isLive } from "./liveness";
 import { detectNoEchoPrompt } from "./no-echo";
 import type { Scope } from "./scope";
 
@@ -285,7 +285,7 @@ function carriesReplyTail(sent: string, draft: string | null): boolean {
 export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOutcome> {
   // M46 spec 11: the backstop behind every disabled Send. A UI that slipped through (a stale render,
   // a handler held across an outage) still cannot reach the bridge from a pane it has not just read.
-  if (!isLive(args.paneId, LIVE_WINDOW_MS, args.scope)) {
+  if (!isLive(args.paneId, args.scope)) {
     return { status: "refused", reason: "offline", error: t("composer.send.reconnect") };
   }
   const adapter = adapterFor(args.agent ?? undefined);

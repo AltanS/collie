@@ -399,6 +399,19 @@ describe("ConnectionBanner — offline states", () => {
     );
   });
 
+  it.each([
+    [false, "You are offline. Showing what was saved at"],
+    [true, "Bridge not reachable. Is Tailscale connected? Showing what was saved at"],
+  ])("offline states: the saved-copy sentence reads whole, wrapping instead of truncating (online %s)", (online, lead) => {
+    setOnline(online);
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    const sentence = screen.getByText((text) => text.startsWith(lead));
+    expect(sentence.textContent).toMatch(/at .+\.$/);
+    expect(sentence).not.toHaveClass("truncate");
+    // Retry stays beside it, as the compact action at the right.
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
   it("offline states: a device refused for want of pairing shows no connection strip and no saved copy", () => {
     markNotPaired();
     renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });

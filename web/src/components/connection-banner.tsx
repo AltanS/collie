@@ -273,6 +273,9 @@ function ConnectionStateBanner({
         // back: `ui/notice.tsx` has no way to spell a role and a liveness at the same time.
         announce={view.tone === "danger" ? "alert" : "status"}
         icon={<view.Icon />}
+        // The saved-copy sentence names the cause and the saved time, and both matter: at 390px
+        // beside Retry it truncated mid-word. It wraps to a second line instead.
+        wrap={view.saved}
         // Actions only in red — amber is ambient (no buttons), green is a passing confirmation.
         action={
           tone === "red" ? (
@@ -332,19 +335,19 @@ function resolveView(
   stale = false,
 ) {
   if (tone === "green") {
-    return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success" } as const;
+    return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success", saved: false } as const;
   }
   if (tone === "amber") {
     // Static Plug (no spinner) — the galloping dog carries the motion, and a spinner would fight
     // prefers-reduced-motion. Ambient by design.
-    return { copy: t("connection.reconnecting"), Icon: Plug, tone: "caution" } as const;
+    return { copy: t("connection.reconnecting"), Icon: Plug, tone: "caution", saved: false } as const;
   }
   // The lead answered, so the fault is one it can name. A mux that is down belongs to the machine
   // being viewed only when that machine is the lead (or there is no crew); on a member the lead's
   // own `bridge` says nothing, and what the lead knows about that member is its health. The member's
   // sentence carries its own "last seen", so it is not dated a second time below.
   if (probe === "reachable" && !muxDisconnected && memberFault !== undefined) {
-    return { copy: memberFault, Icon: TriangleAlert, tone: "danger" } as const;
+    return { copy: memberFault, Icon: TriangleAlert, tone: "danger", saved: false } as const;
   }
   // THE SAVED COPY, in the quiet tone: it is not an error state, it is the screen the operator left,
   // dated (M46 spec 10). Offline is the phone's own fact and needs no probe; otherwise the bridge did
@@ -353,8 +356,8 @@ function resolveView(
   if (stale && lastSeenAt !== undefined && probe !== "reachable") {
     const time = savedAtLabel(lastSeenAt);
     return online
-      ? ({ copy: t("connection.saved.unreachable", { time }), Icon: CloudOff, tone: "neutral" } as const)
-      : ({ copy: t("connection.saved.offline", { time }), Icon: WifiOff, tone: "neutral" } as const);
+      ? ({ copy: t("connection.saved.unreachable", { time }), Icon: CloudOff, tone: "neutral", saved: true } as const)
+      : ({ copy: t("connection.saved.offline", { time }), Icon: WifiOff, tone: "neutral", saved: true } as const);
   }
   const cause =
     probe === "reachable" && muxDisconnected
@@ -366,5 +369,5 @@ function resolveView(
     lastSeenAt === undefined
       ? cause.copy
       : t("connection.withLastSeen", { cause: cause.copy, time: clockTime(lastSeenAt) });
-  return { copy, Icon: cause.Icon, tone: "danger" } as const;
+  return { copy, Icon: cause.Icon, tone: "danger", saved: false } as const;
 }

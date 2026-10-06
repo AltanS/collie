@@ -375,3 +375,64 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
     });
   });
 });
+
+// A diff is file content, and file content is where a key sits. The mask the mirror wears
+// (bridge/redact.ts) runs on every diff the Changes routes serve, gated by `cfg.redact` as the mirror
+// is. Placeholder secrets only.
+describe("Changes diffs are masked like the mirror", () => {
+  let home: string;
+  let repo: string;
+  let snap: RootSnapshot;
+  const engine = { current: () => snap };
+  const req = new Request("http://x/");
+  const at = (q = "") => new URL(`http://x/api/x/changes${q}`);
+  const OLD = "password=placeholder1234";
+  const NEW = "api_key: placeholder5678";
+
+  beforeAll(() => {
+    home = mkdtempSync(join(tmpdir(), "collie-changes-mask-"));
+    repo = join(home, "projects", "app");
+    mkdirSync(repo, { recursive: true });
+    git(repo, "init", "-q");
+    writeFileSync(join(repo, "settings.env"), `${OLD}\n`);
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "init");
+    writeFileSync(join(repo, "settings.env"), `${NEW}\n`);
+    snap = {
+      agents: [pane("w1:p1", "w1", repo)],
+      shellPanes: [],
+      workspaces: [space("w1", "app", repo)],
+    };
+  });
+  afterAll(() => rmSync(home, { recursive: true, force: true }));
+
+  test("a working-tree diff hides both values, keeps the names, and keeps every line", async () => {
+    const masked = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, home, true)).json();
+    expect(masked.available).toBe(true);
+    expect(masked.diff).not.toContain("placeholder1234");
+    expect(masked.diff).not.toContain("placeholder5678");
+    expect(masked.diff).toContain("-password=•");
+    expect(masked.diff).toContain("+api_key: •");
+    const plain = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, home, false)).json();
+    expect(plain.diff).toContain(OLD);
+    expect(plain.diff).toContain(NEW);
+    // Same lines, same widths: the mask is a character-for-character replacement.
+    expect(masked.diff.split("\n").map((l: string) => l.length)).toEqual(plain.diff.split("\n").map((l: string) => l.length));
+  });
+
+  test("the pane route and the commit view are masked the same way", async () => {
+    const byPane = await (await paneChanges(engine, "w1:p1", at("?repo=.&path=settings.env"), req, home, true)).json();
+    expect(byPane.diff).not.toContain("placeholder5678");
+    const commit = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=.&path=settings.env"), req, home, true)).json();
+    expect(commit.available).toBe(true);
+    expect(commit.diff).toContain("+password=•");
+    expect(commit.diff).not.toContain("placeholder1234");
+    const plain = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=.&path=settings.env"), req, home, false)).json();
+    expect(plain.diff).toContain(OLD);
+  });
+
+  test("the mask is on when a caller names no setting", async () => {
+    const byDefault = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, home)).json();
+    expect(byDefault.diff).not.toContain("placeholder5678");
+  });
+});

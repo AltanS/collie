@@ -4,6 +4,7 @@ import { server } from "@/test/setup";
 import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
 import { __resetConnectionHealth, isLostLatched, lastHealthyAt } from "./connection-health";
 import { isConnecting } from "./connection";
+import { DEAD_DEBOUNCE_MS, isLive, resetLiveness } from "./liveness";
 import { resetBasePathForTests } from "./base-path";
 import { burstPaneId, resetPollIntent, sendCount } from "./poll-intent";
 import {
@@ -808,5 +809,38 @@ describe("fetchChat", () => {
       http.get("/api/pane/chat-502/chat", () => new HttpResponse("herdr down", { status: 502 })),
     );
     await expect(fetchChat("chat-502")).rejects.toThrow(/502/);
+  });
+});
+
+// M46 hardening: a pane is live while its LAST read succeeded (lib/liveness.ts). fetchPane is the
+// one writer: a success marks it, a failure takes it down after the debounce, an abort does neither.
+describe("fetchPane drives the pane's liveness", () => {
+  beforeEach(() => resetLiveness());
+
+  it("a 200 marks the pane live, and a failed read takes it down after the debounce", async () => {
+    await fetchPane("w1:p1");
+    expect(isLive("w1:p1")).toBe(true);
+    server.use(http.get(/\/api\/pane\/[^/]+$/, () => new HttpResponse("boom", { status: 500 })));
+    await expect(fetchPane("w1:p1")).rejects.toThrow(/500/);
+    expect(isLive("w1:p1")).toBe(true); // debounced: one dropped poll does not flicker
+    await new Promise((resolve) => setTimeout(resolve, DEAD_DEBOUNCE_MS + 50));
+    expect(isLive("w1:p1")).toBe(false);
+  });
+
+  it("a network error counts as a failed read", async () => {
+    await fetchPane("w1:p1");
+    server.use(http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.error()));
+    await expect(fetchPane("w1:p1")).rejects.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, DEAD_DEBOUNCE_MS + 50));
+    expect(isLive("w1:p1")).toBe(false);
+  });
+
+  it("a read the caller aborted says nothing about the bridge", async () => {
+    await fetchPane("w1:p1");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(fetchPane("w1:p1", undefined, undefined, controller.signal)).rejects.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, DEAD_DEBOUNCE_MS + 50));
+    expect(isLive("w1:p1")).toBe(true);
   });
 });

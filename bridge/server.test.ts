@@ -1483,50 +1483,23 @@ describe("guard — the pairing gate composes with the header gate", () => {
   });
 });
 
-// M46 spec 02: the two pairing refusals tell the browser to wipe Collie's storage, but only when the
-// request carried a token, i.e. a credential that was once this browser's own. Every other 403 says
-// nothing, because a proxy refusal or a cross-origin request ends no pairing.
-describe("guard — Clear-Site-Data on the pairing refusals", () => {
-  const HDR = "x-device-id";
-  const CLEAR = "clear-site-data";
+// The pairing refusals carry no `Clear-Site-Data` (it was M46 spec 02's backstop, and was dropped):
+// the header also clears the preferences in localStorage, unregisters the service worker and its
+// precache, and on a shared origin reaches a sibling mount. The phone's own wipe is the one mechanism.
+describe("guard — no pairing refusal carries Clear-Site-Data", () => {
   const paired = {
-    enforced: () => true,
     resolve: (token: string | null) => (token === "tok-phone" ? { label: "phone" } : null),
     expired: (token: string | null) => token === "tok-old",
   };
-  const write = (c: Config, headers: Record<string, string>, gate?: PairingGate) =>
-    guard(req({ host: "collie.ts.net", origin: "https://collie.ts.net", ...headers }), c, "write", gate);
-
-  test("Clear-Site-Data rides a \"device not paired\" refusal of a bearer token", async () => {
-    const denied = write(cfg(), { authorization: "Bearer revoked" }, paired)!;
-    expect(await denied.text()).toBe("device not paired");
-    expect(denied.headers.get(CLEAR)).toBe('"storage"');
-  });
-
-  test("Clear-Site-Data rides a \"device expired\" refusal", async () => {
-    const denied = write(cfg(), { authorization: "Bearer tok-old" }, paired)!;
-    expect(await denied.text()).toBe("device expired");
-    expect(denied.headers.get(CLEAR)).toBe('"storage"');
-  });
-
-  test("Clear-Site-Data is absent when the refused request carried no token", async () => {
-    const denied = write(cfg(), {}, paired)!;
-    expect(await denied.text()).toBe("device not paired");
-    expect(denied.headers.get(CLEAR)).toBeNull();
-    // A malformed Authorization is not a bearer token either.
-    expect(write(cfg(), { authorization: "Basic tok-phone" }, paired)!.headers.get(CLEAR)).toBeNull();
-  });
-
-  test("Clear-Site-Data is absent on every other 403, token or not", async () => {
-    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
-    const notAuthorised = write(c, { authorization: "Bearer revoked" }, paired)!;
-    expect(await notAuthorised.text()).toBe("device not authorised");
-    expect(notAuthorised.headers.get(CLEAR)).toBeNull();
-    const crossOrigin = write(cfg(), { origin: "https://evil.example", authorization: "Bearer revoked" }, paired)!;
-    expect(crossOrigin.status).toBe(403);
-    expect(crossOrigin.headers.get(CLEAR)).toBeNull();
-    // And a token that passes gets no response at all.
-    expect(write(cfg(), { authorization: "Bearer tok-phone" }, paired)).toBeNull();
+  test("neither \"device not paired\" nor \"device expired\" asks the browser to clear anything", async () => {
+    const write = (headers: Record<string, string>) =>
+      guard(req({ host: "collie.ts.net", origin: "https://collie.ts.net", ...headers }), cfg(), "write", paired)!;
+    const revoked = write({ authorization: "Bearer revoked" });
+    expect(await revoked.text()).toBe("device not paired");
+    expect(revoked.headers.get("clear-site-data")).toBeNull();
+    const expired = write({ authorization: "Bearer tok-old" });
+    expect(await expired.text()).toBe("device expired");
+    expect(expired.headers.get("clear-site-data")).toBeNull();
   });
 });
 
@@ -1631,7 +1604,7 @@ describe("open routes — every /api route but health and pair asks the pairing 
   test("open routes: the snapshot asks guard, not a bare checkAccess", () => {
     const at = src.indexOf('if (pathname === "/api/snapshot")');
     const handler = src.slice(at, src.indexOf("\n      }\n", at));
-    expect(handler).toContain('guard(req, cfg, "read", pairing)');
+    expect(handler).toContain('guard(req, cfg, "read", pairingGate)');
     expect(handler).not.toContain("checkAccess(");
   });
 
@@ -1640,7 +1613,7 @@ describe("open routes — every /api route but health and pair asks the pairing 
     expect(at).toBeGreaterThan(src.indexOf('if (pathname === "/api/devices/revoke"'));
     expect(at).toBeLessThan(src.indexOf("return serveStatic(pathname"));
     const handler = src.slice(at, src.indexOf("\n      }\n", at));
-    expect(handler).toContain('guard(req, cfg, "read", pairing)');
+    expect(handler).toContain('guard(req, cfg, "read", pairingGate)');
     expect(handler).toContain('text("not found", 404)');
   });
 
@@ -2774,7 +2747,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(src).toContain('if (pathname === "/api/update/check" && req.method === "GET")');
     const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
     const checkHandler = src.slice(checkAt, checkAt + 1200);
-    expect(checkHandler).toContain('guard(req, cfg, "read", pairing)');
+    expect(checkHandler).toContain('guard(req, cfg, "read", pairingGate)');
     expect(checkHandler).not.toContain("updateAction.start");
   });
 
@@ -2869,7 +2842,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     const handler = src.slice(at, src.indexOf("\n      }\n", at));
     // Read-level, exactly like the snooze beside it — declining a notification about your own
     // machine is not terminal-driving.
-    expect(handler).toContain('guard(req, cfg, "read", pairing)');
+    expect(handler).toContain('guard(req, cfg, "read", pairingGate)');
     // One call, and the monitor is what decides whether the digest is snoozed with it. If the route
     // ever spells that itself, the rule can be edited apart from the record it belongs to.
     expect(handler).toContain('await updateMonitor.dismiss(version, scope ?? "offer")');
@@ -3756,7 +3729,7 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
   test("a name that is not a 64-hex digest is refused before any path exists", async () => {
     const { sessions, base } = await blobStore();
     for (const bad of ["not-a-hash", "1234", "../../etc/passwd", `${hash}x`]) {
-      const res = await blobRoute(bad, [sessions], null);
+      const res = await blobRoute(bad, [sessions]);
       expect(res.status).toBe(400);
     }
     await rm(base, { recursive: true, force: true });
@@ -3764,7 +3737,7 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
 
   test("a well-formed hash nothing holds is a 404 — the same answer containment failure gives", async () => {
     const { sessions, base } = await blobStore();
-    const res = await blobRoute(hash, [sessions], null);
+    const res = await blobRoute(hash, [sessions]);
     expect(res.status).toBe(404);
     await rm(base, { recursive: true, force: true });
   });
@@ -3775,22 +3748,22 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
     await writeFile(path, "");
     // Sparse, so the test costs no 16 MiB of bytes to prove the cap is on the SIZE.
     await truncate(path, BLOB_MAX_BYTES + 1);
-    const res = await blobRoute(hash, [sessions], null);
+    const res = await blobRoute(hash, [sessions]);
     expect(res.status).toBe(413);
     expect(await res.text()).toContain("too large");
     await rm(base, { recursive: true, force: true });
   });
 
-  test("a png answers 200 with its sniffed type, a private one-hour blob cache header, and the hash as ETag", async () => {
+  test("a png answers 200 with its sniffed type, private no-store, and no ETag", async () => {
     const { sessions, blobs, base } = await blobStore();
     await Bun.write(join(blobs, hash), PNG_HEAD);
-    const res = await blobRoute(hash, [sessions], null);
+    const res = await blobRoute(hash, [sessions]);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
-    // Session content: never `public`, never a year, never `immutable`.
-    expect(res.headers.get("cache-control")).toBe("private, max-age=3600");
-    // The ETag IS the hash: the store is content-addressed, so nothing is re-hashed to learn it.
-    expect(res.headers.get("etag")).toBe(`"${hash}"`);
+    // Session content: the browser's HTTP cache survives the phone's wipe, so nothing keeps it.
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    // No validator: with nothing stored, no browser has one to send back.
+    expect(res.headers.get("etag")).toBeNull();
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(PNG_HEAD);
     await rm(base, { recursive: true, force: true });
   });
@@ -3798,18 +3771,8 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
   test("a jpeg is sniffed from its own bytes — the file has no extension to guess from", async () => {
     const { sessions, blobs, base } = await blobStore();
     await Bun.write(join(blobs, hash), JPEG_HEAD);
-    const res = await blobRoute(hash, [sessions], null);
+    const res = await blobRoute(hash, [sessions]);
     expect(res.headers.get("content-type")).toBe("image/jpeg");
-    await rm(base, { recursive: true, force: true });
-  });
-
-  test("if-none-match on the hash is a 304 with no body", async () => {
-    const { sessions, blobs, base } = await blobStore();
-    await Bun.write(join(blobs, hash), PNG_HEAD);
-    const res = await blobRoute(hash, [sessions], `"${hash}"`);
-    expect(res.status).toBe(304);
-    expect(res.headers.get("etag")).toBe(`"${hash}"`);
-    expect(await res.text()).toBe("");
     await rm(base, { recursive: true, force: true });
   });
 
@@ -4151,13 +4114,13 @@ describe("security headers on the app shell", () => {
   test("Strict-Transport-Security is sent when x-forwarded-proto says https", async () => {
     const handler = withHsts(async () => new Response("ok"));
     const res = await handler(new Request("http://127.0.0.1:8788/", { headers: { "x-forwarded-proto": "https" } }));
-    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains");
+    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000");
   });
 
   test("Strict-Transport-Security is sent on a TLS listener's own https URL", async () => {
     const handler = withHsts(async () => new Response("ok"));
     const res = await handler(new Request("https://collie.example/"));
-    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains");
+    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000");
     expect(arrivedOverHttps(new Request("http://collie.example/", { headers: { "x-forwarded-proto": "http" } }))).toBe(false);
   });
 });
@@ -4204,8 +4167,21 @@ describe("pair source key (forwarded header trust)", () => {
     expect(b).toBe(a);
   });
 
-  test("a loopback peer (the front door) is keyed by the first x-forwarded-for entry", () => {
-    expect(pairSourceKey("127.0.0.1", true, "203.0.113.7, 10.0.0.1")).toBe("203.0.113.7");
+  test("a loopback peer (the front door) is keyed by the RIGHTMOST x-forwarded-for entry, the one the proxy appended", () => {
+    expect(pairSourceKey("127.0.0.1", true, "203.0.113.7, 10.0.0.1")).toBe("10.0.0.1");
+    expect(pairSourceKey("127.0.0.1", true, "100.64.0.9")).toBe("100.64.0.9");
+  });
+
+  test("entries a client wrote to the left of the proxy's own cannot rotate the key", () => {
+    const a = pairSourceKey("127.0.0.1", true, "1.1.1.1, 100.64.0.9");
+    const b = pairSourceKey("127.0.0.1", true, "2.2.2.2, 3.3.3.3, 100.64.0.9");
+    expect(a).toBe("100.64.0.9");
+    expect(b).toBe(a);
+  });
+
+  test("blank entries are skipped, so a trailing comma is not an address", () => {
+    expect(pairSourceKey("127.0.0.1", true, "100.64.0.9, ")).toBe("100.64.0.9");
+    expect(pairSourceKey("127.0.0.1", true, " , ")).toBe("loopback");
   });
 
   test("a loopback peer with no forwarded header shares one local key", () => {

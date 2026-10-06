@@ -44,6 +44,11 @@ export interface FakeIndexedDBOptions {
   hangOpen?: boolean;
   /** A write that would take the database past this many characters of stored JSON fails. */
   quotaChars?: number;
+  /**
+   * This many `deleteDatabase` calls answer `blocked` and never succeed, as when another tab will not
+   * close its connection. Counted down per call.
+   */
+  blockDeletes?: number;
 }
 
 interface DatabaseState {
@@ -96,6 +101,12 @@ export class FakeIDBFactory {
   deleteDatabase(name: string): FakeRequest<undefined> {
     const request = new FakeRequest<undefined>();
     setTimeout(() => {
+      const blocked = this.options.blockDeletes ?? 0;
+      if (blocked > 0) {
+        this.options.blockDeletes = blocked - 1;
+        request.dispatchEvent(new Event("blocked"));
+        return;
+      }
       const open = this.connections.filter((c) => c.name === name && !c.closed);
       for (const connection of open) connection.dispatchEvent(new Event("versionchange"));
       if (open.some((c) => !c.closed)) request.dispatchEvent(new Event("blocked"));

@@ -630,6 +630,32 @@ herdr plugin install AltanS/collie --yes
 herdr plugin action invoke restart --plugin herdr.collie
 ```
 
+## Upgrading to 1.18.0
+
+Version 1.18.0 makes pairing mandatory for reads as well as writes
+([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)). What changes on upgrade day:
+
+- **Paired phones keep working.** Their stored token already satisfies the new rule. Nothing to do.
+- **Unpaired browsers see the pair screen.** A desktop browser that never paired, which could read
+  before, now gets `403 device not paired`. Run `collie pair` on the host, then enter the code in
+  Settings on that browser ([Pair a device](security.md#pair-a-device--the-write-credential)).
+- **Scripts must pair once.** A script that read the API without a token gets `403` now. Run
+  `collie pair --expires 30d`, then claim the code with a POST to `/api/pair` that carries
+  `{"code": "...", "label": "script"}` and a same-origin `Origin` header. The token comes back once,
+  in that answer. Send it as `Authorization: Bearer <token>` on every later call. Store it like a
+  password.
+- **Host CLIs need nothing.** `collie doctor`, `collie history` and the crew update sweep read their
+  own bridge with a local credential the bridge writes to the state directory.
+- **Rolling back below 1.18.0 ignores token expiries.** An older bridge does not know the
+  `expiresAt` field, so an expired device works again until the bridge is updated. Revoke it with
+  `collie devices revoke <label>` if that matters
+  ([Give a device an expiry](security.md#give-a-device-an-expiry)).
+- **Old audit files may hold typed characters.** Files written before 1.18.0 can list characters
+  typed on the phone. Rotate or delete `audit.log` files from before the update.
+- **Masking may get in the way.** File bodies in Files and diffs in Changes now pass through the
+  same secret mask as pane text. If it hides something you need, set `COLLIE_REDACT=off` in your
+  `.env` and restart ([configure](configure.md)).
+
 ## Upgrading from 0.x to 1.0
 
 If `BUN_INSTALL` is defined only in `.env`, export it in your shell profile or service environment

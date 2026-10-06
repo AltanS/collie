@@ -44,6 +44,10 @@ const KEYS = new Map<string, KeyFate>([
   // The token and the push endpoint are named by constants, so the scan sees them through those.
   ["collie:device-token", { area: "local", prefix: false, fate: "wiped", why: "the credential itself" }],
   ["collie:push-endpoint", { area: "local", prefix: false, fate: "wiped", why: "names this phone's push endpoint" }],
+  // Cleared with the token (lib/pairing.ts `clearDeviceToken`): it caps the store at this pairing's expiry.
+  ["collie:pairing-expires", { area: "local", prefix: false, fate: "wiped", why: "the ended pairing's expiry" }],
+  // Written first by the wipe and removed last; present only while a wipe is unfinished (lib/wipe.ts).
+  ["collie:wipe-pending", { area: "local", prefix: false, fate: "wiped", why: "a wipe's resume mark" }],
   // ── Kept: how this phone likes to look and behave, never what a session said ──
   ["collie:theme:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:design:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
@@ -62,6 +66,8 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:mirror-native:", { area: "local", prefix: true, fate: "kept", why: "a per-pane colour choice" }],
   ["collie:tour:v1", { area: "local", prefix: false, fate: "kept", why: "the tour was seen" }],
   ["collie:push-disabled", { area: "local", prefix: false, fate: "kept", why: "the operator's push choice" }],
+  // Written BY the wipe, so it outlives it: the cause the pair screen names once, then clears.
+  ["collie:wipe-last", { area: "local", prefix: false, fate: "kept", why: "a wipe reason word, no content" }],
   ["collie:update-mode:closed:v1", { area: "local", prefix: false, fate: "kept", why: "update screen state" }],
   ["collie:update-mode:v1", { area: "session", prefix: false, fate: "kept", why: "update screen state" }],
   ["collie:auto-reloaded-for=", { area: "session", prefix: true, fate: "kept", why: "reload guard, a build id" }],

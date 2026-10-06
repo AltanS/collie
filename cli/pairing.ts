@@ -99,6 +99,14 @@ function expiryText(device: PairedDevice, now: number): string {
   return isExpired(device, now) ? `EXPIRED ${at}` : `expires ${at}`;
 }
 
+/** A moment in the operator's own clock and zone, to the minute: `2026-11-06 14:32`. */
+const two = (n: number): string => String(n).padStart(2, "0");
+
+function localStamp(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
 /** A lifetime in the operator's own unit back: `30 days`, `12 hours`, `2 weeks`. */
 function lifetimeText(ms: number): string {
   const units: [number, string][] = [
@@ -185,6 +193,9 @@ export async function cmdPair(deps: PairingDeps, args: readonly string[] = []): 
       `  The device this pairs stops working ${lifetimeText(parsed.lifetimeMs)} after it pairs; ` +
         "`collie devices set-expiry` or `clear-expiry` changes that later.",
     );
+    deps.io.out(`  Expires ${localStamp(now + parsed.lifetimeMs)} once claimed.`);
+  } else {
+    deps.io.out("  This token never expires. Add --expires 30d to limit it.");
   }
   deps.io.out("  Open Collie on your phone, go to Settings, and enter this code there.");
   deps.io.out("  Shown once — only its hash is stored, and the bridge picks it up without a restart.");

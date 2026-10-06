@@ -1,10 +1,39 @@
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { loadLastPaneText, loadLastSnapshot, saveLastPaneText, saveLastSnapshot } from "@/lib/last-seen";
-import { getDeviceToken, isNotPaired, isPairingExpired, setDeviceToken } from "@/lib/pairing";
+import { http, HttpResponse } from "msw";
+
+import { server } from "@/test/setup";
+import { FakeIDBFactory, uninstallFakeIndexedDB } from "@/test/fake-indexeddb";
+import {
+  EXPIRED_BODY,
+  getDeviceToken,
+  getPairingExpiry,
+  isNotPaired,
+  isPairingExpired,
+  NOT_PAIRED_BODY,
+  PAIRING_EXPIRES_KEY,
+  rememberPairingExpiry,
+  setDeviceToken,
+} from "@/lib/pairing";
 import { PUSH_ENDPOINT_KEY } from "@/lib/push-endpoint";
-import { __resetStore } from "@/lib/store";
+import { __closeForWipe, __resetStore, getRecord, putRecord, STORE_NAME, storeStatus } from "@/lib/store";
 import type { SnapshotResponse } from "@/lib/types";
-import { __resetWipe, onWipe, pairingRefused, type WipeContext, wipeDevice } from "./wipe";
+import {
+  __refusalSettled,
+  __resetWipe,
+  clearLastWipe,
+  lastWipeReason,
+  onWipe,
+  pairingRefused,
+  resumePendingWipe,
+  WIPE_CHANNEL,
+  WIPE_LAST_KEY,
+  WIPE_PENDING_KEY,
+  WIPE_TAB_ID,
+  type WipeAnnouncement,
+  type WipeContext,
+  wipeDevice,
+} from "./wipe";
 
 // The one wipe routine (M46 spec 02). Pinned here: every class of stored session data goes, the
 // preferences stay, a password prompt clears one pane's text and nothing else, a registered cleaner
@@ -230,33 +259,262 @@ describe("onWipe — the registry later stores join", () => {
   });
 });
 
-describe("pairingRefused — the wipe on a refusal", () => {
-  it("wipes when this phone held a token, and latches the reason", async () => {
+/** Answer the confirming `GET /api/devices` with `status` and `body`, and count the calls. */
+function confirmWith(status: number, body: string) {
+  const seen: (string | null)[] = [];
+  server.use(
+    http.get("/api/devices", ({ request }) => {
+      seen.push(request.headers.get("authorization"));
+      return status === 200
+        ? HttpResponse.json({ enforced: true, current: "phone", devices: [] })
+        : new HttpResponse(body, { status });
+    }),
+  );
+  return seen;
+}
+
+describe("pairingRefused — the wipe on a refusal, confirmed once more", () => {
+  it("wipes when the confirming read is also `device not paired`, asked with the same token", async () => {
     seed();
+    const seen = confirmWith(403, NOT_PAIRED_BODY);
     pairingRefused("not-paired");
     expect(isNotPaired()).toBe(true);
     expect(isPairingExpired()).toBe(false);
+    await __refusalSettled();
+    expect(seen).toEqual(["Bearer tok-phone"]);
     expect(getDeviceToken()).toBeNull();
     expect(loadDraft(LEAD, "w1:p1")).toBeNull();
+    expect(lastWipeReason()).toBe("revoked");
   });
 
-  it("expired latches the pair-again reason and wipes", async () => {
+  it("expired latches the pair-again reason and wipes on a confirmed `device expired`", async () => {
     seed();
+    confirmWith(403, EXPIRED_BODY);
     pairingRefused("expired");
     expect(isPairingExpired()).toBe(true);
+    await __refusalSettled();
     expect(getDeviceToken()).toBeNull();
     expect(await loadLastPaneText(LEAD, "w1:p1")).toBeNull();
+    expect(lastWipeReason()).toBe("expired");
   });
 
-  it("with no token held it only latches: an unpaired phone's drafts are its own", () => {
+  it("a confirmation that says expired after a not-paired refusal wipes as expired", async () => {
+    seed();
+    confirmWith(403, ` ${EXPIRED_BODY}\n`);
+    pairingRefused("not-paired");
+    await __refusalSettled();
+    expect(getDeviceToken()).toBeNull();
+    expect(isPairingExpired()).toBe(true);
+    expect(lastWipeReason()).toBe("expired");
+  });
+
+  it.each([
+    ["a 200", 200, ""],
+    ["the 503 `pairing unavailable`", 503, "pairing unavailable"],
+    ["another 403 text", 403, "device not authorised"],
+    ["a crew member's longer body", 403, `${NOT_PAIRED_BODY} on this host`],
+    ["a 500", 500, "boom"],
+  ])("%s latches the refusal and wipes nothing", async (_name, status, body) => {
+    seed();
+    confirmWith(status, body);
+    pairingRefused("not-paired");
+    await __refusalSettled();
+    expect(isNotPaired()).toBe(true);
+    expect(getDeviceToken()).toBe("tok-phone");
+    expect(loadDraft(LEAD, "w1:p1")).toBe("half a reply");
+    expect(localStorage.getItem(WIPE_PENDING_KEY)).toBeNull();
+    expect(lastWipeReason()).toBeNull();
+  });
+
+  it("a network error latches the refusal and wipes nothing", async () => {
+    seed();
+    server.use(http.get("/api/devices", () => HttpResponse.error()));
+    pairingRefused("expired");
+    await __refusalSettled();
+    expect(isPairingExpired()).toBe(true);
+    expect(getDeviceToken()).toBe("tok-phone");
+    expect(loadDraft(LEAD, "w1:p1")).toBe("half a reply");
+  });
+
+  it("a burst of refusals asks the bridge once", async () => {
+    seed();
+    const seen = confirmWith(403, NOT_PAIRED_BODY);
+    pairingRefused("not-paired");
+    pairingRefused("not-paired");
+    pairingRefused("expired");
+    await __refusalSettled();
+    expect(seen).toHaveLength(1);
+  });
+
+  it("a fresh pairing that lands while the bridge is asked is not wiped", async () => {
+    seed();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("/api/devices", async () => {
+        await gate;
+        return new HttpResponse(NOT_PAIRED_BODY, { status: 403 });
+      }),
+    );
+    pairingRefused("not-paired");
+    setDeviceToken("tok-new");
+    release();
+    await __refusalSettled();
+    expect(getDeviceToken()).toBe("tok-new");
+  });
+
+  it("with no token held it only latches: an unpaired phone's drafts are its own", async () => {
     saveDraft(LEAD, "w1:p1", "typed before pairing");
+    const seen = confirmWith(403, NOT_PAIRED_BODY);
     let wiped = false;
     onWipe("probe", () => {
       wiped = true;
     });
     pairingRefused("not-paired");
+    await __refusalSettled();
     expect(isNotPaired()).toBe(true);
     expect(wiped).toBe(false);
+    expect(seen).toEqual([]);
     expect(loadDraft(LEAD, "w1:p1")).toBe("typed before pairing");
+  });
+});
+
+describe("a wipe is resumable", () => {
+  it("marks itself pending before any cleaner runs and clears the mark after the last", async () => {
+    let pendingDuring: string | null = null;
+    let release: () => void = () => {};
+    onWipe("slow", async () => {
+      pendingDuring = localStorage.getItem(WIPE_PENDING_KEY);
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    const done = wipeDevice("revoked");
+    expect(pendingDuring).toBe("revoked");
+    expect(localStorage.getItem(WIPE_PENDING_KEY)).toBe("revoked");
+    release();
+    await done;
+    expect(localStorage.getItem(WIPE_PENDING_KEY)).toBeNull();
+  });
+
+  it("clears the mark even when a cleaner failed, so a re-paired phone is not wiped at every boot", async () => {
+    onWipe("broken", () => {
+      throw new Error("nope");
+    });
+    const report = await wipeDevice("unpair");
+    expect(report.failed).toEqual(["broken"]);
+    expect(localStorage.getItem(WIPE_PENDING_KEY)).toBeNull();
+  });
+
+  it("a password wipe marks nothing pending and names no cause", async () => {
+    await wipeDevice("password", { scope: LEAD, paneId: "w1:p1" });
+    expect(localStorage.getItem(WIPE_PENDING_KEY)).toBeNull();
+    expect(lastWipeReason()).toBeNull();
+  });
+
+  it("at boot, a pending mark runs the wipe again with its reason, before anything reads", async () => {
+    seed();
+    localStorage.setItem(WIPE_PENDING_KEY, "expired");
+    const contexts: WipeContext[] = [];
+    onWipe("probe", (context) => {
+      contexts.push(context);
+    });
+    const resumed = resumePendingWipe();
+    // The synchronous cleaners have run by the time it returns.
+    expect(getDeviceToken()).toBeNull();
+    expect(loadDraft(LEAD, "w1:p1")).toBeNull();
+    expect(await resumed).toEqual({ reason: "expired", failed: [] });
+    expect(contexts).toEqual([{ reason: "expired" }]);
+    expect(localStorage.getItem(WIPE_PENDING_KEY)).toBeNull();
+  });
+
+  it("at boot with no mark, nothing runs; an unknown mark is dropped", () => {
+    seed();
+    expect(resumePendingWipe()).toBeNull();
+    localStorage.setItem(WIPE_PENDING_KEY, "password");
+    expect(resumePendingWipe()).toBeNull();
+    expect(localStorage.getItem(WIPE_PENDING_KEY)).toBeNull();
+    expect(getDeviceToken()).toBe("tok-phone");
+  });
+});
+
+describe("the wipe names its cause once, and clears the pairing's expiry", () => {
+  it.each(["unpair", "revoked", "expired"] as const)("%s is remembered for the pair screen", async (reason) => {
+    await wipeDevice(reason);
+    expect(localStorage.getItem(WIPE_LAST_KEY)).toBe(reason);
+    expect(lastWipeReason()).toBe(reason);
+    clearLastWipe();
+    expect(lastWipeReason()).toBeNull();
+  });
+
+  it("drops the remembered pairing expiry with the token", async () => {
+    setDeviceToken("tok-phone");
+    rememberPairingExpiry(Date.now() + 60_000);
+    await wipeDevice("unpair");
+    expect(localStorage.getItem(PAIRING_EXPIRES_KEY)).toBeNull();
+    expect(getPairingExpiry()).toBeNull();
+  });
+});
+
+describe("other tabs let go of the store", () => {
+  it("announces the wipe on the collie-wipe channel, with this page's id", async () => {
+    const listener = new BroadcastChannel(WIPE_CHANNEL);
+    const got = new Promise<WipeAnnouncement>((resolve) => {
+      listener.addEventListener("message", (event: MessageEvent<WipeAnnouncement>) => resolve(event.data), {
+        once: true,
+      });
+    });
+    await wipeDevice("revoked");
+    expect(await got).toEqual({ type: "wipe", reason: "revoked", from: WIPE_TAB_ID });
+    listener.close();
+  });
+
+  it("the store closes its connection when another tab announces a wipe", async () => {
+    const idb = new FakeIDBFactory().install();
+    try {
+      __resetStore();
+      await putRecord("snapshot", "probe", 1);
+      expect(idb.connections.some((c) => !c.closed)).toBe(true);
+      __closeForWipe();
+      expect(idb.connections.every((c) => c.closed)).toBe(true);
+      // The next call reopens, and the record is still there: only the connection went.
+      expect((await getRecord("snapshot", "probe"))?.value).toBe(1);
+    } finally {
+      __resetStore();
+      uninstallFakeIndexedDB();
+    }
+  });
+
+  it("a delete another tab blocks is retried once, and succeeds when that tab lets go", async () => {
+    const idb = new FakeIDBFactory({ blockDeletes: 1 }).install();
+    try {
+      __resetStore();
+      await putRecord("snapshot", "probe", 1);
+      const report = await wipeDevice("unpair");
+      expect(report.failed).toEqual([]);
+      expect(idb.deleted).toContain(STORE_NAME);
+      expect(storeStatus().deleteBlocked).toBe(false);
+    } finally {
+      __resetStore();
+      uninstallFakeIndexedDB();
+    }
+  });
+
+  it("a delete still blocked after the retry gives up, is recorded, and the rows are gone anyway", async () => {
+    const idb = new FakeIDBFactory({ blockDeletes: 2 }).install();
+    try {
+      __resetStore();
+      await putRecord("snapshot", "probe", 1);
+      const report = await wipeDevice("unpair");
+      expect(report.failed).toEqual(["store"]);
+      expect(storeStatus().deleteBlocked).toBe(true);
+      expect(idb.rows(STORE_NAME, "meta")).toEqual([]);
+      expect(localStorage.getItem(WIPE_PENDING_KEY)).toBeNull();
+    } finally {
+      __resetStore();
+      uninstallFakeIndexedDB();
+    }
   });
 });

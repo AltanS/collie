@@ -1,16 +1,33 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { markNotPaired, setDeviceToken } from "@/lib/pairing";
 import { ConnectionInfo } from "./connection-info";
 
 // The diagnostics panel translates the polled snapshot into a read-only "why isn't X working" view.
 // The device-access row is the interesting bit — it must mirror the deviceAuth matrix on the bridge.
 
 describe("ConnectionInfo — device access row", () => {
-  it("reads 'Not enforced' when the feature is off (no device on the snapshot)", () => {
+  // Most cases describe a paired phone; the unpaired ones clear the token themselves.
+  beforeEach(() => setDeviceToken("tok-placeholder"));
+
+  it("a paired device with the header gate off reads as enforced and paired, never 'Not enforced'", () => {
     render(<ConnectionInfo bridge="connected" device={undefined} />);
-    expect(screen.getByText("Not enforced")).toBeInTheDocument();
+    expect(screen.getByText("Enforced, this device is paired")).toBeInTheDocument();
+    expect(screen.queryByText("Not enforced")).toBeNull();
     expect(screen.getByText("Connected")).toBeInTheDocument();
+  });
+
+  it("a browser with no token reads as enforced and not paired", () => {
+    localStorage.clear();
+    render(<ConnectionInfo bridge={undefined} device={undefined} />);
+    expect(screen.getByText("Enforced, this device is not paired")).toBeInTheDocument();
+  });
+
+  it("a refusal latched after a self-unpair or revoke reads as not paired, even with a token", () => {
+    render(<ConnectionInfo bridge="connected" device={{ enforced: true, device: "my-phone", authorized: true }} />);
+    act(() => markNotPaired());
+    expect(screen.getByText("Enforced, this device is not paired")).toBeInTheDocument();
   });
 
   it("shows full access with the device id for an authorised device", () => {

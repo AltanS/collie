@@ -5,6 +5,7 @@ import { Plug } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { usePairing } from "@/lib/pairing";
 import type { BridgeStatus, DeviceAuth } from "@/lib/types";
 
 // A small read-only diagnostics panel for Settings: where this client is connected, whether it's a
@@ -23,8 +24,12 @@ export function ConnectionInfo({
   build?: string;
 }) {
   useLocale();
+  const { token, refused } = usePairing();
   const b = bridgeLabel(bridge);
-  const d = deviceLabel(device);
+  // Pairing is always on (ADR 0086), so "is this device paired" is part of its access. No token, or a
+  // refusal latched since the last proof, is the answer here: an unpaired phone gets no snapshot, and
+  // the header gate's `device` field it would have carried is then absent, not "off".
+  const d = deviceLabel(device, token !== null && !refused);
   const secure = hasWindow() && window.isSecureContext;
   const host = hasWindow() ? window.location.host : "—";
 
@@ -102,10 +107,15 @@ function bridgeLabel(bridge: BridgeStatus | undefined): StatusLine {
 }
 
 // Mirrors the deviceAuth matrix on the bridge (see bridge/server.ts). "Local" = an authorised request
-// with no device header, i.e. the on-host loopback operator.
-function deviceLabel(device: DeviceAuth | undefined): StatusLine {
+// with no device header, i.e. the on-host loopback operator. Pairing comes first: it is always
+// enforced, and an unpaired device has no other access to describe. With the proxy's header gate off
+// (or not yet known), a paired device's access is its pairing.
+function deviceLabel(device: DeviceAuth | undefined, paired: boolean): StatusLine {
+  if (!paired) {
+    return { text: t("settings.connection.device.notPaired"), tone: "text-status-working" };
+  }
   if (!device || !device.enforced) {
-    return { text: t("settings.connection.device.notEnforced"), tone: "text-muted-foreground" };
+    return { text: t("settings.connection.device.paired"), tone: "text-status-done" };
   }
   if (device.authorized) {
     return {

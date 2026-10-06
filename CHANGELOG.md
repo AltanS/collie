@@ -36,18 +36,21 @@ Running a crew? Update the lead first; members follow on their own. Details:
   of the same width on the bridge, so the mirror, the Chat and History views and every push
   notification carry the mask, never the key. A mitigation, not a guarantee: plain passwords and
   bare hex are not matched. `COLLIE_REDACT=off` turns it off. Push bodies now name a pane by the
-  label you gave it, never by the program's own title.
+  label you gave it, never by the program's own title. File bodies in Files and diffs in Changes
+  are masked the same way.
 - **Stricter response headers, a private blob cache and a pair rate limit.** Every answer now
   carries a `Permissions-Policy` that denies camera, location, payment and USB and keeps the
   microphone for hands-free speech; the content policy adds `object-src 'none'` and
   `form-action 'self'`; HSTS is sent when the request arrived over HTTPS. Pane images under
-  `/api/blobs` are cached privately for an hour instead of publicly for a year. `/api/pair` refuses
+  `/api/blobs` are no longer cached by the browser (they were public for a year). `/api/pair` refuses
   more than ten attempts per source address per minute with `429`.
 - **Unpairing wipes what the pairing left on the phone.** One wipe routine clears the token, every
   draft, the saved pane text, the push subscription and the runtime caches when you unpair, when
   the bridge revokes or expires the device, and (for one pane only) when a password prompt shows.
-  Settings and the app shell stay. The bridge adds `Clear-Site-Data` to those two refusals. Revoking
-  a device now asks once more and says what is cleared.
+  Settings and the app shell stay. Before it wipes, the phone confirms the refusal with one more
+  call, and a wipe cut short resumes on the next open. Revoking a device now asks once more and
+  says what is cleared, and the pair screen names the cause afterwards. "Clear saved copies now"
+  in Settings → Device empties the store by hand.
 - **The phone keeps session content in one store.** The last herd snapshot and the last pane text
   move from the tab's session storage into one IndexedDB database with a 24-hour lifetime, a
   256 KiB cap per pane and a 10 MiB cap in all, purged on open and deleted whole on unpair
@@ -59,8 +62,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
   no bridge shows the saved herd, dimmed, with every status in the past tense and "as of {time}" in
   the header. The banner tells you whether the phone is offline or the bridge is unreachable. The
   raw terminal mirror is never kept as chat, and a password prompt drops that pane's saved turns.
-- **Nothing saved on the phone can act.** While the bridge has not answered for a pane in the last
-  15 seconds, or the screen is a saved copy, dialog options and the send button are disabled with
+- **Nothing saved on the phone can act.** While the last read of a pane failed, the phone is
+  offline, or the screen is a saved copy, dialog options and the send button are disabled with
   "Reconnect to answer" and "Reconnect to send". Typing still works and the draft still saves.
   There is no queue, no retry and no send on reconnect.
 
@@ -70,9 +73,18 @@ Running a crew? Update the lead first; members follow on their own. Details:
   paired device answers `403 device not paired` to every `/api/*` route except `/api/health` and
   `/api/pair`, so run `collie pair` on the host first; `collie doctor` and the installers now say so.
   Reads (the herd, panes, history, chat, changes, files, images and fonts) need a valid pairing
-  token like writes did; the crew path between bridges keeps its own trust. The worktree list route
+  token like writes did; the crew path between bridges keeps its own trust. The gate sits in front of
+  the router with a two-entry allowlist, and a corrupt pairing file answers 503, never "not paired". The worktree list route
   had no gate at all and now has one. This is a break for unpaired browsers on the tailnet and for
   scripted setups (ADR 0086). Unknown `/api/*` paths answer 403 then 404 instead of the app shell.
+  Desktop browsers and scripts on the tailnet must pair once: run `collie pair` (or
+  `collie pair --expires 30d` for a script), and the script claims the code with a label such as
+  `script`; the token comes back once, in the pair answer. A CLI on the host (`doctor`, `history`,
+  the crew update sweep) reads its own bridge with a local credential the bridge writes to the state
+  directory, so nothing changes there.
+- **Rolling back below 1.18.0 ignores token expiries.** An older bridge does not know the
+  `expiresAt` field, so an expired device works again until the bridge is updated; revoke it instead
+  if that matters.
 - **A file in Files gets the screen.** On a phone the All files | Changes control and the two-row
   file bar held the top 227 px of 844 before the first line of the file, and stayed pinned while
   you read. While a file is open the control leaves, and the file's name, size and Source | Preview
@@ -84,7 +96,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
   audit trail listed `keys` as a parameter, so a password typed on the phone landed in `audit.log`
   character by character, even with `COLLIE_AUDIT_CONTENT=none`. Typed characters, spaces and tabs
   are now a body: redacted under `none`, a count of `•` marks under the default preview. Named keys
-  such as Enter and Ctrl+C stay readable.
+  such as Enter and Ctrl+C stay readable. Audit files written before 1.18.0 may still hold typed
+  characters; rotate or delete them.
 
 ## [1.17.2] - 2026-10-06
 

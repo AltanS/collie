@@ -5,13 +5,17 @@ import {
   __resetPairing,
   authHeader,
   clearDeviceToken,
+  checkPairingExpiry,
   EXPIRED_BODY,
   getDeviceToken,
+  getPairingExpiry,
   isNotPaired,
   isPairingExpired,
   markExpired,
   markNotPaired,
   NOT_PAIRED_BODY,
+  PAIRING_EXPIRES_KEY,
+  rememberPairingExpiry,
   setDeviceToken,
   subscribePairing,
   TOKEN_STORAGE_KEY,
@@ -31,6 +35,12 @@ import { loadDraft, saveDraft } from "./drafts";
 import { loadLastPaneText, saveLastPaneText } from "./last-seen";
 import { __resetStore } from "./store";
 import { devicesLoader } from "./loaders";
+import { __refusalSettled } from "./wipe";
+
+/** The confirming `GET /api/devices` the wipe asks before it runs (lib/wipe.ts): refused again. */
+function confirmRefusal(body: string): void {
+  server.use(http.get("/api/devices", () => new HttpResponse(body, { status: 403 })));
+}
 
 // Two things are pinned here, and they are the whole client half of the pairing gate:
 //   1. The bearer is injected in ONE place — every request carries it when a token is stored and
@@ -194,13 +204,15 @@ describe("the not-paired latch", () => {
 describe("the expired latch", () => {
   it("latches expired on a write refused with the expired body, and drops the dead token", async () => {
     setDeviceToken("tok-old");
+    confirmRefusal(EXPIRED_BODY);
     server.use(
       http.post(/\/api\/pane\/[^/]+\/close$/, () => new HttpResponse(EXPIRED_BODY, { status: 403 })),
     );
     await expect(closePane("w1:p1")).rejects.toThrow(/403/);
     expect(isNotPaired()).toBe(true);
     expect(isPairingExpired()).toBe(true);
-    // The wipe (M46 spec 02) took the dead token; the wipe tests below pin the rest.
+    // The wipe (M46 spec 02) took the dead token once the bridge confirmed; the wipe tests pin the rest.
+    await __refusalSettled();
     expect(getDeviceToken()).toBeNull();
   });
 
@@ -256,7 +268,58 @@ describe("the expired latch", () => {
     const data = await devicesLoader();
     expect(data.devices[0]?.expired).toBe(true);
     expect(isPairingExpired()).toBe(true);
-    expect(getDeviceToken()).toBeNull();
+    // The confirming read is this same 200, not a refusal: the latch shows, nothing is wiped.
+    await __refusalSettled();
+    expect(getDeviceToken()).toBe("tok-old");
+  });
+
+  it("remembers this device's own expiry from a devices answer that names it", async () => {
+    setDeviceToken("tok-phone");
+    server.use(
+      http.get("/api/devices", () =>
+        HttpResponse.json({
+          enforced: true,
+          current: "phone",
+          devices: [
+            { label: "tablet", createdAt: 1, lastSeenAt: 2, expiresAt: 99, current: false },
+            { label: "phone", createdAt: 1, lastSeenAt: 2, expiresAt: 4_000_000_000_000, current: true },
+          ],
+        }),
+      ),
+    );
+    await devicesLoader();
+    expect(getPairingExpiry()).toBe(4_000_000_000_000);
+    expect(localStorage.getItem(PAIRING_EXPIRES_KEY)).toBe("4000000000000");
+  });
+
+  it("a fresh pairing forgets the old pairing's expiry", () => {
+    rememberPairingExpiry(1234);
+    setDeviceToken("tok-new");
+    expect(getPairingExpiry()).toBeNull();
+  });
+
+  it("a cold open past the remembered expiry shows the pair-again wording and wipes nothing", () => {
+    setDeviceToken("tok-phone");
+    rememberPairingExpiry(1000);
+    checkPairingExpiry(1000);
+    expect(isPairingExpired()).toBe(true);
+    expect(getDeviceToken()).toBe("tok-phone");
+  });
+
+  it("a cold open before the expiry latches nothing", () => {
+    setDeviceToken("tok-phone");
+    rememberPairingExpiry(2000);
+    checkPairingExpiry(1999);
+    expect(isNotPaired()).toBe(false);
+  });
+
+  it("the 503 `pairing unavailable` is never a refusal", async () => {
+    setDeviceToken("tok-phone");
+    server.use(http.get("/api/snapshot", () => new HttpResponse("pairing unavailable", { status: 503 })));
+    await expect(fetchSnapshot()).rejects.toThrow(/503/);
+    expect(isNotPaired()).toBe(false);
+    await __refusalSettled();
+    expect(getDeviceToken()).toBe("tok-phone");
   });
 });
 
@@ -313,12 +376,14 @@ describe("the wipe on a pairing refusal", () => {
   }
 
   async function expectWiped(): Promise<void> {
+    await __refusalSettled();
     expect(getDeviceToken()).toBeNull();
     expect(loadDraft(undefined, "w1:p1")).toBeNull();
     expect(await loadLastPaneText(undefined, "w1:p1")).toBeNull();
   }
 
   async function expectKept(): Promise<void> {
+    await __refusalSettled();
     expect(getDeviceToken()).toBe("tok-phone");
     expect(loadDraft(undefined, "w1:p1")).toBe("half a reply");
     expect((await loadLastPaneText(undefined, "w1:p1"))?.value).toBe("pane text");
@@ -326,6 +391,7 @@ describe("the wipe on a pairing refusal", () => {
 
   it("a write refused with \"device not paired\" while a token is held runs the wipe", async () => {
     seedSession();
+    confirmRefusal(NOT_PAIRED_BODY);
     server.use(http.post(CLOSE, () => new HttpResponse(NOT_PAIRED_BODY, { status: 403 })));
     await expect(closePane("w1:p1")).rejects.toThrow(/403/);
     expect(isNotPaired()).toBe(true);
@@ -334,6 +400,7 @@ describe("the wipe on a pairing refusal", () => {
 
   it("a write refused with \"device expired\" runs the wipe", async () => {
     seedSession();
+    confirmRefusal(EXPIRED_BODY);
     server.use(http.post(CLOSE, () => new HttpResponse(EXPIRED_BODY, { status: 403 })));
     await expect(closePane("w1:p1")).rejects.toThrow(/403/);
     expect(isPairingExpired()).toBe(true);
@@ -342,6 +409,7 @@ describe("the wipe on a pairing refusal", () => {
 
   it("a gated read refused with the same body runs the wipe too", async () => {
     seedSession();
+    confirmRefusal(NOT_PAIRED_BODY);
     server.use(http.get("/api/snapshot", () => new HttpResponse(NOT_PAIRED_BODY, { status: 403 })));
     await expect(fetchSnapshot()).rejects.toThrow(/403/);
     await expectWiped();
@@ -374,6 +442,7 @@ describe("the wipe on a pairing refusal", () => {
 
   it("the lead's exact refusal on the files route wipes", async () => {
     seedSession();
+    confirmRefusal(NOT_PAIRED_BODY);
     server.use(http.get(/\/api\/pane\/[^/]+\/files/, () => new HttpResponse(NOT_PAIRED_BODY, { status: 403 })));
     await expect(fetchFilesDir({ kind: "pane", paneId: "w1:p1" }, "")).resolves.toEqual({ outcome: "not-paired" });
     await expectWiped();
@@ -387,7 +456,7 @@ describe("the wipe on a pairing refusal", () => {
     expect(loadDraft(undefined, "w1:p1")).toBe("typed before pairing");
   });
 
-  it("a devices answer naming this token as expired runs the wipe, as the 403 would", async () => {
+  it("a devices answer naming this token as expired latches, and the confirming 200 wipes nothing", async () => {
     seedSession();
     server.use(
       http.get("/api/devices", () =>
@@ -395,7 +464,17 @@ describe("the wipe on a pairing refusal", () => {
       ),
     );
     await devicesLoader();
-    await expectWiped();
+    expect(isPairingExpired()).toBe(true);
+    await expectKept();
+  });
+
+  it("a single refusal the confirming read does not repeat wipes nothing", async () => {
+    seedSession();
+    server.use(http.post(CLOSE, () => new HttpResponse(NOT_PAIRED_BODY, { status: 403 })));
+    // The default registry answers 200: the bridge did not refuse twice.
+    await expect(closePane("w1:p1")).rejects.toThrow(/403/);
+    expect(isNotPaired()).toBe(true);
+    await expectKept();
   });
 
   it("a devices answer that only names nobody latches and waits for the bridge's exact 403", async () => {

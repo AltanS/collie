@@ -1,11 +1,14 @@
-import { HardDrive } from "lucide-react";
+import { useState } from "react";
+import { HardDrive, Loader2, Trash2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
 import { keepChatOf, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useLocale } from "@/hooks/use-locale";
 import { type KeepChat } from "@/lib/chat-tail";
 import { t } from "@/lib/i18n";
+import { clearStore } from "@/lib/store";
 
 /**
  * "Keep chat on this phone": how long the newest Chat turns of each pane stay on the device, so a cold
@@ -17,10 +20,25 @@ import { t } from "@/lib/i18n";
  * In Device rather than Appearance, though the value lives with the display prefs: it decides what
  * this phone KEEPS, a standing decision about the device beside the Changes search and zen's
  * availability, not about how a surface looks.
+ *
+ * "Clear saved copies now" sits under the choice: it deletes EVERY record the on-device store holds
+ * (the herd, each pane's last-seen text and every Chat tail, lib/store.ts `clearStore`), at once,
+ * and leaves the pairing, the drafts and the setting alone. A short line then says it is done.
  */
 export function KeepChatControl() {
   useLocale();
   const { prefs, setKeepChat } = useDisplayPrefs();
+  const [clearing, setClearing] = useState(false);
+  const [cleared, setCleared] = useState(false);
+
+  async function clearNow() {
+    setClearing(true);
+    setCleared(false);
+    // Never rejects (ADR 0087 rule 9): the store reports nothing and keeps running.
+    await clearStore();
+    setClearing(false);
+    setCleared(true);
+  }
   const options: { value: KeepChat; label: string }[] = [
     { value: "off", label: t("settings.keepChat.off") },
     { value: "1d", label: t("settings.keepChat.day") },
@@ -47,6 +65,17 @@ export function KeepChatControl() {
           label={t("settings.keepChat.title")}
           semantics="choice"
         />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border-t border-border p-2 pl-4">
+        {/* Always rendered, empty until the first clear: appearing late would grow the card. */}
+        <p role="status" className="min-w-0 text-sm text-muted-foreground">
+          {cleared ? t("settings.keepChat.cleared") : ""}
+        </p>
+        <Button variant="outline" size="sm" className="h-9 shrink-0" disabled={clearing} onClick={clearNow}>
+          {clearing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          {t("settings.keepChat.clearNow")}
+        </Button>
       </div>
     </Card>
   );

@@ -626,6 +626,30 @@ describe("the preflight runs first, and one red aborts the whole run", () => {
     expect(legs(h)).toContain("nas.example:install");
   });
 
+  // Reads need a pairing token since ADR 0086, and this process holds none: the banked verdicts come
+  // off this collie's own `GET /api/update/check`, sent with the bridge's local read credential.
+  test("the banked verdicts are read off the own bridge with the local read credential, when there is one", async () => {
+    const secret = "A".repeat(43);
+    for (const written of [true, false]) {
+      const h = harness({ ops: { nas: opsRecord("nas.example") }, hello: { nas: VERSION } });
+      if (written) h.deps.files.write(`${h.deps.ctx.stateDir}/local-secret`, `${secret}\n`, 0o600);
+      const asked: (string | null)[] = [];
+      const crewFetch = h.deps.fetch;
+      // No `peerReported` seam, so the run takes the real read of its own bridge.
+      const { peerReported: _banked, ...rest } = h.deps;
+      const deps: CrewUpdateDeps = {
+        ...rest,
+        fetch: async (url, init) => {
+          if (!url.endsWith("/api/update/check")) return crewFetch(url, init);
+          asked.push(new Headers(init?.headers).get("authorization"));
+          return new Response(JSON.stringify({ crew: [] }), { status: 200 });
+        },
+      };
+      expect(await cmdCrewUpdate(deps, ["nas"])).toBe(EXIT.OK);
+      expect(asked).toEqual([written ? `Bearer ${secret}` : null]);
+    }
+  });
+
   test("peer-reported preflight: a member the link knows nothing about prints nothing", () => {
     const rows: CrewUpdateRow[] = [{ name: "pi", version: null, verdict: "green", reasons: [], asOf: T0 }];
     // `pi` is not a target of this run, so its row is not this run's business.

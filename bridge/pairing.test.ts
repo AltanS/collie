@@ -30,6 +30,7 @@ import {
   PairingStore,
   parseLifetime,
   PENDING_FILENAME,
+  RegistryUnreadableError,
   removeDevice,
   setDeviceExpiry,
   sha256Hex,
@@ -679,8 +680,9 @@ describe("pairing never crosses the crew seam", () => {
   // perfectly, just unguarded.
   //
   // So the arity is pinned here, at the source, exactly as the crew seam above is. If you are
-  // reading this because the test failed: you added a `guard(` call without `pairing`, and unless
-  // your route is genuinely not a write path, that is the bug.
+  // reading this because the test failed: you added a `guard(` call without `pairingGate` (the
+  // store plus the host's local read credential), and that is the bug. `apiFrontGate` forwards its
+  // own `pairing` parameter, which is the same gate one call up.
   test("every guard() call in server.ts passes the pairing gate", () => {
     // Comment lines are dropped first — this file's prose mentions `guard()` and `guard(…, "write")`
     // many times, and those are not call sites.
@@ -708,7 +710,7 @@ describe("pairing never crosses the crew seam", () => {
     // A negative control on the scanner itself: if it found nothing, it is broken, and a broken
     // scanner passes this test vacuously forever.
     expect(callArgs.length).toBeGreaterThanOrEqual(8);
-    const unguarded = callArgs.filter((args) => !/\bpairing\b/.test(args));
+    const unguarded = callArgs.filter((args) => !/\bpairing(Gate)?\b/.test(args));
     expect(unguarded).toEqual([]);
     // Every call is the browser gate, and the browser gate is the only caller — a crew caller
     // reaches its own gate (the block above), never this one.
@@ -798,13 +800,54 @@ describe("filePairingIo", () => {
     expect(io.readRegistrySync()).toBeNull();
   });
 
-  test("corrupt JSON reads as null rather than throwing into the request path", async () => {
+  // A torn file is NOT "nobody is paired": that reading made every phone wipe itself on the 403.
+  test("a file that is there and not a registry throws RegistryUnreadableError, sync and async", async () => {
     const stateDir = await tempStateDir();
-    await writeFile(join(stateDir, DEVICES_FILENAME), "{not json");
     const io = filePairingIo(stateDir);
-    expect(io.readRegistrySync()).toBeNull();
-    expect(await io.readRegistry()).toBeNull();
-    expect(coerceRegistry(io.readRegistrySync())).toEqual({ devices: [] });
+    // Truncated mid-write, not JSON at all, empty, and JSON that is not an object.
+    for (const body of ['{"devices":[{"label":"pho', "{not json", "", "null", "[]", '"x"']) {
+      await writeFile(join(stateDir, DEVICES_FILENAME), body);
+      expect(() => io.readRegistrySync()).toThrow(RegistryUnreadableError);
+      await expect(io.readRegistry()).rejects.toThrow(RegistryUnreadableError);
+    }
+  });
+
+  test("an unreadable read is never cached: the repaired file is read on the next call", async () => {
+    const stateDir = await tempStateDir();
+    const io = filePairingIo(stateDir);
+    const store = new PairingStore(io);
+    const good = JSON.stringify({ devices: [{ label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1 }] });
+    await writeFile(join(stateDir, DEVICES_FILENAME), good.slice(0, 20));
+    expect(() => store.registry()).toThrow(RegistryUnreadableError);
+    expect(() => store.resolve("t")).toThrow(RegistryUnreadableError);
+    expect(() => store.expired("t")).toThrow(RegistryUnreadableError);
+    // Still broken on a second ask: the error was not turned into a cached "empty".
+    expect(() => store.resolve("t")).toThrow(RegistryUnreadableError);
+    await writeFile(join(stateDir, DEVICES_FILENAME), good);
+    expect(store.resolve("t")?.label).toBe("phone");
+    expect(store.registry().devices).toHaveLength(1);
+  });
+
+  test("an unreadable registry is never written over: claim and revoke throw and leave the file as it was", async () => {
+    const stateDir = await tempStateDir();
+    const io = filePairingIo(stateDir);
+    const store = new PairingStore(io, () => 0);
+    await io.writePending(newPending("ABCD2345", 0));
+    const torn = '{"devices":[{"label":"phone","tokenHash":"';
+    await writeFile(join(stateDir, DEVICES_FILENAME), torn);
+    await expect(store.claim("ABCD2345", "tablet")).rejects.toThrow(RegistryUnreadableError);
+    await expect(store.revoke("phone")).rejects.toThrow(RegistryUnreadableError);
+    await store.idle();
+    expect(await readFile(join(stateDir, DEVICES_FILENAME), "utf8")).toBe(torn);
+    // The code was right and is still claimable once the file is whole again.
+    expect(await io.readPending()).not.toBeNull();
+  });
+
+  test("a missing file is still the empty registry, never an error", async () => {
+    const store = new PairingStore(filePairingIo(await tempStateDir()));
+    expect(store.registry()).toEqual({ devices: [] });
+    expect(store.resolve("t")).toBeNull();
+    expect(store.expired("t")).toBe(false);
   });
 
   test("deletePending is idempotent", async () => {

@@ -102,6 +102,40 @@ export interface PairedDeviceWire {
 
 export const EMPTY_REGISTRY: PairedRegistry = { devices: [] };
 
+/**
+ * The registry file is THERE and cannot be read as a registry: a half-written or truncated file, a
+ * value that is not an object, a read the OS refused.
+ *
+ * Its own state, never "nobody is paired". Reading it as an empty registry turned a torn write into
+ * `403 device not paired` for every phone, and the phone answers that refusal by wiping what it
+ * stored. The gate answers `503 pairing unavailable` instead (`guard` in bridge/server.ts), which the
+ * phone reads as an outage and retries. A MISSING file is not this: that is a bridge nobody has
+ * paired with yet, and the empty registry is the truth.
+ */
+export class RegistryUnreadableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "RegistryUnreadableError";
+  }
+}
+
+/** Whether an error is a missing file (`ENOENT`) — the one read failure that means "no registry". */
+function isMissing(err: Error): boolean {
+  return "code" in err && err.code === "ENOENT";
+}
+
+/**
+ * A parsed registry file, or the error that says it is not one. Only the outer shape is checked here:
+ * an object. The entries inside are {@link coerceRegistry}'s, which drops an incomplete one, because
+ * a hand-edited entry is a reason to lose THAT device, not to call the whole store unreadable.
+ */
+function registryValue(value: JsonValue): JsonValue {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new RegistryUnreadableError(`${DEVICES_FILENAME} is not a registry object`);
+  }
+  return value;
+}
+
 // ── Pure helpers ─────────────────────────────────────────────────────────────────────────────
 
 /** SHA-256 as lowercase hex. Used for both codes and tokens — never store either in the clear. */
@@ -273,6 +307,21 @@ export function coerceRegistry(raw: JsonValue | undefined): PairedRegistry {
 }
 
 /**
+ * A registry file's text, parsed, or null when it is not a registry: not JSON, or JSON that is not an
+ * object. The bridge reads such a file as unreadable ({@link RegistryUnreadableError}) and answers
+ * `503 pairing unavailable`; `collie doctor` asks this to say so rather than "no device paired".
+ */
+export function parseRegistryText(raw: string): PairedRegistry | null {
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction; `registryValue` checks its outer
+    // shape and `coerceRegistry` every entry.
+    return coerceRegistry(registryValue(JSON.parse(raw) as JsonValue));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Validate and bound a client-supplied label. Returns null when it is unusable — the same answer for
  * "empty" and "1 KB of newlines", because the label is echoed into the audit log and the UI.
  */
@@ -425,9 +474,17 @@ export interface PairingIo {
   readPending(): Promise<JsonValue | null>;
   writePending(pending: PendingPairing): Promise<void>;
   deletePending(): Promise<void>;
+  /**
+   * The registry file, parsed. Null ⇒ no registry file. THROWS {@link RegistryUnreadableError} when
+   * the file is there and cannot be read or parsed, so a read-modify-write never writes a torn file's
+   * "empty" reading back over the devices it held.
+   */
   readRegistry(): Promise<JsonValue | null>;
   writeRegistry(registry: PairedRegistry): Promise<void>;
-  /** The registry as of now, read synchronously. Null ⇒ no registry file. */
+  /**
+   * The registry as of now, read synchronously. Null ⇒ no registry file. Throws
+   * {@link RegistryUnreadableError} on a file that is there and unreadable, as `readRegistry` does.
+   */
   readRegistrySync(): JsonValue | null;
 }
 
@@ -484,7 +541,22 @@ export function filePairingIo(stateDir: string): PairingIo {
         /* already gone — deleting a spent pairing is idempotent */
       }
     },
-    readRegistry: () => readJson(registryPath),
+    async readRegistry() {
+      let raw: string;
+      try {
+        raw = await readFile(registryPath, "utf8");
+      } catch (err) {
+        if (err instanceof Error && isMissing(err)) return null;
+        throw new RegistryUnreadableError(`${DEVICES_FILENAME} cannot be read`, { cause: err });
+      }
+      try {
+        // SAFETY: `JSON.parse` output IS a JsonValue by construction; `coerceRegistry` re-checks it.
+        return registryValue(JSON.parse(raw) as JsonValue);
+      } catch (err) {
+        if (err instanceof RegistryUnreadableError) throw err;
+        throw new RegistryUnreadableError(`${DEVICES_FILENAME} is not valid JSON`, { cause: err });
+      }
+    },
     async writeRegistry(registry) {
       await writeAtomic(registryPath, JSON.stringify(registry, null, 2));
       cache = null;
@@ -494,19 +566,31 @@ export function filePairingIo(stateDir: string): PairingIo {
       try {
         const st = statSync(registryPath);
         key = `${st.mtimeMs}:${st.size}`;
-      } catch {
+      } catch (err) {
         cache = null;
-        return null;
+        if (err instanceof Error && isMissing(err)) return null;
+        throw new RegistryUnreadableError(`${DEVICES_FILENAME} cannot be read`, { cause: err });
       }
       if (cache?.key === key) return cache.value;
+      // An unreadable file is NEVER cached: the cache is dropped and the error thrown, so the request
+      // after a repair (or after the writer's rename lands) reads the file again, whatever its mtime.
+      cache = null;
+      let text: string;
+      try {
+        text = readFileSync(registryPath, "utf8");
+      } catch (err) {
+        throw new RegistryUnreadableError(`${DEVICES_FILENAME} cannot be read`, { cause: err });
+      }
+      let value: JsonValue;
       try {
         // SAFETY: `JSON.parse` output IS a JsonValue by construction; `coerceRegistry` re-checks it.
-        const value = JSON.parse(readFileSync(registryPath, "utf8")) as JsonValue;
-        cache = { key, value };
-        return value;
-      } catch {
-        return null;
+        value = registryValue(JSON.parse(text) as JsonValue);
+      } catch (err) {
+        if (err instanceof RegistryUnreadableError) throw err;
+        throw new RegistryUnreadableError(`${DEVICES_FILENAME} is not valid JSON`, { cause: err });
       }
+      cache = { key, value };
+      return value;
     },
   };
 }
@@ -555,14 +639,28 @@ export class PairingStore {
     await this.writeQueue;
   }
 
-  /** The registry as of this instant, straight off disk (cached on mtime). */
+  /**
+   * The registry as of this instant, straight off disk (cached on mtime). No file is the empty
+   * registry. A file that is there and cannot be read THROWS {@link RegistryUnreadableError}: an
+   * unreadable store is never "nobody is paired", and every caller must decide what it means for it.
+   */
   registry(): PairedRegistry {
-    return coerceRegistry(this.io.readRegistrySync());
+    let raw: JsonValue | null;
+    try {
+      raw = this.io.readRegistrySync();
+    } catch (err) {
+      if (err instanceof RegistryUnreadableError) throw err;
+      throw new RegistryUnreadableError(`${DEVICES_FILENAME} cannot be read`, { cause: err });
+    }
+    if (raw === null) return { devices: [] };
+    return coerceRegistry(registryValue(raw));
   }
 
   /**
    * Whether a bearer token is required. Always true since M46 spec 03: an empty registry no longer
    * switches the gate off. Kept as a method because the gate and the `/api/devices` wire still ask.
+   * It reads nothing, so it cannot fail; an unreadable registry surfaces through {@link resolve},
+   * which every gated request asks.
    */
   enforced(): boolean {
     return true;
@@ -571,7 +669,8 @@ export class PairingStore {
   /**
    * Whether this token belongs to a paired device whose expiry has passed — the question that turns
    * a refusal's text from `device not paired` into `device expired`. Asked only on the refusal path,
-   * so a valid request never pays for a second hash.
+   * so a valid request never pays for a second hash. Throws {@link RegistryUnreadableError} as
+   * {@link registry} does.
    */
   expired(token: string | null): boolean {
     const device = findByToken(this.registry(), token);
@@ -585,6 +684,10 @@ export class PairingStore {
    * An EXPIRED device resolves to null — its token authenticates as nobody — and is not stamped,
    * because a refused request is not the device being seen. It stays in the registry, so the
    * device list still shows it and the phone can say "pair again" rather than "pair".
+   *
+   * THROWS {@link RegistryUnreadableError} when the registry file is there and unreadable, rather than
+   * answering null: null means "this token is nobody's", and that is not known. The gate turns the
+   * throw into `503 pairing unavailable`.
    */
   resolve(token: string | null): PairedDevice | null {
     const registry = this.registry();

@@ -1,4 +1,5 @@
 import { FakeIDBFactory, uninstallFakeIndexedDB } from "@/test/fake-indexeddb";
+import { rememberPairingExpiry } from "./pairing";
 import {
   __resetStore,
   __storeIdle,
@@ -315,7 +316,7 @@ describe("when IndexedDB is unavailable", () => {
     expect(await openStore()).toBe("memory");
     expect(await putRecord("snapshot", "lead", 1)).toBe(true);
     expect((await getRecord("snapshot", "lead"))?.value).toBe(1);
-    expect(storeStatus()).toEqual({ mode: "memory", persisted: null });
+    expect(storeStatus()).toEqual({ mode: "memory", persisted: null, deleteBlocked: false });
   });
 
   it("runs on memory when the open is blocked, as in private mode", async () => {
@@ -347,6 +348,57 @@ describe("when IndexedDB is unavailable", () => {
     expect(await putRecord("pane-text", "w1:p1", ofSize(PANE_CAP_BYTES + 1), { pane: PANE })).toBe(false);
     await putRecord("snapshot", "lead", 1);
     clock = T0 + DEFAULT_TTL_MS + 1;
+    expect(await getRecord("snapshot", "lead")).toBeNull();
+  });
+});
+
+// M46 hardening: no record outlives the pairing it was saved under.
+describe("the pairing's expiry caps every record", () => {
+  afterEach(() => rememberPairingExpiry(null));
+
+  it("a record saved an hour before the pairing ends reads as a miss once it has ended", async () => {
+    rememberPairingExpiry(T0 + 60 * 60 * 1000);
+    expect(await putRecord("snapshot", "lead", "herd", { ttlMs: DEFAULT_TTL_MS })).toBe(true);
+    clock = T0 + 60 * 60 * 1000 - 1;
+    expect((await getRecord("snapshot", "lead"))?.value).toBe("herd");
+    clock = T0 + 60 * 60 * 1000;
+    expect(await getRecord("snapshot", "lead")).toBeNull();
+  });
+
+  it("a cold open after the expiry reads nothing saved", async () => {
+    rememberPairingExpiry(T0 + 1000);
+    await putRecord("pane-text", "w1:p1", "text", { pane: PANE });
+    // A new page, later: the expiry is read back from localStorage, the record has expired.
+    clock = T0 + 5000;
+    newPage();
+    expect(await getRecord("pane-text", "w1:p1")).toBeNull();
+  });
+
+  it("a shorter ttl than the remaining pairing still wins", async () => {
+    rememberPairingExpiry(T0 + DEFAULT_TTL_MS);
+    await putRecord("snapshot", "lead", 1, { ttlMs: 1000 });
+    clock = T0 + 1001;
+    expect(await getRecord("snapshot", "lead")).toBeNull();
+  });
+
+  it("refuses a write once the pairing has already ended", async () => {
+    rememberPairingExpiry(T0 - 1);
+    expect(await putRecord("snapshot", "lead", 1)).toBe(false);
+  });
+
+  it("no known expiry leaves the ttl alone", async () => {
+    rememberPairingExpiry(null);
+    await putRecord("snapshot", "lead", 1);
+    clock = T0 + DEFAULT_TTL_MS - 1;
+    expect((await getRecord("snapshot", "lead"))?.value).toBe(1);
+  });
+
+  it("a new expiry is not hidden by the unchanged-value skip", async () => {
+    rememberPairingExpiry(T0 + DEFAULT_TTL_MS);
+    await putRecord("snapshot", "lead", 1);
+    rememberPairingExpiry(T0 + 1000);
+    await putRecord("snapshot", "lead", 1);
+    clock = T0 + 1000;
     expect(await getRecord("snapshot", "lead")).toBeNull();
   });
 });

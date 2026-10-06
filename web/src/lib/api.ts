@@ -4,7 +4,7 @@
 import { parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
 import { beginLongUpload, endLongUpload, markLive } from "./connection-health";
-import { markLive as markPaneLive } from "./liveness";
+import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -531,9 +531,18 @@ export async function fetchPane(
   if (seen) headers.set("x-collie-seen", "1");
   if (cached) headers.set("if-none-match", cached.etag);
 
-  const res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  let res: Response;
+  try {
+    res = await apiFetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  } catch (error) {
+    // A read that never answered (network down, timed out) is a failed read. One the caller aborted
+    // (a superseded revalidation, a navigation away) says nothing about the bridge.
+    if (signal?.aborted !== true) markPaneDead(paneId, scope);
+    throw error;
+  }
   captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
   if (res.ok || res.status === 304) markPaneLive(paneId, Date.now(), scope); // M46 spec 11: controls on this pane may act (lib/liveness.ts)
+  else markPaneDead(paneId, scope); // a refused or failed read takes them down, after a short debounce
 
   if (res.status === 304 && cached) {
     // Unchanged — hand back the cached body (text included) so the mirror keeps its content. An

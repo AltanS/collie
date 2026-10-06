@@ -75,9 +75,11 @@ export function createPairLimiter(
  *
  * The socket address is the kernel's and cannot be forged, so it is the key whenever the peer is
  * not on loopback. Only a loopback peer (the co-located front door: `tailscale serve`, Caddy) is a
- * trusted proxy, and only then is the first `x-forwarded-for` entry read, because that entry is
- * what the proxy saw. From any other peer an `x-forwarded-for` is a client's own words and is
- * ignored, so it cannot be used to dodge the limit by rotating the value.
+ * trusted proxy, and only then is `x-forwarded-for` read, and only its RIGHTMOST entry: a proxy
+ * APPENDS the address it saw, so the last entry is the trusted proxy's own word, while every entry
+ * to its left arrived in the client's request and is the client's to write. Reading the first one
+ * let a caller behind the front door rotate a value it wrote itself and dodge the limit. From any
+ * other peer an `x-forwarded-for` is a client's own words and is ignored entirely.
  *
  * `peerIsLoopback` is `isLoopbackPeer(server.requestIP(req)?.address)`, passed in so this module
  * does not import the server.
@@ -88,6 +90,7 @@ export function pairSourceKey(
   forwardedFor: string | null,
 ): string {
   if (!peerIsLoopback) return (peer ?? "").trim().toLowerCase();
-  const first = forwardedFor?.split(",")[0]?.trim().toLowerCase();
-  return first !== undefined && first !== "" ? first : "loopback";
+  // Rightmost NON-EMPTY entry: a trailing comma or a blank header line is not an address.
+  const entries = (forwardedFor ?? "").split(",").map((e) => e.trim().toLowerCase()).filter((e) => e !== "");
+  return entries.at(-1) ?? "loopback";
 }

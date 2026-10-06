@@ -15,6 +15,7 @@ import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
 import { DEFAULT_PORT, envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import { configFilePaths } from "../bridge/config-source.ts";
+import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
 import {
   buildMuxRegistry,
@@ -52,7 +53,7 @@ import {
   whoCanRead,
 } from "../bridge/owner-only.ts";
 import { sidName } from "../bridge/sddl.ts";
-import { isExpired } from "../bridge/pairing.ts";
+import { DEVICES_FILENAME, isExpired, parseRegistryText } from "../bridge/pairing.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
@@ -870,6 +871,18 @@ function pairedDevices(deps: DoctorDeps, mode: string): Finding {
   if (mode === "peer") {
     return skipped("pairing", "a peer is read through its lead — pair devices on the lead", "`collie pair` on the lead");
   }
+  // A file that is THERE and not a registry is its own finding, before the count: `pairedRegistryOf`
+  // reads it as empty, while the bridge answers every phone `503 pairing unavailable` until it can
+  // read it (bridge/pairing.ts, RegistryUnreadableError). Saying "no device paired" would send the
+  // operator to pair again over a registry that still holds every device.
+  const raw = deps.files.read(join(deps.ctx.stateDir, DEVICES_FILENAME));
+  if (raw !== null && parseRegistryText(raw) === null) {
+    return warn(
+      "pairing",
+      `${DEVICES_FILENAME} is there and cannot be read: every phone gets 503 \`pairing unavailable\` until it can`,
+      `restore ${join(deps.ctx.stateDir, DEVICES_FILENAME)} from a backup, or move it aside and run \`collie pair\` for each phone`,
+    );
+  }
   const devices = pairedRegistryOf(deps.files, deps.ctx.stateDir).devices;
   const live = devices.filter((d) => !isExpired(d, Date.now()));
   if (devices.length === 0) {
@@ -1166,7 +1179,7 @@ async function ownSnapshot(deps: DoctorDeps): Promise<SnapshotRead> {
   try {
     const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/snapshot`, {
       signal: AbortSignal.timeout(SNAPSHOT_BUDGET_MS),
-      headers: identityHeader(deps),
+      headers: ownReadHeaders(deps),
     });
     if (answer.ok) return { kind: "body", text: await answer.text() };
     return { kind: "refused", status: answer.status };
@@ -1196,6 +1209,20 @@ async function ownSnapshot(deps: DoctorDeps): Promise<SnapshotRead> {
 function identityHeader(deps: DoctorDeps): Record<string, string> | undefined {
   const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
   return login === "" ? undefined : { "Tailscale-User-Login": login };
+}
+
+/**
+ * Everything this verb shows its own bridge on a read: the configured login (issue #238, above) and
+ * the bridge's local read credential (`<stateDir>/local-secret`, bridge/local-secret.ts), because
+ * reads need a pairing token now (ADR 0086) and this process holds none. The credential reads only,
+ * from loopback only; with no file (the bridge is down, or older) nothing is sent and the bridge
+ * refuses as it did before, which `ownAnswerSentence` and the history section report as a refusal.
+ */
+function ownReadHeaders(deps: DoctorDeps) {
+  return {
+    ...identityHeader(deps),
+    ...localAuthHeader(readLocalSecret(deps.ctx.stateDir, (p) => deps.files.read(p))),
+  };
 }
 
 /** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */

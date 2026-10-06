@@ -65,9 +65,11 @@ import {
   normalizeLabel,
   toDeviceWire,
   type ClaimFailure,
+  type PairedDeviceWire,
   type PairingStore,
 } from "./pairing.ts";
 import { createPairLimiter, pairSourceKey } from "./pair-limit.ts";
+import { LOCAL_LABEL, type LocalCredential } from "./local-secret.ts";
 import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
@@ -109,6 +111,10 @@ import type {
   PaneChangeCommitDiffResponse,
   PaneChangeCommitResponse,
   PaneChangeDiffResponse,
+  ChangeCommitDiff,
+  ChangeDiff,
+  FileReadAnswer,
+  FilesListing,
   PaneChangesResponse,
   PaneFilesResponse,
   WorkspaceChangeCommitDiffResponse,
@@ -203,8 +209,14 @@ const SECURITY_HEADERS = {
   "permissions-policy": "camera=(), geolocation=(), microphone=(self), payment=(), usb=()",
 } satisfies Record<string, string>;
 
-/** `Strict-Transport-Security` for a response, and only ever for a request that arrived over HTTPS. */
-const HSTS = "max-age=63072000; includeSubDomains";
+/**
+ * `Strict-Transport-Security` for a response, and only ever for a request that arrived over HTTPS.
+ *
+ * No `includeSubDomains`: a collie is usually one name under a parent the operator shares with other
+ * services (`collie.ts.example.com`), and this header would pin every sibling to HTTPS for two years
+ * on the word of one of them. The policy covers the name that answered and nothing else.
+ */
+const HSTS = "max-age=63072000";
 
 /**
  * Whether a request reached the front door over HTTPS: a TLS listener (`req.url` carries the
@@ -598,17 +610,15 @@ export function sniffBlobType(head: Uint8Array): string {
  * without standing up Bun.serve (CLAUDE.md): a refused hash, a hash nothing holds, a file over the
  * cap, and the content type of a png and a jpeg.
  *
- * **The ETag IS the hash.** The store is content-addressed, so the name of the file already is a
- * strong validator of its bytes; re-hashing them with `computeEtag` would read the whole file to
- * learn something the URL said. That is also why the body is `Bun.file(real)` rather than
+ * **Nothing keeps it.** `private, no-store`, and no ETag: the browser's HTTP cache is not wiped when a
+ * pairing ends (the phone's wipe clears what Collie stored, not what the browser cached), so a blob
+ * kept there would outlive the device's access to it. The phone holds the bytes it fetched as an
+ * object URL in memory for as long as it shows them, so a validator would buy nothing: with nothing
+ * stored, no browser ever has one to send back. The body is `Bun.file(real)` rather than
  * `await file.bytes()` — the runtime streams it, and a 16 MiB screenshot is never held whole in this
  * process.
  */
-export async function blobRoute(
-  hash: string,
-  sessionRoots: readonly string[],
-  ifNoneMatch: string | null,
-): Promise<Response> {
+export async function blobRoute(hash: string, sessionRoots: readonly string[]): Promise<Response> {
   if (!isBlobHash(hash)) return text("invalid blob hash", 400);
   const real = await resolveBlobPath(hash, sessionRoots);
   if (real === null) return text("blob not found", 404);
@@ -617,16 +627,12 @@ export async function blobRoute(
   if (meta.size > BLOB_MAX_BYTES) {
     return text(`blob too large (max ${String(Math.round(BLOB_MAX_BYTES / (1024 * 1024)))} MB)`, 413);
   }
-  const etag = `"${hash}"`;
   const headers = {
     "content-type": "application/octet-stream",
-    // Content-addressed, but the content is the operator's own pane output (images), so it must
-    // not sit in a shared or year-long cache. `private` keeps it out of proxies; an hour spares
-    // the Chat view a refetch storm. The ETag stays so a conditional request still answers 304.
-    "cache-control": "private, max-age=3600",
-    etag,
+    // The operator's own pane output (images): no shared cache, and no cache on the phone either,
+    // because the browser's cache survives the wipe that ends a pairing (see above).
+    "cache-control": "private, no-store",
   };
-  if (notModified(ifNoneMatch, etag)) return secure(new Response(null, { status: 304, headers }));
   const file = Bun.file(real);
   headers["content-type"] = sniffBlobType(new Uint8Array(await file.slice(0, BLOB_SNIFF_BYTES).arrayBuffer()));
   return secure(new Response(file, { headers }));
@@ -845,6 +851,12 @@ export function startServer(opts: {
    */
   pairing?: PairingStore;
   /**
+   * The host's own read credential (bridge/local-secret.ts): the hash of the secret this process
+   * wrote to `<stateDir>/local-secret` at start. Absent means no local credential is accepted, which
+   * is every test and a bridge that could not write the file; the CLI then gets today's 403.
+   */
+  localCredential?: LocalCredential;
+  /**
    * Speech-to-text, asked for per request rather than resolved once.
    *
    * A FUNCTION, not a provider, because the settings behind it are re-read behind an mtime check
@@ -899,6 +911,16 @@ export function startServer(opts: {
   // `COLLIE_TRANSCRIPT` is off: no journal, no probe, and every pane reads exactly as it did in 1.8.2.
   const cache = opts.cache;
   const pairing = opts.pairing;
+  const localCredential = opts.localCredential;
+  /**
+   * What every gate on the browser surface asks: the pairing store, plus the host's local read
+   * credential from a loopback peer. The peer is the kernel's (`server.requestIP`), never a header.
+   * `server` is the listener below; this closure only runs for a request it accepted.
+   */
+  const pairingGate: PairingGate | undefined =
+    pairing === undefined
+      ? undefined
+      : browserPairingGate(pairing, localCredential, (req) => server.requestIP(req)?.address);
   const folders = opts.folders;
   const machines = opts.machines;
   const stt = opts.stt ?? (async () => null);
@@ -906,7 +928,7 @@ export function startServer(opts: {
   // the same bounded process-local capacity (bridge/stt/http.ts).
   const sttAdmission = createSttAdmission();
   /** Who the requester is, across both device gates — see {@link requestDevice}. */
-  const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairing);
+  const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairingGate);
   const crewLead = opts.crewLead;
   const crewStatus = opts.crewStatus;
   const peerNotifier = opts.peerNotifier;
@@ -1193,14 +1215,21 @@ export function startServer(opts: {
       const denied = caller.gate("read");
       if (denied) return denied;
       const rt = await caller.resolve();
-      if (rt instanceof Response) return rt;
+      if (rt instanceof Response) {
+        // A member's blob, forwarded: the lead states the cache rule itself rather than relaying the
+        // member's, because a member one release behind still says `max-age=3600` with an ETag, and
+        // the phone's cache must not keep it whoever served it (`blobRoute`).
+        rt.headers.set("cache-control", "private, no-store");
+        rt.headers.delete("etag");
+        return rt;
+      }
       let hash: string;
       try {
         hash = decodeURIComponent(blobMatch[1]!);
       } catch {
         return text("malformed URL", 400);
       }
-      return blobRoute(hash, cfg.journalRoots.pi, req.headers.get("if-none-match"));
+      return blobRoute(hash, cfg.journalRoots.pi);
     }
 
     // ── Changes, asked by workspace (ADR 0065): the list every pane of the space shows ──
@@ -1216,7 +1245,7 @@ export function startServer(opts: {
       } catch {
         return text("malformed URL", 400);
       }
-      return workspaceChanges(rt.engine, workspaceId, url, req);
+      return workspaceChanges(rt.engine, workspaceId, url, req, homedir(), cfg.redact);
     }
 
     // ── Files, asked by workspace (ADR 0083): one folder or one file under the same root ──
@@ -1232,7 +1261,7 @@ export function startServer(opts: {
       } catch {
         return text("malformed URL", 400);
       }
-      return workspaceFiles(rt.engine, workspaceId, url, req, filesPrivateFolders(cfg));
+      return workspaceFiles(rt.engine, workspaceId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
     }
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
@@ -1323,9 +1352,9 @@ export function startServer(opts: {
         return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
       if (action === "chat" && req.method === "GET")
         return paneChat(cfg, journals, live, rt.engine, paneId, url, req);
-      if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req);
+      if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
-        return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg));
+        return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
       // A landed input makes the engine hot for a few polls (§ isPaneInput). On a member this runs
       // through the crew dispatch, so the member that owns the pane is the one that goes hot.
       if (action === "reply" && req.method === "POST")
@@ -1554,6 +1583,13 @@ export function startServer(opts: {
         return json(healthBody(opts.version, crew.mode), req.headers.get("accept-encoding"));
       }
 
+      // ── DENY BY DEFAULT (ADR 0086) ───────────────────────────────────────
+      // One pairing check in front of every `/api/` route but `OPEN_API_ROUTES` (`/api/health`
+      // above, `POST /api/pair` below), before any route is matched, so a route that forgets its own
+      // `guard` call is still gated. The routes keep their own calls for their own levels.
+      const frontDenied = apiFrontGate(req, pathname, cfg, pairingGate);
+      if (frontDenied) return frontDenied;
+
       // Session-scoped routes accept an optional `?session=<name>`; absent → the primary session
       // (identical to pre-multi-session behaviour). The name is only ever a registry Map lookup — it
       // never builds a path. An unknown name is a 404. Global routes below ignore the param entirely.
@@ -1674,7 +1710,7 @@ export function startServer(opts: {
         // Through `guard` like every other read since reads need the pairing token (ADR 0086). It
         // was a bare `checkAccess` while reads were open, and a bare one here would be the one read
         // an unpaired browser could still make.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         const device = whois(req);
         // A BROWSER poll is a phone looking; the lead's own sweep of a peer is not, which is why
@@ -1722,7 +1758,7 @@ export function startServer(opts: {
       // SAME closure, passed to both, never a second call that agrees today. Two authorisation
       // checks meant to be identical drift the moment one of them is edited, so there is only one
       // (spec M15/05; `server.test.ts` → "same device auth as pane input").
-      const browserGate = (level: GateLevel): Response | null => guard(req, cfg, level, pairing);
+      const browserGate = (level: GateLevel): Response | null => guard(req, cfg, level, pairingGate);
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
         gate: browserGate,
@@ -1736,7 +1772,7 @@ export function startServer(opts: {
       // `/api/config` is — read-level, and through `guard` so COLLIE_PUBLIC_HOSTS covers it — because
       // it is the same kind of payload: Collie's own facts plus operator-authored text.
       if (pathname === "/api/cache-rules" && req.method === "GET") {
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         return cacheRulesRoute(
           operatorCacheRules,
@@ -1753,7 +1789,7 @@ export function startServer(opts: {
         // didn't cover it and a rebound DNS name could still read the build id. The client only ever
         // calls this same-origin, and a refusal can't be mistaken for an outage: ConnectionBanner
         // short-circuits to AuthErrorBanner before its red-state probe runs. Noted in #32.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         // Re-read per request behind an mtime check, like buildId() — editing commands.toml is live,
         // with no restart. The path is cfg's, never the request's.
@@ -1828,7 +1864,7 @@ export function startServer(opts: {
         // where it is (writes), so a read-only device still sees the mark. The pairing token is
         // needed like on every read (ADR 0086), so the phone fetches the bytes with it and draws them
         // from an object URL: an `<img src>` cannot carry an `Authorization` header.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         // The PRIMARY session's adapter, for the reason `/api/config` gives: one collie drives one
         // multiplexer, so which runtime answers is not a choice.
@@ -1847,7 +1883,7 @@ export function startServer(opts: {
         // it is set to — a picker whose choice cannot render is worse than no picker. The pairing
         // token is needed like on every read (ADR 0086), so the phone loads the bytes with `fetch`
         // and hands them to `FontFace`: a CSS `url()` cannot carry an `Authorization` header.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         // `decodeURIComponent` is undone here and NOWHERE ELSE, because what comes back is only ever
         // used as a Map key. It is looked UP in the rows theme.toml declared; a name nobody declared
@@ -1870,7 +1906,7 @@ export function startServer(opts: {
       if (pathname === "/api/subscribe" && req.method === "POST") {
         // Read-level: registering for push isn't terminal-driving, so a read-only device may still
         // subscribe to notifications.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         let body: JsonValue;
         try {
@@ -1889,7 +1925,7 @@ export function startServer(opts: {
       }
       if (pathname === "/api/notifications/snooze" && req.method === "POST") {
         // Managing your own notification quiet-hours isn't terminal-driving — read-level, like subscribe.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         let body: JsonValue;
         try {
@@ -1920,12 +1956,12 @@ export function startServer(opts: {
         // Which agent statuses push (bridge-wide). Read-level like snooze — managing your own
         // notification preferences isn't terminal-driving.
         if (req.method === "GET") {
-          const denied = guard(req, cfg, "read", pairing);
+          const denied = guard(req, cfg, "read", pairingGate);
           if (denied) return denied;
           return json(notifyPrefs.current(), req.headers.get("accept-encoding"));
         }
         if (req.method === "POST") {
-          const denied = guard(req, cfg, "read", pairing);
+          const denied = guard(req, cfg, "read", pairingGate);
           if (denied) return denied;
           let body: JsonValue;
           try {
@@ -1956,7 +1992,7 @@ export function startServer(opts: {
       // that is the only machine holding a push subscription (CREW_PROTOCOL.md §5). A segment on
       // `PANE_ROUTE` would have been forwarded to the peer and stored there, where nothing can send.
       if (pathname === "/api/notifications/cache-watch") {
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         const watch = opts.cacheWatch;
         if (!watch) return text("not found", 404);
@@ -1994,14 +2030,14 @@ export function startServer(opts: {
         return json(cacheWatchBody(watch, found.pane), req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/notifications/cache-watch/list" && req.method === "GET") {
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         const watch = opts.cacheWatch;
         if (!watch) return text("not found", 404);
         return json(cacheWatchListBody(watch), req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/notifications/cache-watch/forget" && req.method === "POST") {
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         const watch = opts.cacheWatch;
         if (!watch) return text("not found", 404);
@@ -2023,7 +2059,7 @@ export function startServer(opts: {
         // Force an immediate upstream check (the "check for updates" button), instead of waiting for
         // the periodic timer. Read-level — checking a version isn't terminal-driving — and idempotent
         // (the monitor de-dupes concurrent checks). Returns the fresh status the client revalidates on.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         await updateMonitor.checkRelease();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
@@ -2032,7 +2068,7 @@ export function startServer(opts: {
         // "Remind me next digest" — dismisses the CURRENT update push without touching the `updates`
         // pref, which stays the only off switch. Read-level like the notification snooze: managing
         // your own notifications isn't terminal-driving. The banner keeps showing; only the push waits.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         await updateMonitor.snoozeDigest();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
@@ -2046,7 +2082,7 @@ export function startServer(opts: {
         // Read-level, exactly like the snooze beside it: declining a notification about your own
         // machine isn't terminal-driving. Not a mute either — `updatesEnabled()` stays the only off
         // switch, and a NEWER release raises the band again.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         let body: JsonValue;
         try {
@@ -2082,7 +2118,7 @@ export function startServer(opts: {
         // It is deliberately NOT folded into the snapshot. The snapshot is polled by every open
         // client on a burst cadence, and the preflight shells out to git and to `doctor`; paying that
         // on every poll for a card nobody has opened is the wrong trade.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         // Right after a restart `latest` is null until the monitor's own first poll — deliberately
         // delayed so the bridge never probes the network mid-boot (bridge/index.ts). A card opened in
@@ -2232,7 +2268,7 @@ export function startServer(opts: {
         // WRITE-gated, exactly like typing into a pane — and for the same reason. This route's whole
         // purpose is to put words in the composer, and the audio leaves the host for an
         // operator-configured endpoint. A read-only device watches; it does not speak.
-        const denied = guard(req, cfg, "write", pairing);
+        const denied = guard(req, cfg, "write", pairingGate);
         if (denied) return denied;
         // Deliberately NOT session- or pane-scoped: the transcript is text handed back to the
         // phone, which then decides what to do with it. Nothing here touches a terminal, so there is
@@ -2259,7 +2295,7 @@ export function startServer(opts: {
         if (!gate.ok) return text(gate.reason, 403);
         // The outer brake, before the body is read: ten attempts per source address per minute, then
         // 429 with `retry-after`. The five-tries-per-code rule in `pairing.claim` still applies on
-        // top of this. The source is the socket address, or the first `x-forwarded-for` entry only
+        // top of this. The source is the socket address, or the rightmost `x-forwarded-for` entry only
         // when the peer is the loopback front door (an untrusted caller cannot rotate its way out).
         const peer = server.requestIP(req)?.address;
         const source = pairSourceKey(peer, isLoopbackPeer(peer), req.headers.get("x-forwarded-for"));
@@ -2286,7 +2322,15 @@ export function startServer(opts: {
         if (!parsed) {
           return jsonError(apiError("pairing.bad_request"), 400, req.headers.get("accept-encoding"));
         }
-        const claimed = await pairing.claim(parsed.code, parsed.label);
+        let claimed: Awaited<ReturnType<PairingStore["claim"]>>;
+        try {
+          claimed = await pairing.claim(parsed.code, parsed.label);
+        } catch (err) {
+          // The registry is there and unreadable: enrolling now would write this one device over the
+          // torn file and lose every other. The code stays claimable; the phone retries.
+          console.warn(`[pairing] claim deferred: ${errorText(err)}`);
+          return pairingUnavailable();
+        }
         if (!claimed.ok) {
           // Every failure is one status and one machine-readable reason; the client turns the reason
           // into the sentence that says what to do next. No timing or count is leaked back — the
@@ -2309,7 +2353,7 @@ export function startServer(opts: {
         // Read-level, exactly like `/api/devices` and `/api/config`: this is a report about machines
         // the operator already owns, and it drives nothing. Every field is a fact this process was
         // already holding — the route reads no disk, dials no member, and cannot start a call.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         // 404 for a solo instance AND for a peer, from one closure. A peer is not a front door
         // (ADR 0013), and a solo instance has no crew to describe — the phone's move is the same in
@@ -2326,7 +2370,7 @@ export function startServer(opts: {
         req,
         pathname,
         {
-          gate: (level) => guard(req, cfg, level, pairing),
+          gate: (level) => guard(req, cfg, level, pairingGate),
           device: () => whois(req).device,
           audit: (entry) => audit.record(entry),
         },
@@ -2339,22 +2383,28 @@ export function startServer(opts: {
         // device learns that it is unpaired from the 403 itself. Labels are the operator's own names
         // for their own phones; the token hashes never reach this shape (see toDeviceWire).
         // `enforced` is always true now and stays on the wire for older phones.
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         const token = bearerToken(req.headers);
-        const current = pairing.resolve(token)?.label ?? null;
-        // `currentExpired` lets a cold open tell "your pairing expired" from "you never paired"
-        // without first having to fail a write. It says nothing the caller's own token did not
-        // already prove: it is true only for the holder of that expired token.
-        return json(
-          {
+        let body: DevicesResponseBody;
+        try {
+          const current = pairing.resolve(token)?.label ?? null;
+          // `currentExpired` lets a cold open tell "your pairing expired" from "you never paired"
+          // without first having to fail a write. It says nothing the caller's own token did not
+          // already prove: it is true only for the holder of that expired token.
+          body = {
             enforced: pairing.enforced(),
             current,
             currentExpired: current === null && pairing.expired(token),
             devices: toDeviceWire(pairing.registry(), current),
-          },
-          req.headers.get("accept-encoding"),
-        );
+          };
+        } catch {
+          // The registry is unreadable. The gate answers that with a 503 already, but the host's CLI
+          // is admitted without the registry being asked, and a file can tear between the two reads.
+          // The list is not known: an outage, never an empty list.
+          return pairingUnavailable();
+        }
+        return json(body, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/devices/revoke" && req.method === "POST") {
         if (!pairing) return text("pairing unavailable", 503);
@@ -2362,7 +2412,7 @@ export function startServer(opts: {
         // paired device (and the header gate, if configured). Revoking YOURSELF is allowed — that is
         // how a device un-pairs. Revoking the last device leaves a bridge that refuses every route
         // but health and pair (ADR 0086); `collie pair` on the host is the way back in.
-        const denied = guard(req, cfg, "write", pairing);
+        const denied = guard(req, cfg, "write", pairingGate);
         if (denied) return denied;
         let body: unknown;
         try {
@@ -2376,24 +2426,35 @@ export function startServer(opts: {
         if (label === null) {
           return jsonError(apiError("pairing.bad_request"), 400, req.headers.get("accept-encoding"));
         }
-        if (!(await pairing.revoke(label))) {
+        let revoked: boolean;
+        try {
+          revoked = await pairing.revoke(label);
+        } catch {
+          // An unreadable registry is not "no such device", and revoking from it would write a torn
+          // reading back. Nothing was changed; the phone retries.
+          return pairingUnavailable();
+        }
+        if (!revoked) {
           return jsonError(apiError("device.unknown"), 404, req.headers.get("accept-encoding"));
         }
         audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
-        const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
-        // A revoke is a write, so the caller's own token just passed the gate: it is not expired.
-        return json(
-          { enforced: pairing.enforced(), current, currentExpired: false, devices: toDeviceWire(pairing.registry(), current) },
-          req.headers.get("accept-encoding"),
-        );
+        let after: DevicesResponseBody;
+        try {
+          const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
+          // A revoke is a write, so the caller's own token just passed the gate: it is not expired.
+          after = { enforced: pairing.enforced(), current, currentExpired: false, devices: toDeviceWire(pairing.registry(), current) };
+        } catch {
+          return pairingUnavailable();
+        }
+        return json(after, req.headers.get("accept-encoding"));
       }
 
       // ── Default closed: an `/api/*` path no route above claimed ─────────
-      // It used to fall through to the SPA fallback and answer 200 with the app shell. It now
-      // passes the same gate as a read first, so an unpaired caller gets the one pairing refusal
-      // whatever path it tries (ADR 0086), and a paired one gets an honest 404.
+      // It used to fall through to the SPA fallback and answer 200 with the app shell. An unpaired
+      // caller never gets here now (`apiFrontGate` refused it before routing, ADR 0086); the read
+      // gate stays so this branch is closed on its own too, and a paired caller gets an honest 404.
       if (pathname.startsWith("/api/")) {
-        const denied = guard(req, cfg, "read", pairing);
+        const denied = guard(req, cfg, "read", pairingGate);
         if (denied) return denied;
         return text("not found", 404);
       }
@@ -2779,6 +2840,24 @@ async function paneChat(
   }
 }
 
+/**
+ * A Changes diff with its text masked (bridge/redact.ts), when the mask is on (`cfg.redact`, as the
+ * mirror). A diff is file content, and file content is where a key sits: a `.env` an agent edited, a
+ * config with a token in it. Masked here, on the machine whose disk the diff came off, so a crew
+ * member's own setting decides for its own files. The mask keeps every line and every column, so
+ * the hunk headers still count what the view draws.
+ */
+function maskDiff<TDiff extends ChangeDiff | ChangeCommitDiff>(answer: TDiff, redact: boolean): TDiff {
+  if (!redact || !answer.available) return answer;
+  return { ...answer, diff: redactText(answer.diff) };
+}
+
+/** A Files view answer with a file's text masked, as {@link maskDiff} masks a diff. A listing is names only. */
+function maskFileBody<TAnswer extends FilesListing | FileReadAnswer>(answer: TAnswer, redact: boolean): TAnswer {
+  if (!redact || !answer.available || !("text" in answer)) return answer;
+  return { ...answer, text: redactText(answer.text) };
+}
+
 /** The snapshot a Changes route reads its root off. The state engine is one. */
 export interface ChangesSnapshotSource {
   current(): RootSnapshot;
@@ -2800,6 +2879,7 @@ export async function paneChanges(
   url: URL,
   req: Request,
   home: string = homedir(),
+  redact = true,
 ): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
   const params = changesParams(url);
@@ -2819,11 +2899,11 @@ export async function paneChanges(
   try {
     if (params.view === "commit") {
       if (params.path !== null) {
-        return json({ ...subject, ...(await sharedCommitFileDiff(root, params)) } satisfies PaneChangeCommitDiffResponse, accept);
+        return json({ ...subject, ...maskDiff(await sharedCommitFileDiff(root, params), redact) } satisfies PaneChangeCommitDiffResponse, accept);
       }
       return json({ ...subject, ...(await sharedReadCommit(root, params)) } satisfies PaneChangeCommitResponse, accept);
     }
-    if (wantsDiff) return json({ ...subject, ...(await sharedFileDiff(root, params)) } satisfies PaneChangeDiffResponse, accept);
+    if (wantsDiff) return json({ ...subject, ...maskDiff(await sharedFileDiff(root, params), redact) } satisfies PaneChangeDiffResponse, accept);
     const list = await sharedListChanges(root, params);
     const paneRepo = list.available ? await repoOfFolder(list.root, list.repos, pane.cwd) : undefined;
     const answer: PaneChangesResponse = { ...subject, ...list };
@@ -2845,6 +2925,7 @@ export async function workspaceChanges(
   url: URL,
   req: Request,
   home: string = homedir(),
+  redact = true,
 ): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
   const params = changesParams(url);
@@ -2863,14 +2944,14 @@ export async function workspaceChanges(
     if (params.view === "commit") {
       if (params.path !== null) {
         return json(
-          { ...subject, ...(await sharedCommitFileDiff(found.root, params)) } satisfies WorkspaceChangeCommitDiffResponse,
+          { ...subject, ...maskDiff(await sharedCommitFileDiff(found.root, params), redact) } satisfies WorkspaceChangeCommitDiffResponse,
           accept,
         );
       }
       return json({ ...subject, ...(await sharedReadCommit(found.root, params)) } satisfies WorkspaceChangeCommitResponse, accept);
     }
     if (wantsDiff) {
-      return json({ ...subject, ...(await sharedFileDiff(found.root, params)) } satisfies WorkspaceChangeDiffResponse, accept);
+      return json({ ...subject, ...maskDiff(await sharedFileDiff(found.root, params), redact) } satisfies WorkspaceChangeDiffResponse, accept);
     }
     return json({ ...subject, ...(await sharedListChanges(found.root, params)) } satisfies WorkspaceChangesResponse, accept);
   } catch (err) {
@@ -2908,6 +2989,7 @@ export async function paneFiles(
   req: Request,
   privateFolders: readonly string[],
   home: string = homedir(),
+  redact = true,
 ): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
   const snap = engine.current();
@@ -2922,7 +3004,7 @@ export async function paneFiles(
   if (root === null) return json({ ...subject, available: false, reason: "no-folder" } satisfies PaneFilesResponse, accept);
   const answer = await serveFiles({ root, home, privateFolders }, filesQuery(url));
   if (answer === UNKNOWN_PATH) return unknownPath();
-  return json({ ...subject, ...answer } satisfies PaneFilesResponse, accept);
+  return json({ ...subject, ...maskFileBody(answer, redact) } satisfies PaneFilesResponse, accept);
 }
 
 /** GET /api/workspace/:id/files — the same, asked by workspace; no pane, so no fallback (ADR 0083). */
@@ -2933,6 +3015,7 @@ export async function workspaceFiles(
   req: Request,
   privateFolders: readonly string[],
   home: string = homedir(),
+  redact = true,
 ): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
   const found = rootOfWorkspace(engine.current(), workspaceId, home);
@@ -2945,7 +3028,7 @@ export async function workspaceFiles(
   }
   const answer = await serveFiles({ root: found.root, home, privateFolders }, filesQuery(url));
   if (answer === UNKNOWN_PATH) return unknownPath();
-  return json({ ...subject, ...answer } satisfies WorkspaceFilesResponse, accept);
+  return json({ ...subject, ...maskFileBody(answer, redact) } satisfies WorkspaceFilesResponse, accept);
 }
 
 /** Just the two port calls a reply needs — the real adapter in the bridge, a fake in tests. */
@@ -4542,11 +4625,103 @@ export function guard(
   // "pair", and the operator knows no-one guessed at a token.
   if (pairing !== undefined) {
     const token = bearerToken(req.headers);
-    if (pairing.resolve(token) === null) {
-      return pairingRefusal(pairing.expired?.(token) === true ? "device expired" : "device not paired", token);
+    // The host's own CLI (`<stateDir>/local-secret`, bridge/local-secret.ts): a READ credential and
+    // nothing else, from a loopback peer only — `local` answers false otherwise. Asked first, so a
+    // `collie doctor` still reads while the registry is the thing that is broken.
+    if (level === "read" && pairing.local?.(token, req) === true) return null;
+    try {
+      if (pairing.resolve(token) === null) {
+        return pairingRefusal(pairing.expired?.(token) === true ? "device expired" : "device not paired");
+      }
+    } catch {
+      // The registry could not be read (RegistryUnreadableError, bridge/pairing.ts). Whether this
+      // token is paired is NOT KNOWN, so neither answer is true: not a pass, and never the 403 that
+      // tells a phone its pairing is over and makes it wipe what it stored. An outage, retried.
+      return pairingUnavailable();
     }
   }
   return null;
+}
+
+/**
+ * The answer while the pairing registry cannot be read: `503 pairing unavailable`, retry in 5 s. A
+ * torn or half-written `paired-devices.json` is a moment, not a verdict; the phone keeps its token and
+ * its stored state, shows the bridge as unreachable, and the next poll after the repair goes through.
+ */
+export function pairingUnavailable(): Response {
+  return secure(new Response("pairing unavailable", { status: 503, headers: { "retry-after": "5" } }));
+}
+
+/**
+ * The gate every browser-surface `guard` call asks: the pairing store, plus the host's local read
+ * credential (bridge/local-secret.ts) when the request's TCP peer is loopback. `peerOf` is the
+ * listener's `requestIP`, injected so the loopback rule is tested without a socket. Strict on the
+ * peer: an address the runtime cannot name is NOT loopback here, unlike {@link isLoopbackPeer}'s
+ * default for a missing one, because this admits a credential rather than refusing a caller.
+ */
+export function browserPairingGate(
+  store: Pick<PairingStore, "resolve" | "expired">,
+  localCredential: LocalCredential | undefined,
+  peerOf: (req: Request) => string | null | undefined,
+): PairingGate {
+  return {
+    resolve: (token) => store.resolve(token),
+    expired: (token) => store.expired(token),
+    local: (token, req) => {
+      if (localCredential === undefined || !localCredential.matches(token)) return false;
+      const peer = peerOf(req);
+      return typeof peer === "string" && peer !== "" && isLoopbackPeer(peer);
+    },
+  };
+}
+
+/** The body of `GET /api/devices` and of a revoke's answer. */
+interface DevicesResponseBody {
+  enforced: boolean;
+  current: string | null;
+  currentExpired: boolean;
+  devices: PairedDeviceWire[];
+}
+
+/**
+ * The `/api/*` routes that answer without the pairing credential, and nothing else (ADR 0086):
+ * `GET`/`HEAD /api/health`, which the updater and monitors ask before anyone has a token, and
+ * `POST /api/pair`, which is how a device gets one. Every other `/api/` path, known or not, any
+ * method, any spelling, is gated by {@link apiFrontGate} before the dispatcher routes it.
+ */
+export const OPEN_API_ROUTES: readonly { readonly path: string; readonly methods: readonly string[] }[] = [
+  { path: "/api/health", methods: ["GET", "HEAD"] },
+  { path: "/api/pair", methods: ["POST"] },
+];
+
+/** Whether this method and path are one of {@link OPEN_API_ROUTES}. Exact path, exact method. */
+export function isOpenApiRoute(pathname: string, method: string): boolean {
+  return OPEN_API_ROUTES.some((r) => r.path === pathname && r.methods.includes(method));
+}
+
+/**
+ * DENY BY DEFAULT: the one pairing check in front of the whole `/api/` dispatcher.
+ *
+ * Each route also calls {@link guard} for its own level, and that stays (a write's device factors and
+ * `Origin` rule live there). This exists because per-route gating fails over time: a route added
+ * without its `guard` call (the worktree list was one) is open to anybody who reaches the port. Here
+ * every `/api/` path that is not exactly one of {@link OPEN_API_ROUTES} must pass a READ-level
+ * `guard` first, whether or not any route below would answer it, so a new route is gated before
+ * anyone remembers to gate it, and an unknown one answers the same 403 as a known one.
+ *
+ * `pathname` is the one the dispatcher routes on (after the mount is stripped), so no spelling can
+ * reach a route without passing here: the check and the routing read the same string. `/crew/v1/*`
+ * and `/standby/*` are not under `/api/` and keep their own admission. Null ⇒ carry on routing.
+ */
+export function apiFrontGate(
+  req: Request,
+  pathname: string,
+  cfg: Config,
+  pairing?: PairingGate,
+): Response | null {
+  if (!pathname.startsWith("/api/")) return null;
+  if (isOpenApiRoute(pathname, req.method)) return null;
+  return guard(req, cfg, "read", pairing);
 }
 
 /**
@@ -4558,13 +4733,23 @@ export function guard(
  * is a gate that is enforced. Only a server built without a store at all (a unit test's) skips it.
  */
 export interface PairingGate {
-  /** The device this token belongs to, or null. An expired token resolves to null. */
+  /**
+   * The device this token belongs to, or null. An expired token resolves to null. THROWS when the
+   * registry cannot be read ({@link PairingStore.resolve}); the gate answers 503, never "not paired".
+   */
   resolve(token: string | null): { label: string } | null;
   /**
    * Whether this token belongs to a device whose expiry passed. Optional so a test may still pass a
    * two-line gate; {@link PairingStore} always answers it.
    */
   expired?(token: string | null): boolean;
+  /**
+   * Whether this token is the host's own local credential (bridge/local-secret.ts) AND this request
+   * came from a loopback peer. A READ credential only: {@link guard} asks it for `"read"` and for no
+   * other level, so it never types into a terminal and never opens the Files view. Optional: a gate
+   * without it (a test's, or a bridge that could not write the file) knows no local credential.
+   */
+  local?(token: string | null, req: Request): boolean;
 }
 
 /**
@@ -4579,7 +4764,17 @@ export interface PairingGate {
 export function requestDevice(req: Request, cfg: Config, pairing?: PairingGate): DeviceAuth {
   const header = deviceAuth(req, cfg);
   if (pairing === undefined) return header;
-  const paired = pairing.resolve(bearerToken(req.headers));
+  const token = bearerToken(req.headers);
+  // The host's CLI reads under the synthetic label `local`, and is never authorised to write.
+  if (pairing.local?.(token, req) === true) return { enforced: true, device: LOCAL_LABEL, authorized: false };
+  let paired: { label: string } | null;
+  try {
+    paired = pairing.resolve(token);
+  } catch {
+    // The registry went unreadable after the gate let this request in. Attribution is not a gate:
+    // nobody is named and nothing is authorised, and the next request meets the 503 at the gate.
+    paired = null;
+  }
   return {
     enforced: true,
     device: paired?.label ?? header.device,
@@ -4681,21 +4876,16 @@ function text(body: string, status: number): Response {
 }
 
 /**
- * The pairing gate's 403, with `Clear-Site-Data: "storage"` when the request carried a bearer token
- * (M46 spec 02). A token the bridge no longer accepts was this browser's own credential once, so the
- * pairing it stood for is over: revoked, expired, or minted for a registry that is gone. The header
- * asks the browser to drop everything Collie stored there. With no token there is nothing to wipe, and
- * no other 403 ever carries it: a proxy refusal or a cross-origin `Origin` ends nothing.
+ * The pairing gate's 403: `device not paired` or `device expired`, the two texts the phone's own wipe
+ * (web/src/lib/wipe.ts) keys on. One helper so the two stay the only bodies this refusal can have.
  *
- * A backstop, not the mechanism. Browsers honour the header only in a secure context, and the bridge
- * is often reached over plain HTTP behind `tailscale serve`. The phone's own wipe
- * (web/src/lib/wipe.ts) runs on the same two refusal texts and is the primary path. Once it has run
- * the phone sends no token, so the header goes out once per device in practice, with no state here.
+ * It carries no `Clear-Site-Data` any more (it did in M46 spec 02). That header clears more than the
+ * pairing left: localStorage holds the operator's preferences, the service worker holds the precache
+ * the app needs to open offline, and on an origin shared with another mount it wipes the sibling too.
+ * The phone's own wipe deletes exactly what the pairing left, and is the one mechanism.
  */
-function pairingRefusal(body: "device not paired" | "device expired", token: string | null): Response {
-  const res = text(body, 403);
-  if (token !== null) res.headers.set("clear-site-data", '"storage"');
-  return res;
+function pairingRefusal(body: "device not paired" | "device expired"): Response {
+  return text(body, 403);
 }
 
 /**

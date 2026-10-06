@@ -6,7 +6,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadDraft } from "@/lib/drafts";
-import { LIVE_WINDOW_MS, markLive, resetLiveness } from "@/lib/liveness";
+import { DEAD_DEBOUNCE_MS, LIVE_CAP_MS, markDead, markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
@@ -90,7 +90,7 @@ describe("Composer — no action from cached state (M46 spec 11)", () => {
     expect(calls).toEqual([]); // reconnecting is not consent: no auto-send of the saved draft
   });
 
-  it("disables Send again when the live answer ages out", async () => {
+  it("disables Send again once a read fails, after the one-second debounce", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -98,8 +98,31 @@ describe("Composer — no action from cached state (M46 spec 11)", () => {
       await user.type(screen.getByPlaceholderText(/type a reply/i), "x");
       act(() => markLive("w1:p1"));
       expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+      act(() => markDead("w1:p1"));
+      // One dropped poll does not flicker the button.
+      expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
       act(() => {
-        vi.advanceTimersByTime(LIVE_WINDOW_MS + 100);
+        vi.advanceTimersByTime(DEAD_DEBOUNCE_MS + 10);
+      });
+      expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps Send on across a quiet stretch longer than the old 15 s window", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderComposer();
+      await user.type(screen.getByPlaceholderText(/type a reply/i), "x");
+      act(() => markLive("w1:p1"));
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+      act(() => {
+        vi.advanceTimersByTime(LIVE_CAP_MS);
       });
       expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
     } finally {
@@ -127,9 +150,37 @@ describe("Composer — no action from cached state (M46 spec 11)", () => {
     expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
   });
 
-  it("uses the window: a mark older than LIVE_WINDOW_MS is offline", async () => {
+  it("says once, under the field, that the draft stays on this phone", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const note = "The draft stays on this phone and is never sent by itself.";
+      renderComposer();
+      // A cold mount waiting on its first read does not flash it.
+      expect(screen.queryByText(note)).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(1_600);
+      });
+      expect(screen.getByText(note)).toBeInTheDocument();
+      // Live again: gone, and once per pane view, so the next outage does not repeat it.
+      act(() => markLive("w1:p1"));
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(screen.queryByText(note)).toBeNull();
+      act(() => markDead("w1:p1"));
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+      expect(screen.queryByText(note)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the safety cap: a mark older than LIVE_CAP_MS is offline", async () => {
     const user = userEvent.setup();
-    markLive("w1:p1", Date.now() - LIVE_WINDOW_MS - 1_000);
+    markLive("w1:p1", Date.now() - LIVE_CAP_MS - 1_000);
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "x");
     expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();

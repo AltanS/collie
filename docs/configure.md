@@ -535,7 +535,7 @@ COLLIE_REDACT=off
 
 | variable | default | what it does |
 | --- | --- | --- |
-| `COLLIE_REDACT` | `on` | Masks API keys, JWTs, PEM private keys, bearer tokens and `password=` values in the mirror, Chat, History and push notifications. `off` sends pane text as it is. |
+| `COLLIE_REDACT` | `on` | Masks API keys, JWTs, PEM private keys, bearer tokens and `password=` values in the mirror, Chat, History, push notifications, file bodies in Files and diffs in Changes. `off` sends them as they are. |
 
 In the config file this is `[access] redact`. The mask keeps the width of what it hides, so the
 mirror's layout holds. It catches high-confidence shapes only; the limits are in

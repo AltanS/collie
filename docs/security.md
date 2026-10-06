@@ -59,9 +59,16 @@ Revoking the final device does not open Collie again: every device then gets
 
 Five failed code attempts invalidate the code, which requires running `collie pair` again. On top of
 that, the bridge refuses more than ten pairing attempts per source address per minute with `429` and
-`Retry-After: 60`. Behind a front door on the same machine, the source address is the first
-`X-Forwarded-For` entry the front door sets. From any other peer, that header is ignored. The counters
-live in memory and reset when the bridge restarts.
+`Retry-After: 60`. Behind a front door on the same machine, the source address is the last
+`X-Forwarded-For` entry, the one the front door adds. From any other peer, that header is ignored. The
+counters live in memory and reset when the bridge restarts.
+
+### The CLI's own reads
+
+At each start the bridge writes a new random secret to `local-secret` in its state folder.
+`collie doctor` and `collie crew update` send it to read their own bridge on the same machine.
+The file is owner-only, so only your account can read it, and a clean stop deletes it. The
+bridge takes it for reads only, never for a write or the Files view, and never from another machine.
 
 ### Give a device an expiry
 
@@ -94,9 +101,13 @@ The phone deletes the token, every unsent draft, the saved pane text and herd, t
 and Collie's caches except the app shell. Your settings stay: theme, language, pins and other
 preferences hold no session text. Settings asks you to confirm before it revokes any device.
 
-The bridge also sends `Clear-Site-Data: "storage"` with those two refusals, as a backup. A browser
-that honours it clears all of Collie's storage, settings included. Browsers honour it only over
-HTTPS, so the phone does its own wipe and does not depend on the header.
+The phone's own wipe is the only one. The bridge sends no `Clear-Site-Data` header, because that
+header would also clear your settings and the offline app, and on a shared host name it would
+reach the other apps there too.
+
+If the bridge cannot read its list of paired devices, for example a half-written file, it answers
+`503 pairing unavailable` instead. The phone then keeps its token and everything it stored, and
+tries again.
 
 ### What the phone keeps
 
@@ -166,9 +177,11 @@ Key security boundaries and risks:
   setting. The Content-Security-Policy on the app shell includes `object-src 'none'`,
   `form-action 'self'` and `frame-ancestors 'none'`. `Strict-Transport-Security` is sent only when a
   request arrived over HTTPS, either on a TLS listener or with `X-Forwarded-Proto: https` from your
-  proxy. The bridge itself speaks plain HTTP behind `tailscale serve`, and a browser ignores the
-  header there. Images served from `/api/blobs/` are session content, so they carry
-  `Cache-Control: private, max-age=3600` and no shared cache keeps them.
+  proxy. It covers the host name that answered and not its subdomains, because Collie often shares
+  a parent domain with other services. The bridge itself speaks plain HTTP behind
+  `tailscale serve`, and a browser ignores the header there. Images served from `/api/blobs/` are
+  session content, so they carry `Cache-Control: private, no-store` and no cache keeps them, not
+  even the phone's own.
 - **Default defensive controls.** Collie binds strictly to loopback interfaces, routes traffic
   solely through `tailscale serve` or an equivalent reverse proxy, and applies strict CSP rules,
   same-origin checks, and host-header validation. Pane output renders as React text nodes instead of
@@ -185,7 +198,7 @@ Key security boundaries and risks:
 | `COLLIE_ACCESS_TEAM` + `COLLIE_ACCESS_AUD` | Cloudflare Tunnel only. Rejects every remote request unless its `Cf-Access-Jwt-Assertion` verifies for this Access app. Only a local process on loopback, `/api/health` and the crew links skip it, and pairing still applies. Other front doors, such as `tailscale serve`, are refused too ([Cloudflare Tunnel](deployment.md#cloudflare-tunnel)). |
 | `COLLIE_DEVICE_HEADER` | Name of the header your proxy injects with a device id. |
 | `COLLIE_DEVICE_ALLOWLIST` | Comma-separated device ids allowed to write; every other device stays read-only ([`docs/deployment.md`](deployment.md)). |
-| `COLLIE_REDACT=off` | Turns off the secret mask on pane text ([below](#what-leaves-the-machine-is-masked)). On by default. |
+| `COLLIE_REDACT=off` | Turns off the secret mask on pane text, diffs and file text ([below](#what-leaves-the-machine-is-masked)). On by default. |
 
 > 🚫 **Never use `tailscale funnel` with Collie.** Funnel routes traffic to the public internet,
 > whereas `tailscale serve` restricts access to your private tailnet. There is no supported use case
@@ -196,16 +209,17 @@ warranty.
 
 ## What leaves the machine is masked
 
-Collie masks known secret shapes in pane text before that text reaches a phone.
+Collie masks known secret shapes in pane text and file content before it reaches a phone.
 
 ```bash
 # in your .env, only to turn the mask off; it is on by default
 COLLIE_REDACT=off
 ```
 
-The mask runs on the bridge, on three paths: the terminal mirror, the Chat and History views, and
-every push notification. What it hides becomes `•` marks of the same width, so the mirror's columns
-and line count hold. A vendor prefix stays readable, so `sk-o••••` still tells you what was hidden.
+The mask runs on the bridge, on five paths: the terminal mirror, the Chat and History views, every
+push notification, the diffs in the Changes view, and the file text in the Files view. What it hides
+becomes `•` marks of the same width, so columns and line counts hold. A vendor prefix stays
+readable, so `sk-o••••` still tells you what was hidden.
 
 It matches high-confidence shapes only:
 

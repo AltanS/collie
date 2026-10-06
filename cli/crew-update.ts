@@ -1,5 +1,6 @@
 import { DEFAULT_PORT, resolveBridgeHost } from "../bridge/config.ts";
 import type { JsonValue } from "../bridge/json.ts";
+import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { parseCrewRows, type CrewUpdateRow } from "../bridge/update-action.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
@@ -794,6 +795,9 @@ async function bankedPeerVerdicts(deps: CrewUpdateDeps): Promise<readonly CrewUp
   try {
     const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/update/check`, {
       signal: AbortSignal.timeout(BANKED_BUDGET_MS),
+      // The bridge's local read credential (bridge/local-secret.ts): reads need a token since ADR
+      // 0086, and this process holds none. No file means no header, and the empty answer below.
+      headers: localAuthHeader(readLocalSecret(deps.ctx.stateDir, (p) => deps.files.read(p))),
     });
     if (!answer.ok) return [];
     // SAFETY: `Response.json()` answers a JSON value, and `parseCrewRows` validates every field of

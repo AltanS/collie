@@ -8,6 +8,7 @@ import { PairedDevices } from "@/components/paired-devices";
 import { getDeviceToken, markExpired, setDeviceToken, TOKEN_STORAGE_KEY } from "@/lib/pairing";
 import type { DevicesData } from "@/lib/loaders";
 import { loadDraft, saveDraft } from "@/lib/drafts";
+import { lastWipeReason, wipeDevice } from "@/lib/wipe";
 
 // PairedDevices calls useRevalidator() to re-run the settings loader after a pair/revoke, and
 // useLocation() to see whether it is the fragment the read-only strip linked to. Stub both (hoisted
@@ -398,5 +399,32 @@ describe("PairedDevices — the fragment the read-only strip links to", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(document.body);
     scrollIntoView.mockRestore();
+  });
+});
+
+// M46 hardening: the pair screen says why it is there.
+describe("PairedDevices — the pair screen names its cause", () => {
+  test("a browser that never held a token says it has not been paired, and names `collie pair`", () => {
+    render(<PairedDevices data={UNPAIRED} />);
+    expect(screen.getByText(/This browser has not been paired\. Run/)).toBeInTheDocument();
+    expect(screen.getByText("collie pair")).toBeInTheDocument();
+    expect(screen.getByText(/on your machine and enter the code here\./)).toBeInTheDocument();
+  });
+
+  test.each([
+    ["unpair", "Saved data was cleared because this phone was unpaired."],
+    ["expired", "Saved data was cleared because its pairing expired."],
+    ["revoked", "Saved data was cleared because the bridge revoked it."],
+  ] as const)("after a %s wipe it shows one line with the cause, once", async (reason, line) => {
+    setDeviceToken("tok-old");
+    await wipeDevice(reason);
+    const first = render(<PairedDevices data={UNPAIRED} />);
+    expect(screen.getByText(line)).toBeInTheDocument();
+    // A browser that WAS paired is not told it never was.
+    expect(screen.queryByText(/This browser has not been paired/)).not.toBeInTheDocument();
+    expect(lastWipeReason()).toBeNull();
+    first.unmount();
+    render(<PairedDevices data={UNPAIRED} />);
+    expect(screen.queryByText(line)).not.toBeInTheDocument();
   });
 });

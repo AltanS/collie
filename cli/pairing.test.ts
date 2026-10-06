@@ -161,6 +161,25 @@ describe("collie pair", () => {
     expect(d.io.stdout.join("\n")).not.toContain("stops working");
   });
 
+  test("no --expires prints one hint line after the code, and no expiry date", async () => {
+    const d = deps();
+    expect(await cmdPair(d)).toBe(EXIT.OK);
+    const out = d.io.stdout.join("\n");
+    expect(out).toContain("  This token never expires. Add --expires 30d to limit it.");
+    expect(out).not.toContain("once claimed");
+  });
+
+  test("--expires prints the resolved local date and time, and not the never-expires hint", async () => {
+    const d = deps();
+    expect(await cmdPair(d, ["--expires", "30d"])).toBe(EXIT.OK);
+    const at = new Date(NOW + 30 * 86_400_000);
+    const two = (n: number): string => String(n).padStart(2, "0");
+    const local = `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}:${two(at.getMinutes())}`;
+    const out = d.io.stdout.join("\n");
+    expect(out).toContain(`  Expires ${local} once claimed.`);
+    expect(out).not.toContain("never expires");
+  });
+
   test("--expires 30d puts the token lifetime on the pending code and says so", async () => {
     for (const args of [["--expires", "30d"], ["--expires=30d"]]) {
       const d = deps();

@@ -28,6 +28,9 @@
 //   - **`navigator.storage.persist()` is asked once a page session**, on the first write. The answer
 //     is recorded in `storeStatus()` and never shown: a refusal only means the browser may evict the
 //     cache under storage pressure, which costs the operator nothing they can act on.
+//   - **No record outlives the pairing it was saved under.** Every write caps its lifetime at this
+//     pairing's own expiry (lib/pairing.ts `getPairingExpiry`), so a cold open after the expiry reads
+//     nothing saved.
 //   - **Nothing in the store may trigger an action** (spec 11). It holds text to draw, dated, and the
 //     callers own that rule; the store hands out values and never interprets them.
 //
@@ -44,8 +47,9 @@
 // then wiped for a password prompt is therefore gone, whatever the two transactions' timing.
 
 import { basePath } from "@/lib/base-path";
+import { getPairingExpiry } from "@/lib/pairing";
 import { paneScopeKey, type Scope } from "@/lib/scope";
-import { onWipe, type WipeContext } from "@/lib/wipe";
+import { onWipe, WIPE_CHANNEL, WIPE_TAB_ID, type WipeAnnouncement, type WipeContext } from "@/lib/wipe";
 
 /** The one IndexedDB database the app opens. lib/storage-keys.test.ts holds its fate at unpair. */
 export const STORE_NAME = "collie-store";
@@ -88,6 +92,12 @@ export const REWRITE_AFTER_MS = 5 * 60 * 1000;
 
 /** How long a database delete may take before the wipe reports it done anyway (its rows are gone). */
 const DELETE_TIMEOUT_MS = 3000;
+
+/**
+ * How long a delete that another tab blocked waits before it is asked once more. The wipe has told
+ * the other tabs to let go (lib/wipe.ts, the `collie-wipe` channel); this gives them the moment.
+ */
+const DELETE_BLOCKED_RETRY_MS = 250;
 
 const META = "meta";
 const BODY = "body";
@@ -134,6 +144,11 @@ export interface StoreStatus {
   mode: "unopened" | "indexeddb" | "memory";
   /** The answer to `navigator.storage.persist()`, or null before it was asked or where it can't be. */
   persisted: boolean | null;
+  /**
+   * True when the last database delete stayed blocked by another connection after its one retry.
+   * The rows were emptied first, so no content stayed; the empty database file did.
+   */
+  deleteBlocked: boolean;
 }
 
 // ── The record, as stored ────────────────────────────────────────────────────
@@ -185,7 +200,7 @@ interface Backend {
 let connecting: Promise<Backend> | null = null;
 let current: Backend | null = null;
 let queue: Promise<unknown> = Promise.resolve();
-let status: StoreStatus = { mode: "unopened", persisted: null };
+let status: StoreStatus = { mode: "unopened", persisted: null, deleteBlocked: false };
 let persistAsked = false;
 let clock: () => number = () => Date.now();
 let instanceOverride: string | null = null;
@@ -195,7 +210,7 @@ let instanceOverride: string | null = null;
  * Every path that deletes a record (a delete, an eviction, an expired read, the purge, the wipe)
  * forgets its entry, so a skip never stands in for a record that is gone.
  */
-const lastWrites = new Map<string, { signature: string; ttl: number; fetchedAt: number }>();
+const lastWrites = new Map<string, { signature: string; ttl: number; cap: number | null; fetchedAt: number }>();
 
 /** FNV-1a over the UTF-16 code units, with the length beside it: cheap, and enough to spot a repeat. */
 function signatureOf(json: string): string {
@@ -395,12 +410,34 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
   });
 }
 
-function deleteDatabase(factory: IDBFactory): Promise<void> {
+/**
+ * Ask for the database to be deleted. Resolves "deleted" on success and "blocked" when another
+ * connection holds it open: the request then stays pending in the browser and completes on its own
+ * once that connection closes, so a blocked answer is not a failure of the request.
+ */
+function deleteDatabase(factory: IDBFactory): Promise<"deleted" | "blocked"> {
   return new Promise((resolve, reject) => {
     const request = factory.deleteDatabase(STORE_NAME);
-    request.addEventListener("success", () => resolve());
+    request.addEventListener("success", () => resolve("deleted"));
+    request.addEventListener("blocked", () => resolve("blocked"));
     request.addEventListener("error", () => reject(request.error ?? new Error("indexeddb delete failed")));
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Delete the database, with one retry when another connection blocks it. A second block gives up and
+ * records it in `storeStatus().deleteBlocked`; the store's wipe cleaner then reports itself failed,
+ * so the wipe's report names the store.
+ */
+async function deleteWithRetry(factory: IDBFactory): Promise<void> {
+  if ((await timeout(deleteDatabase(factory), DELETE_TIMEOUT_MS)) === "deleted") return;
+  await sleep(DELETE_BLOCKED_RETRY_MS);
+  if ((await timeout(deleteDatabase(factory), DELETE_TIMEOUT_MS)) === "deleted") return;
+  status = { ...status, deleteBlocked: true };
 }
 
 /** The operations of one IndexedDB transaction over the two object stores. */
@@ -474,8 +511,12 @@ function idbBackend(factory: IDBFactory, db: IDBDatabase): Backend {
       // Empty the rows first, so the content is gone even if the delete below is blocked by another
       // tab that will not let go of its connection.
       await backend.run(true, async (tx) => tx.clearAll()).catch(() => {});
+      // This page's own connection goes first: an open one would block its own delete.
       backend.close();
-      await timeout(deleteDatabase(factory), DELETE_TIMEOUT_MS).catch(() => {});
+      status = { ...status, deleteBlocked: false };
+      // A timeout is not a block: the rows are gone and the delete may still finish on its own. A
+      // block that outlived the retry is recorded in `status.deleteBlocked`, which the wipe reads.
+      await deleteWithRetry(factory).catch(() => {});
     },
     close: () => {
       try {
@@ -515,7 +556,9 @@ async function openWithRetry(factory: IDBFactory): Promise<IDBDatabase> {
     // A database from a NEWER schema (a downgrade): it cannot be read, so it goes and a fresh one
     // takes its place.
     if (!(error instanceof DOMException) || error.name !== "VersionError") throw error;
-    await timeout(deleteDatabase(factory), DELETE_TIMEOUT_MS);
+    if ((await timeout(deleteDatabase(factory), DELETE_TIMEOUT_MS)) === "blocked") {
+      throw new Error("indexeddb downgrade delete blocked", { cause: error });
+    }
     return timeout(openDatabase(factory), OPEN_TIMEOUT_MS, closeLate);
   }
 }
@@ -595,6 +638,9 @@ export function putRecord<T>(kind: RecordKind, key: string, value: T, options: P
   registerStoreWipe();
   const fetchedAt = options.fetchedAt ?? now();
   const ttl = options.ttlMs ?? DEFAULT_TTL_MS;
+  // No record outlives the pairing it was saved under: the effective lifetime is
+  // min(ttl, pairing expiry - now), applied to the record's expiry below.
+  const cap = getPairingExpiry();
   const pane = options.pane === undefined ? null : paneOf(options.pane);
   const inst = instance();
   return enqueue(async (backend) => {
@@ -606,8 +652,9 @@ export function putRecord<T>(kind: RecordKind, key: string, value: T, options: P
       json = undefined; // a cycle or a BigInt: not JSON, not storable
     }
     const size = json === undefined ? Number.POSITIVE_INFINITY : utf8Bytes(json);
-    const cap = pane === null ? TOTAL_CAP_BYTES : PANE_CAP_BYTES;
-    if (json === undefined || size > cap || ttl <= 0) {
+    const sizeCap = pane === null ? TOTAL_CAP_BYTES : PANE_CAP_BYTES;
+    const expiresAt = cap === null ? fetchedAt + ttl : Math.min(fetchedAt + ttl, cap);
+    if (json === undefined || size > sizeCap || ttl <= 0 || expiresAt <= now()) {
       lastWrites.delete(id);
       await backend.run(true, async (tx) => tx.remove(id));
       return false;
@@ -619,6 +666,7 @@ export function putRecord<T>(kind: RecordKind, key: string, value: T, options: P
       last !== undefined &&
       last.signature === signature &&
       last.ttl === ttl &&
+      last.cap === cap &&
       fetchedAt >= last.fetchedAt &&
       fetchedAt - last.fetchedAt < REWRITE_AFTER_MS
     ) {
@@ -631,7 +679,7 @@ export function putRecord<T>(kind: RecordKind, key: string, value: T, options: P
       key,
       pane,
       fetchedAt,
-      expiresAt: fetchedAt + ttl,
+      expiresAt,
       size,
       schema: STORE_SCHEMA,
     };
@@ -644,7 +692,7 @@ export function putRecord<T>(kind: RecordKind, key: string, value: T, options: P
       tx.put(meta, body);
       return true;
     });
-    lastWrites.set(id, { signature, ttl, fetchedAt });
+    lastWrites.set(id, { signature, ttl, cap, fetchedAt });
     if (backend.mode === "indexeddb") requestPersistence();
     return written;
   }, false);
@@ -765,8 +813,11 @@ export function clearStore(): Promise<void> {
 
 // ── The one wipe hook ────────────────────────────────────────────────────────
 
-function storeCleaner(context: WipeContext): Promise<void> {
-  return context.reason === "password" ? deletePaneRecords(context.pane) : clearStore();
+async function storeCleaner(context: WipeContext): Promise<void> {
+  if (context.reason === "password") return deletePaneRecords(context.pane);
+  await clearStore();
+  // The rows are gone either way; a database file another tab held open is reported by name.
+  if (status.deleteBlocked) throw new Error("the store's database delete stayed blocked");
 }
 
 /**
@@ -780,7 +831,41 @@ export function registerStoreWipe(): void {
 
 registerStoreWipe();
 
+// ── Another tab's wipe ───────────────────────────────────────────────────────
+//
+// A wipe in another tab posts on the `collie-wipe` channel before it deletes the database. This tab
+// closes its connection at once, so that delete is not blocked; the next call here reopens a fresh
+// store. Only the connection: what this tab shows is its own, and its next read finds nothing.
+
+function closeForWipe(): void {
+  lastWrites.clear();
+  if (current !== null) forget(current);
+}
+
+function listenForWipes(): void {
+  let channel: BroadcastChannel;
+  try {
+    channel = new BroadcastChannel(WIPE_CHANNEL);
+  } catch {
+    return; // no BroadcastChannel: the delete's own blocked handling covers it
+  }
+  // Only lib/wipe.ts posts on this channel, and only a `WipeAnnouncement`; a message of any other
+  // shape still closes the connection, which costs one reopen.
+  channel.addEventListener("message", (event: MessageEvent<Partial<WipeAnnouncement> | null>) => {
+    // This page's own wipe closes its connection itself, inside the queued delete.
+    if (event.data?.from === WIPE_TAB_ID) return;
+    closeForWipe();
+  });
+}
+
+listenForWipes();
+
 // ── Test seams ───────────────────────────────────────────────────────────────
+
+/** Test seam: what this tab does when another tab's wipe is announced. */
+export function __closeForWipe(): void {
+  closeForWipe();
+}
 
 /** Resolves once every operation queued so far has finished. */
 export async function __storeIdle(): Promise<void> {
@@ -800,7 +885,7 @@ export function __resetStore(options: { now?: () => number; instance?: string } 
   current = null;
   connecting = null;
   queue = Promise.resolve();
-  status = { mode: "unopened", persisted: null };
+  status = { mode: "unopened", persisted: null, deleteBlocked: false };
   persistAsked = false;
   memoryMeta.clear();
   memoryBody.clear();

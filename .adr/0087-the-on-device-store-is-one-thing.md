@@ -111,7 +111,6 @@ Drafts stay in localStorage, because a draft must restore synchronously on mount
 | A password prompt on a pane | that pane's records |
 | A schema bump | every record, in the upgrade |
 | The 1.17 sessionStorage mirror at boot | `collie:last-snapshot:*` and `collie:last-pane:*`, deleted once |
-| `Clear-Site-Data: "storage"` (HTTPS only, a backstop) | everything of the origin |
 
 ## Consequences
 

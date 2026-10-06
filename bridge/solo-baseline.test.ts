@@ -940,6 +940,11 @@ const STATE_DIR_ENTRIES = [
   // bridge that is only started, only read, or only ever asked for spaces in home writes none of it,
   // so the four entries asserted below hold. Driven in "the folder list appears only on use".
   "folders.json",
+  // The host's own read credential (bridge/local-secret.ts), a §11 row RENEGOTIATED ON PURPOSE: reads
+  // need the pairing token (ADR 0086), so the CLI's own reads of its bridge need a credential too. A
+  // started bridge writes it (one 0600 file, rotated per start) and a clean stop deletes it, so a
+  // stopped solo instance holds none. It is written in index.ts, which the stores driven below are not.
+  "local-secret",
   // Machines (ADR 0084), a §11 row RENEGOTIATED ON PURPOSE. The alert rules are absent until the
   // operator sets the first one. The history is written from the tick at most once every five minutes,
   // and only once a minute has been recorded — so a solo collie that runs for five minutes writes it,

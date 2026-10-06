@@ -28,6 +28,7 @@ import { noteUpdateRun } from "./self-update";
 import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
 import { isLostLatched } from "@/lib/connection-health";
+import { markSavedCopy } from "@/lib/liveness";
 import { ambientSpaces } from "@/lib/hosts";
 import {
   loadLastPaneText,
@@ -39,7 +40,7 @@ import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { markPollResult } from "@/lib/poll-intent";
 import { shareEqual } from "@/lib/share-equal";
 import { prefetchPane, takePanePrefetch } from "@/lib/pane-prefetch";
-import { clearNotPaired, isNotPaired, markNotPaired } from "@/lib/pairing";
+import { clearNotPaired, isNotPaired, markNotPaired, rememberPairingExpiry } from "@/lib/pairing";
 import { pairingRefused, wipeDevice } from "@/lib/wipe";
 import {
   internScope,
@@ -518,6 +519,10 @@ async function stalePane(paneId: string, scope: Scope, lines: number): Promise<P
   const restored = refused ? null : await loadLastPaneText(scope, paneId);
   const text = refused ? "" : (lastPaneText.get(key) ?? restored?.value ?? "");
   if (text) rememberPaneText(key, text);
+  const stale = drawnFromSave(text ? restored?.at : undefined);
+  // A saved copy on screen is not a live pane: its dialog buttons and Send go off at once
+  // (lib/liveness.ts, M46 spec 11), with no debounce.
+  if (stale) markSavedCopy(paneId, scope);
   return {
     paneId,
     scope,
@@ -528,7 +533,7 @@ async function stalePane(paneId: string, scope: Scope, lines: number): Promise<P
     error: true,
     authError: hasAuthError(scope),
     lastSeenAt: text ? restored?.at : undefined,
-    stale: drawnFromSave(text ? restored?.at : undefined),
+    stale,
   };
 }
 
@@ -691,6 +696,11 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
     if (!res.enforced || res.current !== null) clearNotPaired();
     else if (res.currentExpired === true) pairingRefused("expired");
     else markNotPaired();
+    // This pairing's own expiry caps what the store keeps under it (lib/store.ts). Only an answer
+    // that names this device says anything about its lifetime.
+    if (res.current !== null) {
+      rememberPairingExpiry(res.devices.find((device) => device.current)?.expiresAt ?? null);
+    }
     return { enforced: res.enforced, current: res.current, devices: res.devices, error: false };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
