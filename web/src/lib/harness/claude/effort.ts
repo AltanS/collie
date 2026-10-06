@@ -111,6 +111,44 @@ const TRACK_ONLY = /^[\u2500\u2506\s]+$/;
 // still names no level anywhere.
 const MERGED_LABEL = /^[\p{L}\p{N}]+$/u;
 
+// The glyphs one unbroken run of the TRACK is drawn with on the marker row: the rule, the `┆`
+// divider and the marker itself.
+const TRACK_GLYPHS = new Set(["─", "┆", MARKER]);
+
+// THE SIDE PANEL, new in Claude Code 2.1.291. That build dropped the `ultracode` level and its
+// `xhigh + workflows` description row, and draws a toggle BESIDE the track instead:
+//
+//     ──────────▲───────────────────────────────      Ultracode  off
+//     low     medium     high     xhigh      max      Tab to toggle
+//
+// The toggle's hint shares the label row, so read whole, that row gave `Tab`, `to` and `toggle` as
+// three more levels. The evidence that they are not levels is the MARKER ROW: text after the track's
+// own run there opens a side panel, and the hint under it starts in that same column (58 on the
+// 82-column capture, 83 on the 132-column one). So the label row, and a fragment row under it, are
+// cut at that column. A marker row with nothing after its track (every capture before 2.1.291) has
+// no cut, so those screens read exactly as before. A label that straddles the cut is not a layout
+// anybody captured, and the screen is declined rather than trimmed.
+
+/** The display column where a side panel opens on the marker row: the first non-space cell after
+ *  the unbroken track run that holds the marker, or null when the row ends with the track. */
+function sidePanelColumn(markerRow: string, markerAt: number): number | null {
+  let end = markerAt + 1;
+  while (end < markerRow.length && TRACK_GLYPHS.has(markerRow[end]!)) end++;
+  const rest = markerRow.slice(end);
+  const lead = rest.search(/\S/);
+  if (lead < 0) return null;
+  return displayWidth(markerRow.slice(0, end + lead));
+}
+
+/** The spans of a slider row that sit left of the side panel's column, or null when one straddles
+ *  it. With no side panel (`cut` null) the row is returned whole. */
+function scaleSpans(spans: LabelSpan[], cut: number | null): LabelSpan[] | null {
+  if (cut === null) return spans;
+  const kept = spans.filter((span) => span.start < cut);
+  if (kept.some((span) => span.start + displayWidth(span.text) > cut)) return null;
+  return kept;
+}
+
 /** The label spans of a row, left to right — every run of non-space, measured in display cells so a
  *  wide glyph counts as the two columns the terminal drew it in. */
 function labelSpans(text: string): LabelSpan[] {
@@ -137,7 +175,9 @@ function labelSpans(text: string): LabelSpan[] {
  *   3. exactly one row of the region carries exactly one `▲`, and the first row beneath it that is
  *      neither blank nor the track's own wrapped continuation splits into two or more labels, each
  *      carrying a word. First row, not any row: the row under the labels is a DESCRIPTION line
- *      ("xhigh + workflows"), and a detector that took every row would try to read it as labels too;
+ *      ("xhigh + workflows"), and a detector that took every row would try to read it as labels too.
+ *      Where the marker row opens a side panel after its track (2.1.291's `Ultracode  off`), only
+ *      the cells left of that panel's column are labels, so its `Tab to toggle` hint is not;
  *   4. the region's opening rule, border or `▔` edge is found the way menu.ts finds it
  *      (region-top.ts), and the first non-blank row under it is the title;
  *   5. the marker picks ONE label clearly — the nearest label centre beats the second-nearest by at
@@ -209,7 +249,11 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
     break;
   }
   if (head < 0) return null;
-  let labels = labelSpans(texts[head]!);
+  // Only the cells left of a side panel are the scale (sidePanelColumn above, Claude Code 2.1.291).
+  const cut = sidePanelColumn(markerRow, markerAt);
+  const headSpans = scaleSpans(labelSpans(texts[head]!), cut);
+  if (headSpans === null) return null;
+  let labels = headSpans;
   if (labels.length < 2) return null;
   if (!labels.every((span) => LABEL_WORD.test(span.text))) return null;
 
@@ -220,7 +264,10 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
   // left-aligned with a label. The merged text becomes the label; the SPANS stay the head row's,
   // because that is the row the marker was drawn against.
   const below =
-    head + 1 < footerAt.startLine && !isBlank(texts[head + 1]!) ? labelSpans(texts[head + 1]!) : [];
+    head + 1 < footerAt.startLine && !isBlank(texts[head + 1]!)
+      ? scaleSpans(labelSpans(texts[head + 1]!), cut)
+      : [];
+  if (below === null) return null;
   //
   // AND A WRAPPED TRACK MEANS WRAPPED LABELS. Claude draws the whole slider as ONE flex row, so the
   // track and the labels wrap together: the two narrow captures wrap both, the wide ones wrap

@@ -263,3 +263,34 @@ describe("detectMenuRegion — the `▔` modal edge of Claude Code 2.1.283", () 
     }
   });
 });
+
+// Claude Code 2.1.291 (capture lab, 2026-10-06) opens `/tasks` and the rewind picker under a plain
+// `─` rule flush at column 0 and indents the panel two spaces, where 2.1.278 drew a `▔` edge and
+// indented three. The rule is the region top region-top.ts has always taken first, so each panel
+// lifts to the same model as its 2.1.278 sibling; only the signature, which holds the rows, differs.
+describe("detectMenuRegion — the `─` rule panels of Claude Code 2.1.291", () => {
+  it.each([
+    ["claude-lab--tasks-panel-v2291--w82.txt", "claude-lab--tasks-panel--w82.txt", "Background"],
+    ["claude-lab--menu-rewind-v2291--w82.txt", "claude-lab--menu-rewind--w82.txt", "Rewind"],
+  ])("%s lifts like its 2.1.278 sibling", (name, sibling, title) => {
+    const region = detectMenuRegion(load(name))!;
+    expect(region).not.toBeNull();
+    const top = lineText(load(name)[region.startLine]!);
+    expect(top.trim()).toMatch(/^─+$/);
+    expect(top.startsWith("─")).toBe(true);
+    const older = detectMenuRegion(load(sibling))!;
+    expect(lineText(load(sibling)[older.startLine]!).startsWith("▔")).toBe(true);
+    expect(region.model.title).toBe(title);
+    expect(region.model.actions).toEqual(older.model.actions);
+    expect(region.model.nav).toEqual(older.model.nav);
+    expect(claudeBuildBlocks(load(name)).map((b) => b.kind)).toEqual(["raw", "menu"]);
+  });
+
+  it("the wrapped /tasks footer at 40 columns still claims nothing", () => {
+    // The 2.1.291 recapture breaks the footer one segment later ("… · Esc" over "to close"), so its
+    // last row is no hint at all. The panel declines as the 2.1.278 capture did, and the pane shows
+    // the unread-dialog card.
+    expect(textRows(load("claude-lab--tasks-panel--w40.txt")).at(-1)!.trim()).toBe("to close");
+    expect(detectMenu(load("claude-lab--tasks-panel--w40.txt"))).toBeNull();
+  });
+});

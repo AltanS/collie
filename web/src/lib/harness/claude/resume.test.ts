@@ -116,6 +116,31 @@ describe("the real captures lift as a list of sessions", () => {
     ]);
   });
 
+  it("the Claude Code 2.1.291 capture at 83 columns lifts the same way, two spaces in", () => {
+    // 2.1.291 opens the picker under a `─` rule rather than a `▔` edge and indents it two spaces,
+    // not three. This grammar never read the region's top: its evidence is the title, the search box
+    // directly under it and the footer, and all three are still there.
+    const texts = textsOf("claude-lab--menu-resume-picker-v2291--w83.txt");
+    expect(texts.some((t) => t.startsWith("  Resume session (1 of 41)"))).toBe(true);
+    expect(texts.some((t) => t.startsWith("▔"))).toBe(false);
+    const model = detectResumePicker(load("claude-lab--menu-resume-picker-v2291--w83.txt"))!;
+    expect(model.question).toBe("Resume session (1 of 41)");
+    expect(model.options).toHaveLength(13);
+    expect(model.options[0]).toMatchObject({
+      label: "README.md review",
+      description: "19 seconds ago · main · 198.7KB",
+      keys: ["Enter"],
+      keyLabel: "❯",
+    });
+    // The last session carries the `↓` scroll marker: listed and walked to, not pointed.
+    expect(model.options[11]!.label).toBe("README.md");
+    expect(model.options[11]!.keyLabel).toBe("");
+    expect(model.options[11]!.keys).toEqual([...Array<string>(11).fill("Down"), "Enter"]);
+    expect(model.options[12]!.keys).toEqual(["Escape"]);
+    // Six sessions read `README.md` with the same size and branch, so their ages stay verbatim.
+    expect(model.coreSignature).toContain("2 minutes ago");
+  });
+
   it("no key anywhere is a digit, and only the Esc row lacks Enter", () => {
     for (const name of RESUME_FIXTURES) {
       for (const option of detectResumePicker(load(name))!.options) {
@@ -143,6 +168,7 @@ const RESUME_FIXTURES = [
   "claude--menu-resume-picker--w80-second.txt",
   "claude--menu-resume-picker--w120-all-sanitized.txt",
   "claude-lab--menu-resume-picker--w83.txt",
+  "claude-lab--menu-resume-picker-v2291--w83.txt",
 ];
 
 describe("the race guard sees the pointer", () => {

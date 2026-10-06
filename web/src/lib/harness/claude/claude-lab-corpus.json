@@ -490,7 +490,7 @@
       "cols": 82,
       "rows": 49,
       "state": "menu-effort-slider-v2291",
-      "notes": "/effort slider on 2.1.291 (82 columns): the label row now ends with 'Tab to toggle', a heading 'Faster ... Smarter' sits above the scale and the scale reads low, medium, high, xhigh, max. The Effort grammar lifts it with the same keys, but its scale read now carries the three words of the 'Tab to toggle' hint as labels (effort.test.ts fails on this capture: 8 labels, the five real ones plus the three words of the hint, where the test pins the 2.1.278 scale of six ending in `ultracode`). Note for the grammar: that is a finding, not a corpus gap.",
+      "notes": "/effort slider on 2.1.291 (82 columns): the label row now ends with 'Tab to toggle', a heading 'Faster ... Smarter' sits above the scale and the scale reads low, medium, high, xhigh, max. The Effort grammar lifts it with the same keys and reads the five real levels, stopping at the 'Tab to toggle' hint [2026-10-06, effort.ts fix].",
       "expected": {
         "hasInputBox": false,
         "draft": null,
