@@ -37,31 +37,156 @@ const SESSION_NAME_READ_LINES = 40;
 // space-delimited text, so it can't match — and the ❯-prompt anchor (below) rules out any decorative
 // rule elsewhere in the output. Rule chars: ─ (U+2500, light) and ━ (U+2501, heavy).
 const NAMED_RULE = /^[─━]{2,}[ \t]+(\S.*?\S|\S)[ \t]+[─━]+[ \t]*$/;
+const PLAIN_RULE = /^[─━]{2,}[ \t]*$/;
 // Claude's input prompt marker, anchored at column 0. Its menu/selection cursors render as " ❯"
 // (leading space), so the column-0 anchor discriminates the real input prompt from a selected row.
 const PROMPT_LINE = /^❯/;
+const ESC = String.fromCharCode(27);
+// One SGR sequence, colon sub-parameters included so they are stripped like the rest. Built from the
+// escape byte so no raw control character sits in the source.
+const SGR_SEQ = new RegExp(`${ESC}\\[([0-9;:]*)m`, "g");
+
+// A colour as the terminal resolves it, so two spellings of one colour compare equal: `31`, `91`'s
+// slot 9 and `38;5;1` name palette slots exactly as web/src/lib/ansi.ts resolves them. The default
+// foreground and the default background are two different colours, never one empty value.
+const DEFAULT_FG = "default-fg";
+const DEFAULT_BG = "default-bg";
+
+interface Pen {
+  fg: string;
+  bg: string;
+  inverse: boolean;
+  /** False after a sequence this reader does not parse, until a full reset. */
+  known: boolean;
+}
+
+interface StyledCell {
+  readonly ch: string;
+  readonly fg: string;
+  readonly bg: string;
+  readonly known: boolean;
+}
+
+function applySgr(pen: Pen, params: string): void {
+  if (params.includes(":")) {
+    pen.known = false;
+    return;
+  }
+  const codes = params === "" ? [0] : params.split(";").map(Number);
+  for (let i = 0; i < codes.length; i++) {
+    const c = codes[i]!;
+    if (c === 0) {
+      pen.fg = DEFAULT_FG;
+      pen.bg = DEFAULT_BG;
+      pen.inverse = false;
+      pen.known = true;
+    } else if (c === 7) pen.inverse = true;
+    else if (c === 27) pen.inverse = false;
+    else if (c >= 30 && c <= 37) pen.fg = `palette:${c - 30}`;
+    else if (c === 39) pen.fg = DEFAULT_FG;
+    else if (c >= 40 && c <= 47) pen.bg = `palette:${c - 40}`;
+    else if (c === 49) pen.bg = DEFAULT_BG;
+    else if (c >= 90 && c <= 97) pen.fg = `palette:${8 + c - 90}`;
+    else if (c >= 100 && c <= 107) pen.bg = `palette:${8 + c - 100}`;
+    else if (c === 38 || c === 48) {
+      let colour: string;
+      if (codes[i + 1] === 5) {
+        colour = `palette:${codes[i + 2] ?? 0}`;
+        i += 2;
+      } else if (codes[i + 1] === 2) {
+        colour = `rgb:${codes[i + 2] ?? 0},${codes[i + 3] ?? 0},${codes[i + 4] ?? 0}`;
+        i += 4;
+      } else {
+        pen.known = false;
+        return;
+      }
+      if (c === 38) pen.fg = colour;
+      else pen.bg = colour;
+    }
+  }
+}
 
 /**
- * Pull Claude's own session name (set via `/rename`) out of a pane's visible text, or `undefined` when
- * the session is unnamed (a plain rule) or the pane isn't showing its input box (a dialog, a working
- * spinner). Claude draws the name INTO the horizontal rule directly above the ❯ prompt, e.g.
- * `────────── my-name ──`; we accept that rule ONLY when the very next line is the ❯ prompt, so a
- * decorative rule anywhere else in the output can never be mistaken for it (no false positives).
- * Derived from Claude's UI grammar — claude-only; other harnesses never call this. Pure + exported so
- * it's unit-tested against the pane fixtures without standing up the socket client.
+ * Row `row` of the grid as characters, each with the colours it is shown in. The pen runs from the
+ * top of the read, because a colour set on one row stays set on the next until something resets it.
  */
-export function extractClaudeSessionName(text: string): string | undefined {
+function styledRow(lines: readonly string[], row: number): StyledCell[] {
+  const pen: Pen = { fg: DEFAULT_FG, bg: DEFAULT_BG, inverse: false, known: true };
+  const cells: StyledCell[] = [];
+  for (let r = 0; r <= row; r++) {
+    const line = lines[r]!;
+    const push = (text: string): void => {
+      if (r !== row) return;
+      const fg = pen.inverse ? pen.bg : pen.fg;
+      const bg = pen.inverse ? pen.fg : pen.bg;
+      for (const ch of text) cells.push({ ch, fg, bg, known: pen.known });
+    };
+    let last = 0;
+    for (const m of line.matchAll(SGR_SEQ)) {
+      push(line.slice(last, m.index));
+      last = m.index + m[0].length;
+      applySgr(pen, m[1] ?? "");
+    }
+    push(line.slice(last));
+  }
+  return cells;
+}
+
+const plainText = (row: string): string => row.replace(SGR_SEQ, "");
+const isRuleGlyph = (ch: string): boolean => ch === "─" || ch === "━";
+
+/**
+ * What the words inside a named-looking rule are: a `/rename` name, a mode badge, or unknown.
+ *
+ * An observed rendering, not a format Claude promises: Claude Code 2.1.290 draws a session name in
+ * the rule's own colour, or, after `/color`, as a chip whose background is that colour, and draws a
+ * mode badge such as `ultracode` (`/effort ultracode`) in a colour of its own. A read with no styling
+ * at all leaves nothing to compare, so it reads as a name, which is how every name was read before
+ * colour was looked at; a badge is then still mistaken for one. A rule whose colour cannot be told
+ * (an unparsed sequence, rule glyphs in more than one colour) is unknown.
+ */
+function ruleLabel(lines: readonly string[], row: number): "name" | "badge" | "unknown" {
+  if (!lines.slice(0, row + 1).some((l) => l.includes(ESC))) return "name";
+  const cells = styledRow(lines, row);
+  if (cells.some((c) => !c.known)) return "unknown";
+  const rule = cells.filter((c) => isRuleGlyph(c.ch));
+  const ruleFg = rule[0]?.fg;
+  if (ruleFg === undefined || rule.some((c) => c.fg !== ruleFg)) return "unknown";
+  const named = cells
+    .filter((c) => !isRuleGlyph(c.ch) && c.ch.trim() !== "")
+    .every((c) => c.fg === ruleFg || c.bg === ruleFg);
+  return named ? "name" : "badge";
+}
+
+/**
+ * Pull Claude's own session name (set via `/rename`) out of a pane's visible grid, styled or plain.
+ *
+ * Returns the name; `null` when the input box is in view and carries no name (a plain rule, or a mode
+ * badge, which Claude only shows on an unnamed session); `undefined` when the pane isn't showing its
+ * input box (a dialog, a working spinner) or the rule's colours cannot be read, so nothing can be
+ * said either way. Claude draws the name
+ * INTO the horizontal rule directly above the ❯ prompt, e.g. `────────── my-name ──`; we accept that
+ * rule ONLY when the very next line is the ❯ prompt, so a decorative rule anywhere else in the output
+ * can never be mistaken for it (no false positives). Derived from Claude's UI grammar — claude-only;
+ * other harnesses never call this. Pure + exported so it's unit-tested against the pane fixtures
+ * without standing up the socket client.
+ */
+export function extractClaudeSessionName(text: string): string | null | undefined {
   if (!text) return undefined;
   const lines = text.split(/\r?\n/);
   // Only the BOTTOMMOST ❯ counts — that's the live input prompt; anything above it is scrollback.
   // The rule directly above it decides, and a plain rule means "unnamed", full stop. Scanning past it
   // for older named-rule-above-❯ pairs (as this once did) let a scrollback line that merely starts
   // with ❯ — an echoed shell prompt, pasted text — sit under a decorative rule and pin a bogus name
-  // on an unnamed session (the caller's sticky cache only overwrites on truthy matches).
+  // on an unnamed session.
   for (let i = lines.length - 1; i >= 1; i--) {
-    if (!PROMPT_LINE.test(lines[i]!)) continue;
-    const m = NAMED_RULE.exec(lines[i - 1]!);
-    return m ? m[1]!.trim() || undefined : undefined;
+    if (!PROMPT_LINE.test(plainText(lines[i]!))) continue;
+    const plain = plainText(lines[i - 1]!);
+    const m = NAMED_RULE.exec(plain);
+    if (!m) return PLAIN_RULE.test(plain) ? null : undefined;
+    const label = ruleLabel(lines, i - 1);
+    if (label === "unknown") return undefined;
+    return label === "name" ? m[1]!.trim() : null;
   }
   return undefined;
 }
@@ -513,8 +638,9 @@ export class StateEngine {
    * {@link extractClaudeSessionName}) to the view, exactly parallel to `paneLabel`. The name lives
    * only in the pane's rendered text — Herdr's pane metadata doesn't carry it — so this is the one
    * place all panes can pick it up (the web app only holds text for the open pane). Reads run in
-   * parallel and are individually best-effort: a read that fails or times out keeps the last-known
-   * name (sticky cache) and never fails the poll. Claude-only; other harnesses never set it. A
+   * parallel and are individually best-effort: a read that fails or times out, or a screen with no
+   * input box in view, keeps the last-known name (sticky cache) and never fails the poll; an input
+   * box that shows no name drops it. Claude-only; other harnesses never set it. A
    * multiplexer that cannot hand over a rendered grid declines the read, which reads here as
    * "keep whatever's cached" — exactly like a read that failed.
    */
@@ -535,16 +661,19 @@ export class StateEngine {
           // `viewport` — never `recent`; see SESSION_NAME_READ_LINES for what a `recent` read does
           // to the operator's screen. The viewport is also strictly safer to parse: `recent` hands
           // back transcript scrollback, where Claude echoes past user messages as `❯ …` lines that
-          // the prompt anchor would have to discriminate against. `strip` because this wants words:
-          // colour escapes would only have to be undone before the rules below could match.
+          // the prompt anchor would have to discriminate against. `preserve` because colour is the
+          // only thing that tells a `/rename` name from a mode badge Claude draws in the same rule.
           const read = await this.mux.readGrid(a.paneId, {
             scope: "viewport",
             lines: SESSION_NAME_READ_LINES,
-            styling: "strip",
+            styling: "preserve",
           });
           if (!read.ok) return;
           const name = extractClaudeSessionName(read.value.text);
+          // An input box in view with no name forgets the old one: a name renamed away, or a badge
+          // once mistaken for a name, must not outlive the screen that showed it.
           if (name) this.sessionNames.set(a.paneId, name);
+          else if (name === null) this.sessionNames.delete(a.paneId);
           if (rev !== undefined) this.enrichedAt.set(a.paneId, rev);
         } catch {
           // Keep whatever's cached (if anything) — a transient read failure must not blank the name.
