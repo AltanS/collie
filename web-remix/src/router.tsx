@@ -61,6 +61,9 @@ router.map(routes.settings, settingsAction);
 router.map(routes.settingsDevice, settingsDeviceAction);
 router.map(routes.settingsUpdates, settingsUpdatesAction);
 router.map(routes.settingsSection, settingsSectionAction);
+// Wave 4: Crew, Machines, History, Changes and Files, mapped in one call (routes/frame/map.tsx).
+import { mapWave4 } from "./routes/frame/map";
+mapWave4(router);
 
 /**
  * The router as the runtime sees it, with the mount taken off (ADR 0052). The bridge serves this

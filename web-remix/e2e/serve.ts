@@ -9,7 +9,7 @@
 //   PORT=5193 PROXY=http://127.0.0.1:8792 bun e2e/serve.ts
 import { join, normalize } from "node:path";
 
-const root = join(import.meta.dirname, "..", "dist");
+const root = process.env.DIST ? process.env.DIST : join(import.meta.dirname, "..", "dist");
 const port = Number(process.env.PORT ?? "5192");
 const proxy = process.env.PROXY;
 

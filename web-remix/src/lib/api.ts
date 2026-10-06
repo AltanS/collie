@@ -173,3 +173,65 @@ export async function fetchPane(
 export function isAbort(error: Error): boolean {
   return error.name === "AbortError";
 }
+
+// ── Generic reads and writes for the routes beyond the dashboard and the pane ────────────────────
+// One door for Crew, Machines, History, Changes, Files and the Settings sections: the same wire
+// contract as `get` above (XHR header, bearer token, `redirect: "manual"` read as 401, the build
+// header), plus the write half web/'s `req` has: JSON content type, a longer deadline and every
+// answer through `notePairing`, so a refused write raises the read-only latch (lib/pairing.ts).
+import type { JsonValue } from "@web/lib/json";
+
+import { notePairing } from "./pairing";
+
+const WRITE_TIMEOUT_MS = 20_000;
+
+/** The body of a 2xx answer. An empty body (a 204, or `Content-Length: 0`) reads as `undefined`. */
+async function bodyOf<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  // SAFETY: a 2xx on these endpoints is the bridge's own response type by contract (the contract
+  // web/src/lib/api.ts rests on); the caller names it. An empty body is `void`.
+  return (text === "" ? undefined : JSON.parse(text)) as T;
+}
+
+/** GET `path` (scope query added when given). Throws `ApiError` on a non-2xx answer. */
+export async function bridgeGet<T>(path: string, scope?: Scope, signal?: AbortSignal, headers?: Record<string, string>): Promise<T> {
+  const scoped = withScope(path, scope);
+  const res = await get(scoped, new Headers({ "content-type": "application/json", ...headers }), signal);
+  if (!res.ok) throw await failure(scoped, res);
+  return bodyOf<T>(res);
+}
+
+/**
+ * Send a JSON write. A refused answer goes through `notePairing` first, so "device not paired"
+ * raises the latch, and a success clears it (REMIX3.md: "writes call `notePairing`").
+ */
+export async function bridgeSend<T>(
+  method: "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: JsonValue,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<T> {
+  const scoped = withScope(path, scope);
+  const timeout = AbortSignal.timeout(WRITE_TIMEOUT_MS);
+  const init: RequestInit = {
+    method,
+    headers: { "content-type": "application/json", [XHR_HEADER]: XHR_HEADER_VALUE, ...authHeader() },
+    redirect: "manual",
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  const res = await fetch(mounted(scoped), init);
+  const build = res.headers.get(SERVER_BUILD_HEADER);
+  if (build) serverBuild.set(build);
+  if (res.type === "opaqueredirect" || REDIRECT_STATUSES.has(res.status)) {
+    throw new ApiError(scoped, 401, "fronting identity proxy requires sign-in");
+  }
+  if (!res.ok) {
+    const error = await failure(scoped, res);
+    notePairing(method, res.status, error.body);
+    throw error;
+  }
+  notePairing(method, res.status);
+  return bodyOf<T>(res);
+}
