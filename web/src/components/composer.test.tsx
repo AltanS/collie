@@ -1987,6 +1987,103 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
   });
 });
 
+// While a send is still in flight, the terminal line carries OUR staging text (attachments go
+// out as host paths) — the draft preview must stay off for it, or a slow photo send flashes the
+// card while the guard verifies. The gate only hides DURING the send; afterwards the ordinary
+// echo/handled path resumes, so a foreign draft that is still there surfaces again once its line
+// changes (pinned for the non-sending case by the test above).
+describe("Composer — no draft preview while its own send is in flight", () => {
+  function FlightHarness({ staged }: { staged: string }) {
+    // The parent strands the staged line while the send is held, the way the mirror would once
+    // the guard has typed the text and Enter is still pending. The second button strands a
+    // DIFFERENT line afterwards, proving the gate delays rather than permanently suppresses.
+    const [draft, setDraft] = useState<string | null>(null);
+    const props: ComponentProps<typeof Composer> = {
+      paneId: "w1:p1",
+      agent: "claude",
+      isShell: false,
+      gone: false,
+      readOnly: false,
+      dialogPresent: false,
+      text: "pane output",
+      terminalDraft: draft,
+      rawTerminalDraft: draft,
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+      display: { open: false, onToggle: vi.fn() },
+      onSent: vi.fn(),
+    };
+    return (
+      <>
+        <button onClick={() => setDraft(staged)}>__strand-staged</button>
+        <button onClick={() => setDraft("host typed more afterwards")}>__strand-other</button>
+        <Composer {...props} />
+      </>
+    );
+  }
+
+  function renderFlight(staged: string) {
+    const router = createMemoryRouter([{ path: "/", element: <FlightHarness staged={staged} /> }]);
+    render(<RouterProvider router={router} />);
+  }
+
+  // Hold the type call: the send stays staged (sending) until the returned release runs.
+  // The submit call passes straight through, so releasing the gate always lets the send complete.
+  function holdTypeCall(callLog: string[]) {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => HttpResponse.json({ ok: true })),
+      http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = await request.json();
+        recordReply(body);
+        callLog.push(body.submit ? "submit" : `reply:${body.text}`);
+        if (!body.submit) await gate;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    return { release };
+  }
+
+  it("hides its own staged photo path for the whole send, and stays quiet after", async () => {
+    const user = userEvent.setup();
+    const callLog: string[] = [];
+    const { release } = holdTypeCall(callLog);
+    const staged = "schau mal /home/andiw/.local/state/collie/uploads/w4_p2-abc123.jpg";
+    renderFlight(staged);
+    await user.type(screen.getByPlaceholderText(/type a reply/i), staged);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain(`reply:${staged}`));
+    // The guard has typed the line and Enter is pending — the staged text must not surface.
+    await user.click(screen.getByRole("button", { name: "__strand-staged" }));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+    release();
+    await waitFor(() => expect(callLog).toContain("submit"));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+  });
+
+  it("hides even a foreign draft while the send is in flight", async () => {
+    // The send moment belongs to the phone: a host draft that appears mid-send waits until the
+    // send completes rather than fighting it for the mirror.
+    const user = userEvent.setup();
+    const callLog: string[] = [];
+    const { release } = holdTypeCall(callLog);
+    renderFlight("someone else's leftover");
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callLog).toContain("reply:hello"));
+    await user.click(screen.getByRole("button", { name: "__strand-staged" }));
+    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+    release();
+    await waitFor(() => expect(callLog).toContain("submit"));
+    // The delay is bounded, not permanent: a genuinely new line after the send surfaces again.
+    // (This doubles as the in-harness positive control — a latch that never fires could not pass.)
+    await user.click(screen.getByRole("button", { name: "__strand-other" }));
+    expect(await screen.findByText(/draft in terminal/i)).toBeInTheDocument();
+  });
+});
+
 // The no-service-worker self-updater must never reload over unsent work. The composer holds a reload
 // (lib/reload-guard) while its phone-owned input has REAL text or an upload is in flight — but a
 // terminal draft alone is SAFE (it lives on the "❯" line and its preview re-derives after a reload),
