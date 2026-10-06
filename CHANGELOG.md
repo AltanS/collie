@@ -23,6 +23,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-10-06
+
 ### Added
 
 - **The dashboard can order by Activity or Cache.** On the Dashboard tab, a clock and an hourglass beside the status line order the dashboard by the pane where something last happened, or by the cache that goes cold first. Either one folds the workspace groups into one list, with pinned panes first and each row naming its workspace. It is the same per-device setting as the switcher and Settings → Appearance, Place stays the default, and the order is read once and held, so a poll never moves a row. Tapping the selected choice, or coming back to the page, reads it again.
