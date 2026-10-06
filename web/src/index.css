@@ -1117,7 +1117,7 @@
   }
 }
 /* The Changes pair: a dashboard Changes tab row and the header of `/space/:id/changes`. Text changes
-   size on the way (14px row label, 18px header label): the snapshots scale with their box, pinned to
+   size on the way (14px row label, 12px label under the header's title): the snapshots scale with their box, pinned to
    the start edge, instead of stretching to a box of another shape. Both ways. */
 .glide-changes::view-transition-old(glide-changes-label),
 .glide-changes::view-transition-new(glide-changes-label),

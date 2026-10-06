@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
-import { Eye, EyeOff, File, FileDiff, FileInput, FileMinus, FilePen, FilePlus, Folder, FolderPlus, Link2 } from "lucide-react";
+import { Eye, EyeOff, File, FileInput, FileMinus, FilePen, FilePlus, Folder, FolderPlus, Link2 } from "lucide-react";
 
-import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_TONE, STATUS_WORD, TREE_TONE } from "@/components/changes-view";
+import { ChangesNoMatch, FilterRow, STATUS_FILL, STATUS_WORD, TREE_TONE } from "@/components/changes-view";
 import { ListGroup } from "@/components/ui/list-group";
+import { Segmented } from "@/components/ui/segmented";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
 import { folderView, isNameFilterOn } from "@/lib/files-filter";
@@ -10,33 +11,67 @@ import type { EntryMark } from "@/lib/files-marks";
 import { formatBytes, joinRel } from "@/lib/files-view";
 import { t, tn, type MessageKey } from "@/lib/i18n";
 import type { ChangeStatus, FileEntry, FileEntryKind } from "@/lib/types";
+import type { WorkspaceChangeCount } from "@/lib/workspace-changes";
 import { cn } from "@/lib/utils";
 
 // The Changes screen's folder tree, drawn (ADR 0083): the path's breadcrumb, one folder's rows with
-// their change marks, and the Changes-only toggle that swaps the tree for the list of changes.
+// their change marks, and the mode control that swaps the tree for the list of changes.
 // Presentational only, so the route and the playground mount the same markup. A name is a
 // machine-authored identifier read character by character, so it is mono (DESIGN.md §5), and every
 // string from the disk reaches the DOM as a text node.
 
 /**
- * The header's Changes-only toggle: on, the screen shows the changed files alone (the flat list or
- * its tree); off, the root folder with each change marked on its row. A setting, so an icon toggle
- * button (`ui/toggle-button.tsx`), with the number of changed files floated on its corner. While
- * anything changed and the toggle is off, the glyph takes the Modified ink, so the header says there
- * is something to look at before the badge is read.
+ * The Files screen's two-segment control, directly under the header: "All files" or "Changes". It is
+ * the file screen's own `Diff | Source | Preview` control (`ui/segmented.tsx`), so the two read as
+ * one family, and it writes the device's `changesOnly` pref: "Changes" shows the changed files alone
+ * (the flat list or its tree), "All files" the folder with each change marked on its row. The number
+ * of changed files rides the Changes segment as the small amber badge the old icon toggle drew, and
+ * is said in the segment's name too.
  */
-export function ChangesOnlyToggle({ on, count, onChange }: { on: boolean; count: number; onChange: (on: boolean) => void }) {
+export function FilesModeControl({
+  changesOnly,
+  count,
+  onChange,
+}: {
+  changesOnly: boolean;
+  count: number;
+  /** `true` for the Changes segment, the value the `changesOnly` pref holds. */
+  onChange: (changesOnly: boolean) => void;
+}) {
   useLocale();
   return (
-    <ToggleButton
-      pressed={on}
-      onPressedChange={onChange}
-      label={tn("changes.only.aria", count)}
-      title={t("changes.only.label")}
-      icon={<FileDiff className={cn("size-5", !on && count > 0 && STATUS_TONE.M)} />}
-      badge={count}
-      badgeClassName={cn(STATUS_FILL.M, "text-background")}
-    />
+    <div data-slot="files-mode" className="shrink-0 border-b px-4 py-3">
+      <Segmented
+        label={t("files.mode.aria")}
+        value={changesOnly ? "changes" : "all"}
+        onChange={(mode) => onChange(mode === "changes")}
+        badgeClassName={cn(STATUS_FILL.M, "text-background")}
+        options={[
+          { value: "all", label: t("files.mode.all") },
+          { value: "changes", label: t("files.mode.changes"), badge: count, badgeLabel: tn("files.changed", count) },
+        ]}
+      />
+    </div>
+  );
+}
+
+/**
+ * The line at the head of the Changes list: the root folder's name at the left, as the tree's
+ * breadcrumb names it, and the workspace's totals `+12 −4` at the right in the diff's own inks. The
+ * totals once stood on the header's second line; they moved here with the mode control (2026-10-06).
+ * One line tall in every state, so the numbers arriving move nothing, and they show only once a
+ * read has said there is something changed.
+ */
+export function ChangesListHead({ root, count }: { root: string; count: WorkspaceChangeCount }) {
+  return (
+    <div className="flex min-h-6 items-baseline justify-between gap-3 font-mono text-xs leading-6 text-muted-foreground" data-slot="changes-head">
+      <span className="min-w-0 wrap-anywhere text-foreground">{root}</span>
+      {count.kind === "changed" && (
+        <span data-slot="changes-totals" className="shrink-0 tabular-nums">
+          <span className="text-status-done">+{count.added}</span> <span className="text-status-blocked">−{count.removed}</span>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -240,8 +275,9 @@ export function entryPath(dir: string, entry: FileEntry): string {
  * The Ignored toggle: whether entries git ignores are listed. It is a setting, so it is drawn as an
  * icon toggle button (`ui/toggle-button.tsx`, the look of the dashboard's "needs you" switch) and not
  * as a chip, and it says its own state: `EyeOff` and "Ignored hidden" when off, `Eye` and "Ignored
- * shown" when on. `labelled` adds that word beside the glyph, for the filter row; the header draws
- * the icon alone with the state as its tooltip. Both write the same pref.
+ * shown" when on. `labelled` adds that word beside the glyph, for the filter row; the icon alone
+ * stood in the header until 2026-10-06, when the footer line's Show and Hide took over as the
+ * screen's switch. Every form writes the same pref.
  */
 export function IgnoredToggle({
   showIgnored,
@@ -319,6 +355,37 @@ export function FilesFilterBar({
 }
 
 /**
+ * The quiet line under a folder's rows that says how many ignored entries are hidden or shown, with
+ * the one action that flips it. With the header's eye button gone (2026-10-06), this line is the
+ * Files screen's switch for ignored entries, so each state offers the other.
+ */
+function IgnoredFooter({
+  label,
+  action,
+  actionAria,
+  onAction,
+}: {
+  label: string;
+  action: string;
+  actionAria: string;
+  onAction: () => void;
+}) {
+  return (
+    <div data-slot="files-ignored-hidden" className="flex items-center justify-between gap-2 pt-1 text-xs text-muted-foreground">
+      <span>{label}</span>
+      <button
+        type="button"
+        aria-label={actionAria}
+        onClick={onAction}
+        className="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-primary active:bg-muted"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
+/**
  * One folder's body: the rows the filter leaves, the quiet "{count} ignored hidden" line with its
  * Show action, and the sentence and way out when nothing is left. A folder that is empty on disk
  * says so; a folder whose every entry is ignored says that instead.
@@ -348,6 +415,8 @@ export function FilesFolderBody({
     return <p className="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground">{t("files.empty")}</p>;
   }
   const view = folderView(entries, query, showIgnored);
+  // Ignored rows on screen, so the footer can say so and offer the way back.
+  const ignoredShown = showIgnored ? view.rows.filter((e) => e.ignored === true).length : 0;
   return (
     <>
       {view.rows.length > 0 ? (
@@ -358,17 +427,20 @@ export function FilesFolderBody({
         <p className="px-2 py-12 text-center text-sm leading-relaxed text-muted-foreground">{t("files.ignored.allHidden")}</p>
       )}
       {view.hiddenIgnored > 0 && (
-        <div data-slot="files-ignored-hidden" className="flex items-center justify-between gap-2 pt-1 text-xs text-muted-foreground">
-          <span>{t("files.ignored.hidden", { count: view.hiddenIgnored })}</span>
-          <button
-            type="button"
-            aria-label={t("files.ignored.showAria")}
-            onClick={() => onShowIgnored(true)}
-            className="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-primary active:bg-muted"
-          >
-            {t("files.ignored.show")}
-          </button>
-        </div>
+        <IgnoredFooter
+          label={t("files.ignored.hidden", { count: view.hiddenIgnored })}
+          action={t("files.ignored.show")}
+          actionAria={t("files.ignored.showAria")}
+          onAction={() => onShowIgnored(true)}
+        />
+      )}
+      {ignoredShown > 0 && (
+        <IgnoredFooter
+          label={t("files.ignored.shown", { count: ignoredShown })}
+          action={t("files.ignored.hide")}
+          actionAria={t("files.ignored.hideAria")}
+          onAction={() => onShowIgnored(false)}
+        />
       )}
       {truncated && <p className="pt-3 text-xs text-muted-foreground">{t("files.truncated")}</p>}
     </>
