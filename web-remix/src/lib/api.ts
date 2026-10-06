@@ -1,4 +1,4 @@
-// The read half of the bridge API that this shell needs: snapshot, config and one pane's mirror.
+// The read half of the bridge API that this shell needs: snapshot and config (the pane mirror reads through web's `fetchPane`, see routes/pane/data.ts).
 //
 // WHY NOT web/src/lib/api.ts. That module imports busy.ts, connection-health.ts, pairing.ts,
 // poll-intent.ts and server-build.ts, and each of those imports React for its hook. Reusing it would
@@ -6,8 +6,8 @@
 // header, `redirect: "manual"` with a redirect read as 401, the bearer token, the scope query, the
 // GET deadline, the pane ETag cache), and nothing the shell does not call yet. Mutations come later.
 import { mounted } from "@web/lib/base-path";
-import { normalizeScope, paneScopeKey, type Scope } from "@web/lib/scope";
-import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
+import { normalizeScope, type Scope } from "@web/lib/scope";
+import type { BridgeConfig, SnapshotResponse } from "@web/lib/types";
 
 import { createStore } from "./store";
 
@@ -125,7 +125,6 @@ async function conditional<T>(
 }
 
 const snapshotCache = new Map<string, Cached<SnapshotResponse>>();
-const paneCache = new Map<string, Cached<PaneReadResponse>>();
 
 export interface Fetched<T> {
   body: T;
@@ -149,24 +148,6 @@ export async function fetchConfig(scope?: Scope, signal?: AbortSignal): Promise<
   if (!res.ok) throw await failure(path, res);
   // SAFETY: a 200 on /api/config is the bridge's BridgeConfig by contract; non-ok threw above.
   return (await res.json()) as BridgeConfig;
-}
-
-/**
- * One pane's mirror. `seen: false` leaves the pane's unseen mark alone (a prefetch, not an open).
- * Keyed by (host, session, pane) like web/'s cache, because a pane id is unique only in one session.
- */
-export async function fetchPane(
-  paneId: string,
-  scope?: Scope,
-  signal?: AbortSignal,
-  seen = true,
-): Promise<Fetched<PaneReadResponse>> {
-  const path = withScope(`/api/pane/${encodeURIComponent(paneId)}`, scope);
-  const headers = new Headers();
-  if (seen) headers.set("x-collie-seen", "1");
-  const got = await conditional(path, paneCache, paneScopeKey(scope, paneId), headers, signal);
-  lastLiveAt.set(Date.now());
-  return got.notModified ? { body: { ...got.body, notModified: true }, notModified: true } : got;
 }
 
 /** True when `error` is an aborted fetch (a superseded poll), not a failure to show. */
