@@ -62,7 +62,7 @@ import {
 const MAX_SUGGESTION_ROWS = 64;
 
 // A long draft WRAPS onto continuation rows ABOVE the bottom border. Same defense-in-depth role — and
-// the same number — as claude/chrome.ts's MAX_DRAFT_LINES: the caller's read window defaults to 200
+// the same number — as claude/markers.ts's MAX_DRAFT_LINES: the caller's read window defaults to 200
 // lines and is client-requestable up to 10,000, so an unbounded walk would let a stray `│  … │` row
 // pair with an unrelated `╭─…─╮` hundreds of lines further up. Note what this cap does NOT have to
 // bound: there is no free `while (isBlank) i--` skip anywhere in the walk below. claude/chrome.ts

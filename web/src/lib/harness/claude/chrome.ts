@@ -16,12 +16,13 @@ import {
   classifyFooter,
   isBareBoxBorder,
   isBlank,
-  isBoxBorder,
   isHorizontalRule,
   isInputBoxTopBorder,
   isMultiStepHeader,
+  isPromptRow,
   lineText,
   namesPlanDialog,
+  walkFrame,
 } from "./markers";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPreviewSelectRegion } from "./preview-select";
@@ -44,23 +45,6 @@ const MAX_STATUS_LINES = 8;
 // Peeled is not dropped: extractAgentsFooter hands the same rows to their own chrome element (issue
 // #242). Until then they left the mirror with no home, which ADR 0048's tail model does not allow.
 const MAX_FOOTER_LINES = 8;
-
-// A long draft WRAPS inside the input box: the "❯ …" prompt line plus continuation lines (indented,
-// no leading "❯") before the bottom border. We scan up past those to find the prompt, bounded by
-// MAX_DRAFT_LINES — but as DEFENSE-IN-DEPTH, not a correctness bound. The caller's read window
-// defaults to 200 lines (COLLIE_READ_LINES, bridge/config.ts) and is client-requestable up to
-// MAX_READ_LINES (10,000, bridge/server.ts), so an unbounded walk would let a stray line that happens
-// to look like a border (see isBoxBorder in markers.ts) pair up with an unrelated quoted "❯" line
-// dozens (or thousands) of lines further up to complete a full (bogus) box shape — the cap, not the
-// border test alone, is what keeps that match from reaching all the way there. Every line the walk
-// crosses counts against this cap, blank or not: a run of blank padding is not a free pass either
-// (see the blank-line skips inside locateInputBox below, both bounded by the same counter). The OLD
-// cap (12) was simply too tight: a real 610-char/25-line CJK draft wraps to ~40 rows at a narrow
-// pane's column count (CJK glyphs are 2 cells wide), well past it, which made locateInputBox return
-// null and stalled the send guard for good (issue #76). Removing the cap entirely was considered and
-// rejected for the reason above. 100 comfortably covers the observed ~40-row case plus a worst case
-// around 70–80 rows at a 19-column pane, with margin, while still capping how far the walk can reach.
-const MAX_DRAFT_LINES = 100;
 
 // Text Claude draws on the "❯" prompt line that is NOT a real user draft — it's a hint the TUI paints
 // when the box is otherwise empty. Must never be surfaced as a recoverable draft. Kept as a set so
@@ -435,19 +419,6 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
   return { top: frame.top, prompt: frame.prompt, bottomBorder: b, tail, statusEnd, agentsStart };
 }
 
-/** A row carrying the input box's prompt marker: "❯", or "!" in shell mode, where Claude paints
- *  the bang in place of the chevron. The bang must be followed by whitespace or end the row, so an
- *  ordinary "!important" line inside the frame is not a prompt. Step 1's frame marks (isFrameMark)
- *  deliberately do NOT learn it: shell mode's bang only ever appears INSIDE the frame, and a
- *  "!"-led transcript row below the box must stay ordinary text. ADR 0048 step 2. */
-function isPromptRow(text: string): boolean {
-  const head = text.trimStart();
-  if (head.startsWith("❯")) return true;
-  if (!head.startsWith("!")) return false;
-  const next = head[1];
-  return next === undefined || /\s/.test(next);
-}
-
 /** A row that belongs to a box or a dialog's frame, unless a statusline drew it (isStatuslineFrameMark):
  *  a border, a top-border-shaped rule, or a "❯"-led line (a prompt, or a select dialog's pointer row). */
 function isFrameMark(text: string): boolean {
@@ -656,63 +627,4 @@ function walkStatusline(
     i--;
   }
   return i === bottomBorder ? { statusEnd, agentsStart } : null;
-}
-
-/**
- * Whether a row starts in the pane's first column. Claude paints its input box's two borders and its
- * prompt row from column 0, and indents every wrapped-draft continuation row (two spaces, under the
- * text after "❯ "). So inside the frame an INDENTED row is draft text, whatever it looks like: a
- * pasted "────" rule or "❯ ls -la" shell prompt is a continuation, never the box's top border or its
- * prompt row. Measured on every box in the Claude fixture corpus (84 boxes, ADR 0048 addendum
- * 2026-09-26): each has its borders and prompt row at column 0 and every continuation row indented.
- * Only the frame walk (walkFrame) asks this; step 1's frame marks stay indent-blind, because a
- * dialog's pointer row or a statusline's own rule may be indented and must still stop that walk.
- */
-function atColumnZero(text: string): boolean {
-  return text.length > 0 && !/^\s/.test(text);
-}
-
-/** The frame above a bottom border: the "❯" prompt line and the top border, or null. */
-function walkFrame(texts: string[], bottomBorder: number): { top: number; prompt: number } | null {
-  let i = bottomBorder - 1;
-
-  // The "❯" prompt line — the FIRST line of the draft. A long draft wraps onto continuation lines
-  // (indented, no "❯") between the prompt and the bottom border, so scan up past them to the prompt.
-  // Bounded by MAX_DRAFT_LINES (see the comment above — defense-in-depth, not a correctness bound),
-  // and any box border en route aborts the match (we'd have left the box). Only a row at column 0 can
-  // be the prompt or a border (atColumnZero): an indented row is draft text, so a rule or a "❯" line
-  // the user pasted into the draft is walked past like any other continuation. Blank padding is
-  // tolerated on either side, but it draws from the SAME budget as real continuation lines — a bare
-  // `while (isBlank) i--` here used to skip an unlimited run of blank lines for free before this loop
-  // even started counting, which let a wall of blanks stand in for the non-blank filler the draft-walk
-  // cap is supposed to bound.
-  let wrapped = 0;
-  while (i >= 0 && !isFrameRow(texts[i]!) && wrapped < MAX_DRAFT_LINES) {
-    wrapped++;
-    i--;
-  }
-  if (i < 0 || !atColumnZero(texts[i]!) || !isPromptRow(texts[i]!)) return null;
-  const prompt = i;
-  i--;
-  // Blank padding between the prompt and the top border (e.g. a blank first line inside a freshly
-  // opened box) — same shared `wrapped` budget as above, for the same reason: this used to be its own
-  // unbounded `while (isBlank) i--`, so a wall of blanks here could reach an arbitrarily distant top
-  // border for free.
-  while (i >= 0 && isBlank(texts[i]!) && wrapped < MAX_DRAFT_LINES) {
-    wrapped++;
-    i--;
-  }
-
-  // The top border — the LAST anchor checked, so it alone gets the looser flank floor
-  // (isInputBoxTopBorder): the renderer can clamp a labelled top border's flank down to 1 glyph (see
-  // the comment on isInputBoxTopBorder in markers.ts), and by this point the bottom border, the "❯"
-  // line, and the draft-walk cap have already pinned the rest of the shape down, so the looser test
-  // doesn't reopen the false-positive risk a bare 1-glyph flank would elsewhere.
-  if (i < 0 || !atColumnZero(texts[i]!) || !isInputBoxTopBorder(texts[i]!)) return null;
-  return { top: i, prompt };
-}
-
-/** A row the frame walk stops on: a box border or a prompt row, painted from column 0. */
-function isFrameRow(text: string): boolean {
-  return atColumnZero(text) && (isBoxBorder(text) || isPromptRow(text));
 }
