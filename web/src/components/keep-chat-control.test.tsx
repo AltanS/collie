@@ -48,7 +48,7 @@ describe("Clear saved copies now", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Clear saved copies now" }));
 
-    expect(await screen.findByText("Saved copies cleared.")).toBeInTheDocument();
+    expect(await screen.findByText("Saved copies cleared. Live panes are saved again as you read them.")).toBeInTheDocument();
     expect(await loadChatTail(undefined, "w1:p1")).toBeNull();
     expect(await loadLastPaneText(undefined, "w1:p1")).toBeNull();
     expect(await loadLastSnapshot(undefined)).toBeNull();

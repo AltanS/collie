@@ -171,6 +171,7 @@ export const ja: Dictionary = {
   "settings.connection.bridge.connected": "接続中",
   "settings.connection.bridge.offline": "Herdr オフライン",
   "settings.connection.bridge.connecting": "接続試行中...",
+  "settings.connection.bridge.notPaired": "到達可能、未ペアリング",
   "settings.connection.device.notPaired": "適用中、この端末はペアリングされていません",
   "settings.connection.device.paired": "適用中、この端末はペアリング済みです",
   "settings.connection.device.fullAccessNamed": "フルアクセス · {device}",
@@ -367,7 +368,7 @@ export const ja: Dictionary = {
   "settings.keepChat.day": "1日",
   "settings.keepChat.week": "7日",
   "settings.keepChat.clearNow": "保存したコピーを今すぐ消去",
-  "settings.keepChat.cleared": "保存したコピーを消去しました。",
+  "settings.keepChat.cleared": "保存したコピーを消去しました。表示中のペインは、読むたびにあらためて保存されます。",
   "settings.paneOrder.description":
     "アクティビティは最後に何かが起きたペインをダッシュボードと切り替え画面の先頭に置きます。キャッシュはプロンプトキャッシュが最も早く切れるペインを先頭に置きます。場所はターミナルの並び順のままにします。",
   "chat.status.feedbackSent": "フィードバックを送信しました",

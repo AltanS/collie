@@ -174,6 +174,7 @@ export const es: Dictionary = {
   "settings.connection.bridge.connected": "Conectado",
   "settings.connection.bridge.offline": "Herdr desconectado",
   "settings.connection.bridge.connecting": "Conectando…",
+  "settings.connection.bridge.notPaired": "Accesible, sin emparejar",
   "settings.connection.device.notPaired": "Obligatorio, este dispositivo no está vinculado",
   "settings.connection.device.paired": "Obligatorio, este dispositivo está vinculado",
   "settings.connection.device.fullAccessNamed": "Acceso total · {device}",
@@ -371,7 +372,7 @@ export const es: Dictionary = {
   "settings.keepChat.day": "1 día",
   "settings.keepChat.week": "7 días",
   "settings.keepChat.clearNow": "Borrar las copias guardadas ahora",
-  "settings.keepChat.cleared": "Copias guardadas borradas.",
+  "settings.keepChat.cleared": "Copias guardadas borradas. Los paneles en vivo se vuelven a guardar a medida que los lee.",
   "settings.paneOrder.description":
     "Actividad pone arriba, en el panel de control y en el conmutador, el panel donde ocurrió algo por última vez. Caché pone el que pierde antes su caché de prompts. Lugar mantiene el orden de tu terminal.",
   "chat.status.feedbackSent": "Comentarios enviados",

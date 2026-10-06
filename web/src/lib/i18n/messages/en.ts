@@ -195,6 +195,7 @@ export const en = {
   "settings.connection.bridge.connected": "Connected",
   "settings.connection.bridge.offline": "Herdr offline",
   "settings.connection.bridge.connecting": "Connecting…",
+  "settings.connection.bridge.notPaired": "Reachable, not paired",
   "settings.connection.device.notPaired": "Enforced, this device is not paired",
   "settings.connection.device.paired": "Enforced, this device is paired",
   "settings.connection.device.fullAccessNamed": "Full access · {device}",
@@ -406,7 +407,7 @@ export const en = {
   "settings.keepChat.day": "1 day",
   "settings.keepChat.week": "7 days",
   "settings.keepChat.clearNow": "Clear saved copies now",
-  "settings.keepChat.cleared": "Saved copies cleared.",
+  "settings.keepChat.cleared": "Saved copies cleared. Live panes are saved again as you read them.",
   "settings.paneOrder.description":
     "Activity puts the pane where something last happened at the top of the dashboard and the switcher. Cache puts the one whose prompt cache dies soonest there. Place keeps the order your terminal has.",
   "chat.status.feedbackSent": "Feedback sent",

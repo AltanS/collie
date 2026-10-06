@@ -260,6 +260,34 @@ describe("the wipe", () => {
     expect(await putRecord("snapshot", "lead", 2)).toBe(true);
   });
 
+  it("clearStore leaves no record of any kind, and the next put writes even an unchanged value", async () => {
+    await putRecord("snapshot", "lead", { panes: 1 });
+    await putRecord("pane-text", "w1:p1", "text", { pane: PANE });
+    await putRecord("chat-tail", "w1:p1", ["block"], { pane: PANE });
+    await putRecord("chat-tail", "w1:p2", ["other"], { pane: OTHER_PANE });
+    // The unchanged-value skip is live: the same value again does not touch the database.
+    const before = fake.puts;
+    await putRecord("snapshot", "lead", { panes: 1 });
+    expect(fake.puts).toBe(before);
+
+    await clearStore();
+
+    for (const kind of ["snapshot", "pane-text", "chat-tail"] as const) {
+      expect(await listRecords(kind)).toEqual([]);
+    }
+    expect(fake.rows(STORE_NAME, "meta")).toEqual([]);
+    expect(fake.rows(STORE_NAME, "body")).toEqual([]);
+
+    // The map that drives the skip was reset with it: the same value is written again, not skipped,
+    // so a live poll right after a clear puts exactly its own record back and nothing else.
+    const afterClear = fake.puts;
+    await putRecord("snapshot", "lead", { panes: 1 });
+    expect(fake.puts).toBeGreaterThan(afterClear);
+    expect((await getRecord("snapshot", "lead"))?.value).toEqual({ panes: 1 });
+    expect(await listRecords("pane-text")).toEqual([]);
+    expect(await listRecords("chat-tail")).toEqual([]);
+  });
+
   it("drops one pane's records at a password prompt, and nothing else", async () => {
     await putRecord("snapshot", "lead", 1);
     await putRecord("pane-text", "w1:p1", "sudo", { pane: PANE });

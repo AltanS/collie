@@ -25,11 +25,12 @@ export function ConnectionInfo({
 }) {
   useLocale();
   const { token, refused } = usePairing();
-  const b = bridgeLabel(bridge);
+  const paired = token !== null && !refused;
+  const b = bridgeLabel(bridge, paired);
   // Pairing is always on (ADR 0086), so "is this device paired" is part of its access. No token, or a
   // refusal latched since the last proof, is the answer here: an unpaired phone gets no snapshot, and
   // the header gate's `device` field it would have carried is then absent, not "off".
-  const d = deviceLabel(device, token !== null && !refused);
+  const d = deviceLabel(device, paired);
   const secure = hasWindow() && window.isSecureContext;
   const host = hasWindow() ? window.location.host : "—";
 
@@ -96,12 +97,18 @@ interface StatusLine {
   tone: string;
 }
 
-function bridgeLabel(bridge: BridgeStatus | undefined): StatusLine {
+// "Connecting…" is only for a phone that has had no answer of any kind. An unpaired phone, or one the
+// bridge refused, is shown the app by that same bridge but gets no snapshot, so `bridge` stays
+// undefined for it forever: the bridge is reachable, it is the pairing that is missing.
+function bridgeLabel(bridge: BridgeStatus | undefined, paired: boolean): StatusLine {
   if (bridge === "connected") {
     return { text: t("settings.connection.bridge.connected"), tone: "text-status-done" };
   }
   if (bridge === "disconnected") {
     return { text: t("settings.connection.bridge.offline"), tone: "text-status-working" };
+  }
+  if (!paired) {
+    return { text: t("settings.connection.bridge.notPaired"), tone: "text-status-working" };
   }
   return { text: t("settings.connection.bridge.connecting"), tone: "text-muted-foreground" };
 }

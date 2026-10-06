@@ -163,6 +163,7 @@ export const zh: Dictionary = {
   "settings.connection.bridge.connected": "已连接",
   "settings.connection.bridge.offline": "Herdr 离线",
   "settings.connection.bridge.connecting": "正在连接…",
+  "settings.connection.bridge.notPaired": "可访问，未配对",
   "settings.connection.device.notPaired": "已强制，此设备未配对",
   "settings.connection.device.paired": "已强制，此设备已配对",
   "settings.connection.device.fullAccessNamed": "完整权限 · {device}",
@@ -356,7 +357,7 @@ export const zh: Dictionary = {
   "settings.keepChat.day": "1 天",
   "settings.keepChat.week": "7 天",
   "settings.keepChat.clearNow": "立即清除已保存的副本",
-  "settings.keepChat.cleared": "已清除保存的副本。",
+  "settings.keepChat.cleared": "已清除保存的副本。实时窗格在您阅读时会重新保存。",
   "settings.paneOrder.description":
     "活动会把最近发生过事情的窗格放在仪表盘和切换器的顶部。缓存会把提示缓存最快失效的窗格放在顶部。位置则保持终端本身的顺序。",
   "chat.status.feedbackSent": "反馈已发送",

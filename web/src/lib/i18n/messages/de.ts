@@ -176,6 +176,7 @@ export const de: Dictionary = {
   "settings.connection.bridge.connected": "Verbunden",
   "settings.connection.bridge.offline": "Herdr offline",
   "settings.connection.bridge.connecting": "Verbindung wird hergestellt…",
+  "settings.connection.bridge.notPaired": "Erreichbar, nicht gekoppelt",
   "settings.connection.device.notPaired": "Erzwungen, dieses Gerät ist nicht gekoppelt",
   "settings.connection.device.paired": "Erzwungen, dieses Gerät ist gekoppelt",
   "settings.connection.device.fullAccessNamed": "Vollzugriff · {device}",
@@ -373,7 +374,7 @@ export const de: Dictionary = {
   "settings.keepChat.day": "1 Tag",
   "settings.keepChat.week": "7 Tage",
   "settings.keepChat.clearNow": "Gespeicherte Kopien jetzt löschen",
-  "settings.keepChat.cleared": "Gespeicherte Kopien gelöscht.",
+  "settings.keepChat.cleared": "Gespeicherte Kopien gelöscht. Live-Panes werden beim Lesen wieder gespeichert.",
   "settings.paneOrder.description":
     "Aktivität stellt das Pane mit dem letzten Ereignis an den Anfang des Dashboards und des Umschalters. Cache stellt das Pane dorthin, dessen Prompt-Cache zuerst kalt wird. Ort behält die Reihenfolge deines Terminals.",
   "chat.status.feedbackSent": "Feedback gesendet",

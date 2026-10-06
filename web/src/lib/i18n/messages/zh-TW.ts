@@ -162,6 +162,7 @@ export const zhTW: Dictionary = {
   "settings.connection.bridge.connected": "已連線",
   "settings.connection.bridge.offline": "Herdr 離線",
   "settings.connection.bridge.connecting": "正在連線…",
+  "settings.connection.bridge.notPaired": "可連線，未配對",
   "settings.connection.device.notPaired": "已強制，此裝置未配對",
   "settings.connection.device.paired": "已強制，此裝置已配對",
   "settings.connection.device.fullAccessNamed": "完整權限 · {device}",
@@ -355,7 +356,7 @@ export const zhTW: Dictionary = {
   "settings.keepChat.day": "1 天",
   "settings.keepChat.week": "7 天",
   "settings.keepChat.clearNow": "立即清除已儲存的副本",
-  "settings.keepChat.cleared": "已清除儲存的副本。",
+  "settings.keepChat.cleared": "已清除儲存的副本。即時窗格在您閱讀時會重新儲存。",
   "settings.paneOrder.description":
     "活動會把最近發生過事情的窗格放在儀表板和切換器的頂部。快取會把提示快取最快失效的窗格放在頂部。位置則保持終端機本身的順序。",
   "chat.status.feedbackSent": "回饋已傳送",

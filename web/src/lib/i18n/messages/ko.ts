@@ -171,6 +171,7 @@ export const ko: Dictionary = {
   "settings.connection.bridge.connected": "연결됨",
   "settings.connection.bridge.offline": "Herdr 오프라인",
   "settings.connection.bridge.connecting": "연결 중...",
+  "settings.connection.bridge.notPaired": "연결 가능, 페어링 안 됨",
   "settings.connection.device.notPaired": "적용됨, 이 기기는 페어링되지 않았습니다",
   "settings.connection.device.paired": "적용됨, 이 기기는 페어링되었습니다",
   "settings.connection.device.fullAccessNamed": "전체 접근 ({device})",
@@ -366,7 +367,7 @@ export const ko: Dictionary = {
   "settings.keepChat.day": "1일",
   "settings.keepChat.week": "7일",
   "settings.keepChat.clearNow": "저장된 사본 지금 삭제",
-  "settings.keepChat.cleared": "저장된 사본을 삭제했습니다.",
+  "settings.keepChat.cleared": "저장된 사본을 삭제했습니다. 실시간 창은 읽는 동안 다시 저장됩니다.",
   "settings.paneOrder.description":
     "활동은 마지막으로 무언가 일어난 창을 대시보드와 전환기 맨 위에 둡니다. 캐시는 프롬프트 캐시가 가장 먼저 사라지는 창을 맨 위에 둡니다. 위치는 터미널의 순서를 그대로 둡니다.",
   "chat.status.feedbackSent": "피드백 전송 완료",

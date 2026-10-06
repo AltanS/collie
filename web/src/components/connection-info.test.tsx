@@ -51,6 +51,28 @@ describe("ConnectionInfo — device access row", () => {
     expect(screen.getByText(/full access \(local\)/i)).toBeInTheDocument();
   });
 
+  it("an unpaired phone reads 'reachable, not paired' on the bridge row, never 'Connecting…'", () => {
+    localStorage.clear();
+    render(<ConnectionInfo bridge={undefined} device={undefined} />);
+    expect(screen.getByText("Reachable, not paired")).toBeInTheDocument();
+    expect(screen.queryByText("Connecting…")).toBeNull();
+  });
+
+  it("a refused phone reads 'reachable, not paired' on the bridge row", () => {
+    render(<ConnectionInfo bridge={undefined} device={undefined} />);
+    expect(screen.getByText("Connecting…")).toBeInTheDocument();
+    act(() => markNotPaired());
+    expect(screen.getByText("Reachable, not paired")).toBeInTheDocument();
+    expect(screen.queryByText("Connecting…")).toBeNull();
+  });
+
+  it("a paired phone keeps 'Connecting…' only while no answer has arrived", () => {
+    const { rerender } = render(<ConnectionInfo bridge={undefined} device={undefined} />);
+    expect(screen.getByText("Connecting…")).toBeInTheDocument();
+    rerender(<ConnectionInfo bridge="connected" device={undefined} />);
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+  });
+
   it("shows a connecting state and the server build when provided", () => {
     render(<ConnectionInfo bridge={undefined} device={undefined} build="abc1234" />);
     expect(screen.getByText("Connecting…")).toBeInTheDocument();
