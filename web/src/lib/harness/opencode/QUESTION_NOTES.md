@@ -387,7 +387,8 @@ chip is, so a moved chip changes no signature, which is text.
 the placeholder means the input is open, so the lift refuses. Otherwise the row's ink decides: bright is
 typed text in an open input, so it refuses. Grey is committed text with the input closed, so it lifts and
 the row is still not an option (`multi--free-text--committed`). Any other ink refuses. A single-select
-step has no committed state, so any row under its free-text row refuses.
+step has no committed state, so any row under its free-text row refuses — except a pure sidebar
+tail while the pointer chip sits on a real option, which is foreign chrome, never input (#347).
 
 **Signatures.** The checkbox phase's `signature` is the rows from the tab row to the footer with every
 `[✓]` and `[x]` normalised to `[ ]`, so a toggle moves `checked` and not the signature. Its
