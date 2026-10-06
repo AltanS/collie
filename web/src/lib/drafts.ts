@@ -305,6 +305,27 @@ export function clearDraft(scope: Scope | undefined, paneId: string): void {
   clearStored(store, key);
 }
 
+/**
+ * Drop every draft, both tiers, every pane on every machine. Only the device wipe calls this
+ * (lib/wipe.ts): a pairing that ended takes the unsent words typed under it along. Every key under
+ * the prefix goes, unparseable ones too, because a key the wipe skips is a key nothing cleans later.
+ */
+export function clearAllDrafts(): void {
+  memory.clear();
+  const store = storage();
+  if (!store) return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key !== null && key.startsWith(PREFIX)) keys.push(key);
+    }
+    for (const key of keys) store.removeItem(key);
+  } catch {
+    // Enumeration can throw in locked-down storage. The memory tier above is gone either way.
+  }
+}
+
 /** Test seam — forgets the once-per-load prune so a case can control when pruning happens, and
  *  empties the memory tier, which `localStorage.clear()` in a test's setup cannot reach. */
 export function __resetDraftPrune(): void {

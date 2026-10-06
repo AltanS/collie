@@ -1,4 +1,4 @@
-import { Inbox, Server, WifiOff } from "lucide-react";
+import { Inbox, KeyRound, Server, WifiOff } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { clockTime } from "@/lib/format";
@@ -55,6 +55,12 @@ interface AgentListProps {
    * placeholder must not claim the latter.
    */
   error?: boolean;
+  /**
+   * The bridge refused this device for want of pairing (lib/pairing.ts latch). Reads need the token
+   * (ADR 0086), so a cold open on an unpaired phone has no herd at all, and the placeholder then names
+   * pairing rather than a lost connection: the bridge answered, it asked to be paired.
+   */
+  notPaired?: boolean;
   /** When the stale data was fetched, for the "last seen HH:MM" half of the disconnected placeholder. */
   lastSeenAt?: number;
   /** The raw tab list, for the multiplexer's own tab order inside a workspace. */
@@ -239,6 +245,7 @@ export function AgentList({
   onPress,
   emptyState = true,
   error = false,
+  notPaired = false,
   lastSeenAt,
   tabs,
   servers,
@@ -299,6 +306,17 @@ export function AgentList({
     // (failed fetch, or a cold boot with nothing cached) knows nothing about the herd — saying the
     // herd is empty there is the bug this branch exists to prevent, so the outage is named instead.
     // `bridge` is no help on its own: a cached snapshot still says "connected".
+    if (error && notPaired) {
+      // The strip above the list is the link to the pair form; this names what to run on the host
+      // first. The command stays literal, never translated, as on the pair form itself.
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">
+          <KeyRound className="size-7" />
+          <span className="text-sm font-medium text-foreground">{t("settings.devices.pair.title")}</span>
+          <code className="font-mono text-[13px]">collie pair</code>
+        </div>
+      );
+    }
     if (error) {
       return (
         <div className="flex flex-col items-center justify-center gap-3 px-4 py-24 text-muted-foreground">

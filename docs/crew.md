@@ -190,7 +190,7 @@ list at all.
 Three facts keep the two lists apart, and each one is a reason on its own.
 
 The phone never holds an ssh key. An ssh key is a full shell on the machine, and a phone gets lost.
-The phone holds a pairing code the lead issued instead, which opens the app and nothing else, and
+The phone holds a pairing token the lead issued instead, which opens the app and nothing else, and
 `collie devices revoke <label>` kills that code live, with no restart
 ([pair a device](security.md#pair-a-device--the-write-credential)).
 

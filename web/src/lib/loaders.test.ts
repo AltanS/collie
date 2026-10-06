@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 
 import { paneScopeKey, scopeKey } from "@/lib/scope";
+import { FakeIDBFactory, uninstallFakeIndexedDB } from "@/test/fake-indexeddb";
 import { server } from "@/test/setup";
 import {
   fixtureAgents,
@@ -13,16 +14,19 @@ import {
 // loaders.ts keeps a module-level "last good" cache, so each test re-imports the module fresh
 // (via vi.resetModules) to start from an empty cache and stay independent of run order.
 //
-// The write-through cache (lib/last-seen.ts) outlives a module reset by design — it lives in
-// sessionStorage precisely so a discarded page can read it back. Clearing it here is what makes each
-// case a genuinely cold tab; the cases that WANT a warm one prime it themselves.
+// The write-through cache (lib/last-seen.ts over lib/store.ts) outlives a module reset by design — it
+// lives in IndexedDB precisely so a killed page can read it back. A fresh fake database per case is
+// what makes each case a genuinely cold phone; the cases that WANT a warm one prime it themselves.
+let idb: FakeIDBFactory;
+
 beforeEach(() => {
   vi.resetModules();
-  sessionStorage.clear();
+  idb = new FakeIDBFactory().install();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  uninstallFakeIndexedDB();
 });
 
 const failSnapshot = () =>
@@ -803,29 +807,42 @@ describe("rootLoader — the snapshot's own timestamp", () => {
 
 // ── Surviving a cold boot with no network (lib/last-seen.ts) ──────────────────
 //
-// The case: a phone leaves Collie for the Tailscale app, the browser DISCARDS the hidden page, and
-// the operator comes back before the tunnel is up. The module caches above are gone with the process,
-// so everything here re-imports the loaders (a fresh page) and asserts against what a fresh page can
-// still read: the write-through cache in sessionStorage.
+// The case: a phone leaves Collie for the Tailscale app, the OS kills the PWA or the browser DISCARDS
+// the hidden page, and the operator comes back before the tunnel is up. The module caches above are
+// gone with the process, so everything here re-imports the loaders (a fresh page) and asserts against
+// what a fresh page can still read: the write-through records in the on-device store.
 describe("cold boot with no network", () => {
-  const PANE_KEY = `collie:last-pane:${paneScopeKey(undefined, "w1:p1")}`;
-  const SNAPSHOT_KEY = `collie:last-snapshot:${scopeKey()}`;
+  const PANE_KEY = paneScopeKey(undefined, "w1:p1");
+  const SNAPSHOT_KEY = scopeKey();
+
+  /** What the store holds once every write this page queued has landed. */
+  async function stored(kind: "snapshot" | "pane-text", key: string) {
+    const store = await import("./store");
+    await store.__storeIdle();
+    return store.getRecord(kind, key);
+  }
+
+  /** Let the warm page's writes land before the page goes away. */
+  async function settle(): Promise<void> {
+    await (await import("./store")).__storeIdle();
+  }
 
   it("writes the snapshot through on a successful fetch", async () => {
     const { rootLoader } = await import("./loaders");
     await rootLoader();
-    expect(sessionStorage.getItem(SNAPSHOT_KEY)).not.toBeNull();
+    expect(await stored("snapshot", SNAPSHOT_KEY)).not.toBeNull();
   });
 
   it("writes the pane mirror through on a successful fetch", async () => {
     const { paneLoader } = await import("./loaders");
     await paneLoader({ params: { paneId: "w1:p1" } });
-    expect(sessionStorage.getItem(PANE_KEY)).toContain("hello from the pane");
+    expect((await stored("pane-text", PANE_KEY))?.value).toContain("hello from the pane");
   });
 
   it("renders the cached herd — dated — when a fresh page can't reach the bridge", async () => {
     const warm = await import("./loaders");
-    await warm.rootLoader(); // the session before the page was discarded
+    await warm.rootLoader(); // the session before the page was killed
+    await settle();
 
     // A brand-new page: module caches empty, first fetch fails.
     vi.resetModules();
@@ -842,6 +859,7 @@ describe("cold boot with no network", () => {
   it("renders the cached pane mirror — dated — on a fresh page", async () => {
     const warm = await import("./loaders");
     await warm.paneLoader({ params: { paneId: "w1:p1" } });
+    await settle();
 
     vi.resetModules();
     failPane();
@@ -868,6 +886,7 @@ describe("cold boot with no network", () => {
   it("keeps the cache per scope", async () => {
     const warm = await import("./loaders");
     await warm.rootLoader(); // primary only
+    await settle();
 
     vi.resetModules();
     failSnapshot();
@@ -877,16 +896,13 @@ describe("cold boot with no network", () => {
     expect(data.lastSeenAt).toBeUndefined();
   });
 
-  it("survives a store that refuses to answer", async () => {
-    const boom = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("storage disabled");
-    });
+  it("survives a store that refuses to open", async () => {
+    idb.options.failOpen = true;
     failSnapshot();
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader();
     expect(data.error).toBe(true);
     expect(data.agents).toEqual([]);
-    boom.mockRestore();
   });
 
   // ADR 0017: recognising a password prompt changes what Collie says — and this, the one other thing
@@ -908,17 +924,17 @@ describe("cold boot with no network", () => {
       sudoPane();
       const { paneLoader } = await import("./loaders");
       await paneLoader({ params: { paneId: "w1:p1" } });
-      expect(sessionStorage.getItem(PANE_KEY)).toBeNull();
+      expect(await stored("pane-text", PANE_KEY)).toBeNull();
     });
 
     it("drops what an earlier read had already cached", async () => {
       const { paneLoader } = await import("./loaders");
       await paneLoader({ params: { paneId: "w1:p1" } }); // ordinary screen, cached
-      expect(sessionStorage.getItem(PANE_KEY)).not.toBeNull();
+      expect(await stored("pane-text", PANE_KEY)).not.toBeNull();
 
       sudoPane();
       await paneLoader({ params: { paneId: "w1:p1" } });
-      expect(sessionStorage.getItem(PANE_KEY)).toBeNull();
+      expect(await stored("pane-text", PANE_KEY)).toBeNull();
     });
 
     it("still caches the snapshot — the exclusion is the pane's text, not the herd", async () => {
@@ -926,7 +942,7 @@ describe("cold boot with no network", () => {
       const { paneLoader, rootLoader } = await import("./loaders");
       await paneLoader({ params: { paneId: "w1:p1" } });
       await rootLoader();
-      expect(sessionStorage.getItem(SNAPSHOT_KEY)).not.toBeNull();
+      expect(await stored("snapshot", SNAPSHOT_KEY)).not.toBeNull();
     });
   });
 });

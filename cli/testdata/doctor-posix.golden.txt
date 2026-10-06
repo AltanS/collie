@@ -13,6 +13,7 @@ local:
   ✓        bind-wildcard         bound to one address
   ✓        acl                   inbound packet filter is non-empty — can't disprove reachability; non-empty proves nothing
   ✓        front-door            laptop.tail.ts.net:443 → http://127.0.0.1:8787 (recorded and live)
+  ✓        pairing               1 device(s) paired
   ✓        mux                   herdr — see herdr-socket · no COLLIE_MUX, so `start` picks it: a Herdr socket at /home/pat/.config/herdr/herdr.sock
   ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`, which herdr does not need — it reports agents itself
   skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`
@@ -52,6 +53,7 @@ local:
   ✓        bind-wildcard         bound to one address
   ✓        acl                   inbound packet filter is non-empty — can't disprove reachability; non-empty proves nothing
   ✓        front-door            laptop.tail.ts.net:443 → http://127.0.0.1:8787 (recorded and live)
+  ✓        pairing               1 device(s) paired
   ✓        mux                   herdr — see herdr-socket · no COLLIE_MUX, so `start` picks it: a Herdr socket at /home/pat/.config/herdr/herdr.sock
   ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`, which herdr does not need — it reports agents itself
   skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`

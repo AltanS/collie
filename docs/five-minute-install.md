@@ -98,9 +98,9 @@ collie qr
 Pair inside the home screen app, not in the browser tab. On an iPhone, the home screen app keeps
 its own storage, separate from Safari. A pairing made in Safari does not carry over.
 
-Once one device is paired, only paired devices can type into your panes. Until then, any device on
-your tailnet can type. Pair right after `start`. On a tailnet shared with other people, also
-set `COLLIE_TRUSTED_USER` ([Configure](configure.md#configure)).
+Collie answers no device until it is paired: before step 6, the dashboard shows **Pair this
+device** and no panes. Only paired devices can read or type into your panes. On a tailnet shared
+with other people, also set `COLLIE_TRUSTED_USER` ([Configure](configure.md#configure)).
 
 The dashboard lists your Herdr panes. Panes waiting for input appear first. Tap a pane to
 view output and reply.

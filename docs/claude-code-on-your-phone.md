@@ -141,8 +141,8 @@ settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings).
 Run `collie qr` on the host to scan the code, or open the link from `collie url`. Keep the phone on
 the same tailnet.
 
-1. **Pair the phone.** Run `collie pair` on the host and scan the QR code. Pairing grants the phone
-   write access to your panes ([Pair a device](security.md#pair-a-device--the-write-credential)).
+1. **Pair the phone.** Run `collie pair` on the host and scan the QR code. Collie answers no device
+   until it is paired ([Pair a device](security.md#pair-a-device--the-write-credential)).
 2. **Put it on your home screen.** On Android, tap **Install** at the top of Settings. On an iPhone,
    tap Safari's share sheet.
 

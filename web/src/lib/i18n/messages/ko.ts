@@ -116,9 +116,7 @@ export const ko: Dictionary = {
 
   // --- settings.devices ---
   "settings.devices.title": "페어링된 기기",
-  "settings.devices.description.enforced": "모든 쓰기 작업에 기기 인증이 필요합니다. 읽기 권한은 열려 있습니다.",
-  "settings.devices.description.open":
-    "등록된 기기가 없어 누구나 쓰기 작업을 실행할 수 있습니다. 기기를 페어링하여 접근을 제한하십시오.",
+  "settings.devices.description.enforced": "모든 읽기와 쓰기 작업에 페어링된 기기가 필요합니다.",
   "settings.devices.pairedAs": "이 기기는 현재 {device}(으)로 페어링되어 있습니다.",
   "settings.devices.loadError": "브리지 서버에서 페어링된 기기 목록을 가져오지 못했습니다.",
   "settings.devices.thisDevice": "현재 기기",
@@ -132,6 +130,8 @@ export const ko: Dictionary = {
   "settings.devices.unpairSelf": "현재 기기 페어링 해제",
   "settings.devices.revoke": "연결 해제",
   "settings.devices.revokeAria": "{label} 연결 해제",
+  "settings.devices.confirm.self": "현재 기기 페어링을 해제할까요? 이 기기의 초안, 저장된 패인 텍스트, 알림이 삭제됩니다. 설정은 유지됩니다.",
+  "settings.devices.confirm.other": "{label} 연결을 해제할까요? 다시 페어링할 때까지 접근할 수 없습니다.",
   "settings.devices.pair.title": "기기 등록",
   "settings.devices.pair.hint":
     "호스트에서 {command}를 실행한 뒤 출력된 코드를 스캔하거나 여기에 입력하세요.",

@@ -29,7 +29,7 @@ import {
   segmentStyle,
 } from "@/components/mirror-space";
 import { renderCells } from "@/components/painted-cells";
-import { ImageCard } from "@/components/ui/image-card";
+import { AuthedImageCard } from "@/components/authed-image-card";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";
 
@@ -253,9 +253,9 @@ const TABLE_RUN_CLASS =
 // could not match, or a journal read that has not answered yet, still has to say "a picture is
 // here", which is the whole difference from the black box this replaces.
 //
-// The picture is the shared `ImageCard` (ui/image-card.tsx), whose href is a URL `imageSrc` already
-// vetted (`lib/api.ts`) — a blob path on the owning host, or inline bytes. Never a URL the agent's
-// log supplied.
+// The picture is the shared `ImageCard` (ui/image-card.tsx), loaded with the pairing token through
+// `AuthedImageCard`. Its source is a URL `imageSrc` already vetted (`lib/api.ts`) — a blob path on
+// the owning host, or inline bytes. Never a URL the agent's log supplied.
 const renderImageCluster = (
   url: string | null,
   key: string,
@@ -275,7 +275,7 @@ const renderImageCluster = (
     // the journal turn by turn and is exact. A load that fails falls back to the badge (see FAILED
     // IMAGES in the component); the handler reports the URL, not the cluster, because the same blob
     // can sit under two clusters.
-    <ImageCard
+    <AuthedImageCard
       key={key}
       src={url}
       alt={t("mirror.imageAlt")}

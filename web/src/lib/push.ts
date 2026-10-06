@@ -1,6 +1,7 @@
 import { fetchConfig, registerPushSubscription } from "@/lib/api";
 import { basePath, mounted } from "@/lib/base-path";
 import { t } from "@/lib/i18n";
+import { rememberedEndpoint, rememberEndpoint } from "@/lib/push-endpoint";
 import type { BridgeConfig } from "@/lib/types";
 
 // Client-side control of Web Push: the browser subscription plus a per-device preference. We persist
@@ -18,9 +19,6 @@ import type { BridgeConfig } from "@/lib/types";
 // here across reloads.
 
 const PREF_KEY = "collie:push-disabled";
-/** The endpoint this device last registered with the bridge, so the next one can supersede it. */
-const ENDPOINT_KEY = "collie:push-endpoint";
-let volatileEndpoint: string | null | undefined;
 const PUSH_OPERATION_TIMEOUT_MS = 30_000;
 
 export type PushAvailability =
@@ -58,26 +56,6 @@ function setUserDisabled(disabled: boolean): void {
     else localStorage.removeItem(PREF_KEY);
   } catch {
     /* private mode / storage blocked — the preference just won't persist */
-  }
-}
-
-function rememberedEndpoint(): string | null {
-  if (volatileEndpoint !== undefined) return volatileEndpoint;
-  try {
-    return localStorage.getItem(ENDPOINT_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function rememberEndpoint(endpoint: string | null): void {
-  try {
-    if (endpoint === null) localStorage.removeItem(ENDPOINT_KEY);
-    else localStorage.setItem(ENDPOINT_KEY, endpoint);
-    volatileEndpoint = undefined;
-  } catch {
-    // Keep the acknowledgement for this page when persistent storage is unavailable.
-    volatileEndpoint = endpoint;
   }
 }
 

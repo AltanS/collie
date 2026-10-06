@@ -7,7 +7,7 @@ import {
   loadOperatorCommands,
   subscribeOperatorConfig,
 } from "@/lib/operator-config";
-import { mounted } from "@/lib/base-path";
+import { useAuthedUrl } from "@/lib/authed-url";
 import { normalizeHost, type Scope } from "@/lib/scope";
 import type { MuxCapability, MuxConfig, MuxTopologyLatency } from "@/lib/types";
 
@@ -201,8 +201,11 @@ export function useMuxName(): string {
  * "this is what that multiplexer looks like", which would be false.
  */
 export function useMuxLogoUrl(): string {
-  // The bridge publishes a root-absolute path; the document may be mounted under one (ADR 0052).
-  return mounted(useMuxConfig()?.logoUrl ?? "");
+  // The bridge publishes a root-absolute path. Reads need the pairing token (ADR 0086) and an
+  // `<img src>` cannot send it, so the bytes are fetched with it and drawn from an object URL
+  // (lib/authed-url.ts); the fetch applies the mount (ADR 0052). Empty until they are here.
+  const path = useMuxConfig()?.logoUrl ?? "";
+  return useAuthedUrl(path === "" ? null : path).url ?? "";
 }
 
 /**

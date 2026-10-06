@@ -604,7 +604,8 @@ await notifyPrefs.load();
 // Device pairing (bridge/pairing.ts). Constructed unconditionally and holding no state of its own:
 // it re-reads `<stateDir>/paired-devices.json` per request (cached on mtime), so `collie pair` and
 // `collie devices revoke` land on the RUNNING service without the restart every other backend change
-// needs. An empty registry — the state every existing install starts in — enforces nothing.
+// needs. Pairing is always on (ADR 0086): an empty registry answers only `/api/health` and
+// `/api/pair`, and `collie pair` on this host is how the first device gets in.
 const pairing = new PairingStore(filePairingIo(cfg.stateDir));
 
 // Speech-to-text (bridge/stt/). Constructed unconditionally and holding no settings of its own, for

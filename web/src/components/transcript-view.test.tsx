@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { http, HttpResponse } from "msw";
+import { vi } from "vitest";
+
 import { TranscriptView } from "./transcript-view";
+import { setDeviceToken } from "@/lib/pairing";
+import { server } from "@/test/setup";
 import type { TranscriptEntry } from "@/lib/types";
 
 // TranscriptView renders the agent's own conversation log — the only history a Claude pane can have
@@ -336,22 +341,54 @@ describe("TranscriptView — system notes", () => {
 describe("TranscriptView — images", () => {
   const BLOB = `/api/blobs/${"a".repeat(64)}`;
 
-  it("renders an attachment as a link to the blob, with alt text from the dictionary", () => {
+  /** Every blob request the page made: its path and query, and the credential it carried. */
+  function watchBlobs(): { path: string; auth: string | null }[] {
+    const seen: { path: string; auth: string | null }[] = [];
+    server.use(
+      http.get("/api/blobs/:hash", ({ request }) => {
+        const url = new URL(request.url);
+        seen.push({ path: `${url.pathname}${url.search}`, auth: request.headers.get("authorization") });
+        return new HttpResponse(new Uint8Array([1]), { headers: { "content-type": "image/png" } });
+      }),
+    );
+    return seen;
+  }
+
+  // Reads need the pairing token (ADR 0086) and an `<img src>` cannot send it, so the picture is
+  // fetched with the token and drawn from an object URL, link and image alike.
+  it("renders an attachment as a link to the blob, with alt text from the dictionary", async () => {
+    const seen = watchBlobs();
+    setDeviceToken("tok-test-placeholder");
     render(<TranscriptView entries={[turn({ parts: [{ kind: "image", url: BLOB }] })]} />);
-    const img = screen.getByAltText("Attachment");
-    expect(img.closest("a")?.getAttribute("href")).toBe(BLOB);
+    const img = await screen.findByAltText("Attachment");
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
+    expect(img.closest("a")?.getAttribute("href")).toBe(img.getAttribute("src"));
+    expect(seen).toEqual([{ path: BLOB, auth: "Bearer tok-test-placeholder" }]);
   });
 
-  it("carries the host the pane belongs to into the blob URL", () => {
+  it("carries the host the pane belongs to into the blob URL", async () => {
+    const seen = watchBlobs();
     render(
       <TranscriptView
         entries={[turn({ parts: [{ kind: "image", url: BLOB }] })]}
         scope={{ host: "badger" }}
       />,
     );
-    expect(screen.getByAltText("Attachment").closest("a")?.getAttribute("href")).toBe(
-      `${BLOB}?host=badger`,
+    await screen.findByAltText("Attachment");
+    expect(seen.map((r) => r.path)).toEqual([`${BLOB}?host=badger`]);
+  });
+
+  it("draws nothing for a picture the bridge refuses", async () => {
+    let asked = 0;
+    server.use(
+      http.get("/api/blobs/:hash", () => {
+        asked += 1;
+        return new HttpResponse("device not paired", { status: 403 });
+      }),
     );
+    render(<TranscriptView entries={[turn({ parts: [{ kind: "image", url: BLOB }] })]} />);
+    await vi.waitFor(() => expect(asked).toBe(1));
+    expect(screen.queryByAltText("Attachment")).toBeNull();
   });
 
   it("renders a tool result's image under its own alt text, once the call is expanded", async () => {

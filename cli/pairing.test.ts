@@ -202,12 +202,13 @@ describe("collie pair", () => {
 });
 
 describe("collie devices list", () => {
-  test("an empty registry says pairing is not enforced, and points at `pair`", () => {
+  test("an empty registry says nothing is answered, and points at `collie pair` (always on, ADR 0086)", () => {
     const d = deps();
     expect(cmdDevicesList(d)).toBe(EXIT.OK);
     const out = d.io.stdout.join("\n");
     expect(out).toContain("no devices paired");
-    expect(out).toContain("not enforced");
+    expect(out).toContain("always on");
+    expect(out).not.toContain("not enforced");
     expect(out).toContain("collie pair");
   });
 
@@ -280,10 +281,13 @@ describe("collie devices revoke", () => {
     expect(out).toContain("no restart");
   });
 
-  test("revoking the last device says pairing is no longer enforced", () => {
+  test("revoking the last device says Collie now answers nobody, and points at `collie pair`", () => {
     const d = deps(registryFile(device({ label: "pixel" })));
     expect(cmdDevicesRevoke(d, ["pixel"])).toBe(EXIT.OK);
-    expect(d.io.stdout.join("\n")).toContain("no longer enforced");
+    // Always on (ADR 0086): the last device leaving does not open the bridge again.
+    expect(d.io.stdout.join("\n")).not.toContain("no longer enforced");
+    expect(d.io.stdout.join("\n")).toContain("answers no phone or browser");
+    expect(d.io.stdout.join("\n")).toContain("collie pair");
     expect(JSON.parse(d.files.entries.get(REGISTRY)!.text)).toEqual({ devices: [] });
   });
 

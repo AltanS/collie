@@ -7,6 +7,7 @@ import { server } from "@/test/setup";
 import { PairedDevices } from "@/components/paired-devices";
 import { getDeviceToken, markExpired, setDeviceToken, TOKEN_STORAGE_KEY } from "@/lib/pairing";
 import type { DevicesData } from "@/lib/loaders";
+import { loadDraft, saveDraft } from "@/lib/drafts";
 
 // PairedDevices calls useRevalidator() to re-run the settings loader after a pair/revoke, and
 // useLocation() to see whether it is the fragment the read-only strip linked to. Stub both (hoisted
@@ -281,6 +282,93 @@ describe("PairedDevices — revoking", () => {
 
     await waitFor(() => expect(body).toEqual({ label: "old tablet" }));
     expect(getDeviceToken()).toBe("tok-secret");
+  });
+});
+
+// M46 spec 02: the phone asks before it revokes any device, its own or another, and the armed row
+// names the device and what happens. Cancel revokes nothing.
+describe("PairedDevices — revoke confirm", () => {
+  const TWO: DevicesData = {
+    enforced: true,
+    current: "my phone",
+    devices: [
+      { label: "my phone", createdAt: 1_000, lastSeenAt: 2_000, current: true },
+      { label: "old tablet", createdAt: 500, lastSeenAt: 600, current: false },
+    ],
+    error: false,
+  };
+
+  function countRevokes() {
+    const seen = { calls: 0 };
+    server.use(
+      http.post("/api/devices/revoke", () => {
+        seen.calls += 1;
+        return HttpResponse.json({ enforced: true, current: null, devices: [] });
+      }),
+    );
+    return seen;
+  }
+
+  test("revoke confirm: another device's row names it and says it loses access; cancel revokes nothing", async () => {
+    const user = userEvent.setup();
+    setDeviceToken("tok-secret");
+    const seen = countRevokes();
+    render(<PairedDevices data={TWO} />);
+
+    await user.click(screen.getByRole("button", { name: /revoke old tablet/i }));
+    expect(screen.getByText("Revoke old tablet? It loses access until it is paired again.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(screen.queryByText(/loses access/)).not.toBeInTheDocument();
+    expect(seen.calls).toBe(0);
+    expect(getDeviceToken()).toBe("tok-secret");
+  });
+
+  test("revoke confirm: this phone's row says what is cleared and what stays; cancel keeps everything", async () => {
+    const user = userEvent.setup();
+    setDeviceToken("tok-secret");
+    saveDraft(undefined, "w1:p1", "half a reply");
+    const seen = countRevokes();
+    render(<PairedDevices data={TWO} />);
+
+    await user.click(screen.getByRole("button", { name: /revoke my phone/i }));
+    expect(screen.getByText(/drafts, saved pane text and notifications are cleared here/i)).toBeInTheDocument();
+    expect(screen.getByText(/your settings stay/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(seen.calls).toBe(0);
+    expect(getDeviceToken()).toBe("tok-secret");
+    expect(loadDraft(undefined, "w1:p1")).toBe("half a reply");
+  });
+
+  test("revoke confirm: the second tap on this phone revokes, then wipes", async () => {
+    const user = userEvent.setup();
+    setDeviceToken("tok-secret");
+    saveDraft(undefined, "w1:p1", "half a reply");
+    const seen = countRevokes();
+    render(<PairedDevices data={TWO} />);
+
+    await user.click(screen.getByRole("button", { name: /revoke my phone/i }));
+    await user.click(screen.getByRole("button", { name: /unpair this phone/i }));
+
+    await waitFor(() => expect(seen.calls).toBe(1));
+    expect(getDeviceToken()).toBeNull();
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
+  });
+
+  test("revoke confirm: a refused revoke of this phone wipes nothing", async () => {
+    const user = userEvent.setup();
+    setDeviceToken("tok-secret");
+    saveDraft(undefined, "w1:p1", "half a reply");
+    server.use(http.post("/api/devices/revoke", () => new HttpResponse("boom", { status: 500 })));
+    render(<PairedDevices data={TWO} />);
+
+    await user.click(screen.getByRole("button", { name: /revoke my phone/i }));
+    await user.click(screen.getByRole("button", { name: /unpair this phone/i }));
+
+    expect(await screen.findByText(/couldn.t revoke that device/i)).toBeInTheDocument();
+    expect(getDeviceToken()).toBe("tok-secret");
+    expect(loadDraft(undefined, "w1:p1")).toBe("half a reply");
   });
 });
 

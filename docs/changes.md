@@ -203,13 +203,12 @@ open like any other row.
 
 ### Who may use it
 
-- **Files needs an authorised device**, the same check as typing into a pane. The check is on only
-  when a device is paired ([Security](security.md#pair-a-device--the-write-credential)) or
-  `COLLIE_DEVICE_HEADER` is set. Then a device that is not paired, or not on
-  `COLLIE_DEVICE_ALLOWLIST`, cannot open Files.
-- **Until then, every device that can read panes can use Files.** It can browse the workspace's
-  folder and read any file in it, `.env` files included. Pair your phone to close it.
-- Changes stays open to any device that can read, because it shows only what changed.
+- **Files needs an authorised device**, the same check as typing into a pane. A device must be
+  paired ([Security](security.md#pair-a-device--the-write-credential)), and with
+  `COLLIE_DEVICE_HEADER` set it must also be on `COLLIE_DEVICE_ALLOWLIST`.
+- **Every paired device can use Files.** It can browse the workspace's folder and read any file in
+  it, `.env` files included.
+- Changes is open to any paired device, because it shows only what changed.
 
 ### What it shows, and what it never shows
 

@@ -207,12 +207,14 @@ describe("operator fonts stay off the shipped path", () => {
     expect(acceptOperatorFonts([{ family: "X", basename: "a.woff2", weight: "700 400" }])).toEqual([]);
   });
 
-  it("quotes the family and points the src at the api path", () => {
+  // Reads need the pairing token (ADR 0086) and a CSS `url()` cannot send it, so the sheet names the
+  // family only: the face itself is a `FontFace` built from bytes fetched with the token.
+  it("quotes the family, and carries no url() a token could not ride", () => {
     const sheet = operatorFontCss([{ family: "Departure Mono", basename: "d.woff2", weight: "400 700" }], "op:d.woff2");
-    expect(sheet).toContain('font-family: "Departure Mono";');
-    expect(sheet).toContain('src: url("/api/fonts/d.woff2") format("woff2");');
-    expect(sheet).toContain("font-weight: 400 700;");
     expect(sheet).toContain('--font-operator-family: "Departure Mono";');
+    expect(sheet).not.toContain("@font-face");
+    expect(sheet).not.toContain("url(");
+    expect(operatorFontUrl("d.woff2")).toBe("/api/fonts/d.woff2");
   });
 
   // The offline / deleted-row case, and the reason index.css's `var()` carries a fallback: with no
@@ -220,7 +222,7 @@ describe("operator fonts stay off the shipped path", () => {
   it("emits no family property for a choice no row answers to", () => {
     const sheet = operatorFontCss([{ family: "Departure Mono", basename: "d.woff2" }], "op:gone.woff2");
     expect(sheet).not.toContain("--font-operator-family");
-    expect(sheet).toContain('font-family: "Departure Mono";');
+    expect(sheet).toBe("");
     expect(cssRootOperatorStack()).toContain('var(--font-operator-family, "Aldrich")');
   });
 

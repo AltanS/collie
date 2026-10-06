@@ -117,9 +117,7 @@ export const es: Dictionary = {
   // --- settings.devices ---
   "settings.devices.title": "Dispositivos vinculados",
   "settings.devices.description.enforced":
-    "Las operaciones de escritura requieren autenticación. La lectura permanece abierta.",
-  "settings.devices.description.open":
-    "Sin dispositivos vinculados. Las escrituras no requieren autenticación previa.",
+    "Toda lectura y toda escritura requieren un dispositivo vinculado.",
   "settings.devices.pairedAs": "Este dispositivo está vinculado como {device}.",
   "settings.devices.loadError": "Error al consultar los dispositivos vinculados al bridge.",
   "settings.devices.thisDevice": "Este dispositivo",
@@ -133,6 +131,8 @@ export const es: Dictionary = {
   "settings.devices.unpairSelf": "Desvincular este dispositivo",
   "settings.devices.revoke": "Revocar",
   "settings.devices.revokeAria": "Revocar {label}",
+  "settings.devices.confirm.self": "¿Desvincular este dispositivo? Se borran aquí sus borradores, el texto guardado de los paneles y las notificaciones. Tus ajustes se mantienen.",
+  "settings.devices.confirm.other": "¿Revocar {label}? Pierde el acceso hasta que se vincule de nuevo.",
   "settings.devices.pair.title": "Vincular dispositivo",
   "settings.devices.pair.hint":
     "Ejecuta {command} en el host, luego escanea el código que muestra o escríbelo aquí.",

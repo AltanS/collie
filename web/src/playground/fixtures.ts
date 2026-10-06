@@ -892,9 +892,9 @@ export const deviceRefused: DeviceAuth = {
   authorized: false,
 };
 
-/** Nothing paired: writes are ungated, exactly as on a fresh install. */
+/** Nothing paired, exactly as on a fresh install. Pairing is always on (ADR 0086). */
 export const devicesUnpaired: DevicesData = {
-  enforced: false,
+  enforced: true,
   current: null,
   devices: [],
   error: false,

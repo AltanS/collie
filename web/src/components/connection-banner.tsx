@@ -27,6 +27,7 @@ import { writeRefusal } from "@/lib/host-health";
 import * as api from "@/lib/api";
 import type { BridgeStatus } from "@/lib/types";
 import { mounted } from "@/lib/base-path";
+import { usePairing } from "@/lib/pairing";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -76,7 +77,11 @@ export const GREEN_MS = 1_800;
 // `DEGRADED` (`lib/strip-priority.ts`). Green is not a fifth level — it is this same fact, resolved,
 // and it outranks the update offer for the second it stands for exactly the reason amber does.
 export function ConnectionBanner({ bridge, host, error, authError, lastSeenAt }: ConnectionBannerProps) {
+  const { refused: notPaired } = usePairing();
   if (authError) return <AuthErrorBanner />;
+  // Refused for want of pairing (ADR 0086: reads need the token). The bridge answered, so this is not
+  // an outage, and the pairing strip on the route names the remedy. No connection strip at all.
+  if (notPaired && error) return null;
   return <ConnectionStateBanner bridge={bridge} host={host} error={error} lastSeenAt={lastSeenAt} />;
 }
 

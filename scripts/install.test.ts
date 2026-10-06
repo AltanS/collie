@@ -435,6 +435,8 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     expect(r.out).toContain("nothing is running yet");
     expect(r.out).toContain("COLLIE_MUX");
     expect(r.out).toContain("collie start");
+    // Pairing is always on (ADR 0086): the install names `collie pair` as a step of its own.
+    expect(r.out).toContain("collie pair");
     expect(r.out).toContain("docs/security.md");
   });
 

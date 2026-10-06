@@ -21,6 +21,7 @@ import {
   fetchPane,
   fetchSnapshot,
   isApiErrorStatus,
+  isPairingRefusal,
 } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { noteUpdateRun } from "./self-update";
@@ -29,7 +30,6 @@ import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
 import { isLostLatched } from "@/lib/connection-health";
 import { ambientSpaces } from "@/lib/hosts";
 import {
-  dropLastPaneText,
   loadLastPaneText,
   loadLastSnapshot,
   saveLastPaneText,
@@ -39,7 +39,8 @@ import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { markPollResult } from "@/lib/poll-intent";
 import { shareEqual } from "@/lib/share-equal";
 import { prefetchPane, takePanePrefetch } from "@/lib/pane-prefetch";
-import { clearNotPaired, markExpired, markNotPaired } from "@/lib/pairing";
+import { clearNotPaired, markNotPaired } from "@/lib/pairing";
+import { pairingRefused, wipeDevice } from "@/lib/wipe";
 import {
   internScope,
   paneScopeKey,
@@ -196,7 +197,11 @@ function hasAuthError(scope: Scope): boolean {
   return authErrorScopes.has(scopeKey(scope));
 }
 
+// A fronting proxy's refusal, which the Sign-in strip answers. The bridge's own pairing refusal is a
+// 403 too, but its remedy is the pair screen, not the proxy (ADR 0086): reads need the token, so a cold
+// open on an unpaired phone refuses the FIRST snapshot, and that must read as "pair this device".
 function isAuthError<TThrown>(error: TThrown): boolean {
+  if (isPairingRefusal(error)) return false;
   return isApiErrorStatus(error, 401) || isApiErrorStatus(error, 403);
 }
 
@@ -276,12 +281,12 @@ function toHomeData(
 // offline" — both are "stale-but-present, flagged").
 //
 // Two tiers, in this order: the module cache (this page's own last good fetch), then the write-through
-// sessionStorage cache (lib/last-seen.ts). The second tier is what a COLD boot reads — a discarded and
-// restored PWA has an empty module cache and a failing first fetch, and without it the operator gets an
-// empty herd instead of the screen they left. A restored snapshot is promoted into the module cache so
+// on-device store (lib/last-seen.ts over lib/store.ts). The second tier is what a COLD boot reads — a
+// killed or discarded PWA has an empty module cache and a failing first fetch, and without it the
+// operator gets an empty herd instead of the screen they left. A restored snapshot is promoted into the module cache so
 // the rest of this page session behaves exactly as if we had fetched it.
-function staleHome(scope: Scope, viewAll: boolean): HomeData {
-  const restored = loadLastSnapshot(scope, viewAll);
+async function staleHome(scope: Scope, viewAll: boolean): Promise<HomeData> {
+  const restored = await loadLastSnapshot(scope, viewAll);
   const cached = lastSnapshot.get(snapshotKey(scope, viewAll)) ?? restored?.value;
   if (cached) {
     lastSnapshot.set(snapshotKey(scope, viewAll), cached);
@@ -416,11 +421,11 @@ export function resetRequestedLines(paneId?: string, scope?: Scope): void {
 // truncated cleared, revision 0 (the prompt-select guard rejects a 0-revision mismatch anyway). Shared
 // by the failed-refresh catch and the offline navigation fast path, so both return the same shape.
 //
-// Same two tiers as staleHome: the module cache, then the write-through sessionStorage mirror that
+// Same two tiers as staleHome: the module cache, then the write-through on-device mirror that
 // survives the page being discarded. A restored mirror is promoted into the module cache.
-function stalePane(paneId: string, scope: Scope, lines: number): PaneData {
+async function stalePane(paneId: string, scope: Scope, lines: number): Promise<PaneData> {
   const key = paneKey(paneId, scope);
-  const restored = loadLastPaneText(scope, paneId);
+  const restored = await loadLastPaneText(scope, paneId);
   const text = lastPaneText.get(key) ?? restored?.value ?? "";
   if (text) rememberPaneText(key, text);
   return {
@@ -519,7 +524,9 @@ export async function paneLoader({
     markPollResult(read.notModified !== true && text !== lastPaneText.get(key));
     rememberPaneText(key, text);
     // Write-through, EXCEPT while the pane is asking for a secret — see holdsNoEchoPrompt (ADR 0017).
-    if (holdsNoEchoPrompt(text)) dropLastPaneText(scope, paneId);
+    // The drop is the wipe's session-text subset for this one pane (lib/wipe.ts, M46 spec 02): its
+    // stored mirror and its draft, never the token.
+    if (holdsNoEchoPrompt(text)) void wipeDevice("password", { scope, paneId });
     else saveLastPaneText(scope, paneId, text);
     rememberAuthError(scope, false);
     return {
@@ -571,13 +578,19 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
     // This read is the ONLY thing that can positively clear (or set) the refusal latch without a
     // write: it is the one endpoint that reports back who our token authenticated as. Enforcement
     // off means there is nothing to be unpaired from.
+    // An expired token ends the pairing here as a 403 would, so it goes through the wipe. A token
+    // that authenticates as nobody only latches: the wipe waits for the bridge's exact 403 body.
     if (!res.enforced || res.current !== null) clearNotPaired();
-    else if (res.currentExpired === true) markExpired();
+    else if (res.currentExpired === true) pairingRefused("expired");
     else markNotPaired();
     return { enforced: res.enforced, current: res.current, devices: res.devices, error: false };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
-    // A failed read says nothing about pairing, so the latch is left exactly as it was.
+    // Reads need the token (ADR 0086), so an unpaired device is refused this very read. That is an
+    // answer, not a failure: pairing is on and this device is not in it, and the card then offers the
+    // pair form. The latch was already set where the refusal was read (lib/api.ts).
+    if (isPairingRefusal(e)) return { enforced: true, current: null, devices: [], error: false };
+    // Any other failed read says nothing about pairing, so the latch is left exactly as it was.
     return { enforced: false, current: null, devices: [], error: true };
   }
 }

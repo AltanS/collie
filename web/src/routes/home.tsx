@@ -251,6 +251,7 @@ export function HomeRoute() {
               glideKeyOf={paneOpen.glideKeyOf}
               onPress={paneOpen.press}
               error={data.error}
+              notPaired={notPaired}
               lastSeenAt={data.lastSeenAt}
               tabs={data.tabs}
               servers={data.servers}

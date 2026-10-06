@@ -755,6 +755,10 @@ export const handlers = [
     HttpResponse.json({ alerts: await request.json() }),
   ),
   http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
+  // The token-bearing subresources (lib/authed-url.ts, ADR 0086): a picture's bytes and the mark's.
+  // Any bytes do; the page draws them from an object URL the test setup stubs.
+  http.get("/api/blobs/:hash", () => new HttpResponse(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { headers: { "content-type": "image/png" } })),
+  http.get("/api/mux/logo.svg", () => new HttpResponse("<svg/>", { headers: { "content-type": "image/svg+xml" } })),
   // Default world: no `launchers.toml`. Session-scoped (server.ts), so a test that wants rows
   // overrides this with its own `/api/launchers` handler rather than adding a field to `/api/config`.
   http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "" })),
@@ -788,14 +792,14 @@ export const handlers = [
   }),
   http.get("/api/notifications/cache-watch/list", () => HttpResponse.json({ entries: [] })),
   http.post("/api/notifications/cache-watch/forget", () => HttpResponse.json({ entries: [] })),
-  // Device pairing. The default world has NOTHING paired — writes are ungated, exactly like a
-  // fresh install — so every pre-existing test keeps asserting the unpaired-and-unenforced bridge,
-  // and a test that wants pairing on overrides these two.
+  // Device pairing. The default world has NOTHING paired, exactly like a fresh install, and pairing
+  // is always on (ADR 0086), so `enforced` is true. The other routes here answer without a token for
+  // the tests' convenience; a test that wants the refusal overrides the route with a 403.
   http.get("/api/devices", () =>
-    HttpResponse.json({ enforced: false, current: null, devices: [] }),
+    HttpResponse.json({ enforced: true, current: null, devices: [] }),
   ),
   http.post("/api/devices/revoke", () =>
-    HttpResponse.json({ enforced: false, current: null, devices: [] }),
+    HttpResponse.json({ enforced: true, current: null, devices: [] }),
   ),
   http.post("/api/pair", () =>
     HttpResponse.json({ error: "no-pending" }, { status: 400 }),

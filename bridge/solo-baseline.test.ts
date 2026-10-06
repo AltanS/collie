@@ -626,6 +626,10 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/workspace\\/([^/]+)\\/files$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
+      // Default closed (ADR 0086): an `/api/*` path no route claims passes the read gate, pairing
+      // included, and then answers 404 instead of the SPA's app shell. Not a route of its own, and it
+      // registers nothing on the crew link.
+      "/api/*",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
       // is, and the only route this feature adds. Not forwarded across the crew link.
       "/api/cache-rules",

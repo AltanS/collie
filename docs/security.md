@@ -10,12 +10,16 @@ the tool. Treat the URL as a root login.
 
 ## Pair a device — the write credential
 
+Since 1.18.0 this is the credential for every request, reads included, not for writes alone.
+
 ```bash
 # on the host — prints an 8-character code and a QR code, good for 10 minutes
 bin/collie pair
 ```
 
-This closes only the write path; the [risk model](#risk-model) below covers what it leaves open.
+Pairing is always on, and reads need the pairing token as well as writes. Until a device is
+paired, Collie answers every phone and browser with `403 device not paired`. Run `collie pair`
+first, on the host, before you open Collie on the phone.
 
 Open Collie on the phone, go to **Settings** → **Paired devices**, and enter the code with a label
 for the device, or scan the QR code printed by the command to open directly to that screen with
@@ -33,18 +37,25 @@ The two device gates answer different questions, and you can run either, both, o
 Pairing requires no extra infrastructure. It fits a direct `tailscale serve` setup where no proxy
 exists to inject headers.
 
-Both options gate write access, and one read: the [Files view](changes.md#files), which can show
-every file under a workspace's folder. Every other read remains open to anything that passes the
-same-origin check.
+Pairing gates every `/api` route, reads included. Only two routes stay open: `/api/health`, which
+a monitor or a load balancer asks, and `/api/pair`, which a device needs before it holds a token.
+The device header gates writes and one read, the [Files view](changes.md#files), which can show
+every file under a workspace's folder
+([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)).
 
 ```bash
 bin/collie devices list             # what holds a credential, and when each was last seen
 bin/collie devices revoke old-phone # effective immediately, no restart
 ```
 
-The write gate is active only while at least one device is paired. No device is paired until you
-run `collie pair`, so until then read and write operations function as before. Pair your current
-phone first. Revoking the final device disables the gate again to prevent lockouts.
+A fresh install has no paired device, so Collie answers no phone until you run `collie pair`.
+Revoking the final device does not open Collie again: every device then gets
+`device not paired`. To recover, run `collie pair` on the host and pair the phone again.
+`collie doctor` warns while no device is paired.
+
+> **Note.** The crew link and the standby door keep their own credentials. A lead forwards a read
+> to a member over pinned mutual TLS and the crew secret, so a member needs no paired device of its
+> own ([crew](crew.md)).
 
 Five failed code attempts invalidate the code, which requires running `collie pair` again. On top of
 that, the bridge refuses more than ten pairing attempts per source address per minute with `429` and
@@ -64,15 +75,49 @@ bin/collie devices clear-expiry pixel     # no expiry again
 
 The lifetime counts from the moment the phone claims the code. Without `--expires`, a token never
 expires, exactly as before, and no existing token changes. After the expiry, the bridge refuses the
-token with `device expired` instead of `device not paired`. The phone then drops the token and shows
-**Pair again** in Settings, so run `collie pair` for a new code. `collie devices list` and the
-Settings screen show each device's expiry. An expired device stays in the list, and it still keeps
-pairing on, until you revoke it or give it a new expiry with `set-expiry`. A crew deputy's standby
-door refuses an expired token too.
+token with `device expired` instead of `device not paired`. The phone then
+[clears what the pairing left](#what-unpair-clears-on-the-phone) and shows **Pair again** in
+Settings, so run `collie pair` for a new code. `collie devices list` and the Settings screen show
+each device's expiry. An expired device stays in the list until you revoke it or give it a new
+expiry with `set-expiry`. A crew deputy's standby door refuses an expired token too.
 
 On a host running multiple instances, prefix commands with `COLLIE_INSTANCE=<name>` and open that
 specific instance URL on the phone
 ([Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host)).
+
+### What unpair clears on the phone
+
+When a pairing ends, the phone deletes what Collie stored under it. This happens when you unpair the
+phone from Settings, and when the bridge refuses its token with `device not paired` or `device expired`.
+
+The phone deletes the token, every unsent draft, the saved pane text and herd, the push subscription,
+and Collie's caches except the app shell. Your settings stay: theme, language, pins and other
+preferences hold no session text. Settings asks you to confirm before it revokes any device.
+
+The bridge also sends `Clear-Site-Data: "storage"` with those two refusals, as a backup. A browser
+that honours it clears all of Collie's storage, settings included. Browsers honour it only over
+HTTPS, so the phone does its own wipe and does not depend on the header.
+
+### What the phone keeps
+
+The phone keeps a small, bounded copy of what it last saw, so a cold open can show it while the
+bridge is out of reach. Every item below has a size bound and a lifetime.
+
+| What | Where | How long | At unpair |
+| --- | --- | --- | --- |
+| Pairing token | localStorage | until unpair, revoke or expiry | deleted |
+| Settings: theme, language, pins | localStorage | until you change them | kept |
+| Unsent drafts | localStorage | 48 hours | deleted |
+| Push endpoint | localStorage | until it changes | deleted |
+| App shell | Cache Storage | until the next build | kept |
+| Fonts and push titles | Cache Storage | until replaced | deleted |
+| Herd and pane text, as last seen | IndexedDB `collie-store` | 24 hours | deleted |
+
+The last row is the on-device store. It holds only text the bridge already
+[masked](#what-leaves-the-machine-is-masked), at most 256 KiB per pane and 10 MiB in all, and it
+drops the oldest entries first. When a pane asks for a password, the phone drops that pane's
+entries. Nothing in the store can send a key or a reply. The deletions at unpair are the ones in
+[What unpair clears on the phone](#what-unpair-clears-on-the-phone).
 
 ## Risk model
 
@@ -82,23 +127,22 @@ Key security boundaries and risks:
   `~/.ssh`, `git push --force`, `rm -rf`, and `sudo`.
 - **Authentication identifies devices, not humans.** Tailscale verifies the hardware endpoint rather
   than the user holding it. There are no passwords or user sessions; an unlocked or stolen phone
-  provides an open shell. You can mitigate this by pairing the device
-  ([above](#pair-a-device--the-write-credential)). The built-in idle lock merely blanks an
-  unattended screen and provides no actual security boundary
+  provides an open shell. Pairing ties access to a credential on the device
+  ([above](#pair-a-device--the-write-credential)), so revoke a lost phone at once. The built-in
+  idle lock merely blanks an unattended screen and provides no actual security boundary
   ([ADR 0007](../.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
 - **All local system users can reach the port.** Standard terminal multiplexer sockets (`tmux`,
   `zellij`, `herdr`) use filesystem permissions to restrict access to other local users. Collie
-  listens on a local TCP port, which exposes it to every local UID. Pairing or the per-device gate
-  restricts write access, but read operations remain accessible to all local users. This limits
-  execution risks but does not prevent data disclosure
+  listens on a local TCP port, which exposes it to every local UID. Reads need the pairing token,
+  so another local user who holds no token reads nothing but `/api/health`. The token is the
+  boundary: a local user who can read your browser profile can read the token too
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
 - **The Files view reads files off your disk.** It shows any file under a workspace's folder, except
   a `.git` folder, Collie's own state and config folders, and files named like a Collie state
   secret. So it asks for an authorised device, like a write
   ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)).
-- **Files is gated only when a device is paired or `COLLIE_DEVICE_HEADER` is set.** Until then,
-  every device that can read panes can browse and read files under the workspace's folder, `.env`
-  files included. Pair your phone to close it.
+- **Every paired device can read files under the workspace's folder.** That includes `.env`
+  files. Pair only the devices you trust with the shell itself.
 - **Credential files under a workspace's folder are readable.** A workspace opened in `~/.claude`,
   `~/.codex`, `~/.config/gh` or `~/.ssh` shows what is there. So does the `.env` of a second Collie
   whose config folder sits under the workspace. A hard link inside the folder to a file outside it is

@@ -339,15 +339,21 @@ describe("bearerToken", () => {
 });
 
 describe("PairingStore", () => {
-  test("an empty registry means pairing is not enforced", () => {
+  // M46 spec 03 (ADR 0086): pairing is always on. An empty registry is a bridge waiting for its
+  // first device, not an open one.
+  test("always on: an empty registry is enforced", () => {
     const { io } = memoryIo();
-    expect(new PairingStore(io).enforced()).toBe(false);
+    const store = new PairingStore(io);
+    expect(store.enforced()).toBe(true);
+    // Nothing paired means no token resolves, so every gated route refuses.
+    expect(store.resolve(null)).toBeNull();
+    expect(store.resolve("anything")).toBeNull();
   });
 
-  test("one paired device turns enforcement on for every device", async () => {
+  test("always on: enforcement does not change when the first device pairs", async () => {
     const { io } = memoryIo({ pending: newPending("ABCD2345", 0) });
     const store = new PairingStore(io, () => 1000);
-    expect(store.enforced()).toBe(false);
+    expect(store.enforced()).toBe(true);
     const claimed = await store.claim("ABCD2345", "phone");
     expect(claimed.ok).toBe(true);
     expect(store.enforced()).toBe(true);
@@ -441,8 +447,9 @@ describe("PairingStore", () => {
     if (!claimed.ok) throw new Error("claim failed");
     expect(await store.revoke("phone")).toBe(true);
     expect(store.resolve(claimed.token)).toBeNull();
-    // …and with the last device gone, pairing switches back off rather than locking everyone out.
-    expect(store.enforced()).toBe(false);
+    // …and with the last device gone, pairing stays on (always on, ADR 0086): no state of the
+    // registry opens the bridge again. `collie pair` on the host is the way back in.
+    expect(store.enforced()).toBe(true);
     expect(await store.revoke("phone")).toBe(false);
   });
 
@@ -816,7 +823,8 @@ describe("filePairingIo", () => {
     expect(store.resolve("t")?.label).toBe("phone");
     // `bin/collie devices revoke phone` — a different process, no restart.
     await writeFile(join(stateDir, DEVICES_FILENAME), JSON.stringify({ devices: [] }));
-    expect(store.enforced()).toBe(false);
+    // Always on: the emptied registry does not open the bridge (ADR 0086).
+    expect(store.enforced()).toBe(true);
     expect(store.resolve("t")).toBeNull();
   });
 });

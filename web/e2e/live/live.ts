@@ -10,12 +10,15 @@
 // who left the dev lane's browser in German must not turn this suite red, so every context writes
 // the bare string `en` before the app boots.
 //
-// NOTHING HERE PAIRS. No device token is written, no `Authorization` header is sent, and no case
-// below performs a write. Reads are ungated on both device gates (collie/CLAUDE.md), so a plain
-// browser sees everything these cases assert.
+// THE RUN IS A PAIRED DEVICE. Reads need the pairing token (ADR 0086), so `pair.ts` (the global
+// setup) leaves one in the environment, every page starts with it in `localStorage` where the app
+// reads it (`src/lib/pairing.ts`), and the `request` fixture sends it as a bearer header. No case
+// below performs a write.
 import { expect, test as base, type APIRequestContext } from "@playwright/test";
 
 import { en } from "../../src/lib/i18n/messages/en";
+import { TOKEN_STORAGE_KEY } from "../../src/lib/pairing";
+import { TOKEN_ENV } from "./pair";
 
 /** The storage key `src/lib/i18n/index.ts` reads the locale from. The value is the bare code. */
 const LOCALE_STORAGE_KEY = "collie:locale:v1";
@@ -29,15 +32,31 @@ const LOCALE_STORAGE_KEY = "collie:locale:v1";
  */
 const dictionary: Record<string, string> = en;
 
+/** The token `pair.ts` left for the run. It throws there when there is none, so this is set. */
+function deviceToken(): string {
+  return process.env[TOKEN_ENV] ?? "";
+}
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     await page.addInitScript(
-      ([key, value]) => {
-        window.localStorage.setItem(key, value);
+      ([localeKey, locale, tokenKey, token]) => {
+        window.localStorage.setItem(localeKey, locale);
+        window.localStorage.setItem(tokenKey, token);
       },
-      [LOCALE_STORAGE_KEY, "en"],
+      [LOCALE_STORAGE_KEY, "en", TOKEN_STORAGE_KEY, deviceToken()],
     );
     await use(page);
+  },
+  // Only the API context carries the header. The page does not, so a read the app forgets to
+  // authorise still fails here as it would on a phone.
+  request: async ({ playwright, baseURL }, use) => {
+    const context = await playwright.request.newContext({
+      baseURL,
+      extraHTTPHeaders: { authorization: `Bearer ${deviceToken()}` },
+    });
+    await use(context);
+    await context.dispose();
   },
 });
 

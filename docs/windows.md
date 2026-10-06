@@ -108,8 +108,7 @@ the installer script before you run it, see [Install](#install).
    ```
 
 6. Give the phone a way in with [Reaching it from your phone](#reaching-it-from-your-phone), which
-   the project ran over HTTP only on Windows. Before its `tailscale serve` command only this PC can
-   reach Collie, and after it every device on your tailnet can, until you pair.
+   the project ran over HTTP only on Windows. Collie answers no device until you pair one.
 
 7. On the phone, type that address into the browser, or send it to yourself, then add Collie to the
    home screen, as shown in [Open it on your phone](#open-it-on-your-phone).
@@ -205,11 +204,9 @@ The project ran them once on Windows, over HTTP, on a Headscale tailnet (Headsca
 Tailscale server), with a desktop browser at phone size. The HTTPS form below was not run, and no
 real phone or agent was used. If a step fails, report it ([where](#when-something-breaks)).
 
-> **Caution.** From the `tailscale serve` command (step 3 below) until you pair a device, Collie is
-> open to every device on your tailnet, and they can read and type into your panes. Before that
-> command, only this PC can reach Collie. Do the phone steps and `collie pair` right after. If other
-> people share your tailnet, pair at once, and read [Security](security.md) on how to limit who may
-> reach Collie.
+> **Note.** After the `tailscale serve` command (step 3 below), every device on your tailnet can
+> reach Collie, but it answers each one `device not paired` until you run `collie pair` and enter
+> the code on the phone. Read [Security](security.md) on how to limit who may reach Collie.
 
 1. Install Tailscale on the PC and on the phone, and sign in to the same account on both:
    [tailscale.com/download](https://tailscale.com/download).

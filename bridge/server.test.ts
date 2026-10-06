@@ -96,6 +96,8 @@ import {
   type MuxTabRequest,
 } from "./mux/types.ts";
 import { muxCaps, neverProxy } from "./crew/fixtures.ts";
+import { forwardHeaders } from "./crew/forward.ts";
+import { crewDeviceOf, crewGate } from "./crew/peer-gate.ts";
 import { CrewLead } from "./crew/lead.ts";
 import { NARROW_PLAN, snapshotPlan } from "./crew/merge.ts";
 import { CrewRegistry, selectHostFrom } from "./crew/registry.ts";
@@ -1323,9 +1325,10 @@ describe("guard applies the device gate to writes only", () => {
 
 // ── Device pairing composed into the write gate (bridge/pairing.ts) ────────────────────────────
 // The pairing module is exhaustively covered in bridge/pairing.test.ts. What is pinned HERE is the
-// wiring — which is where a security feature actually lives: that an empty registry changes nothing,
-// that a non-empty one gates writes and not reads, that the two device gates compose by AND rather
-// than either replacing the other, and that attribution prefers the label.
+// wiring — which is where a security feature actually lives: that pairing is always on, so an empty
+// registry refuses reads and writes alike; that a read needs the token as much as a write does
+// (ADR 0086); that the two device gates compose by AND rather than either replacing the other; and
+// that attribution prefers the label.
 describe("guard — the pairing gate composes with the header gate", () => {
   const HDR = "x-device-id";
   /** A minimal PairingGate: `labels` are the paired tokens, keyed by token. */
@@ -1342,9 +1345,11 @@ describe("guard — the pairing gate composes with the header gate", () => {
   const read = (c: Config, headers: Record<string, string>, gate?: PairingGate) =>
     guard(req({ host: "collie.ts.net", ...headers }), c, "read", gate);
 
-  test("an empty registry enforces nothing — the feature is off until something is paired", () => {
-    expect(write(cfg(), {}, nothingPaired)).toBeNull();
-    // …and so is passing no gate at all, which is what every pre-pairing call site did.
+  test("empty registry: a read and a write are both refused as unpaired (always on, ADR 0086)", async () => {
+    expect(await write(cfg(), {}, nothingPaired)!.text()).toBe("device not paired");
+    expect(await read(cfg(), {}, nothingPaired)!.text()).toBe("device not paired");
+    expect(read(cfg(), { authorization: "Bearer anything" }, nothingPaired)!.status).toBe(403);
+    // Passing no gate at all is a server built without a store — a unit test's, never index.ts's.
     expect(write(cfg(), {})).toBeNull();
   });
 
@@ -1366,9 +1371,24 @@ describe("guard — the pairing gate composes with the header gate", () => {
     expect(write(cfg(), { authorization: "bearer  tok-phone " }, paired)).toBeNull();
   });
 
-  test("reads are unaffected — parity with the header gate, which is also write-only", () => {
-    expect(read(cfg(), {}, paired)).toBeNull();
-    expect(read(cfg(), { authorization: "Bearer wrong" }, paired)).toBeNull();
+  test("read: refused without a token or with a wrong one, and passes with a valid one (ADR 0086)", async () => {
+    const unpaired = read(cfg(), {}, paired)!;
+    expect(unpaired.status).toBe(403);
+    expect(await unpaired.text()).toBe("device not paired");
+    expect(await read(cfg(), { authorization: "Bearer wrong" }, paired)!.text()).toBe("device not paired");
+    // …with no Origin at all: a browser sends none on a same-origin GET.
+    expect(read(cfg(), { authorization: "Bearer tok-phone" }, paired)).toBeNull();
+  });
+
+  test("read: the header gate stays write-only, so an unlisted device with a token still reads", () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    expect(read(c, { [HDR]: "tablet", authorization: "Bearer tok-phone" }, paired)).toBeNull();
+    expect(read(c, { authorization: "Bearer tok-phone" }, paired)).toBeNull();
+  });
+
+  test("read: an access refusal still comes first, so a cross-origin read names the origin", async () => {
+    const denied = read(cfg(), { origin: "https://evil.example" }, paired)!;
+    expect(await denied.text()).toBe("cross-origin rejected");
   });
 
   // The Files view (ADR 0083): a read that needs the write level's device factors, both of them,
@@ -1382,8 +1402,8 @@ describe("guard — the pairing gate composes with the header gate", () => {
     expect(await denied!.text()).toBe("device not paired");
     expect(deviceRead(cfg(), { authorization: "Bearer wrong" }, paired)!.status).toBe(403);
     expect(deviceRead(cfg(), { authorization: "Bearer tok-phone" }, paired)).toBeNull();
-    // Nothing paired and no header gate: open, like a write is.
-    expect(deviceRead(cfg(), {}, nothingPaired)).toBeNull();
+    // Nothing paired and no header gate: refused, like a write and a read are (always on).
+    expect(await deviceRead(cfg(), {}, nothingPaired)!.text()).toBe("device not paired");
   });
 
   test("device-read: the header gate refuses an unlisted or absent device", async () => {
@@ -1439,14 +1459,16 @@ describe("guard — the pairing gate composes with the header gate", () => {
     expect(await write(cfg(), { authorization: "Bearer nope" }, store)!.text()).toBe("device not paired");
     expect(await write(cfg(), {}, store)!.text()).toBe("device not paired");
     expect(write(cfg(), { authorization: "Bearer tok-phone" }, store)).toBeNull();
-    // Reads stay open, as for every other refusal.
-    expect(read(cfg(), { authorization: "Bearer tok-old" }, store)).toBeNull();
+    // A read is refused the same way (ADR 0086): an expired token reads nothing either.
+    expect(await read(cfg(), { authorization: "Bearer tok-old" }, store)!.text()).toBe("device expired");
+    expect(read(cfg(), { authorization: "Bearer tok-phone" }, store)).toBeNull();
   });
 
-  test("the header gate is untouched when nothing is paired", async () => {
+  test("with nothing paired the header gate still answers first, and pairing then refuses", async () => {
     const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
     expect((await write(c, {}, nothingPaired)!.text())).toBe("device not authorised");
-    expect(write(c, { "x-device-id": "phone" }, nothingPaired)).toBeNull();
+    // An allowlisted header is no longer enough on its own: there is no "off until paired" state.
+    expect(await write(c, { "x-device-id": "phone" }, nothingPaired)!.text()).toBe("device not paired");
   });
 
   test("the same-origin gate still runs first — a token is no substitute for an Origin", () => {
@@ -1461,6 +1483,53 @@ describe("guard — the pairing gate composes with the header gate", () => {
   });
 });
 
+// M46 spec 02: the two pairing refusals tell the browser to wipe Collie's storage, but only when the
+// request carried a token, i.e. a credential that was once this browser's own. Every other 403 says
+// nothing, because a proxy refusal or a cross-origin request ends no pairing.
+describe("guard — Clear-Site-Data on the pairing refusals", () => {
+  const HDR = "x-device-id";
+  const CLEAR = "clear-site-data";
+  const paired = {
+    enforced: () => true,
+    resolve: (token: string | null) => (token === "tok-phone" ? { label: "phone" } : null),
+    expired: (token: string | null) => token === "tok-old",
+  };
+  const write = (c: Config, headers: Record<string, string>, gate?: PairingGate) =>
+    guard(req({ host: "collie.ts.net", origin: "https://collie.ts.net", ...headers }), c, "write", gate);
+
+  test("Clear-Site-Data rides a \"device not paired\" refusal of a bearer token", async () => {
+    const denied = write(cfg(), { authorization: "Bearer revoked" }, paired)!;
+    expect(await denied.text()).toBe("device not paired");
+    expect(denied.headers.get(CLEAR)).toBe('"storage"');
+  });
+
+  test("Clear-Site-Data rides a \"device expired\" refusal", async () => {
+    const denied = write(cfg(), { authorization: "Bearer tok-old" }, paired)!;
+    expect(await denied.text()).toBe("device expired");
+    expect(denied.headers.get(CLEAR)).toBe('"storage"');
+  });
+
+  test("Clear-Site-Data is absent when the refused request carried no token", async () => {
+    const denied = write(cfg(), {}, paired)!;
+    expect(await denied.text()).toBe("device not paired");
+    expect(denied.headers.get(CLEAR)).toBeNull();
+    // A malformed Authorization is not a bearer token either.
+    expect(write(cfg(), { authorization: "Basic tok-phone" }, paired)!.headers.get(CLEAR)).toBeNull();
+  });
+
+  test("Clear-Site-Data is absent on every other 403, token or not", async () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    const notAuthorised = write(c, { authorization: "Bearer revoked" }, paired)!;
+    expect(await notAuthorised.text()).toBe("device not authorised");
+    expect(notAuthorised.headers.get(CLEAR)).toBeNull();
+    const crossOrigin = write(cfg(), { origin: "https://evil.example", authorization: "Bearer revoked" }, paired)!;
+    expect(crossOrigin.status).toBe(403);
+    expect(crossOrigin.headers.get(CLEAR)).toBeNull();
+    // And a token that passes gets no response at all.
+    expect(write(cfg(), { authorization: "Bearer tok-phone" }, paired)).toBeNull();
+  });
+});
+
 describe("requestDevice — attribution across both gates", () => {
   const HDR = "x-device-id";
   const gateOf = (tokens: Record<string, string>) => ({
@@ -1470,12 +1539,17 @@ describe("requestDevice — attribution across both gates", () => {
   });
   const paired = gateOf({ "tok-phone": "phone" });
 
-  test("with nothing paired it is exactly deviceAuth — an unpaired deployment sees no change", () => {
+  test("with no store it is exactly deviceAuth; with an empty registry it is enforced and unauthorised", () => {
     for (const c of [cfg(), cfg({ deviceHeader: HDR, deviceAllowlist: ["desk"] })]) {
       const cases: Record<string, string>[] = [{ host: "h" }, { host: "h", "x-device-id": "desk" }];
       for (const headers of cases) {
-        expect(requestDevice(req(headers), c, gateOf({}))).toEqual(deviceAuth(req(headers), c));
         expect(requestDevice(req(headers), c)).toEqual(deviceAuth(req(headers), c));
+        // Always on (ADR 0086): an empty registry reports enforcement and authorises nobody.
+        expect(requestDevice(req(headers), c, gateOf({}))).toEqual({
+          enforced: true,
+          device: deviceAuth(req(headers), c).device,
+          authorized: false,
+        });
       }
     }
   });
@@ -1514,6 +1588,108 @@ describe("requestDevice — attribution across both gates", () => {
     expect(
       requestDevice(req({ host: "h", "x-device-id": "intruder", authorization: "Bearer tok-phone" }), c, paired),
     ).toEqual({ enforced: true, device: "phone", authorized: false });
+  });
+});
+
+// ── Open routes (M46 specs 03 and 06, ADR 0086) ─────────────────────────────────────────────
+// Reads need the pairing token, and pairing is always on. The open-route list is short and named:
+// `/api/health` and `/api/pair`. The crew surface (`/crew/v1/*`) and the standby door have their own
+// admission and never reach `guard`. `bun test` cannot stand up `Bun.serve` (CLAUDE.md), so the
+// route table is read from the source, the way `solo-baseline.test.ts` pins it: every block that
+// claims an `/api` path must ask a gate before it answers, except the two named here.
+describe("open routes — every /api route but health and pair asks the pairing gate", () => {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+  const SITE =
+    /^(\s*)(?:if \(|const \w+Match = )pathname(?: === ("\/api\/[^"]+"|MUX_LOGO_PATH)|\.startsWith\((OPERATOR_FONTS_PATH|"\/api\/")\)|\.match\((\w+_ROUTE)\))/;
+  const GATE = /guard\(req, cfg|caller\.gate\(|browserGate\(/;
+
+  /** Every route block in server.ts: the route's name and whether its body asks a gate. */
+  function routeBlocks(): { route: string; gated: boolean }[] {
+    const out: { route: string; gated: boolean }[] = [];
+    let offset = 0;
+    for (const line of src.split("\n")) {
+      const m = SITE.exec(line);
+      if (m !== null) {
+        const end = src.indexOf(`\n${m[1]}}\n`, offset);
+        const block = src.slice(offset, end);
+        out.push({ route: m[2] ?? m[3] ?? m[4]!, gated: GATE.test(block) });
+      }
+      offset += line.length + 1;
+    }
+    return out;
+  }
+
+  test("open routes: only /api/health and /api/pair answer without asking a gate", () => {
+    const blocks = routeBlocks();
+    // The scan found the table, not a handful of lines: the pane family, the blobs, the snapshot.
+    expect(blocks.length).toBeGreaterThan(30);
+    expect(blocks.map((b) => b.route)).toContain("BLOB_ROUTE");
+    expect(blocks.map((b) => b.route)).toContain('"/api/snapshot"');
+    expect(blocks.filter((b) => !b.gated).map((b) => b.route).toSorted()).toEqual(['"/api/health"', '"/api/pair"']);
+  });
+
+  test("open routes: the snapshot asks guard, not a bare checkAccess", () => {
+    const at = src.indexOf('if (pathname === "/api/snapshot")');
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('guard(req, cfg, "read", pairing)');
+    expect(handler).not.toContain("checkAccess(");
+  });
+
+  test("open routes: an /api path no route claims is gated, then 404, never the app shell", () => {
+    const at = src.indexOf('if (pathname.startsWith("/api/")) {');
+    expect(at).toBeGreaterThan(src.indexOf('if (pathname === "/api/devices/revoke"'));
+    expect(at).toBeLessThan(src.indexOf("return serveStatic(pathname"));
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('guard(req, cfg, "read", pairing)');
+    expect(handler).toContain('text("not found", 404)');
+  });
+
+  test("open routes: the pair bootstrap still asks the front door, as a write", () => {
+    const at = src.indexOf('if (pathname === "/api/pair" && req.method === "POST")');
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('checkAccess(req, cfg, "write")');
+  });
+
+  // The crew path, end to end, in the three pieces `bun test` can reach (ADR 0086 "the crew
+  // exception"): the lead's forward strips the phone's token (`forwardHeaders` in
+  // bridge/crew/forward.ts); the peer's dispatch closure in server.ts gates with `crewGate`
+  // (bridge/crew/peer-gate.ts), which takes no pairing input at all; and that closure never calls
+  // `guard`. So a lead's forwarded read reaches a peer whose own registry is empty.
+  test("open routes: a forwarded read reaches a peer whose registry is empty, on crew trust alone", async () => {
+    const phone = new Request("https://lead.ts.net/api/pane/w1%3Ap1?host=laptop", {
+      headers: { host: "lead.ts.net", authorization: "Bearer tok-phone", "x-collie-seen": "1" },
+    });
+    const forwarded = new Request("https://laptop/crew/v1/pane/w1%3Ap1", {
+      headers: forwardHeaders(phone, "phone"),
+    });
+    // The token never crosses the link.
+    expect(forwarded.headers.get("authorization")).toBeNull();
+    // The peer's registry is empty. Through `guard` this read would be refused…
+    const emptyRegistry: PairingIo = {
+      readPending: async () => null,
+      writePending: async () => {},
+      deletePending: async () => {},
+      readRegistry: async () => ({ devices: [] }),
+      writeRegistry: async () => {},
+      readRegistrySync: () => ({ devices: [] }),
+    };
+    const refused = guard(
+      new Request("http://127.0.0.1/api/pane/w1%3Ap1", { headers: { host: "127.0.0.1" } }),
+      cfg(),
+      "read",
+      new PairingStore(emptyRegistry),
+    );
+    expect(await refused!.text()).toBe("device not paired");
+    // …but the peer asks `crewGate`, which admits a read on the link's own two factors.
+    expect(crewGate("read", cfg(), crewDeviceOf(forwarded))).toEqual({ ok: true });
+    expect(crewGate("read", cfg({ deviceHeader: "x-device", deviceAllowlist: [] }), null)).toEqual({ ok: true });
+    // And the dispatch closure is the one that asks it, with no `guard` and no pairing store in it.
+    const at = src.indexOf("dispatch: async (req, url, from) => {");
+    expect(at).toBeGreaterThan(0);
+    const dispatch = src.slice(at, src.indexOf("\n    },\n", at));
+    expect(dispatch).toContain("crewGate(level, cfg, device)");
+    expect(dispatch).not.toContain("guard(");
+    expect(dispatch).not.toContain("pairing");
   });
 });
 

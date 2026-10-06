@@ -39,7 +39,7 @@ import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/cha
 import { BottomSheet } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
-import { ImageCard } from "@/components/ui/image-card";
+import { AuthedImageCard } from "@/components/authed-image-card";
 import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AgentStart } from "@/components/agent-start";
@@ -2253,7 +2253,7 @@ export function AgentChat({
                       scroller, so ChatMessageList re-pins when it appears or its picture loads,
                       and only while the operator is following the tail. */}
                   {turnImage && (
-                    <ImageCard
+                    <AuthedImageCard
                       src={turnImage}
                       alt={t("mirror.imageAlt")}
                       caption={t("mirror.turnImageCaption")}

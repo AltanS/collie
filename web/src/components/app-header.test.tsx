@@ -303,8 +303,11 @@ describe("the header — the stacked identity", () => {
       <Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
     );
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
-    const logo = container.querySelector('img[src="/api/mux/logo.svg"]');
-    expect(logo).not.toBeNull();
+    // Reads need the pairing token (ADR 0086), so the mark's bytes are fetched with it and drawn
+    // from an object URL rather than printed as `/api/mux/logo.svg` into the `src`.
+    await waitFor(() => expect(container.querySelector('img[src^="blob:"]')).not.toBeNull());
+    expect(container.querySelector('img[src="/api/mux/logo.svg"]')).toBeNull();
+    const logo = container.querySelector('img[src^="blob:"]');
     // alt="" — the name is right there in the same sentence; announcing the picture too would say
     // the multiplexer twice.
     expect(logo?.getAttribute("alt")).toBe("");

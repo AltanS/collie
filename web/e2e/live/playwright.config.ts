@@ -7,8 +7,9 @@
 // Two files cannot make that mistake, so there is no `webServer` here, no `page.route`, and no
 // import from the Tier 1 config.
 //
-// WHAT IT MAY DO. Read. Nothing in this directory pairs a device, taps "Take over", starts an
-// update, revokes a device, closes a pane or renames anything. The lane is disposable, and a test
+// WHAT IT MAY DO. Read. Nothing in this directory taps "Take over", starts an update, revokes a
+// device, closes a pane or renames anything. The one exception to "read only" is `pair.ts`: reads
+// need the pairing token (ADR 0086), so a run claims a code the operator gave it, once. The lane is disposable, and a test
 // that restarts it is a test nobody runs twice.
 //
 // HOW IT IS RUN. `make e2e` at the workspace root. That target checks the port, prints the build it
@@ -32,6 +33,8 @@ if (process.env.CI) {
 const baseURL = process.env.COLLIE_E2E_BASE_URL ?? DEFAULT_BASE_URL;
 
 export default defineConfig({
+  // Reads need the pairing token (ADR 0086): the run pairs, or takes a token, before any case.
+  globalSetup: "./pair.ts",
   testDir: ".",
   testMatch: /.*\.spec\.ts$/,
   // One worker. There is one bridge, its census is shared state, and a parallel run would read the

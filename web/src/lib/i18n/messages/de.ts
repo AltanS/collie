@@ -119,9 +119,7 @@ export const de: Dictionary = {
   // --- settings.devices ---
   "settings.devices.title": "Gekoppelte Geräte",
   "settings.devices.description.enforced":
-    "Schreibzugriffe erfordern ein gekoppeltes Gerät. Lesezugriff bleibt offen.",
-  "settings.devices.description.open":
-    "Keine Geräte gekoppelt, Schreibzugriffe sind ungesichert. Ein Gerät koppeln, um Authentifizierung zu erzwingen.",
+    "Jeder Lese- und Schreibzugriff erfordert ein gekoppeltes Gerät.",
   "settings.devices.pairedAs": "Dieses Gerät ist gekoppelt als {device}.",
   "settings.devices.loadError": "Gekoppelte Geräte konnten nicht von der Bridge geladen werden.",
   "settings.devices.thisDevice": "Dieses Gerät",
@@ -135,6 +133,8 @@ export const de: Dictionary = {
   "settings.devices.unpairSelf": "Dieses Gerät entkoppeln",
   "settings.devices.revoke": "Widerrufen",
   "settings.devices.revokeAria": "{label} widerrufen",
+  "settings.devices.confirm.self": "Dieses Gerät entkoppeln? Entwürfe, gespeicherter Pane-Text und Mitteilungen werden hier gelöscht. Deine Einstellungen bleiben.",
+  "settings.devices.confirm.other": "{label} widerrufen? Das Gerät verliert den Zugriff, bis es erneut gekoppelt wird.",
   "settings.devices.pair.title": "Dieses Gerät koppeln",
   "settings.devices.pair.hint":
     "Führe {command} auf dem Host aus. Scanne dann den ausgegebenen Code oder gib ihn hier ein.",

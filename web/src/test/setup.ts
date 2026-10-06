@@ -9,6 +9,7 @@ import { __resetDraftPrune } from "@/lib/drafts";
 import { __resetPins } from "@/lib/pins";
 import { __resetPinHint } from "@/lib/pin-hint";
 import { __resetHiddenMachines } from "@/lib/hidden-machines";
+import { __resetAuthedUrls } from "@/lib/authed-url";
 
 // One MSW server for all tests; tests add per-case overrides with `server.use(...)`. It LIVES in
 // `./msw.ts`, which touches no document, so the pure-logic project can load it without this file
@@ -49,6 +50,19 @@ beforeEach(() => {
 // `server.resetHandlers()` and the typed-draft reset went with the server to `./msw.ts`, so both
 // projects get them. This one keeps the half that needs a document.
 afterEach(() => cleanup());
+
+// jsdom has no object URLs, and a journal picture, the multiplexer's mark and an operator font are
+// now loaded with the pairing token and drawn from one (lib/authed-url.ts, ADR 0086). A stub that
+// names the bytes is enough to render, and it is installed unconditionally so every run sees the
+// same `blob:` shape; a test that asserts revocation defines its own.
+let nextObjectUrl = 0;
+Object.defineProperty(URL, "createObjectURL", {
+  configurable: true,
+  writable: true,
+  value: () => `blob:collie-test/${String(++nextObjectUrl)}`,
+});
+Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: () => undefined });
+beforeEach(() => __resetAuthedUrls());
 
 // jsdom gaps that the terminal mirror / sheets touch.
 if (!Element.prototype.scrollIntoView) {

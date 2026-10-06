@@ -515,9 +515,11 @@ export function filePairingIo(stateDir: string): PairingIo {
  * The bridge's view of pairing: a synchronous gate for the request path, plus the async enrolment
  * and revocation operations.
  *
- * "Enforced" is not a setting — it is `the registry is non-empty`. Pairing nobody keeps Collie
- * exactly as it was; pairing one device turns the requirement on for every device, which is the only
- * ordering that can't lock the operator out of their own bridge halfway through.
+ * Pairing is ALWAYS ON (M46 spec 03, ADR 0086). A bridge with nothing paired is not open, it is
+ * waiting for its first device: every `/api/*` route except `/api/health` and `/api/pair` refuses
+ * with `device not paired`. Revoking the last device leaves the bridge in exactly that state. The
+ * way back in is the host itself, where `collie pair` mints a code, so no state here can lock the
+ * operator out of a machine they can log in to.
  */
 export class PairingStore {
   constructor(
@@ -558,9 +560,12 @@ export class PairingStore {
     return coerceRegistry(this.io.readRegistrySync());
   }
 
-  /** Whether a bearer token is required for writes — i.e. whether anything is paired at all. */
+  /**
+   * Whether a bearer token is required. Always true since M46 spec 03: an empty registry no longer
+   * switches the gate off. Kept as a method because the gate and the `/api/devices` wire still ask.
+   */
   enforced(): boolean {
-    return this.registry().devices.length > 0;
+    return true;
   }
 
   /**
@@ -578,8 +583,8 @@ export class PairingStore {
    * and fire-and-forget: a failed stamp must never fail the request it was decorating.
    *
    * An EXPIRED device resolves to null — its token authenticates as nobody — and is not stamped,
-   * because a refused request is not the device being seen. It stays in the registry, so it still
-   * counts for {@link enforced}: an expiry lapsing must never be what switches the gate off.
+   * because a refused request is not the device being seen. It stays in the registry, so the
+   * device list still shows it and the phone can say "pair again" rather than "pair".
    */
   resolve(token: string | null): PairedDevice | null {
     const registry = this.registry();

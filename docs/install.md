@@ -415,8 +415,9 @@ Open Collie on the phone, pair the phone, and add Collie to the home screen.
 3. Run `collie pair` on the host and scan that QR code.
 
 The QR code from `collie pair` opens Settings → System → Paired devices with the code entered. You can also
-open Settings → System → Paired devices and enter it manually. Pairing gives this phone write access to your
-panes ([Pair a device](security.md#pair-a-device--the-write-credential)).
+open Settings → System → Paired devices and enter it manually. Collie answers no device until it is
+paired, so the dashboard shows **Pair this device** until then
+([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 Collie is a web app. The browser adds it to your home screen without an app store, giving it a
 standalone icon and full-screen view.
@@ -463,7 +464,7 @@ On macOS, Safari 17 and newer uses **File → Add to Dock**.
   limiting Collie to a standard browser tab.
 - Dev builds (checkouts off a release tag) install as **Collie (dev)** with an orange icon to avoid
   confusing them with release versions.
-- Pairing binds to a single device. Pair every phone, tablet, or browser you plan to type from.
+- Pairing binds to a single device. Pair every phone, tablet, or browser you plan to use.
 - Push notifications require host keys:
   [Web Push](voice-and-push.md#web-push-optional).
 

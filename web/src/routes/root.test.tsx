@@ -333,10 +333,11 @@ describe("RootLayout — the header identity survives a round trip to a pane", (
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
 
     const identity = container.querySelector('[data-slot="header-identity"]');
+    // The mark is fetched with the pairing token and drawn from an object URL (ADR 0086).
+    await waitFor(() => expect(container.querySelector('[data-slot="header-identity"] img')).not.toBeNull());
     const logo = container.querySelector('[data-slot="header-identity"] img');
     expect(identity).toBeVisible();
-    expect(logo).not.toBeNull();
-    expect(logo).toHaveAttribute("src", "/api/mux/logo.svg");
+    expect(logo?.getAttribute("src")).toMatch(/^blob:/);
 
     // Into the pane: the block yields the width, so it must not be SEEN…
     await act(() => router.navigate("/pane/w1%3Ap1"));

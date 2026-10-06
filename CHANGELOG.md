@@ -43,9 +43,26 @@ Running a crew? Update the lead first; members follow on their own. Details:
   `form-action 'self'`; HSTS is sent when the request arrived over HTTPS. Pane images under
   `/api/blobs` are cached privately for an hour instead of publicly for a year. `/api/pair` refuses
   more than ten attempts per source address per minute with `429`.
+- **Unpairing wipes what the pairing left on the phone.** One wipe routine clears the token, every
+  draft, the saved pane text, the push subscription and the runtime caches when you unpair, when
+  the bridge revokes or expires the device, and (for one pane only) when a password prompt shows.
+  Settings and the app shell stay. The bridge adds `Clear-Site-Data` to those two refusals. Revoking
+  a device now asks once more and says what is cleared.
+- **The phone keeps session content in one store.** The last herd snapshot and the last pane text
+  move from the tab's session storage into one IndexedDB database with a 24-hour lifetime, a
+  256 KiB cap per pane and a 10 MiB cap in all, purged on open and deleted whole on unpair
+  (ADR 0087). A cold open can read it back; nothing in it can trigger an action. Without IndexedDB
+  the store falls back to memory for the session.
 
 ### Changed
 
+- **Pairing is always on, and every request needs the token, reads included.** A bridge with no
+  paired device answers `403 device not paired` to every `/api/*` route except `/api/health` and
+  `/api/pair`, so run `collie pair` on the host first; `collie doctor` and the installers now say so.
+  Reads (the herd, panes, history, chat, changes, files, images and fonts) need a valid pairing
+  token like writes did; the crew path between bridges keeps its own trust. The worktree list route
+  had no gate at all and now has one. This is a break for unpaired browsers on the tailnet and for
+  scripted setups (ADR 0086). Unknown `/api/*` paths answer 403 then 404 instead of the app shell.
 - **A file in Files gets the screen.** On a phone the All files | Changes control and the two-row
   file bar held the top 227 px of 844 before the first line of the file, and stayed pinned while
   you read. While a file is open the control leaves, and the file's name, size and Source | Preview

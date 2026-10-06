@@ -113,8 +113,7 @@ export const zh: Dictionary = {
 
   // --- settings.devices ---
   "settings.devices.title": "已配对设备",
-  "settings.devices.description.enforced": "所有写入操作都需要已配对设备凭证。读取权限保持公开。",
-  "settings.devices.description.open": "当前未配对任何设备，写入操作不受限制。配对设备后将启用权限校验。",
+  "settings.devices.description.enforced": "所有读取和写入操作都需要已配对设备。",
   "settings.devices.pairedAs": "当前设备配对身份为 {device}。",
   "settings.devices.loadError": "无法从网桥读取已配对设备列表。",
   "settings.devices.thisDevice": "当前设备",
@@ -128,6 +127,8 @@ export const zh: Dictionary = {
   "settings.devices.unpairSelf": "解除当前设备的配对",
   "settings.devices.revoke": "吊销",
   "settings.devices.revokeAria": "吊销 {label}",
+  "settings.devices.confirm.self": "解除当前设备的配对？此设备上的草稿、已保存的窗格文本和通知将被清除。你的设置会保留。",
+  "settings.devices.confirm.other": "吊销 {label}？在重新配对之前，它将无法访问。",
   "settings.devices.pair.title": "配对此设备",
   "settings.devices.pair.hint": "在主机上运行 {command}，然后扫描其输出的代码或在此输入。",
   "settings.devices.pair.againTitle": "重新配对",

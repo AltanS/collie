@@ -9,7 +9,8 @@ import { t } from "@/lib/i18n";
 import { pairDevice, revokeDevice } from "@/lib/api";
 import { dateTime, timeAgo } from "@/lib/format";
 import { PAIRED_DEVICES_HASH } from "@/lib/nav";
-import { clearDeviceToken, setDeviceToken, usePairing } from "@/lib/pairing";
+import { setDeviceToken, usePairing } from "@/lib/pairing";
+import { wipeDevice } from "@/lib/wipe";
 import type { DevicesData } from "@/lib/loaders";
 import type { PairFailure } from "@/lib/types";
 
@@ -92,11 +93,8 @@ export function PairedDevices({ data }: { data: DevicesData }) {
         <KeyRound className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="font-medium">{t("settings.devices.title")}</div>
-          <p className="text-sm text-muted-foreground">
-            {data.enforced
-              ? t("settings.devices.description.enforced")
-              : t("settings.devices.description.open")}
-          </p>
+          {/* Pairing is always on (ADR 0086): there is no "open" bridge left to describe. */}
+          <p className="text-sm text-muted-foreground">{t("settings.devices.description.enforced")}</p>
         </div>
       </div>
 
@@ -127,8 +125,10 @@ export function PairedDevices({ data }: { data: DevicesData }) {
               current={d.current}
               onRevoked={() => {
                 // Revoking yourself is allowed and self-unpairs: the token we still hold now
-                // authenticates as nobody, so drop it rather than keep a credential that 403s.
-                if (d.current) clearDeviceToken();
+                // authenticates as nobody, and the pairing it stood for is over. The one wipe
+                // routine drops the token and everything stored under it (M46 spec 02), only after
+                // the bridge took the revoke, so a failed revoke leaves this phone as it was.
+                if (d.current) void wipeDevice("unpair");
                 revalidator.revalidate();
               }}
             />
@@ -174,6 +174,8 @@ function DeviceRow({
   // Two-tap confirm rather than a dialog: revoking is irreversible (the token can't be re-issued,
   // only re-paired from a fresh `bin/collie pair`), and revoking THIS device locks the phone you're
   // holding out of every write — so the second tap names that consequence instead of asking "sure?".
+  // While it is armed, one sentence under the row names the device and says what happens, and for
+  // this phone what the wipe clears and what it keeps (M46 spec 02).
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -221,6 +223,11 @@ function DeviceRow({
         <p className={`mt-0.5 text-xs ${expired ? "text-status-blocked" : "text-muted-foreground"}`}>
           {expiryText(expiresAt, expired)}
         </p>
+        {confirming && (
+          <p className="mt-1 text-xs text-foreground">
+            {current ? t("settings.devices.confirm.self") : t("settings.devices.confirm.other", { label })}
+          </p>
+        )}
         {error && <p className="mt-0.5 text-xs text-status-blocked">{error}</p>}
       </div>
       {confirming ? (

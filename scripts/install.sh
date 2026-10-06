@@ -228,7 +228,7 @@ cat <<EOF
 
 ✓ Collie $TAG is installed at $DIR — and nothing is running yet.
 
-Three steps left, and each one is a decision:
+Four steps left, and each one is a decision:
 
   1. Seed the config:
        mkdir -p ~/.config/collie
@@ -241,6 +241,9 @@ Three steps left, and each one is a decision:
 
   3. Start it, and read the banner it prints:
        collie start
+
+  4. Pair your phone. Collie answers no device until one is paired:
+       collie pair
 
 Read $DIR/current/docs/security.md before you open the URL on a phone. A Collie is remote shell
 access to your machine, by design.

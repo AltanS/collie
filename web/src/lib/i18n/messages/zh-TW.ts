@@ -112,8 +112,7 @@ export const zhTW: Dictionary = {
 
   // --- settings.devices ---
   "settings.devices.title": "已配對裝置",
-  "settings.devices.description.enforced": "所有寫入操作都需要已配對裝置憑證。讀取權限維持公開。",
-  "settings.devices.description.open": "目前未配對任何裝置，寫入操作不受限制。配對裝置後將啟用權限驗證。",
+  "settings.devices.description.enforced": "所有讀取與寫入操作都需要已配對裝置。",
   "settings.devices.pairedAs": "目前裝置配對身分為 {device}。",
   "settings.devices.loadError": "無法從 Bridge 讀取已配對裝置清單。",
   "settings.devices.thisDevice": "目前裝置",
@@ -127,6 +126,8 @@ export const zhTW: Dictionary = {
   "settings.devices.unpairSelf": "解除目前裝置的配對",
   "settings.devices.revoke": "撤銷",
   "settings.devices.revokeAria": "撤銷 {label}",
+  "settings.devices.confirm.self": "解除目前裝置的配對？此裝置上的草稿、已儲存的窗格文字和通知將被清除。你的設定會保留。",
+  "settings.devices.confirm.other": "撤銷 {label}？在重新配對之前，它將無法存取。",
   "settings.devices.pair.title": "配對此裝置",
   "settings.devices.pair.hint": "在主機上執行 {command}，然後掃描其輸出的代碼或在此輸入。",
   "settings.devices.pair.againTitle": "重新配對",

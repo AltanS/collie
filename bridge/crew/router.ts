@@ -149,8 +149,8 @@ export const CREW_TAKEOVER_PATH = "/crew/v1/takeover";
  * `POST` — the lead syncs its paired-device registry to the DEPUTY ONLY (RFC §6.5, §18.14).
  *
  * Hashes only. It lands in `standby-devices.json` and is **never** merged into this collie's own
- * `paired-devices.json` — `PairingStore.enforced()` is "the registry is non-empty", so a merge would
- * silently arm this machine's own write gate for its own operator (RFC §16, decision 5).
+ * `paired-devices.json`, so a merge would silently let the lead's phones into this machine's own
+ * front door for its own operator (RFC §16, decision 5; pairing is always on, ADR 0086).
  */
 export const CREW_PAIRING_PATH = "/crew/v1/pairing";
 
@@ -1343,8 +1343,8 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
    *      renamed device is one the operator cannot revoke by the name they know it by.
    *
    * What lands is `standby-devices.json`, its own file, **never** merged into `paired-devices.json` —
-   * `PairingStore.enforced()` is "the registry is non-empty", so a merge would silently arm this
-   * machine's own write gate for its own operator (`standby-devices.ts` says it at length).
+   * a merge would silently let the lead's phones into this machine's own front door for its own
+   * operator (`standby-devices.ts` says it at length).
    */
   async function pairingSync(
     req: Request,

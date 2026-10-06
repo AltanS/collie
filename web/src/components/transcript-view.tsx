@@ -5,6 +5,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { MarkdownText } from "@/components/markdown-text";
 import { cn } from "@/lib/utils";
 import { imageSrc } from "@/lib/api";
+import { useAuthedUrl } from "@/lib/authed-url";
 import { splitHighlight } from "@/lib/transcript-search";
 import type { Scope } from "@/lib/scope";
 import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
@@ -81,12 +82,14 @@ function JournalImage({
   alt: string;
   scope?: Scope;
 }) {
-  const src = imageSrc(ref_, scope);
-  if (src === null) return null;
+  // Vetted first, then loaded with the pairing token (lib/authed-url.ts): reads need it (ADR 0086),
+  // and an `<img src>` cannot send it. Nothing is drawn until the bytes are here.
+  const { url } = useAuthedUrl(imageSrc(ref_, scope));
+  if (url === null) return null;
   return (
-    <a href={src} target="_blank" rel="noopener noreferrer" className="inline-block cursor-zoom-in">
+    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-block cursor-zoom-in">
       <img
-        src={src}
+        src={url}
         alt={alt}
         className="max-h-96 w-auto max-w-full rounded border object-contain shadow-xs"
         loading="lazy"

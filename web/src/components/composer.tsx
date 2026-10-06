@@ -48,7 +48,8 @@ import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostLabel } from "@/components/crew-provider";
-import { clearDraft, fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
+import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
+import { wipeDevice } from "@/lib/wipe";
 import { AttachmentChip, type ComposerAttachment } from "@/components/attachment-chip";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
@@ -537,11 +538,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   /** Raise or clear the password-prompt notice. Raising it also DROPS the stored draft: at that moment
    *  we know the field holds a secret the pane never accepted, and leaving it in a 48h store to be
    *  restored on the next visit is the leak #103 asked about. The in-memory value stays — the operator
-   *  can still read it, hand it to Type, or dismiss the notice and carry on. */
+   *  can still read it, hand it to Type, or dismiss the notice and carry on. The drop goes through the
+   *  one wipe routine with this pane named (lib/wipe.ts, M46 spec 02); its draft half is synchronous,
+   *  so the store is empty in this tick. */
   function noticeNoEcho(next: { prompt: string; typed: boolean } | null) {
     noEchoRef.current = next;
     setNoEcho(next);
-    if (next !== null) clearDraft(scope, paneId);
+    if (next !== null) void wipeDevice("password", { scope, paneId });
   }
 
   // The pane-change effect below is a LIFECYCLE handler, not a reactive computation: it must fire

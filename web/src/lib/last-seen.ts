@@ -2,41 +2,30 @@
 //
 // The in-session story was already right: a failed poll keeps the last good data on screen, flagged
 // (see lib/loaders.ts). The hole is the one a phone falls into constantly. Switch to the Tailscale
-// app, come back, and the mobile browser has DISCARDED the hidden page: the PWA boots from zero, its
-// module caches are empty, its first loader fetch fails because the tunnel is not up yet — and the
-// screen the operator left behind is simply gone, replaced by an empty herd. Nothing about that is a
-// connection state the in-memory cache can help with, because the process that held it is dead.
+// app, come back, and the mobile browser has DISCARDED the hidden page, or the OS has killed the PWA
+// outright: the app boots from zero, its module caches are empty, its first loader fetch fails
+// because the tunnel is not up yet, and the screen the operator left behind is simply gone.
 //
 // So every successful loader fetch also writes its payload here, and a failed fetch with an empty
 // module cache reads it back. The router renders it immediately, flagged stale; the ordinary polling
-// loop keeps running and swaps in live data the moment the network returns. No new fetch, no new
-// state machine — the loaders already have both branches, this only gives the cache a longer life.
+// loop keeps running and swaps in live data the moment the network returns.
 //
-// **sessionStorage, not localStorage** — deliberately the opposite choice from lib/drafts.ts. A draft
-// is the operator's own unsent words and must survive an OS kill, so it earns the longer-lived store.
-// This is a MIRROR of someone else's terminal: worth keeping for the seconds it takes a tunnel to come
-// back, misleading a day later, and a snapshot of screens the operator may not want left on disk.
-// Dying with the tab is exactly the scope we want — and a tab the browser DISCARDED and then restored
-// keeps its sessionStorage, which is the one case this module exists for.
+// **The on-device store, not sessionStorage** (ADR 0087, M46 spec 08). Until 1.18.0 this module
+// wrote to sessionStorage, which survives a discarded tab and dies with the process, and a phone
+// kills the process all the time. The pane-list snapshot and the pane text now live in the one
+// IndexedDB store (lib/store.ts), under its lifetime, its size caps and its one wipe. This module
+// stays as the narrow, typed door to those two record kinds, so the loaders keep one place to ask.
 //
 // ADR 0017 rider: a pane sitting at a password prompt is never written here, and any text already
-// written for it is dropped. The call site (and the reasoning) is in lib/loaders.ts.
+// written for it is dropped. The call site (and the reasoning) is in lib/loaders.ts; the drop runs
+// through the wipe (lib/wipe.ts `wipeDevice("password", …)`), which reaches the store's cleaner.
 //
 // Every entry carries the wall-clock of the fetch that produced it, because a stale render must be
 // able to say WHEN — "Disconnected — last seen 14:32" is honest, an undated old screen is not.
 
-import { paneScopeKey, type Scope, snapshotKey as snapshotCacheKey } from "@/lib/scope";
+import { paneScopeKey, type Scope, snapshotKey } from "@/lib/scope";
+import { getRecord, PANE_CAP_BYTES, putRecord, utf8Bytes } from "@/lib/store";
 import type { SnapshotResponse } from "@/lib/types";
-
-const SNAPSHOT_PREFIX = "collie:last-snapshot:";
-const PANE_PREFIX = "collie:last-pane:";
-
-/**
- * How many panes keep a cached mirror. A phone views one pane at a time, and sessionStorage is a
- * small shared quota that a 600-line mirror eats fast — so this is far tighter than the module
- * cache's PANE_TEXT_MAX. Past it the oldest entry (by its own stamp) is evicted.
- */
-const PANE_MAX = 4;
 
 /** A cached payload and the wall-clock of the successful fetch that produced it. */
 export interface Cached<T> {
@@ -44,145 +33,23 @@ export interface Cached<T> {
   value: T;
 }
 
-// `globalThis.sessionStorage` rather than a bare `sessionStorage`: the property read is undefined
-// where the API doesn't exist (the service worker, a non-DOM test) instead of throwing a
-// ReferenceError, and the try/catch covers the browsers that throw on ACCESS when storage is blocked.
-function storage(): Storage | null {
-  try {
-    return globalThis.sessionStorage ?? null;
-  } catch {
-    return null; // blocked / partitioned storage
+/**
+ * The newest lines of `text` whose JSON fits the store's per-pane cap. A mirror past the cap keeps its
+ * tail, cut at a line start, because the tail is what the pane view opens on. Exported for the tests.
+ */
+export function fitPaneText(text: string): string {
+  let fitted = text;
+  let size = utf8Bytes(JSON.stringify(fitted));
+  while (size > PANE_CAP_BYTES && fitted.length > 0) {
+    // Keep a share of the characters in proportion to the overshoot, with a margin, then start at
+    // the next whole line. Converges in a step or two; the loop guards a text of wide characters.
+    const keep = Math.floor((fitted.length * PANE_CAP_BYTES * 0.9) / size);
+    const tail = fitted.slice(fitted.length - keep);
+    const cut = tail.indexOf("\n");
+    fitted = cut < 0 ? tail : tail.slice(cut + 1);
+    size = utf8Bytes(JSON.stringify(fitted));
   }
-}
-
-// A snapshot's storage key is its scope AND its breadth — the widened view is a different body for
-// the same address, so it gets its own entry (lib/scope.ts states why they may not share one). The
-// narrow key is byte-identical to what shipped, so entries already in storage keep resolving.
-function snapshotKey(scope: Scope | undefined, all: boolean): string {
-  return `${SNAPSHOT_PREFIX}${snapshotCacheKey(scope, all)}`;
-}
-
-// The same (host, session, paneId) triple the loaders key their module caches with, built by the one
-// helper that owns that spelling (lib/scope.ts) — so this store and the module cache can never
-// disagree about which pane on which machine an entry belongs to.
-function paneKey(scope: Scope | undefined, paneId: string): string {
-  return `${PANE_PREFIX}${paneScopeKey(scope, paneId)}`;
-}
-
-// Writes are best-effort. Storage can be full (quota), disabled, or in private-mode weirdness — none
-// of which is a reason to fail a poll that otherwise succeeded, so a failed write just means this
-// boot has no safety net.
-function write(key: string, payload: string): void {
-  const store = storage();
-  if (!store) return;
-  try {
-    store.setItem(key, payload);
-  } catch {
-    // Most likely a quota rejection. Drop the pane mirrors (the bulky half) and try once more, so a
-    // full store degrades to "the newest thing still fits" rather than "nothing is ever cached again".
-    try {
-      clearPanes();
-      store.setItem(key, payload);
-    } catch {
-      // Still no. Leave the store alone; the loaders then behave exactly as they did before this module.
-    }
-  }
-}
-
-function readRaw(key: string): string | null {
-  const store = storage();
-  if (!store) return null;
-  try {
-    return store.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function remove(key: string): void {
-  const store = storage();
-  if (!store) return;
-  try {
-    store.removeItem(key);
-  } catch {
-    // Nothing to do — the entry simply stays until the tab closes.
-  }
-}
-
-// ── The two on-disk formats ───────────────────────────────────────────────────
-//
-// A pane entry is `<stamp>\n<text>` — a plain string, never JSON. That is not thrift: the value is
-// rendered as terminal text, so "did this parse to a STRING?" has to be answered without trusting the
-// store, and a split-at-the-first-newline parse answers it by construction. JSON would hand back an
-// arbitrary value that only a schema could vouch for.
-
-function encodePane(at: number, text: string): string {
-  return `${at}\n${text}`;
-}
-
-function decodePane(raw: string | null): Cached<string> | null {
-  if (raw === null) return null;
-  const cut = raw.indexOf("\n");
-  if (cut < 0) return null;
-  const at = Number.parseInt(raw.slice(0, cut), 10);
-  if (!Number.isFinite(at)) return null;
-  return { at, value: raw.slice(cut + 1) };
-}
-
-// A snapshot entry is JSON, because it is a whole response body. It gets the structural checks a
-// parse boundary owes — parsed at all, an object, carrying a numeric stamp — and no more; see the
-// SAFETY note at the assertion for why a field-by-field schema would buy nothing here.
-
-function decodeSnapshot(raw: string | null): Cached<SnapshotResponse> | null {
-  if (raw === null) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!(parsed instanceof Object)) return null;
-    // SAFETY: the only writer of this key is saveLastSnapshot below, in this tab, with the body a
-    // successful `/api/snapshot` returned — the same unvalidated shape lib/api.ts hands the loaders
-    // live. The assertion therefore claims no more than the live path already does, and `at` is
-    // re-checked below rather than assumed, so a hand-edited or format-drifted entry reads as a miss.
-    const entry = parsed as Partial<Cached<SnapshotResponse>>;
-    const at = entry.at;
-    if (at === undefined || !Number.isFinite(at) || entry.value === undefined) return null;
-    return { at, value: entry.value };
-  } catch {
-    return null;
-  }
-}
-
-/** Every pane key currently in the store, paired with its stamp (0 when unreadable). */
-function paneKeys(store: Storage): { key: string; at: number }[] {
-  const out: { key: string; at: number }[] = [];
-  for (let i = 0; i < store.length; i++) {
-    const key = store.key(i);
-    if (key === null || !key.startsWith(PANE_PREFIX)) continue;
-    out.push({ key, at: decodePane(readRaw(key))?.at ?? 0 });
-  }
-  return out;
-}
-
-function clearPanes(): void {
-  const store = storage();
-  if (!store) return;
-  try {
-    for (const { key } of paneKeys(store)) store.removeItem(key);
-  } catch {
-    // Enumeration can throw in locked-down storage — leave them be.
-  }
-}
-
-/** Keep only the PANE_MAX newest pane mirrors. */
-function prunePanes(): void {
-  const store = storage();
-  if (!store) return;
-  try {
-    const keys = paneKeys(store);
-    if (keys.length <= PANE_MAX) return;
-    for (const { key } of keys.toSorted((a, b) => b.at - a.at).slice(PANE_MAX)) store.removeItem(key);
-  } catch {
-    // As above — a store we can't enumerate simply doesn't get pruned.
-  }
+  return fitted;
 }
 
 /** Write through the snapshot a successful `/api/snapshot` just returned. */
@@ -192,15 +59,20 @@ export function saveLastSnapshot(
   at: number = Date.now(),
   all = false,
 ): void {
-  write(snapshotKey(scope, all), JSON.stringify({ at, value: snap }));
+  void putRecord("snapshot", snapshotKey(scope, all), snap, { fetchedAt: at });
 }
 
-/** The last snapshot this tab saw for a scope at this breadth, with the time it was fetched. */
-export function loadLastSnapshot(
+/** The last snapshot this phone saw for a scope at this breadth, with the time it was fetched. */
+export async function loadLastSnapshot(
   scope: Scope | undefined,
   all = false,
-): Cached<SnapshotResponse> | null {
-  return decodeSnapshot(readRaw(snapshotKey(scope, all)));
+): Promise<Cached<SnapshotResponse> | null> {
+  const record = await getRecord("snapshot", snapshotKey(scope, all));
+  if (record === null || !(record.value instanceof Object)) return null;
+  // SAFETY: the only writer of this kind is saveLastSnapshot above, with the body a successful
+  // `/api/snapshot` returned — the same unvalidated shape lib/api.ts hands the loaders live. The
+  // store gives back the JSON it was handed, so the assertion claims no more than the live path does.
+  return { at: record.fetchedAt, value: record.value as SnapshotResponse };
 }
 
 /** Write through the mirror a successful `/api/pane/:id` just returned. */
@@ -210,36 +82,43 @@ export function saveLastPaneText(
   text: string,
   at: number = Date.now(),
 ): void {
-  write(paneKey(scope, paneId), encodePane(at, text));
-  prunePanes();
+  void putRecord("pane-text", paneScopeKey(scope, paneId), fitPaneText(text), {
+    fetchedAt: at,
+    pane: { scope, paneId },
+  });
 }
 
-/** The last mirror this tab saw for a pane, with the time it was fetched. */
-export function loadLastPaneText(
-  scope: Scope | undefined,
-  paneId: string,
-): Cached<string> | null {
-  return decodePane(readRaw(paneKey(scope, paneId)));
+/** The last mirror this phone saw for a pane, with the time it was fetched. */
+export async function loadLastPaneText(scope: Scope | undefined, paneId: string): Promise<Cached<string> | null> {
+  const record = await getRecord("pane-text", paneScopeKey(scope, paneId));
+  if (record === null) return null;
+  // The value is rendered as terminal text, so it is made a string by construction. The only writer
+  // of this kind is saveLastPaneText above, with a string, so this is the identity in practice.
+  return { at: record.fetchedAt, value: String(record.value) };
 }
 
-/** Forget a pane's mirror — the ADR 0017 path, and the only reason to delete a single entry. */
-export function dropLastPaneText(scope: Scope | undefined, paneId: string): void {
-  remove(paneKey(scope, paneId));
-}
+// ── The 1.17 sessionStorage entries ───────────────────────────────────────────
+//
+// A tab that updated from 1.17 can still hold the old mirror in sessionStorage: it survives a reload
+// and dies only with the tab. Nothing reads it any more, and the wipe does not know it, so the first
+// boot of this build deletes it.
 
-/** Test helper — empty the whole cache between cases. */
-export function __clearLastSeen(): void {
-  const store = storage();
-  if (!store) return;
+const LEGACY_PREFIXES = ["collie:last-snapshot:", "collie:last-pane:"] as const;
+
+/** Delete the 1.17 sessionStorage mirror. Runs once when this module loads. */
+export function dropLegacyLastSeen(): void {
   try {
-    const keys: string[] = [];
-    for (let i = 0; i < store.length; i++) {
-      const key = store.key(i);
-      if (key === null) continue;
-      if (key.startsWith(PANE_PREFIX) || key.startsWith(SNAPSHOT_PREFIX)) keys.push(key);
+    const session = globalThis.sessionStorage;
+    if (session === undefined) return;
+    const doomed: string[] = [];
+    for (let i = 0; i < session.length; i++) {
+      const key = session.key(i);
+      if (key !== null && LEGACY_PREFIXES.some((prefix) => key.startsWith(prefix))) doomed.push(key);
     }
-    for (const key of keys) store.removeItem(key);
+    for (const key of doomed) session.removeItem(key);
   } catch {
-    // Nothing to clear.
+    // Blocked storage: nothing could have been written there either.
   }
 }
+
+dropLegacyLastSeen();

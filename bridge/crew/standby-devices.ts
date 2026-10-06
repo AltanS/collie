@@ -9,12 +9,11 @@ import { isMemberId } from "./identity.ts";
 // PACK_PROTOCOL.md §18.14).
 //
 // ── WHY IT IS A SEPARATE FILE, AND WHY THAT IS NOT TIDINESS ──────────────────
-// `PairingStore.enforced()` is **"the registry is non-empty"** (bridge/pairing.ts) — pairing is not a
-// setting, it is the presence of a credential. So merging the lead's entries into the deputy's own
-// `paired-devices.json` would silently switch on the deputy's OWN write gate, for its OWN operator, on
-// a machine where nobody ever ran `collie pair`. A gate the operator did not arm is a lockout waiting
-// for the day they use that machine directly. Hence: its own file, its own version, and one direction
-// of travel — into the deputy's registry at takeover commit, never before, and never back.
+// The deputy's own `paired-devices.json` decides who may use the deputy's OWN front door. Pairing is
+// always on (ADR 0086), so merging the lead's entries into it would quietly let every phone paired
+// with the lead read and drive the deputy directly, on a machine where its operator never ran
+// `collie pair` for them. Hence: its own file, its own version, and one direction of travel — into
+// the deputy's registry at takeover commit, never before, and never back.
 //
 // ── WHAT `bridge/server.ts` PROMISES, AND WHY THIS DOES NOT BREAK IT ─────────
 // server.ts states that pairing is "NOT threaded into the crew surface … a lead does not hold one of

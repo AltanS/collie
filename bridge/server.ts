@@ -824,8 +824,9 @@ export function startServer(opts: {
   peerNotifier?: { applyPrefs(): void; tags(): string[] };
   /**
    * Device pairing (bridge/pairing.ts). Always supplied by index.ts — it is not an opt-in feature
-   * flag: the store reads its own registry off disk, and an empty registry means "nothing paired",
-   * which enforces nothing. Optional here only so the existing tests can build a server without it.
+   * flag: the store reads its own registry off disk, and pairing is always on (ADR 0086), so an empty
+   * registry refuses every `/api/*` route but health and pair. Optional here only so the existing
+   * tests can build a server without it; a server without a store checks no token.
    *
    * It is deliberately NOT threaded into the crew surface. `/crew/v1/*` is admitted by pinned mutual
    * TLS plus the crew secret and shares nothing with a browser credential (CREW_PROTOCOL.md §6,
@@ -838,8 +839,8 @@ export function startServer(opts: {
    * pairing token**, and that route is admitted by the crew's own two factors plus a role check like
    * every other one. What is new: a browser credential's hash rides a crew route and lands on a
    * peer's disk — in `standby-devices.json`, its own file, **never** merged into
-   * `paired-devices.json`, because `PairingStore.enforced()` is "the registry is non-empty" and a
-   * merge would arm the deputy's own write gate for its own operator. The reasoning, at length, is in
+   * `paired-devices.json` before takeover, because a merge would let the lead's phones into the
+   * deputy's own front door for its own operator. The reasoning, at length, is in
    * `bridge/crew/standby-devices.ts`.
    */
   pairing?: PairingStore;
@@ -1184,8 +1185,8 @@ export function startServer(opts: {
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
     // A READ, and gated as one: it hands back a picture an agent already put in its own log, so a
-    // read-only or unpaired-but-permitted device may see it exactly as it may see the pane text
-    // that mentions it. It is session-scoped so `caller.resolve()` forwards a `?host=` call to the
+    // read-only device may see it exactly as it may see the pane text that mentions it. Like that
+    // text it needs the pairing token (ADR 0086), so the phone fetches it and shows an object URL. It is session-scoped so `caller.resolve()` forwards a `?host=` call to the
     // member whose disk holds the file — the lead has no copy of a peer's blob (§9.1).
     const blobMatch = pathname.match(BLOB_ROUTE);
     if (blobMatch && req.method === "GET") {
@@ -1237,6 +1238,10 @@ export function startServer(opts: {
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
     const worktreeListMatch = pathname.match(WORKTREE_LIST_ROUTE);
     if (worktreeListMatch && req.method === "GET") {
+      // A read, gated as one. It was the one route in this block with no gate at all, so it skipped
+      // the host allowlist too; found by the open-route test (ADR 0086).
+      const denied = caller.gate("read");
+      if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
       return listWorktrees(rt.herdr, rt.engine, decodeURIComponent(worktreeListMatch[1]!), req);
@@ -1666,8 +1671,11 @@ export function startServer(opts: {
 
       // ── Live state (polled by the client) ────────────────────────────────
       if (pathname === "/api/snapshot") {
-        const gate = checkAccess(req, cfg);
-        if (!gate.ok) return text(gate.reason, 403);
+        // Through `guard` like every other read since reads need the pairing token (ADR 0086). It
+        // was a bare `checkAccess` while reads were open, and a bare one here would be the one read
+        // an unpaired browser could still make.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
         const device = whois(req);
         // A BROWSER poll is a phone looking; the lead's own sweep of a peer is not, which is why
         // this stamp sits here rather than inside `localSnapshot` (that closure also serves
@@ -1816,8 +1824,10 @@ export function startServer(opts: {
       if (pathname === MUX_LOGO_PATH && req.method === "GET") {
         // Read-level, exactly like the `/api/config` block that publishes its URL — an image the
         // header shows is part of the same answer, and gating it harder than the config that names
-        // it would only ever produce a broken image beside a rendered name. Both device gates stay
-        // where they are (writes), so a read-only device still sees the mark.
+        // it would only ever produce a broken image beside a rendered name. The header gate stays
+        // where it is (writes), so a read-only device still sees the mark. The pairing token is
+        // needed like on every read (ADR 0086), so the phone fetches the bytes with it and draws them
+        // from an object URL: an `<img src>` cannot carry an `Authorization` header.
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         // The PRIMARY session's adapter, for the reason `/api/config` gives: one collie drives one
@@ -1833,8 +1843,10 @@ export function startServer(opts: {
       if (pathname.startsWith(OPERATOR_FONTS_PATH) && req.method === "GET") {
         // Read-level, and in the Misc block beside the mux mark rather than in the session router:
         // this is a file THIS collie's operator declared, not a pane's, so there is nothing to
-        // forward to a peer. Reads are ungated app-wide, so a read-only device still gets the face
-        // it is set to — a picker whose choice cannot render is worse than no picker.
+        // forward to a peer. The header gate is write-only, so a read-only device still gets the face
+        // it is set to — a picker whose choice cannot render is worse than no picker. The pairing
+        // token is needed like on every read (ADR 0086), so the phone loads the bytes with `fetch`
+        // and hands them to `FontFace`: a CSS `url()` cannot carry an `Authorization` header.
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         // `decodeURIComponent` is undone here and NOWHERE ELSE, because what comes back is only ever
@@ -2323,9 +2335,10 @@ export function startServer(opts: {
       if (machinesAnswer !== null) return machinesAnswer;
       if (pathname === "/api/devices" && req.method === "GET") {
         if (!pairing) return text("pairing unavailable", 503);
-        // Read-level, so an unpaired device can still see whether pairing is on and which devices
-        // hold credentials. Labels are the operator's own names for their own phones; the token
-        // hashes never reach this shape (see toDeviceWire).
+        // Read-level, and like every read it needs the pairing token (ADR 0086): an unpaired
+        // device learns that it is unpaired from the 403 itself. Labels are the operator's own names
+        // for their own phones; the token hashes never reach this shape (see toDeviceWire).
+        // `enforced` is always true now and stays on the wire for older phones.
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         const token = bearerToken(req.headers);
@@ -2347,8 +2360,8 @@ export function startServer(opts: {
         if (!pairing) return text("pairing unavailable", 503);
         // A write: revoking is exactly as consequential as typing into a terminal, so it needs a
         // paired device (and the header gate, if configured). Revoking YOURSELF is allowed — that is
-        // how a device un-pairs — and it is the last device leaving that switches enforcement back
-        // off, which is the only way this feature can't strand an operator.
+        // how a device un-pairs. Revoking the last device leaves a bridge that refuses every route
+        // but health and pair (ADR 0086); `collie pair` on the host is the way back in.
         const denied = guard(req, cfg, "write", pairing);
         if (denied) return denied;
         let body: unknown;
@@ -2373,6 +2386,16 @@ export function startServer(opts: {
           { enforced: pairing.enforced(), current, currentExpired: false, devices: toDeviceWire(pairing.registry(), current) },
           req.headers.get("accept-encoding"),
         );
+      }
+
+      // ── Default closed: an `/api/*` path no route above claimed ─────────
+      // It used to fall through to the SPA fallback and answer 200 with the app shell. It now
+      // passes the same gate as a read first, so an unpaired caller gets the one pairing refusal
+      // whatever path it tries (ADR 0086), and a paired one gets an honest 404.
+      if (pathname.startsWith("/api/")) {
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        return text("not found", 404);
       }
 
       // ── Reserved for a fronting proxy's sign-in page ─────────────────────
@@ -4484,11 +4507,17 @@ export function isHostAllowed(host: string, cfg: Config): boolean {
 
 /**
  * Combined API gate used by every handler. A request must always pass {@link checkAccess}
- * (same-origin / CSRF + optional Tailscale identity). A `"write"` request — one that types into a
- * terminal or creates panes — must additionally come from an authorised device (see
- * {@link deviceAuth}). A `"device-read"` (the Files view, ADR 0083) needs the same device factors,
- * both of them, but is checked for access as a read. Returns a 403 Response to short-circuit on
- * denial, or null to proceed.
+ * (same-origin / CSRF + optional Tailscale identity) and, at EVERY level, the pairing credential
+ * (M46 specs 03 and 06, ADR 0086: reads need the pairing token, and pairing is always on). A
+ * `"write"` request — one that types into a terminal or creates panes — must additionally come from
+ * an authorised device (see {@link deviceAuth}). A `"device-read"` (the Files view, ADR 0083) needs
+ * that header factor too, but is checked for access as a read. A plain `"read"` does not: the header
+ * gate stays write-only. Returns a 403 Response to short-circuit on denial, or null to proceed.
+ *
+ * Not every `/api/*` route comes through here, and the exceptions are by name: `/api/health` (the
+ * updater's probe) and `/api/pair` (the bootstrap that mints the first token) answer before any
+ * pairing check. The crew surface (`/crew/v1/*`) and the standby door have their own admission and
+ * never reach this function.
  *
  * Exported for tests: {@link deviceAuth} being correct in isolation proves nothing if this wiring
  * regresses, and the write/read asymmetry below is exactly what a device gate stands or falls on.
@@ -4504,30 +4533,31 @@ export function guard(
   // apply, and a cross-site page cannot read the answer anyway. Its DEVICE half is the write's.
   const gate = checkAccess(req, cfg, level === "write" ? "write" : "read");
   if (!gate.ok) return text(gate.reason, 403);
-  if (level === "read") return null;
-  if (!deviceAuth(req, cfg).authorized) return text("device not authorised", 403);
-  // The second, independent write factor. Distinct refusal text on purpose: "not authorised" is the
-  // operator's proxy allowlist, "not paired" is this device's own missing credential, and the two
+  if (level !== "read" && !deviceAuth(req, cfg).authorized) return text("device not authorised", 403);
+  // The pairing credential, on every level: a read needs the token as much as a write does, and an
+  // empty registry is not a pass (ADR 0086). Distinct refusal text on purpose: "not authorised" is
+  // the operator's proxy allowlist, "not paired" is this device's own missing credential, and the two
   // are fixed in completely different places. "expired" is a third (M46 spec 01): the credential is
   // real and was the operator's own, but its lifetime ran out — the phone says "pair again", not
   // "pair", and the operator knows no-one guessed at a token.
-  if (pairing !== undefined && pairing.enforced()) {
+  if (pairing !== undefined) {
     const token = bearerToken(req.headers);
     if (pairing.resolve(token) === null) {
-      return text(pairing.expired?.(token) === true ? "device expired" : "device not paired", 403);
+      return pairingRefusal(pairing.expired?.(token) === true ? "device expired" : "device not paired", token);
     }
   }
   return null;
 }
 
 /**
- * The bridge's dependency on {@link PairingStore}, structurally: two synchronous questions asked on
+ * The bridge's dependency on {@link PairingStore}, structurally: the synchronous questions asked on
  * the request path. Named here rather than importing the class so the gate wiring below states
  * exactly what it needs — and so a test can pass a two-line object.
+ *
+ * There is no "is pairing on?" question any more: it always is (ADR 0086), so a gate that is present
+ * is a gate that is enforced. Only a server built without a store at all (a unit test's) skips it.
  */
 export interface PairingGate {
-  /** Whether a bearer token is required for writes (i.e. at least one device is paired). */
-  enforced(): boolean;
   /** The device this token belongs to, or null. An expired token resolves to null. */
   resolve(token: string | null): { label: string } | null;
   /**
@@ -4543,13 +4573,12 @@ export interface PairingGate {
  *
  * A pairing label is preferred over the header name because it is the stronger claim: the label was
  * chosen by someone holding a code the operator read off a terminal, whereas the header is whatever
- * the proxy asserts. When pairing is off this returns exactly what {@link deviceAuth} always did, so
- * a deployment that never pairs anything sees no change at all — including the `device` field's
- * absence from the snapshot.
+ * the proxy asserts. Pairing is always on (ADR 0086), so with a store present this always reports
+ * `enforced: true`. Without one (a unit test's server) it is exactly what {@link deviceAuth} says.
  */
 export function requestDevice(req: Request, cfg: Config, pairing?: PairingGate): DeviceAuth {
   const header = deviceAuth(req, cfg);
-  if (pairing === undefined || !pairing.enforced()) return header;
+  if (pairing === undefined) return header;
   const paired = pairing.resolve(bearerToken(req.headers));
   return {
     enforced: true,
@@ -4649,6 +4678,24 @@ type StaticHeaders = {
 
 function text(body: string, status: number): Response {
   return secure(new Response(body, { status }));
+}
+
+/**
+ * The pairing gate's 403, with `Clear-Site-Data: "storage"` when the request carried a bearer token
+ * (M46 spec 02). A token the bridge no longer accepts was this browser's own credential once, so the
+ * pairing it stood for is over: revoked, expired, or minted for a registry that is gone. The header
+ * asks the browser to drop everything Collie stored there. With no token there is nothing to wipe, and
+ * no other 403 ever carries it: a proxy refusal or a cross-origin `Origin` ends nothing.
+ *
+ * A backstop, not the mechanism. Browsers honour the header only in a secure context, and the bridge
+ * is often reached over plain HTTP behind `tailscale serve`. The phone's own wipe
+ * (web/src/lib/wipe.ts) runs on the same two refusal texts and is the primary path. Once it has run
+ * the phone sends no token, so the header goes out once per device in practice, with no state here.
+ */
+function pairingRefusal(body: "device not paired" | "device expired", token: string | null): Response {
+  const res = text(body, 403);
+  if (token !== null) res.headers.set("clear-site-data", '"storage"');
+  return res;
 }
 
 /**

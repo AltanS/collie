@@ -233,8 +233,8 @@ async function printPairQr(deps: PairingDeps, code: string): Promise<void> {
 export function cmdDevicesList(deps: PairingDeps): number {
   const { devices } = readRegistry(deps);
   if (devices.length === 0) {
-    deps.io.out("no devices paired — pairing is not enforced, and writes pass on the other gates alone.");
-    deps.io.out("Run `collie pair` to enrol the first device; that is also what turns the requirement on.");
+    deps.io.out("no devices paired — Collie answers no phone or browser until one is (pairing is always on).");
+    deps.io.out("Run `collie pair` to enrol the first device.");
     return EXIT.OK;
   }
   const now = (deps.now ?? Date.now)();
@@ -246,7 +246,7 @@ export function cmdDevicesList(deps: PairingDeps): number {
   }
   if (devices.some((d) => isExpired(d, now))) {
     deps.io.out(
-      "An expired device is refused but still listed, and still keeps pairing on; revoke it, or give it a new expiry.",
+      "An expired device is refused but still listed; revoke it, or give it a new expiry.",
     );
   }
   return EXIT.OK;
@@ -389,9 +389,9 @@ export function cmdDevicesRevoke(deps: PairingDeps, args: readonly string[]): nu
     return EXIT.FAIL;
   }
 
-  deps.io.out(`✓ revoked "${label}" — it loses write access on its next request (no restart needed).`);
+  deps.io.out(`✓ revoked "${label}" — it loses all access on its next request (no restart needed).`);
   if (next.devices.length === 0) {
-    deps.io.out("  That was the last paired device, so pairing is no longer enforced at all.");
+    deps.io.out("  That was the last paired device: Collie now answers no phone or browser. Run `collie pair` to pair one.");
   }
   return EXIT.OK;
 }

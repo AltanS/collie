@@ -401,8 +401,9 @@ against the string in `web/src/lib/i18n/messages/<code>.ts`, never against Engli
   by `STATES_TEST_MATCH` in `web/playwright.config.ts`, `page.goto("/playground.html")`, and address
   a card by `[data-state="…"]`.
 - Tier 2: add a `.spec.ts` under `web/e2e/live/`, import `test`/`expect`/`message` from
-  `web/e2e/live/live.ts`. Read only, no pairing, no "Take over", no update, no device revoke, no
-  pane close or rename.
+  `web/e2e/live/live.ts`. Read only: the suite pairs once first through `web/e2e/live/pair.ts`
+  (`COLLIE_E2E_DEVICE_TOKEN` or `COLLIE_E2E_PAIR_CODE`), and a case never pairs itself. No "Take
+  over", no update, no device revoke, no pane close or rename.
 
 **Reading a failure.** A failed case leaves a screenshot and, on a retry, a trace
 (`screenshot: "only-on-failure"`, `trace: "on-first-retry"` in `web/playwright.config.ts`); CI
@@ -701,9 +702,11 @@ a web form, for the reason pairing is.
 
 **Two device gates guard writes, independently, and compose by AND.** `COLLIE_DEVICE_HEADER` trusts
 a name a proxy injects; **pairing** (`bridge/pairing.ts`, `collie pair` / `collie devices`) requires a
-bearer credential the device holds, and is on exactly when the registry is non-empty. Reads stay
-ungated by both, with one exception: the Files view asks for both as a `device-read`
-([ADR 0083](./.adr/0083-the-files-view-reads-the-changes-root.md)). Neither applies to `/crew/v1/*`, which has its own two factors. The reasoning sits in
+bearer credential the device holds, and is always on, reads included
+([ADR 0086](./.adr/0086-reads-need-the-pairing-token.md)). Every `/api/*` route except `/api/health`
+and `/api/pair` needs a valid token, and an empty registry answers `403 device not paired`. The
+header gate still covers writes only, with one exception: the Files view asks for both as a
+`device-read` ([ADR 0083](./.adr/0083-the-files-view-reads-the-changes-root.md)). Neither applies to `/crew/v1/*`, which has its own two factors. The reasoning sits in
 `bridge/pairing.ts`'s header; don't collapse the two gates into one.
 
 **Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,

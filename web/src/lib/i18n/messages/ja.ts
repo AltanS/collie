@@ -115,10 +115,7 @@ export const ja: Dictionary = {
 
   // --- settings.devices ---
   "settings.devices.title": "ペアリング済みデバイス",
-  "settings.devices.description.enforced":
-    "書き込み操作にはペアリング認証が必要です。読み取りは認証なしで動作します。",
-  "settings.devices.description.open":
-    "登録デバイスがないため、書き込み権限が無制限です。デバイスをペアリングすると認証が有効になります。",
+  "settings.devices.description.enforced": "読み取りと書き込みのすべてにペアリング済みのデバイスが必要です。",
   "settings.devices.pairedAs": "この端末は {device} としてペアリングされています。",
   "settings.devices.loadError": "ブリッジからペアリング情報を取得できませんでした。",
   "settings.devices.thisDevice": "この端末",
@@ -132,6 +129,8 @@ export const ja: Dictionary = {
   "settings.devices.unpairSelf": "この端末のペアリングを解除",
   "settings.devices.revoke": "失効",
   "settings.devices.revokeAria": "{label} を失効",
+  "settings.devices.confirm.self": "この端末のペアリングを解除しますか？下書き、保存されたペインのテキスト、通知はこの端末から消去されます。設定は残ります。",
+  "settings.devices.confirm.other": "{label} を失効しますか？再びペアリングするまでアクセスできなくなります。",
   "settings.devices.pair.title": "この端末をペアリング",
   "settings.devices.pair.hint":
     "ホストで {command} を実行し、表示されたコードをスキャンするかここに入力してください。",

@@ -52,6 +52,8 @@ import {
   whoCanRead,
 } from "../bridge/owner-only.ts";
 import { sidName } from "../bridge/sddl.ts";
+import { isExpired } from "../bridge/pairing.ts";
+import { pairedRegistryOf } from "./pairing.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
@@ -230,6 +232,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     bindWildcard(deps),
     acl(deps),
     frontDoor(deps, mode),
+    pairedDevices(deps, mode),
     mux(deps),
     // Windows only: who the Task Scheduler task belongs to (M43 spec 05), the long-path switch, and
     // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
@@ -853,6 +856,39 @@ function bindCheck(deps: DoctorDeps, mode: string): Finding {
  */
 const resolvedBind = (deps: DoctorDeps): string => resolveBridgeHost(deps.ctx.env);
 
+/**
+ * Whether any device is paired here (M46 spec 03). Pairing is always on (ADR 0086): with nothing in
+ * `paired-devices.json` the bridge answers `/api/health` and `/api/pair` and refuses every other
+ * `/api` route with `device not paired`, so the phone shows its pair screen and nothing else. A warning
+ * and not an error: it is the state every fresh install starts in, and the remedy is one command.
+ *
+ * Read off disk through `pairedRegistryOf`, the reader `devices list` uses, so a half-written file
+ * counts the same devices here as there. A PEER is skipped: it publishes no front door (ADR 0013), its phone
+ * reads it through the lead, and the lead's registry is the one that decides.
+ */
+function pairedDevices(deps: DoctorDeps, mode: string): Finding {
+  if (mode === "peer") {
+    return skipped("pairing", "a peer is read through its lead — pair devices on the lead", "`collie pair` on the lead");
+  }
+  const devices = pairedRegistryOf(deps.files, deps.ctx.stateDir).devices;
+  const live = devices.filter((d) => !isExpired(d, Date.now()));
+  if (devices.length === 0) {
+    return warn(
+      "pairing",
+      "no device paired yet: every /api route but health and pair answers 403 `device not paired`",
+      "run `collie pair` here and enter the code on the phone",
+    );
+  }
+  if (live.length === 0) {
+    return warn(
+      "pairing",
+      `${String(devices.length)} device(s) paired, and every pairing has expired: no device can read or write`,
+      "run `collie pair` here and enter the code on the phone",
+    );
+  }
+  return ok("pairing", `${String(live.length)} device(s) paired`);
+}
+
 /** The operator's own decision, reported back — never a failure (ADR 0013's posture). */
 function bindWildcard(deps: DoctorDeps): Finding {
   if (!bindIsWildcard(resolvedBind(deps))) return ok("bind-wildcard", "bound to one address");
@@ -896,14 +932,14 @@ function acl(deps: DoctorDeps): Finding {
 const tailscaleServeByHand = (port: number): string => `\`tailscale serve --bg --set-path=/ ${port}\``;
 
 /**
- * Collie records no mapping on Windows, so a hand-made one leaves every tailnet device free to use
- * Collie until a device is paired. The remedies that publish say to pair right away.
+ * Pairing is always on (ADR 0086): a published Collie answers no phone until one is paired. The
+ * remedies that publish say so, because a door that opens onto a pair screen looks broken otherwise.
  */
-const WINDOWS_PAIR_NOW = "pair a device right away";
+const WINDOWS_PAIR_NOW = "run `collie pair` to pair a device";
 
 const windowsPublishRemedy = (port: number): string =>
-  `run ${tailscaleServeByHand(port)} in PowerShell, then ${WINDOWS_PAIR_NOW}: until then every tailnet` +
-  " device can use Collie (docs/windows.md); or set COLLIE_SKIP_SERVE=1 if you own the ingress";
+  `run ${tailscaleServeByHand(port)} in PowerShell, then ${WINDOWS_PAIR_NOW}: until then Collie` +
+  " answers no device (docs/windows.md); or set COLLIE_SKIP_SERVE=1 if you own the ingress";
 
 const windowsHttpsDisabledHint = (port: number): string =>
   'enable HTTPS in the admin console (https://login.tailscale.com/admin/dns, "Enable HTTPS"), then run' +

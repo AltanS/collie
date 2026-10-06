@@ -23,8 +23,10 @@ Individual devices can also be authorized without a proxy via
 ## Variant B — identity-aware proxy + per-device authorisation
 
 Collie reads an opaque device ID from `COLLIE_DEVICE_HEADER` and checks `COLLIE_DEVICE_ALLOWLIST`.
-Allowlisted IDs receive write access; missing or unlisted IDs receive read-only access (reads,
-snapshots, session lists remain open; terminal input, uploads, and pane actions are blocked).
+Allowlisted IDs receive write access; missing or unlisted IDs receive read-only access (terminal
+input, uploads, and pane actions are blocked). Pairing is a second gate and always on: every device
+also needs a [pairing token](security.md#pair-a-device--the-write-credential) for every `/api` call,
+reads included.
 
 Collie configuration (`.env`):
 
@@ -63,22 +65,40 @@ location / {
 }
 ```
 
-Verify header injection and override from an external device:
+Verify header injection and override from an external device. Every `/api` call except
+`/api/health` and `/api/pair` needs a pairing token, so pair a terminal first. On the host, run
+`collie pair`. It prints an 8-character code. Claim the code from the device you test with. The
+`Origin` header must match the public URL. The answer holds the token. Keep it in a shell variable
+and never paste it into a file:
 
 ```console
-$ curl -s https://collie.example.com/api/snapshot | jq -c .device
-{"enforced":true,"device":"my-laptop","authorized":true}
-
-$ curl -s -H 'X-Device-Id: my-phone' https://collie.example.com/api/snapshot | jq -c .device
-{"enforced":true,"device":"my-laptop","authorized":true}
+$ collie pair                                   # on the host; note the code it prints
+$ TOKEN=$(curl -s -X POST https://collie.example.com/api/pair \
+    -H 'Content-Type: application/json' -H 'Origin: https://collie.example.com' \
+    -d '{"code":"ABCD1234","label":"header-check"}' | jq -r .token)
 ```
 
-If the second check returns `"device":"my-phone"`, the proxy is appending rather than overriding.
+Then run the header check with the token:
+
+```console
+$ curl -s -H "Authorization: Bearer $TOKEN" https://collie.example.com/api/snapshot | jq -c .device
+{"enforced":true,"device":"header-check","authorized":true}
+
+$ curl -s -H "Authorization: Bearer $TOKEN" -H 'X-Device-Id: not-listed' https://collie.example.com/api/snapshot | jq -c .device
+{"enforced":true,"device":"header-check","authorized":true}
+```
+
+With a token, `device` names the paired label (`header-check`), not the header value. No field
+returns the raw header value any more, so read `authorized`: it is true only when the header the
+bridge saw is on `COLLIE_DEVICE_ALLOWLIST` and the token is valid. If the second check returns
+`"authorized":false`, the proxy is appending the client's header instead of overriding it. When
+you finish, remove the test device with `collie devices revoke header-check`.
 
 Operational notes:
-- Direct loopback access (`http://127.0.0.1:$COLLIE_PORT`) sends no header and is read-only.
-- To execute commands locally via curl, pass the header explicitly to loopback:
-  `curl -H 'X-Device-Id: my-laptop' http://127.0.0.1:$COLLIE_PORT/api/...`
+- Direct loopback access (`http://127.0.0.1:$COLLIE_PORT`) sends no header and is read-only, and
+  it still needs a pairing token.
+- To execute commands locally via curl, pass the token and the header explicitly to loopback:
+  `curl -H "Authorization: Bearer $TOKEN" -H 'X-Device-Id: my-laptop' http://127.0.0.1:$COLLIE_PORT/api/...`
 - Revoke access by removing the ID from `COLLIE_DEVICE_ALLOWLIST` and restarting (Standalone:
   `bin/collie restart`; Herdr: `herdr plugin action invoke restart --plugin herdr.collie`).
 - Do not enable `COLLIE_DEVICE_HEADER` on plain `tailscale serve`; it does not override headers.
@@ -149,11 +169,13 @@ collie.example.com {
 }
 ```
 
-Verify the endpoint and caching rules:
+Verify the endpoint and caching rules. `$TOKEN` is a pairing token, claimed as in
+[Variant B](#variant-b--identity-aware-proxy--per-device-authorisation); `authorized` is true when your
+header is allowlisted:
 
 ```console
-$ curl -s https://collie.example.com/api/snapshot | jq -c .device
-{"enforced":true,"device":"my-phone","authorized":true}
+$ curl -s -H "Authorization: Bearer $TOKEN" https://collie.example.com/api/snapshot | jq -c .device
+{"enforced":true,"device":"header-check","authorized":true}
 
 $ curl -sI https://collie.example.com/sw.js | grep -i '^cache-control'
 cache-control: no-cache
@@ -217,21 +239,22 @@ COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 
 Verification:
 
-From a non-ingress tailnet peer:
+From a non-ingress tailnet peer. `$TOKEN` is a pairing token, claimed as in
+[Variant B](#variant-b--identity-aware-proxy--per-device-authorisation):
 
 ```console
-$ curl -s https://collie.example.com/api/snapshot | jq -c .device
-{"enforced":true,"device":"my-phone","authorized":true}
+$ curl -s -H "Authorization: Bearer $TOKEN" https://collie.example.com/api/snapshot | jq -c .device
+{"enforced":true,"device":"header-check","authorized":true}
 
 $ curl -s --max-time 10 -H 'X-Tailnet-Device: my-phone' http://host.your-tailnet.ts.net:8787/api/snapshot
 curl: (28) Connection timed out
 ```
 
-On the agent host:
+On the agent host, a request sends no header, so `authorized` is false even with a valid token:
 
 ```console
-$ curl -s http://127.0.0.1:8787/api/snapshot | jq -c .device
-{"enforced":true,"device":null,"authorized":false}
+$ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8787/api/snapshot | jq -c .device
+{"enforced":true,"device":"header-check","authorized":false}
 ```
 
 ---

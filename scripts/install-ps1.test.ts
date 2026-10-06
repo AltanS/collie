@@ -526,13 +526,15 @@ describe.skipIf(!IS_WINDOWS)("scripts/install.ps1 on Windows, against a local mi
     const r = await install(b, mirror);
     expect(r.code).toBe(0);
     const exe = `${b.dir}\\current\\bin\\collie.exe`;
-    const tail = r.out.trimEnd().split(/\r?\n/).slice(-20).join("\n");
+    const tail = r.out.trimEnd().split(/\r?\n/).slice(-24).join("\n");
     expect(tail).toContain("Next steps. This script does not take them for you:");
     expect(tail).toContain("1. Open a NEW terminal window.");
     expect(tail).toContain("2. Start Herdr in another terminal window, and leave it running.");
     expect(tail).toContain("Get Herdr at https://herdr.dev");
     expect(tail).toContain(`${exe} start`);
     expect(tail).toContain(`${exe} url`);
+    // Pairing is always on (ADR 0086), so pairing is a step of its own.
+    expect(tail).toContain(`${exe} pair`);
     expect(tail).toContain("Linking several machines (crew) does not work on Windows yet. Collie on one machine works fine.");
     expect(tail).toContain("collie.exe is unsigned: Windows does not know the publisher of this file.");
     expect(r.out).toContain("COLLIE_NO_PATH_EDIT=1 is set, so your PATH was not changed.");

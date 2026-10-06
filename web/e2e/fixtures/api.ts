@@ -225,9 +225,10 @@ async function answer(route: Route, path: string, folders: FolderWorld): Promise
   }
   if (path === "/api/config") return fulfillJson(route, { push: false, vapidPublicKey: "" });
   if (path === "/api/launchers") return fulfillJson(route, { launchers: [], home: "" });
-  // Nothing paired, nothing enforced — a fresh install.
+  // Nothing paired on a fresh install, and pairing is always on (ADR 0086). The stub answers every
+  // other read without a token, so the cases need not pair first: it stands in for a paired phone.
   if (path === "/api/devices" || path === "/api/devices/revoke") {
-    return fulfillJson(route, { enforced: false, current: null, devices: [] });
+    return fulfillJson(route, { enforced: true, current: null, devices: [] });
   }
   if (path === "/api/notifications/prefs") {
     return fulfillJson(route, { blocked: true, done: false, updates: true });

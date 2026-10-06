@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
+import { http, HttpResponse } from "msw";
 import { AnsiOutput } from "./ansi-output";
+import { server } from "@/test/setup";
 import { codexPaddingScreen } from "@/test/codex-padding";
 
 const ESC = "\x1b";
@@ -619,18 +621,27 @@ describe("terminal mirror image placeholders", () => {
     expect(container.textContent).toContain("[Image]");
   });
 
-  it("renders an inline image when images are provided", () => {
+  // Reads need the pairing token (ADR 0086), so the card's bytes are fetched with it and drawn from
+  // an object URL. The card appears once they are here.
+  const firstImg = (container: HTMLElement) =>
+    vi.waitFor(() => {
+      const img = container.querySelector("img");
+      if (img === null) throw new Error("no picture yet");
+      return img;
+    });
+
+  it("renders an inline image when images are provided", async () => {
     const { container } = render(
       <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
     );
-    const img = container.querySelector("img");
-    expect(img).not.toBeNull();
-    expect(img?.getAttribute("src")).toBe(BLOB);
+    const img = await firstImg(container);
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
   });
 
-  it("is ONE card for one image, however many cells it covers", () => {
+  it("is ONE card for one image, however many cells it covers", async () => {
     const rows = `${KITTY_PLACEHOLDER}\n${KITTY_PLACEHOLDER}\n${KITTY_PLACEHOLDER}`;
     const { container } = render(<AnsiOutput text={`header\n${rows}\nfooter`} images={[BLOB]} />);
+    await firstImg(container);
     expect(container.querySelectorAll("img")).toHaveLength(1);
   });
 
@@ -644,18 +655,20 @@ describe("terminal mirror image placeholders", () => {
     expect(onImageClusterCount).toHaveBeenLastCalledWith(0);
   });
 
-  it("shows a badge for the cluster the ordering could not match, never a repeated image", () => {
+  it("shows a badge for the cluster the ordering could not match, never a repeated image", async () => {
     // Aligned from the END: the one image belongs to the LAST cluster, and the first gets the badge.
     const two = `${KITTY_PLACEHOLDER}\nbetween\n${KITTY_PLACEHOLDER}`;
     const { container } = render(<AnsiOutput text={two} images={[BLOB]} />);
+    await firstImg(container);
     expect(container.querySelectorAll("img")).toHaveLength(1);
     expect(container.textContent).toContain("[Image]");
   });
 
-  it("keeps the text on a row that holds both a placeholder and real text", () => {
+  it("keeps the text on a row that holds both a placeholder and real text", async () => {
     const { container } = render(
       <AnsiOutput text={`Screenshot: ${KITTY_PLACEHOLDER}\nafter`} images={[BLOB]} />,
     );
+    await firstImg(container);
     // The sentence survives, the card renders beside it, and the placeholder glyphs are gone.
     expect(container.textContent).toContain("Screenshot:");
     expect(container.querySelectorAll("img")).toHaveLength(1);
@@ -682,11 +695,12 @@ describe("terminal mirror image placeholders", () => {
     expect(link.getAttribute("href")).toBe(url);
   });
 
-  it("says on the card that the picture was matched by order", () => {
+  it("says on the card that the picture was matched by order", async () => {
     // The match is an approximation, so a matched card must read as a guess and point at History.
     const { container } = render(
       <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
     );
+    await firstImg(container);
     expect(container.textContent).toContain("matched by order, open History to check");
     expect(container.querySelector("a[title]")?.getAttribute("title")).toBe(
       "matched by order, open History to check",
@@ -700,15 +714,26 @@ describe("terminal mirror image placeholders", () => {
     expect(container.textContent).not.toContain("matched by order");
   });
 
-  it("falls back to the badge when the image fails to load", () => {
+  it("falls back to the badge when the image fails to load", async () => {
     // A peer on an older build has no `blobs/<hash>` route and answers 404 (CREW_PROTOCOL §9.1),
     // and a blob can also be gone. Either way: the badge, never a broken-image glyph.
     const { container } = render(
       <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
     );
-    fireEvent.error(container.querySelector("img")!);
+    fireEvent.error(await firstImg(container));
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain("[Image]");
+  });
+
+  it("falls back to the badge when the bridge refuses the bytes", async () => {
+    // The fetch now carries the token, so a refusal (404 from an old peer, 403 before pairing)
+    // arrives as an answer, not as an `<img>` error. Same outcome: the badge.
+    server.use(http.get("/api/blobs/:hash", () => new HttpResponse("not found", { status: 404 })));
+    const { container } = render(
+      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
+    );
+    await vi.waitFor(() => expect(container.textContent).toContain("[Image]"));
+    expect(container.querySelector("img")).toBeNull();
   });
 });
 

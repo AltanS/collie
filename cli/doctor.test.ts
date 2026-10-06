@@ -40,6 +40,7 @@ import {
   STATE,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import type { PairedDevice } from "../bridge/pairing.ts";
 import { POWERSHELL_UTF8 } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 import {
@@ -138,7 +139,24 @@ function healthyFiles(): SeededFiles {
     // `journal-roots` warns when no root is there at all, and the contract test above asserts a
     // healthy install warns about nothing (issue #137).
     [`${HOME}/.claude/projects/-home-pat-repo/9f3c.jsonl`]: "{}",
+    // One paired device. Pairing is always on (ADR 0086), so a healthy install has one: with none,
+    // `pairing` warns that every route but health and pair answers `device not paired`.
+    [PAIRED_DEVICES]: pairedRegistry([{ label: "phone" }]),
   };
+}
+
+/** Where the bridge keeps its paired devices, under the fake state dir. */
+const PAIRED_DEVICES = `${STATE}/paired-devices.json`;
+
+/** A `paired-devices.json` body: hash-shaped entries only, never a real token. */
+function pairedRegistry(devices: { label: string; expiresAt?: number }[]): string {
+  return JSON.stringify({
+    devices: devices.map((d, i): PairedDevice => {
+      const row: PairedDevice = { label: d.label, tokenHash: String(i).repeat(64), createdAt: 1, lastSeenAt: 1 };
+      if (d.expiresAt !== undefined) row.expiresAt = d.expiresAt;
+      return row;
+    }),
+  });
 }
 
 /**
@@ -375,6 +393,7 @@ describe("collie doctor — the contract", () => {
       "bind-wildcard",
       "acl",
       "front-door",
+      "pairing",
       "mux",
       // Windows only, and this suite runs on the real host.
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
@@ -1542,6 +1561,50 @@ const tmuxOnly = () => ({
   absent: ["herdr"],
 });
 
+// ── Pairing is always on (M46 spec 03, ADR 0086) ────────────────────────────
+// A bridge with no paired device answers only `/api/health` and `/api/pair`. `doctor` says so, and
+// names the one command that fixes it.
+describe("pairing — doctor points to collie pair", () => {
+  test("no device paired: a warning that names collie pair", async () => {
+    const { code, byCheck } = await findings(harness(null, [], { files: without(healthyFiles(), PAIRED_DEVICES) }));
+    const pairing = byCheck.get("pairing");
+    expect(pairing?.status).toBe("warn");
+    expect(pairing?.detail).toContain("no device paired yet");
+    expect(pairing?.detail).toContain("device not paired");
+    expect(pairing?.remedy).toContain("`collie pair`");
+    // A warning, so a fresh install still exits clean: it is the state every install starts in.
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("an unreadable registry counts as no device paired, and still names collie pair", async () => {
+    const files = { ...healthyFiles(), [PAIRED_DEVICES]: "{ not json" };
+    const pairing = (await findings(harness(null, [], { files }))).byCheck.get("pairing");
+    expect(pairing?.status).toBe("warn");
+    expect(pairing?.remedy).toContain("`collie pair`");
+  });
+
+  test("every pairing expired: a warning that names collie pair", async () => {
+    const files = { ...healthyFiles(), [PAIRED_DEVICES]: pairedRegistry([{ label: "old", expiresAt: 1 }]) };
+    const pairing = (await findings(harness(null, [], { files }))).byCheck.get("pairing");
+    expect(pairing?.status).toBe("warn");
+    expect(pairing?.detail).toContain("expired");
+    expect(pairing?.remedy).toContain("`collie pair`");
+  });
+
+  test("one live device: ok, counted", async () => {
+    const pairing = (await findings(harness(null))).byCheck.get("pairing");
+    expect(pairing?.status).toBe("ok");
+    expect(pairing?.detail).toBe("1 device(s) paired");
+  });
+
+  test("a peer is skipped and pointed at the lead's collie pair", async () => {
+    const h = harness(peerStore(), [], { files: without(healthyFiles(), PAIRED_DEVICES) });
+    const pairing = (await findings(h)).byCheck.get("pairing");
+    expect(pairing?.status).toBe("skipped");
+    expect(pairing?.remedy).toContain("`collie pair` on the lead");
+  });
+});
+
 describe("the finding set is scoped by the chosen multiplexer", () => {
   test("a healthy tmux host exits 0, and carries no Herdr check at all", async () => {
     const { code, byCheck, raw } = await findings(harness(null, [], tmuxOnly()));
@@ -1560,6 +1623,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "bind-wildcard",
       "acl",
       "front-door",
+      "pairing",
       "mux",
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",

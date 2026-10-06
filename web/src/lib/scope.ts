@@ -190,7 +190,7 @@ export function scopeKey(scope?: Scope): string {
  * Cache key for a SNAPSHOT, which is a scope plus how much of it was asked for.
  *
  * The narrow key is byte-identical to {@link scopeKey}, so every entry a client already holds — in
- * this page's module cache and in the sessionStorage mirror that survives a PWA restart — keeps
+ * this page's module cache and in the on-device store that survives a PWA restart — keeps
  * resolving. Widening appends a suffix instead of re-keying, which is the same "a new state gets a
  * new key, the old state keeps its own" discipline the whole `all` param follows.
  *

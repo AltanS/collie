@@ -1,6 +1,8 @@
 # 0028 — The standby door is a second listener that arms on silence
 
-Status: **Accepted** (2026-08-20)
+Status: **Accepted** (2026-08-20). Amended by [ADR 0086](./0086-reads-need-the-pairing-token.md) in
+reasoning only: pairing is always on, so the quarantine of the synced registry now keeps the lead's
+phones off the deputy's own front door rather than keeping a gate from arming. The rule stands.
 
 Subordinate to: [ADR 0026](./0026-the-operator-is-the-quorum.md) — silence may *arm* a surface and may
 never *authorise* an action; that argument is there, not here.

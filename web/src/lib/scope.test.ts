@@ -267,7 +267,7 @@ describe("the widen param", () => {
 
 describe("snapshotKey", () => {
   // The narrow key IS `scopeKey`, byte for byte. Every entry a client already holds — this page's
-  // module cache and the sessionStorage mirror that survives a PWA restart — keeps resolving.
+  // module cache and the on-device store that survives a PWA restart — keeps resolving.
   it("is byte-identical to scopeKey when not widened", () => {
     for (const scope of [undefined, {}, { host: "attic" }, { host: "attic", session: "work" }]) {
       expect(snapshotKey(scope)).toBe(scopeKey(scope));

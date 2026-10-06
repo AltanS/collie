@@ -378,13 +378,13 @@ door (tailnet-only by default; one per **crew** — §2.1). These four are genui
   So a process running as a *different* user — an agent you deliberately put under
   `sudo -u agent-review` to contain it — cannot open your herdr socket but **can** open
   `127.0.0.1:$COLLIE_PORT` and drive any pane in the herd. Installing Collie removes that uid
-  boundary; if it is the containment you were relying on, the device gate below makes that port
-  **read-only** — the one write gate that doesn't rest on "local means trusted". Note its scope: it
-  gates writes and only writes, so that uid keeps reading snapshots, pane output and transcript
-  history. It bounds damage, not disclosure. Closing the read side is outside what the bridge does —
-  it needs the port not to be shared in the first place (its own network namespace, or a uid
-  owner-match filter such as nftables `meta skuid`); a plain port firewall rule won't stop a
-  same-host peer (raised in [#33](https://github.com/AltanS/collie/issues/33)).
+  boundary; if it is the containment you were relying on, pairing below is the gate that doesn't
+  rest on "local means trusted". Since ADR 0086 it gates reads as well as writes, so that uid reads
+  nothing but `/api/health` unless it holds a token. The token is then the boundary: a uid that can
+  read your browser profile can read the token too. Keeping the port unshared (its own network
+  namespace, or a uid owner-match filter such as nftables `meta skuid`) still closes even that; a
+  plain port firewall rule won't stop a same-host peer (raised in
+  [#33](https://github.com/AltanS/collie/issues/33)).
   **Named exception: the crew listener.** When crew federation is enabled, a peer's `/crew/v1/*`
   prefix shares the bridge's one listener and one bind — `COLLIE_HOST`, the operator's to set, with
   a loud warning on a wildcard bind — and admits a request only past two independent factors, pinned
@@ -404,12 +404,15 @@ door (tailnet-only by default; one per **crew** — §2.1). These four are genui
   read-only, so reaching the port is no longer sufficient to write. Device ids are names your proxy
   asserts, not secrets — treat them as guessable and keep the front door and its ACL as the real
   containment.
-  **Device pairing (`bridge/pairing.ts`) is the second, independent write factor**, and the one that
+  **Device pairing (`bridge/pairing.ts`) is the second, independent factor**, and the one that
   needs no proxy at all: `collie pair` mints a one-time code out of band (the operator's own
   terminal), the phone trades it at `POST /api/pair` for a 256-bit bearer token, and the bridge keeps
-  only its SHA-256. It is enforced exactly when the registry is non-empty, so an install that never
-  pairs anything is unchanged, and revocation (`collie devices revoke`) lands on the running service
-  without a restart because the registry is re-read per request. The two gates compose by AND —
+  only its SHA-256. It is always on, and reads need the pairing token as well as writes: every
+  `/api/*` route but `/api/health` and `/api/pair` answers `403 device not paired` without a valid
+  token, so an install that has paired nothing answers no device
+  ([ADR 0086](./.adr/0086-reads-need-the-pairing-token.md)). Revocation (`collie devices revoke`)
+  lands on the running service without a restart because the registry is re-read per request. The
+  header gate stays write-only (plus the Files view's `device-read`). The two gates compose by AND —
   neither weakens or replaces the other — and neither touches `/crew/v1/*`, whose two factors are its
   own. Where the header gate answers *is this device on the operator's list*, pairing answers *does
   this device hold a credential I issued*: a claim no proxy, DNS name or tailnet identity can forge.

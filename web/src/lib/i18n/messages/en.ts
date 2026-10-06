@@ -138,9 +138,7 @@ export const en = {
 
   // --- settings.devices ---
   "settings.devices.title": "Paired devices",
-  "settings.devices.description.enforced": "Every write needs a paired device. Reading stays open.",
-  "settings.devices.description.open":
-    "Nothing is paired, so writes are ungated. Pair a device to require a credential.",
+  "settings.devices.description.enforced": "Every read and every write needs a paired device.",
   "settings.devices.pairedAs": "This device is paired as {device}.",
   "settings.devices.loadError": "Couldn’t load the paired devices from the bridge.",
   "settings.devices.thisDevice": "This device",
@@ -154,6 +152,8 @@ export const en = {
   "settings.devices.unpairSelf": "Unpair this phone",
   "settings.devices.revoke": "Revoke",
   "settings.devices.revokeAria": "Revoke {label}",
+  "settings.devices.confirm.self": "Unpair this phone? Its drafts, saved pane text and notifications are cleared here. Your settings stay.",
+  "settings.devices.confirm.other": "Revoke {label}? It loses access until it is paired again.",
   "settings.devices.pair.title": "Pair this device",
   "settings.devices.pair.hint":
     "Run {command} on the host, then scan the code it prints or type it here.",

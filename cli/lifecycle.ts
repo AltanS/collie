@@ -9,6 +9,7 @@ import type { LinkReader } from "./link.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
+import { pairedRegistryOf } from "./pairing.ts";
 import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS, type ProcessLookup, type ProcessRow } from "./sys.ts";
 import {
   formatRestartMarker,
@@ -1298,6 +1299,12 @@ export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
     });
   } else {
     rows.push({ label: "tailnet", value: bridgeUrl(deps.exec, deps.ctx) });
+  }
+  // Pairing is always on (ADR 0086): with nothing paired the URL above opens onto a pair screen and
+  // nothing else, so the first start says what to run. Only then: a paired install's banner is
+  // unchanged, and a peer has no door of its own to pair against.
+  if (crewModeOnDisk(deps) !== "peer" && pairedRegistryOf(deps.files, deps.ctx.stateDir).devices.length === 0) {
+    rows.push({ label: "pairing", value: "no device paired yet — run `collie pair` to pair your phone" });
   }
   return {
     running,

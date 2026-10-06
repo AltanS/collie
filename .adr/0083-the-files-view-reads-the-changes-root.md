@@ -1,6 +1,6 @@
 # 0083 — The Files view reads the Changes root
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended by [ADR 0086](./0086-reads-need-the-pairing-token.md): reads need the pairing token, so the context's "reads were open" is no longer true.
 - **Date:** 2026-10-05
 - **Shipped in:** pending (1.17.0)
 - **Relates to:** [ADR 0065](./0065-the-changes-view-reads-git-read-only.md), whose last bullet named a

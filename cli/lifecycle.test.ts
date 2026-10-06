@@ -1588,6 +1588,27 @@ describe("the status banner", () => {
     expect((await statusBanner(harness({ ready: true }).deps)).join("\n")).toContain("tailnet");
   });
 
+  // Pairing is always on (ADR 0086): with nothing paired the URL opens onto a pair screen, so the
+  // first start names the one command that fixes it. A paired install's banner is unchanged, and a
+  // peer, which has no door of its own, never shows the row.
+  test("names `collie pair` while no device is paired, and drops the row once one is", async () => {
+    const fresh = (await statusBanner(harness({ ready: true }).deps)).join("\n");
+    expect(fresh).toContain("pairing   no device paired yet — run `collie pair` to pair your phone");
+
+    const registry = JSON.stringify({
+      devices: [{ label: "phone", tokenHash: "a".repeat(64), createdAt: 1, lastSeenAt: 1 }],
+    });
+    const paired = harness({ ready: true, files: { [`${STATE}/paired-devices.json`]: registry } });
+    expect((await statusBanner(paired.deps)).join("\n")).not.toContain("pairing");
+
+    const peer = harness({
+      ready: true,
+      env: { COLLIE_HOST: "192.168.77.2" },
+      files: { [`${STATE}/crew-trust.json`]: serializeTrustStore(peerStore()) },
+    });
+    expect((await statusBanner(peer.deps)).join("\n")).not.toContain("collie pair");
+  });
+
   test("reads the unit's state, not merely that a unit exists", () => {
     const h = harness({ answers: [["systemctl --user is-active", { stdout: "active\n" }]] });
     expect(serviceDescription(h.deps)).toBe("systemd --user (collie) · active");
@@ -1978,6 +1999,8 @@ describe("restart off Windows, golden", () => {
     `    service   ${service}`,
     "    local     http://127.0.0.1:8787",
     "    tailnet   http://127.0.0.1:8787 (Tailscale name unavailable)",
+    // These fakes hold no paired device, so the banner names `collie pair` (ADR 0086).
+    "    pairing   no device paired yet — run `collie pair` to pair your phone",
     "",
   ];
   const head = ["took COLLIE_MUX=herdr from your environment; wrote COLLIE_MUX=herdr to /cfg/.env", "bridge stopped", "building web UI (first run)…"];

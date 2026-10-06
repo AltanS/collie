@@ -2536,10 +2536,11 @@ token the *lead* minted, so the lead pushes its registry.
   *remove* a device on the deputy.
 - **It lands in `standby-devices.json`** — its own file, its own version integer, 0600 in a 0700
   directory, temp-then-rename — and is **NEVER merged into the deputy's own `paired-devices.json`.**
-  This is not tidiness. `PairingStore.enforced()` is *the registry is non-empty*, so a merge would
-  silently switch on the deputy's **own** write gate for its **own** operator, on a machine where
-  nobody ran `collie pair`. A gate the operator did not arm is a lockout waiting for the day they use
-  that machine directly. The synced entries are adopted into the deputy's own registry **at takeover
+  This is not tidiness. The deputy's own registry decides who may use the deputy's **own** front
+  door, and pairing is always on (ADR 0086, amended 2026-10-07: before it, *the registry is
+  non-empty* armed the gate, so a merge would have armed it). A merge would silently let every phone
+  paired with the lead read and drive the deputy directly, on a machine where its operator never ran
+  `collie pair` for them. The synced entries are adopted into the deputy's own registry **at takeover
   commit and only then** (§18.16), because after the commit that machine *is* the lead and the phone
   must keep working against the credential it already holds.
 - **A label collision is a FINDING, and it never refuses the sync** *(amended 2026-08-20, after a

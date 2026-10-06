@@ -7,6 +7,7 @@ import { beginLongUpload, endLongUpload, markLive } from "./connection-health";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
+import { pairingRefused } from "./wipe";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
@@ -220,6 +221,60 @@ export function imageSrc(ref: string, scope?: Scope): string | null {
   return ref.startsWith("data:image/") ? ref : null;
 }
 
+// ── READS NEED THE PAIRING TOKEN (M46 specs 03 and 06, ADR 0086) ───────────────────────────────
+//
+// Every `/api` route but health and pair answers 403 `device not paired` (or `device expired`) to a
+// browser without a valid token. Two things follow here, and both are this module's to say.
+
+/** Whether a status and body are the bridge's own pairing refusal, exactly as `guard` sends it. */
+function isPairingRefusalBody(status: number, detail: string): boolean {
+  const body = detail.trim();
+  return status === 403 && (body === NOT_PAIRED_BODY || body === EXPIRED_BODY);
+}
+
+/**
+ * A pairing refusal is the bridge ANSWERING. It is not an outage, so it stamps the connection-health
+ * anchor like a 304 does: otherwise an unpaired phone would watch the connection strip escalate to
+ * "not connected" over a bridge that is up and asking to be paired.
+ */
+function notePairingAnswer(status: number, detail: string): void {
+  if (isPairingRefusalBody(status, detail)) markLive();
+}
+
+/**
+ * Whether a failed request was refused for want of pairing. The loaders use it to keep this refusal
+ * apart from a fronting proxy's 401/403 (`isAuthError`): the remedy here is the pair screen, not the
+ * proxy's sign-in page.
+ */
+export function isPairingRefusal<TThrown>(error: TThrown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  const marker = ` → ${String(error.status)} `;
+  const at = error.message.indexOf(marker);
+  return at !== -1 && isPairingRefusalBody(error.status, error.message.slice(at + marker.length));
+}
+
+/**
+ * A subresource the bridge serves under `/api` (a journal blob, the multiplexer's mark, an operator
+ * font) as bytes fetched WITH the token. An `<img src>` or a CSS `url()` cannot carry an
+ * `Authorization` header, so since reads need the token those URLs are fetched here and handed to the
+ * page as object URLs or bytes (lib/authed-url.ts, lib/operator-fonts.ts). `path` is root-absolute,
+ * as every other call here spells it; the mount is applied by `apiFetch`.
+ */
+export async function fetchAuthedBytes(path: string, signal?: AbortSignal): Promise<Blob> {
+  const res = await apiFetch(path, {
+    signal: withTimeout(signal, GET_TIMEOUT_MS),
+    headers: { [XHR_HEADER]: XHR_HEADER_VALUE, ...authHeader() },
+  });
+  captureBuild(res);
+  if (!res.ok) {
+    const detail = await errorDetail(res);
+    notePairing("GET", res.status, detail);
+    notePairingAnswer(res.status, detail);
+    throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
+  }
+  return res.blob();
+}
+
 // Best-effort human-readable failure detail: the response body if present, else the status text.
 async function errorDetail(res: Response): Promise<string> {
   try {
@@ -276,22 +331,26 @@ function promptChangedResponse(detail: string): ActionResponse | null {
 /**
  * Read the pairing gate's verdict off a finished request, at the one place every request passes.
  *
- * Only a WRITE can discover that this device is unpaired — reads are ungated — so the refusal latch
- * is set here, from the bridge's own 403 body, and cleared by the opposite proof: a mutation that
- * actually went through. GETs say nothing either way and are ignored on both counts.
+ * The refusal latch is set here, from the bridge's own 403 body, and cleared by the opposite proof: a
+ * mutation that actually went through. A refusal counts on any method, because every read is gated
+ * too (ADR 0086) and refuses with the same two bodies. A GET that succeeds clears nothing: after a
+ * refusal the token is gone, so the next proof is a fresh pairing, which clears the latch itself.
+ *
+ * The body must match EXACTLY. A refusal while this phone held a token ends its pairing, and
+ * `pairingRefused` then runs the one wipe (M46 spec 02): `device not paired` means the token was
+ * revoked, `device expired` that its lifetime ran out (spec 01). The proxy allowlist's
+ * `device not authorised`, a crew member's longer body and every other 403 wipe nothing.
  */
 function notePairing(method: string, status: number, detail?: string): void {
-  if (method === "GET") return;
   if (status === 403 && detail?.trim() === NOT_PAIRED_BODY) {
-    markNotPaired();
+    pairingRefused("not-paired");
     return;
   }
-  // An expired pairing (M46 spec 01): the same refusal, with the pair-again reason, and the dead
-  // token dropped.
   if (status === 403 && detail?.trim() === EXPIRED_BODY) {
-    markExpired();
+    pairingRefused("expired");
     return;
   }
+  if (method === "GET") return;
   if (status >= 200 && status < 300) clearNotPaired();
 }
 
@@ -331,6 +390,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
   if (!res.ok) {
     const detail = await errorDetail(res);
     notePairing(method, res.status, detail);
+    notePairingAnswer(res.status, detail);
     const recovered = recover?.(res.status, detail);
     if (recovered !== null && recovered !== undefined) return recovered;
     throw new ApiError(`${path} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
@@ -473,6 +533,10 @@ export async function fetchPane(
 
   if (!res.ok) {
     const detail = await errorDetail(res);
+    // A pane read is gated like every read (ADR 0086), and it does not pass through `doReq`, so it
+    // reads the pairing verdict itself: the pane screen shows the pair strip, not an outage.
+    notePairing("GET", res.status, detail);
+    notePairingAnswer(res.status, detail);
     throw new ApiError(`${url} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
 
@@ -613,6 +677,9 @@ export async function fetchChat(
   }
   if (!res.ok) {
     const detail = await errorDetail(res);
+    // Gated like every read (ADR 0086), and outside `doReq`, as `fetchPane` is.
+    notePairing("GET", res.status, detail);
+    notePairingAnswer(res.status, detail);
     throw new ApiError(`${url} → ${res.status} ${detail}`, res.status, parseApiErrorFields(detail));
   }
 
@@ -760,13 +827,16 @@ function filesRefusal(status: number, detail: string): FilesRefusal | null {
   const body = detail.trim();
   if (body.startsWith(NOT_PAIRED_BODY)) {
     // Reads were ungated until Files, so nothing on a read could ever discover an unpaired device.
-    // Latch it as a refused write does: the app's read-only strip then names the remedy, once.
-    markNotPaired();
+    // Latch it as a refused write does: the app's read-only strip then names the remedy, once. Only
+    // the lead's own exact body wipes (M46 spec 02); a member's longer one latches and no more.
+    if (body === NOT_PAIRED_BODY) pairingRefused("not-paired");
+    else markNotPaired();
     return FILES_NOT_PAIRED;
   }
   if (body.startsWith(EXPIRED_BODY)) {
     // The same refusal for the view's purpose; the latch carries the pair-again reason.
-    markExpired();
+    if (body === EXPIRED_BODY) pairingRefused("expired");
+    else markExpired();
     return FILES_NOT_PAIRED;
   }
   return body.startsWith(NOT_AUTHORISED_BODY) ? FILES_NOT_AUTHORISED : null;
@@ -1321,7 +1391,10 @@ export async function pairDevice(code: string, label: string): Promise<PairResul
   return "token" in res ? { ok: true, token: res.token, label: res.label } : res;
 }
 
-/** The paired-device registry. Read-level, so an unpaired device may ask (and learn it is unpaired). */
+/**
+ * The paired-device registry. Read-level, and like every read it needs the token (ADR 0086): an
+ * unpaired device learns that it is unpaired from the 403 itself (`isPairingRefusal`).
+ */
 export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
   return req<DevicesResponse>("/api/devices", { signal });
 }

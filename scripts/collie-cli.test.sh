@@ -1950,11 +1950,11 @@ pair_env() {
     PATH="$BIN_DIR" "$BIN" "$@"
 }
 
-# Nothing paired yet: `devices list` says so in the words that matter — pairing is NOT enforced — and
-# materialises no file by asking the question.
+# Nothing paired yet: `devices list` says so in the words that matter — pairing is always on, so
+# nothing is answered until `collie pair` runs (ADR 0086) — and materialises no file by asking.
 pair_env devices list || fail "\`collie devices list\` failed on an unpaired machine: ${STDERR}"
 assert_contains "$STDOUT" "no devices paired"
-assert_contains "$STDOUT" "not enforced"
+assert_contains "$STDOUT" "always on"
 [ -z "$(ls -A "$PAIR_STATE")" ] || fail "\`devices list\` wrote into the state dir with nothing paired"
 
 # `pair` mints the code and writes the pending file the bridge reads at request time.
