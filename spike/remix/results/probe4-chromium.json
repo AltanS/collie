@@ -1,0 +1,59 @@
+[
+  {
+    "browser": "chromium",
+    "version": "151.0.7922.34",
+    "deepLinkTitle": "claude--menu-effort-slider",
+    "deepLinkRows": 199,
+    "navigationApi": true,
+    "homeLinkInPage": true,
+    "paneUrl": "/pane/3",
+    "listToPaneInPage": true,
+    "backUrl": "/",
+    "backInPage": true,
+    "forwardUrl": "/pane/3",
+    "forwardInPage": true,
+    "lockShown": true,
+    "remountRestoredRoute": "/pane/3",
+    "afterRemountInPage": true,
+    "afterRemountRouterRequests": [
+      "GET /",
+      "GET /pane/7"
+    ],
+    "afterRemountBack": "/",
+    "afterRemountBackInPage": true,
+    "setupCounts": {
+      "shell": 2,
+      "list": 4,
+      "pane": 5
+    },
+    "documentLoads": 1,
+    "consoleErrors": []
+  },
+  {
+    "browser": "chromium-nonav",
+    "version": "151.0.7922.34",
+    "deepLinkTitle": "claude--menu-effort-slider",
+    "deepLinkRows": 199,
+    "navigationApi": false,
+    "homeLinkInPage": false,
+    "paneUrl": "/pane/3",
+    "listToPaneInPage": false,
+    "backUrl": "/",
+    "backInPage": false,
+    "forwardUrl": "/pane/3",
+    "forwardInPage": false,
+    "lockShown": true,
+    "remountRestoredRoute": "/pane/3",
+    "afterRemountInPage": false,
+    "afterRemountRouterRequests": [],
+    "afterRemountBack": "/",
+    "afterRemountBackInPage": false,
+    "setupCounts": {
+      "shell": 1,
+      "list": 1,
+      "pane": 0
+    },
+    "documentLoads": 8,
+    "consoleErrors": []
+  }
+]

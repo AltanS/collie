@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ESNext",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "remix/component",
+    "types": ["bun", "vite/client"]
+  },
+  "include": ["probe1-server", "probe2-client/app", "probe3-screen", "probe4-nav", "shared", "results"]
+}

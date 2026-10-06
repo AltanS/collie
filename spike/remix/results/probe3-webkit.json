@@ -1,0 +1,543 @@
+{
+  "browser": "webkit",
+  "version": "26.5",
+  "durationMs": 10000,
+  "runs": [
+    {
+      "throttle": 1,
+      "variant": "unkeyed",
+      "hz": 3,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 9,
+      "cellUpdateMs": {
+        "n": 25,
+        "mean": 1.12,
+        "p50": 1,
+        "p95": 2,
+        "max": 2
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 5.25,
+        "p50": 6,
+        "p95": 7,
+        "max": 7
+      },
+      "forcedLayoutMs": {
+        "n": 29,
+        "mean": 2.345,
+        "p50": 1,
+        "p95": 12,
+        "max": 13
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.25,
+        "p50": 2,
+        "p95": 3,
+        "max": 3
+      },
+      "frames": {
+        "count": 624,
+        "over50ms": 0,
+        "p95": 17,
+        "max": 32
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6770,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "keyed",
+      "hz": 3,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 5,
+      "cellUpdateMs": {
+        "n": 25,
+        "mean": 0.68,
+        "p50": 1,
+        "p95": 2,
+        "max": 2
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 6.75,
+        "p50": 6,
+        "p95": 12,
+        "max": 12
+      },
+      "forcedLayoutMs": {
+        "n": 29,
+        "mean": 3.241,
+        "p50": 1,
+        "p95": 25,
+        "max": 25
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.5,
+        "p50": 3,
+        "p95": 3,
+        "max": 3
+      },
+      "frames": {
+        "count": 614,
+        "over50ms": 0,
+        "p95": 17,
+        "max": 49
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6770,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "imperative",
+      "hz": 3,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 9,
+      "cellUpdateMs": {
+        "n": 25,
+        "mean": 0.24,
+        "p50": 0,
+        "p95": 1,
+        "max": 1
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 4.75,
+        "p50": 5,
+        "p95": 5,
+        "max": 5
+      },
+      "forcedLayoutMs": {
+        "n": 29,
+        "mean": 3.897,
+        "p50": 1,
+        "p95": 22,
+        "max": 22
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 4,
+        "p50": 4,
+        "p95": 6,
+        "max": 6
+      },
+      "frames": {
+        "count": 598,
+        "over50ms": 1,
+        "p95": 18,
+        "max": 53
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "unkeyed",
+      "hz": 10,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 16,
+      "cellUpdateMs": {
+        "n": 92,
+        "mean": 1.717,
+        "p50": 2,
+        "p95": 3,
+        "max": 5
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 7.75,
+        "p50": 7,
+        "p95": 12,
+        "max": 12
+      },
+      "forcedLayoutMs": {
+        "n": 96,
+        "mean": 1.802,
+        "p50": 1,
+        "p95": 4,
+        "max": 22
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 4.25,
+        "p50": 4,
+        "p95": 6,
+        "max": 6
+      },
+      "frames": {
+        "count": 592,
+        "over50ms": 1,
+        "p95": 19,
+        "max": 55
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6770,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "keyed",
+      "hz": 10,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 14,
+      "cellUpdateMs": {
+        "n": 92,
+        "mean": 1.283,
+        "p50": 1,
+        "p95": 2,
+        "max": 3
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 7.75,
+        "p50": 9,
+        "p95": 12,
+        "max": 12
+      },
+      "forcedLayoutMs": {
+        "n": 96,
+        "mean": 1.75,
+        "p50": 1,
+        "p95": 7,
+        "max": 32
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 3.25,
+        "p50": 4,
+        "p95": 4,
+        "max": 4
+      },
+      "frames": {
+        "count": 601,
+        "over50ms": 1,
+        "p95": 18,
+        "max": 57
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6770,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "imperative",
+      "hz": 10,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 3,
+      "cellUpdateMs": {
+        "n": 92,
+        "mean": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 3.75,
+        "p50": 4,
+        "p95": 5,
+        "max": 5
+      },
+      "forcedLayoutMs": {
+        "n": 96,
+        "mean": 1.229,
+        "p50": 1,
+        "p95": 2,
+        "max": 22
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.75,
+        "p50": 2,
+        "p95": 6,
+        "max": 6
+      },
+      "frames": {
+        "count": 602,
+        "over50ms": 3,
+        "p95": 18,
+        "max": 56
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6770,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "unkeyed",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 13,
+      "cellUpdateMs": {
+        "n": 272,
+        "mean": 0.515,
+        "p50": 0,
+        "p95": 1,
+        "max": 3
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 6.75,
+        "p50": 6,
+        "p95": 10,
+        "max": 10
+      },
+      "forcedLayoutMs": {
+        "n": 276,
+        "mean": 1.264,
+        "p50": 1,
+        "p95": 2,
+        "max": 34
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 3,
+        "p50": 3,
+        "p95": 4,
+        "max": 4
+      },
+      "frames": {
+        "count": 549,
+        "over50ms": 1,
+        "p95": 39,
+        "max": 52
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6814,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "keyed",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 17,
+      "cellUpdateMs": {
+        "n": 273,
+        "mean": 1.132,
+        "p50": 1,
+        "p95": 2,
+        "max": 8
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 8.75,
+        "p50": 7,
+        "p95": 15,
+        "max": 15
+      },
+      "forcedLayoutMs": {
+        "n": 277,
+        "mean": 1.303,
+        "p50": 1,
+        "p95": 3,
+        "max": 23
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 4.25,
+        "p50": 5,
+        "p95": 5,
+        "max": 5
+      },
+      "frames": {
+        "count": 556,
+        "over50ms": 2,
+        "p95": 38,
+        "max": 82
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6814,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "imperative",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 7,
+      "cellUpdateMs": {
+        "n": 273,
+        "mean": 0.084,
+        "p50": 0,
+        "p95": 1,
+        "max": 1
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 4.75,
+        "p50": 5,
+        "p95": 6,
+        "max": 6
+      },
+      "forcedLayoutMs": {
+        "n": 277,
+        "mean": 1.473,
+        "p50": 1,
+        "p95": 2,
+        "max": 31
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 3.5,
+        "p50": 4,
+        "p95": 5,
+        "max": 5
+      },
+      "frames": {
+        "count": 501,
+        "over50ms": 12,
+        "p95": 47,
+        "max": 62
+      },
+      "loafOver50ms": null,
+      "skippedTicks": 0,
+      "screenHeightPx": 6814,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    }
+  ],
+  "pageErrors": [],
+  "cascade": {
+    "bursts": {
+      "sync60": {
+        "ms": 3,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 0,
+        "guardError": 0,
+        "firstMessage": null,
+        "domMatchesModelAfter": true,
+        "domMatchesModel50msLater": true
+      },
+      "awaited60": {
+        "ms": 2000,
+        "hungOnPendingUpdatePromise": true,
+        "guardWarn": 1,
+        "guardError": 1,
+        "firstMessage": "50 cascading component updates detected in one event loop turn. Consider reducing hydration regions. Components: Cs x50",
+        "domMatchesModelAfter": true,
+        "domMatchesModel50msLater": true
+      },
+      "streamBurst60": {
+        "ms": 17,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 1,
+        "guardError": 10,
+        "firstMessage": "50 cascading component updates detected in one event loop turn. Consider reducing hydration regions. Components: Cs x50",
+        "domMatchesModelAfter": false,
+        "domMatchesModel50msLater": false
+      },
+      "messageTasks60": {
+        "ms": 29,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 1,
+        "guardError": 10,
+        "firstMessage": "50 cascading component updates detected in one event loop turn. Consider reducing hydration regions. Components: Cs x50",
+        "domMatchesModelAfter": false,
+        "domMatchesModel50msLater": false
+      },
+      "messageTasks60RafCoalesced": {
+        "ms": 9,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 0,
+        "guardError": 0,
+        "firstMessage": null,
+        "domMatchesModelAfter": true,
+        "domMatchesModel50msLater": true
+      }
+    },
+    "awaited60StepsCompleted": 50,
+    "awaited60NextTaskUpdateResolves": true,
+    "awaited60LoopFinishedAfterThat": 60,
+    "awaited60DomMatchesAfterSettle": true
+  },
+  "preserve": {
+    "imperative": {
+      "rowsBefore": 300,
+      "rowsAfterTwoRerenders": 300,
+      "attributeKept": "2",
+      "samePreNode": true
+    },
+    "imperative-preserve": {
+      "rowsBefore": 300,
+      "rowsAfterTwoRerenders": 300,
+      "attributeKept": "2",
+      "samePreNode": true
+    }
+  }
+}

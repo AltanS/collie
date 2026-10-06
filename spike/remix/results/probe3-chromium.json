@@ -1,0 +1,699 @@
+{
+  "browser": "chromium",
+  "version": "151.0.7922.34",
+  "durationMs": 10000,
+  "runs": [
+    {
+      "throttle": 1,
+      "variant": "unkeyed",
+      "hz": 3,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 7.6,
+      "cellUpdateMs": {
+        "n": 26,
+        "mean": 1.081,
+        "p50": 0.9,
+        "p95": 2.5,
+        "max": 2.8
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 4.525,
+        "p50": 4.9,
+        "p95": 5.3,
+        "max": 5.3
+      },
+      "forcedLayoutMs": {
+        "n": 30,
+        "mean": 1.323,
+        "p50": 0.4,
+        "p95": 6.8,
+        "max": 10.3
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.75,
+        "p50": 2.8,
+        "p95": 3.6,
+        "max": 3.6
+      },
+      "frames": {
+        "count": 618,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "keyed",
+      "hz": 3,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 3.9,
+      "cellUpdateMs": {
+        "n": 26,
+        "mean": 0.865,
+        "p50": 0.8,
+        "p95": 1.2,
+        "max": 2.3
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 3.475,
+        "p50": 3.7,
+        "p95": 3.9,
+        "max": 3.9
+      },
+      "forcedLayoutMs": {
+        "n": 30,
+        "mean": 0.833,
+        "p50": 0.3,
+        "p95": 4.1,
+        "max": 5.7
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.625,
+        "p50": 2.5,
+        "p95": 3.6,
+        "max": 3.6
+      },
+      "frames": {
+        "count": 618,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "imperative",
+      "hz": 3,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 1.9,
+      "cellUpdateMs": {
+        "n": 26,
+        "mean": 0.058,
+        "p50": 0.1,
+        "p95": 0.1,
+        "max": 0.2
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 2,
+        "p50": 2,
+        "p95": 2.6,
+        "max": 2.6
+      },
+      "forcedLayoutMs": {
+        "n": 30,
+        "mean": 0.957,
+        "p50": 0.5,
+        "p95": 4.5,
+        "max": 4.7
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 3.075,
+        "p50": 3.5,
+        "p95": 4.7,
+        "max": 4.7
+      },
+      "frames": {
+        "count": 618,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "unkeyed",
+      "hz": 10,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 3.6,
+      "cellUpdateMs": {
+        "n": 95,
+        "mean": 0.569,
+        "p50": 0.5,
+        "p95": 0.9,
+        "max": 2
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 3.475,
+        "p50": 4,
+        "p95": 4.8,
+        "max": 4.8
+      },
+      "forcedLayoutMs": {
+        "n": 99,
+        "mean": 0.601,
+        "p50": 0.3,
+        "p95": 3.9,
+        "max": 5.4
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.75,
+        "p50": 2.9,
+        "p95": 3.7,
+        "max": 3.7
+      },
+      "frames": {
+        "count": 599,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "keyed",
+      "hz": 10,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 4.9,
+      "cellUpdateMs": {
+        "n": 95,
+        "mean": 0.541,
+        "p50": 0.5,
+        "p95": 0.8,
+        "max": 1.8
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 3.125,
+        "p50": 3.2,
+        "p95": 3.4,
+        "max": 3.4
+      },
+      "forcedLayoutMs": {
+        "n": 99,
+        "mean": 0.469,
+        "p50": 0.3,
+        "p95": 0.6,
+        "max": 3.9
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.525,
+        "p50": 2.6,
+        "p95": 2.8,
+        "max": 2.8
+      },
+      "frames": {
+        "count": 599,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "imperative",
+      "hz": 10,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 1.5,
+      "cellUpdateMs": {
+        "n": 95,
+        "mean": 0.051,
+        "p50": 0,
+        "p95": 0.1,
+        "max": 0.2
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 1.45,
+        "p50": 1.5,
+        "p95": 1.5,
+        "max": 1.5
+      },
+      "forcedLayoutMs": {
+        "n": 99,
+        "mean": 0.527,
+        "p50": 0.4,
+        "p95": 0.7,
+        "max": 4.1
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 1.95,
+        "p50": 1.9,
+        "p95": 2.6,
+        "max": 2.6
+      },
+      "frames": {
+        "count": 599,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "unkeyed",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 3.8,
+      "cellUpdateMs": {
+        "n": 299,
+        "mean": 0.559,
+        "p50": 0.5,
+        "p95": 0.8,
+        "max": 1.5
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 2.85,
+        "p50": 3,
+        "p95": 3.1,
+        "max": 3.1
+      },
+      "forcedLayoutMs": {
+        "n": 303,
+        "mean": 0.366,
+        "p50": 0.3,
+        "p95": 0.5,
+        "max": 5.2
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.25,
+        "p50": 2.4,
+        "p95": 3.1,
+        "max": 3.1
+      },
+      "frames": {
+        "count": 601,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "keyed",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 4.3,
+      "cellUpdateMs": {
+        "n": 299,
+        "mean": 0.59,
+        "p50": 0.6,
+        "p95": 0.9,
+        "max": 2
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 3,
+        "p50": 3.1,
+        "p95": 3.6,
+        "max": 3.6
+      },
+      "forcedLayoutMs": {
+        "n": 303,
+        "mean": 0.351,
+        "p50": 0.3,
+        "p95": 0.5,
+        "max": 4.7
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.675,
+        "p50": 3,
+        "p95": 3.3,
+        "max": 3.3
+      },
+      "frames": {
+        "count": 601,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 1,
+      "variant": "imperative",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 1.7,
+      "cellUpdateMs": {
+        "n": 299,
+        "mean": 0.038,
+        "p50": 0,
+        "p95": 0.1,
+        "max": 0.2
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 1.5,
+        "p50": 1.6,
+        "p95": 1.6,
+        "max": 1.6
+      },
+      "forcedLayoutMs": {
+        "n": 303,
+        "mean": 0.448,
+        "p50": 0.4,
+        "p95": 0.6,
+        "max": 4.3
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 2.7,
+        "p50": 2.3,
+        "p95": 4.3,
+        "max": 4.3
+      },
+      "frames": {
+        "count": 601,
+        "over50ms": 0,
+        "p95": 16.7,
+        "max": 16.8
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 4,
+      "variant": "unkeyed",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 17.5,
+      "cellUpdateMs": {
+        "n": 299,
+        "mean": 1.915,
+        "p50": 1.8,
+        "p95": 3.1,
+        "max": 7.7
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 11.75,
+        "p50": 11.8,
+        "p95": 13.2,
+        "max": 13.2
+      },
+      "forcedLayoutMs": {
+        "n": 303,
+        "mean": 1.419,
+        "p50": 1.2,
+        "p95": 2.2,
+        "max": 19.6
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 8.2,
+        "p50": 9,
+        "p95": 9.1,
+        "max": 9.1
+      },
+      "frames": {
+        "count": 598,
+        "over50ms": 0,
+        "p95": 16.8,
+        "max": 33.4
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 4,
+      "variant": "keyed",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 19.5,
+      "cellUpdateMs": {
+        "n": 299,
+        "mean": 2.313,
+        "p50": 2.2,
+        "p95": 3.6,
+        "max": 5.8
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 13.1,
+        "p50": 13.9,
+        "p95": 14.3,
+        "max": 14.3
+      },
+      "forcedLayoutMs": {
+        "n": 303,
+        "mean": 1.41,
+        "p50": 1.3,
+        "p95": 2.1,
+        "max": 15.2
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 9,
+        "p50": 9.5,
+        "p95": 11.9,
+        "max": 11.9
+      },
+      "frames": {
+        "count": 597,
+        "over50ms": 0,
+        "p95": 16.8,
+        "max": 33.4
+      },
+      "loafOver50ms": 1,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    },
+    {
+      "throttle": 4,
+      "variant": "imperative",
+      "hz": 30,
+      "durationMs": 10000,
+      "rows": 300,
+      "spans": 791,
+      "mountMs": 8,
+      "cellUpdateMs": {
+        "n": 299,
+        "mean": 0.214,
+        "p50": 0.1,
+        "p95": 0.8,
+        "max": 1.4
+      },
+      "fullReplaceMs": {
+        "n": 4,
+        "mean": 8,
+        "p50": 8.6,
+        "p95": 9.2,
+        "max": 9.2
+      },
+      "forcedLayoutMs": {
+        "n": 303,
+        "mean": 1.759,
+        "p50": 1.5,
+        "p95": 2.3,
+        "max": 22.8
+      },
+      "parseMs": {
+        "n": 4,
+        "mean": 7.625,
+        "p50": 7.3,
+        "p95": 10.6,
+        "max": 10.6
+      },
+      "frames": {
+        "count": 597,
+        "over50ms": 0,
+        "p95": 16.8,
+        "max": 33.4
+      },
+      "loafOver50ms": 0,
+      "skippedTicks": 0,
+      "screenHeightPx": 6740,
+      "domMatchesModel": true,
+      "guard": {
+        "warn": 0,
+        "error": 0,
+        "messages": []
+      }
+    }
+  ],
+  "pageErrors": [],
+  "cascade": {
+    "bursts": {
+      "sync60": {
+        "ms": 7.2,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 0,
+        "guardError": 0,
+        "firstMessage": null,
+        "domMatchesModelAfter": true,
+        "domMatchesModel50msLater": true
+      },
+      "awaited60": {
+        "ms": 2000.9,
+        "hungOnPendingUpdatePromise": true,
+        "guardWarn": 1,
+        "guardError": 1,
+        "firstMessage": "50 cascading component updates detected in one event loop turn. Consider reducing hydration regions. Components: Cs x50",
+        "domMatchesModelAfter": true,
+        "domMatchesModel50msLater": true
+      },
+      "streamBurst60": {
+        "ms": 85,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 1,
+        "guardError": 10,
+        "firstMessage": "50 cascading component updates detected in one event loop turn. Consider reducing hydration regions. Components: Cs x50",
+        "domMatchesModelAfter": false,
+        "domMatchesModel50msLater": false
+      },
+      "messageTasks60": {
+        "ms": 151.1,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 1,
+        "guardError": 9,
+        "firstMessage": "50 cascading component updates detected in one event loop turn. Consider reducing hydration regions. Components: Cs x50",
+        "domMatchesModelAfter": false,
+        "domMatchesModel50msLater": false
+      },
+      "messageTasks60RafCoalesced": {
+        "ms": 27,
+        "hungOnPendingUpdatePromise": false,
+        "guardWarn": 0,
+        "guardError": 0,
+        "firstMessage": null,
+        "domMatchesModelAfter": true,
+        "domMatchesModel50msLater": true
+      }
+    },
+    "awaited60StepsCompleted": 50,
+    "awaited60NextTaskUpdateResolves": true,
+    "awaited60LoopFinishedAfterThat": 60,
+    "awaited60DomMatchesAfterSettle": true
+  },
+  "preserve": {
+    "imperative": {
+      "rowsBefore": 300,
+      "rowsAfterTwoRerenders": 300,
+      "attributeKept": "2",
+      "samePreNode": true
+    },
+    "imperative-preserve": {
+      "rowsBefore": 300,
+      "rowsAfterTwoRerenders": 300,
+      "attributeKept": "2",
+      "samePreNode": true
+    }
+  }
+}
