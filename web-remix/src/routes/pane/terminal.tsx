@@ -33,7 +33,7 @@ import { t } from "@web/lib/i18n";
 
 import type { Find } from "../../lib/find";
 import { decorateRows, haystackOf } from "../../screen/decorate";
-import { isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
+import { createTailPin, isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
 import { toRows, type Row } from "../../screen/rows";
 import { MUSE_MIRROR, Screen } from "../../screen/screen";
 import { Collapse } from "../../ui/collapse";
@@ -98,6 +98,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
     if (scroller) rememberSpot(spotKey, { following, top: scroller.scrollTop });
   };
 
+  const tail = createTailPin();
   const pin = (): void => {
     if (!scroller) return;
     if (anchor !== null) {
@@ -109,7 +110,7 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
       restoreTop = null;
       return;
     }
-    if (following) scroller.scrollTop = scroller.scrollHeight;
+    if (following) tail.pin(scroller);
   };
 
   const follow = (next: boolean): void => {
@@ -203,11 +204,23 @@ export function TerminalView(handle: Handle<TerminalViewProps>) {
           data-testid="pane-scroller"
           class={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 ${native ? MUSE_MIRROR : "bg-background"}`}
           mix={[
-            ref((node: HTMLDivElement) => {
+            ref((node: HTMLDivElement, signal: AbortSignal) => {
               scroller = node;
+              // The bands under this scroller (statusline, agents footer, card dock) arrive through
+              // Collapse AFTER the render-time pin, so the box shrinks under a pinned tail. Re-pin on
+              // the box's own resize while following, as web's list re-pins on resize.
+              const keep = new ResizeObserver(() => {
+                if (following && anchor === null) tail.pin(node);
+              });
+              keep.observe(node);
+              signal.addEventListener("abort", () => keep.disconnect(), { once: true });
             }),
             on("scroll", (event) => {
-              follow(isAtBottom(event.currentTarget));
+              const node = event.currentTarget;
+              // The pin's own scroll event: content may have grown since, so pin again, keep following.
+              if (following && tail.ours(node)) {
+                if (!isAtBottom(node)) tail.pin(node);
+              } else follow(isAtBottom(node));
               save();
             }),
           ]}

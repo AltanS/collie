@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import type { PaneHistoryResponse, SnapshotResponse, TranscriptEntry } from "@web/lib/types";
 
-import { capture, PANE_SNAPSHOT, PANES, stubPaneBridge, TERMINAL_TEXT } from "./pane-api";
+import { capture, CHAT_BODY, PANE_SNAPSHOT, PANES, stubPaneBridge, TERMINAL_TEXT } from "./pane-api";
 
 // Pane parity with the React app (experiments/remix-v3/COMPARE.md): the statusline strip and the
 // agents footer, Send's ink on an empty draft, the empty-mirror sentence under an unread-dialog card,
@@ -59,6 +59,24 @@ test("the statusline strip and the agents footer sit under the mirror, in the mi
     [...region.querySelectorAll('[data-slot="statusline"], [data-slot="agents-footer"], [data-slot="chrome-block"]')].map((n) => n.getAttribute("data-slot")),
   );
   expect(order).toEqual(["statusline", "agents-footer", "chrome-block"]);
+});
+
+test("a long chat stays pinned to its tail when the statusline arrives under it", async ({ page }) => {
+  await stubPaneBridge(page, { [PANES.chat]: STATUS_SCREEN });
+  const turns = Array.from({ length: 40 }, (_, i) => ({
+    uuid: `t${String(i)}`,
+    seq: 1_000_000 + i,
+    ts: "2026-10-06T10:00:00.000Z",
+    role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
+    parts: [{ kind: "text" as const, text: `Turn ${String(i)}: a line of prose long enough to wrap once on a phone screen.` }],
+  }));
+  await page.route("**/api/pane/*/chat*", (route) => route.fulfill({ json: { ...CHAT_BODY, upserts: turns, head: 1_000_039 } }));
+  await page.goto(path(PANES.chat));
+  await expect(page.getByTestId("statusline")).toBeVisible();
+  await expect(page.getByTestId("chat-stream")).toContainText("Turn 39");
+  await page.waitForTimeout(600);
+  const gap = await page.getByTestId("chat-stream").evaluate((n) => n.scrollHeight - n.scrollTop - n.clientHeight);
+  expect(gap).toBeLessThan(2);
 });
 
 test("the statusline and the agents footer stand down while composing, and come back", async ({ page }) => {

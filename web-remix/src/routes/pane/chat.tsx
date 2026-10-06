@@ -20,7 +20,7 @@ import { setStatus } from "../../lib/status";
 import { useStore } from "../../lib/store";
 import { groupRuns } from "../../chat/steps";
 import { ItemView, ToolGroup } from "../../chat/tool-card";
-import { isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
+import { createTailPin, isAtBottom, recallSpot, rememberSpot } from "../../screen/follow";
 import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { StatusDot } from "../../ui/status-dot";
@@ -103,6 +103,7 @@ export function ChatView(handle: Handle<ChatViewProps>) {
   };
   handle.signal.addEventListener("abort", save);
 
+  const tail = createTailPin();
   const pin = (): void => {
     if (!scroller) return;
     if (anchor !== null && !store.get().loadingOlder) {
@@ -115,7 +116,7 @@ export function ChatView(handle: Handle<ChatViewProps>) {
       restoreTop = null;
       return;
     }
-    if (following) scroller.scrollTop = scroller.scrollHeight;
+    if (following) tail.pin(scroller);
   };
 
   const follow = (next: boolean): void => {
@@ -184,11 +185,26 @@ export function ChatView(handle: Handle<ChatViewProps>) {
           class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3"
           style={textTokens(fontSize)}
           mix={[
-            ref((node: HTMLDivElement) => {
+            ref((node: HTMLDivElement, signal: AbortSignal) => {
               scroller = node;
+              // The bands under this scroller (statusline, agents footer, card dock) arrive through
+              // Collapse AFTER the render-time pin, so the box shrinks under a pinned tail. Re-pin on
+              // the box's own resize while following, as web's list re-pins on resize.
+              const keep = new ResizeObserver(() => {
+                if (following && anchor === null) tail.pin(node);
+              });
+              keep.observe(node);
+              // And the stream's own column: a turn's Collapse grows it after the commit's pin.
+              const column = node.firstElementChild;
+              if (column !== null) keep.observe(column);
+              signal.addEventListener("abort", () => keep.disconnect(), { once: true });
             }),
             on("scroll", (event) => {
-              follow(isAtBottom(event.currentTarget));
+              const node = event.currentTarget;
+              // The pin's own scroll event: content may have grown since, so pin again, keep following.
+              if (following && tail.ours(node)) {
+                if (!isAtBottom(node)) tail.pin(node);
+              } else follow(isAtBottom(node));
               save();
             }),
           ]}
