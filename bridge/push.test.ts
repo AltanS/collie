@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { machineAlertMessage } from "./machine-alerts.ts";
-import { machineTopic, Push, topicIsSendable } from "./push.ts";
+import { machineTopic, Push, redactPushMessage, topicIsSendable } from "./push.ts";
+import { makeNotifySink, NotificationCoordinator, type NotifyClock } from "./notifications.ts";
+import { pushTitle } from "./push-titles.ts";
+import type { AgentStatus, AgentView } from "./types.ts";
 import type { PushSender, PushSubscription } from "./push.ts";
 import { loadConfig } from "./config.ts";
 import { HOST } from "./host.ts";
@@ -559,5 +562,119 @@ describe("Push — superseding, metadata and forget", () => {
     expect(await fileEndpoints(cfg.stateDir)).toEqual(["a"]);
     expect(await push.forget("*")).toBe(1);
     expect(await fileEndpoints(cfg.stateDir)).toEqual([]);
+  });
+});
+
+// ── M46: what a push carries is masked, and a pane is named by the operator, never by its program ──
+// A push crosses a third-party push service and shows on a lock screen. Placeholders only; the AWS
+// one is joined at runtime so a repo-wide secret scan finds nothing here.
+describe("Push — redact and the operator's label", () => {
+  const key = ["AKIA", "PLACEHOLDER00000"].join("");
+  const maskedKey = `AKIA${"•".repeat(16)}`;
+
+  function capturing() {
+    const payloads: string[] = [];
+    const sender: PushSender = (_s, payload) => {
+      payloads.push(payload);
+      return Promise.resolve();
+    };
+    return { sender, payloads };
+  }
+
+  /** Fire every armed timer at once — the debounce, without the wait. */
+  class InstantClock implements NotifyClock<number> {
+    private readonly timers = new Map<number, () => void>();
+    private next = 1;
+    schedule(fn: () => void): number {
+      this.timers.set(this.next, fn);
+      return this.next++;
+    }
+    cancel(handle: number): void {
+      this.timers.delete(handle);
+    }
+    fireAll(): void {
+      const fns = [...this.timers.values()];
+      this.timers.clear();
+      for (const fn of fns) fn();
+    }
+  }
+
+  function pane(paneId: string, status: AgentStatus, extra: Partial<AgentView> = {}): AgentView {
+    return {
+      paneId,
+      workspaceId: "w1",
+      workspaceLabel: "demo",
+      workspaceNumber: 1,
+      tabId: "w1:t1",
+      agent: "claude",
+      status,
+      cwd: "/home/you/demo",
+      focused: false,
+      kind: "agent",
+      ...extra,
+    };
+  }
+
+  /** The real chain a local session drives: coordinator → sink → Push → the push service. */
+  async function herd(cfgRedact: boolean) {
+    const cfg = { ...(await tempCfg()), redact: cfgRedact };
+    const { sender, payloads } = capturing();
+    const push = new Push(cfg, sender);
+    enable(push, [sub("a")]);
+    const clock = new InstantClock();
+    const sink = makeNotifySink(push, { isMuted: () => false }, "collie:herd");
+    const coord = new NotificationCoordinator(clock, sink, 0, (s) => s === "blocked" || s === "done");
+    return { coord, clock, payloads };
+  }
+
+  test("redact: a push body is masked before it leaves, and an untouched title keeps its code", async () => {
+    const cfg = await tempCfg();
+    const { sender, payloads } = capturing();
+    const push = new Push(cfg, sender);
+    enable(push, [sub("a")]);
+    await push.send({ ...pushTitle("agent.blocked", { agent: "claude" }), body: `demo · ${key}`, tag: "t" });
+    const sent = JSON.parse(payloads[0]!);
+    expect(sent.body).toBe(`demo · ${maskedKey}`);
+    expect(sent.title).toBe("claude needs you");
+    expect(sent.titleCode).toBe("agent.blocked");
+    expect(payloads[0]).not.toContain(key);
+  });
+
+  test("redact: a title the mask changed drops its code and detail, so no translation rebuilds it", () => {
+    const out = redactPushMessage({ ...pushTitle("machine.cpu", { machine: key }), body: "b" });
+    expect(out.title).toBe(`CPU stays high on ${maskedKey}`);
+    expect(out.titleCode).toBeUndefined();
+    expect(out.titleDetail).toBeUndefined();
+  });
+
+  test("redact off: COLLIE_REDACT=off sends the body as it is", async () => {
+    const cfg = { ...(await tempCfg()), redact: false };
+    const { sender, payloads } = capturing();
+    const push = new Push(cfg, sender);
+    enable(push, [sub("a")]);
+    await push.notify("hi", `body ${key}`);
+    expect(JSON.parse(payloads[0]!).body).toBe(`body ${key}`);
+  });
+
+  test("a program title with a path and a placeholder secret never appears in a push payload", async () => {
+    // Even with redaction OFF: the title is kept out by the name rule, not by the mask.
+    const { coord, clock, payloads } = await herd(false);
+    const title = `~/work/client/.env ${key}`;
+    coord.onTransition(pane("p1", "blocked", { terminalTitle: title }), "working", "blocked");
+    coord.onTransition(pane("p2", "blocked", { terminalTitle: title, workspaceLabel: "api" }), "working", "blocked");
+    clock.fireAll();
+    expect(payloads.length).toBeGreaterThan(0);
+    for (const payload of payloads) {
+      expect(payload).not.toContain("~/work");
+      expect(payload).not.toContain(key);
+    }
+  });
+
+  test("a pane with no label gets the neutral name, and a labelled one keeps the operator's", async () => {
+    const { coord, clock, payloads } = await herd(true);
+    coord.onTransition(pane("p1", "blocked", { terminalTitle: "vim notes.md" }), "working", "blocked");
+    coord.onTransition(pane("p2", "blocked", { agent: "codex", paneLabel: "backend" }), "working", "blocked");
+    clock.fireAll();
+    expect(JSON.parse(payloads.at(-1)!).body).toBe("claude, backend");
   });
 });

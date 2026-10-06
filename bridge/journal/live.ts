@@ -39,6 +39,8 @@ import { NO_CURSOR } from "./cursor.ts";
 import type { RowReducer } from "./reduce.ts";
 import type { TranscriptStore } from "./store.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "./types.ts";
+import { redactText } from "../redact.ts";
+import { redactEntry } from "./text.ts";
 
 /**
  * How many bytes of composed turns one window holds. Roughly, and deliberately so — the weight of an
@@ -172,6 +174,17 @@ export interface ChatOlderBody {
 
 /** Either answer. The route serves one body type, discriminated by {@link ChatWindowBody.page}. */
 export type ChatBody = ChatWindowBody | ChatOlderBody;
+
+/**
+ * Either answer with every content string masked (`bridge/redact.ts`, through `redactEntry`): the
+ * turns and, on a live window, the queued messages. Positions, ids and flags are untouched, so a
+ * client merges a masked answer exactly as it merges any other.
+ */
+export function redactChatBody(body: ChatBody): ChatBody {
+  const upserts = body.upserts.map(redactEntry);
+  if (body.page === "older") return { ...body, upserts };
+  return { ...body, upserts, queued: body.queued.map(redactText) };
+}
 
 /** `?after=<gen>:<rev>`, read off the query. */
 export interface ChatAfter {

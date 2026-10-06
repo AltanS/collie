@@ -12,6 +12,8 @@ import {
   MIN_LIVE_ENTRIES,
   parseChatAfter,
   parseChatBefore,
+  redactChatBody,
+  type ChatEntry,
   SEQ_BASE,
   TICK_FLOOR_MS,
   WINDOW_IDLE_MS,
@@ -19,6 +21,7 @@ import {
 } from "./live.ts";
 import { NO_CHANGE, noUnknowns, parseWith, type PendingTool, rememberPending, type RowReducer } from "./reduce.ts";
 import { TranscriptStore } from "./store.ts";
+import { redactEntry } from "./text.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -711,5 +714,74 @@ describe("what is queued", () => {
     const next = await live.window(fx.adapter, ref(), { limit: 10 });
     expect(next!.gen).not.toBe(first!.gen);
     expect(next!.queued).toEqual([]);
+  });
+});
+
+// M46: the journal's text is masked with the mirror's own list before a turn leaves the bridge. The
+// History route maps `redactEntry` over its page and the Chat route runs `redactChatBody`; both keep
+// every part, every hunk line and every line break where it was. Placeholders only.
+describe("redact — journal turns leave the bridge masked, shape intact", () => {
+  const key = `sk-or-v1-your-key-here-${"0".repeat(40)}`;
+  const masked = `sk-o${"•".repeat(key.length - 4)}`;
+  const turn: ChatEntry = {
+    uuid: "u-1",
+    ts: "2026-10-06T00:00:00Z",
+    role: "assistant",
+    seq: SEQ_BASE,
+    parts: [
+      { kind: "text", text: `Set it:\nexport OPENROUTER_API_KEY=${key}\ndone` },
+      { kind: "thinking", text: `the key is ${key}` },
+      {
+        kind: "tool",
+        name: "Bash",
+        id: "call-1",
+        summary: `curl -H "Authorization: Bearer ${key}"`,
+        call: { kind: "execute", command: `echo ${key}`, description: "print it" },
+        result: { text: `${key}\n`, isError: false },
+      },
+      {
+        kind: "tool",
+        name: "Write",
+        summary: ".env",
+        call: { kind: "edit", path: ".env", added: 1, removed: 0, diff: [{ header: "@@ -0,0 +1 @@", lines: [`+KEY=${key}`] }] },
+      },
+      { kind: "image", url: "/api/blobs/abc123" },
+    ],
+  };
+
+  test("redactEntry masks text, thinking, the tool's summary, command, result and diff", () => {
+    const out = redactEntry(turn);
+    const json = JSON.stringify(out);
+    expect(json).not.toContain(key);
+    expect(out.parts).toHaveLength(turn.parts.length);
+    expect(out.parts.map((p) => p.kind)).toEqual(turn.parts.map((p) => p.kind));
+    const [text, thinking, bash, write, image] = out.parts;
+    expect(text).toEqual({ kind: "text", text: `Set it:\nexport OPENROUTER_API_KEY=${masked}\ndone` });
+    expect(thinking).toEqual({ kind: "thinking", text: `the key is ${masked}` });
+    expect(bash).toMatchObject({ id: "call-1", call: { kind: "execute", command: `echo ${masked}`, description: "print it" } });
+    expect(bash).toMatchObject({ result: { text: `${masked}\n`, isError: false } });
+    expect(write).toMatchObject({ call: { path: ".env", diff: [{ header: "@@ -0,0 +1 @@", lines: [`+KEY=${masked}`] }] } });
+    expect(image).toEqual({ kind: "image", url: "/api/blobs/abc123" });
+    // Addresses are not content: the cursor and the position survive untouched.
+    expect(out.uuid).toBe("u-1");
+    expect(out.seq).toBe(SEQ_BASE);
+  });
+
+  test("redactChatBody masks a live window's turns and queue, and an older page's turns", () => {
+    const live = redactChatBody({
+      page: "live",
+      gen: 1,
+      rev: 2,
+      head: SEQ_BASE,
+      oldest: SEQ_BASE,
+      hasOlder: false,
+      upserts: [turn],
+      queued: [`and use ${key}`],
+    });
+    expect(JSON.stringify(live)).not.toContain(key);
+    expect(live).toMatchObject({ page: "live", gen: 1, rev: 2, queued: [`and use ${masked}`] });
+    const older = redactChatBody({ page: "older", gen: 1, upserts: [turn], hasOlder: true });
+    expect(JSON.stringify(older)).not.toContain(key);
+    expect(older).toMatchObject({ page: "older", gen: 1, hasOlder: true });
   });
 });

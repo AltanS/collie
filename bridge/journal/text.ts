@@ -3,6 +3,9 @@
 // text nodes rather than interpreting them.
 
 import type { JsonObject, JsonValue } from "../json.ts";
+import { redactText } from "../redact.ts";
+import type { Hunk, ToolCall } from "./tool-call.ts";
+import type { TranscriptEntry, TranscriptPart } from "./types.ts";
 
 /** Per-tool-result cap. Tool output is unbounded (a 2 MB file read); the phone only needs a gist. */
 export const MAX_RESULT_CHARS = 2000;
@@ -97,4 +100,65 @@ export function summarizeToolInput(input: JsonValue | undefined): string {
     // Unknown tool: first string value wins, so the line is never empty for no reason.
     values.find((v): v is string => typeof v === "string" && v.trim() !== "");
   return chosen === undefined ? "" : oneLine(chosen);
+}
+
+// ── SECRETS ARE MASKED BEFORE A TURN LEAVES THE BRIDGE ─────────────────────────────────────────
+// The journal's own text: what the agent said, what it thought, what a tool printed, the command it
+// ran and the diff it wrote. Each string goes through `bridge/redact.ts`, the same list the mirror
+// and the push use, so a key masked on the screen is masked in Chat too. Line count and block order
+// hold: the mask is the same length as what it hides, and no part, turn or hunk line is added or
+// dropped. Ids, timestamps, paths and image URLs are left alone: they are addresses, not content,
+// and a blob URL's hash must stay the hash the blob route answers to.
+//
+// Called by the History and Chat routes (server.ts) when `COLLIE_REDACT` is on. Never on what the
+// operator sends, and never on the audit trail.
+
+function redactHunk(hunk: Hunk): Hunk {
+  return { header: hunk.header, lines: hunk.lines.map(redactText) };
+}
+
+/** The content fields of a structured tool call. Paths stay: they locate, they do not carry. */
+function redactCall(call: ToolCall): ToolCall {
+  switch (call.kind) {
+    case "edit":
+      return call.diff === undefined ? call : { ...call, diff: call.diff.map(redactHunk) };
+    case "execute": {
+      const out: ToolCall = { ...call, command: redactText(call.command) };
+      if (call.description !== undefined) out.description = redactText(call.description);
+      return out;
+    }
+    case "search":
+      return { ...call, query: redactText(call.query) };
+    case "fetch":
+      return { ...call, url: redactText(call.url) };
+    case "task":
+    case "other":
+    case "question":
+      return { ...call, summary: redactText(call.summary) };
+    case "read":
+    case "delete":
+    case "move":
+      return call;
+  }
+}
+
+function redactPart(part: TranscriptPart): TranscriptPart {
+  switch (part.kind) {
+    case "text":
+    case "thinking":
+      return { ...part, text: redactText(part.text) };
+    case "image":
+      return part;
+    case "tool": {
+      const out: TranscriptPart = { ...part, summary: redactText(part.summary) };
+      if (part.call !== undefined) out.call = redactCall(part.call);
+      if (part.result !== undefined) out.result = { ...part.result, text: redactText(part.result.text) };
+      return out;
+    }
+  }
+}
+
+/** One turn with every content string masked. Same parts, same order, same line counts. */
+export function redactEntry<T extends TranscriptEntry>(entry: T): T {
+  return { ...entry, parts: entry.parts.map(redactPart) };
 }

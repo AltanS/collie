@@ -125,6 +125,7 @@ Key security boundaries and risks:
 | `COLLIE_ACCESS_TEAM` + `COLLIE_ACCESS_AUD` | Cloudflare Tunnel only. Rejects every remote request unless its `Cf-Access-Jwt-Assertion` verifies for this Access app. Only a local process on loopback, `/api/health` and the crew links skip it, and pairing still applies. Other front doors, such as `tailscale serve`, are refused too ([Cloudflare Tunnel](deployment.md#cloudflare-tunnel)). |
 | `COLLIE_DEVICE_HEADER` | Name of the header your proxy injects with a device id. |
 | `COLLIE_DEVICE_ALLOWLIST` | Comma-separated device ids allowed to write; every other device stays read-only ([`docs/deployment.md`](deployment.md)). |
+| `COLLIE_REDACT=off` | Turns off the secret mask on pane text ([below](#what-leaves-the-machine-is-masked)). On by default. |
 
 > 🚫 **Never use `tailscale funnel` with Collie.** Funnel routes traffic to the public internet,
 > whereas `tailscale serve` restricts access to your private tailnet. There is no supported use case
@@ -132,6 +133,42 @@ Key security boundaries and risks:
 
 Restrict access further with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, without
 warranty.
+
+## What leaves the machine is masked
+
+Collie masks known secret shapes in pane text before that text reaches a phone.
+
+```bash
+# in your .env, only to turn the mask off; it is on by default
+COLLIE_REDACT=off
+```
+
+The mask runs on the bridge, on three paths: the terminal mirror, the Chat and History views, and
+every push notification. What it hides becomes `•` marks of the same width, so the mirror's columns
+and line count hold. A vendor prefix stays readable, so `sk-o••••` still tells you what was hidden.
+
+It matches high-confidence shapes only:
+
+| shape | example of what is masked |
+| --- | --- |
+| prefixed API keys | `sk-…`, `sk-ant-…`, `sk-or-v1-…`, `ghp_…`, `github_pat_…`, `xoxb-…`, `AKIA…`, `AIza…`, `glpat-…`, `npm_…` |
+| JWTs | three base64url parts, the first starting `eyJ` |
+| PEM private keys | every line between `BEGIN … PRIVATE KEY` and its `END` line |
+| bearer tokens | the token after `Bearer `, 20 characters or more |
+| named values | the value after `password=`, `secret:`, `token=`, `api_key:` and similar, 8 characters or more |
+
+> **Caution.** This is a mitigation, not a guarantee. A plain password on its own, a bare hex or
+> base64 value, and a key with a prefix not in the list are missed on purpose. A pattern for them
+> would mask ordinary text and code on every screen.
+
+Some ordinary text is masked too, for example a line of prose or YAML that reads `token: something`.
+What you type and send is never masked, and the audit trail keeps its own rules
+(`COLLIE_AUDIT_CONTENT`).
+
+A push notification also names a pane only by the name you gave it: the pane's label, Claude's
+`/rename` name, or a one-pane tab's name. It never uses the title a program in the pane set, because
+any program can set that title, and a title can hold a path, a command or a secret. A pane with no
+such name is called by its harness, for example `claude`.
 
 ## Secret files on Windows
 

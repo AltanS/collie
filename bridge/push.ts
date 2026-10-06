@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
 import type { PushTitleCode, PushTitleDetail } from "./push-titles.ts";
+import { redactText } from "./redact.ts";
 
 // Optional Web Push (VAPID). Zero hard dependency: if `web-push` isn't installed or VAPID keys
 // aren't configured, push is silently disabled and the rest of the bridge works unchanged.
@@ -265,6 +266,27 @@ export interface PushMessage {
   renotify?: boolean;
 }
 
+/**
+ * A push message with its words masked (`bridge/redact.ts`): the body, and the title. A push crosses
+ * a third-party push service and shows on a lock screen, so it is the last place a secret should be.
+ *
+ * A title is a catalogue sentence filled from `titleDetail` (`push-titles.ts`), and the phone renders
+ * its own translation from the code and the detail when it has one. So a title the mask CHANGED drops
+ * its code and detail and travels as the masked English: a translated title rebuilt from the raw
+ * detail would put back exactly what was masked. A title the mask left alone keeps both.
+ *
+ * Pure and exported for the test; {@link Push.send} calls it when `COLLIE_REDACT` is on.
+ */
+export function redactPushMessage(message: PushMessage): PushMessage {
+  const out: PushMessage = { ...message };
+  if (message.body !== undefined) out.body = redactText(message.body);
+  if (message.title === undefined) return out;
+  const title = redactText(message.title);
+  if (title === message.title) return out;
+  const { titleCode: _titleCode, titleDetail: _titleDetail, ...plain } = out;
+  return { ...plain, title };
+}
+
 export class Push {
   private lib: WebPushModule | null = null;
   private subs = new Map<string, StoredSubscription>();
@@ -375,7 +397,8 @@ export class Push {
     // The SW reads deep-link fields from `data`. `session` is omitted for the primary and `host` for
     // this collie's own sessions (both absent on the message), keeping that payload identical to the
     // pre-multi-session, pre-crew shape.
-    const { topic, ...msg } = message;
+    const { topic, ...raw } = message;
+    const msg = this.cfg.redact ? redactPushMessage(raw) : raw;
     const data: PushPayloadData = { paneId: msg.paneId };
     if (msg.session !== undefined) data.session = msg.session;
     if (msg.host !== undefined) data.host = msg.host;

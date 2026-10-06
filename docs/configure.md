@@ -93,7 +93,7 @@ The config file groups every setting under a `[section]`. The environment name o
 | `bridge` | poll cadence, how many lines are read, where state lives |
 | `network` | the port, the bind address, allowed hosts and origins |
 | `mux` | which multiplexer this collie mirrors, and where it lives |
-| `access` | the Tailscale identity gate, the device header, the audit trail |
+| `access` | the Tailscale identity gate, the device header, the audit trail, the secret mask |
 | `push` | the three Web Push (VAPID) values |
 | `uploads` | the attachment size cap and the extra text types accepted |
 | `journal` | where each harness keeps its own session log |
@@ -523,6 +523,23 @@ folder or the first star.
 In a [crew](crew.md), each machine keeps the folders that exist on it, and the sheet shows the list
 of the machine you picked. A machine that runs an older Collie has no list, and the sheet then shows
 none for it.
+
+## Secret masking
+
+Collie masks known secret shapes in pane text before it reaches your phone.
+
+```bash
+# in your .env; the default is on
+COLLIE_REDACT=off
+```
+
+| variable | default | what it does |
+| --- | --- | --- |
+| `COLLIE_REDACT` | `on` | Masks API keys, JWTs, PEM private keys, bearer tokens and `password=` values in the mirror, Chat, History and push notifications. `off` sends pane text as it is. |
+
+In the config file this is `[access] redact`. The mask keeps the width of what it hides, so the
+mirror's layout holds. It catches high-confidence shapes only; the limits are in
+[Security](security.md#what-leaves-the-machine-is-masked).
 
 ## Multi-session
 

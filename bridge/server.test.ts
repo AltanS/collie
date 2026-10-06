@@ -173,6 +173,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     accessTeam: "",
     accessAud: [],
     auditContent: "preview",
+    redact: true,
     deviceHeader: "",
     deviceAllowlist: [],
     allowedOrigins: [],
@@ -1129,6 +1130,20 @@ describe("paneReadResponse — pane read → REST body", () => {
     });
   });
 
+  // M46: the mirror's one choke point. Placeholder only, joined at runtime so no secret scan trips.
+  test("redact: a placeholder key is masked at the same width, its colours intact; off leaves it", () => {
+    const key = ["AKIA", "PLACEHOLDER00000"].join("");
+    const esc = String.fromCodePoint(0x1b);
+    const text = `$ env\n${esc}[32mAWS_ACCESS_KEY_ID${esc}[0m=${key}\n$ `;
+    const read: MuxGrid = { paneId: "w1:p1", text, truncated: false, revision: 7 };
+    const masked = paneReadResponse("w1:p1", read, `AWS_ACCESS_KEY_ID=${key}`, true);
+    expect(masked.text).toBe(`$ env\n${esc}[32mAWS_ACCESS_KEY_ID${esc}[0m=AKIA${"•".repeat(16)}\n$ `);
+    expect(masked.text.length).toBe(text.length);
+    expect(masked.logicalText).toBe(`AWS_ACCESS_KEY_ID=AKIA${"•".repeat(16)}`);
+    expect(masked.revision).toBe(7);
+    expect(paneReadResponse("w1:p1", read, undefined, false).text).toBe(text);
+  });
+
   test("carries a zero revision unchanged (fresh pane) rather than dropping the field", () => {
     const read: MuxGrid = { paneId: "w2:p1", text: "", truncated: false, revision: 0 };
     expect(paneReadResponse("w2:p1", read)).toEqual({
@@ -1390,21 +1405,6 @@ describe("guard — the pairing gate composes with the header gate", () => {
     expect(write(c, { "x-device-id": "phone", authorization: "Bearer tok-phone" }, paired)).toBeNull();
   });
 
-  test("the header gate is untouched when nothing is paired", async () => {
-    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
-    expect((await write(c, {}, nothingPaired)!.text())).toBe("device not authorised");
-    expect(write(c, { "x-device-id": "phone" }, nothingPaired)).toBeNull();
-  });
-
-  test("the same-origin gate still runs first — a token is no substitute for an Origin", () => {
-    const denied = guard(
-      req({ host: "collie.ts.net", authorization: "Bearer tok-phone" }),
-      cfg(),
-      "write",
-      paired,
-    );
-    expect(denied).not.toBeNull();
-    expect(denied!.status).toBe(403);
   // M46 spec 01: the real PairingStore, not a stub, so the refusal text is the one the phone gets.
   test("an expired token is refused with its own text, on a write and on a device-read", async () => {
     const hash = sha256Hex;
@@ -1435,6 +1435,21 @@ describe("guard — the pairing gate composes with the header gate", () => {
     expect(read(cfg(), { authorization: "Bearer tok-old" }, store)).toBeNull();
   });
 
+  test("the header gate is untouched when nothing is paired", async () => {
+    const c = cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] });
+    expect((await write(c, {}, nothingPaired)!.text())).toBe("device not authorised");
+    expect(write(c, { "x-device-id": "phone" }, nothingPaired)).toBeNull();
+  });
+
+  test("the same-origin gate still runs first — a token is no substitute for an Origin", () => {
+    const denied = guard(
+      req({ host: "collie.ts.net", authorization: "Bearer tok-phone" }),
+      cfg(),
+      "write",
+      paired,
+    );
+    expect(denied).not.toBeNull();
+    expect(denied!.status).toBe(403);
   });
 });
 

@@ -31,6 +31,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   paired device by label, `devices list` and the Settings screen show each expiry, and an expired
   token is refused as `device expired` so the phone offers **Pair again**. An expired device still
   keeps pairing on until you revoke it.
+- **Known secret shapes are masked before pane text leaves the machine.** API keys with a
+  known prefix, JWTs, PEM private keys, bearer tokens and `password=`-style values become `•` marks
+  of the same width on the bridge, so the mirror, the Chat and History views and every push
+  notification carry the mask, never the key. A mitigation, not a guarantee: plain passwords and
+  bare hex are not matched. `COLLIE_REDACT=off` turns it off. Push bodies now name a pane by the
+  label you gave it, never by the program's own title.
 
 ### Changed
 

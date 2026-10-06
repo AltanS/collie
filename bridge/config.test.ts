@@ -28,6 +28,7 @@ const KEYS = [
   "COLLIE_READ_LINES",
   "COLLIE_TRANSCRIPT",
   "COLLIE_TRANSCRIPT_ROOT",
+  "COLLIE_REDACT",
   "COLLIE_CODEX_ROOT",
   "COLLIE_PI_ROOT",
   "COLLIE_OPENCODE_ROOT",
@@ -165,6 +166,19 @@ describe("loadConfig", () => {
     // Claude pane has.
     process.env.COLLIE_TRANSCRIPT = "banana";
     expect(loadConfig().transcript).toBe(true);
+  });
+
+  test("COLLIE_REDACT masks secrets by default and turns off with off/0/false/no", () => {
+    expect(loadConfig().redact).toBe(true);
+    for (const off of ["off", "0", "false", "no", "OFF"]) {
+      process.env.COLLIE_REDACT = off;
+      expect(loadConfig().redact).toBe(false);
+    }
+    process.env.COLLIE_REDACT = "on";
+    expect(loadConfig().redact).toBe(true);
+    // A typo must not quietly turn the mask off.
+    process.env.COLLIE_REDACT = "banana";
+    expect(loadConfig().redact).toBe(true);
   });
 
   // COLLIE_TRANSCRIPT_ROOT predates the per-harness split and meant Claude's root — it keeps meaning

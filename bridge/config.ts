@@ -320,6 +320,13 @@ export interface Config {
    */
   auditContent: AuditContent;
   /**
+   * Whether known secret shapes are masked in pane text before it leaves the machine
+   * (`COLLIE_REDACT`, default on): the mirror, the journal's Chat and History bodies, and every
+   * push payload. High-confidence shapes only, so a mitigation and not a guarantee — see
+   * `bridge/redact.ts` for what it catches and what it misses on purpose.
+   */
+  redact: boolean;
+  /**
    * Per-device authorisation. Name of a request header carrying an opaque device identifier,
    * injected by a trusted upstream reverse proxy. Empty = the feature is off (no behaviour change).
    * When set, devices whose header value isn't in {@link deviceAllowlist} are read-only. See
@@ -668,6 +675,7 @@ export function loadConfig(env: Environment = process.env): Config {
     accessTeam: (env.COLLIE_ACCESS_TEAM ?? "").trim(),
     accessAud: envList("COLLIE_ACCESS_AUD", env),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview", env),
+    redact: envBool("COLLIE_REDACT", true, env),
     deviceHeader: (env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST", env),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS", env),

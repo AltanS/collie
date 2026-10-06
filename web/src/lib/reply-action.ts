@@ -55,6 +55,18 @@ export const MIN_MATCH_CHARS = 8;
 
 const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
 
+/**
+ * The bridge's secret mask (`bridge/redact.ts`, `COLLIE_REDACT`, default on): a known secret shape on
+ * screen reaches the phone as one `•` per hidden character. The operator's own send is never masked,
+ * so a reply that carries a key reads back from the box as that key's mask. A mask character in the
+ * draft therefore stands for exactly ONE printable ASCII character of `sent` (every pattern the bridge
+ * masks is printable ASCII), or for a literal `•` the operator typed. Length and position still have
+ * to agree, so a draft that dropped or altered a visible character still fails.
+ */
+const REDACT_MASK = "•";
+const REDACT_SLOT = "(?:•|[\\x21-\\x7e])";
+const PRINTABLE_ASCII = /^[\x21-\x7e]$/;
+
 /** The exact gap extractInputDraft's fold inserts at a wrap seam: one plain space, always. Any
  *  other gap on screen is whitespace the operator really typed, so `sent` must carry it too. */
 const FOLD_SEAM = " ";
@@ -152,7 +164,7 @@ export function draftCarriesSend(sent: string, draft: string | null): boolean {
   if (visible < Math.min(visibleLength(sent), MIN_MATCH_CHARS)) return false;
 
   // Runs are whitespace-free by construction, so the joined pattern can never nest quantifiers.
-  const escape = (s: string) => s.replace(REGEXP_META, "\\$&");
+  const escape = (s: string) => s.replace(REGEXP_META, "\\$&").replaceAll(REDACT_MASK, REDACT_SLOT);
   let pattern = escape(runs[0]!);
   for (let i = 1; i < runs.length; i++) {
     const gap = gaps[i - 1]!;
@@ -252,9 +264,15 @@ export type ComposerPrepResult =
 
 // A cumulative prefix alone can match a stale screen after a later paste was
 // dropped. Multipart sends must also show the end that was just delivered.
+// A `•` in the draft may stand for one printable ASCII character of the send (REDACT_MASK).
 function carriesReplyTail(sent: string, draft: string | null): boolean {
-  const tail = Array.from(sent.replace(/\s/g, "")).slice(-32).join("");
-  return tail.length > 0 && draft !== null && draft.replace(/\s/g, "").endsWith(tail);
+  const tail = Array.from(sent.replace(/\s/g, "")).slice(-32);
+  if (tail.length === 0 || draft === null) return false;
+  const seen = Array.from(draft.replace(/\s/g, "")).slice(-tail.length);
+  return (
+    seen.length === tail.length &&
+    seen.every((ch, i) => ch === tail[i] || (ch === REDACT_MASK && PRINTABLE_ASCII.test(tail[i]!)))
+  );
 }
 
 export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOutcome> {

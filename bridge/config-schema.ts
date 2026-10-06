@@ -459,6 +459,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "How much of each value the audit trail keeps.",
     configField: "auditContent",
   },
+  {
+    key: "redact",
+    env: "COLLIE_REDACT",
+    section: "access",
+    kind: "bool",
+    default: true,
+    doc: "Mask known secret shapes in pane text before it reaches a phone or a push.",
+    configField: "redact",
+  },
 
   // ── push ───────────────────────────────────────────────────────────────────
   {

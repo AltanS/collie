@@ -53,7 +53,9 @@ import {
 } from "./update-action.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
-import { chatParams, LiveWindows } from "./journal/live.ts";
+import { chatParams, LiveWindows, redactChatBody } from "./journal/live.ts";
+import { redactEntry } from "./journal/text.ts";
+import { redactAnsi, redactText } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
@@ -953,7 +955,11 @@ export function startServer(opts: {
     // nothing. No entry means no key at all, which renders as nothing.
     const withActivity = (from: SessionRuntime, p: AgentView): AgentView => {
       const a = activity.get(from.name, p.paneId);
-      const withTimes = a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+      // The title is the one string here a program in the pane writes, so it is masked like the
+      // mirror (bridge/redact.ts) before it reaches the phone and the phone's cache.
+      const titled =
+        cfg.redact && p.terminalTitle !== undefined ? { ...p, terminalTitle: redactText(p.terminalTitle) } : p;
+      const withTimes = a ? { ...titled, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : titled;
       const key = p.agentSession?.value;
       const reading = key === undefined ? undefined : cache?.get(key);
       return reading === undefined ? withTimes : { ...withTimes, cache: reading };
@@ -2308,13 +2314,13 @@ export function startServer(opts: {
         }
         audit.record({ action: "device.revoke", device: whois(req).device, detail: { label } });
         const current = pairing.resolve(bearerToken(req.headers))?.label ?? null;
+        // A revoke is a write, so the caller's own token just passed the gate: it is not expired.
         return json(
           { enforced: pairing.enforced(), current, currentExpired: false, devices: toDeviceWire(pairing.registry(), current) },
           req.headers.get("accept-encoding"),
         );
       }
 
-        // A revoke is a write, so the caller's own token just passed the gate: it is not expired.
       // ── Reserved for a fronting proxy's sign-in page ─────────────────────
       // `/auth/` is the one path the service worker always passes to the network (web/src/lib/
       // sw-routes.ts), so it is the only address an installed PWA can reach when a proxy in front of
@@ -2489,7 +2495,12 @@ export async function readPane(
       herdr.readLogicalText !== undefined && hasSplitUrl(read.value.text)
         ? await herdr.readLogicalText(paneId, lines)
         : undefined;
-    const data = paneReadResponse(paneId, read.value, logical?.ok ? stripSgr(logical.value) : undefined);
+    const data = paneReadResponse(
+      paneId,
+      read.value,
+      logical?.ok ? stripSgr(logical.value) : undefined,
+      cfg.redact,
+    );
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
     // and skips the whole transfer (the big win on a cellular link).
     const bodyStr = JSON.stringify(data);
@@ -2522,17 +2533,27 @@ export async function readPane(
  * Map a multiplexer's grid to the REST response body. Pure + exported so the `revision` passthrough
  * (the client's prompt-select race guard depends on it) is covered by the bridge unit tests without
  * standing up Bun.serve / a socket.
+ *
+ * THE MIRROR'S ONE CHOKE POINT for secrets: every pane read the phone gets is built here, so this is
+ * where `redact` (`COLLIE_REDACT`, default on) masks them (bridge/redact.ts). The mask is the same
+ * width as what it hides and every escape stays where it was, so the grid's columns and colours hold.
+ * The ETag is hashed over the masked body, so a masked screen is still a 304 when nothing moved.
  */
-export function paneReadResponse(paneId: string, read: MuxGrid, logicalText?: string): PaneReadResponse {
+export function paneReadResponse(
+  paneId: string,
+  read: MuxGrid,
+  logicalText?: string,
+  redact = false,
+): PaneReadResponse {
   const body: PaneReadResponse = {
     paneId,
-    text: read.text,
+    text: redact ? redactAnsi(read.text) : read.text,
     truncated: read.truncated,
     revision: read.revision,
   };
   // Absent, never empty, when there is nothing to repair: the ETag is computed over this body, so an
   // always-present key would invalidate every client's cached copy once for no gain.
-  if (logicalText !== undefined) body.logicalText = logicalText;
+  if (logicalText !== undefined) body.logicalText = redact ? redactText(logicalText) : logicalText;
   return body;
 }
 
@@ -2598,8 +2619,11 @@ async function paneHistory(
   if (ref === null) return unavailable("no-session");
 
   try {
-    const page = await transcripts.page(adapter, ref, historyParams(url));
-    if (page === null) return unavailable("no-log");
+    const read = await transcripts.page(adapter, ref, historyParams(url));
+    if (read === null) return unavailable("no-log");
+    // Secrets are masked here, after the store, so the cached parse stays the log's own words and a
+    // `COLLIE_REDACT` change needs no cache flush (bridge/redact.ts).
+    const page = cfg.redact ? { ...read, entries: read.entries.map(redactEntry) } : read;
     return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
   } catch (err) {
     return text(`transcript read failed: ${errorText(err)}`, 502);
@@ -2657,11 +2681,13 @@ async function paneChat(
 
   const params = chatParams(url);
   try {
-    const body =
+    const read =
       params.before === undefined
         ? await live.window(adapter, ref, params)
         : await live.older(adapter, ref, params.before, params.limit);
-    if (body === null) return unavailable("no-log");
+    if (read === null) return unavailable("no-log");
+    // Masked before the ETag is hashed, so the tag describes what was actually sent (bridge/redact.ts).
+    const body = cfg.redact ? redactChatBody(read) : read;
     const data = { paneId, available: true, ...body } satisfies PaneChatResponse;
     const etag = computeEtag(JSON.stringify(data));
     if (notModified(req.headers.get("if-none-match"), etag)) {
@@ -3249,7 +3275,11 @@ async function checkPromptBinding(
   // One verdict over the one read: the text check, and, when the phone sent `expected_styled`, the
   // style check at the same place in the same text. It adds no RPC and no latency before the send. It
   // exists for a pointer drawn only as a style (opencode's chips), which the text check cannot see.
-  const result = verifyPromptBinding(fresh.text, expected, expectedStyledLines);
+  // The phone read its `expected` off the MASKED mirror, so the fresh read is masked the same way
+  // before the two are compared. The mask is deterministic and the same width, so a prompt with no
+  // secret in it compares exactly as before, and one with a secret still matches itself.
+  const freshText = cfg.redact ? redactAnsi(fresh.text) : fresh.text;
+  const result = verifyPromptBinding(freshText, expected, expectedStyledLines);
   if (!result.ok) {
     return {
       ok: false,
@@ -4446,6 +4476,11 @@ export interface PairingGate {
   enforced(): boolean;
   /** The device this token belongs to, or null. An expired token resolves to null. */
   resolve(token: string | null): { label: string } | null;
+  /**
+   * Whether this token belongs to a device whose expiry passed. Optional so a test may still pass a
+   * two-line gate; {@link PairingStore} always answers it.
+   */
+  expired?(token: string | null): boolean;
 }
 
 /**
@@ -4476,11 +4511,6 @@ export function requestDevice(req: Request, cfg: Config, pairing?: PairingGate):
  * by setting COLLIE_DEVICE_HEADER to the header a trusted upstream proxy injects, carrying an opaque
  * device identifier. The header is trusted only because the bridge binds loopback behind the proxy,
  * so a direct client can't forge it (the same trust basis as the Tailscale identity header). Matrix:
-  /**
-   * Whether this token belongs to a device whose expiry passed. Optional so a test may still pass a
-   * two-line gate; {@link PairingStore} always answers it.
-   */
-  expired?(token: string | null): boolean;
  *
  *   - feature off (no header configured) → not enforced, fully authorised (today's behaviour).
  *   - header absent                      → read-only, same as an unlisted device. Configuring the
