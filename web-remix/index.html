@@ -1,0 +1,227 @@
+<!doctype html>
+<!-- No theme class here: `color-scheme: light dark` in index.css follows the OS, and
+     public/theme-init.js stamps `light`/`dark` before first paint only when the user has pinned
+     one. The cascade decides, not the markup. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <!-- Blocking, and first: the pin class must be on <html> before anything paints. Same-origin,
+         so `script-src 'self'` already allows it. -->
+    <script src="/theme-init.js"></script>
+    <!-- Browser chrome follows the OS for System users. useTheme rewrites these at runtime for
+         someone who has pinned the opposite of their OS. -->
+    <meta
+      name="theme-color"
+      content="#f5f5f5"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#0a0a0a"
+      media="(prefers-color-scheme: dark)"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Not `black-translucent`: iOS 27 blurs the top edge of a translucent one, into the header.
+         iOS reads this once, at Add to Home Screen, so a change needs a re-add to show. -->
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="default"
+    />
+    <meta name="apple-mobile-web-app-title" content="Collie" />
+    <!-- Where this document is mounted (ADR 0052). `/` as built; the bridge rewrites it, and every
+         root-absolute reference in this file, to the path a proxy gave Collie when it serves the
+         file. One build serves any mount, so the value is not known here. lib/base-path.ts reads it. -->
+    <meta name="collie-base" content="/" />
+    <title>Collie</title>
+    <!-- The UI typeface, fetched in parallel with the CSS that asks for it rather than after it.
+         index.css already guarantees no layout shift with a metric-matched fallback, so this is not
+         load-bearing — it just means the swap usually never happens at all. `crossorigin` is
+         MANDATORY on a font preload even same-origin (fonts are fetched in CORS mode); without it
+         the browser fetches the file twice. ONLY THE DEFAULT FACE is preloaded — the other shipped
+         face is a deliberate choice a reader made, and preloading a file most devices never render
+         would spend everyone's first paint on a minority. Keep the URL in step with
+         DEFAULT_UI_FONT_URL in src/lib/sw-routes.ts and the @font-face in src/index.css —
+         fonts.test.ts pins all three. -->
+    <link
+      rel="preload"
+      href="/fonts/ui-aldrich-1.002-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <!-- The web manifest <link> is injected by vite-plugin-pwa at build time. -->
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- First-paint splash: the Collie mark shown the instant the PWA opens, bridging the OS
+         launch splash and the app's first render (remix/spa replaces the body, so it clears itself). Critical CSS
+         is inlined here so it paints and animates before the app bundle/index.css load — pure CSS,
+         no JS. It mirrors routes/root.tsx's BootSplash: the same mark at the same 4rem and the same
+         caption, so the hand-off changes nothing but the mark's own motion. -->
+    <style>
+      /* index.css has not loaded at this point, so the splash declares `color-scheme` itself —
+         otherwise light-dark() below has nothing to resolve against and every value falls to its
+         light branch. These three rules mirror index.css exactly; keep them in step. */
+      :root {
+        color-scheme: light dark;
+      }
+      :root.light {
+        color-scheme: light;
+      }
+      :root.dark {
+        color-scheme: dark;
+      }
+      /* The UI typefaces, declared a second time. index.css has not loaded here either, and the
+         splash's caption is the same string at the same size as routes/root.tsx's BootSplash — so
+         if the splash painted in the system face and React's copy painted in the chosen one, the
+         hand-off would change the family and the line under the operator's eyes. Same faces, same
+         stand-ins, same overrides; keep them in step with index.css. The default file is preloaded
+         above, so for most devices this costs no extra request. */
+      @font-face {
+        font-family: "Space Grotesk";
+        src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
+        font-weight: 400 700;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Space Grotesk Fallback";
+        src:
+          local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+          local("Liberation Sans"), local("Arimo"), local("Roboto");
+        size-adjust: 107.53%;
+        ascent-override: 91.51%;
+        descent-override: 27.16%;
+        line-gap-override: 0%;
+      }
+      /* Aldrich is the DEFAULT face now, so this is the block the preload above warms — the
+         splash and React's first paint resolve to it on any device that never opened the setting.
+         One weight; the synthesized bold is index.css's note. Space Grotesk above it stays on the
+         same terms it always had, but the roles flipped: theme-init.js has already put
+         `font-grotesk` on <html> for a reader who chose it, and that face now costs its own fetch
+         while Aldrich rides the preload. Keep in step with index.css. */
+      @font-face {
+        font-family: "Aldrich";
+        src: url("/fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
+        font-weight: 400;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Aldrich Fallback";
+        src:
+          local("Arial"), local("Helvetica Neue"), local("Helvetica"),
+          local("Liberation Sans"), local("Arimo"), local("Roboto");
+        size-adjust: 113.37%;
+        ascent-override: 63.53%;
+        descent-override: 18.52%;
+        line-gap-override: 4.22%;
+      }
+      .boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        /* --background / --muted-foreground rasterized, because index.css has not loaded yet:
+           oklch(0.97)/oklch(0.48) light, oklch(0.145)/oklch(0.708) dark. The light pair used to be
+           #ffffff/#8a8a8a, which is neither token — the page stepped from white to rgb(245) on
+           hand-off to React, and the caption sat at 3.45:1. Keep in step with index.css. */
+        background: light-dark(#f5f5f5, #0a0a0a);
+        color: light-dark(#5d5d5d, #a1a1a1);
+        font:
+          500 0.875rem/1.4 var(--font-sans);
+      }
+      /* The typeface setting, mirrored from index.css (ADR 0033). The splash resolves --font-sans
+         like everything else does, so the same three blocks decide the same thing here — otherwise
+         a reader on Aldrich would get a Space Grotesk splash and a change of voice on hand-off,
+         which is the exact failure the block above this one exists to prevent. `font-operator` is
+         NOT mirrored: an operator face has no pre-paint path (theme-init.js says why), so it
+         resolves through the default below, which is what it should do. Keep in step with
+         index.css. */
+      :root {
+        --font-sans:
+          "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      :root.font-system {
+        --font-sans:
+          ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      }
+      :root.font-grotesk {
+        --font-sans:
+          "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+          -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      /* THE MARK, AND IT IS THE SAME ANIMAL EVERY OTHER SCREEN SHOWS. This used to be the gallop
+         sprite, and it was the last place in the app still drawing it: <DogGallop/> was retired when
+         the new mark landed, routes/root.tsx's BootSplash moved to <CollieMark loading/>, and this
+         copy never followed. So every cold open showed a galloping dog for a beat and then swapped
+         it for a different animal.
+
+         It cannot be <CollieMark/> itself — that is React, and the whole point of this splash is
+         that it paints before any bundle. It is the brand's own header-weight mark, copied from
+         collie-brand/assets/collie-mark-header-{light,dark}.svg, which is the same drawing at the
+         same viewBox (152.5 84.0 881.9 881.9) that <CollieMark weight="header"/> renders. Re-copy
+         from collie-brand rather than editing these files.
+
+         TWO FILES AND NOT ONE, because the ink is baked into each: a background-image cannot read
+         `currentColor` or `light-dark()`. The media query covers the unpinned case and the two
+         `:root` rules cover the pinned one, exactly as the `color-scheme` block above does.
+
+         IT DOES NOT TRY TO BE THE ORBIT. The live mark's animation is 33KB of generated keyframes
+         and belongs to the component; this is the mark at rest, breathing, and React's own splash
+         takes over with the real thing a moment later. Static to animated is a far smaller step
+         than dog to mark. */
+      .boot-splash__mark {
+        width: 4rem;
+        height: 4rem;
+        background: url("/collie-mark-header-light.svg") no-repeat center / contain;
+        animation: boot-mark-breathe 2.4s ease-in-out infinite;
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot-splash__mark {
+          background-image: url("/collie-mark-header-dark.svg");
+        }
+      }
+      :root.light .boot-splash__mark {
+        background-image: url("/collie-mark-header-light.svg");
+      }
+      :root.dark .boot-splash__mark {
+        background-image: url("/collie-mark-header-dark.svg");
+      }
+      /* Opacity only, so the box never changes size and the caption under it cannot move. */
+      @keyframes boot-mark-breathe {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-splash__mark {
+          animation: none;
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- remix/spa renders into <body> itself (the document is its top frame), so the splash sits
+         directly in <body> and the app's first render replaces it. -->
+    <div class="boot-splash" role="status" aria-label="Loading Collie">
+      <span class="boot-splash__mark" aria-hidden="true"></span>
+      <span>Connecting to the herd…</span>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

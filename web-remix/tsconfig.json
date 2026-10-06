@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    // Remix 3 JSX: the automatic runtime, imported from remix/component (not React).
+    "jsx": "react-jsx",
+    "jsxImportSource": "remix/component",
+    "types": ["vite/client", "node"],
+    // `@web/*` is how this project reuses web/'s React-free modules, read-only. `@/*` is web/'s own
+    // alias: the reused modules import each other through it, so it has to resolve here too. Nothing
+    // under web-remix/src spells `@/`.
+    "paths": {
+      "@web/*": ["../web/src/*"],
+      "@/*": ["../web/src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["src/sw.ts"]
+}

@@ -1,0 +1,6 @@
+/* web/'s stylesheet is the design system (tokens, Tailwind layer, fonts, keyframes): reused as it
+   stands, read-only. Tailwind scans this project from its working directory; the reused web/ modules
+   that carry class names of their own are added as sources here. */
+@import "../../web/src/index.css";
+@source "../../web/src/lib/hosts.ts";
+@source "../../web/src/lib/triage.ts";

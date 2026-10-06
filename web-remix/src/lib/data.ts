@@ -1,0 +1,108 @@
+// The app's data, as stores the polling scheduler writes and components read (lib/store.ts).
+//
+// Each store keeps the last good body beside the last error, so a failed poll shows stale data
+// flagged, never an empty screen: the keep-previous-data rule web/src/lib/loaders.ts follows.
+import { internScope, scopeFromUrl, viewAllFromUrl, type Scope } from "@web/lib/scope";
+import type { BridgeConfig, PaneReadResponse, SnapshotResponse } from "@web/lib/types";
+
+import { ApiError, fetchConfig, fetchPane, fetchSnapshot, isAbort } from "./api";
+import { createStore, type Store } from "./store";
+
+export interface Loaded<T> {
+  /** The last good body, kept through a failed poll. */
+  data: T | undefined;
+  /** What the last poll failed with, or undefined when it succeeded. */
+  error: string | undefined;
+  /** The HTTP status of that failure, when the bridge answered one (401 and 403 matter). */
+  status: number | undefined;
+  /** When `data` was fetched (epoch ms); 0 before the first answer. */
+  at: number;
+}
+
+const EMPTY = { data: undefined, error: undefined, status: undefined, at: 0 } as const;
+
+function empty<T>(): Loaded<T> {
+  return { ...EMPTY };
+}
+
+/** Where the open screen points: the `?h=` / `?s=` scope and the `?all=1` breadth of its URL. */
+export interface Address {
+  scope: Scope;
+  all: boolean;
+}
+
+/** Set by the router on every navigation (router.tsx); the polling sources read it at fire time. */
+export const address = createStore<Address>(
+  { scope: internScope({}), all: false },
+  (a, b) => a.scope === b.scope && a.all === b.all,
+);
+
+export function noteAddress(url: URL): void {
+  address.set({ scope: internScope(scopeFromUrl(url.href)), all: viewAllFromUrl(url.href) });
+}
+
+export const snapshot = createStore<Loaded<SnapshotResponse>>(empty());
+export const config = createStore<Loaded<BridgeConfig>>(empty());
+
+const paneStores = new Map<string, Store<Loaded<PaneReadResponse>>>();
+
+/** The store for one pane's mirror, created on first ask and kept for the page's lifetime. */
+export function paneStore(key: string): Store<Loaded<PaneReadResponse>> {
+  let store = paneStores.get(key);
+  if (!store) {
+    store = createStore<Loaded<PaneReadResponse>>(empty());
+    paneStores.set(key, store);
+  }
+  return store;
+}
+
+function failed<T>(store: Store<Loaded<T>>, error: Error): void {
+  if (isAbort(error)) throw error;
+  store.update((prev) => ({
+    ...prev,
+    error: error.message,
+    status: error instanceof ApiError ? error.status : undefined,
+  }));
+}
+
+/** One poll of the snapshot. Resolves true when the body changed. */
+export async function loadSnapshot(signal: AbortSignal): Promise<boolean> {
+  const { scope, all } = address.get();
+  try {
+    const got = await fetchSnapshot(scope, signal, all);
+    snapshot.set({ data: got.body, error: undefined, status: undefined, at: Date.now() });
+    return !got.notModified;
+  } catch (error) {
+    if (error instanceof Error) failed(snapshot, error);
+    return false;
+  }
+}
+
+/** One read of the config. Resolves true when it changed. */
+export async function loadConfig(signal: AbortSignal): Promise<boolean> {
+  try {
+    const body = await fetchConfig(address.get().scope, signal);
+    const changed = JSON.stringify(body) !== JSON.stringify(config.get().data);
+    if (changed || config.get().error !== undefined) {
+      config.set({ data: body, error: undefined, status: undefined, at: Date.now() });
+    }
+    return changed;
+  } catch (error) {
+    if (error instanceof Error) failed(config, error);
+    return false;
+  }
+}
+
+/** One poll of a pane's mirror into `paneStore(key)`. Resolves true when the text changed. */
+export async function loadPane(key: string, paneId: string, scope: Scope, signal: AbortSignal): Promise<boolean> {
+  const store = paneStore(key);
+  try {
+    const got = await fetchPane(paneId, scope, signal);
+    const changed = got.body.text !== store.get().data?.text;
+    store.set({ data: got.body, error: undefined, status: undefined, at: Date.now() });
+    return changed;
+  } catch (error) {
+    if (error instanceof Error) failed(store, error);
+    return false;
+  }
+}

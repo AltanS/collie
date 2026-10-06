@@ -1,0 +1,11 @@
+{
+  // The service worker runs in a worker context, not the DOM: checked against the WebWorker lib in a
+  // pass of its own, as web/tsconfig.worker.json does for web/src/sw.ts.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/sw.ts"],
+  "exclude": []
+}

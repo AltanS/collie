@@ -1,0 +1,10 @@
+{
+  // The Playwright config, the specs and the static server run under Bun and Node, not in the
+  // browser: their own pass, with Bun's and Node's types and no DOM-only assumptions about globals.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun", "node"]
+  },
+  "include": ["playwright.config.ts", "e2e"],
+  "exclude": []
+}
