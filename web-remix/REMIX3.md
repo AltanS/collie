@@ -311,6 +311,9 @@ model in context.
   releases on `handle.signal`. Last claim wins; a release of a stale owner does nothing.
 - `center`, `right` and `override` carry plain data plus callbacks made once in setup, not fresh
   nodes. The model compares shallowly and dispatches `change` only on a real difference.
+- A `custom` slot is compared by object identity first (`sameSlot`). To make the host redraw one,
+  claim a NEW slot object with a new `rev`; writing `slot.rev = ...` on the object already claimed
+  wakes nobody (Files lost its filter button that way until 2026-10-06).
 - The route publishes from a `queueTask` in render, after commit. It never writes the model in
   render.
 

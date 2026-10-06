@@ -40,11 +40,13 @@ for (const level of LEVELS) {
     page.on("pageerror", (e) => errors.push(e.message));
     await installRoutesApi(page, [crewStub("crew"), machinesStub().handler, historyStub("long"), changesStub(), settingsStub().handler]);
     await page.goto(level.path);
-    await expect(page.getByTestId("header-back")).toBeVisible();
+    // History keeps web's header (the mark goes up; the find bar alone takes the row over), the rest wear the arrow.
+    const back = level.name === "history" ? "header-home" : "header-back";
+    await expect(page.getByTestId(back)).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 }).first()).not.toHaveText("");
     // One header, and the route drew none of its own.
     await expect(page.locator('[data-slot="app-header"]')).toHaveCount(1);
-    await page.getByTestId("header-back").click();
+    await page.getByTestId(back).click();
     await expect(page).toHaveURL(level.up);
     expect(errors).toEqual([]);
   });

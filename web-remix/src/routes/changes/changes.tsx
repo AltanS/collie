@@ -513,7 +513,7 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
   let controls: Controls = { render: () => null };
   let backNow: () => void = () => goUp(backFallback);
   const onBack = (): void => backNow();
-  const trailing: CustomSlot = { kind: "custom", render: () => controls.render(), rev: "" };
+  let trailing: CustomSlot = { kind: "custom", render: () => controls.render(), rev: "" };
 
   return () => {
     const prefs = readPrefs();
@@ -708,7 +708,9 @@ export function ChangesRoute(handle: Handle<ChangesRouteProps>) {
         </>
       ),
     };
-    trailing.rev = rev;
+    // A slot is compared by identity first (header-model.ts `sameSlot`): a changed `rev` needs a NEW object,
+    // or the host never learns that the filter button, the layout toggle or the spinner changed.
+    if (trailing.rev !== rev) trailing = { ...trailing, rev };
     const title = v.commitView ? t("changes.commit.title") : t("files.title");
     handle.queueTask(() => {
       header.claim({ override: { title, backLabel: backAria, onBack, trailing }, width: "wide" });

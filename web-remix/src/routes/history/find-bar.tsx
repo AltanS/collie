@@ -1,6 +1,7 @@
-// The find row of the History view (web/src/components/find-bar.tsx). The React bar takes over the whole
-// header; the Remix Frame owns the header's title and has no slot for it, so this row sits at the top of
-// the column instead. Enter is next, Shift+Enter previous, Escape closes. The count reads "2/9", or a
+// The find bar of the History view (web/src/components/find-bar.tsx). It takes over the whole header row, as
+// web's does: the route claims the header with an `override` whose `trailing` slot draws this bar, and the
+// bar grows past the override's own h1 (`flex-[1000_1_0%]` against the h1's `flex-1`), which keeps its
+// text for screen readers and loses its width to the field. Enter is next, Shift+Enter previous, Escape closes. The count reads "2/9", or a
 // zero when nothing matches, and the arrows are inert then.
 import { on, ref, type Handle } from "remix/component";
 import { ChevronDown, ChevronUp, Search, X } from "lucide";
@@ -30,7 +31,7 @@ export function FindBar(handle: Handle<FindBarProps>) {
   return () => {
     const { query, count, current, subject } = handle.props;
     return (
-      <div role="search" data-testid="find-bar" class="flex items-center gap-1 border-b px-3 py-1.5">
+      <div role="search" data-testid="find-bar" class="flex min-w-0 flex-[1000_1_0%] items-center gap-1">
         <Icon icon={Search} class="size-4 shrink-0 text-muted-foreground" />
         <input
           type="search"

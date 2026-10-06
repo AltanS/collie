@@ -6,15 +6,21 @@
 // find and jump-to-your-message work across turns not yet scrolled to. The DOM is the cost, so the window
 // starts at the newest 60 turns and grows upward as the reader nears the top. Not polled.
 //
+// THE HEADER IS WEB'S (web/src/routes/history.tsx): the Collie mark goes UP to the pane (ADR 0067), the centre is
+// the scroll icon, "History" and the pane's name, and the right is find, the drawn/total count and a close X.
+// While find is open the bar takes over the whole row, through the header's `override` claim: the route
+// draws no header, it states a claim (REMIX3.md rule 6) whose `trailing` slot is the find bar.
+//
 // The route is keyed by the pane (routes/frame/map.tsx), so it fetches once in setup. The scroller is an
 // inner column, not the Frame's own `<main>`: the Frame's scroll memory would otherwise fight the opening
 // position, which is the newest turn. Growing upward inserts content ABOVE the viewport, so the height
 // is measured before and the scroll restored after, the same anchoring "load older" uses. The browser's own
 // scroll anchoring is switched off on the scroller, or it would correct the same shift a second time.
 import { on, ref, type Handle } from "remix/component";
-import { ArrowUpToLine, ChevronDown, ChevronUp, LoaderCircle, Search } from "lucide";
+import { ArrowUpToLine, ChevronDown, ChevronUp, LoaderCircle, ScrollText, Search, X } from "lucide";
 
 import { t } from "@web/lib/i18n";
+import { cn } from "@web/lib/utils";
 import { panePath } from "@web/lib/nav";
 import { muxCapability } from "@web/lib/mux-capability";
 import { matchingEntries, step, userTurnIndices } from "@web/lib/transcript-search";
@@ -24,8 +30,11 @@ import { config, address, snapshot } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { setStatus } from "../../lib/status";
 import { scheduleUpdate, useStore } from "../../lib/store";
+import { headerOf } from "../../shell/context";
+import type { CustomSlot } from "../../shell/header-model";
 import { Icon } from "../../ui/icon";
-import { Frame } from "../frame/frame";
+import { COLUMN } from "../frame/frame";
+import { goUp } from "../frame/up";
 import { FindBar } from "./find-bar";
 import { FIRST_PAGE_QUERY, fetchHistoryPage, type HistoryUnavailable } from "./history-data";
 import { TranscriptView } from "./transcript";
@@ -70,6 +79,91 @@ export function HistoryRoute(handle: Handle<{ paneId: string }>) {
   let anchor: { height: number; top: number } | null = null;
   let toBottom = true;
   let toCursor = false;
+
+  // ── The header claim ──
+  // Slots are made ONCE here and read live: what they draw is in these variables, rewritten each render,
+  // and `rev` says when the host must redraw them (header-model.ts: a fresh node or closure is a change).
+  const header = headerOf(handle).owner(handle.signal);
+  const goToPane = (): void => goUp(panePath(paneId, address.get().scope));
+  let paneName = paneId;
+  let drawn = 0;
+  let findCount = 0;
+  let findCurrent = 0;
+  let jumpPrev: (() => void) | undefined;
+  let jumpNext: (() => void) | undefined;
+  let identity: CustomSlot = {
+    kind: "custom",
+    rev: "",
+    render: () => (
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-1.5">
+          <Icon icon={ScrollText} class="size-3.5 shrink-0 text-muted-foreground" />
+          <h1 class="truncate font-semibold leading-tight">{t("history.title")}</h1>
+        </div>
+        <div class="truncate text-xs leading-tight text-muted-foreground" data-testid="history-pane">
+          {paneName}
+        </div>
+      </div>
+    ),
+  };
+  let controls: CustomSlot = {
+    kind: "custom",
+    rev: "",
+    render: () => (
+      <>
+        {/* A PWA has no browser find, so the view provides its own. */}
+        <button
+          type="button"
+          data-testid="history-find"
+          aria-label={t("history.findAria")}
+          class="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+          mix={on("click", () => {
+            findOpen = true;
+            scheduleUpdate(handle);
+          })}
+        >
+          <Icon icon={Search} class="size-4" />
+        </button>
+        {total > 0 ? (
+          <span class="text-xs text-muted-foreground tabular-nums" data-testid="history-count">
+            {drawn}/{total}
+          </span>
+        ) : null}
+        {/* An explicit exit from reading mode: a full-screen view you deliberately entered should be as
+            obvious to leave as it was to open, without relying on the phone's back gesture. */}
+        <button
+          type="button"
+          data-testid="history-close"
+          aria-label={t("history.closeAria")}
+          class="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+          mix={on("click", goToPane)}
+        >
+          <Icon icon={X} class="size-4" />
+        </button>
+      </>
+    ),
+  };
+  let findSlot: CustomSlot = {
+    kind: "custom",
+    rev: "",
+    render: () => (
+      <FindBar
+        query={query}
+        count={findCount}
+        current={findCurrent}
+        subject={t("find.subject.history")}
+        onQueryChange={(next) => {
+          // A new query invalidates the previous position: the first Next starts from the top.
+          query = next;
+          cursor = -1;
+          scheduleUpdate(handle);
+        }}
+        onPrev={() => jumpPrev?.()}
+        onNext={() => jumpNext?.()}
+        onClose={closeFind}
+      />
+    ),
+  };
 
   const held = (): TranscriptEntry[] => heldEntries(older, first);
   const captureAnchor = (): void => {
@@ -163,6 +257,27 @@ export function HistoryRoute(handle: Handle<{ paneId: string }>) {
     const matchCursor = matches.indexOf(cursor);
     const sessionLog = muxCapability(readConfig().data?.mux ?? null, "agentSessionRef");
 
+    paneName = title;
+    drawn = shown.length;
+    findCount = matches.length;
+    findCurrent = matchCursor >= 0 ? matchCursor : 0;
+    jumpPrev = () => jumpTo(step(matches, cursor, -1));
+    jumpNext = () => jumpTo(step(matches, cursor, 1));
+    // A slot is compared by identity first (header-model.ts `sameSlot`), so a changed `rev` needs a NEW
+    // object: bumping the field on the one already claimed would wake nobody.
+    if (identity.rev !== title) identity = { ...identity, rev: title };
+    const controlsRev = `${String(drawn)}/${String(total)}`;
+    if (controls.rev !== controlsRev) controls = { ...controls, rev: controlsRev };
+    const findRev = `${query}|${String(findCount)}|${String(findCurrent)}`;
+    if (findSlot.rev !== findRev) findSlot = { ...findSlot, rev: findRev };
+    handle.queueTask(() =>
+      header.claim(
+        findOpen
+          ? { override: { title: t("history.title"), backLabel: t("find.closeAria"), onBack: closeFind, trailing: findSlot }, width: "wide" }
+          : { center: identity, right: controls, home: goToPane, homeLabel: t("history.closeAria"), width: "wide" },
+      ),
+    );
+
     handle.queueTask(() => {
       if (scroller === null) return;
       if (toBottom && entries.length > 0) {
@@ -181,124 +296,84 @@ export function HistoryRoute(handle: Handle<{ paneId: string }>) {
     });
 
     return (
-      <Frame title={t("history.title")} backLabel={t("history.closeAria")} up={panePath(paneId, scope)} width="wide" class="p-0">
-        {/* One slim row: the pane's name, how many turns are drawn, and the find button. A PWA has no
-            browser find, so the view provides its own. */}
-        {findOpen ? (
-          <FindBar
-            query={query}
-            count={matches.length}
-            current={matchCursor >= 0 ? matchCursor : 0}
-            subject={t("find.subject.history")}
-            onQueryChange={(next) => {
-              // A new query invalidates the previous position: the first Next starts from the top.
-              query = next;
-              cursor = -1;
-              scheduleUpdate(handle);
-            }}
-            onPrev={() => jumpTo(step(matches, cursor, -1))}
-            onNext={() => jumpTo(step(matches, cursor, 1))}
-            onClose={closeFind}
-          />
-        ) : (
-          <div class="flex items-center gap-2 border-b px-3 py-1.5">
-            <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground" data-testid="history-pane">
-              {title}
-            </span>
-            {total > 0 ? (
-              <span class="text-xs text-muted-foreground tabular-nums" data-testid="history-count">
-                {shown.length}/{total}
-              </span>
-            ) : null}
-            <button
-              type="button"
-              aria-label={t("history.findAria")}
-              class="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-              mix={on("click", () => {
-                findOpen = true;
-                scheduleUpdate(handle);
+      <div class={cn("flex min-h-0 w-full flex-1 flex-col", COLUMN.wide)}>
+        <main data-testid="route-main" class="relative flex min-h-0 flex-1 flex-col">
+          <div class="relative min-h-0 min-w-0 flex-1">
+            <div
+              data-testid="history-scroller"
+              class="absolute inset-0 overflow-y-auto px-3 py-3 [overflow-anchor:none]"
+              mix={ref((node: HTMLElement, signal) => {
+                scroller = node;
+                // Auto-grow as the reader nears the top, so scrolling back feels continuous.
+                node.addEventListener(
+                  "scroll",
+                  () => {
+                    if (node.scrollTop < GROW_THRESHOLD && !loadingOlder && phase === "ready") growUpward();
+                  },
+                  { passive: true, signal },
+                );
               })}
             >
-              <Icon icon={Search} class="size-4" />
-            </button>
-          </div>
-        )}
-
-        <div class="relative min-h-0 min-w-0 flex-1">
-          <div
-            data-testid="history-scroller"
-            class="absolute inset-0 overflow-y-auto px-3 py-3 [overflow-anchor:none]"
-            mix={ref((node: HTMLElement, signal) => {
-              scroller = node;
-              // Auto-grow as the reader nears the top, so scrolling back feels continuous.
-              node.addEventListener(
-                "scroll",
-                () => {
-                  if (node.scrollTop < GROW_THRESHOLD && !loadingOlder && phase === "ready") growUpward();
-                },
-                { passive: true, signal },
-              );
-            })}
-          >
-            {phase === "loading" ? (
-              <div class="space-y-3" data-testid="history-skeleton" aria-hidden="true">
-                <div class="h-16 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
-                <div class="h-24 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
-                <div class="h-12 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
-              </div>
-            ) : entries.length === 0 ? (
-              <div class="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground" data-testid="history-empty" data-reason={unavailable ?? "no-log"}>
-                {/* The route is reachable by URL, so it EXPLAINS rather than 404s. When the multiplexer keeps
-                    no agent session log at all, its own words replace the generic per-pane copy. */}
-                {sessionLog.capable || sessionLog.note === "" ? unavailableCopy(unavailable ?? "no-log") : sessionLog.note}
-              </div>
-            ) : (
-              <>
-                {!allRendered || hasMore ? (
-                  <button
-                    type="button"
-                    data-testid="history-load-older"
-                    disabled={loadingOlder}
-                    class="mb-3 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
-                    mix={on("click", () => growUpward())}
-                  >
-                    <Icon icon={loadingOlder ? LoaderCircle : ArrowUpToLine} class={loadingOlder ? "size-3.5 motion-safe:animate-spin" : "size-3.5"} />
-                    {loadingOlder ? t("history.loading") : t("history.loadOlder")}
-                  </button>
-                ) : (
-                  <div class="mb-3 text-center text-[11px] text-muted-foreground" data-testid="history-start">
-                    {fileTruncated ? t("history.startClipped") : t("history.startOfConversation")}
-                  </div>
-                )}
-                <TranscriptView entries={shown} agent={agent?.agent} query={query} focusedUuid={focusedUuid} scope={scope} />
-              </>
-            )}
-          </div>
-
-          {/* Jump between the turns YOU wrote: in a thousand-turn thread those are the only landmarks.
-              Hidden while find is open, which owns prev and next then. */}
-          {userTurns.length > 1 && !findOpen ? (
-            <div class="absolute right-3 bottom-3 z-10 flex flex-col overflow-hidden rounded-md border bg-background/90 shadow-md backdrop-blur" data-testid="history-jump">
-              <button
-                type="button"
-                aria-label={t("history.prevMessageAria")}
-                class="flex size-9 items-center justify-center text-muted-foreground transition-colors active:bg-muted"
-                mix={on("click", () => jumpTo(step(userTurns, cursor, -1)))}
-              >
-                <Icon icon={ChevronUp} class="size-4" />
-              </button>
-              <button
-                type="button"
-                aria-label={t("history.nextMessageAria")}
-                class="flex size-9 items-center justify-center border-t text-muted-foreground transition-colors active:bg-muted"
-                mix={on("click", () => jumpTo(step(userTurns, cursor, 1)))}
-              >
-                <Icon icon={ChevronDown} class="size-4" />
-              </button>
+              {phase === "loading" ? (
+                <div class="space-y-3" data-testid="history-skeleton" aria-hidden="true">
+                  <div class="h-16 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+                  <div class="h-24 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+                  <div class="h-12 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+                </div>
+              ) : entries.length === 0 ? (
+                <div class="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground" data-testid="history-empty" data-reason={unavailable ?? "no-log"}>
+                  {/* The route is reachable by URL, so it EXPLAINS rather than 404s. When the multiplexer keeps
+                      no agent session log at all, its own words replace the generic per-pane copy. */}
+                  {sessionLog.capable || sessionLog.note === "" ? unavailableCopy(unavailable ?? "no-log") : sessionLog.note}
+                </div>
+              ) : (
+                <>
+                  {!allRendered || hasMore ? (
+                    <button
+                      type="button"
+                      data-testid="history-load-older"
+                      disabled={loadingOlder}
+                      class="mb-3 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60"
+                      mix={on("click", () => growUpward())}
+                    >
+                      <Icon icon={loadingOlder ? LoaderCircle : ArrowUpToLine} class={loadingOlder ? "size-3.5 motion-safe:animate-spin" : "size-3.5"} />
+                      {loadingOlder ? t("history.loading") : t("history.loadOlder")}
+                    </button>
+                  ) : (
+                    <div class="mb-3 text-center text-[11px] text-muted-foreground" data-testid="history-start">
+                      {fileTruncated ? t("history.startClipped") : t("history.startOfConversation")}
+                    </div>
+                  )}
+                  <TranscriptView entries={shown} agent={agent?.agent} query={query} focusedUuid={focusedUuid} scope={scope} />
+                </>
+              )}
             </div>
-          ) : null}
-        </div>
-      </Frame>
+
+            {/* Jump between the turns YOU wrote: in a thousand-turn thread those are the only landmarks.
+                Hidden while find is open, which owns prev and next then. */}
+            {userTurns.length > 1 && !findOpen ? (
+              <div class="absolute right-3 bottom-3 z-10 flex flex-col overflow-hidden rounded-md border bg-background/90 shadow-md backdrop-blur" data-testid="history-jump">
+                <button
+                  type="button"
+                  aria-label={t("history.prevMessageAria")}
+                  class="flex size-9 items-center justify-center text-muted-foreground transition-colors active:bg-muted"
+                  mix={on("click", () => jumpTo(step(userTurns, cursor, -1)))}
+                >
+                  <Icon icon={ChevronUp} class="size-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={t("history.nextMessageAria")}
+                  class="flex size-9 items-center justify-center border-t text-muted-foreground transition-colors active:bg-muted"
+                  mix={on("click", () => jumpTo(step(userTurns, cursor, 1)))}
+                >
+                  <Icon icon={ChevronDown} class="size-4" />
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </main>
+      </div>
     );
   };
 }

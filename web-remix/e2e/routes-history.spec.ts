@@ -30,11 +30,43 @@ test.afterEach(() => {
 
 const turns = (page: Page) => page.locator("[data-turn]");
 
-test("claims the header, and back goes up to the pane", async ({ page }) => {
+test("claims the header as web does: the mark and the X go up to the pane", async ({ page }) => {
   await open(page);
+  const header = page.locator("header");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(en["history.title"]);
-  await page.getByTestId("header-back").click();
+  // The pane's name, the drawn/total count and the find button live in the header row, not under it.
+  await expect(header.getByTestId("history-pane")).toBeVisible();
+  await expect(header.getByTestId("history-count")).toHaveText("60/90");
+  await expect(header.getByTestId("history-find")).toBeVisible();
+  await expect(page.getByTestId("header-back")).toHaveCount(0);
+  await page.getByTestId("header-home").click();
   await expect(page).toHaveURL(/\/pane\/w1%3Ap1$/u);
+  await page.goBack();
+  await page.goto("/pane/w1%3Ap1/history");
+  await page.getByTestId("history-close").click();
+  await expect(page).toHaveURL(/\/pane\/w1%3Ap1$/u);
+});
+
+test("find takes over the header row through the override claim, and closing gives it back", async ({ page }) => {
+  await open(page);
+  const header = page.locator("header");
+  await expect(header.getByTestId("history-pane")).toBeVisible();
+  await page.getByTestId("history-find").click();
+  // The bar is IN the header, on the one row; the column under it holds no find row.
+  await expect(header.getByTestId("find-bar")).toBeVisible();
+  await expect(page.getByTestId("route-main").getByTestId("find-bar")).toHaveCount(0);
+  await expect(page.getByRole("searchbox")).toBeFocused();
+  const barBox = await header.getByTestId("find-bar").boundingBox();
+  const rowBox = await header.locator('[data-slot="header-row"]').boundingBox();
+  expect(barBox).not.toBeNull();
+  expect(rowBox).not.toBeNull();
+  // It takes the width of the row (the back arrow is the only thing beside it), and no second row opens.
+  expect((barBox?.width ?? 0) > (rowBox?.width ?? 1) * 0.7).toBe(true);
+  expect((barBox?.height ?? 99) < (rowBox?.height ?? 0)).toBe(true);
+  await expect(header.getByTestId("history-pane")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("find-bar")).toHaveCount(0);
+  await expect(header.getByTestId("history-pane")).toBeVisible();
 });
 
 test("opens at the newest turn with a window of 60, and the whole count beside it", async ({ page }) => {
