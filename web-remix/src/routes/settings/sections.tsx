@@ -1,30 +1,32 @@
 // The Settings section pages. Port of web/src/routes/settings-sections.tsx, read there for why the
-// split is Appearance / Device / Alerts / System / Experiments.
+// split is Appearance / Device / Alerts / System / Experiments, and why each page is an ordered list
+// of cards whose order IS the design.
 //
-// What this build carries, per section:
-//   Appearance   the theme and the language
-//   Device       the paired-devices card (the phase B3 contract puts pairing here; web/ files it under
-//                System, so System carries the same card too and the read-only strip's
-//                `/settings/system#paired-devices` link and the QR's forward both land on it)
-//   System       the Updates row and the paired-devices card; crew and connection are not in this build
-//   Experiments  the section's contract notice, as web/ (nothing is filed there)
-//   Alerts       not in this build
-import { navigate, on, type Handle } from "remix/component";
-import { ChevronRight, FlaskConical, Info, RefreshCw } from "lucide";
+//   Appearance   how this phone PRESENTS itself, including what the mirror renders with
+//   Device       how this phone TREATS you: feedback, input, what the pane menu may offer
+//   Alerts       when Collie speaks up, on this device and bridge-wide
+//   System       what this thing is talking to, and whether it is well
+//   Experiments  what is not finished: the only section that can be absent from the index
+import type { Handle } from "remix/component";
+import { FlaskConical } from "lucide";
 
 import { t, type MessageKey } from "@web/lib/i18n";
-import { settingsPath, updatesPath } from "@web/lib/nav";
+import { settingsPath } from "@web/lib/nav";
 
 import { address } from "../../lib/data";
 import { useLocale } from "../../lib/i18n-store";
 import { useStore } from "../../lib/store";
-import { href } from "../../routes";
-import { Card } from "../../ui/card";
 import { Icon } from "../../ui/icon";
 import { Notice } from "../../ui/notice";
+import { BridgeWideAlerts, PushControl } from "./alerts";
 import { LanguageControl, ThemeControl } from "./appearance";
+import { ChangesControl, HandsFreeControl, HapticsControl, TourControl, ZenControl } from "./device";
+import { BeltSizeControl, CompactionsControl, HarnessBarControl, PaneOrderControl, ToolCallsControl } from "./display";
+import { FontSettingsControl } from "./fonts";
 import { SettingsPage } from "./page";
 import { PairedDevices } from "./paired-devices";
+import { ConnectionInfo, CrewCard, UpdatesRow } from "./system";
+import { TypefaceControl } from "./typeface";
 
 export type SettingsSection = "appearance" | "device" | "alerts" | "system" | "experiments";
 
@@ -40,60 +42,57 @@ export function isSettingsSection(value: string): value is SettingsSection {
   return Object.hasOwn(TITLES, value);
 }
 
-/**
- * The one sentence with no dictionary key: the dictionary is web/'s and read-only from here, and no
- * existing string says "this part is not built yet". It names a gap of this shell, not of Collie, so
- * it goes away with the gap rather than into the seven translations.
- */
-const NOT_IN_THIS_BUILD = "Not in this build yet.";
-
-function NotInThisBuild() {
-  return () => (
-    <Notice variant="box" tone="neutral" icon={<Icon icon={Info} />}>
-      {NOT_IN_THIS_BUILD}
-    </Notice>
-  );
-}
-
-/** The System page's row into /settings/updates (web/'s UpdatesSettingsCard, as a plain row). */
-function UpdatesRow(handle: Handle) {
-  const where = useStore(handle, address);
-  useLocale(handle);
-  return () => (
-    <Card class="gap-0 py-0">
-      <button
-        type="button"
-        class="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
-        mix={on("click", () => void navigate(href(updatesPath(where().scope))))}
-      >
-        <Icon icon={RefreshCw} class="size-5 shrink-0 text-muted-foreground" />
-        <div class="min-w-0 flex-1 font-medium">{t("updates.title")}</div>
-        <Icon icon={ChevronRight} class="size-5 shrink-0 text-muted-foreground" />
-      </button>
-    </Card>
-  );
-}
-
 export function SettingsSectionRoute(handle: Handle<{ section: SettingsSection }>) {
   const where = useStore(handle, address);
   useLocale(handle);
   return () => {
     const { section } = handle.props;
-    const up = settingsPath(where().scope);
     return (
-      <SettingsPage title={TITLES[section]} up={up}>
+      // Keyed by section: a move from one section to another is a new page with its own cards.
+      <SettingsPage key={section} title={TITLES[section]} up={settingsPath(where().scope)}>
         {section === "appearance" ? (
           <>
+            {/* The one people come here for, so it is first. */}
             <ThemeControl />
             <LanguageControl />
+            {/* TWO FONT CARDS, ADJACENT, IN THIS ORDER: "Typeface" is the APP's own face (ADR 0033),
+                "Terminal font" is the mirror's. Reading them one after the other is what makes the
+                split obvious. */}
+            <TypefaceControl />
+            <FontSettingsControl />
+            <HarnessBarControl />
+            <BeltSizeControl />
+            <PaneOrderControl />
+            {/* The odd one: every card above changes how a surface LOOKS, these two what it CONTAINS. */}
+            <ToolCallsControl />
+            <CompactionsControl />
           </>
         ) : null}
-        {section === "device" ? <PairedDevices /> : null}
+        {section === "device" ? (
+          <>
+            <HapticsControl />
+            <HandsFreeControl />
+            {/* AVAILABILITY ONLY: this row decides whether the actions sheet offers "Zen mode". */}
+            <ZenControl />
+            <ChangesControl />
+            {/* The only way back to a tour that was interrupted: an action, so the row ends in a button. */}
+            <TourControl />
+          </>
+        ) : null}
+        {section === "alerts" ? (
+          <>
+            <PushControl />
+            <BridgeWideAlerts />
+          </>
+        ) : null}
         {section === "system" ? (
           <>
+            {/* ONE row for the whole subject: updating is a flow, and it lives on /settings/updates. */}
             <UpdatesRow />
+            {/* Access sits with the connection diagnostics: both answer "what is this device allowed to do". */}
             <PairedDevices />
-            <NotInThisBuild />
+            <CrewCard />
+            <ConnectionInfo />
           </>
         ) : null}
         {section === "experiments" ? (
@@ -101,7 +100,6 @@ export function SettingsSectionRoute(handle: Handle<{ section: SettingsSection }
             {t("settings.experiments.contract")}
           </Notice>
         ) : null}
-        {section === "alerts" ? <NotInThisBuild /> : null}
       </SettingsPage>
     );
   };
