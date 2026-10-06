@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@remix-run/ui": "0.12.1",
     "remix": "3.0.0"
   },
   "devDependencies": {
@@ -27,6 +28,9 @@
     "bench": "bun probe3-screen/run.ts http://127.0.0.1:5194 chromium 10000",
     "nav": "bun probe4-nav/nav.ts http://127.0.0.1:5193 chromium,chromium-nonav",
     "table": "bun results/table.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:motion": "vite build --config probe5-motion/vite.config.ts",
+    "preview:motion": "vite preview --config probe5-motion/vite.config.ts",
+    "motion": "bun probe5-motion/run.ts http://127.0.0.1:5190 chromium"
   }
 }

@@ -4,10 +4,12 @@
 #   error: No version matching "remix" found for specifier "3.0.0"
 #   (blocked by minimum-release-age: 604800 seconds)
 # This file keeps the 7-day gate for every other package and exempts only the Remix family.
+# Probe 5 adds @remix-run/ui (0.12.1, published 2026-10-01) for the animation mixins.
 [install]
 minimumReleaseAge = 604800
 minimumReleaseAgeExcludes = [
   "remix",
+  "@remix-run/ui",
   "@remix-run/fs",
   "@remix-run/cli",
   "@remix-run/spa",

@@ -1,0 +1,953 @@
+{
+  "browser": "chromium",
+  "version": "151.0.7922.34",
+  "q7": {
+    "result": {
+      "parentRenders": 60,
+      "before": {
+        "imp-plain": {
+          "rows": 100,
+          "owned": 0,
+          "firstChildText": "imperative row 0",
+          "dataCount": "0"
+        },
+        "imp-preserve": {
+          "rows": 100,
+          "owned": 0,
+          "firstChildText": "imperative row 0",
+          "dataCount": "0"
+        },
+        "imp-mixed": {
+          "rows": 100,
+          "owned": 1,
+          "firstChildText": "vdom child 0",
+          "dataCount": null
+        }
+      },
+      "after": {
+        "imp-plain": {
+          "rows": 100,
+          "owned": 0,
+          "firstChildText": "imperative row 0",
+          "dataCount": "60"
+        },
+        "imp-preserve": {
+          "rows": 100,
+          "owned": 0,
+          "firstChildText": "imperative row 0",
+          "dataCount": "60"
+        },
+        "imp-mixed": {
+          "rows": 100,
+          "owned": 1,
+          "firstChildText": "vdom child 60",
+          "dataCount": null
+        }
+      },
+      "sameHost": [
+        true,
+        true,
+        true
+      ],
+      "sameFirstRow": [
+        true,
+        true,
+        true
+      ],
+      "order": [
+        "imp-plain",
+        "imp-preserve",
+        "imp-mixed"
+      ]
+    },
+    "consoleErrors": []
+  },
+  "q8": {
+    "result": {
+      "runtimeOnly": {
+        "restore": false,
+        "before": {
+          "scrollTop": 961,
+          "topRow": "Pane 25",
+          "windowScrollY": 0
+        },
+        "afterBack": {
+          "scrollTop": 0,
+          "topRow": "Pane 1",
+          "windowScrollY": 0
+        },
+        "afterSecondBack": {
+          "scrollTop": 0,
+          "topRow": "Pane 1",
+          "windowScrollY": 0
+        },
+        "freshPushToList": {
+          "scrollTop": 0,
+          "topRow": "Pane 1",
+          "windowScrollY": 0
+        }
+      },
+      "withModuleMap": {
+        "restore": true,
+        "before": {
+          "scrollTop": 961,
+          "topRow": "Pane 25",
+          "windowScrollY": 0
+        },
+        "afterBack": {
+          "scrollTop": 961,
+          "topRow": "Pane 25",
+          "windowScrollY": 0
+        },
+        "afterSecondBack": {
+          "scrollTop": 961,
+          "topRow": "Pane 25",
+          "windowScrollY": 0
+        },
+        "freshPushToList": {
+          "scrollTop": 0,
+          "topRow": "Pane 1",
+          "windowScrollY": 0
+        }
+      }
+    },
+    "consoleErrors": []
+  },
+  "q9": {
+    "result": {
+      "clockOnly": {
+        "ticks": 20,
+        "flushMs": {
+          "n": 20,
+          "p50": 0.2,
+          "p95": 0.4,
+          "max": 0.4
+        },
+        "clockRenders": 20,
+        "rowRenders": 0,
+        "shellRenders": 0
+      },
+      "shellUpdates": {
+        "shellUpdates": 20,
+        "rowRenders": 4000,
+        "clockRenders": 20,
+        "flushMs": {
+          "n": 20,
+          "p50": 0.6,
+          "p95": 1,
+          "max": 1
+        }
+      }
+    },
+    "consoleErrors": []
+  },
+  "q10": {
+    "result": {
+      "mouse": {
+        "hold650": {
+          "longPresses": 1,
+          "swipes": 0,
+          "log": [
+            "532.6 parent got app:longpress pointerType=mouse held=500ms target=press"
+          ]
+        },
+        "hold300": {
+          "longPresses": 1,
+          "swipes": 0,
+          "log": [
+            "1041.8 longpress cancelled by pointerup"
+          ]
+        },
+        "dragOutWhileCaptured": {
+          "longPresses": 1,
+          "swipes": 0,
+          "log": [
+            "1546.3 longpress cancelled by move",
+            "2149.5 longpress host saw pointerleave"
+          ]
+        },
+        "syntheticPointercancel": {
+          "longPresses": 1,
+          "swipes": 0,
+          "log": [
+            "2303 longpress cancelled by pointercancel"
+          ]
+        },
+        "fastSwipeLeft180px": {
+          "longPresses": 1,
+          "swipes": 1,
+          "log": [
+            "2859.2 longpress host saw pointerleave",
+            "2970 parent got app:swipe left dx=-180 vx=-1.632 pointerType=mouse"
+          ]
+        },
+        "slowDrag30px": {
+          "longPresses": 1,
+          "swipes": 1,
+          "log": [
+            "3660.3 swipe below threshold dx=30"
+          ]
+        }
+      },
+      "touch": {
+        "touchHold650": {
+          "longPresses": 2,
+          "swipes": 1,
+          "log": [
+            "4216.7 parent got app:longpress pointerType=touch held=501ms target=press",
+            "4368.5 longpress host saw pointerleave"
+          ]
+        },
+        "touchSwipeLeft180px": {
+          "longPresses": 2,
+          "swipes": 2,
+          "log": [
+            "4664.5 parent got app:swipe left dx=-180 vx=-0.676 pointerType=touch"
+          ]
+        },
+        "touchVerticalDrag180px": {
+          "longPresses": 2,
+          "swipes": 2,
+          "log": [
+            "4747.9 swipe pointercancel (touch)"
+          ],
+          "windowScrolledBy": 313
+        }
+      }
+    },
+    "consoleErrors": []
+  },
+  "q6": {
+    "result": {
+      "exits": [
+        {
+          "kind": "sheet",
+          "preset": "snappy",
+          "springDurationMs": 350,
+          "entrance": {
+            "animated": true,
+            "durationMs": 350,
+            "finishedAfterMs": 360
+          },
+          "stillInDomAfterCommit": true,
+          "removedAtMs": 384,
+          "exitFrames": 23,
+          "lastSampleBeforeRemoval": {
+            "t": 366,
+            "opacity": 1,
+            "translateY": 240
+          }
+        },
+        {
+          "kind": "toast",
+          "preset": "snappy",
+          "springDurationMs": 350,
+          "entrance": {
+            "animated": true,
+            "durationMs": 350,
+            "finishedAfterMs": 365
+          },
+          "stillInDomAfterCommit": true,
+          "removedAtMs": 383,
+          "exitFrames": 23,
+          "lastSampleBeforeRemoval": {
+            "t": 366,
+            "opacity": 0,
+            "translateY": 8
+          }
+        },
+        {
+          "kind": "sheet",
+          "preset": "smooth",
+          "springDurationMs": 1050,
+          "entrance": {
+            "animated": true,
+            "durationMs": 1050,
+            "finishedAfterMs": 1081
+          },
+          "stillInDomAfterCommit": true,
+          "removedAtMs": 1083,
+          "exitFrames": 65,
+          "lastSampleBeforeRemoval": {
+            "t": 1067,
+            "opacity": 1,
+            "translateY": 240
+          }
+        },
+        {
+          "kind": "toast",
+          "preset": "smooth",
+          "springDurationMs": 1050,
+          "entrance": {
+            "animated": true,
+            "durationMs": 1050,
+            "finishedAfterMs": 1065
+          },
+          "stillInDomAfterCommit": true,
+          "removedAtMs": 1067,
+          "exitFrames": 64,
+          "lastSampleBeforeRemoval": {
+            "t": 1050,
+            "opacity": 0,
+            "translateY": 8
+          }
+        },
+        {
+          "kind": "sheet",
+          "preset": "bouncy",
+          "springDurationMs": 550,
+          "entrance": {
+            "animated": true,
+            "durationMs": 550,
+            "finishedAfterMs": 582
+          },
+          "stillInDomAfterCommit": true,
+          "removedAtMs": 566,
+          "exitFrames": 34,
+          "lastSampleBeforeRemoval": {
+            "t": 550,
+            "opacity": 1,
+            "translateY": 240
+          }
+        },
+        {
+          "kind": "toast",
+          "preset": "bouncy",
+          "springDurationMs": 550,
+          "entrance": {
+            "animated": true,
+            "durationMs": 550,
+            "finishedAfterMs": 581
+          },
+          "stillInDomAfterCommit": true,
+          "removedAtMs": 583,
+          "exitFrames": 35,
+          "lastSampleBeforeRemoval": {
+            "t": 567,
+            "opacity": 0,
+            "translateY": 8
+          }
+        }
+      ],
+      "rowExits": [
+        {
+          "preset": "snappy",
+          "springDurationMs": 350,
+          "removedAtMs": 365,
+          "lastSampleBeforeRemoval": {
+            "t": 348,
+            "opacity": 0,
+            "translateY": 0
+          }
+        },
+        {
+          "preset": "smooth",
+          "springDurationMs": 1050,
+          "removedAtMs": 1048,
+          "lastSampleBeforeRemoval": {
+            "t": 1031,
+            "opacity": 0,
+            "translateY": 0
+          }
+        },
+        {
+          "preset": "bouncy",
+          "springDurationMs": 550,
+          "removedAtMs": 548,
+          "lastSampleBeforeRemoval": {
+            "t": 531,
+            "opacity": 0,
+            "translateY": 0
+          }
+        }
+      ],
+      "reclaim": {
+        "preset": "smooth",
+        "midExitSample": {
+          "t": 61,
+          "opacity": 0.841,
+          "translateY": 0
+        },
+        "copiesRightAfterRestore": 1,
+        "sameNodeReclaimed": true,
+        "originalStillConnected": true,
+        "domOrder": "1,2,3,4,5",
+        "childListRemovals": 1,
+        "childListAdditions": 1,
+        "minOpacityAfterRestore": 0.841,
+        "finalSample": {
+          "t": 698,
+          "opacity": 0.997,
+          "translateY": 0
+        }
+      }
+    },
+    "consoleErrors": []
+  },
+  "q5": {
+    "result": {
+      "cssOneShot": {
+        "rows": 30,
+        "movedRows": 21,
+        "stableRows": 9,
+        "reorderCostMs": 0.9,
+        "moved": {
+          "translateXBefore": 11.3,
+          "translateXRightAfter": 40,
+          "transitionend": 0,
+          "transitioncancel": 21
+        },
+        "stable": {
+          "translateXBefore": 11.3,
+          "translateXRightAfter": 11.3,
+          "transitionend": 9,
+          "transitioncancel": 0
+        },
+        "finalTranslateX": 40
+      },
+      "cssLoop": {
+        "rounds": 10,
+        "rowMovesTotal": 214,
+        "transitionrun": 300,
+        "transitionend": 19,
+        "transitioncancel": 281
+      },
+      "motion": [
+        {
+          "n": 30,
+          "mode": "plain",
+          "rounds": 10,
+          "reorderCostMs": {
+            "n": 10,
+            "p50": 0.3,
+            "p95": 0.6,
+            "max": 0.6
+          },
+          "maxStepOverDistance": 1,
+          "medianStepOverDistance": 1,
+          "frameMs": {
+            "n": 344,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8
+          },
+          "framesOver50ms": 0
+        },
+        {
+          "n": 30,
+          "mode": "flip",
+          "rounds": 10,
+          "reorderCostMs": {
+            "n": 10,
+            "p50": 3,
+            "p95": 4.6,
+            "max": 4.6
+          },
+          "maxStepOverDistance": 0.08,
+          "medianStepOverDistance": 0.07,
+          "frameMs": {
+            "n": 345,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "framesOver50ms": 0
+        },
+        {
+          "n": 200,
+          "mode": "plain",
+          "rounds": 10,
+          "reorderCostMs": {
+            "n": 10,
+            "p50": 1,
+            "p95": 1.6,
+            "max": 1.6
+          },
+          "maxStepOverDistance": 1,
+          "medianStepOverDistance": 1,
+          "frameMs": {
+            "n": 344,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "framesOver50ms": 0
+        },
+        {
+          "n": 200,
+          "mode": "flip",
+          "rounds": 10,
+          "reorderCostMs": {
+            "n": 10,
+            "p50": 23.9,
+            "p95": 28.8,
+            "max": 28.8
+          },
+          "maxStepOverDistance": 0.08,
+          "medianStepOverDistance": 0.07,
+          "frameMs": {
+            "n": 357,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8
+          },
+          "framesOver50ms": 0
+        }
+      ]
+    },
+    "consoleErrors": []
+  },
+  "q4": {
+    "result": {
+      "startViewTransition": true,
+      "cases": [
+        {
+          "case": "naive-link-slow",
+          "wallMs": 794,
+          "freeze": null,
+          "atReady": {
+            "hadTransition": true,
+            "ready": "ok",
+            "readyAfterMs": 318,
+            "pseudo": {
+              "groups": [
+                "app-title",
+                "progress",
+                "root"
+              ],
+              "pairedOldAndNew": [
+                "app-title",
+                "progress",
+                "root"
+              ],
+              "newOnlyCount": 60,
+              "oldOnlyCount": 0
+            }
+          },
+          "records": [
+            {
+              "mode": "naive",
+              "startedAt": 40.8,
+              "routeAtStart": "/",
+              "routeAtCallback": "/",
+              "callbackAt": 55.5,
+              "doneAt": 343.6,
+              "finished": "ok @789.7",
+              "updateCallbackDone": "ok @348",
+              "ready": "ok @351"
+            }
+          ],
+          "routeAfter": "/list"
+        },
+        {
+          "case": "naive-link-fast-morph",
+          "wallMs": 12159,
+          "freeze": {
+            "probeStartedMsAfterClick": 800,
+            "firstAnimationFrameAfterMs": 3227,
+            "readyStateThen": "rejected @4872.3: TimeoutError: Transition was aborted because of timeout in DOM update"
+          },
+          "atReady": {
+            "hadTransition": true,
+            "ready": "rejected: TimeoutError",
+            "readyAfterMs": 0,
+            "pseudo": {
+              "groups": [],
+              "pairedOldAndNew": [],
+              "newOnlyCount": 0,
+              "oldOnlyCount": 0
+            }
+          },
+          "records": [
+            {
+              "mode": "naive",
+              "startedAt": 857.2,
+              "routeAtStart": "/list",
+              "routeAtCallback": "/pane/3",
+              "callbackAt": 872.3,
+              "doneAt": null,
+              "finished": "pending",
+              "updateCallbackDone": "pending",
+              "ready": "rejected @4872.3: TimeoutError: Transition was aborted because of timeout in DOM update"
+            }
+          ],
+          "routeAfter": "/pane/3"
+        },
+        {
+          "case": "naive-navigate-fast",
+          "wallMs": 12016,
+          "freeze": null,
+          "atReady": {
+            "hadTransition": true,
+            "ready": "rejected: TimeoutError",
+            "readyAfterMs": 4000,
+            "pseudo": {
+              "groups": [],
+              "pairedOldAndNew": [],
+              "newOnlyCount": 0,
+              "oldOnlyCount": 0
+            }
+          },
+          "records": [
+            {
+              "mode": "naive",
+              "startedAt": 790.3,
+              "routeAtStart": "/list",
+              "routeAtCallback": "/pane/3",
+              "callbackAt": 792.2,
+              "doneAt": null,
+              "finished": "pending",
+              "updateCallbackDone": "pending",
+              "ready": "rejected @4792.3: TimeoutError: Transition was aborted because of timeout in DOM update"
+            }
+          ],
+          "routeAfter": "/pane/3"
+        },
+        {
+          "case": "gated-link-slow",
+          "wallMs": 787,
+          "freeze": null,
+          "atReady": {
+            "hadTransition": true,
+            "ready": "ok",
+            "readyAfterMs": 334,
+            "pseudo": {
+              "groups": [
+                "app-title",
+                "root",
+                "progress"
+              ],
+              "pairedOldAndNew": [
+                "app-title",
+                "root",
+                "progress"
+              ],
+              "newOnlyCount": 60,
+              "oldOnlyCount": 0
+            }
+          },
+          "records": [
+            {
+              "mode": "gated",
+              "startedAt": 35.2,
+              "routeAtStart": "/",
+              "routeAtCallback": "/",
+              "callbackAt": 50.3,
+              "doneAt": 351.7,
+              "finished": "ok @784.5",
+              "updateCallbackDone": "ok @355.9",
+              "ready": "ok @359"
+            }
+          ],
+          "routeAfter": "/list"
+        },
+        {
+          "case": "gated-link-fast-morph",
+          "wallMs": 484,
+          "freeze": null,
+          "atReady": {
+            "hadTransition": true,
+            "ready": "ok",
+            "readyAfterMs": 49,
+            "pseudo": {
+              "groups": [
+                "progress",
+                "app-title",
+                "root",
+                "pane-3"
+              ],
+              "pairedOldAndNew": [
+                "progress",
+                "app-title",
+                "root",
+                "pane-3"
+              ],
+              "newOnlyCount": 0,
+              "oldOnlyCount": 59
+            }
+          },
+          "records": [
+            {
+              "mode": "gated",
+              "startedAt": 858.2,
+              "routeAtStart": "/list",
+              "routeAtCallback": "/list",
+              "callbackAt": 880.5,
+              "doneAt": 881.2,
+              "finished": "ok @1290.4",
+              "updateCallbackDone": "ok @881.4",
+              "ready": "ok @895.9"
+            }
+          ],
+          "routeAfter": "/pane/3"
+        },
+        {
+          "case": "gated-navigate-fast-morph",
+          "wallMs": 483,
+          "freeze": null,
+          "atReady": {
+            "hadTransition": true,
+            "ready": "ok",
+            "readyAfterMs": 26,
+            "pseudo": {
+              "groups": [
+                "progress",
+                "pane-3",
+                "root",
+                "app-title"
+              ],
+              "pairedOldAndNew": [
+                "progress",
+                "pane-3",
+                "root",
+                "app-title"
+              ],
+              "newOnlyCount": 0,
+              "oldOnlyCount": 59
+            }
+          },
+          "records": [
+            {
+              "mode": "gated",
+              "startedAt": 790.9,
+              "routeAtStart": "/list",
+              "routeAtCallback": "/list",
+              "callbackAt": 799.2,
+              "doneAt": 799.7,
+              "finished": "ok @1257.3",
+              "updateCallbackDone": "ok @799.7",
+              "ready": "ok @812.8"
+            }
+          ],
+          "routeAfter": "/pane/3"
+        },
+        {
+          "case": "gated-back-morph",
+          "wallMs": 770,
+          "freeze": null,
+          "atReady": {
+            "hadTransition": true,
+            "ready": "ok",
+            "readyAfterMs": 319,
+            "pseudo": {
+              "groups": [
+                "app-title",
+                "root",
+                "progress",
+                "pane-3"
+              ],
+              "pairedOldAndNew": [
+                "app-title",
+                "root",
+                "progress",
+                "pane-3"
+              ],
+              "newOnlyCount": 59,
+              "oldOnlyCount": 0
+            }
+          },
+          "records": [
+            {
+              "mode": "gated",
+              "startedAt": 822,
+              "routeAtStart": "/pane/3",
+              "routeAtCallback": "/pane/3",
+              "callbackAt": 823.6,
+              "doneAt": 1125,
+              "finished": "ok @1574.8",
+              "updateCallbackDone": "ok @1129.2",
+              "ready": "ok @1129.2"
+            }
+          ],
+          "routeAfter": "/list"
+        }
+      ]
+    },
+    "consoleErrors": []
+  },
+  "q2": {
+    "result": {
+      "withProgress": [
+        {
+          "step": "/ -> /list (link)",
+          "route": "/list",
+          "headerSameNode": true,
+          "headerMutatedAttrKept": true,
+          "shellSetups": 0,
+          "shellRenders": 3,
+          "navEvents": [
+            "reloadStart frame.src=/list location=/list",
+            "reloadComplete frame.src=/list location=/list"
+          ]
+        },
+        {
+          "step": "/list -> /pane/1 (row link)",
+          "route": "/pane/1",
+          "headerSameNode": true,
+          "headerMutatedAttrKept": true,
+          "shellSetups": 0,
+          "shellRenders": 3,
+          "navEvents": [
+            "reloadStart frame.src=/pane/1 location=/pane/1",
+            "reloadComplete frame.src=/pane/1 location=/pane/1"
+          ]
+        },
+        {
+          "step": "back -> /list",
+          "route": "/list",
+          "headerSameNode": true,
+          "headerMutatedAttrKept": true,
+          "shellSetups": 0,
+          "shellRenders": 3,
+          "navEvents": [
+            "reloadStart frame.src=/list location=/list",
+            "reloadComplete frame.src=/list location=/list"
+          ]
+        },
+        {
+          "step": "back -> /",
+          "route": "/",
+          "headerSameNode": true,
+          "headerMutatedAttrKept": true,
+          "shellSetups": 0,
+          "shellRenders": 3,
+          "navEvents": [
+            "reloadStart frame.src=/ location=/",
+            "reloadComplete frame.src=/ location=/"
+          ]
+        }
+      ],
+      "withoutProgress": [
+        {
+          "step": "/ -> /list (link)",
+          "route": "/list",
+          "headerSameNode": true,
+          "headerMutatedAttrKept": true,
+          "shellSetups": 0,
+          "shellRenders": 1,
+          "navEvents": [
+            "reloadStart frame.src=/list location=/list",
+            "reloadComplete frame.src=/list location=/list"
+          ]
+        },
+        {
+          "step": "/list -> /pane/1 (row link)",
+          "route": "/pane/1",
+          "headerSameNode": true,
+          "headerMutatedAttrKept": true,
+          "shellSetups": 0,
+          "shellRenders": 1,
+          "navEvents": [
+            "reloadStart frame.src=/pane/1 location=/pane/1",
+            "reloadComplete frame.src=/pane/1 location=/pane/1"
+          ]
+        },
+        {
+          "step": "back -> /list",
+          "route": "/list",
+          "headerSameNode": true,
+          "headerMutatedAttrKept": true,
+          "shellSetups": 0,
+          "shellRenders": 1,
+          "navEvents": [
+            "reloadStart frame.src=/list location=/list",
+            "reloadComplete frame.src=/list location=/list"
+          ]
+        }
+      ],
+      "shellSetupsWholeRun": 1,
+      "unkeyed": {
+        "keyed": false,
+        "tapsOnPane1": "3",
+        "tapsAfterPane2": "3",
+        "titleAfter": "Pane 2",
+        "titleSameNode": true,
+        "paneSetupsDuringNav": 0
+      },
+      "keyedByPathname": {
+        "keyed": true,
+        "tapsOnPane1": "3",
+        "tapsAfterPane2": "0",
+        "titleAfter": "Pane 2",
+        "titleSameNode": false,
+        "paneSetupsDuringNav": 1
+      }
+    },
+    "consoleErrors": []
+  },
+  "q3": {
+    "result": {
+      "slowRoute": {
+        "barLog": [
+          "bar data-active=true @30ms",
+          "bar data-active=false @332ms"
+        ],
+        "barWidthAt150ms": "170.062px",
+        "barHeight": "2px"
+      },
+      "instantRoute": {
+        "barLog": [
+          "bar data-active=true @461ms",
+          "bar data-active=false @462ms"
+        ]
+      },
+      "reloadEvents": [
+        {
+          "type": "reloadStart",
+          "t": 47.9,
+          "frameSrc": "/list",
+          "location": "/list"
+        },
+        {
+          "type": "reloadComplete",
+          "t": 350.7,
+          "frameSrc": "/list",
+          "location": "/list"
+        },
+        {
+          "type": "reloadStart",
+          "t": 479.7,
+          "frameSrc": "/pane/1",
+          "location": "/pane/1"
+        },
+        {
+          "type": "reloadComplete",
+          "t": 481,
+          "frameSrc": "/pane/1",
+          "location": "/pane/1"
+        }
+      ]
+    },
+    "consoleErrors": []
+  },
+  "q1": {
+    "result": {
+      "taskOnly": [
+        "45.5 click: queueTask only",
+        "45.5 microtask queued by click",
+        "59.7 setTimeout(0) queued by click"
+      ],
+      "laterUpdate": [
+        "560.8 click: update only",
+        "560.9 mixin beforeUpdate",
+        "561 render#2",
+        "561.3 mixin commit",
+        "561.3 task A (no update): dom shows render#2 aborted=false",
+        "561.3 microtask queued by click",
+        "561.3 update() promise resolved",
+        "576.2 setTimeout(0) queued by click"
+      ],
+      "withUpdate": [
+        "777.5 click: update() then queueTask",
+        "777.6 mixin beforeUpdate",
+        "777.9 render#3",
+        "777.9 mixin commit",
+        "777.9 task B (with update): dom shows render#3 aborted=false",
+        "777.9 microtask queued by click",
+        "777.9 update() promise resolved",
+        "793 setTimeout(0) queued by click"
+      ]
+    },
+    "consoleErrors": []
+  }
+}

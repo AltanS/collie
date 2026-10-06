@@ -1,0 +1,25 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #111; color: #eee; }
+a { color: #fbbf24; }
+header { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; background: #1c1c1c; border-bottom: 1px solid #333; }
+header nav { display: flex; gap: 10px; margin-left: auto; }
+.app-title { font-weight: 700; view-transition-name: app-title; }
+.clock { font-variant-numeric: tabular-nums; color: #888; font-size: 12px; }
+.progress { position: fixed; top: 0; left: 0; height: 2px; width: 0; background: #fbbf24; view-transition-name: progress; }
+.progress[data-active='true'] { width: 70%; transition: width 300ms ease-out; }
+.page { padding: 12px; margin: 0; }
+.scroller { height: 400px; overflow: auto; border: 1px solid #333; }
+.list-row { display: block; height: 40px; line-height: 40px; padding: 0 12px; border-bottom: 1px solid #222; }
+.pane-title { font-size: 20px; }
+.reorder { list-style: none; margin: 0; padding: 12px; }
+.r-row { height: 20px; font-size: 12px; }
+.reorder-css .r-row { transition: transform 1000ms linear; }
+.reorder-css .r-row.shifted { transform: translateX(40px); }
+.m-rows li { height: 32px; }
+.toast { position: fixed; bottom: 80px; left: 12px; padding: 8px 12px; background: #065f46; }
+.sheet { position: fixed; bottom: 0; left: 0; right: 0; height: 240px; background: #222; border-top: 1px solid #444; }
+.imp { height: 60px; overflow: hidden; border: 1px solid #333; margin-bottom: 8px; font-size: 10px; }
+.press, .swipe { height: 120px; display: grid; place-items: center; margin: 12px 0; background: #222; user-select: none; }
+.tall { height: 2000px; }
+.c-row { height: 4px; font-size: 3px; }
+::view-transition-group(*) { animation-duration: 400ms; }
