@@ -1428,7 +1428,6 @@ export const ko: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "파일",
-  "changes.title": "변경 사항",
   "files.title": "파일",
   "changes.backAria.dashboard": "대시보드로 돌아가기",
   "changes.backAria.workspace": "워크스페이스로 돌아가기",
@@ -1531,9 +1530,6 @@ export const ko: Dictionary = {
   "files.view.source": "소스",
   "files.view.preview": "미리보기",
   "files.view.diff": "차이",
-  "changes.only.label": "변경 사항만",
-  "changes.only.aria.one": "변경 사항만, 변경된 파일 {count}개",
-  "changes.only.aria.other": "변경 사항만, 변경된 파일 {count}개",
   "files.mode.aria": "표시할 파일",
   "files.mode.all": "모든 파일",
   "files.mode.changes": "변경 사항",

@@ -1587,7 +1587,6 @@ export const en = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Files",
-  "changes.title": "Changes",
   "files.title": "Files",
   "changes.backAria.dashboard": "Back to the dashboard",
   "changes.backAria.workspace": "Back to the workspace",
@@ -1690,9 +1689,6 @@ export const en = {
   "files.view.source": "Source",
   "files.view.preview": "Preview",
   "files.view.diff": "Diff",
-  "changes.only.label": "Changes only",
-  "changes.only.aria.one": "Changes only, {count} changed file",
-  "changes.only.aria.other": "Changes only, {count} changed files",
   "files.mode.aria": "Which files to show",
   "files.mode.all": "All files",
   "files.mode.changes": "Changes",

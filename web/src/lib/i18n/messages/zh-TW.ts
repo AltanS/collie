@@ -1408,7 +1408,6 @@ export const zhTW: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "檔案",
-  "changes.title": "變更",
   "files.title": "檔案",
   "changes.backAria.dashboard": "返回資訊主頁",
   "changes.backAria.workspace": "返回工作區",
@@ -1511,9 +1510,6 @@ export const zhTW: Dictionary = {
   "files.view.source": "原始碼",
   "files.view.preview": "預覽",
   "files.view.diff": "差異",
-  "changes.only.label": "僅變更",
-  "changes.only.aria.one": "僅變更，{count} 個已變更檔案",
-  "changes.only.aria.other": "僅變更，{count} 個已變更檔案",
   "files.mode.aria": "要顯示的檔案",
   "files.mode.all": "所有檔案",
   "files.mode.changes": "變更",

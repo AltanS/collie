@@ -1445,7 +1445,6 @@ export const es: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Archivos",
-  "changes.title": "Cambios",
   "files.title": "Archivos",
   "changes.backAria.dashboard": "Volver al panel principal",
   "changes.backAria.workspace": "Volver al espacio de trabajo",
@@ -1548,9 +1547,6 @@ export const es: Dictionary = {
   "files.view.source": "Código",
   "files.view.preview": "Vista previa",
   "files.view.diff": "Diff",
-  "changes.only.label": "Solo cambios",
-  "changes.only.aria.one": "Solo cambios, {count} archivo cambiado",
-  "changes.only.aria.other": "Solo cambios, {count} archivos cambiados",
   "files.mode.aria": "Qué archivos mostrar",
   "files.mode.all": "Todos los archivos",
   "files.mode.changes": "Cambios",

@@ -1414,7 +1414,6 @@ export const zh: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "文件",
-  "changes.title": "更改",
   "files.title": "文件",
   "changes.backAria.dashboard": "返回仪表盘",
   "changes.backAria.workspace": "返回工作区",
@@ -1517,9 +1516,6 @@ export const zh: Dictionary = {
   "files.view.source": "源码",
   "files.view.preview": "预览",
   "files.view.diff": "差异",
-  "changes.only.label": "仅更改",
-  "changes.only.aria.one": "仅更改，{count} 个已更改文件",
-  "changes.only.aria.other": "仅更改，{count} 个已更改文件",
   "files.mode.aria": "要显示的文件",
   "files.mode.all": "所有文件",
   "files.mode.changes": "更改",

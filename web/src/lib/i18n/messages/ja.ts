@@ -1436,7 +1436,6 @@ export const ja: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "ファイル",
-  "changes.title": "変更",
   "files.title": "ファイル",
   "changes.backAria.dashboard": "ダッシュボードに戻る",
   "changes.backAria.workspace": "ワークスペースに戻る",
@@ -1539,9 +1538,6 @@ export const ja: Dictionary = {
   "files.view.source": "ソース",
   "files.view.preview": "プレビュー",
   "files.view.diff": "差分",
-  "changes.only.label": "変更のみ",
-  "changes.only.aria.one": "変更のみ、変更されたファイル {count} 件",
-  "changes.only.aria.other": "変更のみ、変更されたファイル {count} 件",
   "files.mode.aria": "表示するファイル",
   "files.mode.all": "すべてのファイル",
   "files.mode.changes": "変更",
