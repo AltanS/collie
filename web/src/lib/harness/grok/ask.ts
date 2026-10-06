@@ -66,6 +66,8 @@ export function detectAskRegion(lines: StyledLine[]): AskRegion | null {
 
   const options: PromptOption[] = [];
   let question = "";
+  // Rows of question text above the first option, bottom-up (see `startLine` below).
+  const textRows: number[] = [];
   let feedback: PromptFeedback | undefined;
   let sawHint = false;
   let editHint = false;
@@ -113,6 +115,7 @@ export function detectAskRegion(lines: StyledLine[]): AskRegion | null {
     // put it. Below the options, an unrecognized non-blank row is an unprobed widget row: refuse.
     if (i > firstOption) return null;
     question = body;
+    textRows.push(i);
   }
 
   if (!sawHint) return null;
@@ -146,10 +149,12 @@ export function detectAskRegion(lines: StyledLine[]): AskRegion | null {
   if (signature === "") return null;
 
   return {
-    // The block replaces the OPTIONS down; the `┃` question rows above stay in the raw mirror.
-    // Same contract as Claude's prompt-select: the renderer never repeats the question, so the
-    // mirror is where the operator reads what they're answering.
-    startLine: firstOption,
+    // The block starts at the question's row, so the card's question is not also painted in the
+    // raw mirror above it. That holds only when the question is the ONLY text above the options:
+    // the card prints `question` and nothing else, so a second row (a command, a wrapped line)
+    // would vanish from the mirror and from the card alike. Then the block keeps starting at the
+    // first option and the mirror keeps the rows.
+    startLine: textRows.length === 1 ? textRows[0]! : firstOption,
     model: {
       question,
       options,

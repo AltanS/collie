@@ -110,8 +110,49 @@ describe("opencode permission dialog lift", () => {
       ["Right", "Enter"],
       ["Right", "Right", "Enter"],
     ]);
-    // The block replaces [option row … tail]; the title and subject stay on the mirror.
+    // The block replaces [question row … tail]: the dialog's body is the command alone, so the card
+    // prints it and the mirror above keeps only the title and the `# Shell command` heading.
     expect(region!.startLine).toBeGreaterThan(0);
+  });
+
+  it("the raw mirror above the card does not repeat the question the card prints", () => {
+    for (const name of ["oc--permission-bash.txt", "oc--narrow--permission-bash.txt", "oc--permission-bash--wrap.txt"]) {
+      const lines = loadLines(name);
+      const region = detectPermissionDialog(lines)!;
+      const [raw, prompt] = opencodeAdapter.buildBlocks(lines);
+      expect(raw?.kind, name).toBe("raw");
+      expect(prompt?.kind, name).toBe("prompt-select");
+      // The dialog's own rows are the tail of the mirror; earlier rows are the transcript.
+      const mirrorTail = raw!.lines.slice(-6).map(lineText).join("\n");
+      expect(mirrorTail, name).toContain("Shell command");
+      expect(mirrorTail, name).not.toContain(region.model.question.slice(0, 12));
+      expect(lineText(prompt!.lines[0]!), name).toContain(region.model.question.slice(0, 12));
+    }
+  });
+
+  it("the single-select question dialog already starts at its question, so the mirror never repeats it", () => {
+    const lines = loadLines("oc--question--single.txt");
+    const [raw, prompt] = opencodeAdapter.buildBlocks(lines);
+    // The user's own prompt (row 3 of the capture) quotes it; the dialog's row is the whole row.
+    expect(raw!.lines.map((l) => lineText(l).trim())).not.toContain("┃  Which colour?");
+    expect(lineText(prompt!.lines[0]!)).toContain("Which colour?");
+  });
+
+  it("a body that goes on past the question keeps the card at the option row, so no row disappears", () => {
+    // The card prints the question only: the edit dialog's diff, the webfetch URL row and the
+    // always-allow pattern list are shown by the mirror alone.
+    for (const [name, row] of [
+      ["oc--permission-edit.txt", "→ Edit probe.txt"],
+      ["oc--permission-webfetch.txt", "URL: https://example.com"],
+      ["oc--permission-always-bash.txt", "- echo *"],
+    ] as const) {
+      const lines = loadLines(name);
+      const [raw, prompt] = opencodeAdapter.buildBlocks(lines);
+      expect(raw!.lines.map(lineText).join("\n"), name).toContain(row);
+      if (prompt?.kind !== "prompt-select") throw new Error("expected a prompt-select card");
+      const first = prompt.prompt.options[0]!.label;
+      expect(lineText(prompt!.lines[0]!), name).toContain(first);
+    }
   });
 
   it("moved selection: the keys follow the pointer the screen currently shows", () => {

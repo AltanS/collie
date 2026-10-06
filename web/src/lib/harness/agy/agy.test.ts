@@ -56,6 +56,32 @@ describe("agy: the named foreign claims are still claimed (delete the entry when
   }
 });
 
+describe("the card starts at the question row, so the mirror above it does not repeat it", () => {
+  const blocksOf = (name: string) =>
+    agyAdapter.buildBlocks(splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8"))));
+
+  it.each([
+    ["agy--permission-bash.txt", "Do you want to proceed?"],
+    ["agy--permission-edit.txt", "Do you want to proceed?"],
+    ["agy--plan-approval.txt", "Question 1/1: Approve plan execution?"],
+    ["agy--select-menu.txt", "Question 1/1: Which color theme should the dashboard use?"],
+  ])("%s", (name, question) => {
+    const [raw, prompt] = blocksOf(name);
+    expect(raw?.kind).toBe("raw");
+    expect(prompt?.kind).toBe("prompt-select");
+    // The row above the question is what the mirror now ends on; the question row is the card's first.
+    expect(raw!.lines.slice(-4).map((l) => l.segments.map((s) => s.text).join("").trim())).not.toContain(question);
+    expect(prompt!.lines[0]!.segments.map((s) => s.text).join("").trim()).toBe(question);
+  });
+
+  it("the trust prompt keeps the card at its options: a sentence under the question is shown by the mirror alone", () => {
+    const [raw, prompt] = blocksOf("agy--trust-prompt.txt");
+    const mirror = raw!.lines.map((l) => l.segments.map((s) => s.text).join("")).join("\n");
+    expect(mirror).toContain("Antigravity CLI requires permission to read, edit, and execute files here.");
+    expect(prompt!.lines[0]!.segments.map((s) => s.text).join("")).toContain("Yes, I trust this folder");
+  });
+});
+
 describe("agyAdapter unit & footer safety", () => {
   it("claims agent 'agy' and 'antigravity'", () => {
     expect(agyAdapter.agent).toBe("agy");

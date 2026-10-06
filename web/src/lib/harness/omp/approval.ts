@@ -60,7 +60,7 @@
 // is ever shortened or hidden: a bash body is shown whole, and so is a `write` body, up to
 // MAX_CONTENT_ROWS rows of content, past which the screen declines to the raw mirror. omp itself
 // shortens every field to 2000 characters (`truncateForPrompt`), and a field it shortened declines
-// below. The box's title and body also stay in the raw mirror above the card, verbatim.
+// below. The card starts at the box's title row, so the box is not also painted in the raw mirror above it.
 //
 // FAIL CLOSED. Every piece below is required, and any one missing returns null, which leaves the raw
 // mirror and the unread-dialog card's Escape exactly as slice 1 drew them:
@@ -94,8 +94,8 @@ import { readOmpHintList } from "./modal";
 
 export interface ApprovalRegion {
   model: PromptModel;
-  /** Index of the `Approve` row: the card replaces [`startLine` … the tail], and the title and body
-   *  above it stay in the raw mirror. */
+  /** Index of the title row: the card replaces [`startLine` … the tail]. The card prints the title and
+   *  every body row itself (`question`), so the mirror above ends where the box begins. */
   startLine: number;
 }
 
@@ -183,7 +183,7 @@ function hasHiddenCharacter(row: string): boolean {
 
 /**
  * Detect omp's tool-approval dialog at the tail of `lines`. Returns a `prompt-select` model whose
- * options are `Approve`, `Deny` and the footer's own way out, and the index of the `Approve` row; null
+ * options are `Approve`, `Deny` and the footer's own way out, and the index of the title row; null
  * when any piece of evidence is missing.
  */
 export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null {
@@ -277,7 +277,7 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
     signature,
     coreSignature,
   };
-  return { model, startLine: approveAt };
+  return { model, startLine: titleAt };
 }
 
 /** The model alone (or null), the thin matcher tests assert on. */

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The whole prompt-select feature end to end: the presentational component, the shared race guard
 // (submitPromptOption), and the wired tap (component → injected handler → api). The api layer is
@@ -141,6 +141,54 @@ describe("PromptSelectBlock — the subject and the question are on the card", (
     for (let i = 1; i < order.length; i++) {
       expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+  });
+
+  // jsdom lays nothing out, so the measurements the fade reads (`scrollHeight`, `clientHeight`,
+  // `scrollTop` on the scrolling <pre>) are stubbed, and this pins the structure only: whether the
+  // fade element exists for each measured state. How it looks is for a real browser.
+  describe("the fade below a subject that continues", () => {
+    const measure = (heights: { scroll: number; client: number }) => {
+      vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(heights.scroll);
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(heights.client);
+    };
+    const renderSubject = () => {
+      const model = fixtureModel("claude--v2291-permission-bash-subagent.txt");
+      const { container } = render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+      return { container, pre: container.querySelector<HTMLElement>('[data-slot="prompt-subject"] pre')! };
+    };
+    const fade = (container: HTMLElement) => container.querySelector('[data-slot="prompt-subject-more"]');
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it("shows while the box overflows and is not scrolled to the bottom", () => {
+      measure({ scroll: 500, client: 150 });
+      const { container } = renderSubject();
+      const more = fade(container)!;
+      expect(more).not.toBeNull();
+      // Inside the subject box, drawn over it, and out of the way of taps and of the accessibility tree.
+      expect(more.parentElement).toBe(container.querySelector('[data-slot="prompt-subject"]'));
+      expect(more.getAttribute("aria-hidden")).toBe("true");
+      expect(more.className).toContain("pointer-events-none");
+    });
+
+    it("goes once the box is scrolled to the bottom, and returns when it is scrolled back up", () => {
+      measure({ scroll: 500, client: 150 });
+      const { container, pre } = renderSubject();
+      expect(fade(container)).not.toBeNull();
+      Object.defineProperty(pre, "scrollTop", { configurable: true, value: 350 });
+      fireEvent.scroll(pre);
+      expect(fade(container)).toBeNull();
+      Object.defineProperty(pre, "scrollTop", { configurable: true, value: 100 });
+      fireEvent.scroll(pre);
+      expect(fade(container)).not.toBeNull();
+    });
+
+    it("is absent when the content fits the box", () => {
+      measure({ scroll: 150, client: 150 });
+      const { container } = renderSubject();
+      expect(container.querySelector('[data-slot="prompt-subject"]')).not.toBeNull();
+      expect(fade(container)).toBeNull();
+    });
   });
 
   it("an Edit permission shows the file and its diff under the title", () => {

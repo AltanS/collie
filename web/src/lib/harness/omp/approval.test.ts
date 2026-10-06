@@ -152,10 +152,12 @@ describe("omp 18.1.17 (`nerd` preset) lifts the same way, read from its own glyp
 });
 
 describe("the region, and what stays on screen above the card", () => {
-  it("the card starts at Approve; the title and the body stay in the raw mirror above it", () => {
+  it("the card starts at the title row; the box is not painted twice, so the mirror above stops at the box", () => {
     const lines = load("omp--v18-4-approval-bash.txt");
     const region = detectApprovalRegion(lines)!;
-    expect(region.startLine).toBe(294);
+    // The title row, not `Approve` (294): the card prints the title and every body row as its own
+    // question, so a box left in the mirror would show the command twice in the Terminal view.
+    expect(region.startLine).toBe(290);
     const rows = region.model.signature.split("\n");
     expect(rows[0]!.startsWith("╭─ Allow tool: bash ─")).toBe(true);
     expect(rows.at(-1)!.startsWith("╰─")).toBe(true);
@@ -166,22 +168,31 @@ describe("the region, and what stays on screen above the card", () => {
 
     const blocks = ompBuildBlocks(lines);
     expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
-    expect(blocks[1]!.lines).toHaveLength(6);
+    expect(blocks[1]!.lines).toHaveLength(10);
     const above = blocks[0]!.lines.map(lineText).join("\n");
-    expect(above).toContain("Allow tool: bash");
-    expect(above).toContain("Command: echo hello-approval");
+    expect(above).not.toContain("Allow tool: bash");
+    expect(above).not.toContain("Command: echo hello-approval");
+    expect(region.model.question).toContain("Command: echo hello-approval");
   });
 
-  it("the long write keeps every content row verbatim in the raw mirror", () => {
+  it("the long write keeps every content row verbatim, on the card, and none in the mirror above it", () => {
     const blocks = ompBuildBlocks(load("omp--v18-4-approval-write-long.txt"));
     const above = blocks[0]!.lines.map(lineText).join("\n");
-    for (let n = 1; n <= 14; n++) expect(above).toContain(`sample line ${n} for the approval dialog`);
+    const card = blocks[1]!;
+    if (card.kind !== "prompt-select") throw new Error("expected a prompt-select card");
+    const shown = card.prompt.question;
+    for (let n = 1; n <= 14; n++) {
+      expect(shown).toContain(`sample line ${n} for the approval dialog`);
+      // The transcript's preview of the call may print some rows above the box; the box's own rows
+      // (a `│ ` gutter) must not be in the mirror.
+      expect(above).not.toContain(`│ sample line ${n} for the approval dialog`);
+    }
   });
 
   it("the 18.1.17 card carries the usage strip as part of the rows it replaced", () => {
     const region = detectApprovalRegion(load("omp--approval-bash.txt"))!;
-    expect(region.startLine).toBe(46);
-    expect(ompBuildBlocks(load("omp--approval-bash.txt"))[1]!.lines).toHaveLength(7);
+    expect(region.startLine).toBe(41);
+    expect(ompBuildBlocks(load("omp--approval-bash.txt"))[1]!.lines).toHaveLength(12);
   });
 });
 

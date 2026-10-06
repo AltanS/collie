@@ -10,6 +10,33 @@ import { lineText } from "./markers";
 const fruit = readFileSync(join(import.meta.dirname, "../../../fixtures/panes/codex--ask-fruit.txt"), "utf8");
 const linesOf = (text: string) => splitLines(parseAnsi(text));
 
+describe("the card starts at the question, so the mirror above it does not repeat it", () => {
+  it.each([
+    ["codex--ask-fruit.txt", "Pick a fruit?"],
+    ["codex--ask-wizard-q1.txt", ""],
+    ["codex--ask-wizard-q2.txt", "Semicolons?"],
+  ])("%s", (name, question) => {
+    const lines = linesOf(readFileSync(join(import.meta.dirname, "../../../fixtures/panes", name), "utf8"));
+    const region = detectAskRegion(lines)!;
+    const text = question === "" ? region.model.question : question;
+    const [raw, prompt] = codexAdapter.buildBlocks(lines);
+    expect(raw?.kind).toBe("raw");
+    expect(prompt?.kind).toBe("prompt-select");
+    // The `Question X/Y` header stays above; the question row itself moved into the block.
+    const mirrorTail = raw!.lines.slice(-3).map(lineText).join("\n");
+    expect(mirrorTail).toContain("Question ");
+    expect(mirrorTail).not.toContain(text);
+    expect(lineText(prompt!.lines[0]!).trim()).toBe(text);
+  });
+
+  it("a wrapped question moves whole: every question row is in the block", () => {
+    const lines = linesOf(fruit.replaceAll("Pick a fruit?", "Pick a\n  fruit?"));
+    const [raw, prompt] = codexAdapter.buildBlocks(lines);
+    expect(raw!.lines.slice(-3).map(lineText).join("\n")).not.toContain("Pick a");
+    expect(prompt!.lines.slice(0, 2).map((l) => lineText(l).trimEnd()).join("|")).toBe("  Pick a|  fruit?");
+  });
+});
+
 // Layout-only variants of the public capture, not new live captures.
 describe("wrapped Codex questions", () => {
   it.each(["question", "description", "footer", "all"])("lifts a wrapped %s", (part) => {

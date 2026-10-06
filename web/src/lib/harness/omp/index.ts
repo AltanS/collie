@@ -150,7 +150,7 @@ import { detectSwitchPickerRegion } from "./switch";
  * function an omp pane, so there is no per-agent gate here.
  *
  * Everything above the dialog's title stays raw, so no context is lost; the approval card starts at
- * its `Approve` row, so the title and the body it approves stay raw too, and the model picker's card
+ * its title row, which holds the body it approves, and the model picker's card
  * starts at its list, so its title, status sentence and typed search stay raw above it. There is no composer to strip
  * while a dialog is up: it owns the keyboard, and `composerReady` answers false on it.
  *

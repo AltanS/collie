@@ -63,8 +63,9 @@ import {
 // than this is not this dialog's title.
 const MAX_TITLE_GAP = 16;
 
-/** The detected dialog: the model plus `startLine`, the first row the block REPLACES (the option
- *  footer; the title and subject above stay on the mirror). */
+/** The detected dialog: the model plus `startLine`, the first row the block REPLACES (the question's
+ *  first row, or the option footer when the body goes on past the question; the title above stays
+ *  on the mirror). */
 export interface DialogRegion {
   model: PromptModel;
   startLine: number;
@@ -157,6 +158,15 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   //    padding, not content: they end a paragraph and never start one.
   const subject = firstParagraph(texts, titleRow + 1, optionRow);
   if (subject === null) return null;
+  // Where the block starts: the question's own first row when the card says everything the dialog
+  // says from there to the options (only padding follows the paragraph), so the mirror above does
+  // not print the question a second time. A body that goes on (the edit dialog's diff, a URL row,
+  // the always-allow pattern list) is shown by nothing but the mirror, so the block keeps starting
+  // at the option row and the mirror keeps the question beside it.
+  const bodyContinues = texts
+    .slice(subject.to + 1, optionRow)
+    .some((t) => interiorText(t).length > 0);
+  const startLine = bodyContinues ? optionRow : subject.from;
 
   // The dialog's own rows are static while it is up: the spinner and the running-command rows sit
   // ABOVE the title (measured), so the region text neither churns with the spinner frame nor moves
@@ -168,28 +178,35 @@ export function detectPermissionDialog(lines: StyledLine[]): DialogRegion | null
   // `signature`, so the bridge's style check judges exactly the region its text check does.
   const signature = texts.slice(titleRow, footer + 1).join("\n");
   const model: PromptModel = {
-    question: subject,
+    question: subject.text,
     options,
     family: "permission",
     signature,
     coreSignature: signature,
     styledSignature: encodeStyledRegion(canonicalStyledLines(lines.slice(titleRow, footer + 1))),
   };
-  return { model, startLine: optionRow };
+  return { model, startLine };
 }
 
-/** The first paragraph of interior text in rows [from, to), skipping a `# ` heading, or null. */
-function firstParagraph(texts: string[], from: number, to: number): string | null {
+/** The first paragraph of interior text in rows [from, to), skipping a `# ` heading: its joined text
+ *  and its first and last row. Null when there is none. */
+function firstParagraph(
+  texts: string[],
+  from: number,
+  to: number,
+): { text: string; from: number; to: number } | null {
   let parts: string[] = [];
+  let first = from;
   for (let i = from; i <= to; i++) {
     const text = i < to ? interiorText(texts[i]!) : "";
     if (text.length > 0) {
+      if (parts.length === 0) first = i;
       parts.push(text);
       continue;
     }
     if (parts.length === 0) continue;
     const paragraph = parts.join(" ");
-    if (!paragraph.startsWith("# ")) return paragraph;
+    if (!paragraph.startsWith("# ")) return { text: paragraph, from: first, to: i - 1 };
     parts = [];
   }
   return null;

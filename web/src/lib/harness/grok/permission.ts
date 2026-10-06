@@ -65,6 +65,8 @@ export function detectPermissionRegion(lines: StyledLine[]): PermissionRegion | 
   // shuffled card would still look like a probed 1..n layout.
   const ordered: { digit: string; label: string }[] = [];
   let question = "";
+  // Rows of text above the first option, bottom-up (see `startLine` below).
+  const textRows: number[] = [];
   for (let i = card.end; i >= card.start; i--) {
     const t = texts[i]!;
     const opt = GUTTER_OPTION.exec(t);
@@ -82,6 +84,7 @@ export function detectPermissionRegion(lines: StyledLine[]): PermissionRegion | 
     // put the title and command. Below the options it is an unprobed row: refuse.
     if (i > firstOption) return null;
     question = body;
+    textRows.push(i);
   }
 
   // The footer's own row count is the cross-check: a torn frame that lost an option row (or
@@ -106,10 +109,12 @@ export function detectPermissionRegion(lines: StyledLine[]): PermissionRegion | 
   if (signature === "") return null;
 
   return {
-    // The block replaces the OPTIONS down; the `┃` question rows above stay in the raw mirror.
-    // Same contract as Claude's prompt-select: the renderer never repeats the question, so the
-    // mirror is where the operator reads what they're approving.
-    startLine: firstOption,
+    // The block starts at the question's row, so the card's question is not also painted in the
+    // raw mirror above it. That holds only when the question is the ONLY text above the options:
+    // the card prints `question` and nothing else, so a second row (a command, a wrapped line)
+    // would vanish from the mirror and from the card alike. Then the block keeps starting at the
+    // first option and the mirror keeps the rows.
+    startLine: textRows.length === 1 ? textRows[0]! : firstOption,
     model: {
       question,
       options: [

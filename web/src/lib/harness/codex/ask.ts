@@ -81,7 +81,6 @@ export function detectAskRegion(lines: StyledLine[]): AskRegion | null {
     if (options[k]!.keys[0] !== String(k + 1)) return null;
   }
 
-  const start = i + 1;
   const questionEnd = skipBlanksUp(texts, i);
   let header = questionEnd;
   while (header >= 0 && /^ {2}\S/.test(texts[header]!) && !HEADER.test(texts[header]!)) {
@@ -94,8 +93,11 @@ export function detectAskRegion(lines: StyledLine[]): AskRegion | null {
   if (signature === "") return null;
 
   return {
-    // The block replaces the OPTIONS down; the header and question stay in the raw mirror.
-    startLine: start,
+    // The block starts at the question's first row, so the card's own question line is not also
+    // painted in the raw mirror above it. Only the `Question X/Y` header stays above (the card
+    // prints no header). Between the question and the options sit blank rows and nothing else, so
+    // the card hides no row.
+    startLine: header + 1,
     model: {
       question,
       options,

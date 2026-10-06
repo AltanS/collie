@@ -1,3 +1,5 @@
+import type { Ref } from "react";
+
 import type { StyledLine } from "@/lib/blocks";
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import { renderCells } from "@/components/painted-cells";
@@ -13,19 +15,23 @@ import { cn } from "@/lib/utils";
  *
  * `wrap` breaks long rows instead, anywhere, the way the pane mirror's Wrap does: the prompt card's
  * subject (a command, a diff, a warning) must be readable at phone width without a sideways pan.
- * `className` adds to the box, e.g. a height cap with its own vertical scroll.
+ * `className` adds to the box, e.g. a height cap with its own vertical scroll; `ref` reaches the
+ * <pre>, the element that scrolls, for a caller that measures it.
  */
 export function RawMirror({
   lines,
   wrap = false,
   className,
+  ref,
 }: {
   lines: StyledLine[];
   wrap?: boolean;
   className?: string;
+  ref?: Ref<HTMLPreElement>;
 }) {
   return (
     <pre
+      ref={ref}
       className={cn(
         "m-0 rounded-lg px-2 py-1.5 font-mono text-[11px] leading-[1.25]",
         wrap ? "whitespace-pre-wrap wrap-anywhere" : "overflow-x-auto whitespace-pre",

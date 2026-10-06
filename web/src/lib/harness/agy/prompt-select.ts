@@ -184,7 +184,15 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
 
   const signature = regionSignature(texts, firstOpt - SIGNATURE_LOOKBACK, footerIndex);
   const coreSignature = coreRegionSignature(texts, questionAt, footerIndex);
-  return { model: { question, options, family, signature, coreSignature }, startLine: firstOpt };
+  // The block starts at the question's row, so the card's question is not also painted in the raw
+  // mirror above it. Only when nothing but blank rows and rules lie between the question and the
+  // first option: a row there (the trust prompt's `Antigravity CLI requires permission…`) is shown
+  // by the mirror alone, and the block then keeps starting at the first option.
+  let startLine = questionAt;
+  for (let i = questionAt + 1; i < firstOpt; i++) {
+    if (!isBlank(texts[i]!) && !isHorizontalRule(texts[i]!)) startLine = firstOpt;
+  }
+  return { model: { question, options, family, signature, coreSignature }, startLine };
 }
 
 export function detectPromptSelect(lines: StyledLine[]): PromptModel | null {

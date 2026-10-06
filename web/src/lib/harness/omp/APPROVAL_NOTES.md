@@ -112,8 +112,9 @@ What each key does, from omp 18.4.10's `HookSelectorComponent.handleInput`:
   `echo hi` and `rm -rf ~/x` on two rows can never read as one harmless `echo`. A soft wrap shows as a
   break too, which overstates and is the safe direction.
 - **The accessible name** (`question`): the title and the same rows, one per line.
-- **The raw mirror above the card:** the box's title and body, verbatim. The card starts at the
-  `Approve` row, as Claude's and Codex's permission cards start at their first option.
+- **The raw mirror above the card:** what is above the box. The card starts at the box's title row,
+  because it prints the title and every body row itself; the mirror no longer repeats them
+  (2026-10-06, after the card began to show its question).
 
 There is no elision. Every row of a `bash` body, a `Reason:` row, a wrapped `Path:` and a `write`
 body's content is on the Approve button. A write with more than thirty content rows declines, and so

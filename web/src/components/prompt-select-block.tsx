@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, MessageSquarePlus } from "lucide-react";
 
 import type {
@@ -11,9 +11,12 @@ import type {
 } from "@/lib/blocks";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { RawMirror } from "@/components/raw-mirror";
+import { hasResizeObserver } from "@/lib/env";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 /** What a tap on this block asks for: an option's keystroke plan, or feedback typed on the phone. */
 export type PromptBlockAction =
@@ -80,6 +83,44 @@ export function isHeaderRow(line: PromptSubjectLine | undefined): boolean {
 }
 
 /**
+ * Whether a vertical scroller still hides content BELOW its fold: it overflows, and it is not
+ * scrolled to the bottom. The same measuring as `useOverflowEdges` (ui/overflow-edges.tsx), turned to
+ * the vertical axis: read on every render, on every `scroll` (passive) and whenever the box or its
+ * content changes size, with the same 1px slack against sub-pixel rounding. React bails out of a
+ * re-render when the answer is unchanged, so a scroll event costs no render per frame.
+ */
+function useMoreBelow<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [more, setMore] = useState(false);
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setMore(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  }, []);
+
+  useLayoutEffect(measure);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.addEventListener("scroll", measure, { passive: true });
+    return () => el.removeEventListener("scroll", measure);
+  }, [measure]);
+
+  // A font finishing, the viewport resizing, the keyboard opening. Guarded for jsdom.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !hasResizeObserver()) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure]);
+
+  return { ref, more };
+}
+
+/**
  * What the dialog asks about (`PromptModel.subject`), above the question. The card used to leave it
  * in the raw scrollback above itself, which the docked card (ADR 0059) and the Chat view no longer
  * show, so a subagent's permission read "Yes / No" and nothing else.
@@ -106,12 +147,35 @@ function PromptSubject({ subject }: { subject: PromptSubjectLine[] }) {
           ))}
         </p>
       ) : null}
-      {body.length > 0 ? (
-        <div data-slot="prompt-subject">
-          <RawMirror lines={body} wrap className="max-h-[22dvh] overflow-y-auto overscroll-contain" />
-        </div>
-      ) : null}
+      {body.length > 0 ? <SubjectBody lines={body} /> : null}
     </>
+  );
+}
+
+/**
+ * The subject's rows in their scrolling box, and the fade while rows still hide below it. The fade is
+ * the belt's pattern turned to the vertical axis (actions-row.tsx: a ground-coloured layer under a
+ * `mask-image` gradient). Its ground is the mirror's own, so it wears the same dark-space colours and
+ * the same light-theme inversion as the box it sits on (ADR 0002). It draws nothing when the box fits
+ * or is scrolled to its end, and it never takes a tap or a scroll.
+ */
+function SubjectBody({ lines }: { lines: PromptSubjectLine[] }) {
+  const { ref, more } = useMoreBelow<HTMLPreElement>();
+  return (
+    <div data-slot="prompt-subject" className="relative">
+      <RawMirror ref={ref} lines={lines} wrap className="max-h-[22dvh] overflow-y-auto overscroll-contain" />
+      {more ? (
+        <div
+          aria-hidden
+          data-slot="prompt-subject-more"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-12 rounded-b-lg [mask-image:linear-gradient(to_bottom,transparent,black)]",
+            MIRROR_SPACE,
+            MIRROR_INVERT,
+          )}
+        />
+      ) : null}
+    </div>
   );
 }
 
