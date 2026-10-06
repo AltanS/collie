@@ -14,6 +14,7 @@ import { PaneActionsSheet } from "../../chips/pane-actions-sheet";
 import { creating, newTab, tabCreateKey } from "../../chips/space-actions";
 import { TabActionsSheet } from "../../chips/tab-actions-sheet";
 import { capability } from "../../chips/capability";
+import { afterLayout } from "../../lib/after-layout";
 import { address, config } from "../../lib/data";
 import { LONG_PRESS_EVENT, longPress } from "../../lib/gestures";
 import { useLocale } from "../../lib/i18n-store";
@@ -138,30 +139,33 @@ const TAB_ROW_SQUARE_TAP_TARGET =
 const REVEAL_MARGIN = 12;
 
 /**
- * Scroll the element carrying `aria-current="true"` to the nearest edge of the scroller's visible
- * range, if it is not already inside it. Never centres, and never scrolls an ancestor: only the
- * one scroller moves. The first run after mount is instant, later ones smooth, and reduced motion
- * is instant always.
+ * Where the scroller must go to bring the element carrying `aria-current="true"` to the nearest edge
+ * of its visible range, or null when it is already inside it. Never centres. A READ only: it runs
+ * after the browser's own layout (lib/after-layout.ts), so its boxes cost nothing.
  */
-function revealActive(scroller: HTMLElement | null, first: boolean): void {
-  if (scroller === null || scroller.clientWidth === 0) return;
+function revealTarget(scroller: HTMLElement): number | null {
+  if (scroller.clientWidth === 0) return null;
   const active = scroller.querySelector<HTMLElement>('[aria-current="true"]');
-  if (active === null) return;
+  if (active === null) return null;
   const box = scroller.getBoundingClientRect();
   const at = active.getBoundingClientRect();
   const left = box.left + REVEAL_MARGIN;
   const right = box.right - REVEAL_MARGIN;
-  if (at.left >= left && at.right <= right) return;
+  if (at.left >= left && at.right <= right) return null;
   const target = at.left < left ? scroller.scrollLeft + (at.left - box.left) - REVEAL_MARGIN : scroller.scrollLeft + (at.right - box.right) + REVEAL_MARGIN;
-  scroller.scrollTo({ left: Math.max(0, target), behavior: first || reducedMotion() ? "auto" : "smooth" });
+  return Math.max(0, target);
 }
 
 /**
  * One row's reveal, as a setup object: `bind` is the `ref` callback for the scroller (or for a
  * child of it, `via`), `after(key)` is called from render and queues the reveal on a change of the
- * active key. Nothing here touches the DOM during render.
+ * active key. Nothing here touches the DOM during render, and nothing reads a box inside the flush:
+ * the commit task only hands the scroller to `afterLayout`, whose read runs after the frame's own
+ * layout and whose write (one `scrollTo`, only when the pill is out of view) runs after every read
+ * of that frame. The first reveal after mount is instant, later ones smooth, reduced motion instant
+ * always. Only the one scroller moves, never an ancestor.
  */
-function revealer(handle: { queueTask(task: () => void): void }, via: "self" | "parent") {
+function revealer(handle: { queueTask(task: () => void): void; signal: AbortSignal }, via: "self" | "parent") {
   let node: HTMLElement | null = null;
   let seen: string | null | undefined;
   let revealed = false;
@@ -174,8 +178,17 @@ function revealer(handle: { queueTask(task: () => void): void }, via: "self" | "
       seen = key;
       handle.queueTask(() => {
         const scroller = via === "self" ? node : (node?.parentElement ?? null);
-        revealActive(scroller, !revealed);
-        revealed = true;
+        if (scroller === null) return;
+        afterLayout(
+          scroller,
+          () => revealTarget(scroller),
+          (left) => {
+            const first = !revealed;
+            revealed = true;
+            if (left !== null) scroller.scrollTo({ left, behavior: first || reducedMotion() ? "auto" : "smooth" });
+          },
+          handle.signal,
+        );
       });
     },
   };

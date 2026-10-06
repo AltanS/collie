@@ -24,6 +24,7 @@ import { createMixin } from "remix/component";
 import { maxPullForAnchor, shouldOpen, SLOP } from "@web/hooks/use-sheet-pull";
 import { isSwipeUp } from "@web/hooks/use-swipe";
 
+import { afterLayout } from "./after-layout";
 import { buzz } from "./prefs";
 
 // ── Events ─────────────────────────────────────────────────────────────────────────────────────────
@@ -278,8 +279,21 @@ export interface PullOptions {
   max?: number;
 }
 
-function keepVerticalForUs(node: HTMLElement): void {
-  if (getComputedStyle(node).touchAction === "auto") node.style.touchAction = "pan-x";
+/**
+ * Leave the vertical axis to the gesture: `pan-x` unless the host already says otherwise. The
+ * computed style is read after the browser's own layout (lib/after-layout.ts), never in the insert
+ * callback, where it forced the whole new screen's style inside the tap's task (18 ms at 4x CPU,
+ * the profile of 2026-10-06, section 7).
+ */
+function keepVerticalForUs(node: HTMLElement, signal: AbortSignal): void {
+  afterLayout(
+    node,
+    () => getComputedStyle(node).touchAction,
+    (touchAction) => {
+      if (touchAction === "auto") node.style.touchAction = "pan-x";
+    },
+    signal,
+  );
 }
 
 export function attachPull(
@@ -359,7 +373,7 @@ const pullMixin = createMixin<HTMLElement, [options: PullOptions]>((handle) => {
   handle.addEventListener("insert", (event) => {
     bound?.abort();
     bound = new AbortController();
-    keepVerticalForUs(event.node);
+    keepVerticalForUs(event.node, bound.signal);
     attachPull(event.node, () => current, bound.signal);
   });
   handle.addEventListener("remove", () => {
@@ -405,7 +419,7 @@ const swipeUpMixin = createMixin<HTMLElement, [options: SwipeUpOptions]>((handle
   handle.addEventListener("insert", (event) => {
     bound?.abort();
     bound = new AbortController();
-    keepVerticalForUs(event.node);
+    keepVerticalForUs(event.node, bound.signal);
     attachSwipeUp(event.node, () => current, bound.signal);
   });
   handle.addEventListener("remove", () => {

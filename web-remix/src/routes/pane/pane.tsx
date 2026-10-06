@@ -12,6 +12,22 @@
 // (pane-start.ts). The open pane is published to `focus`, so the scheduler polls it hot while the
 // view follows the tail, and every write calls `noteSend` (answer.ts) for the 300 ms burst.
 //
+// THE TWO-STEP MOUNT. The pane is one route render, and the runtime commits a render in one task
+// with no yield, so a tap used to mount everything (header claim, screen, composer, belt, keys tray,
+// four sheets) in one 135 to 182 ms task at 4x CPU (the profile of 2026-10-06, 3.3). So the first
+// commit draws what the eye goes to: the header claim, the strips, the notice, the screen (its
+// skeleton or the prefetched text), the dialog card, the agent's two bands, and `ComposerStandIn`, a
+// box of the composer's exact height. The composer (and in it the belt, the drawers, the keys tray,
+// the palette) and the four sheet wrappers mount in a second task, after the first paint: the commit
+// task asks for one animation frame (it runs before that paint) and, from it, a timer (it runs
+// after); the timer wakes this screen through `scheduleUpdate` (rule 1). While a glide's update
+// callback is pending no frame runs, so step two also waits for the callback to settle (REMIX3.md,
+// "Frames during a view transition") and never lands inside the morph's capture. The two bands and
+// the strips stay in step one: they sit in flow beside the screen and their height cannot be
+// reserved without drawing them, and they read no layout. Nothing moves when step two lands: the
+// stand-in and the composer are one height by construction (composer.tsx). A saved draft with
+// attachments (chips the stand-in cannot size) and an opened sheet both skip the wait.
+//
 // LEAVING. A pane that is gone from a healthy snapshot taken after this screen opened says "Pane
 // closed" once and goes up (ADR 0067); a pane that never showed up waits for that same proof.
 import { on, type Handle } from "remix/component";
@@ -40,6 +56,7 @@ import { address, config, paneStore, snapshot, snapshotAt } from "../../lib/data
 import { createFind } from "../../lib/find";
 import { glideBack } from "../../lib/glide";
 import { useLocale } from "../../lib/i18n-store";
+import { loadDraft } from "../../lib/drafts";
 import { clearNotPaired, markNotPaired, pairing } from "../../lib/pairing";
 import { focus, kick, want } from "../../lib/polling";
 import { buzz, dashPrefs, displayPrefs, setDashPref, stripsCollapsed, zen as zenPref } from "../../lib/prefs";
@@ -59,7 +76,7 @@ import { goUp, upPath } from "./back";
 import { dialogOwnsKeyboard, type DialogCard } from "./cards";
 import { ChatView } from "./chat";
 import { chatReads, chatStore, pollChat } from "./chat-store";
-import { Composer } from "./composer";
+import { Composer, ComposerStandIn } from "./composer";
 import { findPane, PANE_LINES, PANE_LINES_MAX, PANE_LINES_STEP, pollPane, writeGate } from "./data";
 import { CardDock, type CardActions } from "./dialog-card";
 import { answerMultiSelect, answerPreview, answerWizard } from "./dialogs/actions";
@@ -153,6 +170,31 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
   let seenInSnapshot = false;
   let exited = false;
   let chatPoll: AbortController | null = null;
+
+  // ── The two-step mount (file header) ──────────────────────────────────────────────────────────
+  /** Step two has landed: the composer and the sheets are mounted. */
+  let full = loadDraft(scope, paneId).attachments.length > 0;
+  let stepTwoArmed = full;
+  /** Asked from the first commit: one frame (before the first paint), then a timer (after it). */
+  const armStepTwo = (): void => {
+    if (handle.signal.aborted) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      timer = setTimeout(() => {
+        if (full || handle.signal.aborted) return;
+        full = true;
+        scheduleUpdate(handle);
+      }, 0);
+    });
+    handle.signal.addEventListener(
+      "abort",
+      () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+      },
+      { once: true },
+    );
+  };
 
   let lastBlocks: Block[] | undefined;
   let card: DialogCard | null = null;
@@ -313,6 +355,12 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
 
   return () => {
     countRender("PaneRoute");
+    // A sheet asked for before step two (the header's ⋮ is in step one) mounts the rest at once.
+    if (sheet !== null) full = true;
+    if (!stepTwoArmed) {
+      stepTwoArmed = true;
+      handle.queueTask(armStepTwo);
+    }
     const read = readPane();
     const snap = readSnapshot();
     const cfg = readConfig().data;
@@ -643,6 +691,7 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
           <Collapse open={!vp.keyboard && agentsFooter.length > 0}>
             {agentsFooter.length > 0 ? <AgentsFooter rows={agentsFooter} faceClass={face.className} faceFamily={face.style?.fontFamily} /> : null}
           </Collapse>
+          {full ? (
           <Composer
             key={`composer:${key}`}
             paneId={paneId}
@@ -666,8 +715,13 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
               wake();
             }}
           />
+          ) : (
+            <ComposerStandIn key={`composer-standin:${key}`} paneId={paneId} scope={scope} gate={wg} />
+          )}
           </div>
         </Collapse>
+        {full ? (
+        <>
         <PaneActionsSheet
           open={sheet === "actions"}
           onClose={() => setSheet(null)}
@@ -699,6 +753,8 @@ export function PaneRoute(handle: Handle<{ paneId: string }>) {
           readOnly={readOnly}
           onPick={goToPane}
         />
+        </>
+        ) : null}
       </main>
     );
   };

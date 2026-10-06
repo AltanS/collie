@@ -410,6 +410,10 @@ note 05, rank 2).
   (`R/routes/pane/terminal.tsx`, `R/routes/pane/chat.tsx`). Without an observer, one
   `requestAnimationFrame` after insert.
 - Inside one measurement, all reads first, then one write, skipped when the value did not move.
+- A one-off read after insert goes through `afterLayout(node, read, write, signal)` (`R/lib/after-layout.ts`):
+  one shared `ResizeObserver` delivers it after the frame's layout, and every read due in that frame
+  runs before any write. The strips' active-pill reveal (`R/routes/pane/strips.tsx`) and the gestures'
+  `touch-action` check (`R/lib/gestures.ts`) use it; before, they cost 37 and 18 ms of the tap at 4x.
 - `getAnimations()` flushes style for the whole document. Collect animation handles once, after
   the first paint, and refresh them on `animationstart` or `animationcancel`
   (`R/shell/collie-mark.tsx`).
@@ -559,6 +563,24 @@ orbit.
 - Chat blocks are keyed by block id (`R/routes/pane/chat.tsx`). Keep it.
 - While the reader is scrolled up, the rows under their eye are frozen (`R/routes/pane/terminal.tsx`).
   The mirror is the one surface allowed to move by itself, and only at the tail (D §2).
+
+### The two-step pane mount
+
+The runtime commits a route render in one task with no yield, so the pane used to mount header,
+screen, composer, belt and four sheets in one 135 to 182 ms task at 4x CPU. `R/routes/pane/pane.tsx`
+now mounts in two steps. Step one: the header claim, strips, notice, screen, dialog card, the two
+bands, and `ComposerStandIn` (`R/routes/pane/composer.tsx`), a box of the composer's exact height
+built from the same class constants. Step two, after the first paint (the commit task asks for one
+rAF, the rAF for a `setTimeout`, the timer calls `scheduleUpdate`): the composer and the sheets. While
+a glide holds frames, step two waits for the update callback, like every rAF. In-flow parts whose
+height cannot be reserved without drawing them stay in step one. `e2e/pane-two-step.spec.ts` holds
+the chrome block's top and height, and the screen's tail, still across the swap. Measured 2026-10-07,
+4x CPU, median of 5: longest tap task 103 to 67 ms, tap blocking 77 to 20 ms.
+
+Chat blocks carry web's `STREAM_BLOCK` verbatim (`content-visibility: auto`,
+`contain-intrinsic-size: auto 64px`), so the first layout skips the blocks off screen. Measured on top
+of the two-step mount: layout until the text paints 36 to 33 ms, style 77 to 68 ms, tap-to-text 304
+to 276 ms, and no frame where the tail moved.
 
 ### When to bypass render
 

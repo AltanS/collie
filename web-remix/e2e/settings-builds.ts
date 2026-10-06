@@ -3,7 +3,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const SETTINGS_PORT = 5196;
+/** 5196 by default; `SETTINGS_PORT` moves it, so a run can keep to the ports it was given. */
+export const SETTINGS_PORT = Number(process.env.SETTINGS_PORT ?? "5196");
 export const BUILDS_DIR = "/tmp/collie-remix-settings-e2e";
 export const POINTER = join(BUILDS_DIR, "current");
 

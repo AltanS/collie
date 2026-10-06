@@ -63,6 +63,17 @@ export function textTokens(size: number): TextTokens {
 
 const NO_NOTES: Readonly<Record<string, string>> = {};
 
+/**
+ * One block of the stream: web's `STREAM_BLOCK` (session-stream.tsx), verbatim. `content-visibility:
+ * auto` skips style, layout and paint for a block off screen, so the pane's first layout lays out
+ * the blocks in view and not the whole window (the profile of 2026-10-06, section 6: web set it on
+ * 28 elements of this pane, this shell on none). `contain-intrinsic-size: auto 64px` holds a block
+ * that has not been drawn at 64 px and a drawn one at its last real height, so the scroll height
+ * the tail pin reads does not lie twice. The 12 px padding with the matching negative margin keeps
+ * a card's shadow and focus ring inside the paint clip the containment adds; the box is unchanged.
+ */
+const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-intrinsic-size:auto_64px] -m-3 p-3";
+
 export interface ChatViewProps {
   /** The pane's (host, session, pane) key: the window's and the scroll memory's key. */
   paneKey: string;
@@ -227,11 +238,11 @@ export function ChatView(handle: Handle<ChatViewProps>) {
             {top}
             {groups.map((group) =>
               group.length === 1 && (showToolCalls || group[0]!.kind !== "tool") ? (
-                <div key={group[0]!.id} data-block data-n={1} class="flex min-w-0 flex-col">
+                <div key={group[0]!.id} data-block data-n={1} class={STREAM_BLOCK}>
                   <ItemView item={group[0]!} note={notes[group[0]!.id]} />
                 </div>
               ) : (
-                <div key={group[0]!.id} data-block data-n={group.length} class="flex min-w-0 flex-col">
+                <div key={group[0]!.id} data-block data-n={group.length} class={STREAM_BLOCK}>
                   <ToolGroup items={group} liveOpens={showToolCalls} notes={notes} />
                 </div>
               ),

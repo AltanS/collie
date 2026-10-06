@@ -49,7 +49,7 @@ import { createDirectTyping } from "../../lib/direct-typing";
 import { clearDraft, fitsDraftStore, holdDraft, loadDraft, saveDraft } from "../../lib/drafts";
 import { LONG_PRESS_EVENT, longPress } from "../../lib/gestures";
 import { useLocale } from "../../lib/i18n-store";
-import { displayPrefs } from "../../lib/prefs";
+import { displayPrefs, type DisplayPrefs } from "../../lib/prefs";
 import { setStatus } from "../../lib/status";
 import { scheduleUpdate, useStore } from "../../lib/store";
 import { handsFree, sttCapability } from "../../lib/stt";
@@ -57,7 +57,7 @@ import { Collapse } from "../../ui/collapse";
 import { Icon } from "../../ui/icon";
 import { sendTypedReply, type WriteTarget } from "./answer";
 import { AgentPalette } from "./agent-palette";
-import { Belt, type BeltPill, type BeltProps } from "./belt";
+import { Belt, BeltStandIn, type BeltPill, type BeltProps } from "./belt";
 import { ComposerDock, DisplayDock, QuickTray } from "./belt-drawers";
 import type { WriteGate } from "./data";
 
@@ -75,6 +75,22 @@ const SENT_ECHO_GRACE_MS = 5000;
 const TUI_SETTLE_MS = 120;
 /** "Unread" chips cover a draft's opening words; this many characters is a preview (composer.tsx). */
 const PREVIEW_CHARS = 60;
+
+// The composer's boxes, shared with `ComposerStandIn` below so the two are one height by construction.
+const CHROME_BLOCK = "relative shrink-0 border-t border-rule bg-chrome";
+const COMPOSER_PAD = "px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]";
+const FIELD_BOX =
+  "relative mt-1 flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring";
+const FIELD =
+  "block max-h-[min(10rem,30dvh)] min-h-9 min-w-0 flex-1 resize-none bg-transparent py-1.5 pl-2 font-mono text-base [field-sizing:content] wrap-anywhere outline-none placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50";
+
+/** The draft field's size and face (composer.tsx `draftStyle`): the operator's draft size with the
+ *  iOS no-zoom floor, and the mirror's family only when a non-default one was chosen. */
+function draftStyleOf(prefs: DisplayPrefs): { fontSize: string; fontFamily?: string } {
+  const face = fontStack(prefs.fontFamily);
+  const draftPx = `${String(applyDraftFontSize(prefs.draftFontSize, inputFocusZoomsPage()))}px`;
+  return face === undefined ? { fontSize: draftPx } : { fontSize: draftPx, fontFamily: face };
+}
 
 type Drawer = "keys" | "quick" | "display" | "cmd" | null;
 type Armed = "none" | "force" | "destructive";
@@ -502,12 +518,7 @@ export function Composer(handle: Handle<ComposerProps>) {
     const working = sending || uploading || rec.phase === "transcribing";
     handle.queueTask(() => holdWork(working));
     const micIsPrimary = stt !== null && !direct.active && !hasDraft;
-    // The draft field's size and face (composer.tsx `draftStyle`): the operator's draft size with
-    // the iOS no-zoom floor, and the mirror's family only when a non-default one was chosen.
-    const prefs = readDisplay();
-    const face = fontStack(prefs.fontFamily);
-    const draftPx = `${String(applyDraftFontSize(prefs.draftFontSize, inputFocusZoomsPage()))}px`;
-    const draftStyle = face === undefined ? { fontSize: draftPx } : { fontSize: draftPx, fontFamily: face };
+    const draftStyle = draftStyleOf(readDisplay());
 
     // The Sent strip ends when the mirror moves past the words, or its 6 s pass.
     if (lastSent !== null && lastSent.paneText !== paneText) lastSent = null;
@@ -648,7 +659,7 @@ export function Composer(handle: Handle<ComposerProps>) {
     const asksWhich = offersFiles(cfg);
 
     return (
-      <div data-slot="chrome-block" class="relative shrink-0 border-t border-rule bg-chrome">
+      <div data-slot="chrome-block" class={CHROME_BLOCK}>
         <div class="pointer-events-none absolute inset-x-0 bottom-full z-20 px-3 pb-2" data-slot="draft-notice-slot">
           {showPreview && raw !== null ? (
             <div class="pointer-events-auto">
@@ -663,7 +674,7 @@ export function Composer(handle: Handle<ComposerProps>) {
             </div>
           ) : null}
         </div>
-        <div data-slot="composer" class="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div data-slot="composer" class={COMPOSER_PAD}>
           <Collapse open={lastSent !== null}>
             <div data-testid="sent-preview" class="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
               <Icon icon={LoaderCircle} class="size-3 shrink-0 animate-spin" />
@@ -779,7 +790,7 @@ export function Composer(handle: Handle<ComposerProps>) {
           />
           <div
             class={cn(
-              "relative mt-1 flex items-end gap-1 rounded-xl border border-input bg-background p-1 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+              FIELD_BOX,
               list.length > 0 && "flex-wrap",
               locked && "bg-muted/40",
               direct.active && "border-primary focus-within:border-primary focus-within:ring-primary",
@@ -798,7 +809,7 @@ export function Composer(handle: Handle<ComposerProps>) {
               autoCorrect={direct.active ? "off" : undefined}
               spellCheck={direct.active ? false : undefined}
               enterkeyhint="enter"
-              class="block max-h-[min(10rem,30dvh)] min-h-9 min-w-0 flex-1 resize-none bg-transparent py-1.5 pl-2 font-mono text-base [field-sizing:content] wrap-anywhere outline-none placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              class={FIELD}
               style={draftStyle}
               mix={[
                 ref((node: HTMLTextAreaElement) => {
@@ -922,6 +933,56 @@ export function Composer(handle: Handle<ComposerProps>) {
             setText(next, next.length);
           }}
         />
+      </div>
+    );
+  };
+}
+
+// ── The stand-in, for the pane's first frame ──────────────────────────────────────────────────────
+
+export interface ComposerStandInProps {
+  paneId: string;
+  scope: Scope;
+  gate: WriteGate;
+}
+
+/**
+ * What the pane draws where the composer goes, for the frame before the composer mounts (pane.tsx,
+ * "the two-step mount"). The same boxes as `Composer`: the chrome block, the padded column, the belt's
+ * band (`BeltStandIn`) and the bordered field box holding a textarea with the same classes, size,
+ * face, placeholder and saved draft text, so `field-sizing: content` gives it the composer's own
+ * height. The attach slot and the round primary keep their 36 px. Inert and hidden from the
+ * accessibility tree; no listeners, no subscriptions (it lives for one frame, `get()` is enough).
+ *
+ * The no-shift rule (DESIGN.md §2) is why it exists: the real composer replaces it at the same height,
+ * so neither the screen above nor its pinned tail moves. A saved draft with attachments draws chips
+ * this box cannot size, so the pane mounts the composer at once for that one (pane.tsx).
+ */
+export function ComposerStandIn(handle: Handle<ComposerStandInProps>) {
+  const text = loadDraft(handle.props.scope, handle.props.paneId).text;
+  return () => {
+    const { gate } = handle.props;
+    return (
+      <div data-slot="chrome-block-standin" aria-hidden="true" inert class={CHROME_BLOCK}>
+        <div class={COMPOSER_PAD}>
+          <BeltStandIn />
+          <div class={cn(FIELD_BOX, gate.locked && "bg-muted/40")}>
+            <textarea
+              tabIndex={-1}
+              readOnly
+              rows={1}
+              placeholder={gate.placeholder}
+              disabled={gate.locked}
+              class={FIELD}
+              style={draftStyleOf(displayPrefs.get())}
+              mix={ref((node: HTMLTextAreaElement) => {
+                node.value = text;
+              })}
+            />
+            <span class="size-9 shrink-0" />
+            <span class={cn("size-9 shrink-0 rounded-full bg-primary", gate.locked && "opacity-50")} />
+          </div>
+        </div>
       </div>
     );
   };

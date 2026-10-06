@@ -62,6 +62,10 @@ const OFF = "text-muted-foreground";
 const PINNED_PILL =
   "relative w-(--belt-pill) min-w-(--belt-pill) border-0 px-0 has-[>svg]:px-0 before:-inset-y-(--belt-pad) hover:bg-foreground/8 active:bg-foreground/15 active:scale-[0.92] motion-reduce:active:scale-100 duration-[120ms]";
 
+/** The band itself: one full-bleed fill closed below by a hairline (see the root in `Belt`). The
+ *  stand-in draws the same box, so the two are one height by construction. */
+const BELT_ROOT = "relative -mx-3 mb-1 flex items-center border-b border-border bg-foreground/6";
+
 /** Extra air between the last scrolling pill and the pinned block at full scroll-right. */
 const BELT_END_AIR = 16;
 
@@ -446,7 +450,7 @@ export function Belt(handle: Handle<BeltProps>) {
         // closed below by a hairline. The block above it already draws the top rule. `touch-pan-x`
         // only with a switcher: the browser keeps the sideways pan and hands vertical to the pull.
         class={cn(
-          "relative -mx-3 mb-1 flex items-center border-b border-border bg-foreground/6",
+          BELT_ROOT,
           switcher !== null && "touch-pan-x",
           props.class,
         )}
@@ -583,4 +587,24 @@ export function Belt(handle: Handle<BeltProps>) {
       </div>
     );
   };
+}
+
+// ── The stand-in, for the pane's first frame ──────────────────────────────────────────────────────
+
+/**
+ * The belt's band for the frame before the composer mounts (pane.tsx, "the two-step mount"): the same
+ * root box at the same `--belt-scale`, and inside it the scroller's own `--belt-pad` around one strut
+ * of `--belt-pill`. The harness section's margin box is a pill high too (`h-(--belt-band)` less the
+ * pad on both sides), so the belt's height never depends on what it holds and this band is its height
+ * to the pixel. No pills, no listeners, no observers. It reads the scale with `get()` and subscribes
+ * to nothing: it lives for one frame, and the real belt that replaces it subscribes.
+ */
+export function BeltStandIn() {
+  return () => (
+    <div data-slot="actions-belt-standin" aria-hidden="true" style={beltVars(dashPrefs.get().beltScale)} class={BELT_ROOT}>
+      <div class="flex min-w-0 flex-1 items-center py-(--belt-pad)">
+        <span class="h-(--belt-pill) w-0 shrink-0" />
+      </div>
+    </div>
+  );
 }
