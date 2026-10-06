@@ -57,7 +57,15 @@ import {
   type ReplySender,
   stripMount,
   mountIndexHtml,
+  withHsts,
+  arrivedOverHttps,
 } from "./server.ts";
+import {
+  createPairLimiter,
+  pairSourceKey,
+  PAIR_ATTEMPTS_PER_WINDOW,
+  PAIR_WINDOW_MS,
+} from "./pair-limit.ts";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -3597,13 +3605,14 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
     await rm(base, { recursive: true, force: true });
   });
 
-  test("a png answers 200 with its sniffed type, an immutable cache header, and the hash as ETag", async () => {
+  test("a png answers 200 with its sniffed type, a private one-hour blob cache header, and the hash as ETag", async () => {
     const { sessions, blobs, base } = await blobStore();
     await Bun.write(join(blobs, hash), PNG_HEAD);
     const res = await blobRoute(hash, [sessions], null);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
-    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    // Session content: never `public`, never a year, never `immutable`.
+    expect(res.headers.get("cache-control")).toBe("private, max-age=3600");
     // The ETag IS the hash: the store is content-addressed, so nothing is re-hashed to learn it.
     expect(res.headers.get("etag")).toBe(`"${hash}"`);
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(PNG_HEAD);
@@ -3928,5 +3937,103 @@ describe("an input written to a pane makes its engine hot", () => {
     expect(src).toContain("const input = isPaneInput(pathname, req.method);");
     expect(src).toContain("return input && own !== undefined ? afterPaneInput(own, forwarded) : forwarded;");
     expect([...src.matchAll(/afterPaneInput\(/g)]).toHaveLength(4); // the definition and three calls
+  });
+});
+
+// M46 spec 05: the response headers every answer carries, and the blob cache rule.
+describe("security headers on the app shell", () => {
+  async function shell() {
+    const dir = await mkdtemp(join(tmpdir(), "collie-shell-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><title>x</title>");
+    const res = await serveStatic("/", null, dir);
+    await rm(dir, { recursive: true, force: true });
+    return res;
+  }
+
+  test("Permissions-Policy denies the unused features and keeps microphone=(self)", async () => {
+    const policy = (await shell()).headers.get("permissions-policy") ?? "";
+    expect(policy).toContain("microphone=(self)");
+    for (const denied of ["camera=()", "geolocation=()", "payment=()", "usb=()"]) {
+      expect(policy).toContain(denied);
+    }
+  });
+
+  test("the CSP adds object-src 'none' and form-action 'self' and keeps the rest", async () => {
+    const csp = (await shell()).headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("form-action 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("script-src 'self'");
+  });
+
+  test("Strict-Transport-Security is absent over plain HTTP", async () => {
+    const handler = withHsts(async () => new Response("ok"));
+    const res = await handler(new Request("http://bluefin:8788/"));
+    expect(res.headers.get("strict-transport-security")).toBeNull();
+  });
+
+  test("Strict-Transport-Security is sent when x-forwarded-proto says https", async () => {
+    const handler = withHsts(async () => new Response("ok"));
+    const res = await handler(new Request("http://127.0.0.1:8788/", { headers: { "x-forwarded-proto": "https" } }));
+    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains");
+  });
+
+  test("Strict-Transport-Security is sent on a TLS listener's own https URL", async () => {
+    const handler = withHsts(async () => new Response("ok"));
+    const res = await handler(new Request("https://collie.example/"));
+    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains");
+    expect(arrivedOverHttps(new Request("http://collie.example/", { headers: { "x-forwarded-proto": "http" } }))).toBe(false);
+  });
+});
+
+// M46 spec 05: the POST /api/pair outer brake. The route itself needs Bun.serve, so the limiter and
+// the source key are exercised directly.
+describe("pair attempt rate limit", () => {
+  test("the 11th attempt inside a minute is refused, and the burst is flagged once", () => {
+    const limiter = createPairLimiter();
+    for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW; i++) {
+      expect(limiter.hit("100.64.0.9", 1_000 + i).allowed).toBe(true);
+    }
+    expect(limiter.hit("100.64.0.9", 2_000)).toEqual({ allowed: false, first: true });
+    expect(limiter.hit("100.64.0.9", 2_001)).toEqual({ allowed: false, first: false });
+  });
+
+  test("another address is not affected by the first one's burst", () => {
+    const limiter = createPairLimiter();
+    for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW + 2; i++) limiter.hit("100.64.0.9", 1_000);
+    expect(limiter.hit("100.64.0.10", 1_001).allowed).toBe(true);
+  });
+
+  test("the window slides: attempts older than a minute stop counting", () => {
+    const limiter = createPairLimiter();
+    for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW; i++) limiter.hit("a", 1_000);
+    expect(limiter.hit("a", 1_000 + PAIR_WINDOW_MS - 1).allowed).toBe(false);
+    expect(limiter.hit("a", 1_000 + PAIR_WINDOW_MS).allowed).toBe(true);
+  });
+
+  test("the counter map stays bounded and expired entries are pruned", () => {
+    const limiter = createPairLimiter(10, PAIR_WINDOW_MS, 8);
+    for (let i = 0; i < 100; i++) limiter.hit(`10.0.0.${String(i)}`, 1_000);
+    expect(limiter.size()).toBe(8);
+    limiter.hit("late", 1_000 + PAIR_WINDOW_MS + 1);
+    expect(limiter.size()).toBe(1);
+  });
+});
+
+describe("pair source key (forwarded header trust)", () => {
+  test("a non-loopback peer is keyed by its socket address; an untrusted x-forwarded-for does not change it", () => {
+    const a = pairSourceKey("100.64.0.9", false, "1.1.1.1");
+    const b = pairSourceKey("100.64.0.9", false, "2.2.2.2");
+    expect(a).toBe("100.64.0.9");
+    expect(b).toBe(a);
+  });
+
+  test("a loopback peer (the front door) is keyed by the first x-forwarded-for entry", () => {
+    expect(pairSourceKey("127.0.0.1", true, "203.0.113.7, 10.0.0.1")).toBe("203.0.113.7");
+  });
+
+  test("a loopback peer with no forwarded header shares one local key", () => {
+    expect(pairSourceKey("127.0.0.1", true, null)).toBe("loopback");
+    expect(pairSourceKey(undefined, true, "")).toBe("loopback");
   });
 });

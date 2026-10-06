@@ -37,6 +37,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   notification carry the mask, never the key. A mitigation, not a guarantee: plain passwords and
   bare hex are not matched. `COLLIE_REDACT=off` turns it off. Push bodies now name a pane by the
   label you gave it, never by the program's own title.
+- **Stricter response headers, a private blob cache and a pair rate limit.** Every answer now
+  carries a `Permissions-Policy` that denies camera, location, payment and USB and keeps the
+  microphone for hands-free speech; the content policy adds `object-src 'none'` and
+  `form-action 'self'`; HSTS is sent when the request arrived over HTTPS. Pane images under
+  `/api/blobs` are cached privately for an hour instead of publicly for a year. `/api/pair` refuses
+  more than ten attempts per source address per minute with `429`.
 
 ### Changed
 

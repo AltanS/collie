@@ -46,7 +46,11 @@ The write gate is active only while at least one device is paired. No device is 
 run `collie pair`, so until then read and write operations function as before. Pair your current
 phone first. Revoking the final device disables the gate again to prevent lockouts.
 
-Five failed code attempts invalidate the code, which requires running `collie pair` again.
+Five failed code attempts invalidate the code, which requires running `collie pair` again. On top of
+that, the bridge refuses more than ten pairing attempts per source address per minute with `429` and
+`Retry-After: 60`. Behind a front door on the same machine, the source address is the first
+`X-Forwarded-For` entry the front door sets. From any other peer, that header is ignored. The counters
+live in memory and reset when the bridge restarts.
 
 ### Give a device an expiry
 
@@ -109,6 +113,15 @@ Key security boundaries and risks:
   log: `COLLIE_AUDIT_CONTENT=none` redacts each one, and the default preview records only a count of
   `•` marks. Named keys such as Enter and Ctrl+C stay readable.
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
+- **Response headers.** Every response carries `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer` and `Permissions-Policy: camera=(), geolocation=(),
+  microphone=(self), payment=(), usb=()`. The microphone stays allowed for the hands-free speech
+  setting. The Content-Security-Policy on the app shell includes `object-src 'none'`,
+  `form-action 'self'` and `frame-ancestors 'none'`. `Strict-Transport-Security` is sent only when a
+  request arrived over HTTPS, either on a TLS listener or with `X-Forwarded-Proto: https` from your
+  proxy. The bridge itself speaks plain HTTP behind `tailscale serve`, and a browser ignores the
+  header there. Images served from `/api/blobs/` are session content, so they carry
+  `Cache-Control: private, max-age=3600` and no shared cache keeps them.
 - **Default defensive controls.** Collie binds strictly to loopback interfaces, routes traffic
   solely through `tailscale serve` or an equivalent reverse proxy, and applies strict CSP rules,
   same-origin checks, and host-header validation. Pane output renders as React text nodes instead of

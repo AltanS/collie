@@ -67,6 +67,7 @@ import {
   type ClaimFailure,
   type PairingStore,
 } from "./pairing.ts";
+import { createPairLimiter, pairSourceKey } from "./pair-limit.ts";
 import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
@@ -189,14 +190,44 @@ const CONTENT_TYPES = new Map<string, string>([
 const CSP =
   "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; " +
   "style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; " +
-  "manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'";
+  "manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; form-action 'self'";
 
 // Hardening headers set on EVERY response (static + API), applied centrally in the fetch wrapper.
 // nosniff stops content-type confusion; no-referrer keeps the tailnet URL out of any Referer.
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
+  // Deny every powerful feature the app never asks for. `microphone=(self)` stays allowed because
+  // the hands-free speech setting records with `getUserMedia({ audio: true })` (web/src/hooks/
+  // use-stt-recorder.ts); everything else (camera, geolocation, payment, usb) is unused.
+  "permissions-policy": "camera=(), geolocation=(), microphone=(self), payment=(), usb=()",
 } satisfies Record<string, string>;
+
+/** `Strict-Transport-Security` for a response, and only ever for a request that arrived over HTTPS. */
+const HSTS = "max-age=63072000; includeSubDomains";
+
+/**
+ * Whether a request reached the front door over HTTPS: a TLS listener (`req.url` carries the
+ * scheme) or a proxy that says so with `x-forwarded-proto: https`.
+ *
+ * HSTS is sent only then because the bridge itself speaks plain HTTP behind `tailscale serve`, and
+ * a browser ignores the header on a plain-HTTP response, so sending it there would claim something
+ * that is not true. A client can write `x-forwarded-proto` itself, but all it gains is a header
+ * over its own plain-HTTP connection, which the browser ignores.
+ */
+export function arrivedOverHttps(req: Request): boolean {
+  if (req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase() === "https") return true;
+  return req.url.startsWith("https:");
+}
+
+/** Wrap the request handler so an HTTPS arrival gets HSTS on whatever response it produces. */
+export function withHsts(handler: (req: Request) => Promise<Response>): (req: Request) => Promise<Response> {
+  return async (req) => {
+    const res = await handler(req);
+    if (arrivedOverHttps(req)) res.headers.set("strict-transport-security", HSTS);
+    return res;
+  };
+}
 
 // Loopback Host/Origin forms (with an optional port). Loopback is always trusted — only tailscaled
 // (or a co-located proxy) can reach the bridge's port, so a loopback caller is the on-host operator.
@@ -589,7 +620,10 @@ export async function blobRoute(
   const etag = `"${hash}"`;
   const headers = {
     "content-type": "application/octet-stream",
-    "cache-control": "public, max-age=31536000, immutable",
+    // Content-addressed, but the content is the operator's own pane output (images), so it must
+    // not sit in a shared or year-long cache. `private` keeps it out of proxies; an hour spares
+    // the Chat view a refetch storm. The ETag stays so a conditional request still answers 304.
+    "cache-control": "private, max-age=3600",
     etag,
   };
   if (notModified(ifNoneMatch, etag)) return secure(new Response(null, { status: 304, headers }));
@@ -1431,6 +1465,9 @@ export function startServer(opts: {
   const accessGate = createAccessGate(cfg);
   accessGate?.start();
 
+  // Ten attempts per source address per minute on POST /api/pair, in memory (bridge/pair-limit.ts).
+  const pairLimiter = createPairLimiter();
+
   const server = Bun.serve({
     hostname: cfg.host,
     port: cfg.port,
@@ -1441,7 +1478,7 @@ export function startServer(opts: {
     // certificate never reaches `fetch` at all, so nothing below has to defend against it.
     tls: listenerTls,
 
-    async fetch(req) {
+    fetch: withHsts(async (req: Request) => {
       const url = new URL(req.url);
       // A mounted collie (`COLLIE_BASE_PATH`, ADR 0052) is normally reached through a proxy that
       // strips the mount before it forwards — `tailscale serve` does, `http.StripPrefix` on the
@@ -2208,6 +2245,23 @@ export function startServer(opts: {
         // exists to stop asking.
         const gate = checkAccess(req, cfg, "write");
         if (!gate.ok) return text(gate.reason, 403);
+        // The outer brake, before the body is read: ten attempts per source address per minute, then
+        // 429 with `retry-after`. The five-tries-per-code rule in `pairing.claim` still applies on
+        // top of this. The source is the socket address, or the first `x-forwarded-for` entry only
+        // when the peer is the loopback front door (an untrusted caller cannot rotate its way out).
+        const peer = server.requestIP(req)?.address;
+        const source = pairSourceKey(peer, isLoopbackPeer(peer), req.headers.get("x-forwarded-for"));
+        const limited = pairLimiter.hit(source);
+        if (!limited.allowed) {
+          // Audited once per burst, not once per refused request, so a flood cannot fill the trail.
+          if (limited.first) audit.record({ action: "pair-refused", detail: { reason: "rate-limited" } });
+          return secure(
+            new Response("too many pairing attempts, try again in a minute", {
+              status: 429,
+              headers: { "retry-after": "60" },
+            }),
+          );
+        }
         let body: JsonValue;
         try {
           // SAFETY: `Request.json()` output IS a JsonValue by construction; `parsePairRequest`
@@ -2331,7 +2385,7 @@ export function startServer(opts: {
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
       return serveStatic(pathname, req.headers.get("accept-encoding"), WEB_DIR, cfg.basePath);
-    },
+    }),
   });
 
   console.log(`[bridge] listening on http://${cfg.host}:${cfg.port}  (poll ${cfg.pollMs}ms)`);
