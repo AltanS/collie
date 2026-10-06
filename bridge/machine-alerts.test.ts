@@ -241,6 +241,17 @@ function rig(
 ) {
   const state = { now: T0, muted: false, enabled: true, health, active: true, laptop: true };
   const sent: PushMessage[] = [];
+  // The watch does not await the episode write: it hands it to the store and holds the next minute's
+  // judgement (`judging`) until it lands. A fixed sleep after each tick is no barrier for that, so a
+  // slow runner's write could still be in flight at a later tick, and the pass that should have closed
+  // an episode was skipped. Track every write the watch starts, so `run` can wait for exactly those.
+  const writes: Promise<void>[] = [];
+  const realApply = alerts.apply.bind(alerts);
+  alerts.apply = (pass) => {
+    const write = realApply(pass);
+    writes.push(write);
+    return write;
+  };
   const watch = new MachineWatch({
     now: () => state.now,
     roster: () => [
@@ -261,8 +272,10 @@ function rig(
       watch.observe(id, hot(v), state.now);
       state.now += MINUTE_MS;
       watch.tick();
-      // The episode write is not awaited by the tick; let it land before the next minute.
-      await Bun.sleep(1);
+      // The episode write is not awaited by the tick. Wait for it, then for one timer turn: the
+      // watch lifts `judging` in promise callbacks that run after the write settles, all before a timer.
+      await Promise.all(writes.splice(0));
+      await Bun.sleep(0);
     }
   };
   return { state, sent, watch, run, dir };
