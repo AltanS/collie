@@ -497,6 +497,70 @@ now runs on Bun as well as in the browser. The rules:
   every other route boot from `index.html` with its splash. Keep both boots working: e2e
   `ssr-boot.spec.ts` covers the server document, the rest of the suite the static shell.
 
+## Frames
+
+Since S2 (`experiments/remix-v3/ACTION-PLAN.md` B) the pane's rows can be drawn on the bridge too, as
+two named frames on the pane's own URL (`R/routes/pane/frames.ts` names them and lays out the answer):
+
+- **Off by default.** S2 had two bounds: no more renderer CPU while a pane streams than before, and
+  no more than 1.5x the bytes of the JSON read. The CPU bound held (Terminal, 1x: 3.4 % of one core
+  against 3.7 % with frames off, same build, same hour). The bytes bound did not: one poll answer is
+  the read's JSON plus the rows' HTML, 1.6x the JSON read after gzip (2.4 against 1.5 KiB on a
+  working pane), and 432 against 262 KiB over a 30 s Terminal stream. So `PANE_FRAMES_DEFAULT` is
+  `false` (`R/lib/prefs.ts`), and a device turns frames on with `?frames=1` (stored; `?frames=0`
+  turns them off again). Numbers: `experiments/remix-v3/COMPARE.md`, round 8. Everything below is
+  what happens with frames on; with them off the pane reads `/api/pane/:id` as JSON and the browser
+  draws every row, as before S2.
+
+- **What streams.** `pane-screen` is the Terminal's rows (`ScreenRows`), `pane-status` the agent's
+  statusline rows (`StatusRows`). Only the rows: the `<pre>` and the strip around them (font, wrap,
+  theme, `data-rows`) stay the browser's, so a pref never changes a fragment. Chat stays the browser's
+  (its window has its own after-cursor protocol, `fetchChat`), and so do the header, the strips, the
+  card, the composer, the belt and the sheets. The find bar takes the rows back while it is open:
+  its marks are the browser's.
+- **One request per beat.** The beat (`R/lib/polling.ts`, unchanged) calls `pollPaneFrames`
+  (`R/routes/pane/pane-frames.ts`): one GET with `X-Remix-Frame`, `X-Remix-Target` and
+  `X-Collie-Poll: <frames>`, answered with the read's JSON and every asked frame in one body. The read
+  still goes into the pane's store and web's pane cache (`notePaneRead`), because the card, the
+  composer and the dialog guard read the text.
+- **304 never reaches the runtime.** The runtime treats a 304 as a failure and an empty body as "clear
+  the frame", and `reload()` takes no options. So the poll asks first, with the read's ETag as
+  `If-None-Match`; on 304 nothing happens at all (no `reloadStart`, no diff, no store write); on 200
+  the rows are held by src and each mounted frame whose rows moved is told `reload()`, which the
+  runtime resolves from the held HTML (`resolvePaneFrame`) with no second request.
+- **Keyed rows.** Every row carries `data-rmx-key`. The JSX `key` is not emitted, and an attribute
+  without the `data-` prefix (`rmx-key`, `rmx-target`) type-checks and is ignored. The runtime's HTML
+  diff (`diff-dom.ts`) places rows from the end and removes stale ones only after, so a row replaced
+  in the middle moves every row above it. Hence two kinds of key (`R/ssr/frames.tsx`, THE TAIL):
+  content keys for the rows above, so a scroll is one row in and one row out, and place keys
+  (`tail-0` is the last row) for the bottom 8, where a working agent changes its screen, so those
+  diff in place. A row that changes above the tail still moves the rows above it: that is the
+  runtime's diff, measured in COMPARE.md round 8.
+- **Vary and storage.** `/pane/:paneId` answers a document or a fragment by request header, so every
+  answer on it says `Vary: X-Remix-Frame, X-Remix-Target, X-Collie-Poll`, the fragments
+  `Cache-Control: private, no-store`, the document `no-store`. A frame request never falls through to
+  the document or the static shell.
+- **Mount rule.** The frames' src is mounted with `href()` on BOTH sides. The server never fetches a
+  frame: the document reads the pane through the pane route's own body and draws both frames inline
+  through `renderToStream`'s `resolveFrame` (`R/ssr/render.tsx`), so the server-side mount trap of
+  research note 08 §3.6 never arises, and the hydrated frame's src equals the one the browser draws.
+  The bridge's frame route gets the routed URL, mount already off. Everything that changes a row's
+  markup is in the src (`lines`, `agent`), so a change of it is a new URL and never meets a stale ETag.
+- **Same mode on both sides.** The switch is the `collie:pane-frames:v1` pref (in the prefs cookie)
+  and `?frames=0|1`. The document says which mode it drew (`pane.frames` in the island's props), and
+  the browser hydrates in that mode for the page (`paneFrames.prime`). A server-drawn frame is
+  adopted as it is: no reload, no entrance motion (e2e `pane-frames.spec.ts` (f)).
+- **Not ours, offline.** Every frame answer carries `X-Collie-Frame`. An answer without it (a proxy's
+  page, a service worker shell, an older bridge, a static server) latches the JSON read for the
+  page's life. A failed request leaves the rows and the store's last body in place and sets the
+  store's error, as the JSON read did, so the pane says "can't reach" over the last rows (M46 keeps
+  what it kept). A refused read keeps its status, so the pane shows the same notice.
+- **Frozen.** While the reader is scrolled up, the screen frame is not reloaded (rule 8). The held
+  rows keep moving and land at once on the jump back, with no request.
+- **The glide** binds the `pane-screen` frame (`bindGlideScreenFrame`) and waits for a reload in
+  flight to complete before it takes its snapshot. A frame's first content in the browser is not a
+  reload: the runtime dispatches nothing for it.
+
 ## Motion
 
 ### CSS first
