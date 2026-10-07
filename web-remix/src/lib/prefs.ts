@@ -199,9 +199,11 @@ export const harnessBar = persisted(PREF_KEYS.harnessBar, flag(true));
  * frames instead of reading `/api/pane/:id` as JSON; off, the shell draws every row itself, as before
  * S2. A device switch, carried to the bridge in the prefs cookie so a server document draws the same
  * mode; `?frames=0` or `?frames=1` on a page load sets it (`applyFramesParam`). The default is the
- * measured verdict (experiments/remix-v3/COMPARE.md, round 8).
+ * measured verdict, OFF (round 8, REMIX3.md "Frames"): the renderer CPU while a pane streams is level
+ * with the JSON read, but one poll answer is 1.6x the JSON read's bytes after gzip, above the 1.5x
+ * bound the plan set for S2.
  */
-export const PANE_FRAMES_DEFAULT = true;
+export const PANE_FRAMES_DEFAULT = false;
 /** This shell's own key: web/ has no frames, so it is not in `PREF_KEYS` (the keys web/ uses). */
 export const PANE_FRAMES_KEY = "collie:pane-frames:v1";
 export const paneFrames = persisted(PANE_FRAMES_KEY, flag(PANE_FRAMES_DEFAULT));

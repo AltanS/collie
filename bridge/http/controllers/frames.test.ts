@@ -304,7 +304,8 @@ describe("pane frames: the document on the same URL", () => {
 
   test("a top-frame GET gets the document, its frames drawn inline from the read, and Vary", async () => {
     const { paneRead, seen } = paneReads({ "w1:p1": screenOf("alpha") });
-    const [req, url] = get(`/pane/${encodeURIComponent("w1:p1")}`);
+    // Frames are off by default (web-remix/src/lib/prefs.ts, round 8): this device turned them on.
+    const [req, url] = get(`/pane/${encodeURIComponent("w1:p1")}?frames=1`);
     expect(await serveFrame(frameDepsOf(paneRead), req, url)).toBeNull();
     const res = await serveDocument(docDeps(paneRead), req, url);
     expect(res?.status).toBe(200);
@@ -327,7 +328,7 @@ describe("pane frames: the document on the same URL", () => {
 
   test("COLLIE_BASE_PATH: the frames' src carries the mount, and the head stays mounted", async () => {
     const { paneRead } = paneReads({ "w1:p1": screenOf("alpha") });
-    const res = await serveDocument(docDeps(paneRead, { cfg: config({ basePath: "/collie/" }) }), ...get(`/pane/${encodeURIComponent("w1:p1")}`));
+    const res = await serveDocument(docDeps(paneRead, { cfg: config({ basePath: "/collie/" }) }), ...get(`/pane/${encodeURIComponent("w1:p1")}?frames=1`));
     const html = await res!.text();
     expect(html).toContain('<meta name="collie-base" content="/collie/" />');
     expect(html).toContain('src="/collie/assets/index-abc.js"');

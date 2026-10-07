@@ -28,6 +28,9 @@ declare global {
 
 const PANE = PANES.plain;
 const path = (paneId: string, query = "") => `/pane/${encodeURIComponent(paneId)}${query}`;
+// Frames are off by default (round 8 verdict, lib/prefs.ts `PANE_FRAMES_DEFAULT`): every load here turns
+// them on for the device, as an operator would with `?frames=1`.
+const ON = "?frames=1";
 
 /** A screen of `rows` lines; the last one says `tail`. */
 function screen(tail: string, rows = 24): string {
@@ -107,7 +110,7 @@ async function frameEvents(page: Page): Promise<{ start: number; complete: numbe
 test("(a) an unchanged pane answers 304 and writes nothing: no record, no reload, no render", async ({ page, context, baseURL }) => {
   await postPane(context, baseURL!, { paneId: PANE, text: screen("$ idle") });
   const reads = await stubApi(page, true);
-  await page.goto(path(PANE, "?debug"));
+  await page.goto(path(PANE, `${ON}&debug`));
   await expect(page.locator('[data-frame="pane-screen"] [data-rmx-key]').last()).toContainText("$ idle");
   await page.waitForTimeout(2_000);
   await watchFrame(page);
@@ -134,7 +137,7 @@ test("(b) 30 s of streaming: records only for the changed row, none for the unch
   test.setTimeout(60_000);
   await postPane(context, baseURL!, { paneId: PANE, text: screen("tick 0") });
   const reads = await stubApi(page, true);
-  await page.goto(path(PANE));
+  await page.goto(path(PANE, ON));
   const rows = page.locator('[data-frame="pane-screen"] [data-rmx-key]');
   await expect(rows.last()).toContainText("tick 0");
   await page.waitForTimeout(1_000);
@@ -164,13 +167,20 @@ test("(b) 30 s of streaming: records only for the changed row, none for the unch
 
 test("(c) the glide hears the runtime's own reload events of pane-screen", async ({ page, context, baseURL }) => {
   await postPane(context, baseURL!, { paneId: PANE, text: screen("before") });
-  await stubApi(page, true);
-  await page.goto(path(PANE));
+  const reads = await stubApi(page, true);
+  await page.goto(path(PANE, ON));
   await expect(page.locator('[data-frame="pane-screen"] [data-rmx-key]').last()).toContainText("before");
   const before = await frameEvents(page);
   expect(before.start).toBeGreaterThanOrEqual(0);
   await postPane(context, baseURL!, { paneId: PANE, text: screen("after") });
-  await expect(page.locator('[data-frame="pane-screen"] [data-rmx-key]').last()).toContainText("after");
+  // Flaky in two full runs on 2026-10-07 (never alone): on a miss, say which beats went out.
+  const posted = Date.now();
+  try {
+    await expect(page.locator('[data-frame="pane-screen"] [data-rmx-key]').last()).toContainText("after");
+  } catch (error) {
+    const state = await page.evaluate(() => ({ url: location.href, frames: localStorage.getItem("collie:pane-frames:v1"), scroll: document.querySelector('[data-testid="pane-scroller"]')?.scrollTop }));
+    throw new Error(`${String(error)}\nDIAG ${JSON.stringify({ sincePost: Date.now() - posted, frames: reads.frames, api: Object.fromEntries(reads.api), events: await frameEvents(page), state })}`, { cause: error });
+  }
   await expect.poll(() => frameEvents(page)).toEqual({ start: before.start + 1, complete: before.complete + 1 });
 });
 
@@ -182,7 +192,7 @@ test("(d) a static-shell boot with crypto.randomUUID deleted still draws the fra
   });
   await postPane(context, baseURL!, { paneId: PANE, text: screen("no uuid here") });
   const reads = await stubApi(page, true);
-  await page.goto(path(PANE));
+  await page.goto(path(PANE, ON));
   // Gone from the platform; the shell's polyfill put its own on `crypto` (lib/polyfills.ts).
   expect(await page.evaluate(() => Object.hasOwn(Crypto.prototype, "randomUUID"))).toBe(false);
   expect(await page.evaluate(() => crypto.randomUUID() !== crypto.randomUUID())).toBe(true);
@@ -200,7 +210,9 @@ test("(e) a refused frame shows the notice the JSON read showed", async ({ brows
     else await postPane(context, baseURL!, { paneId: "nobody", status: 403 });
     await stubApi(page, false, { status: 403 });
     await page.goto(path(PANE, frames ? "?frames=1" : "?frames=0"));
-    const strip = page.locator('[role="status"]').filter({ hasText: /\S/ }).first();
+    // Before the first read answers the strip passes through "Connecting…" and "Loading…"; the 403
+    // notice is what it settles on, and its whole text must then be the same on both paths.
+    const strip = page.locator('[role="status"]').filter({ hasText: /Read-only/ }).first();
     await expect(strip).toBeVisible();
     const text = (await strip.innerText()).trim();
     await context.close();
@@ -237,7 +249,7 @@ test("(f) a server document's frames are adopted on hydration: same nodes, no mo
     document.addEventListener("transitionstart", count, true);
   });
   const reads = await stubApi(page, false);
-  await page.goto(path(PANE));
+  await page.goto(path(PANE, ON));
   const rows = page.locator('[data-frame="pane-screen"] [data-rmx-key]');
   await expect(rows.last()).toContainText("from the document");
   await page.waitForTimeout(8_000);
@@ -275,7 +287,7 @@ test("(g) the cadence: an idle pane makes the JSON path's beats, one frame reque
   await postPane(context, baseURL!, { paneId: PANE, text: screen("$ resting") });
   const reads = await stubApi(page, false);
   const started = Date.now();
-  await page.goto(path(PANE));
+  await page.goto(path(PANE, ON));
   await expect(page.locator('[data-frame="pane-screen"] [data-rmx-key]').last()).toContainText("$ resting");
   await page.waitForTimeout(12_000 - (Date.now() - started));
   const api = [...reads.api.values()].reduce((a, b) => a + b, 0);
