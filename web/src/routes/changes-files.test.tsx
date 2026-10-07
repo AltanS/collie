@@ -379,7 +379,7 @@ describe("Changes: back goes up one level through the tree", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^checkout\.tsx/ }));
     expect(router.state.location.pathname).toBe(FILES);
     expect(router.state.location.search).toBe("?path=src%2Froutes%2Fcheckout.tsx");
-    expect(await screen.findByText("Checkout", { exact: false })).toBeTruthy();
+    expect((await screen.findAllByText("Checkout", { exact: false })).length).toBeGreaterThan(0);
 
     await userEvent.click(screen.getByRole("button", { name: en["files.backAria.folder"] }));
     await waitFor(() => expect(router.state.location.search).toBe("?dir=src%2Froutes"));
@@ -431,11 +431,25 @@ describe("Changes: one file of the tree", () => {
     expect((await screen.findAllByText("cartTotal", { exact: false })).length).toBeGreaterThan(0);
     const diff = screen.getByRole("radio", { name: en["files.view.diff"] });
     expect(diff.getAttribute("aria-checked")).toBe("true");
+    // Icons, not words: the name and the tooltip carry the word.
+    expect(diff.textContent).toBe("");
+    expect(diff.getAttribute("title")).toBe(en["files.view.diff"]);
     // A TypeScript file has no Preview: Diff | Source.
-    expect(within(screen.getByRole("radiogroup", { name: en["files.view.aria"] })).getAllByRole("radio").map((r) => r.textContent)).toEqual([en["files.view.diff"], en["files.view.source"]]);
+    expect(within(screen.getByRole("radiogroup", { name: en["files.view.aria"] })).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual([en["files.view.diff"], en["files.view.source"]]);
     await userEvent.click(screen.getByRole("radio", { name: en["files.view.source"] }));
     await waitFor(() => expect(screen.queryAllByText("cartTotal", { exact: false })).toHaveLength(0));
     expect(screen.getAllByText("Checkout", { exact: false }).length).toBeGreaterThan(0);
+  });
+
+  it("draws the whole path on a thin row under the name row, ending in the file name", async () => {
+    renderAt([`${FILES}?path=src%2Froutes%2Fcheckout.tsx`]);
+    await screen.findAllByText("cartTotal", { exact: false });
+    const row = document.querySelector('[data-slot="file-path-row"]');
+    expect(row).toBeTruthy();
+    expect(row?.getAttribute("title")).toBe("src/routes/checkout.tsx");
+    // jsdom measures nothing, so the row draws the full path; a fitted one still ends in the name.
+    expect(row?.textContent?.endsWith("checkout.tsx")).toBe(true);
+    expect(row?.textContent).toBe("src/routes/checkout.tsx");
   });
 
   it("asks the diff of the change set's repo, with the path inside that repo", async () => {
@@ -456,7 +470,7 @@ describe("Changes: one file of the tree", () => {
   it("a new Markdown file opens on Diff, all added, and Preview is one tap away", async () => {
     renderAt([`${FILES}?path=packages%2Fapi%2Fnotes.md`]);
     expect(await screen.findByText("Orders moved under handlers/.")).toBeTruthy();
-    expect(within(screen.getByRole("radiogroup", { name: en["files.view.aria"] })).getAllByRole("radio").map((r) => r.textContent)).toEqual([
+    expect(within(screen.getByRole("radiogroup", { name: en["files.view.aria"] })).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual([
       en["files.view.diff"],
       en["files.view.source"],
       en["files.view.preview"],

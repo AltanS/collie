@@ -160,7 +160,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull(); // ambient → no actions
   });
 
-  it("escalates to a red alert with Retry + Reload once lost, naming Herdr when the bridge answers", async () => {
+  it("escalates to a red alert with Retry and a dismiss, no Reload, naming Herdr when the bridge answers", async () => {
     h.trouble = true;
     h.lost = true;
     cfg.reachable = true; // the config probe succeeds → the bridge is up, so Herdr is the outage
@@ -169,7 +169,8 @@ describe("ConnectionBanner — the single connection surface", () => {
     expect(row()?.className).toMatch(/bg-status-blocked/); // red = failed
     expect(announced("alert")).toHaveTextContent("Herdr is down on the host");
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reload/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Hide this notice" })).toBeInTheDocument();
   });
 
   it("does not infer mux failure from a successful config probe after a failed snapshot", async () => {
@@ -470,5 +471,106 @@ describe("ConnectionBanner — offline states", () => {
     act(() => vi.advanceTimersByTime(GREEN_MS));
     act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
     expect(row()).toBeNull();
+  });
+});
+
+// ── The red strip is dismissable, and has one action ──────────────────────────────
+// Phone in airplane mode: two buttons and no way to hide the strip. The strip now carries Retry and a
+// ✕, the ✕ hides it for the rest of THIS outage, and the mark's badge (collie-home.tsx) keeps the
+// state visible after that.
+describe("ConnectionBanner — dismissing the red strip", () => {
+  const SAVED_AT = new Date(2026, 0, 2, 14, 32).getTime();
+  const dismiss = () => screen.getByRole("button", { name: "Hide this notice" });
+
+  it("has exactly two buttons in red, Retry and the dismiss, and no Reload", async () => {
+    h.lost = true;
+    renderBanner();
+    await act(async () => {});
+    const buttons = Array.from(row()?.querySelectorAll("button") ?? []).map(
+      (b) => b.getAttribute("aria-label") ?? b.textContent?.trim(),
+    );
+    expect(buttons).toEqual(["Retry", "Hide this notice"]);
+  });
+
+  it("gives amber no dismiss and no action: it is ambient", () => {
+    h.trouble = true;
+    renderBanner();
+    expect(row()?.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("keeps the auth strip's Sign in and Reload untouched", () => {
+    renderBanner({ authError: true });
+    expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hide this notice" })).toBeNull();
+  });
+
+  it("hides the strip on dismiss, and the band closes over it", async () => {
+    h.lost = true;
+    renderBanner();
+    await act(async () => {});
+    expect(row()).not.toBeNull();
+    act(() => void fireEvent.click(dismiss()));
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
+    expect(row()).toBeNull();
+  });
+
+  it("stays hidden for the rest of the outage, across re-renders and a change of sentence", async () => {
+    h.lost = true;
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    await act(async () => {});
+    act(() => void fireEvent.click(dismiss()));
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
+    act(() => rerenderBanner());
+    cfg.reachable = false;
+    act(() => rerenderBanner());
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(row()).toBeNull();
+  });
+
+  it("recovers quietly after a dismiss: no green Connected flash", async () => {
+    h.lost = true;
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    await act(async () => {});
+    act(() => void fireEvent.click(dismiss()));
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
+
+    h.lost = false;
+    liveStale = false;
+    act(() => rerenderBanner());
+    expect(screen.queryByText("Connected")).toBeNull();
+    act(() => vi.advanceTimersByTime(GREEN_MS + COLLAPSE_MS + 16));
+    expect(screen.queryByText("Connected")).toBeNull();
+    expect(row()).toBeNull();
+  });
+
+  it("shows the strip again on a new outage", async () => {
+    h.lost = true;
+    renderBanner({ error: true, stale: true, lastSeenAt: SAVED_AT });
+    await act(async () => {});
+    act(() => void fireEvent.click(dismiss()));
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
+
+    h.lost = false;
+    liveStale = false;
+    act(() => rerenderBanner());
+    act(() => vi.advanceTimersByTime(GREEN_MS + COLLAPSE_MS + 16));
+    expect(row()).toBeNull();
+
+    h.lost = true;
+    liveStale = true;
+    act(() => rerenderBanner());
+    await act(async () => {});
+    expect(row()).not.toBeNull();
+    expect(announced("alert") ?? row()).toHaveTextContent(/saved|Can't reach|Offline/i);
+    expect(dismiss()).toBeInTheDocument();
+  });
+
+  it("still flashes green after a recovery that was never dismissed", async () => {
+    h.lost = true;
+    renderBanner();
+    await act(async () => {});
+    h.lost = false;
+    act(() => rerenderBanner());
+    expect(announced("status")).toHaveTextContent("Connected");
   });
 });

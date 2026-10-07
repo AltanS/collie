@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 
 /** One segment. */
@@ -19,6 +21,14 @@ export interface SegmentedOption<V extends string | number> {
   badge?: number;
   /** ALREADY TRANSLATED. The count in words, appended to the segment's accessible name. */
   badgeLabel?: string;
+  /**
+   * A glyph drawn INSTEAD of the words (an `aria-hidden` icon, 16px). The segment then carries the
+   * word twice, unseen: `aria-label` is the `label`, and the `title` (a pointer's tooltip) is `title`
+   * or the `label`. A segment with no icon is exactly as it was.
+   */
+  icon?: ReactNode;
+  /** ALREADY TRANSLATED. The tooltip of an icon segment, when it should say more than `label`. */
+  title?: string;
 }
 
 export interface SegmentedProps<V extends string | number> {
@@ -77,6 +87,7 @@ export function Segmented<V extends string | number>({
         const badged = option.badge !== undefined && option.badge > 0;
         // A mark and a count are said in words: the name becomes "Changes, 5 changed files".
         const said = [option.mark, badged ? option.badgeLabel : undefined].filter((w): w is string => w !== undefined);
+        const iconic = option.icon !== undefined;
         return (
           <button
             key={option.value}
@@ -85,7 +96,9 @@ export function Segmented<V extends string | number>({
             aria-selected={tabs ? on : undefined}
             aria-checked={tabs ? undefined : on}
             // A mark is said in words: the name becomes "Alerts, alert firing" rather than a dot.
-            aria-label={said.length === 0 ? undefined : `${option.label}, ${said.join(", ")}`}
+            // An icon segment has no visible word, so its name is always said.
+            aria-label={said.length === 0 ? (iconic ? option.label : undefined) : `${option.label}, ${said.join(", ")}`}
+            title={iconic ? (option.title ?? option.label) : undefined}
             disabled={disabled}
             onClick={() => {
               // A choice is never un-picked, and a caller that posts on change is not asked to post
@@ -98,7 +111,7 @@ export function Segmented<V extends string | number>({
               on ? "z-10 border-foreground text-foreground" : "border-border text-muted-foreground active:text-foreground",
             )}
           >
-            {option.label}
+            {iconic ? <span aria-hidden className="inline-flex items-center justify-center [&>svg]:size-4">{option.icon}</span> : option.label}
             {option.mark !== undefined && (
               <span aria-hidden data-slot="segmented-mark" className="ml-1.5 inline-block size-2 rounded-full bg-status-blocked align-middle" />
             )}

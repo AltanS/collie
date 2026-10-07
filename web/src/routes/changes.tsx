@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Code, Eye, GitCompareArrows, Loader2, RefreshCw } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
 import { FilesLoading, RefusedBody, TreeFolderBody, useFilesRead, type FilesReadState, type TreeRead } from "@/routes/changes-files";
@@ -101,6 +101,8 @@ import type {
   FileEntry,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { fitPath } from "@/lib/fit-path";
+import { useElementWidth } from "@/hooks/use-element-width";
 import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-changes";
 
 // The Changes view (ADR 0065): what changed under a WORKSPACE's folder since the last commit,
@@ -254,6 +256,58 @@ const TREE_VIEW_LABEL = {
   source: "files.view.source",
   preview: "files.view.preview",
 } satisfies Record<TreeView, MessageKey>;
+
+/** The switcher draws a glyph per view; the word rides along as the segment's name and tooltip. */
+export const TREE_VIEW_ICON = {
+  diff: <GitCompareArrows />,
+  source: <Code />,
+  preview: <Eye />,
+} satisfies Record<TreeView, ReactNode>;
+
+/**
+ * The previous / next button at the end of the file screen when there is nothing to step to. The
+ * primitive's `opacity-50` alone left an outline button looking tappable, so the box goes too: no
+ * border, no fill, no shadow, muted ink. The 1px border is already reserved (it only turns
+ * transparent), so the pair keeps its width and nothing moves.
+ */
+const STEP_OFF =
+  "disabled:border-transparent disabled:bg-transparent disabled:shadow-none disabled:text-muted-foreground disabled:opacity-40";
+
+/** The mono class the path row draws in, and the hidden `0` that measures one character of it. */
+const PATH_ROW_MONO = "font-mono text-[11px] leading-4";
+/** A mono character at 11px, when the measure gives 0 (jsdom has no layout). */
+const FALLBACK_CHAR_WIDTH = 6.6;
+
+/**
+ * The thin row under the file screen's name row: the whole path from the repo root, as much of it as
+ * the row's width holds (`fitPath`). The name row stays the title and gives the folder little; this
+ * row is where the reader sees where the file lives. `title` carries the full path for a pointer.
+ * Until the width is measured, the full path draws with `truncate`, so the row is one line either way.
+ */
+function FilePathRow({ path }: { path: string }) {
+  const [rowRef, width] = useElementWidth<HTMLDivElement>(0);
+  const probeRef = useRef<HTMLSpanElement>(null);
+  const [charWidth, setCharWidth] = useState(FALLBACK_CHAR_WIDTH);
+  useEffect(() => {
+    const w = probeRef.current?.getBoundingClientRect().width ?? 0;
+    if (w > 0) setCharWidth(w);
+  }, []);
+  // The row's padding is not text room: measure the content box by taking `px-4` (16 px) twice off.
+  const budget = width === 0 ? null : Math.max(0, Math.floor((width - 32) / charWidth));
+  return (
+    <>
+      <span ref={probeRef} aria-hidden className={cn("invisible absolute", PATH_ROW_MONO)}>0</span>
+      <div
+        ref={rowRef}
+        data-slot="file-path-row"
+        title={path}
+        className={cn("h-[18px] min-w-0 px-4 text-muted-foreground", PATH_ROW_MONO, budget === null && "truncate")}
+      >
+        {budget === null ? path : fitPath(path, budget)}
+      </div>
+    </>
+  );
+}
 
 /**
  * The Changes route: the tree or the list at the root, a folder or a file of the tree
@@ -1237,11 +1291,11 @@ function FileScreen({
       {/* Across what the list shows, repos included: the filtered files, in the layout's order.
           Disabled rather than hidden at either end, so the pair never moves. */}
       <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-rule bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <Button variant="outline" className="h-11" disabled={!prev} onClick={() => prev && onStep(prev)}>
+        <Button variant="outline" className={cn("h-11", STEP_OFF)} disabled={!prev} onClick={() => prev && onStep(prev)}>
           <ChevronLeft className="size-4" />
           {t("changes.file.prev")}
         </Button>
-        <Button variant="outline" className="h-11" disabled={!next} onClick={() => next && onStep(next)}>
+        <Button variant="outline" className={cn("h-11", STEP_OFF)} disabled={!next} onClick={() => next && onStep(next)}>
           {t("changes.file.next")}
           <ChevronRight className="size-4" />
         </Button>
@@ -1343,34 +1397,37 @@ function TreeFileScreen({
           its word. Two rows and the mode control above them held 166 px of a phone's 844 before the
           first line of the file; this row holds 60. The name keeps its middle truncation and the
           folder gives way first, so the control never pushes the file's name off the row. */}
-      <div className="sticky top-0 z-10 flex min-h-11 items-center gap-3 border-b border-rule bg-background px-4 py-2">
-        {change && <StatusLetter status={change.status} />}
-        <div className="min-w-0 flex-1">
-          <ChangePath path={path} />
-          {change?.oldPath && (
-            <div className="truncate font-mono text-xs text-muted-foreground">
-              {t("changes.file.renamedFrom", { path: change.oldPath })}
-            </div>
+      <div className="sticky top-0 z-10 border-b border-rule bg-background">
+        <div className="flex min-h-11 items-center gap-3 px-4 py-2">
+          {change && <StatusLetter status={change.status} />}
+          <div className="min-w-0 flex-1">
+            <ChangePath path={path} />
+            {change?.oldPath && (
+              <div className="truncate font-mono text-xs text-muted-foreground">
+                {t("changes.file.renamedFrom", { path: change.oldPath })}
+              </div>
+            )}
+          </div>
+          {/* In the row that is already there, so the page under it does not move. */}
+          <span role="status" className="shrink-0 text-xs text-muted-foreground">
+            {gone ? t("changes.file.gone") : ""}
+          </span>
+          {/* Three segments and the size would leave the name about 60 px at 390: the size, the least
+              needed word on the row, waits for a wider screen. */}
+          <span className={cn("shrink-0 text-xs text-muted-foreground tabular-nums", views.length >= 3 && "hidden sm:inline")}>
+            {size === null ? "" : formatBytes(size)}
+          </span>
+          {!waiting && views.length > 1 && (
+            <Segmented
+              label={t("files.view.aria")}
+              value={view}
+              onChange={onView}
+              className="shrink-0 [&>button]:flex-none [&>button]:px-3"
+              options={views.map((value) => ({ value, label: t(TREE_VIEW_LABEL[value]), icon: TREE_VIEW_ICON[value] }))}
+            />
           )}
         </div>
-        {/* In the row that is already there, so the page under it does not move. */}
-        <span role="status" className="shrink-0 text-xs text-muted-foreground">
-          {gone ? t("changes.file.gone") : ""}
-        </span>
-        {/* Three segments and the size would leave the name about 60 px at 390: the size, the least
-            needed word on the row, waits for a wider screen. */}
-        <span className={cn("shrink-0 text-xs text-muted-foreground tabular-nums", views.length >= 3 && "hidden sm:inline")}>
-          {size === null ? "" : formatBytes(size)}
-        </span>
-        {!waiting && views.length > 1 && (
-          <Segmented
-            label={t("files.view.aria")}
-            value={view}
-            onChange={onView}
-            className="shrink-0 [&>button]:flex-none [&>button]:px-3"
-            options={views.map((value) => ({ value, label: t(TREE_VIEW_LABEL[value]) }))}
-          />
-        )}
+        <FilePathRow path={path} />
       </div>
       <div className="flex-1 py-2">{body}</div>
     </>

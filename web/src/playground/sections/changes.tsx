@@ -26,6 +26,7 @@ import {
   StatusLetter,
 } from "@/components/changes-view";
 import { t } from "@/lib/i18n";
+import { TREE_VIEW_ICON } from "@/routes/changes";
 import { summarizeChanges } from "@/lib/workspace-changes";
 import { folderView } from "@/lib/files-filter";
 import { previewKindFor } from "@/lib/files-view";
@@ -234,7 +235,8 @@ function FileCard({ file, initial, height = 380 }: { file: FileText; initial: Ca
               label={t("files.view.aria")}
               value={view}
               onChange={setView}
-              options={views.map((value) => ({ value, label: label[value] }))}
+              options={views.map((value) => ({ value, label: label[value], icon: TREE_VIEW_ICON[value] }))}
+              className="[&>button]:flex-none [&>button]:px-3"
             />
           )}
         </div>

@@ -133,4 +133,27 @@ describe("Segmented padding follows the count", () => {
   it("keeps the 44px tap height at every count", () => {
     for (const n of [2, 4, 5]) expect(padOf(n)).toContain("min-h-11");
   });
+
+  it("draws an icon in place of the word, and keeps the word as the name and the tooltip", () => {
+    const icons = [
+      { value: "a", label: "First", icon: <svg data-testid="ia" /> },
+      { value: "b", label: "Second", title: "Second view", icon: <svg data-testid="ib" /> },
+    ];
+    render(<Segmented options={icons} value="a" onChange={() => {}} label="Pick" />);
+    const first = screen.getByRole("radio", { name: "First" });
+    expect(first.getAttribute("aria-label")).toBe("First");
+    expect(first.getAttribute("title")).toBe("First");
+    expect(first.textContent).toBe("");
+    expect(first.querySelector("[data-testid=ia]")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Second" }).getAttribute("title")).toBe("Second view");
+    expect(screen.getByRole("radiogroup", { name: "Pick" })).toBeTruthy();
+  });
+
+  it("leaves a text segment as it was: its words, no aria-label, no title", () => {
+    render(<Segmented options={OPTIONS} value="a" onChange={() => {}} label="Pick" />);
+    const first = screen.getByRole("radio", { name: "First" });
+    expect(first.textContent).toBe("First");
+    expect(first.hasAttribute("aria-label")).toBe(false);
+    expect(first.hasAttribute("title")).toBe(false);
+  });
 });

@@ -219,6 +219,11 @@ function ConnectionStateBanner({
   // Has an amber/red bar actually been shown since the last time we went hidden? Gates the green flash
   // so a sub-trouble blip (which never showed a bar) recovers silently.
   const shownBar = useRef(false);
+  // The operator hid the red strip for THIS outage. The state draws (or does not draw) the strip; the
+  // ref is the same fact for the effect below, which must read it at recovery without re-running when
+  // it flips. Both reset together when the outage ends (`activeTone` goes null).
+  const [dismissed, setDismissed] = useState(false);
+  const dismissedRef = useRef(false);
 
   useEffect(() => {
     if (activeTone) {
@@ -226,9 +231,20 @@ function ConnectionStateBanner({
       setTone(activeTone);
       return;
     }
-    // activeTone === null → recovered, or never troubled.
+    // activeTone === null → recovered, or never troubled. Either way the outage the operator hid, if
+    // they hid one, is over: the next one shows its strip again.
+    const wasDismissed = dismissedRef.current;
+    dismissedRef.current = false;
+    setDismissed(false);
     if (!shownBar.current) {
       setTone(null); // a blip that never showed a bar → show nothing.
+      return;
+    }
+    // The operator asked for quiet by hiding the strip, so a green "Connected" would be the one thing
+    // on screen they did not ask for. The bar they dismissed was shown, so the latch still clears.
+    if (wasDismissed) {
+      shownBar.current = false;
+      setTone(null);
       return;
     }
     // Recovery FROM a visible bar → a brief green "connected", then hide.
@@ -270,6 +286,14 @@ function ConnectionStateBanner({
   }, [lost, runProbe]);
 
   if (tone === null) return null;
+  // Dismissed: nothing is registered in the band, and the band's own leave animation closes the row.
+  // Only red can be dismissed (amber and green carry no ✕), but the guard states what it hides.
+  if (tone === "red" && dismissed) return null;
+
+  function onDismiss() {
+    dismissedRef.current = true;
+    setDismissed(true);
+  }
 
   // Recovery (a successful poll) flips the signals → tone → hidden on its own, no reload. Retry just
   // nudges that along: revalidate the snapshot and re-run the probe.
@@ -286,6 +310,9 @@ function ConnectionStateBanner({
   // notice and a refused write use). Read only to NAME the cause; it feeds no clock and no latch.
   const memberFault = host !== undefined && host !== lead ? writeRefusal(memberHealth) : undefined;
   const view = resolveView(tone, online, probe, muxDisconnected, memberFault, lastSeenAt, stale);
+  // The ✕ is red's alone, so it is spread in rather than passed as `undefined`: the primitive types a
+  // dismiss control and its label as a pair, and an `undefined` for one is not that.
+  const dismissProps = tone === "red" ? { onDismiss, dismissLabel: t("connection.dismiss.aria") } : {};
 
   return (
     // A lost connection outranks trouble, and both outrank the update offer. Green rides at
@@ -307,36 +334,29 @@ function ConnectionStateBanner({
         // Red reserves the tallest variant's height (see RED_MIN_HEIGHT), so a change of sentence
         // changes words and nothing else.
         className={tone === "red" ? RED_MIN_HEIGHT : undefined}
-        // Actions only in red — amber is ambient (no buttons), green is a passing confirmation.
+        // Actions only in red — amber is ambient (no buttons), green is a passing confirmation. ONE
+        // button, Retry, and the ✕ the Notice draws beside it. A Reload icon stood here too and the
+        // operator read two buttons for one problem; Retry already revalidates and re-probes, and the
+        // auth strip above keeps its Reload because a refusal is not cured by asking again.
         action={
           tone === "red" ? (
-            <>
-              <Button
-                size="sm"
-                // `whitespace-nowrap`: Retry is one word on one line, whatever the sentence beside it.
-                className={cn(NOTICE_ACTION, "whitespace-nowrap")}
-                onClick={onRetry}
-                disabled={retrying}
-              >
-                {retrying ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <RotateCw className="size-3.5" />
-                )}
-                {t("connection.retry")}
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label={t("connection.reload.aria")}
-                className={cn("size-6 text-muted-foreground", NOTICE_ACTION_TAP)}
-                onClick={() => window.location.reload()}
-              >
-                <RefreshCw className="size-3.5" />
-              </Button>
-            </>
+            <Button
+              size="sm"
+              // `whitespace-nowrap`: Retry is one word on one line, whatever the sentence beside it.
+              className={cn(NOTICE_ACTION, "whitespace-nowrap")}
+              onClick={onRetry}
+              disabled={retrying}
+            >
+              {retrying ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RotateCw className="size-3.5" />
+              )}
+              {t("connection.retry")}
+            </Button>
           ) : undefined
         }
+        {...dismissProps}
       >
         {view.hint === undefined ? (
           view.copy
@@ -357,7 +377,8 @@ function ConnectionStateBanner({
 /**
  * The red strip's reserved height: four 16px lines (`text-xs`; the hint's smaller type keeps the same
  * line) and the strip's own 8px of padding. That is the tallest variant at 390px beside Retry and
- * Reload: the "no connection" sentence on three lines and the hint under it, measured 2026-10-07.
+ * the ✕ (it was Retry and Reload, same width): the "no connection" sentence on three lines and the
+ * hint under it, measured 2026-10-07.
  * Every red variant takes it, so the strip does not change height while the outage changes its words.
  * A longer translation may still grow it; nothing shrinks it.
  */

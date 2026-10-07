@@ -21,6 +21,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useMuxLogoUrl, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
+import { useOnline } from "@/hooks/use-online";
 import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { AlphaBar } from "@/components/alpha-bar";
@@ -147,6 +148,9 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
   const lost = useConnectionLost(connecting);
+  // Which icon the lost badge on the mark wears: the phone's own offline flag, the same fact the
+  // strip's sentence turns on. Read here, beside `lost`, so the mark stays a function of its props.
+  const online = useOnline();
   // What this collie drives, printed beside the wordmark. It ALWAYS describes the LOCAL collie and
   // never changes with the viewed scope: `/api/config`'s mux block is this bridge's own, and a peer's
   // is not fetched (the crew link carries runtime data, not a second config channel). So on `?h=peer`
@@ -293,6 +297,7 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                   onHome={() => home.current?.fn?.()}
                   trouble={trouble}
                   lost={lost}
+                  online={online}
                 />
                 {/* THE IDENTITY, STACKED: the brand over the multiplexer this collie drives, both
                     beside the mark. It was ONE 18px line — "Collie on <mux>" — and on a phone that

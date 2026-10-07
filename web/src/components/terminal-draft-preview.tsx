@@ -1,4 +1,4 @@
-import { Terminal, X } from "lucide-react";
+import { Smartphone, Terminal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/hooks/use-locale";
@@ -23,6 +23,10 @@ interface TerminalDraftPreviewProps {
  */
 const DISMISS_TAP_TARGET = "relative before:absolute before:-inset-2.5 before:content-['']";
 
+/** The translucent card both floating notices stand on: it covers terminal text and moves nothing. */
+const FLOATING_CARD =
+  "pointer-events-auto flex items-start gap-1.5 rounded-lg border border-foreground/20 bg-card/95 py-1.5 pr-1.5 pl-2.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm";
+
 // A read-only notice for a draft stranded on the terminal's "❯" line (a message queued then recalled
 // on the HOST, which stripChrome hides from the mirror). The composer input is exclusively
 // phone-owned — a host draft is NEVER written into it implicitly. Instead we surface it here and let
@@ -39,9 +43,7 @@ const DISMISS_TAP_TARGET = "relative before:absolute before:-inset-2.5 before:co
 export function TerminalDraftPreview({ text, onTakeOver, onDismiss }: TerminalDraftPreviewProps) {
   useLocale();
   return (
-    <div
-      className="pointer-events-auto flex items-start gap-1.5 rounded-lg border border-foreground/20 bg-card/95 py-1.5 pr-1.5 pl-2.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm"
-    >
+    <div className={FLOATING_CARD}>
       <Terminal className="mt-0.5 size-3 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="font-medium">{t("composer.draftPreview.title")}</div>
@@ -59,14 +61,39 @@ export function TerminalDraftPreview({ text, onTakeOver, onDismiss }: TerminalDr
           {t("composer.draftPreview.takeOver")}
         </Button>
       )}
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label={t("composer.draftPreview.dismissAria")}
-        className={`${DISMISS_TAP_TARGET} grid size-6 shrink-0 self-center place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted/60`}
-      >
-        <X className="size-3.5" />
-      </button>
+      <DismissButton onDismiss={onDismiss} label={t("composer.draftPreview.dismissAria")} />
     </div>
+  );
+}
+
+/**
+ * The offline draft note, in the same floating slot and the same card as the terminal-draft notice
+ * (ADR 0061): while Send is off for want of a live read, what happens to the words already typed.
+ * It used to be an in-flow line under the field, so it moved the composer when it came and could
+ * not be put away. Now it covers the mirror's last rows, moves nothing, and the x spends it for
+ * this pane view. The composer owns when it shows, and gives the slot to the terminal-draft notice
+ * when both are due.
+ */
+export function OfflineDraftNote({ onDismiss }: { onDismiss: () => void }) {
+  useLocale();
+  return (
+    <div className={FLOATING_CARD}>
+      <Smartphone className="mt-0.5 size-3 shrink-0" />
+      <div className="min-w-0 flex-1 self-center leading-snug">{t("composer.offline.draftNote")}</div>
+      <DismissButton onDismiss={onDismiss} label={t("composer.offline.draftNote.dismissAria")} />
+    </div>
+  );
+}
+
+function DismissButton({ onDismiss, label }: { onDismiss: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onDismiss}
+      aria-label={label}
+      className={`${DISMISS_TAP_TARGET} grid size-6 shrink-0 self-center place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted/60`}
+    >
+      <X className="size-3.5" />
+    </button>
   );
 }

@@ -74,6 +74,19 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The connection strip can be hidden, and the Collie mark shows the state after that.** The red
+  strip keeps one button, Retry, and gets an X. Hidden, it stays hidden for the rest of that outage
+  and comes back on the next one; recovery after a hide shows no green flash. While the connection is
+  lost, the Collie mark in the header carries a small badge with the same icon as the strip, so the
+  state stays visible with the strip gone.
+- **The offline draft note floats above the belt and can be dismissed.** "The draft stays on this
+  phone" used to open under the input field and push the field up. It now shows in the same floating
+  card as the terminal-draft notice, one notice at a time, with an X, and moves nothing.
+- **The file screen in Changes: icons, a path row, and a clearer end of the list.** The Diff, Source
+  and Preview switcher shows icons, each with its word as the title and the accessible name. A thin
+  mono row under the name shows the path from the repo root and folds the middle folders to an
+  ellipsis when the row is too narrow, the file name last to go. Previous and Next lose their border
+  and go muted when there is nothing to step to.
 - **Pairing is always on, and every request needs the token, reads included.** A bridge with no
   paired device answers `403 device not paired` to every `/api/*` route except `/api/health` and
   `/api/pair`, so run `collie pair` on the host first; `collie doctor` and the installers now say so.

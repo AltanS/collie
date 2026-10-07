@@ -206,3 +206,46 @@ describe("spinRate — the wheel-throw curve", () => {
     for (let i = 0; i <= 200; i++) expect(spinRate((i / 200) * T, T)).toBeGreaterThanOrEqual(0);
   });
 });
+
+// THE LOST BADGE: the strip above the header can be dismissed, so the mark carries the state on.
+// WifiOff when the phone itself says it is offline, CloudOff otherwise (a bridge that does not
+// answer): the same two icons the strip uses. The host passes the flag; the mark never reads it.
+describe("CollieHome — the lost badge", () => {
+  const badge = (root: ParentNode) => root.querySelector<SVGElement>('[data-slot="collie-lost-badge"]');
+
+  it("is absent while the connection is not lost, even in trouble", () => {
+    expect(badge(render(<CollieHome trouble={false} />).container)).toBeNull();
+    expect(badge(render(<CollieHome trouble online={false} />).container)).toBeNull();
+  });
+
+  it("wears CloudOff when lost and the phone reports online", () => {
+    const { container } = render(<CollieHome trouble lost online />);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
+    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-cloud-off/);
+  });
+
+  it("wears CloudOff by default, since online is the unremarkable case", () => {
+    const { container } = render(<CollieHome trouble lost />);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
+  });
+
+  it("wears WifiOff when lost and the phone reports offline", () => {
+    const { container } = render(<CollieHome trouble lost online={false} />);
+    expect(badge(container)?.getAttribute("data-icon")).toBe("wifi-off");
+    expect(badge(container)?.getAttribute("class")).toMatch(/lucide-wifi-off/);
+  });
+
+  it("is decorative: hidden from assistive tech, the button's label names the state", () => {
+    const { container, getByRole } = render(<CollieHome trouble lost online={false} />);
+    expect(badge(container)?.getAttribute("aria-hidden")).toBe("true");
+    expect(getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
+  });
+
+  it("sits on the page colour with the ring cut, in the danger token", () => {
+    const { container } = render(<CollieHome trouble lost />);
+    const cls = badge(container)?.getAttribute("class") ?? "";
+    expect(cls).toMatch(/bg-background/);
+    expect(cls).toMatch(/ring-background/);
+    expect(cls).toMatch(/text-status-blocked/);
+  });
+});

@@ -218,6 +218,36 @@ describe("the header — the dog keys on trouble/lost, not the first not-live fr
     expect(markIsLive(container)).toBe(false);
     expect(collieMark(container)?.getAttribute("class") ?? "").toMatch(/grayscale/);
   });
+
+  // The strip can be dismissed; the badge on the mark is what stays. The host reads the phone's own
+  // online flag and hands it down, so the icon agrees with the strip's sentence.
+  describe("the lost badge", () => {
+    const badge = (root: ParentNode) => root.querySelector('[data-slot="collie-lost-badge"]');
+    const setOnline = (value: boolean) =>
+      Object.defineProperty(navigator, "onLine", { configurable: true, get: () => value });
+    afterEach(() => setOnline(true));
+
+    it("is absent while live, and while merely troubled", () => {
+      const { container } = renderHeader(<Header bridge="connected" error onHome={() => {}} />);
+      expect(badge(container)).toBeNull();
+      act(() => vi.advanceTimersByTime(TROUBLE_MS));
+      expect(badge(container)).toBeNull();
+    });
+
+    it("appears once lost, as CloudOff while the phone says online", () => {
+      setOnline(true);
+      const { container } = renderHeader(<Header bridge="connected" error onHome={() => {}} />);
+      act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
+      expect(badge(container)?.getAttribute("data-icon")).toBe("cloud-off");
+    });
+
+    it("is WifiOff while the phone says offline", () => {
+      setOnline(false);
+      const { container } = renderHeader(<Header bridge="connected" error onHome={() => {}} />);
+      act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS));
+      expect(badge(container)?.getAttribute("data-icon")).toBe("wifi-off");
+    });
+  });
 });
 
 // The header dog and the ConnectionBanner read ONE anchor (lib/connection-health.ts), which is why

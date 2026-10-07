@@ -57,6 +57,8 @@ function watchNetwork() {
   return calls;
 }
 
+const NOTE = "The draft stays on this phone and is never sent by itself.";
+
 describe("Composer — no action from cached state (M46 spec 11)", () => {
   it("disables Send with 'Reconnect to send' when the pane is not live, and still saves the draft", async () => {
     const user = userEvent.setup();
@@ -150,29 +152,103 @@ describe("Composer — no action from cached state (M46 spec 11)", () => {
     expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
   });
 
-  it("says once, under the field, that the draft stays on this phone", async () => {
+  it("says once, in the floating slot above the belt, that the draft stays on this phone", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      const note = "The draft stays on this phone and is never sent by itself.";
       renderComposer();
       // A cold mount waiting on its first read does not flash it.
-      expect(screen.queryByText(note)).toBeNull();
+      expect(screen.queryByText(NOTE)).toBeNull();
       act(() => {
         vi.advanceTimersByTime(1_600);
       });
-      expect(screen.getByText(note)).toBeInTheDocument();
+      expect(screen.getByText(NOTE)).toBeInTheDocument();
+      // An overlay, never a row of the composer: absolutely placed above the composer's top edge,
+      // with no Collapse around it, so nothing in the flow moves when it comes or goes.
+      const wrapper = screen.getByText(NOTE).closest('[data-slot="offline-draft-note"]')!;
+      expect(wrapper.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+      expect(wrapper.className).toMatch(/(?:^|\s)bottom-full(?=\s|$)/);
+      expect(wrapper.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+      expect(wrapper.closest('[data-slot="collapse"]')).toBeNull();
       // Live again: gone, and once per pane view, so the next outage does not repeat it.
       act(() => markLive("w1:p1"));
-      act(() => {
-        vi.advanceTimersByTime(500);
-      });
-      expect(screen.queryByText(note)).toBeNull();
+      expect(screen.queryByText(NOTE)).toBeNull();
       act(() => markDead("w1:p1"));
       act(() => {
         vi.advanceTimersByTime(5_000);
       });
       expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
-      expect(screen.queryByText(note)).toBeNull();
+      expect(screen.queryByText(NOTE)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("portals the note into the slot it is handed, the terminal-draft notice's slot", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const slot = document.createElement("div");
+    document.body.append(slot);
+    try {
+      renderComposer({ draftNoticeSlot: slot });
+      act(() => {
+        vi.advanceTimersByTime(1_600);
+      });
+      expect(slot).toHaveTextContent(NOTE);
+      // In the slot the wrapper is only the pass-through: the slot does the positioning.
+      const wrapper = slot.querySelector('[data-slot="offline-draft-note"]')!;
+      expect(wrapper.className).not.toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    } finally {
+      slot.remove();
+      vi.useRealTimers();
+    }
+  });
+
+  it("the x dismisses the note for this pane view, and Send stays off", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const calls = watchNetwork();
+      renderComposer();
+      act(() => {
+        vi.advanceTimersByTime(1_600);
+      });
+      expect(screen.getByText(NOTE)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Dismiss the offline draft note" }));
+      expect(screen.queryByText(NOTE)).toBeNull();
+      // Dismissing changes nothing about the gate.
+      expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+      // Spent: still offline, it does not come back, nor after a live stretch and a second outage.
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(screen.queryByText(NOTE)).toBeNull();
+      act(() => markLive("w1:p1"));
+      act(() => markDead("w1:p1"));
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(screen.queryByText(NOTE)).toBeNull();
+      expect(calls).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits while the terminal-draft notice holds the slot, then shows when it is dismissed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderComposer({ terminalDraft: "typed on the host", rawTerminalDraft: "typed on the host" });
+      act(() => {
+        vi.advanceTimersByTime(1_600);
+      });
+      expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
+      // One notice in the slot: the terminal draft wins.
+      expect(screen.queryByText(NOTE)).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Dismiss the terminal draft notice" }));
+      expect(screen.queryByText(/draft in terminal/i)).toBeNull();
+      expect(screen.getByText(NOTE)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

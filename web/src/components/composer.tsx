@@ -57,7 +57,7 @@ import { adapterFor } from "@/lib/harness";
 import { keyLabel } from "@/lib/key-queue";
 import { sendGuardedReply } from "@/lib/reply-action";
 import { useLive } from "@/lib/liveness";
-import { TerminalDraftPreview } from "@/components/terminal-draft-preview";
+import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { scopeKey, type Scope } from "@/lib/scope";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
 import { RecordingStrip } from "@/components/recording-strip";
@@ -370,10 +370,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const offline = stale === true || !live;
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
-  // The one-line note under the field while Send is off for want of a live read: what happens to the
-  // words already typed. Once per pane view (this component is keyed by pane): shown after the
-  // composer has been offline for a moment, so a cold mount waiting on its first read does not flash
-  // it, and spent once the pane is live again, so a flaky link does not repeat it.
+  // The one-line note while Send is off for want of a live read: what happens to the words already
+  // typed. It floats in the terminal-draft notice's slot (see `floatingNotice`), so it moves nothing.
+  // Once per pane view (this component is keyed by pane): shown after the composer has been offline
+  // for a moment, so a cold mount waiting on its first read does not flash it, and spent once the
+  // pane is live again or its x is tapped, so a flaky link does not repeat it.
   const [draftNote, setDraftNote] = useState<"idle" | "shown" | "spent">("idle");
   useEffect(() => {
     if (draftNote === "shown" && !offline) {
@@ -841,6 +842,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         />
       </div>
     ) : null;
+
+  // The offline draft note shares that slot, and the slot holds one notice: when both are due, the
+  // terminal draft wins and the note waits (still `shown`) until that notice is gone or dismissed.
+  const offlineNote =
+    draftNotice === null && draftNote === "shown" && offline ? (
+      <div
+        data-slot="offline-draft-note"
+        className={cn(
+          "pointer-events-none",
+          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
+        )}
+      >
+        <OfflineDraftNote onDismiss={() => setDraftNote("spent")} />
+      </div>
+    ) : null;
+  const floatingNotice = draftNotice ?? offlineNote;
 
   // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
   // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
@@ -1667,8 +1684,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             stays here under that name is the verification half, and the strip itself says why. */}
         {/* The terminal-draft notice is NOT one of these strips any more (ADR 0061). It floats over
             the mirror's bottom edge, out of this flow, so a draft stranding or clearing on the host
-            never moves the belt or the field. See `draftNotice` above; it renders here. */}
-        {draftNoticeSlot ? createPortal(draftNotice, draftNoticeSlot) : draftNotice}
+            never moves the belt or the field. The offline draft note left this flow for the same
+            reason and shares that slot, one notice at a time. See `floatingNotice` above; it renders
+            here. */}
+        {draftNoticeSlot ? createPortal(floatingNotice, draftNoticeSlot) : floatingNotice}
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
             strips, because that is where the eye already is when a send is refused — and it is a
             NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}
@@ -2078,12 +2097,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           )}
         </div>
-        {/* Under the field, while Send is off for want of a live read (see `draftNote`). */}
-        <Collapse open={draftNote === "shown" && offline}>
-          <p className="px-1 pt-1 text-xs leading-snug text-muted-foreground">
-            {translate("composer.offline.draftNote")}
-          </p>
-        </Collapse>
       </div>
 
       {/* Slash-command palette */}
